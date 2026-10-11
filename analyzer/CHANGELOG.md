@@ -9,6 +9,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- The bundled catalog copy follows collector 1.11.0: Claude Desktop's
+  Windows Store data directories under `AppData/Local/Packages`, and
+  `AppData/Local/Claude` and `AppData/Local/Claude-Data`, are detected as
+  `claude-desktop` (#73).
+
 ## [0.11.0] - 2026-10-10
 
 ### Added

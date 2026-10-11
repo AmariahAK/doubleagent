@@ -38,7 +38,7 @@ file names to check only those. It exits `1` when any link fails.
 | `camel-ai` | [camel-ai.md](camel-ai.md) | source | `~/.camel` is shared with Apache Camel JBang, so only CAMEL's Gmail token and skills dirs are collected |
 | `chatgpt-desktop` | [chatgpt-desktop.md](chatgpt-desktop.md) | write-ups and press only | conversations encrypted with a Keychain key |
 | `claude-code` | [claude-code.md](claude-code.md) | shipped bundle, docs, real install | `CLAUDE_CONFIG_DIR`; several credential files beyond `.credentials.json` |
-| `claude-desktop` | [claude-desktop.md](claude-desktop.md) | official docs, GitHub issues | encrypted token cache in `config.json`; local-agent sessions |
+| `claude-desktop` | [claude-desktop.md](claude-desktop.md) | official docs, GitHub issues, real install (Windows Store build) | encrypted token cache in `config.json`; local-agent sessions |
 | `cline` | [cline.md](cline.md) | source | `~/.cline/data` shared by VS Code, CLI and JetBrains |
 | `codex-cli` | [codex-cli.md](codex-cli.md) | source, real install | rollouts may be zstd-compressed |
 | `cody` | [cody.md](cody.md) | source (frozen public snapshot, August 2025) | chat history and token are rows in `state.vscdb`; the nested entry claims only the symf index |

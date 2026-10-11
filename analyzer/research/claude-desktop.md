@@ -39,6 +39,17 @@ claim below names its evidence level:
   desktop-launched Code session was available. Every shape below marked
   **bundle** rests on the code that writes or reads it; shapes marked
   **observed** were seen on disk.
+- **Observed (Windows)**: a clean Microsoft Store install of the same
+  version (package `Claude_pzs8sxrjxfjjc`, 2.31226.1.0) on Windows 11
+  build 26300 arm64, 2026-10-10 (collector issue 73), read for file names,
+  key names and value types only. One Code-tab session wrote
+  `claude-code-sessions/<acct>/<org>/local_<uuid>.json` (compact JSON,
+  17 KB; keys in section 3) and its transcript
+  `~/.claude/projects/C--Users-<user>-proj/<cliSessionId>.jsonl` with
+  `entrypoint` `claude-desktop` and CLI version 2.1.295. One chat in the
+  merged Chat/Cowork surface persisted no local session record: the only
+  write was `local-agent-mode-sessions/<acct>/<org>/remote-session-spaces.json`
+  (section 3). No `vm-support-probe.json` exists on that install.
 - **Docs**: the claude.com data-storage page cited in the collector
   document, for names the bundle confirms.
 
@@ -46,8 +57,11 @@ claim below names its evidence level:
 
 All paths are relative to the app-data directory (`userData`): macOS
 `~/Library/Application Support/Claude/`, Linux `~/.config/Claude/`,
-Windows `%APPDATA%\Claude\` or one of the Windows locations in section 5;
-the enterprise build appends `-3p`. `<acct>` and `<org>` are the account
+Windows `%APPDATA%\Claude\` as the app reports it, which for the
+Microsoft Store build is stored on disk as
+`%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\`
+(observed; MSIX filesystem virtualisation, section 5); the enterprise
+build appends `-3p`. `<acct>` and `<org>` are the account
 and organization UUIDs, or their first eight hex digits when the app has
 switched to short names (`app.asar:.vite/build/index.chunk-Cyt2WTko.js@2238150`
 `function GZt(e,t){let r=n.default.join(a.app.getPath("userData"),uC);return{shortPath:zZt?n.default.join(r,HC(e),HC(t)):null,fullPath:n.default.join(r,e,t)}}`,
@@ -130,8 +144,15 @@ classifies `sessiondata.*` as the session disk,
 the guest disk that holds each `/sessions/<name>/` working tree outside
 `mnt/` (the janitor logs ``failed to delete VM dir /sessions/${e}``). Files
 the agent wrote only inside the VM and never into a mounted folder are
-therefore not collected. The image is multi-GB (observed: 10 GB for the
-whole `vm_bundles`), so this is a `--full` or manual step, not a default.
+therefore not collected by default. The session disk itself is small
+(observed: `sessiondata.img` 30,408,704 bytes, 29 MiB); the 10 GB of
+`vm_bundles` is almost all `rootfs.img`, the guest root filesystem
+(10,737,418,240 bytes), beside a 56 MiB kernel and 31 MiB of initrds. The
+exclusion stays (collector issue 74); `--full` collects the bundle under
+`--max-file-size`, and copying `sessiondata.img` by hand is the
+documented step
+([`collectors/docs/coverage.md`](../../collectors/docs/coverage.md),
+"Cowork VM disks").
 
 ## 3. Record schema
 
@@ -251,7 +272,7 @@ permission events take `session_id` from the session object, which may
 be unset. Take the session from the directory and its record, not from
 the line.
 
-### Code-tab session record (`claude-code-sessions/.../local_<uuid>.json`, bundle)
+### Code-tab session record (`claude-code-sessions/.../local_<uuid>.json`, bundle, observed on Windows)
 
 Compact JSON written by `writeSessionToDisk`
 (`app.asar:.vite/build/index.chunk-BCHP6ll9.js@1339940`,
@@ -268,11 +289,13 @@ Keys of use to a timeline:
 | `createdAt`, `lastActivityAt`, `lastFocusedAt` | number | epoch ms |
 | `model`, `effort`, `permissionMode` | string | |
 | `title`, `titleSource`, `previousTitles` | string, string, array | |
-| `recap`, `recapAt`, `postTurnSummary` | string, number, string | generated summaries; `recapAt` type not determined |
+| `recap`, `recapAt` | string, number | generated summary; `recapAt` type not determined |
+| `postTurnSummary` | object | observed: `status_category`, `status_detail`, `needs_action`, `summarizes_uuid`; not a string |
 | `prs` | array | pull requests opened from the session |
 | `sshConfig`, `wslConfig`, `sshRemoteTranscriptPath` | object, object, string | remote sessions; the transcript is then on the remote host |
 | `error`, `errorCategory`, `errorAt` | string, string, number | `errorAt` is `Date.now()` in this chunk |
 | `isArchived`, `scheduledTaskId`, `spaceId`, `forkedFromSessionId`, `dispatchParentId` | | |
+| `gitAnchorsFolderRealpath`, `completedTurns`, `titleTurn`, `lastAssistantUuid`, `latestUserFrameAt`, `promptAppendSnapshot`, `toolSurfaceSnapshot`, `remoteMcpServersConfig` | | observed on Windows, not in the bundle reading above; `remoteMcpServersConfig[]` items carry `uuid`, `name`, `url`, `tools[]`; other types not recorded |
 
 Imported records (`finishRegisterExternalSession`, `@1686493`) also carry
 `indexedAt` (epoch ms), `importedFrom` and `stagedTranscriptPath`.
@@ -316,7 +339,13 @@ with `id`, `name`, `projects[].uuid`, `folders[].path`, `instructions`,
 `cowork-gb-cache.json`, `cowork-clientdata-cache.json`,
 `cowork-policy-limits-cache.json`, `usage-ledger`, `artifacts/`,
 `memory/`, `agent/memory/`, `spaces/<id>/memory/` (Markdown memory files,
-`@2241798`). `rpm/manifest.json` (observed: `lastUpdated` epoch ms,
+`@2241798`).
+
+`remote-session-spaces.json` (observed on Windows) maps server-side
+sessions to folders: `entries[]`, each with `sessionId` (32 hexadecimal
+characters, not the `local_<uuid>` form) and `folders[]`. It was the only
+local write for a chat in the merged Chat/Cowork surface, so it is the
+on-disk trace that such a session existed; its transcript is server-side. `rpm/manifest.json` (observed: `lastUpdated` epoch ms,
 `plugins[]`) is the remote plugin manifest. `spaces-present/` at the
 userData root holds a `link-key` per account and org (observed). A
 legacy `local-sessions.json` at the userData root is migrated into the
@@ -379,7 +408,7 @@ and a block count, never the tool name or arguments. With local times
 and no tool names, neither is worth `system` rows; the Cowork audit log
 carries the same calls with UTC times and names.
 
-**Windows data directories (collector gap).** The standard build on
+**Windows data directories.** The standard build on
 Windows picks its userData from four candidates
 (`app.asar:.vite/build/index.chunk-Cyt2WTko.js@837614`
 `function vze(){...return{child:_ze().at(0)??null,dataDir:gze(),squirrel1p:n.join(a.app.getPath("appData"),wu),msix1p:e?mze(e,Tu,"Roaming",wu):null}}`):
@@ -389,7 +418,14 @@ Windows picks its userData from four candidates
 `%APPDATA%\Claude`, and the MSIX virtualised copy
 `%LOCALAPPDATA%\Packages\<family>\LocalCache\Roaming\Claude`
 (`@836946` `function mze(e,t,r,i){return n.join(e,"Packages",t,"LocalCache",r,i)}`).
-Only `AppData/Roaming/Claude` is in the catalog. The enterprise build
+On the observed Store install the data directory is the Packages
+copy, `main.log` records `[MSIX] Filesystem virtualization active` and
+`user_data_location: 'package_localcache'`, `%APPDATA%\Claude` does not
+exist, `%LOCALAPPDATA%\Claude-Data` and `%LOCALAPPDATA%\Claude-3p` exist
+and are empty, and the logs are in `%LOCALAPPDATA%\Claude\logs`. Since
+collector 1.11.0 the catalog covers both Packages families,
+`AppData/Local/Claude-Data` and `AppData/Local/Claude`, beside
+`AppData/Roaming/Claude`. The enterprise build
 (`Claude-3p`) is unchanged (`index.pre.js@809294` `function iQ()`).
 `CLAUDE_USER_DATA_DIR` moves userData and logs anywhere
 (`index.pre.js@887429`); that cannot be a catalog line.

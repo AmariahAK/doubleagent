@@ -10,6 +10,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-10
+
+### Added
+
+- Claude Desktop from the Microsoft Store on Windows is collected as
+  `claude-desktop`: its data directory under
+  `AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude` (and the
+  `AnthropicPBC.Claude_*` family), where MSIX virtualisation stores what
+  the app reports as `AppData/Roaming/Claude` (#73).
+- `AppData/Local/Claude` (the Store build's logs) and
+  `AppData/Local/Claude-Data` (an alternative Windows data directory) are
+  collected as `claude-desktop` (#73).
+- The Store build's `config.json` (OAuth token cache), `Cookies*`,
+  `host-creds-*.json` and `ccd-session-secrets/*` are flagged
+  `secret: true` under both package families (#73).
+
 ## [1.10.3] - 2026-10-07
 
 ### Added
@@ -472,7 +488,8 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
   overridden by `--full`; credential files collected and flagged
   `secret: true` by default.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.10.3...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.11.0...HEAD
+[1.11.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.10.3...collector-v1.11.0
 [1.10.3]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.10.2...collector-v1.10.3
 [1.10.2]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.10.1...collector-v1.10.2
 [1.10.1]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.10.0...collector-v1.10.1

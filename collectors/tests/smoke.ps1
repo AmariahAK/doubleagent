@@ -1671,6 +1671,63 @@ if ($fdSet) {
   }
 } else { Write-Output 'note: #29 x #32 unreadable case-variant check needs a non-root user on POSIX, skipped' }
 
+# 2026-10-10 Claude Desktop Store build (#73)
+# The Store (MSIX) build keeps userData in the package's virtualised
+# LocalCache\Roaming\Claude, logs in AppData\Local\Claude\logs, and may use
+# AppData\Local\Claude-Data\<family>. A separate image holds one Windows
+# profile with those trees; the */Claude*/ secret and exclusion globs must
+# apply under the new bases, and the Packages secret globs must flag the
+# token cache and cookies of both package families.
+$root73 = $Root
+$Root = Join-Path $Work 'root73'
+$p73 = 'Users/alice/AppData/Local/Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude'
+$q73 = 'Users/alice/AppData/Local/Packages/AnthropicPBC.Claude_fnn82j28hfe8t/LocalCache/Roaming/Claude'
+$o73 = '11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222'
+$s73 = "$p73/claude-code-sessions/$o73/local_44444444-4444-4444-8444-444444444444.json"
+$k73 = "$p73/local-agent-mode-sessions/$o73/local_33333333-3333-4333-8333-333333333333/.audit-key"
+$r73 = "$p73/local-agent-mode-sessions/$o73/remote-session-spaces.json"
+$d73 = 'Users/alice/AppData/Local/Claude-Data/claude_pzs8sxrjxfjjc/config.json'
+$l73 = 'Users/alice/AppData/Local/Claude/logs/main.log'
+Mk "$p73/config.json" '{"oauth:tokenCache":"enc"}'
+Mk "$p73/Local State" '{"os_crypt":{}}'
+Mk "$p73/claude_desktop_config.json" '{"mcpServers":{}}'
+Mk "$p73/Network/Cookies" 'cookies'
+Mk $s73 '{"sessionId":"local_44444444-4444-4444-8444-444444444444","cwd":"C:\\proj"}'
+Mk $r73 '{"entries":[{"sessionId":"0123456789abcdef0123456789abcdef","folders":[]}]}'
+Mk $k73 'key'
+Mk "$p73/claude-code/2.1.295/abc/claude.exe" 'MZ'
+Mk "$p73/Cache/data_0" 'cache'
+Mk "$q73/config.json" '{"oauth:tokenCache":"enc"}'
+Mk $l73 '[MSIX] Filesystem virtualization active'
+Mk $d73 '{"oauth:tokenCache":"enc"}'
+function Secret73([string]$rel) { $r = Row $rel; return ($r -and $r.agent -eq 'claude-desktop' -and $r.secret -eq $true -and $r.status -eq 'collected') }
+function Plain73([string]$rel) { $r = Row $rel; return ($r -and $r.agent -eq 'claude-desktop' -and $r.secret -eq $false -and $r.status -eq 'collected') }
+try {
+  Run 'store73' @{ NoDocker = $true }
+  Check '#73 Store build run exit 0' { $script:rc -eq 0 }
+  Check '#73 Packages Code-tab session record collected as claude-desktop' { Plain73 $s73 }
+  Check '#73 Packages session record collected exactly once' { @($script:Rows | Where-Object { $_.path -like '*local_44444444-4444-4444-8444-444444444444.json' }).Count -eq 1 }
+  Check '#73 Packages remote-session-spaces.json collected' { Plain73 $r73 }
+  Check '#73 AppData/Local/Claude logs collected as claude-desktop' { Plain73 $l73 }
+  Check '#73 Packages config.json flagged secret (Packages/Claude_* glob)' { Secret73 "$p73/config.json" }
+  Check '#73 Packages Network/Cookies flagged secret (Packages/Claude_* glob)' { Secret73 "$p73/Network/Cookies" }
+  Check '#73 AnthropicPBC family config.json flagged secret' { Secret73 "$q73/config.json" }
+  Check '#73 Claude-Data config.json flagged secret (AppData/Local/Claude* glob)' { Secret73 $d73 }
+  Check '#73 Packages Local State flagged secret (*/Claude*/Local State)' { Secret73 "$p73/Local State" }
+  Check '#73 Packages claude_desktop_config.json flagged secret (*/Claude*/claude_desktop_config.json)' { Secret73 "$p73/claude_desktop_config.json" }
+  Check '#73 Packages .audit-key flagged secret (*/Claude*/local-agent-mode-sessions/*/.audit-key)' { Secret73 $k73 }
+  Check '#73 Packages claude-code excluded (*/Claude*/claude-code)' { (StatusOf "$p73/claude-code") -eq 'skipped_excluded' -and -not (Row "$p73/claude-code/2.1.295/abc/claude.exe") }
+  Check '#73 Packages Cache excluded (*/Claude*/Cache)' { (StatusOf "$p73/Cache") -eq 'skipped_excluded' -and -not (Row "$p73/Cache/data_0") }
+  Run 'nosecrets73' @{ NoDocker = $true; NoSecrets = $true }
+  Check '#73 NoSecrets run exit 0' { $script:rc -eq 0 }
+  Check '#73 NoSecrets skips the Packages and Claude-Data token caches' { (StatusOf "$p73/config.json") -eq 'skipped_secret' -and (StatusOf "$q73/config.json") -eq 'skipped_secret' -and (StatusOf $d73) -eq 'skipped_secret' }
+  Check '#73 NoSecrets skips Local State, claude_desktop_config.json, .audit-key' { (StatusOf "$p73/Local State") -eq 'skipped_secret' -and (StatusOf "$p73/claude_desktop_config.json") -eq 'skipped_secret' -and (StatusOf $k73) -eq 'skipped_secret' }
+  Check '#73 NoSecrets still collects the session record' { (StatusOf $s73) -eq 'collected' }
+  Run 'full73' @{ NoDocker = $true; Full = $true }
+  Check '#73 Full run exit 0' { $script:rc -eq 0 }
+  Check '#73 Full collects the Packages claude.exe and Cache' { (StatusOf "$p73/claude-code/2.1.295/abc/claude.exe") -eq 'collected' -and (StatusOf "$p73/Cache/data_0") -eq 'collected' }
+} finally { $Root = $root73 }
+
 if ($script:fail -eq 0) { Write-Output "ALL PASSED ($($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion))"; Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue }
 else { Write-Output "FAILURES; work dir kept: $Work" }
 exit $script:fail

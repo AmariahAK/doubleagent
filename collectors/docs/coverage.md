@@ -100,6 +100,58 @@ The rest of a relocated home (`settings.json`, `todos/`, `plans/`,
 a bare `.claude-*` entry would also take other tools' directories such as
 `~/.claude-code-router` and `~/.claude-mem`.
 
+## Claude Desktop data directories
+
+Claude Desktop is collected as `claude-desktop` from these locations under
+each home; the `*/Claude*/` exclusions (caches, the bundled `claude-code`
+binary, `claude-code-vm`, `vm_bundles` (see [Cowork VM disks](#cowork-vm-disks)), `sentry`) and secret globs
+(`config.json`, `Cookies*`, `Local State`, `claude_desktop_config.json`,
+`host-creds-*.json`, `ccd-session-secrets/*`, `.audit-key`) apply in each
+data directory.
+
+| Location | What it holds |
+| --- | --- |
+| `Library/Application Support/Claude`, `.config/Claude`, `AppData/Roaming/Claude` | The data directory on macOS, Linux, and an unpackaged Windows install. |
+| `AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude`, `AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude` | The data directory of the Microsoft Store (MSIX) build. The app reports it as `AppData\Roaming\Claude`, but MSIX filesystem virtualisation stores it here, and `AppData\Roaming\Claude` does not exist on disk. |
+| `AppData/Local/Claude` | The Store build's logs (`logs/main.log`, `mcp.log` and the others). |
+| `AppData/Local/Claude-Data` | An alternative Windows data directory the app can choose, collected whole including its `<package family>` child. |
+| `Library/Logs/Claude` | macOS logs. |
+| `Claude-3p` under `Library/Application Support`, `Library/Logs`, `.config`, `AppData/Roaming` and `AppData/Local` | The third-party-inference build. |
+| `Claude`, `Documents/Claude` | The user output folders. |
+
+`CLAUDE_USER_DATA_DIR`, when set, moves the data directory and the logs
+anywhere. That location is not a catalog line and is not collected; when
+the variable was set on the host, copy the directory it names by hand.
+
+## Cowork VM disks
+
+Cowork runs its sessions in a virtual machine whose disks live in
+`vm_bundles/` under the data directory. The whole directory is excluded
+by the `*/Claude*/vm_bundles` glob: by default it yields one
+`skipped_excluded` row with its on-disk size and no rows for the files
+inside, and `--full` (`-Full`) collects it like any other exclusion,
+each file still subject to `--max-file-size`. Observed on macOS, Claude
+Desktop 2.31226.1, October 2026 (no `vm_bundles` directory exists on the
+Windows Store build; Linux not yet observed):
+
+| File | Size | What it is |
+| --- | --- | --- |
+| `claudevm.bundle/rootfs.img` | 10 GiB (10,737,418,240 bytes) | The guest root filesystem. No user data. |
+| `claudevm.bundle/sessiondata.img` | 29 MiB (30,408,704 bytes) | The session disk: every Cowork session's `/sessions/<name>/` working tree outside the mounted host folders. A file the agent wrote only inside the VM and never into a mounted folder is only here. |
+| `claudevm.bundle/vmlinuz`, `initrd`, `initrd-micro` | 56 MiB, 27 MiB, 4.3 MiB | The guest kernel and initrds. |
+| `claudevm.bundle/efivars.fd` | 128 KiB | Firmware variables. |
+| `claudevm.bundle/vmIP`, `machineIdentifier`, `gvisorMacAddress`, `.cowork-adopted`, `.*.origin` | bytes | VM identity and provenance markers. |
+| `warm/<sha1>/` | empty | Pre-warmed VM slots. |
+
+Transcripts are never on these disks: the guest's `.claude` directory is
+a mount of the host session directory under `local-agent-mode-sessions/`,
+which is collected. When the files a Cowork session wrote inside the VM
+matter, copy `claudevm.bundle/sessiondata.img` by hand (`cp -p`, then
+hash it) rather than collecting the bundle with `--full`, which also
+takes the 10 GiB root filesystem and needs `--max-file-size 0` or at
+least `10240` to keep it; with the default 256 MiB limit `--full` takes
+the session disk and records `rootfs.img` as `skipped_size`.
+
 ## Home directories
 
 Home directories are gathered from several sources, merged, and
@@ -285,6 +337,7 @@ by default:
 - shadow git checkpoints
 - agent worktrees
 - git clones of plugin marketplaces
+- Claude Desktop's Cowork VM disk bundle (see [Cowork VM disks](#cowork-vm-disks))
 
 Ollama's model weights are excluded as `.ollama/models/blobs` only, so the
 rest of `.ollama/models` is collected: the small JSON manifests under

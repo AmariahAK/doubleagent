@@ -5072,6 +5072,19 @@ class ClaudeDesktopTests(ParserBase):
         self.assertEqual([r.turn_type for r in rows], ["system", "user"])
         self.assertEqual(rows[1].text, "fix the test")
 
+    def test_empty_index_files_yield_nothing(self):
+        # A fresh install writes the markers before any task or worktree
+        # exists (observed on Windows: `{"schemaVersion": 2}`); only a
+        # non-object file is reported.
+        (self.home / CD_WORKTREES_REL).write_text('{"schemaVersion": 2}', encoding="utf-8")
+        (self.home / CD_SCHED_REL).write_text('{"recordedSkips": {}}', encoding="utf-8")
+        self.assertEqual(self.rows_for(ClaudeDesktopParser(), CD_WORKTREES_REL), [])
+        self.assertEqual(self.rows_for(ClaudeDesktopParser(), CD_SCHED_REL), [])
+        (self.home / CD_WORKTREES_REL).write_text("[]", encoding="utf-8")
+        rows = self.rows_for(ClaudeDesktopParser(), CD_WORKTREES_REL)
+        self.assertEqual([r.turn_type for r in rows], ["system"])
+        self.assertIn("unreadable", rows[0].text)
+
     def test_bad_record_is_one_row(self):
         (self.home / CD_RECORD_REL).write_text("[1, 2]", encoding="utf-8")
         rows = self.rows_for(ClaudeDesktopParser(), CD_RECORD_REL)
@@ -5139,9 +5152,20 @@ class ClaudeDesktopTests(ParserBase):
         self.assertFalse(p.wants(arts[".claude/history.jsonl"]))
         # The other catalog bases, and the staged import tree.
         tail = CD_TRANSCRIPT_REL[len(base) :]
-        for root in (".config/Claude-3p/", "AppData/Roaming/Claude/", "AppData/Local/Claude-3p/"):
+        for root in (
+            ".config/Claude-3p/",
+            "AppData/Roaming/Claude/",
+            "AppData/Local/Claude-3p/",
+            "AppData/Local/Claude/",
+            "AppData/Local/Claude-Data/",
+            "AppData/Local/Claude-Data/claude_pzs8sxrjxfjjc/",
+            "AppData/Local/Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude/",
+            "AppData/Local/Packages/AnthropicPBC.Claude_fnn82j28hfe8t/LocalCache/Roaming/Claude/",
+        ):
             self.assertTrue(p.wants(rel_only(root + tail)), root)
-        self.assertFalse(p.wants(rel_only("AppData/Local/Claude/" + tail)))
+        self.assertFalse(
+            p.wants(rel_only("AppData/Local/Packages/Other_x/LocalCache/Roaming/Claude/" + tail))
+        )
         self.assertFalse(p.wants(rel_only("Claude/" + tail)))
         self.assertTrue(
             p.wants(rel_only(base + "claude-code-sessions/a/b/imported-staging/x.jsonl"))

@@ -1330,5 +1330,56 @@ fi
 ROOT=$_root71
 [ "$LOCKED71" = no ] || chmod 600 "$D71/m-locked.jsonl"
 
+# 2026-10-10 Claude Desktop Store build (#73)
+# The Store (MSIX) build keeps userData in the package's virtualised
+# LocalCache/Roaming/Claude, logs in AppData/Local/Claude/logs, and may use
+# AppData/Local/Claude-Data/<family>. A separate image holds one Windows
+# profile with those trees; the */Claude*/ secret and exclusion globs must
+# apply under the new bases, and the Packages secret globs must flag the
+# token cache and cookies of both package families.
+R73="$WORK/root73"; P73="$R73/Users/bob/AppData/Local/Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude"
+O73="11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222"
+Q73="$R73/Users/bob/AppData/Local/Packages/AnthropicPBC.Claude_fnn82j28hfe8t/LocalCache/Roaming/Claude"
+L73="$R73/Users/bob/AppData/Local/Claude"; D73="$R73/Users/bob/AppData/Local/Claude-Data/claude_pzs8sxrjxfjjc"
+mkdir -p "$P73/claude-code-sessions/$O73" "$P73/local-agent-mode-sessions/$O73/local_33333333-3333-4333-8333-333333333333" \
+  "$P73/claude-code/2.1.295/abc" "$P73/Cache" "$P73/Network" "$Q73" "$L73/logs" "$D73"
+printf '{"oauth:tokenCache":"enc"}\n' >"$P73/config.json"
+printf '{"os_crypt":{}}\n' >"$P73/Local State"
+printf '{"mcpServers":{}}\n' >"$P73/claude_desktop_config.json"
+printf 'cookies\n' >"$P73/Network/Cookies"
+printf '{"sessionId":"local_44444444-4444-4444-8444-444444444444","cwd":"C:\\\\proj"}\n' >"$P73/claude-code-sessions/$O73/local_44444444-4444-4444-8444-444444444444.json"
+printf '{"entries":[{"sessionId":"0123456789abcdef0123456789abcdef","folders":[]}]}\n' >"$P73/local-agent-mode-sessions/$O73/remote-session-spaces.json"
+printf 'key\n' >"$P73/local-agent-mode-sessions/$O73/local_33333333-3333-4333-8333-333333333333/.audit-key"
+printf 'MZ\n' >"$P73/claude-code/2.1.295/abc/claude.exe"
+printf 'cache\n' >"$P73/Cache/data_0"
+printf '{"oauth:tokenCache":"enc"}\n' >"$Q73/config.json"
+printf '[MSIX] Filesystem virtualization active\n' >"$L73/logs/main.log"
+printf '{"oauth:tokenCache":"enc"}\n' >"$D73/config.json"
+_root73=$ROOT; ROOT=$R73
+run store73 --no-docker; _rc73=$?
+check "#73 Store build run exit 0" "[ $_rc73 -eq 0 ]"
+check "#73 Packages Code-tab session record collected as claude-desktop" "row \"$P73/claude-code-sessions/$O73/local_44444444-4444-4444-8444-444444444444.json\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":false,\"status\":\"collected\"'"
+check "#73 Packages session record collected exactly once" "[ \"\$(grep -c 'local_44444444-4444-4444-8444-444444444444.json' \"\$M\")\" = 1 ]"
+check "#73 Packages remote-session-spaces.json collected" "row \"$P73/local-agent-mode-sessions/$O73/remote-session-spaces.json\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":false,\"status\":\"collected\"'"
+check "#73 AppData/Local/Claude logs collected as claude-desktop" "row \"$L73/logs/main.log\" | grep -q '\"agent\":\"claude-desktop\".*\"status\":\"collected\"'"
+check "#73 Packages config.json flagged secret (Packages/Claude_* glob)" "row \"$P73/config.json\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":true,\"status\":\"collected\"'"
+check "#73 Packages Network/Cookies flagged secret (Packages/Claude_* glob)" "row \"$P73/Network/Cookies\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+check "#73 AnthropicPBC family config.json flagged secret" "row \"$Q73/config.json\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":true,\"status\":\"collected\"'"
+check "#73 Claude-Data config.json flagged secret (AppData/Local/Claude* glob)" "row \"$D73/config.json\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":true,\"status\":\"collected\"'"
+check "#73 Packages Local State flagged secret (*/Claude*/Local State)" "row \"$P73/Local State\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+check "#73 Packages claude_desktop_config.json flagged secret (*/Claude*/claude_desktop_config.json)" "row \"$P73/claude_desktop_config.json\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+check "#73 Packages .audit-key flagged secret (*/Claude*/local-agent-mode-sessions/*/.audit-key)" "row \"$P73/local-agent-mode-sessions/$O73/local_33333333-3333-4333-8333-333333333333/.audit-key\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+check "#73 Packages claude-code excluded (*/Claude*/claude-code)" "[ \"\$(status_of \"$P73/claude-code\")\" = skipped_excluded ] && ! grep -q 'claude.exe' \"\$M\""
+check "#73 Packages Cache excluded (*/Claude*/Cache)" "[ \"\$(status_of \"$P73/Cache\")\" = skipped_excluded ] && ! grep -q 'Cache/data_0' \"\$M\""
+run nosecrets73 --no-docker --no-secrets; _rc73=$?
+check "#73 --no-secrets run exit 0" "[ $_rc73 -eq 0 ]"
+check "#73 --no-secrets skips the Packages and Claude-Data token caches" "[ \"\$(status_of \"$P73/config.json\")\" = skipped_secret ] && [ \"\$(status_of \"$Q73/config.json\")\" = skipped_secret ] && [ \"\$(status_of \"$D73/config.json\")\" = skipped_secret ]"
+check "#73 --no-secrets skips Local State, claude_desktop_config.json, .audit-key" "[ \"\$(status_of \"$P73/Local State\")\" = skipped_secret ] && [ \"\$(status_of \"$P73/claude_desktop_config.json\")\" = skipped_secret ] && [ \"\$(status_of \"$P73/local-agent-mode-sessions/$O73/local_33333333-3333-4333-8333-333333333333/.audit-key\")\" = skipped_secret ]"
+check "#73 --no-secrets still collects the session record" "[ \"\$(status_of \"$P73/claude-code-sessions/$O73/local_44444444-4444-4444-8444-444444444444.json\")\" = collected ]"
+run full73 --no-docker --full; _rc73=$?
+check "#73 --full run exit 0" "[ $_rc73 -eq 0 ]"
+check "#73 --full collects the Packages claude.exe and Cache" "[ \"\$(status_of \"$P73/claude-code/2.1.295/abc/claude.exe\")\" = collected ] && [ \"\$(status_of \"$P73/Cache/data_0\")\" = collected ]"
+ROOT=$_root73
+
 if [ "$fail" = 0 ]; then printf 'ALL PASSED (%s)\n' "$SHELL_UNDER_TEST"; rm -rf "$WORK"; else printf 'FAILURES (%s); work dir kept: %s\n' "$SHELL_UNDER_TEST" "$WORK"; fi
 exit "$fail"

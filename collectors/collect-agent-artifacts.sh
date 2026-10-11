@@ -26,7 +26,7 @@
 #               or, with --inventory, the walk ran,
 #             1 usage error, 2 fatal (no output dir, no tar, ...).
 
-VERSION="1.10.3"
+VERSION="1.11.0"
 TOOL="collect-agent-artifacts"
 
 LC_ALL=C
@@ -65,6 +65,12 @@ claude-desktop|.config/Claude-3p
 claude-desktop|AppData/Roaming/Claude
 claude-desktop|AppData/Roaming/Claude-3p
 claude-desktop|AppData/Local/Claude-3p
+# Claude Desktop Store (MSIX) build: userData is virtualised under Packages,
+# logs stay in AppData/Local/Claude, Claude-Data is the unpackaged fallback
+claude-desktop|AppData/Local/Claude
+claude-desktop|AppData/Local/Claude-Data
+claude-desktop|AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude
+claude-desktop|AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude
 claude-desktop|Claude
 claude-desktop|Documents/Claude
 # Google (antigravity-cli lives inside ~/.gemini; the nested entry claims it)
@@ -1034,6 +1040,14 @@ AppData/Local/Claude*/config.json
 AppData/Local/Claude*/Cookies*
 AppData/Local/Claude*/host-creds-*.json
 AppData/Local/Claude*/ccd-session-secrets/*
+AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude*/config.json
+AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude*/Cookies*
+AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude*/host-creds-*.json
+AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude*/ccd-session-secrets/*
+AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude*/config.json
+AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude*/Cookies*
+AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude*/host-creds-*.json
+AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude*/ccd-session-secrets/*
 */Claude*/Local State
 */Claude*/claude_desktop_config.json
 */Claude*/local-agent-mode-sessions/*/.audit-key

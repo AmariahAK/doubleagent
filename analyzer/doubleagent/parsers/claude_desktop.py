@@ -6,7 +6,11 @@ top-level keys of `scheduled-tasks.json` and `git-worktrees.json` observed
 on an install of the same version; see `research/claude-desktop.md`. Paths
 below are relative to the app-data directory, one of the catalog bases
 `Library/Application Support/Claude[-3p]`, `.config/Claude[-3p]`,
-`AppData/Roaming/Claude[-3p]` or `AppData/Local/Claude-3p`; `<acct>` and
+`AppData/Roaming/Claude[-3p]`, `AppData/Local/Claude[-3p]`,
+`AppData/Local/Claude-Data[/<package family>]` or, for the Store build,
+whose MSIX container redirects `AppData/Roaming/Claude` there,
+`AppData/Local/Packages/<Claude_* or AnthropicPBC.Claude_*>/LocalCache/Roaming/Claude`
+(observed on Windows 11, 2026-10-10); `<acct>` and
 `<org>` are account and organization UUIDs (or their first eight hex
 digits). Files:
 
@@ -81,7 +85,9 @@ BASE = (
     r"^(?:Library/Application Support/Claude(?:-3p)?"
     r"|\.config/Claude(?:-3p)?"
     r"|AppData/Roaming/Claude(?:-3p)?"
-    r"|AppData/Local/Claude-3p)/"
+    r"|AppData/Local/Claude(?:-3p)?"
+    r"|AppData/Local/Claude-Data(?:/[^/]+)?"
+    r"|AppData/Local/Packages/(?:AnthropicPBC\.)?Claude_[^/]+/LocalCache/Roaming/Claude)/"
 )
 _TREES = r"(?:local-agent-mode-sessions|claude-code-sessions)/[^/]+/[^/]+/"
 # Group `sess` is the session dir, relative to the home.
@@ -456,9 +462,12 @@ class ClaudeDesktopParser(ClaudeCodeParser):
 
     def _scheduled(self, artifact: Artifact) -> Iterator[Row]:
         doc = _read_json(artifact.disk_path)
-        tasks = doc.get("scheduledTasks") if isinstance(doc, dict) else None
-        if not isinstance(tasks, list):
+        if not isinstance(doc, dict):
             yield self._system(artifact, "parser: unreadable scheduled-tasks.json", 1)
+            return
+        # A fresh install's file has the markers but no task list yet.
+        tasks = doc.get("scheduledTasks")
+        if not isinstance(tasks, list):
             return
         for i, task in enumerate(tasks, 1):
             if not isinstance(task, dict):
@@ -476,9 +485,13 @@ class ClaudeDesktopParser(ClaudeCodeParser):
 
     def _worktrees(self, artifact: Artifact) -> Iterator[Row]:
         doc = _read_json(artifact.disk_path)
-        trees = doc.get("worktrees") if isinstance(doc, dict) else None
-        if not isinstance(trees, dict):
+        if not isinstance(doc, dict):
             yield self._system(artifact, "parser: unreadable git-worktrees.json", 1)
+            return
+        # Observed on a fresh Windows install: `{"schemaVersion": 2}` and no
+        # `worktrees` key until the Code tab creates one.
+        trees = doc.get("worktrees")
+        if not isinstance(trees, dict):
             return
         for i, wt in enumerate(trees.values(), 1):
             if not isinstance(wt, dict):
