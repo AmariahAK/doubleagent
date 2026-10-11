@@ -15,6 +15,13 @@ Claude Code specific notes:
 - A live run against this workstation collects the author's own Claude Code,
   Gemini, Antigravity, Codex and Copilot state. Write it under the scratchpad
   directory and delete it afterwards.
+- This Mac has no dash, busybox, posh, pwsh, shellcheck or shfmt, and one
+  shell of the sh smoke matrix takes about forty minutes here. Run the sh
+  smoke test on a Linux lab VM over SSH when one is up (dash, bash and
+  busybox finish in a few minutes each) and let CI cover the rest; run
+  the analyzer tests here. Under fish, a string of ssh flags in a variable
+  is not word-split; keep an ssh config file with host aliases in the
+  scratchpad and pass it with `-F`.
 - The research documents under `collectors/research/` and `analyzer/research/`
   link every source citation to the commit that was reviewed. Open that link
   when checking a path or record shape; the line numbers are only valid at

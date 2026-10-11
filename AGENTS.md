@@ -249,6 +249,11 @@ rules are different from the collectors'.
   copy is never opened directly.
   Bad lines are reported as a `system` row, never fatal: a transcript cut
   mid-write by a running agent must still yield its earlier turns.
+  The parser table's "Validated against" cell names the real installs
+  (platform, version, date) on which the parser's file paths and record
+  shapes were seen, and says "fixture only" for a path that rests on
+  source or a bundle alone; section 1 of the research document carries
+  one **Observed** bullet per platform (see "Real-install rounds").
 - **The outputs are interfaces.** The `timeline.jsonl` and `sessions.jsonl`
   fields, their order and their JSON types are documented in
   `analyzer/docs/output.md`, and the `fleet-inventory.csv` columns in
@@ -365,13 +370,22 @@ find. The validation for every current entry is recorded in the index table in
    any per-project files to `PROJECT_CATALOG`. Process names are not
    listed anywhere: running processes are the EDR's job (see Purpose).
 6. Add a fixture and assertions to `collectors/tests/smoke.sh` and
-   `collectors/tests/smoke.ps1`. Both files build the fake image in labelled
-   blocks (one per catalog revision) followed by `check "name" "expr"`
-   lines; add the new tool's files under a new dated block in both, and add
-   at least one check for every new secret glob, exclusion and discovery
-   source, plus one for anything unusual in the layout (symlinks, SQLite
-   sidecars, spaces in paths, drive-letter or `file:///` project
-   references). Run the full shell matrix from "Validation and testing";
+   `collectors/tests/smoke.ps1`. Both files have the same shape: the
+   fake image is built first, in labelled fixture blocks (one per catalog
+   revision, `# YYYY-MM-DD <topic> (#n)`) under the users' homes; then the
+   default `run` and its `check "name" "expr"` lines; then the
+   `--no-secrets`, `--full`, `-u` and other runs, each followed by its own
+   checks. Put the new tool's files in a fixture block in the image-build
+   section, its default-run checks after the default run's existing
+   checks, and a check that depends on another run (a `skipped_secret`
+   status needs `--no-secrets`) after that run's checks, repeating the
+   same dated label at each place. A separate root and `run` (as the
+   Windows Store block does) is only for a layout the main image cannot
+   hold. Add at least one check for every new secret glob, exclusion and
+   discovery source, plus one for anything unusual in the layout
+   (symlinks, SQLite sidecars, spaces in paths, drive-letter or
+   `file:///` project references), and keep the check names identical in
+   both files. Run the full shell matrix from "Validation and testing";
    every shell in it, including Windows PowerShell 5.1 through the WSL
    path, is available on the development host, so an untested shell is a
    gap to close, not a note to leave.
@@ -449,7 +463,24 @@ tarball or binary (`npm pack`, then grep or `strings`; minified bundles keep
 literal path strings), official docs, vendor forums and issue trackers, then
 published DFIR or reverse-engineering write-ups. The report must say which
 level each claim came from, and the index table in
-`collectors/research/README.md` records it.
+`collectors/research/README.md` records it. Two habits for minified
+bundles and compiled binaries:
+
+- Grep for the stable fragment of a message, never the whole sentence.
+  Log lines are usually template literals
+  (`${h?"Enabling":"Disabling"} remote control for session ${s}`), so a
+  search for `Enabling remote control for session` misses a string that
+  is there. "Not in the bundle" is unproven until a second fragment of
+  the same message also misses.
+- A compiled CLI (the Bun-built Claude Code binary, Go binaries) still
+  carries its source strings, so `strings` and a regex over the bytes
+  work, but offsets differ per platform build. Cite as
+  `<tool> <version> <platform> @<byte offset>` with the literal snippet,
+  and record the artifact's sha256 and where it came from, as
+  `analyzer/research/claude-code.md` does for `claude 2.1.295 linux-arm64`.
+  The `app.asar` form is `app.asar:<path>@<offset>` with the snippet;
+  chunk names change every release, so the snippet is what a reader of
+  another version greps for.
 
 **5. Integrate in one commit.** Research agents write only their research
 documents and never edit the scripts, the catalog copy or the tests; the
@@ -580,6 +611,61 @@ And from the October 2026 round:
   volumes are the exception since collector 1.5.0: they go in
   `DOCKER_VOLUMES`.
 
+## Real-install rounds
+
+Source and bundles say where an agent can write; a real install says what
+it did write. A real-install round installs one agent in a clean VM (or
+the `lab/` sandbox for Linux-only CLIs), exercises it, and compares the
+result with the research documents, the catalog and the parser. The
+Claude Desktop rounds of October 2026 (Windows Store build, Linux deb,
+macOS) are the pattern; each found something the bundle research had not:
+an uncollected data directory, two unflagged keys, a feature that writes
+nothing locally.
+
+The round, in order:
+
+1. **Survey names first.** List the agent's directories with names,
+   sizes and mtimes only, before and after each action, and diff the
+   listings. The diff is the evidence of what an action wrote.
+2. **Read shapes, never values.** `analyzer/tools/shape.py` prints key
+   names, value types and JSONL line types with UUIDs, hex ids and long
+   tokens redacted, and never a value; copy it to the VM alone and run it
+   with `python3 -I`. It is the only way to look inside an agent's files
+   on a real install. Ad-hoc scripts that print values are not written,
+   and nothing from a real install is pasted into the repository, an
+   issue or a report beyond file names, key names, types, sizes, enum
+   values and log lines with ids redacted.
+3. **Exercise every surface separately** and record what each one wrote:
+   a session with a tool call, a read-only chat, a chat that writes a
+   file, a scheduled task, a resumed session. A surface that writes
+   nothing locally is a finding (Claude Desktop's merged Chat/Cowork
+   surface runs server-side and leaves one index file), and so is a
+   feature the VM cannot run (nested virtualisation); say which it was.
+4. **Run the collector in the VM** as the user and pull the manifest, the
+   summary and the log; read the error rows, the `skipped_excluded`
+   rows and the unflagged-key list from "Validation and testing". Then
+   pull the archive, run the analyzer over it, and check that every
+   observed session yields rows and that no `system` row reports an
+   unreadable file. A parser update starts the same way: run the shape
+   tool over the new version's transcripts and diff the line types and
+   key sets against the lists in the research document.
+5. **Write it down the same day.** Section 1 of both research documents
+   gets an **Observed** bullet per platform with the version, build,
+   date, what was exercised and what each surface wrote; a layout the
+   parser handles that no real install has shown is marked "not observed
+   on any real install, bundle-derived"; every statement about a product
+   surface (a tab, a button, a mode) carries the build and date, because
+   surfaces change between releases and training-era knowledge of the UI
+   is stale. Catalog, exclusion, secret-glob and parser changes follow
+   the usual checklists, under the pending version.
+6. **Clean up.** Delete the collections pulled to the analyst machine and
+   every output left in the VM; revert the VM to its clean snapshot
+   before the next agent.
+
+Subagents do the integration from a brief that carries the evidence; they
+never run the collector live against the VM or read its user's data
+directories, and the main session posts anything that goes to GitHub.
+
 ## Validation and testing
 
 CI (`.github/workflows/ci.yml`) runs the catalog drift test, shellcheck, the
@@ -656,8 +742,13 @@ powershell.exe -ExecutionPolicy Bypass -File collectors\Collect-AgentArtifacts.p
 ```
 
 Check the error count, look at the `skipped_excluded` rows for anything new
-and large, and confirm the manifest parses as JSONL. Delete the output
-afterwards; it contains your own credentials.
+and large, and confirm the manifest parses as JSONL. Then list the
+`collected` rows that are not `secret: true` and whose file name contains
+`key`, `token`, `secret`, `cred`, `cookie` or `auth`, and account for each
+one: either it is not a credential (say why in the research document) or
+it needs a secret glob. Both keys the Linux round of October 2026 found
+unflagged were visible this way. Delete the output afterwards; it contains
+your own credentials.
 
 The test uses `python3` only for JSON validation and the hash cross-check, and
 skips those checks when it is absent. Never add a `python3` requirement to the
@@ -759,6 +850,13 @@ list together. Run the commands from the repository root before pushing.
   release that contains it. Changes with no behaviour of their own
   (typos, formatting, a test-only refactor, these conventions) need no
   issue.
+- Evidence lives in the research documents, not in issues. When an issue
+  records file names, keys, values a field can take, or bundle and
+  binary offsets, the commit that files or acts on it puts the same facts
+  in `collectors/research/<agent>.md` or `analyzer/research/<agent>.md`
+  with their citations; the issue keeps the proposal, the open questions
+  and a pointer to the document. An issue is closed and forgotten; the
+  document is what the next parser change reads.
 - Documentation describes the code, not the intent. Every sentence that
   states an option, an output file, a field, a value a field can take, or a
   behaviour is checked against the code path that implements it before it

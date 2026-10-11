@@ -50,6 +50,51 @@ uvx ruff@0.16.10 check . && uvx ruff@0.16.10 format --check .
 uvx --from pyright==1.1.414 --with zstandard --with python-dateutil pyright
 ```
 
+## Reading a real install
+
+`tools/shape.py` is the required way to look at the files an agent wrote on
+a real install, a lab VM or the author's own machine. It prints the shape of
+the files and never a value, so its output can go into a research document
+or a report. It uses the standard library only and imports nothing from
+`doubleagent`, so the single file can be copied to a VM and run there.
+
+```sh
+python3 -I tools/shape.py ~/.config/Agent
+python3 -I tools/shape.py --enums --depth 3 settings.json sessions/
+python3 -I tools/shape.py --max-size 20000000 --skip logs ~/.agent
+```
+
+Each PATH is a file or a directory walked recursively; symlinks are listed
+as `symlink, not followed` and never followed. Output is one block per file
+in sorted path order, headed `== <path> (<size> bytes, <kind>)` with the path
+relative to the PATH argument:
+
+| File | Printed |
+| --- | --- |
+| `.json`, or any file that parses as one JSON document | the key tree, one key per line; arrays as `[n x <shape of the first element>]` or `[]`; scalars as `bool`, `number`, `null`; strings as `str<uuid>`, `str<hex32>`, `str<hex64>`, `str<iso-date>`, `str<abs-path>`, `str<url>` or `str(len n)`; objects deeper than `--depth` as `{...}` |
+| `.jsonl`, `.ndjson` | line count per `type` value (or per top-level key set when there is no `type`), the union of top-level keys per type, the `subtype` breakdown of `system` lines, the content block types of `user` and `assistant` `message.content` lists, and `bad lines <n>` |
+| anything else | the size and `not JSON`, plus for a file under 1 KiB the character class `hex`, `base64`, `printable` or `binary` |
+
+It never prints a string value, a line of a JSONL file or file content.
+Keys print as they are, except that a UUID inside a key or a path becomes
+`<uuid>`, a run of 32 or more hex digits `<hex>`, an e-mail address
+`<email>`, and a key that is itself an absolute path or a URL becomes
+`<abs-path>` or `<url>`; keys that are equal after that print once with a
+count, `<abs-path> (x 3)`. The `type` and `subtype` values of JSONL lines
+are printed, with the same redaction, because they are what the summary
+counts.
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `--max-size BYTES` | 1048576 | a larger file prints its size and `skipped (large)` |
+| `--skip NAME` | `Cache`, `Code Cache`, `GPUCache`, `DawnGraphiteCache`, `DawnWebGPUCache`, `blob_storage`, `Crashpad`, `Session Storage`, `Local Storage`, `IndexedDB`, `WebStorage`, `Shared Dictionary`, `node_modules`, `.git` | a directory name not to enter, repeatable and added to the defaults; a skipped directory prints `directory, skipped` |
+| `--depth N` | 6 | object nesting depth to print |
+| `--enums` | off | a string of at most 16 characters from `a-z`, `0-9`, `_`, `-` prints as `str=<value>`, since such strings are usually enum values; a value under a key whose name contains `token`, `secret`, `key`, `passw`, `cred`, `auth`, `cookie`, `bearer` or `salt` keeps the `str(len n)` form |
+
+The exit status is 0; an unreadable file prints `unreadable (<ErrorClass>)`
+and the walk continues. `tests/test_tools_shape.py` checks on synthetic files
+that tokens, UUIDs, paths, URLs and prompt text do not reach the output.
+
 ## Adding a parser
 
 The full checklist, including the fixture, test class, parser table row,

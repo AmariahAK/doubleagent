@@ -103,3 +103,7 @@ them, and `show OUT.json MESSAGE...` and `find OUT.json TEXT` query them. SQLite
 stores are copied together with their `-wal` and `-shm` sidecars into a
 scratch directory before being opened, so the evidence copy is never touched
 and rows still in the write-ahead log are not lost.
+
+To read the key names and line types of an agent's files on a real install
+without reading their values, use `tools/shape.py`; see
+[Reading a real install](development.md#reading-a-real-install).

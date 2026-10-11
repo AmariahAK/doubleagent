@@ -1,0 +1,396 @@
+#!/usr/bin/env python3
+"""Print the shape of an agent's files without printing any value.
+
+A real-install check (an agent installed in a lab VM, or the author's own
+machine) needs the key names, value types and JSONL line types of the files
+the agent wrote, never the values: no prompts, no tokens, no account ids.
+This tool prints that shape and nothing else, so its output can be pasted
+into a research document or a report.
+
+    python3 -I tools/shape.py ~/.config/Agent
+    python3 -I tools/shape.py --enums --depth 3 settings.json sessions/
+    python3 -I tools/shape.py --max-size 20000000 --skip logs ~/.agent
+
+Standard library only, and no import from `doubleagent`, so the single file
+can be copied to a VM and run there alone.
+
+What it prints, per file, in sorted path order:
+
+- a JSON document (a `.json` file, or any file that parses as one JSON
+  document): the key tree, one key per line with the value's shape. Arrays
+  print `[n x <shape of the first element>]`; scalars print a type only
+  (`bool`, `number`, `null`) and strings a class (`str<uuid>`, `str<hex32>`,
+  `str<hex64>`, `str<iso-date>`, `str<abs-path>`, `str<url>`, otherwise
+  `str(len n)`). With `--enums`, a string of at most 16 lower-case letters,
+  digits, `_` and `-` prints as `str=<value>`, except under a key whose name
+  suggests a credential (`token`, `secret`, `key`, `passw`, `cred`, `auth`,
+  `cookie`, `bearer`, `salt`), which keeps the `str(len n)` form.
+- a `.jsonl` or `.ndjson` file: line counts per `type` (or per top-level key
+  set), the union of top-level keys per type, the `subtype` breakdown of
+  `system` lines, the content block types of `user` and `assistant`
+  messages, and the count of lines that do not parse.
+- anything else: the size, `not JSON`, and for a text file under 1 KiB the
+  character class of its content (`hex`, `base64`, `printable`, `binary`).
+
+Keys and paths are redacted: a UUID becomes `<uuid>`, a run of 32 or more
+hex digits `<hex>`, an e-mail address `<email>`, and a key that is itself an
+absolute path or a URL becomes `<abs-path>` or `<url>`. Keys that are equal
+after redaction print once with a count. Paths print relative to the PATH
+argument that contained them. Symlinks are listed and never followed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import stat
+import sys
+from collections import Counter
+
+DEFAULT_SKIP: tuple[str, ...] = (
+    "Cache",
+    "Code Cache",
+    "GPUCache",
+    "DawnGraphiteCache",
+    "DawnWebGPUCache",
+    "blob_storage",
+    "Crashpad",
+    "Session Storage",
+    "Local Storage",
+    "IndexedDB",
+    "WebStorage",
+    "Shared Dictionary",
+    "node_modules",
+    ".git",
+)
+
+UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+HEX_RUN_RE = re.compile(r"[0-9a-fA-F]{32,}")
+EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+ISO_DATE_RE = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
+)
+ABS_PATH_RE = re.compile(r"/|[A-Za-z]:\\")
+URL_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
+ENUM_RE = re.compile(r"[a-z0-9_-]{1,16}")
+HEX_RE = re.compile(r"[0-9a-fA-F]+")
+BASE64_RE = re.compile(r"[A-Za-z0-9+/_-]+={0,2}")
+SECRET_KEY_RE = re.compile(r"token|secret|key|passw|cred|auth|cookie|bearer|salt", re.I)
+
+JSONL_EXT = (".jsonl", ".ndjson")
+SMALL = 1024
+
+
+def redact(text: str) -> str:
+    """Replace UUIDs, long hex runs and e-mail addresses inside a key or path."""
+    text = UUID_RE.sub("<uuid>", text)
+    text = HEX_RUN_RE.sub("<hex>", text)
+    return EMAIL_RE.sub("<email>", text)
+
+
+def redact_key(key: str) -> str:
+    if ABS_PATH_RE.match(key):
+        return "<abs-path>"
+    if URL_RE.match(key):
+        return "<url>"
+    return redact(key)
+
+
+def str_class(value: str, enums: bool) -> str:
+    if UUID_RE.fullmatch(value):
+        return "str<uuid>"
+    if len(value) in (32, 64) and re.fullmatch(r"[0-9a-f]+", value):
+        return "str<hex%d>" % len(value)
+    if ISO_DATE_RE.fullmatch(value):
+        return "str<iso-date>"
+    if ABS_PATH_RE.match(value):
+        return "str<abs-path>"
+    if URL_RE.match(value):
+        return "str<url>"
+    if enums and ENUM_RE.fullmatch(value):
+        return "str=%s" % value
+    return "str(len %d)" % len(value)
+
+
+class Shaper:
+    def __init__(self, depth: int, enums: bool) -> None:
+        self.depth = depth
+        self.enums = enums
+
+    def inline(self, value: object, level: int, guard: bool = False) -> tuple[str, dict | None]:
+        """Return the one-line shape of a value and, for an object that is to
+        be expanded, the object whose keys print on the following lines.
+        `guard` is set under a credential-like key and disables `--enums`."""
+        if isinstance(value, dict):
+            if not value:
+                return "{}", None
+            if level > self.depth:
+                return "{...}", None
+            return "object", value
+        if isinstance(value, list):
+            if not value:
+                return "[]", None
+            inner, obj = self.inline(value[0], level, guard)
+            return "[%d x %s]" % (len(value), inner), obj
+        if isinstance(value, bool):
+            return "bool", None
+        if isinstance(value, (int, float)):
+            return "number", None
+        if value is None:
+            return "null", None
+        if isinstance(value, str):
+            return str_class(value, self.enums and not guard), None
+        return type(value).__name__, None
+
+    def lines(self, obj: dict, level: int, indent: str, guard: bool = False) -> list[str]:
+        groups: dict[str, list[object]] = {}
+        for key, value in obj.items():
+            groups.setdefault(redact_key(str(key)), []).append(value)
+        out: list[str] = []
+        for key in sorted(groups):
+            values = groups[key]
+            label = key if len(values) == 1 else "%s (x %d)" % (key, len(values))
+            guarded = guard or SECRET_KEY_RE.search(key) is not None
+            shape, child = self.inline(values[0], level + 1, guarded)
+            out.append("%s%s: %s" % (indent, label, shape))
+            if child is not None:
+                out.extend(self.lines(child, level + 1, indent + "  ", guarded))
+        return out
+
+    def document(self, doc: object, indent: str) -> list[str]:
+        shape, child = self.inline(doc, 1)
+        out = ["%s%s" % (indent, shape)]
+        if child is not None:
+            out.extend(self.lines(child, 1, indent + "  "))
+        return out
+
+
+def jsonl_lines(data: bytes, indent: str) -> tuple[str, list[str]]:
+    total = bad = non_object = 0
+    counts: Counter[str] = Counter()
+    keys: dict[str, set[str]] = {}
+    sub_counts: Counter[str] = Counter()
+    sub_keys: dict[str, set[str]] = {}
+    blocks: dict[str, set[str]] = {}
+    for raw in data.splitlines():
+        if not raw.strip():
+            continue
+        total += 1
+        try:
+            rec = json.loads(raw)
+        except ValueError:
+            bad += 1
+            continue
+        if not isinstance(rec, dict):
+            non_object += 1
+            continue
+        top = {redact_key(str(k)) for k in rec}
+        rtype = rec.get("type")
+        if isinstance(rtype, str):
+            label = "type=%s" % redact_key(rtype)
+        elif "type" in rec:
+            label = "type=<%s>" % type(rtype).__name__
+        else:
+            label = "keys{%s}" % ",".join(sorted(top))
+        counts[label] += 1
+        keys.setdefault(label, set()).update(top)
+        if rtype == "system":
+            sub = rec.get("subtype")
+            slabel = "subtype=%s" % redact_key(sub) if isinstance(sub, str) else "no subtype"
+            sub_counts[slabel] += 1
+            sub_keys.setdefault(slabel, set()).update(top)
+        if rtype in ("user", "assistant"):
+            msg = rec.get("message")
+            content = msg.get("content") if isinstance(msg, dict) else None
+            if isinstance(content, list):
+                found = blocks.setdefault(label, set())
+                for block in content:
+                    btype = block.get("type") if isinstance(block, dict) else None
+                    found.add(redact_key(btype) if isinstance(btype, str) else "<no type>")
+    out: list[str] = []
+    for label in sorted(counts):
+        out.append("%s%s: %d" % (indent, label, counts[label]))
+        out.append("%s  keys: %s" % (indent, ", ".join(sorted(keys[label]))))
+        if label in blocks:
+            out.append("%s  content blocks: %s" % (indent, ", ".join(sorted(blocks[label]))))
+        if label == "type=system":
+            for slabel in sorted(sub_counts):
+                out.append("%s  %s: %d" % (indent, slabel, sub_counts[slabel]))
+                out.append("%s    keys: %s" % (indent, ", ".join(sorted(sub_keys[slabel]))))
+    if non_object:
+        out.append("%snon-object lines %d" % (indent, non_object))
+    out.append("%sbad lines %d" % (indent, bad))
+    return "jsonl, %d lines" % total, out
+
+
+def text_class(data: bytes) -> str:
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return "binary"
+    if "\x00" in text:
+        return "binary"
+    body = text.strip()
+    if body and HEX_RE.fullmatch(body):
+        return "hex"
+    if body and BASE64_RE.fullmatch(body):
+        return "base64"
+    return "printable"
+
+
+def shape_file(path: str, size: int, args: argparse.Namespace) -> tuple[str, list[str]]:
+    if size > args.max_size:
+        return "%d bytes, skipped (large)" % size, []
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError as exc:
+        return "unreadable (%s)" % type(exc).__name__, []
+    size = len(data)
+    if size == 0:
+        return "0 bytes, empty", []
+    if path.lower().endswith(JSONL_EXT):
+        summary, out = jsonl_lines(data, "  ")
+        return "%d bytes, %s" % (size, summary), out
+    try:
+        doc = json.loads(data)
+    except (ValueError, RecursionError):
+        doc = None
+    else:
+        shaper = Shaper(args.depth, args.enums)
+        return "%d bytes, json" % size, shaper.document(doc, "  ")
+    note = "%d bytes, not JSON" % size
+    if size < SMALL:
+        note += ", %s" % text_class(data)
+    return note, []
+
+
+def walk(root: str, skip: set[str]) -> list[tuple[str, str]]:
+    """Return (relative path, kind) pairs under root, sorted, where kind is
+    `file`, `symlink`, `skipped` or `other`; symlinks are never followed."""
+    found: list[tuple[str, str]] = []
+
+    def rel(path: str) -> str:
+        return os.path.relpath(path, root).replace(os.sep, "/")
+
+    def onerror(exc: OSError) -> None:
+        if exc.filename:
+            found.append((rel(str(exc.filename)), "unreadable (%s)" % type(exc).__name__))
+
+    for dirpath, dirnames, filenames in os.walk(root, onerror=onerror):
+        keep = []
+        for name in dirnames:
+            full = os.path.join(dirpath, name)
+            if os.path.islink(full):
+                found.append((rel(full), "symlink"))
+            elif name in skip:
+                found.append((rel(full) + "/", "skipped"))
+            else:
+                keep.append(name)
+        dirnames[:] = keep
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            try:
+                mode = os.lstat(full).st_mode
+            except OSError as exc:
+                found.append((rel(full), "unreadable (%s)" % type(exc).__name__))
+                continue
+            if stat.S_ISLNK(mode):
+                found.append((rel(full), "symlink"))
+            elif stat.S_ISREG(mode):
+                found.append((rel(full), "file"))
+            else:
+                found.append((rel(full), "other"))
+    return sorted(found)
+
+
+def describe(full: str, kind: str, args: argparse.Namespace) -> tuple[str, list[str]]:
+    if kind == "symlink":
+        return "symlink, not followed", []
+    if kind == "skipped":
+        return "directory, skipped", []
+    if kind == "other":
+        return "not a regular file", []
+    if kind != "file":
+        return kind, []
+    try:
+        size = os.lstat(full).st_size
+    except OSError as exc:
+        return "unreadable (%s)" % type(exc).__name__, []
+    return shape_file(full, size, args)
+
+
+def emit(label: str, note: str, body: list[str], out) -> None:
+    out.write("== %s (%s)\n" % (redact(label), note))
+    for line in body:
+        out.write(line + "\n")
+
+
+def run(args: argparse.Namespace, out) -> None:
+    skip: set[str] = set(DEFAULT_SKIP) | set(args.skip or ())
+    for arg in args.paths:
+        out.write("# %s\n" % redact(arg))
+        try:
+            mode = os.lstat(arg).st_mode
+        except OSError as exc:
+            out.write("unreadable (%s)\n" % type(exc).__name__)
+            continue
+        name = os.path.basename(os.path.normpath(arg))
+        if stat.S_ISLNK(mode):
+            emit(name, "symlink, not followed", [], out)
+        elif stat.S_ISDIR(mode):
+            for rel, kind in walk(arg, skip):
+                note, body = describe(os.path.join(arg, rel.rstrip("/")), kind, args)
+                emit(rel, note, body, out)
+        elif stat.S_ISREG(mode):
+            note, body = describe(arg, "file", args)
+            emit(name, note, body, out)
+        else:
+            emit(name, "not a regular file", [], out)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(
+        prog="shape.py",
+        description="Print key names, value types and JSONL line types of files, never values.",
+    )
+    ap.add_argument("paths", nargs="+", metavar="PATH", help="file or directory to describe")
+    ap.add_argument(
+        "--max-size",
+        type=int,
+        default=1024 * 1024,
+        metavar="BYTES",
+        help="files larger than this print their size only (default 1 MiB)",
+    )
+    ap.add_argument(
+        "--skip",
+        action="append",
+        metavar="NAME",
+        help="directory name not to enter, repeatable; added to the Chromium cache "
+        "directories, node_modules and .git",
+    )
+    ap.add_argument(
+        "--depth",
+        type=int,
+        default=6,
+        metavar="N",
+        help="object nesting depth to print; deeper objects print {...} (default 6)",
+    )
+    ap.add_argument(
+        "--enums",
+        action="store_true",
+        help="print short lower-case strings ([a-z0-9_-], at most 16) as str=<value>, "
+        "except under credential-like keys (token, secret, key, passw, cred, auth, cookie)",
+    )
+    return ap.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    run(parse_args(argv), sys.stdout)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
