@@ -10,9 +10,9 @@ below are relative to the app-data directory, one of the catalog bases
 `AppData/Local/Claude-Data[/<package family>]` or, for the Store build,
 whose MSIX container redirects `AppData/Roaming/Claude` there,
 `AppData/Local/Packages/<Claude_* or AnthropicPBC.Claude_*>/LocalCache/Roaming/Claude`
-(observed on Windows 11, 2026-10-10); `<acct>` and
-`<org>` are account and organization UUIDs (or their first eight hex
-digits). Files:
+(observed on Windows 11, 2026-10-10, and Ubuntu 26.04, 2026-10-11);
+`<acct>` and `<org>` are account and organization UUIDs (or their first
+eight hex digits). Files:
 
 * `local-agent-mode-sessions/<acct>/<org>/[agent/]<session dir>/.claude/
   projects/<slug>/<cliSessionId>.jsonl`, the subagent files under

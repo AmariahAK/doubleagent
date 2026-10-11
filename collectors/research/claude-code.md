@@ -41,6 +41,7 @@ Not collected from a relocated home: `settings.json`, `settings.local.json`, `to
 - `~/.claude/.device-keys.json` (device key store, file fallback to keychain, cc:477075, cc:337890-900). Not moved by `CLAUDE_CONFIG_DIR`.
 - `.claude.json` holds the sign-in session / `oauthAccount` and MCP server `env` blocks (docs; cc:406053 "refusing to write to avoid wiping ~/.claude.json" auth).
 - `hfi-auth.json`, `.session_ingress_token`, `remote/.oauth_token`, `remote/.api_key` (cloud/host handoff), `CLAUDE_CODE_HOST_CREDS_FILE` path (cc:272494, 276584 region), Claude Desktop `host-creds-*.json` (see claude-desktop).
+- `<config>/sessions/<pid>.<sha256>.key` (139 bytes) beside the per-process `sessions/<pid>.json`, observed on a real install with CLI 2.1.295 launched from the Claude Desktop Code tab on Linux, 2026-10-11 (see issue 76 and [`claude-desktop.md`](claude-desktop.md)); flagged `secret: true` since collector 1.11.0 (`.claude/sessions/*.key`, `.claude-*/sessions/*.key`). The `<pid>.json` itself is not flagged.
 - Config files that can embed keys: `settings.json` / `settings.local.json` (`apiKeyHelper`, `env.ANTHROPIC_API_KEY`, MCP headers), `.mcp.json`, `managed-mcp.json`. Env: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` (docs /iam precedence list). Anthropic profiles live outside: `~/.config/anthropic` / `%APPDATA%\Anthropic` (docs /iam).
 
 ## 4. Exclusions (relative to home)

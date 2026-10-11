@@ -106,18 +106,27 @@ Claude Desktop is collected as `claude-desktop` from these locations under
 each home; the `*/Claude*/` exclusions (caches, the bundled `claude-code`
 binary, `claude-code-vm`, `vm_bundles` (see [Cowork VM disks](#cowork-vm-disks)), `sentry`) and secret globs
 (`config.json`, `Cookies*`, `Local State`, `claude_desktop_config.json`,
-`host-creds-*.json`, `ccd-session-secrets/*`, `.audit-key`) apply in each
-data directory.
+`host-creds-*.json`, `ccd-session-secrets/*`, `.audit-key`, the space-link
+signing key `spaces-present/*/link-key`) apply in each data directory.
 
 | Location | What it holds |
 | --- | --- |
-| `Library/Application Support/Claude`, `.config/Claude`, `AppData/Roaming/Claude` | The data directory on macOS, Linux, and an unpackaged Windows install. |
+| `Library/Application Support/Claude`, `.config/Claude`, `AppData/Roaming/Claude` | The data directory on macOS, Linux, and an unpackaged Windows install. On Linux (the official `.deb`, observed 2026-10-11) the logs are inside it, in `.config/Claude/logs/`. |
 | `AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude`, `AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude` | The data directory of the Microsoft Store (MSIX) build. The app reports it as `AppData\Roaming\Claude`, but MSIX filesystem virtualisation stores it here, and `AppData\Roaming\Claude` does not exist on disk. |
 | `AppData/Local/Claude` | The Store build's logs (`logs/main.log`, `mcp.log` and the others). |
 | `AppData/Local/Claude-Data` | An alternative Windows data directory the app can choose, collected whole including its `<package family>` child. |
 | `Library/Logs/Claude` | macOS logs. |
 | `Claude-3p` under `Library/Application Support`, `Library/Logs`, `.config`, `AppData/Roaming` and `AppData/Local` | The third-party-inference build. |
 | `Claude`, `Documents/Claude` | The user output folders. |
+
+The Code tab's shadow git state (private git index copies, `shadow-of`
+and `*-gitdir` directories) lives in the Claude Code CLI's temp root,
+`/tmp/claude-<uid>` on Linux, which the app records in
+`git-shadow/cli-temp-roots.json` under the data directory. That root is
+outside every home and is not collected; the JSON list is. The CLI
+binary the app downloads into `claude-code/<version>/<hash>/` (255 MB on
+Linux, 247 MB on Windows) is excluded by `*/Claude*/claude-code` on every
+platform and gets one `skipped_excluded` row with its size.
 
 `CLAUDE_USER_DATA_DIR`, when set, moves the data directory and the logs
 anywhere. That location is not a catalog line and is not collected; when
@@ -132,7 +141,8 @@ by the `*/Claude*/vm_bundles` glob: by default it yields one
 inside, and `--full` (`-Full`) collects it like any other exclusion,
 each file still subject to `--max-file-size`. Observed on macOS, Claude
 Desktop 2.31226.1, October 2026 (no `vm_bundles` directory exists on the
-Windows Store build; Linux not yet observed):
+Windows Store build or on the Linux `.deb` install, where the Cowork VM
+was unsupported in a nested-virtualisation guest):
 
 | File | Size | What it is |
 | --- | --- | --- |

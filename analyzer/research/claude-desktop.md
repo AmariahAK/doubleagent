@@ -50,6 +50,21 @@ claim below names its evidence level:
   merged Chat/Cowork surface persisted no local session record: the only
   write was `local-agent-mode-sessions/<acct>/<org>/remote-session-spaces.json`
   (section 3). No `vm-support-probe.json` exists on that install.
+- **Observed (Linux)**: a clean install of the official `claude-desktop`
+  2.31226.1 `.deb` (arm64) on Ubuntu 26.04.1 LTS aarch64, 2026-10-11
+  (collector issue 73), read for file names, sizes, key names and value
+  types only. One Code-tab session wrote
+  `claude-code-sessions/<acct>/<org>/local_<uuid>.json` (compact JSON,
+  17 KB, the same keys as the Windows record, with `cwd`, `originCwd` and
+  `gitAnchorsFolderRealpath` all equal to the chosen folder) and its
+  transcript `~/.claude/projects/-home-<user>-proj/<cliSessionId>.jsonl`
+  (`entrypoint` `claude-desktop`, CLI 2.1.295) beside
+  `~/.claude/sessions/<pid>.json` (`hostSessionId` = the desktop
+  `local_<uuid>`) and a `<pid>.<sha256>.key`. Two chats in the merged
+  Chat/Cowork surface wrote no local session record (section 3). The
+  Cowork VM was unsupported in that nested-virtualisation guest
+  (`cowork_vm_node.log`: `workspace VM not supported (status=unsupported)`),
+  so no `vm_bundles` or `claude-code-vm` exists there.
 - **Docs**: the claude.com data-storage page cited in the collector
   document, for names the bundle confirms.
 
@@ -81,7 +96,7 @@ UUIDs).
 | `local-agent-mode-sessions/<acct>/<org>/scheduled-tasks.json`, `claude-code-sessions/<acct>/<org>/scheduled-tasks.json` | JSON | scheduled task definitions (observed, empty) | optional system rows |
 | `git-worktrees.json` | JSON | worktrees the Code tab created (observed, empty) | optional system rows |
 | `IndexedDB/https_claude.ai_0.indexeddb.leveldb/`, `Local Storage/leveldb/`, `Session Storage/` | Chromium LevelDB | claude.ai web page state (section 5) | no |
-| `~/Library/Logs/Claude/main.log`, `mcp.log`, `mcp-server-<name>.log` | text | app and MCP transport logs (section 5) | no |
+| `~/Library/Logs/Claude/main.log`, `mcp.log`, `mcp-server-<name>.log` | text | app and MCP transport logs (section 5); on Linux in `userData/logs/` (observed), on the Windows Store build in `%LOCALAPPDATA%\Claude\logs` (observed) | no |
 
 Evidence for the layout (all bundle):
 
@@ -296,9 +311,42 @@ Keys of use to a timeline:
 | `error`, `errorCategory`, `errorAt` | string, string, number | `errorAt` is `Date.now()` in this chunk |
 | `isArchived`, `scheduledTaskId`, `spaceId`, `forkedFromSessionId`, `dispatchParentId` | | |
 | `gitAnchorsFolderRealpath`, `completedTurns`, `titleTurn`, `lastAssistantUuid`, `latestUserFrameAt`, `promptAppendSnapshot`, `toolSurfaceSnapshot`, `remoteMcpServersConfig` | | observed on Windows, not in the bundle reading above; `remoteMcpServersConfig[]` items carry `uuid`, `name`, `url`, `tools[]`; other types not recorded |
+| `remoteControlUserEnabled`, `remoteControlUserRequested`, `remoteControlUserToggled`, `remoteControlAutoEligible`, `bridgeSessionIds`, `remoteControlSpawn`, `remoteControlDescendant`, `steeredByRemoteClient`, `peerMessaged`, `remoteControlLiveAtUpdateQuit`, `cloudSessionId` | booleans; string[]; object `{ccrSessionId, detachedAt, rcChild, projectThreadChild}`; object `{at, accountId}`; string | persisted Remote Control state (below); observed on Windows and Linux: `remoteControlAutoEligible` and `steeredByRemoteClient` `false`, the rest absent |
 
 Imported records (`finishRegisterExternalSession`, `@1686493`) also carry
 `indexedAt` (epoch ms), `importedFrom` and `stagedTranscriptPath`.
+
+**Remote Control** (another device driving the session's CLI through a
+bridge; the CLI side is in [`claude-code.md`](claude-code.md), section 5).
+The serializer `dk` (`app.asar:.vite/build/index.chunk-epGqPC4W.js@549559`,
+keys from `@554789` `bridgeSessionIds` to `@555190` `peerMessaged`)
+persists `remoteControlUserEnabled`, `remoteControlUserRequested`,
+`remoteControlUserToggled`, `remoteControlAutoEligible`,
+`bridgeSessionIds[]` (every bridge session the session was attached to),
+`remoteControlSpawn` (the session was started from a remote client:
+`ccrSessionId`, `detachedAt`, `rcChild`, `projectThreadChild`),
+`remoteControlDescendant`, `steeredByRemoteClient` (a remote client
+steered a turn), `peerMessaged`, `remoteControlLiveAtUpdateQuit`
+(`at`, `accountId`) and `cloudSessionId`. The setters are in
+`index.chunk-BCHP6ll9.js`: `@653921` `e&&(e.steeredByRemoteClient=!0,this.deps.saveSession(e))`,
+`@794905` `e.bridgeSessionUrl=n?.session_url,e.bridgeSessionId=r,e.bridgeEpoch=n?.bridge_epoch`,
+and `@761056`
+`function kM(e){e.remoteControlEnabled=!1,...,e.remoteControlConnecting=void 0,...,e.bridgeSessionId=void 0,e.bridgeSessionUrl=void 0,e.bridgeEpoch=void 0}`,
+which clears the live fields. The live `bridgeSessionId`,
+`bridgeSessionUrl` and `remoteControlConnecting` are not persisted, so
+whether a session was under Remote Control at collection time comes from
+the CLI's `~/.claude/sessions/<pid>.json` (`bridgeSessionId`), joined on
+the record's `cliSessionId`. `main.log` records
+`Enabling remote control for session <id>` (or `Disabling`; `@787391`
+``t.m4.info(`${h?"Enabling":"Disabling"} remote control for session ${s}${c?" (re-adopted process)":""}`)``)
+and then `Remote control enabled: <url>` (`@795095`
+``t.m4.info(`Remote control enabled: ${AM(n?.session_url)}`)``), both in
+local time with no zone.
+Separately, `[remote-tools-device]` log lines
+(`index.chunk-Cyt2WTko.js@5123319`) and the `remoteToolsDeviceName`
+preference in `claude_desktop_config.json` (`@1437532` default `remoteToolsDeviceName:""`) record the
+Desktop's enrolment as a device whose local tools claude.ai can call, a
+different feature.
 
 ### `scheduled-tasks.json` (observed top level, bundle entries)
 
@@ -341,14 +389,68 @@ with `id`, `name`, `projects[].uuid`, `folders[].path`, `instructions`,
 `memory/`, `agent/memory/`, `spaces/<id>/memory/` (Markdown memory files,
 `@2241798`).
 
-`remote-session-spaces.json` (observed on Windows) maps server-side
-sessions to folders: `entries[]`, each with `sessionId` (32 hexadecimal
-characters, not the `local_<uuid>` form) and `folders[]`. It was the only
-local write for a chat in the merged Chat/Cowork surface, so it is the
-on-disk trace that such a session existed; its transcript is server-side. `rpm/manifest.json` (observed: `lastUpdated` epoch ms,
-`plugins[]`) is the remote plugin manifest. `spaces-present/` at the
-userData root holds a `link-key` per account and org (observed). A
-legacy `local-sessions.json` at the userData root is migrated into the
+`remote-session-spaces.json` (observed on Windows, Linux and macOS;
+bundle `index.chunk-Cyt2WTko.js@2239915`, beside `scheduled-tasks.json`,
+`spaces.json`, `cowork-gb-cache.json` and `cowork-clientdata-cache.json`)
+maps server-side sessions to folders: `entries[]`, each with `sessionId`
+(32 hexadecimal characters, not the `local_<uuid>` form) and `folders[]`
+(absolute paths). It is the on-disk trace that a remote Cowork session
+existed; its transcript is server-side. On Linux (2026-10-11) a
+read-only chat of about nine minutes wrote nothing under
+`local-agent-mode-sessions/`, and a chat asked to write a report ran as
+a remote Cowork session: the agent ran server-side and wrote an `.odt`
+and a `.pdf` into `~/Documents` through the app's remote-file bridge
+(`main.log`: `[remote-file] listed 0 entries`, then
+`[remote-file] committed 2 files, 0 rejected`; `claude.ai-web.log`:
+`[LOCAL_SESSION] remote_cowork.late_link_offer_verdict`), and the only
+local write was this file (147 bytes, written when the folder was
+granted, `main.log` `Config file written`), with `folders[]` the granted
+folder. There was no `local_<uuid>.json`, session directory or
+`audit.jsonl`, and nothing in `cowork_vm_node.log` or `mcp.log`. The same
+test on the author's macOS install of 2.31226.1 (2026-10-11, a Mac that
+can run the Cowork VM) gave the same result: one `remote-session-spaces.json`
+(146 bytes, same shape) and no local session. So on all three platforms
+(Windows Store build, Linux `.deb`, macOS) a file-writing chat in the
+merged surface is a server-side session whose local trace is this file,
+and the local-agent session layout (`local_<uuid>.json`, `audit.jsonl`)
+was not observed on any of the three real installs; it remains
+bundle-derived. `scheduled-tasks.json` stayed empty in both per-org
+directories although the account had a scheduled task, so tasks set from
+a chat are server-side too.
+
+`rpm/manifest.json` (observed: `lastUpdated` epoch ms, `plugins[]`) is
+the remote plugin manifest.
+
+`spaces-present/<acct 8 hex>/<org 8 hex>/link-key` at the userData root
+(observed on Linux: 51 bytes, binary, created at sign-in) is the HMAC key
+that signs Cowork space links and folder grants
+(`app.asar:.vite/build/index.chunk-Cyt2WTko.js@5407180`
+`var JUi="link-key",YUi="link-key.unreadable",XUi=6048e5,...,QUi=32,$Ui="claude-space-link-v1\0",eWi="claude-space-folder-v1\0"`).
+The class that holds it computes `createHmac("sha256",this.key)` over
+`$Ui`, the space id and a link's `url`, `title` and `provider`, or over
+`eWi` and a folder path (`macOfFolder`), and checks with
+`timingSafeEqual` (`verifies`, `verifiesFolder`). The key is 32 random
+bytes (`randomBytes(QUi)`) stored as `safeStorage.encryptString` of their
+base64 form and read back with `safeStorage.decryptString`; when safe
+storage is unavailable the session runs `keyless` and no link or folder
+is verified. It is OS-encrypted like `.audit-key` and flagged secret by
+the collector (section 7).
+
+`git-shadow/` at the userData root holds the Code tab's private git
+state, not transcripts
+(`app.asar:.vite/build/index.chunk-BCfH2EWk.js@17777`
+`function Ke(){return t.aD()??r.default.join(i.app.getPath("userData"),"git-shadow")}`,
+created with `mkdir(Ke(),{recursive:!0,mode:448})`): a `scratch/` child
+used as the `privateIndexDir` for git operations, whose entries older
+than `Je=216e5` ms (six hours) are removed, and `cli-temp-roots.json`
+(`index.chunk-Cyt2WTko.js@3642519` `var $rr="cli-temp-roots.json",MH=256`),
+a JSON array of up to 256 Claude Code CLI temp roots, read back with path
+checks; the same code manages the shadow git dirs (`shadow-of`,
+`*-gitdir`, `*-gitconfig`, `git-crypt`) inside those roots. Observed on
+Linux: one entry, `/tmp/claude-<uid>`, beside a
+`cli-temp-roots.json.dirty.copy.<16 hex>` of the same size.
+
+A legacy `local-sessions.json` at the userData root is migrated into the
 per-org tree on start.
 
 ## 4. Joins and timestamps
@@ -446,6 +548,9 @@ without `_audit_redactions`.
 
 - `.audit-key` per session dir: the encrypted HMAC key. Already a secret
   glob (`*/Claude*/local-agent-mode-sessions/*/.audit-key`).
+- `spaces-present/<acct>/<org>/link-key`: the encrypted space-link HMAC
+  key (section 3); a secret glob since collector 1.11.0
+  (`*/Claude*/spaces-present/*/link-key`).
 - Cowork session record: `emailAddress` and `accountName` (identity, not
   credentials, but personal data to redact on sharing); `systemPrompt`
   and its siblings may embed the person's memory and instructions;
@@ -458,7 +563,9 @@ without `_audit_redactions`.
   which can include any secret the agent read; base64 images and
   documents are hashed, nothing else is redacted.
 - Code-tab record: `sshConfig` content was not determined; treat it as
-  possibly naming a key file.
+  possibly naming a key file. `bridgeSessionUrl` is runtime-only and never
+  written to the record; `remoteControlSpawn.ccrSessionId` is an
+  identifier, not a credential.
 - Each session dir is the CLI's `CLAUDE_CONFIG_DIR`, so the CLI may write
   `.claude.json` there (`index.chunk-Cyt2WTko.js`
   `CLAUDE_CONFIG_DIR?(0,n.join)(jj(),".claude.json")`). The OAuth token is
@@ -469,6 +576,16 @@ without `_audit_redactions`.
   `ccd-session-secrets/` are covered in the collector document.
 
 ## 8. Parser plan
+
+The parser was run over a collection of the Linux install (collector
+1.11.0, 2026-10-11): it yielded the Code-tab record's `system` row with
+`project_path` the chosen folder, and the `claude-code` parser read the
+home transcript the record's `cliSessionId` names (two user and two
+assistant turns, one tool call), with no unreadable-file rows. With the
+Windows install, the Code-tab path is validated on two platforms; the
+Cowork, audit and scheduled-task readers rest on the bundle and the
+synthetic fixture. Issue 80 adds the Remote Control fields (section 3)
+to the Code-tab record row.
 
 A `claude-desktop` parser that reuses the claude-code reader for the
 transcripts (as little-coder reuses pi's), plus small readers for the

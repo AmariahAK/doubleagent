@@ -727,6 +727,30 @@ $Deep77 = 'Users/alice/.claude/projects/-C-deep77/' + ((1..5 | ForEach-Object { 
 $Body77 = '{"type":"user","message":{"role":"user","content":"deep"},"timestamp":"2026-10-10T00:00:00Z"}'
 $Sha77 = ([BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash((New-Object System.Text.UTF8Encoding $false).GetBytes($Body77))) -replace '-', '').ToLower()
 Mk $Deep77 $Body77
+
+# 2026-10-11 Claude Desktop Linux deb and Claude Code 2.1.295 session keys (#73, #76)
+# The layout observed under ~/.config/Claude from the Linux .deb: logs inside
+# the data directory, the space-link signing key under
+# spaces-present/<acct 8 hex>/<org 8 hex>/, the CLI temp-root list in
+# git-shadow/, a Code-tab record, and the downloaded CLI under claude-code/,
+# which stays excluded. Beside them, Claude Code's per-process session key
+# next to its sessions/<pid>.json. Checks follow the default and NoSecrets
+# runs below; the same files are in smoke.sh.
+$c76 = 'Users/alice/.config/Claude'
+$o76 = '0a0a0a0a-0000-4000-8000-00000000000a/0b0b0b0b-0000-4000-8000-00000000000b'
+$x76 = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+$k76 = "Users/alice/.claude/sessions/4242.$x76.key"
+$l76 = "$c76/spaces-present/0a0a0a0a/0b0b0b0b/link-key"
+$s76 = "$c76/claude-code-sessions/$o76/local_76767676-7676-4676-8676-767676767676.json"
+Mk $l76 'link-key ciphertext'
+Mk "$c76/git-shadow/cli-temp-roots.json" '["/tmp/claude-1000"]'
+Mk "$c76/logs/main.log" '2026-10-11 10:00:00 [info] [CCD] Installed'
+Mk "$c76/claude-code/2.1.295/9b32b47ec4b3/claude" 'ELF'
+Mk "$c76/claude-code/2.1.295/9b32b47ec4b3/.payload" ('{"sha256":"' + $x76 + '","size":4}')
+Mk "$c76/claude-code/2.1.295/9b32b47ec4b3/.verified" $x76
+Mk $s76 '{"sessionId":"local_76767676-7676-4676-8676-767676767676","cliSessionId":"76767676-0000-4000-8000-000000000076","cwd":"/srv/proj","originCwd":"/srv/proj"}'
+Mk 'Users/alice/.claude/sessions/4242.json' '{"pid":4242,"sessionId":"76767676-0000-4000-8000-000000000076","entrypoint":"claude-desktop","kind":"interactive"}'
+Mk $k76 'session key'
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1062,6 +1086,16 @@ Check 'crewai lowercase credentials flagged secret through the class' { $r -and 
 Check 'camel-ai narrow lines leave Apache Camel JBang files alone' { $null -eq (Row 'alice/.camel/4242-status.json') }
 Check 'legacy open-interpreter space-named dir collected once' { (CountOf 'Open Interpreter Terminal/conversations/old.json') -eq 1 }
 
+# 2026-10-11 Claude Desktop Linux deb and Claude Code 2.1.295 session keys (#73, #76)
+function Is76([string]$rel, [string]$agent, [bool]$secret) { $r = Row $rel; return ($r -and $r.agent -eq $agent -and $r.secret -eq $secret -and $r.status -eq 'collected') }
+Check '#73 Linux spaces-present link-key flagged secret' { Is76 $l76 'claude-desktop' $true }
+Check '#76 Claude Code sessions/<pid>.<hash>.key flagged secret' { Is76 $k76 'claude-code' $true }
+Check '#76 Claude Code sessions/<pid>.json collected, not secret' { Is76 'Users/alice/.claude/sessions/4242.json' 'claude-code' $false }
+Check '#73 Linux git-shadow/cli-temp-roots.json collected as claude-desktop' { Is76 "$c76/git-shadow/cli-temp-roots.json" 'claude-desktop' $false }
+Check '#73 Linux logs/main.log inside the data dir collected as claude-desktop' { Is76 "$c76/logs/main.log" 'claude-desktop' $false }
+Check '#73 Linux Code-tab session record collected as claude-desktop' { Is76 $s76 'claude-desktop' $false }
+Check '#73 Linux claude-code excluded, downloaded CLI not in the manifest' { (StatusOf "$c76/claude-code") -eq 'skipped_excluded' -and @($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like '*/9b32b47ec4b3/*' }).Count -eq 0 }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -1239,6 +1273,8 @@ Run 'nosecrets' @{ NoSecrets = $true }
 Check 'NoSecrets exit 0' { $script:rc -eq 0 }
 Check 'credentials skipped_secret' { (StatusOf 'Users/alice/.claude/.credentials.json') -eq 'skipped_secret' }
 Check 'credentials absent from archive' { -not (ArchiveEntries | Where-Object { $_ -match 'credentials\.json$' }) }
+# 2026-10-11 Claude Desktop Linux deb and Claude Code 2.1.295 session keys (#73, #76)
+Check '#73 #76 NoSecrets skips link-key and the session key' { (StatusOf $l76) -eq 'skipped_secret' -and (StatusOf $k76) -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }

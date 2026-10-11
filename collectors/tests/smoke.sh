@@ -727,6 +727,29 @@ mkdir -p "$B/AppData/Local/crewai/myproj" "$B/AppData/Local/crewai/credentials"
 printf 'x\n' >"$B/AppData/Local/crewai/myproj/latest_kickoff_task_outputs.db"
 printf 'x\n' >"$B/AppData/Local/crewai/credentials/tokens.enc"
 
+# 2026-10-11 Claude Desktop Linux deb and Claude Code 2.1.295 session keys (#73, #76)
+# The layout observed under ~/.config/Claude from the Linux .deb: logs inside
+# the data directory, the space-link signing key under
+# spaces-present/<acct 8 hex>/<org 8 hex>/, the CLI temp-root list in
+# git-shadow/, a Code-tab record, and the downloaded CLI under claude-code/,
+# which stays excluded. Beside them, Claude Code's per-process session key
+# next to its sessions/<pid>.json. Checks follow the default and --no-secrets
+# runs below; the same files are in smoke.ps1.
+C76="$H/.config/Claude"; O76="0a0a0a0a-0000-4000-8000-00000000000a/0b0b0b0b-0000-4000-8000-00000000000b"
+X76=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+K76="$H/.claude/sessions/4242.$X76.key"
+mkdir -p "$C76/spaces-present/0a0a0a0a/0b0b0b0b" "$C76/git-shadow" "$C76/logs" "$C76/claude-code/2.1.295/9b32b47ec4b3" \
+  "$C76/claude-code-sessions/$O76" "$H/.claude/sessions"
+printf 'link-key ciphertext\n' >"$C76/spaces-present/0a0a0a0a/0b0b0b0b/link-key"
+printf '["/tmp/claude-1000"]\n' >"$C76/git-shadow/cli-temp-roots.json"
+printf '2026-10-11 10:00:00 [info] [CCD] Installed\n' >"$C76/logs/main.log"
+printf 'ELF\n' >"$C76/claude-code/2.1.295/9b32b47ec4b3/claude"
+printf '{"sha256":"%s","size":4}\n' "$X76" >"$C76/claude-code/2.1.295/9b32b47ec4b3/.payload"
+printf '%s' "$X76" >"$C76/claude-code/2.1.295/9b32b47ec4b3/.verified"
+printf '{"sessionId":"local_76767676-7676-4676-8676-767676767676","cliSessionId":"76767676-0000-4000-8000-000000000076","cwd":"/srv/proj","originCwd":"/srv/proj"}\n' >"$C76/claude-code-sessions/$O76/local_76767676-7676-4676-8676-767676767676.json"
+printf '{"pid":4242,"sessionId":"76767676-0000-4000-8000-000000000076","entrypoint":"claude-desktop","kind":"interactive"}\n' >"$H/.claude/sessions/4242.json"
+printf 'session key\n' >"$K76"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -967,10 +990,21 @@ check "crewai lowercase credentials flagged secret through the class" "row \"$B/
 check "camel-ai narrow lines leave Apache Camel JBang files alone" "! grep -q '/.camel/4242-status.json\"' \"\$M\""
 check "legacy open-interpreter space-named dir collected once" "[ \"\$(grep -c '/.config/Open Interpreter Terminal/conversations/old.json\"' \"\$M\")\" = 1 ]"
 
+# 2026-10-11 Claude Desktop Linux deb and Claude Code 2.1.295 session keys (#73, #76)
+check "#73 Linux spaces-present link-key flagged secret" "row \"$C76/spaces-present/0a0a0a0a/0b0b0b0b/link-key\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":true,\"status\":\"collected\"'"
+check "#76 Claude Code sessions/<pid>.<hash>.key flagged secret" "row \"$K76\" | grep -q '\"agent\":\"claude-code\".*\"secret\":true,\"status\":\"collected\"'"
+check "#76 Claude Code sessions/<pid>.json collected, not secret" "row \"$H/.claude/sessions/4242.json\" | grep -q '\"agent\":\"claude-code\".*\"secret\":false,\"status\":\"collected\"'"
+check "#73 Linux git-shadow/cli-temp-roots.json collected as claude-desktop" "row \"$C76/git-shadow/cli-temp-roots.json\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":false,\"status\":\"collected\"'"
+check "#73 Linux logs/main.log inside the data dir collected as claude-desktop" "row \"$C76/logs/main.log\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":false,\"status\":\"collected\"'"
+check "#73 Linux Code-tab session record collected as claude-desktop" "row \"$C76/claude-code-sessions/$O76/local_76767676-7676-4676-8676-767676767676.json\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":false,\"status\":\"collected\"'"
+check "#73 Linux claude-code excluded, downloaded CLI not in the manifest" "[ \"\$(status_of \"$C76/claude-code\")\" = skipped_excluded ] && ! grep -q '/9b32b47ec4b3/' \"\$M\""
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
 check "credentials absent from archive" "! tar -tzf \"\$A\" | grep -q credentials.json"
+# 2026-10-11 Claude Desktop Linux deb and Claude Code 2.1.295 session keys (#73, #76)
+check "#73 #76 --no-secrets skips link-key and the session key" "[ \"\$(status_of \"$C76/spaces-present/0a0a0a0a/0b0b0b0b/link-key\")\" = skipped_secret ] && [ \"\$(status_of \"$K76\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"

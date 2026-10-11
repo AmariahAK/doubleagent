@@ -1017,12 +1017,14 @@ SECRET_GLOBS='.claude/.credentials.json
 .claude/.session_ingress_token
 .claude/remote/.oauth_token
 .claude/remote/.api_key
+.claude/sessions/*.key
 .claude.json
 .claude-*/.credentials.json
 .claude-*/hfi-auth.json
 .claude-*/.session_ingress_token
 .claude-*/remote/.oauth_token
 .claude-*/remote/.api_key
+.claude-*/sessions/*.key
 .claude-*/.claude.json
 Library/Application Support/Claude*/config.json
 Library/Application Support/Claude*/Cookies*
@@ -1051,6 +1053,7 @@ AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude*/ccd-sess
 */Claude*/Local State
 */Claude*/claude_desktop_config.json
 */Claude*/local-agent-mode-sessions/*/.audit-key
+*/Claude*/spaces-present/*/link-key
 *.gemini/oauth_creds.json
 *.gemini/gemini-credentials.json
 *.gemini/mcp-oauth-tokens.json

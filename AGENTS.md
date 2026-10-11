@@ -559,6 +559,21 @@ And from the October 2026 round:
 - Counts in a brief are not evidence. The integration agent derives the
   number of agents from the documents in the tree, not from the brief, and
   says so when they differ.
+- Claude Desktop has no separate Cowork button or Cowork tab since the
+  2.31226 builds (October 2026): Chat and Cowork are one surface, and the
+  app switches a chat into Cowork mode itself when the task needs the
+  local agent. The remaining distinct surface is the Code tab. Do not
+  describe a "Cowork mode" the user starts by hand, do not ask the user
+  to "open Cowork", and do not expect a local `local_<uuid>.json` under
+  `local-agent-mode-sessions/` for every chat: on the real installs
+  checked (2.31226.1, Windows Store build and Linux deb) a read-only
+  chat left nothing there, and a chat that wrote files ran as a remote
+  Cowork session whose only local traces were
+  `remote-session-spaces.json` (the session id and the granted folders)
+  and the files it committed; its transcript is server-side. Scheduled
+  tasks set from a chat are account state on the server, not entries in
+  the local `scheduled-tasks.json`, which stayed empty on both installs
+  for an account that has one.
 - Chat history outside the home (ShellGPT's temp directory) cannot become
   a catalog line. Record it in `collectors/docs/coverage.md` as a manual step and
   file an issue, rather than stretching a glob. Docker and Podman named

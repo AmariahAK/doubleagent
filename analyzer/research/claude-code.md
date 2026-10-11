@@ -293,6 +293,71 @@ inside the running turn) or a later `user` record with
 - `.claude.json` `projects` keys are project paths (collector document,
   section 6).
 
+### Remote Control
+
+Remote Control lets another device (claude.ai or the mobile app) drive a
+local Claude Code process through a bridge. Evidence: the Linux arm64
+build of CLI 2.1.295 that Claude Desktop downloads
+(`https://downloads.claude.ai/claude-code-releases/2.1.295/linux-arm64/claude.zst`,
+decompressed 255,516,664 bytes, sha256
+`cfb9dc1332fb6f92a683f835823e91b3179a803398ca7852cd2381a3cb1dea3b`),
+read, never executed; citations are written
+`claude 2.1.295 linux-arm64 @<byte offset>` with a literal snippet,
+because the `cc:` line numbers above belong to 2.1.289. Observed: the
+Ubuntu lab install of 2026-10-11 (Claude Desktop Code tab, CLI 2.1.295),
+for key names and value types only.
+
+- **Live at collection time.** `.claude/sessions/<pid>.json` is the
+  per-process registry (collector issue 76). Observed keys on Linux
+  2.1.295: `pid`, `sessionId`, `cwd`, `startedAt`, `procStart`,
+  `version`, `peerProtocol`, `peerFeatures`, `kind`, `entrypoint`,
+  `hostSessionId`, `pidDomain`, `messagingSocketPath`, `name`,
+  `nameSource`, `nameSince`, `status`, `updatedAt`, `statusUpdatedAt`,
+  with a sibling `<pid>.<sha256>.key`
+  (`claude 2.1.295 linux-arm64 @209019746`
+  `pid:process.pid,sessionId:V(),cwd:we(),startedAt:Date.now(),procStart:await Fl(process.pid)`,
+  then `@209020296` `peerProtocol:Akr,peerFeatures:HU(),kind:s,entrypoint:a.CLAUDE_CODE_ENTRYPOINT,hostSessionId:Okr(),pidDomain:await BT()`).
+  `kind` was `interactive`, `status` `idle`, and `hostSessionId` the
+  Claude Desktop `local_<uuid>`; `messagingSocketPath` is the local peer
+  socket, not the bridge. While Remote Control is attached the CLI
+  patches `bridgeSessionId` into the same file
+  (`@209023561` `async function mHn(e,n){await bn({bridgeSessionId:e},n)}`,
+  the helper that also patches `messagingSocketPath`), and the session
+  picker pairs local sessions with the bridge by it
+  (`@208451566` `if(s.bridgeSessionId!==void 0)`). So a registry file
+  with `bridgeSessionId` set at collection time means that process was
+  under Remote Control when the collector ran. A record can outlive a
+  crashed process until the housekeeping sweep (`.last-cleanup`), so pair
+  the claim with the EDR's process list.
+- **Transcript lines.** `turnOrigin` takes one of
+  `@215584535`
+  `var zLt=["human","sdk","scheduled","task_notification","auto_continuation","peer","host_synthetic","system","unknown"]`;
+  no value names Remote Control, and a `remote-restart-auto-resume`
+  wake-up maps to `auto_continuation` (`@215585139`
+  `case"remote-restart-auto-resume":case"ci-monitor":return"auto_continuation"`).
+  The CLI derives `{kind:"bridge"}` for a human prompt sent over the
+  bridge (`@214818778`
+  `function Ioe(e,n){switch(e.kind){case"human":return n===!0?{kind:"bridge"}:{kind:"composer"}`),
+  but that value was seen only feeding the hook path; the observed
+  transcript lines carry `origin:{kind:"human"}`. Whether a bridge prompt
+  is marked on the transcript line is not determined.
+- **Historical.** `~/.claude.json` keys `hasUsedRemoteControl`,
+  `remoteControlUpsellSeenCount`, `remoteControlSurfacesSeen` and
+  `remoteDialogSeen` (`@224457799`
+  `return!e.hasUsedRemoteControl&&!ore()&&(e.remoteControlUpsellSeenCount??0)<c`,
+  `@224460306` `remoteControlSurfacesSeen:[...t,n]`, `@224188242` in the
+  global-config key list `"remoteDialogSeen"`; observed on a macOS
+  install that has used the feature) say the account used Remote Control on this host at some time.
+- **Not Remote Control.** `.session_ingress_token`,
+  `remote/.oauth_token` and `CLAUDE_CODE_REMOTE_SESSION_ID`
+  (`@206668216`
+  `setHasRemoteSessionOrContainerId(Boolean(a.CLAUDE_CODE_REMOTE_SESSION_ID||a.CLAUDE_CODE_CONTAINER_ID))`)
+  belong to cloud-hosted sessions, where the CLI itself
+  runs remotely; a different feature, whose files are already secret
+  globs.
+
+Issue 80 tracks the parser rows for these fields.
+
 ## 6. Timestamps, ids, project, branch, model, subagents
 
 - **Timestamps**: per record `timestamp`, ISO 8601 UTC with milliseconds

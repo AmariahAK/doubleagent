@@ -25,6 +25,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The Store build's `config.json` (OAuth token cache), `Cookies*`,
   `host-creds-*.json` and `ccd-session-secrets/*` are flagged
   `secret: true` under both package families (#73).
+- Claude Desktop's space-link signing key,
+  `spaces-present/<acct>/<org>/link-key` under the data directory, is
+  flagged `secret: true` (`*/Claude*/spaces-present/*/link-key`) (#73).
+- Claude Code's per-process session key,
+  `.claude/sessions/<pid>.<hash>.key` (and the same under a relocated
+  `.claude-*` home), is flagged `secret: true`; the `<pid>.json` beside it
+  stays unflagged (#76).
+- The official Linux `.deb` of Claude Desktop (2.31226.1) was checked
+  against the catalog on a real install: the data directory and its logs
+  are under `.config/Claude`, already collected as `claude-desktop`, and
+  the CLI the app downloads under `claude-code/<version>/<hash>/` is
+  excluded by `*/Claude*/claude-code` (#73).
 
 ### Fixed
 
