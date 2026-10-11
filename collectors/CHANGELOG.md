@@ -26,6 +26,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `host-creds-*.json` and `ccd-session-secrets/*` are flagged
   `secret: true` under both package families (#73).
 
+### Fixed
+
+- The PowerShell collector collects paths longer than 260 characters under
+  Windows PowerShell 5.1 without `LongPathsEnabled` on the host: every
+  file system call uses the extended-length form (`\\?\`), so a deep source
+  file is enumerated and its staged copy is written, where before the copy
+  failed as `error_copy` and a source tree past 260 characters was not
+  listed. Manifest paths and the archive layout are unchanged (#77).
+- In the PowerShell collector, a directory that a wildcard catalog segment
+  cannot list gets an `error_read` row instead of being skipped silently
+  (#77).
+
 ## [1.10.3] - 2026-10-07
 
 ### Added

@@ -13,8 +13,9 @@ retrieve from, then pull the `tar.gz`. Use `-q` to keep the console output to
 the final summary. Runtime on a developer workstation with several agents
 installed is well under a minute.
 
-On Windows, files held open by a running editor still copy and paths longer
-than 260 characters can fail under Windows PowerShell 5.1; see
+On Windows, files held open by a running editor still copy, and paths
+longer than 260 characters are collected without any host setting, under
+Windows PowerShell 5.1 as well; see
 [windows.md](windows.md#locked-files-and-long-paths).
 
 ## Fleet inventory

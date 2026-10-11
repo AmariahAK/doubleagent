@@ -24,15 +24,36 @@ function Check([string]$name, [scriptblock]$cond) {
   if ($res) { Ok $name } else { Bad ($name + $why) }
 }
 function P([string]$rel) { return (Join-Path $Root ($rel.Replace('/', $Sep))) }
+# The extended-length form of an absolute Windows path (\\?\C:\... or
+# \\?\UNC\server\share\...), which .NET and -LiteralPath open past 260
+# characters without LongPathsEnabled (#77); unchanged elsewhere. P stays
+# plain because checks compare it with manifest paths; the fixture helpers
+# write through XP.
+function XP([string]$p) {
+  if ($env:OS -ne 'Windows_NT' -or $p.StartsWith('\\?\')) { return $p }
+  if ($p.StartsWith('\\')) { return '\\?\UNC\' + $p.Substring(2) }
+  if ($p.Length -ge 3 -and $p[1] -eq ':') { return '\\?\' + $p }
+  return $p
+}
+# Every file Mk and MkBig wrote, in extended form, until Test-Made checks
+# and clears the list, so a fixture that could not be created is a FAIL.
+$script:Made = New-Object System.Collections.ArrayList
+function Test-Made {
+  $miss = @($script:Made | Where-Object { -not [System.IO.File]::Exists($_) })
+  $script:Made.Clear()
+  return , $miss
+}
 function Mk([string]$rel, [string]$content) {
-  $p = P $rel; $d = Split-Path -Parent $p
-  if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+  $p = XP (P $rel)
+  [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($p))
   [System.IO.File]::WriteAllText($p, $content, (New-Object System.Text.UTF8Encoding $false))
+  [void]$script:Made.Add($p)
 }
 function MkBig([string]$rel, [int]$bytes) {
-  $p = P $rel; $d = Split-Path -Parent $p
-  if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+  $p = XP (P $rel)
+  [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($p))
   $fs = [System.IO.File]::Create($p); $fs.SetLength($bytes); $fs.Close()
+  [void]$script:Made.Add($p)
 }
 
 Write-Output "== $($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion) on $([Environment]::OSVersion.Platform); work $Work"
@@ -698,6 +719,18 @@ $Names71 = @("amp&apos's.jsonl")
 if ($Sep -eq '/') { $Names71 += @('q"uote.jsonl', 'back\slash.jsonl', "tab`there.jsonl") }
 foreach ($n71 in $Names71) { [System.IO.File]::WriteAllText([System.IO.Path]::Combine($Dir71, $n71), '{"type":"user"}', (New-Object System.Text.UTF8Encoding $false)) }
 
+# 2026-10-10 long paths (#77): a transcript more than 260 characters below
+# the image root wherever the work dir is (five 40-character directory
+# names), so the collector must enumerate, copy and hash it, and stage it at
+# a longer path still, without LongPathsEnabled on Windows.
+$Deep77 = 'Users/alice/.claude/projects/-C-deep77/' + ((1..5 | ForEach-Object { 'd' + $_ + ('x' * 38) }) -join '/') + '/deep.jsonl'
+$Body77 = '{"type":"user","message":{"role":"user","content":"deep"},"timestamp":"2026-10-10T00:00:00Z"}'
+$Sha77 = ([BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash((New-Object System.Text.UTF8Encoding $false).GetBytes($Body77))) -replace '-', '').ToLower()
+Mk $Deep77 $Body77
+$Miss = Test-Made
+Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
+Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
+
 # ---- runner ---------------------------------------------------------------
 function Run([string]$name, [hashtable]$extra) {
   $o = Join-Path $Out $name
@@ -788,7 +821,7 @@ function Join-Sorted($list) {
 function Test-ArchivedHashes([string]$dir) {
   $n = 0; $bad = 0
   foreach ($row in ($script:Rows | Where-Object { $_.status -eq 'collected' -and $_.archive_path })) {
-    $f = Join-Path $dir ($row.archive_path.Replace('/', $Sep))
+    $f = XP (Join-Path $dir ($row.archive_path.Replace('/', $Sep)))
     if (-not (Test-Path -LiteralPath $f)) { $bad++; continue }
     if ((Get-FileHash -LiteralPath $f -Algorithm SHA256).Hash.ToLower() -ne $row.sha256) { $bad++ }
     if ((Get-Item -LiteralPath $f -Force).Length -ne $row.size) { $bad++ }
@@ -1034,6 +1067,11 @@ $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Nul
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
 $n = Test-ArchivedHashes $x
 Check "archived file bytes match manifest hashes ($n files)" { $n -gt 10 }
+# 2026-10-10 long paths (#77): the deep transcript, by its plain path.
+$r77 = Row $Deep77
+Check '#77 deep transcript collected as claude-code under its plain path' { $r77 -and $r77.status -eq 'collected' -and $r77.agent -eq 'claude-code' -and $r77.path -eq (P $Deep77) -and -not $r77.path.StartsWith('\\?\') -and $r77.error -eq '' }
+Check '#77 deep transcript sha256 matches its content and the archived bytes' { $r77 -and $r77.sha256 -eq $Sha77 -and (Get-FileHash -LiteralPath (XP (Join-Path $x ($r77.archive_path.Replace('/', $Sep)))) -Algorithm SHA256).Hash.ToLower() -eq $Sha77 }
+Check '#77 archive lists the deep transcript' { $r77 -and $r77.archive_path -eq ('fs/' + $Deep77) -and @($DefaultEntries | Where-Object { $_ -eq ('./' + $r77.archive_path) -or $_ -eq $r77.archive_path }).Count -eq 1 }
 
 # 2026-10-07 (#71): every line parses when read as UTF-8, and each name that
 # needs escaping comes back unchanged in path. The hash cross-check above
@@ -1166,6 +1204,7 @@ Check "#72 forced writer: platform tar extracts it and the bytes match the manif
 $tw72 = Read-TarGz $script:A.FullName
 Check '#72 forced writer: header checksums valid, two zero blocks at the end' { $tw72.badsum -eq 0 -and $tw72.end }
 if ($linkOk) { Check '#72 forced writer: the main image symlink is stored as a link' { @($tw72.members | Where-Object { $_.type -eq '2' -and $_.name -like '*antigravity-cli/cli.log' }).Count -eq 1 } }
+Check '#77 built-in tar writer stores the deep transcript' { $r77w = Row $Deep77; $r77w -and @($tw72.members | Where-Object { $_.type -eq '0' -and $_.name -eq ('./' + $r77w.archive_path) -and $_.sha256 -eq $Sha77 }).Count -eq 1 -and (Get-FileHash -LiteralPath (XP (Join-Path $x72 ($r77w.archive_path.Replace('/', $Sep)))) -Algorithm SHA256).Hash.ToLower() -eq $Sha77 }
 
 # The zip forced with CAC_ARCHIVER: entry names use /, are the writer's file
 # members without ./, and hold the manifest's bytes.
@@ -1193,6 +1232,7 @@ Check '#72 forced zip: archived bytes match the manifest' {
   } finally { $z.Dispose() }
   $badz -eq 0 -and $nz -gt 10
 }
+Check '#77 forced zip stores the deep transcript' { $r77z = Row $Deep77; $r77z -and $r77z.status -eq 'collected' -and @($ZipEntries | Where-Object { $_ -eq $r77z.archive_path }).Count -eq 1 }
 
 # ---- -NoSecrets -----------------------------------------------------------
 Run 'nosecrets' @{ NoSecrets = $true }
@@ -1438,8 +1478,8 @@ Check '#31 -NoProjects recorded' { ($ns | ConvertFrom-Json).options.no_projects 
 $LRoot = Join-Path $Work 'linkroot'
 function LinkP([string]$rel) { return (Join-Path $LRoot ($rel.Replace('/', $Sep))) }
 function LinkMk([string]$rel, [string]$content) {
-  $p = LinkP $rel; $d = Split-Path -Parent $p
-  if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+  $p = XP (LinkP $rel)
+  [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($p))
   [System.IO.File]::WriteAllText($p, $content, (New-Object System.Text.UTF8Encoding $false))
 }
 LinkMk 'home/eve/.gemini/antigravity-cli/log/real.log' 'LINK-TARGET-BYTES'
@@ -1452,7 +1492,7 @@ $mkFile = [System.IO.File].GetMethod('CreateSymbolicLink', [Type[]]@([string], [
 $mkDir = [System.IO.Directory].GetMethod('CreateSymbolicLink', [Type[]]@([string], [string]))
 # Invoke rejects PSObject-wrapped strings, so the arguments are cast.
 function MkLink($method, [string]$rel, [string]$target) {
-  $a = New-Object 'object[]' 2; $a[0] = [string](LinkP $rel); $a[1] = $target
+  $a = New-Object 'object[]' 2; $a[0] = [string](XP (LinkP $rel)); $a[1] = $target
   [void]$method.Invoke($null, $a)
 }
 try {
@@ -1649,8 +1689,18 @@ if ($Sep -eq '/' -and (& id -u) -ne '0') {
 # POSIX (not as root), a deny ACE for listing on Windows.
 $fd = P 'Users/alice/.config/pearai/User'
 $fdSet = $false
+# An enabled SeBackupPrivilege (an administrator's token in a Windows OpenSSH
+# session) lets the listing through the deny ACE, so the block is skipped
+# there, as it is for root on POSIX; on CI the privilege is present but
+# disabled. Read from whoami /priv, whose last column is the state.
+$backupPriv = $false
+if ($Sep -ne '/') {
+  try { $backupPriv = @(& whoami.exe /priv 2>$null | Where-Object { $_ -match '^\s*SeBackupPrivilege\s.*\sEnabled\s*$' }).Count -gt 0 } catch { }
+}
 if ($Sep -eq '/') {
   if ((& id -u) -ne '0') { & chmod 000 $fd; $fdSet = $true }
+} elseif ($backupPriv) {
+  Write-Output 'note: SeBackupPrivilege is enabled in this session and bypasses the deny ACE, #29 x #32 unreadable case-variant check skipped'
 } else {
   $fdAcl = Get-Acl -LiteralPath $fd
   $fdRule = New-Object System.Security.AccessControl.FileSystemAccessRule([Security.Principal.WindowsIdentity]::GetCurrent().User, 'ListDirectory', 'Deny')
@@ -1669,7 +1719,7 @@ if ($fdSet) {
   } else {
     Check '#29 x #32 the readable spelling is still collected' { (HasPath 'Users/alice/.config/PearAI/User/case29-upper.json') }
   }
-} else { Write-Output 'note: #29 x #32 unreadable case-variant check needs a non-root user on POSIX, skipped' }
+} elseif ($Sep -eq '/') { Write-Output 'note: #29 x #32 unreadable case-variant check needs a non-root user on POSIX, skipped' }
 
 # 2026-10-10 Claude Desktop Store build (#73)
 # The Store (MSIX) build keeps userData in the package's virtualised
@@ -1678,6 +1728,7 @@ if ($fdSet) {
 # profile with those trees; the */Claude*/ secret and exclusion globs must
 # apply under the new bases, and the Packages secret globs must flag the
 # token cache and cookies of both package families.
+$script:Made.Clear()
 $root73 = $Root
 $Root = Join-Path $Work 'root73'
 $p73 = 'Users/alice/AppData/Local/Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude'
@@ -1700,6 +1751,8 @@ Mk "$p73/Cache/data_0" 'cache'
 Mk "$q73/config.json" '{"oauth:tokenCache":"enc"}'
 Mk $l73 '[MSIX] Filesystem virtualization active'
 Mk $d73 '{"oauth:tokenCache":"enc"}'
+$Miss = Test-Made
+Check "#73 every Store build fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 function Secret73([string]$rel) { $r = Row $rel; return ($r -and $r.agent -eq 'claude-desktop' -and $r.secret -eq $true -and $r.status -eq 'collected') }
 function Plain73([string]$rel) { $r = Row $rel; return ($r -and $r.agent -eq 'claude-desktop' -and $r.secret -eq $false -and $r.status -eq 'collected') }
 try {
@@ -1728,6 +1781,6 @@ try {
   Check '#73 Full collects the Packages claude.exe and Cache' { (StatusOf "$p73/claude-code/2.1.295/abc/claude.exe") -eq 'collected' -and (StatusOf "$p73/Cache/data_0") -eq 'collected' }
 } finally { $Root = $root73 }
 
-if ($script:fail -eq 0) { Write-Output "ALL PASSED ($($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion))"; Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue }
+if ($script:fail -eq 0) { Write-Output "ALL PASSED ($($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion))"; Remove-Item -LiteralPath (XP $Work) -Recurse -Force -ErrorAction SilentlyContinue }
 else { Write-Output "FAILURES; work dir kept: $Work" }
 exit $script:fail

@@ -1611,10 +1611,57 @@ $excludeGlobs = @(Get-TableLines $EXCLUDES); if ($Full) { $excludeGlobs = @() }
 $script:ExcludeRegex = ConvertTo-TableRegex $excludeGlobs
 $script:SecretRegex = ConvertTo-TableRegex @($SECRET_GLOBS -split "`r?`n" | Where-Object { $_ -ne '' })
 
+# Paths longer than 260 characters (#77). Windows PowerShell 5.1 runs on
+# .NET Framework, where a plain path past MAX_PATH fails unless the host has
+# LongPathsEnabled set; the extended-length form (\\?\C:\... or
+# \\?\UNC\server\share\...) works without it, under 5.1 and 7. Every file
+# system call (.NET and -LiteralPath alike) gets the extended form on
+# Windows; everything the collector writes out (manifest path, archive_path,
+# target, collection.json, the log, stdout) keeps the plain form, and tar.exe
+# is given plain paths. Elsewhere (PowerShell 7 on Linux or macOS) and for a
+# relative path both helpers return their argument unchanged.
+$script:UseExtendedPaths = ($env:OS -eq 'Windows_NT')
+# A . or .. segment or a doubled separator, which the prefix stops Win32 from
+# resolving, so ConvertTo-ExtendedPath resolves it first.
+$script:ExtendedNormRx = New-Object System.Text.RegularExpressions.Regex('\\\.{1,2}(?:\\|$)|\\\\')
+function ConvertTo-ExtendedPath([string]$p) {
+  if (-not $script:UseExtendedPaths -or -not $p -or $p.StartsWith('\\?\', [System.StringComparison]::Ordinal)) { return $p }
+  $q = $p.Replace('/', '\')
+  if ($q.Length -ge 3 -and $q[1] -eq ':' -and $q[2] -eq '\') { $pre = '\\?\'; $body = $q; $keep = 1 }
+  elseif ($q.Length -gt 2 -and $q.StartsWith('\\', [System.StringComparison]::Ordinal) -and $q[2] -ne '?' -and $q[2] -ne '.') { $pre = '\\?\UNC\'; $body = $q.Substring(2); $keep = 2 }
+  else { return $p }
+  if ($script:ExtendedNormRx.IsMatch($body)) {
+    # $keep leading segments (the drive, or server and share) are never popped.
+    $segs = New-Object System.Collections.ArrayList
+    foreach ($s in $body.Split([char]'\')) {
+      if ($segs.Count -lt $keep) { [void]$segs.Add($s); continue }
+      if ($s -eq '' -or $s -eq '.') { continue }
+      if ($s -eq '..') { if ($segs.Count -gt $keep) { $segs.RemoveAt($segs.Count - 1) }; continue }
+      [void]$segs.Add($s)
+    }
+    $body = [string]::Join('\', [string[]]$segs.ToArray())
+    if ($segs.Count -le $keep) { $body += '\' }
+  }
+  return $pre + $body
+}
+function ConvertFrom-ExtendedPath([string]$p) {
+  if (-not $p) { return $p }
+  if ($p.StartsWith('\\?\UNC\', [System.StringComparison]::OrdinalIgnoreCase)) { return '\\' + $p.Substring(8) }
+  if ($p.StartsWith('\\?\', [System.StringComparison]::Ordinal)) { return $p.Substring(4) }
+  return $p
+}
+# An exception message names the path it was given, so one about an extended
+# path is turned back into the plain form before it reaches a row or the log.
+function ConvertFrom-ExtendedText([string]$s) {
+  if (-not $s -or $s.IndexOf('\\?\', [System.StringComparison]::Ordinal) -lt 0) { return $s }
+  return $s.Replace('\\?\UNC\', '\\').Replace('\\?\', '')
+}
+
 # Test-Path throws a real UnauthorizedAccessException on protected profiles
 # even with -ErrorAction, so probe through .NET which never throws.
 function Test-PathQuiet([string]$p, [string]$kind) {
   if (-not $p) { return $false }
+  $p = ConvertTo-ExtendedPath $p
   try {
     if ($kind -eq 'Leaf') { return [System.IO.File]::Exists($p) }
     if ($kind -eq 'Container') { return [System.IO.Directory]::Exists($p) }
@@ -1637,7 +1684,7 @@ function Join-PathSafe([string]$a, [string]$b) {
 # written, so distinct directories stay distinct.
 function Get-OnDiskName([string]$dir, [string]$seg) {
   try {
-    $found = @([System.IO.Directory]::GetFileSystemEntries($dir, $seg))
+    $found = @([System.IO.Directory]::GetFileSystemEntries((ConvertTo-ExtendedPath $dir), $seg))
     if ($found.Count -eq 1) {
       $name = [System.IO.Path]::GetFileName($found[0])
       if ([string]::Equals($name, $seg, [System.StringComparison]::OrdinalIgnoreCase)) { return $name }
@@ -1647,7 +1694,11 @@ function Get-OnDiskName([string]$dir, [string]$seg) {
 }
 
 # Expand a catalog glob (segments split on /, * does not cross separators)
-# under a base directory. Returns full paths of existing items.
+# under a base directory. Returns full paths of existing items. A directory
+# that cannot be listed for a wildcard segment is recorded in
+# $script:GlobReadErrors (path -> message), which Invoke-CatalogCollection
+# turns into error_read rows.
+$script:GlobReadErrors = [ordered]@{}
 function Expand-Glob([string]$base, [string]$pattern) {
   $segments = $pattern -split '/'
   $current = @($base)
@@ -1659,9 +1710,12 @@ function Expand-Glob([string]$base, [string]$pattern) {
       if ($isWild) {
         $rx = Convert-GlobToRegex $seg $false
         try {
-          $children = Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop
-        } catch { $children = @() }
-        foreach ($child in $children) { if ($child.Name -match $rx) { $next += $child.FullName } }
+          $children = Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $dir) -Force -ErrorAction Stop
+        } catch {
+          $children = @()
+          if (-not $script:GlobReadErrors.Contains($dir)) { $script:GlobReadErrors[$dir] = (ConvertFrom-ExtendedText $_.Exception.Message) }
+        }
+        foreach ($child in $children) { if ($child.Name -match $rx) { $next += (ConvertFrom-ExtendedPath $child.FullName) } }
       } else {
         $candidate = Join-PathSafe $dir $seg
         if (Test-PathQuiet $candidate 'Any') { $next += (Join-PathSafe $dir (Get-OnDiskName $dir $seg)) }
@@ -1693,7 +1747,7 @@ function Get-Epoch($dt) {
 $script:OwnerNames = @{}
 function Get-OwnerName([string]$path) {
   try {
-    $sid = [System.IO.File]::GetAccessControl($path, [System.Security.AccessControl.AccessControlSections]::Owner).GetOwner([System.Security.Principal.SecurityIdentifier])
+    $sid = [System.IO.File]::GetAccessControl((ConvertTo-ExtendedPath $path), [System.Security.AccessControl.AccessControlSections]::Owner).GetOwner([System.Security.Principal.SecurityIdentifier])
     $key = $sid.Value
   } catch { return '' }
   if (-not $script:OwnerNames.ContainsKey($key)) {
@@ -1711,7 +1765,7 @@ $script:Sha256 = [System.Security.Cryptography.SHA256]::Create()
 function Get-FileSha256([string]$path) {
   $fs = $null
   try {
-    $fs = New-Object System.IO.FileStream($path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+    $fs = New-Object System.IO.FileStream((ConvertTo-ExtendedPath $path), [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
     return [System.BitConverter]::ToString($script:Sha256.ComputeHash($fs)).Replace('-', '').ToLowerInvariant()
   } catch { return '' }
   finally { if ($fs) { $fs.Dispose() } }
@@ -1724,8 +1778,11 @@ function Get-FileSha256([string]$path) {
 # a file just written waits for the antivirus scan of it on Windows, which
 # made the hash the slowest step. $item is the source's pre-copy Get-Item
 # from Add-File; the copy gets its timestamps after the hash has read it.
+# Both paths are opened in the extended form, so neither side is limited to
+# 260 characters (#77).
 function Copy-FileShared([string]$src, [string]$dst, $item) {
   $in = $null; $out = $null; $sha = ''
+  $src = ConvertTo-ExtendedPath $src; $dst = ConvertTo-ExtendedPath $dst
   try {
     $in = New-Object System.IO.FileStream($src, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
     $out = New-Object System.IO.FileStream($dst, [System.IO.FileMode]::Create, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
@@ -1749,7 +1806,7 @@ function Copy-FileShared([string]$src, [string]$dst, $item) {
 
 function Get-DirSize([string]$dir) {
   try {
-    $m = Get-ChildItem -LiteralPath $dir -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
+    $m = Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $dir) -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
     if ($m.Sum) { return [int64]$m.Sum } else { return [int64]0 }
   } catch { return [int64]0 }
 }
@@ -1828,23 +1885,26 @@ function Invoke-Mklink([string]$dest, [string]$target, [bool]$isDir) {
   return "$msg (mklink exit $($pr.ExitCode))"
 }
 
-# Makes the link at $dest; returns '' on success, otherwise the reason.
+# Makes the link at $dest; returns '' on success, otherwise the reason. The
+# link is made at the extended form of $dest (mklink accepts it too) and
+# recorded under the plain one, which the tar writer compares with the stage.
 function Invoke-CreateSymlink([string]$dest, [string]$target, [bool]$isDir) {
   $api = Get-LinkApi
+  $xdest = ConvertTo-ExtendedPath $dest
   try {
     if ($api -eq 'dotnet') {
       $m = $script:LinkFileMethod; if ($isDir) { $m = $script:LinkDirMethod }
       # Plain strings: Invoke rejects PSObject-wrapped arguments.
-      $margs = New-Object 'object[]' 2; $margs[0] = [string]$dest; $margs[1] = [string]$target
+      $margs = New-Object 'object[]' 2; $margs[0] = [string]$xdest; $margs[1] = [string]$target
       [void]$m.Invoke($null, $margs)
     } elseif ($api -eq 'mklink') {
-      $why = Invoke-Mklink $dest $target $isDir
-      if ($why -ne '') { return $why }
+      $why = Invoke-Mklink $xdest $target $isDir
+      if ($why -ne '') { return (ConvertFrom-ExtendedText $why) }
     } else { return $script:LinkApiError }
   } catch {
     # Invoke wraps the IOException; report the innermost message.
     $e = $_.Exception; while ($null -ne $e.InnerException) { $e = $e.InnerException }
-    return $e.Message
+    return (ConvertFrom-ExtendedText $e.Message)
   }
   [void]$script:StagedLinks.Add(@($dest, $isDir, $target))
   return ''
@@ -1860,13 +1920,13 @@ function Add-StagedLink($item, [string]$dest) {
   $isDir = ($env:OS -eq 'Windows_NT') -and (($item.Attributes -band [System.IO.FileAttributes]::Directory) -ne 0)
   $why = ''
   try {
-    $d = Split-Path -Path $dest -Parent
-    if (-not (Test-PathQuiet $d 'Any')) { New-Item -ItemType Directory -Path $d -Force -ErrorAction Stop | Out-Null }
+    $d = [System.IO.Path]::GetDirectoryName($dest)
+    if (-not (Test-PathQuiet $d 'Any')) { [void][System.IO.Directory]::CreateDirectory((ConvertTo-ExtendedPath $d)) }
     $why = Invoke-CreateSymlink $dest $vals[0] $isDir
-  } catch { $why = $_.Exception.Message }
+  } catch { $why = ConvertFrom-ExtendedText $_.Exception.Message }
   if ($why -eq '') { return '' }
   $script:LinkCounts.failed++
-  Write-CollectorLog "symlink not recreated: $($item.FullName): $why"
+  Write-CollectorLog "symlink not recreated: $(ConvertFrom-ExtendedPath $item.FullName): $why"
   return "not recreated in the archive: $why"
 }
 
@@ -1878,8 +1938,9 @@ function Add-StagedLink($item, [string]$dest) {
 function Clear-StagedLinks {
   $left = 0
   foreach ($l in @($script:StagedLinks)) {
-    try { if ($l[1]) { [System.IO.Directory]::Delete($l[0]) } else { [System.IO.File]::Delete($l[0]) } }
-    catch { $left++; [System.IO.File]::AppendAllText($LogPath, "could not remove staged link $($l[0]): $($_.Exception.Message)`n", $Utf8NoBom) }
+    $xl = ConvertTo-ExtendedPath $l[0]
+    try { if ($l[1]) { [System.IO.Directory]::Delete($xl) } else { [System.IO.File]::Delete($xl) } }
+    catch { $left++; [System.IO.File]::AppendAllText($XLogPath, "could not remove staged link $($l[0]): $(ConvertFrom-ExtendedText $_.Exception.Message)`n", $Utf8NoBom) }
   }
   $script:StagedLinks.Clear()
   return $left
@@ -1888,8 +1949,8 @@ function Clear-StagedLinks {
 # After a late fall back to zip the staged links are gone, so their rows lose
 # archive_path and say why; the manifest is rewritten before it is archived.
 function Clear-LinkArchivePaths([string]$reason) {
-  $lines = [System.IO.File]::ReadAllLines($ManifestPath, $Utf8NoBom)
-  $w = New-Object System.IO.StreamWriter($ManifestPath, $false, $Utf8NoBom)
+  $lines = [System.IO.File]::ReadAllLines($XManifestPath, $Utf8NoBom)
+  $w = New-Object System.IO.StreamWriter($XManifestPath, $false, $Utf8NoBom)
   try {
     foreach ($ln in $lines) {
       if ($ln.Contains('"status":"symlink"')) {
@@ -1914,11 +1975,13 @@ $ArchiverLabels = @{ tar = 'tar.exe'; writer = 'PowerShell tar writer'; zip = 'Z
 # source: a reparse point (a staged link) is an entry of its own and never
 # descended. Each entry is @(name, FileSystemInfo, kind) with kind d, f or l;
 # names are relative to the stage with / separators, and a directory's name
-# ends in /. A directory comes before its contents.
+# ends in /. A directory comes before its contents. The tree is listed through
+# the extended form of $root, so every FileSystemInfo.FullName is extended
+# and opens past 260 characters (#77).
 function Get-StageEntries([string]$root) {
   $out = New-Object System.Collections.ArrayList
   $stack = New-Object System.Collections.Stack
-  $stack.Push(@('', (New-Object System.IO.DirectoryInfo($root))))
+  $stack.Push(@('', (New-Object System.IO.DirectoryInfo((ConvertTo-ExtendedPath $root)))))
   $rp = [System.IO.FileAttributes]::ReparsePoint; $dirAttr = [System.IO.FileAttributes]::Directory
   while ($stack.Count -gt 0) {
     $top = $stack.Pop(); $prefix = $top[0]
@@ -2036,11 +2099,11 @@ function Write-TarGz([string]$stage, [string]$archive) {
   $buf = New-Object byte[] 1048576
   $fs = $null; $out = $null
   try {
-    $fs = New-Object System.IO.FileStream($archive, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None, 65536)
+    $fs = New-Object System.IO.FileStream((ConvertTo-ExtendedPath $archive), [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None, 65536)
     $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionLevel]::Optimal)
     # Headers are 512-byte writes; the buffer hands the compressor larger blocks.
     $out = New-Object System.IO.BufferedStream($gz, 1048576)
-    Write-TarMember $out './' '5' '0000755' 0 (Get-UnixTime (New-Object System.IO.DirectoryInfo($stage))) ''
+    Write-TarMember $out './' '5' '0000755' 0 (Get-UnixTime (New-Object System.IO.DirectoryInfo((ConvertTo-ExtendedPath $stage)))) ''
     $fileMode = [System.IO.FileMode]::Open; $readAccess = [System.IO.FileAccess]::Read
     $nonAscii = $script:TarNonAscii
     foreach ($e in $entries) {
@@ -2056,7 +2119,7 @@ function Write-TarGz([string]$stage, [string]$archive) {
           if ($p -and $p.Value) { $link = [string]$p.Value }
           else { try { $v = @((Get-Item -LiteralPath $info.FullName -Force -ErrorAction Stop).Target); if ($v.Count -eq 1) { $link = [string]$v[0] } } catch { } }
         }
-        if (-not $link) { throw "staged link has no target: $($info.FullName)" }
+        if (-not $link) { throw "staged link has no target: $(ConvertFrom-ExtendedPath $info.FullName)" }
       } else {
         $type = '0'; $mode = '0000644'
         $src = [System.IO.File]::Open($info.FullName, $fileMode, $readAccess, $share)
@@ -2077,7 +2140,7 @@ function Write-TarGz([string]$stage, [string]$archive) {
           while ($left -gt 0) {
             $want = $buf.Length; if ($left -lt $want) { $want = [int]$left }
             $n = $src.Read($buf, 0, $want)
-            if ($n -le 0) { throw "staged file shrank while archiving: $($info.FullName)" }
+            if ($n -le 0) { throw "staged file shrank while archiving: $(ConvertFrom-ExtendedPath $info.FullName)" }
             $out.Write($buf, 0, $n); $left -= $n
           }
           $pad = (512 - $size % 512) % 512; if ($pad) { $out.Write($script:TarZero, 0, $pad) }
@@ -2103,10 +2166,10 @@ function Write-StageZip([string]$stage, [string]$archive) {
   $level = [System.IO.Compression.CompressionLevel]::Optimal
   $zip = $null
   try {
-    $zip = [System.IO.Compression.ZipFile]::Open($archive, 'Create')
+    $zip = [System.IO.Compression.ZipFile]::Open((ConvertTo-ExtendedPath $archive), 'Create')
     foreach ($e in $entries) {
       $info = $e[1]; $kind = $e[2]
-      if ($kind -eq 'l') { [System.IO.File]::AppendAllText($LogPath, "zip: staged link left out: $($info.FullName)`n", $Utf8NoBom); continue }
+      if ($kind -eq 'l') { [System.IO.File]::AppendAllText($XLogPath, "zip: staged link left out: $(ConvertFrom-ExtendedPath $info.FullName)`n", $Utf8NoBom); continue }
       if ($kind -eq 'd' -and $hasChild.Contains($e[0])) { continue }
       $ze = $zip.CreateEntry($e[0], $level)
       # A zip time holds 1980 to 2107 only; outside that the entry keeps the default.
@@ -2137,20 +2200,20 @@ $Project = $resolvedProjects
 $Mode = 'live'
 if ($Root -ne '') {
   if (-not (Test-PathQuiet $Root 'Container')) { Write-Error "Root is not a directory: $Root"; exit 2 }
-  $Root = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\', '/')
+  $Root = (ConvertFrom-ExtendedPath (Resolve-Path -LiteralPath (ConvertTo-ExtendedPath $Root)).ProviderPath).TrimEnd('\', '/')
   $Mode = 'image'
 }
 # -Inventory writes nothing: no output directory, staging, log or archive.
 if (-not $Inventory) {
-if (-not (Test-PathQuiet $OutputDir 'Any')) { try { New-Item -ItemType Directory -Path $OutputDir -Force -ErrorAction Stop | Out-Null } catch { Write-Error "Cannot create output dir: $OutputDir"; exit 2 } }
-$OutputDir = (Resolve-Path -LiteralPath $OutputDir).Path.TrimEnd('\', '/')
+if (-not (Test-PathQuiet $OutputDir 'Any')) { try { New-Item -ItemType Directory -Path (ConvertTo-ExtendedPath $OutputDir) -Force -ErrorAction Stop | Out-Null } catch { Write-Error "Cannot create output dir: $OutputDir"; exit 2 } }
+$OutputDir = (ConvertFrom-ExtendedPath (Resolve-Path -LiteralPath (ConvertTo-ExtendedPath $OutputDir)).ProviderPath).TrimEnd('\', '/')
 if ($OutputDir -eq '') { $OutputDir = $Sep }
 # Same startup check as the sh collector's [ -w ]: create and remove a probe
 # file, so a read-only directory fails here rather than after the walk.
 $probe = Join-PathSafe $OutputDir ".write-probe-$([guid]::NewGuid().ToString('N'))"
-try { $fs = [System.IO.File]::Open($probe, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write); $fs.Close() }
+try { $fs = [System.IO.File]::Open((ConvertTo-ExtendedPath $probe), [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write); $fs.Close() }
 catch { Write-Error "Output dir not writable: $OutputDir"; exit 2 }
-try { [System.IO.File]::Delete($probe) } catch { }
+try { [System.IO.File]::Delete((ConvertTo-ExtendedPath $probe)) } catch { }
 }
 
 $StartTs = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
@@ -2162,6 +2225,11 @@ $Stage = Join-PathSafe $OutputDir ".stage-$Name"
 $LogPath = Join-PathSafe $OutputDir "$Name.log"
 $ManifestPath = Join-PathSafe $OutputDir "$Name.manifest.jsonl"
 $SummaryPath = Join-PathSafe $OutputDir "$Name.collection.json"
+# The extended forms, for .NET calls; the plain ones are what is printed.
+$XStage = ConvertTo-ExtendedPath $Stage
+$XLogPath = ConvertTo-ExtendedPath $LogPath
+$XManifestPath = ConvertTo-ExtendedPath $ManifestPath
+$XSummaryPath = ConvertTo-ExtendedPath $SummaryPath
 
 $TarExe = $null
 $tarCmd = $null
@@ -2191,9 +2259,9 @@ if ($Archivers.Count -gt 0 -and $Archivers[0] -eq 'zip') { $Archive = Join-PathS
 $script:LogWriter = $null
 $script:ManifestWriter = $null
 if (-not $Inventory) {
-  New-Item -ItemType Directory -Path (Join-PathSafe $Stage 'fs') -Force | Out-Null
-  $script:LogWriter = New-Object System.IO.StreamWriter($LogPath, $false, $Utf8NoBom)
-  $script:ManifestWriter = New-Object System.IO.StreamWriter($ManifestPath, $false, $Utf8NoBom)
+  [void][System.IO.Directory]::CreateDirectory((Join-PathSafe $XStage 'fs'))
+  $script:LogWriter = New-Object System.IO.StreamWriter($XLogPath, $false, $Utf8NoBom)
+  $script:ManifestWriter = New-Object System.IO.StreamWriter($XManifestPath, $false, $Utf8NoBom)
   $script:LogWriter.AutoFlush = $true
 }
 $script:Counts = @{ collected = 0; symlink = 0; skipped_excluded = 0; skipped_size = 0; skipped_secret = 0; error_copy = 0; skipped_unmatched_volume = 0; error_read = 0; bytes = [int64]0 }
@@ -2330,11 +2398,15 @@ function Add-File([string]$user, [string]$homeDir, [string]$agent, $item) {
     if ((($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) -and -not $item.PSIsContainer) { Add-InvFile $agent $item }
     return
   }
-  $full = $item.FullName
+  # $item comes from an extended path on Windows (Add-Tree, Add-Path), so
+  # $xfull opens past 260 characters and $full is what the row records.
+  $xfull = $item.FullName
+  $full = ConvertFrom-ExtendedPath $xfull
   $hrel = Get-RelPath $homeDir $full
   $arel = Get-ArchiveRel $full
   # Join-PathSafe and Get-Epoch, inlined: this runs once per file.
-  $dest = $Stage + $Sep + $arel.Replace('\', $Sep).Replace('/', $Sep)
+  $destRel = $Sep + $arel.Replace('\', $Sep).Replace('/', $Sep)
+  $dest = $Stage + $destRel; $xdest = $XStage + $destRel
   $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
   $size = [int64]0; if (-not $item.PSIsContainer) { try { $size = [int64]$item.Length } catch { } }
   try {
@@ -2355,16 +2427,16 @@ function Add-File([string]$user, [string]$homeDir, [string]$agent, $item) {
     $status = 'skipped_size'
   } else {
     try {
-      $d = [System.IO.Path]::GetDirectoryName($dest)
+      $d = [System.IO.Path]::GetDirectoryName($xdest)
       if (-not $script:StagedDirs.Contains($d)) {
-        if (-not (Test-PathQuiet $d 'Any')) { New-Item -ItemType Directory -Path $d -Force -ErrorAction Stop | Out-Null }
+        if (-not (Test-PathQuiet $d 'Any')) { [void][System.IO.Directory]::CreateDirectory($d) }
         [void]$script:StagedDirs.Add($d)
       }
-      $sha = Copy-FileShared $full $dest $item
+      $sha = Copy-FileShared $xfull $xdest $item
     } catch {
-      $status = 'error_copy'; $err = $_.Exception.Message
+      $status = 'error_copy'; $err = ConvertFrom-ExtendedText $_.Exception.Message
       Write-CollectorLog "copy failed: ${full}: $err"
-      try { if (Test-PathQuiet $dest 'Any') { Remove-Item -LiteralPath $dest -Force } } catch { }
+      try { if (Test-PathQuiet $xdest 'Any') { Remove-Item -LiteralPath $xdest -Force } } catch { }
     }
   }
   $apath = ''; if ($status -eq 'collected' -or ($status -eq 'symlink' -and $err -eq '')) { $apath = $arel }
@@ -2373,7 +2445,7 @@ function Add-File([string]$user, [string]$homeDir, [string]$agent, $item) {
 
 function Add-Excluded([string]$user, [string]$homeDir, [string]$agent, $item) {
   if ($Inventory) { return }
-  $full = $item.FullName
+  $full = ConvertFrom-ExtendedPath $item.FullName
   if ($item.PSIsContainer) { $type = 'dir'; $size = Get-DirSize $full } else { $type = 'file'; $size = [int64]0; try { $size = [int64]$item.Length } catch { } }
   Write-Row $user $homeDir $agent $full '' $type $size (Get-Epoch $item.LastWriteTimeUtc) (Get-Epoch $item.LastAccessTimeUtc) 0 (Get-Epoch $item.CreationTimeUtc) '' ([string]$item.Attributes) '' $false 'skipped_excluded' '' ''
 }
@@ -2382,8 +2454,8 @@ function Add-Excluded([string]$user, [string]$homeDir, [string]$agent, $item) {
 # be listed. On Linux and macOS Get-ChildItem also fails on a directory that
 # can be listed but not entered, so this matches the sh collector's -r and -x tests.
 function Get-DirReadError([string]$dir) {
-  try { [void]@(Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop); return '' }
-  catch { return $_.Exception.Message }
+  try { [void]@(Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $dir) -Force -ErrorAction Stop); return '' }
+  catch { return (ConvertFrom-ExtendedText $_.Exception.Message) }
 }
 
 # One error_read row (type dir, size 0) for a directory that could not be walked.
@@ -2392,31 +2464,35 @@ function Add-ReadError([string]$user, [string]$homeDir, [string]$agent, [string]
   if ($Inventory) { return }
   $mt = 0; $at = 0; $bt = 0; $attrs = ''
   try {
-    $it = Get-Item -LiteralPath $dir -Force -ErrorAction Stop
+    $it = Get-Item -LiteralPath (ConvertTo-ExtendedPath $dir) -Force -ErrorAction Stop
     $mt = Get-Epoch $it.LastWriteTimeUtc; $at = Get-Epoch $it.LastAccessTimeUtc; $bt = Get-Epoch $it.CreationTimeUtc; $attrs = [string]$it.Attributes
   } catch { }
   $owner = ''; if (Test-PathQuiet $dir 'Container') { $owner = Get-OwnerName $dir }
   Write-Row $user $homeDir $agent $dir '' 'dir' 0 $mt $at 0 $bt $owner $attrs '' $false 'error_read' '' $err
 }
 
+# Lists $dir through its extended form, so a tree deeper than 260 characters
+# is walked on 5.1 without LongPathsEnabled (#77); a directory that cannot be
+# listed gets an error_read row, never silence.
 function Add-Tree([string]$user, [string]$homeDir, [string]$agent, [string]$dir) {
   $children = @()
-  try { $children = @(Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop) }
-  catch { $script:WalkErrors++; Add-ReadError $user $homeDir $agent $dir $_.Exception.Message; return }
+  try { $children = @(Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $dir) -Force -ErrorAction Stop) }
+  catch { $script:WalkErrors++; Add-ReadError $user $homeDir $agent $dir (ConvertFrom-ExtendedText $_.Exception.Message); return }
   foreach ($child in $children) {
+    $cfull = ConvertFrom-ExtendedPath $child.FullName
     # A path matched by another catalog entry is collected under that entry.
-    if ($script:ClaimedPaths.ContainsKey($child.FullName)) { continue }
-    $hrel = Get-RelPath $homeDir $child.FullName
+    if ($script:ClaimedPaths.ContainsKey($cfull)) { continue }
+    $hrel = Get-RelPath $homeDir $cfull
     if ($script:ExcludeRegex.IsMatch($hrel)) { Add-Excluded $user $homeDir $agent $child; continue }
     $isLink = (($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
-    if ($child.PSIsContainer -and -not $isLink) { Add-Tree $user $homeDir $agent $child.FullName }
+    if ($child.PSIsContainer -and -not $isLink) { Add-Tree $user $homeDir $agent $cfull }
     else { Add-File $user $homeDir $agent $child }
   }
 }
 
 function Add-Path([string]$user, [string]$homeDir, [string]$agent, [string]$path) {
   $item = $null
-  try { $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop } catch { $script:WalkErrors++; Write-CollectorLog "stat failed: ${path}: $($_.Exception.Message)"; return }
+  try { $item = Get-Item -LiteralPath (ConvertTo-ExtendedPath $path) -Force -ErrorAction Stop } catch { $script:WalkErrors++; Write-CollectorLog "stat failed: ${path}: $(ConvertFrom-ExtendedText $_.Exception.Message)"; return }
   $hrel = Get-RelPath $homeDir $path
   if ($script:ExcludeRegex.IsMatch($hrel)) { Add-Excluded $user $homeDir $agent $item; return }
   $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
@@ -2434,15 +2510,34 @@ function Invoke-CatalogCollection([string]$user, [string]$base, [string]$table, 
   # keeps it and the later one is logged and skipped (an empty agent below).
   $claimed = @()
   $script:ClaimedPaths = Get-ClaimTable
+  # Directories a wildcard segment could not list, with the first agent whose
+  # line needed them.
+  $globErrors = [ordered]@{}
   foreach ($line in (Get-TableLines $table)) {
     $parts = @($line -split '\|', 2)
     if ($parts.Count -lt 2) { continue }
     $agent = $parts[0]; $pattern = $parts[1]
+    $script:GlobReadErrors = [ordered]@{}
     foreach ($m in @(Expand-Glob $base $pattern)) {
       if ($script:ClaimedPaths.ContainsKey($m)) { $claimed += ,@('', $m, "$agent|$pattern"); continue }
       $claimed += ,@($agent, $m, $pattern)
       $script:ClaimedPaths[$m] = $true
     }
+    foreach ($gd in @($script:GlobReadErrors.Keys)) { if (-not $globErrors.Contains($gd)) { $globErrors[$gd] = @($agent, $script:GlobReadErrors[$gd]) } }
+  }
+  $script:GlobReadErrors = [ordered]@{}
+  # Each gets one error_read row, so a catalog match below it is never lost
+  # silently. The base itself was already checked by Get-DirReadError, and a
+  # directory at or under a matched path gets its row from Add-Tree.
+  foreach ($gd in @($globErrors.Keys)) {
+    if ($gd.TrimEnd('\', '/') -eq $base.TrimEnd('\', '/')) { continue }
+    $under = $false
+    foreach ($cp in $script:ClaimedPaths.Keys) {
+      if ($gd -eq $cp -or $gd.StartsWith($cp + $Sep, [System.StringComparison]::OrdinalIgnoreCase)) { $under = $true; break }
+    }
+    if ($under) { continue }
+    $script:WalkErrors++
+    Add-ReadError $user $base $globErrors[$gd][0] $gd $globErrors[$gd][1]
   }
   foreach ($pair in $claimed) {
     $agent = $pair[0]; $m = $pair[1]
@@ -2493,7 +2588,7 @@ function Get-UserHomes {
   foreach ($h in $homes) {
     $hp = $h.home.TrimEnd('\', '/')
     if ($SkipHomes -contains $h.user -or $h.user -match $SkipHomeRe) { continue }
-    if ([System.IO.File]::Exists($hp)) { continue }
+    if ([System.IO.File]::Exists((ConvertTo-ExtendedPath $hp))) { continue }
     if ($wanted.Count -gt 0 -and -not ($wanted -contains $h.user)) { continue }
     if (-not (Test-PathQuiet $hp 'Container')) { if (-not ($script:InaccessibleHomes -contains $hp)) { $script:InaccessibleHomes += $hp }; continue }
     $key = $hp.ToLowerInvariant()
@@ -2526,10 +2621,10 @@ foreach ($ih in $script:InaccessibleHomes) { Write-CollectorLog "profile not acc
 # counted). Each denied or unlistable home gets one error_read row.
 $script:DeniedHomes = @($script:InaccessibleHomes | Where-Object {
   $leaf = Split-Path -Leaf $_; $parent = Split-Path -Parent $_
-  try { @([System.IO.Directory]::GetDirectories($parent, $leaf)).Count -gt 0 } catch { $false } })
+  try { @([System.IO.Directory]::GetDirectories((ConvertTo-ExtendedPath $parent), $leaf)).Count -gt 0 } catch { $false } })
 if (-not $Inventory) {
   foreach ($dh in $script:DeniedHomes) {
-    $e = 'access denied'; try { [void](Get-Item -LiteralPath $dh -Force -ErrorAction Stop) } catch { $e = $_.Exception.Message }
+    $e = 'access denied'; try { [void](Get-Item -LiteralPath (ConvertTo-ExtendedPath $dh) -Force -ErrorAction Stop) } catch { $e = ConvertFrom-ExtendedText $_.Exception.Message }
     Add-ReadError (Split-Path -Leaf $dh) $dh '' $dh $e
   }
 }
@@ -2569,12 +2664,12 @@ function Get-DockerVolumeRule([string]$name) {
 }
 function Test-IsLink([string]$p) {
   try {
-    $it = Get-Item -LiteralPath $p -Force -ErrorAction Stop
+    $it = Get-Item -LiteralPath (ConvertTo-ExtendedPath $p) -Force -ErrorAction Stop
     return (($it.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
   } catch { return $false }
 }
 function Test-DirReadable([string]$p) {
-  try { [void][System.IO.Directory]::GetFileSystemEntries($p); return $true } catch { return $false }
+  try { [void][System.IO.Directory]::GetFileSystemEntries((ConvertTo-ExtendedPath $p)); return $true } catch { return $false }
 }
 # Each component of $rel is checked on the way down, so a data root the
 # responder cannot enter, or a symlinked one, is reported rather than skipped.
@@ -2599,25 +2694,26 @@ function Invoke-VolumeDir([string]$base, [string]$rel) {
     }
   }
   $script:Docker.seen = $true
-  $children = @(Get-ChildItem -LiteralPath $vd -Force -ErrorAction SilentlyContinue)
+  $children = @(Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $vd) -Force -ErrorAction SilentlyContinue)
   Write-CollectorLog "Docker volumes in $vd"
   foreach ($v in $children) {
     if (-not $v.PSIsContainer) { continue }
     if (($v.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
     $script:Docker.found++
     $name = $v.Name
-    $data = Join-PathSafe $v.FullName '_data'
+    $vfull = ConvertFrom-ExtendedPath $v.FullName
+    $data = Join-PathSafe $vfull '_data'
     $rule = Get-DockerVolumeRule $name
     $agent = ''; if ($rule) { $agent = $rule[0] }
     $label = $agent; if (-not $label) { $label = 'unmatched' }
-    if (-not (Test-DirReadable $v.FullName) -or ((Test-PathQuiet $data 'Container') -and -not (Test-DirReadable $data))) {
+    if (-not (Test-DirReadable $vfull) -or ((Test-PathQuiet $data 'Container') -and -not (Test-DirReadable $data))) {
       $script:Docker.unreadable++
-      Add-Note "docker: volume $name ($label) at $($v.FullName) is not readable; run as root to collect it"
+      Add-Note "docker: volume $name ($label) at $vfull is not readable; run as root to collect it"
     } elseif ((Test-IsLink $data) -or -not (Test-PathQuiet $data 'Container')) {
       Write-CollectorLog "  volume $name has no _data directory, skipped"
     } elseif (-not $agent -and $Inventory) {
     } elseif (-not $agent) {
-      $attrs = ''; try { $attrs = [string](Get-Item -LiteralPath $data -Force -ErrorAction Stop).Attributes } catch { }
+      $attrs = ''; try { $attrs = [string](Get-Item -LiteralPath (ConvertTo-ExtendedPath $data) -Force -ErrorAction Stop).Attributes } catch { }
       Write-Row 'docker' $data '' $data '' 'dir' (Get-DirSize $data) 0 0 0 0 '' $attrs '' $false 'skipped_unmatched_volume' '' ''
     } else {
       Write-CollectorLog "  [$agent] $data"
@@ -2704,7 +2800,7 @@ function Get-JsonValues([string]$key, [string[]]$files) {
   foreach ($f in $files) {
     if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
     if (Test-InventorySecret $f) { continue }
-    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($f), $rx)) { $m.Groups[1].Value } } catch { }
+    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) { $m.Groups[1].Value } } catch { }
   }
 }
 function Get-JsonKeys([string]$suffix, [string[]]$files) {
@@ -2712,7 +2808,7 @@ function Get-JsonKeys([string]$suffix, [string[]]$files) {
   foreach ($f in $files) {
     if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
     if (Test-InventorySecret $f) { continue }
-    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($f), $rx)) { $m.Groups[1].Value } } catch { }
+    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) { $m.Groups[1].Value } } catch { }
   }
 }
 function Get-PathStrings([string[]]$files) {
@@ -2721,7 +2817,7 @@ function Get-PathStrings([string[]]$files) {
   foreach ($f in $files) {
     if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
     if (Test-InventorySecret $f) { continue }
-    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($f), $rx)) { $m.Groups[1].Value } } catch { }
+    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) { $m.Groups[1].Value } } catch { }
   }
 }
 function Get-YamlValues([string]$key, [string[]]$files) {
@@ -2729,7 +2825,7 @@ function Get-YamlValues([string]$key, [string[]]$files) {
   foreach ($f in $files) {
     if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
     if (Test-InventorySecret $f) { continue }
-    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($f), $rx)) { $m.Groups[1].Value } } catch { }
+    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) { $m.Groups[1].Value } } catch { }
   }
 }
 function Get-Json5Values([string]$key, [string[]]$files) {
@@ -2739,7 +2835,7 @@ function Get-Json5Values([string]$key, [string[]]$files) {
     if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
     if (Test-InventorySecret $f) { continue }
     try {
-      foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($f), $rx)) {
+      foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) {
         if ($m.Groups[1].Success) { $m.Groups[1].Value } else { $m.Groups[2].Value }
       }
     } catch { }
@@ -2751,7 +2847,7 @@ function Get-TomlFileUrls([string]$key, [string[]]$files) {
   foreach ($f in $files) {
     if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
     if (Test-InventorySecret $f) { continue }
-    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($f), $rx)) { $m.Groups[1].Value } } catch { }
+    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) { $m.Groups[1].Value } } catch { }
   }
 }
 function Get-CommonDir([string[]]$paths) {
@@ -2799,7 +2895,7 @@ function Find-Projects {
     $vals += Get-JsonValues 'path' @((Join-PathSafe $h '.local/share/crush/projects.json'))
     $vals += Get-JsonKeys '"' @((Join-PathSafe $h '.gemini/projects.json'))
     $vals += Get-JsonKeys '"' @((Join-PathSafe $h '.gemini/trustedFolders.json'))
-    foreach ($pr in (@(Expand-Glob $h '.gemini/tmp/*/.project_root') + @(Expand-Glob $h '.gemini/history/*/.project_root'))) { try { $vals += [System.IO.File]::ReadAllText($pr) } catch { } }
+    foreach ($pr in (@(Expand-Glob $h '.gemini/tmp/*/.project_root') + @(Expand-Glob $h '.gemini/history/*/.project_root'))) { try { $vals += [System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $pr)) } catch { } }
     $vals += Get-JsonValues 'workspace' @((Join-PathSafe $h '.gemini/antigravity-cli/history.jsonl'))
     $vals += Get-PathStrings (@((Join-PathSafe $h '.gemini/antigravity-cli/settings.json'), (Join-PathSafe $h '.gemini/antigravity-cli/cache/projects.json')) + @(Expand-Glob $h '.gemini/config/projects/*.json'))
     $vals += Get-JsonValues 'cwd' (@((Join-PathSafe $h '.local/share/amp/history.jsonl')) + @(Expand-Glob $h '.factory/sessions/*/*.jsonl') + @(Expand-Glob $h '.factory/sessions/*.jsonl') + @(Expand-Glob $h '.kiro/sessions/cli/*.json') + @(Expand-Glob $h '.cursor/acp-sessions/*/meta.json'))
@@ -2819,7 +2915,7 @@ function Find-Projects {
     $oc = @(Expand-Glob $h '.openclaw*/openclaw.json') + @((Join-PathSafe $h '.clawdbot/clawdbot.json'))
     $vals += Get-Json5Values 'workspace' $oc
     $vals += Get-Json5Values 'agentDir' $oc
-    foreach ($nw in @(Expand-Glob $h '.nanobot*/sessions/*/.workspace')) { try { $vals += [System.IO.File]::ReadAllText($nw) } catch { } }
+    foreach ($nw in @(Expand-Glob $h '.nanobot*/sessions/*/.workspace')) { try { $vals += [System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $nw)) } catch { } }
     $vals += Get-JsonValues 'workspace' @(Expand-Glob $h '.nanobot*/config.json')
     $vals += Get-TomlFileUrls 'git_url' @((Join-PathSafe $h '.tabby/config.toml'))
     foreach ($tm in @(Expand-Glob $h '.twinny/embeddings/*/manifest.json')) { $cd = Get-CommonDir @(Get-PathStrings @($tm)); if ($cd) { $vals += $cd } }
@@ -2857,7 +2953,7 @@ if (-not $NoProjects) {
   foreach ($p in $Project) {
     if (Test-PathQuiet $p 'Container') { continue }
     if (Test-PathQuiet $p 'Leaf') { $e = 'Not a directory' }
-    else { $e = "Cannot find path '$p' because it does not exist."; try { [void](Get-Item -LiteralPath $p -Force -ErrorAction Stop) } catch { $e = $_.Exception.Message } }
+    else { $e = "Cannot find path '$p' because it does not exist."; try { [void](Get-Item -LiteralPath (ConvertTo-ExtendedPath $p) -Force -ErrorAction Stop) } catch { $e = ConvertFrom-ExtendedText $_.Exception.Message } }
     Write-CollectorLog "WARNING: project given with -Project is not a directory: ${p}: $e"
     if (-not $Inventory) { Write-Row (Get-ProjectOwner $p) $p '' $p '' 'dir' 0 0 0 0 0 '' '' '' $false 'error_read' '' $e }
   }
@@ -2929,16 +3025,16 @@ $summary = [ordered]@{
 # archiver, so the archived and the on-disk summary name the archive and the
 # archiver actually used.
 function Write-Summary {
-  [System.IO.File]::WriteAllText($SummaryPath, ($summary | ConvertTo-Json -Depth 4), $Utf8NoBom)
-  Copy-Item -LiteralPath $SummaryPath -Destination (Join-PathSafe $Stage 'collection.json') -Force
+  [System.IO.File]::WriteAllText($XSummaryPath, ($summary | ConvertTo-Json -Depth 4), $Utf8NoBom)
+  Copy-Item -LiteralPath $XSummaryPath -Destination (Join-PathSafe $XStage 'collection.json') -Force
 }
 Write-Summary
 
 Write-CollectorLog 'Archiving'
 $script:ManifestWriter.Close()
 $script:LogWriter.Close()
-Copy-Item -LiteralPath $ManifestPath -Destination (Join-PathSafe $Stage 'manifest.jsonl') -Force
-Copy-Item -LiteralPath $LogPath -Destination (Join-PathSafe $Stage 'collector.log') -Force
+Copy-Item -LiteralPath $XManifestPath -Destination (Join-PathSafe $XStage 'manifest.jsonl') -Force
+Copy-Item -LiteralPath $XLogPath -Destination (Join-PathSafe $XStage 'collector.log') -Force
 
 # Each archiver in $Archivers is tried in turn. A failure is logged with its
 # reason, its partial archive removed, and a note added; the summary, log and
@@ -2949,8 +3045,8 @@ function Format-ExitCode($code) {
   return [string]$code
 }
 function Clear-PartialArchive {
-  try { if (Test-PathQuiet $Archive 'Any') { [System.IO.File]::Delete($Archive) } }
-  catch { [System.IO.File]::AppendAllText($LogPath, "could not remove partial archive ${Archive}: $($_.Exception.Message)`n", $Utf8NoBom) }
+  try { if (Test-PathQuiet $Archive 'Any') { [System.IO.File]::Delete((ConvertTo-ExtendedPath $Archive)) } }
+  catch { [System.IO.File]::AppendAllText($XLogPath, "could not remove partial archive ${Archive}: $($_.Exception.Message)`n", $Utf8NoBom) }
 }
 Clear-PartialArchive
 $archiveOk = $false
@@ -2966,11 +3062,11 @@ for ($ai = 0; $ai -lt $Archivers.Count -and -not $archiveOk; $ai++) {
         if ((Clear-StagedLinks) -gt 0) { throw 'staged symlinks could not be removed; not zipping through them' }
         Clear-LinkArchivePaths 'not in the archive: tar failed and zip cannot store symlinks'
         $script:Notes += "tar failed; $nl symlinks were removed from the staging tree before zipping, because zip cannot store symlinks"
-        [System.IO.File]::AppendAllText($LogPath, "NOTE: tar failed; $nl staged symlinks removed before zipping`n", $Utf8NoBom)
-        Copy-Item -LiteralPath $ManifestPath -Destination (Join-PathSafe $Stage 'manifest.jsonl') -Force
+        [System.IO.File]::AppendAllText($XLogPath, "NOTE: tar failed; $nl staged symlinks removed before zipping`n", $Utf8NoBom)
+        Copy-Item -LiteralPath $XManifestPath -Destination (Join-PathSafe $XStage 'manifest.jsonl') -Force
       }
       $script:Notes += "$failedWhy; fell back to $($ArchiverLabels[$kind])"
-      [System.IO.File]::AppendAllText($LogPath, "NOTE: falling back to $($ArchiverLabels[$kind])`n", $Utf8NoBom)
+      [System.IO.File]::AppendAllText($XLogPath, "NOTE: falling back to $($ArchiverLabels[$kind])`n", $Utf8NoBom)
       if ($kind -eq 'zip') { $Archive = Join-PathSafe $OutputDir "$Name.zip"; Clear-PartialArchive }
       # Write-Summary writes and restages collection.json with the notes,
       # the archive's name and the archiver.
@@ -2978,10 +3074,10 @@ for ($ai = 0; $ai -lt $Archivers.Count -and -not $archiveOk; $ai++) {
       $summary.archive = (Split-Path -Leaf $Archive)
       $summary.capabilities.archiver = $ArchiverLabels[$kind]
       Write-Summary
-      Copy-Item -LiteralPath $LogPath -Destination (Join-PathSafe $Stage 'collector.log') -Force
+      Copy-Item -LiteralPath $XLogPath -Destination (Join-PathSafe $XStage 'collector.log') -Force
     }
   } catch {
-    [System.IO.File]::AppendAllText($LogPath, "FATAL: archive failed: $($_.Exception.Message)`n", $Utf8NoBom)
+    [System.IO.File]::AppendAllText($XLogPath, "FATAL: archive failed: $($_.Exception.Message)`n", $Utf8NoBom)
     break
   }
   if ($kind -eq 'tar') {
@@ -2992,7 +3088,7 @@ for ($ai = 0; $ai -lt $Archivers.Count -and -not $archiveOk; $ai++) {
     if ($rcTar -eq 0 -and (Test-PathQuiet $Archive 'Any')) { $archiveOk = $true; break }
     if ($rcTar -eq 0) { $failedWhy = "$tarName failed (exit code 0 but no archive was written)" }
     else { $failedWhy = "$tarName failed (exit code $(Format-ExitCode $rcTar))" }
-    [System.IO.File]::AppendAllText($LogPath, "${tarName} failed: exit code $(Format-ExitCode $rcTar)`n", $Utf8NoBom)
+    [System.IO.File]::AppendAllText($XLogPath, "${tarName} failed: exit code $(Format-ExitCode $rcTar)`n", $Utf8NoBom)
   } else {
     try {
       if ($kind -eq 'writer') { Write-TarGz $Stage $Archive } else { Write-StageZip $Stage $Archive }
@@ -3001,7 +3097,7 @@ for ($ai = 0; $ai -lt $Archivers.Count -and -not $archiveOk; $ai++) {
     } catch {
       $e = $_.Exception; while ($null -ne $e.InnerException) { $e = $e.InnerException }
       $failedWhy = "$($ArchiverLabels[$kind]) failed ($($e.Message))"
-      [System.IO.File]::AppendAllText($LogPath, "$($ArchiverLabels[$kind]) failed: $($e.Message)`n", $Utf8NoBom)
+      [System.IO.File]::AppendAllText($XLogPath, "$($ArchiverLabels[$kind]) failed: $($e.Message)`n", $Utf8NoBom)
     }
   }
   Clear-PartialArchive
@@ -3009,16 +3105,16 @@ for ($ai = 0; $ai -lt $Archivers.Count -and -not $archiveOk; $ai++) {
 if (-not $archiveOk) { Write-Error 'FATAL: archive not written'; exit 2 }
 
 $ArchiveSha = Get-FileSha256 $Archive
-$ArchiveSize = (Get-Item -LiteralPath $Archive).Length
-[System.IO.File]::WriteAllText("$Archive.sha256", "$ArchiveSha  $(Split-Path -Leaf $Archive)`n", $Utf8NoBom)
-[System.IO.File]::AppendAllText($LogPath, "$EndTs done: $Archive ($ArchiveSize bytes, sha256 $ArchiveSha)`n", $Utf8NoBom)
+$ArchiveSize = (Get-Item -LiteralPath (ConvertTo-ExtendedPath $Archive)).Length
+[System.IO.File]::WriteAllText((ConvertTo-ExtendedPath "$Archive.sha256"), "$ArchiveSha  $(Split-Path -Leaf $Archive)`n", $Utf8NoBom)
+[System.IO.File]::AppendAllText($XLogPath, "$EndTs done: $Archive ($ArchiveSize bytes, sha256 $ArchiveSha)`n", $Utf8NoBom)
 # The archive's size and hash follow on stdout, so stderr gets only "done".
 if (-not $Quiet) { [Console]::Error.WriteLine('done') }
 
 if (-not $KeepStaging) {
   # A link that could not be deleted keeps the staging directory, which the log names.
-  if ((Clear-StagedLinks) -eq 0) { try { Remove-Item -LiteralPath $Stage -Recurse -Force -ErrorAction Stop } catch { } }
-  else { [System.IO.File]::AppendAllText($LogPath, "staging directory kept because a staged link could not be removed: $Stage`n", $Utf8NoBom) }
+  if ((Clear-StagedLinks) -eq 0) { try { Remove-Item -LiteralPath $XStage -Recurse -Force -ErrorAction Stop } catch { } }
+  else { [System.IO.File]::AppendAllText($XLogPath, "staging directory kept because a staged link could not be removed: $Stage`n", $Utf8NoBom) }
 }
 
 $c = $script:Counts

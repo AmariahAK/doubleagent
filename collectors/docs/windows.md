@@ -129,8 +129,39 @@ zipping through the link.
 ## Locked files and long paths
 
 Files held open by a running editor (Cursor's `state.vscdb`, Electron
-LevelDB stores) are read with shared access so they still copy. Reparse
-points (symlinks and junctions) are recorded with their target and never
-followed. Paths longer than 260 characters fail to copy under Windows
-PowerShell 5.1 unless long paths are enabled on the host; the failure is
-recorded as `error_copy`.
+LevelDB stores) are read with shared access so they still copy. A few
+files a running Electron app opens without sharing cannot be: on a live
+Claude Desktop host the Chromium `Cookies` and `Cookies-journal` (the
+claude.ai session cookies, flagged secret) and the LevelDB `LOCK` files
+get `error_copy` rows; close the app or collect from an image to get the
+cookie store. Reparse points (symlinks and junctions) are recorded with
+their target and never followed.
+
+Every file system call addresses its path in the extended-length form,
+`\\?\C:\...` for a drive path and `\\?\UNC\server\share\...` for a UNC
+path such as a `-Root` on a network share, so paths longer than 260
+characters are enumerated, copied and hashed without `LongPathsEnabled` on
+the host, under Windows PowerShell 5.1 and PowerShell 7. This covers both
+sides of the copy: the source tree, and the staging directory, whose paths
+are longer than the source's by the output directory, the
+`.stage-<name>` directory and `fs\<drive>`. The prefix never reaches the
+output: the manifest `path`, `archive_path` and `target`, `collection.json`,
+the log and stdout keep the plain form, and an exception message quoted in
+`error` has the prefix removed. A file that still fails to copy is recorded
+as `error_copy`.
+
+The archivers store the long paths as well. `tar.exe` is given the plain
+staging path and stores members past 260 characters itself. The PowerShell
+tar writer and the `ZipFile` fallback list and read the staged files
+through the extended form; the tar writer stores a name too long for the
+ustar fields in a pax `path` record, and a zip entry name has no
+260-character limit.
+
+A directory that the walk cannot list gets an `error_read` row rather than
+being skipped silently: a directory inside a catalog match and, in the
+PowerShell collector, a directory that a wildcard segment of a
+catalog line has to list (`.local/share/*/flow_states.db*` lists every
+directory under `.local/share`), with the agent of the first catalog line
+that needed it. The home or project directory itself is reported once, and
+a directory at or under a catalog match gets its row from the walk of that
+match.
