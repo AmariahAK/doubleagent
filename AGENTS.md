@@ -762,7 +762,11 @@ list together. Run the commands from the repository root before pushing.
   README is an overview only.
 - Bump `VERSION` in the script for any change to output format or options.
   For the analyzer, bump `VERSION` in `doubleagent/__init__.py`;
-  `pyproject.toml` reads the version from it.
+  `pyproject.toml` reads the version from it. Bump once per release: if
+  `VERSION` is already ahead of the last release tag, later work before
+  the tag goes into that version's changelog entry, with its date updated
+  at tag time, and `VERSION` is not bumped again unless the user says so.
+  A version that was never tagged is noise in the changelog.
 - Every `VERSION` bump comes with an entry in the matching changelog,
   `collectors/CHANGELOG.md` or `analyzer/CHANGELOG.md`, in Keep a Changelog
   form: a `## [x.y.z] - YYYY-MM-DD` heading with `Added`, `Changed`, `Fixed`
