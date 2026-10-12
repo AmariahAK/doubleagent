@@ -7,7 +7,7 @@ on an install of the same version; see `research/claude-desktop.md`. Paths
 below are relative to the app-data directory, one of the catalog bases
 `Library/Application Support/Claude[-3p]`, `.config/Claude[-3p]`,
 `AppData/Roaming/Claude[-3p]`, `AppData/Local/Claude[-3p]`,
-`AppData/Local/Claude-Data[/<package family>]` or, for the Store build,
+`AppData/Local/Claude-Data[/<package family>]` or, for the MSIX build,
 whose MSIX container redirects `AppData/Roaming/Claude` there,
 `AppData/Local/Packages/<Claude_* or AnthropicPBC.Claude_*>/LocalCache/Roaming/Claude`
 (observed on Windows 11, 2026-10-10, and Ubuntu 26.04, 2026-10-11);

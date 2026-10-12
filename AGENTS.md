@@ -388,7 +388,7 @@ find. The validation for every current entry is recorded in the index table in
    checks, and a check that depends on another run (a `skipped_secret`
    status needs `--no-secrets`) after that run's checks, repeating the
    same dated label at each place. A separate root and `run` (as the
-   Windows Store block does) is only for a layout the main image cannot
+   MSIX block does) is only for a layout the main image cannot
    hold. Add at least one check for every new secret glob, exclusion and
    discovery source, plus one for anything unusual in the layout
    (symlinks, SQLite sidecars, spaces in paths, drive-letter or
@@ -606,7 +606,7 @@ And from the October 2026 round:
   describe a "Cowork mode" the user starts by hand, do not ask the user
   to "open Cowork", and do not expect a local `local_<uuid>.json` under
   `local-agent-mode-sessions/` for every chat: on the real installs
-  checked (2.31226.1, Windows Store build and Linux deb) a read-only
+  checked (2.31226.1, MSIX build and Linux deb) a read-only
   chat left nothing there, and a chat that wrote files ran as a remote
   Cowork session whose only local traces were
   `remote-session-spaces.json` (the session id and the granted folders)
@@ -626,7 +626,7 @@ Source and bundles say where an agent can write; a real install says what
 it did write. A real-install round installs one agent in a clean VM (or
 the `lab/` sandbox for Linux-only CLIs), exercises it, and compares the
 result with the research documents, the catalog and the parser. The
-Claude Desktop rounds of October 2026 (Windows Store build, Linux deb,
+Claude Desktop rounds of October 2026 (MSIX build, Linux deb,
 macOS) are the pattern; each found something the bundle research had not:
 an uncollected data directory, two unflagged keys, a feature that writes
 nothing locally.

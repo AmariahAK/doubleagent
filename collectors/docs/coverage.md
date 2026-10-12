@@ -135,8 +135,8 @@ signing key `spaces-present/*/link-key`) apply in each data directory.
 | Location | What it holds |
 | --- | --- |
 | `Library/Application Support/Claude`, `.config/Claude`, `AppData/Roaming/Claude` | The data directory on macOS, Linux, and an unpackaged Windows install. On Linux (the official `.deb`, observed 2026-10-11) the logs are inside it, in `.config/Claude/logs/`. |
-| `AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude`, `AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude` | The data directory of the Microsoft Store (MSIX) build. The app reports it as `AppData\Roaming\Claude`, but MSIX filesystem virtualisation stores it here, and `AppData\Roaming\Claude` does not exist on disk. |
-| `AppData/Local/Claude` | The Store build's logs (`logs/main.log`, `mcp.log` and the others). |
+| `AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude`, `AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude` | The data directory of the MSIX build (MSIX, the Windows packaged-app format). The app reports it as `AppData\Roaming\Claude`, but MSIX filesystem virtualisation stores it here, and `AppData\Roaming\Claude` does not exist on disk. |
+| `AppData/Local/Claude` | The MSIX build's logs (`logs/main.log`, `mcp.log` and the others). |
 | `AppData/Local/Claude-Data` | An alternative Windows data directory the app can choose, collected whole including its `<package family>` child. |
 | `Library/Logs/Claude` | macOS logs. |
 | `Claude-3p` under `Library/Application Support`, `Library/Logs`, `.config`, `AppData/Roaming` and `AppData/Local` | The third-party-inference build. |
@@ -173,7 +173,7 @@ by the `*/Claude*/vm_bundles` glob: by default it yields one
 inside, and `--full` (`-Full`) collects it like any other exclusion,
 each file still subject to `--max-file-size`. Observed on macOS, Claude
 Desktop 2.31226.1, October 2026 (no `vm_bundles` directory exists on the
-Windows Store build or on the Linux `.deb` install, where the Cowork VM
+MSIX build or on the Linux `.deb` install, where the Cowork VM
 was unsupported in a nested-virtualisation guest):
 
 | File | Size | What it is |

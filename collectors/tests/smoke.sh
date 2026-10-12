@@ -1394,8 +1394,8 @@ fi
 ROOT=$_root71
 [ "$LOCKED71" = no ] || chmod 600 "$D71/m-locked.jsonl"
 
-# 2026-10-10 Claude Desktop Store build (#73)
-# The Store (MSIX) build keeps userData in the package's virtualised
+# 2026-10-10 Claude Desktop MSIX build (#73)
+# The MSIX build keeps userData in the package's virtualised
 # LocalCache/Roaming/Claude, logs in AppData/Local/Claude/logs, and may use
 # AppData/Local/Claude-Data/<family>. A separate image holds one Windows
 # profile with those trees; the */Claude*/ secret and exclusion globs must
@@ -1421,7 +1421,7 @@ printf '[MSIX] Filesystem virtualization active\n' >"$L73/logs/main.log"
 printf '{"oauth:tokenCache":"enc"}\n' >"$D73/config.json"
 _root73=$ROOT; ROOT=$R73
 run store73 --no-docker; _rc73=$?
-check "#73 Store build run exit 0" "[ $_rc73 -eq 0 ]"
+check "#73 MSIX build run exit 0" "[ $_rc73 -eq 0 ]"
 check "#73 Packages Code-tab session record collected as claude-desktop" "row \"$P73/claude-code-sessions/$O73/local_44444444-4444-4444-8444-444444444444.json\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":false,\"status\":\"collected\"'"
 check "#73 Packages session record collected exactly once" "[ \"\$(grep -c 'local_44444444-4444-4444-8444-444444444444.json' \"\$M\")\" = 1 ]"
 check "#73 Packages remote-session-spaces.json collected" "row \"$P73/local-agent-mode-sessions/$O73/remote-session-spaces.json\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":false,\"status\":\"collected\"'"

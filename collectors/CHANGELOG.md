@@ -14,15 +14,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Claude Desktop from the Microsoft Store on Windows is collected as
+- Claude Desktop installed as an MSIX package on Windows (Anthropic's
+  Windows download, not a Microsoft Store app) is collected as
   `claude-desktop`: its data directory under
   `AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude` (and the
   `AnthropicPBC.Claude_*` family), where MSIX virtualisation stores what
   the app reports as `AppData/Roaming/Claude` ([#73]).
-- `AppData/Local/Claude` (the Store build's logs) and
+- `AppData/Local/Claude` (the MSIX build's logs) and
   `AppData/Local/Claude-Data` (an alternative Windows data directory) are
   collected as `claude-desktop` ([#73]).
-- The Store build's `config.json` (OAuth token cache), `Cookies*`,
+- The MSIX build's `config.json` (OAuth token cache), `Cookies*`,
   `host-creds-*.json` and `ccd-session-secrets/*` are flagged
   `secret: true` under both package families ([#73]).
 - Claude Desktop's space-link signing key,

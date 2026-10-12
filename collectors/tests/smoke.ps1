@@ -1778,8 +1778,8 @@ if ($fdSet) {
   }
 } elseif ($Sep -eq '/') { Write-Output 'note: #29 x #32 unreadable case-variant check needs a non-root user on POSIX, skipped' }
 
-# 2026-10-10 Claude Desktop Store build (#73)
-# The Store (MSIX) build keeps userData in the package's virtualised
+# 2026-10-10 Claude Desktop MSIX build (#73)
+# The MSIX build keeps userData in the package's virtualised
 # LocalCache\Roaming\Claude, logs in AppData\Local\Claude\logs, and may use
 # AppData\Local\Claude-Data\<family>. A separate image holds one Windows
 # profile with those trees; the */Claude*/ secret and exclusion globs must
@@ -1809,12 +1809,12 @@ Mk "$q73/config.json" '{"oauth:tokenCache":"enc"}'
 Mk $l73 '[MSIX] Filesystem virtualization active'
 Mk $d73 '{"oauth:tokenCache":"enc"}'
 $Miss = Test-Made
-Check "#73 every Store build fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
+Check "#73 every MSIX build fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 function Secret73([string]$rel) { $r = Row $rel; return ($r -and $r.agent -eq 'claude-desktop' -and $r.secret -eq $true -and $r.status -eq 'collected') }
 function Plain73([string]$rel) { $r = Row $rel; return ($r -and $r.agent -eq 'claude-desktop' -and $r.secret -eq $false -and $r.status -eq 'collected') }
 try {
   Run 'store73' @{ NoDocker = $true }
-  Check '#73 Store build run exit 0' { $script:rc -eq 0 }
+  Check '#73 MSIX build run exit 0' { $script:rc -eq 0 }
   Check '#73 Packages Code-tab session record collected as claude-desktop' { Plain73 $s73 }
   Check '#73 Packages session record collected exactly once' { @($script:Rows | Where-Object { $_.path -like '*local_44444444-4444-4444-8444-444444444444.json' }).Count -eq 1 }
   Check '#73 Packages remote-session-spaces.json collected' { Plain73 $r73 }

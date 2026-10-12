@@ -114,7 +114,7 @@ claude-desktop|.config/Claude-3p
 claude-desktop|AppData/Roaming/Claude
 claude-desktop|AppData/Roaming/Claude-3p
 claude-desktop|AppData/Local/Claude-3p
-# Claude Desktop Store (MSIX) build: userData is virtualised under Packages,
+# Claude Desktop MSIX build: userData is virtualised under Packages,
 # logs stay in AppData/Local/Claude, Claude-Data is the unpackaged fallback
 claude-desktop|AppData/Local/Claude
 claude-desktop|AppData/Local/Claude-Data

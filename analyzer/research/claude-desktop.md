@@ -49,7 +49,10 @@ claim below names its evidence level:
   `sessions.jsonl` lists both). Every shape below marked **bundle** rests
   on the code that writes or reads it; shapes marked **observed** were
   seen on disk.
-- **Observed (Windows)**: a clean Microsoft Store install of the same
+- **Observed (Windows)**: a clean install of the MSIX package (Anthropic's Windows download,
+  not a Microsoft Store app; MSIX is the Windows packaged-app format,
+  whose filesystem virtualisation redirects the app's `%APPDATA%` writes
+  under `%LOCALAPPDATA%\Packages\<package family>`) of the same
   version (package `Claude_pzs8sxrjxfjjc`, 2.31226.1.0) on Windows 11
   build 26300 arm64, 2026-10-10 (collector issue 73), read for file names,
   key names and value types only. One Code-tab session wrote
@@ -84,7 +87,7 @@ claim below names its evidence level:
 All paths are relative to the app-data directory (`userData`): macOS
 `~/Library/Application Support/Claude/`, Linux `~/.config/Claude/`,
 Windows `%APPDATA%\Claude\` as the app reports it, which for the
-Microsoft Store build is stored on disk as
+MSIX build is stored on disk as
 `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\`
 (observed; MSIX filesystem virtualisation, [section 5](#5-other-stores)); the enterprise
 build appends `-3p`. `<acct>` and `<org>` are the account
@@ -109,7 +112,7 @@ UUIDs).
 | `IndexedDB/https_claude.ai_0.indexeddb.leveldb/`, `Local Storage/leveldb/`, `Session Storage/` | Chromium LevelDB | claude.ai web page state ([section 5](#5-other-stores)) | no |
 | `Partitions/<name>/` | a Chromium profile of an Electron session partition | observed on macOS: `launch-preview-static` (the built-in browser that previews servers a session launches, with its own `Cookies`) and `cowork-file-preview` (Cowork file previews, network closed); see the collector document, [section 2](../../collectors/research/claude-desktop.md#2-per-user-storage) | no |
 | `vm-support-probe.json`, `cowork-enabled-cli-ops.json`, `plan-usage-history.json`, `ant-device-registry.json` | JSON | observed on macOS: `{hardwareKey, key}` (cached Cowork VM support probe); `{ownerAccountId}`; `{version, samples[]}`, each sample `{org, t, u: {fh, sd}}`; an object of UUID keys to strings | no |
-| `~/Library/Logs/Claude/main.log`, `mcp.log`, `mcp-server-<name>.log` | text | app and MCP transport logs ([section 5](#5-other-stores)); on Linux in `userData/logs/` (observed), on the Windows Store build in `%LOCALAPPDATA%\Claude\logs` (observed) | no |
+| `~/Library/Logs/Claude/main.log`, `mcp.log`, `mcp-server-<name>.log` | text | app and MCP transport logs ([section 5](#5-other-stores)); on Linux in `userData/logs/` (observed), on the MSIX build in `%LOCALAPPDATA%\Claude\logs` (observed) | no |
 
 Evidence for the layout (all bundle):
 
@@ -440,7 +443,7 @@ folder. There was no `local_<uuid>.json`, session directory or
 test on the author's macOS install of 2.31226.1 (2026-10-11, a Mac that
 can run the Cowork VM) gave the same result: one `remote-session-spaces.json`
 (146 bytes, same shape) and no local session. So on all three platforms
-(Windows Store build, Linux `.deb`, macOS) a file-writing chat in the
+(MSIX build, Linux `.deb`, macOS) a file-writing chat in the
 merged surface is a server-side session whose local trace is this file,
 and the local-agent session layout (`local_<uuid>.json`, `audit.jsonl`)
 was not observed on any of the three real installs; it remains
@@ -556,7 +559,7 @@ Windows picks its userData from four candidates
 `%APPDATA%\Claude`, and the MSIX virtualised copy
 `%LOCALAPPDATA%\Packages\<family>\LocalCache\Roaming\Claude`
 (`@836946` `function mze(e,t,r,i){return n.join(e,"Packages",t,"LocalCache",r,i)}`).
-On the observed Store install the data directory is the Packages
+On the observed MSIX install the data directory is the Packages
 copy, `main.log` records `[MSIX] Filesystem virtualization active` and
 `user_data_location: 'package_localcache'`, `%APPDATA%\Claude` does not
 exist, `%LOCALAPPDATA%\Claude-Data` and `%LOCALAPPDATA%\Claude-3p` exist
