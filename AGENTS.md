@@ -681,8 +681,16 @@ CI (`.github/workflows/ci.yml`) runs the catalog drift test, shellcheck, the
 sh smoke test under sh, dash, bash, busybox ash, zsh and posh, the PowerShell
 smoke test under PowerShell 7 on Linux and Windows PowerShell 5.1 on
 Windows, the analyzer tests on Python 3.10, 3.11, 3.12, 3.13 and 3.14, and a lint job
-with the quality gates below. Run the same locally before committing a
-change to the collector:
+with the quality gates below. A change that touches only Markdown files
+and `.markdownlint-cli2.jsonc` is documentation only: the workflow's
+first job classifies the push or pull request from the changed file
+list, and when it is documentation only every other job is skipped and
+the lint job runs just markdownlint and `tools/check_doc_links.py`.
+Those two are also all a documentation-only change needs locally; the
+smoke tests, the analyzer tests and the other linters are for changes to
+code. A push whose previous commit GitHub cannot name (a new branch, a
+force push) is treated as a code change. Run the same locally before
+committing a change to the collector:
 
 ```sh
 cd collectors
@@ -789,7 +797,9 @@ way that cannot hang:
 Every gate runs in the CI `lint` job, not in the pre-commit hook: the hook
 is reserved for fast operations (see below).
 The versions are pinned in the workflow's `env` block; change it and this
-list together. Run the commands from the repository root before pushing.
+list together. Run the commands from the repository root before pushing;
+for a documentation-only change, only markdownlint and
+`tools/check_doc_links.py` (see the start of this section).
 
 | Gate | Version | Local command | Configuration |
 | --- | --- | --- | --- |

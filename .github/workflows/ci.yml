@@ -22,9 +22,44 @@ env:
   PSSA_VERSION: "1.25.0"
 
 jobs:
+  # A change that touches only Markdown and the markdownlint configuration
+  # needs markdownlint and the document link check, nothing else: the
+  # released scripts and package are unchanged (AGENTS.md, "Validation and
+  # testing"). This job classifies the push or pull request, and every
+  # other job except the Markdown steps of lint is skipped when it is
+  # documentation only. A push whose "before" commit is unknown (a new
+  # branch, a force push) counts as a code change.
+  changes:
+    name: Classify the change
+    runs-on: ubuntu-latest
+    outputs:
+      docs-only: ${{ steps.classify.outputs.docs-only }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Classify
+        id: classify
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          docs=false
+          changed=""
+          if [ -n "$BASE" ] && ! printf '%s' "$BASE" | grep -q '^0*$' && git cat-file -e "$BASE" 2>/dev/null; then
+            changed=$(git diff --name-only "$(git merge-base "$BASE" "$GITHUB_SHA")" "$GITHUB_SHA")
+            other=$(printf '%s\n' "$changed" | grep -vE '\.md$|^\.markdownlint-cli2\.jsonc$' || true)
+            if [ -n "$changed" ] && [ -z "$other" ]; then
+              docs=true
+            fi
+          fi
+          echo "docs-only=$docs" >> "$GITHUB_OUTPUT"
+          printf 'docs-only=%s\nchanged files:\n%s\n' "$docs" "$changed"
+
   catalog-sync:
     name: Catalog tables in sync (sh, PowerShell, analyzer copy)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Drift test
@@ -45,6 +80,8 @@ jobs:
   sh-collector:
     name: sh collector (smoke under ${{ matrix.name }})
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -84,6 +121,8 @@ jobs:
   sh-shellcheck:
     name: sh collector (shellcheck)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Install shellcheck
@@ -94,6 +133,8 @@ jobs:
   powershell-7:
     name: PowerShell collector (smoke under PowerShell 7 on Linux)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     steps:
       - uses: actions/checkout@v7
       - name: smoke
@@ -103,6 +144,8 @@ jobs:
   windows-powershell-51:
     name: PowerShell collector (smoke under Windows PowerShell 5.1)
     runs-on: windows-latest
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     steps:
       - uses: actions/checkout@v7
       - name: smoke
@@ -112,6 +155,8 @@ jobs:
   analyzer:
     name: Analyzer tests
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     strategy:
       matrix:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
@@ -128,24 +173,31 @@ jobs:
   lint:
     name: Lint (ruff, pyright, markdownlint, sh linters, PSScriptAnalyzer)
     runs-on: ubuntu-latest
+    needs: changes
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
+        if: needs.changes.outputs.docs-only != 'true'
         with:
           python-version: "3.10"
       - name: Install Python linters and analyzer dependencies
+        if: needs.changes.outputs.docs-only != 'true'
         run: pip install "ruff==$RUFF_VERSION" "pyright==$PYRIGHT_VERSION" -r analyzer/requirements.txt
       - name: ruff check
+        if: needs.changes.outputs.docs-only != 'true'
         run: ruff check .
       - name: ruff format --check
+        if: needs.changes.outputs.docs-only != 'true'
         run: ruff format --check .
       - name: pyright (Python 3.10)
+        if: needs.changes.outputs.docs-only != 'true'
         run: pyright
       - name: markdownlint
         run: npx -y "markdownlint-cli2@$MARKDOWNLINT_CLI2_VERSION" "**/*.md"
       - name: document links
         run: python3 tools/check_doc_links.py
       - name: Install sh linters
+        if: needs.changes.outputs.docs-only != 'true'
         run: |
           mkdir -p "$HOME/bin"
           curl -sfL "https://github.com/koalaman/shellcheck/releases/download/v$SHELLCHECK_VERSION/shellcheck-v$SHELLCHECK_VERSION.linux.x86_64.tar.xz" | tar xJ -C /tmp
@@ -159,15 +211,20 @@ jobs:
           chmod +x "$HOME/bin/shfmt" "$HOME/bin/checkbashisms"
           echo "$HOME/bin" >> "$GITHUB_PATH"
       - name: shfmt POSIX parse (no reformatting)
+        if: needs.changes.outputs.docs-only != 'true'
         run: shfmt -ln posix $(shfmt -f .) > /dev/null
       - name: shellcheck (all sh files, .shellcheckrc)
+        if: needs.changes.outputs.docs-only != 'true'
         run: shellcheck -s sh $(shfmt -f .)
       - name: checkbashisms
+        if: needs.changes.outputs.docs-only != 'true'
         run: checkbashisms -p $(shfmt -f .)
       - name: Install PSScriptAnalyzer
+        if: needs.changes.outputs.docs-only != 'true'
         shell: pwsh
         run: Install-Module PSScriptAnalyzer -Scope CurrentUser -RequiredVersion $env:PSSA_VERSION -Force
       - name: PSScriptAnalyzer
+        if: needs.changes.outputs.docs-only != 'true'
         shell: pwsh
         run: |
           Import-Module PSScriptAnalyzer -RequiredVersion $env:PSSA_VERSION
