@@ -30,7 +30,7 @@ Apache-2.0, open source.
 - `.openinterpreter/session_index.jsonl`: `{id, thread_name, updated_at}`
   per rename ([`rollout/src/session_index.rs:21-29`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/rollout/src/session_index.rs#L21-L29)).
 - `.openinterpreter/external_agent_session_imports.json`: which rollouts
-  were imported from Claude Code or Cursor (section 4).
+  were imported from Claude Code or Cursor ([section 4](#4-joins)).
 - `.openinterpreter/.zcode/cli/artifacts/sess_<session id>/<call id>-tool-result-<uuid>.json`:
   full output of a tool call that was too long to inline under the zcode
   harness ([`core/src/tools/handlers/harness_aliases.rs:887-902`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/core/src/tools/handlers/harness_aliases.rs#L887-L902)).
@@ -110,7 +110,7 @@ Tracks upstream Codex; no fork-specific version marker in the records.
 Not in rollouts by design, but tool arguments and outputs can carry pasted
 keys. `reasoning.encrypted_content` is an opaque provider blob. The
 credential files (`auth.json`, `credentials/kimi-code.json`, `.env`) are
-listed in the collector document.
+listed in the [collector document](../../collectors/research/open-interpreter.md).
 
 ## 8. Parser plan
 

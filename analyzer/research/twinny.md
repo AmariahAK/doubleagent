@@ -27,7 +27,7 @@ commit cited in [vscode.md](vscode.md).
   `.*-server*/data/User/globalStorage/state.vscdb`, all collected as agent
   `vscode`.
 - Optional `twinny-server` recordings (`~/.twinny/server/recordings/`), off by
-  default, cover requests from every team member; see section 5.
+  default, cover requests from every team member; see [section 5](#5-sqlite-and-other-stores).
 
 One row holds all conversations; deleting a conversation removes it from the
 object ([conversation-history.ts:150-156](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/chat/conversation-history.ts#L150-L156)), and

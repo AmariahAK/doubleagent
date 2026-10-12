@@ -5,7 +5,7 @@
 - Closed source. npm `@sourcegraph/amp` is now an alias whose only dependency is `@ampcode/cli` (`scratchpad/npm/amp/package/package.json`, "Renamed to @ampcode/cli"). `@ampcode/cli` 0.0.1791060199-g5bacb8 is a wrapper (`install.cjs`, `cli-wrapper.cjs`) over per-platform packages; the Linux binary is `@ampcode/cli-linux-x64/amp`, a bun-compiled ELF (128 MB). Evidence level **B** = `strings -n 8` (`scratchpad/npm/amp.strings`) and `strings -el` UTF-16 (`scratchpad/npm/amp.strings16`) of that binary; the UTF-16 table holds the minified application code and is where the path joins live.
 - Evidence level **D** = official docs, fetched as Markdown from `https://ampcode.com/docs/markdown/<page>` (saved in `scratchpad/amp-docs/`; index `https://ampcode.com/llms.txt`).
 - Evidence level **S** = install script `https://ampcode.com/install.sh` (`scratchpad/amp-install.sh`).
-- Thread transcripts are server-side: the bug-report bundler writes "The full thread is stored server-side and can be fetched by a site admin" (`amp.strings` near `thread/full.json`); docs say remote MCP definitions and threads are "stored by ampcode.com" (`customize_mcp.md:15,301`). No local thread transcript store was found in either strings table; only per-thread *logs* (section 2).
+- Thread transcripts are server-side: the bug-report bundler writes "The full thread is stored server-side and can be fetched by a site admin" (`amp.strings` near `thread/full.json`); docs say remote MCP definitions and threads are "stored by ampcode.com" (`customize_mcp.md:15,301`). No local thread transcript store was found in either strings table; only per-thread *logs* ([section 2](#2-per-user-storage)).
 
 ## 2. Per-user storage
 

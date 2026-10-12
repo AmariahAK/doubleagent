@@ -112,7 +112,7 @@ on) and `volumes/sandbox/dependencies` are large.
 ## 5. Project-local files
 
 None in the sense of the project catalog; the deployment's own
-`docker/` directory is the state (section 2).
+`docker/` directory is the state ([section 2](#2-per-user-storage)).
 
 ## 6. Where the project path is recorded
 

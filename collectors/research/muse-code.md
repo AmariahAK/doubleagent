@@ -106,7 +106,7 @@ Config root `~/.config/muse/` (I unless stated):
 
 - `settings.json`: `schema_version`, `provider`, `model`; also `mcpServers`
   (K `migrate/SKILL.md:144-152`). Lock file `.settings.json.lock`.
-- `auth.json`: credentials (section 3). Lock file `.auth.json.lock`.
+- `auth.json`: credentials ([section 3](#3-credentials)). Lock file `.auth.json.lock`.
 - `trust.json`: `{"schema_version": int, "projects": {"<absolute project
   path>": {"decision": "trusted"}}}` (I, two entries). Lock file
   `.trust.json.lock`.
@@ -148,7 +148,7 @@ Data root `~/.local/share/muse/` (I, 6.1 MB in total after two sessions):
   session). Derived from `session.jsonl`.
 - `sessions/.prior-crash-telemetry-markers-v1`: empty marker file (I).
 - `session-index.db`: SQLite in WAL mode, table `sessions`, one row per
-  session (I; schema in section 6).
+  session (I; schema in [section 6](#6-project-path-records)).
 - `session-name-authority/`: `authority.json` (`schema_version`,
   `authority_id`) and `session-names.db` (tables `session_name_claims_v2`,
   `session_name_operations_v2`, `session_name_counters_v2`) (I).
@@ -345,7 +345,7 @@ Sizes from the host after two sessions (I):
   `## Code Map`), and `muse init` generates one headed "Muse Code reads
   this file as project rules when it runs in this directory" (W:351576-351578).
   `MUSE.md` occurs nowhere in either binary.
-- `.muse/worktrees/` (section 4), added to `.git/info/exclude` (B).
+- `.muse/worktrees/` ([section 4](#4-exclusions)), added to `.git/info/exclude` (B).
 - `.muse/hooks.json`: the strings `.muse` and `hooks.json` are adjacent
   constants in both binaries (B and W:352591 `.musehooks.json`, the line
   before the enterprise file names), read as the project hooks file

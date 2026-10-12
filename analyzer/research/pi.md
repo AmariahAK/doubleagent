@@ -3,7 +3,7 @@
 Catalog agent: `pi`. pi writes one append-only JSONL file per session, a
 tree of entries linked by `id`/`parentId`. The same format is written
 by little-coder (pi itself, in pi's directory) and by Letta Code's local
-backend (its own writer, its own directory); section 8 says how to tell
+backend (its own writer, its own directory); [section 8](#8-parser-plan) says how to tell
 them apart. Paths are in [`collectors/research/pi.md`](../../collectors/research/pi.md).
 
 ## 1. Source
@@ -24,7 +24,7 @@ All claims from source.
 - Legacy: `.pi/agent/*.jsonl` (v0.30.0 bug, moved on next start).
 - Exports in project directories: `session-<time>.jsonl` (same format,
   one branch) and `pi-session-*.html`.
-- Experimental durable sessions are SQLite, section 5.
+- Experimental durable sessions are SQLite, [section 5](#5-sqlite-or-binary-stores).
 
 ## 3. Record schema
 
@@ -204,4 +204,4 @@ Confidence. High: file naming, header, entry types, roles, field names and
 timestamp units (source). Medium: `system`-role persistence on versions
 between 0.83.0 and HEAD (taken from the ai changelog's 0.86.0 note, not
 bisected); that `lc-` markers appear in every little-coder session (see
-little-coder.md). Not determined: the durable SQLite `record` JSON shape.
+[little-coder.md](little-coder.md)). Not determined: the durable SQLite `record` JSON shape.

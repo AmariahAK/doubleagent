@@ -85,12 +85,12 @@ Docker: no compose file or named volume.
 
 None at default. The opt-in Chroma and LanceDB stores can be large, but
 they are agent memory, and on Linux and macOS they are not collected
-anyway (section 2).
+anyway ([section 2](#2-per-user-storage)).
 
 ## 5. Project-local files
 
 None written by CrewAI itself; a CrewAI project is ordinary Python code.
-The run directory is per project but lives under the home (section 2).
+The run directory is per project but lives under the home ([section 2](#2-per-user-storage)).
 
 ## 6. Where the project path is recorded
 

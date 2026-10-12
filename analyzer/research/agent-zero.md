@@ -109,7 +109,7 @@ No version field. History compression summarises topics into bulks and drops
 the oldest bulk when merging fails
 ([`history.py:600-607`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/history.py#L600-L607)), so early turns may survive only as
 summaries in history and only in the log while it is under 1000 items.
-Older chats used `chat.json`-less `<ctxid>.json` files (section 2).
+Older chats used `chat.json`-less `<ctxid>.json` files ([section 2](#2-transcript-files)).
 
 ## 7. Secrets
 

@@ -55,7 +55,7 @@ None.
 
 ## 5. Project-local files
 
-The `workspace/` tree in section 2, under no MetaGPT-specific name.
+The `workspace/` tree in [section 2](#2-per-user-storage), under no MetaGPT-specific name.
 
 ## 6. Where the project path is recorded
 

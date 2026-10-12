@@ -25,7 +25,7 @@ branching, so the same path on macOS and Windows;
 `OPENCODE_DB` can relocate it ([`:43-47`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/database.ts#L43-L47)). One `message` row per message, one
 `part` row per content part. A legacy JSON tree
 `~/.local/share/opencode/storage/` ([`packages/opencode/src/storage/storage.ts:224`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/storage/storage.ts#L224))
-still exists (section 6).
+still exists ([section 6](#6-format-versions)).
 
 ## 3. Record schema
 

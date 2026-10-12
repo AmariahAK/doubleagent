@@ -43,7 +43,7 @@ missing. CI runs the suite on Python 3.10, 3.11, 3.12, 3.13 and 3.14 with
 `requirements.txt` installed.
 
 Lint and type checks, from the repository root, at the versions CI pins
-(see "Quality gates" in AGENTS.md):
+(see "Quality gates" in [AGENTS.md](../../AGENTS.md#quality-gates)):
 
 ```sh
 uvx ruff@0.16.10 check . && uvx ruff@0.16.10 format --check .

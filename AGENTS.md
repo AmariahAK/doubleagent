@@ -15,7 +15,7 @@ detects agent state in a collection or any loose directory tree and parses
 transcripts into a JSONL timeline. The criterion for the catalog is an agent that executes tools or
 shell commands on the host and leaves transcripts, configuration or
 credentials on disk; it need not be an editor or coding tool. When a new
-kind of agent is added, widen the wording in the top-level README in the
+kind of agent is added, widen the wording in the [top-level README](README.md) in the
 same commit.
 
 The project supplements the EDR a responder already has during an incident
@@ -39,7 +39,7 @@ The collectors must work in three situations:
 The collectors run on the host, with sh and PowerShell 5.1 collectors. The
 analyzer, under `analyzer/`, runs on the analyst's workstation and can be
 installed and used without the collectors; the parser table in
-`analyzer/docs/parsers.md` lists which agents are parsed, the rest of the
+[`analyzer/docs/parsers.md`](analyzer/docs/parsers.md) lists which agents are parsed, the rest of the
 catalog is detected but not yet parsed. Parsing never happens on the host.
 
 ## Repository layout
@@ -78,6 +78,8 @@ lab/                           Docker sandbox for running CLI agents against a s
                                home and exporting it for the collector; see lab/README.md
 tools/check_research_links.py  verifies every citation link in the research documents
                                resolves to its file and line range at the cited commit
+tools/check_doc_links.py       verifies every relative link and heading fragment in the
+                               Markdown documents and that section references are links
 README.md                      project overview; points at the per-part READMEs
 AGENTS.md                      this file
 CLAUDE.md                      imports this file for Claude Code
@@ -215,7 +217,7 @@ inside another tool's directory.
 `manifest.jsonl` and `collection.json`. Fields, status values
 (`collected`, `symlink`, `skipped_excluded`, `skipped_size`, `skipped_secret`,
 `error_copy`, `skipped_unmatched_volume`) and the `fs/<original path>` archive layout are documented in
-`collectors/docs/output.md`. Add fields if needed, but do not rename or remove them
+[`collectors/docs/output.md`](collectors/docs/output.md). Add fields if needed, but do not rename or remove them
 without updating that page and noting it in the commit message.
 
 ## Analyzer standards
@@ -261,8 +263,8 @@ rules are different from the collectors'.
   one **Observed** bullet per platform (see "Real-install rounds").
 - **The outputs are interfaces.** The `timeline.jsonl` and `sessions.jsonl`
   fields, their order and their JSON types are documented in
-  `analyzer/docs/output.md`, and the `fleet-inventory.csv` columns in
-  `analyzer/docs/inventory.md`; add fields or columns at the end and never
+  [`analyzer/docs/output.md`](analyzer/docs/output.md), and the `fleet-inventory.csv` columns in
+  [`analyzer/docs/inventory.md`](analyzer/docs/inventory.md); add fields or columns at the end and never
   rename, retype or remove them without updating those pages and saying so
   in the commit. A JSONL record
   always has every field, with `""` rather than `null` for no value.
@@ -324,12 +326,12 @@ and say in the module docstring if the shape has drifted since.
 6. Add a `<Agent>Tests(ParserBase)` class to `tests/test_parsers.py` with
    the same cases the existing classes have: rows, thinking opt-in, history,
    not-wanted, truncated line.
-7. Add the row to the parser table in `analyzer/docs/parsers.md` in
+7. Add the row to the parser table in [`analyzer/docs/parsers.md`](analyzer/docs/parsers.md) in
    alphabetical order of the agent name, ending its "Validated against"
    cell with a Markdown link to the research document, written
    ``see [`research/<agent>.md`](../research/<agent>.md)``; remove the agent
    from the "detected but not yet parsed" list there, also update the
-   parsed-agent list in `analyzer/README.md` and the top-level README,
+   parsed-agent list in [`analyzer/README.md`](analyzer/README.md) and the [top-level README](README.md),
    bump `VERSION` in `doubleagent/__init__.py` (`pyproject.toml` reads it),
    and run `analyzer/tests/run.sh`.
 
@@ -342,7 +344,7 @@ to delegate the backlog.
 Prefer reading the tool's source over installing it. Most agents are open
 source even when their models are not, and the path constants are easy to
 find. The validation for every current entry is recorded in the index table in
-`collectors/research/README.md`.
+[`collectors/research/README.md`](collectors/research/README.md).
 
 1. Shallow-clone the repository into the scratchpad and grep for `homedir`,
    `XDG`, `APPDATA`, `Application Support`, `.config/`, `.local/share`,
@@ -362,7 +364,7 @@ find. The validation for every current entry is recorded in the index table in
    path the tool uses, including the Windows `AppData` location so images are
    covered. Regenerate `analyzer/doubleagent/catalog.txt` from `--list`,
    run `collectors/tests/catalog-sync.sh`, and add an `Added` line under
-   `Unreleased` in `analyzer/CHANGELOG.md`, because the analyzer's detection
+   `Unreleased` in [`analyzer/CHANGELOG.md`](analyzer/CHANGELOG.md), because the analyzer's detection
    changes with the catalog copy.
 4. Add large or irrelevant subtrees to `EXCLUDES` and credential files to
    `SECRET_GLOBS`. If the tool's README, compose file or installer creates a
@@ -396,8 +398,8 @@ find. The validation for every current entry is recorded in the index table in
    gap to close, not a note to leave.
 7. Write or update `collectors/research/<agent>.md` with the evidence
    (the eight sections in the research process below, less section 7), add
-   a row to the index table in `collectors/research/README.md`, mention the
-   tool in `collectors/docs/coverage.md` if it needs
+   a row to the index table in [`collectors/research/README.md`](collectors/research/README.md), mention the
+   tool in [`collectors/docs/coverage.md`](collectors/docs/coverage.md) if it needs
    a note there, and close the matching GitHub issue. If the tool keeps
    transcripts worth parsing, also write `analyzer/research/<agent>.md` and
    its index row.
@@ -406,7 +408,7 @@ Every catalog entry has been validated against source, a shipped bundle, or
 official documentation. When a real-install check is wanted, run the tool in
 the `lab/` sandbox and point the collector at the exported home rather than
 installing it on the workstation (Linux layout only); `collectors/research/<agent>.md` records the evidence
-for each agent and the index table in `collectors/research/README.md` summarises the level. Real-install checks
+for each agent and the index table in [`collectors/research/README.md`](collectors/research/README.md) summarises the level. Real-install checks
 exist for Claude Code, Antigravity CLI, Codex CLI, Copilot CLI and Ollama.
 Agents whose project paths live only in SQLite (Zed, Goose, OpenCode, Kilo
 Code, Kiro CLI) are not covered by `discover_projects`; the analyzer reads them.
@@ -468,7 +470,7 @@ tarball or binary (`npm pack`, then grep or `strings`; minified bundles keep
 literal path strings), official docs, vendor forums and issue trackers, then
 published DFIR or reverse-engineering write-ups. The report must say which
 level each claim came from, and the index table in
-`collectors/research/README.md` records it. Two habits for minified
+[`collectors/research/README.md`](collectors/research/README.md) records it. Two habits for minified
 bundles and compiled binaries:
 
 - Grep for the stable fragment of a message, never the whole sentence.
@@ -482,7 +484,7 @@ bundles and compiled binaries:
   work, but offsets differ per platform build. Cite as
   `<tool> <version> <platform> @<byte offset>` with the literal snippet,
   and record the artifact's sha256 and where it came from, as
-  `analyzer/research/claude-code.md` does for `claude 2.1.295 linux-arm64`.
+  [`analyzer/research/claude-code.md`](analyzer/research/claude-code.md) does for `claude 2.1.295 linux-arm64`.
   The `app.asar` form is `app.asar:<path>@<offset>` with the snippet;
   chunk names change every release, so the snippet is what a reader of
   another version greps for.
@@ -506,14 +508,15 @@ are encoded and how a parser reads them) goes to
 `analyzer/research/<agent>.md`. A document covers one agent only, and
 every agent that earns a catalog line gets its own, even when it came out
 of a grouped sweep such as the framework sweep (issue 64): the sweep
-document (`collectors/research/frameworks.md`) keeps only the summary
+document ([`collectors/research/frameworks.md`](collectors/research/frameworks.md)) keeps only the summary
 table and the evidence for what got no catalog line. Where
 agents share a lineage, each says so and links to the other rather than
 repeating it. When an agent has both documents, each links to the other
 with a Markdown link in a short paragraph before its first section, the
 analyzer document to `../../collectors/research/<agent>.md` and the
 collector document to `../../analyzer/research/<agent>.md`. A path to
-another research document is always a link, never a bare code span. Each
+another project document, or to one of its sections, is always a link,
+never a bare code span (the link rule under "Conventions"). Each
 directory has a README index that lists every document, sorted
 alphabetically by agent name, and holds the cross-agent observations.
 Grouped reports are never committed. Then: rewrite the five tables in both
@@ -532,7 +535,7 @@ changes. Comment on the analyzer parser issue with any SQLite-only sources found
 File new issues for anything out of scope that the research surfaced, such
 as sandboxed install paths or tokens stored inside chat databases.
 
-**Running a round with subagents.** The split in CLAUDE.md applies: the
+**Running a round with subagents.** The split in [CLAUDE.md](CLAUDE.md) applies: the
 main session writes one brief and a per-tool assignment, one research
 subagent per tool runs in parallel, one integration subagent makes the
 table, test and index changes, and the main session reviews. Research is
@@ -611,7 +614,7 @@ And from the October 2026 round:
   the local `scheduled-tasks.json`, which stayed empty on both installs
   for an account that has one.
 - Chat history outside the home (ShellGPT's temp directory) cannot become
-  a catalog line. Record it in `collectors/docs/coverage.md` as a manual step and
+  a catalog line. Record it in [`collectors/docs/coverage.md`](collectors/docs/coverage.md) as a manual step and
   file an issue, rather than stretching a glob. Docker and Podman named
   volumes are the exception since collector 1.5.0: they go in
   `DOCKER_VOLUMES`.
@@ -697,6 +700,7 @@ cd ..
 uvx ruff@0.16.10 check . && uvx ruff@0.16.10 format --check .
 uvx --from pyright==1.1.414 --with zstandard --with python-dateutil pyright
 npx -y markdownlint-cli2@0.23.3 "**/*.md"
+python3 tools/check_doc_links.py
 shfmt -ln posix $(shfmt -f .) >/dev/null && shellcheck -s sh $(shfmt -f .) && checkbashisms -p $(shfmt -f .)
 pwsh -NoProfile -Command '$r = @("collectors/Collect-AgentArtifacts.ps1","collectors/tests/smoke.ps1") | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Settings collectors/PSScriptAnalyzerSettings.psd1 }; $r | Format-Table -AutoSize; exit @($r).Count'
 ```
@@ -796,6 +800,7 @@ list together. Run the commands from the repository root before pushing.
 | shellcheck | 0.11.0 | `shellcheck -s sh $(shfmt -f .)` | `.shellcheckrc` |
 | checkbashisms | devscripts v2.26.13 | `checkbashisms -p $(shfmt -f .)` | none |
 | PSScriptAnalyzer | 1.25.0 | the `pwsh` line in the block above | `collectors/PSScriptAnalyzerSettings.psd1` |
+| document links | none | `python3 tools/check_doc_links.py` | none; see the link rule under "Conventions" |
 
 - `shfmt -f .` lists the sh files by shebang as well as extension, so the
   hook script, `lab/lab.sh` and `analyzer/tests/run.sh` are checked too.
@@ -877,8 +882,41 @@ list together. Run the commands from the repository root before pushing.
   option list, the output file list and the status or column list from the
   code and diff them against the README; the changelog entry then records
   what changed in those lists.
-  Behaviour changes without a README update are incomplete. The top-level
-  README is an overview only.
+  Behaviour changes without a README update are incomplete. The [top-level
+  README](README.md) is an overview only.
+- Every term a document takes from a vendor, a bundle or a product
+  surface is explained at its first use in that document: what it stands
+  for, what it denotes here, and where the name comes from. This covers
+  abbreviations (3p, 1p, MSIX, RTR, DPAPI), a vendor's internal names
+  (`ccd`, `rpm`, `buddy-tokens`), and a directory or key whose name alone
+  does not say what it holds. A reader who has only this document and
+  the code must never need the vendor's documentation to decode a
+  sentence; "3p" needed "the enterprise build that runs inference through
+  the customer's own provider" beside it. Section 1 of a research
+  document is the place when the term runs through the whole document,
+  otherwise the first sentence that uses it. Before committing a
+  document, list its capitalised and letter-digit short tokens and check
+  that each is a code identifier the surrounding sentence explains or a
+  term glossed earlier in the file.
+- Every reference from one project document to another is a Markdown
+  link, never a bare path or code span: a file is written
+  ``[`collectors/docs/coverage.md`](collectors/docs/coverage.md)`` with
+  the path relative to the citing file, and a section is written
+  `[section 5](#5-project-local-files)` or, in another document,
+  ``[section 2 of `analyzer/research/claude-desktop.md`](../../analyzer/research/claude-desktop.md#2-per-user-storage)``,
+  with the fragment GitHub derives from the heading (lower case,
+  punctuation other than hyphens removed, spaces to hyphens). A reference
+  to several sections is one link per section. The exception is this
+  file's references to the numbered sections of the research template
+  (`<agent>.md`), which describe every research document at once and
+  have no single target. A template path with a placeholder
+  (`collectors/research/<agent>.md`) names a family of documents, not
+  one, and stays a code span, as does a catalog path that happens to end
+  in `.md` (an agent's `AGENTS.md` or `GEMINI.md` inside a project),
+  which is data, not a document reference.
+  `tools/check_doc_links.py`, run by the CI lint job, fails on a relative
+  link whose file or heading does not exist and on a `section <n>` that
+  is not link text; run it before pushing a documentation change.
 - Bump `VERSION` in the script for any change to output format or options.
   For the analyzer, bump `VERSION` in `doubleagent/__init__.py`;
   `pyproject.toml` reads the version from it. Bump once per release: if
@@ -889,7 +927,7 @@ list together. Run the commands from the repository root before pushing.
   documentation alone bumps nothing and needs no changelog line (see the
   tag rule below).
 - Every `VERSION` bump comes with an entry in the matching changelog,
-  `collectors/CHANGELOG.md` or `analyzer/CHANGELOG.md`, in Keep a Changelog
+  [`collectors/CHANGELOG.md`](collectors/CHANGELOG.md) or [`analyzer/CHANGELOG.md`](analyzer/CHANGELOG.md), in Keep a Changelog
   form: a `## [x.y.z] - YYYY-MM-DD` heading with `Added`, `Changed`, `Fixed`
   and `Removed` subsections, one line per item, written for the responder
   or analyst who uses that part. Any change to the manifest, JSONL or CSV

@@ -23,7 +23,7 @@ source contains no reference to the Python-era paths (`platformdirs`
 grep of the tree for them finds nothing. Those paths are still on disk
 wherever the Python tool was used, so they were researched separately in
 the agent framework sweep for issue #64 (see [frameworks.md](frameworks.md))
-and are described at the end of section 2.
+and are described at the end of [section 2](#2-per-user-storage).
 
 ## 2. Per-user storage
 
@@ -222,7 +222,7 @@ place of `.codex`; `.jsonl.zst` rollouts need zstd first.
 ## 7. Confidence
 
 High: home resolution, `CODEX_HOME` being ignored, every file name in
-sections 2-3 (constants in the cited files, identical to upstream Codex),
+[section 2](#2-per-user-storage) and [section 3](#3-credentials) (constants in the cited files, identical to upstream Codex),
 the Kimi credential file, the import ledger. Medium: `models-cache/` as an
 exclusion (written per provider by the app server, contents not inspected);
 `.terminus-2` landing in the project (depends on whether the env vars reach

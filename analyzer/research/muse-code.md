@@ -50,14 +50,14 @@ Relative to the home:
 | --- | --- | --- |
 | `.local/share/muse/sessions/YYYY/MM/DD/<session id>/session.jsonl` | the session event log; date is local time of creation; id is a UUIDv7 (observed `01a1040f-aa0d-7d82-...`) | yes |
 | `.../<session id>/subagent/<child id>/session.jsonl` | one log per subagent, same format; the session-evidence script walks `subagent/` recursively, so nesting is possible | yes |
-| `.../<session id>/tool-outputs/<task id>/<call id>-<kind>.txt` | full output of a tool call whose inline result was cut (observed kind `web_fetch-page`); `.spool/<call id>-bash.txt.tmp` while running | no, section 4 |
-| `.../<session id>/approval-review/<reviewer rollout id>.jsonl` | the automated approval reviewer's own run log, same envelope, synthetic clock | no, section 5 |
+| `.../<session id>/tool-outputs/<task id>/<call id>-<kind>.txt` | full output of a tool call whose inline result was cut (observed kind `web_fetch-page`); `.spool/<call id>-bash.txt.tmp` while running | no, [section 4](#4-joins) |
+| `.../<session id>/approval-review/<reviewer rollout id>.jsonl` | the automated approval reviewer's own run log, same envelope, synthetic clock | no, [section 5](#5-sqlite-and-other-stores) |
 | `.../<session id>/session.peer-history.sqlite3` (+`-wal`, `-shm`) | byte-offset index into `session.jsonl`, no content | no |
 | `.../<session id>/cron.db` | scheduled prompts (`cron_jobs`) | optional |
 | `.../<session id>/cli-<uuid>.log` | text tracing log (`2026-10-04T20:20:31.242428Z INFO <target> <file:line> event="..." key=value`) | no |
 | `.../<session id>/.session.jsonl.permission-init` | the first `retained_frame` line, staged before `session.jsonl` exists; a directory with only this and `.session.lock` is a session that never started (observed) | no |
-| `.local/share/muse/sessions/.msp-view-v1/<session id>/` | `HEAD.json`, `snapshot-<uuid>.json`, `journal-NNNNNNNN.bin`, `index-NNNNNNNN.bin`: a derived TUI view rebuilt from `session.jsonl` | no, section 5 |
-| `.local/share/muse/session-index.db` | one row per session: workspace, model, title, first prompt | no, section 5 |
+| `.local/share/muse/sessions/.msp-view-v1/<session id>/` | `HEAD.json`, `snapshot-<uuid>.json`, `journal-NNNNNNNN.bin`, `index-NNNNNNNN.bin`: a derived TUI view rebuilt from `session.jsonl` | no, [section 5](#5-sqlite-and-other-stores) |
+| `.local/share/muse/session-index.db` | one row per session: workspace, model, title, first prompt | no, [section 5](#5-sqlite-and-other-stores) |
 | `.local/share/muse/session-name-authority/session-names.db` | session name claims | no |
 | `.local/share/muse/tui-history.jsonl` | prompt history of the TUI composer | yes, as history |
 
@@ -153,7 +153,7 @@ Two payload layouts occur (observed):
 | `started` | `prompt` (string); binary also `video` | start of a run (one agent turn); in a top-level log the text the user submitted (read-session skill: "every submitted prompt is recorded here"); in a subagent log the task the runtime gave the child |
 | `user_prompt_display` (binary, skill) | one field, name undetermined | follows `started` only when the user-facing form differs (attachment placeholder `[Image 1]`) |
 | `model_request_configured` | `base_instructions` (full system prompt), `base_instructions_source`, `toolset{active_tools[], mode, source}`, `run_context_messages[{id, role:"developer", source, lifecycle, order, text}]`, `reminder_roster` | the request setup; `run_context_messages` hold the injected AGENTS.md/rules file, workspace identity, sandbox policy, skills catalog, memory snapshot |
-| `provider_request_options_configured`, `model_input_trace_recorded`, `context_block_diagnostic`, `goal_usage_attribution`, `resource_usage_sampled`, `task_stream_linked`, `reminder_proposal`, `reminder_reconciler_outcome`, `skill_reminder_decision`, `memory_reminder_child_session_linked` | bookkeeping | sizes, digests, usage, subagent links (section 4) |
+| `provider_request_options_configured`, `model_input_trace_recorded`, `context_block_diagnostic`, `goal_usage_attribution`, `resource_usage_sampled`, `task_stream_linked`, `reminder_proposal`, `reminder_reconciler_outcome`, `skill_reminder_decision`, `memory_reminder_child_session_linked` | bookkeeping | sizes, digests, usage, subagent links ([section 4](#4-joins)) |
 | `model_response_created` | `response_id` | provider response opened |
 | `reasoning_summary_delta` | `message_id`, `summary_index`, `text` | one summary paragraph, durable, written before the committed record |
 | `reasoning_summary_committed` | `message_id`, `provider_item_id`, `response_id`, `text` | the readable reasoning summary; `text` equals the deltas of the same `message_id` joined by `\n\n` (5 of 5 observed) |
@@ -255,7 +255,7 @@ output_ref}` record a shell command the user ran from the TUI (binary,
 ### Completeness and streaming
 
 The JSONL is complete on its own. `session.peer-history.sqlite3` holds no
-content (section 5); the only content outside the log is the full tool
+content ([section 5](#5-sqlite-and-other-stores)); the only content outside the log is the full tool
 output in `tool-outputs/`, whose cut-down form is already in the result
 `text`. Streaming deltas are not reassembled: `text_delta` and
 `reasoning_delta` never reach the durable log, ephemeral tool progress is

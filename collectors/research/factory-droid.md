@@ -33,7 +33,7 @@ All under `~/.factory/` (B, class `Ne`, `IH()` maps list `Uf` onto `join(home,".
 
 ## 4. Exclusions
 
-`.factory/updates`, `.factory/bin`, `.factory/tools`, `.factory/snapshots`, `.factory/worktrees`, `.factory/generated-images`, `.factory/cache/sounds`, `.factory/software-factory/*/*/repos`, `.factory/software-factory/*/*/worktrees`, `.factory/temp` (see section 3 on `temp/env`).
+`.factory/updates`, `.factory/bin`, `.factory/tools`, `.factory/snapshots`, `.factory/worktrees`, `.factory/generated-images`, `.factory/cache/sounds`, `.factory/software-factory/*/*/repos`, `.factory/software-factory/*/*/worktrees`, `.factory/temp` (see [section 3](#3-credentials) on `temp/env`).
 
 ## 5. Project-local files
 

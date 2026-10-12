@@ -23,7 +23,7 @@ exists, else a legacy `~/.clawdbot` if that exists, else `~/.openclaw`
 get `~/.openclaw-worker` ([`gateway/worker-environments/project-setup-script.ts:142`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/gateway/worker-environments/project-setup-script.ts#L142)).
 There is no platform branch: the same tree is used on Linux, macOS and
 Windows (`%USERPROFILE%\.openclaw`). No XDG directories except one env file
-(section 3).
+([section 3](#3-credentials)).
 
 Contents of the state directory ([`docs/openclaw-agent-runtime.md:49-60`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/openclaw-agent-runtime.md#L49-L60)):
 
@@ -67,7 +67,7 @@ Contents of the state directory ([`docs/openclaw-agent-runtime.md:49-60`](https:
   ([`extensions/browser/src/browser/chrome.ts:720`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/extensions/browser/src/browser/chrome.ts#L720)).
 - `worktrees/` managed git worktrees ([`infra/state-migrations.doctor-discovery.ts:53`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/infra/state-migrations.doctor-discovery.ts#L53)),
   `delivery-queue-media/` ([`config/paths.ts:367-368`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/paths.ts#L367-L368)), `cron/runs/`, `delivery-queue/`,
-  `sandbox/` ([`docs/cli/backup.md:587-594`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L587-L594)), `service-env/` (section 3).
+  `sandbox/` ([`docs/cli/backup.md:587-594`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L587-L594)), `service-env/` ([section 3](#3-credentials)).
 
 Outside the state directory:
 
@@ -135,7 +135,7 @@ History and Cookies show what the agent browsed.
 The agent workspace is the main "project". Inside user repositories OpenClaw
 reads `.openclaw/worktree-setup.sh` when it creates a managed worktree
 ([`agents/worktrees/service-preparation.ts:329`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/agents/worktrees/service-preparation.ts#L329)) and the workspace bootstrap files
-listed in section 2 when a repository is configured as a workspace. A crashed
+listed in [section 2](#2-per-user-storage) when a repository is configured as a workspace. A crashed
 memory migration leaves `.openclaw-repair/root-memory/` ([`root-memory-files.ts:9`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/memory/root-memory-files.ts#L9)).
 No per-project database.
 

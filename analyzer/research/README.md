@@ -71,5 +71,5 @@ Findings that cut across agents:
   database. Amazon Q and Zed's `threads.db` use the rollback journal and copy
   cleanly alone.
 - Credentials sit inside transcript databases for OpenCode, Kilo and Amazon
-  Q; those files are collected unflagged and the keys to redact are listed in
-  each document's section 7.
+  Q; those files are collected unflagged and the keys to redact are listed
+  under the "Secrets" heading (the seventh) of each document.

@@ -19,7 +19,7 @@ read, never built or run. The SQLite driver is mattn/go-sqlite3 v1.14.24
 [`846fea6c1443e8cc366fc1966fe078d7f825f6a9`](https://github.com/mattn/go-sqlite3/commit/846fea6c1443e8cc366fc1966fe078d7f825f6a9).
 The HTTP router is gin v1.10.0 ([`go.mod:8`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/go.mod#L8)), read at
 [`75ccf94d605a05fe24817fc2f166f6f2959d5cea`](https://github.com/gin-gonic/gin/commit/75ccf94d605a05fe24817fc2f166f6f2959d5cea).
-The collector document cites
+The [collector document](../../collectors/research/ollama.md) cites
 [`42e911bc3d05798cad729cb474bf62f378cb2e26`](https://github.com/ollama/ollama/commit/42e911bc3d05798cad729cb474bf62f378cb2e26),
 two commits after `v0.35.1` that change only one documentation page, so
 its line numbers hold for this release.
@@ -30,15 +30,15 @@ that covers it):
 
 - `v0.31.2` to `v0.34.0` shipped a built-in agent that replaced the
   `ollama run --experimental` loop and was removed before `v0.34.1`
-  (section 2). It kept no transcript.
+  ([section 2](#2-transcript-stores)). It kept no transcript.
 - `v0.32.0` renamed the `codex-app` integration to `chatgpt`; `v0.32.11`
   added `muse` and `dsh` (DeepSeek Harness); `v0.33.0` added the
   per-integration `automode` key; `v0.34.0` added the Codex desktop proxy
   and its `logs/codex-proxy.log`; `v0.34.2` added the onboarding marker
-  (section 7).
+  ([section 7](#7-overlap-with-launched-agents)).
 - The desktop database went from schema version 16 to 17 in `v0.32.15`,
   18 in `v0.33.0` and 19 in `v0.34.0`. Each step adds one `settings`
-  column; the transcript tables did not change (section 3).
+  column; the transcript tables did not change ([section 3](#3-record-schema)).
 - The saved REPL session layer moved from `server/create.go` to
   `create/manifest.go`, same media type and content.
 
@@ -49,7 +49,7 @@ that covers it):
 | Desktop chat database | macOS `Library/Application Support/Ollama/db.sqlite`, Windows `AppData/Local/Ollama/db.sqlite`, plus `-wal` and `-shm` | the desktop app only ([`internal/onboarding/app_state.go:26-37`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/app_state.go#L26-L37)); the store package is built only for Windows and macOS ([`app/store/database.go:1`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1)) | `chats` row = conversation, `messages` row = one message |
 | REPL prompt history | `.ollama/history` | `ollama run` interactive mode, as the invoking user ([`readline/history.go:40-53`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L40-L53)) | one line per entered input, last 100 kept |
 | Saved REPL session | a model layer `application/vnd.ollama.image.messages` under the server's `models/blobs` | only on an explicit `/save <model>` in the REPL ([`cmd/interactive.go:254-277`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/interactive.go#L254-L277), [`create/manifest.go:252-263`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/create/manifest.go#L252-L263)) | a JSON array of `api.Message` |
-| Launch state | `.ollama/config.json`, `.ollama/backup/`, `.ollama/launch/` | `ollama launch` | configuration only, see section 7 |
+| Launch state | `.ollama/config.json`, `.ollama/backup/`, `.ollama/launch/` | `ollama launch` | configuration only, see [section 7](#7-overlap-with-launched-agents) |
 
 Linux has no desktop app and therefore no `db.sqlite`; this could not be
 checked against a real database here. Before `v0.34.2` the store's default
@@ -242,7 +242,7 @@ model>` was used, would an Ollama parser repeat rows the `claude-code`,
 `opencode`, `hermes` or `openclaw` parsers already produce? **No.**
 Ollama keeps no copy of what a launched agent sends or receives; the
 agent's own transcript is the only record, and an Ollama parser reading
-the stores in section 2 cannot produce those turns. The same holds for the
+the stores in [section 2](#2-transcript-stores) cannot produce those turns. The same holds for the
 integrations added since `v0.30.7`, `chatgpt` (the Codex desktop app),
 `muse` and `dsh`. Each part:
 
@@ -256,7 +256,7 @@ integrations added since `v0.30.7`, `chatgpt` (the Codex desktop app),
 `openai` or `anthropic` packages imports the desktop `app/store` package
 (its only importers are under `app/`), so the server never writes
 `db.sqlite`; `.ollama/history` is written only by the REPL's readline
-(section 3). The server's file writes outside the models directory are the
+([section 3](#3-record-schema)). The server's file writes outside the models directory are the
 model-recommendation cache, the Codex proxy log in (b) and, only when
 `OLLAMA_DEBUG_LOG_REQUESTS` is set, request bodies in a fresh temporary
 directory `ollama-request-logs-*`
@@ -400,7 +400,7 @@ The launched agent's own transcript is where the model shows: Claude Code
 local experiment below confirms the server echoes the requested local
 model name.
 
-Bottom line: an Ollama parser built on section 8 never duplicates
+Bottom line: an Ollama parser built on [section 8](#8-parser-plan) never duplicates
 launched-agent rows. The only Ollama files that touch launched sessions
 are configuration (attribution of integration to model) and a
 metadata-only proxy log for the ChatGPT integration. The exceptions are
@@ -449,7 +449,7 @@ Read schema versions 16 to 19 the same way.
 | turn_type | `user` → user; `assistant` with content → assistant; each `tool_calls` row → tool_use; `tool` → tool_result; non-empty `thinking` → thinking (opt-in); `system` → system |
 | model | `messages.model_name` on assistant, thinking and tool_use rows |
 | tool_name | `tool_calls.function_name`; on tool_result rows, the paired call's name |
-| tool_use_id | `<chat_id>:<tool_calls.id>`, paired by position (section 6) |
+| tool_use_id | `<chat_id>:<tool_calls.id>`, paired by position ([section 6](#6-tool-calls-and-results)) |
 | text | `content`; for tool_use the `url` or `query` argument when present, else `function_arguments`; for user rows with attachments, append `[attachment: <filename>, <n> bytes]` per row, never the BLOB |
 | source_line | `messages.id` (or `tool_calls.id` for tool_use rows) |
 

@@ -129,7 +129,7 @@ rely on the size cap.
 
 ## 7. Confidence
 
-High: every path in sections 2-6 is read from constants in the cited files.
+High: every path in [section 2](#2-per-user-storage) to [section 6](#6-where-the-project-path-is-recorded) is read from constants in the cited files.
 Medium: `.cache/.gemini` contents (runtime-dir files only exist there if the
 user runs the macOS sandbox); `history/*/.git` size. Not determined: whether
 a `GEMINI_CLI_HOME` relocation is common in the field; which keychain entry

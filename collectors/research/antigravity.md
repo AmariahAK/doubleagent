@@ -123,7 +123,7 @@ in favour of `cache/projects.json`). No per-project database.
 
 ## 6. Where the workspace path is recorded
 
-- `history.jsonl`: `workspace` per prompt (analyzer/research/antigravity.md:23).
+- `history.jsonl`: `workspace` per prompt ([analyzer/research/antigravity.md:23](../../analyzer/research/antigravity.md)).
 - `settings.json`: `trustedWorkspaces` array (binary json tag; docs/settings).
 - `cache/projects.json`: workspace → project map (binary changelog).
 - `config/projects/<uuid>.json`: project definitions; JSON tags present in

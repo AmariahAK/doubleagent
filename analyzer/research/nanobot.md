@@ -88,7 +88,7 @@ call metadata.
 
 No version field in session files. The metadata line writes both
 `last_archived` and the older `last_consolidated` for downgrade
-compatibility ([`session/manager.py:1215-1218`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L1215-L1218)). Legacy file names differ (section 2).
+compatibility ([`session/manager.py:1215-1218`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L1215-L1218)). Legacy file names differ ([section 2](#2-transcript-files)).
 `Session.clear()` empties the messages and the next save rewrites the file
 ([`:374-380`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L374-L380)), so a `/new` in a chat erases the previous transcript; only
 `memory/history.jsonl` and the WebUI mirror keep a trace.

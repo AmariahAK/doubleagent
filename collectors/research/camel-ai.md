@@ -57,7 +57,7 @@ is not, so none.
 
 ## 5. Project-local files
 
-The working-directory files in section 2 (`workspace/`,
+The working-directory files in [section 2](#2-per-user-storage) (`workspace/`,
 `camel_working_dir/`, `chat_history.json`) are created wherever the
 application runs, under no CAMEL-specific name, so they are not project
 catalog entries.

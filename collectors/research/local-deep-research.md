@@ -4,7 +4,7 @@
 
 LearningCircuit/local-deep-research (LDR), MIT, open source, Python, commit [`3b965431351bb17c523fa38fdcfced4a3f891d49`](https://github.com/LearningCircuit/local-deep-research/commit/3b965431351bb17c523fa38fdcfced4a3f891d49). A research agent with a web UI. All claims are from source, apart from the pre-1.0 layout, which comes from the repository's own docs. Platform directory resolution was checked in tox-dev/platformdirs at [`960ff632eb575deb6f0d5bf49519d5a2ee2098b6`](https://github.com/tox-dev/platformdirs/commit/960ff632eb575deb6f0d5bf49519d5a2ee2098b6). LDR pins `platformdirs~=4.5` ([pyproject.toml:62](https://github.com/LearningCircuit/local-deep-research/blob/3b965431351bb17c523fa38fdcfced4a3f891d49/pyproject.toml#L62)), and that checkout is newer.
 
-No analyzer document. Research history and chat live in a per-user SQLCipher database encrypted with the user's login password (section 3), so the analyzer cannot parse them without that password.
+No analyzer document. Research history and chat live in a per-user SQLCipher database encrypted with the user's login password ([section 3](#3-credentials)), so the analyzer cannot parse them without that password.
 
 ## 2. Per-user storage
 

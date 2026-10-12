@@ -161,7 +161,7 @@ they cover profiles and suffixed homes without matching unrelated paths.
 ## 7. Confidence
 
 High: home resolution, profile layout, `state.db` and every file named in
-sections 2 and 3 (source constants). High: backup exclusion list as a guide to
+[section 2](#2-per-user-storage) and [section 3](#3-credentials) (source constants). High: backup exclusion list as a guide to
 size. Medium: the desktop `userData` path, which follows the Electron default
 from `productName` rather than an explicit `setPath` for stable builds
 ([`apps/desktop/electron/product-identity.ts:26-47`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/electron/product-identity.ts#L26-L47)). The `*hermes*`

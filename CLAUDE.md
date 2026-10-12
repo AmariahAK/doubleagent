@@ -8,7 +8,7 @@ Claude Code specific notes:
   a collector; dash is the strictest of the installed shells and catches most
   bash-isms. For the analyzer, run `analyzer/tests/run.sh`.
 - Before committing Python, Markdown, sh or PowerShell, run the matching
-  lint commands from "Quality gates" in AGENTS.md; CI runs them, the
+  lint commands from "Quality gates" in [AGENTS.md](AGENTS.md#quality-gates); CI runs them, the
   pre-commit hook does not.
 - The collector logs every collected path to stderr unless `-q` is passed.
   Use `-q` when running it from a tool call so the output stays readable.
@@ -29,7 +29,7 @@ Claude Code specific notes:
   when checking a path or record shape; the line numbers are only valid at
   that commit, not on the default branch.
 - Parser work suits delegation: give a subagent the research document and the
-  "Adding a parser" checklist in AGENTS.md, one agent per parser, and reserve
+  "Adding a parser" checklist in [AGENTS.md](AGENTS.md#adding-a-parser), one agent per parser, and reserve
   the main session for review. The same pattern, one agent per lineage pair,
   did the citation linking pass.
 

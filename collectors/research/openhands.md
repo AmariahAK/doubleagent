@@ -46,7 +46,7 @@ or the Electron app) runs the Agent Server with
   ([`docker/entrypoint.sh:174-178`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/docker/entrypoint.sh#L174-L178);
   [`config/defaults.json:23-26`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/config/defaults.json#L23-L26)). Each holds
   `meta.json`, `base_state.json`, `events/event-NNNNN-<id>.json` and
-  `bash_events/` (section 6, and the analyzer document).
+  `bash_events/` ([section 6](#6-where-the-project-path-is-recorded), and the [analyzer document](../../analyzer/research/openhands.md)).
 - `agent-canvas/bash_events/`: commands typed in the Canvas terminal, one
   file per event named `<YYYYMMDDHHMMSSffffff>_<kind>_...`
   ([`openhands-agent-server/openhands/agent_server/bash_service.py:61-72`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-agent-server/openhands/agent_server/bash_service.py#L61-L72)).
@@ -199,7 +199,7 @@ database.
 
 ## 7. Confidence
 
-High: every path in sections 2-3 under `~/.openhands` (constants and env
+High: every path in [section 2](#2-per-user-storage) and [section 3](#3-credentials) under `~/.openhands` (constants and env
 defaults in the cited files), the Fernet scheme, the Docker-runtime bind
 mounts, the CLI and legacy layouts at the cited commits. Medium: the
 Electron user data directory (Electron convention from `productName`; the

@@ -8,7 +8,7 @@ Paths, credentials and the rest of the per-user state are in
 [`collectors/research/claude-code.md`](../../collectors/research/claude-code.md).
 No other agent in the catalog shares this format; Claude Desktop's Code
 sessions point back at the same `projects/` files (collector document,
-section 6).
+[section 6](../../collectors/research/claude-code.md#6-where-the-project-path-is-recorded)).
 
 ## 1. Evidence
 
@@ -25,7 +25,7 @@ claim names its evidence level, best first:
   in that strings file (531,386 lines); the minified JavaScript keeps
   record type literals and object shapes. The binary was never executed.
   2.1.289 was chosen because it is the newest `version` in the local
-  transcripts. The collector document cites 2.1.288, so its `cc:` line
+  transcripts. The [collector document](../../collectors/research/claude-code.md) cites 2.1.288, so its `cc:` line
   numbers do not match these.
 - **Vendor text in the bundle**: the built-in "Fewer Permission Prompts"
   prompt describes the transcript layout for the model itself
@@ -45,26 +45,26 @@ claim names its evidence level, best first:
 ## 2. Transcript files
 
 The config home is `$CLAUDE_CONFIG_DIR`, else `~/.claude`, on every OS
-(collector document, section 2). Relative to the home:
+(collector document, [section 2](../../collectors/research/claude-code.md#2-per-user-storage)). Relative to the home:
 
 | Path | Content | Parse |
 | --- | --- | --- |
 | `.claude/projects/<key>/<session id>.jsonl` | the session transcript; `<key>` is the cwd with every `[^a-zA-Z0-9]` replaced by `-`, cut at 200 characters plus `-` and a base-36 hash when longer (cc:473717, cc:474429); the session id is a UUID (cc:477784 `${q()}.jsonl`) | yes |
 | `.claude/projects/<key>/<session id>/subagents/agent-<agent id>.jsonl` | one transcript per subagent, same record format; an optional extra directory level sits between `subagents/` and the file when the agent has a transcript subdirectory (cc:477784 `agentTranscriptSubdirs`, cc:484031 parses `subagents/<dirs...>/agent-(.+).jsonl`) | yes |
-| `.claude/projects/<key>/<session id>/subagents/agent-<agent id>.meta.json` | one JSON object per subagent: `agentType`, `description`, `toolUseId`, `model`, `spawnDepth`, `requestShape`, `requestNonInteractive`, and for some `isFork`, `parentAgentId`, `spawnedWithWorktree`, `worktreePath`, `worktreeBranch` (observed, 80 of 80; cc:484010 maps `.meta.json` to `.jsonl`) | no, section 6 |
-| `.claude/projects/<key>/<session id>/tool-results/<name>.txt` | full output of a tool result too large to keep inline (`tool-results` constant, cc:474483); the inline result holds a `<persisted-output>` stub (cc:382991) | through the stub, section 8 |
+| `.claude/projects/<key>/<session id>/subagents/agent-<agent id>.meta.json` | one JSON object per subagent: `agentType`, `description`, `toolUseId`, `model`, `spawnDepth`, `requestShape`, `requestNonInteractive`, and for some `isFork`, `parentAgentId`, `spawnedWithWorktree`, `worktreePath`, `worktreeBranch` (observed, 80 of 80; cc:484010 maps `.meta.json` to `.jsonl`) | no, [section 6](#6-timestamps-ids-project-branch-model-subagents) |
+| `.claude/projects/<key>/<session id>/tool-results/<name>.txt` | full output of a tool result too large to keep inline (`tool-results` constant, cc:474483); the inline result holds a `<persisted-output>` stub (cc:382991) | through the stub, [section 8](#8-parser-plan-what-the-parser-does) |
 | `.claude/projects/<key>/<session id>/remote-agents/remote-agent-<id>.meta.json`, `.../mcp-tasks/mcp-task-<id>.meta.json` | sidecars for remote agents and MCP tasks (cc:484010, cc:488428) | no; not observed |
 | `.claude/projects/<key>/memory/*.md` | per-project memory files (observed) | no |
-| `.claude/history.jsonl` | prompt history across sessions, section 5 | yes, as history |
+| `.claude/history.jsonl` | prompt history across sessions, [section 5](#5-other-files) | yes, as history |
 | `.claude/sessions/<pid>.json` | live-process registry: `pid`, `sessionId`, `cwd`, `startedAt` (epoch ms), `version`, `kind`, `entrypoint`, optionally `name`, `status` (observed) | no |
 | `.claude/jobs/<id>/parent-transcript.jsonl` | a copy of the parent transcript handed to a background job (cc:474968) | no; not observed |
 | `.claude/dump-prompts/<session id>.jsonl` | full outgoing prompts, when that debug option is on (cc:487015) | no; not observed |
-| `Library/Caches/claude-cli-nodejs/<key>/mcp-logs-<server>/<timestamp>.jsonl` (macOS; `.cache/claude-cli-nodejs/` on Linux and `AppData/Local/claude-cli-nodejs/Cache/` on Windows, bundle-derived) | MCP server log of the CLI, outside the config home and not moved by `CLAUDE_CONFIG_DIR`: one `{cwd, debug, sessionId, timestamp}` object per line, `<key>` the cwd slug as above, `<server>` the slugged server name; observed on macOS with CLI 2.1.295, 2026-10-11 (collector document, section 2, issue 81) | no; a possible source of `system` rows (section 8) |
+| `Library/Caches/claude-cli-nodejs/<key>/mcp-logs-<server>/<timestamp>.jsonl` (macOS; `.cache/claude-cli-nodejs/` on Linux and `AppData/Local/claude-cli-nodejs/Cache/` on Windows, bundle-derived) | MCP server log of the CLI, outside the config home and not moved by `CLAUDE_CONFIG_DIR`: one `{cwd, debug, sessionId, timestamp}` object per line, `<key>` the cwd slug as above, `<server>` the slugged server name; observed on macOS with CLI 2.1.295, 2026-10-11 (collector document, [section 2](../../collectors/research/claude-code.md#2-per-user-storage), issue 81) | no; a possible source of `system` rows ([section 8](#8-parser-plan-what-the-parser-does)) |
 
 The parser selects `^\.claude/projects/[^/]+/.*\.jsonl$` and
 `.claude/history.jsonl`, so it reads main and subagent transcripts at any
 depth, ignores the `.meta.json` sidecars, and reads a `.txt` sidecar
-only when a stub names it (section 8). A config home moved with
+only when a stub names it ([section 8](#8-parser-plan-what-the-parser-does)). A config home moved with
 `CLAUDE_CONFIG_DIR` (for example `~/.claude-work`) is neither in the catalog (`.claude`, `.claude.json*`, `.local/share/claude`) nor
 matched by the parser.
 
@@ -122,7 +122,7 @@ of every file and on one `system` record), `timestamp` (ISO 8601 UTC, millisecon
 files, 18,429 of 18,429), `userType` (`external`), `entrypoint` (`cli`
 observed), optional `slug` (plan name), `agentId` (subagent files only:
 equals the file's `agent-<id>`), and on some `user`, `assistant` and
-`attachment` records a snake-case `session_id` (section 6).
+`attachment` records a snake-case `session_id` ([section 6](#6-timestamps-ids-project-branch-model-subagents)).
 
 **`assistant`** adds `message` (the Messages API response object:
 `id`, `type:"message"`, `role`, `model`, `content`, `stop_reason`,
@@ -132,7 +132,7 @@ equals the file's `agent-<id>`), and on some `user`, `assistant` and
 `serverClassifierRequest`, optional `thinkingDurationMs`,
 `requestedModel` (observed on macOS with CLI 2.1.295, 2026-10-11),
 `attributionAgent`, `attributionSkill`, and per tool call
-`wireToolInputs` and `wireIngestContext` (section 4) (observed; built at
+`wireToolInputs` and `wireIngestContext` ([section 4](#4-message-content-tool-calls-and-results)) (observed; built at
 cc:482605). API failures are `assistant` records with
 `isApiErrorMessage:true`, `error`, `apiErrorStatus`, `message.model`
 `<synthetic>` and one text block holding the error (observed 10;
@@ -200,8 +200,8 @@ One API response becomes one `assistant` record per content block: all
 records share `message.id` and `requestId`, and only the last carries a
 non-null `stop_reason` (observed; `apiBlockIndex` numbers them). There
 are no streaming deltas to reassemble. The transcript is complete except
-for persisted tool output (section 4), pasted text in history (section
-5), and file backups (`file-history/`).
+for persisted tool output ([section 4](#4-message-content-tool-calls-and-results)), pasted text in history ([section
+5](#5-other-files)), and file backups (`file-history/`).
 
 ## 4. Message content, tool calls and results
 
@@ -296,10 +296,10 @@ inside the running turn) or a later `user` record with
   the bytes are in `.claude/file-history/<session id>/`. The paths in
   `trackedFileBackups` are files the agent edited, which no other record
   lists in one place.
-- `sessions/<pid>.json`, `.meta.json`: section 2. No SQLite store holds
+- `sessions/<pid>.json`, `.meta.json`: [section 2](#2-transcript-files). No SQLite store holds
   transcript content.
 - `.claude.json` `projects` keys are project paths (collector document,
-  section 6).
+  [section 6](../../collectors/research/claude-code.md#6-where-the-project-path-is-recorded)).
 
 ### Remote Control
 
@@ -369,7 +369,7 @@ for key names and value types only.
   runs remotely; a different feature, whose files are already secret
   globs.
 
-Section 8 says which rows the parser makes of these fields (issue 80).
+[Section 8](#8-parser-plan-what-the-parser-does) says which rows the parser makes of these fields (issue 80).
 
 ## 6. Timestamps, ids, project, branch, model, subagents
 
@@ -479,9 +479,9 @@ then the full text:
 | `relocated` | `system`, `cwd changed: <relocatedCwd>`; every later row of the file takes it as `project_path` |
 | `pr-link` | `system`, `pr-link: <prUrl or prNumber>`, once per session and URL (the first record wins) |
 | `queue-operation` | `system`, `queue <operation>: <content>`; an `enqueue` whose `content` a `queued_command` attachment or a `user` record of the file delivers is `prompt queued: delivered at line N` at the enqueue's own timestamp, N being the first delivering line after it (else the first), so the typing time is kept and the prompt text appears once, on the delivering row |
-| every other type (section 3 table) | skip |
+| every other type ([section 3](#3-record-envelope-and-types) table) | skip |
 | `history.jsonl` line | `user` |
-| `sessions/<pid>.json` | one `system` row at `startedAt` (epoch ms), `claude-code process <pid> <kind> status=<status> entrypoint=<entrypoint> bridge=<bridgeSessionId or none> host_session=<hostSessionId or none>` (`-` for a missing `kind`, `status` or `entrypoint`), `session_id` `sessionId`, `project_path` `cwd`, `source_line` 1; a file that is not a JSON object is one `system` row `parser: session registry file is not a JSON object`. A `bridge=` value means the process was under Remote Control when the collector ran (section 5); a record can outlive a crashed process, so pair it with the EDR's process list |
+| `sessions/<pid>.json` | one `system` row at `startedAt` (epoch ms), `claude-code process <pid> <kind> status=<status> entrypoint=<entrypoint> bridge=<bridgeSessionId or none> host_session=<hostSessionId or none>` (`-` for a missing `kind`, `status` or `entrypoint`), `session_id` `sessionId`, `project_path` `cwd`, `source_line` 1; a file that is not a JSON object is one `system` row `parser: session registry file is not a JSON object`. A `bridge=` value means the process was under Remote Control when the collector ran ([section 5](#5-other-files)); a record can outlive a crashed process, so pair it with the EDR's process list |
 
 A forked subagent's file begins with a copy of the forking agent's context
 (observed in the 4 fork files: the records before the
@@ -524,7 +524,7 @@ files (secrets), `paste-cache/`, the other `sessions/<pid>.json` keys
 `apiBlockIndex`, `effort`, `perTurnEffort`, `requestedModel`,
 `serverClassifierRequest`, `thinkingDurationMs`; `wireToolInputs` is
 read for Bash), `sourceToolAssistantUUID` and `serverClassifierContext`,
-and the `claude-cli-nodejs` MCP logs (section 2). Those logs carry `sessionId`, `cwd` and an ISO
+and the `claude-cli-nodejs` MCP logs ([section 2](#2-transcript-files)). Those logs carry `sessionId`, `cwd` and an ISO
 `timestamp` on every line, so a later reader could turn each `debug`
 message into a `system` row joined to the session.
 
@@ -606,5 +606,5 @@ Not determined: the meaning of a `session_id` that differs from
 `redacted_thinking`, `server_tool_use` or `image` blocks still appear in
 2.1.x transcripts; `gitBranch` for a detached head or outside a
 repository; the layout before 2.1.286; the macOS and Windows transcripts
-(the collector document finds the same `~/.claude` layout from the
+(the [collector document](../../collectors/research/claude-code.md) finds the same `~/.claude` layout from the
 bundle, but none was inspected).

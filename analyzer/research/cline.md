@@ -37,7 +37,7 @@ subagent transcripts in the same directory as `<agentId>.messages.json` or
 `${Date.now()}_${nanoid(5)}` ([`session/services/persistence-service.ts:109`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/persistence-service.ts#L109)).
 Fallback index `sessions/sessions.index.json`
 ([`session/services/file-session-service.ts:63`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/file-session-service.ts#L63)). SQLite in `~/.cline/data/db/`
-(section 5). Hook audit `~/.cline/data/logs/hooks.jsonl`
+([section 5](#5-sqlite-stores)). Hook audit `~/.cline/data/logs/hooks.jsonl`
 ([`hooks/hook-file-hooks.ts:647`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/hooks/hook-file-hooks.ts#L647)).
 
 ## 3. Record schema

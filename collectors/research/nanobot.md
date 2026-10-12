@@ -24,7 +24,7 @@ is `~/.nanobot-<name>/config.json` with its own workspace
 
 Under the data directory:
 
-- `config.json`: providers, channels, MCP servers, agent defaults (section 3).
+- `config.json`: providers, channels, MCP servers, agent defaults ([section 3](#3-credentials)).
 - `sessions/<workspace-id>/`: one directory per workspace, named by a 32-hex
   id, holding a `.workspace` marker file with the workspace path,
   `<base64url(session key)>.jsonl` transcripts, `<...>.checkpoint.json`
@@ -39,12 +39,12 @@ Under the data directory:
   epoch-ms timestamps for every model call, WAL mode
   ([`nanobot/llm_usage/__init__.py:42`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/llm_usage/__init__.py#L42); [`llm_usage/store.py:190-222`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/llm_usage/store.py#L190-L222)).
 - `pairing.json`: approved chat senders ([`nanobot/pairing/store.py:3`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/pairing/store.py#L3),[`33`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/pairing/store.py#L33)).
-- `auth/xai.json`, `auth/mcp.json` (section 3), `whatsapp-auth/neonize.db`,
+- `auth/xai.json`, `auth/mcp.json` ([section 3](#3-credentials)), `whatsapp-auth/neonize.db`,
   `matrix-store/`, `weixin/`, `mochat/`, `linear/state.sqlite3` channel state
   ([`channels/whatsapp/runtime.py:75`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/whatsapp/runtime.py#L75); [`channels/matrix/runtime.py:354`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/matrix/runtime.py#L354); [`channels/weixin/runtime.py:378`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/weixin/runtime.py#L378); [`channels/mochat/runtime.py:283`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/mochat/runtime.py#L283); [`channels/linear/state.py:44`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/linear/state.py#L44)).
 - `mcp/<name>/` working directories for MCP presets ([`webui/mcp_presets_api.py:563`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/mcp_presets_api.py#L563)),
   `cli-apps/` ([`apps/cli/service.py:428`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/apps/cli/service.py#L428)).
-- `cache/tiktoken/`, `bin/tui/<version>/`, `run/executables/` (section 4).
+- `cache/tiktoken/`, `bin/tui/<version>/`, `run/executables/` ([section 4](#4-exclude)).
 
 Always under `~/.nanobot` regardless of `--config`: `history/cli_history`
 (prompt_toolkit input history), legacy `sessions/<safe key>.jsonl`, the
@@ -90,7 +90,7 @@ large by design; `media/` can grow but is evidence.
 ## 5. Project-local files
 
 A user can point `--workspace` at a repository, which then receives the
-workspace files of section 2, notably `.nanobot/` and `memory/`. `AGENTS.md`
+workspace files of [section 2](#2-per-user-storage), notably `.nanobot/` and `memory/`. `AGENTS.md`
 is read from the active workspace, `SOUL.md` and `USER.md` from the configured
 one ([`agent/context.py:194-202`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/context.py#L194-L202)). No per-project database.
 
@@ -103,7 +103,7 @@ one ([`agent/context.py:194-202`](https://github.com/HKUDS/nanobot/blob/acdae3d0
 
 ## 7. Confidence
 
-High: every path in sections 2 to 6, read from constants in the cited files.
+High: every path in [section 2](#2-per-user-storage) to [section 6](#6-where-the-project-path-is-recorded), read from constants in the cited files.
 Medium: that `matrix-store/` holds credentials (inferred from its role; not
 read); `.nanobot-*` as an instance naming convention comes from docs, and any
 other `--config` location is missed. `project|memory/...` lines assume the

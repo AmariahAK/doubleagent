@@ -16,7 +16,7 @@ Paths and the rest of the per-user state are in
 
 - **Source**: openai/codex at
   [`3e238776e857eccd3bde6bff3026e2e9798f6524`](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524)
-  (2026-10-03), Apache-2.0, open source, the commit the collector document
+  (2026-10-03), Apache-2.0, open source, the commit the [collector document](../../collectors/research/codex-cli.md)
   cites. Paths below are relative to `codex-rs/`. Every schema claim is
   from source unless marked **local**.
 - **Local**: the real install on the development host, Codex 0.160.0
@@ -52,10 +52,10 @@ Paths relative to the home; `$CODEX_HOME` replaces `.codex` when set.
   ([features/src/lib.rs:1212-1217](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/features/src/lib.rs#L1212-L1217),
   [core/src/thread_manager.rs:461-503](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/thread_manager.rs#L461-L503)). **Parser reads** (needs `zstandard`).
 - `.codex/history.jsonl`: one line per submitted prompt, all threads
-  (section 5). **Parser reads.**
-- `.codex/session_index.jsonl`: thread renames (section 5). Not read.
+  ([section 5](#5-other-files)). **Parser reads.**
+- `.codex/session_index.jsonl`: thread renames ([section 5](#5-other-files)). Not read.
 - `.codex/state_5.sqlite`, `.codex/thread_history_1.sqlite`: thread metadata
-  and a projection of paginated rollouts (section 5). Not read.
+  and a projection of paginated rollouts ([section 5](#5-other-files)). Not read.
 
 ## 3. Record envelope and types
 
@@ -80,7 +80,7 @@ which ones are written is decided in
 | --- | --- | --- |
 | `session_meta` | thread header, below | yes |
 | `turn_context` | per-turn settings, below | yes |
-| `response_item` | a Responses API item (section 4) | yes |
+| `response_item` | a Responses API item ([section 4](#4-message-content-and-tool-calls)) | yes |
 | `event_msg` | a UI event, tagged by its own `type` (below) | yes |
 | `token_usage_record` | `thread_id`, `turn_id`, `session_id`, `root_turn_id`, `response_id`, `usage`, `turn_token_usage`, `thread_token_usage` ([protocol.rs:2263-2273](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2263-L2273)) | yes |
 | `world_state` | `full`, `state` (model-visible environment snapshot or patch, [protocol.rs:3272-3278](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3272-L3278)) | yes |
@@ -334,7 +334,7 @@ and key names.
   ([features/src/lib.rs:1224-1229](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/features/src/lib.rs#L1224-L1229),
   [thread-store/src/local/rollout_migration.rs:1-9](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/local/rollout_migration.rs#L1-L9)).
 - **Compression and archive.** `.jsonl.zst` and `archived_sessions/`
-  (section 2); Codex materialises a compressed file back to `.jsonl` before
+  ([section 2](#2-transcript-files)); Codex materialises a compressed file back to `.jsonl` before
   appending to it
   ([compression.rs:104-105](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L104-L105)), so either form may be present.
 - **Flat layout.** Older releases wrote `sessions/rollout-<time>-<uuid>.jsonl`

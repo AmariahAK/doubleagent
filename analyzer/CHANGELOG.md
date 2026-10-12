@@ -160,7 +160,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   summarised from the kept rows.
 - `python-dateutil` is a new required dependency, used for `--since` and
   `--until`; reinstall with `pip install -r requirements.txt`.
-- The analyzer README has recipes for filtering a written timeline by time
+- The [analyzer README](README.md) has recipes for filtering a written timeline by time
   with jq, DuckDB, Python and PowerShell.
 
 ### Changed
@@ -175,7 +175,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   output, diffs and multi-line prompts read as they were written; only
   leading and trailing whitespace is removed. Before, whitespace runs were
   collapsed to one space.
-- The analyzer README has a section on reading and searching large JSONL
+- The [analyzer README](README.md) has a section on reading and searching large JSONL
   timelines with jq, grep, DuckDB, Python and PowerShell.
 
 ### Removed
@@ -317,7 +317,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- The README says the `live` pseudo-agent appears only in collections made
+- The [README](README.md) says the `live` pseudo-agent appears only in collections made
   by collectors before 1.6.0, which removed the live snapshot.
 
 ## [0.4.0] - 2026-10-04

@@ -95,7 +95,7 @@ from before 0.25 can carry attachments only in the old columns. Event log lines 
 The database also holds `users.auth_token`, `registration_token.token`,
 `refresh_tokens.token`, `integrations.access_token`,
 `email_setting.smtp_password`, `oauth_credential.client_secret`,
-`ldap_credential.bind_password` (see collectors research, section 3).
+`ldap_credential.bind_password` (see collectors research, [section 3](../../collectors/research/tabby.md#3-credentials)).
 Redact those columns. Completion prompts and `clipboard` segments can carry
 pasted secrets.
 

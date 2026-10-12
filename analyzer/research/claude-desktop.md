@@ -35,13 +35,13 @@ claim below names its evidence level:
   types only. One Code-tab session on a project folder (two turns, one
   `Write` and one `Bash` call) wrote
   `claude-code-sessions/<acct>/<org>/local_<uuid>.json` (compact JSON,
-  19 KB; keys in section 3, with `cwd`, `originCwd` and
+  19 KB; keys in [section 3](#3-record-schema), with `cwd`, `originCwd` and
   `gitAnchorsFolderRealpath` all equal to the chosen folder) and its
   transcript `~/.claude/projects/-Users-<user>-proj/<cliSessionId>.jsonl`
   (`entrypoint` `claude-desktop`, CLI 2.1.295, 45 lines, none bad).
   `local-agent-mode-sessions/<acct>/<org>/` holds `scheduled-tasks.json`,
   `rpm/manifest.json` and `remote-session-spaces.json` (from a
-  file-writing chat, section 3), beside a `skills-plugin/<org>/<acct>/`
+  file-writing chat, [section 3](#3-record-schema)), beside a `skills-plugin/<org>/<acct>/`
   tree; there is no `local_<uuid>.json` and no `audit.jsonl`. Collector
   1.11.0 and the analyzer were run over the result: the parser joined the
   record's row to the 15 rows of the CLI session (the `claude-desktop`
@@ -54,12 +54,12 @@ claim below names its evidence level:
   build 26300 arm64, 2026-10-10 (collector issue 73), read for file names,
   key names and value types only. One Code-tab session wrote
   `claude-code-sessions/<acct>/<org>/local_<uuid>.json` (compact JSON,
-  17 KB; keys in section 3) and its transcript
+  17 KB; keys in [section 3](#3-record-schema)) and its transcript
   `~/.claude/projects/C--Users-<user>-proj/<cliSessionId>.jsonl` with
   `entrypoint` `claude-desktop` and CLI version 2.1.295. One chat in the
   merged Chat/Cowork surface persisted no local session record: the only
   write was `local-agent-mode-sessions/<acct>/<org>/remote-session-spaces.json`
-  (section 3). No `vm-support-probe.json` exists on that install.
+  ([section 3](#3-record-schema)). No `vm-support-probe.json` exists on that install.
 - **Observed (Linux)**: a clean install of the official `claude-desktop`
   2.31226.1 `.deb` (arm64) on Ubuntu 26.04.1 LTS aarch64, 2026-10-11
   (collector issue 73), read for file names, sizes, key names and value
@@ -71,13 +71,13 @@ claim below names its evidence level:
   (`entrypoint` `claude-desktop`, CLI 2.1.295) beside
   `~/.claude/sessions/<pid>.json` (`hostSessionId` = the desktop
   `local_<uuid>`) and a `<pid>.<sha256>.key`. Two chats in the merged
-  Chat/Cowork surface wrote no local session record (section 3). The
+  Chat/Cowork surface wrote no local session record ([section 3](#3-record-schema)). The
   Cowork VM was unsupported in that nested-virtualisation guest
   (`cowork_vm_node.log`: `workspace VM not supported (status=unsupported)`),
   so no `vm_bundles` or `claude-code-vm` (the Linux CLI build the Cowork VM
   runs, observed on macOS) exists there.
-- **Docs**: the claude.com data-storage page cited in the collector
-  document, for names the bundle confirms.
+- **Docs**: the claude.com data-storage page cited in the [collector
+  document](../../collectors/research/claude-desktop.md), for names the bundle confirms.
 
 ## 2. Transcript files
 
@@ -86,7 +86,7 @@ All paths are relative to the app-data directory (`userData`): macOS
 Windows `%APPDATA%\Claude\` as the app reports it, which for the
 Microsoft Store build is stored on disk as
 `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\`
-(observed; MSIX filesystem virtualisation, section 5); the enterprise
+(observed; MSIX filesystem virtualisation, [section 5](#5-other-stores)); the enterprise
 build appends `-3p`. `<acct>` and `<org>` are the account
 and organization UUIDs, or their first eight hex digits when the app has
 switched to short names (`app.asar:.vite/build/index.chunk-Cyt2WTko.js@2238150`
@@ -96,20 +96,20 @@ UUIDs).
 
 | Path | Format | What it holds | Parse? |
 | --- | --- | --- | --- |
-| `local-agent-mode-sessions/<acct>/<org>/local_<uuid>.json` | JSON object, pretty-printed (2 spaces), rewritten whole | Cowork or desktop-chat session record (section 3) | yes, metadata and first prompt |
+| `local-agent-mode-sessions/<acct>/<org>/local_<uuid>.json` | JSON object, pretty-printed (2 spaces), rewritten whole | Cowork or desktop-chat session record ([section 3](#3-record-schema)) | yes, metadata and first prompt |
 | `local-agent-mode-sessions/<acct>/<org>/agent/local_<uuid>.json` | same | session record when `sessionType` is `agent` | yes |
 | `local-agent-mode-sessions/<acct>/<org>/local_<uuid>/` or `.../<8 hex>/` | directory | session storage dir: `outputs/`, `uploads/`, `.claude/`, `audit.jsonl`, `.audit-key` | see below |
 | `.../<session dir>/.claude/projects/<slug>/<cliSessionId>.jsonl` | Claude Code JSONL | the Cowork transcript | yes, with the claude-code reader |
-| `.../<session dir>/audit.jsonl` | JSONL, append-only, HMAC-chained | every Agent SDK message except stream deltas, plus permission events | yes, system rows (section 8) |
+| `.../<session dir>/audit.jsonl` | JSONL, append-only, HMAC-chained | every Agent SDK message except stream deltas, plus permission events | yes, system rows ([section 8](#8-parser-plan)) |
 | `local-agent-mode-sessions/<acct>/<org>/agent/local_ditto_<id>[_g<n>]/` | directory per dispatch agent generation | `audit.jsonl` and `.claude/projects/*/*.jsonl` | yes, same readers |
 | `claude-code-sessions/<acct>/<org>/local_<uuid>.json` | JSON object, compact, rewritten whole | Code-tab session record; the transcript is in `~/.claude/projects/` | yes, one system row |
 | `claude-code-sessions/<acct>/<org>/imported-staging/<cliSessionId>.jsonl` | Claude Code JSONL | a transcript imported from another surface | yes, claude-code reader |
 | `local-agent-mode-sessions/<acct>/<org>/scheduled-tasks.json`, `claude-code-sessions/<acct>/<org>/scheduled-tasks.json` | JSON | scheduled task definitions (observed, empty) | optional system rows |
 | `git-worktrees.json` | JSON | worktrees the Code tab created (observed, empty) | optional system rows |
-| `IndexedDB/https_claude.ai_0.indexeddb.leveldb/`, `Local Storage/leveldb/`, `Session Storage/` | Chromium LevelDB | claude.ai web page state (section 5) | no |
-| `Partitions/<name>/` | a Chromium profile of an Electron session partition | observed on macOS: `launch-preview-static` (the built-in browser that previews servers a session launches, with its own `Cookies`) and `cowork-file-preview` (Cowork file previews, network closed); see the collector document, section 2 | no |
+| `IndexedDB/https_claude.ai_0.indexeddb.leveldb/`, `Local Storage/leveldb/`, `Session Storage/` | Chromium LevelDB | claude.ai web page state ([section 5](#5-other-stores)) | no |
+| `Partitions/<name>/` | a Chromium profile of an Electron session partition | observed on macOS: `launch-preview-static` (the built-in browser that previews servers a session launches, with its own `Cookies`) and `cowork-file-preview` (Cowork file previews, network closed); see the collector document, [section 2](../../collectors/research/claude-desktop.md#2-per-user-storage) | no |
 | `vm-support-probe.json`, `cowork-enabled-cli-ops.json`, `plan-usage-history.json`, `ant-device-registry.json` | JSON | observed on macOS: `{hardwareKey, key}` (cached Cowork VM support probe); `{ownerAccountId}`; `{version, samples[]}`, each sample `{org, t, u: {fh, sd}}`; an object of UUID keys to strings | no |
-| `~/Library/Logs/Claude/main.log`, `mcp.log`, `mcp-server-<name>.log` | text | app and MCP transport logs (section 5); on Linux in `userData/logs/` (observed), on the Windows Store build in `%LOCALAPPDATA%\Claude\logs` (observed) | no |
+| `~/Library/Logs/Claude/main.log`, `mcp.log`, `mcp-server-<name>.log` | text | app and MCP transport logs ([section 5](#5-other-stores)); on Linux in `userData/logs/` (observed), on the Windows Store build in `%LOCALAPPDATA%\Claude\logs` (observed) | no |
 
 Evidence for the layout (all bundle):
 
@@ -159,7 +159,7 @@ Evidence for the layout (all bundle):
   (`@4137317` `var mIr=["claude-desktop","claude-desktop-3p"];function hIr(e){return e==="3p"?"claude-desktop-3p":"claude-desktop"}`),
   and Cowork with `CLAUDE_CODE_ENTRYPOINT:"local-agent"`
   (`index.chunk-QEr06WaZ.js`), which is the `entrypoint` value the
-  claude-code research documents on every transcript line.
+  [claude-code research](claude-code.md) documents on every transcript line.
 
 **Collector gap.** None of the transcript paths above is under an
 `EXCLUDES` glob: `*/Claude*/claude-code-vm` holds only the Linux CLI
@@ -220,8 +220,8 @@ Keys, in write order; undefined values are omitted by `JSON.stringify`:
 | `enabledMcpTools`, `remoteMcpServersConfig`, `approvedToolNames`, `webFetchAllowedUrls`, `egressAllowedDomains`, `userApprovedFileAccessPaths` | arrays and objects | tool and network grants |
 | `chromePermissionMode`, `chromeAllowedDomains`, `cuAllowedApps`, `cuGrantFlags`, `cuFlagsGrantedAt` | | browser and computer-use grants |
 | `systemPrompt`, `systemPromptRendererAppends`, `imagineSystemPrompt`, `memoryGuidelinesTemplate`, `coworkSyspromptMap`, `spSectionPrompts` | strings and objects | the system prompt sent |
-| `accountName`, `emailAddress` | string | the signed-in person (section 7) |
-| `otelConfig`, `orgOtlpContentCapture` | object | telemetry export settings (section 7) |
+| `accountName`, `emailAddress` | string | the signed-in person ([section 7](#7-secrets)) |
+| `otelConfig`, `orgOtlpContentCapture` | object | telemetry export settings ([section 7](#7-secrets)) |
 | `pendingNotifications` | string[] | queued system reminders |
 
 The remaining keys (`resumeConfirmed`, `relinkedToSpace`,
@@ -347,7 +347,7 @@ Imported records (`finishRegisterExternalSession`, `@1686493`) also carry
 `indexedAt` (epoch ms), `importedFrom` and `stagedTranscriptPath`.
 
 **Remote Control** (another device driving the session's CLI through a
-bridge; the CLI side is in [`claude-code.md`](claude-code.md), section 5).
+bridge; the CLI side is in [`claude-code.md`](claude-code.md), [section 5](claude-code.md#5-other-files)).
 The serializer `dk` (`app.asar:.vite/build/index.chunk-epGqPC4W.js@549559`,
 keys from `@554789` `bridgeSessionIds` to `@555190` `peerMessaged`)
 persists `remoteControlUserEnabled`, `remoteControlUserRequested`,
@@ -464,7 +464,7 @@ bytes (`randomBytes(QUi)`) stored as `safeStorage.encryptString` of their
 base64 form and read back with `safeStorage.decryptString`; when safe
 storage is unavailable the session runs `keyless` and no link or folder
 is verified. It is OS-encrypted like `.audit-key` and flagged secret by
-the collector (section 7).
+the collector ([section 7](#7-secrets)).
 
 `git-shadow/` at the userData root holds the Code tab's private git
 state, not transcripts
@@ -527,7 +527,7 @@ deserialization; that is out of scope for this parser. Unsent drafts
 (`chat-draft`) are the only obviously user-typed text.
 
 **Desktop chat sessions** (`sessionType` `chat`) are local Cowork
-sessions and are covered by section 2.
+sessions and are covered by [section 2](#2-transcript-files).
 
 **Logs.** `main.log` (rotated as `main1.log` to `main4.log`, observed)
 uses `${timestamp} [${level}] ${message}` (`index.chunk-Cyt2WTko.js`,
@@ -585,7 +585,7 @@ without `_audit_redactions`.
 - `.audit-key` per session dir: the encrypted HMAC key. Already a secret
   glob (`*/Claude*/local-agent-mode-sessions/*/.audit-key`).
 - `spaces-present/<acct>/<org>/link-key`: the encrypted space-link HMAC
-  key (section 3); a secret glob since collector 1.11.0
+  key ([section 3](#3-record-schema)); a secret glob since collector 1.11.0
   (`*/Claude*/spaces-present/*/link-key`).
 - Cowork session record: `emailAddress` and `accountName` (identity, not
   credentials, but personal data to redact on sharing); `systemPrompt`
@@ -609,7 +609,7 @@ without `_audit_redactions`.
   (`getOAuthToken`), so a `.credentials.json` in the session dir was not
   seen in the code path read; not determined.
 - `config.json`, `Local State`, `Cookies`, `host-creds-*.json` and
-  `ccd-session-secrets/` are covered in the collector document.
+  `ccd-session-secrets/` are covered in the [collector document](../../collectors/research/claude-desktop.md).
 
 ## 8. Parser plan
 
@@ -623,7 +623,7 @@ joined to the 15 rows of its CLI session), the Code-tab path is validated
 on three platforms (Windows, Linux and macOS); the
 Cowork, audit and scheduled-task readers rest on the bundle and the
 synthetic fixture. The Code-tab record row carries the persisted Remote
-Control fields (section 3, issue 80); every real install showed them
+Control fields ([section 3](#3-record-schema), issue 80); every real install showed them
 `false` or absent, so the `true` values rest on the bundle and the
 fixture.
 
@@ -761,7 +761,7 @@ are placeholders; a fixture need not verify):
 ```
 
 The `decision` values are `deny`, `once`, `always` and `scheduled`
-(section 3). Add a second session dir with only
+([section 3](#3-record-schema)). Add a second session dir with only
 `audit.jsonl` (no `.claude/projects`) to exercise the fallback, and a
 truncated last line written with `write_bad_line`.
 
