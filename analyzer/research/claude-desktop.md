@@ -622,8 +622,10 @@ Windows install and the macOS install of 2026-10-11 (the record row
 joined to the 15 rows of its CLI session), the Code-tab path is validated
 on three platforms (Windows, Linux and macOS); the
 Cowork, audit and scheduled-task readers rest on the bundle and the
-synthetic fixture. Issue 80 adds the Remote Control fields (section 3)
-to the Code-tab record row.
+synthetic fixture. The Code-tab record row carries the persisted Remote
+Control fields (section 3, issue 80); every real install showed them
+`false` or absent, so the `true` values rest on the bundle and the
+fixture.
 
 A `claude-desktop` parser that reuses the claude-code reader for the
 transcripts (as little-coder reuses pi's), plus small readers for the
@@ -683,6 +685,20 @@ record's `cliSessionId`; `source_line` is the 1-based line number.
 `desktop code session: "<title>"` for the Code tab, with `session_id` =
 `cliSessionId`, `project_path` = `userSelectedFolders[0]` or
 `originCwd` or `cwd`, `git_branch` = `branch` (Code tab only), `model`.
+A Code-tab row's text continues after the title with
+`remote_control=<remoteControlUserEnabled> bridges=<len(bridgeSessionIds)>
+spawned_remotely=<remoteControlSpawn is a non-empty object>
+steered_remotely=<steeredByRemoteClient>`, absent keys reading `false`
+and `0`, always appended. When `remoteControlLiveAtUpdateQuit` is an
+object with a numeric `at`, a second `system` row at that time reads
+`remote control live at update quit`, same session and project. Not
+read: `remoteControlUserRequested`, `remoteControlUserToggled`,
+`remoteControlAutoEligible`, `remoteControlDescendant`, `peerMessaged`,
+`cloudSessionId`, the spawn object's fields and the update-quit
+`accountId`; `sessions.jsonl` gets no column for them until a real
+Remote Control session shows them set. Whether a session was under
+Remote Control at collection time is the `claude-code` registry row's
+`bridge=` value, joined on `cliSessionId`.
 If the record has `initialMessage` and no transcript or audit file for
 the session was collected, also yield it as a `user` row at `createdAt`.
 If `error` is set, one `system` row `session error: <errorCategory>:

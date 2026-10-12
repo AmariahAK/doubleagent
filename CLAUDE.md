@@ -15,11 +15,13 @@ Claude Code specific notes:
 - A live run against this workstation collects the author's own Claude Code,
   Gemini, Antigravity, Codex and Copilot state. Write it under the scratchpad
   directory and delete it afterwards.
-- This Mac has no dash, busybox, posh, pwsh, shellcheck or shfmt, and one
-  shell of the sh smoke matrix takes about forty minutes here. Run the sh
-  smoke test on a Linux lab VM over SSH when one is up (dash, bash and
-  busybox finish in a few minutes each) and let CI cover the rest; run
-  the analyzer tests here. Under fish, a string of ssh flags in a variable
+- This Mac has no dash, busybox, posh, pwsh, shellcheck or shfmt. Its
+  `/bin/sh` is bash 3.2, the one shell CI does not run, and the smoke
+  test passes under it since collector 1.11.0 (issues 78 and 82): about
+  17 minutes with no VM running, far longer while a Parallels VM holds
+  most of the 8 GB, so never run it beside a VM. When a Linux lab VM is
+  up, run dash, bash and busybox there instead (a few minutes each) and
+  let CI cover the rest; run the analyzer tests here. Under fish, a string of ssh flags in a variable
   is not word-split; keep an ssh config file with host aliases in the
   scratchpad and pass it with `-F`.
 - The research documents under `collectors/research/` and `analyzer/research/`

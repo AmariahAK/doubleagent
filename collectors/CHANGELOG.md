@@ -63,6 +63,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - In the PowerShell collector, a directory that a wildcard catalog segment
   cannot list gets an `error_read` row instead of being skipped silently
   (#77).
+- `tests/smoke.sh` passes on a macOS host: it strips the trailing slash
+  from `$TMPDIR` and resolves the work directory before building the fake
+  image, and hashes the backslash-named file from an extracted copy of the
+  archive, because bsdtar reads a backslash in a member name as an escape
+  (#78).
+- On macOS and the BSDs, a catalog match directory that cannot be listed or
+  entered (an agent's state directory with no read permission) left no row
+  in the manifest, only a `find` line in the log; it now gets one
+  `error_read` row with the OS error, as on Linux (#82).
 
 ## [1.10.3] - 2026-10-07
 

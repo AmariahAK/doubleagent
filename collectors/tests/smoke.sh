@@ -9,7 +9,11 @@ set -u
 SHELL_UNDER_TEST=${1:-sh}
 HERE=$(cd "$(dirname "$0")" && pwd)
 SCRIPT="$HERE/../collect-agent-artifacts.sh"
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/cac-smoke.XXXXXX")
+# macOS sets TMPDIR with a trailing slash and under the /var -> /private/var
+# symlink; strip the slash and resolve the directory so the paths the checks
+# build match the manifest's (#78).
+_tmpdir=${TMPDIR:-/tmp}
+WORK=$(mktemp -d "${_tmpdir%/}/cac-smoke.XXXXXX") && WORK=$(cd "$WORK" && pwd -P) || exit 1
 ROOT="$WORK/root"
 OUT="$WORK/out"
 fail=0
@@ -1349,12 +1353,16 @@ sha71() { row "$1" | sed 's/.*"sha256":"\([^"]*\)".*/\1/'; }
 noatime71() { sed 's/"atime":[0-9]*,//' "$1" | sort; }
 _root71=$ROOT; ROOT=$R71
 run batch71 --no-docker; _rc71=$?; M71=$M
+# bsdtar reads a backslash in a member name as an escape, so the backslash
+# file is hashed from a full extraction rather than with tar -O (#78).
+X71="$WORK/x71"; mkdir -p "$X71"; tar -xzf "$A" -C "$X71" 2>/dev/null
+F71="$X71/fs/home/carol/.claude/projects/-srv-p71/back\\slash.jsonl"
 check "#71 batched run exit 0, 306 rows" "[ $_rc71 -eq 0 ] && [ \"\$(wc -l <\"\$M\")\" -eq 306 ]"
 check "#71 plain name in the batch hashed" "[ \"\$(sha71 \"$D71/a.jsonl\")\" = \"\$(hash71 'first\\n')\" ]"
 check "#71 newline name hashed" "[ \"\$(sha71 \"$D71/nl\\\\nname.jsonl\")\" = \"\$(hash71 'newline name\\n')\" ]"
 check "#71 newline name: hash matches the archived bytes" "[ \"\$(tar -xzOf \"\$A\" \"./fs/home/carol/.claude/projects/-srv-p71/nl${nl71}name.jsonl\" | sha256sum | cut -d' ' -f1)\" = \"\$(sha71 \"$D71/nl\\\\nname.jsonl\")\" ]"
 check "#71 backslash name hashed" "[ \"\$(sha71 \"$D71/back\\\\\\\\slash.jsonl\")\" = \"\$(hash71 'backslash name\\n')\" ]"
-check "#71 backslash name: hash matches the archived bytes" "[ \"\$(tar -xzOf \"\$A\" './fs/home/carol/.claude/projects/-srv-p71/back\\slash.jsonl' | sha256sum | cut -d' ' -f1)\" = \"\$(sha71 \"$D71/back\\\\\\\\slash.jsonl\")\" ]"
+check "#71 backslash name: hash matches the archived bytes" "[ \"\$(sha256sum <\"\$F71\" | cut -d' ' -f1)\" = \"\$(sha71 \"$D71/back\\\\\\\\slash.jsonl\")\" ]"
 check "#71 carriage return name hashed" "[ \"\$(sha71 \"$D71/cr\\\\rname.jsonl\")\" = \"\$(hash71 'cr name\\n')\" ]"
 check "#71 file after the odd names hashed" "[ \"\$(sha71 \"$D71/z.jsonl\")\" = \"\$(hash71 'last\\n')\" ]"
 check "#71 files across two chunks all collected and hashed" "[ \"\$(grep -c '/file-history/s1/f[0-9]*@v1\",.*\"sha256\":\"[0-9a-f]\\{64\\}\",\"secret\":false,\"status\":\"collected\"' \"\$M\")\" -eq 300 ] && [ \"\$(sha71 \"$R71/home/carol/.claude/file-history/s1/f299@v1\")\" = \"\$(hash71 'v299\\n')\" ]"

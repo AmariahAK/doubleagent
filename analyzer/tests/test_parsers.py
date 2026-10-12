@@ -19,6 +19,9 @@ from doubleagent.parsers.goose import GooseParser, unescape_history
 from doubleagent.timeutil import to_utc
 from fixtures import (
     AGY_CONVERSATION,
+    CLAUDE_295_SESSION,
+    CLAUDE_BRIDGE_SESSION,
+    CLAUDE_REGISTRY_KEY,
     CLAUDE_SESSION,
     CLAUDE_WORK_SESSION,
     CODEX_FORK,
@@ -322,6 +325,167 @@ class ClaudeCodeTests(ParserBase):
         self.assertEqual(len(rows), len(self.EXPECTED) + 1)
         self.assertIn("1 unparseable line", rows[-1].text)
         self.assertEqual(rows[-1].source_line, 35)
+
+
+class ClaudeCode295Tests(ParserBase):
+    """Claude Code 2.1.295: permission decisions, the state lines that
+    version writes, and the per-process registry `sessions/<pid>.json`."""
+
+    REL = ".claude/projects/-srv-proj/%s.jsonl" % CLAUDE_295_SESSION
+    REG = ".claude/sessions/4242.json"
+    BRIDGE = ".claude/sessions/4343.json"
+
+    EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
+        (1, "system", "prompt queued: delivered at line 4"),
+        (2, "system", "queue dequeue:"),
+        (4, "user", "list the cron jobs"),
+        (5, "tool_use", "cd /srv/proj && crontab -l"),
+        (6, "tool_result", "0 3 * * * x"),
+        (6, "system", "permission decision: allow source=auto_mode reason=classifier"),
+        (
+            8,
+            "system",
+            'stop_hook_summary: {"hasOutput":false,"hookAdditionalContext":[],"hookCount":1,'
+            '"hookErrors":[],"hookInfos":[{"command":"true","durationMs":5}],'
+            '"level":"suggestion","preventedContinuation":false,"stopReason":"",'
+            '"toolUseID":"toolu_95"}',
+        ),
+    ]
+
+    def test_rows(self):
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        self.assertEqual([(r.source_line, r.turn_type, r.text) for r in rows], self.EXPECTED)
+        for r in rows:
+            self.assertEqual(r.session_id, CLAUDE_295_SESSION)
+            self.assertEqual(r.project_path, "/srv/proj")
+            self.assertEqual(r.git_branch, "main")
+        # The state lines (snapshot, delta, last-prompt, atis-latch) yield
+        # nothing, and no line is reported unreadable.
+        self.assertFalse(any(r.text.startswith("parser:") for r in rows))
+
+    def test_permission_decision_row(self):
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        i = next(i for i, r in enumerate(rows) if r.text.startswith("permission decision:"))
+        result, perm = rows[i - 1], rows[i]
+        self.assertEqual(result.turn_type, "tool_result")
+        self.assertEqual(
+            (perm.turn_type, perm.tool_use_id, perm.tool_name, perm.timestamp_utc, perm.model),
+            ("system", "toolu_95", "", "2026-10-01T11:00:03.000Z", ""),
+        )
+
+    def test_permission_decision_extra_and_missing_keys(self):
+        path = self.home / self.REL
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": CLAUDE_295_SESSION,
+                        "timestamp": "2026-10-01T11:00:09.000Z",
+                        "message": {
+                            "role": "user",
+                            "content": [
+                                {"type": "tool_result", "tool_use_id": "toolu_96", "content": "x"},
+                                {"type": "tool_result", "tool_use_id": "toolu_97", "content": "y"},
+                            ],
+                        },
+                        "permissionDecision": {"decision": "deny", "ruleId": "r1"},
+                    }
+                )
+                + "\n"
+            )
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        self.assertEqual(
+            [(r.turn_type, r.tool_use_id) for r in rows[-3:]],
+            [("tool_result", "toolu_96"), ("tool_result", "toolu_97"), ("system", "toolu_96")],
+        )
+        self.assertEqual(
+            rows[-1].text,
+            'permission decision: deny source=- reason=- {"decision":"deny","ruleId":"r1"}',
+        )
+
+    def test_thinking_opt_in(self):
+        rows = self.rows_for(ClaudeCodeParser(), self.REL, include_thinking=True)
+        self.assertEqual([r for r in rows if r.turn_type == "thinking"], [])
+        self.assertEqual(len(rows), len(self.EXPECTED))
+
+    def test_registry_rows(self):
+        rows = self.rows_for(ClaudeCodeParser(), self.REG)
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertEqual(
+            (
+                r.turn_type,
+                r.text,
+                r.timestamp_utc,
+                r.session_id,
+                r.project_path,
+                r.model,
+                r.source_line,
+            ),
+            (
+                "system",
+                "claude-code process 4242 interactive status=idle entrypoint=claude-desktop "
+                "bridge=none host_session=local_f4f4f4f4-9999-4aaa-8bbb-cccccccccccc",
+                "2026-10-01T11:00:00.000Z",
+                CLAUDE_295_SESSION,
+                "/srv/proj",
+                "",
+                1,
+            ),
+        )
+        self.assertEqual(r.source_file, "/alice/" + self.REG)
+        # The registry row joins the session's transcript rows.
+        sessions = {x.session_id for x in self.rows_for(ClaudeCodeParser(), self.REL)}
+        self.assertEqual(sessions, {r.session_id})
+        rows = self.rows_for(ClaudeCodeParser(), self.BRIDGE)
+        self.assertEqual(
+            [(x.text, x.session_id, x.timestamp_utc) for x in rows],
+            [
+                (
+                    "claude-code process 4343 interactive status=busy entrypoint=cli "
+                    "bridge=cse_0123456789abcdef host_session=none",
+                    CLAUDE_BRIDGE_SESSION,
+                    "2026-10-01T12:00:00.000Z",
+                )
+            ],
+        )
+
+    def test_registry_missing_keys(self):
+        (self.home / self.REG).write_text('{"pid": 4242}', encoding="utf-8")
+        rows = self.rows_for(ClaudeCodeParser(), self.REG)
+        self.assertEqual(
+            [(r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [
+                (
+                    "claude-code process 4242 - status=- entrypoint=- bridge=none "
+                    "host_session=none",
+                    "",
+                    "",
+                )
+            ],
+        )
+
+    def test_not_wanted(self):
+        rel = ".claude/sessions/" + CLAUDE_REGISTRY_KEY
+        art = next(a for a in self.col.artifacts if a.rel == rel)
+        self.assertEqual(art.agent, "claude-code")
+        self.assertFalse(ClaudeCodeParser().wants(art))
+
+    def test_registry_not_json_object(self):
+        for body in ('{"pid": 42', "[1, 2]"):
+            (self.home / self.REG).write_text(body, encoding="utf-8")
+            rows = self.rows_for(ClaudeCodeParser(), self.REG)
+            self.assertEqual(
+                [(r.turn_type, r.source_line, r.text) for r in rows],
+                [("system", 1, "parser: session registry file is not a JSON object")],
+            )
+
+    def test_truncated_line_is_reported_not_fatal(self):
+        write_bad_line(self.home / self.REL)
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        self.assertEqual(len(rows), len(self.EXPECTED) + 1)
+        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 11")
 
 
 class CodexTests(ParserBase):
@@ -4861,6 +5025,8 @@ from fixtures import (
     CD_AUDIT_REL,
     CD_CLI_SESSION,
     CD_CODE_CLI,
+    CD_CODE_RC_CLI,
+    CD_CODE_RC_RECORD_REL,
     CD_CODE_RECORD_REL,
     CD_COWORK_ORG,
     CD_FALLBACK_CLI,
@@ -5050,12 +5216,61 @@ class ClaudeDesktopTests(ParserBase):
             (r.turn_type, r.text, r.timestamp_utc, r.session_id, r.project_path, r.git_branch),
             (
                 "system",
-                'desktop code session: "Fix the failing test"',
+                'desktop code session: "Fix the failing test" remote_control=false bridges=0 '
+                "spawned_remotely=false steered_remotely=false",
                 "2026-09-30T10:00:00.000Z",
                 CD_CODE_CLI,
                 "/srv/proj",
                 "main",
             ),
+        )
+
+    def test_code_record_remote_control(self):
+        rows = self.rows_for(ClaudeDesktopParser(), CD_CODE_RC_RECORD_REL)
+        self.assertEqual(
+            [
+                (r.turn_type, r.text, r.timestamp_utc, r.session_id, r.project_path, r.source_line)
+                for r in rows
+            ],
+            [
+                (
+                    "system",
+                    'desktop code session: "Driven from the phone" remote_control=true '
+                    "bridges=2 spawned_remotely=true steered_remotely=true",
+                    "2026-09-30T11:00:00.000Z",
+                    CD_CODE_RC_CLI,
+                    "/srv/proj",
+                    1,
+                ),
+                (
+                    "system",
+                    "remote control live at update quit",
+                    "2026-09-30T11:08:20.000Z",
+                    CD_CODE_RC_CLI,
+                    "/srv/proj",
+                    1,
+                ),
+            ],
+        )
+
+    def test_code_record_remote_control_edge_values(self):
+        # An empty spawn object is not a remote spawn; an update-quit object
+        # without a numeric `at` yields no second row.
+        path = self.home / CD_CODE_RC_RECORD_REL
+        rec = json.loads(path.read_text(encoding="utf-8"))
+        rec.update(
+            remoteControlSpawn={},
+            bridgeSessionIds=None,
+            remoteControlLiveAtUpdateQuit={"accountId": "x", "at": "soon"},
+        )
+        path.write_text(json.dumps(rec), encoding="utf-8")
+        rows = self.rows_for(ClaudeDesktopParser(), CD_CODE_RC_RECORD_REL)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                'desktop code session: "Driven from the phone" remote_control=true '
+                "bridges=0 spawned_remotely=false steered_remotely=true"
+            ],
         )
 
     def test_code_record_joins_home_transcript(self):

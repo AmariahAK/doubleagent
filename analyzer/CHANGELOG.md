@@ -35,6 +35,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   legacy Open Interpreter directories under `open-interpreter`, and the
   Dify, Langflow and n8n Docker volume patterns are detected; none is
   parsed yet (#64).
+- Claude Code 2.1.295 permission decisions: a tool-result line that
+  records how the call was allowed or denied gets a `system` row after
+  its result, `permission decision: <decision> source=<source>
+  reason=<reasonType>`, carrying the call's `tool_use_id` (#76).
+- Claude Code's per-process registry `~/.claude/sessions/<pid>.json` is
+  read: one `system` row per process at its start time, `claude-code
+  process <pid> <kind> status=<status> entrypoint=<entrypoint>
+  bridge=<id or none> host_session=<id or none>`, joined to the session.
+  A `bridge=` id means the process was under Remote Control when the
+  collection ran; check it against the EDR's process list, since a
+  crashed process can leave its file behind (#80).
+- Claude Desktop Code-tab session rows end with the session's persisted
+  Remote Control state, `remote_control=<bool> bridges=<n>
+  spawned_remotely=<bool> steered_remotely=<bool>`, and a session that
+  was under Remote Control when the app quit to update gets a `remote
+  control live at update quit` row at that time (#80).
+
+### Fixed
+
+- The detection test for the framework agents passes on a case-insensitive
+  filesystem (macOS): the two spellings of CrewAI's Windows directory are
+  built in separate homes instead of one (#75).
 
 ## [0.10.0] - 2026-10-06
 

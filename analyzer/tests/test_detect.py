@@ -97,14 +97,15 @@ class LooseDetectTests(unittest.TestCase):
         # directory named after the project folder (a mid-path `*` entry),
         # its Windows directory is the class [Cc]rew[Aa][Ii], CAMEL shares
         # ~/.camel with Apache Camel JBang, and the legacy Open Interpreter
-        # directories have spaces in their names.
+        # directories have spaces in their names. The two Windows spellings
+        # sit in separate homes, because a case-insensitive filesystem
+        # (macOS, Windows) would fold them into one directory (#75).
         home = self.tmp / "home" / "alice"
         files = {
             ".local/share/myproj/latest_kickoff_task_outputs.db": "crewai",
             ".local/share/opencode/flow_states.db": "crewai",
             ".local/share/opencode/opencode.db": "opencode",
             "AppData/Local/CrewAI/myproj/latest_kickoff_task_outputs.db": "crewai",
-            "AppData/Local/crewai/credentials/tokens.enc": "crewai",
             ".camel/gmail_token.json": "camel-ai",
             ".config/Open Interpreter Terminal/conversations/a.json": "open-interpreter",
             ".config/pydantic-clai2/sessions.db": "pydantic-clai",
@@ -119,10 +120,14 @@ class LooseDetectTests(unittest.TestCase):
             p = home / rel
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text("x")
+        lower = self.tmp / "home" / "bob" / "AppData/Local/crewai/credentials/tokens.enc"
+        lower.parent.mkdir(parents=True)
+        lower.write_text("x")
         col = open_input(self.tmp / "home", self.cat)
         by_rel = {a.rel: a.agent for a in col.artifacts}
         for rel, agent in files.items():
             self.assertEqual(by_rel.get(rel), agent, rel)
+        self.assertEqual(by_rel.get("AppData/Local/crewai/credentials/tokens.enc"), "crewai")
         self.assertNotIn(".camel/4242-status.json", by_rel)
         self.assertNotIn(".local/share/myproj/notes.txt", by_rel)
         self.assertEqual(

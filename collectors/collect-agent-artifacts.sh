@@ -2178,6 +2178,14 @@ fold_matches() {
 collect_path() {
   _cp_user=$1; _cp_home=$2; _cp_agent=$3; _cp_m=$4
   if [ -d "$_cp_m" ] && [ ! -L "$_cp_m" ]; then
+    # A match that cannot be listed or entered gets its error_read row here,
+    # not from the walk: BSD find applies no expression to a starting point
+    # it cannot read and GNU find does, so the pre-check gives both one row
+    # and never two (#82).
+    if [ "$INVENTORY" != 1 ] && dir_err_v "$_cp_m"; then
+      read_err_row "$MANIFEST" "$_cp_user" "$_cp_home" "$_cp_agent" "$_cp_m" "$_de"
+      return 0
+    fi
     set -- "$_cp_m"
     _cp_ifs=$IFS
     IFS='

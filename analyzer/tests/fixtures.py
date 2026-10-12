@@ -16,6 +16,11 @@ from doubleagent.protobuf import encode
 
 CLAUDE_SESSION = "11111111-2222-4333-8444-555555555555"
 CLAUDE_WORK_SESSION = "11111111-2222-4333-8444-666666666666"
+# A 2.1.295 session in the same project, and the session a Remote Control
+# process in the registry fixture is bound to (no transcript).
+CLAUDE_295_SESSION = "11111111-2222-4333-8444-777777777777"
+CLAUDE_BRIDGE_SESSION = "11111111-2222-4333-8444-888888888888"
+CLAUDE_REGISTRY_KEY = "4242." + "ab" * 32 + ".key"
 CODEX_SESSION = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 CODEX_SUBAGENT = "aaaaaaaa-bbbb-4ccc-8ddd-000000000002"
 CODEX_FORK = "aaaaaaaa-bbbb-4ccc-8ddd-000000000003"
@@ -423,6 +428,174 @@ def claude_work_history_records():
             "sessionId": CLAUDE_WORK_SESSION,
         },
     ]
+
+
+def claude_295_records():
+    """A Claude Code 2.1.295 session: the state lines and keys that version
+    writes (research/claude-code.md, sections 3 and 5). Line numbers are what
+    ClaudeCode295Tests asserts."""
+    c = _claude_common("/srv/proj", "main")
+    c.update(sessionId=CLAUDE_295_SESSION, version="2.1.295", entrypoint="claude-desktop")
+    sid = CLAUDE_295_SESSION
+    prompt = "list the cron jobs"
+    return [
+        dict(
+            type="queue-operation",
+            operation="enqueue",
+            content=prompt,
+            sessionId=sid,
+            timestamp="2026-10-01T11:00:00.000Z",
+        ),  # 1
+        dict(
+            type="queue-operation",
+            operation="dequeue",
+            sessionId=sid,
+            timestamp="2026-10-01T11:00:00.100Z",
+        ),  # 2
+        dict(
+            type="file-history-snapshot",
+            messageId="p1",
+            snapshot={
+                "messageId": "p1",
+                "trackedFileBackups": {},
+                "timestamp": "2026-10-01T11:00:00.200Z",
+            },
+            isSnapshotUpdate=False,
+        ),  # 3
+        dict(
+            c,
+            type="user",
+            uuid="p1",
+            parentUuid=None,
+            timestamp="2026-10-01T11:00:01.000Z",
+            message={"role": "user", "content": prompt},
+            turnOrigin="human",
+            promptSource="sdk",
+            permissionMode="auto",
+            origin={"kind": "human"},
+            turnPosition=0,
+            promptId="prompt-0001",
+        ),  # 4
+        dict(
+            c,
+            type="assistant",
+            uuid="p2",
+            parentUuid="p1",
+            timestamp="2026-10-01T11:00:02.000Z",
+            requestId="req_p2",
+            message={
+                "model": "claude-fable-5-1",
+                "id": "msg_p2",
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_95",
+                        "name": "Bash",
+                        "input": {"command": "crontab -l", "description": "List cron jobs"},
+                    }
+                ],
+            },
+            advisorModel="claude-fable-5-1",
+            apiBlockIndex=0,
+            effort="high",
+            perTurnEffort="high",
+            requestedModel="claude-fable-5-1",
+            serverClassifierRequest=True,
+            thinkingDurationMs=120,
+            wireToolInputs={"toolu_95": {"command": "cd /srv/proj && crontab -l"}},
+        ),  # 5
+        dict(
+            c,
+            type="user",
+            uuid="p3",
+            parentUuid="p2",
+            timestamp="2026-10-01T11:00:03.000Z",
+            message={
+                "role": "user",
+                "content": [
+                    {"tool_use_id": "toolu_95", "type": "tool_result", "content": "0 3 * * * x"}
+                ],
+            },
+            toolUseResult={"stdout": "0 3 * * * x", "stderr": "", "interrupted": False},
+            permissionDecision={
+                "decision": "allow",
+                "source": "auto_mode",
+                "reasonType": "classifier",
+            },
+            sourceToolAssistantUUID="p2",
+            serverClassifierContext={"verdict": "allow"},
+        ),  # 6
+        dict(
+            type="file-history-delta",
+            backup={"backupFileName": None, "backupTime": "2026-10-01T11:00:03.100Z"},
+            messageId="p3",
+            snapshotMessageId="p1",
+            timestamp="2026-10-01T11:00:03.100Z",
+            trackingPath="/srv/proj/notes.md",
+        ),  # 7
+        dict(
+            c,
+            type="system",
+            uuid="p4",
+            parentUuid="p3",
+            timestamp="2026-10-01T11:00:04.000Z",
+            subtype="stop_hook_summary",
+            hasOutput=False,
+            hookAdditionalContext=[],
+            hookCount=1,
+            hookErrors=[],
+            hookInfos=[{"command": "true", "durationMs": 5}],
+            level="suggestion",
+            preventedContinuation=False,
+            stopReason="",
+            toolUseID="toolu_95",
+        ),  # 8
+        dict(type="last-prompt", lastPrompt=prompt, leafUuid="p4", sessionId=sid),  # 9
+        dict(type="atis-latch", atis=True, sessionId=sid),  # 10
+    ]
+
+
+def claude_registry_records():
+    """`.claude/sessions/<pid>.json` (2.1.295 key set, research section 5):
+    a Code-tab process, and a process under Remote Control."""
+    base = {
+        "procStart": "Thu Oct  1 11:00:00 2026",
+        "version": "2.1.295",
+        "peerProtocol": 1,
+        "peerFeatures": ["messaging"],
+        "kind": "interactive",
+        "entrypoint": "claude-desktop",
+        "pidDomain": "linux",
+        "name": "cron jobs",
+        "nameSource": "user",
+        "nameSince": 1790852400000,
+        "status": "idle",
+        "updatedAt": 1790852404000,
+        "statusUpdatedAt": 1790852404000,
+    }
+    first = dict(
+        base,
+        pid=4242,
+        sessionId=CLAUDE_295_SESSION,
+        cwd="/srv/proj",
+        startedAt=1790852400000,
+        hostSessionId="local_f4f4f4f4-9999-4aaa-8bbb-cccccccccccc",
+        messagingSocketPath="/tmp/claude-4242.sock",
+    )
+    second = dict(
+        base,
+        pid=4343,
+        sessionId=CLAUDE_BRIDGE_SESSION,
+        cwd="/srv/proj",
+        startedAt=1790856000000,
+        entrypoint="cli",
+        status="busy",
+        messagingSocketPath="/tmp/claude-4343.sock",
+        bridgeSessionId="cse_0123456789abcdef",
+    )
+    return {"4242.json": first, "4343.json": second}
 
 
 def claude_history_records():
@@ -1062,6 +1235,14 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     (claude_sidecars / "tool-results" / CLAUDE_TOOL_RESULT).write_text(
         CLAUDE_PERSISTED, encoding="utf-8"
     )
+    _jsonl(
+        home / ".claude/projects/-srv-proj" / (CLAUDE_295_SESSION + ".jsonl"), claude_295_records()
+    )
+    registry = home / ".claude/sessions"
+    registry.mkdir(parents=True)
+    for name, rec in claude_registry_records().items():
+        (registry / name).write_text(json.dumps(rec), encoding="utf-8")
+    (registry / CLAUDE_REGISTRY_KEY).write_text("not a real key", encoding="utf-8")
     _jsonl(home / ".claude/history.jsonl", claude_history_records())
     (home / ".claude/settings.json").write_text("{}", encoding="utf-8")
     # A config home moved with CLAUDE_CONFIG_DIR, and claude-code-router's
@@ -6461,6 +6642,11 @@ CD_CODE_SESSION = "local_e2e2e2e2-9999-4aaa-8bbb-cccccccccccc"
 # session would put two agents under one session id in sessions.jsonl.
 CD_CODE_CLI = "11111111-2222-4333-8444-555555555555"
 CD_CODE_RECORD_REL = "%s/%s.json" % (CD_CODE_ORG, CD_CODE_SESSION)
+# A Code-tab record with the persisted Remote Control state set (bundle
+# serializer keys, research/claude-desktop.md section 3; fixture only).
+CD_CODE_RC_SESSION = "local_e3e3e3e3-9999-4aaa-8bbb-cccccccccccc"
+CD_CODE_RC_CLI = "e3e3e3e3-5555-4666-8777-888888888888"
+CD_CODE_RC_RECORD_REL = "%s/%s.json" % (CD_CODE_ORG, CD_CODE_RC_SESSION)
 CD_SCHED_REL = "%s/scheduled-tasks.json" % CD_COWORK_ORG
 CD_WORKTREES_REL = "%s/git-worktrees.json" % CD_BASE
 
@@ -6718,6 +6904,38 @@ def claude_desktop_code_record():
     }
 
 
+def claude_desktop_code_rc_record():
+    return {
+        "sessionId": CD_CODE_RC_SESSION,
+        "cliSessionId": CD_CODE_RC_CLI,
+        "cwd": "/srv/proj",
+        "originCwd": "/srv/proj",
+        "branch": "main",
+        "createdAt": 1790766000000,
+        "lastActivityAt": 1790766600000,
+        "model": "claude-fable-5-1",
+        "isArchived": False,
+        "title": "Driven from the phone",
+        "permissionMode": "default",
+        "remoteControlUserEnabled": True,
+        "remoteControlUserRequested": True,
+        "remoteControlUserToggled": True,
+        "remoteControlAutoEligible": False,
+        "bridgeSessionIds": ["cse_aaaa0001", "cse_aaaa0002"],
+        "remoteControlSpawn": {
+            "ccrSessionId": "cse_aaaa0001",
+            "detachedAt": 1790766300000,
+            "rcChild": True,
+            "projectThreadChild": False,
+        },
+        "steeredByRemoteClient": True,
+        "remoteControlLiveAtUpdateQuit": {
+            "at": 1790766500000,
+            "accountId": "aaaaaaaa-0000-4000-8000-000000000001",
+        },
+    }
+
+
 def claude_desktop_scheduled_tasks():
     return {
         "scheduledTasks": [
@@ -6766,6 +6984,9 @@ def build_claude_desktop(home: Path) -> None:
     code = home / CD_CODE_RECORD_REL
     code.parent.mkdir(parents=True, exist_ok=True)
     code.write_text(json.dumps(claude_desktop_code_record()), encoding="utf-8")
+    (home / CD_CODE_RC_RECORD_REL).write_text(
+        json.dumps(claude_desktop_code_rc_record()), encoding="utf-8"
+    )
     (home / CD_SCHED_REL).write_text(json.dumps(claude_desktop_scheduled_tasks()), encoding="utf-8")
     (home / CD_WORKTREES_REL).write_text(json.dumps(claude_desktop_worktrees()), encoding="utf-8")
     # Noise the parser must not want.

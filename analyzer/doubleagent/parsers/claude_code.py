@@ -1,8 +1,9 @@
 """Claude Code transcripts.
 
 Validated against a real install (Claude Code 2.1.286 to 2.1.289, October
-2026) and the shipped 2.1.289 package; the evidence is in
-`analyzer/research/claude-code.md`. Files:
+2026), the shipped 2.1.289 package, and 2.1.295 installs on Linux and macOS
+(2026-10-11) for the permission decision and the process registry; the
+evidence is in `analyzer/research/claude-code.md`. Files:
 
 * `~/.claude/projects/<slug>/<session>.jsonl`: one JSON object per line.
   Records with `type` user, assistant, system or attachment carry `uuid`,
@@ -23,6 +24,15 @@ Validated against a real install (Claude Code 2.1.286 to 2.1.289, October
     `task notification:`, `peer message:`, `coordinator message:`,
     `auto-continuation:`, `slash command:`, `command output:`,
     `compaction summary:`, `interrupted:`, `subagent task:` or `context:`.
+    The 2.1.295 prompt keys `turnOrigin`, `promptSource` and
+    `permissionMode` do not become rows or change a label.
+    `permissionDecision` (2.1.295, on a line that carries `tool_result`
+    blocks: `decision`, `source`, `reasonType`, other keys possible)
+    becomes one `system` row after that line's `tool_result` rows,
+    `permission decision: <decision> source=<source> reason=<reasonType>`
+    (`-` for a missing key), followed by the object's compact JSON when it
+    has other keys; its `tool_use_id` is the line's first `tool_result`
+    block's and `tool_name` is empty, as on `tool_result` rows.
   - `assistant` records: `message.model`; `wireToolInputs[<tool_use id>]`
     is the input as the model sent it, used for the Bash command because
     the stored `input.command` lacks its `cd <dir> &&` prefix. A record
@@ -78,19 +88,34 @@ Validated against a real install (Claude Code 2.1.286 to 2.1.289, October
   prompt, `timestamp` in epoch milliseconds. Kept even when the session file
   exists because it survives session deletion.
 
+* `~/.claude/sessions/<pid>.json`: the per-process registry the CLI keeps
+  while it runs (2.1.295 keys observed on Linux and macOS). Read: `pid`,
+  `sessionId`, `cwd`, `startedAt` (epoch ms), `kind`, `status`,
+  `entrypoint`, `bridgeSessionId`, `hostSessionId`. One `system` row at
+  `startedAt`, `claude-code process <pid> <kind> status=<status>
+  entrypoint=<entrypoint> bridge=<bridgeSessionId or none>
+  host_session=<hostSessionId or none>`. `bridgeSessionId` is patched into
+  the file while Remote Control is attached, so its presence means the
+  process was under Remote Control when the collector ran; a record can
+  outlive a crashed process until the CLI's housekeeping sweep, so pair it
+  with the EDR's process list. The `<pid>.<sha256>.key` sibling is a
+  secret and is never read. A file that is not a JSON object is one
+  `system` row.
+
 The same files under a config home moved with `CLAUDE_CONFIG_DIR` to a
 `.claude-<name>` directory in the home (such as `~/.claude-work`) are read
-too: `SESSION_RX` and `HISTORY_RX` accept `.claude` or `.claude-<name>` as
+too: `SESSION_RX`, `HISTORY_RX` and `REGISTRY_RX` accept `.claude` or `.claude-<name>` as
 the first path component, matching the catalog's `.claude-*/projects` and
 `.claude-*/history.jsonl` entries. A config home anywhere else is not
 collected.
 
-Not read: the `.meta.json` subagent sidecars, `sessions/*.json` and
-`paste-cache/` (excluded by the collector).
+Not read: the `.meta.json` subagent sidecars, the `sessions/<pid>.*.key`
+files and `paste-cache/` (excluded by the collector).
 """
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -103,6 +128,7 @@ from .base import Options, Parser, compact_json, iter_jsonl, text_of
 SESSION_RX = re.compile(r"^\.claude(?:-[^/]+)?/projects/[^/]+/.*\.jsonl$")
 SUBAGENT_RX = re.compile(r"/subagents/(?:[^/]+/)*agent-([^/]+)\.jsonl$")
 HISTORY_RX = re.compile(r"^\.claude(?:-[^/]+)?/history\.jsonl$")
+REGISTRY_RX = re.compile(r"^\.claude(?:-[^/]+)?/sessions/\d+\.json$")
 PERSISTED_MARK = "<persisted-output>"
 PERSISTED_RX = re.compile(r"Full output saved to: ([^\r\n]*?tool-results[/\\][^/\\\r\n]+?\.txt)")
 
@@ -248,11 +274,14 @@ class ClaudeCodeParser(Parser):
     name = "claude-code"
 
     def wants(self, artifact: Artifact) -> bool:
-        return bool(HISTORY_RX.match(artifact.rel)) or bool(SESSION_RX.match(artifact.rel))
+        rel = artifact.rel
+        return any(rx.match(rel) for rx in (HISTORY_RX, SESSION_RX, REGISTRY_RX))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if HISTORY_RX.match(artifact.rel):
             yield from self._parse_history(artifact, opts)
+        elif REGISTRY_RX.match(artifact.rel):
+            yield from self._parse_registry(artifact)
         else:
             yield from self._parse_session(artifact, opts)
 
@@ -267,6 +296,36 @@ class ClaudeCodeParser(Parser):
             row.turn_type = "user"
             row.text = compact(rec.get("display"))
             yield row
+
+    def _parse_registry(self, artifact: Artifact) -> Iterator[Row]:
+        row = self.base_row(artifact)
+        row.source_line = 1
+        row.turn_type = "system"
+        try:
+            rec = json.loads(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
+        except (OSError, ValueError):
+            rec = None
+        if not isinstance(rec, dict):
+            row.text = "parser: session registry file is not a JSON object"
+            yield row
+            return
+
+        def val(key: str, missing: str) -> str:
+            v = rec.get(key)
+            return missing if v in (None, "") else str(v)
+
+        row.timestamp_utc = to_utc(rec.get("startedAt"))
+        row.session_id = val("sessionId", "")
+        row.project_path = val("cwd", "")
+        row.text = "claude-code process %s %s status=%s entrypoint=%s bridge=%s host_session=%s" % (
+            val("pid", artifact.disk_path.stem),
+            val("kind", "-"),
+            val("status", "-"),
+            val("entrypoint", "-"),
+            val("bridgeSessionId", "none"),
+            val("hostSessionId", "none"),
+        )
+        yield row
 
     @staticmethod
     def _prescan(artifact: Artifact) -> tuple[dict, bool, str, str]:
@@ -414,6 +473,43 @@ class ClaudeCodeParser(Parser):
             yield row
 
     def _user(self, rec, base, artifact: Artifact, opts: Options, is_task: bool) -> Iterator[Row]:
+        yield from self._user_blocks(rec, base, artifact, is_task)
+        decision = rec.get("permissionDecision")
+        if decision is not None:
+            yield self._permission_row(rec, decision, base)
+
+    @staticmethod
+    def _permission_row(rec, decision, base) -> Row:
+        """The `system` row of a 2.1.295 `permissionDecision`."""
+        row = base()
+        row.turn_type = "system"
+        content = (rec.get("message") or {}).get("content")
+        if isinstance(content, list):
+            first = next(
+                (b for b in content if isinstance(b, dict) and b.get("type") == "tool_result"),
+                None,
+            )
+            if first is not None:
+                row.tool_use_id = str(first.get("tool_use_id") or "")
+        if not isinstance(decision, dict):
+            row.text = compact("permission decision: " + compact_json(decision))
+            return row
+
+        def val(key: str) -> str:
+            v = decision.get(key)
+            return "-" if v in (None, "") else str(v)
+
+        text = "permission decision: %s source=%s reason=%s" % (
+            val("decision"),
+            val("source"),
+            val("reasonType"),
+        )
+        if set(decision) - {"decision", "source", "reasonType"}:
+            text += " " + compact_json(decision)
+        row.text = compact(text)
+        return row
+
+    def _user_blocks(self, rec, base, artifact: Artifact, is_task: bool) -> Iterator[Row]:
         content = (rec.get("message") or {}).get("content")
         origin = rec.get("origin") or {}
         kind = origin.get("kind") if isinstance(origin, dict) else None

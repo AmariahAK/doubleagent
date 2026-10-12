@@ -53,7 +53,15 @@ eight hex digits). Files:
   `model`, `userSelectedFolders`, `originCwd`, `cwd`, `branch` (Code tab),
   `initialMessage`, `error`, `errorCategory`, `errorAt`. One `system` row
   at `createdAt`; `initialMessage` becomes a `user` row only when neither
-  a transcript nor an audit log for the session is in the input.
+  a transcript nor an audit log for the session is in the input. On a
+  Code-tab record the row's text ends with the persisted Remote Control
+  state, `remote_control=<remoteControlUserEnabled> bridges=<number of
+  bridgeSessionIds> spawned_remotely=<remoteControlSpawn is a non-empty
+  object> steered_remotely=<steeredByRemoteClient>` (absent keys read
+  `false` and `0`; real installs have shown only those), and a
+  `remoteControlLiveAtUpdateQuit` object with a numeric `at` (epoch ms)
+  is a second `system` row at that time, `remote control live at update
+  quit`. The `true` values rest on the bundle and the fixture only.
 * `.../scheduled-tasks.json`: `scheduledTasks[]` with `id`,
   `cronExpression` or `fireAt`, `enabled`, `createdAt`, `cwd`,
   `userSelectedFolders`.
@@ -115,6 +123,11 @@ def _bool(v) -> str:
     if v is None:
         return ""
     return json.dumps(v) if isinstance(v, bool) else str(v)
+
+
+def _flag(v) -> str:
+    """`true` only for a JSON true; absent or anything else is `false`."""
+    return "true" if v is True else "false"
 
 
 def _str(v) -> str:
@@ -414,7 +427,24 @@ class ClaudeDesktopParser(ClaudeCodeParser):
             return r
 
         if code:
-            yield row("system", 'desktop code session: "%s"' % title)
+            spawn = rec.get("remoteControlSpawn")
+            bridges = rec.get("bridgeSessionIds")
+            yield row(
+                "system",
+                'desktop code session: "%s" remote_control=%s bridges=%d '
+                "spawned_remotely=%s steered_remotely=%s"
+                % (
+                    title,
+                    _flag(rec.get("remoteControlUserEnabled")),
+                    len(bridges) if isinstance(bridges, list) else 0,
+                    _flag(isinstance(spawn, dict) and bool(spawn)),
+                    _flag(rec.get("steeredByRemoteClient")),
+                ),
+            )
+            quit_ = rec.get("remoteControlLiveAtUpdateQuit")
+            at = quit_.get("at") if isinstance(quit_, dict) else None
+            if isinstance(at, (int, float)) and not isinstance(at, bool):
+                yield row("system", "remote control live at update quit", to_utc(at))
         else:
             yield row("system", 'desktop session: %s "%s"' % (_str(rec.get("sessionType")), title))
         initial = _str(rec.get("initialMessage"))

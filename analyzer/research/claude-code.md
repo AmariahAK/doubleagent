@@ -369,7 +369,7 @@ for key names and value types only.
   runs remotely; a different feature, whose files are already secret
   globs.
 
-Issue 80 tracks the parser rows for these fields.
+Section 8 says which rows the parser makes of these fields (issue 80).
 
 ## 6. Timestamps, ids, project, branch, model, subagents
 
@@ -426,9 +426,14 @@ Issue 80 tracks the parser rows for these fields.
 `wants()`:
 
 ```text
-^\.claude/projects/[^/]+/.*\.jsonl$
-.claude/history.jsonl  (exact)
+^\.claude(?:-[^/]+)?/projects/[^/]+/.*\.jsonl$
+^\.claude(?:-[^/]+)?/history\.jsonl$
+^\.claude(?:-[^/]+)?/sessions/\d+\.json$
 ```
+
+The `.claude-<name>` form is a config home moved with
+`CLAUDE_CONFIG_DIR`; the catalog collects its `projects` and
+`history.jsonl` but not its `sessions/`.
 
 Lines are read with `iter_jsonl`; bad lines are counted and reported in
 one `system` row at the end with the first bad line's number; earlier
@@ -456,6 +461,8 @@ then the full text:
 | `user`, other `isMeta` | `system`, label `context` |
 | `user`, any other string, `text` or `image` block | `user` (one row per block); the rules above are tried in this order, the record-level ones for every block |
 | `user`, `tool_result` block | `tool_result`; `tool_reference` blocks as their `tool_name`; a `<persisted-output>` stub replaced by its `tool-results/` file (below); text prefixed `[error]` when `is_error` |
+| `user`, `permissionDecision` (2.1.295) | one `system` row after the line's `tool_result` rows, `permission decision: <decision> source=<source> reason=<reasonType>` (`-` for a missing key), then a space and the object's compact JSON when it has other keys; `tool_use_id` of the line's first `tool_result` block, `tool_name` empty as on `tool_result` rows |
+| `user`, `turnOrigin`, `promptSource`, `permissionMode`, `origin` (2.1.295 prompt keys) | no row; `origin.kind` still picks the label above, the others change nothing |
 | `assistant`, `isApiErrorMessage` or model `<synthetic>` | `system`, `api error: <apiErrorStatus> <error>: <text>`, no model |
 | `assistant`, `text` block | `assistant` (empty text skipped) |
 | `assistant`, `tool_use` block | `tool_use` |
@@ -474,6 +481,7 @@ then the full text:
 | `queue-operation` | `system`, `queue <operation>: <content>`; an `enqueue` whose `content` a `queued_command` attachment or a `user` record of the file delivers is `prompt queued: delivered at line N` at the enqueue's own timestamp, N being the first delivering line after it (else the first), so the typing time is kept and the prompt text appears once, on the delivering row |
 | every other type (section 3 table) | skip |
 | `history.jsonl` line | `user` |
+| `sessions/<pid>.json` | one `system` row at `startedAt` (epoch ms), `claude-code process <pid> <kind> status=<status> entrypoint=<entrypoint> bridge=<bridgeSessionId or none> host_session=<hostSessionId or none>` (`-` for a missing `kind`, `status` or `entrypoint`), `session_id` `sessionId`, `project_path` `cwd`, `source_line` 1; a file that is not a JSON object is one `system` row `parser: session registry file is not a JSON object`. A `bridge=` value means the process was under Remote Control when the collector ran (section 5); a record can outlive a crashed process, so pair it with the EDR's process list |
 
 A forked subagent's file begins with a copy of the forking agent's context
 (observed in the 4 fork files: the records before the
@@ -508,9 +516,15 @@ Columns:
 | text | user/assistant/thinking text; `tool_use`: for Bash the `command` of `wireToolInputs[<id>]` when present (it keeps the `cd <dir> &&` prefix), else per-tool key from `input` (`command`, `file_path`, `notebook_path`, `pattern`+`path`, `url`, `query`, `description`+`prompt`, `skill`+`args`, `path`), else the first of `command`, `file_path`, `path`, `pattern`, `url`, `query`, `description`, else compact JSON; `tool_result`: the block text as above |
 | source_line | 1-based line number; the subagent header row takes its first record's line |
 
-Not read: `.meta.json` sidecars, `sessions/*.json`, `paste-cache/`, a
-config home moved with `CLAUDE_CONFIG_DIR`, and the `claude-cli-nodejs`
-MCP logs (section 2). Those logs carry `sessionId`, `cwd` and an ISO
+Not read: `.meta.json` sidecars, the `sessions/<pid>.<sha256>.key`
+files (secrets), `paste-cache/`, the other `sessions/<pid>.json` keys
+(`procStart`, `version`, `peerProtocol`, `peerFeatures`, `pidDomain`,
+`messagingSocketPath`, `name`, `nameSource`, `nameSince`, `updatedAt`,
+`statusUpdatedAt`), the 2.1.295 assistant keys (`advisorModel`,
+`apiBlockIndex`, `effort`, `perTurnEffort`, `requestedModel`,
+`serverClassifierRequest`, `thinkingDurationMs`; `wireToolInputs` is
+read for Bash), `sourceToolAssistantUUID` and `serverClassifierContext`,
+and the `claude-cli-nodejs` MCP logs (section 2). Those logs carry `sessionId`, `cwd` and an ISO
 `timestamp` on every line, so a later reader could turn each `debug`
 message into a `system` row joined to the session.
 
