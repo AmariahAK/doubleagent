@@ -5,9 +5,9 @@
 Closed source. Evidence, strongest first:
 
 - L1 shipped bundle: Cursor Agent CLI `2026.10.01-e373342`, `agent-cli-package.tar.gz` from `downloads.cursor.com/lab/.../linux/x64/` (URL from `https://cursor.com/install`, saved as `scratchpad/npm/cursor-install.sh:78-131`), extracted to `scratchpad/npm/cursor-agent/dist-package/`. Minified webpack chunks keep module names, so citations are `<chunk>.js` plus the original module path.
-- L2 official docs: cursor.com/docs `cli/reference/configuration`, `context/rules`, `context/mcp`, `agent/hooks`, `context/ignore-files`.
-- L3 forum.cursor.com threads 2825, 167641, 169582, 172127.
-- L4 write-ups and tools: Callum-Ward/cursaves `docs/how-cursor-stores-chats.md`, extracurricular.ai (2026-09-09), getagentseal/codeburn issue 986, Cosmos-0118/AgentSweep `rules/rules.toml`, ShayGus/quota PR 20.
+- L2 official docs: [Cursor CLI configuration](https://cursor.com/docs/cli/reference/configuration), [Cursor rules](https://cursor.com/docs/context/rules), [Cursor MCP](https://cursor.com/docs/context/mcp), [Cursor hooks](https://cursor.com/docs/agent/hooks), [Cursor ignore files](https://cursor.com/docs/context/ignore-files).
+- L3 forum.cursor.com [thread 2825](https://forum.cursor.com/t/2825), [thread 167641](https://forum.cursor.com/t/167641), [thread 169582](https://forum.cursor.com/t/169582), [thread 172127](https://forum.cursor.com/t/172127).
+- L4 write-ups and tools: [Callum-Ward/cursaves](https://github.com/Callum-Ward/cursaves) `docs/how-cursor-stores-chats.md`, extracurricular.ai (2026-09-09), [getagentseal/codeburn issue 986](https://github.com/getagentseal/codeburn/issues/986), [Cosmos-0118/AgentSweep](https://github.com/Cosmos-0118/AgentSweep) `rules/rules.toml`, [ShayGus/quota PR 20](https://github.com/ShayGus/quota/pull/20).
 - The npm packages `cursor-agent` and `cursor-cli` are unrelated third-party projects (`npm view`), not Cursor's CLI.
 
 ## 2. Per-user storage
@@ -27,7 +27,7 @@ Layout is identical on all OSes except the IDE app-data parent and the CLI `auth
 
 ## 3. Credentials
 
-- IDE: `User/globalStorage/state.vscdb` `ItemTable` keys `cursorAuth/accessToken`, `cursorAuth/refreshToken` (JWTs), plus user id (ShayGus/quota PR 20, L4). Same file as the chats, so collect unflagged and redact by key.
+- IDE: `User/globalStorage/state.vscdb` `ItemTable` keys `cursorAuth/accessToken`, `cursorAuth/refreshToken` (JWTs), plus user id ([ShayGus/quota PR 20](https://github.com/ShayGus/quota/pull/20), L4). Same file as the chats, so collect unflagged and redact by key.
 - CLI (`index.js` `../cli-credentials/dist/index.js`, factory `d`): macOS uses the login keychain via `/usr/bin/security` (services `cursor-access-token`, `cursor-refresh-token`, `cursor-api-key`, `cursor-bedrock-*`, account `cursor-user`); every other OS, and macOS with `AGENT_CLI_CREDENTIAL_STORE=file`, writes `auth.json` (`accessToken`, `refreshToken`, `apiKey`, `bedrockCredentials`) at `$XDG_CONFIG_HOME/cursor/auth.json` or `~/.config/cursor/auth.json` on Linux, `~/.cursor/auth.json` on macOS, `%APPDATA%\Cursor\auth.json` on Windows (mode 0600).
 - MCP OAuth tokens per project: `~/.cursor/projects/<p>/mcp-auth.json` (`6136.index.js`, `8192.index.js`).
 - `~/.cursor/mcp.json` and project `.cursor/mcp.json` carry server env blocks that often hold literal keys (docs recommend `${env:...}`).

@@ -7,11 +7,11 @@ one JSON file per event. Path research is in
 
 ## 1. Source
 
-OpenHands/software-agent-sdk at
+[OpenHands/software-agent-sdk](https://github.com/OpenHands/software-agent-sdk) at
 [`b347047e2dcdd8f4b2be810aa8bc6632bc756d41`](https://github.com/OpenHands/software-agent-sdk/commit/b347047e2dcdd8f4b2be810aa8bc6632bc756d41)
-(SDK and Agent Server), OpenHands/OpenHands-CLI at
+(SDK and Agent Server), [OpenHands/OpenHands-CLI](https://github.com/OpenHands/OpenHands-CLI) at
 [`954f2ba646e8d749261a8f2b2b7e3031fa39be9f`](https://github.com/OpenHands/OpenHands-CLI/commit/954f2ba646e8d749261a8f2b2b7e3031fa39be9f),
-and the legacy app at OpenHands/OpenHands tags `1.11.0`
+and the legacy app at [OpenHands/OpenHands](https://github.com/OpenHands/OpenHands) tags `1.11.0`
 ([`11ca68ab2e15dcd85c21e4d7d3409e7a259369ac`](https://github.com/OpenHands/OpenHands/commit/11ca68ab2e15dcd85c21e4d7d3409e7a259369ac))
 and `0.62.0` ([`7fbb48c40679afd674970966b96185657d92a487`](https://github.com/OpenHands/OpenHands/commit/7fbb48c40679afd674970966b96185657d92a487)). MIT, open source.
 

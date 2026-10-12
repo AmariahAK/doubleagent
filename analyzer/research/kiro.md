@@ -10,7 +10,7 @@ Paths, credentials and the rest of the per-user state are in
 
 ## 1. Source and applicability
 
-aws/amazon-q-developer-cli at [`15cc8f3cd18c4272925ce1c7053268eedff1ea0a`](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a)
+[aws/amazon-q-developer-cli](https://github.com/aws/amazon-q-developer-cli) at [`15cc8f3cd18c4272925ce1c7053268eedff1ea0a`](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a)
 (2026-04-23), workspace version 1.19.7 ([`Cargo.toml:11`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/Cargo.toml#L11)), dual licensed
 Apache-2.0 and MIT. [`README.md:4`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/README.md#L4) says the project is unmaintained except
 for security fixes and that the product continues as the closed-source Kiro

@@ -9,7 +9,7 @@ Paths, credentials and the rest of the per-user state are in
 
 ## 1. Source
 
-Aider-AI/aider at [`5dc9490bb35f9729ef2c95d00a19ccd30c26339c`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c), Apache-2.0
+[Aider-AI/aider](https://github.com/Aider-AI/aider) at [`5dc9490bb35f9729ef2c95d00a19ccd30c26339c`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c), Apache-2.0
 ([`LICENSE.txt`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/LICENSE.txt)). Open source. The input history format comes from the
 upstream prompt_toolkit `history.py`, which is not vendored.
 

@@ -2,7 +2,7 @@
 
 ## 1. Source and evidence level
 
-openclaw/openclaw, commit [`3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9)
+[openclaw/openclaw](https://github.com/openclaw/openclaw), commit [`3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9)
 (2026-10-04, package version `2026.9.8`), MIT, open source, TypeScript with a
 Swift macOS app. Every claim is source-level unless it cites `docs/` or
 `CHANGELOG/` in the same checkout. OpenClaw was previously named Clawdbot and

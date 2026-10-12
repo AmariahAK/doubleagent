@@ -6,7 +6,7 @@ Editor clients keep none. Paths are in [`collectors/research/tabby.md`](../../co
 
 ## 1. Source
 
-TabbyML/tabby at [`21b29048d7bcf6b94f9f482f2d0fd05efadfd19f`](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f).
+[TabbyML/tabby](https://github.com/TabbyML/tabby) at [`21b29048d7bcf6b94f9f482f2d0fd05efadfd19f`](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f).
 Apache-2.0 outside `ee/`, Tabby Enterprise licence inside; source public.
 
 ## 2. Transcript files

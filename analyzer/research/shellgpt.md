@@ -8,7 +8,7 @@ relative to the clone. Storage locations are in
 
 ## 1. Source
 
-TheR1D/shell_gpt at [`a082bd5327ce0c4ef5a0284d9060e833be9444a6`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6)
+[TheR1D/shell_gpt](https://github.com/TheR1D/shell_gpt) at [`a082bd5327ce0c4ef5a0284d9060e833be9444a6`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6)
 (2026-07-02), version 1.5.1, MIT. Open source.
 
 ## 2. Transcript files

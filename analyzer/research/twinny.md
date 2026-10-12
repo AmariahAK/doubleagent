@@ -6,8 +6,8 @@ editor's own SQLite state database, not in a file of its own. Paths are in
 
 ## 1. Source
 
-twinnydotdev/twinny at [`9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6`](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6),
-MIT, open source. VS Code storage behaviour from microsoft/vscode at the
+[twinnydotdev/twinny](https://github.com/twinnydotdev/twinny) at [`9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6`](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6),
+MIT, open source. VS Code storage behaviour from [microsoft/vscode](https://github.com/microsoft/vscode) at the
 commit cited in [vscode.md](vscode.md).
 
 ## 2. Transcript stores

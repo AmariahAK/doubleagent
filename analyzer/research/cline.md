@@ -10,7 +10,7 @@ Paths, credentials and the rest of the per-user state are in
 
 ## 1. Source
 
-cline/cline at [`39ff2359f7e08231281539696e48a166ce49270c`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c), Apache-2.0. Open
+[cline/cline](https://github.com/cline/cline) at [`39ff2359f7e08231281539696e48a166ce49270c`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c), Apache-2.0. Open
 source. Applies to the VS Code extension (`saoudrizwan.claude-dev`), the CLI
 and JetBrains, all through the `sdk/` packages.
 

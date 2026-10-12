@@ -2,13 +2,13 @@
 
 ## 1. Source and evidence level
 
-itayinbarr/little-coder at [`89d4fa0af864230527ab75d12604ed0eb320e6df`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df),
+[itayinbarr/little-coder](https://github.com/itayinbarr/little-coder) at [`89d4fa0af864230527ab75d12604ed0eb320e6df`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df),
 version 1.20.0, Apache-2.0 ([package.json:3](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/package.json#L3), [10](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/package.json#L10)). Open source,
 TypeScript and Node. All claims from source. little-coder is a launcher plus
 a fixed set of extensions for the **pi** coding agent
 (`@earendil-works/pi-coding-agent` `^0.83.0`, [package.json:41](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/package.json#L41)); it spawns
 pi's own CLI from its `node_modules` ([bin/little-coder.mjs:98-136](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L98-L136),
-[505-509](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L505-L509)). pi's storage was therefore read at earendil-works/pi tag
+[505-509](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L505-L509)). pi's storage was therefore read at [earendil-works/pi](https://github.com/earendil-works/pi) tag
 `v0.83.0`, [`845d6ff1f6643aba440341cce877ce1c43ebbc39`](https://github.com/earendil-works/pi/commit/845d6ff1f6643aba440341cce877ce1c43ebbc39).
 Record schema: [`analyzer/research/little-coder.md`](../../analyzer/research/little-coder.md).
 

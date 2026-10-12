@@ -6,7 +6,7 @@ There is no analyzer document: MetaGPT keeps no transcripts under the home.
 
 ## 1. Source and evidence level
 
-FoundationAgents/MetaGPT (geekan/MetaGPT redirects there), MIT
+[FoundationAgents/MetaGPT](https://github.com/FoundationAgents/MetaGPT) ([geekan/MetaGPT](https://github.com/geekan/MetaGPT) redirects there), MIT
 ([setup.py:107](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/setup.py#L107)),
 open source, commit `11cdf466d042aece04fc6cfd13b28e1a70341b1f`
 (2026-01-21). A Python multi-agent "software company" framework with the

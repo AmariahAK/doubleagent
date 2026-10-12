@@ -12,7 +12,7 @@ Paths, credentials and the rest of the per-user state are in
 
 ## 1. Source
 
-Kilo-Org/kilocode at [`76bcfd40be616a72f4697b3041565f322245b462`](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462), MIT. Open
+[Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode) at [`76bcfd40be616a72f4697b3041565f322245b462`](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462), MIT. Open
 source. CLI, TUI and server in `packages/core`; VS Code extension
 `kilocode.kilo-code` ([`packages/kilo-vscode/package.json:2`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-vscode/package.json#L2),[`11`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-vscode/package.json#L11)).
 

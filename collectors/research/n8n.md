@@ -6,7 +6,7 @@ There is no analyzer document yet.
 
 ## 1. Source and evidence level
 
-n8n-io/n8n, commit
+[n8n-io/n8n](https://github.com/n8n-io/n8n), commit
 [`0e1c7549997f43053fda83534b597875b0310df6`](https://github.com/n8n-io/n8n/commit/0e1c7549997f43053fda83534b597875b0310df6).
 The workflow automation server with AI Agent nodes, plus
 `@n8n/computer-use`, a local tool gateway for the n8n Assistant. Licence:

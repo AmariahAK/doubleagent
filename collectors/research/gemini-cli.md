@@ -5,7 +5,7 @@ How the transcripts are encoded and how the parser reads them is in
 
 ## 1. Source and evidence level
 
-google-gemini/gemini-cli, commit [`fb972b2f87fe7d5b06d37eac711490162d98de2c`](https://github.com/google-gemini/gemini-cli/commit/fb972b2f87fe7d5b06d37eac711490162d98de2c)
+[google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli), commit [`fb972b2f87fe7d5b06d37eac711490162d98de2c`](https://github.com/google-gemini/gemini-cli/commit/fb972b2f87fe7d5b06d37eac711490162d98de2c)
 (2026-10-02, package version `0.64.0-nightly.20260929`). Open source. Every
 claim below is source-level (`packages/...` file:line in that checkout) unless
 marked `docs/` (repo documentation) or `live` (names only from this

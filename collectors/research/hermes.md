@@ -5,7 +5,7 @@ Catalog agent: `hermes`. Transcript schema is in
 
 ## 1. Source and evidence level
 
-NousResearch/hermes-agent, MIT ([`LICENSE`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/LICENSE#L1-L3)), open source, Python with an Electron desktop app,
+[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent), MIT ([`LICENSE`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/LICENSE#L1-L3)), open source, Python with an Electron desktop app,
 commit [`8b66a51036c1e20920a17cdd049fdf55c968d683`](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683).
 All claims are from source; the documented home layout in
 [`website/docs/user-guide/configuration.md:22-31`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/website/docs/user-guide/configuration.md#L22-L31)

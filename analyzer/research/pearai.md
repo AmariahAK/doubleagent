@@ -10,11 +10,11 @@ the shapes differ from [continue.md](continue.md) and
 
 ## 1. Source
 
-trypear/pearai-submodule (Continue fork) at
+[trypear/pearai-submodule](https://github.com/trypear/pearai-submodule) (Continue fork) at
 [`51eceef62a90c29f712b3a9607ea70a9dca657e9`](https://github.com/trypear/pearai-submodule/commit/51eceef62a90c29f712b3a9607ea70a9dca657e9)
-and trypear/PearAI-Roo-Code (Roo Code 3.15.3 fork) at
+and [trypear/PearAI-Roo-Code](https://github.com/trypear/PearAI-Roo-Code) (Roo Code 3.15.3 fork) at
 [`0b6df736c9b2799c38b9ee629668407521a7bdda`](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda),
-both Apache-2.0, open source. The editor (trypear/pearai-app) stores no
+both Apache-2.0, open source. The editor ([trypear/pearai-app](https://github.com/trypear/pearai-app)) stores no
 transcripts of its own.
 
 ## 2. Transcript files

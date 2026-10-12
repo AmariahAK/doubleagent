@@ -8,7 +8,7 @@ them apart. Paths are in [`collectors/research/pi.md`](../../collectors/research
 
 ## 1. Source
 
-earendil-works/pi at [`200387122ca450d6387f033949423114a270b96c`](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c)
+[earendil-works/pi](https://github.com/earendil-works/pi) at [`200387122ca450d6387f033949423114a270b96c`](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c)
 (2026-10-04, coding-agent 1.0.2), MIT, open source. Tag `v0.83.0`
 ([`845d6ff1f6643aba440341cce877ce1c43ebbc39`](https://github.com/earendil-works/pi/commit/845d6ff1f6643aba440341cce877ce1c43ebbc39)) is cited where the schema differs.
 All claims from source.

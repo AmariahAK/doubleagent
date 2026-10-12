@@ -6,7 +6,7 @@ There is no analyzer document: CAMEL keeps no transcripts under the home.
 
 ## 1. Source and evidence level
 
-camel-ai/camel, Apache-2.0, open source, commit
+[camel-ai/camel](https://github.com/camel-ai/camel), Apache-2.0, open source, commit
 [`24fde60ad739b4be8f8f533fea9ba54256fbc4a2`](https://github.com/camel-ai/camel/commit/24fde60ad739b4be8f8f533fea9ba54256fbc4a2)
 (2026-10-05), package `camel-ai` 0.2.91a7. A multi-agent framework with
 toolkits for the terminal, browser, Gmail and files. All claims are from

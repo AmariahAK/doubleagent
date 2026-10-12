@@ -6,7 +6,7 @@ There is no analyzer document yet.
 
 ## 1. Source and evidence level
 
-crewAIInc/crewAI, MIT, open source, commit
+[crewAIInc/crewAI](https://github.com/crewAIInc/crewAI), MIT, open source, commit
 [`e836a191cfe524feb519c6952a458c9f1e1ff0ef`](https://github.com/crewAIInc/crewAI/commit/e836a191cfe524feb519c6952a458c9f1e1ff0ef).
 The repository ships the `crewai` library, `crewai-core`, the `crewai` CLI
 (`lib/cli`) and `crewai-tools`. All claims are from source; nothing was
@@ -14,7 +14,7 @@ installed or run.
 
 Path resolution uses `appdirs~=1.4.4`
 ([lib/crewai-core/pyproject.toml:11](https://github.com/crewAIInc/crewAI/blob/e836a191cfe524feb519c6952a458c9f1e1ff0ef/lib/crewai-core/pyproject.toml#L11)),
-not platformdirs, read in ActiveState/appdirs at
+not platformdirs, read in [ActiveState/appdirs](https://github.com/ActiveState/appdirs) at
 [`8734277956c1df3b85385e6b308e954910533884`](https://github.com/ActiveState/appdirs/commit/8734277956c1df3b85385e6b308e954910533884).
 `user_data_dir(appname, appauthor)` is `$XDG_DATA_HOME/<appname>` or
 `~/.local/share/<appname>` on Linux, `~/Library/Application Support/<appname>`

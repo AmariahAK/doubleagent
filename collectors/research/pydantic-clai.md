@@ -7,7 +7,7 @@ yet.
 
 ## 1. Source and evidence level
 
-pydantic/pydantic-ai, MIT, open source, commit
+[pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai), MIT, open source, commit
 [`0ba01f92be3fc361f89970502cd6e7dd3611aec3`](https://github.com/pydantic/pydantic-ai/commit/0ba01f92be3fc361f89970502cd6e7dd3611aec3).
 The repository ships `pydantic-ai(-slim)`, `pydantic-graph`,
 `pydantic-evals`, the `clai` CLI, and under `src/` two newer packages:

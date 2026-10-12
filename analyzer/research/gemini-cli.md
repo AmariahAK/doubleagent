@@ -9,7 +9,7 @@ Paths, credentials and the rest of the per-user state are in
 
 ## 1. Source
 
-google-gemini/gemini-cli at [`fb972b2f87fe7d5b06d37eac711490162d98de2c`](https://github.com/google-gemini/gemini-cli/commit/fb972b2f87fe7d5b06d37eac711490162d98de2c)
+[google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) at [`fb972b2f87fe7d5b06d37eac711490162d98de2c`](https://github.com/google-gemini/gemini-cli/commit/fb972b2f87fe7d5b06d37eac711490162d98de2c)
 (2026-10-02), version 0.64.0-nightly.20260929, Apache-2.0. Open source.
 
 ## 2. Transcript files

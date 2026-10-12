@@ -2,10 +2,10 @@
 
 ## 1. Source and evidence level
 
-twinnydotdev/twinny at [`9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6`](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6),
+[twinnydotdev/twinny](https://github.com/twinnydotdev/twinny) at [`9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6`](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6),
 version 4.3.5, MIT ([package.json:32](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/package.json#L32)). Open source,
 TypeScript. All claims from source. How VS Code stores an extension's
-`globalState` was checked against microsoft/vscode at the commit used by
+`globalState` was checked against [microsoft/vscode](https://github.com/microsoft/vscode) at the commit used by
 [vscode.md](vscode.md). The repository holds three programs: the VS Code
 extension, the `twinny-node` peer-to-peer GPU sharing CLI
 ([package.json:61-63](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/package.json#L61-L63)) and the `twinny-server` team

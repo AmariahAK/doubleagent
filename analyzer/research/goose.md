@@ -8,7 +8,7 @@ Paths, credentials and the rest of the per-user state are in
 
 ## 1. Source
 
-block/goose at [`591edd47cf2cfea4957d720c607cf2a4def8673d`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d), Apache-2.0. Open
+[block/goose](https://github.com/block/goose) at [`591edd47cf2cfea4957d720c607cf2a4def8673d`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d), Apache-2.0. Open
 source. Rust; sqlx 0.9.0, rmcp 3.4.1, etcetera 0.11.0, rustyline 18.0.1
 ([`Cargo.lock`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/Cargo.lock)). Third-party crate sources were read to verify serialisation.
 

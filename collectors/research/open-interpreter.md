@@ -5,7 +5,7 @@ How the transcripts are encoded and how the parser reads them is in
 
 ## 1. Source and evidence level
 
-openinterpreter/openinterpreter (the old `open-interpreter` URL redirects
+[openinterpreter/openinterpreter](https://github.com/openinterpreter/openinterpreter) (the old `open-interpreter` URL redirects
 there), Apache-2.0, open source, commit
 [`2767e5f20d6927500b8f1938c773c61afb823245`](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245)
 (2026-10-02). All claims are from source. Paths below are relative to

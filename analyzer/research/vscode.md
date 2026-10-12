@@ -4,14 +4,14 @@ Catalog agent: `vscode`. VS Code's built-in chat store is used by GitHub
 Copilot Chat and by any other chat participant, so parsing it covers Copilot
 Chat without touching the closed-source extension. The same layout exists in
 VSCodium, Cursor, Windsurf and the other forks whose `User` directories the
-catalog collects. Paths cited are relative to the microsoft/vscode clone.
+catalog collects. Paths cited are relative to the [microsoft/vscode](https://github.com/microsoft/vscode) clone.
 
 Paths, credentials and the rest of the per-user state are in
 [`collectors/research/vscode.md`](../../collectors/research/vscode.md).
 
 ## 1. Source
 
-microsoft/vscode at [`d7622a529314a4abcefd7ca9e3d7344bc9ccba9e`](https://github.com/microsoft/vscode/commit/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e), MIT
+[microsoft/vscode](https://github.com/microsoft/vscode) at [`d7622a529314a4abcefd7ca9e3d7344bc9ccba9e`](https://github.com/microsoft/vscode/commit/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e), MIT
 ([`LICENSE.txt`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/LICENSE.txt)). Open source. The Copilot Chat extension itself is closed;
 the `modelId`, `agent.id` and `responderUsername` string values in the
 fixture are therefore invented.

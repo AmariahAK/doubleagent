@@ -7,7 +7,7 @@ is no analyzer document yet.
 
 ## 1. Source and evidence level
 
-microsoft/autogen, commit
+[microsoft/autogen](https://github.com/microsoft/autogen), commit
 [`027ecf0a379bcc1d09956d46d12d44a3ad9cee14`](https://github.com/microsoft/autogen/commit/027ecf0a379bcc1d09956d46d12d44a3ad9cee14).
 Code is MIT ([LICENSE-CODE](https://github.com/microsoft/autogen/blob/027ecf0a379bcc1d09956d46d12d44a3ad9cee14/LICENSE-CODE)),
 docs CC-BY-4.0. The repository ships `autogen-core`, `autogen-agentchat`,

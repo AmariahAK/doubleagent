@@ -6,7 +6,7 @@ There is no analyzer document yet.
 
 ## 1. Source and evidence level
 
-FlowiseAI/Flowise, commit
+[FlowiseAI/Flowise](https://github.com/FlowiseAI/Flowise), commit
 [`9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb`](https://github.com/FlowiseAI/Flowise/commit/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb).
 A Node.js visual agent and chatflow builder (`npx flowise start`, Docker).
 Licence: Apache 2.0, except `packages/server/src/enterprise`, which is

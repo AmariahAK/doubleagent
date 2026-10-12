@@ -79,7 +79,8 @@ lab/                           Docker sandbox for running CLI agents against a s
 tools/check_research_links.py  verifies every citation link in the research documents
                                resolves to its file and line range at the cited commit
 tools/check_doc_links.py       verifies every relative link and heading fragment in the
-                               Markdown documents and that section references are links
+                               Markdown documents and that section and external
+                               references are links
 README.md                      project overview; points at the per-part READMEs
 AGENTS.md                      this file
 CLAUDE.md                      imports this file for Claude Code
@@ -914,9 +915,21 @@ list together. Run the commands from the repository root before pushing.
   one, and stays a code span, as does a catalog path that happens to end
   in `.md` (an agent's `AGENTS.md` or `GEMINI.md` inside a project),
   which is data, not a document reference.
+  An external source is linked the same way: the whole reference is
+  one link whose text names what it is, a page title in quotes, an
+  `owner/repo` README, `owner/repo issue 105`, `owner/repo pull request
+  6`, and the target is the full URL with its scheme, so
+  `["User identity and local data"](https://claude.com/docs/third-party/claude-desktop/data-storage)`
+  rather than a bare `claude.com/docs/...` with a title after it, and
+  never a URL as the link text. A fetch date or a note stays outside
+  the link text, in parentheses after it, and a second page on the same
+  site is a second full link, never `and /settings`. Citations to a
+  file at a commit keep their existing form (see "Validating catalog
+  entries from source").
   `tools/check_doc_links.py`, run by the CI lint job, fails on a relative
-  link whose file or heading does not exist and on a `section <n>` that
-  is not link text; run it before pushing a documentation change.
+  link whose file or heading does not exist, on a `section <n>` that is
+  not link text, and on a URL or scheme-less host path (`github.com/...`)
+  outside a link target; run it before pushing a documentation change.
 - Bump `VERSION` in the script for any change to output format or options.
   For the analyzer, bump `VERSION` in `doubleagent/__init__.py`;
   `pyproject.toml` reads the version from it. Bump once per release: if

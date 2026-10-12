@@ -6,7 +6,7 @@ There is no analyzer document: the run history is in PostgreSQL.
 
 ## 1. Source and evidence level
 
-langgenius/dify, commit
+[langgenius/dify](https://github.com/langgenius/dify), commit
 [`519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e`](https://github.com/langgenius/dify/commit/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e).
 The repository ships the self-hosted LLM app platform (Flask API, Celery
 worker, Next.js web), a `dify-agent` backend with a Go `shellctl` sandbox

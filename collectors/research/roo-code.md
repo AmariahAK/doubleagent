@@ -2,7 +2,7 @@
 
 ## 1. Source and evidence level
 
-Open source. RooCodeInc/Roo-Code at [`b867ec9145750d0ae1ff7f02d35406e9bf2a0b16`](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16)
+Open source. [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code) at [`b867ec9145750d0ae1ff7f02d35406e9bf2a0b16`](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16)
 (clone `scratchpad/repos/roo`). All claims from source. Extension id
 `RooVeterinaryInc.roo-cline` ([`src/package.json:2`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L2),[`5`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L5)); the CLI is
 `apps/cli` on top of `packages/vscode-shim`. Record schemas:

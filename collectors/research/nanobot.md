@@ -2,7 +2,7 @@
 
 ## 1. Source and evidence level
 
-HKUDS/nanobot, commit [`acdae3d0ae2714b6dde672428e921dbf705c096f`](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f)
+[HKUDS/nanobot](https://github.com/HKUDS/nanobot), commit [`acdae3d0ae2714b6dde672428e921dbf705c096f`](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f)
 (2026-10-04, PyPI package `nanobot-ai` version `0.3.5`, [`pyproject.toml:2-3`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/pyproject.toml#L2-L3)), MIT
 ([`LICENSE`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/LICENSE)), open source, Python. Every claim is source-level unless it
 cites `docs/` in the same checkout. nanobot is a small personal-assistant

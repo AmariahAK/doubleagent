@@ -2,7 +2,7 @@
 
 ## 1. Source and evidence level
 
-Closed source; no package inspected. Evidence is **DFIR write-ups and press**: pvieito.com/2024/07/chatgpt-unprotected-conversations and 9to5mac.com/2024/07/03 (macOS paths, fix in 1.2024.171, Keychain key name); github.com/garr3ttmjo/Digital-Forensic-Report-Writeups "ChatGPT Desktop Forensics" (Windows paths, examined 2025-01-23); arXiv 2505.23938 (Windows app, Oct 2024 release; general, no exact paths). No official OpenAI documentation of on-disk paths was found. Codex integration data: not determined (see 8).
+Closed source; no package inspected. Evidence is **DFIR write-ups and press**: [pvieito.com, "ChatGPT unprotected conversations"](https://pvieito.com/2024/07/chatgpt-unprotected-conversations) and [9to5mac.com, 2024-07-03 ChatGPT Mac app report](https://9to5mac.com/2024/07/03) (macOS paths, fix in 1.2024.171, Keychain key name); [garr3ttmjo/Digital-Forensic-Report-Writeups](https://github.com/garr3ttmjo/Digital-Forensic-Report-Writeups) "ChatGPT Desktop Forensics" (Windows paths, examined 2025-01-23); [arXiv 2505.23938](https://arxiv.org/abs/2505.23938) (Windows app, Oct 2024 release; general, no exact paths). No official OpenAI documentation of on-disk paths was found. Codex integration data: not determined (see 8).
 
 ## 2. Per-user storage
 

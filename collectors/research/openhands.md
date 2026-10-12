@@ -5,14 +5,14 @@
 OpenHands is now split across several MIT-licensed repositories, all open
 source; `All-Hands-AI/OpenHands` redirects to `OpenHands/OpenHands`.
 
-- OpenHands/OpenHands at [`a6bba78ffd5a8b31620770f52383b1a2c0477fcd`](https://github.com/OpenHands/OpenHands/commit/a6bba78ffd5a8b31620770f52383b1a2c0477fcd)
+- [OpenHands/OpenHands](https://github.com/OpenHands/OpenHands) at [`a6bba78ffd5a8b31620770f52383b1a2c0477fcd`](https://github.com/OpenHands/OpenHands/commit/a6bba78ffd5a8b31620770f52383b1a2c0477fcd)
   (2026-10-03): now only Agent Canvas, the React frontend plus the local-stack
   launcher; backend, conversations and events belong to the SDK
   ([`AGENTS.md:31-35`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/AGENTS.md#L31-L35)).
-- OpenHands/software-agent-sdk at [`b347047e2dcdd8f4b2be810aa8bc6632bc756d41`](https://github.com/OpenHands/software-agent-sdk/commit/b347047e2dcdd8f4b2be810aa8bc6632bc756d41):
+- [OpenHands/software-agent-sdk](https://github.com/OpenHands/software-agent-sdk) at [`b347047e2dcdd8f4b2be810aa8bc6632bc756d41`](https://github.com/OpenHands/software-agent-sdk/commit/b347047e2dcdd8f4b2be810aa8bc6632bc756d41):
   the SDK and the Agent Server, which owns every file under `~/.openhands`
   that matters.
-- OpenHands/OpenHands-CLI at [`954f2ba646e8d749261a8f2b2b7e3031fa39be9f`](https://github.com/OpenHands/OpenHands-CLI/commit/954f2ba646e8d749261a8f2b2b7e3031fa39be9f):
+- [OpenHands/OpenHands-CLI](https://github.com/OpenHands/OpenHands-CLI) at [`954f2ba646e8d749261a8f2b2b7e3031fa39be9f`](https://github.com/OpenHands/OpenHands-CLI/commit/954f2ba646e8d749261a8f2b2b7e3031fa39be9f):
   the `openhands` terminal CLI, "no longer actively maintained"
   ([`README.md:31-35`](https://github.com/OpenHands/OpenHands-CLI/blob/954f2ba646e8d749261a8f2b2b7e3031fa39be9f/README.md#L31-L35)) but still installed in the field.
 - The pre-Canvas Python app, read at tags `1.11.0`

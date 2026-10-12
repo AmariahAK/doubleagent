@@ -13,7 +13,7 @@ Paths, credentials and the rest of the per-user state are in
 
 ## 1. Source
 
-QwenLM/qwen-code at [`2c591ecc08a6fa080342f9b1b9f7f43215178cbb`](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb) (2026-10-03),
+[QwenLM/qwen-code](https://github.com/QwenLM/qwen-code) at [`2c591ecc08a6fa080342f9b1b9f7f43215178cbb`](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb) (2026-10-03),
 version 0.24.7, Apache-2.0. Open source.
 
 ## 2. Transcript files

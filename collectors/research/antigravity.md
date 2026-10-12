@@ -14,12 +14,13 @@ Closed source. Three evidence levels, tagged per claim:
   or by quoted literal.
 - **live**: names and sizes only under `~/.gemini/antigravity-cli`,
   `~/.gemini/config`, `~/.cache/antigravity` on this workstation.
-- **docs**: antigravity.google/docs/cli/install/, /docs/settings/,
-  codelabs.developers.google.com/antigravity-cli-hands-on; **community**:
+- **docs**: [Antigravity CLI install](https://antigravity.google/docs/cli/install/),
+  [Antigravity settings](https://antigravity.google/docs/settings/),
+  [Antigravity CLI hands-on codelab](https://codelabs.developers.google.com/antigravity-cli-hands-on); **community**:
   jazzyalex.github.io agent-sessions guide, dev.to ndondadaniel2020 restore
-  write-up, github.com/Devilaiger/antigravity-chat-history-fix,
-  marioalbu08/antigravity-sync, SavFil/antigravity-convo-manager,
-  damadorPL/agent-memories (google/antigravity.md),
+  write-up, [Devilaiger/antigravity-chat-history-fix](https://github.com/Devilaiger/antigravity-chat-history-fix),
+  [marioalbu08/antigravity-sync](https://github.com/marioalbu08/antigravity-sync), [SavFil/antigravity-convo-manager](https://github.com/SavFil/antigravity-convo-manager),
+  [damadorPL/agent-memories](https://github.com/damadorPL/agent-memories) (google/antigravity.md),
   discuss.ai.google.dev thread 167445.
 
 ## 2. Per-user storage

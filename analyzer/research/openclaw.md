@@ -10,7 +10,7 @@ sources and archives. Path research is in
 
 ## 1. Source
 
-openclaw/openclaw at [`3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9)
+[openclaw/openclaw](https://github.com/openclaw/openclaw) at [`3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9)
 (2026-10-04, version `2026.9.8`, agent schema version 24 per
 [`package.json:5-9`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/package.json#L5-L9)), MIT, open source.
 

@@ -10,7 +10,7 @@ Paths, credentials and the rest of the per-user state are in
 
 ## 1. Source
 
-charmbracelet/crush at [`ca6ae26ce016b980407ce32f012a467ec10c1e2f`](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f),
+[charmbracelet/crush](https://github.com/charmbracelet/crush) at [`ca6ae26ce016b980407ce32f012a467ec10c1e2f`](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f),
 Functional Source License 1.1 with MIT future license ([`LICENSE.md`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/LICENSE.md)). Open
 source.
 

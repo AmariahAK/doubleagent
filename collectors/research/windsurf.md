@@ -5,8 +5,8 @@
 Closed source. docs.windsurf.com now 307-redirects to docs.devin.ai (observed on `/windsurf/cascade/mcp` and `/troubleshooting/windsurf-common-issues`).
 
 - L2 official docs: docs.devin.ai `desktop/devin-desktop-faq`, `desktop/cascade/mcp`, `desktop/cascade/memories`, `desktop/cascade/workflows`, `desktop/cascade/hooks`, `desktop/troubleshooting/windsurf-common-issues`, `cli/reference/commands` (credentials.toml wording from search snippet of that page).
-- L3 vendor tracker: Exafunction/codeium issue 295 (`.windsurf\extensions` on Windows).
-- L4 community source read locally (`scratchpad/npm/community/`): wookat/DevCleaner `conversation.rs`, Cosmos-0118/AgentSweep `rules.toml`, vinzdg/codenotch `DevinCredentials.swift`, jlcodes99/cockpit-tools `windsurf_account.rs`; Exafunction/windsurf.nvim `lua/codeium/api.lua`.
+- L3 vendor tracker: [Exafunction/codeium issue 295](https://github.com/Exafunction/codeium/issues/295) (`.windsurf\extensions` on Windows).
+- L4 community source read locally (`scratchpad/npm/community/`): [wookat/DevCleaner](https://github.com/wookat/DevCleaner) `conversation.rs`, [Cosmos-0118/AgentSweep](https://github.com/Cosmos-0118/AgentSweep) `rules.toml`, [vinzdg/codenotch](https://github.com/vinzdg/codenotch) `DevinCredentials.swift`, [jlcodes99/cockpit-tools](https://github.com/jlcodes99/cockpit-tools) `windsurf_account.rs`; [Exafunction/windsurf.nvim](https://github.com/Exafunction/windsurf.nvim) `lua/codeium/api.lua`.
 
 ## 2. Per-user storage
 

@@ -11,7 +11,7 @@ Paths, credentials and the rest of the per-user state are in
 
 ## 1. Source
 
-sst/opencode at [`907b3bc518fa48e90e8ec24dd327d13eee71c36c`](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c), MIT. Open
+[sst/opencode](https://github.com/sst/opencode) at [`907b3bc518fa48e90e8ec24dd327d13eee71c36c`](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c), MIT. Open
 source. The schema has moved out of `packages/opencode` into
 `packages/core` (tables) and `packages/schema` (JSON shapes).
 

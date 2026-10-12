@@ -14,7 +14,7 @@ Paths and the rest of the per-user state are in
 
 ## 1. Evidence
 
-- **Source**: openai/codex at
+- **Source**: [openai/codex](https://github.com/openai/codex) at
   [`3e238776e857eccd3bde6bff3026e2e9798f6524`](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524)
   (2026-10-03), Apache-2.0, open source, the commit the [collector document](../../collectors/research/codex-cli.md)
   cites. Paths below are relative to `codex-rs/`. Every schema claim is

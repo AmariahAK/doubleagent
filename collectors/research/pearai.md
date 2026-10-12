@@ -15,18 +15,18 @@ directory (chat sessions, config, API keys).** Transcript schema is in
 
 All claims from source, three repositories:
 
-- Editor: trypear/pearai-app, MIT
+- Editor: [trypear/pearai-app](https://github.com/trypear/pearai-app), MIT
   ([`LICENSE.txt`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/LICENSE.txt)), commit
   [`d930f0233c14668df9f85c6a78a81828f4251194`](https://github.com/trypear/pearai-app/commit/d930f0233c14668df9f85c6a78a81828f4251194)
   (2025-05-15), the last push. Its tree records the two extensions only in
   [`.gitmodules:1-8`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/.gitmodules#L1-L8), with no pinned gitlink,
   so the extension commits below are their current heads, not the ones a
   given PearAI build shipped.
-- Continue fork: trypear/pearai-submodule, Apache-2.0, commit
+- Continue fork: [trypear/pearai-submodule](https://github.com/trypear/pearai-submodule), Apache-2.0, commit
   [`51eceef62a90c29f712b3a9607ea70a9dca657e9`](https://github.com/trypear/pearai-submodule/commit/51eceef62a90c29f712b3a9607ea70a9dca657e9)
   (2026-06-19), extension `pearai.pearai` 2.0.0
   ([`extensions/vscode/package.json:3-6`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/extensions/vscode/package.json#L3-L6)).
-- Roo Code fork: trypear/PearAI-Roo-Code, Apache-2.0, commit
+- Roo Code fork: [trypear/PearAI-Roo-Code](https://github.com/trypear/PearAI-Roo-Code), Apache-2.0, commit
   [`0b6df736c9b2799c38b9ee629668407521a7bdda`](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda)
   (2026-06-19), extension `PearAI.pearai-roo-cline` 3.15.3
   ([`package.json:2-7`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/package.json#L2-L7)).

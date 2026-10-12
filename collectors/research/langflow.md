@@ -6,14 +6,14 @@ There is no analyzer document yet.
 
 ## 1. Source and evidence level
 
-langflow-ai/langflow, MIT
+[langflow-ai/langflow](https://github.com/langflow-ai/langflow), MIT
 ([LICENSE:1-3](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/LICENSE#L1-L3)),
 commit
 [`504c02fc47e76087b82b0e7cbe4186e9cdd916d4`](https://github.com/langflow-ai/langflow/commit/504c02fc47e76087b82b0e7cbe4186e9cdd916d4).
 A Python visual agent builder (`langflow` and the `lfx` package). The OSS
 paths are from source. **Langflow Desktop is closed source; its paths rest
 on the documentation in this repository only.** Platform directory
-resolution is cited from tox-dev/platformdirs at
+resolution is cited from [tox-dev/platformdirs](https://github.com/tox-dev/platformdirs) at
 [`960ff632eb575deb6f0d5bf49519d5a2ee2098b6`](https://github.com/tox-dev/platformdirs/commit/960ff632eb575deb6f0d5bf49519d5a2ee2098b6).
 Nothing was installed or run.
 

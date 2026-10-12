@@ -10,7 +10,7 @@ the system temporary directory. Transcript schema is in
 
 ## 1. Source and evidence level
 
-TheR1D/shell_gpt, MIT, open source, commit
+[TheR1D/shell_gpt](https://github.com/TheR1D/shell_gpt), MIT, open source, commit
 [`a082bd5327ce0c4ef5a0284d9060e833be9444a6`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6)
 (2026-07-02), version 1.5.1
 ([`sgpt/__version__.py:1`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/__version__.py#L1)).

@@ -5,8 +5,8 @@ How the transcripts are encoded and how the parser reads them is in
 
 ## 1. Source and evidence level
 
-- L1 source: microsoft/vscode at [`d7622a529314a4abcefd7ca9e3d7344bc9ccba9e`](https://github.com/microsoft/vscode/commit/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e) (`scratchpad/repos/vscode`); microsoft/vscode-copilot-chat at [`5863f5a7088958050792b5dccbe8b46c6e13eccc`](https://github.com/microsoft/vscode-copilot-chat/commit/5863f5a7088958050792b5dccbe8b46c6e13eccc) (`scratchpad/repos/vscode-copilot-chat`); posit-dev/positron `product.json` (raw.githubusercontent); VSCodium `prepare_vscode.sh`.
-- L4 community: Kiro IDE `product.json` copy (github.com/Bad3r/dotfiles `opt/kiro/resources/app/product.json`), AgentsView docs for Trae, wookat/DevCleaner `conversation.rs` for Trae keys.
+- L1 source: [microsoft/vscode](https://github.com/microsoft/vscode) at [`d7622a529314a4abcefd7ca9e3d7344bc9ccba9e`](https://github.com/microsoft/vscode/commit/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e) (`scratchpad/repos/vscode`); [microsoft/vscode-copilot-chat](https://github.com/microsoft/vscode-copilot-chat) at [`5863f5a7088958050792b5dccbe8b46c6e13eccc`](https://github.com/microsoft/vscode-copilot-chat/commit/5863f5a7088958050792b5dccbe8b46c6e13eccc) (`scratchpad/repos/vscode-copilot-chat`); [posit-dev/positron](https://github.com/posit-dev/positron) `product.json` (raw.githubusercontent); VSCodium `prepare_vscode.sh`.
+- L4 community: Kiro IDE `product.json` copy ([Bad3r/dotfiles](https://github.com/Bad3r/dotfiles) `opt/kiro/resources/app/product.json`), AgentsView docs for Trae, [wookat/DevCleaner](https://github.com/wookat/DevCleaner) `conversation.rs` for Trae keys.
 - L5 this workstation (read-only `du`/`ls`): `~/.vscode-server`, `/mnt/c/Users/Sean/AppData/Roaming/Code`, `~/.vscode`.
 
 ## 2. Per-user storage

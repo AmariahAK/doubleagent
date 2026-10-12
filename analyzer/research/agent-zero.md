@@ -8,7 +8,7 @@ over time). Paths in
 
 ## 1. Source
 
-agent0ai/agent-zero at [`e3051fb584b1a36be2b0a0c90606f1c2c2d356ec`](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec),
+[agent0ai/agent-zero](https://github.com/agent0ai/agent-zero) at [`e3051fb584b1a36be2b0a0c90606f1c2c2d356ec`](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec),
 MIT ([`LICENSE:1-4`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/LICENSE#L1-L4)). Open source, Python. Read only, not run.
 
 ## 2. Transcript files

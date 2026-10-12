@@ -2,7 +2,7 @@
 
 ## 1. Source and evidence level
 
-Open source. continuedev/continue at [`5522c6f44ca0ac3528b37244818fbfa39b5af470`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470)
+Open source. [continuedev/continue](https://github.com/continuedev/continue) at [`5522c6f44ca0ac3528b37244818fbfa39b5af470`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470)
 (clone `scratchpad/repos/continue`). All claims from source. Covers the VS Code
 extension `continue.continue`, the JetBrains plugin (same core via
 `binary/`) and the `cn` CLI (`extensions/cli`). Record schemas:

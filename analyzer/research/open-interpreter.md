@@ -11,7 +11,7 @@ relative to `codex-rs/` in the clone.
 
 ## 1. Source
 
-openinterpreter/openinterpreter at
+[openinterpreter/openinterpreter](https://github.com/openinterpreter/openinterpreter) at
 [`2767e5f20d6927500b8f1938c773c61afb823245`](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245),
 Apache-2.0, open source.
 

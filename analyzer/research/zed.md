@@ -9,7 +9,7 @@ Paths, credentials and the rest of the per-user state are in
 
 ## 1. Source
 
-zed-industries/zed at [`a84689073d296dfd39987bc7dd478e43ef76d83a`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a); agent
+[zed-industries/zed](https://github.com/zed-industries/zed) at [`a84689073d296dfd39987bc7dd478e43ef76d83a`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a); agent
 crates GPL-3.0-or-later ([`crates/agent/Cargo.toml:6`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/Cargo.toml#L6),
 [`crates/agent_ui/Cargo.toml:6`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/Cargo.toml#L6)). Rust; sqlez (Zed's own SQLite wrapper),
 zstd crate, agent-client-protocol-schema 1.9.1.

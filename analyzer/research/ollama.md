@@ -10,11 +10,11 @@ are in
 
 ## 1. Source
 
-ollama/ollama at tag `v0.35.1`, commit
+[ollama/ollama](https://github.com/ollama/ollama) at tag `v0.35.1`, commit
 [`b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce`](https://github.com/ollama/ollama/commit/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce)
 (2026-10-01), the latest release and the version installed on the
 workstation used for the local check below. MIT, Go. The code was only
-read, never built or run. The SQLite driver is mattn/go-sqlite3 v1.14.24
+read, never built or run. The SQLite driver is [mattn/go-sqlite3](https://github.com/mattn/go-sqlite3) v1.14.24
 ([`go.mod:12`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/go.mod#L12)), read at
 [`846fea6c1443e8cc366fc1966fe078d7f825f6a9`](https://github.com/mattn/go-sqlite3/commit/846fea6c1443e8cc366fc1966fe078d7f825f6a9).
 The HTTP router is gin v1.10.0 ([`go.mod:8`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/go.mod#L8)), read at

@@ -5,7 +5,7 @@ How the transcripts are encoded and how the parser reads them is in
 
 ## 1. Source and evidence level
 
-QwenLM/qwen-code, commit [`2c591ecc08a6fa080342f9b1b9f7f43215178cbb`](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb)
+[QwenLM/qwen-code](https://github.com/QwenLM/qwen-code), commit [`2c591ecc08a6fa080342f9b1b9f7f43215178cbb`](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb)
 (2026-10-03, version `0.24.7`). Open source. All claims are source-level
 (`packages/...` file:line) unless marked `docs/` (repo documentation, used
 for directories whose writer lives in code not grepped here). `~/.qwen`

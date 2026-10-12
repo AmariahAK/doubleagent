@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the relative links and section references in the Markdown documents.
+"""Verify the links, section references and external references in the Markdown documents.
 
 Every reference from one project document to another is a Markdown link with
 a path relative to the citing file, and every reference to a section links to
@@ -14,7 +14,12 @@ every tracked Markdown file and every untracked one git does not ignore:
   other than letters, digits, spaces, hyphens and underscores removed, spaces
   to hyphens, `-1`, `-2` appended to repeated anchors);
 - outside AGENTS.md, no `section <n>` or `sections <n>` appears except as
-  link text, since a section reference must link to the heading.
+  link text, since a section reference must link to the heading;
+- with link targets, reference definition targets and `<autolinks>` also
+  ignored, no `http://` or `https://` URL and no scheme-less host path such as
+  `github.com/owner/repo` is left in the text, and no inline link has a URL or
+  host path as its text, since an external source is one link whose text
+  names it and whose target is the full URL.
 
 Fenced code blocks and inline code spans are ignored before matching.
 
@@ -49,6 +54,11 @@ SECTION = re.compile(r"\bsections?\s+\d+", re.I)
 ATX = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
 SETEXT = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
 HTML_ID = re.compile(r"<a\s[^>]*\b(?:id|name)=\"([^\"]+)\"", re.I)
+URL = re.compile(r"\bhttps?://[^\s<>()\[\]]+", re.I)
+HOST_PATH = re.compile(
+    r"(?<![\w/@.-])(?:[a-z0-9-]+\.)+(?:com|io|org|net|dev|ai|co|google)/[^\s)\],;]+"
+)
+AUTOLINK = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>")
 LINK_IN_HEADING = re.compile(r"!?\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\([^)]*\)")
 
 
@@ -74,6 +84,16 @@ def strip_fences(text: str) -> str:
 def blank_code_spans(text: str) -> str:
     """Replace each inline code span with spaces, keeping offsets and newlines."""
     return CODE_SPAN.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
+
+
+def blank(text: str, spans: list[tuple[int, int]]) -> str:
+    """Replace each span with spaces, keeping offsets and newlines."""
+    chars = list(text)
+    for lo, hi in spans:
+        for i in range(lo, hi):
+            if chars[i] != "\n":
+                chars[i] = " "
+    return "".join(chars)
 
 
 def anchor(heading: str) -> str:
@@ -175,11 +195,29 @@ def main() -> int:
         text = blank_code_spans(strip_fences(f.read_text(encoding="utf-8")))
         link_text: list[tuple[int, int]] = []
         targets: list[tuple[int, str]] = []
+        hidden: list[tuple[int, int]] = []
         for m in INLINE_LINK.finditer(text):
             link_text.append((m.start(1), m.end(1)))
             targets.append((m.start(2), m.group(2)))
+            hidden.append((m.start(1), m.end(1)))
+            hidden.append((m.end(1), m.end(0)))
+            label = " ".join(m.group(1).split())
+            if URL.search(label) or HOST_PATH.search(label):
+                print("%s:%d: link text is a URL: %s" % (rel, line_of(text, m.start(1)), label))
+                bad += 1
         for m in REF_DEF.finditer(text):
             targets.append((m.start(1), m.group(1)))
+            hidden.append((m.start(1), m.end(1)))
+        for m in AUTOLINK.finditer(text):
+            hidden.append((m.start(), m.end()))
+        prose = blank(text, hidden)
+        for pattern, what in ((URL, "URL"), (HOST_PATH, "host path")):
+            for m in pattern.finditer(prose):
+                print(
+                    "%s:%d: %s is not a link: %s"
+                    % (rel, line_of(prose, m.start()), what, m.group(0))
+                )
+                bad += 1
         for offset, target in sorted(targets):
             links += 1
             msg = check_target(f, target, cache)

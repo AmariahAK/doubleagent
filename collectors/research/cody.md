@@ -13,7 +13,7 @@ directory named `Cody-nodejs`. Transcript schema is in
 
 ## 1. Source and evidence level
 
-sourcegraph/cody-public-snapshot, commit
+[sourcegraph/cody-public-snapshot](https://github.com/sourcegraph/cody-public-snapshot), commit
 [`8e20ac6c1460c08b0db581c0204658112a246eda`](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda)
 (2025-08-01), VS Code extension version 1.116.0
 ([`vscode/package.json:3-7`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/package.json#L3-L7)). **The source

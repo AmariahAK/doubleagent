@@ -8,9 +8,9 @@ own research. Paths are in [`collectors/research/little-coder.md`](../../collect
 
 ## 1. Source
 
-itayinbarr/little-coder at [`89d4fa0af864230527ab75d12604ed0eb320e6df`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df),
+[itayinbarr/little-coder](https://github.com/itayinbarr/little-coder) at [`89d4fa0af864230527ab75d12604ed0eb320e6df`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df),
 Apache-2.0. It depends on `@earendil-works/pi-coding-agent` `^0.83.0`
-([package.json:41](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/package.json#L41)), read at earendil-works/pi `v0.83.0`,
+([package.json:41](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/package.json#L41)), read at [earendil-works/pi](https://github.com/earendil-works/pi) `v0.83.0`,
 [`845d6ff1f6643aba440341cce877ce1c43ebbc39`](https://github.com/earendil-works/pi/commit/845d6ff1f6643aba440341cce877ce1c43ebbc39).
 
 ## 2. Transcript files

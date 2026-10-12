@@ -10,7 +10,7 @@ frozen public snapshot, so later releases may differ. Paths are in
 
 ## 1. Source
 
-sourcegraph/cody-public-snapshot at
+[sourcegraph/cody-public-snapshot](https://github.com/sourcegraph/cody-public-snapshot) at
 [`8e20ac6c1460c08b0db581c0204658112a246eda`](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda)
 (2025-08-01), archived copy of the now-private Cody repository
 ([`README.md:1-5`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/README.md#L1-L5)).

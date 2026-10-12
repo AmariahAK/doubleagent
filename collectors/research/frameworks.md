@@ -35,22 +35,22 @@ downloaded and unpacked for reading (section LangGraph).
 
 | Framework | Repository and commit | Default per-user path | Catalog agent | Evidence |
 | --- | --- | --- | --- | --- |
-| AutoGen (libraries and Studio) | microsoft/autogen `027ecf0` | Studio: `~/.autogenstudio`; libraries: none | `autogen-studio`, see [autogen-studio.md](autogen-studio.md); libraries none, see [AutoGen libraries](#autogen-libraries) | source |
-| Microsoft Agent Framework | microsoft/agent-framework `279d97f` | none | none, see [Microsoft Agent Framework](#microsoft-agent-framework) | source |
-| Semantic Kernel | microsoft/semantic-kernel `64005c7` | none (opt-in MSAL cache `sk.msal.cache`) | none, see [Semantic Kernel](#semantic-kernel) | source |
-| TaskWeaver | microsoft/TaskWeaver `d44ddef` | none; state in the project directory | none, see [TaskWeaver](#taskweaver) | source |
-| CrewAI | crewAIInc/crewAI `e836a19` | `~/.local/share/<project>`, `~/Library/Application Support/<project>`, `AppData/Local/CrewAI`; `~/.config/crewai`, `~/.crewai` | `crewai`, see [crewai.md](crewai.md) | source |
-| LangGraph | langchain-ai/langgraph `39c523e` | none; `.langgraph_api` in the project directory | none, see [LangGraph](#langgraph) | source and PyPI wheels |
-| Pydantic AI (library, `clai`, CLAI 2.0; Logfire noted) | pydantic/pydantic-ai `0ba01f9`, pydantic/logfire `bae9db2` | library: none; `clai`: `~/.pydantic-ai`; CLAI 2.0: `~/.config/pydantic-clai2`; Logfire: `~/.logfire` | `pydantic-clai`, see [pydantic-clai.md](pydantic-clai.md); library and Logfire none, see [Pydantic AI library](#pydantic-ai-library) and [Logfire](#logfire) | source |
-| MetaGPT | FoundationAgents/MetaGPT `11cdf46` | `~/.metagpt` | `metagpt`, see [metagpt.md](metagpt.md) | source |
-| CAMEL | camel-ai/camel `24fde60` | `~/.camel/gmail_token.json`, `~/.camel/skills`, `~/.config/camel` | `camel-ai`, see [camel-ai.md](camel-ai.md) | source |
-| Atomic Agents | BrainBlend-AI/atomic-agents `d2b61b9` | none | none, see [Atomic Agents](#atomic-agents) | source |
-| IntentKit | crestalnetwork/intentkit `afc8cc4` | none; Postgres in Compose volumes | none, see [IntentKit](#intentkit) | source |
-| Open Interpreter, legacy Python SDK | openinterpreter/openinterpreter `13061d2` (v0.4.2) | platformdirs `open-interpreter`, older `Open Interpreter*`; `~/.cache/open-interpreter` | added to `open-interpreter`, see [open-interpreter.md](open-interpreter.md) | source and the 0.4.3 sdist |
-| Dify | langgenius/dify `519ef8b` | server: none (bind mounts beside the compose file); `difyctl`: `~/.config/difyctl` | `dify`, see [dify.md](dify.md) | source |
-| Flowise | FlowiseAI/Flowise `9291856` | `~/.flowise` | `flowise`, see [flowise.md](flowise.md) | source |
-| Langflow | langflow-ai/langflow `504c02f` | platformdirs cache dir `langflow`, `~/.langflow`; Desktop `com.LangflowDesktop` | `langflow`, see [langflow.md](langflow.md) | source; Desktop from docs only |
-| n8n | n8n-io/n8n `0e1c754` | `~/.n8n`, `~/.n8n-local-gateway`, `~/.n8n-gateway` | `n8n`, see [n8n.md](n8n.md) | source |
+| AutoGen (libraries and Studio) | [microsoft/autogen](https://github.com/microsoft/autogen) `027ecf0` | Studio: `~/.autogenstudio`; libraries: none | `autogen-studio`, see [autogen-studio.md](autogen-studio.md); libraries none, see [AutoGen libraries](#autogen-libraries) | source |
+| Microsoft Agent Framework | [microsoft/agent-framework](https://github.com/microsoft/agent-framework) `279d97f` | none | none, see [Microsoft Agent Framework](#microsoft-agent-framework) | source |
+| Semantic Kernel | [microsoft/semantic-kernel](https://github.com/microsoft/semantic-kernel) `64005c7` | none (opt-in MSAL cache `sk.msal.cache`) | none, see [Semantic Kernel](#semantic-kernel) | source |
+| TaskWeaver | [microsoft/TaskWeaver](https://github.com/microsoft/TaskWeaver) `d44ddef` | none; state in the project directory | none, see [TaskWeaver](#taskweaver) | source |
+| CrewAI | [crewAIInc/crewAI](https://github.com/crewAIInc/crewAI) `e836a19` | `~/.local/share/<project>`, `~/Library/Application Support/<project>`, `AppData/Local/CrewAI`; `~/.config/crewai`, `~/.crewai` | `crewai`, see [crewai.md](crewai.md) | source |
+| LangGraph | [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph) `39c523e` | none; `.langgraph_api` in the project directory | none, see [LangGraph](#langgraph) | source and PyPI wheels |
+| Pydantic AI (library, `clai`, CLAI 2.0; Logfire noted) | [pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai) `0ba01f9`, [pydantic/logfire](https://github.com/pydantic/logfire) `bae9db2` | library: none; `clai`: `~/.pydantic-ai`; CLAI 2.0: `~/.config/pydantic-clai2`; Logfire: `~/.logfire` | `pydantic-clai`, see [pydantic-clai.md](pydantic-clai.md); library and Logfire none, see [Pydantic AI library](#pydantic-ai-library) and [Logfire](#logfire) | source |
+| MetaGPT | [FoundationAgents/MetaGPT](https://github.com/FoundationAgents/MetaGPT) `11cdf46` | `~/.metagpt` | `metagpt`, see [metagpt.md](metagpt.md) | source |
+| CAMEL | [camel-ai/camel](https://github.com/camel-ai/camel) `24fde60` | `~/.camel/gmail_token.json`, `~/.camel/skills`, `~/.config/camel` | `camel-ai`, see [camel-ai.md](camel-ai.md) | source |
+| Atomic Agents | [BrainBlend-AI/atomic-agents](https://github.com/BrainBlend-AI/atomic-agents) `d2b61b9` | none | none, see [Atomic Agents](#atomic-agents) | source |
+| IntentKit | [crestalnetwork/intentkit](https://github.com/crestalnetwork/intentkit) `afc8cc4` | none; Postgres in Compose volumes | none, see [IntentKit](#intentkit) | source |
+| Open Interpreter, legacy Python SDK | [openinterpreter/openinterpreter](https://github.com/openinterpreter/openinterpreter) `13061d2` (v0.4.2) | platformdirs `open-interpreter`, older `Open Interpreter*`; `~/.cache/open-interpreter` | added to `open-interpreter`, see [open-interpreter.md](open-interpreter.md) | source and the 0.4.3 sdist |
+| Dify | [langgenius/dify](https://github.com/langgenius/dify) `519ef8b` | server: none (bind mounts beside the compose file); `difyctl`: `~/.config/difyctl` | `dify`, see [dify.md](dify.md) | source |
+| Flowise | [FlowiseAI/Flowise](https://github.com/FlowiseAI/Flowise) `9291856` | `~/.flowise` | `flowise`, see [flowise.md](flowise.md) | source |
+| Langflow | [langflow-ai/langflow](https://github.com/langflow-ai/langflow) `504c02f` | platformdirs cache dir `langflow`, `~/.langflow`; Desktop `com.LangflowDesktop` | `langflow`, see [langflow.md](langflow.md) | source; Desktop from docs only |
+| n8n | [n8n-io/n8n](https://github.com/n8n-io/n8n) `0e1c754` | `~/.n8n`, `~/.n8n-local-gateway`, `~/.n8n-gateway` | `n8n`, see [n8n.md](n8n.md) | source |
 
 The Docker volumes added in the same round are Dify's
 `*dify_agent_local_sandbox_home` and `*dify_agent_local_sandbox_workspace`,
@@ -59,7 +59,7 @@ evidence is in each agent's document.
 
 ## AutoGen libraries
 
-microsoft/autogen at
+[microsoft/autogen](https://github.com/microsoft/autogen) at
 [`027ecf0a379bcc1d09956d46d12d44a3ad9cee14`](https://github.com/microsoft/autogen/commit/027ecf0a379bcc1d09956d46d12d44a3ad9cee14),
 code MIT. AutoGen Studio is in the catalog; see
 [autogen-studio.md](autogen-studio.md). The libraries (`autogen-core`,
@@ -88,7 +88,7 @@ application chooses a path there. Confidence high.
 
 ## Microsoft Agent Framework
 
-microsoft/agent-framework at
+[microsoft/agent-framework](https://github.com/microsoft/agent-framework) at
 [`279d97f75cb2e7eee885dcdc2c741ef7361ee903`](https://github.com/microsoft/agent-framework/commit/279d97f75cb2e7eee885dcdc2c741ef7361ee903),
 MIT
 ([LICENSE](https://github.com/microsoft/agent-framework/blob/279d97f75cb2e7eee885dcdc2c741ef7361ee903/LICENSE)),
@@ -122,7 +122,7 @@ named volume. Confidence high.
 
 ## Semantic Kernel
 
-microsoft/semantic-kernel at
+[microsoft/semantic-kernel](https://github.com/microsoft/semantic-kernel) at
 [`64005c77870a3b8a157f8aefefd45093f1e6fc00`](https://github.com/microsoft/semantic-kernel/commit/64005c77870a3b8a157f8aefefd45093f1e6fc00),
 MIT
 ([LICENSE](https://github.com/microsoft/semantic-kernel/blob/64005c77870a3b8a157f8aefefd45093f1e6fc00/LICENSE)),
@@ -142,7 +142,7 @@ The one per-user file is opt-in. The .NET MS Graph plugin's
 named `sk.msal.cache` in `MsalCacheHelper.UserRootDirectory`
 ([LocalUserMSALCredentialManager.cs:53-70](https://github.com/microsoft/semantic-kernel/blob/64005c77870a3b8a157f8aefefd45093f1e6fc00/dotnet/src/Plugins/Plugins.MsGraph/Connectors/CredentialManagers/LocalUserMSALCredentialManager.cs#L53-L70));
 only two .NET samples call it. Per OS, checked in
-AzureAD/microsoft-authentication-library-for-dotnet at
+[AzureAD/microsoft-authentication-library-for-dotnet](https://github.com/AzureAD/microsoft-authentication-library-for-dotnet) at
 `2d15026e7f9e3e84d27f0b97a9d620273eb8860c`:
 
 - Windows: `AppData/Local/sk.msal.cache`, a DPAPI-encrypted file
@@ -171,7 +171,7 @@ does not set it.
 
 ## TaskWeaver
 
-microsoft/TaskWeaver at
+[microsoft/TaskWeaver](https://github.com/microsoft/TaskWeaver) at
 [`d44ddef23f90059fb17999d3095db4240e98f955`](https://github.com/microsoft/TaskWeaver/commit/d44ddef23f90059fb17999d3095db4240e98f955)
 (last commit 2026-03-23), MIT
 ([LICENSE](https://github.com/microsoft/TaskWeaver/blob/d44ddef23f90059fb17999d3095db4240e98f955/LICENSE)).
@@ -226,7 +226,7 @@ Chainlit UI (`playground/`) was not read.
 
 ## LangGraph
 
-langchain-ai/langgraph at
+[langchain-ai/langgraph](https://github.com/langchain-ai/langgraph) at
 [`39c523eb0af1d192f739fd2b7ddfea38f3002a2a`](https://github.com/langchain-ai/langgraph/commit/39c523eb0af1d192f739fd2b7ddfea38f3002a2a),
 MIT. Ships `langgraph`, checkpoint savers (memory, SQLite, PostgreSQL),
 `prebuilt`, `langgraph-cli` and SDKs. `langgraph dev` imports
@@ -285,7 +285,7 @@ Confidence high (source and wheels); the source repository for
 
 ## Pydantic AI library
 
-pydantic/pydantic-ai at
+[pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai) at
 [`0ba01f92be3fc361f89970502cd6e7dd3611aec3`](https://github.com/pydantic/pydantic-ai/commit/0ba01f92be3fc361f89970502cd6e7dd3611aec3),
 MIT. The `clai` and CLAI 2.0 CLIs are in the catalog as `pydantic-clai`;
 see [pydantic-clai.md](pydantic-clai.md). The library itself has no
@@ -298,7 +298,7 @@ Message history is returned to the caller.
 
 ## Logfire
 
-pydantic/logfire at
+[pydantic/logfire](https://github.com/pydantic/logfire) at
 [`bae9db2c9926bdde91feae92ba9f423ebe95ed55`](https://github.com/pydantic/logfire/commit/bae9db2c9926bdde91feae92ba9f423ebe95ed55),
 MIT, the observability SDK that Pydantic AI integrates with. `logfire
 auth` writes user tokens to `~/.logfire/default.toml`
@@ -314,7 +314,7 @@ executes no tools. CLAI 2.0's own Logfire token is flagged inside the
 
 ## Atomic Agents
 
-BrainBlend-AI/atomic-agents at
+[BrainBlend-AI/atomic-agents](https://github.com/BrainBlend-AI/atomic-agents) at
 [`d2b61b90b2816dbdf9f42f8638b7d375bf08cd11`](https://github.com/BrainBlend-AI/atomic-agents/commit/d2b61b90b2816dbdf9f42f8638b7d375bf08cd11)
 (2026-10-04), `atomic-agents` 2.10.3, MIT. The library, the
 `atomic-assembler` TUI, `atomic-forge` tools, and a Claude Code plugin that
@@ -339,7 +339,7 @@ forge tools execute shell commands (a grep for `subprocess` and
 
 ## IntentKit
 
-crestalnetwork/intentkit at
+[crestalnetwork/intentkit](https://github.com/crestalnetwork/intentkit) at
 [`afc8cc44255210db6352f7437e569ed8b88ed5e1`](https://github.com/crestalnetwork/intentkit/commit/afc8cc44255210db6352f7437e569ed8b88ed5e1)
 (2026-09-16), MIT. A self-hosted "cloud agent cluster" (FastAPI,
 PostgreSQL, Redis, RustFS) with crypto, social and web tools.

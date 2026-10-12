@@ -7,7 +7,7 @@ every save. Path research is in
 
 ## 1. Source
 
-HKUDS/nanobot at [`acdae3d0ae2714b6dde672428e921dbf705c096f`](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f) (2026-10-04,
+[HKUDS/nanobot](https://github.com/HKUDS/nanobot) at [`acdae3d0ae2714b6dde672428e921dbf705c096f`](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f) (2026-10-04,
 `nanobot-ai` 0.3.5), MIT, open source.
 
 ## 2. Transcript files

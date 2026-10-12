@@ -7,7 +7,7 @@ profile home, in OpenAI chat-completions message shape. Paths in
 
 ## 1. Source
 
-NousResearch/hermes-agent at [`8b66a51036c1e20920a17cdd049fdf55c968d683`](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683),
+[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) at [`8b66a51036c1e20920a17cdd049fdf55c968d683`](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683),
 MIT ([`LICENSE`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/LICENSE#L1-L3)). Open source, Python. Read only, not run.
 
 ## 2. Transcript files

@@ -5,15 +5,15 @@ Catalog agent: `agent-zero`. Transcript schema is in
 
 ## 1. Source and evidence level
 
-agent0ai/agent-zero at commit
+[agent0ai/agent-zero](https://github.com/agent0ai/agent-zero) at commit
 [`e3051fb584b1a36be2b0a0c90606f1c2c2d356ec`](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec).
 The `LICENSE` file at that commit is plain MIT
 ([`LICENSE:1-4`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/LICENSE#L1-L4)), not a custom licence. Python, source public. Three companion
 repositories decide where the data lands on the host and were also read:
-agent0ai/a0-install at [`c89b4026e9f16f53389e75537783411fefdd53f1`](https://github.com/agent0ai/a0-install/commit/c89b4026e9f16f53389e75537783411fefdd53f1)
-(installer scripts), agent0ai/a0-launcher at
+[agent0ai/a0-install](https://github.com/agent0ai/a0-install) at [`c89b4026e9f16f53389e75537783411fefdd53f1`](https://github.com/agent0ai/a0-install/commit/c89b4026e9f16f53389e75537783411fefdd53f1)
+(installer scripts), [agent0ai/a0-launcher](https://github.com/agent0ai/a0-launcher) at
 [`b0333d80b5abf38d8481f55b667b0cf23d805bbb`](https://github.com/agent0ai/a0-launcher/commit/b0333d80b5abf38d8481f55b667b0cf23d805bbb) (Electron launcher, MIT,
-[`LICENSE:1`](https://github.com/agent0ai/a0-launcher/blob/b0333d80b5abf38d8481f55b667b0cf23d805bbb/LICENSE#L1)), and agent0ai/a0-connector at
+[`LICENSE:1`](https://github.com/agent0ai/a0-launcher/blob/b0333d80b5abf38d8481f55b667b0cf23d805bbb/LICENSE#L1)), and [agent0ai/a0-connector](https://github.com/agent0ai/a0-connector) at
 [`76e834f20e50f6e47954c89ee39dd4c5b50d81b7`](https://github.com/agent0ai/a0-connector/commit/76e834f20e50f6e47954c89ee39dd4c5b50d81b7) (the host-side "A0 CLI", MIT,
 [`LICENSE:1`](https://github.com/agent0ai/a0-connector/blob/76e834f20e50f6e47954c89ee39dd4c5b50d81b7/LICENSE#L1)). All claims are from source or the in-repo docs. Nothing
 was installed or run.

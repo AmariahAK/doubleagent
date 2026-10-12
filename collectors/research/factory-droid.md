@@ -5,7 +5,7 @@
 - Closed source. Installer `https://app.factory.ai/cli` (`scratchpad/factory-install.sh`, read only) pins `VER="0.233.0"` and downloads `https://downloads.factory.ai/factory-cli/releases/0.233.0/<os>/<arch>/droid` into `~/.local/bin/droid` (lines 64-66, 106). Windows installer `https://app.factory.ai/cli/windows` (`scratchpad/factory-install.ps1`) fetches `droid.exe` into `%USERPROFILE%\bin` (lines 60-62, 105). No npm package.
 - Binary: `linux/x64/droid` 0.233.0, 275,543,520 bytes, sha256 `744a5c50…f7ab8` matching the published `.sha256`; bun-compiled ELF. Evidence level **B** = `strings -n 8` (`scratchpad/npm/droid.strings`, 8-bit table holds the minified code) and UTF-16 (`droid.strings16`).
 - Evidence level **D** = docs fetched as Markdown from `https://docs.factory.com/<page>.md` (`scratchpad/factory-docs/`, index `https://docs.factory.ai/llms.txt`).
-- The Factory-AI/factory GitHub repo is docs only (prior finding; not re-cloned).
+- The [Factory-AI/factory](https://github.com/Factory-AI/factory) GitHub repo is docs only (prior finding; not re-cloned).
 
 ## 2. Per-user storage
 

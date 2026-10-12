@@ -2,7 +2,7 @@
 
 ## 1. Source and evidence level
 
-earendil-works/pi (the monorepo for the `pi` coding agent CLI,
+[earendil-works/pi](https://github.com/earendil-works/pi) (the monorepo for the `pi` coding agent CLI,
 `@earendil-works/pi-coding-agent` 1.0.2), MIT licence
 ([LICENSE:1](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/LICENSE#L1)), open source, TypeScript. Reviewed commit
 [`200387122ca450d6387f033949423114a270b96c`](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c) (2026-10-04). Where the
