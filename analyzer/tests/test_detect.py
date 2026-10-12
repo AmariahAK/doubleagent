@@ -129,6 +129,26 @@ class LooseDetectTests(unittest.TestCase):
             sum(1 for a in col.artifacts if a.rel == ".local/share/opencode/flow_states.db"), 1
         )
 
+    def test_claude_code_cli_cache_detected(self):
+        # Collector 1.11.0 (#81): the CLI's MCP server logs in its env-paths
+        # cache directory; the Windows entry names the children of Cache/.
+        home = self.tmp / "home" / "alice"
+        line = {"cwd": "", "debug": "MCP server: connected", "sessionId": "s", "timestamp": "t"}
+        files = [
+            "Library/Caches/claude-cli-nodejs/-Users-alice-proj/mcp-logs-terminal/"
+            "2026-10-12T02-23-51-709Z.jsonl",
+            "AppData/Local/claude-cli-nodejs/Cache/C--Users-alice-proj/mcp-logs-ccd-host/"
+            "2026-10-12T02-23-51-709Z.jsonl",
+        ]
+        for rel in files:
+            p = home / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(line) + "\n")
+        col = open_input(self.tmp / "home", self.cat)
+        by_rel = {a.rel: a.agent for a in col.artifacts}
+        for rel in files:
+            self.assertEqual(by_rel.get(rel), "claude-code", rel)
+
     def test_project_dirs_inside_home_are_not_homes(self):
         root = build_image(self.tmp / "image")
         col = open_input(root, self.cat)

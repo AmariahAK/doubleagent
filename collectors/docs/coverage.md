@@ -100,11 +100,34 @@ The rest of a relocated home (`settings.json`, `todos/`, `plans/`,
 a bare `.claude-*` entry would also take other tools' directories such as
 `~/.claude-code-router` and `~/.claude-mem`.
 
+## Claude Code CLI cache directory
+
+The Claude Code CLI keeps per-project MCP server logs outside its config
+home, in a cache directory that `CLAUDE_CONFIG_DIR` does not move:
+`<project slug>/mcp-logs-<server>/<timestamp>.jsonl`, one JSON object
+with `cwd`, `debug`, `sessionId` and `timestamp` per line. It is
+collected as `claude-code` from these locations, none flagged
+`secret: true`:
+
+| Location | Platform |
+| --- | --- |
+| `Library/Caches/claude-cli-nodejs` | macOS (observed with CLI 2.1.295, October 2026) |
+| `.cache/claude-cli-nodejs` | Linux, when `XDG_CACHE_HOME` is unset (from the CLI binary, not observed) |
+| `AppData/Local/claude-cli-nodejs/Cache/*` | Windows (from the CLI binary, not observed) |
+
+The Windows line names each project-slug directory under `Cache/` rather
+than `claude-cli-nodejs` itself: the PowerShell collector's exclusion
+match ignores case, so the Claude Desktop exclusion `*/Claude*/Cache`
+would match `AppData/Local/claude-cli-nodejs/Cache` and prune the whole
+directory. The slug directories are not named `Cache`, so both collectors
+collect them. A relocated `XDG_CACHE_HOME` on Linux is not found.
+
 ## Claude Desktop data directories
 
 Claude Desktop is collected as `claude-desktop` from these locations under
 each home; the `*/Claude*/` exclusions (caches, the bundled `claude-code`
-binary, `claude-code-vm`, `vm_bundles` (see [Cowork VM disks](#cowork-vm-disks)), `sentry`) and secret globs
+binary, `claude-code-vm` (the Linux CLI build that runs inside the Cowork
+VM), `vm_bundles` (see [Cowork VM disks](#cowork-vm-disks)), `sentry`) and secret globs
 (`config.json`, `Cookies*`, `Local State`, `claude_desktop_config.json`,
 `host-creds-*.json`, `ccd-session-secrets/*`, `.audit-key`, the space-link
 signing key `spaces-present/*/link-key`) apply in each data directory.
@@ -126,7 +149,16 @@ and `*-gitdir` directories) lives in the Claude Code CLI's temp root,
 outside every home and is not collected; the JSON list is. The CLI
 binary the app downloads into `claude-code/<version>/<hash>/` (255 MB on
 Linux, 247 MB on Windows) is excluded by `*/Claude*/claude-code` on every
-platform and gets one `skipped_excluded` row with its size.
+platform and gets one `skipped_excluded` row with its size (on macOS a
+`claude.app` bundle per version, 476 MB for two versions observed).
+
+On macOS the data directory also holds `Partitions/launch-preview-static/`
+and `Partitions/cowork-file-preview/`, the Chromium profiles of two
+Electron session partitions (observed with 2.31226.1, October 2026). They
+are collected; the `Cookies*` secret glob crosses `/` and flags the
+launch-preview partition's `Cookies` and `Cookies-journal`, and the
+`*/Claude*/Cache` and `*/Claude*/Code Cache` exclusions take each
+partition's `Cache/` and `Code Cache/`.
 
 `CLAUDE_USER_DATA_DIR`, when set, moves the data directory and the logs
 anywhere. That location is not a catalog line and is not collected; when

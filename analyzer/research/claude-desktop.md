@@ -29,16 +29,26 @@ claim below names its evidence level:
   chunk file names are content hashes and change with every release, so
   a reader of another version should grep for the snippet, not the offset.
   Nothing from the bundle was executed and the app was not launched.
-- **Observed**: the author's macOS install of the same version, October
-  2026, read for file names, key names and value types only. On this
-  install `local-agent-mode-sessions/<account>/<org>/` holds only
-  `scheduled-tasks.json` and `rpm/manifest.json`, plus a
-  `skills-plugin/` tree; `claude-code-sessions/<account>/<org>/` holds only
-  `scheduled-tasks.json`; `~/.claude/projects/` holds only CLI sessions
-  (`entrypoint` `cli`). So no Cowork session record, `audit.jsonl` or
-  desktop-launched Code session was available. Every shape below marked
-  **bundle** rests on the code that writes or reads it; shapes marked
-  **observed** were seen on disk.
+- **Observed (macOS)**: the author's install of the same version
+  (2.31226.1, standard build) on macOS 26.4.1 arm64, 2026-10-11
+  (collector issue 73), read for file names, sizes, key names and value
+  types only. One Code-tab session on a project folder (two turns, one
+  `Write` and one `Bash` call) wrote
+  `claude-code-sessions/<acct>/<org>/local_<uuid>.json` (compact JSON,
+  19 KB; keys in section 3, with `cwd`, `originCwd` and
+  `gitAnchorsFolderRealpath` all equal to the chosen folder) and its
+  transcript `~/.claude/projects/-Users-<user>-proj/<cliSessionId>.jsonl`
+  (`entrypoint` `claude-desktop`, CLI 2.1.295, 45 lines, none bad).
+  `local-agent-mode-sessions/<acct>/<org>/` holds `scheduled-tasks.json`,
+  `rpm/manifest.json` and `remote-session-spaces.json` (from a
+  file-writing chat, section 3), beside a `skills-plugin/<org>/<acct>/`
+  tree; there is no `local_<uuid>.json` and no `audit.jsonl`. Collector
+  1.11.0 and the analyzer were run over the result: the parser joined the
+  record's row to the 15 rows of the CLI session (the `claude-desktop`
+  `system` row carries the project path and the title, and
+  `sessions.jsonl` lists both). Every shape below marked **bundle** rests
+  on the code that writes or reads it; shapes marked **observed** were
+  seen on disk.
 - **Observed (Windows)**: a clean Microsoft Store install of the same
   version (package `Claude_pzs8sxrjxfjjc`, 2.31226.1.0) on Windows 11
   build 26300 arm64, 2026-10-10 (collector issue 73), read for file names,
@@ -64,7 +74,8 @@ claim below names its evidence level:
   Chat/Cowork surface wrote no local session record (section 3). The
   Cowork VM was unsupported in that nested-virtualisation guest
   (`cowork_vm_node.log`: `workspace VM not supported (status=unsupported)`),
-  so no `vm_bundles` or `claude-code-vm` exists there.
+  so no `vm_bundles` or `claude-code-vm` (the Linux CLI build the Cowork VM
+  runs, observed on macOS) exists there.
 - **Docs**: the claude.com data-storage page cited in the collector
   document, for names the bundle confirms.
 
@@ -96,6 +107,8 @@ UUIDs).
 | `local-agent-mode-sessions/<acct>/<org>/scheduled-tasks.json`, `claude-code-sessions/<acct>/<org>/scheduled-tasks.json` | JSON | scheduled task definitions (observed, empty) | optional system rows |
 | `git-worktrees.json` | JSON | worktrees the Code tab created (observed, empty) | optional system rows |
 | `IndexedDB/https_claude.ai_0.indexeddb.leveldb/`, `Local Storage/leveldb/`, `Session Storage/` | Chromium LevelDB | claude.ai web page state (section 5) | no |
+| `Partitions/<name>/` | a Chromium profile of an Electron session partition | observed on macOS: `launch-preview-static` (the built-in browser that previews servers a session launches, with its own `Cookies`) and `cowork-file-preview` (Cowork file previews, network closed); see the collector document, section 2 | no |
+| `vm-support-probe.json`, `cowork-enabled-cli-ops.json`, `plan-usage-history.json`, `ant-device-registry.json` | JSON | observed on macOS: `{hardwareKey, key}` (cached Cowork VM support probe); `{ownerAccountId}`; `{version, samples[]}`, each sample `{org, t, u: {fh, sd}}`; an object of UUID keys to strings | no |
 | `~/Library/Logs/Claude/main.log`, `mcp.log`, `mcp-server-<name>.log` | text | app and MCP transport logs (section 5); on Linux in `userData/logs/` (observed), on the Windows Store build in `%LOCALAPPDATA%\Claude\logs` (observed) | no |
 
 Evidence for the layout (all bundle):
@@ -149,9 +162,11 @@ Evidence for the layout (all bundle):
   claude-code research documents on every transcript line.
 
 **Collector gap.** None of the transcript paths above is under an
-`EXCLUDES` glob: `*/Claude*/claude-code-vm` holds only the guest CLI
-binary (observed: `claude-code-vm/<version>/claude`, `.payload`,
-`.verified`), and the guest's `.claude` is the host session dir, not
+`EXCLUDES` glob: `*/Claude*/claude-code-vm` holds only the Linux CLI
+build that runs inside the Cowork VM, not a VM workspace (observed on
+macOS: `claude-code-vm/<version>/claude`, 255,516,664 bytes, the size of
+the linux-arm64 2.1.295 download, with `.payload`, `.verified` and
+`claude-code-vm/.sdk-version`), and the guest's `.claude` is the host session dir, not
 anything under `vm_bundles`. What `*/Claude*/vm_bundles` drops is
 `vm_bundles/claudevm.bundle/sessiondata.img` (observed; the bundle
 classifies `sessiondata.*` as the session disk,
@@ -287,7 +302,7 @@ permission events take `session_id` from the session object, which may
 be unset. Take the session from the directory and its record, not from
 the line.
 
-### Code-tab session record (`claude-code-sessions/.../local_<uuid>.json`, bundle, observed on Windows)
+### Code-tab session record (`claude-code-sessions/.../local_<uuid>.json`, bundle, observed on Windows, Linux and macOS)
 
 Compact JSON written by `writeSessionToDisk`
 (`app.asar:.vite/build/index.chunk-BCHP6ll9.js@1339940`,
@@ -311,7 +326,22 @@ Keys of use to a timeline:
 | `error`, `errorCategory`, `errorAt` | string, string, number | `errorAt` is `Date.now()` in this chunk |
 | `isArchived`, `scheduledTaskId`, `spaceId`, `forkedFromSessionId`, `dispatchParentId` | | |
 | `gitAnchorsFolderRealpath`, `completedTurns`, `titleTurn`, `lastAssistantUuid`, `latestUserFrameAt`, `promptAppendSnapshot`, `toolSurfaceSnapshot`, `remoteMcpServersConfig` | | observed on Windows, not in the bundle reading above; `remoteMcpServersConfig[]` items carry `uuid`, `name`, `url`, `tools[]`; other types not recorded |
-| `remoteControlUserEnabled`, `remoteControlUserRequested`, `remoteControlUserToggled`, `remoteControlAutoEligible`, `bridgeSessionIds`, `remoteControlSpawn`, `remoteControlDescendant`, `steeredByRemoteClient`, `peerMessaged`, `remoteControlLiveAtUpdateQuit`, `cloudSessionId` | booleans; string[]; object `{ccrSessionId, detachedAt, rcChild, projectThreadChild}`; object `{at, accountId}`; string | persisted Remote Control state (below); observed on Windows and Linux: `remoteControlAutoEligible` and `steeredByRemoteClient` `false`, the rest absent |
+| `remoteControlUserEnabled`, `remoteControlUserRequested`, `remoteControlUserToggled`, `remoteControlAutoEligible`, `bridgeSessionIds`, `remoteControlSpawn`, `remoteControlDescendant`, `steeredByRemoteClient`, `peerMessaged`, `remoteControlLiveAtUpdateQuit`, `cloudSessionId` | booleans; string[]; object `{ccrSessionId, detachedAt, rcChild, projectThreadChild}`; object `{at, accountId}`; string | persisted Remote Control state (below); observed on Windows, Linux and macOS: `remoteControlAutoEligible` and `steeredByRemoteClient` `false`, the rest absent |
+| `alwaysAllowedReasons`, `sessionPermissionUpdates`, `autoChosenInApp`, `autoModeServerFallbackPrompt`, `chromePermissionMode`, `classifierSummaryEnabled`, `lastSpawnRootDetected`, `postTurnSummaryFor`, `reportFindingsCard`, `spawnSeed` | `[]`, `[]`, then not recorded except `chromePermissionMode` (string), `postTurnSummaryFor` (UUID, the message `postTurnSummary` describes) and `spawnSeed` (`{}`) | observed on macOS 2026-10-11, not in the bundle reading above; `chromePermissionMode` is also a Cowork record key |
+
+Nested shapes observed on macOS (2026-10-11, key names and types only):
+
+- `remoteMcpServersConfig[]`: `{name, tools[], url, uuid}`, each tool
+  `{_meta: {anthropic/alwaysLoad}, annotations: {destructiveHint,
+  readOnlyHint, title}, description, inputSchema, name}`.
+- `toolSurfaceSnapshot`: `{appRunId, appVersion, cliVersion,
+  deferredHash, disallowedToolsKey, familyHashes: {builtin, connector,
+  extension, internal_deferred, internal_inline, plugin_or_user},
+  recordedAt}`.
+- `promptAppendSnapshot`: `{append, cliVersion, settingsKey}`, where
+  `append` is a string (7.8 KB observed); its content was not read.
+- `postTurnSummary`: `{needs_action, status_category, status_detail,
+  summarizes_uuid}`, as on Windows.
 
 Imported records (`finishRegisterExternalSession`, `@1686493`) also carry
 `indexedAt` (epoch ms), `importedFrom` and `stagedTranscriptPath`.
@@ -508,7 +538,13 @@ winston `printf`). The MCP transport logs `mcp.log` and
 (`@4334523` `function oYr(e)`) keeps only `method`, `id`, an error code
 and a block count, never the tool name or arguments. With local times
 and no tool names, neither is worth `system` rows; the Cowork audit log
-carries the same calls with UTC times and names.
+carries the same calls with UTC times and names. Observed on macOS
+(2026-10-11), `~/Library/Logs/Claude/` holds `main.log` with `main1.log`
+to `main4.log` (about 10 MB each), `claude.ai-web.log` and
+`claude.ai-web1.log`, `swift.log`, `cowork_vm_swift.log`, `coworkd.log`,
+`vzgvisor.log`, `cowork_vm_node.log`, `ssh.log`, `chrome-native-host.log`,
+`main-window.log`, `unknown-window.log` and `mcp.log`; their formats were
+not read.
 
 **Windows data directories.** The standard build on
 Windows picks its userData from four candidates
@@ -582,7 +618,9 @@ The parser was run over a collection of the Linux install (collector
 `project_path` the chosen folder, and the `claude-code` parser read the
 home transcript the record's `cliSessionId` names (two user and two
 assistant turns, one tool call), with no unreadable-file rows. With the
-Windows install, the Code-tab path is validated on two platforms; the
+Windows install and the macOS install of 2026-10-11 (the record row
+joined to the 15 rows of its CLI session), the Code-tab path is validated
+on three platforms (Windows, Linux and macOS); the
 Cowork, audit and scheduled-task readers rest on the bundle and the
 synthetic fixture. Issue 80 adds the Remote Control fields (section 3)
 to the Code-tab record row.

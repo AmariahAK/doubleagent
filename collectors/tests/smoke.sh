@@ -750,6 +750,22 @@ printf '{"sessionId":"local_76767676-7676-4676-8676-767676767676","cliSessionId"
 printf '{"pid":4242,"sessionId":"76767676-0000-4000-8000-000000000076","entrypoint":"claude-desktop","kind":"interactive"}\n' >"$H/.claude/sessions/4242.json"
 printf 'session key\n' >"$K76"
 
+# 2026-10-11 Claude Code CLI cache directory (#81)
+# The CLI's env-paths cache directory, observed on macOS under
+# ~/Library/Caches/claude-cli-nodejs: per-project MCP server logs,
+# <cwd slug>/mcp-logs-<server>/<timestamp>.jsonl, one {cwd, debug,
+# sessionId, timestamp} object per line. Collected as claude-code, not
+# secret. Checks follow the default run below; the same file is in smoke.ps1.
+F81="$H/Library/Caches/claude-cli-nodejs/-home-alice-proj/mcp-logs-terminal/2026-10-12T02-23-51-709Z.jsonl"
+mkdir -p "$(dirname "$F81")"
+printf '%s\n' '{"cwd":"/home/alice/proj","debug":"MCP server \"terminal\": connected","sessionId":"81818181-0000-4000-8000-000000000081","timestamp":"2026-10-12T02:23:51.709Z"}' >"$F81"
+# The Windows layout puts the slug directories under Cache/, which the
+# catalog names as Cache/* so the PowerShell exclusion */Claude*/Cache,
+# matched without case, does not prune it.
+W81="$H/AppData/Local/claude-cli-nodejs/Cache/C--Users-alice-proj/mcp-logs-ccd-host/2026-10-12T02-23-51-709Z.jsonl"
+mkdir -p "$(dirname "$W81")"
+printf '%s\n' '{"cwd":"C:\\Users\\alice\\proj","debug":"MCP server \"ccd-host\": connected","sessionId":"81818181-0000-4000-8000-000000000081","timestamp":"2026-10-12T02:23:51.709Z"}' >"$W81"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -998,6 +1014,11 @@ check "#73 Linux git-shadow/cli-temp-roots.json collected as claude-desktop" "ro
 check "#73 Linux logs/main.log inside the data dir collected as claude-desktop" "row \"$C76/logs/main.log\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":false,\"status\":\"collected\"'"
 check "#73 Linux Code-tab session record collected as claude-desktop" "row \"$C76/claude-code-sessions/$O76/local_76767676-7676-4676-8676-767676767676.json\" | grep -q '\"agent\":\"claude-desktop\".*\"secret\":false,\"status\":\"collected\"'"
 check "#73 Linux claude-code excluded, downloaded CLI not in the manifest" "[ \"\$(status_of \"$C76/claude-code\")\" = skipped_excluded ] && ! grep -q '/9b32b47ec4b3/' \"\$M\""
+
+# 2026-10-11 Claude Code CLI cache directory (#81)
+check "#81 Claude Code CLI cache MCP log collected as claude-code" "row \"$F81\" | grep -q '\"agent\":\"claude-code\".*\"status\":\"collected\"'"
+check "#81 Claude Code CLI cache MCP log not secret" "row \"$F81\" | grep -q '\"secret\":false,\"status\":\"collected\"'"
+check "#81 Claude Code CLI cache Windows Cache child collected as claude-code" "row \"$W81\" | grep -q '\"agent\":\"claude-code\".*\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

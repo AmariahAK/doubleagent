@@ -751,6 +751,20 @@ Mk "$c76/claude-code/2.1.295/9b32b47ec4b3/.verified" $x76
 Mk $s76 '{"sessionId":"local_76767676-7676-4676-8676-767676767676","cliSessionId":"76767676-0000-4000-8000-000000000076","cwd":"/srv/proj","originCwd":"/srv/proj"}'
 Mk 'Users/alice/.claude/sessions/4242.json' '{"pid":4242,"sessionId":"76767676-0000-4000-8000-000000000076","entrypoint":"claude-desktop","kind":"interactive"}'
 Mk $k76 'session key'
+
+# 2026-10-11 Claude Code CLI cache directory (#81)
+# The CLI's env-paths cache directory, observed on macOS under
+# ~/Library/Caches/claude-cli-nodejs: per-project MCP server logs,
+# <cwd slug>/mcp-logs-<server>/<timestamp>.jsonl, one {cwd, debug,
+# sessionId, timestamp} object per line. Collected as claude-code, not
+# secret. Checks follow the default run below; the same file is in smoke.sh.
+$f81 = 'Users/alice/Library/Caches/claude-cli-nodejs/-home-alice-proj/mcp-logs-terminal/2026-10-12T02-23-51-709Z.jsonl'
+Mk $f81 '{"cwd":"/home/alice/proj","debug":"MCP server \"terminal\": connected","sessionId":"81818181-0000-4000-8000-000000000081","timestamp":"2026-10-12T02:23:51.709Z"}'
+# The Windows layout puts the slug directories under Cache/, which the
+# catalog names as Cache/* so the PowerShell exclusion */Claude*/Cache,
+# matched without case, does not prune it.
+$w81 = 'Users/alice/AppData/Local/claude-cli-nodejs/Cache/C--Users-alice-proj/mcp-logs-ccd-host/2026-10-12T02-23-51-709Z.jsonl'
+Mk $w81 '{"cwd":"C:\\Users\\alice\\proj","debug":"MCP server \"ccd-host\": connected","sessionId":"81818181-0000-4000-8000-000000000081","timestamp":"2026-10-12T02:23:51.709Z"}'
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1095,6 +1109,13 @@ Check '#73 Linux git-shadow/cli-temp-roots.json collected as claude-desktop' { I
 Check '#73 Linux logs/main.log inside the data dir collected as claude-desktop' { Is76 "$c76/logs/main.log" 'claude-desktop' $false }
 Check '#73 Linux Code-tab session record collected as claude-desktop' { Is76 $s76 'claude-desktop' $false }
 Check '#73 Linux claude-code excluded, downloaded CLI not in the manifest' { (StatusOf "$c76/claude-code") -eq 'skipped_excluded' -and @($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like '*/9b32b47ec4b3/*' }).Count -eq 0 }
+
+# 2026-10-11 Claude Code CLI cache directory (#81)
+$r = Row $f81
+Check '#81 Claude Code CLI cache MCP log collected as claude-code' { $r -and $r.agent -eq 'claude-code' -and $r.status -eq 'collected' }
+Check '#81 Claude Code CLI cache MCP log not secret' { $r -and $r.secret -eq $false -and $r.status -eq 'collected' }
+$r = Row $w81
+Check '#81 Claude Code CLI cache Windows Cache child collected as claude-code' { $r -and $r.agent -eq 'claude-code' -and $r.status -eq 'collected' }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

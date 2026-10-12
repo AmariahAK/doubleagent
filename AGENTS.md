@@ -198,7 +198,12 @@ the secret test runs and its only manifest row is the directory's
 exclusion narrowed (`hermes-agent/[!.]*` keeps `.env`). The PowerShell
 match is case-insensitive, so a glob that differs from a sibling only by
 case (`*/Hermes/Cache` beside `hermes/cache`) must name explicit bases
-instead. An entry nested
+instead, and an exclusion whose last component is a common name
+(`*/Claude*/Cache`) also prunes another tool's directory whose parent
+differs only by case (Claude Code's `claude-cli-nodejs/Cache` on
+Windows): that tool's catalog entry then names the directory's children
+(`AppData/Local/claude-cli-nodejs/Cache/*`), never the directory, and
+the PowerShell smoke test checks that a file under it is collected. An entry nested
 inside another entry's match (`antigravity|.gemini/antigravity-cli` inside
 `gemini-cli|.gemini`) claims its subtree: both collectors expand every entry
 first and prune claimed paths from the enclosing walk, so each file is

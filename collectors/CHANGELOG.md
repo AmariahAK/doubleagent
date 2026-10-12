@@ -37,6 +37,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are under `.config/Claude`, already collected as `claude-desktop`, and
   the CLI the app downloads under `claude-code/<version>/<hash>/` is
   excluded by `*/Claude*/claude-code` (#73).
+- Claude Code's CLI cache directory, which holds per-project MCP server
+  logs (`<project slug>/mcp-logs-<server>/<timestamp>.jsonl`), is
+  collected as `claude-code` from `Library/Caches/claude-cli-nodejs`
+  (macOS), `.cache/claude-cli-nodejs` (Linux) and
+  `AppData/Local/claude-cli-nodejs/Cache/*` (Windows). The Windows entry
+  names the children of `Cache/` because the PowerShell collector's
+  case-insensitive exclusion `*/Claude*/Cache` would otherwise prune the
+  directory itself (#81).
+- The macOS standard build of Claude Desktop (2.31226.1) was checked
+  against the catalog on a real install: the data directory, the logs,
+  `Partitions/`, `claude-code-vm` (the Linux CLI build the Cowork VM runs)
+  and `vm_bundles` behave as documented and nothing new needed collecting;
+  the Touch ID WebAuthn metadata secret in `Preferences`, collected
+  unflagged, is documented as a key to redact (#73).
 
 ### Fixed
 

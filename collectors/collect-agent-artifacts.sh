@@ -56,6 +56,12 @@ claude-code|.claude-*/.session_ingress_token
 claude-code|.claude-*/remote/.oauth_token
 claude-code|.claude-*/remote/.api_key
 claude-code|.local/share/claude
+# Claude Code CLI cache: MCP server logs per project (#81). The Windows
+# entry names the children of Cache/: the PowerShell exclusion match ignores
+# case, so */Claude*/Cache would prune claude-cli-nodejs/Cache itself
+claude-code|Library/Caches/claude-cli-nodejs
+claude-code|.cache/claude-cli-nodejs
+claude-code|AppData/Local/claude-cli-nodejs/Cache/*
 claude-desktop|Library/Application Support/Claude
 claude-desktop|Library/Application Support/Claude-3p
 claude-desktop|Library/Logs/Claude

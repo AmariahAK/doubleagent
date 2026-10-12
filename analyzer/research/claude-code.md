@@ -59,6 +59,7 @@ The config home is `$CLAUDE_CONFIG_DIR`, else `~/.claude`, on every OS
 | `.claude/sessions/<pid>.json` | live-process registry: `pid`, `sessionId`, `cwd`, `startedAt` (epoch ms), `version`, `kind`, `entrypoint`, optionally `name`, `status` (observed) | no |
 | `.claude/jobs/<id>/parent-transcript.jsonl` | a copy of the parent transcript handed to a background job (cc:474968) | no; not observed |
 | `.claude/dump-prompts/<session id>.jsonl` | full outgoing prompts, when that debug option is on (cc:487015) | no; not observed |
+| `Library/Caches/claude-cli-nodejs/<key>/mcp-logs-<server>/<timestamp>.jsonl` (macOS; `.cache/claude-cli-nodejs/` on Linux and `AppData/Local/claude-cli-nodejs/Cache/` on Windows, bundle-derived) | MCP server log of the CLI, outside the config home and not moved by `CLAUDE_CONFIG_DIR`: one `{cwd, debug, sessionId, timestamp}` object per line, `<key>` the cwd slug as above, `<server>` the slugged server name; observed on macOS with CLI 2.1.295, 2026-10-11 (collector document, section 2, issue 81) | no; a possible source of `system` rows (section 8) |
 
 The parser selects `^\.claude/projects/[^/]+/.*\.jsonl$` and
 `.claude/history.jsonl`, so it reads main and subagent transcripts at any
@@ -129,6 +130,7 @@ equals the file's `agent-<id>`), and on some `user`, `assistant` and
 `stop_details`, `diagnostics`, `input_transformations`), `requestId`,
 `apiBlockIndex`, `effort`, `perTurnEffort`, `advisorModel`,
 `serverClassifierRequest`, optional `thinkingDurationMs`,
+`requestedModel` (observed on macOS with CLI 2.1.295, 2026-10-11),
 `attributionAgent`, `attributionSkill`, and per tool call
 `wireToolInputs` and `wireIngestContext` (section 4) (observed; built at
 cc:482605). API failures are `assistant` records with
@@ -159,11 +161,17 @@ messagesSummarized, ...}`, `logicalParentUuid`), `api_error` (`level:
 `content`), `memory_saved` (`writtenPaths`), `agents_killed`,
 `stop_hook_summary`, `permission_retry`, `scheduled_task_fire`,
 `cloud_session_status`; cc:487124 adds `model_refusal_fallback` and
-others. Many `subtype` literals in the bundle (`init`, `status`,
+others. Observed on macOS with CLI 2.1.295 (2026-10-11), a
+`stop_hook_summary` record carries `hasOutput`, `hookAdditionalContext`,
+`hookCount`, `hookErrors`, `hookInfos`, `level`,
+`preventedContinuation`, `stopReason` and `toolUseID` beside the
+envelope. Many `subtype` literals in the bundle (`init`, `status`,
 `task_*`, `hook_*`, `ui_*`) belong to the SDK stream, not the transcript.
 
 **`attachment`** adds `attachment{type, ...}` and, on most, `rendered`
-and `renderedRole` (the text the model saw). Observed `attachment.type`
+and `renderedRole` (the text the model saw), and on some
+`renderedBesideToolResult` (observed on macOS with CLI 2.1.295,
+2026-10-11). Observed `attachment.type`
 values: `total_tokens_reminder`, `batching_reminder_sent`,
 `deferred_tools_record`, `deferred_tools_delta`,
 `bash_output_audience_note`, `prompt_snapshot` (the system prompt and
@@ -319,7 +327,12 @@ for key names and value types only.
   then `@209020296` `peerProtocol:Akr,peerFeatures:HU(),kind:s,entrypoint:a.CLAUDE_CODE_ENTRYPOINT,hostSessionId:Okr(),pidDomain:await BT()`).
   `kind` was `interactive`, `status` `idle`, and `hostSessionId` the
   Claude Desktop `local_<uuid>`; `messagingSocketPath` is the local peer
-  socket, not the bridge. While Remote Control is attached the CLI
+  socket, not the bridge. On macOS (2026-10-11, CLI 2.1.295 launched
+  from the Code tab) the 612-byte file had the same key set, with
+  `entrypoint` `claude-desktop`, `kind` `interactive`, `status` `idle`,
+  `nameSource` `user`, `pidDomain` `darwin` and `hostSessionId` a
+  42-character `local_<uuid>`; the sibling `.key` was 108 bytes (139 on
+  Linux). While Remote Control is attached the CLI
   patches `bridgeSessionId` into the same file
   (`@209023561` `async function mHn(e,n){await bn({bridgeSessionId:e},n)}`,
   the helper that also patches `messagingSocketPath`), and the session
@@ -495,8 +508,11 @@ Columns:
 | text | user/assistant/thinking text; `tool_use`: for Bash the `command` of `wireToolInputs[<id>]` when present (it keeps the `cd <dir> &&` prefix), else per-tool key from `input` (`command`, `file_path`, `notebook_path`, `pattern`+`path`, `url`, `query`, `description`+`prompt`, `skill`+`args`, `path`), else the first of `command`, `file_path`, `path`, `pattern`, `url`, `query`, `description`, else compact JSON; `tool_result`: the block text as above |
 | source_line | 1-based line number; the subagent header row takes its first record's line |
 
-Not read: `.meta.json` sidecars, `sessions/*.json`, `paste-cache/`, and a
-config home moved with `CLAUDE_CONFIG_DIR`.
+Not read: `.meta.json` sidecars, `sessions/*.json`, `paste-cache/`, a
+config home moved with `CLAUDE_CONFIG_DIR`, and the `claude-cli-nodejs`
+MCP logs (section 2). Those logs carry `sessionId`, `cwd` and an ISO
+`timestamp` on every line, so a later reader could turn each `debug`
+message into a `system` row joined to the session.
 
 Sample records, `.claude/projects/-srv-proj/11111111-2222-4333-8444-555555555555.jsonl`
 (state record, typed prompt, empty-thinking block, Bash call with a wire
