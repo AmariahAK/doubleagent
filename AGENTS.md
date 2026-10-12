@@ -926,10 +926,10 @@ for a documentation-only change, only markdownlint and
   in `.md` (an agent's `AGENTS.md` or `GEMINI.md` inside a project),
   which is data, not a document reference.
   An external source is linked the same way: the whole reference is
-  one link whose text names what it is, a page title in quotes, an
+  one link whose text names what it is, a page title without quotes, an
   `owner/repo` README, `owner/repo issue 105`, `owner/repo pull request
   6`, and the target is the full URL with its scheme, so
-  `["User identity and local data"](https://claude.com/docs/third-party/claude-desktop/data-storage)`
+  `[User identity and local data](https://claude.com/docs/third-party/claude-desktop/data-storage)`
   rather than a bare `claude.com/docs/...` with a title after it, and
   never a URL as the link text. A fetch date or a note stays outside
   the link text, in parentheses after it, and a second page on the same
