@@ -16,11 +16,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The bundled catalog copy follows collector 1.11.0: Claude Desktop's
   Windows Store data directories under `AppData/Local/Packages`, and
   `AppData/Local/Claude` and `AppData/Local/Claude-Data`, are detected as
-  `claude-desktop` (#73).
+  `claude-desktop` ([#73]).
 - The bundled catalog copy follows collector 1.11.0: the Claude Code CLI
   cache directory (`Library/Caches/claude-cli-nodejs`,
   `.cache/claude-cli-nodejs`, `AppData/Local/claude-cli-nodejs/Cache/*`), which
-  holds per-project MCP server logs, is detected as `claude-code` (#81).
+  holds per-project MCP server logs, is detected as `claude-code` ([#81]).
 
 - A `claude-desktop` parser: Claude Desktop's Cowork and Code-tab
   transcripts (Claude Code JSONL under the app-data directory, with the
@@ -28,35 +28,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `audit.jsonl` (permission requests, responses and automatic decisions,
   and every turn when the transcript is missing), session records,
   scheduled tasks and Code-tab worktrees. The rows come out under agent
-  `claude-desktop` (#48).
+  `claude-desktop` ([#48]).
 - The bundled catalog copy follows collector 1.10.0: the agents
   `autogen-studio`, `camel-ai`, `crewai`, `dify`, `flowise`, `langflow`,
   `metagpt`, `n8n` and `pydantic-clai`, the project entry `.clai`, the
   legacy Open Interpreter directories under `open-interpreter`, and the
   Dify, Langflow and n8n Docker volume patterns are detected; none is
-  parsed yet (#64).
+  parsed yet ([#64]).
 - Claude Code 2.1.295 permission decisions: a tool-result line that
   records how the call was allowed or denied gets a `system` row after
   its result, `permission decision: <decision> source=<source>
-  reason=<reasonType>`, carrying the call's `tool_use_id` (#76).
+  reason=<reasonType>`, carrying the call's `tool_use_id` ([#76]).
 - Claude Code's per-process registry `~/.claude/sessions/<pid>.json` is
   read: one `system` row per process at its start time, `claude-code
   process <pid> <kind> status=<status> entrypoint=<entrypoint>
   bridge=<id or none> host_session=<id or none>`, joined to the session.
   A `bridge=` id means the process was under Remote Control when the
   collection ran; check it against the EDR's process list, since a
-  crashed process can leave its file behind (#80).
+  crashed process can leave its file behind ([#80]).
 - Claude Desktop Code-tab session rows end with the session's persisted
   Remote Control state, `remote_control=<bool> bridges=<n>
   spawned_remotely=<bool> steered_remotely=<bool>`, and a session that
   was under Remote Control when the app quit to update gets a `remote
-  control live at update quit` row at that time (#80).
+  control live at update quit` row at that time ([#80]).
 
 ### Fixed
 
 - The detection test for the framework agents passes on a case-insensitive
   filesystem (macOS): the two spellings of CrewAI's Windows directory are
-  built in separate homes instead of one (#75).
+  built in separate homes instead of one ([#75]).
 
 ## [0.10.0] - 2026-10-06
 
@@ -68,13 +68,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   package is `doubleagent` (was `agent_analyzer`), so `python3 -m
   doubleagent` runs it from a checkout. `--version` prints
   `doubleagent <version>`. The output files and their fields are
-  unchanged (#47).
+  unchanged ([#47]).
 - `zstandard` is a required dependency, imported at start-up like
   `python-dateutil`. The `system` row that said "zstandard package not
   installed" for each compressed Zed thread, Codex or Open Interpreter
-  rollout and OpenClaw row is gone (#47).
+  rollout and OpenClaw row is gone ([#47]).
 - `pyproject.toml` reads the version from `doubleagent.VERSION`, so it is
-  set in one place (#47).
+  set in one place ([#47]).
 
 ## [0.9.0] - 2026-10-06
 
@@ -88,30 +88,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `<chat id>:<tool_calls.id>`; attachments appear as their name and size
   only, and the account and settings tables are not read. History rows
   have no timestamp or session, so they sort last and are dropped by
-  `--since` and `--until` unless `--keep-undated` is given (#43).
+  `--since` and `--until` unless `--keep-undated` is given ([#43]).
 
 ### Changed
 
 - The bundled catalog copy follows the collector: the Ollama exclusion is
   now `.ollama/models/blobs`, so `.ollama/models/manifests` and
-  `models/metadata` files appear in collections (#44).
+  `models/metadata` files appear in collections ([#44]).
 
 ### Fixed
 
 - Timestamps with a fraction of one, two, four or five digits, such as
   go-sqlite3's `2026-03-01 09:00:00.5-08:00`, are converted on Python 3.10
-  as well; before, they gave an empty `timestamp_utc` there (#45).
+  as well; before, they gave an empty `timestamp_utc` there ([#45]).
 - `tests/run.sh` runs only the named tests when given a module, class or
   method name (`tests/run.sh test_catalog`,
   `tests/run.sh test_parsers.ClaudeCodeTests.test_rows`); before, it passed
   the name to `unittest discover`, which ignored it and ran the whole suite.
   With no names it still runs discover with the options given, and with
-  names it refuses the discover-only options `-p`, `-s` and `-t` (#34).
+  names it refuses the discover-only options `-p`, `-s` and `-t` ([#34]).
 
 ### Removed
 
 - The bundled catalog copy drops the collectors' unused credential pattern
-  `.claude-*/.device-keys.json`; detection is unchanged (#41).
+  `.claude-*/.device-keys.json`; detection is unchanged ([#41]).
 
 ## [0.8.1] - 2026-10-05
 
@@ -119,7 +119,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `detect` prints `problem:` lines too, and `detect --json` and
   `detect.json` have a new last key `problems`, an array of the problem
-  texts; in `detect.json` it also holds the files a parser could not read (#37).
+  texts; in `detect.json` it also holds the files a parser could not read ([#37]).
 
 ### Fixed
 
@@ -132,16 +132,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   printed only the path, or a Python traceback for permission errors. A
   corrupt or truncated archive prints `error: <path>: cannot extract:
   <reason>` instead of a traceback, and the extracted work directory is
-  removed on every such error (#37).
+  removed on every such error ([#37]).
 - A directory inside a loose tree that cannot be listed is now a
-  `problem:` line instead of being skipped silently (#37).
+  `problem:` line instead of being skipped silently ([#37]).
 - A manifest row whose file is absent from the extracted collection is now
-  one `problem:` line, `<original path>: missing from the collection` (#37).
+  one `problem:` line, `<original path>: missing from the collection` ([#37]).
 - Problem lines and the `collection.json unreadable` note name the path
   once: `<path>: permission denied` instead of
   `<path>: [Errno 13] Permission denied: '<path>'`. The Continue and Codex
   `parser: unreadable ...` system rows carry only the reason, since
-  `source_file` names the file (#37).
+  `source_file` names the file ([#37]).
 
 ## [0.8.0] - 2026-10-04
 
@@ -432,3 +432,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.3.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.2.0...analyzer-v0.3.0
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
+
+[#81]: https://github.com/seanthegeek/doubleagent/issues/81
+[#80]: https://github.com/seanthegeek/doubleagent/issues/80
+[#76]: https://github.com/seanthegeek/doubleagent/issues/76
+[#75]: https://github.com/seanthegeek/doubleagent/issues/75
+[#73]: https://github.com/seanthegeek/doubleagent/issues/73
+[#64]: https://github.com/seanthegeek/doubleagent/issues/64
+[#48]: https://github.com/seanthegeek/doubleagent/issues/48
+[#47]: https://github.com/seanthegeek/doubleagent/issues/47
+[#45]: https://github.com/seanthegeek/doubleagent/issues/45
+[#44]: https://github.com/seanthegeek/doubleagent/issues/44
+[#43]: https://github.com/seanthegeek/doubleagent/issues/43
+[#41]: https://github.com/seanthegeek/doubleagent/issues/41
+[#37]: https://github.com/seanthegeek/doubleagent/issues/37
+[#34]: https://github.com/seanthegeek/doubleagent/issues/34

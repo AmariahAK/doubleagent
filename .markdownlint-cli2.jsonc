@@ -13,7 +13,12 @@
     // Several research documents quote exact line prefixes and YAML
     // indentation inside code spans (`#### `, `> `, `  when: <epoch>`).
     // The spaces are the point; trimming them would change the claim.
-    "MD038": false
+    "MD038": false,
+    // The changelogs cite issues as shortcut reference links, `[#29]`,
+    // defined at the bottom of the file. Without this option markdownlint
+    // skips shortcut references, so a missing definition would render as
+    // literal brackets unnoticed.
+    "MD052": { "shortcut_syntax": true }
   },
   // Skip everything git ignores (build output, caches) as well as
   // dependency trees that npx or a virtualenv might leave behind.

@@ -845,7 +845,8 @@ list together. Run the commands from the repository root before pushing.
   made in the same session. Search open and closed issues first so the
   work lands on the existing one. The issue number is what ties the work
   together: each commit that implements it names it in the body
-  (`Refs #<n>`), and each changelog line for it ends with `(#<n>)`. Use
+  (`Refs #<n>`), and each changelog line for it ends with `([#<n>])`, a
+  reference link to the issue (see the changelog rule below). Use
   `Refs`, not `Fixes` or `Closes`, so the push does not close the issue
   before CI is green. GitHub closes an issue for any closing keyword
   (`close`, `fix`, `resolve` and their `-s` and `-d` forms) followed by
@@ -892,7 +893,14 @@ list together. Run the commands from the repository root before pushing.
   or analyst who uses that part. Any change to the manifest, JSONL or CSV
   interfaces is called out in that entry. Work that lands between bumps
   goes under `## [Unreleased]` and moves into the next version's heading
-  when it is bumped.
+  when it is bumped. An issue number in a changelog is a reference link,
+  `([#<n>])`, never a bare `(#<n>)`, so it opens the issue when rendered.
+  The definitions sit at the bottom of the file after the version
+  comparison links, one `[#<n>]: https://github.com/seanthegeek/doubleagent/issues/<n>`
+  per issue in descending order; add the definition with the first line
+  that cites a new issue. markdownlint checks both ways: MD052, with
+  `shortcut_syntax` on in `.markdownlint-cli2.jsonc`, fails on a
+  reference with no definition, and MD053 on a definition nothing cites.
 - A release requires zero open Dependabot alerts. Before tagging, check
   with `gh api "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/dependabot/alerts?state=open" -q length`;
   if it is not 0, resolve or dismiss each alert (with a reason in the

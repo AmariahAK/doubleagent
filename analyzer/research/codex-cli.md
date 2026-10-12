@@ -433,7 +433,7 @@ in the fork's file under the fork's session id.
 Expected rows from the sample below: `system` session start, `system`
 `task_started`, `system` `developer: ...`, `system`
 `context: environments.environment_context: ...`, `user` "run the tests",
-`tool_use` `exec_command` (`call_1`), `tool_result` "[exit 1] 1 failing"
+`tool_use` `exec_command` (`call_1`), `tool_result` `[exit 1] 1 failing`
 (the `CommandExecution` item has id `call_1`, so it adds only the exit
 code), `thinking` "one test fails" with `--include-thinking`, `assistant`,
 `system` `task_complete`, `system`

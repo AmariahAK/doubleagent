@@ -29,7 +29,7 @@ Files and directories (bundle literals `".augment","<name>"`):
 - `session.json`: OAuth session (`AuthSessionStore`, `join(r,"session.json")`).
 - `sessions/<conversationId>.json`: full conversations
   (`join(_u(),".augment","sessions")`; session store writes
-  `this.sessionsDir,\`${e}.json\``; conversation ids are `[A-Za-z0-9_-]`).
+  ``this.sessionsDir,`${e}.json` ``; conversation ids are `[A-Za-z0-9_-]`).
 - `prompt-history.jsonl`: `{message}` lines, capped at 500
   (`wBo="prompt-history.jsonl",yfr=500`); directory argument is the
   `~/.augment` state dir.

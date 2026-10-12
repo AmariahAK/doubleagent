@@ -18,25 +18,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `claude-desktop`: its data directory under
   `AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude` (and the
   `AnthropicPBC.Claude_*` family), where MSIX virtualisation stores what
-  the app reports as `AppData/Roaming/Claude` (#73).
+  the app reports as `AppData/Roaming/Claude` ([#73]).
 - `AppData/Local/Claude` (the Store build's logs) and
   `AppData/Local/Claude-Data` (an alternative Windows data directory) are
-  collected as `claude-desktop` (#73).
+  collected as `claude-desktop` ([#73]).
 - The Store build's `config.json` (OAuth token cache), `Cookies*`,
   `host-creds-*.json` and `ccd-session-secrets/*` are flagged
-  `secret: true` under both package families (#73).
+  `secret: true` under both package families ([#73]).
 - Claude Desktop's space-link signing key,
   `spaces-present/<acct>/<org>/link-key` under the data directory, is
-  flagged `secret: true` (`*/Claude*/spaces-present/*/link-key`) (#73).
+  flagged `secret: true` (`*/Claude*/spaces-present/*/link-key`) ([#73]).
 - Claude Code's per-process session key,
   `.claude/sessions/<pid>.<hash>.key` (and the same under a relocated
   `.claude-*` home), is flagged `secret: true`; the `<pid>.json` beside it
-  stays unflagged (#76).
+  stays unflagged ([#76]).
 - The official Linux `.deb` of Claude Desktop (2.31226.1) was checked
   against the catalog on a real install: the data directory and its logs
   are under `.config/Claude`, already collected as `claude-desktop`, and
   the CLI the app downloads under `claude-code/<version>/<hash>/` is
-  excluded by `*/Claude*/claude-code` (#73).
+  excluded by `*/Claude*/claude-code` ([#73]).
 - Claude Code's CLI cache directory, which holds per-project MCP server
   logs (`<project slug>/mcp-logs-<server>/<timestamp>.jsonl`), is
   collected as `claude-code` from `Library/Caches/claude-cli-nodejs`
@@ -44,13 +44,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `AppData/Local/claude-cli-nodejs/Cache/*` (Windows). The Windows entry
   names the children of `Cache/` because the PowerShell collector's
   case-insensitive exclusion `*/Claude*/Cache` would otherwise prune the
-  directory itself (#81).
+  directory itself ([#81]).
 - The macOS standard build of Claude Desktop (2.31226.1) was checked
   against the catalog on a real install: the data directory, the logs,
   `Partitions/`, `claude-code-vm` (the Linux CLI build the Cowork VM runs)
   and `vm_bundles` behave as documented and nothing new needed collecting;
   the Touch ID WebAuthn metadata secret in `Preferences`, collected
-  unflagged, is documented as a key to redact (#73).
+  unflagged, is documented as a key to redact ([#73]).
 
 ### Fixed
 
@@ -59,19 +59,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   file system call uses the extended-length form (`\\?\`), so a deep source
   file is enumerated and its staged copy is written, where before the copy
   failed as `error_copy` and a source tree past 260 characters was not
-  listed. Manifest paths and the archive layout are unchanged (#77).
+  listed. Manifest paths and the archive layout are unchanged ([#77]).
 - In the PowerShell collector, a directory that a wildcard catalog segment
   cannot list gets an `error_read` row instead of being skipped silently
-  (#77).
+  ([#77]).
 - `tests/smoke.sh` passes on a macOS host: it strips the trailing slash
   from `$TMPDIR` and resolves the work directory before building the fake
   image, and hashes the backslash-named file from an extracted copy of the
   archive, because bsdtar reads a backslash in a member name as an escape
-  (#78).
+  ([#78]).
 - On macOS and the BSDs, a catalog match directory that cannot be listed or
   entered (an agent's state directory with no read permission) left no row
   in the manifest, only a `find` line in the log; it now gets one
-  `error_read` row with the OS error, as on Linux (#82).
+  `error_read` row with the OS error, as on Linux ([#82]).
 
 ## [1.10.3] - 2026-10-07
 
@@ -81,9 +81,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   missing or fails: it writes the same `.tar.gz` layout with pax headers
   for non-ASCII and long names, and keeps the staged symlinks.
   `collection.json` `capabilities.archiver` has a new value,
-  `PowerShell tar writer`, for an archive it wrote (#72).
+  `PowerShell tar writer`, for an archive it wrote ([#72]).
 - `CAC_ARCHIVER`, a test hook for the PowerShell collector, sets the
-  archivers to try (`tar`, `writer`, `zip`) (#72).
+  archivers to try (`tar`, `writer`, `zip`) ([#72]).
 
 ### Fixed
 
@@ -92,10 +92,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   some `tar.exe` builds crash on such names, and the collector now logs its exit
   code (`tar.exe failed: exit code 0xC0000005`), adds a `notes` entry to
   `collection.json` for each fallback, and writes the `.tar.gz` with its
-  own tar writer (#72).
+  own tar writer ([#72]).
 - The PowerShell collector's zip, now the last resort, stores entry names
   with `/` instead of `\` under Windows PowerShell 5.1, so it extracts
-  into the `fs/<original path>` layout on Linux and macOS (#72).
+  into the `fs/<original path>` layout on Linux and macOS ([#72]).
 
 ## [1.10.2] - 2026-10-07
 
@@ -109,15 +109,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   only the owner and translates each SID once, staging directories are
   remembered, and the source is no longer read a second time for its
   timestamps. A 5,000-file collection takes about a third of the time under
-  Windows PowerShell 5.1 and about half under PowerShell 7 (#71).
+  Windows PowerShell 5.1 and about half under PowerShell 7 ([#71]).
 - The PowerShell collector writes manifest rows itself instead of through
   `ConvertTo-Json`. The rows parse to the same values with the same keys,
   order and types, byte for byte as PowerShell 7 wrote them; under Windows
   PowerShell 5.1, `<`, `>`, `&` and `'` are now written as themselves rather
-  than as `\u` escapes (#71).
+  than as `\u` escapes ([#71]).
 - `collection.json` from the PowerShell collector reports
   `capabilities.hash_tool` as `System.Security.Cryptography.SHA256` instead
-  of `Get-FileHash` (#71).
+  of `Get-FileHash` ([#71]).
 
 ## [1.10.1] - 2026-10-07
 
@@ -129,55 +129,55 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   directory, falling back to per-file calls for a chunk or file the batch
   cannot handle. The manifest is unchanged, rows in the same order; a
   5,000-file collection takes about a tenth of the time it did, and the
-  `shasum` path (macOS) about a twentieth (#71).
+  `shasum` path (macOS) about a twentieth ([#71]).
 - The sh collector's `find -exec` workers run under `dash` when it is on
   `PATH` and `COLLECTOR_SH` is unset, instead of `sh`; on macOS, whose `sh`
-  is bash, this roughly halves the remaining time (#71).
-- `--inventory` stats each batch of files with one `stat` call (#71).
+  is bash, this roughly halves the remaining time ([#71]).
+- `--inventory` stats each batch of files with one `stat` call ([#71]).
 
 ## [1.10.0] - 2026-10-06
 
 ### Added
 
 - Catalog agent `autogen-studio`: `~/.autogenstudio`, with `.env` and
-  `temp_env_vars.env` flagged as credentials (#64).
+  `temp_env_vars.env` flagged as credentials ([#64]).
 - Catalog agent `crewai`: `~/.config/crewai`, `~/.crewai`, the `crewai`
   data directory, and CrewAI's run databases (`latest_kickoff_task_outputs.db*`,
   `flow_states.db*`) and `.crewai_user.json` inside the data directory named
   after the project folder (`.local/share/*/...`,
   `Library/Application Support/*/...`), plus `AppData/Local/[Cc]rew[Aa][Ii]`;
-  `settings.json` and the `credentials/` token files flagged (#64).
+  `settings.json` and the `credentials/` token files flagged ([#64]).
 - Catalog agent `camel-ai`: `.camel/gmail_token.json` (flagged),
   `.camel/skills` and `.config/camel`, leaving the rest of `~/.camel`,
-  which Apache Camel JBang shares, uncollected (#64).
+  which Apache Camel JBang shares, uncollected ([#64]).
 - Catalog agent `dify`: the `difyctl` config directories, with `tokens.yml`
   flagged, and the Docker volumes `*dify_agent_local_sandbox_home` and
-  `*dify_agent_local_sandbox_workspace` (#64).
+  `*dify_agent_local_sandbox_workspace` ([#64]).
 - Catalog agent `flowise`: `~/.flowise`, with `encryption.key` and
-  `*_secret.key` flagged and `vectorstore` excluded (#64).
+  `*_secret.key` flagged and `vectorstore` excluded ([#64]).
 - Catalog agent `langflow`: the config directory (`.cache/langflow`,
   `Library/Caches/langflow`, `AppData/Local/langflow/langflow/Cache`),
   `~/.langflow` and the Langflow Desktop directories; `secret_key`,
   `cache_secret_key` and the Desktop `data/.env` flagged; knowledge bases,
   Desktop virtual environments and caches, and `profile_pictures`
-  excluded; the Docker volume `*langflow-data` (#64).
+  excluded; the Docker volume `*langflow-data` ([#64]).
 - Catalog agent `metagpt`: `~/.metagpt`, with `config2.yaml` and
-  `config2.bak` flagged (#64).
+  `config2.bak` flagged ([#64]).
 - Catalog agent `n8n`: `~/.n8n`, `~/.n8n-local-gateway` and
   `~/.n8n-gateway`; `.n8n/config` and `.n8n/ssh/*` flagged; node modules,
   node definitions and SDK templates excluded; the Docker volumes
-  `*n8n_data` and `*n8n-data` (#64).
+  `*n8n_data` and `*n8n-data` ([#64]).
 - Catalog agent `pydantic-clai`: `~/.pydantic-ai` and
   `~/.config/pydantic-clai2` (CLAI 2.0), with `credentials-*` and the
-  Logfire credentials flagged, and the project entry `.clai` (#64).
+  Logfire credentials flagged, and the project entry `.clai` ([#64]).
 - `open-interpreter`: the legacy Python tool's platformdirs
   `open-interpreter` directories, the older `Open Interpreter*` directories
   and `.cache/open-interpreter`, with `profiles/*` and `config.yaml`
-  flagged and the downloaded `models/` excluded (#64).
+  flagged and the downloaded `models/` excluded ([#64]).
 - Volume-relative exclusions `profile_pictures`, `nodes/node_modules`,
   `node-definitions` and `n8n-sdk-templates`, and secret globs
   `secret_key`, `cache_secret_key`, `config` and `ssh/*`, at the end of
-  `EXCLUDES` and `SECRET_GLOBS` (#64).
+  `EXCLUDES` and `SECRET_GLOBS` ([#64]).
 
 ## [1.9.0] - 2026-10-06
 
@@ -188,14 +188,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pulled models, with pull times) and the per-blob `models/metadata` files
   are collected; the weights stay `skipped_excluded`. The volume-relative
   `models` exclusion is unchanged, so a Docker Ollama volume's manifests are
-  still not collected (#44).
+  still not collected ([#44]).
 
 ### Removed
 
 - The credential pattern `.claude-*/.device-keys.json`, which could never
   match: no catalog line collects that file from a `.claude-<name>` config
   home, and Claude Code keeps it in `~/.claude` whatever `CLAUDE_CONFIG_DIR`
-  says. `.claude/.device-keys.json` is still collected and flagged (#41).
+  says. `.claude/.device-keys.json` is still collected and flagged ([#41]).
 
 ## [1.8.1] - 2026-10-05
 
@@ -204,7 +204,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - sh collector: a `tar` that fails inside the `tar | gzip` fallback is now
   detected, logged as `tar | gzip: tar exited N`, and the collector falls
   through to the plain `.tar`, instead of hashing and reporting a truncated
-  `.tar.gz` as success (#40).
+  `.tar.gz` as success ([#40]).
 
 ## [1.8.0] - 2026-10-05
 
@@ -220,11 +220,11 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 - `collection.json` `options.no_projects` (boolean) and `options.projects`
   (the `-p`/`--project` or `-Project` values, resolved to absolute paths
   and de-duplicated), and, in the sh collector, `capabilities.archiver`
-  (`tar -z`, `tar | gzip` or `tar`) (#31).
+  (`tar -z`, `tar | gzip` or `tar`) ([#31]).
 - Manifest status `error_read`: one `dir` row, with the reason in `error`,
   for a home, project directory or directory inside a walk that cannot be
   listed or entered, and for a `-p`/`-Project` value that is not a
-  directory. `collection.json` `counts.error_read` counts them (#32, #39).
+  directory. `collection.json` `counts.error_read` counts them ([#32], [#39]).
 
 ### Fixed
 
@@ -235,15 +235,15 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
   catalog line keeps the directory and the later one is logged and skipped,
   also with `--inventory`. On Linux both directories are still collected.
   The sh collector compares device and inode; the PowerShell collector
-  compares on-disk names and records paths in their on-disk spelling (#29).
+  compares on-disk names and records paths in their on-disk spelling ([#29]).
 - `collection.json` `archive` and `capabilities.archiver` name the archive
   and archiver actually used. Both collectors rewrite the summary and its
   archived copy before each fallback, so they no longer say `.tar.gz` after
   the sh collector's plain `.tar` fallback or `.tar.gz` and `tar.exe` after
-  the PowerShell collector's `.zip` fallback (#31).
+  the PowerShell collector's `.zip` fallback ([#31]).
 - The PowerShell collector recreates symlinks and other reparse points in
   the archive, with the target string as stored, and sets their
-  `archive_path`, as the sh collector does (#30). Windows PowerShell 5.1
+  `archive_path`, as the sh collector does ([#30]). Windows PowerShell 5.1
   makes the link with `cmd.exe`'s `mklink` and skips a link path or target
   containing `%` or `"`, which `cmd.exe` cannot take verbatim; PowerShell
   7 uses .NET. Where Windows refuses to
@@ -256,18 +256,18 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
   `symlink` rows, and `archive_path` on recreated ones.
 - A home or a directory inside a home that the collector could not read
   was silent (sh) or only logged; it now has an `error_read` row and a
-  `read failed:` log line (#32).
+  `read failed:` log line ([#32]).
 - The stdout `errors:` line counts `error_copy` and `error_read` rows
   together and shows each in parentheses, `errors:     3 (1 error_copy,
-  2 error_read)`; it counted only `error_copy` before (#32).
+  2 error_read)`; it counted only `error_copy` before ([#32]).
 - The PowerShell collector checks that the output directory is writable
   (a probe file created and removed) and exits 2 with
   `Output dir not writable: <dir>` before collecting, as the sh collector
-  does (#38).
+  does ([#38]).
 - A `-p`/`-Project` directory that does not exist was dropped silently; it
   is now logged and gets an `error_read` row. A relative `-p` was ignored
   by the sh collector; both collectors now resolve it against the current
-  directory, in image mode too (#39).
+  directory, in image mode too ([#39]).
 
 ## [1.7.0] - 2026-10-04
 
@@ -552,3 +552,22 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.2.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.1.0...collector-v1.2.0
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
+
+[#82]: https://github.com/seanthegeek/doubleagent/issues/82
+[#81]: https://github.com/seanthegeek/doubleagent/issues/81
+[#78]: https://github.com/seanthegeek/doubleagent/issues/78
+[#77]: https://github.com/seanthegeek/doubleagent/issues/77
+[#76]: https://github.com/seanthegeek/doubleagent/issues/76
+[#73]: https://github.com/seanthegeek/doubleagent/issues/73
+[#72]: https://github.com/seanthegeek/doubleagent/issues/72
+[#71]: https://github.com/seanthegeek/doubleagent/issues/71
+[#64]: https://github.com/seanthegeek/doubleagent/issues/64
+[#44]: https://github.com/seanthegeek/doubleagent/issues/44
+[#41]: https://github.com/seanthegeek/doubleagent/issues/41
+[#40]: https://github.com/seanthegeek/doubleagent/issues/40
+[#39]: https://github.com/seanthegeek/doubleagent/issues/39
+[#38]: https://github.com/seanthegeek/doubleagent/issues/38
+[#32]: https://github.com/seanthegeek/doubleagent/issues/32
+[#31]: https://github.com/seanthegeek/doubleagent/issues/31
+[#30]: https://github.com/seanthegeek/doubleagent/issues/30
+[#29]: https://github.com/seanthegeek/doubleagent/issues/29
