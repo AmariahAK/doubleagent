@@ -1356,6 +1356,7 @@ run batch71 --no-docker; _rc71=$?; M71=$M
 # bsdtar reads a backslash in a member name as an escape, so the backslash
 # file is hashed from a full extraction rather than with tar -O (#78).
 X71="$WORK/x71"; mkdir -p "$X71"; tar -xzf "$A" -C "$X71" 2>/dev/null
+# shellcheck disable=SC2034 # read by the eval'd check expression below
 F71="$X71/fs/home/carol/.claude/projects/-srv-p71/back\\slash.jsonl"
 check "#71 batched run exit 0, 306 rows" "[ $_rc71 -eq 0 ] && [ \"\$(wc -l <\"\$M\")\" -eq 306 ]"
 check "#71 plain name in the batch hashed" "[ \"\$(sha71 \"$D71/a.jsonl\")\" = \"\$(hash71 'first\\n')\" ]"
