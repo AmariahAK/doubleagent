@@ -885,7 +885,9 @@ list together. Run the commands from the repository root before pushing.
   `VERSION` is already ahead of the last release tag, later work before
   the tag goes into that version's changelog entry, with its date updated
   at tag time, and `VERSION` is not bumped again unless the user says so.
-  A version that was never tagged is noise in the changelog.
+  A version that was never tagged is noise in the changelog. A change to
+  documentation alone bumps nothing and needs no changelog line (see the
+  tag rule below).
 - Every `VERSION` bump comes with an entry in the matching changelog,
   `collectors/CHANGELOG.md` or `analyzer/CHANGELOG.md`, in Keep a Changelog
   form: a `## [x.y.z] - YYYY-MM-DD` heading with `Added`, `Changed`, `Fixed`
@@ -907,10 +909,18 @@ list together. Run the commands from the repository root before pushing.
   dismissal) before the tag. CI cannot enforce this, because the workflow
   token cannot read Dependabot alerts, so it is part of the release step.
   Dependabot itself is configured in `.github/dependabot.yml`.
-- Once the bump commit is pushed and its CI run is green, tag it `collector-vX.Y.Z` or
-  `analyzer-vX.Y.Z` with an annotated tag and push the tag. The prefix is
-  what distinguishes the two version sequences; never use a bare `vX.Y.Z`.
-  Add the version's comparison link at the bottom of the changelog.
+- A tag marks a change to what the collector or the analyzer does. Once
+  the bump commit is pushed and its CI run is green, tag it
+  `collector-vX.Y.Z` or `analyzer-vX.Y.Z` with an annotated tag and push
+  the tag. The prefix is what distinguishes the two version sequences;
+  never use a bare `vX.Y.Z`. Add the version's comparison link at the
+  bottom of the changelog. A change that touches only documentation,
+  research documents, this file or the linter configuration gets no tag,
+  for the same reason it gets no `VERSION` bump: the released scripts
+  and package are unchanged, and the change is published by the push to
+  `main`. Such a commit may follow a tagged commit without needing a
+  tag of its own, and a pending tag may sit on it or on the last code
+  commit, whichever the user prefers.
 
 ## Things to avoid
 
