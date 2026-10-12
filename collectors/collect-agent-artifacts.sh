@@ -2182,8 +2182,8 @@ collect_path() {
     # not from the walk: BSD find applies no expression to a starting point
     # it cannot read and GNU find does, so the pre-check gives both one row
     # and never two (#82).
-    if [ "$INVENTORY" != 1 ] && dir_err_v "$_cp_m"; then
-      read_err_row "$MANIFEST" "$_cp_user" "$_cp_home" "$_cp_agent" "$_cp_m" "$_de"
+    if [ "$INVENTORY" != 1 ] && _cpe=$(dir_err "$_cp_m"); then
+      read_err_row "$MANIFEST" "$_cp_user" "$_cp_home" "$_cp_agent" "$_cp_m" "$_cpe"
       return 0
     fi
     set -- "$_cp_m"
