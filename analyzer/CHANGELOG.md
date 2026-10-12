@@ -9,6 +9,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-11
+
 ### Added
 
 - The bundled catalog copy follows collector 1.11.0: Claude Desktop's
@@ -19,10 +21,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cache directory (`Library/Caches/claude-cli-nodejs`,
   `.cache/claude-cli-nodejs`, `AppData/Local/claude-cli-nodejs/Cache/*`), which
   holds per-project MCP server logs, is detected as `claude-code` (#81).
-
-## [0.11.0] - 2026-10-10
-
-### Added
 
 - A `claude-desktop` parser: Claude Desktop's Cowork and Code-tab
   transcripts (Claude Code JSONL under the app-data directory, with the
