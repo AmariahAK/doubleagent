@@ -56,6 +56,8 @@ def _s(x: bytes) -> str:
 
 def parse_enum(b: bytes) -> dict:
     e = {"name": "", "values": {}}
+    if not isinstance(b, bytes):
+        raise ValueError("enum descriptor is not length-delimited")
     for f, _wt, v in iter_fields(b):
         if f == 1:
             e["name"] = _s(v)
@@ -72,6 +74,8 @@ def parse_enum(b: bytes) -> dict:
 
 def parse_message(b: bytes) -> dict:
     m = {"name": "", "fields": [], "nested": [], "enums": [], "oneofs": []}
+    if not isinstance(b, bytes):
+        raise ValueError("message descriptor is not length-delimited")
     for f, _wt, v in iter_fields(b):
         if f == 1:
             m["name"] = _s(v)
