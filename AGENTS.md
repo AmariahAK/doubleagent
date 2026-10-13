@@ -675,6 +675,27 @@ Subagents do the integration from a brief that carries the evidence; they
 never run the collector live against the VM or read its user's data
 directories, and the main session posts anything that goes to GitHub.
 
+A round covers every surface the agent ships, on every platform it ships
+it for. An agent with a CLI and a desktop app (Antigravity, Claude), an
+editor fork and an extension, or a packaged build and a direct download
+shares directories between its surfaces but not formats, data-directory
+names or feature sets: the Antigravity CLI and the Antigravity desktop
+app both write SQLite-of-protobuf conversations under `~/.gemini`, in
+`antigravity-cli/` and `antigravity/`, and the app's were collected and
+never parsed until the app itself was exercised (October 2026), because
+the CLI round had been taken as covering the agent. The matrix is
+surfaces times platforms and each cell is its own round: install the
+CLI and exercise it, install the app and exercise it, on macOS, Windows
+and Linux, with one **Observed** bullet per cell in section 1 of both
+research documents; a cell with no bullet is a gap to close, not a note
+to leave. Within a surface, run every kind of task it offers, each one
+on its own with a listing diff after it: a question with no tool use, a
+coding task that writes files, a scheduled or automated task, a
+third-party integration such as a plugin or an MCP server, a resumed
+session. When every task was run before the first listing, the round
+cannot say which task wrote which file; its document says so, gives
+the modification times, and the mapping waits for the next round.
+
 ## Validation and testing
 
 CI (`.github/workflows/ci.yml`) runs the catalog drift test, shellcheck, the
