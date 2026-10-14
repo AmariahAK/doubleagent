@@ -27,7 +27,7 @@
 #             1 usage error, 2 fatal (no output dir, no tar, ...).
 
 # ===========================================================================
-# 1. Reader's guide
+# Reader's guide
 # ===========================================================================
 # The file is in twelve sections, in this order (the PowerShell collector,
 # Collect-AgentArtifacts.ps1, has the same sections under the same titles):
@@ -91,7 +91,7 @@ export PATH
 umask 077
 
 # ===========================================================================
-# 2. Data tables
+# Data tables
 # ===========================================================================
 # Artifact catalog. One entry per line: agent|path-glob (relative to each home
 # directory). Every entry is tried for every home, so platform-specific paths
@@ -1605,7 +1605,7 @@ nanobot|*nanobot*
 
 
 # ===========================================================================
-# 3. Shared helpers
+# Shared helpers
 # ===========================================================================
 # The helpers the worker programs also need (logging, hashing, stat, JSON
 # escaping, number checks) are kept as text in COMMON, which is eval'd here
@@ -1748,7 +1748,7 @@ file_id() {
 }
 
 # ===========================================================================
-# 4. Manifest writer
+# Manifest writer
 # ===========================================================================
 # Also part of COMMON: the workers write most manifest rows.
 heredoc_var <<'EOF_COMMON_MANIFEST'
@@ -1828,7 +1828,7 @@ COMMON="$COMMON
 $_ret_heredoc_text"
 
 # ===========================================================================
-# 5. Staging files: the worker programs
+# Staging files
 # ===========================================================================
 # Why workers exist: every walk is a find(1), and find -exec cannot call a
 # shell function (functions are not inherited portably), so the per-file work
@@ -2146,7 +2146,7 @@ INVENTORY_FILES_WORKER="$COMMON
 $_ret_heredoc_text"
 
 # ===========================================================================
-# 6. Catalog walk
+# Catalog walk
 # ===========================================================================
 # A table (CATALOG or PROJECT_CATALOG) is applied to one base directory (a
 # home, a project, or a Docker volume's _data) in two steps: expand_catalog
@@ -2361,7 +2361,7 @@ collect_tree() {
 }
 
 # ===========================================================================
-# 7. Users
+# Users
 # ===========================================================================
 
 # enumerate_users -> user:home lines, home a full path including ROOT, from
@@ -2436,7 +2436,7 @@ collect_user_homes() {
 }
 
 # ===========================================================================
-# 8. Docker and Podman volumes
+# Docker and Podman volumes
 # ===========================================================================
 # Enumerated from the filesystem, never with the docker binary, so the same
 # code covers live hosts and disk images. Each volume is <volumes
@@ -2605,7 +2605,7 @@ EOF_DOCKER_DESKTOP_DIRS
 }
 
 # ===========================================================================
-# 9. Project discovery
+# Project discovery
 # ===========================================================================
 # Paths referenced by agent state files, prefixed with ROOT. discover_projects
 # emits "user:path"; the user is whoever's state referenced the path. Only
@@ -2918,7 +2918,7 @@ collect_projects() {
 }
 
 # ===========================================================================
-# 10. Inventory output
+# Inventory output
 # ===========================================================================
 # With --inventory every line goes to stdout and nothing is written. The host
 # line comes first but its counts are known only after the walk, so the agent
@@ -3024,7 +3024,7 @@ write_inventory() {
 }
 
 # ===========================================================================
-# 11. Summary and archive
+# Summary and archive
 # ===========================================================================
 
 # count_status STATUS -> the number of manifest rows with that status.
@@ -3200,7 +3200,7 @@ print_result() {
 }
 
 # ===========================================================================
-# 12. Main program
+# Main program
 # ===========================================================================
 # Option parsing and validation, setup, then one call per step, in run order,
 # at the end of this section. The setup and step functions set globals, so
