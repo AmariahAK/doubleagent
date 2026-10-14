@@ -1142,6 +1142,15 @@ M105=$(ls "$OUT/cwd105"/*.manifest.jsonl 2>/dev/null)
 S105=$(ls "$OUT/cwd105"/*.collection.json 2>/dev/null)
 check "#105 image homes found from a directory with home and Users subdirectories" "[ $_rc105 -eq 0 ] && grep -q '\"user\":\"bob\"' \"$M105\" && [ \"\$(grep '^  \"users\":' \"$S105\")\" = \"\$(grep '^  \"users\":' \"$OUT\"/default/*.collection.json)\" ]"
 
+# 2026-10-14 NESTED_CLAIMS from the environment (#106)
+# An inherited value naming a subtree of a matched volume must prune nothing:
+# the collector's own claims are internal state, not input. The same in
+# smoke.ps1.
+NESTED_CLAIMS="$A0/chats"; export NESTED_CLAIMS
+run claims106 --no-projects; _rc106=$?
+unset NESTED_CLAIMS
+check "#106 NESTED_CLAIMS in the environment prunes nothing" "[ $_rc106 -eq 0 ] && [ \"\$(status_of \"$A0/chats/ctx1/chat.json\")\" = collected ]"
+
 # ---- unreadable volume (needs a non-root user; chmod 000 does not stop root)
 if [ "$(id -u)" != 0 ]; then
   mkdir -p "$DV/hermes_data/_data/sessions"

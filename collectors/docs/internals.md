@@ -60,7 +60,7 @@ The steps in the main program, in run order:
 | Resolve options | `resolve_extra_projects`, `resolve_root` (exit 2 when `-r` is not a directory) | `Initialize-TableRegexes`, `Resolve-ProjectArgs`, `Resolve-RootArg` (exit 2) |
 | Output directory and tools | `check_prerequisites`: outside `--inventory`, the output directory is created and must be writable and `tar` must exist; `find` must exist (exit 2) | `Initialize-OutputDir` outside `-Inventory` (exit 2) |
 | Capabilities and names | `detect_capabilities`, `set_output_names` | `Initialize-RunNames`, `Initialize-Archivers` (exit 2 on a bad `CAC_ARCHIVER`) |
-| Open outputs | exports the worker settings, sets the `EXIT`, `INT` and `TERM` traps, `create_output_files`, sets `ACTIVE_EXCLUDES` (empty under `--full`), `log_start` | `Open-RunFiles` |
+| Open outputs | exports the worker settings, sets the `EXIT`, `INT` and `TERM` traps, `create_output_files`, sets `ACTIVE_EXCLUDES` (empty under `--full`), `log_start`, then clears the globals the steps fill (`NOTES`, the `DOCKER_*` counters, `DOCKER_INV`, `PROJECT_LIST`, `NESTED_CLAIMS`) so no value comes from the environment | `Open-RunFiles` |
 | Users | `USER_LIST=$(get_user_homes)`, a warning when it is empty, then `collect_user_homes` unless `--inventory` | `Get-UserHomes`, `Test-Administrator`, `Write-StartLog`, then `Add-UserHomes`, which under `-Inventory` is also the inventory walk |
 | Volumes | `collect_docker_volumes` unless `--no-docker` | `Add-DockerVolumes` unless `-NoDocker` |
 | Projects | `collect_projects` (discovery and walk) unless `--no-projects` | `Find-Projects`, then `Add-Projects`, unless `-NoProjects` |
@@ -192,7 +192,10 @@ whole table before anything is walked:
   order. `collect_catalog` sets `NESTED_CLAIMS` to the matched paths for
   the duration of the call, and `collect_tree` adds one
   `( -path CLAIM -o ... ) -prune -o` group to the `find` expression for the
-  claims inside the directory being walked.
+  claims inside the directory being walked. The main program clears
+  `NESTED_CLAIMS` before the first step, so a walk that does not go
+  through `collect_catalog` (a Docker volume's) prunes no claim, whatever
+  the environment held.
 - PowerShell: `Expand-Catalog` returns the matches and records each in
   `$script:ClaimedPaths`; `Add-CollectedTree` skips a child that is a key
   there. `Get-ClaimTable` makes that table a case-insensitive hashtable on

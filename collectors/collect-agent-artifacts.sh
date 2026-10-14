@@ -3454,11 +3454,15 @@ if [ "$FULL" = 1 ]; then ACTIVE_EXCLUDES=; else ACTIVE_EXCLUDES=$EXCLUDES; fi
 log_start
 
 # Globals the steps fill: notes for collection.json, the Docker counters
-# (section 8) and the project list (section 9)
+# (section 8) and the project list (section 9). NESTED_CLAIMS is cleared
+# too: collect_catalog sets it only inside the per-home pipeline subshell,
+# so the volume walks would otherwise prune whatever paths the environment
+# the collector was started with gave it (#106).
 NOTES=
 DOCKER_SEEN=0; DOCKER_FOUND=0; DOCKER_COLLECTED=0; DOCKER_UNREADABLE=0; DOCKER_DESKTOP=0
 DOCKER_INV=
 PROJECT_LIST=
+NESTED_CLAIMS=
 
 USER_LIST=$(get_user_homes)
 [ -n "$USER_LIST" ] || log_line "WARNING: no user home directories found"

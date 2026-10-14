@@ -95,6 +95,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   macOS), the homes found only by those patterns were lost: a Windows
   image yielded no users, and a Linux image only those in its
   `etc/passwd` ([#105]).
+- The sh collector clears its list of claimed paths (`NESTED_CLAIMS`, the
+  subtrees that nested catalog entries collect) at startup. The Docker
+  and Podman volume walks read it without setting it, so a value in the
+  environment the collector was started with pruned the paths it named
+  from every matched volume, with no manifest row ([#106]).
 
 ## [1.11.0] - 2026-10-12
 
@@ -641,6 +646,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#106]: https://github.com/seanthegeek/doubleagent/issues/106
 [#105]: https://github.com/seanthegeek/doubleagent/issues/105
 [#104]: https://github.com/seanthegeek/doubleagent/issues/104
 [#99]: https://github.com/seanthegeek/doubleagent/issues/99

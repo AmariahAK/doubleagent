@@ -1412,6 +1412,13 @@ $users105 = ''
 if ($script:S) { $users105 = @((Get-Content -LiteralPath $script:S.FullName -Raw | ConvertFrom-Json).users) -join ',' }
 Check '#105 image homes found from a directory with home and Users subdirectories' { $script:rc -eq 0 -and ($script:Rows | Where-Object { $_.user -eq 'bob' }) -and $users105 -ne '' -and $users105 -eq (@($dsum0.users) -join ',') }
 
+# 2026-10-14 NESTED_CLAIMS from the environment (#106)
+# An inherited value naming a subtree of a matched volume must prune nothing,
+# as in smoke.sh, where the sh collector once read it from the environment.
+$env:NESTED_CLAIMS = P 'var/lib/docker/volumes/a0_usr/_data/chats'
+try { Run 'claims106' @{ NoProjects = $true } } finally { Remove-Item Env:NESTED_CLAIMS }
+Check '#106 NESTED_CLAIMS in the environment prunes nothing' { $script:rc -eq 0 -and (StatusOf 'var/lib/docker/volumes/a0_usr/_data/chats/ctx1/chat.json') -eq 'collected' }
+
 # ---- Docker Desktop note ----------------------------------------------------
 Mk 'Users/alice/AppData/Local/Docker/wsl/disk/readme.txt' 'vhdx lives here'
 Run 'desktop' @{}
