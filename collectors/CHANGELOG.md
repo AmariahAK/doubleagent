@@ -115,6 +115,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a `ProviderPath` error from strict mode and then
   `Output dir not writable: <dir>`, and a path that is a file printed the
   last message alone ([#108]).
+- The sh collector no longer expands the exclusion globs, or the claimed
+  paths of nested entries, against its working directory. Run from a
+  directory holding paths that a wildcard exclusion matches (a home with
+  `.claude/plugins/<name>/node_modules`, say), the glob was replaced by
+  those paths and stopped matching the collected homes, so their trees
+  under it were collected instead of getting one `skipped_excluded` row
+  ([#109]).
 
 ## [1.11.0] - 2026-10-12
 
@@ -661,6 +668,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#109]: https://github.com/seanthegeek/doubleagent/issues/109
 [#108]: https://github.com/seanthegeek/doubleagent/issues/108
 [#107]: https://github.com/seanthegeek/doubleagent/issues/107
 [#106]: https://github.com/seanthegeek/doubleagent/issues/106

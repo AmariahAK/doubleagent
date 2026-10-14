@@ -845,6 +845,14 @@ printf '1070\n' >"$H/.local/bin/.muse-update.107.exe"
 FILE108="$WORK/file108"
 printf 'x\n' >"$FILE108"
 
+# 2026-10-14 exclusion globs and the working directory (#109)
+# A plugin node_modules in alice's home, excluded by the wildcard glob
+# .claude/plugins/*/node_modules, and a directory outside the image holding
+# another tree that the glob matches, the working directory of the cwd109
+# run below: the glob must reach find unexpanded. The same in smoke.ps1.
+mkdir -p "$H/.claude/plugins/y/node_modules" "$WORK/cwd109/.claude/plugins/x/node_modules"
+printf 'module.exports = 1\n' >"$H/.claude/plugins/y/node_modules/f.js"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1436,6 +1444,11 @@ fi
 # 2026-10-14 output directory under a file (#108)
 COLLECTOR_SH="$SHELL_UNDER_TEST" "$SHELL_UNDER_TEST" "$SCRIPT" -r "$ROOT" -o "$FILE108/out" -q --no-docker >"$OUT/file108.stdout" 2>"$OUT/file108.stderr"
 check "#108 output dir under a file exits 2 with only the create error" "[ $? -eq 2 ] && [ \"\$(cat \"$OUT/file108.stderr\")\" = \"Cannot create output dir: $FILE108/out\" ] && [ ! -s \"$OUT/file108.stdout\" ] && [ -f \"$FILE108\" ]"
+
+# 2026-10-14 exclusion globs and the working directory (#109)
+(cd "$WORK/cwd109" && run cwd109 --no-docker --no-projects); _rc109=$?
+M109=$(ls "$OUT/cwd109"/*.manifest.jsonl 2>/dev/null)
+check "#109 wildcard exclusion holds from a directory with a matching tree" "[ $_rc109 -eq 0 ] && grep -F '\"path\":\"$H/.claude/plugins/y/node_modules\"' \"$M109\" | grep -q '\"status\":\"skipped_excluded\"' && ! grep -q 'node_modules/f.js' \"$M109\""
 
 # 2026-10-04 bug round: #29 x #32
 # An unreadable catalog match gets one error_read row, and a case variant

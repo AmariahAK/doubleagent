@@ -2345,14 +2345,16 @@ collect_path() {
 # error_read check; give every regular file and symlink to
 # STAGE_FILES_WORKER, or every regular file to INVENTORY_FILES_WORKER with
 # --inventory. find's own messages go to LOG. Reads NESTED_CLAIMS,
-# ACTIVE_EXCLUDES, INVENTORY, MANIFEST, STAGE, ROOT, WORKER_SH, LOG.
-# Temporaries: _ct_.
+# ACTIVE_EXCLUDES, INVENTORY, MANIFEST, STAGE, ROOT, WORKER_SH, LOG. Both
+# lists are split with globbing off, so a glob is never expanded against the
+# current directory before it reaches find (#109). Temporaries: _ct_.
 collect_tree() {
   _ct_user=$1; _ct_home=$2; _ct_agent=$3
   set -- "$4"
   _ct_saved_ifs=$IFS
   IFS='
 '
+  set -f
   # Paths claimed by another catalog entry are left to that entry: a nested
   # entry such as .gemini/antigravity-cli is attributed to its own agent and
   # collected once, not swept up again by the enclosing .gemini entry.
@@ -2369,7 +2371,7 @@ collect_tree() {
     if [ "$_ct_first" = 1 ]; then set -- "$@" '(' -path "$_ct_home/$_ct_exclude"; _ct_first=0
     else set -- "$@" -o -path "$_ct_home/$_ct_exclude"; fi
   done
-  IFS=$_ct_saved_ifs
+  IFS=$_ct_saved_ifs; set +f
   if [ "$_ct_first" = 0 ] && [ "$INVENTORY" = 1 ]; then
     set -- "$@" ')' -prune -o
   elif [ "$_ct_first" = 0 ]; then

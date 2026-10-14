@@ -487,7 +487,9 @@ to redact are `cursorAuth/*` and `windsurfAuthStatus`.
 
 Exclusion and credential patterns are matched relative to the directory
 being collected, and `*` in them crosses `/`. An exclusion wins over a
-credential pattern.
+credential pattern. The patterns are matched as patterns wherever the
+collector is run from: they are never expanded against its working
+directory.
 
 - **Base:** a home, a discovered project or a Docker volume's `_data`. The
   same `.claude/worktrees` pattern therefore prunes both

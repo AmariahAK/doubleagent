@@ -834,6 +834,15 @@ Mk 'Users/alice/.local/bin/.muse-update.107.exe' "1070`n"
 # smoke.sh.
 $file108 = Join-Path $Work 'file108'
 [System.IO.File]::WriteAllText($file108, "x`n")
+# 2026-10-14 exclusion globs and the working directory (#109)
+# A plugin node_modules in alice's profile, excluded by the wildcard glob
+# .claude/plugins/*/node_modules, and a directory outside the image holding
+# another tree that the glob matches, the working directory of the cwd109
+# run below. The same in smoke.sh, where the sh collector once expanded the
+# glob against that directory.
+Mk 'Users/alice/.claude/plugins/y/node_modules/f.js' "module.exports = 1`n"
+$cwd109 = Join-Path $Work 'cwd109'
+New-Item -ItemType Directory -Path (Join-Path $cwd109 '.claude/plugins/x/node_modules') -Force | Out-Null
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1863,6 +1872,10 @@ $null = $proc108.Handle; $proc108.WaitForExit()
 $text108 = [string](Get-Content -LiteralPath $err108 -Raw) -replace '\s', ''
 $want108 = ('Cannot create output dir: ' + $out108) -replace '\s', ''
 Check '#108 output dir under a file exits 2 with only the create error' { $proc108.ExitCode -eq 2 -and $text108.Contains($want108) -and ($text108.Length - $text108.Replace('Cannotcreateoutputdir', '').Length) -eq 'Cannotcreateoutputdir'.Length -and $text108 -notmatch 'Resolve-Path|ProviderPath|Outputdirnotwritable' -and [System.IO.File]::Exists($file108) }
+# 2026-10-14 exclusion globs and the working directory (#109)
+Push-Location -LiteralPath $cwd109
+try { Run 'cwd109' @{ NoDocker = $true; NoProjects = $true } } finally { Pop-Location }
+Check '#109 wildcard exclusion holds from a directory with a matching tree' { $script:rc -eq 0 -and (StatusOf 'Users/alice/.claude/plugins/y/node_modules') -eq 'skipped_excluded' -and -not ($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like '*node_modules/f.js' }) }
 
 # An unreadable home and an unlistable directory inside a walk: POSIX and not
 # root only, since chmod does not deny on Windows or to root.
