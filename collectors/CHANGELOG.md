@@ -27,6 +27,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Antigravity plugin OAuth credentials,
   `.gemini/antigravity*/plugin_data/<plugin>/token.json` (the Google Docs
   plugin writes one), are flagged `secret: true` ([#84]).
+- The Antigravity CLI's file secret store `plugin-secrets.json`, which
+  CLI 1.3.4 uses for plugin credentials when no OS keychain is available,
+  is collected as `antigravity` and flagged `secret: true`:
+  `.config/antigravity/plugin-secrets.json` (named in the CLI's own log
+  on Linux), `Library/Application Support/antigravity/plugin-secrets.json`
+  and `AppData/Roaming/antigravity/plugin-secrets.json`. The secret globs
+  accept `Antigravity` as well, since on a case-insensitive filesystem
+  the file shares the desktop app's Electron user-data directory
+  ([#90]).
 
 ### Changed
 
@@ -44,6 +53,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `.gemini/antigravity/cache`), `Code Cache`, `GPUCache`,
   `DawnGraphiteCache`, `DawnWebGPUCache`, `blob_storage`,
   `Shared Dictionary`, `CachedData` and `Crashpad` ([#83]).
+- The Antigravity Electron user-data directory's `Dictionaries`
+  (Chromium's spell-check dictionary, 452 KB on Linux), the sidecar SDK
+  the desktop app installs under `.gemini/antigravity*/lib/node_modules`,
+  and its copy under `.gemini/config/node_modules` are excluded ([#83]).
+
+### Fixed
+
+- Project discovery in the sh collector now matches `file://` URIs.
+  From 1.3.0 the pattern required a slash after `file:///`, so no URI
+  ever matched: the Antigravity desktop app's project folders in
+  `.gemini/config/projects/*.json` (`folderUri`) were never discovered,
+  nor was a `file://` URI in the other files read the same way (the
+  Antigravity CLI's `settings.json` and `cache/projects.json`, Kiro's
+  `session.json`, Goose's `recent-dirs.json` and Twinny's embedding
+  manifests); plain absolute paths in them were unaffected. A Windows
+  URI (`file:///C:/x`, also `file:///c%3A/x`) now yields the
+  drive-relative `/x`, which image mode prefixes with the root, as the
+  PowerShell collector already did ([#91]).
 
 ## [1.11.0] - 2026-10-12
 
@@ -590,6 +617,8 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#91]: https://github.com/seanthegeek/doubleagent/issues/91
+[#90]: https://github.com/seanthegeek/doubleagent/issues/90
 [#84]: https://github.com/seanthegeek/doubleagent/issues/84
 [#83]: https://github.com/seanthegeek/doubleagent/issues/83
 [#82]: https://github.com/seanthegeek/doubleagent/issues/82

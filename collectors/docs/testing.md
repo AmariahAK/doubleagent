@@ -69,7 +69,9 @@ manifest, hashes and archive contents. The sh test also has a `nobody`
 account to skip. It is POSIX sh too, and its JSON validity and hash
 cross-check steps run only when `python3` is available. The PowerShell test
 uses a Windows profile tree with drive-letter and `file:///` project
-references and runs under both PowerShell 5.1 and 7.
+references and runs under both PowerShell 5.1 and 7. Both tests read
+project folders from Antigravity project files with a POSIX or
+drive-letter `file:///` URL.
 
 Both smoke tests also build root and rootless Docker volumes, one matched
 and one unmatched, check `--no-docker` and the Docker Desktop note, and run

@@ -13,6 +13,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- The bundled catalog copy detects the Antigravity CLI's file secret
+  store `plugin-secrets.json` (`.config/antigravity`,
+  `Library/Application Support/antigravity`, `AppData/Roaming/antigravity`)
+  as `antigravity` ([#90]).
 - The bundled catalog copy follows collector 1.12.0: the Antigravity
   desktop app's Electron user-data directory
   (`Library/Application Support/Antigravity`, `.config/Antigravity`,
@@ -482,6 +486,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#90]: https://github.com/seanthegeek/doubleagent/issues/90
 [#89]: https://github.com/seanthegeek/doubleagent/issues/89
 [#88]: https://github.com/seanthegeek/doubleagent/issues/88
 [#86]: https://github.com/seanthegeek/doubleagent/issues/86

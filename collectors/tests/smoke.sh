@@ -798,6 +798,31 @@ printf '[2026-10-13 18:28:00.000] [info]  Starting app (v2.23.0)\n' >"$H/Library
 printf '{"lastCreatedProjectId":"p1"}\n' >"$W83/app_storage.json"
 printf 'cache\n' >"$W83/Cache/data_0"
 
+# 2026-10-13 Antigravity Linux round (#83, #90, #91)
+# From the Ubuntu install of CLI 1.3.4 and the desktop app 2.23.1: the CLI's
+# file secret store plugin-secrets.json under the lower-case
+# ~/.config/antigravity (secret), the spell-check Dictionaries directory of
+# the Electron user-data directory and the sidecar SDK the app installs
+# twice, under .gemini/antigravity/lib/node_modules and
+# .gemini/config/node_modules (excluded), and two app project files: one
+# pretty-printed exactly as observed, with two spaces between the colon and
+# the file:/// folderUri, and one with a percent-encoded Windows drive
+# letter. Both projects must be discovered (#91). The Dictionaries fixture
+# sits in the macOS user-data directory: alice's .config/Antigravity would
+# be the same directory as .config/antigravity on a case-insensitive
+# filesystem. Checks follow the default and --no-secrets runs below; the
+# same files, in the Windows layout, are in smoke.ps1.
+mkdir -p "$H/.config/antigravity" "$E83/Dictionaries" "$G83/lib/node_modules/sidecar_sdk" \
+  "$H/.gemini/config/node_modules/sidecar_sdk" "$H/.gemini/config/projects" "$ROOT/srv/agyapp" "$ROOT/srv/agywin"
+printf '{"gdocs":"x"}\n' >"$H/.config/antigravity/plugin-secrets.json"
+printf 'bdic\n' >"$E83/Dictionaries/en-US-10-1.bdic"
+printf 'export {}\n' >"$G83/lib/node_modules/sidecar_sdk/index.mjs"
+printf 'export {}\n' >"$H/.gemini/config/node_modules/sidecar_sdk/index.mjs"
+printf '{\n  "id": "91919191-0000-4000-8000-000000000091",\n  "projectResources": {\n    "resources": [\n      {\n        "folderUri":  "file:///srv/agyapp"\n      }\n    ]\n  }\n}\n' >"$H/.gemini/config/projects/91919191-0000-4000-8000-000000000091.json"
+printf '{\n  "id": "91919191-0000-4000-8000-000000000092",\n  "projectResources": {\n    "resources": [\n      {\n        "folderUri":  "file:///c%%3A/srv/agywin"\n      }\n    ]\n  }\n}\n' >"$H/.gemini/config/projects/91919191-0000-4000-8000-000000000092.json"
+printf 'ignore\n' >"$ROOT/srv/agyapp/.antigravityignore"
+printf 'ignore\n' >"$ROOT/srv/agywin/.antigravityignore"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1066,6 +1091,15 @@ check "#83 Antigravity Windows app_storage.json collected as antigravity" "row \
 check "#83 Antigravity Windows Electron Cache excluded" "[ \"\$(status_of \"$W83/Cache\")\" = skipped_excluded ]"
 check "#83 Antigravity data dir cache/ not pruned by the Electron Cache exclusion" "[ \"\$(status_of \"$G83/cache/last_conversations.json\")\" = collected ] && [ \"\$(status_of \"$G83/cache\")\" != skipped_excluded ]"
 
+# 2026-10-13 Antigravity Linux round (#83, #90, #91)
+check "#90 Antigravity CLI plugin-secrets.json flagged secret" "row \"$H/.config/antigravity/plugin-secrets.json\" | grep -q '\"agent\":\"antigravity\".*\"secret\":true,\"status\":\"collected\"'"
+check "#90 Antigravity CLI plugin-secrets.json collected once" "[ \"\$(grep -c 'plugin-secrets.json\"' \"\$M\")\" = 1 ]"
+check "#83 Antigravity Electron Dictionaries excluded" "[ \"\$(status_of \"$E83/Dictionaries\")\" = skipped_excluded ] && ! grep -q 'en-US-10-1.bdic\"' \"\$M\""
+check "#83 Antigravity app sidecar SDK under lib/node_modules excluded" "[ \"\$(status_of \"$G83/lib/node_modules\")\" = skipped_excluded ] && ! grep -q 'antigravity/lib/node_modules/sidecar_sdk/index.mjs\"' \"\$M\""
+check "#83 Antigravity config/node_modules excluded" "[ \"\$(status_of \"$H/.gemini/config/node_modules\")\" = skipped_excluded ] && ! grep -q 'config/node_modules/sidecar_sdk/index.mjs\"' \"\$M\""
+check "#91 Antigravity project folderUri discovers project" "[ \"\$(status_of \"$ROOT/srv/agyapp/.antigravityignore\")\" = collected ]"
+check "#91 Antigravity drive-letter folderUri discovers project" "[ \"\$(status_of \"$ROOT/srv/agywin/.antigravityignore\")\" = collected ]"
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -1074,6 +1108,8 @@ check "credentials absent from archive" "! tar -tzf \"\$A\" | grep -q credential
 check "#73 #76 --no-secrets skips link-key and the session key" "[ \"\$(status_of \"$C76/spaces-present/0a0a0a0a/0b0b0b0b/link-key\")\" = skipped_secret ] && [ \"\$(status_of \"$K76\")\" = skipped_secret ]"
 # 2026-10-13 Antigravity desktop app (#83, #84)
 check "#84 Antigravity plugin token skipped without secrets" "[ \"\$(status_of \"$G83/plugin_data/gdocs/token.json\")\" = skipped_secret ]"
+# 2026-10-13 Antigravity Linux round (#83, #90, #91)
+check "#90 Antigravity CLI plugin-secrets.json skipped without secrets" "[ \"\$(status_of \"$H/.config/antigravity/plugin-secrets.json\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"

@@ -793,6 +793,26 @@ Mk "$e83/Code Cache/js/x" 'js'
 Mk 'Users/alice/Library/Logs/Antigravity/main.log' '[2026-10-13 18:28:00.000] [info]  Starting app (v2.23.0)'
 Mk "$w83/app_storage.json" '{"lastCreatedProjectId":"p1"}'
 Mk "$w83/Cache/data_0" 'cache'
+# 2026-10-13 Antigravity Linux round (#83, #90, #91)
+# From the Ubuntu install of CLI 1.3.4 and the desktop app 2.23.1, in the
+# Windows layout: the CLI's file secret store plugin-secrets.json, here in
+# the app's AppData/Roaming/Antigravity because the directory is shared on
+# a case-insensitive filesystem (secret, collected once), the spell-check
+# Dictionaries directory of the Electron user-data directory and the
+# sidecar SDK the app installs twice, under .gemini/antigravity/lib/node_modules
+# and .gemini/config/node_modules (excluded), and two app project files:
+# one pretty-printed as observed, with two spaces between the colon and the
+# file:/// folderUri, and one with a percent-encoded drive letter. Both
+# projects must be discovered (#91). Checks follow the default and
+# NoSecrets runs below; the same files, in the Linux layout, are in smoke.sh.
+Mk "$w83/plugin-secrets.json" '{"gdocs":"x"}'
+Mk "$w83/Dictionaries/en-US-10-1.bdic" 'bdic'
+Mk "$g83/lib/node_modules/sidecar_sdk/index.mjs" 'export {}'
+Mk 'Users/alice/.gemini/config/node_modules/sidecar_sdk/index.mjs' 'export {}'
+Mk 'Users/alice/.gemini/config/projects/91919191-0000-4000-8000-000000000091.json' (@('{', '  "id": "91919191-0000-4000-8000-000000000091",', '  "projectResources": {', '    "resources": [', '      {', '        "folderUri":  "file:///C:/agyapp"', '      }', '    ]', '  }', '}', '') -join "`n")
+Mk 'Users/alice/.gemini/config/projects/91919191-0000-4000-8000-000000000092.json' (@('{', '  "id": "91919191-0000-4000-8000-000000000092",', '  "projectResources": {', '    "resources": [', '      {', '        "folderUri":  "file:///c%3A/agywin"', '      }', '    ]', '  }', '}', '') -join "`n")
+Mk 'agyapp/.antigravityignore' 'ignore'
+Mk 'agywin/.antigravityignore' 'ignore'
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1161,6 +1181,15 @@ Check '#83 Antigravity Windows app_storage.json collected as antigravity' { Is83
 Check '#83 Antigravity Windows Electron Cache excluded' { (StatusOf "$w83/Cache") -eq 'skipped_excluded' -and (NoRow83 'Roaming/Antigravity/Cache/data_0') }
 Check '#83 Antigravity data dir cache/ not pruned by the Electron Cache exclusion' { (StatusOf "$g83/cache/last_conversations.json") -eq 'collected' -and (StatusOf "$g83/cache") -ne 'skipped_excluded' }
 
+# 2026-10-13 Antigravity Linux round (#83, #90, #91)
+Check '#90 Antigravity CLI plugin-secrets.json flagged secret' { Is83 "$w83/plugin-secrets.json" $true }
+Check '#90 Antigravity CLI plugin-secrets.json collected once' { (CountOf 'plugin-secrets.json') -eq 1 }
+Check '#83 Antigravity Electron Dictionaries excluded' { (StatusOf "$w83/Dictionaries") -eq 'skipped_excluded' -and (NoRow83 'Dictionaries/en-US-10-1.bdic') }
+Check '#83 Antigravity app sidecar SDK under lib/node_modules excluded' { (StatusOf "$g83/lib/node_modules") -eq 'skipped_excluded' -and (NoRow83 'antigravity/lib/node_modules/sidecar_sdk/index.mjs') }
+Check '#83 Antigravity config/node_modules excluded' { (StatusOf 'Users/alice/.gemini/config/node_modules') -eq 'skipped_excluded' -and (NoRow83 'config/node_modules/sidecar_sdk/index.mjs') }
+Check '#91 Antigravity project folderUri discovers project' { (StatusOf 'agyapp/.antigravityignore') -eq 'collected' }
+Check '#91 Antigravity drive-letter folderUri discovers project' { (StatusOf 'agywin/.antigravityignore') -eq 'collected' }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -1342,6 +1371,8 @@ Check 'credentials absent from archive' { -not (ArchiveEntries | Where-Object { 
 Check '#73 #76 NoSecrets skips link-key and the session key' { (StatusOf $l76) -eq 'skipped_secret' -and (StatusOf $k76) -eq 'skipped_secret' }
 # 2026-10-13 Antigravity desktop app (#83, #84)
 Check '#84 Antigravity plugin token skipped without secrets' { (StatusOf "$g83/plugin_data/gdocs/token.json") -eq 'skipped_secret' }
+# 2026-10-13 Antigravity Linux round (#83, #90, #91)
+Check '#90 Antigravity CLI plugin-secrets.json skipped without secrets' { (StatusOf "$w83/plugin-secrets.json") -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }

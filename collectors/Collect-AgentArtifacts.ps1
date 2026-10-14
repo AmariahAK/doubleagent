@@ -131,7 +131,9 @@ claude-desktop|Documents/Claude
 # logs are in Library/Logs on macOS and in its logs/ subdirectory elsewhere
 # (#83). Its Cache exclusion names the three bases: the PowerShell match
 # ignores case, so */Antigravity/Cache would also prune
-# .gemini/antigravity/cache
+# .gemini/antigravity/cache. The CLI keeps plugin secrets in a file store,
+# plugin-secrets.json, in a lower-case antigravity directory under the Go
+# os.UserConfigDir() root when no keychain is available (#90)
 gemini-cli|.gemini
 gemini-cli|.cache/.gemini
 antigravity|.gemini/antigravity-cli
@@ -145,6 +147,9 @@ antigravity|.config/Antigravity
 antigravity|Library/Application Support/Antigravity
 antigravity|Library/Logs/Antigravity
 antigravity|AppData/Roaming/Antigravity
+antigravity|.config/antigravity/plugin-secrets.json
+antigravity|Library/Application Support/antigravity/plugin-secrets.json
+antigravity|AppData/Roaming/antigravity/plugin-secrets.json
 antigravity|.config/Antigravity IDE/User
 antigravity|.config/Antigravity IDE/logs
 antigravity|Library/Application Support/Antigravity IDE/User
@@ -659,6 +664,8 @@ $EXCLUDES = @'
 .gemini/antigravity*/plugin_data/*/bin
 .gemini/antigravity*/cache/marketplaces
 .gemini/antigravity*/brain/*/.system_generated/worktrees
+.gemini/antigravity*/lib/node_modules
+.gemini/config/node_modules
 */Antigravity/Code Cache
 */Antigravity/GPUCache
 */Antigravity/DawnGraphiteCache
@@ -667,6 +674,7 @@ $EXCLUDES = @'
 */Antigravity/Shared Dictionary
 */Antigravity/CachedData
 */Antigravity/Crashpad
+*/Antigravity/Dictionaries
 .config/Antigravity/Cache
 Library/Application Support/Antigravity/Cache
 AppData/Roaming/Antigravity/Cache
@@ -1125,6 +1133,9 @@ AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude*/ccd-sess
 *.gemini/extensions/*/.env
 *.gemini/antigravity-cli/antigravity-oauth-token
 *.gemini/antigravity*/plugin_data/*/token.json
+.config/[Aa]ntigravity/plugin-secrets.json
+Library/Application Support/[Aa]ntigravity/plugin-secrets.json
+AppData/Roaming/[Aa]ntigravity/plugin-secrets.json
 .qwen/oauth_creds.json
 .qwen/mcp-oauth-tokens*.json
 .qwen/extension-secrets-v1.json
