@@ -20,8 +20,8 @@ tables were built from. The diff did find one error in the tables
 themselves: `ActionSpecDeleteFile` keeps its `path` in field 1, and the
 parser had read it with the `ActionSpecCreateFile` layout (field 2); it has
 its own entry since analyzer 0.12.0 (issue 88). The new real data has steps
-with `permissions` (`gemini_coder.Step` field 133) and `task_details` (148),
-neither read here.
+with `permissions` (`gemini_coder.Step` field 133, read since analyzer 0.12.0,
+issue 92) and `task_details` (148, not read).
 
 The CLI and the desktop app run the same Go backend (the app calls it the
 language server) and write the same stores, each into its own data
@@ -61,6 +61,16 @@ Files, relative to the home directory, under each of those directories
   - `gen_metadata(idx, data)`: `exa.cortex_pb.CortexStepGeneratorMetadata`
     with `step_indices[]` and `chat_model.response_model`, the only place
     the model name is recorded.
+  - `steps.permissions`: an `exa.cortex_pb.TrajectoryPermissions`, the same
+    message as `gemini_coder.Step` field 133 (read from the payload when the
+    column is empty): `permission_grants[]` (`PermissionGrant`: 1
+    `resource` {1 `action`, 2 `target`}, 2 `allow`, 3 `scope`, 4
+    `user_deny_instruction`, 5 `action`, 6 `target`) and
+    `file_access_permissions[]` (`FileAccessPermission`: 1 `path`, 2
+    `is_directory`, 3 `allow`, 4 `scope`, 5 `from_current_step`); `scope` is
+    an `exa.cortex_pb.PermissionScope` (`PERMISSION_SCOPES`). Proto3 omits a
+    false bool and a zero enum, so a missing `allow` reads `false` and a
+    missing `scope` `unspecified`.
 * `.gemini/<dir>/conversation_summaries.db`, table
   `conversation_summaries`: one row per conversation with `title`,
   `preview`, `step_count`, `last_modified_time`, `workspace_uris` (JSON
@@ -73,6 +83,25 @@ Files, relative to the home directory, under each of those directories
   conversation's UUID, which becomes the row's `session_id` (older lines
   have none and keep it empty).
 
+Standing permission files (issue 92), read only for the keys named here;
+every other key in them (`plugins`, `remoteControlHostname`, a project's
+`name`, a sidecar's `args`) is left unread, and `plugin_data/*/token.json`
+and `.gemini/config/mcp_config.json` are never wanted:
+
+* `.gemini/config/config.json` (shared by the CLI and the app):
+  `userSettings.globalPermissionGrants.allow[]` (tool-call patterns, a tool
+  name with its argument in parentheses), `.deny[]` when present (not
+  observed), `userSettings.permissionGrantsV2Migrated`,
+  `userSettings.sandboxEnabledAtV2Migration`, and per automation
+  `sidecars.<name>.enabled` and `sidecars.<name>.resolvedPermissions.accessGrants[]`.
+* `.gemini/config/projects/<id>.json`: `permissionGrants.permissionGrants.allow[]`
+  (and `.deny[]` when present, not observed) and `permissionGrants.v2Migrated`;
+  `project_path` is the first `projectResources.resources[].folderUri`.
+* `.gemini/config/sidecars/<name>/sidecar.json`: `agent_permissions.access_grants[]`.
+* `.gemini/antigravity-cli/settings.json`: `permissions.allow[]` (and
+  `.deny[]` when present, not observed) and `trustedWorkspaces[]`, each
+  trusted workspace a row whose `project_path` is the workspace.
+
 Rows: one `user` row per user_input step (`system` when the source is
 USER_IMPLICIT); for each planner_response step an `assistant` row, one
 `tool_use` row per proposed tool call, and a `thinking` row with
@@ -83,6 +112,21 @@ row's text names `source=<trajectory source>` (the number when it is not in
 `TRAJECTORY_SOURCES`) and `data_dir=<the .gemini subdirectory>`, so a CLI
 conversation and a desktop-app one can be told apart. Step timestamps come
 from the step metadata; tool results use `completed_at`.
+
+Permission rows (issue 92), all `system`: after a step's own rows, one
+`permission grant: action=<action> target=<target> allow=<true|false>
+scope=<scope>` row per `permission_grants[]` entry (` deny_instruction=<text>`
+appended when the user gave one) and one `permission grant: path=<path>
+is_directory=<true|false> allow=<true|false> scope=<scope>` row per
+`file_access_permissions[]` entry (` from_current_step=true` appended when
+set), with the step's `tool_name` and `tool_use_id`, the step's index as
+`source_line` and the step's tool-result time. From each standing file, one
+`permission setting: <key>=<value> (from <path relative to the home>, file
+mtime)` row per list entry and per flag, `<key>` the JSON path in the file
+(`trustedWorkspace` for a `trustedWorkspaces[]` entry), timestamped by the
+file's modification time (the manifest's `mtime`, or the file's own when
+there is no manifest), `session_id` empty, `source_line` the entry's
+1-based position among the file's rows.
 """
 
 from __future__ import annotations
@@ -107,6 +151,22 @@ DATA_DIR = r"^\.gemini/(antigravity(?:-cli|-ide|-backup)?)/"
 CONV_RX = re.compile(DATA_DIR + r"conversations/[^/]+\.db$")
 SUMMARIES_RX = re.compile(DATA_DIR + r"conversation_summaries\.db$")
 HISTORY_REL = BASE + "history.jsonl"
+# Standing permission files (issue 92).
+CONFIG_REL = ".gemini/config/config.json"
+PROJECT_RX = re.compile(r"^\.gemini/config/projects/[^/]+\.json$")
+SIDECAR_RX = re.compile(r"^\.gemini/config/sidecars/[^/]+/sidecar\.json$")
+CLI_SETTINGS_REL = BASE + "settings.json"
+
+# exa.cortex_pb.PermissionScope, lower-cased without the PERMISSION_SCOPE_
+# prefix: how long a permission grant holds.
+PERMISSION_SCOPES = {
+    0: "unspecified",
+    1: "once",
+    2: "conversation",
+    3: "workspace",
+    4: "global",
+    5: "project",
+}
 
 # exa.cortex_pb.CortexTrajectorySource, lower-cased without the prefix: the
 # surface that started the conversation (trajectory_meta.source).
@@ -308,6 +368,7 @@ SCHEMA: Schema = {
         114: ("system_message", "CortexStepSystemMessage"),
         116: ("agency_tool_call", "CortexStepAgencyToolCall"),
         127: ("shell_exec", "CortexStepShellExec"),
+        133: ("permissions", "TrajectoryPermissions"),
         140: ("generic", "CortexStepGeneric"),
         143: ("invoke_subagent", "CortexStepInvokeSubagent"),
         154: ("ask_question", "CortexStepAskQuestion"),
@@ -462,6 +523,26 @@ SCHEMA: Schema = {
     "CortexStepNotifyUser": {2: ("notification_content", "str")},
     "CortexStepDirectoryRules": {2: ("+rule_file_uris", "str")},
     "CortexStepConversationHistory": {1: ("content", "str")},
+    "TrajectoryPermissions": {
+        1: ("+file_access_permissions", "FileAccessPermission"),
+        2: ("+permission_grants", "PermissionGrant"),
+    },
+    "PermissionGrant": {
+        1: ("resource", "PermissionResource"),
+        2: ("allow", "bool"),
+        3: ("scope", "int"),
+        4: ("user_deny_instruction", "str"),
+        5: ("action", "str"),
+        6: ("target", "str"),
+    },
+    "PermissionResource": {1: ("action", "str"), 2: ("target", "str")},
+    "FileAccessPermission": {
+        1: ("path", "str"),
+        2: ("is_directory", "bool"),
+        3: ("allow", "bool"),
+        4: ("scope", "int"),
+        5: ("from_current_step", "bool"),
+    },
     "CortexTrajectoryMetadata": {
         1: ("+workspaces", "CortexWorkspaceMetadata"),
         2: ("created_at", "ts"),
@@ -487,10 +568,12 @@ SCHEMA: Schema = {
     },
 }
 
+# The oneof step kinds: every Step field but the scalars, the metadata and
+# the permissions that sit beside the step kind.
 PAYLOAD_KINDS = [
     name
     for num, (name, kind) in SCHEMA["Step"].items()
-    if kind not in ("int", "CortexStepMetadata")
+    if kind not in ("int", "CortexStepMetadata", "TrajectoryPermissions")
 ]
 
 # Which JSON argument best identifies a proposed tool call, tried in order.
@@ -560,6 +643,122 @@ def _output(p: dict) -> str:
 
 def _join(*parts: str) -> str:
     return " | ".join(x for x in parts if x)
+
+
+def _bool(v: object) -> str:
+    return "true" if v else "false"
+
+
+def _setting_value(v: object) -> str:
+    if isinstance(v, bool):
+        return _bool(v)
+    if isinstance(v, str):
+        return v
+    return compact_json(v)
+
+
+def _list(v: object) -> list:
+    return v if isinstance(v, list) else []
+
+
+def _dict(v: object) -> dict:
+    return v if isinstance(v, dict) else {}
+
+
+def _read_json(artifact: Artifact) -> object:
+    """The parsed file, or None when it cannot be read or parsed."""
+    try:
+        return json.loads(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return None
+
+
+def file_mtime(artifact: Artifact) -> str:
+    """The file's modification time: the manifest's pre-copy `mtime` when
+    there is a manifest, else the file's own."""
+    t = (artifact.manifest or {}).get("mtime")
+    if isinstance(t, (int, float)) and not isinstance(t, bool) and t > 0:
+        return to_utc(t)
+    try:
+        return to_utc(artifact.disk_path.lstat().st_mtime)
+    except OSError:
+        return ""
+
+
+def permission_texts(perms: dict) -> list[str]:
+    """One `permission grant:` text per entry of a TrajectoryPermissions."""
+    out = []
+    for g in perms.get("permission_grants", []):
+        res = g.get("resource") or {}
+        scope = g.get("scope", 0)
+        text = "permission grant: action=%s target=%s allow=%s scope=%s" % (
+            g.get("action") or res.get("action", ""),
+            g.get("target") or res.get("target", ""),
+            _bool(g.get("allow")),
+            PERMISSION_SCOPES.get(scope, str(scope)),
+        )
+        if g.get("user_deny_instruction"):
+            text += " deny_instruction=" + g["user_deny_instruction"]
+        out.append(text)
+    for f in perms.get("file_access_permissions", []):
+        scope = f.get("scope", 0)
+        text = "permission grant: path=%s is_directory=%s allow=%s scope=%s" % (
+            uri_to_path(f.get("path", "")),
+            _bool(f.get("is_directory")),
+            _bool(f.get("allow")),
+            PERMISSION_SCOPES.get(scope, str(scope)),
+        )
+        if f.get("from_current_step"):
+            text += " from_current_step=true"
+        out.append(text)
+    return out
+
+
+def standing_entries(rel: str, doc: dict) -> list[tuple[str, object, str]]:
+    """(key, value, project_path) for each permission entry of a standing
+    file, reading only the keys the module docstring names."""
+    out: list[tuple[str, object, str]] = []
+    if rel == CONFIG_REL:
+        us = _dict(doc.get("userSettings"))
+        grants = _dict(us.get("globalPermissionGrants"))
+        for lst in ("allow", "deny"):
+            for v in _list(grants.get(lst)):
+                out.append(("userSettings.globalPermissionGrants." + lst, v, ""))
+        for k in ("permissionGrantsV2Migrated", "sandboxEnabledAtV2Migration"):
+            if k in us:
+                out.append(("userSettings." + k, us[k], ""))
+        for name, sc in _dict(doc.get("sidecars")).items():
+            sc = _dict(sc)
+            if "enabled" in sc:
+                out.append(("sidecars.%s.enabled" % name, sc["enabled"], ""))
+            for v in _list(_dict(sc.get("resolvedPermissions")).get("accessGrants")):
+                out.append(("sidecars.%s.resolvedPermissions.accessGrants" % name, v, ""))
+    elif PROJECT_RX.match(rel):
+        folder = ""
+        for r in _list(_dict(doc.get("projectResources")).get("resources")):
+            uri = _dict(r).get("folderUri")
+            if isinstance(uri, str) and uri:
+                folder = uri_to_path(uri)
+                break
+        pg = _dict(doc.get("permissionGrants"))
+        inner = _dict(pg.get("permissionGrants"))
+        for lst in ("allow", "deny"):
+            for v in _list(inner.get(lst)):
+                out.append(("permissionGrants.permissionGrants." + lst, v, folder))
+        if "v2Migrated" in pg:
+            out.append(("permissionGrants.v2Migrated", pg["v2Migrated"], folder))
+    elif SIDECAR_RX.match(rel):
+        for v in _list(_dict(doc.get("agent_permissions")).get("access_grants")):
+            out.append(("agent_permissions.access_grants", v, ""))
+    elif rel == CLI_SETTINGS_REL:
+        perms = _dict(doc.get("permissions"))
+        for lst in ("allow", "deny"):
+            for v in _list(perms.get(lst)):
+                out.append(("permissions." + lst, v, ""))
+        for v in _list(doc.get("trustedWorkspaces")):
+            path = uri_to_path(v) if isinstance(v, str) else ""
+            out.append(("trustedWorkspace", path or v, path))
+    return out
 
 
 def describe_payload(kind: str, p: dict) -> str:
@@ -687,11 +886,22 @@ class AntigravityParser(Parser):
             artifact.rel == HISTORY_REL
             or bool(SUMMARIES_RX.match(artifact.rel))
             or bool(CONV_RX.match(artifact.rel))
+            or self._standing(artifact.rel)
+        )
+
+    @staticmethod
+    def _standing(rel: str) -> bool:
+        return (
+            rel in (CONFIG_REL, CLI_SETTINGS_REL)
+            or bool(PROJECT_RX.match(rel))
+            or bool(SIDECAR_RX.match(rel))
         )
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if artifact.rel == HISTORY_REL:
             yield from self._parse_history(artifact, opts)
+        elif self._standing(artifact.rel):
+            yield from self._parse_standing(artifact)
         elif SUMMARIES_RX.match(artifact.rel):
             yield from self._parse_summaries(artifact, opts)
         else:
@@ -708,6 +918,30 @@ class AntigravityParser(Parser):
             row.session_id = str(rec.get("conversationId") or "")
             row.turn_type = "user"
             row.text = compact(rec.get("display"))
+            yield row
+
+    # -- standing permission files ----------------------------------------------
+    def _parse_standing(self, artifact: Artifact) -> Iterator[Row]:
+        doc = _read_json(artifact)
+        mtime = file_mtime(artifact)
+        if not isinstance(doc, dict):
+            row = self.base_row(artifact)
+            row.source_line = 1
+            row.timestamp_utc = mtime
+            row.turn_type = "system"
+            row.text = "parser: unreadable %s" % artifact.rel
+            yield row
+            return
+        for n, (key, value, project) in enumerate(standing_entries(artifact.rel, doc), 1):
+            row = self.base_row(artifact)
+            row.source_line = n
+            row.timestamp_utc = mtime
+            row.project_path = project
+            row.turn_type = "system"
+            row.text = compact(
+                "permission setting: %s=%s (from %s, file mtime)"
+                % (key, _setting_value(value), artifact.rel)
+            )
             yield row
 
     # -- conversation_summaries.db ----------------------------------------------
@@ -806,8 +1040,11 @@ class AntigravityParser(Parser):
                     for idx in gm.get("step_indices", []):
                         models[idx] = model
             bad = 0
+            cols = {r[1] for r in con.execute("pragma table_info(steps)")}
+            perm_col = "permissions" if "permissions" in cols else "NULL AS permissions"
             for srow in con.execute(
-                "select idx, step_type, status, metadata, step_payload from steps order by idx"
+                "select idx, step_type, status, metadata, step_payload, %s from steps order by idx"
+                % perm_col
             ):
                 idx = srow["idx"]
                 try:
@@ -831,6 +1068,9 @@ class AntigravityParser(Parser):
                     models.get(idx, ""),
                     opts,
                 )
+                yield from self._permission_rows(
+                    artifact, idx, step, srow["permissions"], session_id, project_path, branch
+                )
             if bad:
                 row = self._row(artifact, 0, session_id, project_path, branch)
                 row.turn_type = "system"
@@ -846,6 +1086,43 @@ class AntigravityParser(Parser):
         row.project_path = project_path
         row.git_branch = branch
         return row
+
+    def _permission_rows(
+        self,
+        artifact: Artifact,
+        idx: int,
+        step: dict,
+        column: bytes | None,
+        session_id: str,
+        project_path: str,
+        branch: str,
+    ) -> Iterator[Row]:
+        """One `system` row per grant in the step's permissions: the
+        `steps.permissions` column, else Step field 133 of the payload."""
+        perms = step.get("permissions") or {}
+        if column:
+            try:
+                perms = decode(column, "TrajectoryPermissions", SCHEMA)
+            except ValueError:
+                row = self._row(artifact, idx, session_id, project_path, branch)
+                row.turn_type = "system"
+                row.text = "parser: the permissions of step %d could not be decoded" % idx
+                yield row
+                return
+        texts = permission_texts(perms)
+        if not texts:
+            return
+        md = step.get("metadata") or {}
+        tc = md.get("tool_call") or {}
+        ts = md.get("completed_at") or md.get("finished_generating_at") or md.get("created_at", "")
+        for text in texts:
+            row = self._row(artifact, idx, session_id, project_path, branch)
+            row.timestamp_utc = ts
+            row.turn_type = "system"
+            row.tool_name = tc.get("name") or tc.get("original_name", "")
+            row.tool_use_id = tc.get("id", "")
+            row.text = compact(text)
+            yield row
 
     def _step_rows(
         self,

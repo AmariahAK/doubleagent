@@ -125,6 +125,20 @@ full text. A line a parser cannot decode, such as a
 transcript's last line cut off mid-write, is reported as a `system` row,
 and the rest of the file is still read.
 
+Antigravity's permission state is also typed `system`. A grant recorded on
+a step is `permission grant: action=<action> target=<target>
+allow=<true|false> scope=<scope>`, or for a file access entry
+`permission grant: path=<path> is_directory=<true|false>
+allow=<true|false> scope=<scope>`; it follows the step's own rows and
+carries the step's `tool_name` and `tool_use_id`, so it joins to the call
+it governed. A standing grant from a settings file is
+`permission setting: <key>=<value> (from <file>, file mtime)`: its
+`timestamp_utc` is the file's modification time, not the time of the
+grant, which no file records, and its `session_id` is empty, so it
+appears in `timeline.jsonl` but in no `sessions.jsonl` record. The
+[`antigravity` row of the parser table](parsers.md#parser-table) lists the
+files.
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and

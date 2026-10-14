@@ -38,6 +38,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   which CLI 1.3.x writes; older lines have none and keep `session_id`
   empty. A prompt in the history can now be joined to its conversation
   database ([#89]).
+- The `antigravity` parser turns Antigravity's permission state into
+  `system` rows. Each grant in a step's `steps.permissions` blob is a
+  `permission grant: action=<action> target=<target> allow=<true|false>
+  scope=<scope>` row, and each file access entry a `permission grant:
+  path=<path> is_directory=<true|false> allow=<true|false> scope=<scope>`
+  row, after the step's rows and with its `tool_name` and `tool_use_id`.
+  The standing grants in `.gemini/config/config.json`,
+  `.gemini/config/projects/*.json`, `.gemini/config/sidecars/*/sidecar.json`
+  and the CLI's `.gemini/antigravity-cli/settings.json` (allow lists,
+  sidecar access grants, the migration and sandbox flags, trusted
+  workspaces) are one `permission setting: <key>=<value> (from <file>,
+  file mtime)` row per entry, timestamped by the file's modification time
+  ([#92]).
 
 ### Changed
 
@@ -486,6 +499,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#92]: https://github.com/seanthegeek/doubleagent/issues/92
 [#90]: https://github.com/seanthegeek/doubleagent/issues/90
 [#89]: https://github.com/seanthegeek/doubleagent/issues/89
 [#88]: https://github.com/seanthegeek/doubleagent/issues/88

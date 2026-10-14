@@ -1267,6 +1267,7 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     # extension inside VS Code's globalStorage. The nested agent must win.
     build_antigravity(home / ".gemini/antigravity-cli")
     build_antigravity_app(home / ".gemini/antigravity")
+    build_antigravity_config(home / ".gemini")
     build_gemini_cli(home / ".gemini")
     build_zed(home)
     build_vscode(home)
@@ -1335,6 +1336,8 @@ AGY_T0 = 1790848800  # 2026-10-01T10:00:00Z
 AGY_APP_CONVERSATION = "a1b2c3d4-0000-4000-8000-0000000000a2"
 AGY_APP_PROJECT = "5e1d7c2a-0000-4000-8000-0000000000a1"
 AGY_APP_T0 = AGY_T0 + 3600  # 2026-10-01T11:00:00Z
+AGY_CONFIG_MTIME = AGY_T0 + 7200  # 2026-10-01T12:00:00Z, the standing files' mtime
+AGY_SIDECAR = "weekly-check"
 
 
 def _step(
@@ -1540,6 +1543,21 @@ def antigravity_app_steps() -> list[tuple[int, int, dict]]:
                     tool_call=tc,
                 ),
                 type=132,
+                # steps.permissions (#92): one grant and one file access entry.
+                permissions={
+                    "permission_grants": [
+                        {
+                            "resource": {"action": "run_command", "target": "brew outdated"},
+                            "allow": True,
+                            "scope": 2,
+                            "action": "run_command",
+                            "target": "brew outdated",
+                        }
+                    ],
+                    "file_access_permissions": [
+                        {"path": "/home/u/proj", "is_directory": True, "allow": True, "scope": 3}
+                    ],
+                },
             ),
         ),
         (
@@ -1686,11 +1704,16 @@ def build_antigravity(
     )
     con.execute("INSERT INTO trajectory_metadata_blob VALUES ('main', ?)", (meta,))
     for idx, (step_type, status, step) in enumerate(steps):
-        payload = encode(step, "Step", AGY)
+        # A step's `permissions` go in the steps.permissions column, as on
+        # the real installs; the payload is encoded without them.
+        perms = step.get("permissions")
+        payload = encode({k: v for k, v in step.items() if k != "permissions"}, "Step", AGY)
         md = encode(step["metadata"], "CortexStepMetadata", AGY)
+        col = encode(perms, "TrajectoryPermissions", AGY) if perms else None
         con.execute(
-            "INSERT INTO steps (idx, step_type, status, metadata, step_payload) VALUES (?,?,?,?,?)",
-            (idx, step_type, status, md, payload),
+            "INSERT INTO steps (idx, step_type, status, metadata, step_payload, permissions)"
+            " VALUES (?,?,?,?,?,?)",
+            (idx, step_type, status, md, payload, col),
         )
     for n, (model, indices) in enumerate(models.items()):
         gen = encode(
@@ -1745,6 +1768,71 @@ def build_antigravity(
         ],
     )
     (base / "antigravity-oauth-token").write_text("secret", encoding="utf-8")
+
+
+def build_antigravity_config(gemini: Path) -> None:
+    """The standing permission files Antigravity keeps (#92), in the key
+    shapes of the macOS and Ubuntu real installs: `.gemini/config/config.json`,
+    a project file, a sidecar, the CLI's `settings.json`; plus files the
+    parser must not want (`mcp_config.json`, a plugin manifest). Every file's
+    mtime is AGY_CONFIG_MTIME."""
+    files = {
+        "config/config.json": {
+            "plugins": {
+                "gdocs": {
+                    "installedFrom": {"id": "gdocs", "marketplace": "official", "version": "0.0.6"}
+                }
+            },
+            "userSettings": {
+                "globalPermissionGrants": {"allow": ["run_command(brew outdated)"]},
+                "permissionGrantsV2Migrated": True,
+                "remoteControlHostname": "do-not-print-host",
+                "sandboxEnabledAtV2Migration": False,
+            },
+            "sidecars": {
+                AGY_SIDECAR: {
+                    "enabled": True,
+                    "resolvedPermissions": {"accessGrants": ["run_command(brew outdated)"]},
+                }
+            },
+        },
+        "config/projects/%s.json" % AGY_APP_PROJECT: {
+            "id": AGY_APP_PROJECT,
+            "isWorkspaceOnly": False,
+            "name": "do-not-print-project",
+            "permissionGrants": {
+                "permissionGrants": {"allow": ["write_to_file(/home/u/proj/notes.md)"]},
+                "v2Migrated": True,
+            },
+            "projectResources": {"resources": [{"folderUri": "file:///home/u/proj"}]},
+            "settings": {},
+        },
+        "config/projects/default-cli-project.json": {
+            "id": "default-cli-project",
+            "name": "Default",
+            "projectResources": {},
+        },
+        "config/sidecars/%s/sidecar.json" % AGY_SIDECAR: {
+            "builtin": "schedule",
+            "display_name": "Weekly check",
+            "description": "check for outdated packages",
+            "args": ["--schedule", "0 9 * * 1", "--prompt", "do-not-print-prompt"],
+            "restart_policy": "always",
+            "agent_permissions": {"access_grants": ["run_command(brew outdated)"]},
+        },
+        "config/plugins/gdocs/plugin.json": {"name": "gdocs", "version": "0.0.6"},
+        "antigravity-cli/settings.json": {
+            "permissions": {"allow": ["run_command(git status)"]},
+            "trustedWorkspaces": ["/home/u/proj"],
+        },
+    }
+    for rel, doc in files.items():
+        f = gemini / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps(doc), encoding="utf-8")
+    (gemini / "config/mcp_config.json").write_text("", encoding="utf-8")
+    for rel in [*files, "config/mcp_config.json"]:
+        os.utime(gemini / rel, (AGY_CONFIG_MTIME, AGY_CONFIG_MTIME))
 
 
 def _utc_text(epoch: int) -> str:

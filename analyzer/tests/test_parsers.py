@@ -10,7 +10,13 @@ from doubleagent import catalog, cli, protobuf, sqlite_util
 from doubleagent.inputs import Artifact, open_input
 from doubleagent.model import compact, summarise
 from doubleagent.parsers import Options, by_agent
-from doubleagent.parsers.antigravity import AntigravityParser, tool_args_summary, uri_to_path
+from doubleagent.parsers.antigravity import (
+    AntigravityParser,
+    file_mtime,
+    permission_texts,
+    tool_args_summary,
+    uri_to_path,
+)
 from doubleagent.parsers.claude_code import ClaudeCodeParser, tool_summary
 from doubleagent.parsers.codex import CodexParser
 from doubleagent.parsers.crush import CrushParser, project_of
@@ -1080,6 +1086,8 @@ class AntigravityAppTests(ParserBase):
                 "tool_result",
                 "system",
                 "system",
+                "system",
+                "system",
                 "assistant",
                 "tool_use",
                 "tool_result",
@@ -1091,7 +1099,7 @@ class AntigravityAppTests(ParserBase):
                 ("antigravity", AGY_APP_CONVERSATION, "/home/u/proj"),
             )
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        start, user, asst, use, res, sysmsg, err, final, del_use, del_res = rows
+        start, user, asst, use, res, _grant, _files, sysmsg, err, final, del_use, del_res = rows
         self.assertEqual(
             start.text,
             "session start | source=cascade_client | data_dir=antigravity"
@@ -1125,7 +1133,101 @@ class AntigravityAppTests(ParserBase):
             (del_res.tool_name, del_res.tool_use_id, del_res.text),
             ("delete_file", "call_8", "delete_file | /home/u/proj/old.log | remove the stale log"),
         )
-        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 1, 2, 2, 2, 3, 4, 5, 6, 7])
+
+    def test_permission_grant_rows(self):
+        # steps.permissions on the run_command step (#92): one row per
+        # permission_grants entry and per file_access_permissions entry,
+        # after the step's tool_result, keyed to its call.
+        rows = self.rows_for(AntigravityParser(), self.REL)
+        res, grant, files = rows[4:7]
+        self.assertEqual(res.turn_type, "tool_result")
+        for r in (grant, files):
+            self.assertEqual(
+                (r.turn_type, r.tool_name, r.tool_use_id, r.timestamp_utc, r.source_line),
+                ("system", "run_command", "call_7", res.timestamp_utc, 2),
+            )
+        self.assertEqual(
+            grant.text,
+            "permission grant: action=run_command target=brew outdated allow=true"
+            " scope=conversation",
+        )
+        self.assertEqual(
+            files.text,
+            "permission grant: path=/home/u/proj is_directory=true allow=true scope=workspace",
+        )
+
+    def test_permissions_from_payload_when_column_empty(self):
+        # Step field 133 is read when the steps.permissions column is empty.
+        import sqlite3
+
+        step = {
+            "metadata": {
+                "created_at": 1790860000,
+                "completed_at": 1790860001,
+                "tool_call": {"id": "call_9", "name": "run_command"},
+            },
+            "run_command": {"command_line": "ls"},
+            "permissions": {
+                "permission_grants": [
+                    {
+                        "resource": {"action": "run_command", "target": "ls"},
+                        "user_deny_instruction": "not in my home",
+                    }
+                ]
+            },
+        }
+        con = sqlite3.connect(str(self.home / self.REL))
+        con.execute(
+            "INSERT INTO steps (idx, step_type, status, step_payload) VALUES (50, 21, 3, ?)",
+            (protobuf.encode(step, "Step", AGY),),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(AntigravityParser(), self.REL)
+        self.assertEqual(
+            [(r.turn_type, r.tool_use_id) for r in rows[-2:]],
+            [("tool_result", "call_9"), ("system", "call_9")],
+        )
+        self.assertEqual(
+            rows[-1].text,
+            "permission grant: action=run_command target=ls allow=false scope=unspecified"
+            " deny_instruction=not in my home",
+        )
+        self.assertEqual(rows[-1].timestamp_utc, "2026-10-01T13:06:41.000Z")
+
+    def test_bad_permissions_blob_is_reported(self):
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.REL))
+        con.execute("UPDATE steps SET permissions = ? WHERE idx = 2", (b"\x12\x05ab",))
+        con.commit()
+        con.close()
+        rows = self.rows_for(AntigravityParser(), self.REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows if r.text.startswith("parser:")],
+            [("system", "parser: the permissions of step 2 could not be decoded")],
+        )
+        self.assertNotIn("permission grant", " ".join(r.text for r in rows))
+
+    def test_permission_texts(self):
+        self.assertEqual(
+            permission_texts(
+                {
+                    "permission_grants": [
+                        {"allow": True, "scope": 9, "action": "a", "target": "t"}
+                    ],
+                    "file_access_permissions": [
+                        {"path": "file:///home/u/x", "scope": 1, "from_current_step": True}
+                    ],
+                }
+            ),
+            [
+                "permission grant: action=a target=t allow=true scope=9",
+                "permission grant: path=/home/u/x is_directory=false allow=false scope=once"
+                " from_current_step=true",
+            ],
+        )
 
     def test_delete_file_path_is_field_1(self):
         # The fixture is encoded with the parser's own SCHEMA, so check the
@@ -1171,7 +1273,8 @@ class AntigravityAppTests(ParserBase):
             ".gemini/antigravity/history.jsonl",  # the app writes none; CLI only
             ".gemini/antigravity-other/conversations/x.db",
             ".gemini/antigravity/conversations/x.db-wal",
-            ".gemini/config/projects/default-cli-project.json",
+            # The CLI's settings only; the app's directory has none (#92).
+            ".gemini/antigravity/settings.json",
         ):
             self.assertFalse(p.wants(art(rel)), rel)
 
@@ -1197,12 +1300,131 @@ class AntigravityAppTests(ParserBase):
         con.commit()
         con.close()
         rows = self.rows_for(AntigravityParser(), self.REL)
-        self.assertEqual(len(rows), 11)
-        self.assertEqual(rows[7].text, "One package is outdated: node.")
+        self.assertEqual(len(rows), 13)
+        self.assertEqual(rows[9].text, "One package is outdated: node.")
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].text),
             ("system", "parser: 1 step(s) could not be decoded"),
         )
+
+
+from fixtures import AGY_CONFIG_MTIME, AGY_SIDECAR
+
+
+class AntigravityPermissionSettingsTests(ParserBase):
+    """Standing permission files under ~/.gemini (#92)."""
+
+    MTIME = "2026-10-01T12:00:00.000Z"  # AGY_CONFIG_MTIME
+    CONFIG = ".gemini/config/config.json"
+    PROJECT = ".gemini/config/projects/%s.json" % AGY_APP_PROJECT
+    SIDECAR = ".gemini/config/sidecars/%s/sidecar.json" % AGY_SIDECAR
+    CLI = ".gemini/antigravity-cli/settings.json"
+
+    def check_common(self, rows, rel):
+        for r in rows:
+            self.assertEqual(
+                (r.agent, r.turn_type, r.session_id, r.timestamp_utc),
+                ("antigravity", "system", "", self.MTIME),
+            )
+            self.assertTrue(r.text.startswith("permission setting: "), r.text)
+            self.assertTrue(r.text.endswith("(from %s, file mtime)" % rel), r.text)
+        self.assertEqual([r.source_line for r in rows], list(range(1, len(rows) + 1)))
+
+    def texts(self, rows):
+        return [r.text.split(" (from ")[0] for r in rows]
+
+    def test_mtime_constant(self):
+        self.assertEqual(to_utc(AGY_CONFIG_MTIME), self.MTIME)
+
+    def test_config_json(self):
+        rows = self.rows_for(AntigravityParser(), self.CONFIG)
+        self.check_common(rows, self.CONFIG)
+        self.assertEqual(
+            self.texts(rows),
+            [
+                "permission setting: userSettings.globalPermissionGrants.allow="
+                "run_command(brew outdated)",
+                "permission setting: userSettings.permissionGrantsV2Migrated=true",
+                "permission setting: userSettings.sandboxEnabledAtV2Migration=false",
+                "permission setting: sidecars.%s.enabled=true" % AGY_SIDECAR,
+                "permission setting: sidecars.%s.resolvedPermissions.accessGrants="
+                "run_command(brew outdated)" % AGY_SIDECAR,
+            ],
+        )
+        self.assertEqual({r.project_path for r in rows}, {""})
+        joined = " ".join(r.text for r in rows)
+        self.assertNotIn("do-not-print", joined)
+        self.assertNotIn("gdocs", joined)
+
+    def test_project_file(self):
+        rows = self.rows_for(AntigravityParser(), self.PROJECT)
+        self.check_common(rows, self.PROJECT)
+        self.assertEqual(
+            self.texts(rows),
+            [
+                "permission setting: permissionGrants.permissionGrants.allow="
+                "write_to_file(/home/u/proj/notes.md)",
+                "permission setting: permissionGrants.v2Migrated=true",
+            ],
+        )
+        self.assertEqual({r.project_path for r in rows}, {"/home/u/proj"})
+        self.assertNotIn("do-not-print", " ".join(r.text for r in rows))
+        # The CLI's default project file has no grants and yields nothing.
+        self.assertEqual(
+            self.rows_for(AntigravityParser(), ".gemini/config/projects/default-cli-project.json"),
+            [],
+        )
+
+    def test_sidecar_json(self):
+        rows = self.rows_for(AntigravityParser(), self.SIDECAR)
+        self.check_common(rows, self.SIDECAR)
+        self.assertEqual(
+            self.texts(rows),
+            ["permission setting: agent_permissions.access_grants=run_command(brew outdated)"],
+        )
+        self.assertNotIn("do-not-print", rows[0].text)
+
+    def test_cli_settings(self):
+        rows = self.rows_for(AntigravityParser(), self.CLI)
+        self.check_common(rows, self.CLI)
+        self.assertEqual(
+            self.texts(rows),
+            [
+                "permission setting: permissions.allow=run_command(git status)",
+                "permission setting: trustedWorkspace=/home/u/proj",
+            ],
+        )
+        self.assertEqual([r.project_path for r in rows], ["", "/home/u/proj"])
+
+    def test_manifest_mtime_preferred(self):
+        art = next(a for a in self.col.artifacts if a.rel == self.CLI)
+        art.manifest = {"mtime": AGY_CONFIG_MTIME + 60}
+        self.assertEqual(file_mtime(art), "2026-10-01T12:01:00.000Z")
+        art.manifest = {"mtime": 0}
+        self.assertEqual(file_mtime(art), self.MTIME)
+
+    def test_unreadable_file_is_reported(self):
+        (self.home / self.SIDECAR).write_text('{"agent_permissions": {"acc', encoding="utf-8")
+        rows = self.rows_for(AntigravityParser(), self.SIDECAR)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("system", "parser: unreadable %s" % self.SIDECAR)],
+        )
+
+    def test_other_config_files_not_wanted(self):
+        p = AntigravityParser()
+        rels = {a.rel: a for a in self.col.artifacts}
+        for rel in (self.CONFIG, self.PROJECT, self.SIDECAR, self.CLI):
+            self.assertEqual(rels[rel].agent, "antigravity", rel)
+            self.assertTrue(p.wants(rels[rel]), rel)
+        for rel in (
+            ".gemini/config/mcp_config.json",
+            ".gemini/config/plugins/gdocs/plugin.json",
+            ".gemini/antigravity/plugin_data/gdocs/token.json",
+            ".gemini/antigravity-cli/antigravity-oauth-token",
+        ):
+            self.assertEqual(rels[rel].agent, "antigravity", rel)
+            self.assertFalse(p.wants(rels[rel]), rel)
 
 
 from doubleagent.parsers.qwen_code import QwenCodeParser, args_summary

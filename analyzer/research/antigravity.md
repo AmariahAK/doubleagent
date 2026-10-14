@@ -230,6 +230,36 @@ So a scheduled automation's own output lands under
 `sidecar_data/<name>/logs/`. The schedule is a cron expression with a time
 zone prefix (`CRON_TZ=`). The parser does not read the log.
 
+**Permission configuration.** Besides the per-step grants in the
+conversation databases ([section 3](#3-conversation-database)), Antigravity
+keeps standing permission state in four JSON files, which together are its
+permission configuration. A grant entry is a tool-call pattern: a tool name
+followed by its argument in parentheses. The keys, with what was seen on the
+2026-10-13 real installs (macOS: CLI 1.2.16 and app 2.23.0; Ubuntu: CLI
+1.3.4 and app 2.23.1; key names and counts only, **observed** unless marked):
+
+| File | Keys |
+| --- | --- |
+| `.gemini/config/config.json` (shared by the CLI and the app) | `userSettings.globalPermissionGrants.allow[]` (3 entries on macOS, 11 on Ubuntu), `userSettings.permissionGrantsV2Migrated` (bool), `userSettings.sandboxEnabledAtV2Migration` (bool); per automation (sidecar) `sidecars.<name>.enabled` and `sidecars.<name>.resolvedPermissions.accessGrants[]` (not in the macOS file) |
+| `.gemini/config/projects/<uuid>.json` | `permissionGrants.permissionGrants.allow[]` (seen on one Ubuntu project file), `permissionGrants.v2Migrated`; the project folder is `projectResources.resources[].folderUri` |
+| `.gemini/config/sidecars/<name>/sidecar.json` | `agent_permissions.access_grants[]` (2 entries on macOS) |
+| `.gemini/antigravity-cli/settings.json` | `permissions.allow[]` (CLI 1.3.x) and `trustedWorkspaces[]` (the folders the user trusted; a JSON tag in the binary, see [`collectors/research/antigravity.md`](../../collectors/research/antigravity.md)) |
+
+The `antigravity` parser reads these keys and nothing else in the files
+(not `plugins`, `remoteControlHostname`, a project's `name` or a sidecar's
+`args`), and never wants `mcp_config.json`, which can embed MCP credentials,
+or a plugin's `token.json`. Each list entry and each flag becomes one
+`system` row, `permission setting: <key>=<value> (from <path relative to
+the home>, file mtime)`, where `<key>` is the JSON path in the file and a
+`trustedWorkspaces[]` entry is `trustedWorkspace=<path>`. The rows are
+timestamped by the file's modification time (the manifest's `mtime`, or
+the file's own without a manifest), since none of the entries records when
+it was granted; their `session_id` is empty, and the project file's rows and
+each trusted workspace's row carry the folder as `project_path`. A `deny[]`
+list beside each `allow[]` is read the same way; none was seen, so it is
+fixture only. Whether `trustedWorkspaces[]` holds plain paths or `file://`
+URIs was not observed; the parser accepts both (issue 92).
+
 ## 3. Conversation database
 
 ```sql
@@ -297,8 +327,54 @@ app's four conversations (125 steps): 14 steps (2 `user_input`, 7
 steps (1, 15, 13; `permissions` on 4) and 38 steps (1, 19, 18;
 `permissions` on 9). The CLI's one conversation: 26 steps (2, 13, 11),
 `permissions` on 9. In all five, `gen_metadata` had one row per planner
-step (7, 21, 15, 19 and 13). The parser reads neither `permissions` nor
+step (7, 21, 15, 19 and 13). The parser reads `permissions` (below) and not
 `task_details`.
+
+`steps.permissions` holds an `exa.cortex_pb.TrajectoryPermissions`, the
+same message as `gemini_coder.Step` field 133, recording what the user
+allowed or denied for that step's tool call. Its fields, from the
+descriptors (`third_party/jetski/cortex_pb/cortex.proto`, identical in
+`agy` 1.2.16 and `language_server` 2.23.0, macOS arm64):
+
+| Message | Field | Name | Type |
+| --- | --- | --- | --- |
+| `TrajectoryPermissions` | 1 | `file_access_permissions[]` | `FileAccessPermission` |
+| `TrajectoryPermissions` | 2 | `permission_grants[]` | `PermissionGrant` |
+| `PermissionGrant` | 1 | `resource` | `PermissionResource` (1 `action`, 2 `target`, both string) |
+| `PermissionGrant` | 2 | `allow` | bool |
+| `PermissionGrant` | 3 | `scope` | `PermissionScope` |
+| `PermissionGrant` | 4 | `user_deny_instruction` | string |
+| `PermissionGrant` | 5 | `action` | string |
+| `PermissionGrant` | 6 | `target` | string |
+| `FileAccessPermission` | 1 | `path` | string |
+| `FileAccessPermission` | 2 | `is_directory` | bool |
+| `FileAccessPermission` | 3 | `allow` | bool |
+| `FileAccessPermission` | 4 | `scope` | `PermissionScope` |
+| `FileAccessPermission` | 5 | `from_current_step` | bool |
+
+`exa.cortex_pb.PermissionScope`, how long a grant holds (each name prefixed
+`PERMISSION_SCOPE_`): 0 `UNSPECIFIED`, 1 `ONCE`, 2 `CONVERSATION`, 3
+`WORKSPACE`, 4 `GLOBAL`, 5 `PROJECT`. Protobuf 3 does not write a false
+bool or a zero enum, so a grant with no `allow` is a denial and one with
+no `scope` is `UNSPECIFIED`. The column was set on 10 tool steps of the
+macOS app's conversations (52 to 1,174 B) and on 28 Ubuntu steps (0, 6, 4
+and 9 in the app's four conversations, 9 in the CLI's one; **observed**);
+which scope values and which `action` strings occur was not read.
+
+The parser decodes the column, or Step field 133 of the payload when the
+column is empty, and yields after the step's own rows one `system` row per
+`permission_grants[]` entry, `permission grant: action=<action>
+target=<target> allow=<true|false> scope=<scope>` (`action` and `target`
+from fields 5 and 6, else from `resource`; with `deny_instruction=<text>`
+appended when `user_deny_instruction` is set), and one per
+`file_access_permissions[]` entry, `permission grant: path=<path>
+is_directory=<true|false> allow=<true|false> scope=<scope>` (with
+`from_current_step=true` appended when set). Each row carries the step's
+`tool_name` and `tool_use_id`, so it sits beside the call it governed, and
+the step's tool-result time; `<scope>` is the lower-case name without the
+prefix, or the number for a value not in the enum. A blob that does not
+decode is one `system` row, `parser: the permissions of step <idx> could
+not be decoded`, and the step's other rows stand (issue 92).
 
 The tool executed by a step is in its `metadata.tool_call`; its `id`
 matches the `tool_calls[].id` proposed by the preceding planner step. Tool
