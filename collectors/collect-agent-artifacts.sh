@@ -2271,155 +2271,219 @@ if [ "$INVENTORY" = 1 ] && [ "$OUTDIR_SET" = 1 ]; then
   log_line "NOTE: --inventory writes nothing; -o $OUTDIR ignored"
 fi
 
-# ---------------------------------------------------------------------------
-# expand_glob BASE PATTERN -> matching paths, one per line
+# ===========================================================================
+# 6. Catalog walk
+# ===========================================================================
+# A table (CATALOG or PROJECT_CATALOG) is applied to one base directory (a
+# home, a project, or a Docker volume's _data) in two steps: expand_catalog
+# lists every match of every entry first, so that a match nested inside
+# another (.gemini/antigravity-cli inside .gemini) can be pruned from the
+# enclosing walk, then collect_catalog collects each match with collect_path,
+# which walks a matched directory with collect_tree.
+
+# expand_glob BASE PATTERN -> the paths matching BASE/PATTERN that exist (or
+# are symlinks, dangling or not), one per line. Temporaries: _eg_. The glob is
+# expanded with IFS set to newline only, so a BASE with spaces stays one
+# word; a pattern that matches nothing expands to itself and fails the test.
 expand_glob() {
-  _eg_ifs=$IFS
+  _eg_saved_ifs=$IFS
   IFS='
 '
-  for _eg_m in $1/$2; do
-    if [ -e "$_eg_m" ] || [ -L "$_eg_m" ]; then printf '%s\n' "$_eg_m"; fi
+  for _eg_match in $1/$2; do
+    if [ -e "$_eg_match" ] || [ -L "$_eg_match" ]; then printf '%s\n' "$_eg_match"; fi
   done
-  IFS=$_eg_ifs
+  IFS=$_eg_saved_ifs
 }
 
-# fold_matches: agent|glob|path lines on stdin, in catalog order, -> the same
+# classify_case_matches: agent|glob|path lines on stdin, in catalog order ->
+# one instruction line per match for fold_case_matches:
+#   K|agent|glob|path  keep the match as it is;
+#   @|path then D|agent|glob|path  the match case-folds to the earlier match
+#     at path: drop it if it is the same file;
+#   @|path then ^|prefix then R|agent|glob|rest  the match case-folds to a
+#     path inside the match at path, spelled differently: respell its prefix
+#     as that path's if prefix is the same directory.
+# The parent chosen for R is the shortest one.
+classify_case_matches() {
+  LC_ALL=C awk -F'|' '
+    NF >= 3 { count++; line[count] = $0; agent[count] = $1; glob[count] = $2
+      path[count] = substr($0, length($1) + length($2) + 3); lower[count] = tolower(path[count]) }
+    END { for (i = 1; i <= count; i++) {
+      same = 0
+      for (j = 1; j < i; j++) if (lower[j] == lower[i]) { same = j; break }
+      if (same) { print "@|" path[same]; print "D|" line[i]; continue }
+      parent = 0
+      for (j = 1; j <= count; j++) {
+        if (j == i) continue; parent_len = length(lower[j])
+        if (length(lower[i]) > parent_len + 1 &&
+            substr(lower[i], 1, parent_len + 1) == lower[j] "/" &&
+            substr(path[i], 1, parent_len) != path[j]) {
+          if (!parent || parent_len < length(lower[parent])) parent = j }
+      }
+      if (parent) { parent_len = length(path[parent])
+        print "@|" path[parent]; print "^|" substr(path[i], 1, parent_len)
+        print "R|" agent[i] "|" glob[i] "|" substr(path[i], parent_len + 1); continue }
+      print "K|" line[i] } }'
+}
+
+# fold_case_matches: classify_case_matches lines on stdin -> agent|glob|path
 # lines with spellings of one on-disk path folded together. On a
 # case-insensitive filesystem (macOS, Windows images, /mnt/c under WSL),
 # entries that differ only by case (.config/goose and .config/Goose) match the
 # same directory: a match that case-folds to an earlier match's path and has
-# its device and inode is dropped, and the first catalog line wins; in its
-# place a #|message line tells collect_tree what to log.
+# its device and inode (file_id) is dropped, and the first catalog line wins;
+# in its place a #|message line tells collect_catalog what to log.
 # A match that case-folds to a path inside another match (.config/Cursor/User
 # inside .config/cursor) is respelled with that match's prefix when the prefix
 # is the same directory, so the nested claim prunes it from the enclosing
 # walk. Only paths that collide when case-folded are stat'ed, so on a
 # case-sensitive filesystem, where the ids differ, every match is kept as is.
-fold_matches() {
-  LC_ALL=C awk -F'|' '
-    NF >= 3 { n++; line[n] = $0; ag[n] = $1; gl[n] = $2
-      path[n] = substr($0, length($1) + length($2) + 3); low[n] = tolower(path[n]) }
-    END { for (i = 1; i <= n; i++) {
-      ref = 0
-      for (j = 1; j < i; j++) if (low[j] == low[i]) { ref = j; break }
-      if (ref) { print "@|" path[ref]; print "D|" line[i]; continue }
-      best = 0
-      for (j = 1; j <= n; j++) {
-        if (j == i) continue; L = length(low[j])
-        if (length(low[i]) > L + 1 && substr(low[i], 1, L + 1) == low[j] "/" && substr(path[i], 1, L) != path[j]) {
-          if (!best || L < length(low[best])) best = j }
-      }
-      if (best) { L = length(path[best])
-        print "@|" path[best]; print "^|" substr(path[i], 1, L)
-        print "R|" ag[i] "|" gl[i] "|" substr(path[i], L + 1); continue }
-      print "K|" line[i] } }' | while IFS= read -r _fm_l; do
-    case "$_fm_l" in
-      ('@|'*) _fm_ref=${_fm_l#??} ;;
-      ('^|'*) _fm_pre=${_fm_l#??} ;;
-      ('K|'*) printf '%s\n' "${_fm_l#??}" ;;
-      ('D|'*) _fm_l=${_fm_l#??}; _fm_m=${_fm_l#*|}; _fm_m=${_fm_m#*|}
-        _fm_id=$(file_id "$_fm_m")
-        if [ "$_fm_m" = "$_fm_ref" ] || { [ -n "$_fm_id" ] && [ "$_fm_id" = "$(file_id "$_fm_ref")" ]; }; then
-          printf '#|  [%s] %s: same file as %s (case-insensitive filesystem), collected there\n' "${_fm_l%%|*}" "$_fm_m" "$_fm_ref"
-        else printf '%s\n' "$_fm_l"; fi ;;
-      ('R|'*) _fm_l=${_fm_l#??}; _fm_a=${_fm_l%%|*}; _fm_rest=${_fm_l#*|}; _fm_g=${_fm_rest%%|*}; _fm_rest=${_fm_rest#*|}
-        _fm_id=$(file_id "$_fm_pre")
-        if [ -n "$_fm_id" ] && [ "$_fm_id" = "$(file_id "$_fm_ref")" ]; then
-          printf '%s|%s|%s%s\n' "$_fm_a" "$_fm_g" "$_fm_ref" "$_fm_rest"
-        else printf '%s|%s|%s%s\n' "$_fm_a" "$_fm_g" "$_fm_pre" "$_fm_rest"; fi ;;
+# Temporaries: _fcm_.
+fold_case_matches() {
+  while IFS= read -r _fcm_line; do
+    case "$_fcm_line" in
+      ('@|'*) _fcm_ref=${_fcm_line#??} ;;
+      ('^|'*) _fcm_prefix=${_fcm_line#??} ;;
+      ('K|'*) printf '%s\n' "${_fcm_line#??}" ;;
+      ('D|'*) _fcm_line=${_fcm_line#??}; _fcm_match=${_fcm_line#*|}; _fcm_match=${_fcm_match#*|}
+        _fcm_id=$(file_id "$_fcm_match")
+        if [ "$_fcm_match" = "$_fcm_ref" ] ||
+          { [ -n "$_fcm_id" ] && [ "$_fcm_id" = "$(file_id "$_fcm_ref")" ]; }; then
+          printf '#|  [%s] %s: same file as %s (case-insensitive filesystem), collected there\n' \
+            "${_fcm_line%%|*}" "$_fcm_match" "$_fcm_ref"
+        else printf '%s\n' "$_fcm_line"; fi ;;
+      ('R|'*) _fcm_line=${_fcm_line#??}; _fcm_agent=${_fcm_line%%|*}; _fcm_rest=${_fcm_line#*|}
+        _fcm_glob=${_fcm_rest%%|*}; _fcm_rest=${_fcm_rest#*|}
+        _fcm_id=$(file_id "$_fcm_prefix")
+        if [ -n "$_fcm_id" ] && [ "$_fcm_id" = "$(file_id "$_fcm_ref")" ]; then
+          printf '%s|%s|%s%s\n' "$_fcm_agent" "$_fcm_glob" "$_fcm_ref" "$_fcm_rest"
+        else printf '%s|%s|%s%s\n' "$_fcm_agent" "$_fcm_glob" "$_fcm_prefix" "$_fcm_rest"; fi ;;
     esac
   done
 }
 
-# collect_path USER HOME AGENT PATH
-# With --inventory the same walk runs, but excluded subtrees are pruned
-# without a manifest row and regular files are only stat'ed by INVENTORY_FILES_WORKER.
+# expand_catalog BASE TABLE -> agent|glob|path for every match of every
+# agent|glob line of TABLE under BASE, in table order, case variants folded
+# (fold_case_matches), plus #|message lines to log. Comment and blank lines of
+# TABLE are skipped. Temporaries: _ec_.
+expand_catalog() {
+  printf '%s\n' "$2" | while IFS='|' read -r _ec_agent _ec_glob; do
+    case "$_ec_agent" in (''|'#'*) continue ;; esac
+    expand_glob "$1" "$_ec_glob" | while IFS= read -r _ec_match; do
+      printf '%s|%s|%s\n' "$_ec_agent" "$_ec_glob" "$_ec_match"
+    done
+  done | classify_case_matches | fold_case_matches
+}
+
+# collect_catalog USER BASE TABLE [HEADER]: collects every match of TABLE
+# under BASE with collect_path, attributed to USER and to the agent of the
+# matching line. Every entry is expanded first so that each matched path can
+# be excluded from the walk of any enclosing match (NESTED_CLAIMS, read by
+# collect_tree). With --inventory, each match of an inventoried agent first
+# prints M|agent|glob on stdout, and shared matches still claim their paths
+# but are not walked. HEADER, when given, is logged once before the first
+# match, so a base with no matches leaves no progress line. Reads INVENTORY;
+# sets NESTED_CLAIMS for the duration of the call. Temporaries: _cc_.
+collect_catalog() {
+  _cc_header=${4:-}
+  _cc_matches=$(expand_catalog "$2" "$3")
+  NESTED_CLAIMS=$(printf '%s\n' "$_cc_matches" | grep -v '^#|' | cut -d'|' -f3-)
+  printf '%s\n' "$_cc_matches" | while IFS='|' read -r _cc_agent _cc_glob _cc_match; do
+    [ -n "$_cc_agent" ] || continue
+    if [ "$_cc_agent" = '#' ]; then
+      if [ -n "$_cc_header" ]; then log_line "$_cc_header"; _cc_header=; fi
+      if [ -n "$_cc_match" ]; then log_line "$_cc_glob|$_cc_match"; else log_line "$_cc_glob"; fi
+      continue
+    fi
+    if [ "$INVENTORY" = 1 ]; then
+      case "$_cc_agent" in shared) continue ;; esac
+      printf 'M|%s|%s\n' "$_cc_agent" "$_cc_glob"
+    fi
+    if [ -n "$_cc_header" ]; then log_line "$_cc_header"; _cc_header=; fi
+    log_line "  [$_cc_agent] $_cc_match"
+    collect_path "$1" "$2" "$_cc_agent" "$_cc_match" </dev/null
+  done
+  NESTED_CLAIMS=
+}
+
+# collect_path USER HOME AGENT PATH: collects one matched PATH. A directory
+# (not a symlink to one) is walked with collect_tree; anything else is staged
+# by STAGE_FILES_WORKER, which records a symlink as a symlink. With
+# --inventory the same walk runs, but excluded subtrees are pruned without a
+# manifest row and regular files are only stat'ed by INVENTORY_FILES_WORKER.
+# Reads INVENTORY, MANIFEST, STAGE, ROOT, WORKER_SH. Temporaries: _cp_.
 collect_path() {
-  _cp_user=$1; _cp_home=$2; _cp_agent=$3; _cp_m=$4
-  if [ -d "$_cp_m" ] && [ ! -L "$_cp_m" ]; then
+  _cp_user=$1; _cp_home=$2; _cp_agent=$3; _cp_match=$4
+  if [ -d "$_cp_match" ] && [ ! -L "$_cp_match" ]; then
     # A match that cannot be listed or entered gets its error_read row here,
     # not from the walk: BSD find applies no expression to a starting point
     # it cannot read and GNU find does, so the pre-check gives both one row
     # and never two (#82).
-    if [ "$INVENTORY" != 1 ] && _cpe=$(get_dir_read_error "$_cp_m"); then
-      write_read_error_row "$MANIFEST" "$_cp_user" "$_cp_home" "$_cp_agent" "$_cp_m" "$_cpe"
+    if [ "$INVENTORY" != 1 ] && _cp_dir_error=$(get_dir_read_error "$_cp_match"); then
+      write_read_error_row "$MANIFEST" "$_cp_user" "$_cp_home" "$_cp_agent" "$_cp_match" \
+        "$_cp_dir_error"
       return 0
     fi
-    set -- "$_cp_m"
-    _cp_ifs=$IFS
-    IFS='
-'
-    # Paths claimed by another catalog entry are left to that entry: a nested
-    # entry such as .gemini/antigravity-cli is attributed to its own agent and
-    # collected once, not swept up again by the enclosing .gemini entry.
-    _cp_first=1
-    for _cp_n in $NESTED_CLAIMS; do
-      case "$_cp_n" in "$_cp_m"/*) ;; *) continue ;; esac
-      if [ "$_cp_first" = 1 ]; then set -- "$@" '(' -path "$_cp_n"; _cp_first=0
-      else set -- "$@" -o -path "$_cp_n"; fi
-    done
-    if [ "$_cp_first" = 0 ]; then set -- "$@" ')' -prune -o; fi
-    _cp_first=1
-    for _cp_e in $ACTIVE_EXCLUDES; do
-      [ -n "$_cp_e" ] || continue
-      if [ "$_cp_first" = 1 ]; then set -- "$@" '(' -path "$_cp_home/$_cp_e"; _cp_first=0
-      else set -- "$@" -o -path "$_cp_home/$_cp_e"; fi
-    done
-    IFS=$_cp_ifs
-    if [ "$_cp_first" = 0 ] && [ "$INVENTORY" = 1 ]; then
-      set -- "$@" ')' -prune -o
-    elif [ "$_cp_first" = 0 ]; then
-      set -- "$@" ')' -prune -exec "$WORKER_SH" -c "$EXCLUDED_PATHS_WORKER" sh "$ROOT" "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" '{}' + -o
-    fi
-    if [ "$INVENTORY" = 1 ]; then
-      set -- "$@" -type f -exec "$WORKER_SH" -c "$INVENTORY_FILES_WORKER" sh "$_cp_agent" '{}' +
-    else
-      set -- "$@" -type d -exec "$WORKER_SH" -c "$UNREADABLE_DIRS_WORKER" sh "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" '{}' + -o
-      set -- "$@" '(' -type f -o -type l ')' -exec "$WORKER_SH" -c "$STAGE_FILES_WORKER" sh "$STAGE" "$ROOT" "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" '{}' +
-    fi
-    find "$@" 2>>"$LOG"
+    collect_tree "$_cp_user" "$_cp_home" "$_cp_agent" "$_cp_match"
   elif [ "$INVENTORY" = 1 ]; then
-    if [ -f "$_cp_m" ] && [ ! -L "$_cp_m" ]; then
-      "$WORKER_SH" -c "$INVENTORY_FILES_WORKER" sh "$_cp_agent" "$_cp_m"
+    if [ -f "$_cp_match" ] && [ ! -L "$_cp_match" ]; then
+      "$WORKER_SH" -c "$INVENTORY_FILES_WORKER" sh "$_cp_agent" "$_cp_match"
     fi
   else
-    "$WORKER_SH" -c "$STAGE_FILES_WORKER" sh "$STAGE" "$ROOT" "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" "$_cp_m"
+    "$WORKER_SH" -c "$STAGE_FILES_WORKER" sh "$STAGE" "$ROOT" "$_cp_user" "$_cp_home" \
+      "$_cp_agent" "$MANIFEST" "$_cp_match"
   fi
 }
 
-# collect_tree USER BASE CATALOG
-# Every entry is expanded first so that each matched path can be excluded
-# from the walk of any enclosing match (see NESTED_CLAIMS in collect_path),
-# and case variants of one on-disk path are folded (see fold_matches).
-# With --inventory, each match of an inventoried agent first prints
-# M|agent|glob on stdout, and shared matches still claim
-# their paths but are not walked. HEADER, when given, is logged once before
-# the first match, so a home with no matches leaves no progress line.
+# collect_tree USER HOME AGENT DIR: walks DIR with one find(1). The find
+# expression, built in the positional parameters since POSIX sh has no
+# arrays, is in this order: prune the NESTED_CLAIMS paths inside DIR (another
+# entry collects them); prune ACTIVE_EXCLUDES (globs relative to HOME) with
+# one skipped_excluded row each from EXCLUDED_PATHS_WORKER, or silently with
+# --inventory; give every directory to UNREADABLE_DIRS_WORKER for its
+# error_read check; give every regular file and symlink to
+# STAGE_FILES_WORKER, or every regular file to INVENTORY_FILES_WORKER with
+# --inventory. find's own messages go to LOG. Reads NESTED_CLAIMS,
+# ACTIVE_EXCLUDES, INVENTORY, MANIFEST, STAGE, ROOT, WORKER_SH, LOG.
+# Temporaries: _ct_.
 collect_tree() {
-  _ct_header=${4:-}
-  _ct_matches=$(printf '%s\n' "$3" | while IFS='|' read -r _ct_agent _ct_pat; do
-    case "$_ct_agent" in (''|'#'*) continue ;; esac
-    expand_glob "$2" "$_ct_pat" | while IFS= read -r _ct_m; do
-      printf '%s|%s|%s\n' "$_ct_agent" "$_ct_pat" "$_ct_m"
-    done
-  done | fold_matches)
-  NESTED_CLAIMS=$(printf '%s\n' "$_ct_matches" | grep -v '^#|' | cut -d'|' -f3-)
-  printf '%s\n' "$_ct_matches" | while IFS='|' read -r _ct_agent _ct_pat _ct_m; do
-    [ -n "$_ct_agent" ] || continue
-    if [ "$_ct_agent" = '#' ]; then
-      if [ -n "$_ct_header" ]; then log_line "$_ct_header"; _ct_header=; fi
-      if [ -n "$_ct_m" ]; then log_line "$_ct_pat|$_ct_m"; else log_line "$_ct_pat"; fi
-      continue
-    fi
-    if [ "$INVENTORY" = 1 ]; then
-      case "$_ct_agent" in shared) continue ;; esac
-      printf 'M|%s|%s\n' "$_ct_agent" "$_ct_pat"
-    fi
-    if [ -n "$_ct_header" ]; then log_line "$_ct_header"; _ct_header=; fi
-    log_line "  [$_ct_agent] $_ct_m"
-    collect_path "$1" "$2" "$_ct_agent" "$_ct_m" </dev/null
+  _ct_user=$1; _ct_home=$2; _ct_agent=$3
+  set -- "$4"
+  _ct_saved_ifs=$IFS
+  IFS='
+'
+  # Paths claimed by another catalog entry are left to that entry: a nested
+  # entry such as .gemini/antigravity-cli is attributed to its own agent and
+  # collected once, not swept up again by the enclosing .gemini entry.
+  _ct_first=1
+  for _ct_claim in $NESTED_CLAIMS; do
+    case "$_ct_claim" in "$1"/*) ;; *) continue ;; esac
+    if [ "$_ct_first" = 1 ]; then set -- "$@" '(' -path "$_ct_claim"; _ct_first=0
+    else set -- "$@" -o -path "$_ct_claim"; fi
   done
-  NESTED_CLAIMS=
+  if [ "$_ct_first" = 0 ]; then set -- "$@" ')' -prune -o; fi
+  _ct_first=1
+  for _ct_exclude in $ACTIVE_EXCLUDES; do
+    [ -n "$_ct_exclude" ] || continue
+    if [ "$_ct_first" = 1 ]; then set -- "$@" '(' -path "$_ct_home/$_ct_exclude"; _ct_first=0
+    else set -- "$@" -o -path "$_ct_home/$_ct_exclude"; fi
+  done
+  IFS=$_ct_saved_ifs
+  if [ "$_ct_first" = 0 ] && [ "$INVENTORY" = 1 ]; then
+    set -- "$@" ')' -prune -o
+  elif [ "$_ct_first" = 0 ]; then
+    set -- "$@" ')' -prune -exec "$WORKER_SH" -c "$EXCLUDED_PATHS_WORKER" sh "$ROOT" \
+      "$_ct_user" "$_ct_home" "$_ct_agent" "$MANIFEST" '{}' + -o
+  fi
+  if [ "$INVENTORY" = 1 ]; then
+    set -- "$@" -type f -exec "$WORKER_SH" -c "$INVENTORY_FILES_WORKER" sh "$_ct_agent" '{}' +
+  else
+    set -- "$@" -type d -exec "$WORKER_SH" -c "$UNREADABLE_DIRS_WORKER" sh \
+      "$_ct_user" "$_ct_home" "$_ct_agent" "$MANIFEST" '{}' + -o
+    set -- "$@" '(' -type f -o -type l ')' -exec "$WORKER_SH" -c "$STAGE_FILES_WORKER" sh \
+      "$STAGE" "$ROOT" "$_ct_user" "$_ct_home" "$_ct_agent" "$MANIFEST" '{}' +
+  fi
+  find "$@" 2>>"$LOG"
 }
 
 # ---------------------------------------------------------------------------
@@ -2472,7 +2536,7 @@ fi
   # catalog is still tried: a home that can be entered but not listed
   # (mode 711) still yields the entries that are not globs.
   if _he=$(get_dir_read_error "$_h"); then write_read_error_row "$MANIFEST" "$_u" "$_h" "" "$_h" "$_he"; fi
-  collect_tree "$_u" "$_h" "$CATALOG" "User $_u ($_h)"
+  collect_catalog "$_u" "$_h" "$CATALOG" "User $_u ($_h)"
 done
 
 # ---------------------------------------------------------------------------
@@ -2778,7 +2842,7 @@ $USER_LIST" in (*":$_p
     _owner=${_line%%:*}; _p=${_line#*:}
     log_line "Project ${_owner:+[$_owner] }$_p"
     if _pe=$(get_dir_read_error "$_p"); then write_read_error_row "$MANIFEST" "$_owner" "$_p" "" "$_p" "$_pe"; fi
-    collect_tree "$_owner" "$_p" "$PROJECT_CATALOG"
+    collect_catalog "$_owner" "$_p" "$PROJECT_CATALOG"
   done
 fi
 
@@ -2840,7 +2904,7 @@ EOF_INVUSERS
   INV_LINES=$(printf '%s\n' "$USER_LIST" | while IFS=: read -r _u _h; do
     [ -n "$_h" ] || continue
     _np=$(printf '%s\n' "$PROJECT_LIST" | awk -F: -v u="$_u" '$1 == u && length($0) > length(u) + 1 { n++ } END { print n + 0 }')
-    collect_tree "$_u" "$_h" "$CATALOG" "User $_u ($_h)" | inv_aggregate | inv_emit "$_u" "$_np"
+    collect_catalog "$_u" "$_h" "$CATALOG" "User $_u ($_h)" | inv_aggregate | inv_emit "$_u" "$_np"
   done)
   printf '{"type":"host","host":"%s","collector":"%s","mode":"%s","at":"%s","users_scanned":%s,"users_unreadable":%s,"docker_volumes":%s}\n' \
     "$(json_escape "$HOST")" "$VERSION" "$MODE" "$START_TS" \
