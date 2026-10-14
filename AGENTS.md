@@ -331,6 +331,17 @@ and say in the module docstring if the shape has drifted since.
    `TrajectoryPermissions` blob and its `globalPermissionGrants` list were
    collected for a week before anyone noticed the parser read neither
    (issue 92).
+   The model is evidence of the same kind. Any agent that can use or
+   switch between models gets a `system` row `model: <id>` at the first
+   record of a session that names one and `model: <old> -> <new>` on
+   every change, with the agent's own request or alias beside the
+   resolved id when the format records both; filling the `model` column
+   on each row is not enough, because an analyst filtering on `system`
+   rows must see when the model changed. A model switch the user typed
+   (a `/model` command and its output) keeps its own row as well. The
+   research document names where the format records the model per
+   message, per session and per switch, and a parser plan with no model
+   line says the agent records none (issue 93).
 4. SQLite stores are opened through `sqlite_util.py` so the WAL sidecar is
    read and the evidence copy is never opened directly. Protobuf blobs are
    decoded with `protobuf.py`. A new dependency such as `zstandard` for Zed
@@ -664,7 +675,8 @@ The round, in order:
    a session with a tool call, a read-only chat, a chat that writes a
    file, a scheduled task, a resumed session, and one tool call approved
    and one denied, with an "allow always" or equivalent standing grant,
-   so the permission records are on disk for the shape tool to show. A surface that writes
+   and a model switch in the middle of a session, so the permission and
+   model records are on disk for the shape tool to show. A surface that writes
    nothing locally is a finding (Claude Desktop's merged Chat/Cowork
    surface runs server-side and leaves one index file), and so is a
    feature the VM cannot run (nested virtualisation); say which it was.
