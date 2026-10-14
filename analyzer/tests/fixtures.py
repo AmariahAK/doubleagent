@@ -1733,7 +1733,16 @@ def build_antigravity(
         return
     _jsonl(
         base / "history.jsonl",
-        [{"display": "clean the logs", "timestamp": t0 * 1000, "workspace": "/home/u/proj"}],
+        [
+            {"display": "clean the logs", "timestamp": t0 * 1000, "workspace": "/home/u/proj"},
+            # CLI 1.3.x adds conversationId on some lines (#89).
+            {
+                "conversationId": conversation,
+                "display": "now the tests",
+                "timestamp": (t0 + 20) * 1000,
+                "workspace": "/home/u/proj",
+            },
+        ],
     )
     (base / "antigravity-oauth-token").write_text("secret", encoding="utf-8")
 

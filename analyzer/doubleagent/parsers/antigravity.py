@@ -69,7 +69,9 @@ Files, relative to the home directory, under each of those directories
   `search_schema_version`, which are not read.
 * `.gemini/antigravity-cli/history.jsonl` (CLI only; the app writes none):
   `{display, timestamp, workspace}` per prompt, `timestamp` in epoch
-  milliseconds, no conversation id.
+  milliseconds; from CLI 1.3.x a line may also carry `conversationId`, the
+  conversation's UUID, which becomes the row's `session_id` (older lines
+  have none and keep it empty).
 
 Rows: one `user` row per user_input step (`system` when the source is
 USER_IMPLICIT); for each planner_response step an `assistant` row, one
@@ -703,6 +705,7 @@ class AntigravityParser(Parser):
             row.source_line = n
             row.timestamp_utc = to_utc(rec.get("timestamp"))
             row.project_path = uri_to_path(str(rec.get("workspace") or ""))
+            row.session_id = str(rec.get("conversationId") or "")
             row.turn_type = "user"
             row.text = compact(rec.get("display"))
             yield row

@@ -1034,6 +1034,12 @@ class AntigravityTests(ParserBase):
             ("user", "clean the logs", "/home/u/proj"),
         )
 
+    def test_history_conversation_id(self):
+        # CLI 1.3.x writes conversationId on some history lines (#89).
+        rows = self.rows_for(AntigravityParser(), ".gemini/antigravity-cli/history.jsonl")
+        self.assertEqual([r.session_id for r in rows], ["", AGY_CONVERSATION])
+        self.assertEqual(rows[1].text, "now the tests")
+
     def test_sidecars_and_token_not_wanted(self):
         p = AntigravityParser()
         for a in self.col.artifacts:

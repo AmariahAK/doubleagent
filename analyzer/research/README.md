@@ -21,7 +21,7 @@ it.
 | --- | --- | --- | --- |
 | `agent-zero` | [agent-zero.md](agent-zero.md) | JSON per chat context, rewritten whole | yes |
 | `aider` | [aider.md](aider.md) | markdown and readline-style text in the repository | yes |
-| `antigravity` | [antigravity.md](antigravity.md) | SQLite of protobuf blobs per conversation, the same for the CLI (`.gemini/antigravity-cli`) and the desktop app (`.gemini/antigravity`); schema from the descriptors embedded in `agy` and the app's language server; verified on Linux (CLI) and macOS (CLI and app) installs | yes |
+| `antigravity` | [antigravity.md](antigravity.md) | SQLite of protobuf blobs per conversation, the same for the CLI (`.gemini/antigravity-cli`) and the desktop app (`.gemini/antigravity`); schema from the descriptors embedded in `agy` and the app's language server; verified on Linux (WSL: CLI; Ubuntu: CLI and app) and macOS (CLI and app) installs | yes |
 | `claude-code` | [claude-code.md](claude-code.md) | JSONL per session with `uuid`/`parentUuid` chains, subagent files beside it, prompt history | yes |
 | `claude-desktop` | [claude-desktop.md](claude-desktop.md) | session records (JSON) and an HMAC-chained `audit.jsonl` per Cowork session around Claude Code JSONL transcripts; closed source, from the app bundle; verified on Windows, Linux and macOS installs | yes |
 | `cline` | [cline.md](cline.md) | JSON arrays per task; SDK session files; SQLite indexes | yes |

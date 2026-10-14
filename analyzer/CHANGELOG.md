@@ -29,6 +29,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `source=<trajectory source>` (`cli` for the CLI, `cascade_client` for the
   desktop app, the number for a value not in the table) and
   `data_dir=<the .gemini subdirectory>` ([#83]).
+- Rows from the Antigravity CLI's `history.jsonl` carry the
+  conversation's id in `session_id` when the line has `conversationId`,
+  which CLI 1.3.x writes; older lines have none and keep `session_id`
+  empty. A prompt in the history can now be joined to its conversation
+  database ([#89]).
 
 ### Changed
 
@@ -477,6 +482,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#89]: https://github.com/seanthegeek/doubleagent/issues/89
 [#88]: https://github.com/seanthegeek/doubleagent/issues/88
 [#86]: https://github.com/seanthegeek/doubleagent/issues/86
 [#85]: https://github.com/seanthegeek/doubleagent/issues/85
