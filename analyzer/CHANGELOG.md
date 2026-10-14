@@ -84,6 +84,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   <new>` on each change (`-` for a missing field). Codex writes no
   per-call approval to its rollouts, so there is no decision row
   ([#96], [#97]).
+- The `gemini-cli` and `qwen-code` parsers read `trustedFolders.json`
+  (`.gemini/trustedFolders.json`, `.qwen/trustedFolders.json`): one
+  `permission setting: trustedFolders.<path>=<TrustLevel> (from <file>,
+  file mtime)` row per folder, with `project_path` the folder and the
+  file's modification time. A tool call whose status is `cancelled` or
+  `awaiting_approval` is followed by a `permission decision: <status>`
+  row with its `tool_use_id`; the `[cancelled]` prefix on the result row
+  stays. `gemini-cli` writes `model: <id>` at a session's first gemini
+  message that names a model and `model: <old> -> <new>` on each change,
+  and `qwen-code` writes `model: <id>` from the first assistant record
+  when no `session_model` record named one, and a change row when an
+  assistant record's model differs ([#96], [#97]).
 
 ### Changed
 
@@ -96,6 +108,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   when every detected agent was parsed, `parsed none; detected only none`
   for an empty input, and nothing about agents whose parser found no
   rows ([#85]).
+- The `qwen-code` model rows take the common form: a `session_model`
+  record reads `model: <id> auth=<authType>` (was
+  `session_model: <id> auth=<authType>`), and a `logs.json`
+  `model_switch` entry reads `model: <from> -> <to> reason=<reason>`
+  (was `model_switch: <from> -> <to> (<reason>)`) ([#96]).
 
 ### Fixed
 

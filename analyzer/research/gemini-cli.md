@@ -148,6 +148,37 @@ file covers that `sessionId`.
 | tool_name, tool_use_id | `toolCalls[].name`, `toolCalls[].id` |
 | text | `content` text; for tool_use `displayName` plus args; `summary` on `$set` |
 
+Model and permission rows (issues 96 and 97):
+
+- `model: <id>` (`system`, `model` column set) before the first gemini
+  message of a session whose `model` is set, and `model: <old> -> <new>`
+  before each later gemini message whose `model` differs, tracked per
+  `sessionId` in replay order, with the message's timestamp and line.
+  The format keeps one `model` per message and no separate switch record.
+- `permission decision: <status>` (`system`, the call's `tool_name` and
+  `tool_use_id`) after the `tool_result` row of a `toolCalls[]` element
+  whose `status` is `cancelled` or `awaiting_approval`, or after its
+  `tool_use` row when it has no result. The `[cancelled]` (and
+  `[error]`) prefix on the result row stays. No other approval record is
+  written to the session file.
+- `permission setting: trustedFolders.<path>=<value> (from <file>, file
+  mtime)` (`system`, `project_path` the folder, no session id, the
+  file's modification time, line 1), one per key of
+  `~/.gemini/trustedFolders.json`. The file is a JSON object read with
+  comments stripped ([`utils/trust.ts:106`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/utils/trust.ts#L106)) whose
+  keys are folder paths and whose values are a `TrustLevel`:
+  `TRUST_FOLDER`, `TRUST_PARENT` or `DO_NOT_TRUST`
+  ([`utils/trust.ts:18-22`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/utils/trust.ts#L18-L22),
+  [95-96](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/utils/trust.ts#L95-L96)); the CLI writes it with
+  `JSON.stringify` ([342](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/utils/trust.ts#L342)). The value is printed as
+  recorded. A file that is not a JSON object is one
+  `parser: <file> is not a JSON object` row.
+- Not read: `policies/auto-saved.toml` (the saved "always allow"
+  policies), `policy_integrity.json`, `trusted_hooks.json` and
+  `acknowledgments/agents.json`; their shapes are not recorded in this
+  document or in
+  [`collectors/research/gemini-cli.md`](../../collectors/research/gemini-cli.md).
+
 Fixture (one JSON object per line):
 
 ```json

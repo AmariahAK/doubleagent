@@ -136,6 +136,35 @@ row per `functionCall` part and a `thinking` row per `thought:true` part.
 | tool_use_id | `functionCall.id` / `toolCallResult.callId` |
 | text | text parts, `systemPayload.displayText`, `rawCommand`, `toolCallResult.status` plus `errorType` |
 
+Model and permission rows (issues 96 and 97):
+
+- A `session_model` record is the row `model: <modelId> auth=<authType>`,
+  or `model: <old> -> <modelId> auth=<authType>` when an earlier record
+  of the session named another model (`model` column `modelId`).
+- An assistant record's `model` yields `model: <id>` before its rows when
+  no earlier `session_model` or assistant record of the session named a
+  model, and `model: <old> -> <new>` when it differs from the model in
+  force, tracked per `sessionId` with the record's timestamp and line.
+- A `logs.json` `model_switch` entry is
+  `model: <fromModel> -> <toModel> reason=<reason>` (`model` column
+  `toModel`), printed from the entry, not tracked.
+- `permission decision: <status>` (`system`, the result's `tool_name` and
+  `tool_use_id`) after a `tool_result` row whose `toolCallResult.status`
+  is `cancelled` or `awaiting_approval`; the `[<status>]` prefix on the
+  result row stays. No other approval record is written to the session
+  file.
+- `permission setting: trustedFolders.<path>=<value> (from <file>, file
+  mtime)` (`system`, `project_path` the folder, no session id, the
+  file's modification time, line 1), one per key of
+  `~/.qwen/trustedFolders.json`. The file is a JSON object read with
+  comments stripped ([`cli/src/config/trustedFolders.ts:162`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/trustedFolders.ts#L162))
+  and rewritten preserving them ([259](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/trustedFolders.ts#L259)); keys are
+  folder paths and values a `TrustLevel`: `TRUST_FOLDER`, `TRUST_PARENT`
+  or `DO_NOT_TRUST` ([44-48](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/trustedFolders.ts#L44-L48),
+  [60-61](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/trustedFolders.ts#L60-L61)). The value is printed as recorded. A
+  file that is not a JSON object is one
+  `parser: <file> is not a JSON object` row.
+
 Fixture:
 
 ```json

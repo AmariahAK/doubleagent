@@ -1985,6 +1985,7 @@ def _utc_text(epoch: int) -> str:
 QWEN_SESSION = "e5f6a7b8-4444-4000-8000-000000000011"
 QWEN_ARCHIVED = "0a0b0c0d-4444-4000-8000-000000000022"
 QWEN_TMP = "3f0a9c" + "0" * 58  # sha256(cwd) directory name
+QWEN_TRUST_MTIME = 1790856000  # 2026-10-01T12:00:00Z, trustedFolders.json's mtime
 
 
 def qwen_session_records(cwd="/srv/proj", branch="main"):
@@ -2119,6 +2120,49 @@ def qwen_session_records(cwd="/srv/proj", branch="main"):
             provenance="system",
             systemPayload={"customTitle": "Run tests", "titleSource": "auto"},
         ),
+        # A later turn on another model whose tool call the user cancelled.
+        dict(
+            common,
+            uuid="q7",
+            parentUuid="q6",
+            timestamp="2026-10-01T10:01:00.000Z",
+            type="assistant",
+            provenance="assistant_output",
+            model="qwen3-vl-plus",
+            message={
+                "role": "model",
+                "parts": [
+                    {
+                        "functionCall": {
+                            "id": "call_ghi789",
+                            "name": "run_shell_command",
+                            "args": {"command": "rm -rf build"},
+                        }
+                    }
+                ],
+            },
+        ),
+        dict(
+            common,
+            uuid="q8",
+            parentUuid="q7",
+            timestamp="2026-10-01T10:01:05.000Z",
+            type="tool_result",
+            provenance="tool_result",
+            message={
+                "role": "user",
+                "parts": [
+                    {
+                        "functionResponse": {
+                            "id": "call_ghi789",
+                            "name": "run_shell_command",
+                            "response": {"error": "cancelled by user"},
+                        }
+                    }
+                ],
+            },
+            toolCallResult={"callId": "call_ghi789", "status": "cancelled"},
+        ),
     ]
 
 
@@ -2164,6 +2208,13 @@ def build_qwen(home: Path) -> None:
     (tmp / "logs.json").write_text(json.dumps(qwen_logs_entries(), indent=2), encoding="utf-8")
     (home / ".qwen/settings.json").write_text("{}", encoding="utf-8")
     (home / ".qwen/oauth_creds.json").write_text('{"access_token": "secret"}', encoding="utf-8")
+    # JSONC, as Qwen Code reads it: keys are folders, values TrustLevel strings.
+    trust = home / ".qwen/trustedFolders.json"
+    trust.write_text(
+        '{\n  // trust dialog\n  "/srv/proj": "TRUST_FOLDER",\n  "/srv": "DO_NOT_TRUST"\n}\n',
+        encoding="utf-8",
+    )
+    os.utime(trust, (QWEN_TRUST_MTIME, QWEN_TRUST_MTIME))
 
 
 KIRO_SESSION = "3f2b8c1e-9d7a-4e6b-b1c2-0a9f8e7d6c5b"
@@ -2642,6 +2693,9 @@ def gemini_logs_records():
     ]
 
 
+GEMINI_TRUST_MTIME = 1790856000  # 2026-10-01T12:00:00Z, trustedFolders.json's mtime
+
+
 def build_gemini_cli(base: Path) -> None:
     """~/.gemini with a slug directory (marker file), a legacy hash directory
     resolved through projects.json, a subagent session and noise."""
@@ -2676,6 +2730,12 @@ def build_gemini_cli(base: Path) -> None:
         json.dumps({"projects": {"/srv/proj": "proj"}}), encoding="utf-8"
     )
     (base / "oauth_creds.json").write_text('{"access_token": "secret"}', encoding="utf-8")
+    trust = base / "trustedFolders.json"
+    trust.write_text(
+        json.dumps({"/srv/proj": "TRUST_FOLDER", "/srv/other": "TRUST_PARENT"}, indent=2),
+        encoding="utf-8",
+    )
+    os.utime(trust, (GEMINI_TRUST_MTIME, GEMINI_TRUST_MTIME))
 
 
 def _wal_db(path: Path, script: str, inserts) -> None:

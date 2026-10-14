@@ -41,6 +41,27 @@ under `~/.gemini` or the macOS sandbox base `~/.cache/.gemini`:
   timestamp, type, message}`, user prompts only. Parsed even when the
   session file exists, like the other history files, because it keeps
   prompts that a rewind removed from the session.
+* `trustedFolders.json` in the `.gemini` directory (`TrustedFoldersFile`
+  in `packages/core/src/utils/trust.ts`): a JSON object, read with
+  comments stripped, whose keys are folder paths and whose values are a
+  `TrustLevel` string (`TRUST_FOLDER`, `TRUST_PARENT`, `DO_NOT_TRUST`).
+  One `system` row per key,
+  `permission setting: trustedFolders.<path>=<value> (from <file>, file mtime)`,
+  with `project_path` the folder, `timestamp_utc` the file's modification
+  time and no session id. A file that is not a JSON object is one
+  `system` row.
+
+Model and permission rows. A gemini message's `model` yields a `system`
+row `model: <id>` before the first message of a session that names one
+and `model: <old> -> <new>` before each message whose model differs,
+tracked per `sessionId` in replay order. A tool call whose `status` is
+`cancelled` or `awaiting_approval` keeps the `[cancelled]` prefix on its
+result row (an `error` keeps `[error]`) and is followed by a `system` row
+`permission decision: <status>` with the call's `tool_name` and
+`tool_use_id`, after the result row or, when there is no result, after
+the `tool_use` row. The session file records no approval mode; the
+policies under `policies/` are not read (their TOML shape is not
+recorded).
 
 No cwd and no git branch are stored per message. `project_path` is the
 content of `tmp/<slug>/.project_root`, else the key of `projects.json`
@@ -63,16 +84,26 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    file_mtime,
+    iter_jsonl,
+    setting_value,
+    track_change,
+)
 
 SESSION_RX = re.compile(
     r"^(?P<base>(?:\.cache/)?\.gemini)/tmp/(?P<slug>[^/]+)/chats/(?:.*/)?[^/]+\.jsonl?$"
 )
 LOGS_RX = re.compile(r"^(?P<base>(?:\.cache/)?\.gemini)/tmp/(?P<slug>[^/]+)/logs\.json$")
+TRUSTED_RX = re.compile(r"^(?:\.cache/)?\.gemini/trustedFolders\.json$")
 HEX64_RX = re.compile(r"^[0-9a-f]{64}$")
 
 MESSAGE_TYPES = ("user", "gemini", "info", "error", "warning")
 FAILED_STATUSES = ("error", "cancelled")
+DECISION_STATUSES = ("cancelled", "awaiting_approval")
 
 
 # ---- content helpers ----------------------------------------------------------
@@ -188,6 +219,75 @@ def resolve_project(base: Path, slug: str, project_hash: str = "") -> str:
     return project_hash
 
 
+# ---- trusted folders ----------------------------------------------------------
+
+
+def strip_json_comments(text: str) -> str:
+    """`text` with `//` and `/* */` comments outside strings removed, as the
+    `strip-json-comments` package that Gemini CLI and Qwen Code read
+    `trustedFolders.json` through does."""
+    out = []
+    i, n = 0, len(text)
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+            i += 1
+        elif c == '"':
+            in_str = True
+            out.append(c)
+            i += 1
+        elif text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def trusted_folder_rows(parser: Parser, artifact: Artifact) -> Iterator[Row]:
+    """One `permission setting: trustedFolders.<path>=<value>` row per key of
+    a `trustedFolders.json` (Gemini CLI and Qwen Code), timestamped with the
+    file's modification time, or one row saying the file is not a JSON
+    object."""
+    ts = file_mtime(artifact)
+    try:
+        raw = artifact.disk_path.read_bytes().decode("utf-8", errors="replace")
+        doc = json.loads(strip_json_comments(raw))
+    except (OSError, ValueError):
+        doc = None
+
+    def row(text: str, project: str = "") -> Row:
+        r = parser.base_row(artifact)
+        r.source_line = 1
+        r.turn_type = "system"
+        r.timestamp_utc = ts
+        r.project_path = project
+        r.text = compact(text)
+        return r
+
+    if not isinstance(doc, dict):
+        yield row("parser: %s is not a JSON object" % artifact.rel)
+        return
+    for path, value in doc.items():
+        yield row(
+            "permission setting: trustedFolders.%s=%s (from %s, file mtime)"
+            % (path, setting_value(value), artifact.rel),
+            str(path),
+        )
+
+
 # ---- parser -------------------------------------------------------------------
 
 
@@ -196,9 +296,13 @@ class GeminiCliParser(Parser):
     name = "gemini-cli"
 
     def wants(self, artifact: Artifact) -> bool:
-        return bool(SESSION_RX.match(artifact.rel) or LOGS_RX.match(artifact.rel))
+        rel = artifact.rel
+        return bool(SESSION_RX.match(rel) or LOGS_RX.match(rel) or TRUSTED_RX.match(rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        if TRUSTED_RX.match(artifact.rel):
+            yield from trusted_folder_rows(self, artifact)
+            return
         m = LOGS_RX.match(artifact.rel)
         if m:
             yield from self._parse_logs(artifact, opts, m)
@@ -364,8 +468,11 @@ class GeminiCliParser(Parser):
         # summaries, rewinds and removals.
         for line, ts, sid, text in starts:
             yield self._system(artifact, line, ts, sid, project, text, opts)
+        models: dict = {}  # session id -> model in force, for the model rows
         for msg, line, sid in messages.values():
-            yield from self._message_rows(artifact, opts, msg, line, sid or session_id, project)
+            yield from self._message_rows(
+                artifact, opts, msg, line, sid or session_id, project, models
+            )
         for line, ts, sid, text in events:
             yield self._system(artifact, line, ts, sid, project, text, opts)
         if errors:
@@ -419,7 +526,14 @@ class GeminiCliParser(Parser):
         return [(1, rec)], []
 
     def _message_rows(
-        self, artifact: Artifact, opts: Options, msg: dict, line: int, sid: str, project: str
+        self,
+        artifact: Artifact,
+        opts: Options,
+        msg: dict,
+        line: int,
+        sid: str,
+        project: str,
+        models: dict,
     ) -> list[Row]:
         mtype = msg.get("type")
         ts = to_utc(msg.get("timestamp"))
@@ -444,6 +558,10 @@ class GeminiCliParser(Parser):
         if mtype != "gemini":
             out.append(row("system", "%s: %s" % (mtype or "message", part_text(content))))
             return out
+
+        change = track_change("model", models, sid, model)
+        if change:
+            out.append(row("system", change))
 
         if opts.include_thinking:
             for t in msg.get("thoughts") or []:
@@ -486,6 +604,10 @@ class GeminiCliParser(Parser):
                 res = row("tool_result", text, when)
                 res.tool_name, res.tool_use_id = name, cid
                 out.append(res)
+            if status in DECISION_STATUSES:
+                dec = row("system", "permission decision: %s" % status, when)
+                dec.tool_name, dec.tool_use_id = name, cid
+                out.append(dec)
         if not out:
             # An empty gemini turn (no text, no tools) still marks a model call.
             out.append(row("assistant", ""))

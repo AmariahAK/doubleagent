@@ -180,6 +180,23 @@ reads `sandbox={"type":"workspace-write"}`. Both rows take the
 approval in its rollouts, so these parsers write no `permission
 decision:` row.
 
+The `gemini-cli` and `qwen-code` parsers write `model: <id>` at a
+session's first record that names a model and `model: <old> -> <new>`
+on each change, tracked per session id: for Gemini CLI from each gemini
+message's `model`, for Qwen Code from the `session_model` record, which
+reads `model: <id> auth=<authType>`, and from each assistant record's
+`model`; a Qwen Code `logs.json` `model_switch` entry reads
+`model: <from> -> <to> reason=<reason>`. A tool call whose status is
+`cancelled` or `awaiting_approval` keeps its `[<status>]` prefix on the
+`tool_result` row and is followed by `permission decision: <status>`
+with the call's `tool_name` and `tool_use_id` (after the `tool_use` row
+when there is no result). Each folder in `.gemini/trustedFolders.json`
+or `.qwen/trustedFolders.json` is one row
+`permission setting: trustedFolders.<path>=<value> (from <file>, file mtime)`,
+where `<value>` is the recorded trust level (`TRUST_FOLDER`,
+`TRUST_PARENT` or `DO_NOT_TRUST`), with `project_path` the folder, the
+file's modification time and an empty `session_id`.
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and

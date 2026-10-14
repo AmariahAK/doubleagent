@@ -1729,7 +1729,7 @@ class AntigravityPermissionSettingsTests(ParserBase):
 
 
 from doubleagent.parsers.qwen_code import QwenCodeParser, args_summary
-from fixtures import QWEN_ARCHIVED, QWEN_SESSION, QWEN_TMP
+from fixtures import QWEN_ARCHIVED, QWEN_SESSION, QWEN_TMP, QWEN_TRUST_MTIME
 
 
 class QwenCodeTests(ParserBase):
@@ -1750,6 +1750,10 @@ class QwenCodeTests(ParserBase):
                 "tool_result",
                 "system",
                 "system",
+                "system",
+                "tool_use",
+                "tool_result",
+                "system",
             ],
         )
         for r in rows:
@@ -1758,10 +1762,14 @@ class QwenCodeTests(ParserBase):
                 (r.session_id, r.project_path, r.git_branch), (QWEN_SESSION, "/srv/proj", "main")
             )
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        model, user, asst, sh, read, shout, readout, slash, title = rows
+        model, user, asst, sh, read, shout, readout, slash, title = rows[:9]
         self.assertEqual(
-            (model.text, model.model),
-            ("session_model: qwen3-coder-plus auth=qwen-oauth", "qwen3-coder-plus"),
+            (model.text, model.model, model.timestamp_utc),
+            (
+                "model: qwen3-coder-plus auth=qwen-oauth",
+                "qwen3-coder-plus",
+                "2026-10-01T09:59:59.000Z",
+            ),
         )
         self.assertEqual(
             (user.text, user.timestamp_utc), ("run the tests", "2026-10-01T10:00:00.000Z")
@@ -1782,7 +1790,86 @@ class QwenCodeTests(ParserBase):
         )
         self.assertEqual(slash.text, "slash_command: invocation /compress")
         self.assertEqual(title.text, "custom_title: Run tests")
-        self.assertEqual([r.source_line for r in rows], [1, 2, 3, 3, 3, 4, 5, 6, 7])
+        self.assertEqual([r.source_line for r in rows], [1, 2, 3, 3, 3, 4, 5, 6, 7, 8, 8, 9, 9])
+
+    def test_model_change_and_decision_rows(self):
+        rows = self.rows_for(QwenCodeParser(), self.REL)
+        change, use, result, decision = rows[9:]
+        self.assertEqual(
+            (change.turn_type, change.text, change.model, change.timestamp_utc),
+            (
+                "system",
+                "model: qwen3-coder-plus -> qwen3-vl-plus",
+                "qwen3-vl-plus",
+                "2026-10-01T10:01:00.000Z",
+            ),
+        )
+        self.assertEqual((use.tool_use_id, use.model), ("call_ghi789", "qwen3-vl-plus"))
+        self.assertEqual(result.text, "[cancelled] cancelled by user")  # prefix kept
+        self.assertEqual(
+            (
+                decision.turn_type,
+                decision.text,
+                decision.tool_name,
+                decision.tool_use_id,
+                decision.timestamp_utc,
+                decision.source_line,
+            ),
+            (
+                "system",
+                "permission decision: cancelled",
+                "run_shell_command",
+                "call_ghi789",
+                "2026-10-01T10:01:05.000Z",
+                9,
+            ),
+        )
+
+    def test_start_row_without_session_model(self):
+        path = self.home / self.REL
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        path.write_text("".join(lines[1:]), encoding="utf-8")  # drop session_model
+        rows = self.rows_for(QwenCodeParser(), self.REL)
+        models = [(r.text, r.timestamp_utc) for r in rows if r.text.startswith("model:")]
+        self.assertEqual(
+            models,
+            [
+                ("model: qwen3-coder-plus", "2026-10-01T10:00:03.000Z"),
+                ("model: qwen3-coder-plus -> qwen3-vl-plus", "2026-10-01T10:01:00.000Z"),
+            ],
+        )
+        self.assertEqual([r.turn_type for r in rows[:3]], ["user", "system", "assistant"])
+
+    def test_trusted_folders(self):
+        rel = ".qwen/trustedFolders.json"
+        rows = self.rows_for(QwenCodeParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.project_path) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: trustedFolders./srv/proj=TRUST_FOLDER "
+                    "(from .qwen/trustedFolders.json, file mtime)",
+                    "/srv/proj",
+                ),
+                (
+                    "system",
+                    "permission setting: trustedFolders./srv=DO_NOT_TRUST "
+                    "(from .qwen/trustedFolders.json, file mtime)",
+                    "/srv",
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.timestamp_utc, r.session_id, r.source_line), (to_utc(QWEN_TRUST_MTIME), "", 1)
+            )
+        (self.home / rel).write_text("[1, 2]", encoding="utf-8")
+        rows = self.rows_for(QwenCodeParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("system", "parser: .qwen/trustedFolders.json is not a JSON object")],
+        )
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(QwenCodeParser(), self.REL, include_thinking=True)
@@ -1802,7 +1889,7 @@ class QwenCodeTests(ParserBase):
             ("run the tests", QWEN_SESSION, ""),
         )
         self.assertEqual(
-            rows[1].text, "model_switch: qwen3-coder-plus -> qwen3-vl-plus (vision_auto_switch)"
+            rows[1].text, "model: qwen3-coder-plus -> qwen3-vl-plus reason=vision_auto_switch"
         )
         self.assertEqual(rows[1].model, "qwen3-vl-plus")
         self.assertEqual([r.source_line for r in rows], [1, 2])
@@ -1816,16 +1903,17 @@ class QwenCodeTests(ParserBase):
                 self.REL,
                 self.LOGS,
                 ".qwen/projects/-srv-proj/chats/archive/%s.jsonl" % QWEN_ARCHIVED,
+                ".qwen/trustedFolders.json",
             },
         )
 
     def test_truncated_last_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.REL)
         rows = self.rows_for(QwenCodeParser(), self.REL)
-        self.assertEqual(len(rows), 10)
+        self.assertEqual(len(rows), 14)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual((rows[-1].source_line, rows[-1].session_id), (8, QWEN_SESSION))
+        self.assertEqual((rows[-1].source_line, rows[-1].session_id), (10, QWEN_SESSION))
 
     def test_truncated_logs_keep_earlier_entries(self):
         path = self.home / self.LOGS
@@ -1972,6 +2060,9 @@ class KiroTests(ParserBase):
         self.assertEqual(salvage("garbage")[0], None)
 
 
+from fixtures import GEMINI_TRUST_MTIME
+
+
 class GeminiCliTests(ParserBase):
     REL = GEMINI_REL
     LEGACY = ".gemini/tmp/%s/chats/session-2026-09-30T08-00-b2c3d4e5.json" % GEMINI_HASH
@@ -1984,6 +2075,7 @@ class GeminiCliTests(ParserBase):
             [
                 "system",
                 "user",
+                "system",
                 "assistant",
                 "tool_use",
                 "tool_result",
@@ -1992,8 +2084,10 @@ class GeminiCliTests(ParserBase):
                 "tool_use",
                 "tool_result",
                 "system",
+                "system",
                 "tool_use",
                 "tool_result",
+                "system",
                 "user",
                 "system",
                 "system",
@@ -2003,7 +2097,54 @@ class GeminiCliTests(ParserBase):
             self.assertEqual((r.host, r.user, r.agent), ("h1", "alice", "gemini-cli"))
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        start, u1, g1, ls, lsout, _u3, g3, rf, rfout, info, sh, shout, u4, summ, rewind = rows
+        (
+            start,
+            u1,
+            m1,
+            g1,
+            ls,
+            lsout,
+            _u3,
+            g3,
+            rf,
+            rfout,
+            info,
+            m2,
+            sh,
+            shout,
+            dec,
+            u4,
+            summ,
+            rewind,
+        ) = rows
+        self.assertEqual(
+            (m1.text, m1.model, m1.timestamp_utc, m1.session_id, m1.source_line),
+            (
+                "model: gemini-2.5-pro",
+                "gemini-2.5-pro",
+                "2026-10-01T09:00:07.000Z",
+                GEMINI_SESSION,
+                4,
+            ),
+        )
+        self.assertEqual(
+            (m2.text, m2.model, m2.timestamp_utc, m2.source_line),
+            (
+                "model: gemini-2.5-pro -> gemini-2.5-flash",
+                "gemini-2.5-flash",
+                "2026-10-01T09:00:24.000Z",
+                13,
+            ),
+        )
+        self.assertEqual(
+            (dec.text, dec.tool_name, dec.tool_use_id, dec.timestamp_utc),
+            (
+                "permission decision: cancelled",
+                "run_shell_command",
+                "run_shell_command-2",
+                "2026-10-01T09:00:24.000Z",
+            ),
+        )
         self.assertIn("session start: kind=main", start.text)
         self.assertEqual((u1.text, u1.session_id), ("list files in src", GEMINI_SESSION))
         self.assertEqual(
@@ -2045,12 +2186,13 @@ class GeminiCliTests(ParserBase):
 
     def test_legacy_json_and_hash_directory(self):
         rows = self.rows_for(GeminiCliParser(), self.LEGACY)
-        self.assertEqual([r.turn_type for r in rows], ["system", "user", "assistant"])
+        self.assertEqual([r.turn_type for r in rows], ["system", "user", "system", "assistant"])
         self.assertTrue(all(r.session_id == GEMINI_LEGACY for r in rows))
         self.assertTrue(
             all(r.project_path == "/srv/proj" for r in rows)
         )  # sha256 match in projects.json
-        self.assertEqual((rows[2].text, rows[2].model), ("Hi.", "gemini-2.0-flash"))
+        self.assertEqual(rows[2].text, "model: gemini-2.0-flash")
+        self.assertEqual((rows[3].text, rows[3].model), ("Hi.", "gemini-2.0-flash"))
         rows = self.rows_for(GeminiCliParser(), self.LEGACY, include_thinking=True)
         self.assertEqual([r.text for r in rows if r.turn_type == "thinking"], ["weighing it"])
 
@@ -2060,6 +2202,85 @@ class GeminiCliTests(ParserBase):
         self.assertEqual([r.turn_type for r in rows], ["system", "user"])
         self.assertIn("kind=subagent", rows[0].text)
         self.assertEqual(rows[1].session_id, GEMINI_SUBAGENT)
+
+    def test_awaiting_approval_without_result(self):
+        rel = ".gemini/tmp/proj/chats/%s/%s.jsonl" % (GEMINI_SESSION, GEMINI_SUBAGENT)
+        call = {
+            "id": "run_shell_command-9",
+            "name": "run_shell_command",
+            "args": {"command": "make deploy"},
+            "status": "awaiting_approval",
+            "timestamp": "2026-10-01T09:00:32.000Z",
+        }
+        msg = {
+            "id": "s-g1",
+            "timestamp": "2026-10-01T09:00:31.000Z",
+            "type": "gemini",
+            "content": "",
+            "model": "gemini-2.5-pro",
+            "toolCalls": [call],
+        }
+        with open(self.home / rel, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(msg) + "\n")
+        rows = self.rows_for(GeminiCliParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows[2:]],
+            [
+                ("system", "model: gemini-2.5-pro"),
+                ("tool_use", '{"command":"make deploy"}'),
+                ("system", "permission decision: awaiting_approval"),
+            ],
+        )
+        dec = rows[-1]
+        self.assertEqual(
+            (dec.tool_name, dec.tool_use_id, dec.timestamp_utc, dec.session_id),
+            (
+                "run_shell_command",
+                "run_shell_command-9",
+                "2026-10-01T09:00:32.000Z",
+                GEMINI_SUBAGENT,
+            ),
+        )
+
+    def test_trusted_folders(self):
+        rel = ".gemini/trustedFolders.json"
+        rows = self.rows_for(GeminiCliParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.project_path) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: trustedFolders./srv/proj=TRUST_FOLDER "
+                    "(from .gemini/trustedFolders.json, file mtime)",
+                    "/srv/proj",
+                ),
+                (
+                    "system",
+                    "permission setting: trustedFolders./srv/other=TRUST_PARENT "
+                    "(from .gemini/trustedFolders.json, file mtime)",
+                    "/srv/other",
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.timestamp_utc, r.session_id, r.source_line, r.agent),
+                (to_utc(GEMINI_TRUST_MTIME), "", 1, "gemini-cli"),
+            )
+        (self.home / rel).write_text('{"/srv/proj": ', encoding="utf-8")
+        rows = self.rows_for(GeminiCliParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc) for r in rows],
+            [
+                (
+                    "system",
+                    "parser: .gemini/trustedFolders.json is not a JSON object",
+                    rows[0].timestamp_utc,
+                )
+            ],
+        )
+        # The session file still yields every row.
+        self.assertEqual(len(self.rows_for(GeminiCliParser(), self.REL)), 18)
 
     def test_history(self):
         rows = self.rows_for(GeminiCliParser(), ".gemini/tmp/proj/logs.json")
@@ -2092,7 +2313,7 @@ class GeminiCliTests(ParserBase):
     def test_truncated_last_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.REL)
         rows = self.rows_for(GeminiCliParser(), self.REL)
-        self.assertEqual(len(rows), 16)
+        self.assertEqual(len(rows), 19)
         self.assertIn("1 unparseable line", rows[-1].text)
         self.assertEqual(rows[-1].source_line, 16)
         (self.home / self.LEGACY).write_text('{"sessionId": "x", "messages": [', encoding="utf-8")

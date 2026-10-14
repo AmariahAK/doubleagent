@@ -17,8 +17,9 @@ stream, not Gemini's. Files:
   - tool_result: `parts[].functionResponse {id, name, response}` and
     `toolCallResult {callId, status, resultDisplay, errorType}`.
   - system: `subtype` plus `systemPayload`; slash_command (`rawCommand`),
-    session_model (`modelId`, `authType`), custom_title (`customTitle`),
-    turn_result (`state`, `resultText`), rewind (`truncatedCount`),
+    session_model (`modelId`, `authType`; see below), custom_title
+    (`customTitle`), turn_result (`state`, `resultText`), rewind
+    (`truncatedCount`),
     chat_compression (`info`) are summarised, other subtypes (including
     the managed-engine `managed_session_header_v1` records) are emitted
     with their subtype name and the payload as JSON.
@@ -29,6 +30,27 @@ stream, not Gemini's. Files:
   or model_switch (whose `message` is a JSON `ModelSwitchEvent {fromModel,
   toModel, reason}`). The directory is a hash, so these rows have no
   project path. A truncated array still yields the entries before the cut.
+
+* `~/.qwen/trustedFolders.json`: a JSON object, read with comments
+  stripped, whose keys are folder paths and whose values are a
+  `TrustLevel` string (`TRUST_FOLDER`, `TRUST_PARENT`, `DO_NOT_TRUST`;
+  `packages/cli/src/config/trustedFolders.ts`). One `system` row per key,
+  `permission setting: trustedFolders.<path>=<value> (from <file>, file mtime)`,
+  read by the Gemini CLI parser's `trusted_folder_rows`, with
+  `project_path` the folder, `timestamp_utc` the file's modification time
+  and no session id.
+
+Model and permission rows. A `session_model` record is the row
+`model: <modelId> auth=<authType>` (`model: <old> -> <new> auth=<authType>`
+when it names a model other than the one in force); an assistant
+record's `model` yields `model: <id>` before its rows when no earlier
+record of the session named a model, and `model: <old> -> <new>` when it
+differs from the one in force, tracked per `sessionId`. A `logs.json`
+`model_switch` entry is `model: <fromModel> -> <toModel> reason=<reason>`.
+A `tool_result` whose `toolCallResult.status` is `cancelled` or
+`awaiting_approval` keeps the `[<status>]` prefix and is followed by a
+`system` row `permission decision: <status>` with its `tool_name` and
+`tool_use_id`. The session file records no approval mode.
 
 Not parsed: `checkpoint-<tag>.json` (a raw `Content[]` without timestamps)
 and `shell_history`.
@@ -43,10 +65,13 @@ from collections.abc import Iterator
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl
+from .base import Options, Parser, compact_json, iter_jsonl, track_change
+from .gemini_cli import trusted_folder_rows
 
 SESSION_RX = re.compile(r"^\.qwen/projects/[^/]+/chats/(?:archive/)?[^/]+\.jsonl$")
 LOGS_RX = re.compile(r"^\.qwen/tmp/[^/]+/logs\.json$")
+TRUSTED_RX = re.compile(r"^\.qwen/trustedFolders\.json$")
+DECISION_STATUSES = ("cancelled", "awaiting_approval")
 SIDECAR_SUFFIX = ".ledger.jsonl"
 
 ARG_KEYS = (
@@ -122,12 +147,14 @@ class QwenCodeParser(Parser):
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
-        if LOGS_RX.match(rel):
+        if LOGS_RX.match(rel) or TRUSTED_RX.match(rel):
             return True
         return bool(SESSION_RX.match(rel)) and not rel.endswith(SIDECAR_SUFFIX)
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
-        if LOGS_RX.match(artifact.rel):
+        if TRUSTED_RX.match(artifact.rel):
+            yield from trusted_folder_rows(self, artifact)
+        elif LOGS_RX.match(artifact.rel):
             yield from self._parse_logs(artifact, opts)
         else:
             yield from self._parse_session(artifact, opts)
@@ -135,6 +162,7 @@ class QwenCodeParser(Parser):
     def _parse_session(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
         session_id = ""
+        models: dict = {}  # session id -> model in force, for the model rows
         for n, rec in iter_jsonl(artifact.disk_path, errors):
             rtype = rec.get("type")
             if rec.get("sessionId"):
@@ -165,6 +193,11 @@ class QwenCodeParser(Parser):
                 yield base("user", text)
             elif rtype == "assistant":
                 model = str(rec.get("model") or "")
+                change = track_change("model", models, session_id, model)
+                if change:
+                    row = base("system", change)
+                    row.model = model
+                    yield row
                 for p in parts:
                     fc = p.get("functionCall")
                     if isinstance(fc, dict):
@@ -209,12 +242,25 @@ class QwenCodeParser(Parser):
                 row.tool_name = str(fr.get("name") or "")
                 row.tool_use_id = str(tcr.get("callId") or fr.get("id") or "")
                 yield row
+                if status in DECISION_STATUSES:
+                    dec = base("system", "permission decision: %s" % status)
+                    dec.tool_name, dec.tool_use_id = row.tool_name, row.tool_use_id
+                    yield dec
             elif rtype == "system":
                 subtype = str(rec.get("subtype") or "system")
                 payload = rec.get("systemPayload")
-                row = base("system", system_text(subtype, payload))
+                text = system_text(subtype, payload)
+                model = ""
                 if subtype == "session_model" and isinstance(payload, dict):
-                    row.model = str(payload.get("modelId") or "")
+                    model = str(payload.get("modelId") or "")
+                    if model:
+                        change = track_change("model", models, session_id, model)
+                        text = "%s auth=%s" % (
+                            change or "model: %s" % model,
+                            payload.get("authType") or "",
+                        )
+                row = base("system", text)
+                row.model = model
                 yield row
         if errors:
             yield self._error_row(artifact, session_id, errors)
@@ -240,7 +286,7 @@ class QwenCodeParser(Parser):
                     except ValueError:
                         event = message
                 if etype == "model_switch" and isinstance(event, dict):
-                    text = "model_switch: %s -> %s (%s)" % (
+                    text = "model: %s -> %s reason=%s" % (
                         event.get("fromModel"),
                         event.get("toModel"),
                         event.get("reason"),
