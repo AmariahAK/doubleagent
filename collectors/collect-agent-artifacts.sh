@@ -35,7 +35,9 @@
 #    2. Data tables          CATALOG, PROJECT_CATALOG, EXCLUDES, SECRET_GLOBS
 #                            and DOCKER_VOLUMES: what is collected, as data
 #    3. Shared helpers       logging, notes, JSON escaping, number checks and
-#                            the stat, hash and file id wrappers (COMMON)
+#                            the stat, hash and file id wrappers (mostly
+#                            COMMON; add_note and file_id run in the main
+#                            shell only)
 #    4. Manifest writer      the row writer, the directory-read check and the
 #                            error_read row (COMMON)
 #    5. Staging files        the worker programs that find -exec runs
@@ -2261,7 +2263,8 @@ expand_catalog() {
 # prints M|agent|glob on stdout, and shared matches still claim their paths
 # but are not walked. HEADER, when given, is logged once before the first
 # match, so a base with no matches leaves no progress line. Reads INVENTORY;
-# sets NESTED_CLAIMS for the duration of the call. Temporaries: _cc_.
+# sets NESTED_CLAIMS for the duration of the call, in the subshell every
+# caller runs it in (the main program clears it, #106). Temporaries: _cc_.
 collect_catalog() {
   _cc_header=${4:-}
   _cc_matches=$(expand_catalog "$2" "$3")

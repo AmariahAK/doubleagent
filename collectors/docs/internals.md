@@ -56,7 +56,7 @@ The steps in the main program, in run order:
 
 | Step | sh | PowerShell |
 | --- | --- | --- |
-| Options | `parse_options` (exits after `--version`, `--help`, or an unknown option); `--list` runs `print_catalog` and exits 0; `set_max_size` (exit 1 on a bad value) | `param()`; `-Version` and `-List` (`Write-CatalogList`) exit 0; a negative `-MaxFileSizeMB` exits 1 |
+| Options | `parse_options` (exits after `--version`, `--help`, an unknown option, or exit 1 with the usage for an option missing its value); `--list` runs `print_catalog` and exits 0; `set_max_size` (exit 1 on a bad value) | `param()`; `-Version` and `-List` (`Write-CatalogList`) exit 0; a negative `-MaxFileSizeMB` exits 1 |
 | Resolve options | `resolve_extra_projects`, `resolve_root` (exit 2 when `-r` is not a directory) | `Initialize-TableRegexes`, `Resolve-ProjectArgs`, `Resolve-RootArg` (exit 2) |
 | Output directory and tools | `check_prerequisites`: outside `--inventory`, the output directory is created and must be writable and `tar` must exist; `find` must exist (exit 2) | `Initialize-OutputDir` outside `-Inventory` (exit 2) |
 | Capabilities and names | `detect_capabilities`, `set_output_names` | `Initialize-RunNames`, `Initialize-Archivers` (exit 2 on a bad `CAC_ARCHIVER`) |

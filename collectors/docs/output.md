@@ -140,7 +140,7 @@ escapes; the parsed values are the same.
 | --- | --- |
 | `collected` | Copied, hashed and archived. |
 | `symlink` | A symbolic link (on Windows any reparse point, including junctions), recorded with its target and never followed. Both collectors recreate the link in the archive with its target as stored. The PowerShell collector cannot where Windows refuses to create it or where the archive is a `.zip`; the row then has no `archive_path` and `error` says why. |
-| `skipped_excluded` | Matched an `EXCLUDES` pattern. An excluded directory is one `dir` row with its total size; an excluded file, found in a walk or matched by a catalog entry itself, is one `file` row with its size. |
+| `skipped_excluded` | Matched an `EXCLUDES` pattern. An excluded directory is one `dir` row with its total size; an excluded file, found in a walk or matched by a catalog entry itself, is one `file` row with its size. An excluded symlink is not a `symlink` row: it gets the same `file` row, or a `dir` row when it points to a directory. |
 | `skipped_size` | Larger than `--max-file-size`. |
 | `skipped_secret` | A credential file left out by `--no-secrets`. |
 | `error_copy` | Could not be read or copied; see `error`. |
