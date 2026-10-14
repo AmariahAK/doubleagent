@@ -397,6 +397,19 @@ def build_filter(args: argparse.Namespace) -> RowFilter:
     return RowFilter(since, until, args.keep_undated, patterns)
 
 
+def agents_summary(parsed: list[str], unparsed: list[str]) -> str:
+    """The text of the timeline's `agents:` line: the agents that produced
+    rows, then the agents detected that have no parser, each list sorted and
+    `none` when it is empty; `none were found` when both are empty."""
+
+    def names(agents: list[str]) -> str:
+        return ", ".join(sorted(set(agents))) or "none"
+
+    if not parsed and not unparsed:
+        return "none were found"
+    return "parsed: %s; detected but not parsed: %s" % (names(parsed), names(unparsed))
+
+
 def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     opts = Options(include_thinking=args.include_thinking)
     rf: RowFilter = args.row_filter
@@ -454,12 +467,9 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
             % (rf.dropped_window, rf.dropped_undated, rf.dropped_match)
         )
     # Project-tagged files are routed to every parser, so they are never
-    # "detected only" in their own right.
+    # "detected but not parsed" in their own right.
     unparsed = [r["agent"] for r in detect if not r["parser"] and r["agent"] != PROJECT_AGENT]
-    print(
-        "agents:    parsed %s; detected only %s"
-        % (", ".join(parsed_agents) or "none", ", ".join(sorted(set(unparsed))) or "none")
-    )
+    print("agents:    " + agents_summary(parsed_agents, unparsed))
     print("rows:      %d in %s" % (len(rows), timeline))
     for (agent, tt), n in sorted(counts.items()):
         print("           %-14s %-12s %d" % (agent, tt, n))

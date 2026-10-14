@@ -40,10 +40,31 @@ directory or file that could not be read (see
 [Unreadable inputs](inputs.md#unreadable-inputs)), and, when the timeline
 is filtered, a `window:` line with the resolved UTC bounds, a `match:`
 line with the patterns, and a `filtered:` line counting the rows dropped
-outside the window, without a timestamp, and not matching. Then come the agents parsed and the agents only
-detected, the row count with a breakdown by agent and `turn_type`, and the
-session count. The agents parsed are those that produced rows before
-filtering; the breakdown counts the rows written.
+outside the window, without a timestamp, and not matching. Then come the
+`agents:` line, the row count with a breakdown by agent and `turn_type`,
+and the session count. The breakdown counts the rows written.
+
+The `agents:` line is always one line: two lists when either has an entry,
+otherwise `none were found`:
+
+```text
+agents:    parsed: antigravity, claude-code; detected but not parsed: copilot-cli
+agents:    parsed: antigravity, claude-code; detected but not parsed: none
+agents:    parsed: none; detected but not parsed: copilot-cli
+agents:    none were found
+```
+
+`parsed` names the agents that produced rows before filtering, so an agent
+whose parser read its files and found nothing to report is in neither list.
+`detected but not parsed` names the agents in the input that have no parser
+(the agents `detect` shows without one). Files tagged `project`, which every
+parser is offered, are never listed there. Each list is sorted and
+comma-separated, and reads `none` when it is empty while the other is
+not. When both are empty the line reads `none were found`: the input holds
+no agent data (where `detect` prints `no agent artifacts found`), or the
+only agents in it have parsers that produced no rows. Before analyzer
+0.12.0 the line read `parsed <list>; detected only <list>`, with `none` for
+an empty list.
 
 ## JSONL encoding
 
