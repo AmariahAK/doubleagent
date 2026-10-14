@@ -21,6 +21,10 @@ CLAUDE_WORK_SESSION = "11111111-2222-4333-8444-666666666666"
 # process in the registry fixture is bound to (no transcript).
 CLAUDE_295_SESSION = "11111111-2222-4333-8444-777777777777"
 CLAUDE_BRIDGE_SESSION = "11111111-2222-4333-8444-888888888888"
+# A 2.1.296 session with permission mode and model changes (issue 93).
+CLAUDE_296_SESSION = "11111111-2222-4333-8444-999999999999"
+# Modification time given to the settings fixtures: 2026-10-01T09:00:00Z.
+CLAUDE_SETTINGS_MTIME = 1790845200
 CLAUDE_REGISTRY_KEY = "4242." + "ab" * 32 + ".key"
 CODEX_SESSION = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 CODEX_SUBAGENT = "aaaaaaaa-bbbb-4ccc-8ddd-000000000002"
@@ -556,6 +560,114 @@ def claude_295_records():
         dict(type="last-prompt", lastPrompt=prompt, leafUuid="p4", sessionId=sid),  # 9
         dict(type="atis-latch", atis=True, sessionId=sid),  # 10
     ]
+
+
+def claude_296_records():
+    """A Claude Code 2.1.296 session: the `permission-mode` record and the
+    prompt key `permissionMode` changing, and a `/model` switch with the
+    command output text of that version (research/claude-code.md, section
+    3). Line numbers are what ClaudeCode296Tests asserts."""
+    c = _claude_common("/srv/proj", "main")
+    c.update(sessionId=CLAUDE_296_SESSION, version="2.1.296")
+    sid = CLAUDE_296_SESSION
+
+    def user(uuid, t, content, mode):
+        return dict(
+            c,
+            type="user",
+            uuid=uuid,
+            timestamp="2026-10-01T12:00:%s.000Z" % t,
+            message={"role": "user", "content": content},
+            permissionMode=mode,
+            promptSource="typed",
+        )
+
+    def assistant(uuid, t, text, model, requested):
+        return dict(
+            c,
+            type="assistant",
+            uuid=uuid,
+            timestamp="2026-10-01T12:00:%s.000Z" % t,
+            requestId="req_" + uuid,
+            message={
+                "model": model,
+                "id": "msg_" + uuid,
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": text}],
+            },
+            requestedModel=requested,
+        )
+
+    return [
+        user("m1", "01", "plan the log cleanup", "auto"),  # 1
+        assistant("m2", "02", "Here is a plan.", "claude-fable-5-1", "claude-fable-5-1"),  # 2
+        dict(type="permission-mode", permissionMode="auto", sessionId=sid),  # 3: unchanged
+        dict(type="permission-mode", permissionMode="plan", sessionId=sid),  # 4
+        user("m3", "05", "go on", "plan"),  # 5: unchanged
+        user(
+            "m4",
+            "06",
+            "<command-name>/model</command-name>\n<command-message>model</command-message>\n"
+            "<command-args>opus</command-args>",
+            "plan",
+        ),  # 6
+        user(
+            "m5",
+            "07",
+            "<local-command-stdout>Set model to `Opus 5.5` and saved as your default "
+            "for new sessions</local-command-stdout>",
+            "plan",
+        ),  # 7
+        assistant("m6", "08", "Switched.", "claude-opus-5-5", "opus"),  # 8
+        user("m7", "09", "apply it", "acceptEdits"),  # 9
+        assistant("m8", "10", "Applied.", "claude-opus-5-5", "opus"),  # 10: unchanged
+    ]
+
+
+def claude_user_settings():
+    """`~/.claude/settings.json` with every `permissions` key the parser
+    reads, and keys it must never print (`env`, `apiKeyHelper`)."""
+    return {
+        "permissions": {
+            "allow": ["Bash(npm test:*)", "Read(~/notes/**)"],
+            "deny": ["Bash(rm -rf:*)"],
+            "ask": ["WebFetch"],
+            "defaultMode": "acceptEdits",
+            "disableBypassPermissionsMode": "disable",
+            "additionalDirectories": ["/srv/shared"],
+        },
+        "env": {"ANTHROPIC_API_KEY": "sk-not-a-real-key"},
+        "apiKeyHelper": "/usr/local/bin/print-not-a-real-key",
+        "model": "opus",
+    }
+
+
+def claude_project_local_settings():
+    """A project's `.claude/settings.local.json`."""
+    return {"permissions": {"allow": ["Bash(make lint)"], "defaultMode": "plan"}}
+
+
+def claude_global_config():
+    """`~/.claude.json` with one project entry; `oauthAccount` and the MCP
+    server headers must never be printed."""
+    return {
+        "numStartups": 3,
+        "oauthAccount": {"emailAddress": "user@example.invalid"},
+        "projects": {
+            "/srv/proj": {
+                "allowedTools": ["Bash(git status)"],
+                "mcpContextUris": [],
+                "mcpServers": {
+                    "remote": {"url": "https://mcp.invalid", "headers": {"Authorization": "x"}}
+                },
+                "enabledMcpjsonServers": [],
+                "disabledMcpjsonServers": [],
+                "hasTrustDialogAccepted": True,
+                "hasClaudeMdExternalIncludesApproved": False,
+            }
+        },
+    }
 
 
 def claude_registry_records():
@@ -1244,8 +1356,20 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     for name, rec in claude_registry_records().items():
         (registry / name).write_text(json.dumps(rec), encoding="utf-8")
     (registry / CLAUDE_REGISTRY_KEY).write_text("not a real key", encoding="utf-8")
+    _jsonl(
+        home / ".claude/projects/-srv-proj" / (CLAUDE_296_SESSION + ".jsonl"), claude_296_records()
+    )
     _jsonl(home / ".claude/history.jsonl", claude_history_records())
-    (home / ".claude/settings.json").write_text("{}", encoding="utf-8")
+    for rel, doc in (
+        (".claude/settings.json", claude_user_settings()),
+        (".claude.json", claude_global_config()),
+        (".claude-work/.claude.json", {"projects": {"/srv/work": {"allowedTools": ["Edit"]}}}),
+    ):
+        (home / rel).parent.mkdir(parents=True, exist_ok=True)
+        (home / rel).write_text(json.dumps(doc), encoding="utf-8")
+        os.utime(home / rel, (CLAUDE_SETTINGS_MTIME, CLAUDE_SETTINGS_MTIME))
+    # A backup of the global config, which the parser must not want.
+    (home / ".claude.json.backup.1790845200000").write_text("{}", encoding="utf-8")
     # A config home moved with CLAUDE_CONFIG_DIR, and claude-code-router's
     # directory, which shares the .claude- prefix and must not be parsed.
     _jsonl(
@@ -7187,6 +7311,23 @@ def claude_desktop_code_record():
         "isArchived": False,
         "title": "Fix the failing test",
         "permissionMode": "default",
+        # Per-session grants (issue 93): the entries' inner shape is not
+        # determined (real installs showed both lists empty); fixture only.
+        "effort": "high",
+        "alwaysAllowedReasons": ["Bash(npm test)"],
+        "sessionPermissionUpdates": [
+            {
+                "type": "addRules",
+                "rules": [{"toolName": "Bash", "ruleContent": "npm test"}],
+                "behavior": "allow",
+                "destination": "session",
+            }
+        ],
+        "chromePermissionMode": "ask",
+        "chromeAllowedDomains": ["example.invalid"],
+        "cuAllowedApps": ["Terminal"],
+        "cuGrantFlags": {"clipboardRead": True},
+        "cuFlagsGrantedAt": 1790762450000,
     }
 
 

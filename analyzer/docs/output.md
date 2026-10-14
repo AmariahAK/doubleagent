@@ -139,6 +139,33 @@ appears in `timeline.jsonl` but in no `sessions.jsonl` record. The
 [`antigravity` row of the parser table](parsers.md#parser-table) lists the
 files.
 
+Permission state and the model in use are `system` rows too. The
+`claude-code` parser (and `claude-desktop` for the transcripts it reads
+with the same reader) writes `permission mode: <mode>` at a session's
+first permission mode and `permission mode: <old> -> <new>` on each
+change, and `model: <id>` at the first assistant reply and
+`model: <old> -> <new>` on each change, with ` requested=<id>` when the
+model asked for differs from the one that answered; the `model` column of
+a model row is the new model. Each subagent transcript tracks its own.
+Standing permission settings are one row per entry, `permission setting:
+<key>=<value> (from <file>, file mtime)`: `permissions.allow`, `deny`,
+`ask`, `additionalDirectories`, `defaultMode` and
+`disableBypassPermissionsMode` from `.claude/settings.json` and
+`.claude/settings.local.json` (the user's, or a project's with
+`project_path` the project), and `allowedTools`, `hasTrustDialogAccepted`
+and `hasClaudeMdExternalIncludesApproved` per project from `.claude.json`
+(with `project_path` the project key). Their `timestamp_utc` is the
+file's modification time (the manifest `mtime` when there is a
+manifest), not the time the entry was added, and their `session_id` is
+empty. A Claude Desktop session record adds ` permission_mode=<mode>
+effort=<effort>` to its row and one `permission grant: <key> <entry>` or
+`permission grant: <key>=<value>` row per session grant, timestamped at
+the record's `lastActivityAt` (else `createdAt`), which the text names as
+`(as of <field>)`. A per-call decision stays `permission decision:`
+(Claude Code) or `permission request:`, `permission response:`,
+`permission auto-approved:` and `permission auto-denied:` (the Claude
+Desktop audit log).
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and

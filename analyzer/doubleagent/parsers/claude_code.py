@@ -24,8 +24,8 @@ evidence is in `analyzer/research/claude-code.md`. Files:
     `task notification:`, `peer message:`, `coordinator message:`,
     `auto-continuation:`, `slash command:`, `command output:`,
     `compaction summary:`, `interrupted:`, `subagent task:` or `context:`.
-    The 2.1.295 prompt keys `turnOrigin`, `promptSource` and
-    `permissionMode` do not become rows or change a label.
+    The 2.1.295 prompt keys `turnOrigin` and `promptSource` do not become
+    rows or change a label; `permissionMode` feeds the mode tracker below.
     `permissionDecision` (2.1.295, on a line that carries `tool_result`
     blocks: `decision`, `source`, `reasonType`, other keys possible)
     becomes one `system` row after that line's `tool_result` rows,
@@ -33,7 +33,8 @@ evidence is in `analyzer/research/claude-code.md`. Files:
     (`-` for a missing key), followed by the object's compact JSON when it
     has other keys; its `tool_use_id` is the line's first `tool_result`
     block's and `tool_name` is empty, as on `tool_result` rows.
-  - `assistant` records: `message.model`; `wireToolInputs[<tool_use id>]`
+  - `assistant` records: `message.model` and `requestedModel` (2.1.295);
+    `wireToolInputs[<tool_use id>]`
     is the input as the model sent it, used for the Bash command because
     the stored `input.command` lacks its `cd <dir> &&` prefix. A record
     with `isApiErrorMessage` or model `<synthetic>` is a local API error
@@ -68,7 +69,23 @@ evidence is in `analyzer/research/claude-code.md`. Files:
     line N` (the first delivering line after the enqueue, else the first).
     The other state types (mode, last-prompt, cost-state,
     file-history-snapshot, file-history-delta, bridge-session, atis-latch,
-    permission-mode, ...) are skipped.
+    ...) are skipped.
+  - Permission mode and model (issue 93). A `permission-mode` record
+    (`permissionMode`, `sessionId`, no `timestamp`) and the `permissionMode`
+    key of a `user` record feed one tracker per session id: the first value
+    becomes a `system` row `permission mode: <mode>` and each later
+    different value `permission mode: <old> -> <new>`, before that line's
+    other rows, at the line's timestamp (a `permission-mode` record takes
+    the latest one seen). The values the 2.1.296 binary accepts are
+    `default`, `acceptEdits`, `plan`, `bypassPermissions`, `dontAsk` and
+    `auto`. The first `message.model` of a session's `assistant` records
+    (API errors and `<synthetic>` excluded) becomes `model: <id>` and each
+    change `model: <old> -> <new>`, followed by ` requested=<requestedModel>`
+    when that key is set and differs; the row's `model` column is the new
+    model. Re-appended `permission-mode` records with an unchanged value
+    yield nothing. Each subagent file tracks its own mode and model. The
+    `/model` command's `<local-command-stdout>Set model to ...` line keeps
+    its `command output:` row.
 * `~/.claude/projects/<slug>/<session>/subagents/[<dir>/]agent-<id>.jsonl`:
   subagent transcripts in the same format; `sessionId` is the parent
   session's id and `agentId` the subagent's. Each file starts with a
@@ -102,12 +119,43 @@ evidence is in `analyzer/research/claude-code.md`. Files:
   secret and is never read. A file that is not a JSON object is one
   `system` row.
 
+* Standing permission settings (issue 93), one `system` row per entry,
+  timestamped by the file's modification time (the manifest `mtime` when
+  there is one, else the file's own) and saying so in the text,
+  `session_id` empty:
+  - `~/.claude/settings.json`, `~/.claude/settings.local.json` and a
+    project's `.claude/settings.json` and `.claude/settings.local.json`
+    (offered as `project` artifacts; `project_path` is the project
+    directory, the manifest `home` of the row). Read: `permissions.allow`,
+    `permissions.deny`, `permissions.ask` and
+    `permissions.additionalDirectories` (one row per entry) and
+    `permissions.defaultMode` and `permissions.disableBypassPermissionsMode`
+    (one row each), as `permission setting: permissions.<key>=<value>
+    (from <path relative to the home or project>, file mtime)`. No other
+    key is read: `env`, `apiKeyHelper`, hooks and MCP settings can carry
+    credentials.
+  - `~/.claude.json`: for each `projects.<path>` object, one row per
+    `allowedTools` entry and one each for `hasTrustDialogAccepted` and
+    `hasClaudeMdExternalIncludesApproved` when present, as
+    `permission setting: allowedTools=<entry> (from .claude.json, file
+    mtime)`, with `project_path` the `<path>` key. The collector flags this
+    file `secret: true` (it holds the account's OAuth details); nothing
+    else in it is read. Backups (`.claude.json.backup*`) are not wanted.
+  A settings file that is not a JSON object is one `system` row.
+
 The same files under a config home moved with `CLAUDE_CONFIG_DIR` to a
 `.claude-<name>` directory in the home (such as `~/.claude-work`) are read
-too: `SESSION_RX`, `HISTORY_RX` and `REGISTRY_RX` accept `.claude` or `.claude-<name>` as
-the first path component, matching the catalog's `.claude-*/projects` and
-`.claude-*/history.jsonl` entries. A config home anywhere else is not
-collected.
+too: `SESSION_RX`, `HISTORY_RX`, `REGISTRY_RX` and `SETTINGS_RX` accept
+`.claude` or `.claude-<name>` as the first path component, matching the
+catalog's `.claude-*/projects` and `.claude-*/history.jsonl` entries, and
+`GLOBAL_CONFIG_RX` accepts `.claude-<name>/.claude.json` (the 2.1.296
+binary keeps the global config and the user settings inside
+`CLAUDE_CONFIG_DIR` when it is set). The catalog has no
+`.claude-*/settings*.json` line (claude-mem's `~/.claude-mem/settings.json`
+shares the prefix and holds provider keys), so the collector does not
+collect those two files from a moved config home; only the
+`permissions` object would be read if one were offered. A config home
+anywhere else is not collected.
 
 Not read: the `.meta.json` subagent sidecars, the `sessions/<pid>.*.key`
 files and `paste-cache/` (excluded by the collector).
@@ -116,6 +164,7 @@ files and `paste-cache/` (excluded by the collector).
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -129,6 +178,16 @@ SESSION_RX = re.compile(r"^\.claude(?:-[^/]+)?/projects/[^/]+/.*\.jsonl$")
 SUBAGENT_RX = re.compile(r"/subagents/(?:[^/]+/)*agent-([^/]+)\.jsonl$")
 HISTORY_RX = re.compile(r"^\.claude(?:-[^/]+)?/history\.jsonl$")
 REGISTRY_RX = re.compile(r"^\.claude(?:-[^/]+)?/sessions/\d+\.json$")
+SETTINGS_RX = re.compile(r"^\.claude(?:-[^/]+)?/settings(?:\.local)?\.json$")
+GLOBAL_CONFIG_RX = re.compile(r"^(?:\.claude-[^/]+/)?\.claude\.json$")
+# Manifest agent of the files found through PROJECT_CATALOG (cli.PROJECT_AGENT).
+PROJECT_AGENT = "project"
+# Settings `permissions` keys read, the lists first (claude 2.1.296 settings
+# schema, research/claude-code.md section 5).
+PERMISSION_LISTS = ("allow", "deny", "ask", "additionalDirectories")
+PERMISSION_SCALARS = ("defaultMode", "disableBypassPermissionsMode")
+# `.claude.json` `projects.<path>` flags read beside `allowedTools`.
+PROJECT_FLAGS = ("hasTrustDialogAccepted", "hasClaudeMdExternalIncludesApproved")
 PERSISTED_MARK = "<persisted-output>"
 PERSISTED_RX = re.compile(r"Full output saved to: ([^\r\n]*?tool-results[/\\][^/\\\r\n]+?\.txt)")
 
@@ -247,6 +306,23 @@ def session_dir(artifact: Artifact) -> Path:
     return p.with_suffix("")
 
 
+def file_mtime(artifact: Artifact) -> str:
+    """The file's modification time: the manifest `mtime` (read before the
+    copy) when there is one, else the file's own."""
+    m = (artifact.manifest or {}).get("mtime")
+    if isinstance(m, (int, float)) and not isinstance(m, bool) and m > 0:
+        return to_utc(m)
+    try:
+        return to_utc(os.lstat(artifact.disk_path).st_mtime)
+    except OSError:
+        return ""
+
+
+def setting_value(v) -> str:
+    """A setting as text: a string as it is, anything else as JSON."""
+    return v if isinstance(v, str) else compact_json(v)
+
+
 def persisted_text(artifact: Artifact, stub: str) -> str:
     """The full text of a `<persisted-output>` stub's file, or the stub with
     a note when the file is not in this session's `tool-results/`."""
@@ -275,13 +351,20 @@ class ClaudeCodeParser(Parser):
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
-        return any(rx.match(rel) for rx in (HISTORY_RX, SESSION_RX, REGISTRY_RX))
+        return any(
+            rx.match(rel)
+            for rx in (HISTORY_RX, SESSION_RX, REGISTRY_RX, SETTINGS_RX, GLOBAL_CONFIG_RX)
+        )
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if HISTORY_RX.match(artifact.rel):
             yield from self._parse_history(artifact, opts)
         elif REGISTRY_RX.match(artifact.rel):
             yield from self._parse_registry(artifact)
+        elif SETTINGS_RX.match(artifact.rel):
+            yield from self._parse_settings(artifact)
+        elif GLOBAL_CONFIG_RX.match(artifact.rel):
+            yield from self._parse_global_config(artifact)
         else:
             yield from self._parse_session(artifact, opts)
 
@@ -326,6 +409,74 @@ class ClaudeCodeParser(Parser):
             val("hostSessionId", "none"),
         )
         yield row
+
+    def _standing_row(self, artifact: Artifact, ts: str, project: str, key: str, value) -> Row:
+        row = self.base_row(artifact)
+        row.source_line = 1
+        row.turn_type = "system"
+        row.timestamp_utc = ts
+        row.project_path = project
+        row.text = compact(
+            "permission setting: %s=%s (from %s, file mtime)"
+            % (key, setting_value(value), artifact.rel)
+        )
+        return row
+
+    def _settings_doc(self, artifact: Artifact, what: str) -> tuple[dict | None, Row | None]:
+        """The file as a JSON object, or a `system` row saying it is not one."""
+        try:
+            doc = json.loads(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
+        except (OSError, ValueError):
+            doc = None
+        if isinstance(doc, dict):
+            return doc, None
+        row = self.base_row(artifact)
+        row.source_line = 1
+        row.turn_type = "system"
+        row.timestamp_utc = file_mtime(artifact)
+        row.text = "parser: %s is not a JSON object" % what
+        return None, row
+
+    def _parse_settings(self, artifact: Artifact) -> Iterator[Row]:
+        doc, bad = self._settings_doc(artifact, "settings file")
+        if doc is None:
+            if bad is not None:
+                yield bad
+            return
+        perms = doc.get("permissions")
+        if not isinstance(perms, dict):
+            return
+        ts = file_mtime(artifact)
+        project = artifact.home.original if artifact.agent == PROJECT_AGENT else ""
+        for key in PERMISSION_LISTS:
+            entries = perms.get(key)
+            if isinstance(entries, list):
+                for entry in entries:
+                    yield self._standing_row(artifact, ts, project, "permissions." + key, entry)
+        for key in PERMISSION_SCALARS:
+            if perms.get(key) is not None:
+                yield self._standing_row(artifact, ts, project, "permissions." + key, perms[key])
+
+    def _parse_global_config(self, artifact: Artifact) -> Iterator[Row]:
+        doc, bad = self._settings_doc(artifact, ".claude.json")
+        if doc is None:
+            if bad is not None:
+                yield bad
+            return
+        projects = doc.get("projects")
+        if not isinstance(projects, dict):
+            return
+        ts = file_mtime(artifact)
+        for path, proj in projects.items():
+            if not isinstance(proj, dict):
+                continue
+            tools = proj.get("allowedTools")
+            if isinstance(tools, list):
+                for entry in tools:
+                    yield self._standing_row(artifact, ts, str(path), "allowedTools", entry)
+            for key in PROJECT_FLAGS:
+                if proj.get(key) is not None:
+                    yield self._standing_row(artifact, ts, str(path), key, proj[key])
 
     @staticmethod
     def _prescan(artifact: Artifact) -> tuple[dict, bool, str, str]:
@@ -378,6 +529,8 @@ class ClaudeCodeParser(Parser):
         relocated = ""
         seen_pr: set = set()
         seen_title: set = set()
+        modes: dict[str, str] = {}
+        models: dict[str, str] = {}
 
         for n, rec in iter_jsonl(artifact.disk_path, errors):
             rtype = rec.get("type")
@@ -416,6 +569,18 @@ class ClaudeCodeParser(Parser):
                     session_id,
                 )
                 yield row
+
+            mode = rec.get("permissionMode") if rtype in ("user", "permission-mode") else None
+            if isinstance(mode, str) and mode and modes.get(session_id) != mode:
+                old = modes.get(session_id)
+                modes[session_id] = mode
+                yield state_row(
+                    "permission mode: %s -> %s" % (old, mode) if old else "permission mode: " + mode
+                )
+            if rtype == "assistant":
+                model_row = self._model_row(rec, base, models, session_id)
+                if model_row is not None:
+                    yield model_row
 
             if rtype == "user":
                 yield from self._user(rec, base, artifact, opts, not task_done)
@@ -471,6 +636,28 @@ class ClaudeCodeParser(Parser):
                 errors[0][0],
             )
             yield row
+
+    @staticmethod
+    def _model_row(rec, base, models: dict, session_id: str) -> Row | None:
+        """`model: <id>` at a session's first assistant record and
+        `model: <old> -> <new>` when `message.model` changes."""
+        msg = rec.get("message")
+        model = str(msg.get("model") or "") if isinstance(msg, dict) else ""
+        if not model or model == "<synthetic>" or rec.get("isApiErrorMessage"):
+            return None
+        old = models.get(session_id)
+        if old == model:
+            return None
+        models[session_id] = model
+        text = "model: %s -> %s" % (old, model) if old else "model: " + model
+        requested = rec.get("requestedModel")
+        if requested not in (None, "") and str(requested) != model:
+            text += " requested=%s" % requested
+        row = base()
+        row.turn_type = "system"
+        row.model = model
+        row.text = compact(text)
+        return row
 
     def _user(self, rec, base, artifact: Artifact, opts: Options, is_task: bool) -> Iterator[Row]:
         yield from self._user_blocks(rec, base, artifact, is_task)

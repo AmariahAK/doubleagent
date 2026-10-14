@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import ClassVar, cast
 
 from doubleagent import catalog, cli, protobuf, sqlite_util
-from doubleagent.inputs import Artifact, open_input
+from doubleagent.inputs import Artifact, Home, open_input
 from doubleagent.model import compact, summarise
 from doubleagent.parsers import Options, by_agent
 from doubleagent.parsers.antigravity import (
@@ -29,9 +29,11 @@ from fixtures import (
     AGY_APP_PROJECT,
     AGY_CONVERSATION,
     CLAUDE_295_SESSION,
+    CLAUDE_296_SESSION,
     CLAUDE_BRIDGE_SESSION,
     CLAUDE_REGISTRY_KEY,
     CLAUDE_SESSION,
+    CLAUDE_SETTINGS_MTIME,
     CLAUDE_WORK_SESSION,
     CODEX_FORK,
     CODEX_LEGACY,
@@ -48,6 +50,7 @@ from fixtures import (
     GOOSE_LEGACY_REL,
     GOOSE_SESSION,
     build_home,
+    claude_project_local_settings,
     codex_fork_records,
     codex_legacy_records,
     codex_rollout_records,
@@ -113,6 +116,7 @@ class ClaudeCodeTests(ParserBase):
     # an empty text is checked in its own test.
     EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
         (2, "user", "delete the logs in /var/log please"),
+        (3, "system", "model: claude-fable-5-1"),
         (5, "tool_use", "cd /srv/proj && rm -rf /var/log/*.log"),
         (6, "tool_result", "removed 3 files"),
         (7, "system", "prompt queued: delivered at line 8"),
@@ -268,6 +272,7 @@ class ClaudeCodeTests(ParserBase):
             [
                 (1, "system", "subagent abc of %s" % CLAUDE_SESSION),
                 (1, "system", "subagent task: Find where the logs are rotated."),
+                (2, "system", "model: claude-fable-5-1"),
                 (2, "assistant", "By logrotate."),
             ],
         )
@@ -277,17 +282,25 @@ class ClaudeCodeTests(ParserBase):
         rows = self.rows_for(ClaudeCodeParser(), self.FORK)
         self.assertEqual(
             [(r.source_line, r.turn_type) for r in rows],
-            [(1, "system"), (1, "user"), (2, "tool_use"), (3, "tool_result"), (3, "system")],
+            [
+                (1, "system"),
+                (1, "user"),
+                (2, "system"),
+                (2, "tool_use"),
+                (3, "tool_result"),
+                (3, "system"),
+            ],
         )
         self.assertEqual(rows[0].text, "subagent fork1 of %s" % CLAUDE_SESSION)
         # The copied context keeps its rows; the boilerplate block is the task.
         self.assertEqual(rows[1].text, "delete the logs in /var/log please")
-        self.assertTrue(rows[4].text.startswith("subagent task: <fork-boilerplate>"), rows[4].text)
+        # The fork tracks its own model.
+        self.assertEqual(rows[2].text, "model: claude-fable-5-1")
+        self.assertTrue(rows[5].text.startswith("subagent task: <fork-boilerplate>"), rows[5].text)
 
     def test_sidecars_not_wanted(self):
         base = ".claude/projects/-srv-proj/%s/" % CLAUDE_SESSION
         for rel in (
-            ".claude/settings.json",
             base + "subagents/agent-abc.meta.json",
             base + "tool-results/b1c2d3e4f.txt",
         ):
@@ -302,7 +315,11 @@ class ClaudeCodeTests(ParserBase):
         rows = self.rows_for(ClaudeCodeParser(), rel)
         self.assertEqual(
             [(r.source_line, r.turn_type, r.text) for r in rows],
-            [(1, "user", "rotate the work logs"), (2, "assistant", "Rotated.")],
+            [
+                (1, "user", "rotate the work logs"),
+                (2, "system", "model: claude-fable-5-1"),
+                (2, "assistant", "Rotated."),
+            ],
         )
         self.assertTrue(all(r.session_id == CLAUDE_WORK_SESSION for r in rows))
         self.assertTrue(all(r.project_path == "/srv/proj" for r in rows))
@@ -347,7 +364,9 @@ class ClaudeCode295Tests(ParserBase):
     EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
         (1, "system", "prompt queued: delivered at line 4"),
         (2, "system", "queue dequeue:"),
+        (4, "system", "permission mode: auto"),
         (4, "user", "list the cron jobs"),
+        (5, "system", "model: claude-fable-5-1"),
         (5, "tool_use", "cd /srv/proj && crontab -l"),
         (6, "tool_result", "0 3 * * * x"),
         (6, "system", "permission decision: allow source=auto_mode reason=classifier"),
@@ -495,6 +514,231 @@ class ClaudeCode295Tests(ParserBase):
         rows = self.rows_for(ClaudeCodeParser(), self.REL)
         self.assertEqual(len(rows), len(self.EXPECTED) + 1)
         self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 11")
+
+
+class ClaudeCode296Tests(ParserBase):
+    """Permission mode and model as events, and the standing permission
+    settings in settings.json, settings.local.json and .claude.json (issue
+    93)."""
+
+    REL = ".claude/projects/-srv-proj/%s.jsonl" % CLAUDE_296_SESSION
+    SETTINGS_TS = "2026-10-01T09:00:00.000Z"
+
+    EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
+        (1, "system", "permission mode: auto"),
+        (1, "user", "plan the log cleanup"),
+        (2, "system", "model: claude-fable-5-1"),
+        (2, "assistant", "Here is a plan."),
+        (4, "system", "permission mode: auto -> plan"),
+        (5, "user", "go on"),
+        (
+            6,
+            "system",
+            "slash command: <command-name>/model</command-name>\n"
+            "<command-message>model</command-message>\n<command-args>opus</command-args>",
+        ),
+        (
+            7,
+            "system",
+            "command output: <local-command-stdout>Set model to `Opus 5.5` and saved as "
+            "your default for new sessions</local-command-stdout>",
+        ),
+        (8, "system", "model: claude-fable-5-1 -> claude-opus-5-5 requested=opus"),
+        (8, "assistant", "Switched."),
+        (9, "system", "permission mode: plan -> acceptEdits"),
+        (9, "user", "apply it"),
+        (10, "assistant", "Applied."),
+    ]
+
+    def test_rows(self):
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        self.assertEqual([(r.source_line, r.turn_type, r.text) for r in rows], self.EXPECTED)
+        for r in rows:
+            self.assertEqual((r.session_id, r.project_path), (CLAUDE_296_SESSION, "/srv/proj"))
+
+    def test_mode_and_model_columns_and_times(self):
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        by = {(r.source_line, r.text.split(":")[0]): r for r in rows if r.turn_type == "system"}
+        # A user line's mode row takes the line's time; a permission-mode
+        # record has none and takes the latest seen.
+        self.assertEqual(by[1, "permission mode"].timestamp_utc, "2026-10-01T12:00:01.000Z")
+        self.assertEqual(by[4, "permission mode"].timestamp_utc, "2026-10-01T12:00:02.000Z")
+        self.assertEqual(by[1, "permission mode"].model, "")
+        self.assertEqual(by[2, "model"].model, "claude-fable-5-1")
+        self.assertEqual(by[8, "model"].model, "claude-opus-5-5")
+        self.assertEqual(by[8, "model"].timestamp_utc, "2026-10-01T12:00:08.000Z")
+
+    def test_subagent_tracks_its_own_mode(self):
+        # A subagent file of the session starts its own tracker.
+        rel = ".claude/projects/-srv-proj/%s/subagents/agent-m1.jsonl" % CLAUDE_296_SESSION
+        path = self.home / rel
+        path.parent.mkdir(parents=True)
+        lines = [
+            {
+                "type": "user",
+                "sessionId": CLAUDE_296_SESSION,
+                "agentId": "m1",
+                "timestamp": "2026-10-01T12:00:20.000Z",
+                "message": {"role": "user", "content": "check it"},
+                "permissionMode": "acceptEdits",
+            },
+            {
+                "type": "assistant",
+                "sessionId": CLAUDE_296_SESSION,
+                "agentId": "m1",
+                "timestamp": "2026-10-01T12:00:21.000Z",
+                "message": {
+                    "model": "claude-opus-5-5",
+                    "content": [{"type": "text", "text": "ok"}],
+                },
+            },
+        ]
+        path.write_text("".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(ClaudeCodeParser(), rel)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "subagent m1 of %s" % CLAUDE_296_SESSION,
+                "permission mode: acceptEdits",
+                "subagent task: check it",
+                "model: claude-opus-5-5",
+                "ok",
+            ],
+        )
+
+    def test_thinking_opt_in(self):
+        rows = self.rows_for(ClaudeCodeParser(), self.REL, include_thinking=True)
+        self.assertEqual(len(rows), len(self.EXPECTED))
+
+    def test_truncated_line_is_reported_not_fatal(self):
+        write_bad_line(self.home / self.REL)
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        self.assertEqual(len(rows), len(self.EXPECTED) + 1)
+        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 11")
+
+    def test_user_settings_rows(self):
+        rows = self.rows_for(ClaudeCodeParser(), ".claude/settings.json")
+        src = "(from .claude/settings.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: permissions.allow=Bash(npm test:*) " + src,
+                "permission setting: permissions.allow=Read(~/notes/**) " + src,
+                "permission setting: permissions.deny=Bash(rm -rf:*) " + src,
+                "permission setting: permissions.ask=WebFetch " + src,
+                "permission setting: permissions.additionalDirectories=/srv/shared " + src,
+                "permission setting: permissions.defaultMode=acceptEdits " + src,
+                "permission setting: permissions.disableBypassPermissionsMode=disable " + src,
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.agent),
+                ("system", self.SETTINGS_TS, "", "", "claude-code"),
+            )
+            # env and apiKeyHelper are never read.
+            self.assertNotIn("not-a-real-key", r.text)
+
+    def test_global_config_rows(self):
+        rows = self.rows_for(ClaudeCodeParser(), ".claude.json")
+        src = "(from .claude.json, file mtime)"
+        self.assertEqual(
+            [(r.text, r.project_path, r.timestamp_utc) for r in rows],
+            [
+                (
+                    "permission setting: allowedTools=Bash(git status) " + src,
+                    "/srv/proj",
+                    self.SETTINGS_TS,
+                ),
+                (
+                    "permission setting: hasTrustDialogAccepted=true " + src,
+                    "/srv/proj",
+                    self.SETTINGS_TS,
+                ),
+                (
+                    "permission setting: hasClaudeMdExternalIncludesApproved=false " + src,
+                    "/srv/proj",
+                    self.SETTINGS_TS,
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertNotIn("example.invalid", r.text)
+            self.assertNotIn("Authorization", r.text)
+        rows = self.rows_for(ClaudeCodeParser(), ".claude-work/.claude.json")
+        self.assertEqual(
+            [(r.text, r.project_path) for r in rows],
+            [
+                (
+                    "permission setting: allowedTools=Edit "
+                    "(from .claude-work/.claude.json, file mtime)",
+                    "/srv/work",
+                )
+            ],
+        )
+
+    def test_manifest_mtime_wins(self):
+        art = next(a for a in self.col.artifacts if a.rel == ".claude/settings.json")
+        art.manifest = {"mtime": CLAUDE_SETTINGS_MTIME + 3600}
+        rows = list(ClaudeCodeParser().parse(art, Options()))
+        self.assertEqual({r.timestamp_utc for r in rows}, {"2026-10-01T10:00:00.000Z"})
+
+    def test_project_local_settings(self):
+        # A file the collector found in a discovered project: agent
+        # `project`, home the project directory.
+        proj = self.tmp / "srv" / "proj"
+        path = proj / ".claude/settings.local.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(claude_project_local_settings()), encoding="utf-8")
+        rel = ".claude/settings.local.json"
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1")
+        art = Artifact(path, "/srv/proj/" + rel, rel, "project", home)
+        self.assertIn(ClaudeCodeParser, [type(x) for x in cli.parsers_for(art, {})])
+        self.assertTrue(ClaudeCodeParser().wants(art))
+        rows = list(ClaudeCodeParser().parse(art, Options()))
+        src = "(from .claude/settings.local.json, file mtime)"
+        self.assertEqual(
+            [(r.text, r.project_path, r.source_file) for r in rows],
+            [
+                (
+                    "permission setting: permissions.allow=Bash(make lint) " + src,
+                    "/srv/proj",
+                    "/srv/proj/" + rel,
+                ),
+                (
+                    "permission setting: permissions.defaultMode=plan " + src,
+                    "/srv/proj",
+                    "/srv/proj/" + rel,
+                ),
+            ],
+        )
+
+    def test_settings_without_permissions_and_unreadable(self):
+        path = self.home / ".claude/settings.json"
+        path.write_text('{"model": "opus", "env": {"X": "y"}}', encoding="utf-8")
+        self.assertEqual(self.rows_for(ClaudeCodeParser(), ".claude/settings.json"), [])
+        for body in ("[1]", "{not json"):
+            path.write_text(body, encoding="utf-8")
+            rows = self.rows_for(ClaudeCodeParser(), ".claude/settings.json")
+            self.assertEqual(
+                [(r.turn_type, r.text) for r in rows],
+                [("system", "parser: settings file is not a JSON object")],
+            )
+
+    def test_backups_and_other_files_not_wanted(self):
+        for rel in (".claude.json.backup.1790845200000",):
+            art = next(a for a in self.col.artifacts if a.rel == rel)
+            self.assertFalse(ClaudeCodeParser().wants(art), rel)
+        home = self.col.artifacts[0].home
+        for rel in (
+            ".claude/settings.json.bak",
+            ".claude/cowork_settings.json",
+            ".claude/.credentials.json",
+            "proj/.claude/settings.json",
+        ):
+            art = Artifact(self.home / rel, rel, rel, "claude-code", home)
+            self.assertFalse(ClaudeCodeParser().wants(art), rel)
 
 
 class CodexTests(ParserBase):
@@ -5562,7 +5806,14 @@ class ClaudeDesktopTests(ParserBase):
         # The transcript and audit log exist, so initialMessage is not repeated.
         self.assertEqual(
             [(r.source_line, r.turn_type, r.text) for r in rows],
-            [(1, "system", 'desktop session: agent "Summarise the test failures"')],
+            [
+                (
+                    1,
+                    "system",
+                    'desktop session: agent "Summarise the test failures" '
+                    "permission_mode=default effort=-",
+                )
+            ],
         )
         r = rows[0]
         self.assertEqual(
@@ -5583,7 +5834,8 @@ class ClaudeDesktopTests(ParserBase):
                 (
                     "system",
                     "2026-09-30T10:00:00.000Z",
-                    'desktop session: agent "Summarise the test failures"',
+                    'desktop session: agent "Summarise the test failures" '
+                    "permission_mode=default effort=-",
                 ),
                 ("user", "2026-09-30T10:00:00.000Z", "why does the test fail?"),
                 ("system", "2026-09-30T10:00:30.000Z", "session error: vm: VM failed to start"),
@@ -5592,19 +5844,64 @@ class ClaudeDesktopTests(ParserBase):
 
     def test_code_record(self):
         rows = self.rows_for(ClaudeDesktopParser(), CD_CODE_RECORD_REL)
-        self.assertEqual(len(rows), 1)
         r = rows[0]
         self.assertEqual(
             (r.turn_type, r.text, r.timestamp_utc, r.session_id, r.project_path, r.git_branch),
             (
                 "system",
                 'desktop code session: "Fix the failing test" remote_control=false bridges=0 '
-                "spawned_remotely=false steered_remotely=false",
+                "spawned_remotely=false steered_remotely=false permission_mode=default "
+                "effort=high",
                 "2026-09-30T10:00:00.000Z",
                 CD_CODE_CLI,
                 "/srv/proj",
                 "main",
             ),
+        )
+
+    def test_code_record_grants(self):
+        # One row per list entry and per grant key with a value, at
+        # lastActivityAt, joined to the session like the record row.
+        rows = self.rows_for(ClaudeDesktopParser(), CD_CODE_RECORD_REL)[1:]
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission grant: alwaysAllowedReasons Bash(npm test) (as of lastActivityAt)",
+                "permission grant: sessionPermissionUpdates "
+                '{"behavior":"allow","destination":"session",'
+                '"rules":[{"ruleContent":"npm test","toolName":"Bash"}],"type":"addRules"} '
+                "(as of lastActivityAt)",
+                "permission grant: chromePermissionMode=ask (as of lastActivityAt)",
+                'permission grant: chromeAllowedDomains=["example.invalid"] (as of lastActivityAt)',
+                'permission grant: cuAllowedApps=["Terminal"] (as of lastActivityAt)',
+                'permission grant: cuGrantFlags={"clipboardRead":true} (as of lastActivityAt)',
+                "permission grant: cuFlagsGrantedAt=1790762450000 (as of lastActivityAt)",
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.tool_use_id),
+                ("system", "2026-09-30T10:02:00.000Z", CD_CODE_CLI, "/srv/proj", ""),
+            )
+
+    def test_record_grants_fall_back_to_created_and_skip_empty(self):
+        path = self.home / CD_CODE_RECORD_REL
+        rec = json.loads(path.read_text(encoding="utf-8"))
+        rec.pop("lastActivityAt")
+        rec.pop("effort")
+        rec.update(alwaysAllowedReasons=[], chromeAllowedDomains=[], cuGrantFlags={})
+        rec.update(sessionPermissionUpdates=None, cuAllowedApps="", cuFlagsGrantedAt=None)
+        path.write_text(json.dumps(rec), encoding="utf-8")
+        rows = self.rows_for(ClaudeDesktopParser(), CD_CODE_RECORD_REL)
+        self.assertTrue(rows[0].text.endswith("permission_mode=default effort=-"), rows[0].text)
+        self.assertEqual(
+            [(r.text, r.timestamp_utc) for r in rows[1:]],
+            [
+                (
+                    "permission grant: chromePermissionMode=ask (as of createdAt)",
+                    "2026-09-30T10:00:00.000Z",
+                )
+            ],
         )
 
     def test_code_record_remote_control(self):
@@ -5618,7 +5915,8 @@ class ClaudeDesktopTests(ParserBase):
                 (
                     "system",
                     'desktop code session: "Driven from the phone" remote_control=true '
-                    "bridges=2 spawned_remotely=true steered_remotely=true",
+                    "bridges=2 spawned_remotely=true steered_remotely=true "
+                    "permission_mode=default effort=-",
                     "2026-09-30T11:00:00.000Z",
                     CD_CODE_RC_CLI,
                     "/srv/proj",
@@ -5651,7 +5949,8 @@ class ClaudeDesktopTests(ParserBase):
             [r.text for r in rows],
             [
                 'desktop code session: "Driven from the phone" remote_control=true '
-                "bridges=0 spawned_remotely=false steered_remotely=true"
+                "bridges=0 spawned_remotely=false steered_remotely=true "
+                "permission_mode=default effort=-"
             ],
         )
 
@@ -5663,9 +5962,13 @@ class ClaudeDesktopTests(ParserBase):
         rec.update(cliSessionId=CLAUDE_SESSION, initialMessage="fix the test")
         path.write_text(json.dumps(rec), encoding="utf-8")
         rows = self.rows_for(ClaudeDesktopParser(), CD_CODE_RECORD_REL)
-        self.assertEqual([(r.turn_type, r.session_id) for r in rows], [("system", CLAUDE_SESSION)])
+        self.assertEqual(
+            [(r.turn_type, r.session_id) for r in rows if "permission grant" not in r.text],
+            [("system", CLAUDE_SESSION)],
+        )
         shutil.rmtree(self.home / ".claude/projects")
         rows = self.rows_for(ClaudeDesktopParser(), CD_CODE_RECORD_REL)
+        rows = [r for r in rows if "permission grant" not in r.text]
         self.assertEqual([r.turn_type for r in rows], ["system", "user"])
         self.assertEqual(rows[1].text, "fix the test")
 

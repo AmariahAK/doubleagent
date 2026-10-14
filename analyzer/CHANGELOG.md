@@ -51,6 +51,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   workspaces) are one `permission setting: <key>=<value> (from <file>,
   file mtime)` row per entry, timestamped by the file's modification time
   ([#92]).
+- The `claude-code` parser records the permission mode and the model as
+  events: `permission mode: <mode>` at a session's first
+  `permission-mode` record or `permissionMode` prompt key and
+  `permission mode: <old> -> <new>` on each change, and `model: <id>` at
+  the first assistant reply and `model: <old> -> <new>` on each change,
+  with ` requested=<requestedModel>` when the requested model differs.
+  The `claude-desktop` transcripts, read with the same reader, gain the
+  same rows ([#93]).
+- The `claude-code` parser reads the standing permission settings: one
+  `system` row per `permissions.allow`, `deny`, `ask` and
+  `additionalDirectories` entry and one for `defaultMode` and
+  `disableBypassPermissionsMode` in `.claude/settings.json` and
+  `.claude/settings.local.json` (the user's and, from a collection, a
+  discovered project's), and one per `allowedTools` entry and for
+  `hasTrustDialogAccepted` and `hasClaudeMdExternalIncludesApproved` of
+  each project in `.claude.json`, timestamped by the file's modification
+  time and saying so. These files were not read before; no other key in
+  them is read ([#93]).
+- The `claude-desktop` session-record row ends with
+  `permission_mode=<mode> effort=<effort>`, and each per-session grant in
+  the record (`alwaysAllowedReasons` and `sessionPermissionUpdates`
+  entries, `chromePermissionMode`, `chromeAllowedDomains`,
+  `cuAllowedApps`, `cuGrantFlags`, `cuFlagsGrantedAt`) is a
+  `permission grant:` row at the record's `lastActivityAt` ([#93]).
 
 ### Changed
 
@@ -499,6 +523,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#93]: https://github.com/seanthegeek/doubleagent/issues/93
 [#92]: https://github.com/seanthegeek/doubleagent/issues/92
 [#90]: https://github.com/seanthegeek/doubleagent/issues/90
 [#89]: https://github.com/seanthegeek/doubleagent/issues/89

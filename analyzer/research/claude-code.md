@@ -41,6 +41,27 @@ claim names its evidence level, best first:
   type with throwaway scripts; no value from them is reproduced here.
   Shapes marked observed were seen there; shapes marked bundle rest on
   the binary only.
+- **Binary 2.1.296** (issue 93): the author's installed CLI,
+  `~/.local/share/claude/versions/2.1.296`, a Bun-compiled Mach-O arm64
+  executable of 240,664,432 bytes, sha256
+  `c9b5341637becbd423ddffc5b254afb645682a3868cb708bbc6cc0e7bb419937`,
+  searched for byte strings and never executed. Citations are
+  `claude 2.1.296 darwin-arm64 @<byte offset>` with the literal snippet,
+  as for the 2.1.295 Linux build in [section 5](#5-other-files); the offsets
+  are only valid for this build.
+- **Observed 2.1.296** (issue 93): the author's macOS install,
+  2026-10-13, key names, enum values and counts only. 308
+  `permission-mode` records across four session files, every one
+  `permissionMode` `auto`; `permissionMode` on every `user` prompt line;
+  `message.model` and `requestedModel` on every `assistant` line, equal on
+  every line seen; a `/model` switch written as a `user` line
+  `<command-name>/model</command-name>` followed by a `user` line
+  ``<local-command-stdout>Set model to `<display name>` and saved as your
+  default for new sessions</local-command-stdout>``; summary lines with
+  `modelUsage.<model id>.{inputTokens, outputTokens, ...}`. The permission
+  configuration keys of [section 5](#5-other-files) were seen in
+  `~/.claude.json` and the settings files of the same install, by name
+  only.
 
 ## 2. Transcript files
 
@@ -99,7 +120,7 @@ copy. Counts are observed lines:
 | `ended-by-model` | last-wins | 0 | `timestamp` only (cc:484055) |
 | `agent-name`, `agent-color`, `agent-setting` | last-wins | 129, 0, 0 | `agentName`, `agentColor`, `agentSetting` |
 | `pr-link` | last-wins | 221 | `prNumber`, `prUrl`, `prRepository`, `timestamp` |
-| `mode`, `permission-mode` | last-wins | 608, 410 | `mode` (`normal` observed); `permissionMode` (`auto`, `plan` observed) |
+| `mode`, `permission-mode` | last-wins | 608, 410 | `mode` (`normal` observed); `permissionMode` (`auto`, `plan` observed; `auto` in all 308 records on the 2.1.296 install). The permission mode is how tool calls are approved: `default` prompts, `acceptEdits` allows file edits, `plan` only plans, `bypassPermissions` allows everything, `dontAsk` denies what would prompt, `auto` lets a classifier decide (`claude 2.1.296 darwin-arm64 @187461122` `var CH=["acceptEdits","auto","bypassPermissions","default","dontAsk","plan"]`, with `manual` read as an alias for `default`; `@188412753` `if(e==="auto")return"classify";if(e==="bypassPermissions"\|\|_V(e,n))return"allow";if(e==="dontAsk")return"deny";return"ask"`). The record is `{type, permissionMode, sessionId}` with no `timestamp` (`@199803784` `type:"permission-mode",permissionMode:this.currentSessionPermissionMode,sessionId:y`) |
 | `bridge-session` | last-wins | 256 | `bridgeSessionId`, `lastSequenceNum`, `ownerAccountUuid`, `ownerOrganizationUuid` |
 | `atis-latch`, `cost-state`, `queue-operation` | last-wins | 607, 25, 488 | an opaque token; cumulative cost and per-model token usage; prompt queue changes |
 | `isolation-latch`, `dev-mods`, `memory-mode`, `worktree-state`, `history-suppression`, `attribution-snapshot`, `artifact-comment-monitor`, `artifact-autoreact-ledger`, `observer-ref` | various | 0 | session state (cc:484021, cc:484022) |
@@ -300,6 +321,42 @@ inside the running turn) or a later `user` record with
   transcript content.
 - `.claude.json` `projects` keys are project paths (collector document,
   [section 6](../../collectors/research/claude-code.md#6-where-the-project-path-is-recorded)).
+- **Permission configuration** (issue 93; key names from the 2.1.296
+  binary, observed by name on the 2.1.296 install, values never read).
+  Settings files: `<config home>/settings.json` and
+  `<config home>/settings.local.json` for the user, and
+  `<project>/.claude/settings.json` (shared, committed) and
+  `<project>/.claude/settings.local.json` (personal, gitignored) per
+  project (`@188743274`
+  `case"projectSettings":return Se(".claude","settings.json");case"localSettings":return Se(".claude","settings.local.json")`;
+  with `CLAUDE_CONFIG_DIR` set both the global config and the user
+  settings move into it, `@212229478`
+  `globalConfig:it(e||zt(),".claude.json"),userSettings:it(e||it(zt(),".claude"),"settings.json")`).
+  Their `permissions` object (`@188532304`
+  `function ia(e){return u({allow:A(Gi()).optional().describe("List of permission rules for allowed operations"),deny:A(Fo()).optional()...,ask:A(Fo()).optional()...,defaultMode:pa(rh,U([...CH,...Ho(e)])).optional()...,disableBypassPermissionsMode:U(["disable"]).optional()...,blockReadsOutsideWorkingDirectories:H().optional()...,additionalDirectories:A(o()).optional()`)
+  holds `allow`, `deny` and `ask` (rule strings, a tool name with an
+  optional argument pattern in parentheses, such as `Bash(npm test:*)`),
+  `defaultMode` (a mode name above), `disableBypassPermissionsMode` (only
+  `"disable"`; also a managed-settings key, `@188373224`
+  `{path:["permissions","disableBypassPermissionsMode"],restrictive:"disable"}`),
+  `blockReadsOutsideWorkingDirectories` (boolean) and
+  `additionalDirectories` (paths outside the working directory the agent
+  may use). "Always allow" answers to a prompt are persisted into these
+  lists and a mode chosen to keep into `defaultMode` (`@191956974`
+  `permissions:{defaultMode:e.mode}`). The same files hold keys the
+  parser never reads because they can carry credentials (`env`,
+  `apiKeyHelper`, hooks, MCP server settings). In `~/.claude.json` (the
+  global config, flagged `secret: true` by the collector) each
+  `projects.<path>` object starts from `@189922165`
+  `var bue={allowedTools:[],mcpContextUris:[],mcpServers:{},enabledMcpjsonServers:[],disabledMcpjsonServers:[],hasTrustDialogAccepted:!1,hasClaudeMdExternalIncludesApproved:!1,`:
+  `allowedTools` (tools allowed for that project),
+  `hasTrustDialogAccepted` (the person accepted the folder trust prompt),
+  `hasClaudeMdExternalIncludesApproved` (the person approved `CLAUDE.md`
+  imports from outside the project), `enabledMcpjsonServers` and
+  `disabledMcpjsonServers` (approval of the project's `.mcp.json`
+  servers) and `mcpServers` (project-scoped server definitions, which can
+  carry headers). The parser reads the rows of [section 8](#8-parser-plan-what-the-parser-does);
+  the MCP lists and definitions are not read.
 
 ### Remote Control
 
@@ -393,8 +450,15 @@ for key names and value types only.
   observed; `HEAD` when detached is not determined); changes within a
   session (2 files).
 - **Model**: `message.model` on `assistant` records (`claude-<family>-N-N`
-  observed, `<synthetic>` for local errors); `model` attachment
-  `identity.modelId`; `cost-state.modelUsage` keys.
+  observed, `<synthetic>` for local errors); `requestedModel`, the model
+  the request asked for (`claude 2.1.296 darwin-arm64 @198072824`
+  `requestedModel:X.model`), equal to `message.model` on every 2.1.296
+  line observed; `model` attachment `identity.modelId`;
+  `cost-state.modelUsage` keys. A `/model` switch leaves a command output
+  line built from `@199593943`
+  `var fle="Set model to ",gne=" and saved as your default for new sessions"`
+  (observed on 2.1.296); the parser keeps it as `command output:` and
+  marks the change itself from `message.model`.
 - **Subagents**: the parent's `Agent` `tool_use.id` equals the subagent's
   `.meta.json` `toolUseId`, and the parent's `toolUseResult.agentId`
   equals the file's agent id (76 of 76 non-fork subagents). Forked
@@ -429,11 +493,17 @@ for key names and value types only.
 ^\.claude(?:-[^/]+)?/projects/[^/]+/.*\.jsonl$
 ^\.claude(?:-[^/]+)?/history\.jsonl$
 ^\.claude(?:-[^/]+)?/sessions/\d+\.json$
+^\.claude(?:-[^/]+)?/settings(?:\.local)?\.json$
+^(?:\.claude-[^/]+/)?\.claude\.json$
 ```
 
 The `.claude-<name>` form is a config home moved with
-`CLAUDE_CONFIG_DIR`; the catalog collects its `projects` and
-`history.jsonl` but not its `sessions/`.
+`CLAUDE_CONFIG_DIR`; the catalog collects its `projects`,
+`history.jsonl` and `.claude.json` but not its `sessions/` or its
+settings files. A project's `.claude/settings.json` and
+`.claude/settings.local.json` reach the parser as `project` artifacts
+(the collector's project catalog has `project|.claude`), with the
+project directory as their home.
 
 Lines are read with `iter_jsonl`; bad lines are counted and reported in
 one `system` row at the end with the first bad line's number; earlier
@@ -462,7 +532,9 @@ then the full text:
 | `user`, any other string, `text` or `image` block | `user` (one row per block); the rules above are tried in this order, the record-level ones for every block |
 | `user`, `tool_result` block | `tool_result`; `tool_reference` blocks as their `tool_name`; a `<persisted-output>` stub replaced by its `tool-results/` file (below); text prefixed `[error]` when `is_error` |
 | `user`, `permissionDecision` (2.1.295) | one `system` row after the line's `tool_result` rows, `permission decision: <decision> source=<source> reason=<reasonType>` (`-` for a missing key), then a space and the object's compact JSON when it has other keys; `tool_use_id` of the line's first `tool_result` block, `tool_name` empty as on `tool_result` rows |
-| `user`, `turnOrigin`, `promptSource`, `permissionMode`, `origin` (2.1.295 prompt keys) | no row; `origin.kind` still picks the label above, the others change nothing |
+| `user`, `turnOrigin`, `promptSource`, `origin` (2.1.295 prompt keys) | no row; `origin.kind` still picks the label above, the others change nothing |
+| `user` `permissionMode`, `permission-mode` record | one tracker per session id in the file: the first value is a `system` row `permission mode: <mode>`, a later different value `permission mode: <old> -> <new>`, before the line's other rows; a `user` line's row takes its timestamp, a `permission-mode` record (no timestamp) the latest one seen; an unchanged value, such as a re-appended state record, yields nothing; a subagent file has its own tracker |
+| `assistant` `message.model` (not `<synthetic>`, not an API error) | before the line's rows, `model: <id>` at the session's first one and `model: <old> -> <new>` on each change, with ` requested=<requestedModel>` when that key is set and differs; `model` column the new model; a subagent file has its own tracker |
 | `assistant`, `isApiErrorMessage` or model `<synthetic>` | `system`, `api error: <apiErrorStatus> <error>: <text>`, no model |
 | `assistant`, `text` block | `assistant` (empty text skipped) |
 | `assistant`, `tool_use` block | `tool_use` |
@@ -482,6 +554,8 @@ then the full text:
 | every other type ([section 3](#3-record-envelope-and-types) table) | skip |
 | `history.jsonl` line | `user` |
 | `sessions/<pid>.json` | one `system` row at `startedAt` (epoch ms), `claude-code process <pid> <kind> status=<status> entrypoint=<entrypoint> bridge=<bridgeSessionId or none> host_session=<hostSessionId or none>` (`-` for a missing `kind`, `status` or `entrypoint`), `session_id` `sessionId`, `project_path` `cwd`, `source_line` 1; a file that is not a JSON object is one `system` row `parser: session registry file is not a JSON object`. A `bridge=` value means the process was under Remote Control when the collector ran ([section 5](#5-other-files)); a record can outlive a crashed process, so pair it with the EDR's process list |
+| `settings.json`, `settings.local.json` (user, `.claude-<name>`, or a project's) | one `system` row per `permissions.allow`, `deny`, `ask` and `additionalDirectories` entry, then one for `permissions.defaultMode` and `permissions.disableBypassPermissionsMode` when set: `permission setting: permissions.<key>=<value> (from <path relative to the home or project>, file mtime)`, a non-string value as compact JSON; `timestamp_utc` the manifest `mtime`, else the file's own; `session_id` empty; `project_path` the project directory for a `project` artifact, else empty; `source_line` 1; no other key read; a file that is not a JSON object is one `system` row `parser: settings file is not a JSON object` |
+| `.claude.json`, `.claude-<name>/.claude.json` | per `projects.<path>`: one row per `allowedTools` entry, then one each for `hasTrustDialogAccepted` and `hasClaudeMdExternalIncludesApproved` when present, `permission setting: <key>=<value> (from .claude.json, file mtime)`, `project_path` the `<path>` key, times as above; nothing else in the file is read (it holds the account's OAuth details); `.claude.json.backup*` is not wanted |
 
 A forked subagent's file begins with a copy of the forking agent's context
 (observed in the 4 fork files: the records before the

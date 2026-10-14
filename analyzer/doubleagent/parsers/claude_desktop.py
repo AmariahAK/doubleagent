@@ -61,7 +61,20 @@ eight hex digits). Files:
   `false` and `0`; real installs have shown only those), and a
   `remoteControlLiveAtUpdateQuit` object with a numeric `at` (epoch ms)
   is a second `system` row at that time, `remote control live at update
-  quit`. The `true` values rest on the bundle and the fixture only.
+  quit`. The `true` values rest on the bundle and the fixture only. The
+  record row of either kind ends with ` permission_mode=<permissionMode>
+  effort=<effort>` (`-` for an absent key; the Cowork record's bundle key
+  list has no `effort`, so it usually reads `-` there). Then, for issue 93,
+  one `system` row per entry of `alwaysAllowedReasons` and
+  `sessionPermissionUpdates`, `permission grant: <key> <entry> (as of
+  <field>)`, and one per `chromePermissionMode`, `chromeAllowedDomains`,
+  `cuAllowedApps`, `cuGrantFlags` and `cuFlagsGrantedAt` that holds a
+  value (not absent, empty string, `[]` or `{}`), `permission grant:
+  <key>=<value> (as of <field>)`; an entry or value that is not a string is
+  its compact JSON. The record keeps no time per grant, so these rows take
+  `lastActivityAt` (the grant was held by then), else `createdAt`, and
+  `<field>` names which. The entries' inner shape is not determined: real
+  installs have shown both lists empty and `chromePermissionMode` a string.
 * `.../scheduled-tasks.json`: `scheduledTasks[]` with `id`,
   `cronExpression` or `fireAt`, `enabled`, `createdAt`, `cwd`,
   `userSelectedFolders`.
@@ -132,6 +145,23 @@ def _flag(v) -> str:
 
 def _str(v) -> str:
     return "" if v is None else str(v)
+
+
+def _value(v) -> str:
+    """A grant value as text: a string as it is, anything else as JSON."""
+    return v if isinstance(v, str) else compact_json(v)
+
+
+# Session-record keys that hold per-session permission grants (research
+# section 3): lists read one row per entry, then keys read one row each.
+GRANT_LISTS = ("alwaysAllowedReasons", "sessionPermissionUpdates")
+GRANT_KEYS = (
+    "chromePermissionMode",
+    "chromeAllowedDomains",
+    "cuAllowedApps",
+    "cuGrantFlags",
+    "cuFlagsGrantedAt",
+)
 
 
 def _read_json(path: Path):
@@ -426,6 +456,10 @@ class ClaudeDesktopParser(ClaudeCodeParser):
             r.text = compact(text)
             return r
 
+        mode_effort = " permission_mode=%s effort=%s" % (
+            _str(rec.get("permissionMode")) or "-",
+            _str(rec.get("effort")) or "-",
+        )
         if code:
             spawn = rec.get("remoteControlSpawn")
             bridges = rec.get("bridgeSessionIds")
@@ -439,14 +473,19 @@ class ClaudeDesktopParser(ClaudeCodeParser):
                     len(bridges) if isinstance(bridges, list) else 0,
                     _flag(isinstance(spawn, dict) and bool(spawn)),
                     _flag(rec.get("steeredByRemoteClient")),
-                ),
+                )
+                + mode_effort,
             )
             quit_ = rec.get("remoteControlLiveAtUpdateQuit")
             at = quit_.get("at") if isinstance(quit_, dict) else None
             if isinstance(at, (int, float)) and not isinstance(at, bool):
                 yield row("system", "remote control live at update quit", to_utc(at))
         else:
-            yield row("system", 'desktop session: %s "%s"' % (_str(rec.get("sessionType")), title))
+            yield row(
+                "system",
+                'desktop session: %s "%s"' % (_str(rec.get("sessionType")), title) + mode_effort,
+            )
+        yield from self._grants(rec, row, created)
         initial = _str(rec.get("initialMessage"))
         if initial and not self._session_collected(artifact, rec):
             yield row("user", initial)
@@ -458,6 +497,30 @@ class ClaudeDesktopParser(ClaudeCodeParser):
                 "session error: %s" % ("%s: %s" % (cat, err) if cat else err),
                 to_utc(rec.get("errorAt")),
             )
+
+    @staticmethod
+    def _grants(rec: dict, row, created: str) -> Iterator[Row]:
+        """One `system` row per `alwaysAllowedReasons` and
+        `sessionPermissionUpdates` entry and per browser or computer-use
+        grant key that holds a value. The record keeps no time per grant, so
+        the rows take `lastActivityAt` (the grant held by then), else
+        `createdAt`, and say which."""
+        last = to_utc(rec.get("lastActivityAt"))
+        ts, field = (last, "lastActivityAt") if last else (created, "createdAt")
+        for key in GRANT_LISTS:
+            entries = rec.get(key)
+            if isinstance(entries, list):
+                for entry in entries:
+                    yield row(
+                        "system",
+                        "permission grant: %s %s (as of %s)" % (key, _value(entry), field),
+                        ts,
+                    )
+        for key in GRANT_KEYS:
+            v = rec.get(key)
+            if v is None or v == "" or v == [] or v == {}:
+                continue
+            yield row("system", "permission grant: %s=%s (as of %s)" % (key, _value(v), field), ts)
 
     @staticmethod
     def _session_collected(artifact: Artifact, rec: dict) -> bool:

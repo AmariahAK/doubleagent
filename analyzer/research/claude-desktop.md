@@ -702,6 +702,32 @@ read: `remoteControlUserRequested`, `remoteControlUserToggled`,
 Remote Control session shows them set. Whether a session was under
 Remote Control at collection time is the `claude-code` registry row's
 `bridge=` value, joined on `cliSessionId`.
+
+Permission state (issue 93). The record row of either kind ends with
+` permission_mode=<permissionMode> effort=<effort>`, `-` for an absent
+key (the Cowork key list in [section 3](#3-record-schema) has `effortOverride` and
+`pinnedSpawnEffort` but no `effort`, so a Cowork row usually reads
+`effort=-`). Then the per-session grants, all `system` rows with the
+record's session and project:
+
+| Record key | Row text |
+| --- | --- |
+| `alwaysAllowedReasons[]`, `sessionPermissionUpdates[]` | one row per entry, `permission grant: <key> <entry>` |
+| `chromePermissionMode`, `chromeAllowedDomains`, `cuAllowedApps`, `cuGrantFlags`, `cuFlagsGrantedAt` (`chrome` the browser extension, `cu` computer use) | one row per key that holds a value (not absent, `""`, `[]` or `{}`), `permission grant: <key>=<value>` |
+
+An entry or value that is not a string is its compact JSON, and each text
+ends with `(as of <field>)`. The record keeps no time per grant, so the
+rows take `lastActivityAt` (the grant was held by then; the record is
+written whole by `writeSessionToDisk`), else `createdAt`, and `<field>` names
+which. The entries' inner shape is not determined: the bundle reading
+above did not cover these keys, and the real installs showed both lists
+`[]` and `chromePermissionMode` a string, so the fixture's entries (a
+rule string, and an object shaped like the CLI's permission update
+`{type, rules, behavior, destination}`) are invented. Not read:
+`approvedToolNames`, `webFetchAllowedUrls`, `egressAllowedDomains`,
+`userApprovedFileAccessPaths` and `chromePermsBeforeUnsupervised`, which
+are Cowork grants too but were outside issue 93.
+
 If the record has `initialMessage` and no transcript or audit file for
 the session was collected, also yield it as a `user` row at `createdAt`.
 If `error` is set, one `system` row `session error: <errorCategory>:
