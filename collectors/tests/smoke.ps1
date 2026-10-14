@@ -765,6 +765,34 @@ Mk $f81 '{"cwd":"/home/alice/proj","debug":"MCP server \"terminal\": connected",
 # matched without case, does not prune it.
 $w81 = 'Users/alice/AppData/Local/claude-cli-nodejs/Cache/C--Users-alice-proj/mcp-logs-ccd-host/2026-10-12T02-23-51-709Z.jsonl'
 Mk $w81 '{"cwd":"C:\\Users\\alice\\proj","debug":"MCP server \"ccd-host\": connected","sessionId":"81818181-0000-4000-8000-000000000081","timestamp":"2026-10-12T02:23:51.709Z"}'
+# 2026-10-13 Antigravity desktop app (#83, #84)
+# The layout observed on macOS from the desktop app 2.23.0: its data
+# directory ~/.gemini/antigravity with a conversation database, a crash log,
+# a plugin's OAuth token and binary under plugin_data/, the binaries in bin/,
+# and the plugin marketplace cache beside a cache file the app shares with
+# the CLI; then the Electron user-data directory with its Cache and Code
+# Cache, the macOS logs directory, and the Windows form of the user-data
+# directory. Cache under the Electron directory is excluded by its three
+# explicit bases, never by */Antigravity/Cache, which this collector's
+# case-insensitive match would also apply to .gemini/antigravity/cache.
+# Checks follow the default and NoSecrets runs below; the same files are in
+# smoke.sh.
+$g83 = 'Users/alice/.gemini/antigravity'
+$e83 = 'Users/alice/Library/Application Support/Antigravity'
+$w83 = 'Users/alice/AppData/Roaming/Antigravity'
+Mk "$g83/conversations/a1.db" 'sqlite'
+Mk "$g83/crashes/crash_1.log" 'crash'
+Mk "$g83/plugin_data/gdocs/token.json" '{"token":{"access_token":"x","refresh_token":"y"}}'
+Mk "$g83/plugin_data/gdocs/bin/gdocs-1" 'bin'
+Mk "$g83/bin/webm_encoder" 'bin'
+Mk "$g83/cache/marketplaces/official/marketplace.json" '{"name":"official","plugins":[]}'
+Mk "$g83/cache/last_conversations.json" '{"x":"a1"}'
+Mk "$e83/app_storage.json" '{"lastCreatedProjectId":"p1"}'
+Mk "$e83/Cache/data_0" 'cache'
+Mk "$e83/Code Cache/js/x" 'js'
+Mk 'Users/alice/Library/Logs/Antigravity/main.log' '[2026-10-13 18:28:00.000] [info]  Starting app (v2.23.0)'
+Mk "$w83/app_storage.json" '{"lastCreatedProjectId":"p1"}'
+Mk "$w83/Cache/data_0" 'cache'
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1117,6 +1145,22 @@ Check '#81 Claude Code CLI cache MCP log not secret' { $r -and $r.secret -eq $fa
 $r = Row $w81
 Check '#81 Claude Code CLI cache Windows Cache child collected as claude-code' { $r -and $r.agent -eq 'claude-code' -and $r.status -eq 'collected' }
 
+# 2026-10-13 Antigravity desktop app (#83, #84)
+function Is83([string]$rel, [bool]$secret) { $r = Row $rel; return ($r -and $r.agent -eq 'antigravity' -and $r.secret -eq $secret -and $r.status -eq 'collected') }
+function NoRow83([string]$tail) { return (@($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like "*/$tail" }).Count -eq 0) }
+Check '#83 Antigravity app conversation collected as antigravity' { Is83 "$g83/conversations/a1.db" $false }
+Check '#83 Antigravity app crashes/ collected' { (StatusOf "$g83/crashes/crash_1.log") -eq 'collected' }
+Check '#84 Antigravity plugin token.json flagged secret' { Is83 "$g83/plugin_data/gdocs/token.json" $true }
+Check '#83 Antigravity plugin binary excluded' { (StatusOf "$g83/plugin_data/gdocs/bin") -eq 'skipped_excluded' -and (NoRow83 'gdocs/bin/gdocs-1') }
+Check '#83 Antigravity app bin excluded' { (StatusOf "$g83/bin") -eq 'skipped_excluded' -and (NoRow83 '.gemini/antigravity/bin/webm_encoder') }
+Check '#83 Antigravity marketplace cache excluded, other cache files collected' { (StatusOf "$g83/cache/marketplaces") -eq 'skipped_excluded' -and (StatusOf "$g83/cache/last_conversations.json") -eq 'collected' }
+Check '#83 Antigravity Electron app_storage.json collected as antigravity' { Is83 "$e83/app_storage.json" $false }
+Check '#83 Antigravity Electron Cache and Code Cache excluded' { (StatusOf "$e83/Cache") -eq 'skipped_excluded' -and (StatusOf "$e83/Code Cache") -eq 'skipped_excluded' -and (NoRow83 'Application Support/Antigravity/Cache/data_0') -and (NoRow83 'Antigravity/Code Cache/js/x') }
+Check '#83 Antigravity Library/Logs main.log collected as antigravity' { Is83 'Users/alice/Library/Logs/Antigravity/main.log' $false }
+Check '#83 Antigravity Windows app_storage.json collected as antigravity' { Is83 "$w83/app_storage.json" $false }
+Check '#83 Antigravity Windows Electron Cache excluded' { (StatusOf "$w83/Cache") -eq 'skipped_excluded' -and (NoRow83 'Roaming/Antigravity/Cache/data_0') }
+Check '#83 Antigravity data dir cache/ not pruned by the Electron Cache exclusion' { (StatusOf "$g83/cache/last_conversations.json") -eq 'collected' -and (StatusOf "$g83/cache") -ne 'skipped_excluded' }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -1296,6 +1340,8 @@ Check 'credentials skipped_secret' { (StatusOf 'Users/alice/.claude/.credentials
 Check 'credentials absent from archive' { -not (ArchiveEntries | Where-Object { $_ -match 'credentials\.json$' }) }
 # 2026-10-11 Claude Desktop Linux deb and Claude Code 2.1.295 session keys (#73, #76)
 Check '#73 #76 NoSecrets skips link-key and the session key' { (StatusOf $l76) -eq 'skipped_secret' -and (StatusOf $k76) -eq 'skipped_secret' }
+# 2026-10-13 Antigravity desktop app (#83, #84)
+Check '#84 Antigravity plugin token skipped without secrets' { (StatusOf "$g83/plugin_data/gdocs/token.json") -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }

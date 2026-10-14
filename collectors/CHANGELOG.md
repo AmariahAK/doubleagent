@@ -10,6 +10,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-13
+
+### Added
+
+- The Antigravity desktop app's Electron user-data directory is collected
+  whole as `antigravity`: `Library/Application Support/Antigravity`,
+  `.config/Antigravity` and `AppData/Roaming/Antigravity`, which replace
+  the pre-2.0 `User` and `logs` lines for the same directories. The 2.x
+  app (2.23.0, macOS, checked on a real install) has neither
+  subdirectory; on Linux and Windows its logs are in the `logs/` child,
+  which the whole-directory line still covers ([#83]).
+- `Library/Logs/Antigravity`, the desktop app's macOS logs directory
+  (`main.log`, `language_server.log`), is collected as `antigravity`
+  ([#83]).
+- Antigravity plugin OAuth credentials,
+  `.gemini/antigravity*/plugin_data/<plugin>/token.json` (the Google Docs
+  plugin writes one), are flagged `secret: true` ([#84]).
+
+### Changed
+
+- The Antigravity `bin/` exclusion covers every `.gemini` data directory
+  (`antigravity`, `antigravity-cli`, `antigravity-ide`,
+  `antigravity-backup`), not only the CLI's, so the desktop app's
+  binaries in `.gemini/antigravity/bin` get one `skipped_excluded` row
+  ([#83]).
+- Plugin binaries under `.gemini/antigravity*/plugin_data/<plugin>/bin`
+  and the plugin marketplace cache `.gemini/antigravity*/cache/marketplaces`
+  are excluded; the rest of `cache/` is still collected ([#83]).
+- The Chromium caches in the Antigravity Electron user-data directory are
+  excluded: `Cache` (named under each of the three locations, since the
+  PowerShell match ignores case and `*/Antigravity/Cache` would also prune
+  `.gemini/antigravity/cache`), `Code Cache`, `GPUCache`,
+  `DawnGraphiteCache`, `DawnWebGPUCache`, `blob_storage`,
+  `Shared Dictionary`, `CachedData` and `Crashpad` ([#83]).
+
 ## [1.11.0] - 2026-10-12
 
 ### Added
@@ -536,7 +571,8 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
   overridden by `--full`; credential files collected and flagged
   `secret: true` by default.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.11.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.12.0...HEAD
+[1.12.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.11.0...collector-v1.12.0
 [1.11.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.10.3...collector-v1.11.0
 [1.10.3]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.10.2...collector-v1.10.3
 [1.10.2]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.10.1...collector-v1.10.2
@@ -554,6 +590,8 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#84]: https://github.com/seanthegeek/doubleagent/issues/84
+[#83]: https://github.com/seanthegeek/doubleagent/issues/83
 [#82]: https://github.com/seanthegeek/doubleagent/issues/82
 [#81]: https://github.com/seanthegeek/doubleagent/issues/81
 [#78]: https://github.com/seanthegeek/doubleagent/issues/78

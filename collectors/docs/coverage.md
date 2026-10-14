@@ -194,6 +194,52 @@ takes the 10 GiB root filesystem and needs `--max-file-size 0` or at
 least `10240` to keep it; with the default 256 MiB limit `--full` takes
 the session disk and records `rootfs.img` as `skipped_size`.
 
+## Antigravity data directories
+
+Antigravity ships as a CLI, `agy`, and a desktop app. The desktop app
+(version 2.x) is an Electron app whose bundle calls the product "AGY Hub";
+the VS Code-fork editor that carried the Antigravity name before 2.0 is
+now a separate download, Antigravity IDE. Both the CLI and the app run
+the same Go backend, which the app calls its language server, and keep
+their state under `~/.gemini`. Everything is collected as `antigravity`:
+
+| Location | What it holds |
+| --- | --- |
+| `.gemini/antigravity` | The desktop app's data directory: `conversations/<uuid>.db` (one SQLite database per conversation), `conversation_summaries.db`, `brain/<uuid>/` (per-conversation transcript logs and tool output), `annotations/`, `scratch/` (documents the agent wrote), `plugin_data/<plugin>/` and `antigravity_state.pbtxt`. Observed on macOS with app 2.23.0, October 2026; before 2.0 the IDE used this directory. |
+| `.gemini/antigravity-cli` | The CLI's data directory, with the same conversation, summaries and `brain/` layout plus `history.jsonl` and `settings.json`. |
+| `.gemini/antigravity-ide` | The data directory of the separately installed Antigravity IDE. |
+| `.gemini/antigravity-backup` | The backup the desktop app takes when it migrates pre-2.0 IDE data into `antigravity-ide`. |
+| `.gemini/config` | Configuration the CLI and the app share: `config.json`, `mcp_config.json`, installed plugins under `plugins/`, project files under `projects/`, and `sidecars/<name>/sidecar.json`, one per automation (a sidecar is the app's name for a helper process its language server runs; the `schedule` kind runs an agent task on a schedule). |
+| `Library/Application Support/Antigravity`, `.config/Antigravity`, `AppData/Roaming/Antigravity` | The desktop app's Electron user-data directory, the per-user directory where Electron and its Chromium engine keep the app's own state: `app_storage.json` (UI state, including the last project and the signed-in account name), `Cookies`, `Local Storage/`, `Session Storage/` and the Chromium caches. The macOS path was observed with app 2.23.0; the Linux and Windows paths follow from the app bundle and were not observed. On Linux and Windows the logs are inside it, in `logs/`. |
+| `Library/Logs/Antigravity` | The desktop app's logs on macOS: `main.log` and `language_server.log`. |
+
+The exclusions take the binaries and caches out of these directories,
+each with one `skipped_excluded` row: `bin/` in each `.gemini` data
+directory (the app's `webm_encoder` was 12.7 MB on the observed install),
+each plugin's `plugin_data/<plugin>/bin/` (the Google Docs plugin's
+binary was 31.9 MB), `cache/marketplaces/` (a copy of the plugin
+marketplace and of each plugin downloaded from it), agent worktrees under
+`brain/<uuid>/.system_generated/worktrees`, and the Electron caches
+`Cache`, `Code Cache`, `GPUCache`, `DawnGraphiteCache`,
+`DawnWebGPUCache`, `blob_storage`, `Shared Dictionary`, `CachedData` and
+`Crashpad` in the user-data directory. The rest of
+`.gemini/antigravity/cache/` is collected. The user-data directory's
+`Cache` exclusion names its three locations
+(`Library/Application Support/Antigravity/Cache`,
+`.config/Antigravity/Cache`, `AppData/Roaming/Antigravity/Cache`)
+instead of `*/Antigravity/Cache`, because the PowerShell collector's
+exclusion match ignores case and that pattern would also prune
+`.gemini/antigravity/cache`.
+
+The CLI's file token `antigravity-oauth-token` and each plugin's OAuth
+credential, `plugin_data/<plugin>/token.json` in any `.gemini/antigravity*`
+directory, are flagged `secret: true`. The Electron `Cookies` database and
+`Local Storage/` are collected unflagged; `Cookies` held no rows on the
+observed install. On the observed macOS install a scheduled automation
+created no launchd job or cron entry: it runs inside the app's language
+server while the app runs, and its definition is the `sidecar.json`
+above.
+
 ## Home directories
 
 Home directories are gathered from several sources, merged, and
@@ -224,7 +270,7 @@ agent state that can be read with grep, and from every `-p` directory.
 | Agent | Where the project path is read from |
 | --- | --- |
 | Amp | History. |
-| Antigravity | History, trusted workspaces and project cache. |
+| Antigravity | History, trusted workspaces, project cache, and the project files the CLI and the desktop app write in `~/.gemini/config/projects/`. |
 | Claude Code | History and project list, in `~/.claude` and `~/.claude-<name>` config homes. |
 | Cline | Sessions and task history. |
 | Codex | Session rollouts. |

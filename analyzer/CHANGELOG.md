@@ -9,6 +9,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- The bundled catalog copy follows collector 1.12.0: the Antigravity
+  desktop app's Electron user-data directory
+  (`Library/Application Support/Antigravity`, `.config/Antigravity`,
+  `AppData/Roaming/Antigravity`) and its macOS logs directory
+  `Library/Logs/Antigravity` are detected as `antigravity` ([#83]).
+
 ## [0.11.0] - 2026-10-12
 
 ### Added
@@ -433,6 +441,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#83]: https://github.com/seanthegeek/doubleagent/issues/83
 [#81]: https://github.com/seanthegeek/doubleagent/issues/81
 [#80]: https://github.com/seanthegeek/doubleagent/issues/80
 [#76]: https://github.com/seanthegeek/doubleagent/issues/76

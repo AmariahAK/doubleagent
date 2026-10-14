@@ -26,7 +26,7 @@
 #               or, with --inventory, the walk ran,
 #             1 usage error, 2 fatal (no output dir, no tar, ...).
 
-VERSION="1.11.0"
+VERSION="1.12.0"
 TOOL="collect-agent-artifacts"
 
 LC_ALL=C
@@ -79,7 +79,16 @@ claude-desktop|AppData/Local/Packages/Claude_*/LocalCache/Roaming/Claude
 claude-desktop|AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude
 claude-desktop|Claude
 claude-desktop|Documents/Claude
-# Google (antigravity-cli lives inside ~/.gemini; the nested entry claims it)
+# Google. The antigravity entries nest inside ~/.gemini and claim their
+# subtrees: .gemini/antigravity is the data directory of the desktop app
+# (2.x, the Electron app), antigravity-cli that of the CLI, antigravity-ide
+# that of the separately installed IDE, and antigravity-backup the backup
+# the app takes when it migrates IDE data. The Antigravity directory under
+# the Electron roots is the user-data directory of the desktop app; its
+# logs are in Library/Logs on macOS and in its logs/ subdirectory elsewhere
+# (#83). Its Cache exclusion names the three bases: the PowerShell match
+# ignores case, so */Antigravity/Cache would also prune
+# .gemini/antigravity/cache
 gemini-cli|.gemini
 gemini-cli|.cache/.gemini
 antigravity|.gemini/antigravity-cli
@@ -89,12 +98,10 @@ antigravity|.gemini/antigravity-backup
 antigravity|.gemini/config
 antigravity|.antigravity
 antigravity|.cache/antigravity
-antigravity|.config/Antigravity/User
-antigravity|.config/Antigravity/logs
-antigravity|Library/Application Support/Antigravity/User
-antigravity|Library/Application Support/Antigravity/logs
-antigravity|AppData/Roaming/Antigravity/User
-antigravity|AppData/Roaming/Antigravity/logs
+antigravity|.config/Antigravity
+antigravity|Library/Application Support/Antigravity
+antigravity|Library/Logs/Antigravity
+antigravity|AppData/Roaming/Antigravity
 antigravity|.config/Antigravity IDE/User
 antigravity|.config/Antigravity IDE/logs
 antigravity|Library/Application Support/Antigravity IDE/User
@@ -608,8 +615,24 @@ EXCLUDES='
 .gemini/extensions/*/node_modules
 .gemini/extensions/*/.git
 .gemini/cli-browser-profile
+.gemini/antigravity/bin
 .gemini/antigravity-cli/bin
+.gemini/antigravity-ide/bin
+.gemini/antigravity-backup/bin
+.gemini/antigravity*/plugin_data/*/bin
+.gemini/antigravity*/cache/marketplaces
 .gemini/antigravity*/brain/*/.system_generated/worktrees
+*/Antigravity/Code Cache
+*/Antigravity/GPUCache
+*/Antigravity/DawnGraphiteCache
+*/Antigravity/DawnWebGPUCache
+*/Antigravity/blob_storage
+*/Antigravity/Shared Dictionary
+*/Antigravity/CachedData
+*/Antigravity/Crashpad
+.config/Antigravity/Cache
+Library/Application Support/Antigravity/Cache
+AppData/Roaming/Antigravity/Cache
 .antigravity/extensions
 AppData/Local/agy
 .codex/packages
@@ -1067,6 +1090,7 @@ AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude*/ccd-sess
 *.gemini/.env
 *.gemini/extensions/*/.env
 *.gemini/antigravity-cli/antigravity-oauth-token
+*.gemini/antigravity*/plugin_data/*/token.json
 .qwen/oauth_creds.json
 .qwen/mcp-oauth-tokens*.json
 .qwen/extension-secrets-v1.json
