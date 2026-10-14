@@ -119,7 +119,7 @@ unless `--include-thinking` is passed.
 | --- | --- |
 | [docs/inputs.md](docs/inputs.md) | Accepted inputs, loose mode, unreadable inputs and `problem:` lines, detection from the bundled catalog |
 | [docs/parsers.md](docs/parsers.md) | The parser table, how files are routed to parsers, agents detected but not parsed, protobuf and SQLite handling |
-| [docs/output.md](docs/output.md) | `detect` output and `--json` keys, `timeline` files and stdout, the `timeline.jsonl` and `sessions.jsonl` schemas |
+| [docs/output.md](docs/output.md) | `detect` output and `--json` keys, `timeline` files and stdout, the `detect.json`, `inventory.json`, `timeline.jsonl` and `sessions.jsonl` schemas |
 | [docs/filtering.md](docs/filtering.md) | `--since`, `--until`, `--keep-undated` and `--match`, the `WHEN` forms and periods |
 | [docs/searching.md](docs/searching.md) | Reading and searching large output with jq, grep, DuckDB, Python and PowerShell |
 | [docs/inventory.md](docs/inventory.md) | The `inventory` command, its CSV columns and rollup |

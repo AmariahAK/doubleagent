@@ -132,8 +132,9 @@ evidence is in `analyzer/research/claude-code.md`. Files:
   `session_id` empty:
   - `~/.claude/settings.json`, `~/.claude/settings.local.json` and a
     project's `.claude/settings.json` and `.claude/settings.local.json`
-    (offered as `project` artifacts; `project_path` is the project
-    directory, the manifest `home` of the row). Read: `permissions.allow`,
+    (artifacts whose `home.project` is set, the collector's project
+    catalog files; `project_path` is the project directory, the manifest
+    `home` of the row). Read: `permissions.allow`,
     `permissions.deny`, `permissions.ask` and
     `permissions.additionalDirectories` (one row per entry) and
     `permissions.defaultMode` and `permissions.disableBypassPermissionsMode`
@@ -186,8 +187,6 @@ HISTORY_RX = re.compile(r"^\.claude(?:-[^/]+)?/history\.jsonl$")
 REGISTRY_RX = re.compile(r"^\.claude(?:-[^/]+)?/sessions/\d+\.json$")
 SETTINGS_RX = re.compile(r"^\.claude(?:-[^/]+)?/settings(?:\.local)?\.json$")
 GLOBAL_CONFIG_RX = re.compile(r"^(?:\.claude-[^/]+/)?\.claude\.json$")
-# Manifest agent of the files found through PROJECT_CATALOG (cli.PROJECT_AGENT).
-PROJECT_AGENT = "project"
 # Settings `permissions` keys read, the lists first (claude 2.1.296 settings
 # schema, research/claude-code.md section 5).
 PERMISSION_LISTS = ("allow", "deny", "ask", "additionalDirectories")
@@ -440,7 +439,7 @@ class ClaudeCodeParser(Parser):
         if not isinstance(perms, dict):
             return
         ts = file_mtime(artifact)
-        project = artifact.home.original if artifact.agent == PROJECT_AGENT else ""
+        project = artifact.home.original if artifact.home.project else ""
         for key in PERMISSION_LISTS:
             entries = perms.get(key)
             if isinstance(entries, list):

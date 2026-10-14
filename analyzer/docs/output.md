@@ -1,8 +1,8 @@
 # Output
 
 What `detect` prints, the files `timeline` writes, and the
-`timeline.jsonl`, `sessions.jsonl` and `inventory.json` schemas. Back to the
-[analyzer README](../README.md).
+`detect.json`, `inventory.json`, `timeline.jsonl` and `sessions.jsonl`
+schemas. Back to the [analyzer README](../README.md).
 
 ## detect
 
@@ -23,19 +23,33 @@ also `files` (`user`, `agent`, `path`). Collections made by collectors before
 1.6.0 also hold a `live/` system snapshot, which appears as agent `live`
 with no user, and `detect only`.
 
+Files the collector gathered from a project directory (a repository that
+agent state referenced, or one given with `-p`) are listed under the
+agent that owns them, with the project directory in the `home` column:
+a repository's `.claude/` under `claude-code`, its
+`.aider.chat.history.md` under `aider`. A file several agents read, such
+as `AGENTS.md`, is listed under agent `project`, with no parser. Collectors
+before 1.12.0 recorded every project file as `project`; for such a
+collection the analyzer names the agent itself, from the project catalog
+in its bundled catalog copy (the `# project artifacts` section of
+`doubleagent catalog`): the most specific entry whose glob matches the
+file's path relative to the project directory, so an old and a new
+collection of the same host list the same agents. A file no entry
+matches, or whose entry is `project`, stays `project`. Nothing is printed
+about the re-attribution.
+
 ## timeline
 
 `timeline` writes four files into `-o`, creating the directory if needed,
-and writes them even when no rows were produced:
+overwriting files of the same name, and writes them even when no rows
+were produced:
 
-```text
-timeline.jsonl  one record per turn, tool call, tool result or system event
-sessions.jsonl  one record per session with first and last timestamp and counts
-detect.json     the detect --json object without its homes and files keys; its
-                problems also hold the files a parser could not read
-inventory.json  row and session counts per project and outside any project,
-                and the lists of agents parsed and not parsed; see below
-```
+| File | What it holds | Schema |
+| --- | --- | --- |
+| `timeline.jsonl` | One record per turn, tool call, tool result or system event, sorted by time. | [timeline.jsonl](#timelinejsonl) |
+| `sessions.jsonl` | One record per session, with its first and last timestamp, models and counts. | [sessions.jsonl](#sessionsjsonl) |
+| `detect.json` | What was detected in the input: per user, home and agent the files, bytes and whether a parser exists, plus the notes and problems. | [detect.json](#detectjson) |
+| `inventory.json` | Row and session counts per project and outside any project, whether each project directory was collected, and the lists of agents parsed and not parsed. | [inventory.json](#inventoryjson) |
 
 On stdout it prints the input, host and notes, one `problem:` line per
 directory or file that could not be read (see
@@ -44,7 +58,23 @@ is filtered, a `window:` line with the resolved UTC bounds, a `match:`
 line with the patterns, and a `filtered:` line counting the rows dropped
 outside the window, without a timestamp, and not matching. Then come the
 `agents:` line, the row count with a breakdown by agent and `turn_type`,
-and the session count. The breakdown counts the rows written.
+and the session count. The breakdown counts the rows written. The last
+four line groups name the four files, one each, in this order:
+
+```text
+rows:      214 in out/timeline.jsonl
+           claude-code    assistant    40
+           claude-code    user         50
+sessions:  6 in out/sessions.jsonl
+detect:    out/detect.json (agents and files detected, problems)
+inventory: out/inventory.json (counts per project and agent)
+```
+
+`rows:` is followed by one indented line per agent and `turn_type` with
+its count, sorted by agent and type, and nothing when there are no rows.
+The paths are `-o` joined with the file name, as given on the command
+line. The exit code is `0` when at least one row was written and `1`
+otherwise; the files are written either way.
 
 The `agents:` line is always one line. When the input holds at least one
 agent it lists them in two or three groups; otherwise it reads
@@ -64,13 +94,44 @@ agents `detect` shows without one). `parser found no rows` names the agents
 in the input that have a parser which read their files and produced no
 rows, such as a data directory holding only an empty database; the group
 appears only when it has an entry, and with `--agent` it counts only the
-agents selected. Files tagged `project`, which every parser is offered, are
-never listed in the last two groups. Each list is sorted and
+agents selected. Files with agent `project` (a project file several agents
+read, see [detect](#detect)), which every parser is offered, are never
+listed in the last two groups. Each list is sorted and
 comma-separated, and `parsed` or `detected but not parsed` reads `none`
 when it is empty. `none were found` means the input holds no agent data,
 where `detect` prints `no agent artifacts found`. Before analyzer 0.12.0
 the line read `parsed <list>; detected only <list>`, with `none` for an
 empty list.
+
+## detect.json
+
+`detect.json` is one JSON object, UTF-8 without a byte order mark,
+indented by two spaces: the object `detect --json` prints, without its
+`homes` and `files` keys, and with the problems the parsers met added. It
+describes the whole input: `--since`, `--until` and `--match` do not
+change it, and `--agent` changes only the parser problems, which come
+from the parsers that ran. Its keys, in order:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `input` | string | The input path as given on the command line, as on the `input:` line. |
+| `kind` | string | `archive` (an archive extracted by the analyzer), `collected` (an extracted collection: `manifest.jsonl` and `fs/`) or `loose` (any other directory, or an archive that did not unpack to a collection). |
+| `host` | string | `--host` when given, else `collection.json` `hostname`, else `""`. |
+| `notes` | array of strings | The `note:` lines without their prefix, in the order they were made: the archive sha256 check (`archive sha256 verified against <name>`, or a line starting `WARNING`), `collection.json unreadable: <reason>`, `<n> manifest rows did not parse`, `fs/ found without manifest.jsonl; treating fs/ as the root`, `root is a <agent> directory; treating its parent as the home`. `[]` when there are none. |
+| `agents` | array of objects | One object per user, home and agent, in the order their first file was met (manifest order, or the walk order in loose mode); the keys are in the next table. `[]` when nothing was detected. |
+| `problems` | array of strings | The `problem:` lines without their prefix, `<path>: <reason>`: first each directory or file inside the input that could not be read while it was opened, and each collected manifest row whose file is missing from `fs/` (see [Unreadable inputs](inputs.md#unreadable-inputs)), then each file a parser could not read, by its path on the source host. `[]` when there are none. |
+
+Each object in `agents`:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `user` | string | The home's owner: the manifest `user`, or in loose mode the user inferred from the path; `--user` when neither names one; `""` when unknown. |
+| `home` | string | The base the files were collected relative to, the manifest `home`: a user's home, a project directory (for project files, see [detect](#detect)) or a Docker volume's `_data`. In loose mode the home's path relative to the input root with a leading `/`, or its path on the analyst's disk when the input root is the home or an agent directory. |
+| `agent` | string | Catalog agent name. `project` for a project file several agents read. |
+| `files` | integer | The number of files attributed to this user, home and agent: collected manifest rows of type `file` whose file is present under `fs/`, or files under a matched catalog path in loose mode. |
+| `bytes` | integer | Their total size: the sum of the manifest `size` values, or of the sizes on disk in loose mode. |
+| `parser` | boolean | `true` when the analyzer has a parser for this agent. Always `false` for `project`, whose files are offered to every parser. |
+| `inferred` | boolean | `true` in loose mode, where user and home come from the path, not a manifest. |
 
 ## inventory.json
 
@@ -89,21 +150,40 @@ agents selected. Its keys, in order:
 | `parsed` | array of strings | The `parsed` group of the `agents:` line: the agents that produced rows before filtering. |
 | `detected_not_parsed` | array of strings | The `detected but not parsed` group: the agents in the input that have no parser. |
 | `no_rows` | array of strings | The `parser found no rows` group, `[]` when it is empty. |
-| `projects` | object | One count object per distinct non-empty `project_path`, keyed by that path exactly as the rows record it. |
-| `no_project` | object | The count object for the rows and sessions whose `project_path` is empty. |
+| `projects` | object | One count object per distinct non-empty `project_path`, keyed by that path exactly as the rows record it, plus one per project directory the input holds that no row names. Each has a `status`. |
+| `no_project` | object | The count object for the rows and sessions whose `project_path` is empty. It has no `status`. |
 
 The three agent lists are sorted. `projects` is `{}` when no row has a
-project path, and its keys are sorted. Paths are not normalised, so one
-repository recorded in two forms (a trailing slash, a different case on
-Windows) has two keys.
+project path and the input holds no project directory, and its keys are
+sorted.
 
-A count object has three keys:
+The project directories the input holds are the paths in `collection.json`
+`projects` (the directories the collector gathered project files from,
+discovered or given with `-p`) and, for a collection whose
+`collection.json` is missing or has no `projects`, the `home` of each
+collected manifest row with agent `project`. A loose input holds none:
+the analyzer does not look for project directories in a loose tree, so
+every key there is `referenced`. Each such directory is listed even when
+no row names it, with zero counts and `"agents": {}`, and even when the
+filters left no rows at all.
+
+Paths are compared and counted exactly as recorded, never normalised. One
+repository recorded in two forms has two keys: a trailing slash, a
+different case on Windows, or a disk image collected with `-r`, where the
+collector records the project directory with the image root in front
+(`/mnt/image/srv/proj`) and the transcripts name it as the host saw it
+(`/srv/proj`). The collector's form then has `status` `collected` and,
+when no row names it, zero counts, and the transcripts' form has the rows
+and `status` `referenced`.
+
+A count object has three keys, and under `projects` a fourth, `status`:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `rows` | integer | Rows with this `project_path`. |
 | `sessions` | integer | Sessions whose `project_path` in `sessions.jsonl` is this one. |
 | `agents` | object | Keyed by agent name, sorted: `rows`, `sessions`, and `turn_types`, an object of row counts keyed by `turn_type`, sorted, listing only the types that occur. |
+| `status` | string | Only under `projects`, after the counts. `collected` when the path is a project directory the input holds, so its project files (such as `.claude/settings.local.json` or `.aider.chat.history.md`) are in the collection; `referenced` when only rows name it, because the directory was deleted, was out of the collector's reach, was skipped with `--no-projects`, or is recorded in another form (see above). |
 
 A row is counted under its own `project_path` and a session under the
 session's, the first non-empty `project_path` among its rows, so a session
@@ -123,6 +203,7 @@ session. The `rows` of `projects` and `no_project` add up to the top-level
   "detected_not_parsed": ["copilot-cli"],
   "no_rows": [],
   "projects": {
+    "/srv/empty": {"rows": 0, "sessions": 0, "agents": {}, "status": "collected"},
     "/srv/proj": {
       "rows": 200,
       "sessions": 5,
@@ -137,7 +218,8 @@ session. The `rows` of `projects` and `no_project` add up to the top-level
           "sessions": 1,
           "turn_types": {"assistant": 20, "user": 30}
         }
-      }
+      },
+      "status": "collected"
     }
   },
   "no_project": {
@@ -180,22 +262,22 @@ alike. [searching.md](searching.md) has recipes.
 
 `timeline.jsonl` fields, in order:
 
-| Field | Meaning |
-| --- | --- |
-| `timestamp_utc` | ISO 8601 UTC with milliseconds, `2026-10-03T16:55:31.123Z`. Times recorded without a zone are taken as UTC. Epoch numbers above 10^11 are read as milliseconds, smaller ones as seconds. Empty when the record has none. |
-| `host` | From `collection.json`, or `--host`. Empty for loose input without `--host`. |
-| `user` | From the manifest, inferred from the path, or `--user`. |
-| `agent` | Catalog agent name of the parser that produced the row. |
-| `session_id` | The agent's own session or thread identifier. |
-| `project_path` | Working directory recorded for the turn. |
-| `git_branch` | Branch recorded for the turn, where the agent logs one. |
-| `turn_type` | `user`, `assistant`, `tool_use`, `tool_result`, `system`, or `thinking` with `--include-thinking`. |
-| `model` | Model that produced the turn, where recorded. |
-| `tool_name` | For `tool_use` rows: the tool. Codex shell calls are `shell`. |
-| `tool_use_id` | Links a `tool_use` row to its `tool_result`. |
-| `text` | The event's full text, with leading and trailing whitespace removed and inner line breaks and indentation kept: the prompt, the response, the tool output, or for a tool call its most identifying argument (the Bash command, the edited file, the search pattern, the fetched URL), else the arguments as JSON. |
-| `source_file` | Path of the record on the source host, as in the manifest. In loose mode it is the path relative to the input root with a leading `/`, or relative to the home when the input root is the home or an agent directory. |
-| `source_line` | Integer. Where the record is in that file, so the full record can be read. For line-oriented files (JSONL, Markdown, text) the 1-based line number. For SQLite stores it is the record's `rowid` (Tabby events: the event id), and for JSON documents an array index or `1`. Each parser's module docstring says which. `0` when no position applies. |
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `timestamp_utc` | string | ISO 8601 UTC with milliseconds, `2026-10-03T16:55:31.123Z`. Times recorded without a zone are taken as UTC. Epoch numbers above 10^11 are read as milliseconds, smaller ones as seconds. Empty when the record has none. |
+| `host` | string | `--host` when given, else `collection.json` `hostname`. Empty for loose input without `--host`. |
+| `user` | string | From the manifest, inferred from the path, or `--user`. |
+| `agent` | string | Catalog agent name of the parser that produced the row. |
+| `session_id` | string | The agent's own session or thread identifier. |
+| `project_path` | string | Working directory recorded for the turn. |
+| `git_branch` | string | Branch recorded for the turn, where the agent logs one. |
+| `turn_type` | string | `user`, `assistant`, `tool_use`, `tool_result`, `system`, or `thinking` with `--include-thinking`. |
+| `model` | string | Model that produced the turn, where recorded. |
+| `tool_name` | string | For `tool_use` rows: the tool. Codex shell calls are `shell`. |
+| `tool_use_id` | string | Links a `tool_use` row to its `tool_result`. |
+| `text` | string | The event's full text, with leading and trailing whitespace removed and inner line breaks and indentation kept: the prompt, the response, the tool output, or for a tool call its most identifying argument (the Bash command, the edited file, the search pattern, the fetched URL), else the arguments as JSON. |
+| `source_file` | string | Path of the record on the source host, as in the manifest. In loose mode it is the path relative to the input root with a leading `/`, or relative to the home when the input root is the home or an agent directory. |
+| `source_line` | integer | Where the record is in that file, so the full record can be read. For line-oriented files (JSONL, Markdown, text) the 1-based line number. For SQLite stores it is the record's `rowid` (Tabby events: the event id), and for JSON documents an array index or `1`. Each parser's module docstring says which. `0` when no position applies. |
 
 ### Row order and system rows
 
@@ -462,15 +544,27 @@ entries.<sessionId>.folders=<folder> (from <file>, file mtime)`, with
 
 ## sessions.jsonl
 
-`sessions.jsonl` has one record per `host`, `user`, `agent` and
-`session_id`, built from the timeline records that have a session id. Its
-fields, in order: `host`, `user`, `agent`, `session_id`, `project_path`
-(the first non-empty one), `first_timestamp_utc`, `last_timestamp_utc`,
-`models` (an array of strings, in order of first use, empty when none was
-recorded), `user_turns` and `assistant_turns` (integers, timeline records
-of those types), `tool_calls` (integer, `tool_use` records), and
-`source_file` (the file that contributed the most records). It is sorted by
-first timestamp, so sessions with no timestamp come first.
+`sessions.jsonl` has one record per distinct `host`, `user`, `agent` and
+`session_id`, built from the records of `timeline.jsonl` that have a
+non-empty `session_id`; records without one belong to no session. It is
+built after filtering, so it summarises the rows written. It is sorted by
+`first_timestamp_utc`, then `agent`, then `session_id`, so sessions with
+no timestamp come first. Its fields, in order:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `host` | string | The `host` of the session's timeline records. |
+| `user` | string | The `user` of the session's timeline records. |
+| `agent` | string | The `agent` of the session's timeline records. |
+| `session_id` | string | The `session_id` of the session's timeline records, never empty. |
+| `project_path` | string | The first non-empty `project_path` among the session's records in timeline order; `""` when none has one. `inventory.json` counts the session under this path. |
+| `first_timestamp_utc` | string | The earliest non-empty `timestamp_utc` among the session's records, `""` when none has one. |
+| `last_timestamp_utc` | string | The latest non-empty `timestamp_utc` among the session's records, `""` when none has one. |
+| `models` | array of strings | Each distinct non-empty `model` of the session's records, in order of first use in the timeline; `[]` when none was recorded. |
+| `user_turns` | integer | The number of the session's records with `turn_type` `user`. |
+| `assistant_turns` | integer | The number with `turn_type` `assistant`. |
+| `tool_calls` | integer | The number with `turn_type` `tool_use`. |
+| `source_file` | string | The `source_file` that contributed the most of the session's records, the first met on a tie, so a transcript wins over a one-line-per-prompt history file; `""` when no record names one. |
 
 ## Compatibility
 

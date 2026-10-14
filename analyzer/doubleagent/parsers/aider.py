@@ -6,10 +6,13 @@ Validated against source, Aider-AI/aider at 5dc9490 (`aider/io.py`,
 
 Aider writes into the git root of the repository it runs in (else the
 working directory), so these files usually arrive through the collector's
-project catalog: the manifest attributes them to agent `project` with the
-project directory as the home, and `artifact.rel` is the bare file name.
-The CLI offers every `project` artifact to every parser, so this parser
-takes those too and labels the rows `aider`. A history file directly in a home is
+project catalog with the project directory as the home, and
+`artifact.rel` is the bare file name. Collectors from 1.12.0 attribute them
+to `aider` when the project catalog names it; earlier ones recorded agent
+`project`, which the analyzer re-attributes from its bundled project
+catalog, and a file the catalog leaves to `project` is offered to every
+parser. Either way this parser takes it and labels the rows `aider`. A
+history file directly in a home is
 attributed to `aider` by the main catalog. Either way `project_path` is the
 directory holding the file. Files:
 

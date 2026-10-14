@@ -12,6 +12,15 @@ Back to the [analyzer README](../README.md).
 | Extracted collection: a directory holding `manifest.jsonl` and `fs/` | Host name from `collection.json` `hostname` unless `--host` is given. User, home and agent for every file come from the manifest. Only rows with status `collected` and type `file` are read. |
 | Anything else | Treated as a loose tree: a copied home directory, a mounted disk image, another collector's output, or one agent directory such as `.claude`. Homes and agents are discovered from the catalog, and the user is inferred from the path. A directory with `fs/` but no `manifest.jsonl` is read from `fs/`. |
 
+In a collection, the bases listed in `collection.json` `projects`, and
+the base of any manifest row with agent `project`, are project
+directories rather than homes: their files are the collector's project
+catalog files, and `inventory.json` marks those paths `collected` (see
+[inventory.json](output.md#inventoryjson)). A manifest row with agent
+`project`, which every row from a project directory had before collector
+1.12.0, is re-attributed from the bundled project catalog to the agent
+that owns the file (see [detect](output.md#detect)).
+
 In loose mode the analyzer walks the tree and treats a directory as a home
 when at least one catalog entry for a real agent matches under it. A
 directory that holds only shared files such as `AGENTS.md` is a
