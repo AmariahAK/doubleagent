@@ -15,7 +15,7 @@ from . import catalog as catalog_mod
 from . import inventory as inventory_mod
 from .filters import FORMS_HELP, RowFilter, parse_bound
 from .inputs import Collection, describe_error, error_reason, open_input
-from .model import Row, summarise
+from .model import Row, SessionSummary, summarise
 from .parsers import ALL, Options, by_agent
 
 PROG = "doubleagent"
@@ -417,6 +417,34 @@ def agents_summary(
     return text
 
 
+def project_inventory(rows: list[Row], sessions: list[SessionSummary]) -> dict[str, dict]:
+    """Counts per `project_path`, the empty path included: rows and sessions
+    in total, and per agent the rows, sessions and rows by `turn_type`. A
+    session is counted under its summary's project, the first non-empty
+    `project_path` among its rows."""
+    groups: dict[str, dict] = {}
+
+    def group(path: str, agent: str) -> tuple[dict, dict]:
+        g = groups.setdefault(path, {"rows": 0, "sessions": 0, "agents": {}})
+        a = g["agents"].setdefault(agent, {"rows": 0, "sessions": 0, "turn_types": {}})
+        return g, a
+
+    for r in rows:
+        g, a = group(r.project_path, r.agent)
+        g["rows"] += 1
+        a["rows"] += 1
+        a["turn_types"][r.turn_type] = a["turn_types"].get(r.turn_type, 0) + 1
+    for s in sessions:
+        g, a = group(s.project_path, s.agent)
+        g["sessions"] += 1
+        a["sessions"] += 1
+    for g in groups.values():
+        g["agents"] = {k: g["agents"][k] for k in sorted(g["agents"])}
+        for a in g["agents"].values():
+            a["turn_types"] = dict(sorted(a["turn_types"].items()))
+    return {k: groups[k] for k in sorted(groups)}
+
+
 def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     opts = Options(include_thinking=args.include_thinking)
     rf: RowFilter = args.row_filter
@@ -485,6 +513,24 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
         and r["agent"] not in parsed_agents
         and (not args.agent or r["agent"] in args.agent)
     ]
+    groups = project_inventory(rows, sessions)
+    empty = {"rows": 0, "sessions": 0, "agents": {}}
+    with open(args.output / "inventory.json", "w", encoding="utf-8") as fh:
+        json.dump(
+            {
+                "input": str(col.source),
+                "host": col.host,
+                "rows": len(rows),
+                "sessions": len(sessions),
+                "parsed": parsed_agents,
+                "detected_not_parsed": sorted(set(unparsed)),
+                "no_rows": sorted(set(no_rows)),
+                "projects": {k: v for k, v in groups.items() if k},
+                "no_project": groups.get("", empty),
+            },
+            fh,
+            indent=2,
+        )
     print(
         "agents:    " + agents_summary(bool(agents), parsed_agents, unparsed, sorted(set(no_rows)))
     )

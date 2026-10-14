@@ -53,7 +53,7 @@ doubleagent inventory /cases/fleet/inventory -o /cases/fleet/fleet-inventory.csv
 | Command | What it does | Writes | Page |
 | --- | --- | --- | --- |
 | `detect` | Reports the host, users, homes and agents found in an input, with file counts, bytes and whether a parser exists. | stdout only; `--json` for one object | [docs/output.md](docs/output.md#detect) |
-| `timeline` | Parses every transcript it can read into one timeline, optionally filtered by time or text. | `timeline.jsonl`, `sessions.jsonl` and `detect.json` in `-o` | [docs/output.md](docs/output.md#timeline), [docs/filtering.md](docs/filtering.md) |
+| `timeline` | Parses every transcript it can read into one timeline, optionally filtered by time or text. | `timeline.jsonl`, `sessions.jsonl`, `detect.json` and `inventory.json` in `-o` | [docs/output.md](docs/output.md#timeline), [docs/filtering.md](docs/filtering.md) |
 | `inventory` | Merges saved collector `--inventory` output from many hosts into one CSV. | `fleet-inventory.csv`, or the `-o` path | [docs/inventory.md](docs/inventory.md) |
 | `catalog` | Prints the bundled catalog, or with `--agents` each agent with `parser` or `detect only`. | stdout only | [docs/inputs.md](docs/inputs.md#detection) |
 

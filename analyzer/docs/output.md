@@ -1,7 +1,7 @@
 # Output
 
 What `detect` prints, the files `timeline` writes, and the
-`timeline.jsonl` and `sessions.jsonl` schemas. Back to the
+`timeline.jsonl`, `sessions.jsonl` and `inventory.json` schemas. Back to the
 [analyzer README](../README.md).
 
 ## detect
@@ -25,7 +25,7 @@ with no user, and `detect only`.
 
 ## timeline
 
-`timeline` writes three files into `-o`, creating the directory if needed,
+`timeline` writes four files into `-o`, creating the directory if needed,
 and writes them even when no rows were produced:
 
 ```text
@@ -33,6 +33,8 @@ timeline.jsonl  one record per turn, tool call, tool result or system event
 sessions.jsonl  one record per session with first and last timestamp and counts
 detect.json     the detect --json object without its homes and files keys; its
                 problems also hold the files a parser could not read
+inventory.json  row and session counts per project and outside any project,
+                and the lists of agents parsed and not parsed; see below
 ```
 
 On stdout it prints the input, host and notes, one `problem:` line per
@@ -69,6 +71,93 @@ when it is empty. `none were found` means the input holds no agent data,
 where `detect` prints `no agent artifacts found`. Before analyzer 0.12.0
 the line read `parsed <list>; detected only <list>`, with `none` for an
 empty list.
+
+## inventory.json
+
+`inventory.json` is one JSON object, UTF-8 without a byte order mark,
+indented by two spaces. It counts what `timeline.jsonl` and
+`sessions.jsonl` hold, so with `--since`, `--until` or `--match` it counts
+the rows and sessions left after filtering, and with `--agent` only the
+agents selected. Its keys, in order:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `input` | string | The input path, as on the `input:` line. |
+| `host` | string | The host name, `""` when unknown. |
+| `rows` | integer | The number of records in `timeline.jsonl`. |
+| `sessions` | integer | The number of records in `sessions.jsonl`. |
+| `parsed` | array of strings | The `parsed` group of the `agents:` line: the agents that produced rows before filtering. |
+| `detected_not_parsed` | array of strings | The `detected but not parsed` group: the agents in the input that have no parser. |
+| `no_rows` | array of strings | The `parser found no rows` group, `[]` when it is empty. |
+| `projects` | object | One count object per distinct non-empty `project_path`, keyed by that path exactly as the rows record it. |
+| `no_project` | object | The count object for the rows and sessions whose `project_path` is empty. |
+
+The three agent lists are sorted. `projects` is `{}` when no row has a
+project path, and its keys are sorted. Paths are not normalised, so one
+repository recorded in two forms (a trailing slash, a different case on
+Windows) has two keys.
+
+A count object has three keys:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `rows` | integer | Rows with this `project_path`. |
+| `sessions` | integer | Sessions whose `project_path` in `sessions.jsonl` is this one. |
+| `agents` | object | Keyed by agent name, sorted: `rows`, `sessions`, and `turn_types`, an object of row counts keyed by `turn_type`, sorted, listing only the types that occur. |
+
+A row is counted under its own `project_path` and a session under the
+session's, the first non-empty `project_path` among its rows, so a session
+whose rows name two projects has rows under both and is counted once, under
+the first. Rows with no `session_id` are counted in `rows` and belong to no
+session. The `rows` of `projects` and `no_project` add up to the top-level
+`rows`, and their `sessions` to the top-level `sessions`. With no rows,
+`no_project` is `{"rows": 0, "sessions": 0, "agents": {}}`.
+
+```json
+{
+  "input": "/cases/ws01/collection.tar.gz",
+  "host": "ws01",
+  "rows": 214,
+  "sessions": 6,
+  "parsed": ["claude-code", "codex-cli"],
+  "detected_not_parsed": ["copilot-cli"],
+  "no_rows": [],
+  "projects": {
+    "/srv/proj": {
+      "rows": 200,
+      "sessions": 5,
+      "agents": {
+        "claude-code": {
+          "rows": 150,
+          "sessions": 4,
+          "turn_types": {"assistant": 40, "tool_result": 30, "tool_use": 30, "user": 50}
+        },
+        "codex-cli": {
+          "rows": 50,
+          "sessions": 1,
+          "turn_types": {"assistant": 20, "user": 30}
+        }
+      }
+    }
+  },
+  "no_project": {
+    "rows": 14,
+    "sessions": 1,
+    "agents": {
+      "codex-cli": {"rows": 14, "sessions": 1, "turn_types": {"system": 4, "user": 10}}
+    }
+  }
+}
+```
+
+A jq query that lists projects by row count:
+
+```sh
+jq -r '.projects | to_entries | sort_by(-.value.rows)[] | "\(.value.rows)\t\(.key)"' out/inventory.json
+```
+
+The keys are an interface like the JSONL fields: new ones are added, the
+existing ones keep their names, types and meaning.
 
 ## JSONL encoding
 

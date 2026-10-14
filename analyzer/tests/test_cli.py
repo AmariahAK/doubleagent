@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 from doubleagent import cli
+from fixtures import build_home
 
 
 def run_timeline(root: Path, out: Path) -> tuple[int, str]:
@@ -138,6 +139,98 @@ class AgentsSummaryTests(unittest.TestCase):
         rc, out = run_timeline(self.tmp / "home", self.tmp / "out")
         self.assertEqual(rc, 1, out)  # no rows
         self.assertEqual(agents_line(out), "agents:    none were found")
+
+
+def read_jsonl(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+class InventoryJsonTests(unittest.TestCase):
+    """inventory.json: counts per project and outside any project, and the
+    agent lists, written by `timeline` (issue 103)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-inv-json-test-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def timeline(self, root: Path, *extra: str) -> tuple[int, str, Path]:
+        out = self.tmp / "out"
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            rc = cli.main(["timeline", str(root), "-o", str(out), "--host", "h1", *extra])
+        return rc, buf.getvalue(), out
+
+    def check_totals(self, out: Path) -> dict:
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        rows = read_jsonl(out / "timeline.jsonl")
+        sessions = read_jsonl(out / "sessions.jsonl")
+        self.assertEqual(inv["rows"], len(rows))
+        self.assertEqual(inv["sessions"], len(sessions))
+        groups = dict(inv["projects"])
+        self.assertNotIn("", groups)
+        groups[""] = inv["no_project"]
+        # Every row and session lands in exactly one group, and each
+        # group's totals are the sum of its agents'.
+        self.assertEqual(sum(g["rows"] for g in groups.values()), len(rows))
+        self.assertEqual(sum(g["sessions"] for g in groups.values()), len(sessions))
+        for path, g in groups.items():
+            self.assertEqual(sum(a["rows"] for a in g["agents"].values()), g["rows"], path)
+            self.assertEqual(sum(a["sessions"] for a in g["agents"].values()), g["sessions"])
+            for agent, a in g["agents"].items():
+                want = [r for r in rows if r["project_path"] == path and r["agent"] == agent]
+                self.assertEqual(sum(a["turn_types"].values()), len(want), (path, agent))
+                for tt, n in a["turn_types"].items():
+                    self.assertEqual(n, sum(1 for r in want if r["turn_type"] == tt))
+        return inv
+
+    def test_full_fixture(self):
+        home = self.tmp / "home" / "alice"
+        build_home(home)
+        (home / ".copilot").mkdir(exist_ok=True)
+        (home / ".copilot/config.json").write_text("{}", encoding="utf-8")
+        rc, out, path = self.timeline(self.tmp / "home")
+        self.assertEqual(rc, 0, out)
+        inv = self.check_totals(path)
+        self.assertIn("/srv/proj", inv["projects"])
+        self.assertIn("claude-code", inv["projects"]["/srv/proj"]["agents"])
+        self.assertIn("claude-code", inv["parsed"])
+        self.assertIn("copilot-cli", inv["detected_not_parsed"])
+        self.assertEqual(inv["detected_not_parsed"], sorted(inv["detected_not_parsed"]))
+        self.assertEqual(list(inv["projects"]), sorted(inv["projects"]))
+
+    def test_with_and_without_project(self):
+        home = self.tmp / "home" / "alice"
+        (home / ".claude").mkdir(parents=True)
+        lines = [
+            {"display": "in a project", "timestamp": 1790848800000, "project": "/srv/proj"},
+            {"display": "no project", "timestamp": 1790848860000},
+        ]
+        (home / ".claude/history.jsonl").write_text(
+            "".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8"
+        )
+        rc, out, path = self.timeline(self.tmp / "home")
+        self.assertEqual(rc, 0, out)
+        inv = self.check_totals(path)
+        self.assertEqual(list(inv["projects"]), ["/srv/proj"])
+        self.assertEqual(inv["projects"]["/srv/proj"]["rows"], 1)
+        self.assertEqual(inv["no_project"]["rows"], 1)
+        self.assertEqual(inv["no_project"]["agents"]["claude-code"]["turn_types"], {"user": 1})
+        self.assertEqual(inv["detected_not_parsed"], [])
+        self.assertEqual(inv["no_rows"], [])
+
+    def test_filtered(self):
+        home = self.tmp / "home" / "alice"
+        build_home(home)
+        rc, out, path = self.timeline(self.tmp / "home", "--match", "zzz-no-such-text")
+        self.assertEqual(rc, 1, out)  # no rows
+        inv = self.check_totals(path)
+        self.assertEqual(inv["rows"], 0)
+        self.assertEqual(inv["projects"], {})
+        self.assertEqual(inv["no_project"], {"rows": 0, "sessions": 0, "agents": {}})
+        # `parsed` names the agents with rows before filtering, as stdout does.
+        self.assertIn("claude-code", inv["parsed"])
 
 
 if __name__ == "__main__":

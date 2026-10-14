@@ -13,6 +13,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `timeline` writes a fourth file, `inventory.json`: row and session
+  counts per project and outside any project, each split by agent and
+  `turn_type`, and the lists of agents parsed, detected but not parsed,
+  and whose parser found no rows. The counts follow the filters, as the
+  stdout breakdown does ([#103]).
 - The bundled catalog copy detects the Antigravity CLI's file secret
   store `plugin-secrets.json` (`.config/antigravity`,
   `Library/Application Support/antigravity`, `AppData/Roaming/antigravity`)
@@ -715,6 +720,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#103]: https://github.com/seanthegeek/doubleagent/issues/103
 [#97]: https://github.com/seanthegeek/doubleagent/issues/97
 [#96]: https://github.com/seanthegeek/doubleagent/issues/96
 [#93]: https://github.com/seanthegeek/doubleagent/issues/93
