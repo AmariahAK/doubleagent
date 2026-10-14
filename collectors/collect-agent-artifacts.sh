@@ -1989,7 +1989,10 @@ write_chunk_rows() {
     [ -n "$stat_line" ] || stat_line='0 0 0 0 0 0 0 0'
     set -- $stat_line
     case "$status" in symlink) type=symlink ;; *) type=file ;; esac
-    case "$status" in collected | symlink) archive_path="fs${path#"$root"}" ;; *) archive_path= ;; esac
+    case "$status" in
+      collected | symlink) archive_path="fs${path#"$root"}" ;;
+      *) archive_path= ;;
+    esac
     write_manifest_row "$manifest" "$user" "$home" "$agent" "$path" "$archive_path" "$type" \
       "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$sha256" "$secret" "$status" "$target" \
       "$copy_error"
@@ -2590,7 +2593,9 @@ get_docker_volume_rule() {
     case "$_gdvr_line" in ''|'#'*) continue ;; esac
     _gdvr_glob=${_gdvr_line#*|}
     # shellcheck disable=SC2254 # the table entry is a glob
-    case "$1" in $_gdvr_glob) set +f; IFS=$_gdvr_saved_ifs; printf '%s' "$_gdvr_line"; return 0 ;; esac
+    case "$1" in
+      $_gdvr_glob) set +f; IFS=$_gdvr_saved_ifs; printf '%s' "$_gdvr_line"; return 0 ;;
+    esac
   done
   set +f
   IFS=$_gdvr_saved_ifs
@@ -2740,41 +2745,64 @@ DOCKER_SEEN=0; DOCKER_FOUND=0; DOCKER_COLLECTED=0; DOCKER_UNREADABLE=0; DOCKER_D
 DOCKER_INV=
 [ "$NO_DOCKER" = 1 ] || collect_docker_volumes
 
-# ---------------------------------------------------------------------------
-# Project discovery: paths referenced by agent state files, prefixed with ROOT.
-# Emits "user:path"; the user is whoever's state referenced the path. Only
+# ===========================================================================
+# 9. Project discovery
+# ===========================================================================
+# Paths referenced by agent state files, prefixed with ROOT. discover_projects
+# emits "user:path"; the user is whoever's state referenced the path. Only
 # plain-text sources are read here (JSON/JSONL via grep); SQLite-backed agents
 # (Zed, Goose, OpenCode, Kilo, Cline db/) are left to the analyst-side parser.
-# inv_secret FILE -> true when --inventory is on and FILE, relative to the home
-# being scanned ($_h), matches SECRET_GLOBS. Inventory never opens such a file,
-# so discovery sources that are credential files (.claude.json, the OpenClaw
-# and nanobot configs, Tabby's config.toml) are not read in that mode.
-inv_secret() {
+# The find_*_projects groups run in this order, and the sources inside each
+# in the order written, since the project list (and with it the manifest row
+# order) follows the order in which paths are first seen. Each group takes
+# the home as $1 and runs with IFS set to newline only (discover_projects
+# sets it), so its globs keep paths with spaces whole.
+
+# test_inventory_secret FILE: returns 0 when --inventory is on and FILE,
+# relative to the home being scanned (DISCOVERY_HOME, set by
+# discover_projects), matches SECRET_GLOBS. Inventory never opens such a
+# file, so discovery sources that are credential files (.claude.json, the
+# OpenClaw and nanobot configs, Tabby's config.toml) are not read in that
+# mode. Reads INVENTORY, DISCOVERY_HOME, SECRET_GLOBS. Temporaries: _tis_.
+test_inventory_secret() {
   [ "$INVENTORY" = 1 ] || return 1
-  # shellcheck disable=SC2031 # _h is the calling loop's current home
-  _is_r=${1#"$_h"/}
-  _is_ifs=$IFS
+  _tis_rel=${1#"$DISCOVERY_HOME"/}
+  _tis_saved_ifs=$IFS
   IFS='
 '
   set -f
-  for _is_p in $SECRET_GLOBS; do
+  for _tis_glob in $SECRET_GLOBS; do
     # shellcheck disable=SC2254 # the table entry is a glob
-    case "$_is_r" in $_is_p) set +f; IFS=$_is_ifs; return 0 ;; esac
+    case "$_tis_rel" in $_tis_glob) set +f; IFS=$_tis_saved_ifs; return 0 ;; esac
   done
   set +f
-  IFS=$_is_ifs
+  IFS=$_tis_saved_ifs
   return 1
 }
 # Evaluated at the top of each discovery helper after its key is shifted off:
-# drops the files inv_secret rejects from "$@".
+# drops the files test_inventory_secret rejects from "$@". A string for eval,
+# not a function, because a function cannot change its caller's "$@".
+# Temporaries: _ids_.
 # shellcheck disable=SC2016 # expanded where it is eval'd, not here
-INV_DROP_SECRETS='if [ "$INVENTORY" = 1 ]; then _ids_n=$#; for _ids_f do inv_secret "$_ids_f" || set -- "$@" "$_ids_f"; done; shift "$_ids_n"; fi'
-# json_vals KEY FILE... -> values of "KEY":"..." across the given files
+INVENTORY_DROP_SECRETS='if [ "$INVENTORY" = 1 ]; then
+  _ids_count=$#
+  for _ids_file do test_inventory_secret "$_ids_file" || set -- "$@" "$_ids_file"; done
+  shift "$_ids_count"
+fi'
+# json_vals KEY FILE... -> values of "KEY":"..." across the given files.
+# Temporaries: _jv_.
 json_vals() {
-  _jv_k=$1; shift
-  eval "$INV_DROP_SECRETS"
+  _jv_key=$1; shift
+  eval "$INVENTORY_DROP_SECRETS"
   [ $# -gt 0 ] || return 0
-  grep -ho "\"$_jv_k\": *\"[^\"]*\"" "$@" 2>/dev/null | sed "s/^\"$_jv_k\": *\"//; s/\"\$//"
+  grep -ho "\"$_jv_key\": *\"[^\"]*\"" "$@" 2>/dev/null | sed "s/^\"$_jv_key\": *\"//; s/\"\$//"
+}
+# json_path_keys FILE NEXT -> the keys of FILE that are absolute paths and are
+# followed by ": NEXT" (a basic regular expression: {, ", [tf]), when FILE is
+# a regular file that test_inventory_secret does not reject
+json_path_keys() {
+  [ -f "$1" ] && ! test_inventory_secret "$1" &&
+    grep -o "\"/[^\"]*\": *$2" "$1" 2>/dev/null | sed "s/^\"//; s/\": *$2\$//"
 }
 # abs_strings FILE... -> every quoted absolute path or file:// URI in the files
 # (JSON arrays of workspace paths, object keys, nested values alike). The
@@ -2786,212 +2814,362 @@ json_vals() {
 # drive letter itself is dropped, since the sh collector keeps only paths
 # that start with /.
 abs_strings() {
-  eval "$INV_DROP_SECRETS"
+  eval "$INVENTORY_DROP_SECRETS"
   [ $# -gt 0 ] || return 0
   grep -ho '"\(file:\/\/\)\{0,1\}/[^"]*"' "$@" 2>/dev/null |
-    sed 's/^"//; s/"$//; s/^\(file:\/\/\/[A-Za-z]\)%3[Aa]\//\1:\//; s/^file:\/\/\/[A-Za-z]:\//\//; s/^file:\/\///; s/%20/ /g'
+    sed 's/^"//; s/"$//; s/^\(file:\/\/\/[A-Za-z]\)%3[Aa]\//\1:\//;'\
+' s/^file:\/\/\/[A-Za-z]:\//\//; s/^file:\/\///; s/%20/ /g'
 }
-# yaml_vals KEY FILE... -> values of top-level "KEY: value" lines
+# yaml_vals KEY FILE... -> values of top-level "KEY: value" lines.
+# Temporaries: _yv_.
 yaml_vals() {
-  _yv_k=$1; shift
-  eval "$INV_DROP_SECRETS"
+  _yv_key=$1; shift
+  eval "$INVENTORY_DROP_SECRETS"
   [ $# -gt 0 ] || return 0
-  grep -h "^$_yv_k: *" "$@" 2>/dev/null | sed "s/^$_yv_k: *//; s/^[\"']//; s/[\"']\$//"
+  grep -h "^$_yv_key: *" "$@" 2>/dev/null | sed "s/^$_yv_key: *//; s/^[\"']//; s/[\"']\$//"
 }
 # json5_vals KEY FILE... -> string values of KEY in JSON5 files, where the key
-# may be unquoted and the value single-quoted (OpenClaw config)
+# may be unquoted and the value single-quoted (OpenClaw config).
+# Temporaries: _j5v_.
 json5_vals() {
-  _j5_k=$1; shift
-  eval "$INV_DROP_SECRETS"
+  _j5v_key=$1; shift
+  eval "$INVENTORY_DROP_SECRETS"
   [ $# -gt 0 ] || return 0
-  grep -Eho "(^|[^A-Za-z0-9_\$])[\"']?${_j5_k}[\"']? *: *(\"[^\"]*\"|'[^']*')" "$@" 2>/dev/null | sed "s/^.*${_j5_k}[\"']\{0,1\} *: *[\"']//; s/[\"']\$//"
+  grep -Eho "(^|[^A-Za-z0-9_\$])[\"']?${_j5v_key}[\"']? *: *(\"[^\"]*\"|'[^']*')" "$@" \
+    2>/dev/null | sed "s/^.*${_j5v_key}[\"']\{0,1\} *: *[\"']//; s/[\"']\$//"
 }
-# toml_file_urls KEY FILE... -> local paths of KEY = "file://..." lines (Tabby)
+# toml_file_urls KEY FILE... -> local paths of KEY = "file://..." lines
+# (Tabby). Temporaries: _tfu_.
 toml_file_urls() {
-  _tf_k=$1; shift
-  eval "$INV_DROP_SECRETS"
+  _tfu_key=$1; shift
+  eval "$INVENTORY_DROP_SECRETS"
   [ $# -gt 0 ] || return 0
-  grep -ho "^ *$_tf_k *= *[\"']file://[^\"']*[\"']" "$@" 2>/dev/null | sed "s/^ *$_tf_k *= *[\"']file:\/\///; s/[\"']\$//; s/%20/ /g"
+  grep -ho "^ *$_tfu_key *= *[\"']file://[^\"']*[\"']" "$@" 2>/dev/null |
+    sed "s/^ *$_tfu_key *= *[\"']file:\/\///; s/[\"']\$//; s/%20/ /g"
 }
-# common_dir -> the deepest directory shared by the absolute file paths on stdin
-# (Twinny records indexed files, not the workspace root)
+# common_dir -> the deepest directory shared by the absolute file paths on
+# stdin (Twinny records indexed files, not the workspace root)
 common_dir() {
-  awk '{ n=split($0, a, "/") - 1
-    if (NR==1) { m=n; for (i=1;i<=m;i++) c[i]=a[i]; next }
-    if (n<m) m=n
-    for (i=1;i<=m;i++) if (a[i]!=c[i]) { m=i-1; break } }
-    END { if (NR>0 && m>=2) { s=c[1]; for (i=2;i<=m;i++) s=s "/" c[i]; print s } }'
+  awk '{ depth=split($0, parts, "/") - 1
+    if (NR==1) { common_depth=depth; for (i=1;i<=common_depth;i++) common[i]=parts[i]; next }
+    if (depth<common_depth) common_depth=depth
+    for (i=1;i<=common_depth;i++) if (parts[i]!=common[i]) { common_depth=i-1; break } }
+    END { if (NR>0 && common_depth>=2) { dir=common[1]
+      for (i=2;i<=common_depth;i++) dir=dir "/" common[i]; print dir } }'
 }
+# session_cwds DIR NAME -> the "cwd" values in the files called NAME under DIR
+# (Codex and Open Interpreter rollouts), when DIR is a directory
+session_cwds() {
+  [ -d "$1" ] && find "$1" -name "$2" -exec grep -ho '"cwd":"[^"]*"' {} + 2>/dev/null |
+    sed 's/^"cwd":"//; s/"$//'
+}
+
+# find_claude_code_projects HOME: Claude Code's prompt history, the project
+# keys of .claude.json, and both in config homes moved with
+# CLAUDE_CONFIG_DIR, which keep .claude.json inside. Temporaries: _fccp_.
+find_claude_code_projects() {
+  json_vals project "$1/.claude/history.jsonl"
+  json_path_keys "$1/.claude.json" '{'
+  json_vals project "$1"/.claude-*/history.jsonl
+  for _fccp_config in "$1"/.claude-*/.claude.json; do
+    json_path_keys "$_fccp_config" '{'
+  done
+}
+# find_cli_session_projects HOME: Codex, Qwen Code, Cline CLI, Cursor chats,
+# Continue, Goose sessions, OpenCode and Crush.
+find_cli_session_projects() {
+  session_cwds "$1/.codex/sessions" '*.jsonl'
+  json_vals cwd "$1"/.qwen/projects/*/chats/*.jsonl "$1"/.cline/data/sessions/*/*.json \
+    "$1"/.cursor/chats/*/*/meta.json
+  json_vals workspace_root "$1"/.cline/data/sessions/*/*.json
+  json_vals workspaceDirectory "$1/.continue/sessions/sessions.json"
+  json_vals working_dir "$1"/.local/share/goose/sessions/*.jsonl
+  json_vals worktree "$1"/.local/share/opencode/storage/project/*.json
+  json_vals path "$1/.local/share/crush/projects.json"
+}
+# find_gemini_projects HOME: Gemini CLI's projects, trusted folders and
+# project roots; the Antigravity CLI's history, settings and project cache;
+# Gemini config projects.
+find_gemini_projects() {
+  json_path_keys "$1/.gemini/projects.json" '"'
+  json_path_keys "$1/.gemini/trustedFolders.json" '"'
+  cat "$1"/.gemini/tmp/*/.project_root "$1"/.gemini/history/*/.project_root 2>/dev/null
+  json_vals workspace "$1/.gemini/antigravity-cli/history.jsonl"
+  abs_strings "$1/.gemini/antigravity-cli/settings.json" \
+    "$1/.gemini/antigravity-cli/cache/projects.json" "$1"/.gemini/config/projects/*.json
+}
+# find_agent_session_projects HOME: Amp, Factory, Kiro, Cursor ACP, Goose
+# recent directories, Copilot CLI, Hermes, Letta, pi, muse, Open Interpreter,
+# OpenHands and PearAI. Temporaries: _fasp_.
+find_agent_session_projects() {
+  json_vals cwd "$1/.local/share/amp/history.jsonl" "$1"/.factory/sessions/*/*.jsonl \
+    "$1"/.factory/sessions/*.jsonl "$1"/.kiro/sessions/cli/*.json \
+    "$1"/.cursor/acp-sessions/*/meta.json
+  json_vals root "$1"/.kiro/workspace-roots/*/.trust-migration.json
+  abs_strings "$1"/.kiro/sessions/*/sess_*/session.json "$1/.config/Goose/recent-dirs.json" \
+    "$1/Library/Application Support/Goose/recent-dirs.json" \
+    "$1/AppData/Roaming/Goose/recent-dirs.json"
+  yaml_vals cwd "$1"/.copilot/session-state/*/workspace.yaml
+  json_vals workdir "$1"/.hermes/checkpoints/store/projects/*.json \
+    "$1"/.hermes/profiles/*/checkpoints/store/projects/*.json \
+    "$1"/AppData/Local/hermes/checkpoints/store/projects/*.json \
+    "$1"/AppData/Local/hermes/profiles/*/checkpoints/store/projects/*.json
+  json_vals project "$1/.letta/sessions.jsonl"
+  json_vals cwd "$1"/.letta/lc-local-backend/conversations/*/messages.jsonl \
+    "$1"/.pi/agent/sessions/*/*.jsonl "$1"/.pi/agent/*.jsonl \
+    "$1/.pi/agent/crashes.json" "$1"/.pi/agent/experimental/sessions/*/meta.json
+  json_path_keys "$1/.pi/agent/trust.json" '[tf]'
+  json_path_keys "$1/.config/muse/trust.json" '{'
+  json_vals workspace_root "$1"/.local/share/muse/sessions/*/*/*/*/session.jsonl
+  for _fasp_dir in "$1/.openinterpreter/sessions" "$1/.openinterpreter/archived_sessions"; do
+    session_cwds "$_fasp_dir" 'rollout-*.jsonl'
+  done
+  json_vals path "$1/.openhands/workspaces.json"
+  json_vals working_dir "$1"/.openhands/agent-canvas/dev_conversations/*/meta.json \
+    "$1"/.openhands/agent-canvas/conversations/*/meta.json \
+    "$1"/.openhands/conversations/*/base_state.json
+  json_vals workspaceDirectory "$1/.pearai/sessions/sessions.json"
+}
+# find_config_file_projects HOME: OpenClaw (and its clawdbot name), nanobot,
+# Tabby and Twinny. Temporaries: _fcfp_.
+find_config_file_projects() {
+  json5_vals workspace "$1"/.openclaw*/openclaw.json "$1/.clawdbot/clawdbot.json"
+  json5_vals agentDir "$1"/.openclaw*/openclaw.json "$1/.clawdbot/clawdbot.json"
+  for _fcfp_file in "$1"/.nanobot*/sessions/*/.workspace; do
+    [ -f "$_fcfp_file" ] && awk 1 "$_fcfp_file"
+  done
+  json_vals workspace "$1"/.nanobot*/config.json
+  toml_file_urls git_url "$1/.tabby/config.toml"
+  for _fcfp_file in "$1"/.twinny/embeddings/*/manifest.json; do
+    [ -f "$_fcfp_file" ] && abs_strings "$_fcfp_file" | common_dir
+  done
+}
+# find_editor_projects HOME: every VS Code-family User directory (macOS,
+# Linux, Windows, and the remote servers' data directories): the folder of
+# each workspaceStorage workspace.json, and the task workspaces of Cline,
+# Roo Code and Kilo Code. Temporaries: _fep_.
+find_editor_projects() {
+  for _fep_user_dir in "$1"/Library/Application\ Support/*/User "$1"/.config/*/User \
+    "$1"/AppData/Roaming/*/User "$1"/.*-server*/data/User; do
+    [ -d "$_fep_user_dir" ] || continue
+    [ -d "$_fep_user_dir/workspaceStorage" ] &&
+      find "$_fep_user_dir/workspaceStorage" -name workspace.json \
+        -exec grep -ho '"folder": *"file://[^"]*"' {} + 2>/dev/null |
+      sed 's/^"folder": *"file:\/\///; s/"$//; s/%20/ /g'
+    _fep_global="$_fep_user_dir/globalStorage"
+    json_vals cwdOnTaskInitialization "$_fep_global"/saoudrizwan.claude-dev/state/taskHistory.json \
+      "$_fep_global"/saoudrizwan.claude-dev/tasks/*/task_metadata.json
+    json_vals workspace "$_fep_global"/rooveterinaryinc.roo-cline/tasks/_index.json \
+      "$_fep_global"/kilocode.kilo-code/tasks/_index.json
+  done
+}
+
+# get_project_owner DIR -> the user whose home in USER_LIST contains DIR, or
+# nothing
+get_project_owner() {
+  printf '%s\n' "$USER_LIST" | awk -F: -v project="$1" '{ home=substr($0,index($0,":")+1)
+    if (index(project, home"/")==1) { print $1; exit } }'
+}
+
+# discover_projects -> user:path for every project path found in the state
+# of each home in USER_LIST (the find_*_projects groups, in order), then
+# owner:path for every -p directory (EXTRA_PROJECTS) with its owner from
+# get_project_owner. Only lines whose path starts with / are kept, \/ is
+# unescaped and ROOT is prefixed. Sets DISCOVERY_HOME in its own subshell.
+# Temporaries: _dp_.
 discover_projects() {
-  _dp_ifs=$IFS
+  _dp_saved_ifs=$IFS
   IFS='
 '
-  printf '%s\n' "$USER_LIST" | while IFS=: read -r _u _h; do
-    [ -n "$_h" ] || continue
+  printf '%s\n' "$USER_LIST" | while IFS=: read -r _dp_user DISCOVERY_HOME; do
+    [ -n "$DISCOVERY_HOME" ] || continue
     {
-      json_vals project "$_h/.claude/history.jsonl"
-      [ -f "$_h/.claude.json" ] && ! inv_secret "$_h/.claude.json" &&
-        grep -o '"/[^"]*": *{' "$_h/.claude.json" 2>/dev/null | sed 's/^"//; s/": *{$//'
-      # config homes moved with CLAUDE_CONFIG_DIR keep .claude.json inside
-      json_vals project "$_h"/.claude-*/history.jsonl
-      for _dp_cj in "$_h"/.claude-*/.claude.json; do
-        [ -f "$_dp_cj" ] && ! inv_secret "$_dp_cj" &&
-          grep -o '"/[^"]*": *{' "$_dp_cj" 2>/dev/null | sed 's/^"//; s/": *{$//'
-      done
-      [ -d "$_h/.codex/sessions" ] && find "$_h/.codex/sessions" -name '*.jsonl' -exec grep -ho '"cwd":"[^"]*"' {} + 2>/dev/null | sed 's/^"cwd":"//; s/"$//'
-      json_vals cwd "$_h"/.qwen/projects/*/chats/*.jsonl "$_h"/.cline/data/sessions/*/*.json "$_h"/.cursor/chats/*/*/meta.json
-      json_vals workspace_root "$_h"/.cline/data/sessions/*/*.json
-      json_vals workspaceDirectory "$_h/.continue/sessions/sessions.json"
-      json_vals working_dir "$_h"/.local/share/goose/sessions/*.jsonl
-      json_vals worktree "$_h"/.local/share/opencode/storage/project/*.json
-      json_vals path "$_h/.local/share/crush/projects.json"
-      [ -f "$_h/.gemini/projects.json" ] && ! inv_secret "$_h/.gemini/projects.json" &&
-        grep -o '"/[^"]*": *"' "$_h/.gemini/projects.json" 2>/dev/null | sed 's/^"//; s/": *"$//'
-      [ -f "$_h/.gemini/trustedFolders.json" ] && ! inv_secret "$_h/.gemini/trustedFolders.json" &&
-        grep -o '"/[^"]*": *"' "$_h/.gemini/trustedFolders.json" 2>/dev/null | sed 's/^"//; s/": *"$//'
-      cat "$_h"/.gemini/tmp/*/.project_root "$_h"/.gemini/history/*/.project_root 2>/dev/null
-      json_vals workspace "$_h/.gemini/antigravity-cli/history.jsonl"
-      abs_strings "$_h/.gemini/antigravity-cli/settings.json" "$_h/.gemini/antigravity-cli/cache/projects.json" "$_h"/.gemini/config/projects/*.json
-      json_vals cwd "$_h/.local/share/amp/history.jsonl" "$_h"/.factory/sessions/*/*.jsonl "$_h"/.factory/sessions/*.jsonl "$_h"/.kiro/sessions/cli/*.json "$_h"/.cursor/acp-sessions/*/meta.json
-      json_vals root "$_h"/.kiro/workspace-roots/*/.trust-migration.json
-      abs_strings "$_h"/.kiro/sessions/*/sess_*/session.json "$_h/.config/Goose/recent-dirs.json" "$_h/Library/Application Support/Goose/recent-dirs.json" "$_h/AppData/Roaming/Goose/recent-dirs.json"
-      yaml_vals cwd "$_h"/.copilot/session-state/*/workspace.yaml
-      json_vals workdir "$_h"/.hermes/checkpoints/store/projects/*.json "$_h"/.hermes/profiles/*/checkpoints/store/projects/*.json \
-        "$_h"/AppData/Local/hermes/checkpoints/store/projects/*.json "$_h"/AppData/Local/hermes/profiles/*/checkpoints/store/projects/*.json
-      json_vals project "$_h/.letta/sessions.jsonl"
-      json_vals cwd "$_h"/.letta/lc-local-backend/conversations/*/messages.jsonl "$_h"/.pi/agent/sessions/*/*.jsonl "$_h"/.pi/agent/*.jsonl \
-        "$_h/.pi/agent/crashes.json" "$_h"/.pi/agent/experimental/sessions/*/meta.json
-      [ -f "$_h/.pi/agent/trust.json" ] && ! inv_secret "$_h/.pi/agent/trust.json" &&
-        grep -o '"/[^"]*": *[tf]' "$_h/.pi/agent/trust.json" 2>/dev/null | sed 's/^"//; s/": *[tf]$//'
-      [ -f "$_h/.config/muse/trust.json" ] && ! inv_secret "$_h/.config/muse/trust.json" &&
-        grep -o '"/[^"]*": *{' "$_h/.config/muse/trust.json" 2>/dev/null | sed 's/^"//; s/": *{$//'
-      json_vals workspace_root "$_h"/.local/share/muse/sessions/*/*/*/*/session.jsonl
-      for _oi in "$_h/.openinterpreter/sessions" "$_h/.openinterpreter/archived_sessions"; do
-        [ -d "$_oi" ] && find "$_oi" -name 'rollout-*.jsonl' -exec grep -ho '"cwd":"[^"]*"' {} + 2>/dev/null | sed 's/^"cwd":"//; s/"$//'
-      done
-      json_vals path "$_h/.openhands/workspaces.json"
-      json_vals working_dir "$_h"/.openhands/agent-canvas/dev_conversations/*/meta.json "$_h"/.openhands/agent-canvas/conversations/*/meta.json "$_h"/.openhands/conversations/*/base_state.json
-      json_vals workspaceDirectory "$_h/.pearai/sessions/sessions.json"
-      json5_vals workspace "$_h"/.openclaw*/openclaw.json "$_h/.clawdbot/clawdbot.json"
-      json5_vals agentDir "$_h"/.openclaw*/openclaw.json "$_h/.clawdbot/clawdbot.json"
-      for _nw in "$_h"/.nanobot*/sessions/*/.workspace; do [ -f "$_nw" ] && awk 1 "$_nw"; done
-      json_vals workspace "$_h"/.nanobot*/config.json
-      toml_file_urls git_url "$_h/.tabby/config.toml"
-      for _tm in "$_h"/.twinny/embeddings/*/manifest.json; do [ -f "$_tm" ] && abs_strings "$_tm" | common_dir; done
-      for _ws in "$_h"/Library/Application\ Support/*/User "$_h"/.config/*/User "$_h"/AppData/Roaming/*/User "$_h"/.*-server*/data/User; do
-        [ -d "$_ws" ] || continue
-        [ -d "$_ws/workspaceStorage" ] && find "$_ws/workspaceStorage" -name workspace.json -exec grep -ho '"folder": *"file://[^"]*"' {} + 2>/dev/null | sed 's/^"folder": *"file:\/\///; s/"$//; s/%20/ /g'
-        json_vals cwdOnTaskInitialization "$_ws"/globalStorage/saoudrizwan.claude-dev/state/taskHistory.json "$_ws"/globalStorage/saoudrizwan.claude-dev/tasks/*/task_metadata.json
-        json_vals workspace "$_ws"/globalStorage/rooveterinaryinc.roo-cline/tasks/_index.json "$_ws"/globalStorage/kilocode.kilo-code/tasks/_index.json
-      done
-    } | grep '^/' | sed 's/\\\//\//g' | awk -v r="$ROOT" -v u="$_u" '{print u":"r$0}'
+      find_claude_code_projects "$DISCOVERY_HOME"
+      find_cli_session_projects "$DISCOVERY_HOME"
+      find_gemini_projects "$DISCOVERY_HOME"
+      find_agent_session_projects "$DISCOVERY_HOME"
+      find_config_file_projects "$DISCOVERY_HOME"
+      find_editor_projects "$DISCOVERY_HOME"
+    } | grep '^/' | sed 's/\\\//\//g' |
+      awk -v root="$ROOT" -v user="$_dp_user" '{print user":"root$0}'
   done
-  IFS=$_dp_ifs
-  printf '%s\n' "$EXTRA_PROJECTS" | grep '^/' | while IFS= read -r _p; do
-    printf '%s:%s\n' "$(project_owner "$_p")" "$_p"
+  IFS=$_dp_saved_ifs
+  printf '%s\n' "$EXTRA_PROJECTS" | grep '^/' | while IFS= read -r _dp_project; do
+    printf '%s:%s\n' "$(get_project_owner "$_dp_project")" "$_dp_project"
   done
-}
-# project_owner DIR -> the user whose home contains DIR, or nothing
-project_owner() {
-  printf '%s\n' "$USER_LIST" | awk -F: -v p="$1" '{h=substr($0,index($0,":")+1); if (index(p, h"/")==1) {print $1; exit}}'
 }
 
-PROJECT_LIST=
-if [ "$NO_PROJECTS" != 1 ]; then
-  PROJECT_LIST=$(discover_projects | awk '
-    { i=index($0,":"); u=substr($0,1,i-1); p=substr($0,i+1)
-      if (p=="") next
-      if (!(p in owner)) { order[++n]=p; owner[p]=u } else if (owner[p]=="") owner[p]=u }
-    END { for (k=1;k<=n;k++) print owner[order[k]]":"order[k] }' | while IFS= read -r _line; do
-    _p=${_line#*:}
-    [ -d "$_p" ] || continue
+# merge_project_owners: user:path lines on stdin -> one line per path, in
+# order of first appearance, owned by the first non-empty user given for it
+merge_project_owners() {
+  awk '
+    { sep=index($0,":"); user=substr($0,1,sep-1); project=substr($0,sep+1)
+      if (project=="") next
+      if (!(project in owner)) { order[++count]=project; owner[project]=user }
+      else if (owner[project]=="") owner[project]=user }
+    END { for (k=1;k<=count;k++) print owner[order[k]]":"order[k] }'
+}
+
+# keep_project_dirs: user:path lines on stdin -> the lines whose path is a
+# directory and is not itself a home in USER_LIST. Temporaries: _kpd_.
+keep_project_dirs() {
+  while IFS= read -r _kpd_line; do
+    _kpd_project=${_kpd_line#*:}
+    [ -d "$_kpd_project" ] || continue
     case "
-$USER_LIST" in (*":$_p
-"*|*":$_p") continue ;; esac
-    printf '%s\n' "$_line"
-  done)
-  # A -p value that is not a directory is left out of PROJECT_LIST above; it
-  # gets a log line and one error_read row, so it is never dropped silently.
-  printf '%s\n' "$EXTRA_PROJECTS" | while IFS= read -r _p; do
-    if [ -z "$_p" ] || [ -d "$_p" ]; then continue; fi
-    _pe=$(get_dir_read_error "$_p")
-    log_line "WARNING: project given with -p is not a directory: $_p: $_pe"
-    [ "$INVENTORY" = 1 ] || write_manifest_row "$MANIFEST" "$(project_owner "$_p")" "$_p" "" "$_p" "" dir 0 0 0 0 0 0 0 "" "" false error_read "" "$_pe"
+$USER_LIST" in (*":$_kpd_project
+"*|*":$_kpd_project") continue ;; esac
+    printf '%s\n' "$_kpd_line"
   done
-  [ "$INVENTORY" = 1 ] || printf '%s\n' "$PROJECT_LIST" | while IFS= read -r _line; do
-    [ -n "$_line" ] || continue
-    _owner=${_line%%:*}; _p=${_line#*:}
-    log_line "Project ${_owner:+[$_owner] }$_p"
-    if _pe=$(get_dir_read_error "$_p"); then write_read_error_row "$MANIFEST" "$_owner" "$_p" "" "$_p" "$_pe"; fi
-    collect_catalog "$_owner" "$_p" "$PROJECT_CATALOG"
-  done
-fi
+}
 
-# ---------------------------------------------------------------------------
-# Inventory output. Every line goes to stdout and nothing is written. The host
+# report_missing_projects: a -p value that is not a directory is left out of
+# PROJECT_LIST; it gets a log line and, outside --inventory, one error_read
+# row, so it is never dropped silently. Reads EXTRA_PROJECTS, INVENTORY,
+# MANIFEST. Temporaries: _rmp_.
+report_missing_projects() {
+  printf '%s\n' "$EXTRA_PROJECTS" | while IFS= read -r _rmp_project; do
+    if [ -z "$_rmp_project" ] || [ -d "$_rmp_project" ]; then continue; fi
+    _rmp_error=$(get_dir_read_error "$_rmp_project")
+    log_line "WARNING: project given with -p is not a directory: $_rmp_project: $_rmp_error"
+    [ "$INVENTORY" = 1 ] || write_manifest_row "$MANIFEST" \
+      "$(get_project_owner "$_rmp_project")" "$_rmp_project" "" "$_rmp_project" "" dir \
+      0 0 0 0 0 0 0 "" "" false error_read "" "$_rmp_error"
+  done
+}
+
+# collect_projects: the main step for projects. Sets PROJECT_LIST (owner:path
+# lines) from discover_projects, reports missing -p values, and outside
+# --inventory collects PROJECT_CATALOG in every project, one error_read row
+# first for a project that cannot be listed or entered. Call it in the main
+# shell. Temporaries: _cpr_.
+collect_projects() {
+  PROJECT_LIST=$(discover_projects | merge_project_owners | keep_project_dirs)
+  report_missing_projects
+  [ "$INVENTORY" = 1 ] || printf '%s\n' "$PROJECT_LIST" | while IFS= read -r _cpr_line; do
+    [ -n "$_cpr_line" ] || continue
+    _cpr_owner=${_cpr_line%%:*}; _cpr_project=${_cpr_line#*:}
+    log_line "Project ${_cpr_owner:+[$_cpr_owner] }$_cpr_project"
+    if _cpr_error=$(get_dir_read_error "$_cpr_project"); then
+      write_read_error_row "$MANIFEST" "$_cpr_owner" "$_cpr_project" "" "$_cpr_project" \
+        "$_cpr_error"
+    fi
+    collect_catalog "$_cpr_owner" "$_cpr_project" "$PROJECT_CATALOG"
+  done
+}
+
+# ===========================================================================
+# 10. Inventory output
+# ===========================================================================
+# With --inventory every line goes to stdout and nothing is written. The host
 # line comes first but its counts are known only after the walk, so the agent
 # lines are held in a variable until then.
-# inv_aggregate: M|agent|glob and F|agent|size|mtime lines on stdin ->
+
+# aggregate_inventory: M|agent|glob and F|agent|size|mtime lines on stdin ->
 # agent|files|bytes|first|last|evidence per agent with at least one file, in
 # order of first match. A match with no files of its own after exclusions and
 # nested claims (~/.gemini holding only antigravity-cli) gives no line.
-# Dates are UTC from the epoch with plain arithmetic (no date -d, no strftime);
-# an mtime of 0 (stat unavailable) is left out of first and last.
-inv_aggregate() {
+# Dates are UTC from the epoch with plain arithmetic (no date -d, no
+# strftime): iso() is the civil-from-days algorithm (Howard Hinnant's
+# chrono-compatible low-level date algorithms), with days counted from
+# 0000-03-01 so that the leap day ends a year. An mtime of 0 (stat
+# unavailable) is left out of first and last.
+aggregate_inventory() {
   awk -F'|' '
-    function iso(t,   d, s, z, era, doe, yoe, y, doy, mp, dd, m) {
-      if (t <= 0) return ""
-      d = int(t / 86400); s = t - d * 86400
-      z = d + 719468; era = int(z / 146097); doe = z - era * 146097
-      yoe = int((doe - int(doe / 1460) + int(doe / 36524) - int(doe / 146096)) / 365)
-      y = yoe + era * 400; doy = doe - (365 * yoe + int(yoe / 4) - int(yoe / 100))
-      mp = int((5 * doy + 2) / 153); dd = doy - int((153 * mp + 2) / 5) + 1
-      m = (mp < 10) ? mp + 3 : mp - 9; if (m <= 2) y++
-      return sprintf("%04d-%02d-%02dT%02d:%02d:%02dZ", y, m, dd, int(s / 3600), int((s % 3600) / 60), s % 60)
+    function iso(epoch,   days, secs, shifted, era, day_of_era, year_of_era, year,
+                 day_of_year, month_index, day, month) {
+      if (epoch <= 0) return ""
+      days = int(epoch / 86400); secs = epoch - days * 86400
+      shifted = days + 719468; era = int(shifted / 146097)
+      day_of_era = shifted - era * 146097
+      year_of_era = day_of_era - int(day_of_era / 1460) + int(day_of_era / 36524)
+      year_of_era = int((year_of_era - int(day_of_era / 146096)) / 365)
+      year = year_of_era + era * 400
+      day_of_year = 365 * year_of_era + int(year_of_era / 4) - int(year_of_era / 100)
+      day_of_year = day_of_era - day_of_year
+      month_index = int((5 * day_of_year + 2) / 153)
+      day = day_of_year - int((153 * month_index + 2) / 5) + 1
+      month = (month_index < 10) ? month_index + 3 : month_index - 9; if (month <= 2) year++
+      return sprintf("%04d-%02d-%02dT%02d:%02d:%02dZ", year, month, day,
+        int(secs / 3600), int((secs % 3600) / 60), secs % 60)
     }
-    $1 == "M" { a = $2
-      if (!(a in seen)) { seen[a] = 1; order[++n] = a; files[a] = 0; bytes[a] = 0; ev[a] = "" }
-      if (!((a, $3) in g)) { g[a, $3] = 1; ev[a] = ev[a] (ev[a] == "" ? "" : ",") $3 } }
-    $1 == "F" { a = $2; files[a]++; bytes[a] += $3
+    $1 == "M" { agent = $2
+      if (!(agent in seen)) {
+        seen[agent] = 1; order[++count] = agent; files[agent] = 0; bytes[agent] = 0
+        evidence[agent] = "" }
+      if (!((agent, $3) in globs_seen)) { globs_seen[agent, $3] = 1
+        evidence[agent] = evidence[agent] (evidence[agent] == "" ? "" : ",") $3 } }
+    $1 == "F" { agent = $2; files[agent]++; bytes[agent] += $3
       if ($4 > 0) {
-        if (!(a in lo) || $4 < lo[a]) lo[a] = $4
-        if (!(a in hi) || $4 > hi[a]) hi[a] = $4 } }
-    END { for (k = 1; k <= n; k++) { a = order[k]; if (files[a] == 0) continue
-      printf "%s|%d|%.0f|%s|%s|%s\n", a, files[a], bytes[a], iso(lo[a] + 0), iso(hi[a] + 0), ev[a] } }'
+        if (!(agent in first) || $4 < first[agent]) first[agent] = $4
+        if (!(agent in last) || $4 > last[agent]) last[agent] = $4 } }
+    END { for (k = 1; k <= count; k++) { agent = order[k]; if (files[agent] == 0) continue
+      printf "%s|%d|%.0f|%s|%s|%s\n", agent, files[agent], bytes[agent],
+        iso(first[agent] + 0), iso(last[agent] + 0), evidence[agent] } }'
 }
-# inv_emit USER PROJECTS: inv_aggregate lines on stdin -> agent JSON lines
-inv_emit() {
-  while IFS='|' read -r _ie_a _ie_f _ie_b _ie_lo _ie_hi _ie_ev; do
-    [ -n "$_ie_a" ] || continue
-    printf '{"type":"agent","host":"%s","user":"%s","agent":"%s","files":%s,"bytes":%s,"first":"%s","last":"%s","projects":%s,"evidence":"%s"}\n' \
-      "$(json_escape "$HOST")" "$(json_escape "$1")" "$(json_escape "$_ie_a")" "$(to_number "$_ie_f")" "$(to_number "$_ie_b")" \
-      "$_ie_lo" "$_ie_hi" "$(to_number "$2")" "$(json_escape "$_ie_ev")"
+
+# write_inventory_lines USER PROJECTS: aggregate_inventory lines on stdin ->
+# one agent JSON line each for USER, with PROJECTS as its project count.
+# Reads HOST. Temporaries: _wil_.
+write_inventory_lines() {
+  while IFS='|' read -r _wil_agent _wil_files _wil_bytes _wil_first _wil_last _wil_evidence; do
+    [ -n "$_wil_agent" ] || continue
+    printf '{"type":"agent","host":"%s","user":"%s","agent":"%s","files":%s,"bytes":%s,'\
+'"first":"%s","last":"%s","projects":%s,"evidence":"%s"}\n' \
+      "$(json_escape "$HOST")" "$(json_escape "$1")" "$(json_escape "$_wil_agent")" \
+      "$(to_number "$_wil_files")" "$(to_number "$_wil_bytes")" \
+      "$_wil_first" "$_wil_last" "$(to_number "$2")" "$(json_escape "$_wil_evidence")"
   done
 }
-if [ "$INVENTORY" = 1 ]; then
-  # A home counts as unreadable when it cannot be both listed and entered
-  # (test -r and -x on the directory itself); its catalog globs match nothing.
+
+# count_inventory_homes: sets USERS_SCANNED to the number of homes in
+# USER_LIST and USERS_UNREADABLE to those that cannot be both listed and
+# entered (test -r and -x on the directory itself; their catalog globs match
+# nothing), with a warning for each. Call it in the main shell.
+# Temporaries: _cih_.
+count_inventory_homes() {
   USERS_SCANNED=0; USERS_UNREADABLE=0
-  while IFS=: read -r _u _h; do
-    [ -n "$_h" ] || continue
+  while IFS=: read -r _cih_user _cih_home; do
+    [ -n "$_cih_home" ] || continue
     USERS_SCANNED=$(( USERS_SCANNED + 1 ))
-    if [ ! -r "$_h" ] || [ ! -x "$_h" ]; then
+    if [ ! -r "$_cih_home" ] || [ ! -x "$_cih_home" ]; then
       USERS_UNREADABLE=$(( USERS_UNREADABLE + 1 ))
-      log_line "WARNING: home of $_u is not readable: $_h"
+      log_line "WARNING: home of $_cih_user is not readable: $_cih_home"
     fi
-  done <<EOF_INVUSERS
+  done <<EOF_USER_LIST
 $USER_LIST
-EOF_INVUSERS
-  INV_LINES=$(printf '%s\n' "$USER_LIST" | while IFS=: read -r _u _h; do
-    [ -n "$_h" ] || continue
-    _np=$(printf '%s\n' "$PROJECT_LIST" | awk -F: -v u="$_u" '$1 == u && length($0) > length(u) + 1 { n++ } END { print n + 0 }')
-    collect_catalog "$_u" "$_h" "$CATALOG" "User $_u ($_h)" | inv_aggregate | inv_emit "$_u" "$_np"
+EOF_USER_LIST
+}
+
+# write_inventory: the --inventory main step. Walks every home in USER_LIST
+# with collect_catalog (no writes in this mode), then prints the host line,
+# one agent line per user and agent found (with the user's project count
+# from PROJECT_LIST), and the agent lines of the Docker volumes (DOCKER_INV).
+# Reads USER_LIST, PROJECT_LIST, CATALOG, DOCKER_INV, DOCKER_FOUND, HOST,
+# VERSION, MODE, START_TS. Temporaries: _wi_.
+write_inventory() {
+  count_inventory_homes
+  _wi_agent_lines=$(printf '%s\n' "$USER_LIST" | while IFS=: read -r _wi_user _wi_home; do
+    [ -n "$_wi_home" ] || continue
+    _wi_projects=$(printf '%s\n' "$PROJECT_LIST" | awk -F: -v user="$_wi_user" '
+      $1 == user && length($0) > length(user) + 1 { count++ } END { print count + 0 }')
+    collect_catalog "$_wi_user" "$_wi_home" "$CATALOG" "User $_wi_user ($_wi_home)" |
+      aggregate_inventory | write_inventory_lines "$_wi_user" "$_wi_projects"
   done)
-  printf '{"type":"host","host":"%s","collector":"%s","mode":"%s","at":"%s","users_scanned":%s,"users_unreadable":%s,"docker_volumes":%s}\n' \
+  printf '{"type":"host","host":"%s","collector":"%s","mode":"%s","at":"%s",'\
+'"users_scanned":%s,"users_unreadable":%s,"docker_volumes":%s}\n' \
     "$(json_escape "$HOST")" "$VERSION" "$MODE" "$START_TS" \
     "$USERS_SCANNED" "$USERS_UNREADABLE" "$DOCKER_FOUND"
-  [ -z "$INV_LINES" ] || printf '%s\n' "$INV_LINES"
-  printf '%s\n' "$DOCKER_INV" | inv_aggregate | inv_emit docker 0
+  [ -z "$_wi_agent_lines" ] || printf '%s\n' "$_wi_agent_lines"
+  printf '%s\n' "$DOCKER_INV" | aggregate_inventory | write_inventory_lines docker 0
+}
+
+# ---------------------------------------------------------------------------
+# Main program, part to be moved: projects and inventory
+PROJECT_LIST=
+[ "$NO_PROJECTS" = 1 ] || collect_projects
+if [ "$INVENTORY" = 1 ]; then
+  write_inventory
   exit 0
 fi
 
