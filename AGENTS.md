@@ -315,6 +315,22 @@ and say in the module docstring if the shape has drifted since.
    `git_branch` stays empty when the format does not record it. Formats
    without per-message timestamps (Continue, Zed, Cline's legacy history)
    inherit the session timestamp; say so in the docstring.
+   Permission state is evidence of what the user authorised, not
+   configuration to skip. When the format records a per-call decision (an
+   approval, a denial, an "allow always", an automatic decision), the
+   parser yields a `system` row for it beside the call it governed,
+   joined on `tool_use_id` when the format allows, in the form the
+   `claude-code` parser uses (`permission decision: <decision> ...`).
+   When the agent keeps standing allow or deny lists, trusted folders or
+   sandbox settings in a file, the parser yields one `system` row per
+   entry, timestamped by the file's modification time and saying so in
+   the text, as the `claude-desktop` parser does for scheduled tasks. The
+   research document names every file and field that holds either kind
+   before the parser is written, and a parser plan with no permission
+   line says the agent records none. Antigravity's per-step
+   `TrajectoryPermissions` blob and its `globalPermissionGrants` list were
+   collected for a week before anyone noticed the parser read neither
+   (issue 92).
 4. SQLite stores are opened through `sqlite_util.py` so the WAL sidecar is
    read and the evidence copy is never opened directly. Protobuf blobs are
    decoded with `protobuf.py`. A new dependency such as `zstandard` for Zed
@@ -646,7 +662,9 @@ The round, in order:
    values and log lines with ids redacted.
 3. **Exercise every surface separately** and record what each one wrote:
    a session with a tool call, a read-only chat, a chat that writes a
-   file, a scheduled task, a resumed session. A surface that writes
+   file, a scheduled task, a resumed session, and one tool call approved
+   and one denied, with an "allow always" or equivalent standing grant,
+   so the permission records are on disk for the shape tool to show. A surface that writes
    nothing locally is a finding (Claude Desktop's merged Chat/Cowork
    surface runs server-side and leaves one index file), and so is a
    feature the VM cannot run (nested virtualisation); say which it was.
