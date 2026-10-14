@@ -67,6 +67,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `.github/copilot-instructions.md`, `.github/git-commit-instructions.md`,
   `.github/instructions/`, `SOUL.md`, `USER.md`) keep the agent
   `project`, which until now every project row had ([#104]).
+- Both collectors are reorganised for readability: the same twelve
+  sections in the same order, a reader's guide at the top, a comment on
+  every function, the long functions split by step, and matching names
+  for the sh and PowerShell functions that do the same step (listed in
+  [docs/internals.md](docs/internals.md)). Options, `--list` output,
+  the manifest, `collection.json`, the log, stdout, the archive and the
+  exit codes are unchanged ([#99]).
 
 ### Fixed
 
@@ -628,6 +635,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
 [#104]: https://github.com/seanthegeek/doubleagent/issues/104
+[#99]: https://github.com/seanthegeek/doubleagent/issues/99
 [#91]: https://github.com/seanthegeek/doubleagent/issues/91
 [#90]: https://github.com/seanthegeek/doubleagent/issues/90
 [#84]: https://github.com/seanthegeek/doubleagent/issues/84
