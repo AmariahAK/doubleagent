@@ -1547,27 +1547,39 @@ nanobot|*nanobot*
 '
 
 
-# ---------------------------------------------------------------------------
-# Shared helper functions. Defined as a string so they can be eval'd here and
-# prepended to the programs run by find -exec sh -c (which cannot inherit
-# shell functions portably).
-# ---------------------------------------------------------------------------
-# heredoc_var: reads stdin into $_hv without its final newline, which is what
-# VAR=$(cat <<'EOF' ...) gives. Used instead of that form because pdksh-derived
-# shells (posh) scan a heredoc inside $(...) for parentheses and stop at the
-# first case pattern's `)`.
+# ===========================================================================
+# 3. Shared helpers
+# ===========================================================================
+# The helpers the worker programs also need (logging, hashing, stat, JSON
+# escaping, number checks) are kept as text in COMMON, which is eval'd here
+# and prepended to every worker program; the comment at the top of section 5,
+# "Staging files", says why. The helpers after COMMON run in the main shell
+# only.
+
+# heredoc_var: reads a here-document on stdin into $_ret_heredoc_text without
+# its final newline, which is what VAR=$(cat <<'EOF' ...) gives. Sets
+# _ret_heredoc_text. Used instead of that form because pdksh-derived shells
+# (posh) scan a heredoc inside $(...) for parentheses and stop at the first
+# case pattern's `)`.
 heredoc_var() {
-  _hv=
-  while IFS= read -r _hv_l; do _hv="$_hv$_hv_l
+  _ret_heredoc_text=
+  while IFS= read -r _hv_line; do _ret_heredoc_text="$_ret_heredoc_text$_hv_line
 "; done
-  _hv=${_hv%?}
+  _ret_heredoc_text=${_ret_heredoc_text%?}
 }
-heredoc_var <<'EOF_COMMON'
-ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+heredoc_var <<'EOF_COMMON_HELPERS'
+# utc_timestamp -> the current time in UTC, ISO 8601 to the second
+utc_timestamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+# log_line TEXT...: appends "TIME TEXT" to $LOG, and TEXT to stderr unless
+# QUIET=1. Reads LOG and QUIET.
 log_line() {
-  printf '%s %s\n' "$(ts)" "$*" >>"$LOG"
+  printf '%s %s\n' "$(utc_timestamp)" "$*" >>"$LOG"
   [ "${QUIET:-0}" = 1 ] || printf '%s\n' "$*" >&2
 }
+# hash_file FILE -> the sha256 of FILE in lower-case hex, or "" when FILE
+# cannot be read or HASH_TOOL is none. Reads HASH_TOOL. The file is read on
+# stdin, so its name never reaches the hasher's escaped output.
 hash_file() {
   case "$HASH_TOOL" in
     sha256sum) sha256sum <"$1" 2>/dev/null | cut -d' ' -f1 ;;
@@ -1577,7 +1589,9 @@ hash_file() {
     *)         printf '' ;;
   esac
 }
-# prints: size mtime atime ctime btime uid gid mode (lstat semantics)
+# stat_file FILE -> "size mtime atime ctime btime uid gid mode" of FILE itself
+# (lstat semantics), or nothing when stat fails. Reads STAT_MODE: gnu, gnu0
+# (GNU stat without %W birth time), bsd, or none (size from wc -c, the rest 0).
 stat_file() {
   case "$STAT_MODE" in
     gnu)  stat -c '%s %Y %X %Z %W %u %g %a' "$1" 2>/dev/null ;;
@@ -1590,7 +1604,7 @@ stat_file() {
 # stat call. The format has no file name, so any name is safe. A file stat
 # cannot read prints no line, so callers use the output only when it has
 # one line per file and fall back to stat_file otherwise. Returns 1 without
-# output when there is no stat.
+# output when there is no stat. Reads STAT_MODE.
 stat_files() {
   case "$STAT_MODE" in
     gnu)  stat -c '%s %Y %X %Z %W %u %g %a' "$@" 2>/dev/null ;;
@@ -1602,7 +1616,7 @@ stat_files() {
 # hash_files FILE... -> one "hash name" line per readable FILE, in order, from
 # a single hasher call; hash_match reads a line. The hashers escape a name
 # that contains a backslash, newline or carriage return, so callers hash such
-# names with hash_file instead.
+# names with hash_file instead. Returns 1 without output when HASH_TOOL is none.
 hash_files() {
   case "$HASH_TOOL" in
     sha256sum) sha256sum "$@" 2>/dev/null ;;
@@ -1612,343 +1626,464 @@ hash_files() {
     *)         return 1 ;;
   esac
 }
-# hash_match LINE FILE -> 0 and the hash in $_h when LINE is hash_files' line
-# for FILE: 64 hex digits, then "  name" or " *name" (sha256sum, shasum,
-# openssl) or " name" (sha256 -r).
+# hash_match LINE FILE -> 0, with the hash in $_ret_hash, when LINE is
+# hash_files' line for FILE: 64 hex digits, then "  name" or " *name"
+# (sha256sum, shasum, openssl) or " name" (sha256 -r). Reads HASH_TOOL.
+# Temporaries: _hm_.
 hash_match() {
-  _h=${1%% *}
-  case "$_h" in '' | *[!0-9a-f]*) return 1 ;; esac
-  [ "${#_h}" -eq 64 ] || return 1
-  _hn=${1#* }
-  [ "$HASH_TOOL" = sha256 ] || _hn=${_hn#?}
-  [ "$_hn" = "$2" ]
+  _ret_hash=${1%% *}
+  case "$_ret_hash" in '' | *[!0-9a-f]*) return 1 ;; esac
+  [ "${#_ret_hash}" -eq 64 ] || return 1
+  _hm_name=${1#* }
+  [ "$HASH_TOOL" = sha256 ] || _hm_name=${_hm_name#?}
+  [ "$_hm_name" = "$2" ]
 }
-_jt=$(printf '\t'); _jr=$(printf '\r'); _jn='
+# The characters json_escape handles, as globals, since POSIX sh has no $'\t'.
+TAB=$(printf '\t'); CR=$(printf '\r'); NEWLINE='
 '
-json_str() {
+# json_escape TEXT -> TEXT escaped for a JSON string: backslash, double quote,
+# tab, carriage return and newline. TEXT with none of them is printed as is,
+# without starting awk.
+json_escape() {
   case "$1" in
-    *\\*|*'"'*|*"$_jt"*|*"$_jr"*|*"$_jn"*) ;;
+    *\\*|*'"'*|*"$TAB"*|*"$CR"*|*"$NEWLINE"*) ;;
     *) printf '%s' "$1"; return ;;
   esac
   printf '%s' "$1" | awk 'BEGIN{ORS=""} NR>1{printf "\\n"} {
-    n=length($0)
-    for(i=1;i<=n;i++){ c=substr($0,i,1)
-      if(c=="\\") printf "\\\\"; else if(c=="\"") printf "\\\"";
-      else if(c=="\t") printf "\\t"; else if(c=="\r") printf "\\r";
-      else printf "%s", c } }'
+    count=length($0)
+    for(i=1;i<=count;i++){ char=substr($0,i,1)
+      if(char=="\\") printf "\\\\"; else if(char=="\"") printf "\\\"";
+      else if(char=="\t") printf "\\t"; else if(char=="\r") printf "\\r";
+      else printf "%s", char } }'
 }
-num() { case "$1" in ''|*[!0-9]*) printf '0' ;; *) printf '%s' "$1" ;; esac; }
-# json_v VALUE / num_v VALUE: what json_str and num print, assigned to $_j
-# and $_n instead, so the common case (nothing to escape) forks nothing.
-json_v() {
+# to_number VALUE -> VALUE when it is a non-negative integer, else 0
+to_number() { case "$1" in ''|*[!0-9]*) printf '0' ;; *) printf '%s' "$1" ;; esac; }
+# json_escape_var VALUE / to_number_var VALUE: what json_escape and to_number
+# print, assigned to $_ret_json and $_ret_number instead, so the common case
+# (nothing to escape) forks nothing.
+json_escape_var() {
   case "$1" in
-    *\\*|*'"'*|*"$_jt"*|*"$_jr"*|*"$_jn"*) _j=$(json_str "$1") ;;
-    *) _j=$1 ;;
+    *\\*|*'"'*|*"$TAB"*|*"$CR"*|*"$NEWLINE"*) _ret_json=$(json_escape "$1") ;;
+    *) _ret_json=$1 ;;
   esac
 }
-num_v() { case "$1" in ''|*[!0-9]*) _n=0 ;; *) _n=$1 ;; esac; }
-# emit_row manifest user home agent path archive_path type size mtime atime ctime btime uid gid mode sha secret status target error
-emit_row() {
-  json_v "$2"; _e2=$_j; json_v "$3"; _e3=$_j; json_v "$4"; _e4=$_j
-  json_v "$5"; _e5=$_j; json_v "$6"; _e6=$_j; json_v "${19}"; _e19=$_j
-  json_v "${20}"; _e20=$_j
-  num_v "$8"; _e8=$_n; num_v "$9"; _e9=$_n; num_v "${10}"; _e10=$_n
-  num_v "${11}"; _e11=$_n; num_v "${12}"; _e12=$_n; num_v "${13}"; _e13=$_n
-  num_v "${14}"; _e14=$_n
-  printf '{"user":"%s","home":"%s","agent":"%s","path":"%s","archive_path":"%s","type":"%s","size":%s,"mtime":%s,"atime":%s,"ctime":%s,"btime":%s,"uid":%s,"gid":%s,"mode":"%s","sha256":"%s","secret":%s,"status":"%s","target":"%s","error":"%s"}\n' \
-    "$_e2" "$_e3" "$_e4" "$_e5" "$_e6" "$7" "$_e8" "$_e9" "$_e10" "$_e11" \
-    "$_e12" "$_e13" "$_e14" "${15}" "${16}" "${17}" "${18}" "$_e19" "$_e20" >>"$1"
+to_number_var() { case "$1" in ''|*[!0-9]*) _ret_number=0 ;; *) _ret_number=$1 ;; esac; }
+EOF_COMMON_HELPERS
+COMMON=$_ret_heredoc_text
+eval "$COMMON"
+
+# add_note TEXT: appends TEXT to NOTES (the "notes" list of collection.json)
+# and logs it as "NOTE: TEXT". Sets NOTES, so call it in the main shell, never
+# in a pipeline or $(...).
+add_note() { NOTES="$NOTES
+$1"; log_line "NOTE: $1"; }
+
+# file_id PATH -> device:inode of PATH itself (lstat), or the inode alone from
+# ls -di when stat is unavailable; empty when PATH cannot be stat'ed. Reads
+# STAT_MODE.
+# shellcheck disable=SC2012 # ls -di is the POSIX inode; only its first field is read
+file_id() {
+  case "$STAT_MODE" in
+    gnu|gnu0) stat -c '%d:%i' "$1" 2>/dev/null ;;
+    bsd)      stat -f '%d:%i' "$1" 2>/dev/null ;;
+    *)        ls -di "$1" 2>/dev/null | awk 'NR==1 {print $1}' ;;
+  esac
 }
-# dir_err DIR -> prints why DIR cannot be walked and returns 0, or returns 1
-# when it can be both listed (-r) and entered (-x). The decision comes from
-# test(1); the text is the first line ls(1) printed for the same access, so
-# it is the OS error (Permission denied, No such file or directory).
-# dir_err_v DIR does the same but assigns the text to $_de instead of
-# printing it, so a walk's per-directory check forks only when it fails.
-dir_err() {
-  dir_err_v "$1" || return 1
-  printf '%s' "$_de"
+
+# ===========================================================================
+# 4. Manifest writer
+# ===========================================================================
+# Also part of COMMON: the workers write most manifest rows.
+heredoc_var <<'EOF_COMMON_MANIFEST'
+# write_manifest_row MANIFEST user home agent path archive_path type size
+#   mtime atime ctime btime uid gid mode sha256 secret status target error
+# Appends one JSON line to MANIFEST. The string fields are JSON-escaped; the
+# numeric fields become 0 when they are not numbers; type, mode, sha256,
+# secret and status are written as given. Temporaries: _wmr_.
+write_manifest_row() {
+  json_escape_var "$2"; _wmr_user=$_ret_json
+  json_escape_var "$3"; _wmr_home=$_ret_json
+  json_escape_var "$4"; _wmr_agent=$_ret_json
+  json_escape_var "$5"; _wmr_path=$_ret_json
+  json_escape_var "$6"; _wmr_archive_path=$_ret_json
+  json_escape_var "${19}"; _wmr_target=$_ret_json
+  json_escape_var "${20}"; _wmr_error=$_ret_json
+  to_number_var "$8"; _wmr_size=$_ret_number
+  to_number_var "$9"; _wmr_mtime=$_ret_number
+  to_number_var "${10}"; _wmr_atime=$_ret_number
+  to_number_var "${11}"; _wmr_ctime=$_ret_number
+  to_number_var "${12}"; _wmr_btime=$_ret_number
+  to_number_var "${13}"; _wmr_uid=$_ret_number
+  to_number_var "${14}"; _wmr_gid=$_ret_number
+  printf '{"user":"%s","home":"%s","agent":"%s","path":"%s","archive_path":"%s",'\
+'"type":"%s","size":%s,"mtime":%s,"atime":%s,"ctime":%s,"btime":%s,"uid":%s,'\
+'"gid":%s,"mode":"%s","sha256":"%s","secret":%s,"status":"%s","target":"%s",'\
+'"error":"%s"}\n' \
+    "$_wmr_user" "$_wmr_home" "$_wmr_agent" "$_wmr_path" "$_wmr_archive_path" "$7" \
+    "$_wmr_size" "$_wmr_mtime" "$_wmr_atime" "$_wmr_ctime" "$_wmr_btime" "$_wmr_uid" \
+    "$_wmr_gid" "${15}" "${16}" "${17}" "${18}" "$_wmr_target" "$_wmr_error" >>"$1"
 }
-dir_err_v() {
+# get_dir_read_error DIR -> prints why DIR cannot be walked and returns 0, or
+# returns 1 when it can be both listed (-r) and entered (-x). The decision
+# comes from test(1); the text is the first line ls(1) printed for the same
+# access, so it is the OS error (Permission denied, No such file or directory).
+get_dir_read_error() {
+  get_dir_read_error_var "$1" || return 1
+  printf '%s' "$_ret_dir_error"
+}
+# get_dir_read_error_var DIR: the same, but assigns the text to
+# $_ret_dir_error instead of printing it, so a walk's per-directory check
+# forks only when it fails.
+get_dir_read_error_var() {
   if [ ! -d "$1" ]; then
-    if [ -e "$1" ] || [ -L "$1" ]; then _de='Not a directory'
-    else _de=$(ls -ld "$1" 2>&1 >/dev/null); [ -n "$_de" ] || _de='No such file or directory'; fi
+    if [ -e "$1" ] || [ -L "$1" ]; then
+      _ret_dir_error='Not a directory'
+    else
+      _ret_dir_error=$(ls -ld "$1" 2>&1 >/dev/null)
+      [ -n "$_ret_dir_error" ] || _ret_dir_error='No such file or directory'
+    fi
   elif [ ! -r "$1" ]; then
-    _de=$(ls "$1" 2>&1 >/dev/null); [ -n "$_de" ] || _de='cannot be listed (no read permission)'
+    _ret_dir_error=$(ls "$1" 2>&1 >/dev/null)
+    [ -n "$_ret_dir_error" ] || _ret_dir_error='cannot be listed (no read permission)'
   elif [ ! -x "$1" ]; then
-    _de=$(ls -ld "$1/." 2>&1 >/dev/null); [ -n "$_de" ] || _de='cannot be entered (no search permission)'
+    _ret_dir_error=$(ls -ld "$1/." 2>&1 >/dev/null)
+    [ -n "$_ret_dir_error" ] || _ret_dir_error='cannot be entered (no search permission)'
   else
     return 1
   fi
-  _de=${_de%%"$_jn"*}
+  _ret_dir_error=${_ret_dir_error%%"$NEWLINE"*}
 }
-# read_err_row MANIFEST USER HOME AGENT DIR ERROR: one error_read row for a
-# directory that could not be walked, with its lstat metadata and size 0.
-read_err_row() {
-  _rr_st=$(stat_file "$5"); [ -n "$_rr_st" ] || _rr_st='0 0 0 0 0 0 0 0'
-  case "$_rr_st" in ' '*) _rr_st="0$_rr_st" ;; esac
+# write_read_error_row MANIFEST USER HOME AGENT DIR ERROR: one error_read row
+# for a directory that could not be walked, with its lstat metadata and size
+# 0, and a "read failed" log line. Temporaries: _wrer_.
+write_read_error_row() {
+  _wrer_stat=$(stat_file "$5"); [ -n "$_wrer_stat" ] || _wrer_stat='0 0 0 0 0 0 0 0'
+  case "$_wrer_stat" in ' '*) _wrer_stat="0$_wrer_stat" ;; esac
   # shellcheck disable=SC2086 # split the stat fields
-  set -- "$@" $_rr_st
-  emit_row "$1" "$2" "$3" "$4" "$5" "" dir 0 "$8" "$9" "${10}" "${11}" "${12}" "${13}" "${14}" "" false error_read "" "$6"
+  set -- "$@" $_wrer_stat
+  write_manifest_row "$1" "$2" "$3" "$4" "$5" "" dir 0 "$8" "$9" "${10}" "${11}" \
+    "${12}" "${13}" "${14}" "" false error_read "" "$6"
   log_line "read failed: $5: $6"
 }
-EOF_COMMON
-COMMON=$_hv
-eval "$COMMON"
+EOF_COMMON_MANIFEST
+eval "$_ret_heredoc_text"
+COMMON="$COMMON
+$_ret_heredoc_text"
 
-# Program run by find -exec for every regular file / symlink to collect.
-# args: stage root user home agent manifest files...
+# ===========================================================================
+# 5. Staging files: the worker programs
+# ===========================================================================
+# Why workers exist: every walk is a find(1), and find -exec cannot call a
+# shell function (functions are not inherited portably), so the per-file work
+# runs as a separate program: find ... -exec "$WORKER_SH" -c "$PROGRAM" sh
+# ARGS... {} +. Each <NAME>_WORKER below holds such a program.
+# How COMMON reaches them: each program is the text of COMMON (sections 3 and
+# 4) followed by the worker's own text, so the helpers are defined the same
+# way in the main shell, where COMMON is eval'd, and in every worker.
+# Why heredoc_var: each program is read from a quoted here-document with
+# heredoc_var, not with VAR=$(cat <<'EOF' ... EOF), because pdksh-derived
+# shells (posh) end a $(...) at the first `)`, even a case pattern's inside a
+# here-document. For the same reason a case pattern inside any $(...) in this
+# file is written with its opening parenthesis: (pattern).
+# Which shell runs them: WORKER_SH, set in the main program: COLLECTOR_SH when
+# it is set, else dash when it is on PATH (it starts and loops faster than
+# bash), else sh. A worker runs in its own process, so its variables need no
+# prefix; its first line names its positional arguments.
+
+# STAGE_FILES_WORKER: run by find -exec for every regular file and symlink to
+# collect. Arguments: stage_dir root user home agent manifest files...
 #
 # The files are taken in chunks of at most 256 paths or about 64 KiB of
 # names, so no argument list built here is much longer than the one find
 # passed. Each chunk goes through five passes, in this order, which keeps
 # the per-file order of the forensic rules (lstat before copy, hash of the
 # staged copy, never follow a symlink):
-#   1. lstat every file with one stat call (stat_files), or with stat_file
-#      per file when that output does not have one line per file (a file
-#      vanished, stat failed, or there is no stat);
-#   2. create the staging directories with one mkdir -p, recreate symlinks
-#      (readlink, ln -s) and decide the secret and size skips;
-#   3. copy with one cp -p per run of consecutive files from the same
-#      directory; a run whose cp fails or prints anything is redone per file,
-#      so each failing file gets its own error text and log line;
-#   4. hash the staged copies with one hasher call (hash_files); a name the
-#      hashers would escape, or a file missing from their output, is hashed
-#      per file with hash_file, which gives "" when the copy is unreadable;
-#   5. write the manifest rows, in the order find passed the files.
+#   1. lstat_chunk: lstat every file with one stat call (stat_files), or with
+#      stat_file per file when that output does not have one line per file (a
+#      file vanished, stat failed, or there is no stat);
+#   2. plan_chunk: create the staging directories with one mkdir -p, recreate
+#      symlinks (readlink, ln -s) and decide the secret and size skips;
+#   3. copy_chunk: copy with one cp -p per run of consecutive files from the
+#      same directory; a run whose cp fails or prints anything is redone per
+#      file, so each failing file gets its own error text and log line;
+#   4. hash_chunk: hash the staged copies with one hasher call (hash_files); a
+#      name the hashers would escape, or a file missing from their output, is
+#      hashed per file with hash_file, which gives "" when the copy is
+#      unreadable;
+#   5. write_chunk_rows: write the manifest rows, in the order find passed the
+#      files.
 # POSIX sh has no arrays, so the chunk is held in numbered variables set by
-# eval: f_N path, st_N stat line, s_N status, sec_N secret, tg_N symlink
-# target, e_N copy error, h_N hash. CAC_NO_BATCH=1, a test hook, takes the
-# per-file path in passes 1, 3 and 4.
-heredoc_var <<'EOF_STAGE'
-stage=$1; root=$2; user=$3; home=$4; agent=$5; manifest=$6; shift 6
+# eval, for N from 1 to chunk_size: path_N the source path, stat_N its
+# stat_file line, status_N its manifest status (copy until pass 3 decides),
+# secret_N true or false, target_N the symlink target, copy_error_N the cp
+# error text, hash_N the sha256 of the staged copy. CAC_NO_BATCH=1, a test
+# hook, takes the per-file path in passes 1, 3 and 4.
+heredoc_var <<'EOF_STAGE_FILES_WORKER'
+stage_dir=$1; root=$2; user=$3; home=$4; agent=$5; manifest=$6; shift 6
 set -f
 if [ "${CAC_NO_BATCH:-0}" = 1 ]; then batch=0; else batch=1; fi
-b_stat=$batch; b_cp=$batch; b_hash=$batch
-lastdir=
-# copy_run FIRST LAST DIR: copy the files of chunk entries FIRST..LAST still
-# marked "copy" (all from one directory) into DIR, then mark each collected
-# or error_copy.
-copy_run() {
-  cr_a=$1; cr_b=$2; cr_d=$3; cr_ok=0
-  set --
-  j=$cr_a; while [ "$j" -le "$cr_b" ]; do
-    eval "s=\$s_$j"
-    if [ "$s" = copy ]; then eval "set -- \"\$@\" \"\$f_$j\""; fi
-    j=$((j + 1))
-  done
-  if [ "$b_cp" = 1 ] && [ "$#" -gt 1 ]; then
-    if cr_err=$(cp -p "$@" "$cr_d/" 2>&1) && [ -z "$cr_err" ]; then cr_ok=1; fi
-  fi
-  j=$cr_a; while [ "$j" -le "$cr_b" ]; do
-    eval "s=\$s_$j"
-    if [ "$s" = copy ] && [ "$cr_ok" = 1 ]; then
-      eval "s_$j=collected"
-    elif [ "$s" = copy ]; then
-      eval "f=\$f_$j"; dest="$stage/fs${f#"$root"}"
-      if err=$(cp -p "$f" "$dest" 2>&1); then
-        s=collected
-      else
-        s=error_copy
-        rm -f "$dest" 2>/dev/null
-        log_line "copy failed: $f: $err"
-      fi
-      eval "s_$j=\$s; e_$j=\$err"
-    fi
-    j=$((j + 1))
-  done
-}
-stage_chunk() {
-  # 1. lstat, before anything is copied
-  ok=0
-  if [ "$b_stat" = 1 ]; then
+batch_stat=$batch; batch_copy=$batch; batch_hash=$batch
+last_mkdir_dir=
+# lstat_chunk: pass 1, before anything is copied. Reads path_N; sets stat_N.
+lstat_chunk() {
+  stat_batch_ok=0
+  if [ "$batch_stat" = 1 ]; then
     set --
-    i=1; while [ "$i" -le "$n" ]; do eval "set -- \"\$@\" \"\$f_$i\""; i=$((i + 1)); done
-    sts=$(stat_files "$@")
-    oifs=$IFS; IFS=$_jn
-    set -- $sts
-    IFS=$oifs
-    if [ "$#" -eq "$n" ]; then
-      i=1; for st in "$@"; do eval "st_$i=\$st"; i=$((i + 1)); done
-      ok=1
+    i=1; while [ "$i" -le "$chunk_size" ]; do
+      eval "set -- \"\$@\" \"\$path_$i\""; i=$((i + 1))
+    done
+    stat_lines=$(stat_files "$@")
+    saved_ifs=$IFS; IFS=$NEWLINE
+    set -- $stat_lines
+    IFS=$saved_ifs
+    if [ "$#" -eq "$chunk_size" ]; then
+      i=1; for stat_line in "$@"; do eval "stat_$i=\$stat_line"; i=$((i + 1)); done
+      stat_batch_ok=1
     fi
   fi
-  if [ "$ok" = 0 ]; then
-    i=1; while [ "$i" -le "$n" ]; do
-      eval "f=\$f_$i"; st=$(stat_file "$f"); eval "st_$i=\$st"; i=$((i + 1))
+  if [ "$stat_batch_ok" = 0 ]; then
+    i=1; while [ "$i" -le "$chunk_size" ]; do
+      eval "path=\$path_$i"; stat_line=$(stat_file "$path"); eval "stat_$i=\$stat_line"
+      i=$((i + 1))
     done
   fi
-
-  # 2. staging directories, symlinks, secret and size skips
+}
+# plan_chunk: pass 2, staging directories, symlinks, secret and size skips.
+# Reads path_N, stat_N, SECRET_GLOBS, NO_SECRETS, MAX_SIZE; sets status_N
+# (symlink, skipped_secret, skipped_size or copy), secret_N and target_N, and
+# clears copy_error_N and hash_N. last_mkdir_dir carries over between chunks.
+plan_chunk() {
   set --
-  i=1; while [ "$i" -le "$n" ]; do
-    eval "f=\$f_$i"; d="$stage/fs${f#"$root"}"; d=${d%/*}
-    if [ "$d" != "$lastdir" ]; then set -- "$@" "$d"; lastdir=$d; fi
+  i=1; while [ "$i" -le "$chunk_size" ]; do
+    eval "path=\$path_$i"; dest_dir="$stage_dir/fs${path#"$root"}"; dest_dir=${dest_dir%/*}
+    if [ "$dest_dir" != "$last_mkdir_dir" ]; then
+      set -- "$@" "$dest_dir"; last_mkdir_dir=$dest_dir
+    fi
     i=$((i + 1))
   done
   [ "$#" -eq 0 ] || mkdir -p "$@" 2>>"$LOG"
-  i=1; while [ "$i" -le "$n" ]; do
-    eval "f=\$f_$i; st=\$st_$i"
-    [ -n "$st" ] || st='0 0 0 0 0 0 0 0'
-    set -- $st
-    hrel=${f#"$home"/}
+  i=1; while [ "$i" -le "$chunk_size" ]; do
+    eval "path=\$path_$i; stat_line=\$stat_$i"
+    [ -n "$stat_line" ] || stat_line='0 0 0 0 0 0 0 0'
+    set -- $stat_line
+    home_rel=${path#"$home"/}
     secret=false
-    oifs=$IFS; IFS=$_jn
-    for p in $SECRET_GLOBS; do case "$hrel" in $p) secret=true; break ;; esac; done
-    IFS=$oifs
+    saved_ifs=$IFS; IFS=$NEWLINE
+    for secret_glob in $SECRET_GLOBS; do
+      case "$home_rel" in $secret_glob) secret=true; break ;; esac
+    done
+    IFS=$saved_ifs
     target=
-    if [ -L "$f" ]; then
+    if [ -L "$path" ]; then
       status=symlink
-      target=$(readlink "$f" 2>/dev/null)
-      ln -s "$target" "$stage/fs${f#"$root"}" 2>/dev/null
+      target=$(readlink "$path" 2>/dev/null)
+      ln -s "$target" "$stage_dir/fs${path#"$root"}" 2>/dev/null
     elif [ "$secret" = true ] && [ "${NO_SECRETS:-0}" = 1 ]; then
       status=skipped_secret
-    elif num_v "$1" && [ "${MAX_SIZE:-0}" -gt 0 ] && [ "$_n" -gt "$MAX_SIZE" ]; then
+    elif to_number_var "$1" && [ "${MAX_SIZE:-0}" -gt 0 ] && [ "$_ret_number" -gt "$MAX_SIZE" ]
+    then
       status=skipped_size
     else
       status=copy
     fi
-    eval "s_$i=\$status; sec_$i=\$secret; tg_$i=\$target; e_$i=; h_$i="
+    eval "status_$i=\$status; secret_$i=\$secret; target_$i=\$target; copy_error_$i=; hash_$i="
     i=$((i + 1))
   done
-
-  # 3. copy, one cp per run of files from the same directory
-  g0=0; g1=0; gd=
-  i=1; while [ "$i" -le "$n" ]; do
-    eval "s=\$s_$i"
-    if [ "$s" = copy ]; then
-      eval "f=\$f_$i"; d="$stage/fs${f#"$root"}"; d=${d%/*}
-      if [ "$g0" -gt 0 ] && [ "$d" != "$gd" ]; then copy_run "$g0" "$g1" "$gd"; g0=0; fi
-      [ "$g0" -gt 0 ] || { g0=$i; gd=$d; }
-      g1=$i
+}
+# copy_run FIRST LAST DIR: copies the files of chunk entries FIRST..LAST still
+# marked "copy" (all from one directory) into DIR, then marks each collected
+# or error_copy (with copy_error_N and a "copy failed" log line). One cp -p for
+# the run when it has more than one file, else, or when that cp fails or
+# prints anything, one cp -p per file.
+copy_run() {
+  copy_first=$1; copy_last=$2; copy_dir=$3; copy_batch_ok=0
+  set --
+  j=$copy_first; while [ "$j" -le "$copy_last" ]; do
+    eval "status=\$status_$j"
+    if [ "$status" = copy ]; then eval "set -- \"\$@\" \"\$path_$j\""; fi
+    j=$((j + 1))
+  done
+  if [ "$batch_copy" = 1 ] && [ "$#" -gt 1 ]; then
+    if copy_batch_error=$(cp -p "$@" "$copy_dir/" 2>&1) && [ -z "$copy_batch_error" ]; then
+      copy_batch_ok=1
+    fi
+  fi
+  j=$copy_first; while [ "$j" -le "$copy_last" ]; do
+    eval "status=\$status_$j"
+    if [ "$status" = copy ] && [ "$copy_batch_ok" = 1 ]; then
+      eval "status_$j=collected"
+    elif [ "$status" = copy ]; then
+      eval "path=\$path_$j"; dest="$stage_dir/fs${path#"$root"}"
+      if copy_error=$(cp -p "$path" "$dest" 2>&1); then
+        status=collected
+      else
+        status=error_copy
+        rm -f "$dest" 2>/dev/null
+        log_line "copy failed: $path: $copy_error"
+      fi
+      eval "status_$j=\$status; copy_error_$j=\$copy_error"
+    fi
+    j=$((j + 1))
+  done
+}
+# copy_chunk: pass 3, one copy_run per run of consecutive "copy" entries whose
+# staging directory is the same. Reads status_N and path_N.
+copy_chunk() {
+  run_start=0; run_end=0; run_dir=
+  i=1; while [ "$i" -le "$chunk_size" ]; do
+    eval "status=\$status_$i"
+    if [ "$status" = copy ]; then
+      eval "path=\$path_$i"; dest_dir="$stage_dir/fs${path#"$root"}"; dest_dir=${dest_dir%/*}
+      if [ "$run_start" -gt 0 ] && [ "$dest_dir" != "$run_dir" ]; then
+        copy_run "$run_start" "$run_end" "$run_dir"; run_start=0
+      fi
+      [ "$run_start" -gt 0 ] || { run_start=$i; run_dir=$dest_dir; }
+      run_end=$i
     fi
     i=$((i + 1))
   done
-  [ "$g0" -eq 0 ] || copy_run "$g0" "$g1" "$gd"
-
-  # 4. hash the staged copies, one hasher call for the chunk
+  [ "$run_start" -eq 0 ] || copy_run "$run_start" "$run_end" "$run_dir"
+}
+# hash_chunk: pass 4, hashes the staged copy of every collected entry, with
+# one hasher call for the chunk. Reads status_N, path_N, HASH_TOOL; sets
+# hash_N. The hasher's lines are in file order; a file with no matching line
+# is hashed alone.
+hash_chunk() {
   [ "$HASH_TOOL" != none ] || return 0
   set --
-  if [ "$b_hash" = 1 ]; then
-    i=1; while [ "$i" -le "$n" ]; do
-      eval "s=\$s_$i; f=\$f_$i"
-      if [ "$s" = collected ]; then
-        dest="$stage/fs${f#"$root"}"
-        case "$dest" in *\\* | *"$_jn"* | *"$_jr"*) ;; *) set -- "$@" "$dest" ;; esac
+  if [ "$batch_hash" = 1 ]; then
+    i=1; while [ "$i" -le "$chunk_size" ]; do
+      eval "status=\$status_$i; path=\$path_$i"
+      if [ "$status" = collected ]; then
+        dest="$stage_dir/fs${path#"$root"}"
+        case "$dest" in *\\* | *"$NEWLINE"* | *"$CR"*) ;; *) set -- "$@" "$dest" ;; esac
       fi
       i=$((i + 1))
     done
   fi
-  hs=
-  [ "$#" -eq 0 ] || hs=$(hash_files "$@")
-  oifs=$IFS; IFS=$_jn
-  set -- $hs
-  IFS=$oifs
-  # the lines are in file order; a file with no matching line is hashed alone
-  i=1; while [ "$i" -le "$n" ]; do
-    eval "s=\$s_$i; f=\$f_$i"
-    if [ "$s" = collected ]; then
-      dest="$stage/fs${f#"$root"}"
+  hash_lines=
+  [ "$#" -eq 0 ] || hash_lines=$(hash_files "$@")
+  saved_ifs=$IFS; IFS=$NEWLINE
+  set -- $hash_lines
+  IFS=$saved_ifs
+  i=1; while [ "$i" -le "$chunk_size" ]; do
+    eval "status=\$status_$i; path=\$path_$i"
+    if [ "$status" = collected ]; then
+      dest="$stage_dir/fs${path#"$root"}"
       if [ "$#" -gt 0 ] && hash_match "$1" "$dest"; then
-        sha=$_h; shift
+        sha256=$_ret_hash; shift
       else
-        sha=$(hash_file "$dest")
+        sha256=$(hash_file "$dest")
       fi
-      eval "h_$i=\$sha"
+      eval "hash_$i=\$sha256"
     fi
     i=$((i + 1))
   done
 }
-emit_chunk() {
-  # 5. manifest rows, in find's order
-  i=1; while [ "$i" -le "$n" ]; do
-    eval "f=\$f_$i; st=\$st_$i; status=\$s_$i; secret=\$sec_$i; target=\$tg_$i; err=\$e_$i; sha=\$h_$i"
-    [ -n "$st" ] || st='0 0 0 0 0 0 0 0'
-    set -- $st
-    rel=${f#"$root"}
+# write_chunk_rows: pass 5, one manifest row per entry, in find's order.
+# Reads every numbered variable.
+write_chunk_rows() {
+  i=1; while [ "$i" -le "$chunk_size" ]; do
+    eval "path=\$path_$i; stat_line=\$stat_$i; status=\$status_$i; secret=\$secret_$i"
+    eval "target=\$target_$i; copy_error=\$copy_error_$i; sha256=\$hash_$i"
+    [ -n "$stat_line" ] || stat_line='0 0 0 0 0 0 0 0'
+    set -- $stat_line
     case "$status" in symlink) type=symlink ;; *) type=file ;; esac
-    case "$status" in collected | symlink) apath="fs$rel" ;; *) apath= ;; esac
-    emit_row "$manifest" "$user" "$home" "$agent" "$f" "$apath" "$type" "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$sha" "$secret" "$status" "$target" "$err"
+    case "$status" in collected | symlink) archive_path="fs${path#"$root"}" ;; *) archive_path= ;; esac
+    write_manifest_row "$manifest" "$user" "$home" "$agent" "$path" "$archive_path" "$type" \
+      "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$sha256" "$secret" "$status" "$target" \
+      "$copy_error"
     i=$((i + 1))
   done
 }
 while [ "$#" -gt 0 ]; do
-  n=0; len=0
-  while [ "$#" -gt 0 ] && [ "$n" -lt 256 ] && [ "$len" -lt 65536 ]; do
-    n=$((n + 1)); eval "f_$n=\$1"; len=$((len + ${#1})); shift
+  chunk_size=0; chunk_bytes=0
+  while [ "$#" -gt 0 ] && [ "$chunk_size" -lt 256 ] && [ "$chunk_bytes" -lt 65536 ]; do
+    chunk_size=$((chunk_size + 1)); eval "path_$chunk_size=\$1"
+    chunk_bytes=$((chunk_bytes + ${#1})); shift
   done
-  stage_chunk
-  emit_chunk
+  lstat_chunk
+  plan_chunk
+  copy_chunk
+  hash_chunk
+  write_chunk_rows
 done
-EOF_STAGE
-STAGE_PROG="$COMMON
-$_hv"
+EOF_STAGE_FILES_WORKER
+STAGE_FILES_WORKER="$COMMON
+$_ret_heredoc_text"
 
-# Program run by find -exec for every pruned (excluded) path.
-# args: root user home agent manifest paths...
-heredoc_var <<'EOF_SKIP'
+# EXCLUDED_PATHS_WORKER: run by find -exec for every pruned (excluded) path;
+# one skipped_excluded row each, with the size from du -sk for a directory
+# (its other metadata 0) and from lstat for a file.
+# Arguments: root user home agent manifest paths...
+heredoc_var <<'EOF_EXCLUDED_PATHS_WORKER'
 root=$1; user=$2; home=$3; agent=$4; manifest=$5; shift 5
-for f in "$@"; do
-  rel=${f#"$root"}
-  if [ -d "$f" ]; then
-    type=dir; kb=$(du -sk "$f" 2>/dev/null | cut -f1); num_v "$kb"; size=$((_n * 1024))
-    st='0 0 0 0 0 0 0 0'
+for path in "$@"; do
+  if [ -d "$path" ]; then
+    type=dir; size_kib=$(du -sk "$path" 2>/dev/null | cut -f1)
+    to_number_var "$size_kib"; size=$((_ret_number * 1024))
+    stat_line='0 0 0 0 0 0 0 0'
   else
-    type=file; st=$(stat_file "$f"); [ -n "$st" ] || st='0 0 0 0 0 0 0 0'
-    size=${st%% *}
+    type=file; stat_line=$(stat_file "$path"); [ -n "$stat_line" ] || stat_line='0 0 0 0 0 0 0 0'
+    size=${stat_line%% *}
   fi
-  set -- $st
-  emit_row "$manifest" "$user" "$home" "$agent" "$f" "" "$type" "$size" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "" false skipped_excluded "" ""
+  set -- $stat_line
+  write_manifest_row "$manifest" "$user" "$home" "$agent" "$path" "" "$type" "$size" \
+    "$2" "$3" "$4" "$5" "$6" "$7" "$8" "" false skipped_excluded "" ""
 done
-EOF_SKIP
-SKIP_PROG="$COMMON
-$_hv"
+EOF_EXCLUDED_PATHS_WORKER
+EXCLUDED_PATHS_WORKER="$COMMON
+$_ret_heredoc_text"
 
-# Program run by find -exec for every directory in a walk: one error_read row
-# for each that cannot be listed or entered. find reports the same directory
-# in the log and goes on; the test, not find's localised message, decides.
-# args: user home agent manifest dirs...
-heredoc_var <<'EOF_DIRCHK'
+# UNREADABLE_DIRS_WORKER: run by find -exec for every directory in a walk; one
+# error_read row for each that cannot be listed or entered. find reports the
+# same directory in the log and goes on; the test, not find's localised
+# message, decides. Arguments: user home agent manifest dirs...
+heredoc_var <<'EOF_UNREADABLE_DIRS_WORKER'
 user=$1; home=$2; agent=$3; manifest=$4; shift 4
-for d in "$@"; do
-  if dir_err_v "$d"; then read_err_row "$manifest" "$user" "$home" "$agent" "$d" "$_de"; fi
+for dir in "$@"; do
+  if get_dir_read_error_var "$dir"; then
+    write_read_error_row "$manifest" "$user" "$home" "$agent" "$dir" "$_ret_dir_error"
+  fi
 done
-EOF_DIRCHK
-DIRCHK_PROG="$COMMON
-$_hv"
+EOF_UNREADABLE_DIRS_WORKER
+UNREADABLE_DIRS_WORKER="$COMMON
+$_ret_heredoc_text"
 
-# Program run by find -exec in --inventory mode for every regular file under a
-# matched path: prints F|agent|size|mtime and copies, hashes and writes nothing.
-# args: agent files...
+# INVENTORY_FILES_WORKER: run by find -exec in --inventory mode for every
+# regular file under a matched path: prints F|agent|size|mtime and copies,
+# hashes and writes nothing. Arguments: agent files...
 # One stat call covers all the files when it prints one line per file;
 # otherwise each file gets its own stat_file, as in the stage worker.
-heredoc_var <<'EOF_INV'
+heredoc_var <<'EOF_INVENTORY_FILES_WORKER'
 agent=$1; shift
 set -f
-# inv_rows COUNT LINES: the F rows for LINES when there are COUNT of them
-inv_rows() {
-  ir_n=$1; oifs=$IFS; IFS=$_jn
+# print_file_rows COUNT LINES: the F rows for the stat LINES when there are
+# COUNT of them; returns 1 without output otherwise.
+print_file_rows() {
+  expected_count=$1; saved_ifs=$IFS; IFS=$NEWLINE
   set -- $2
-  IFS=$oifs
-  [ "$#" -eq "$ir_n" ] || return 1
-  for st in "$@"; do
-    num_v "${st%% *}"; _s=$_n; st=${st#* }; num_v "${st%% *}"
-    printf 'F|%s|%s|%s\n' "$agent" "$_s" "$_n"
+  IFS=$saved_ifs
+  [ "$#" -eq "$expected_count" ] || return 1
+  for stat_line in "$@"; do
+    to_number_var "${stat_line%% *}"; size=$_ret_number
+    stat_line=${stat_line#* }; to_number_var "${stat_line%% *}"
+    printf 'F|%s|%s|%s\n' "$agent" "$size" "$_ret_number"
   done
 }
-sts=
-[ "${CAC_NO_BATCH:-0}" = 1 ] || sts=$(stat_files "$@")
-if ! inv_rows "$#" "$sts"; then
-  for f in "$@"; do
-    st=$(stat_file "$f")
-    set -- $st
-    num_v "${1:-}"; _s=$_n; num_v "${2:-}"
-    printf 'F|%s|%s|%s\n' "$agent" "$_s" "$_n"
+stat_lines=
+[ "${CAC_NO_BATCH:-0}" = 1 ] || stat_lines=$(stat_files "$@")
+if ! print_file_rows "$#" "$stat_lines"; then
+  for path in "$@"; do
+    stat_line=$(stat_file "$path")
+    set -- $stat_line
+    to_number_var "${1:-}"; size=$_ret_number; to_number_var "${2:-}"
+    printf 'F|%s|%s|%s\n' "$agent" "$size" "$_ret_number"
   done
 fi
-EOF_INV
-INV_PROG="$COMMON
-$_hv"
+EOF_INVENTORY_FILES_WORKER
+INVENTORY_FILES_WORKER="$COMMON
+$_ret_heredoc_text"
 
 # ---------------------------------------------------------------------------
 usage() {
@@ -2087,7 +2222,7 @@ case "$_st" in
   *) STAT_MODE=gnu ;;
 esac
 
-START_TS=$(ts)
+START_TS=$(utc_timestamp)
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 HOST=$(hostname 2>/dev/null || uname -n 2>/dev/null || printf unknown)
 HOST_SAFE=$(printf '%s' "$HOST" | tr -c 'A-Za-z0-9._-' '-')
@@ -2148,17 +2283,6 @@ expand_glob() {
   IFS=$_eg_ifs
 }
 
-# file_id PATH -> device:inode of PATH itself (lstat), or the inode alone from
-# ls -di when stat is unavailable; empty when PATH cannot be stat'ed.
-# shellcheck disable=SC2012 # ls -di is the POSIX inode; only its first field is read
-file_id() {
-  case "$STAT_MODE" in
-    gnu|gnu0) stat -c '%d:%i' "$1" 2>/dev/null ;;
-    bsd)      stat -f '%d:%i' "$1" 2>/dev/null ;;
-    *)        ls -di "$1" 2>/dev/null | awk 'NR==1 {print $1}' ;;
-  esac
-}
-
 # fold_matches: agent|glob|path lines on stdin, in catalog order, -> the same
 # lines with spellings of one on-disk path folded together. On a
 # case-insensitive filesystem (macOS, Windows images, /mnt/c under WSL),
@@ -2209,7 +2333,7 @@ fold_matches() {
 
 # collect_path USER HOME AGENT PATH
 # With --inventory the same walk runs, but excluded subtrees are pruned
-# without a manifest row and regular files are only stat'ed by INV_PROG.
+# without a manifest row and regular files are only stat'ed by INVENTORY_FILES_WORKER.
 collect_path() {
   _cp_user=$1; _cp_home=$2; _cp_agent=$3; _cp_m=$4
   if [ -d "$_cp_m" ] && [ ! -L "$_cp_m" ]; then
@@ -2217,8 +2341,8 @@ collect_path() {
     # not from the walk: BSD find applies no expression to a starting point
     # it cannot read and GNU find does, so the pre-check gives both one row
     # and never two (#82).
-    if [ "$INVENTORY" != 1 ] && _cpe=$(dir_err "$_cp_m"); then
-      read_err_row "$MANIFEST" "$_cp_user" "$_cp_home" "$_cp_agent" "$_cp_m" "$_cpe"
+    if [ "$INVENTORY" != 1 ] && _cpe=$(get_dir_read_error "$_cp_m"); then
+      write_read_error_row "$MANIFEST" "$_cp_user" "$_cp_home" "$_cp_agent" "$_cp_m" "$_cpe"
       return 0
     fi
     set -- "$_cp_m"
@@ -2245,21 +2369,21 @@ collect_path() {
     if [ "$_cp_first" = 0 ] && [ "$INVENTORY" = 1 ]; then
       set -- "$@" ')' -prune -o
     elif [ "$_cp_first" = 0 ]; then
-      set -- "$@" ')' -prune -exec "$WORKER_SH" -c "$SKIP_PROG" sh "$ROOT" "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" '{}' + -o
+      set -- "$@" ')' -prune -exec "$WORKER_SH" -c "$EXCLUDED_PATHS_WORKER" sh "$ROOT" "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" '{}' + -o
     fi
     if [ "$INVENTORY" = 1 ]; then
-      set -- "$@" -type f -exec "$WORKER_SH" -c "$INV_PROG" sh "$_cp_agent" '{}' +
+      set -- "$@" -type f -exec "$WORKER_SH" -c "$INVENTORY_FILES_WORKER" sh "$_cp_agent" '{}' +
     else
-      set -- "$@" -type d -exec "$WORKER_SH" -c "$DIRCHK_PROG" sh "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" '{}' + -o
-      set -- "$@" '(' -type f -o -type l ')' -exec "$WORKER_SH" -c "$STAGE_PROG" sh "$STAGE" "$ROOT" "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" '{}' +
+      set -- "$@" -type d -exec "$WORKER_SH" -c "$UNREADABLE_DIRS_WORKER" sh "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" '{}' + -o
+      set -- "$@" '(' -type f -o -type l ')' -exec "$WORKER_SH" -c "$STAGE_FILES_WORKER" sh "$STAGE" "$ROOT" "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" '{}' +
     fi
     find "$@" 2>>"$LOG"
   elif [ "$INVENTORY" = 1 ]; then
     if [ -f "$_cp_m" ] && [ ! -L "$_cp_m" ]; then
-      "$WORKER_SH" -c "$INV_PROG" sh "$_cp_agent" "$_cp_m"
+      "$WORKER_SH" -c "$INVENTORY_FILES_WORKER" sh "$_cp_agent" "$_cp_m"
     fi
   else
-    "$WORKER_SH" -c "$STAGE_PROG" sh "$STAGE" "$ROOT" "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" "$_cp_m"
+    "$WORKER_SH" -c "$STAGE_FILES_WORKER" sh "$STAGE" "$ROOT" "$_cp_user" "$_cp_home" "$_cp_agent" "$MANIFEST" "$_cp_m"
   fi
 }
 
@@ -2347,7 +2471,7 @@ fi
   # A home that cannot be listed or entered gets one error_read row. The
   # catalog is still tried: a home that can be entered but not listed
   # (mode 711) still yields the entries that are not globs.
-  if _he=$(dir_err "$_h"); then read_err_row "$MANIFEST" "$_u" "$_h" "" "$_h" "$_he"; fi
+  if _he=$(get_dir_read_error "$_h"); then write_read_error_row "$MANIFEST" "$_u" "$_h" "" "$_h" "$_he"; fi
   collect_tree "$_u" "$_h" "$CATALOG" "User $_u ($_h)"
 done
 
@@ -2363,8 +2487,6 @@ done
 NOTES=
 DOCKER_SEEN=0; DOCKER_FOUND=0; DOCKER_COLLECTED=0; DOCKER_UNREADABLE=0; DOCKER_DESKTOP=0
 DOCKER_INV=
-add_note() { NOTES="$NOTES
-$1"; log_line "NOTE: $1"; }
 # docker_volume_rule NAME -> the first DOCKER_VOLUMES line (agent|glob) whose glob matches
 docker_volume_rule() {
   _dv_ifs=$IFS
@@ -2421,7 +2543,7 @@ collect_volume_dir() {
       :
     elif [ -z "$_va" ]; then
       _vkb=$(du -sk "$_vdata" 2>/dev/null | cut -f1)
-      emit_row "$MANIFEST" docker "$_vdata" "" "$_vdata" "" dir "$(( $(num "$_vkb") * 1024 ))" 0 0 0 0 0 0 0 "" false skipped_unmatched_volume "" ""
+      write_manifest_row "$MANIFEST" docker "$_vdata" "" "$_vdata" "" dir "$(( $(to_number "$_vkb") * 1024 ))" 0 0 0 0 0 0 0 "" false skipped_unmatched_volume "" ""
     elif [ "$INVENTORY" = 1 ]; then
       log_line "  [$_va] $_vdata"
       DOCKER_INV="$DOCKER_INV
@@ -2432,7 +2554,7 @@ $(collect_path docker "$_vdata" "$_va" "$_vdata" </dev/null)"
       log_line "  [$_va] $_vdata"
       _vl=$(wc -l <"$LOG" | tr -d ' ')
       collect_path docker "$_vdata" "$_va" "$_vdata" </dev/null
-      _vfe=$(num "$(find_errors_since "$(num "$_vl")")")
+      _vfe=$(to_number "$(find_errors_since "$(to_number "$_vl")")")
       DOCKER_COLLECTED=$(( DOCKER_COLLECTED + 1 ))
       if [ "$_vfe" -gt 0 ]; then
         DOCKER_UNREADABLE=$(( DOCKER_UNREADABLE + 1 ))
@@ -2647,15 +2769,15 @@ $USER_LIST" in (*":$_p
   # gets a log line and one error_read row, so it is never dropped silently.
   printf '%s\n' "$EXTRA_PROJECTS" | while IFS= read -r _p; do
     if [ -z "$_p" ] || [ -d "$_p" ]; then continue; fi
-    _pe=$(dir_err "$_p")
+    _pe=$(get_dir_read_error "$_p")
     log_line "WARNING: project given with -p is not a directory: $_p: $_pe"
-    [ "$INVENTORY" = 1 ] || emit_row "$MANIFEST" "$(project_owner "$_p")" "$_p" "" "$_p" "" dir 0 0 0 0 0 0 0 "" "" false error_read "" "$_pe"
+    [ "$INVENTORY" = 1 ] || write_manifest_row "$MANIFEST" "$(project_owner "$_p")" "$_p" "" "$_p" "" dir 0 0 0 0 0 0 0 "" "" false error_read "" "$_pe"
   done
   [ "$INVENTORY" = 1 ] || printf '%s\n' "$PROJECT_LIST" | while IFS= read -r _line; do
     [ -n "$_line" ] || continue
     _owner=${_line%%:*}; _p=${_line#*:}
     log_line "Project ${_owner:+[$_owner] }$_p"
-    if _pe=$(dir_err "$_p"); then read_err_row "$MANIFEST" "$_owner" "$_p" "" "$_p" "$_pe"; fi
+    if _pe=$(get_dir_read_error "$_p"); then write_read_error_row "$MANIFEST" "$_owner" "$_p" "" "$_p" "$_pe"; fi
     collect_tree "$_owner" "$_p" "$PROJECT_CATALOG"
   done
 fi
@@ -2697,8 +2819,8 @@ inv_emit() {
   while IFS='|' read -r _ie_a _ie_f _ie_b _ie_lo _ie_hi _ie_ev; do
     [ -n "$_ie_a" ] || continue
     printf '{"type":"agent","host":"%s","user":"%s","agent":"%s","files":%s,"bytes":%s,"first":"%s","last":"%s","projects":%s,"evidence":"%s"}\n' \
-      "$(json_str "$HOST")" "$(json_str "$1")" "$(json_str "$_ie_a")" "$(num "$_ie_f")" "$(num "$_ie_b")" \
-      "$_ie_lo" "$_ie_hi" "$(num "$2")" "$(json_str "$_ie_ev")"
+      "$(json_escape "$HOST")" "$(json_escape "$1")" "$(json_escape "$_ie_a")" "$(to_number "$_ie_f")" "$(to_number "$_ie_b")" \
+      "$_ie_lo" "$_ie_hi" "$(to_number "$2")" "$(json_escape "$_ie_ev")"
   done
 }
 if [ "$INVENTORY" = 1 ]; then
@@ -2721,7 +2843,7 @@ EOF_INVUSERS
     collect_tree "$_u" "$_h" "$CATALOG" "User $_u ($_h)" | inv_aggregate | inv_emit "$_u" "$_np"
   done)
   printf '{"type":"host","host":"%s","collector":"%s","mode":"%s","at":"%s","users_scanned":%s,"users_unreadable":%s,"docker_volumes":%s}\n' \
-    "$(json_str "$HOST")" "$VERSION" "$MODE" "$START_TS" \
+    "$(json_escape "$HOST")" "$VERSION" "$MODE" "$START_TS" \
     "$USERS_SCANNED" "$USERS_UNREADABLE" "$DOCKER_FOUND"
   [ -z "$INV_LINES" ] || printf '%s\n' "$INV_LINES"
   printf '%s\n' "$DOCKER_INV" | inv_aggregate | inv_emit docker 0
@@ -2730,18 +2852,18 @@ fi
 
 # ---------------------------------------------------------------------------
 # Summary, archive, hashes
-END_TS=$(ts)
-count_status() { num "$(grep -c "\"status\":\"$1\"" "$MANIFEST" 2>/dev/null)"; }
+END_TS=$(utc_timestamp)
+count_status() { to_number "$(grep -c "\"status\":\"$1\"" "$MANIFEST" 2>/dev/null)"; }
 # Users whose home gave at least one manifest row, in enumeration order. The
 # error_read row for an unreadable home itself does not count.
 ACTIVE_USERS=$(printf '%s\n' "$USER_LIST" | while IFS=: read -r _u _h; do
   [ -n "$_h" ] || continue
-  _hj=$(json_str "$_h")
+  _hj=$(json_escape "$_h")
   grep -F "\"home\":\"$_hj\"" "$MANIFEST" 2>/dev/null | grep -F -v -q "\"path\":\"$_hj\",\"archive_path\":\"\",\"type\":\"dir\"" && printf '%s:%s\n' "$_u" "$_h"
 done)
 # human_size BYTES -> "512 B", "20.9 MiB"
 human_size() {
-  awk -v b="$(num "$1")" 'BEGIN { split("B KiB MiB GiB TiB", u, " "); i = 1
+  awk -v b="$(to_number "$1")" 'BEGIN { split("B KiB MiB GiB TiB", u, " "); i = 1
     while (b >= 1024 && i < 5) { b /= 1024; i++ }
     if (i == 1) printf "%d B", b; else printf "%.1f %s", b, u[i] }'
 }
@@ -2753,7 +2875,7 @@ json_list() { # newline-separated -> JSON array
   printf '%s\n' "$1" | while IFS= read -r _jl_x; do
     [ -n "$_jl_x" ] || continue
     [ "$_jl_n" = 0 ] || printf ','
-    printf '"%s"' "$(json_str "$_jl_x")"
+    printf '"%s"' "$(json_escape "$_jl_x")"
     _jl_n=1
   done
   printf ']'
@@ -2767,15 +2889,15 @@ cat >"$SUMMARY" <<EOF
 {
   "tool": "$TOOL",
   "version": "$VERSION",
-  "hostname": "$(json_str "$HOST")",
+  "hostname": "$(json_escape "$HOST")",
   "mode": "$MODE",
-  "root": "$(json_str "${ROOT:-/}")",
-  "platform": "$(json_str "$(uname -s 2>/dev/null) $(uname -r 2>/dev/null) $(uname -m 2>/dev/null)")",
+  "root": "$(json_escape "${ROOT:-/}")",
+  "platform": "$(json_escape "$(uname -s 2>/dev/null) $(uname -r 2>/dev/null) $(uname -m 2>/dev/null)")",
   "run_as_uid": "$(id -u 2>/dev/null)",
   "started": "$START_TS",
   "finished": "$END_TS",
-  "options": {"full": $( [ "$FULL" = 1 ] && printf true || printf false ), "no_secrets": $( [ "$NO_SECRETS" = 1 ] && printf true || printf false ), "max_file_size_bytes": $MAX_SIZE, "users_filter": "$(json_str "$USERS")", "no_docker": $( [ "$NO_DOCKER" = 1 ] && printf true || printf false ), "no_projects": $( [ "$NO_PROJECTS" = 1 ] && printf true || printf false ), "projects": $(json_list "$EXTRA_PROJECTS")},
-  "capabilities": {"hash_tool": "$HASH_TOOL", "stat_mode": "$STAT_MODE", "worker_shell": "$(json_str "$WORKER_SH")", "archiver": "$(json_str "$2")"},
+  "options": {"full": $( [ "$FULL" = 1 ] && printf true || printf false ), "no_secrets": $( [ "$NO_SECRETS" = 1 ] && printf true || printf false ), "max_file_size_bytes": $MAX_SIZE, "users_filter": "$(json_escape "$USERS")", "no_docker": $( [ "$NO_DOCKER" = 1 ] && printf true || printf false ), "no_projects": $( [ "$NO_PROJECTS" = 1 ] && printf true || printf false ), "projects": $(json_list "$EXTRA_PROJECTS")},
+  "capabilities": {"hash_tool": "$HASH_TOOL", "stat_mode": "$STAT_MODE", "worker_shell": "$(json_escape "$WORKER_SH")", "archiver": "$(json_escape "$2")"},
   "users": $(json_list "$(printf '%s\n' "$USER_LIST" | cut -d: -f1)"),
   "homes": $(json_list "$(printf '%s\n' "$USER_LIST" | sed 's/^[^:]*://')"),
   "users_with_artifacts": $(json_list "$(printf '%s\n' "$ACTIVE_USERS" | cut -d: -f1)"),
@@ -2783,7 +2905,7 @@ cat >"$SUMMARY" <<EOF
   "counts": {"collected": $(count_status collected), "symlink": $(count_status symlink), "skipped_excluded": $(count_status skipped_excluded), "skipped_size": $(count_status skipped_size), "skipped_secret": $(count_status skipped_secret), "error_copy": $(count_status error_copy), "skipped_unmatched_volume": $(count_status skipped_unmatched_volume), "error_read": $(count_status error_read), "collected_bytes": $BYTES},
   "docker": {"volumes_found": $DOCKER_FOUND, "volumes_collected": $DOCKER_COLLECTED, "unreadable": $DOCKER_UNREADABLE, "docker_desktop": $( [ "$DOCKER_DESKTOP" = 1 ] && printf true || printf false )},
   "notes": $(json_list "$NOTES"),
-  "archive": "$(json_str "$1")"
+  "archive": "$(json_escape "$1")"
 }
 EOF
 cp "$SUMMARY" "$STAGE/collection.json"
@@ -2825,7 +2947,7 @@ ARCHIVE_SHA=$(hash_file "$ARCHIVE")
 ARCHIVE_SIZE=$(stat_file "$ARCHIVE"); ARCHIVE_SIZE=${ARCHIVE_SIZE%% *}
 printf '%s  %s\n' "$ARCHIVE_SHA" "${ARCHIVE##*/}" >"$ARCHIVE.sha256"
 # The archive's size and hash follow on stdout, so stderr gets only "done".
-printf '%s done: %s (%s bytes, sha256 %s)\n' "$(ts)" "$ARCHIVE" "$ARCHIVE_SIZE" "$ARCHIVE_SHA" >>"$LOG"
+printf '%s done: %s (%s bytes, sha256 %s)\n' "$(utc_timestamp)" "$ARCHIVE" "$ARCHIVE_SIZE" "$ARCHIVE_SHA" >>"$LOG"
 [ "$QUIET" = 1 ] || printf 'done\n' >&2
 
 printf 'archive:    %s\nsize:       %s (%s)\nsha256:     %s\nmanifest:   %s\nsummary:    %s\nlog:        %s\nusers:      %s\nprojects:   %s\ncollected:  %s files, %s bytes (%s)\nskipped:    %s excluded, %s too large, %s secret\nerrors:     %s (%s error_copy, %s error_read)\n' \
