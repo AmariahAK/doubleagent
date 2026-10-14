@@ -57,6 +57,24 @@ class Catalog:
             seen.setdefault(e.first_segment, e.regexes[0])
         return list(seen.values())
 
+    def project_agent_for(self, rel: str) -> str:
+        """The agent of the project catalog entry that claims `rel`, a path
+        relative to a project directory, or `""` when none matches. The most
+        specific matching entry wins (`.pi/approved-plan.md` before `.pi`),
+        then the first in catalog order, as the collectors' nested-claim rule
+        attributes a file. Used to re-attribute rows that collectors before
+        1.12.0 recorded with agent `project`; the result is `project` for a
+        file the catalog still leaves to no single agent (`AGENTS.md`)."""
+        parts = [p for p in rel.replace("\\", "/").split("/") if p]
+        best: Entry | None = None
+        for e in self.project_entries:
+            n = len(e.segments)
+            if n > len(parts) or (best is not None and n <= len(best.segments)):
+                continue
+            if all(rx.fullmatch(p) for rx, p in zip(e.regexes, parts[:n], strict=True)):
+                best = e
+        return best.agent if best is not None else ""
+
     def nested_matches(self, agent_dir: Path, onerror=None) -> Iterator[tuple[Entry, Path]]:
         """Yield (entry, path) for catalog globs that live inside agent_dir
         when agent_dir itself is the first segment of their glob, for example

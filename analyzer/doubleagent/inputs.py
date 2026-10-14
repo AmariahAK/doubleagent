@@ -35,6 +35,11 @@ from .catalog import Catalog
 
 PARSE_STATUSES = ("collected",)
 
+# Agent name collectors before 1.12.0 gave every file found through the
+# project catalog, and that later ones keep for files no single agent owns
+# (AGENTS.md). Such a file is offered to every parser.
+PROJECT_AGENT = "project"
+
 # Parent directories whose children are user homes, as the collectors enumerate
 # them. Matched against the path of a discovered home relative to the root.
 HOME_PARENTS = ("home", "Users", "usr/home", "export/home")
@@ -48,6 +53,11 @@ class Home:
     user: str
     host: str = ""
     inferred: bool = False  # True when user/original came from the path, not a manifest
+    # True when this base is a project directory the collector collected from
+    # (collection.json `projects`, or a manifest row with agent `project`),
+    # not a user's home. Parsers that scope a file to its project read this,
+    # never the artifact's agent.
+    project: bool = False
 
 
 @dataclass
@@ -266,6 +276,10 @@ def _load_collected(col: Collection, catalog: Catalog) -> None:
     if bad:
         col.notes.append("%d manifest rows did not parse" % bad)
     col.manifest = rows
+    summary_projects = (col.summary or {}).get("projects")
+    projects = {
+        str(p) for p in (summary_projects if isinstance(summary_projects, list) else []) if p
+    }
     homes: dict[tuple[str, str], Home] = {}
     for r in rows:
         if r.get("status") not in PARSE_STATUSES or r.get("type") != "file":
@@ -280,11 +294,19 @@ def _load_collected(col: Collection, catalog: Catalog) -> None:
                 original=home_orig,
                 user=user,
                 host=col.host,
+                project=home_orig in projects,
             )
             homes[key] = home
         orig = str(r.get("path") or "")
         archive_path = str(r.get("archive_path") or "")
         rel = _relative_to_home(orig, home_orig)
+        agent = str(r.get("agent") or "")
+        if agent == PROJECT_AGENT:
+            # A project-catalog file. Collectors before 1.12.0 recorded every
+            # one as `project`; name the agent the bundled project catalog
+            # gives it, so old and new collections report the same agents.
+            home.project = True
+            agent = catalog.project_agent_for(rel) or PROJECT_AGENT
         disk_path = root / archive_path
         # A collected row whose file is not under fs/ (a truncated or edited
         # archive) is a problem line, not an artifact a parser trips over.
@@ -303,7 +325,7 @@ def _load_collected(col: Collection, catalog: Catalog) -> None:
                 disk_path=disk_path,
                 original=orig,
                 rel=rel,
-                agent=str(r.get("agent") or ""),
+                agent=agent,
                 home=home,
                 manifest=r,
             )

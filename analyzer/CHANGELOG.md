@@ -18,6 +18,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `turn_type`, and the lists of agents parsed, detected but not parsed,
   and whose parser found no rows. The counts follow the filters, as the
   stdout breakdown does ([#103]).
+- Each `inventory.json` project gains a last key, `status`: `collected`
+  when the path is a project directory the collection holds
+  (`collection.json` `projects`), `referenced` when only timeline rows
+  name it. A collected project that no row names is listed with zero
+  counts ([#104]).
+- `timeline` prints one line per file it writes after the `sessions:`
+  line: `detect: <path> (agents and files detected, problems)` and
+  `inventory: <path> (counts per project and agent)`. The `rows:` and
+  `sessions:` lines are unchanged ([#103]).
+- `docs/output.md` documents every key of `detect.json` and every field
+  of `sessions.jsonl` in a table with its type, and the `timeline.jsonl`
+  table gains a type column ([#103]).
 - The bundled catalog copy detects the Antigravity CLI's file secret
   store `plugin-secrets.json` (`.config/antigravity`,
   `Library/Application Support/antigravity`, `AppData/Roaming/antigravity`)
@@ -238,9 +250,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   project-directory file is detected as the agent that owns it
   (`claude-code` for `.claude/` and `CLAUDE.md`, `cursor` for `.cursor/`,
   `aider` for `.aider.chat.history.md`), and only files several agents
-  read (`AGENTS.md`, `AGENTS.override.md`, `AGENT.md`, `.agents/`, `.mcp.json`, the shared
-  GitHub Copilot instruction files, `SOUL.md`, `USER.md`) stay `project`
-  ([#104]).
+  read (`AGENTS.md`, `AGENTS.override.md`, `AGENT.md`, `.agents/`,
+  `.mcp.json`, the shared GitHub Copilot instruction files, `SOUL.md`,
+  `USER.md`) stay `project` ([#104]).
+- Files from a project directory are attributed to the agent that owns
+  them in `detect`, `detect.json` and `inventory.json`, not to `project`:
+  a repository's `.claude/` is `claude-code`, its
+  `.aider.chat.history.md` `aider`. A manifest row with agent `project`,
+  as collectors before 1.12.0 wrote for every project file, is
+  re-attributed from the bundled project catalog; a file several agents
+  read (`AGENTS.md`) stays `project`. Project directories are recognised
+  from `collection.json` `projects` (or a row with agent `project`), not
+  from the agent, so the `claude-code` parser still gives a project's
+  settings rows the project's `project_path` ([#104]).
 - The `agents:` line `timeline` prints reads
   `parsed: <list>; detected but not parsed: <list>`, with `none` for an
   empty list, followed by `; parser found no rows: <list>` when a

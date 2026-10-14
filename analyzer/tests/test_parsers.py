@@ -749,11 +749,18 @@ class ClaudeCode296Tests(ParserBase):
         path.parent.mkdir(parents=True)
         path.write_text(json.dumps(claude_project_local_settings()), encoding="utf-8")
         rel = ".claude/settings.local.json"
-        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1")
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
         art = Artifact(path, "/srv/proj/" + rel, rel, "project", home)
         self.assertIn(ClaudeCodeParser, [type(x) for x in cli.parsers_for(art, {})])
         self.assertTrue(ClaudeCodeParser().wants(art))
         rows = list(ClaudeCodeParser().parse(art, Options()))
+        # A collector from 1.12.0 names the agent; the rows are the same.
+        own = Artifact(path, "/srv/proj/" + rel, rel, "claude-code", home)
+        self.assertIn(ClaudeCodeParser, [type(x) for x in cli.parsers_for(own, by_agent())])
+        self.assertEqual(
+            [r.as_dict() for r in ClaudeCodeParser().parse(own, Options())],
+            [r.as_dict() for r in rows],
+        )
         src = "(from .claude/settings.local.json, file mtime)"
         self.assertEqual(
             [(r.text, r.project_path, r.source_file) for r in rows],
@@ -1150,8 +1157,11 @@ class TimelineTests(ParserBase):
 
 class ProjectRoutingTests(unittest.TestCase):
     """Round trip through the sh collector: files the collector finds inside a
-    discovered repository are recorded with agent `project`, and the CLI
-    offers them to every parser, so Crush and Aider rows come out of them."""
+    discovered repository have the project directory as their home, which
+    is marked `project`. Their agent is the one the project catalog names
+    (re-attributed by the analyzer for a collection that says `project`),
+    so Crush and Aider rows come out of them; a shared file such as
+    `AGENTS.md` keeps agent `project`."""
 
     def setUp(self):
         self.cat = catalog.load()
@@ -1175,6 +1185,7 @@ class ProjectRoutingTests(unittest.TestCase):
         proj = root / "srv/proj"
         build_aider(proj)
         _wal_db(proj / ".crush/crush.db", CRUSH_SCHEMA, crush_records())
+        (proj / "AGENTS.md").write_text("# shared instructions\n", encoding="utf-8")
         out = self.tmp / "out"
         out.mkdir()
         r = subprocess.run(
@@ -1201,11 +1212,22 @@ class ProjectRoutingTests(unittest.TestCase):
         archive = self._collect()
         col = open_input(archive, self.cat)
         try:
-            project_rels = {a.rel for a in col.artifacts if a.agent == "project"}
+            project = {
+                a.rel: a.agent
+                for a in col.artifacts
+                if a.home.project and a.home.original.endswith("/srv/proj")
+            }
+            bases = {a.home.original for a in col.artifacts if a.home.project}
         finally:
             col.cleanup()
-        self.assertIn(".crush/crush.db", project_rels)
-        self.assertIn(".aider.chat.history.md", project_rels)
+        # Homes are never project bases; /srv/proj (under the image root) is one.
+        self.assertTrue(any(b.endswith("/srv/proj") for b in bases), bases)
+        self.assertFalse(any(b.endswith(("/home/alice", "/home/bob")) for b in bases), bases)
+        self.assertIn(".crush/crush.db", project)
+        self.assertIn(".aider.chat.history.md", project)
+        # Whatever agent the bundled project catalog names for each file.
+        self.assertEqual(project, {rel: self.cat.project_agent_for(rel) for rel in project})
+        self.assertEqual(project["AGENTS.md"], "project")
 
         rows, summary = self._timeline(archive)
         from_project = [r for r in rows if "/srv/proj/" in r["source_file"]]
@@ -1241,7 +1263,7 @@ class ProjectRoutingTests(unittest.TestCase):
         finally:
             col.cleanup()
         project = [r for r in table if r["agent"] == "project"]
-        self.assertTrue(project)
+        self.assertTrue(project)  # AGENTS.md, shared by several agents
         self.assertFalse(any(r["parser"] for r in project))
         self.assertNotIn("project", by_agent())
 
@@ -3047,13 +3069,18 @@ class AiderTests(ParserBase):
                 )
         col = open_input(root, self.cat)
         self.assertEqual(col.kind, "collected")
+        # Agent `project` rows are re-attributed from the bundled project
+        # catalog, and their base is marked as a project.
         self.assertEqual(
-            {a.rel for a in col.artifacts if a.agent == "project"},
+            {a.rel: a.agent for a in col.artifacts if a.home.project},
             {
-                ".aider.chat.history.md",
-                ".aider.input.history",
-                ".aider.llm.history",
-                ".aider.conf.yml",
+                rel: self.cat.project_agent_for(rel) or "project"
+                for rel in (
+                    ".aider.chat.history.md",
+                    ".aider.input.history",
+                    ".aider.llm.history",
+                    ".aider.conf.yml",
+                )
             },
         )
         rows, _, problems = cli.collect_rows(col, Options(), [])

@@ -14,7 +14,7 @@ from . import VERSION
 from . import catalog as catalog_mod
 from . import inventory as inventory_mod
 from .filters import FORMS_HELP, RowFilter, parse_bound
-from .inputs import Collection, describe_error, error_reason, open_input
+from .inputs import PROJECT_AGENT, Collection, describe_error, error_reason, open_input
 from .model import Row, SessionSummary, summarise
 from .parsers import ALL, Options, by_agent
 
@@ -313,14 +313,11 @@ def cmd_detect(args: argparse.Namespace, col: Collection) -> int:
 
 # ---- timeline -------------------------------------------------------------------
 
-# Agent name the collector gives to files found through PROJECT_CATALOG inside
-# a discovered repository. Such a file may belong to any agent (Crush's
-# .crush/crush.db, Aider's .aider.chat.history.md), so it is offered to every
-# parser instead of to the parsers of one agent.
-PROJECT_AGENT = "project"
-
 
 def parsers_for(artifact, parsers: dict[str, list]) -> list:
+    # A file in a project directory that the catalog leaves to no single
+    # agent (agent `project`, inputs.PROJECT_AGENT) may be read by any of
+    # them, so it is offered to every parser.
     if artifact.agent == PROJECT_AGENT:
         return ALL
     own = parsers.get(artifact.agent, [])
@@ -417,12 +414,22 @@ def agents_summary(
     return text
 
 
-def project_inventory(rows: list[Row], sessions: list[SessionSummary]) -> dict[str, dict]:
+def project_inventory(
+    rows: list[Row], sessions: list[SessionSummary], collected: list[str] | None = None
+) -> dict[str, dict]:
     """Counts per `project_path`, the empty path included: rows and sessions
     in total, and per agent the rows, sessions and rows by `turn_type`. A
     session is counted under its summary's project, the first non-empty
-    `project_path` among its rows."""
+    `project_path` among its rows.
+
+    Each non-empty path also gets `status`, after the counts: `collected`
+    when it is one of `collected` (the project directories the input holds),
+    else `referenced` (named only by rows). A collected project no row names
+    is listed with zero counts. Paths are compared exactly as recorded."""
     groups: dict[str, dict] = {}
+    for path in collected or []:
+        if path:
+            groups.setdefault(path, {"rows": 0, "sessions": 0, "agents": {}})
 
     def group(path: str, agent: str) -> tuple[dict, dict]:
         g = groups.setdefault(path, {"rows": 0, "sessions": 0, "agents": {}})
@@ -442,7 +449,37 @@ def project_inventory(rows: list[Row], sessions: list[SessionSummary]) -> dict[s
         g["agents"] = {k: g["agents"][k] for k in sorted(g["agents"])}
         for a in g["agents"].values():
             a["turn_types"] = dict(sorted(a["turn_types"].items()))
+    collected_set = set(collected or [])
+    for path, g in groups.items():
+        if path:
+            g["status"] = "collected" if path in collected_set else "referenced"
     return {k: groups[k] for k in sorted(groups)}
+
+
+def collected_projects(col: Collection) -> list[str]:
+    """The project directories the input holds, as their paths on the source
+    host: collection.json `projects`, even one none of whose files were
+    collected, and the homes marked `project` (which adds the bases of rows
+    with agent `project` in a collection whose collection.json is missing),
+    sorted and de-duplicated."""
+    summary = col.summary or {}
+    listed = summary.get("projects")
+    paths = {str(p) for p in (listed if isinstance(listed, list) else []) if p}
+    paths.update(h.original for h in col.homes if h.project and h.original)
+    return sorted({strip_image_root(p, summary) for p in paths})
+
+
+def strip_image_root(path: str, summary: dict) -> str:
+    """A collected path as the imaged host saw it: in image mode the
+    collector records `-r <root>/srv/proj`, while the transcripts on that
+    host say `/srv/proj`. Paths outside the root are returned unchanged."""
+    root = str(summary.get("root") or "")
+    if summary.get("mode") != "image" or root in ("", "/", "\\"):
+        return path
+    root = root.rstrip("/\\")
+    if path.startswith(root) and path[len(root) : len(root) + 1] in ("/", "\\"):
+        return path[len(root) :]
+    return path
 
 
 def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
@@ -460,7 +497,8 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     write_jsonl(timeline, rows)
     write_jsonl(sess, sessions)
     detect = detect_table(col)
-    with open(args.output / "detect.json", "w", encoding="utf-8") as fh:
+    detect_path = args.output / "detect.json"
+    with open(detect_path, "w", encoding="utf-8") as fh:
         json.dump(
             {
                 "input": str(col.source),
@@ -513,9 +551,10 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
         and r["agent"] not in parsed_agents
         and (not args.agent or r["agent"] in args.agent)
     ]
-    groups = project_inventory(rows, sessions)
+    groups = project_inventory(rows, sessions, collected_projects(col))
     empty = {"rows": 0, "sessions": 0, "agents": {}}
-    with open(args.output / "inventory.json", "w", encoding="utf-8") as fh:
+    inventory_path = args.output / "inventory.json"
+    with open(inventory_path, "w", encoding="utf-8") as fh:
         json.dump(
             {
                 "input": str(col.source),
@@ -538,4 +577,6 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     for (agent, tt), n in sorted(counts.items()):
         print("           %-14s %-12s %d" % (agent, tt, n))
     print("sessions:  %d in %s" % (len(sessions), sess))
+    print("detect:    %s (agents and files detected, problems)" % detect_path)
+    print("inventory: %s (counts per project and agent)" % inventory_path)
     return 0 if rows else 1

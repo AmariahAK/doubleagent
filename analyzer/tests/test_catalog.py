@@ -41,7 +41,10 @@ class CatalogTests(unittest.TestCase):
         self.assertGreater(len(self.cat.secrets), 50)
         self.assertIn("claude-code", self.cat.agents)
         self.assertIn("codex-cli", self.cat.agents)
-        self.assertTrue(all(e.agent == "project" for e in self.cat.project_entries))
+        # Each project entry names a catalog agent, or `project` for a file
+        # several agents read (AGENTS.md).
+        agents = set(self.cat.agents) | {"project"}
+        self.assertTrue(all(e.agent in agents for e in self.cat.project_entries))
 
     def test_every_entry_has_agent_and_glob(self):
         for e in self.cat.entries:
