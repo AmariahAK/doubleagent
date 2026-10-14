@@ -2282,14 +2282,14 @@ function Add-StagedLink($item, [string]$stagePath) {
 # recreated as a link (status symlink); a secret under -NoSecrets
 # (skipped_secret) and a file over -MaxFileSizeMB (skipped_size) get a row
 # and no copy; anything else is copied and hashed (collected, or error_copy
-# with the exception message). Under -Inventory it only feeds Add-InvFile.
+# with the exception message). Under -Inventory it only feeds Add-InventoryFile.
 # Runs once per file, so Join-PathSafe and Get-Epoch are inlined and nothing
 # here starts a pipeline or another process.
 function Add-CollectedFile([string]$user, [string]$homeDir, [string]$agent, $item) {
   if ($Inventory) {
     # Regular files only: reparse points are neither followed nor counted.
     $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
-    if (-not $isLink -and -not $item.PSIsContainer) { Add-InvFile $agent $item }
+    if (-not $isLink -and -not $item.PSIsContainer) { Add-InventoryFile $agent $item }
     return
   }
   # $extendedPath opens past 260 characters and $path is what the row records.
@@ -2524,7 +2524,7 @@ function Add-CatalogMatches([string]$user, [string]$base, [string]$table, [strin
     }
     if ($Inventory) {
       if ($agent -eq 'shared') { continue }
-      Add-InvEvidence $agent $entry[2]
+      Add-InventoryEvidence $agent $entry[2]
     }
     if ($header) { Write-CollectorLog $header; $header = '' }
     Write-CollectorLog "  [$agent] $matchPath"
@@ -2683,7 +2683,7 @@ function Get-DeniedHomes {
 # Main step: collects CATALOG under every home in $script:UserList. Sets
 # $script:DeniedHomes; unless -Inventory, writes one error_read row for each
 # denied home and for each listed home that cannot be walked. Under
-# -Inventory, each user's accumulator is kept in $script:InvUsers as
+# -Inventory, each user's accumulator is kept in $script:InventoryUsers as
 # @(home, accumulator) for Write-Inventory.
 function Add-UserHomes {
   $script:DeniedHomes = @(Get-DeniedHomes)
@@ -2697,14 +2697,14 @@ function Add-UserHomes {
     }
   }
   foreach ($userHome in $script:UserList) {
-    $script:Inv = [ordered]@{}
+    $script:InventoryAgents = [ordered]@{}
     if (-not $Inventory) {
       $why = Get-DirReadError $userHome.home
       if ($why) { Write-ReadErrorRow $userHome.user $userHome.home '' $userHome.home $why }
     }
     $header = "User $($userHome.user) ($($userHome.home))"
     Add-CatalogMatches $userHome.user $userHome.home $CATALOG $header
-    if ($Inventory) { $script:InvUsers += , @($userHome, $script:Inv) }
+    if ($Inventory) { $script:InventoryUsers += , @($userHome, $script:InventoryAgents) }
   }
 }
 
@@ -2731,7 +2731,7 @@ foreach ($line in (Get-TableLines $DOCKER_VOLUMES)) {
   $script:DockerVolumeRules += , @($parts[0], (Convert-GlobToRegex $parts[1] $false), $parts[1])
 }
 # The -Inventory accumulator for matched volumes, reported as user docker.
-$script:InvDocker = [ordered]@{}
+$script:InventoryDocker = [ordered]@{}
 
 # Takes a volume name; returns the first DOCKER_VOLUMES rule (agent, regex,
 # glob) whose glob matches it, or $null. Volume names are case-sensitive,
@@ -2807,7 +2807,7 @@ function Write-UnmatchedVolumeRow([string]$data) {
 # noted, one with no _data directory is logged and skipped, an unmatched one
 # gets its skipped_unmatched_volume row (none under -Inventory), and a
 # matched one has its _data collected under the rule's agent (under
-# -Inventory, into the $script:InvDocker accumulator). A matched volume
+# -Inventory, into the $script:InventoryDocker accumulator). A matched volume
 # whose walk met unreadable paths ($script:WalkErrors) is noted as well.
 function Add-Volume($volume) {
   $name = $volume.Name
@@ -2835,10 +2835,10 @@ function Add-Volume($volume) {
   $script:WalkErrors = 0
   $script:ClaimedPaths = Get-ClaimTable
   if ($Inventory) {
-    $savedInv = $script:Inv; $script:Inv = $script:InvDocker
-    Add-InvEvidence $agent $rule[2]
+    $savedAgents = $script:InventoryAgents; $script:InventoryAgents = $script:InventoryDocker
+    Add-InventoryEvidence $agent $rule[2]
     Add-CollectedPath 'docker' $data $agent $data
-    $script:Inv = $savedInv
+    $script:InventoryAgents = $savedAgents
   } else {
     Add-CollectedPath 'docker' $data $agent $data
   }
@@ -3275,33 +3275,33 @@ function Add-Projects {
 # The accumulator being filled: agent -> files, bytes, first and last mtime
 # (epoch seconds, 0 when unknown) and the matched catalog globs in order of
 # first match. Add-UserHomes starts one per user and keeps it in
-# $script:InvUsers as @(home, accumulator); matched Docker volumes fill
-# $script:InvDocker (declared with the Docker state).
-$script:Inv = [ordered]@{}
-$script:InvUsers = @()
+# $script:InventoryUsers as @(home, accumulator); matched Docker volumes fill
+# $script:InventoryDocker (declared with the Docker state).
+$script:InventoryAgents = [ordered]@{}
+$script:InventoryUsers = @()
 
-# Takes an agent; returns its entry in $script:Inv, creating it empty.
-function Get-InvEntry([string]$agent) {
-  if (-not $script:Inv.Contains($agent)) {
-    $script:Inv[$agent] = @{
+# Takes an agent; returns its entry in $script:InventoryAgents, creating it empty.
+function Get-InventoryEntry([string]$agent) {
+  if (-not $script:InventoryAgents.Contains($agent)) {
+    $script:InventoryAgents[$agent] = @{
       files = 0; bytes = [int64]0; first = [int64]0; last = [int64]0
       evidence = (New-Object System.Collections.ArrayList)
     }
   }
-  return $script:Inv[$agent]
+  return $script:InventoryAgents[$agent]
 }
 
 # Takes an agent and the catalog glob that matched; adds the glob to the
 # agent's evidence once.
-function Add-InvEvidence([string]$agent, [string]$glob) {
-  $entry = Get-InvEntry $agent
+function Add-InventoryEvidence([string]$agent, [string]$glob) {
+  $entry = Get-InventoryEntry $agent
   if (-not $entry.evidence.Contains($glob)) { [void]$entry.evidence.Add($glob) }
 }
 
 # Takes an agent and a regular file's Get-Item; counts the file, its bytes
 # and its modification time in the agent's entry.
-function Add-InvFile([string]$agent, $item) {
-  $entry = Get-InvEntry $agent
+function Add-InventoryFile([string]$agent, $item) {
+  $entry = Get-InventoryEntry $agent
   $entry.files++
   try { $entry.bytes += [int64]$item.Length } catch { }
   $mtime = Get-Epoch $item.LastWriteTimeUtc
@@ -3312,7 +3312,7 @@ function Add-InvFile([string]$agent, $item) {
 }
 
 # Takes epoch seconds; returns UTC ISO 8601 without fractions, or '' for 0.
-function Format-InvTime([int64]$epoch) {
+function Format-InventoryTime([int64]$epoch) {
   if ($epoch -le 0) { return '' }
   $culture = [Globalization.CultureInfo]::InvariantCulture
   $utc = [DateTimeOffset]::FromUnixTimeSeconds($epoch).UtcDateTime
@@ -3330,7 +3330,7 @@ function Write-InventoryLines([string]$user, $accumulator, [int]$projects) {
     $line = [ordered]@{
       type = 'agent'; host = $script:HostName; user = $user; agent = $agent
       files = [int64]$entry.files; bytes = [int64]$entry.bytes
-      first = (Format-InvTime $entry.first); last = (Format-InvTime $entry.last)
+      first = (Format-InventoryTime $entry.first); last = (Format-InventoryTime $entry.last)
       projects = $projects; evidence = (@($entry.evidence) -join ',')
     }
     $line | ConvertTo-Json -Compress
@@ -3357,12 +3357,12 @@ function Write-Inventory {
     users_unreadable = $unreadable; docker_volumes = $script:Docker.found
   }
   Write-Output ($hostLine | ConvertTo-Json -Compress)
-  foreach ($pair in $script:InvUsers) {
+  foreach ($pair in $script:InventoryUsers) {
     $userHome = $pair[0]
     $projectCount = @($script:ProjectList | Where-Object { $_.user -eq $userHome.user }).Count
     Write-InventoryLines $userHome.user $pair[1] $projectCount
   }
-  Write-InventoryLines 'docker' $script:InvDocker 0
+  Write-InventoryLines 'docker' $script:InventoryDocker 0
 }
 
 # ===========================================================================

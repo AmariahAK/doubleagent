@@ -355,7 +355,7 @@ The sh counters are the globals `DOCKER_SEEN`, `DOCKER_FOUND`,
 function that sets them runs in the main shell, never in a pipeline or a
 `$(...)`, where the assignments would be lost. The PowerShell collector
 keeps the same counts in `$script:Docker` and the inventory in
-`$script:InvDocker`.
+`$script:InventoryDocker`.
 
 ## Project discovery
 
@@ -416,9 +416,9 @@ output is described in [inventory.md](inventory.md).
   and `write_inventory_lines`. `count_inventory_homes` counts the homes
   and the unreadable ones.
 - PowerShell: `Open-RunFiles` opens no writers. `Add-CatalogMatches` calls
-  `Add-InvEvidence`, `Add-CollectedFile` calls `Add-InvFile`, and
+  `Add-InventoryEvidence`, `Add-CollectedFile` calls `Add-InventoryFile`, and
   `Add-ExcludedPath` and `Write-ReadErrorRow` write no row. Each user's
-  accumulator (`$script:Inv`) is kept in `$script:InvUsers`, and
+  accumulator (`$script:InventoryAgents`) is kept in `$script:InventoryUsers`, and
   `Write-Inventory` prints the lines with `Write-InventoryLines`.
 
 ## Naming
@@ -475,7 +475,7 @@ PowerShell functions that do their job.
 | Write an `error_read` row | `write_read_error_row` | `Write-ReadErrorRow` |
 | Stage one file: metadata, symlink or copy, hash, row | `STAGE_FILES_WORKER` | `Add-CollectedFile` |
 | Record an excluded path | `EXCLUDED_PATHS_WORKER` | `Add-ExcludedPath` |
-| Count one file under inventory | `INVENTORY_FILES_WORKER` | `Add-InvFile` |
+| Count one file under inventory | `INVENTORY_FILES_WORKER` | `Add-InventoryFile` |
 | Expand one glob under a base | `expand_glob` | `Expand-Glob` |
 | Expand a table against a base: matches, case variants, claims | `expand_catalog` | `Expand-Catalog` |
 | Collect every match of a table under a base | `collect_catalog` | `Add-CatalogMatches` |
@@ -540,7 +540,7 @@ PowerShell functions that do their job.
 | `session_cwds` | Project discovery | `cwd` values in rollout files found with `find` |
 | `merge_project_owners`, `keep_project_dirs` | Project discovery | Deduplicates projects; PowerShell uses `Select-UniqueProjects` |
 | `report_missing_projects` | Project discovery | Log line and `error_read` row for a `-p` that is not a directory; PowerShell does this in `Add-Projects` |
-| `aggregate_inventory` | Inventory output | Sums `M\|` and `F\|` lines per agent; PowerShell accumulates with `Get-InvEntry`, `Add-InvEvidence`, `Add-InvFile` |
+| `aggregate_inventory` | Inventory output | Sums `M\|` and `F\|` lines per agent; PowerShell accumulates with `Get-InventoryEntry`, `Add-InventoryEvidence`, `Add-InventoryFile` |
 | `count_inventory_homes` | Inventory output | Homes scanned and unreadable; PowerShell does this in `Write-Inventory` |
 | `count_status`, `list_active_users`, `sum_collected_bytes` | Summary and archive | Counts read back from the manifest; PowerShell counts in `Write-ManifestRow` |
 | `json_list`, `json_bool` | Summary and archive | JSON arrays and booleans for `collection.json` |
@@ -567,7 +567,7 @@ PowerShell functions that do their job.
 | `Get-DeniedHomes` | Users | Homes listed by their parent but not reachable |
 | `Write-UnmatchedVolumeRow`, `Find-DockerDesktop` | Docker and Podman volumes | The `skipped_unmatched_volume` row; Docker Desktop notes |
 | `ConvertTo-LocalPath`, `Read-DiscoverySource`, `Get-RegexCaptures`, `Get-FileTexts`, `Select-UniqueProjects` | Project discovery | Value to local path; reading sources; deduplication |
-| `Get-InvEntry`, `Add-InvEvidence`, `Format-InvTime` | Inventory output | Inventory accumulators and dates |
+| `Get-InventoryEntry`, `Add-InventoryEvidence`, `Format-InventoryTime` | Inventory output | Inventory accumulators and dates |
 | `Initialize-Summary`, `Add-LinkNotes` | Summary and archive | Builds the `collection.json` content |
 | `Close-RunFiles`, `Add-LogLine` | Summary and archive | Closes the writers; log lines after that |
 | `Get-StageEntries`, `Get-UnixTime`, `Get-TarHeader`, `Get-PaxRecord`, `Get-TarAsciiName`, `Write-TarMember`, `Get-StagedLinkTargets`, `Get-StagedLinkTarget`, `Write-TarEntries`, `Write-TarGz` | Summary and archive | The PowerShell tar writer |
