@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from ..inputs import Artifact
 from ..model import Row
+from ..timeutil import to_utc
 
 
 @dataclass
@@ -89,3 +90,41 @@ def compact_json(value) -> str:
     except (TypeError, ValueError):
         s = str(value)
     return s
+
+
+def file_mtime(artifact: Artifact) -> str:
+    """The file's modification time as a timeline timestamp: the manifest's
+    pre-copy `mtime` when the collection has a manifest, else the file's
+    own. Standing settings rows (`permission setting: ... (from <file>,
+    file mtime)`) are timestamped with this."""
+    t = (artifact.manifest or {}).get("mtime")
+    if isinstance(t, (int, float)) and not isinstance(t, bool) and t > 0:
+        return to_utc(t)
+    try:
+        return to_utc(artifact.disk_path.lstat().st_mtime)
+    except OSError:
+        return ""
+
+
+def setting_value(v) -> str:
+    """A setting as row text: a bool as `true`/`false`, a string as it is,
+    anything else as compact JSON."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, str):
+        return v
+    return compact_json(v)
+
+
+def track_change(label: str, seen: dict, key, value: str) -> str:
+    """The `system` row text for a tracked state (`model`, `permission mode`)
+    when `value` is new for `key` (a session or thread id): `<label>: <value>`
+    the first time, `<label>: <old> -> <new>` on a change, and `""` when it
+    is unchanged or empty. `seen` is the parser's per-file dict."""
+    if not value:
+        return ""
+    old = seen.get(key)
+    if old == value:
+        return ""
+    seen[key] = value
+    return "%s: %s -> %s" % (label, old, value) if old else "%s: %s" % (label, value)

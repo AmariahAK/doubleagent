@@ -141,7 +141,7 @@ from ..model import Row, compact
 from ..protobuf import Schema, decode
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl
+from .base import Options, Parser, compact_json, file_mtime, iter_jsonl, setting_value
 
 BASE = ".gemini/antigravity-cli/"
 # The four data directories under ~/.gemini that hold the same stores: the
@@ -649,14 +649,6 @@ def _bool(v: object) -> str:
     return "true" if v else "false"
 
 
-def _setting_value(v: object) -> str:
-    if isinstance(v, bool):
-        return _bool(v)
-    if isinstance(v, str):
-        return v
-    return compact_json(v)
-
-
 def _list(v: object) -> list:
     return v if isinstance(v, list) else []
 
@@ -671,18 +663,6 @@ def _read_json(artifact: Artifact) -> object:
         return json.loads(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
     except (OSError, ValueError):
         return None
-
-
-def file_mtime(artifact: Artifact) -> str:
-    """The file's modification time: the manifest's pre-copy `mtime` when
-    there is a manifest, else the file's own."""
-    t = (artifact.manifest or {}).get("mtime")
-    if isinstance(t, (int, float)) and not isinstance(t, bool) and t > 0:
-        return to_utc(t)
-    try:
-        return to_utc(artifact.disk_path.lstat().st_mtime)
-    except OSError:
-        return ""
 
 
 def permission_texts(perms: dict) -> list[str]:
@@ -940,7 +920,7 @@ class AntigravityParser(Parser):
             row.turn_type = "system"
             row.text = compact(
                 "permission setting: %s=%s (from %s, file mtime)"
-                % (key, _setting_value(value), artifact.rel)
+                % (key, setting_value(value), artifact.rel)
             )
             yield row
 

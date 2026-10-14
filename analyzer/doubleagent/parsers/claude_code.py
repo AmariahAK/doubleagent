@@ -164,7 +164,6 @@ files and `paste-cache/` (excluded by the collector).
 from __future__ import annotations
 
 import json
-import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -172,7 +171,7 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl, text_of
+from .base import Options, Parser, compact_json, file_mtime, iter_jsonl, setting_value, text_of
 
 SESSION_RX = re.compile(r"^\.claude(?:-[^/]+)?/projects/[^/]+/.*\.jsonl$")
 SUBAGENT_RX = re.compile(r"/subagents/(?:[^/]+/)*agent-([^/]+)\.jsonl$")
@@ -304,23 +303,6 @@ def session_dir(artifact: Artifact) -> Path:
             d = d.parent
         return d.parent
     return p.with_suffix("")
-
-
-def file_mtime(artifact: Artifact) -> str:
-    """The file's modification time: the manifest `mtime` (read before the
-    copy) when there is one, else the file's own."""
-    m = (artifact.manifest or {}).get("mtime")
-    if isinstance(m, (int, float)) and not isinstance(m, bool) and m > 0:
-        return to_utc(m)
-    try:
-        return to_utc(os.lstat(artifact.disk_path).st_mtime)
-    except OSError:
-        return ""
-
-
-def setting_value(v) -> str:
-    """A setting as text: a string as it is, anything else as JSON."""
-    return v if isinstance(v, str) else compact_json(v)
 
 
 def persisted_text(artifact: Artifact, stub: str) -> str:
