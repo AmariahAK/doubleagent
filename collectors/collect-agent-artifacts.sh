@@ -26,16 +26,73 @@
 #               or, with --inventory, the walk ran,
 #             1 usage error, 2 fatal (no output dir, no tar, ...).
 
+# ===========================================================================
+# 1. Reader's guide
+# ===========================================================================
+# The file is in twelve sections, in this order (the PowerShell collector,
+# Collect-AgentArtifacts.ps1, has the same sections under the same titles):
+#    1. Reader's guide       this map
+#    2. Data tables          CATALOG, PROJECT_CATALOG, EXCLUDES, SECRET_GLOBS
+#                            and DOCKER_VOLUMES: what is collected, as data
+#    3. Shared helpers       logging, notes, JSON escaping, number checks and
+#                            the stat, hash and file id wrappers (COMMON)
+#    4. Manifest writer      the row writer, the directory-read check and the
+#                            error_read row (COMMON)
+#    5. Staging files        the worker programs that find -exec runs
+#    6. Catalog walk         glob expansion, catalog expansion with case
+#                            folding and claimed paths, one match, the walk
+#    7. Users                enumerating and filtering home directories
+#    8. Docker and Podman volumes
+#    9. Project discovery    project paths read from agent state, and -p
+#   10. Inventory output     the --inventory JSON lines
+#   11. Summary and archive  collection.json, the archivers, the stdout summary
+#   12. Main program         options, setup, then one call per step
+#
+# Data flow: the tables are applied to every home the user enumeration
+# lists. For each home the catalog walk expands every CATALOG entry first and
+# prunes each match that lies inside another match from the enclosing walk (a
+# claimed subtree, collected once, under the more specific agent), then walks
+# each match with one find(1). find prunes the EXCLUDES globs with one
+# skipped_excluded row each and hands the files to the stage worker, which
+# tests SECRET_GLOBS, lstats every file before anything is copied, recreates
+# a symlink instead of following it, copies the file into the staging
+# directory, hashes the staged copy (not the source, which a running agent may
+# still be appending to) and writes one manifest row per file. collection.json
+# and the stdout summary are built from the manifest, and the staging
+# directory, with the manifest, the log and collection.json, becomes the
+# archive. Docker and Podman volumes (with DOCKER_VOLUMES) and discovered
+# projects (with PROJECT_CATALOG) are further bases fed through the same
+# catalog walk. --inventory is the same walk with no writes: the workers only
+# stat, and section 10 prints one JSON line per user and agent.
+#
+# Naming: globals that functions share (configuration, counters, file paths,
+# the tables) are UPPER_CASE. POSIX sh has no local, so a function's own
+# temporaries are _<prefix>_<name>, the prefix an abbreviation of the
+# function's name stated in its comment (_cp_ for collect_path), which keeps
+# a callee from clobbering its caller's variables. A function that assigns
+# its result instead of printing it, to save a fork, sets _ret_<what>
+# (_ret_json, _ret_number) and its comment says so. A worker program is held
+# in <NAME>_WORKER and read from the here-document EOF_<NAME>_WORKER; its
+# variables need no prefix. No single-letter names except short loop indices.
+#
+# Maintainer documentation, with the table of sh and PowerShell function
+# pairs: collectors/docs/internals.md.
+
 VERSION="1.12.0"
 TOOL="collect-agent-artifacts"
 
+# Settings every later line relies on: the C locale for byte-wise matching
+# and sorting, the base system's tools first on PATH, and output that only
+# the user running the collector can read.
 LC_ALL=C
 export LC_ALL
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:$PATH"
 export PATH
 umask 077
 
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 2. Data tables
+# ===========================================================================
 # Artifact catalog. One entry per line: agent|path-glob (relative to each home
 # directory). Every entry is tried for every home, so platform-specific paths
 # are harmless on other platforms and a Windows image mounted on Linux works.
@@ -2088,192 +2145,6 @@ EOF_INVENTORY_FILES_WORKER
 INVENTORY_FILES_WORKER="$COMMON
 $_ret_heredoc_text"
 
-# ---------------------------------------------------------------------------
-usage() {
-  cat <<EOF
-Usage: $0 [options]
-
-  -o, --output DIR        Directory for the archive (default: current dir)
-  -r, --root DIR          Alternate root, e.g. a mounted disk image (image mode)
-  -u, --users LIST        Comma-separated usernames to collect (default: all)
-  -p, --project DIR       Extra project directory to collect (repeatable)
-      --full              Disable default size exclusions (model blobs, caches,
-                          extension binaries)
-      --no-secrets        Skip credential files instead of collecting them
-      --no-projects       Skip project-level artifact discovery
-      --no-docker         Skip Docker and Podman volume enumeration
-      --max-file-size MB  Skip files larger than this (default 256, 0 = none)
-  -k, --keep-staging      Keep the staging directory after archiving
-      --inventory         Write nothing; print one JSON line per user and agent
-                          found (file count, bytes, first and last mtime) to
-                          stdout. -o is ignored
-      --list              Print the artifact catalog and exit
-  -q, --quiet             Only print the final summary
-  -V, --version           Print version and exit
-  -h, --help              This help
-
-Environment: COLLECTOR_SH overrides the shell used for per-file workers
-(default: dash when it is on PATH, otherwise sh). Run as root to collect
-every user's home.
-EOF
-}
-
-OUTDIR=.
-ROOT=
-USERS=
-EXTRA_PROJECTS=
-FULL=0
-NO_SECRETS=0
-NO_PROJECTS=0
-NO_DOCKER=0
-MAX_MB=256
-KEEP=0
-QUIET=0
-LIST=0
-INVENTORY=0
-OUTDIR_SET=0
-
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -o|--output)        [ $# -ge 2 ] || { usage >&2; exit 1; }; OUTDIR=$2; OUTDIR_SET=1; shift ;;
-    -r|--root)          [ $# -ge 2 ] || { usage >&2; exit 1; }; ROOT=$2; shift ;;
-    -u|--users)         [ $# -ge 2 ] || { usage >&2; exit 1; }; USERS=$2; shift ;;
-    -p|--project)       [ $# -ge 2 ] || { usage >&2; exit 1; }; EXTRA_PROJECTS="$EXTRA_PROJECTS
-$2"; shift ;;
-    --full)             FULL=1 ;;
-    --no-secrets)       NO_SECRETS=1 ;;
-    --no-projects)      NO_PROJECTS=1 ;;
-    --no-docker)        NO_DOCKER=1 ;;
-    --max-file-size)    [ $# -ge 2 ] || { usage >&2; exit 1; }; MAX_MB=$2; shift ;;
-    -k|--keep-staging)  KEEP=1 ;;
-    --list)             LIST=1 ;;
-    --inventory)        INVENTORY=1 ;;
-    -q|--quiet)         QUIET=1 ;;
-    -V|--version)       printf '%s %s\n' "$TOOL" "$VERSION"; exit 0 ;;
-    -h|--help)          usage; exit 0 ;;
-    *)                  printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 1 ;;
-  esac
-  shift
-done
-
-if [ "$LIST" = 1 ]; then
-  printf '# home artifacts (agent|glob relative to home)\n%s\n' "$CATALOG" | grep -v '^$'
-  printf '\n# project artifacts (relative to each discovered project)\n%s\n' "$PROJECT_CATALOG" | grep -v '^$'
-  printf '\n# excluded unless --full\n%s\n' "$EXCLUDES" | grep -v '^$'
-  printf '\n# credential files (flagged secret, skipped with --no-secrets)\n%s\n' "$SECRET_GLOBS"
-  printf '\n# docker volumes (agent|volume name glob)\n%s\n' "$DOCKER_VOLUMES" | grep -v '^$'
-  exit 0
-fi
-
-case "$MAX_MB" in ''|*[!0-9]*) printf 'Invalid --max-file-size: %s\n' "$MAX_MB" >&2; exit 1 ;; esac
-MAX_SIZE=$(( MAX_MB * 1024 * 1024 ))
-
-# A relative -p is resolved against the current directory, in image mode too:
-# -p is a path on the machine running the collector and is never prefixed
-# with the root. An existing directory is resolved with cd and pwd (logical,
-# so a symlink in the path keeps its name); any other value is joined to the
-# current directory as given. Repeated values are kept once.
-_rp_out=
-while IFS= read -r _rp; do
-  [ -n "$_rp" ] || continue
-  case "$_rp" in
-    /*) ;;
-    *) _rp_abs=$(cd "./$_rp" 2>/dev/null && pwd) || _rp_abs=
-       [ -n "$_rp_abs" ] || _rp_abs="$(pwd)/${_rp#./}"
-       _rp=$_rp_abs ;;
-  esac
-  case "$_rp_out
-" in (*"
-$_rp
-"*) continue ;; esac
-  _rp_out="$_rp_out
-$_rp"
-done <<EOF_PROJECTS
-$EXTRA_PROJECTS
-EOF_PROJECTS
-EXTRA_PROJECTS=$_rp_out
-
-# Normalise root: "" for live, else absolute path without trailing slash.
-if [ -n "$ROOT" ]; then
-  [ -d "$ROOT" ] || { printf 'Root is not a directory: %s\n' "$ROOT" >&2; exit 2; }
-  ROOT=$(cd "$ROOT" && pwd)
-  [ "$ROOT" = / ] && ROOT=
-fi
-MODE=live
-[ -n "$ROOT" ] && MODE=image
-# --inventory writes nothing: no output directory, staging or log.
-
-if [ "$INVENTORY" != 1 ]; then
-  [ -d "$OUTDIR" ] || mkdir -p "$OUTDIR" 2>/dev/null || { printf 'Cannot create output dir: %s\n' "$OUTDIR" >&2; exit 2; }
-  OUTDIR=$(cd "$OUTDIR" && pwd) || exit 2
-  [ -w "$OUTDIR" ] || { printf 'Output dir not writable: %s\n' "$OUTDIR" >&2; exit 2; }
-  command -v tar >/dev/null 2>&1 || { printf 'tar not found\n' >&2; exit 2; }
-fi
-command -v find >/dev/null 2>&1 || { printf 'find not found\n' >&2; exit 2; }
-
-# Capability detection, exported for the worker programs.
-if command -v sha256sum >/dev/null 2>&1; then HASH_TOOL=sha256sum
-elif command -v shasum >/dev/null 2>&1 && shasum -a 256 /dev/null >/dev/null 2>&1; then HASH_TOOL=shasum
-elif command -v sha256 >/dev/null 2>&1; then HASH_TOOL=sha256
-elif command -v openssl >/dev/null 2>&1; then HASH_TOOL=openssl
-else HASH_TOOL=none; fi
-
-_st=$(stat -c '%s %W' / 2>/dev/null)
-case "$_st" in
-  '') if stat -f '%z' / >/dev/null 2>&1; then STAT_MODE=bsd; else STAT_MODE=none; fi ;;
-  *[!0-9\ ]*) STAT_MODE=gnu0 ;;
-  *) STAT_MODE=gnu ;;
-esac
-
-START_TS=$(utc_timestamp)
-STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-HOST=$(hostname 2>/dev/null || uname -n 2>/dev/null || printf unknown)
-HOST_SAFE=$(printf '%s' "$HOST" | tr -c 'A-Za-z0-9._-' '-')
-NAME="${HOST_SAFE}_${STAMP}_agent-artifacts"
-STAGE="$OUTDIR/.stage-$NAME"
-ARCHIVE="$OUTDIR/$NAME.tar.gz"
-LOG="$OUTDIR/$NAME.log"
-MANIFEST="$OUTDIR/$NAME.manifest.jsonl"
-SUMMARY="$OUTDIR/$NAME.collection.json"
-TAR_RC="$OUTDIR/.tar-status-$NAME"
-# The find -exec workers fork for every batch and do most of the per-file
-# work, so they run under dash when it is installed (Debian and Ubuntu sh,
-# /bin/dash on macOS since 10.15), which starts and loops faster than bash.
-if [ -n "${COLLECTOR_SH:-}" ]; then WORKER_SH=$COLLECTOR_SH
-elif command -v dash >/dev/null 2>&1; then WORKER_SH=dash
-else WORKER_SH='sh'; fi
-if [ "$INVENTORY" = 1 ]; then
-  STAGE=; LOG=/dev/null; MANIFEST=/dev/null; TAR_RC=
-fi
-
-export HASH_TOOL STAT_MODE MAX_SIZE SECRET_GLOBS NO_SECRETS LOG QUIET
-
-# shellcheck disable=SC2317,SC2329 # invoked from the traps below
-cleanup() {
-  if [ "$KEEP" != 1 ] && [ -n "$STAGE" ] && [ -d "$STAGE" ]; then
-    rm -rf "$STAGE"
-  fi
-  [ -z "$TAR_RC" ] || rm -f "$TAR_RC"
-}
-trap 'cleanup' EXIT
-trap 'log_line "interrupted"; cleanup; trap - EXIT; exit 130' INT TERM
-
-if [ "$INVENTORY" != 1 ]; then
-  mkdir -p "$STAGE/fs" || { printf 'Cannot create staging dir\n' >&2; exit 2; }
-  : >"$LOG"; : >"$MANIFEST"
-fi
-
-[ "$FULL" = 1 ] && ACTIVE_EXCLUDES= || ACTIVE_EXCLUDES=$EXCLUDES
-
-log_line "$TOOL $VERSION starting on $HOST ($(uname -s 2>/dev/null) $(uname -r 2>/dev/null)) mode=$MODE root=${ROOT:-/} uid=$(id -u 2>/dev/null)"
-log_line "hash=$HASH_TOOL stat=$STAT_MODE max_file_size=${MAX_MB}MB full=$FULL no_secrets=$NO_SECRETS no_docker=$NO_DOCKER worker_sh=$WORKER_SH"
-if [ "$MODE" = live ] && [ "$(id -u 2>/dev/null)" != 0 ]; then
-  log_line "WARNING: not running as root; other users' homes will probably be unreadable"
-fi
-if [ "$INVENTORY" = 1 ] && [ "$OUTDIR_SET" = 1 ]; then
-  log_line "NOTE: --inventory writes nothing; -o $OUTDIR ignored"
-fi
-
 # ===========================================================================
 # 6. Catalog walk
 # ===========================================================================
@@ -2733,18 +2604,6 @@ $_cdv_desktop_dirs
 EOF_DOCKER_DESKTOP_DIRS
 }
 
-# ---------------------------------------------------------------------------
-# Main program, part to be moved: users and Docker volumes
-USER_LIST=$(get_user_homes)
-if [ -z "$USER_LIST" ]; then
-  log_line "WARNING: no user home directories found"
-fi
-[ "$INVENTORY" = 1 ] || collect_user_homes
-NOTES=
-DOCKER_SEEN=0; DOCKER_FOUND=0; DOCKER_COLLECTED=0; DOCKER_UNREADABLE=0; DOCKER_DESKTOP=0
-DOCKER_INV=
-[ "$NO_DOCKER" = 1 ] || collect_docker_volumes
-
 # ===========================================================================
 # 9. Project discovery
 # ===========================================================================
@@ -3164,124 +3023,456 @@ write_inventory() {
   printf '%s\n' "$DOCKER_INV" | aggregate_inventory | write_inventory_lines docker 0
 }
 
-# ---------------------------------------------------------------------------
-# Main program, part to be moved: projects and inventory
-PROJECT_LIST=
-[ "$NO_PROJECTS" = 1 ] || collect_projects
-if [ "$INVENTORY" = 1 ]; then
-  write_inventory
-  exit 0
-fi
+# ===========================================================================
+# 11. Summary and archive
+# ===========================================================================
 
-# ---------------------------------------------------------------------------
-# Summary, archive, hashes
-END_TS=$(utc_timestamp)
+# count_status STATUS -> the number of manifest rows with that status.
+# Reads MANIFEST.
 count_status() { to_number "$(grep -c "\"status\":\"$1\"" "$MANIFEST" 2>/dev/null)"; }
-# Users whose home gave at least one manifest row, in enumeration order. The
-# error_read row for an unreadable home itself does not count.
-ACTIVE_USERS=$(printf '%s\n' "$USER_LIST" | while IFS=: read -r _u _h; do
-  [ -n "$_h" ] || continue
-  _hj=$(json_escape "$_h")
-  grep -F "\"home\":\"$_hj\"" "$MANIFEST" 2>/dev/null | grep -F -v -q "\"path\":\"$_hj\",\"archive_path\":\"\",\"type\":\"dir\"" && printf '%s:%s\n' "$_u" "$_h"
-done)
-# human_size BYTES -> "512 B", "20.9 MiB"
-human_size() {
-  awk -v b="$(to_number "$1")" 'BEGIN { split("B KiB MiB GiB TiB", u, " "); i = 1
-    while (b >= 1024 && i < 5) { b /= 1024; i++ }
-    if (i == 1) printf "%d B", b; else printf "%.1f %s", b, u[i] }'
-}
-BYTES=$(awk -F'"size":' '/"status":"collected"/ {split($2,a,","); s+=a[1]} END{printf "%d", s}' "$MANIFEST")
 
-json_list() { # newline-separated -> JSON array
-  _jl_n=0
+# list_active_users -> user:home for the users whose home gave at least one
+# manifest row, in enumeration order. The error_read row for an unreadable
+# home itself does not count. Reads USER_LIST, MANIFEST. Temporaries: _lau_.
+list_active_users() {
+  printf '%s\n' "$USER_LIST" | while IFS=: read -r _lau_user _lau_home; do
+    [ -n "$_lau_home" ] || continue
+    _lau_home_json=$(json_escape "$_lau_home")
+    grep -F "\"home\":\"$_lau_home_json\"" "$MANIFEST" 2>/dev/null |
+      grep -F -v -q "\"path\":\"$_lau_home_json\",\"archive_path\":\"\",\"type\":\"dir\"" &&
+      printf '%s:%s\n' "$_lau_user" "$_lau_home"
+  done
+}
+
+# sum_collected_bytes -> the total size of the collected rows. Reads MANIFEST.
+sum_collected_bytes() {
+  awk -F'"size":' '/"status":"collected"/ { split($2, fields, ","); total += fields[1] }
+    END { printf "%d", total }' "$MANIFEST"
+}
+
+# format_human_size BYTES -> "512 B", "20.9 MiB"
+format_human_size() {
+  awk -v bytes="$(to_number "$1")" 'BEGIN { split("B KiB MiB GiB TiB", units, " "); i = 1
+    while (bytes >= 1024 && i < 5) { bytes /= 1024; i++ }
+    if (i == 1) printf "%d B", bytes; else printf "%.1f %s", bytes, units[i] }'
+}
+
+# json_list LINES -> the non-empty lines of LINES as a JSON array of strings.
+# Temporaries: _jl_.
+json_list() {
+  _jl_started=0
   printf '['
-  printf '%s\n' "$1" | while IFS= read -r _jl_x; do
-    [ -n "$_jl_x" ] || continue
-    [ "$_jl_n" = 0 ] || printf ','
-    printf '"%s"' "$(json_escape "$_jl_x")"
-    _jl_n=1
+  printf '%s\n' "$1" | while IFS= read -r _jl_item; do
+    [ -n "$_jl_item" ] || continue
+    [ "$_jl_started" = 0 ] || printf ','
+    printf '"%s"' "$(json_escape "$_jl_item")"
+    _jl_started=1
   done
   printf ']'
 }
 
-# write_summary ARCHIVE_NAME ARCHIVER: write collection.json and stage a copy.
-# Called again before each archive fallback, so the archived and the on-disk
-# summary name the archive and the archiver actually used.
+# json_bool FLAG -> true when FLAG is 1, else false
+json_bool() { if [ "$1" = 1 ]; then printf true; else printf false; fi; }
+
+# write_summary ARCHIVE_NAME ARCHIVER: writes collection.json (SUMMARY) and
+# stages a copy. Called again before each archive fallback, so the archived
+# and the on-disk summary name the archive and the archiver actually used.
+# Reads TOOL, VERSION, HOST, MODE, ROOT, START_TS, END_TS, the option
+# variables, HASH_TOOL, STAT_MODE, WORKER_SH, USER_LIST, ACTIVE_USERS,
+# PROJECT_LIST, BYTES, the DOCKER_* counters, NOTES, STAGE. The long lines of
+# the here-document are continued with a backslash, which an unquoted
+# here-document removes together with the newline. Temporaries: _ws_.
 write_summary() {
-cat >"$SUMMARY" <<EOF
+  _ws_platform="$(uname -s 2>/dev/null) $(uname -r 2>/dev/null) $(uname -m 2>/dev/null)"
+  cat >"$SUMMARY" <<EOF
 {
   "tool": "$TOOL",
   "version": "$VERSION",
   "hostname": "$(json_escape "$HOST")",
   "mode": "$MODE",
   "root": "$(json_escape "${ROOT:-/}")",
-  "platform": "$(json_escape "$(uname -s 2>/dev/null) $(uname -r 2>/dev/null) $(uname -m 2>/dev/null)")",
+  "platform": "$(json_escape "$_ws_platform")",
   "run_as_uid": "$(id -u 2>/dev/null)",
   "started": "$START_TS",
   "finished": "$END_TS",
-  "options": {"full": $( [ "$FULL" = 1 ] && printf true || printf false ), "no_secrets": $( [ "$NO_SECRETS" = 1 ] && printf true || printf false ), "max_file_size_bytes": $MAX_SIZE, "users_filter": "$(json_escape "$USERS")", "no_docker": $( [ "$NO_DOCKER" = 1 ] && printf true || printf false ), "no_projects": $( [ "$NO_PROJECTS" = 1 ] && printf true || printf false ), "projects": $(json_list "$EXTRA_PROJECTS")},
-  "capabilities": {"hash_tool": "$HASH_TOOL", "stat_mode": "$STAT_MODE", "worker_shell": "$(json_escape "$WORKER_SH")", "archiver": "$(json_escape "$2")"},
+  "options": {"full": $(json_bool "$FULL"), "no_secrets": $(json_bool "$NO_SECRETS"), \
+"max_file_size_bytes": $MAX_SIZE, "users_filter": "$(json_escape "$USERS")", \
+"no_docker": $(json_bool "$NO_DOCKER"), "no_projects": $(json_bool "$NO_PROJECTS"), \
+"projects": $(json_list "$EXTRA_PROJECTS")},
+  "capabilities": {"hash_tool": "$HASH_TOOL", "stat_mode": "$STAT_MODE", \
+"worker_shell": "$(json_escape "$WORKER_SH")", "archiver": "$(json_escape "$2")"},
   "users": $(json_list "$(printf '%s\n' "$USER_LIST" | cut -d: -f1)"),
   "homes": $(json_list "$(printf '%s\n' "$USER_LIST" | sed 's/^[^:]*://')"),
   "users_with_artifacts": $(json_list "$(printf '%s\n' "$ACTIVE_USERS" | cut -d: -f1)"),
   "projects": $(json_list "$(printf '%s\n' "$PROJECT_LIST" | sed 's/^[^:]*://')"),
-  "counts": {"collected": $(count_status collected), "symlink": $(count_status symlink), "skipped_excluded": $(count_status skipped_excluded), "skipped_size": $(count_status skipped_size), "skipped_secret": $(count_status skipped_secret), "error_copy": $(count_status error_copy), "skipped_unmatched_volume": $(count_status skipped_unmatched_volume), "error_read": $(count_status error_read), "collected_bytes": $BYTES},
-  "docker": {"volumes_found": $DOCKER_FOUND, "volumes_collected": $DOCKER_COLLECTED, "unreadable": $DOCKER_UNREADABLE, "docker_desktop": $( [ "$DOCKER_DESKTOP" = 1 ] && printf true || printf false )},
+  "counts": {"collected": $(count_status collected), "symlink": $(count_status symlink), \
+"skipped_excluded": $(count_status skipped_excluded), \
+"skipped_size": $(count_status skipped_size), \
+"skipped_secret": $(count_status skipped_secret), "error_copy": $(count_status error_copy), \
+"skipped_unmatched_volume": $(count_status skipped_unmatched_volume), \
+"error_read": $(count_status error_read), "collected_bytes": $BYTES},
+  "docker": {"volumes_found": $DOCKER_FOUND, "volumes_collected": $DOCKER_COLLECTED, \
+"unreadable": $DOCKER_UNREADABLE, "docker_desktop": $(json_bool "$DOCKER_DESKTOP")},
   "notes": $(json_list "$NOTES"),
   "archive": "$(json_escape "$1")"
 }
 EOF
-cp "$SUMMARY" "$STAGE/collection.json"
+  cp "$SUMMARY" "$STAGE/collection.json"
 }
 
-write_summary "$NAME.tar.gz" 'tar -z'
-log_line "Archiving"
-cp "$MANIFEST" "$STAGE/manifest.jsonl"
-cp "$LOG" "$STAGE/collector.log"
-
-# tar_gzip: write $ARCHIVE with tar -cf - | gzip; succeed only when both do.
-# POSIX sh has no pipefail, so tar's exit status goes through a file under -o,
-# outside the staging directory, and is removed before returning.
+# tar_gzip: writes ARCHIVE with tar -cf - | gzip; succeeds only when both do.
+# POSIX sh has no pipefail, so tar's exit status goes through a file under -o
+# (TAR_RC), outside the staging directory, and is removed before returning.
+# Temporaries: _tg_.
 tar_gzip() {
   [ -z "$TAR_RC" ] || rm -f "$TAR_RC"
   { tar -cf - -C "$STAGE" . 2>>"$LOG"; echo "$?" >"$TAR_RC"; } | gzip >"$ARCHIVE"
-  _tg_gz=$?
-  _tg_tar=$(cat "$TAR_RC" 2>/dev/null)
+  _tg_gzip_status=$?
+  _tg_tar_status=$(cat "$TAR_RC" 2>/dev/null)
   [ -z "$TAR_RC" ] || rm -f "$TAR_RC"
-  [ "$_tg_gz" = 0 ] && [ "$_tg_tar" = 0 ] && return 0
-  [ "$_tg_tar" = 0 ] || log_line "tar | gzip: tar exited ${_tg_tar:-without a status}"
+  [ "$_tg_gzip_status" = 0 ] && [ "$_tg_tar_status" = 0 ] && return 0
+  [ "$_tg_tar_status" = 0 ] || log_line "tar | gzip: tar exited ${_tg_tar_status:-without a status}"
   return 1
 }
 
-rm -f "$ARCHIVE"
-if ! tar -czf "$ARCHIVE" -C "$STAGE" . 2>>"$LOG"; then
+# write_archive: the main step that writes the archive. Writes
+# collection.json, stages it with the manifest and the log, then archives
+# the staging directory with tar -czf, falling back to tar | gzip and then
+# to an uncompressed tar (which changes ARCHIVE to NAME.tar), rewriting
+# collection.json before each fallback. Exits 2 when no archive was written.
+write_archive() {
+  write_summary "$NAME.tar.gz" 'tar -z'
+  log_line "Archiving"
+  cp "$MANIFEST" "$STAGE/manifest.jsonl"
+  cp "$LOG" "$STAGE/collector.log"
   rm -f "$ARCHIVE"
-  if command -v gzip >/dev/null 2>&1 && write_summary "$NAME.tar.gz" 'tar | gzip' &&
-    tar_gzip; then :
-  else
-    rm -f "$ARCHIVE"; ARCHIVE="$OUTDIR/$NAME.tar"
-    write_summary "$NAME.tar" 'tar'
-    tar -cf "$ARCHIVE" -C "$STAGE" . 2>>"$LOG" || { log_line "FATAL: tar failed"; exit 2; }
+  if ! tar -czf "$ARCHIVE" -C "$STAGE" . 2>>"$LOG"; then
+    rm -f "$ARCHIVE"
+    if command -v gzip >/dev/null 2>&1 && write_summary "$NAME.tar.gz" 'tar | gzip' &&
+      tar_gzip; then :
+    else
+      rm -f "$ARCHIVE"; ARCHIVE="$OUTDIR/$NAME.tar"
+      write_summary "$NAME.tar" 'tar'
+      tar -cf "$ARCHIVE" -C "$STAGE" . 2>>"$LOG" || { log_line "FATAL: tar failed"; exit 2; }
+    fi
   fi
-fi
-[ -s "$ARCHIVE" ] || { log_line "FATAL: archive not written"; exit 2; }
+  [ -s "$ARCHIVE" ] || { log_line "FATAL: archive not written"; exit 2; }
+}
 
-ARCHIVE_SHA=$(hash_file "$ARCHIVE")
-ARCHIVE_SIZE=$(stat_file "$ARCHIVE"); ARCHIVE_SIZE=${ARCHIVE_SIZE%% *}
-printf '%s  %s\n' "$ARCHIVE_SHA" "${ARCHIVE##*/}" >"$ARCHIVE.sha256"
-# The archive's size and hash follow on stdout, so stderr gets only "done".
-printf '%s done: %s (%s bytes, sha256 %s)\n' "$(utc_timestamp)" "$ARCHIVE" "$ARCHIVE_SIZE" "$ARCHIVE_SHA" >>"$LOG"
-[ "$QUIET" = 1 ] || printf 'done\n' >&2
+# hash_archive: sets ARCHIVE_SHA and ARCHIVE_SIZE, writes ARCHIVE.sha256 and
+# logs the final "done" line. The archive's size and hash follow on stdout,
+# so stderr gets only "done".
+hash_archive() {
+  ARCHIVE_SHA=$(hash_file "$ARCHIVE")
+  ARCHIVE_SIZE=$(stat_file "$ARCHIVE"); ARCHIVE_SIZE=${ARCHIVE_SIZE%% *}
+  printf '%s  %s\n' "$ARCHIVE_SHA" "${ARCHIVE##*/}" >"$ARCHIVE.sha256"
+  printf '%s done: %s (%s bytes, sha256 %s)\n' "$(utc_timestamp)" "$ARCHIVE" "$ARCHIVE_SIZE" \
+    "$ARCHIVE_SHA" >>"$LOG"
+  [ "$QUIET" = 1 ] || printf 'done\n' >&2
+}
 
-printf 'archive:    %s\nsize:       %s (%s)\nsha256:     %s\nmanifest:   %s\nsummary:    %s\nlog:        %s\nusers:      %s\nprojects:   %s\ncollected:  %s files, %s bytes (%s)\nskipped:    %s excluded, %s too large, %s secret\nerrors:     %s (%s error_copy, %s error_read)\n' \
-  "$ARCHIVE" "$ARCHIVE_SIZE" "$(human_size "$ARCHIVE_SIZE")" "$ARCHIVE_SHA" "$MANIFEST" "$SUMMARY" "$LOG" \
-  "$(printf '%s\n' "$ACTIVE_USERS" | grep -c .)" "$(printf '%s\n' "$PROJECT_LIST" | grep -c .)" \
-  "$(count_status collected)" "$BYTES" "$(human_size "$BYTES")" "$(count_status skipped_excluded)" "$(count_status skipped_size)" "$(count_status skipped_secret)" \
-  "$(( $(count_status error_copy) + $(count_status error_read) ))" "$(count_status error_copy)" "$(count_status error_read)"
-if [ "$DOCKER_SEEN" = 1 ]; then
-  printf 'docker:     %s volumes found, %s collected, %s unreadable' "$DOCKER_FOUND" "$DOCKER_COLLECTED" "$DOCKER_UNREADABLE"
-  [ "$DOCKER_UNREADABLE" -gt 0 ] && printf ' (run as root to collect)'
-  [ "$DOCKER_DESKTOP" = 1 ] && printf '; Docker Desktop VM disk not collected'
-  printf '\n'
+# print_result: the stdout summary, one "name: value" line each, and a docker
+# line when any Docker or Podman data was seen. Temporaries: _pr_.
+print_result() {
+  printf 'archive:    %s\n' "$ARCHIVE"
+  printf 'size:       %s (%s)\n' "$ARCHIVE_SIZE" "$(format_human_size "$ARCHIVE_SIZE")"
+  printf 'sha256:     %s\n' "$ARCHIVE_SHA"
+  printf 'manifest:   %s\n' "$MANIFEST"
+  printf 'summary:    %s\n' "$SUMMARY"
+  printf 'log:        %s\n' "$LOG"
+  printf 'users:      %s\n' "$(printf '%s\n' "$ACTIVE_USERS" | grep -c .)"
+  printf 'projects:   %s\n' "$(printf '%s\n' "$PROJECT_LIST" | grep -c .)"
+  printf 'collected:  %s files, %s bytes (%s)\n' "$(count_status collected)" "$BYTES" \
+    "$(format_human_size "$BYTES")"
+  printf 'skipped:    %s excluded, %s too large, %s secret\n' \
+    "$(count_status skipped_excluded)" "$(count_status skipped_size)" \
+    "$(count_status skipped_secret)"
+  _pr_copy_errors=$(count_status error_copy); _pr_read_errors=$(count_status error_read)
+  printf 'errors:     %s (%s error_copy, %s error_read)\n' \
+    "$(( _pr_copy_errors + _pr_read_errors ))" "$_pr_copy_errors" "$_pr_read_errors"
+  if [ "$DOCKER_SEEN" = 1 ]; then
+    printf 'docker:     %s volumes found, %s collected, %s unreadable' \
+      "$DOCKER_FOUND" "$DOCKER_COLLECTED" "$DOCKER_UNREADABLE"
+    [ "$DOCKER_UNREADABLE" -gt 0 ] && printf ' (run as root to collect)'
+    [ "$DOCKER_DESKTOP" = 1 ] && printf '; Docker Desktop VM disk not collected'
+    printf '\n'
+  fi
+}
+
+# ===========================================================================
+# 12. Main program
+# ===========================================================================
+# Option parsing and validation, setup, then one call per step, in run order,
+# at the end of this section. The setup and step functions set globals, so
+# each is called in the main shell, never in a pipeline or $(...).
+
+# usage: prints the help text to stdout
+usage() {
+  cat <<EOF
+Usage: $0 [options]
+
+  -o, --output DIR        Directory for the archive (default: current dir)
+  -r, --root DIR          Alternate root, e.g. a mounted disk image (image mode)
+  -u, --users LIST        Comma-separated usernames to collect (default: all)
+  -p, --project DIR       Extra project directory to collect (repeatable)
+      --full              Disable default size exclusions (model blobs, caches,
+                          extension binaries)
+      --no-secrets        Skip credential files instead of collecting them
+      --no-projects       Skip project-level artifact discovery
+      --no-docker         Skip Docker and Podman volume enumeration
+      --max-file-size MB  Skip files larger than this (default 256, 0 = none)
+  -k, --keep-staging      Keep the staging directory after archiving
+      --inventory         Write nothing; print one JSON line per user and agent
+                          found (file count, bytes, first and last mtime) to
+                          stdout. -o is ignored
+      --list              Print the artifact catalog and exit
+  -q, --quiet             Only print the final summary
+  -V, --version           Print version and exit
+  -h, --help              This help
+
+Environment: COLLECTOR_SH overrides the shell used for per-file workers
+(default: dash when it is on PATH, otherwise sh). Run as root to collect
+every user's home.
+EOF
+}
+
+# need_value COUNT: exits 1 with the usage on stderr when an option that
+# takes a value has no argument after it (COUNT, the number of arguments
+# left including the option, is below 2)
+need_value() { [ "$1" -ge 2 ] || { usage >&2; exit 1; }; }
+
+# parse_options ARGS...: sets the option globals (OUTDIR, OUTDIR_SET, ROOT,
+# USERS, EXTRA_PROJECTS (newline-separated), FULL, NO_SECRETS, NO_PROJECTS,
+# NO_DOCKER, MAX_MB, KEEP, LIST, INVENTORY, QUIET) from their defaults and
+# ARGS. Exits 0 after --version or --help, and 1 on an unknown option.
+parse_options() {
+  OUTDIR=.; OUTDIR_SET=0; ROOT=; USERS=; EXTRA_PROJECTS=
+  FULL=0; NO_SECRETS=0; NO_PROJECTS=0; NO_DOCKER=0; MAX_MB=256
+  KEEP=0; QUIET=0; LIST=0; INVENTORY=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -o|--output)        need_value $#; OUTDIR=$2; OUTDIR_SET=1; shift ;;
+      -r|--root)          need_value $#; ROOT=$2; shift ;;
+      -u|--users)         need_value $#; USERS=$2; shift ;;
+      -p|--project)       need_value $#; EXTRA_PROJECTS="$EXTRA_PROJECTS
+$2"; shift ;;
+      --full)             FULL=1 ;;
+      --no-secrets)       NO_SECRETS=1 ;;
+      --no-projects)      NO_PROJECTS=1 ;;
+      --no-docker)        NO_DOCKER=1 ;;
+      --max-file-size)    need_value $#; MAX_MB=$2; shift ;;
+      -k|--keep-staging)  KEEP=1 ;;
+      --list)             LIST=1 ;;
+      --inventory)        INVENTORY=1 ;;
+      -q|--quiet)         QUIET=1 ;;
+      -V|--version)       printf '%s %s\n' "$TOOL" "$VERSION"; exit 0 ;;
+      -h|--help)          usage; exit 0 ;;
+      *)                  printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 1 ;;
+    esac
+    shift
+  done
+}
+
+# print_catalog: the --list output, the five tables under a heading each,
+# without blank lines (SECRET_GLOBS has none)
+print_catalog() {
+  printf '# home artifacts (agent|glob relative to home)\n%s\n' "$CATALOG" | grep -v '^$'
+  printf '\n# project artifacts (relative to each discovered project)\n%s\n' \
+    "$PROJECT_CATALOG" | grep -v '^$'
+  printf '\n# excluded unless --full\n%s\n' "$EXCLUDES" | grep -v '^$'
+  printf '\n# credential files (flagged secret, skipped with --no-secrets)\n%s\n' "$SECRET_GLOBS"
+  printf '\n# docker volumes (agent|volume name glob)\n%s\n' "$DOCKER_VOLUMES" | grep -v '^$'
+}
+
+# set_max_size: exits 1 when --max-file-size is not a whole number of MiB,
+# else sets MAX_SIZE in bytes (0, no limit)
+set_max_size() {
+  case "$MAX_MB" in
+    ''|*[!0-9]*) printf 'Invalid --max-file-size: %s\n' "$MAX_MB" >&2; exit 1 ;;
+  esac
+  MAX_SIZE=$(( MAX_MB * 1024 * 1024 ))
+}
+
+# resolve_extra_projects: rewrites EXTRA_PROJECTS as absolute paths, each
+# kept once. A relative -p is resolved against the current directory, in
+# image mode too: -p is a path on the machine running the collector and is
+# never prefixed with the root. An existing directory is resolved with cd and
+# pwd (logical, so a symlink in the path keeps its name); any other value is
+# joined to the current directory as given. Temporaries: _rep_.
+resolve_extra_projects() {
+  _rep_resolved=
+  while IFS= read -r _rep_project; do
+    [ -n "$_rep_project" ] || continue
+    case "$_rep_project" in
+      /*) ;;
+      *) _rep_absolute=$(cd "./$_rep_project" 2>/dev/null && pwd) || _rep_absolute=
+         [ -n "$_rep_absolute" ] || _rep_absolute="$(pwd)/${_rep_project#./}"
+         _rep_project=$_rep_absolute ;;
+    esac
+    case "$_rep_resolved
+" in (*"
+$_rep_project
+"*) continue ;; esac
+    _rep_resolved="$_rep_resolved
+$_rep_project"
+  done <<EOF_EXTRA_PROJECTS
+$EXTRA_PROJECTS
+EOF_EXTRA_PROJECTS
+  EXTRA_PROJECTS=$_rep_resolved
+}
+
+# resolve_root: makes ROOT "" for live mode, or else an absolute path without
+# a trailing slash (exits 2 when it is not a directory), and sets MODE to
+# live or image
+resolve_root() {
+  if [ -n "$ROOT" ]; then
+    [ -d "$ROOT" ] || { printf 'Root is not a directory: %s\n' "$ROOT" >&2; exit 2; }
+    ROOT=$(cd "$ROOT" && pwd)
+    [ "$ROOT" = / ] && ROOT=
+  fi
+  if [ -n "$ROOT" ]; then MODE=image; else MODE=live; fi
+}
+
+# check_prerequisites: exits 2 unless find is installed and, outside
+# --inventory (which writes nothing: no output directory, staging or log),
+# the output directory exists or can be created, is writable, and tar is
+# installed. Sets OUTDIR to its absolute path.
+check_prerequisites() {
+  if [ "$INVENTORY" != 1 ]; then
+    [ -d "$OUTDIR" ] || mkdir -p "$OUTDIR" 2>/dev/null ||
+      { printf 'Cannot create output dir: %s\n' "$OUTDIR" >&2; exit 2; }
+    OUTDIR=$(cd "$OUTDIR" && pwd) || exit 2
+    [ -w "$OUTDIR" ] || { printf 'Output dir not writable: %s\n' "$OUTDIR" >&2; exit 2; }
+    command -v tar >/dev/null 2>&1 || { printf 'tar not found\n' >&2; exit 2; }
+  fi
+  command -v find >/dev/null 2>&1 || { printf 'find not found\n' >&2; exit 2; }
+}
+
+# detect_capabilities: capability detection, done once, for the platform
+# wrappers in COMMON: HASH_TOOL (sha256sum, shasum, sha256, openssl or none)
+# and STAT_MODE (gnu, gnu0 for a GNU stat without %W, bsd or none); and
+# WORKER_SH. The find -exec workers fork for every batch and do most of the
+# per-file work, so they run under dash when it is installed (Debian and
+# Ubuntu sh, /bin/dash on macOS since 10.15), which starts and loops faster
+# than bash; COLLECTOR_SH overrides it. Temporaries: _dc_.
+detect_capabilities() {
+  if command -v sha256sum >/dev/null 2>&1; then HASH_TOOL=sha256sum
+  elif command -v shasum >/dev/null 2>&1 && shasum -a 256 /dev/null >/dev/null 2>&1; then
+    HASH_TOOL=shasum
+  elif command -v sha256 >/dev/null 2>&1; then HASH_TOOL=sha256
+  elif command -v openssl >/dev/null 2>&1; then HASH_TOOL=openssl
+  else HASH_TOOL=none; fi
+  _dc_stat_probe=$(stat -c '%s %W' / 2>/dev/null)
+  case "$_dc_stat_probe" in
+    '') if stat -f '%z' / >/dev/null 2>&1; then STAT_MODE=bsd; else STAT_MODE=none; fi ;;
+    *[!0-9\ ]*) STAT_MODE=gnu0 ;;
+    *) STAT_MODE=gnu ;;
+  esac
+  if [ -n "${COLLECTOR_SH:-}" ]; then WORKER_SH=$COLLECTOR_SH
+  elif command -v dash >/dev/null 2>&1; then WORKER_SH=dash
+  else WORKER_SH='sh'; fi
+}
+
+# set_output_names: sets START_TS, HOST and the output paths under OUTDIR:
+# NAME (host_stamp_agent-artifacts), STAGE (the staging directory), ARCHIVE,
+# LOG, MANIFEST, SUMMARY and TAR_RC (tar_gzip's status file). With
+# --inventory nothing is written: no STAGE or TAR_RC, and LOG and MANIFEST
+# are /dev/null.
+set_output_names() {
+  START_TS=$(utc_timestamp)
+  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+  HOST=$(hostname 2>/dev/null || uname -n 2>/dev/null || printf unknown)
+  HOST_SAFE=$(printf '%s' "$HOST" | tr -c 'A-Za-z0-9._-' '-')
+  NAME="${HOST_SAFE}_${STAMP}_agent-artifacts"
+  STAGE="$OUTDIR/.stage-$NAME"
+  ARCHIVE="$OUTDIR/$NAME.tar.gz"
+  LOG="$OUTDIR/$NAME.log"
+  MANIFEST="$OUTDIR/$NAME.manifest.jsonl"
+  SUMMARY="$OUTDIR/$NAME.collection.json"
+  TAR_RC="$OUTDIR/.tar-status-$NAME"
+  if [ "$INVENTORY" = 1 ]; then
+    STAGE=; LOG=/dev/null; MANIFEST=/dev/null; TAR_RC=
+  fi
+}
+
+# cleanup: removes the staging directory (unless -k) and tar_gzip's status
+# file. Reads KEEP, STAGE, TAR_RC.
+# shellcheck disable=SC2317,SC2329 # invoked from the traps in the main program
+cleanup() {
+  if [ "$KEEP" != 1 ] && [ -n "$STAGE" ] && [ -d "$STAGE" ]; then
+    rm -rf "$STAGE"
+  fi
+  [ -z "$TAR_RC" ] || rm -f "$TAR_RC"
+}
+
+# create_output_files: outside --inventory, creates the staging directory
+# (exits 2 when it cannot) and empty LOG and MANIFEST files
+create_output_files() {
+  if [ "$INVENTORY" != 1 ]; then
+    mkdir -p "$STAGE/fs" || { printf 'Cannot create staging dir\n' >&2; exit 2; }
+    : >"$LOG"; : >"$MANIFEST"
+  fi
+}
+
+# log_start: the first log lines: version, host, mode and uid; the
+# capabilities and options; a warning when a live run is not root; a note
+# when --inventory ignores -o. Temporaries: _ls_.
+log_start() {
+  _ls_system="$(uname -s 2>/dev/null) $(uname -r 2>/dev/null)"
+  _ls_mode="mode=$MODE root=${ROOT:-/} uid=$(id -u 2>/dev/null)"
+  log_line "$TOOL $VERSION starting on $HOST ($_ls_system) $_ls_mode"
+  _ls_options="max_file_size=${MAX_MB}MB full=$FULL no_secrets=$NO_SECRETS no_docker=$NO_DOCKER"
+  log_line "hash=$HASH_TOOL stat=$STAT_MODE $_ls_options worker_sh=$WORKER_SH"
+  if [ "$MODE" = live ] && [ "$(id -u 2>/dev/null)" != 0 ]; then
+    log_line "WARNING: not running as root; other users' homes will probably be unreadable"
+  fi
+  if [ "$INVENTORY" = 1 ] && [ "$OUTDIR_SET" = 1 ]; then
+    log_line "NOTE: --inventory writes nothing; -o $OUTDIR ignored"
+  fi
+}
+
+# The steps, in run order.
+parse_options "$@"
+if [ "$LIST" = 1 ]; then
+  print_catalog
+  exit 0
 fi
+set_max_size
+resolve_extra_projects
+resolve_root
+check_prerequisites
+detect_capabilities
+set_output_names
+# exported for the worker programs
+export HASH_TOOL STAT_MODE MAX_SIZE SECRET_GLOBS NO_SECRETS LOG QUIET
+trap 'cleanup' EXIT
+trap 'log_line "interrupted"; cleanup; trap - EXIT; exit 130' INT TERM
+create_output_files
+if [ "$FULL" = 1 ]; then ACTIVE_EXCLUDES=; else ACTIVE_EXCLUDES=$EXCLUDES; fi
+log_start
+
+# Globals the steps fill: notes for collection.json, the Docker counters
+# (section 8) and the project list (section 9)
+NOTES=
+DOCKER_SEEN=0; DOCKER_FOUND=0; DOCKER_COLLECTED=0; DOCKER_UNREADABLE=0; DOCKER_DESKTOP=0
+DOCKER_INV=
+PROJECT_LIST=
+
+USER_LIST=$(get_user_homes)
+[ -n "$USER_LIST" ] || log_line "WARNING: no user home directories found"
+# --inventory walks the homes in write_inventory, after project discovery
+[ "$INVENTORY" = 1 ] || collect_user_homes
+[ "$NO_DOCKER" = 1 ] || collect_docker_volumes
+[ "$NO_PROJECTS" = 1 ] || collect_projects
+if [ "$INVENTORY" = 1 ]; then
+  write_inventory
+  exit 0
+fi
+
+END_TS=$(utc_timestamp)
+ACTIVE_USERS=$(list_active_users)
+BYTES=$(sum_collected_bytes)
+write_archive
+hash_archive
+print_result
 exit 0
