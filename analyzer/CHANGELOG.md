@@ -34,10 +34,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The `agents:` line `timeline` prints reads
   `parsed: <list>; detected but not parsed: <list>`, with `none` for an
-  empty list, and `none were found` when both lists are empty (an input
-  with no agent data), instead of `parsed <list>; detected only <list>`,
-  which read `detected only none` when every detected agent was parsed
-  and `parsed none; detected only none` for an empty input ([#85]).
+  empty list, followed by `; parser found no rows: <list>` when a
+  detected agent's parser produced no rows, and `none were found` for an
+  input with no agent data. It used to read
+  `parsed <list>; detected only <list>`, which said `detected only none`
+  when every detected agent was parsed, `parsed none; detected only none`
+  for an empty input, and nothing about agents whose parser found no
+  rows ([#85]).
 
 ### Fixed
 

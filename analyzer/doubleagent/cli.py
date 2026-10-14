@@ -397,17 +397,24 @@ def build_filter(args: argparse.Namespace) -> RowFilter:
     return RowFilter(since, until, args.keep_undated, patterns)
 
 
-def agents_summary(parsed: list[str], unparsed: list[str]) -> str:
-    """The text of the timeline's `agents:` line: the agents that produced
-    rows, then the agents detected that have no parser, each list sorted and
-    `none` when it is empty; `none were found` when both are empty."""
+def agents_summary(
+    detected: bool, parsed: list[str], unparsed: list[str], no_rows: list[str]
+) -> str:
+    """The text of the timeline's `agents:` line. `detected` says whether the
+    input held any agent at all; `parsed` are the agents that produced rows,
+    `unparsed` the detected agents with no parser and `no_rows` the detected
+    agents whose parser ran and produced no rows. Each list is sorted and
+    reads `none` when empty; `no_rows` is shown only when it has an entry."""
 
     def names(agents: list[str]) -> str:
         return ", ".join(sorted(set(agents))) or "none"
 
-    if not parsed and not unparsed:
+    if not detected and not parsed:
         return "none were found"
-    return "parsed: %s; detected but not parsed: %s" % (names(parsed), names(unparsed))
+    text = "parsed: %s; detected but not parsed: %s" % (names(parsed), names(unparsed))
+    if no_rows:
+        text += "; parser found no rows: %s" % names(no_rows)
+    return text
 
 
 def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
@@ -468,8 +475,19 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
         )
     # Project-tagged files are routed to every parser, so they are never
     # "detected but not parsed" in their own right.
-    unparsed = [r["agent"] for r in detect if not r["parser"] and r["agent"] != PROJECT_AGENT]
-    print("agents:    " + agents_summary(parsed_agents, unparsed))
+    agents = [r for r in detect if r["agent"] != PROJECT_AGENT]
+    unparsed = [r["agent"] for r in agents if not r["parser"]]
+    # An agent left out by --agent was not parsed, so it did not come up empty.
+    no_rows = [
+        r["agent"]
+        for r in agents
+        if r["parser"]
+        and r["agent"] not in parsed_agents
+        and (not args.agent or r["agent"] in args.agent)
+    ]
+    print(
+        "agents:    " + agents_summary(bool(agents), parsed_agents, unparsed, sorted(set(no_rows)))
+    )
     print("rows:      %d in %s" % (len(rows), timeline))
     for (agent, tt), n in sorted(counts.items()):
         print("           %-14s %-12s %d" % (agent, tt, n))

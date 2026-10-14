@@ -49,18 +49,24 @@ class AgentsSummaryTests(unittest.TestCase):
         self.write(".copilot/config.json", "{}")
 
     def test_text(self):
+        summary = cli.agents_summary
         self.assertEqual(
-            cli.agents_summary(["claude-code", "antigravity"], ["copilot-cli", "copilot-cli"]),
+            summary(True, ["claude-code", "antigravity"], ["copilot-cli", "copilot-cli"], []),
             "parsed: antigravity, claude-code; detected but not parsed: copilot-cli",
         )
         self.assertEqual(
-            cli.agents_summary(["claude-code"], []),
+            summary(True, ["claude-code"], [], []),
             "parsed: claude-code; detected but not parsed: none",
         )
         self.assertEqual(
-            cli.agents_summary([], ["cursor"]),
+            summary(True, [], ["cursor"], []),
             "parsed: none; detected but not parsed: cursor",
         )
+        self.assertEqual(
+            summary(True, [], [], ["antigravity"]),
+            "parsed: none; detected but not parsed: none; parser found no rows: antigravity",
+        )
+        self.assertEqual(summary(False, [], [], []), "none were found")
 
     def test_both_lists(self):
         self.claude_history()
@@ -91,8 +97,37 @@ class AgentsSummaryTests(unittest.TestCase):
             "agents:    parsed: none; detected but not parsed: copilot-cli",
         )
 
+    def test_parser_found_no_rows(self):
+        # The agent is detected and has a parser, but its files hold nothing:
+        # an empty summaries database and an empty conversations directory.
+        self.write(".gemini/antigravity-cli/conversation_summaries.db", "")
+        (self.home / ".gemini/antigravity-cli/conversations").mkdir()
+        self.copilot_state()
+        rc, out = run_timeline(self.tmp / "home", self.tmp / "out")
+        self.assertEqual(rc, 1, out)  # no rows
+        self.assertEqual(
+            agents_line(out),
+            "agents:    parsed: none; detected but not parsed: copilot-cli;"
+            " parser found no rows: antigravity",
+        )
+        self.assertNotIn("none were found", out)
+
+    def test_agent_left_out_by_filter_is_not_no_rows(self):
+        self.claude_history()
+        self.write(".gemini/antigravity-cli/conversation_summaries.db", "")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            rc = cli.main(
+                ["timeline", str(self.tmp / "home"), "-o", str(self.tmp / "out")]
+                + ["--agent", "claude-code"]
+            )
+        self.assertEqual(rc, 0, buf.getvalue())
+        self.assertEqual(
+            agents_line(buf.getvalue()),
+            "agents:    parsed: claude-code; detected but not parsed: none",
+        )
+
     def test_no_agent_data(self):
-        self.assertEqual(cli.agents_summary([], []), "none were found")
         self.write("Documents/notes.txt", "not an agent file\n")
         rc, out = run_timeline(self.tmp / "home", self.tmp / "out")
         self.assertEqual(rc, 1, out)  # no rows

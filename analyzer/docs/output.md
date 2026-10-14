@@ -44,27 +44,31 @@ outside the window, without a timestamp, and not matching. Then come the
 `agents:` line, the row count with a breakdown by agent and `turn_type`,
 and the session count. The breakdown counts the rows written.
 
-The `agents:` line is always one line: two lists when either has an entry,
-otherwise `none were found`:
+The `agents:` line is always one line. When the input holds at least one
+agent it lists them in two or three groups; otherwise it reads
+`none were found`:
 
 ```text
 agents:    parsed: antigravity, claude-code; detected but not parsed: copilot-cli
-agents:    parsed: antigravity, claude-code; detected but not parsed: none
+agents:    parsed: claude-code; detected but not parsed: none
 agents:    parsed: none; detected but not parsed: copilot-cli
+agents:    parsed: claude-code; detected but not parsed: none; parser found no rows: antigravity
 agents:    none were found
 ```
 
-`parsed` names the agents that produced rows before filtering, so an agent
-whose parser read its files and found nothing to report is in neither list.
-`detected but not parsed` names the agents in the input that have no parser
-(the agents `detect` shows without one). Files tagged `project`, which every
-parser is offered, are never listed there. Each list is sorted and
-comma-separated, and reads `none` when it is empty while the other is
-not. When both are empty the line reads `none were found`: the input holds
-no agent data (where `detect` prints `no agent artifacts found`), or the
-only agents in it have parsers that produced no rows. Before analyzer
-0.12.0 the line read `parsed <list>; detected only <list>`, with `none` for
-an empty list.
+`parsed` names the agents that produced rows before filtering. `detected
+but not parsed` names the agents in the input that have no parser (the
+agents `detect` shows without one). `parser found no rows` names the agents
+in the input that have a parser which read their files and produced no
+rows, such as a data directory holding only an empty database; the group
+appears only when it has an entry, and with `--agent` it counts only the
+agents selected. Files tagged `project`, which every parser is offered, are
+never listed in the last two groups. Each list is sorted and
+comma-separated, and `parsed` or `detected but not parsed` reads `none`
+when it is empty. `none were found` means the input holds no agent data,
+where `detect` prints `no agent artifacts found`. Before analyzer 0.12.0
+the line read `parsed <list>; detected only <list>`, with `none` for an
+empty list.
 
 ## JSONL encoding
 
