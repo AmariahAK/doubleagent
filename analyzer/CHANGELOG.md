@@ -9,6 +9,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-13
+
 ### Added
 
 - The bundled catalog copy follows collector 1.12.0: the Antigravity
@@ -16,6 +18,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`Library/Application Support/Antigravity`, `.config/Antigravity`,
   `AppData/Roaming/Antigravity`) and its macOS logs directory
   `Library/Logs/Antigravity` are detected as `antigravity` ([#83]).
+- The `antigravity` parser reads the Antigravity desktop app's
+  conversations: `conversations/*.db` and `conversation_summaries.db`
+  under `.gemini/antigravity` (the desktop app 2.x), and under
+  `.gemini/antigravity-ide` and `.gemini/antigravity-backup` (the
+  separately installed IDE and the app's migration backup) as well as
+  `.gemini/antigravity-cli`. Before, only the CLI's conversations produced
+  rows and the app's were collected but silently skipped. Each
+  conversation's session start row now names the surface that wrote it,
+  `source=<trajectory source>` (`cli` for the CLI, `cascade_client` for the
+  desktop app, the number for a value not in the table) and
+  `data_dir=<the .gemini subdirectory>` ([#83]).
+
+### Changed
+
+- The `agents:` line `timeline` prints reads
+  `parsed: <list>; detected but not parsed: <list>`, with `none` for an
+  empty list, and `none were found` when both lists are empty (an input
+  with no agent data), instead of `parsed <list>; detected only <list>`,
+  which read `detected only none` when every detected agent was parsed
+  and `parsed none; detected only none` for an empty input ([#85]).
+
+### Fixed
+
+- `tools/proto_descriptors.py extract` no longer fails with a `TypeError`
+  on Mach-O binaries such as the macOS builds of `agy` and the Antigravity
+  desktop app's language server ([#86]).
 
 ## [0.11.0] - 2026-10-12
 
@@ -426,7 +454,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--summary-length` (default 400), `--include-thinking` and `--agent`;
   `detect --json` and `--files`; `catalog --agents`.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.11.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.12.0...HEAD
+[0.12.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.11.0...analyzer-v0.12.0
 [0.11.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.10.0...analyzer-v0.11.0
 [0.10.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.9.0...analyzer-v0.10.0
 [0.9.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.8.1...analyzer-v0.9.0
@@ -441,6 +470,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#86]: https://github.com/seanthegeek/doubleagent/issues/86
+[#85]: https://github.com/seanthegeek/doubleagent/issues/85
 [#83]: https://github.com/seanthegeek/doubleagent/issues/83
 [#81]: https://github.com/seanthegeek/doubleagent/issues/81
 [#80]: https://github.com/seanthegeek/doubleagent/issues/80
