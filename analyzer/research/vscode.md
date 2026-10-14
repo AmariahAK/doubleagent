@@ -76,6 +76,37 @@ Tool call and result are the same object: the call is `toolCallId`, `toolId`
 and `toolSpecificData`, the result is `resultDetails`, `resultError` and
 `isComplete`. No git branch field; `repoData` is unspecified here.
 
+Permission state on a tool invocation
+([`chatService.ts:1204-1210`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/workbench/contrib/chat/common/chatService/chatService.ts#L1204-L1210)):
+`isConfirmed` is `ConfirmedReason | boolean | undefined`, the boolean
+being the pre-1.104 form. `ConfirmedReason`
+([`:880-889`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/workbench/contrib/chat/common/chatService/chatService.ts#L880-L889))
+is an object whose `type` is a `ToolConfirmKind`, a `const enum`
+([`:870-877`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/workbench/contrib/chat/common/chatService/chatService.ts#L870-L877))
+with no explicit values, so TypeScript inlines and serialises the
+declaration index: `Denied` 0, `ConfirmationNotNeeded` 1, `Setting` 2,
+`LmServicePerTool` 3, `UserAction` 4, `Skipped` 5. Beside `type`:
+`source` (`user`, `hook` or `riskAssessment`, the actor of a denial or
+skip, optional) for `Denied` and `Skipped`; `reason` (string or
+markdown) for `ConfirmationNotNeeded`; `id` (the setting) for `Setting`;
+`scope` (`session`, `workspace` or `profile`) for `LmServicePerTool`;
+`selectedButton` and `selectedButtonKind` for `UserAction`. The
+invocation's own `source` field is a different thing: the
+`ToolDataSource` the tool came from, undefined before 1.104, an object
+with `type` (`extension`, `mcp`, `user`, `internal`, `external`) and
+`label`
+([`tools/languageModelToolsService.ts:109-134`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/workbench/contrib/chat/common/tools/languageModelToolsService.ts#L109-L134)).
+
+A `confirmation` response part is `{kind: 'confirmation', title, message,
+data, buttons?, isUsed?}`
+([`chatService.ts:514-522`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/workbench/contrib/chat/common/chatService/chatService.ts#L514-L522)),
+a question a chat participant puts to the user. Clicking a button sends a
+new request whose prompt is `<label>: "<title>"` and whose `confirmation`
+is the button's label, and sets `isUsed`
+([`browser/widget/chatContentParts/chatConfirmationContentPart.ts:42-60`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/workbench/contrib/chat/browser/widget/chatContentParts/chatConfirmationContentPart.ts#L42-L60));
+the request field is a string
+([`chatModel.ts:2084`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/workbench/contrib/chat/common/model/chatModel.ts#L2084)).
+
 JSONL framing ([`common/model/objectMutationLog.ts:196-215`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/workbench/contrib/chat/common/model/objectMutationLog.ts#L196-L215), read
 [`:340-385`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/workbench/contrib/chat/common/model/objectMutationLog.ts#L340-L385)): each line is `{"kind":0,"v":<full session>}` (Initial),
 `{"kind":1,"k":[path...],"v":...}` (Set), `{"kind":2,"k":[...],"v":[items],
@@ -144,6 +175,33 @@ one `thinking` per thinking part, one `tool_use` plus `tool_result` per
 | model | `modelId` |
 | tool_name, tool_use_id | `toolId`, `toolCallId` |
 | text | text, `invocationMessage` or `commandLine.original` |
+
+Model and permission rows, all `system` (issues 96 and 97):
+
+- `model: <id>` at the first request whose `modelId` is set and
+  `model: <old> -> <new>` on every later request with a different
+  `modelId`, before the request's user row, with its `timestamp`. The
+  model is chosen per request, so a session can change model at any
+  request.
+- `permission mode: <mode>` and `permission mode: <old> -> <new>` from
+  the request `modeInfo.telemetryModeId` (`ask`, `agent`, `edit`,
+  `custom`), placed and timed the same way.
+- `permission decision: confirmed=<value>` after a tool invocation's
+  `tool_result` row, with its `toolCallId` and `toolId`: `<value>` is
+  `true` or `false` for the boolean form, else the `ToolConfirmKind`
+  name and number (`UserAction(4)`), followed by the `ConfirmedReason`'s
+  other fields as `key=value` (`reason` last), and `tool_source=<type>`
+  from the invocation's `source`. An invocation without `isConfirmed`
+  gets no row.
+- `permission decision: confirmation isUsed=<bool> buttons=<list>
+  title=<title>` and the part's `message` on the next line, for a
+  `confirmation` response part, at the response time.
+- `permission decision: confirmation=<label>` after the user row of a
+  request whose `confirmation` is set.
+
+The `chat.*` auto-approve settings in `settings.json` are not read:
+their keys are not recorded in this document or in
+[`collectors/research/vscode.md`](../../collectors/research/vscode.md).
 
 Fixture `chatSessions/9ab.jsonl`:
 

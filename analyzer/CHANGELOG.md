@@ -137,6 +137,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `toolUsage.jsonl` record's `tool_result` row and
   `permission decision: canceled` for a session tool call whose state is
   `canceled` ([#96], [#97]).
+- The `vscode` parser writes `model: <id>` and `model: <old> -> <new>`
+  rows from the request `modelId`, and `permission mode: <mode>` and
+  `permission mode: <old> -> <new>` rows from the request
+  `modeInfo.telemetryModeId` (`ask`, `agent`, `edit`, `custom`). A tool
+  invocation's `isConfirmed` becomes a `permission decision:
+  confirmed=<value>` row after its result (`true` or `false` before VS
+  Code 1.104, else the confirmation kind such as `UserAction(4)` or
+  `Denied(0)` with its `source`, `scope`, `id`, `selectedButton` or
+  `reason`, and `tool_source=<type>`), a `confirmation` response part a
+  `permission decision: confirmation isUsed=<bool> buttons=<list>
+  title=<title>` row, and a request sent by a confirmation button a
+  `permission decision: confirmation=<label>` row ([#96], [#97]).
+- The `cody` parser writes `model: <id>` and `model: <old> -> <new>`
+  rows from the assistant message `model`, per chat, and turns each
+  `processes[]` entry of type `confirmation`, dropped before, into a
+  `permission decision: confirmation state=<state> title=<title>` row
+  ([#96], [#97]).
+- The `twinny` parser writes `model: <id>` and `model: <old> -> <new>`
+  rows from `meta.model`, per conversation, and a `permission decision:
+  waiting` or `permission decision: skipped` row (with
+  ` approval=<command|change>` when recorded) after the result of a tool
+  step saved while it waited for the user's Run or Skip, or after the
+  user skipped it ([#96], [#97]).
 
 ### Changed
 

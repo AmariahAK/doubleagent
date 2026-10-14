@@ -267,6 +267,33 @@ time and with an empty `session_id` (the record names none), and
 `toolCallStates[]` status is `canceled`, at the session time. `roo-code`,
 `aider`, `shellgpt` and `tabby` record no model and write no such row.
 
+The `vscode`, `cody` and `twinny` parsers write the same `model: <id>`
+and `model: <old> -> <new>` rows, from the request `modelId` (VS Code),
+the assistant message `model` (Cody, per chat) and `meta.model` (Twinny,
+per conversation), before the rows of the request or message that
+names the model. VS Code also writes `permission mode: <mode>` and
+`permission mode: <old> -> <new>` from the request's chat mode (`ask`,
+`agent`, `edit`, `custom`). Per-call decisions are `permission
+decision:` rows. In VS Code, a tool call's confirmation follows its
+`tool_result` row with the call's `tool_use_id`: `permission decision:
+confirmed=true` or `confirmed=false` (before VS Code 1.104), else
+`confirmed=<kind>(<number>)`, one of `Denied(0)`,
+`ConfirmationNotNeeded(1)`, `Setting(2)`, `LmServicePerTool(3)`,
+`UserAction(4)` and `Skipped(5)`, followed by that record's `source`,
+`id`, `scope`, `selectedButton` or `selectedButtonKind`, the tool's
+origin as `tool_source=<type>` and any `reason` last. A question put to
+the user in the chat is `permission decision: confirmation
+isUsed=<true|false> buttons=<list> title=<title>` with its message on
+the next line, and the request that answering it sent is followed by
+`permission decision: confirmation=<button label>`. Cody's confirmation
+steps are `permission decision: confirmation state=<state>
+title=<title>` with the step's description and content on the next
+lines. Twinny's tool steps saved while waiting for the user's Run or
+Skip, or skipped, are `permission decision: waiting` and `permission
+decision: skipped`, each with ` approval=<command|change>` when the
+step records what was asked, after the step's `tool_result` row with
+its `tool_use_id`.
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and

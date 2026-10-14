@@ -34,8 +34,28 @@ invocationMessage, pastTenseMessage, isComplete, toolSpecificData
 (`commandLine.original` or `rawInput`), resultDetails (`{input, output:
 [{value}], isError}` or a list of URIs), resultError}`, `{kind:
 "textEditGroup", uri}`. Legacy `response` may be a string or a list of
-strings. Other part kinds (progress, confirmation, undo stops, code block
-URIs) are skipped.
+strings. Other part kinds (progress, undo stops, code block URIs) are
+skipped.
+
+Model and permission rows, all `system`: the request `modelId` gives
+`model: <id>` at the first request that names one and
+`model: <old> -> <new>` on every later change, and the request
+`modeInfo.telemetryModeId` (`ask`, `agent`, `edit`, `custom`) gives
+`permission mode: <mode>` and `permission mode: <old> -> <new>` the same
+way; both precede the request's user row and take its timestamp. A tool
+invocation's `isConfirmed` (a boolean before 1.104, else a
+`ConfirmedReason` object whose numeric `type` is a `ToolConfirmKind`,
+printed `<Name>(<n>)`, with its `source`, `id`, `scope`, `selectedButton`,
+`selectedButtonKind` or `reason` beside it) becomes
+`permission decision: confirmed=<value> ...` after the `tool_result` row,
+with the invocation's own `source.type` (where the tool came from:
+`extension`, `mcp`, `user`, `internal`, `external`) as `tool_source=`. A
+`{kind: "confirmation", title, message, buttons, isUsed}` response part
+becomes `permission decision: confirmation isUsed=<bool> buttons=<list>
+title=<title>` followed by its message, and a request whose
+`confirmation` string is set (the label of the button the user clicked,
+which also sent the request) gets `permission decision:
+confirmation=<label>` after its user row.
 
 The Copilot Chat extension is closed source, so `modelId` (the `model`
 column) and `responderUsername` (in the session-start row) are passed
@@ -59,7 +79,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
 from .antigravity import uri_to_path
-from .base import Options, Parser, compact_json, iter_jsonl
+from .base import Options, Parser, compact_json, iter_jsonl, setting_value, track_change
 
 USER_DIR = (
     r"^(?:(?:\.config|Library/Application Support|AppData/Roaming)/(?:Code[^/]*|VSCodium[^/]*|Positron|Trae[^/]*)"
@@ -183,6 +203,62 @@ def tool_call_text(part: dict) -> str:
     return md_text(part.get("invocationMessage"))
 
 
+# `ToolConfirmKind`, a const enum serialised as its number
+# (chatService.ts:870-877 at d7622a529314).
+TOOL_CONFIRM_KINDS = (
+    "Denied",
+    "ConfirmationNotNeeded",
+    "Setting",
+    "LmServicePerTool",
+    "UserAction",
+    "Skipped",
+)
+
+
+def confirmed_text(part: dict) -> str:
+    """The `permission decision:` text for a tool invocation's `isConfirmed`,
+    or "" when the invocation records none."""
+    v = part.get("isConfirmed")
+    if v is None:
+        return ""
+    if isinstance(v, dict):
+        kind = v.get("type")
+        if (
+            isinstance(kind, int)
+            and not isinstance(kind, bool)
+            and 0 <= kind < len(TOOL_CONFIRM_KINDS)
+        ):
+            value = "%s(%d)" % (TOOL_CONFIRM_KINDS[kind], kind)
+        else:
+            value = setting_value(kind)
+        pairs = [
+            "%s=%s" % (k, setting_value(x))
+            for k, x in v.items()
+            if k not in ("type", "reason") and x is not None
+        ]
+        reason = md_text(v.get("reason"))
+    else:
+        value, pairs, reason = setting_value(v), [], ""
+    src = part.get("source")
+    if isinstance(src, dict) and src.get("type"):
+        pairs.append("tool_source=%s" % setting_value(src["type"]))
+    text = " ".join(["permission decision: confirmed=" + value, *pairs])
+    return "%s reason=%s" % (text, reason) if reason else text
+
+
+def confirmation_part_text(part: dict) -> str:
+    """The `permission decision:` text for a `confirmation` response part."""
+    pairs = ["permission decision: confirmation"]
+    if "isUsed" in part:
+        pairs.append("isUsed=%s" % setting_value(bool(part.get("isUsed"))))
+    if isinstance(part.get("buttons"), list):
+        pairs.append("buttons=%s" % compact_json(part["buttons"]))
+    if part.get("title"):
+        pairs.append("title=%s" % setting_value(part["title"]))
+    msg = md_text(part.get("message"))
+    return " ".join(pairs) + ("\n" + msg if msg else "")
+
+
 def tool_result_text(part: dict) -> str:
     rd = part.get("resultDetails")
     text = ""
@@ -287,9 +363,10 @@ class VsCodeParser(Parser):
         requests = state.get("requests")
         if not isinstance(requests, list):
             requests = []
+        seen: dict = {}
         for i, req in enumerate(requests):
             if isinstance(req, dict):
-                yield from self._request_rows(req, req_lines.get(i, 0), base, opts)
+                yield from self._request_rows(req, req_lines.get(i, 0), base, opts, seen)
         for p in problems:
             yield base("system", p, None, first_bad)
 
@@ -336,9 +413,18 @@ class VsCodeParser(Parser):
             return ""
         return uri_to_path(str(data.get("folder") or data.get("workspace") or ""))
 
-    def _request_rows(self, req: dict, line: int, base, opts: Options) -> Iterator[Row]:
+    def _request_rows(self, req: dict, line: int, base, opts: Options, seen: dict) -> Iterator[Row]:
         model = str(req.get("modelId") or "")
         req_ts = req.get("timestamp")
+        # One file is one session, so the tracked keys need no session id.
+        t = track_change("model", seen, "model", model)
+        if t:
+            yield base("system", t, req_ts, line, model)
+        mode_info = req.get("modeInfo")
+        mode = mode_info.get("telemetryModeId") if isinstance(mode_info, dict) else None
+        t = track_change("permission mode", seen, "mode", setting_value(mode) if mode else "")
+        if t:
+            yield base("system", t, req_ts, line, model)
         resp_ts = req.get("responseTimestamp") or req_ts
         msg = req.get("message")
         text = (
@@ -357,6 +443,14 @@ class VsCodeParser(Parser):
             yield base("system", "system initiated: " + text, req_ts, line, model)
         else:
             yield base("user", text, req_ts, line, model)
+        if isinstance(req.get("confirmation"), str) and req["confirmation"]:
+            yield base(
+                "system",
+                "permission decision: confirmation=" + req["confirmation"],
+                req_ts,
+                line,
+                model,
+            )
 
         response = req.get("response")
         if isinstance(response, (str, dict)):
@@ -403,6 +497,13 @@ class VsCodeParser(Parser):
                 res = base("tool_result", tool_result_text(part), resp_ts, line, model)
                 res.tool_name, res.tool_use_id = tname, tid
                 yield res
+                decision = confirmed_text(part)
+                if decision:
+                    dec = base("system", decision, resp_ts, line, model)
+                    dec.tool_name, dec.tool_use_id = tname, tid
+                    yield dec
+            elif kind == "confirmation":
+                yield base("system", confirmation_part_text(part), resp_ts, line, model)
             elif kind == "textEditGroup":
                 yield base("system", "edit: " + uri_text(part.get("uri")), resp_ts, line, model)
         row = flush()
@@ -416,4 +517,11 @@ class VsCodeParser(Parser):
             yield base("system", "canceled", resp_ts, line, model)
 
 
-__all__ = ["VsCodeParser", "apply_mutation", "tool_call_text", "tool_result_text"]
+__all__ = [
+    "VsCodeParser",
+    "apply_mutation",
+    "confirmation_part_text",
+    "confirmed_text",
+    "tool_call_text",
+    "tool_result_text",
+]

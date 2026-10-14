@@ -3425,7 +3425,9 @@ def vscode_log_records(cwd="/srv/proj"):
                                 "toolId": "run_in_terminal",
                                 "invocationMessage": "Running command",
                                 "isComplete": True,
-                                "isConfirmed": True,
+                                # ConfirmedReason, ToolConfirmKind.UserAction = 4 (1.104+)
+                                "isConfirmed": {"type": 4, "selectedButton": "Allow"},
+                                "source": {"type": "internal", "label": "Built-In"},
                                 "toolSpecificData": {
                                     "kind": "terminal",
                                     "commandLine": {"original": "pytest"},
@@ -3465,9 +3467,42 @@ def vscode_log_records(cwd="/srv/proj"):
                 }
             ],
         },
-        {"kind": 2, "k": ["requests", 1, "response"], "v": [{"value": "You're welcome."}]},
+        {
+            "kind": 2,
+            "k": ["requests", 1, "response"],
+            "v": [
+                {"value": "You're welcome."},
+                {
+                    "kind": "confirmation",
+                    "title": "Run npm install?",
+                    "message": {"value": "This installs the packages."},
+                    "data": {},
+                    "buttons": ["Allow", "Dismiss"],
+                    "isUsed": True,
+                },
+            ],
+        },
         {"kind": 1, "k": ["requests", 1, "responseTimestamp"], "v": t + 11000},
         {"kind": 1, "k": ["customTitle"], "v": "Run tests"},
+        {
+            # The button click sends a request whose `confirmation` is its label;
+            # the user also switched model and mode.
+            "kind": 2,
+            "k": ["requests"],
+            "v": [
+                {
+                    "requestId": "request_3",
+                    "timestamp": t + 20000,
+                    "message": {"text": 'Allow: "Run npm install?"', "parts": []},
+                    "variableData": {"variables": []},
+                    "confirmation": "Allow",
+                    "modelId": "copilot/claude-sonnet-4",
+                    "modeInfo": {"kind": "ask", "telemetryModeId": "ask", "isBuiltin": True},
+                    "response": [{"value": "Installed."}],
+                    "responseTimestamp": t + 21000,
+                }
+            ],
+        },
     ]
 
 
@@ -6265,6 +6300,7 @@ CODY_CHAT = "Sat, 03 Oct 2026 10:00:00 GMT"
 CODY_AGENTIC_CHAT = "Sat, 03 Oct 2026 10:30:00 GMT"
 CODY_VSCODE_CHAT = "Sat, 03 Oct 2026 09:00:00 GMT"
 CODY_MODEL = "anthropic::2024-10-22::claude-sonnet-4-latest"
+CODY_MODEL_SWITCHED = "anthropic::2024-10-22::claude-3-5-haiku-latest"
 CODY_JB_REL = ".local/share/Cody-nodejs/JetBrains-globalState/cody-local-chatHistory-v2"
 CODY_VSCDB_REL = ".config/VSCodium/User/globalStorage/state.vscdb"
 CODY_TOKEN = "sgp_cody_secret_not_real"
@@ -6329,12 +6365,20 @@ def cody_records():
                     ],
                     "processes": [
                         {
+                            "type": "confirmation",
+                            "id": "toolu_01",
+                            "title": "Run terminal command",
+                            "description": "pytest -q",
+                            "content": "Allow Cody to run this command?",
+                            "state": "success",
+                        },
+                        {
                             "type": "tool",
                             "id": "toolu_01",
                             "title": "run_terminal_command",
                             "content": "pytest -q",
                             "state": "success",
-                        }
+                        },
                     ],
                 },
             },
@@ -6351,7 +6395,7 @@ def cody_records():
                 },
                 "assistantMessage": {
                     "speaker": "assistant",
-                    "model": CODY_MODEL,
+                    "model": CODY_MODEL_SWITCHED,
                     "text": "All three pass.",
                     "error": {"name": "RateLimitError", "message": "rate limit exceeded"},
                 },
@@ -6445,6 +6489,32 @@ def twinny_records():
                                 "args": {"path": "src/a.ts"},
                                 "output": "permission denied",
                                 "status": "failed",
+                            },
+                        ],
+                    },
+                    {
+                        # A switched model, a step saved while it waited for Run or
+                        # Skip, and a skipped one (tool-steps.ts at 9339bd10).
+                        "role": "assistant",
+                        "content": "Cleaning the build.",
+                        "meta": {"model": "qwen2.5-coder:14b", "provider": "Ollama"},
+                        "toolSteps": [
+                            {
+                                "id": "step-3",
+                                "name": "run_command",
+                                "summary": "wants to run `rm -rf build`",
+                                "args": {"command": "rm -rf build"},
+                                "command": "rm -rf build",
+                                "approval": "command",
+                                "status": "waiting",
+                            },
+                            {
+                                "id": "step-4",
+                                "name": "delete_file",
+                                "summary": "skipped",
+                                "args": {"path": "dist"},
+                                "output": "skipped by the user",
+                                "status": "skipped",
                             },
                         ],
                     },

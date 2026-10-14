@@ -120,6 +120,35 @@ row `key = 'rjmacarthy.twinny'`, parse JSON, iterate
 | text | `content` with think block removed; tool_use: `command` or `args` JSON; tool_result: `output` |
 | source_line | empty (one SQLite row) |
 
+Model and permission rows, all `system` (issues 96 and 97):
+
+- `model: <id>` at the first assistant message of a conversation whose
+  `meta.model` is set and `model: <old> -> <new>` on every later
+  assistant message with a different one, before that message's rows.
+  The model is recorded per reply, so a change inside a conversation
+  shows.
+- `permission decision: <status>`, with ` approval=<approval>` when the
+  step records it, after the `tool_result` row of a `toolSteps[]` entry
+  whose `status` is `waiting` or `skipped`, with the step's `id` and
+  `name`. `approval` (`command` or `change`) is what the user is asked
+  to approve, not the answer
+  ([types.ts:87-92](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/common/types.ts#L87-L92)).
+  A step that asks sets `status` `waiting` with `command` and `approval`;
+  the user's Run or Skip returns it to `running` and clears both, a Skip
+  (or a stop that answers every waiting step with Skip) records the step
+  as skipped, and `finish` then saves it as `status` `skipped`; a step
+  still running or waiting when the reply ends is saved `stopped`
+  ([src/extension/chat/tool-steps.ts:76-93](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/chat/tool-steps.ts#L76-L93),
+  [131-176](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/chat/tool-steps.ts#L131-L176)).
+  So `waiting` is a prompt saved before it was answered, `skipped` is a
+  step the user (or a stop) did not let run, and an approved step is
+  indistinguishable from one that needed no approval: both end `done` or
+  `failed`. A `stopped` step may or may not have been waiting, so it
+  gets no decision row.
+- `node/trusted-peers.json`, the `twinny-node` trusted-peer list named in
+  [`collectors/research/twinny.md`](../../collectors/research/twinny.md),
+  is not read: its shape is not recorded.
+
 Fixture, the `value` of the `rjmacarthy.twinny` row:
 
 ```json

@@ -23,7 +23,17 @@ Transcript fields: `id`, `chatTitle`, `lastInteractionTimestamp`,
 `contextFiles[].uri.fsPath` (or `.path`), `error.message`, `content[]`
 parts (`{type: "tool_call", tool_call: {id, name, arguments}}` on the
 assistant, `{type: "tool_result", tool_result: {id, content}}` on the
-human), and `processes[]` (`{type: "tool", id, title, content, state}`).
+human), and `processes[]` (`{type, id, title, description, content,
+state}`, `type` one of `tool`, `confirmation`, `step`).
+
+Model and permission rows, all `system`: the assistant message `model`
+gives `model: <id>` at the first assistant message of a chat that names
+one and `model: <old> -> <new>` on every later change, before that
+message's rows. A `processes[]` entry of type `confirmation` (a step
+that prompted the user) becomes `permission decision: confirmation
+state=<state> title=<title>` with its `description` and `content` on the
+following lines, `tool_use_id` the entry's `id`; the source does not say
+how the user's answer maps onto `state`, so it is printed as recorded.
 
 There is no per-message timestamp. The chat id is the chat's creation time
 as `Date.toUTCString()` (`Fri, 03 Oct 2026 10:00:00 GMT`), and every row of
@@ -51,7 +61,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
 from ..vscode_state import EDITOR_AGENTS, STATE_DB_RX, read_item
-from .base import Options, Parser, compact_json, text_of
+from .base import Options, Parser, compact_json, setting_value, text_of, track_change
 from .cline_legacy import iter_array_at, read_text
 
 JETBRAINS_RX = re.compile(
@@ -221,15 +231,20 @@ class CodyParser(Parser):
             % (chat.get("chatTitle") or "", account, len(interactions)),
         )
         names: dict[str, str] = {}
+        seen: dict = {}
         for it in interactions:
             for key in ("humanMessage", "assistantMessage"):
                 msg = it.get(key)
                 if isinstance(msg, dict):
-                    yield from self._message_rows(msg, row, names)
+                    yield from self._message_rows(msg, row, names, seen)
 
-    def _message_rows(self, msg: dict, row, names: dict[str, str]) -> Iterator[Row]:
+    def _message_rows(self, msg: dict, row, names: dict[str, str], seen: dict) -> Iterator[Row]:
         speaker = msg.get("speaker")
         model = str(msg.get("model") or "") if speaker == "assistant" else ""
+        # `seen` is per chat, so the tracked key needs no session id.
+        t = track_change("model", seen, "model", model)
+        if t:
+            yield row("system", t, model)
         text = msg.get("text")
         text = text if isinstance(text, str) else text_of(text)
         parts = msg.get("content")
@@ -285,6 +300,17 @@ class CodyParser(Parser):
                     tid,
                 )
         for proc in msg.get("processes") or []:
+            if isinstance(proc, dict) and proc.get("type") == "confirmation":
+                tid = str(proc.get("id") or "")
+                head = "permission decision: confirmation"
+                for k in ("state", "title"):
+                    if proc.get(k):
+                        head += " %s=%s" % (k, setting_value(proc[k]))
+                lines = [head] + [
+                    setting_value(proc[k]) for k in ("description", "content") if proc.get(k)
+                ]
+                yield row("system", "\n".join(lines), model, names.get(tid, ""), tid)
+                continue
             if not isinstance(proc, dict) or proc.get("type") != "tool":
                 continue
             tid = str(proc.get("id") or "")

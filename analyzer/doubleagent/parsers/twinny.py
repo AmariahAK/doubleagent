@@ -18,7 +18,21 @@ fields: `id`, `title`, `updatedAt` (epoch ms, absent in older builds),
 string, reasoning inline as `<think>...</think>` or
 `<thinking>...</thinking>`), `images`, `meta.model`, `meta.withheld`
 (counts of credentials Twinny's secret shield masked) and `toolSteps[]`
-(`id`, `name`, `summary`, `args`, `command`, `output`, `status`).
+(`id`, `name`, `summary`, `args`, `command`, `output`, `status`,
+`approval`).
+
+Model and permission rows, all `system`: `meta.model` gives `model: <id>`
+at the first assistant message of a conversation that names one and
+`model: <old> -> <new>` on every later change, before that message's
+rows. A tool step saved while it waited for the user's Run or Skip
+(`status` `waiting`, with `approval` `command` or `change` naming what
+was asked) or after it was skipped (`status` `skipped`: the user chose
+Skip, or a stop answered the wait with Skip) becomes
+`permission decision: <status>`, with ` approval=<approval>` when the
+step records it, after the step's `tool_result` row. An approved step
+ends `done` or `failed` like one that needed no approval, and a
+`stopped` step may or may not have waited, so neither gets a row.
+`node/trusted-peers.json` is not read: its shape is not recorded.
 
 The same value holds `twinny.inference-providers` and the
 `twinny.active-*-provider` objects, each with an `apiKey`: those keys are
@@ -44,7 +58,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
 from ..vscode_state import EDITOR_AGENTS, STATE_DB_RX, read_item
-from .base import Options, Parser, compact_json, text_of
+from .base import Options, Parser, compact_json, setting_value, text_of, track_change
 
 ITEM_KEY = "rjmacarthy.twinny"
 CONVERSATIONS = "twinny.conversations"
@@ -127,12 +141,17 @@ class TwinnyParser(Parser):
             "conversation: %s | messages=%d%s"
             % (conv.get("title") or "", len(messages), "" if ts else " | updatedAt unknown"),
         )
+        seen: dict = {}  # per conversation, so the tracked key needs no session id
         for msg in messages:
             role = msg.get("role")
             meta = msg.get("meta")
             if not isinstance(meta, dict):
                 meta = {}
             model = str(meta.get("model") or "")
+            if role == "assistant":
+                t = track_change("model", seen, "model", model)
+                if t:
+                    yield row("system", t, model)
             content = msg.get("content")
             text = content if isinstance(content, str) else text_of(content)
             text, thoughts = split_think(text)
@@ -169,6 +188,11 @@ class TwinnyParser(Parser):
                 if status and status != "done":
                     out = "[%s] %s" % (status, out)
                 yield row("tool_result", out, model, name, tid)
+                if status in ("waiting", "skipped"):
+                    decision = "permission decision: " + status
+                    if step.get("approval"):
+                        decision += " approval=" + setting_value(step["approval"])
+                    yield row("system", decision, model, name, tid)
             withheld = meta.get("withheld")
             if withheld:
                 yield row("system", "secret shield withheld: %s" % compact_json(withheld), model)

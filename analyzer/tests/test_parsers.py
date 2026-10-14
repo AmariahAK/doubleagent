@@ -2944,6 +2944,7 @@ from types import SimpleNamespace
 import zstandard
 
 from doubleagent.parsers.vscode import VsCodeParser, apply_mutation
+from doubleagent.parsers.vscode import confirmed_text as vscode_confirmed_text
 from doubleagent.parsers.zed import ZedParser
 from fixtures import (
     VSCODE_LEGACY_SESSION,
@@ -3096,7 +3097,24 @@ class VsCodeTests(ParserBase):
         rows = self.rows_for(VsCodeParser(), self.REL)
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "user", "tool_use", "tool_result", "assistant", "user", "assistant"],
+            [
+                "system",
+                "system",
+                "system",
+                "user",
+                "tool_use",
+                "tool_result",
+                "system",
+                "assistant",
+                "user",
+                "assistant",
+                "system",
+                "system",
+                "system",
+                "user",
+                "system",
+                "assistant",
+            ],
         )
         for r in rows:
             self.assertEqual(
@@ -3104,7 +3122,50 @@ class VsCodeTests(ParserBase):
             )
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        start, user, use, result, asst, user2, asst2 = rows
+        self.assertEqual([r.source_line for r in rows], [1] * 8 + [2, 2, 2] + [6] * 5)
+        start, model, mode, user, use, result, decision, asst, user2, asst2 = rows[:10]
+        self.assertEqual(
+            (model.text, model.model, model.timestamp_utc),
+            ("model: copilot/gpt-4.1", "copilot/gpt-4.1", "2026-10-03T11:00:01.000Z"),
+        )
+        self.assertEqual(
+            (mode.text, mode.timestamp_utc),
+            ("permission mode: agent", "2026-10-03T11:00:01.000Z"),
+        )
+        self.assertEqual(
+            (decision.text, decision.tool_use_id, decision.tool_name, decision.timestamp_utc),
+            (
+                "permission decision: confirmed=UserAction(4) selectedButton=Allow"
+                " tool_source=internal",
+                "call_a",
+                "run_in_terminal",
+                "2026-10-03T11:00:02.000Z",
+            ),
+        )
+        confirm, model2, mode2, user3, chosen, asst3 = rows[10:]
+        self.assertEqual(
+            (confirm.text, confirm.timestamp_utc),
+            (
+                'permission decision: confirmation isUsed=true buttons=["Allow","Dismiss"]'
+                " title=Run npm install?\nThis installs the packages.",
+                "2026-10-03T11:00:11.000Z",
+            ),
+        )
+        self.assertEqual(
+            (model2.text, model2.model, model2.timestamp_utc),
+            (
+                "model: copilot/gpt-4.1 -> copilot/claude-sonnet-4",
+                "copilot/claude-sonnet-4",
+                "2026-10-03T11:00:20.000Z",
+            ),
+        )
+        self.assertEqual(mode2.text, "permission mode: agent -> ask")
+        self.assertEqual(user3.text, 'Allow: "Run npm install?"')
+        self.assertEqual(
+            (chosen.text, chosen.timestamp_utc),
+            ("permission decision: confirmation=Allow", "2026-10-03T11:00:20.000Z"),
+        )
+        self.assertEqual(asst3.text, "Installed.")
         self.assertEqual(
             start.text, "session start: responder=GitHub Copilot location=panel title=Run tests"
         )
@@ -3129,7 +3190,24 @@ class VsCodeTests(ParserBase):
         self.assertEqual(
             (asst2.text, asst2.timestamp_utc), ("You're welcome.", "2026-10-03T11:00:11.000Z")
         )
-        self.assertEqual([r.source_line for r in rows], [1, 1, 1, 1, 1, 2, 2])
+
+    def test_confirmed_forms(self):
+        # A pre-1.104 boolean, a denial with its source, and a reason.
+        self.assertEqual(
+            vscode_confirmed_text({"isConfirmed": False}), "permission decision: confirmed=false"
+        )
+        self.assertEqual(
+            vscode_confirmed_text(
+                {"isConfirmed": {"type": 0, "source": "user"}, "source": {"type": "mcp"}}
+            ),
+            "permission decision: confirmed=Denied(0) source=user tool_source=mcp",
+        )
+        self.assertEqual(
+            vscode_confirmed_text({"isConfirmed": {"type": 1, "reason": {"value": "read only"}}}),
+            "permission decision: confirmed=ConfirmationNotNeeded(1) reason=read only",
+        )
+        self.assertEqual(vscode_confirmed_text({"isConfirmed": None}), "")
+        self.assertEqual(vscode_confirmed_text({}), "")
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(VsCodeParser(), self.REL, include_thinking=True)
@@ -3141,6 +3219,7 @@ class VsCodeTests(ParserBase):
             [(r.turn_type, r.text) for r in rows],
             [
                 ("system", "session start: responder=GitHub Copilot location=panel"),
+                ("system", "model: copilot/gpt-4o"),
                 ("user", "where is the config?"),
                 ("assistant", "It is in config.toml."),
                 ("system", "error: Rate limited"),
@@ -3152,7 +3231,7 @@ class VsCodeTests(ParserBase):
                 for r in rows
             )
         )
-        self.assertEqual(rows[1].model, "copilot/gpt-4o")
+        self.assertEqual(rows[2].model, "copilot/gpt-4o")
 
     def test_not_wanted(self):
         for rel in (VSCODE_WS + "/workspace.json", ".config/Code/User/settings.json"):
@@ -3176,10 +3255,10 @@ class VsCodeTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.REL)
         rows = self.rows_for(VsCodeParser(), self.REL)
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), 17)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 6)
+        self.assertEqual(rows[-1].source_line, 7)
 
     def test_mutation_log(self):
         s = apply_mutation(None, {"kind": 0, "v": {"a": [1, 2, 3], "b": {"c": 1}}})
@@ -5752,6 +5831,8 @@ from fixtures import (
     CODY_AGENTIC_CHAT,
     CODY_CHAT,
     CODY_JB_REL,
+    CODY_MODEL,
+    CODY_MODEL_SWITCHED,
     CODY_TOKEN,
     CODY_VSCDB_REL,
     CODY_VSCODE_CHAT,
@@ -5820,12 +5901,16 @@ class CodyTests(ParserBase):
             [
                 "system",
                 "user",
+                "system",
                 "assistant",
                 "system",
                 "user",
+                "system",
                 "assistant",
                 "tool_use",
+                "system",
                 "tool_result",
+                "system",
                 "assistant",
                 "system",
             ],
@@ -5835,10 +5920,28 @@ class CodyTests(ParserBase):
                 (r.host, r.user, r.agent, r.source_line, r.git_branch),
                 ("h1", "alice", "cody", 1, ""),
             )
-        first, user, asst = rows[:3]
-        self.assertEqual({r.session_id for r in rows[:3]}, {CODY_CHAT})
-        self.assertEqual({r.timestamp_utc for r in rows[:3]}, {"2026-10-03T10:00:00.000Z"})
-        self.assertEqual({r.timestamp_utc for r in rows[3:]}, {"2026-10-03T10:30:00.000Z"})
+        first, user, model, asst = rows[:4]
+        self.assertEqual({r.session_id for r in rows[:4]}, {CODY_CHAT})
+        self.assertEqual({r.timestamp_utc for r in rows[:4]}, {"2026-10-03T10:00:00.000Z"})
+        self.assertEqual({r.timestamp_utc for r in rows[4:]}, {"2026-10-03T10:30:00.000Z"})
+        self.assertEqual((model.text, model.model), ("model: " + CODY_MODEL, CODY_MODEL))
+        # Each chat tracks its own model, so the agentic chat starts again.
+        self.assertEqual(rows[6].text, "model: " + CODY_MODEL)
+        self.assertEqual(rows[6].session_id, CODY_AGENTIC_CHAT)
+        decision = rows[9]
+        self.assertEqual(
+            (decision.text, decision.tool_use_id, decision.tool_name),
+            (
+                "permission decision: confirmation state=success title=Run terminal command"
+                "\npytest -q\nAllow Cody to run this command?",
+                "toolu_01",
+                "run_terminal_command",
+            ),
+        )
+        self.assertEqual(
+            (rows[11].text, rows[11].model),
+            ("model: %s -> %s" % (CODY_MODEL, CODY_MODEL_SWITCHED), CODY_MODEL_SWITCHED),
+        )
         self.assertEqual(
             first.text, "chat: Fix flaky test | account=%s | interactions=1" % CODY_ACCOUNT
         )
@@ -5850,7 +5953,7 @@ class CodyTests(ParserBase):
             (asst.text, asst.model),
             ("It depends on wall-clock time.", "anthropic::2024-10-22::claude-sonnet-4-latest"),
         )
-        use, result = rows[6], rows[7]
+        use, result = rows[8], rows[10]
         self.assertEqual(
             (use.tool_name, use.tool_use_id, use.text),
             ("run_terminal_command", "toolu_01", '{"command":"pytest -q"}'),
@@ -5868,6 +5971,7 @@ class CodyTests(ParserBase):
             [
                 ("system", "chat:  | account=%s | interactions=1" % CODY_ACCOUNT),
                 ("user", "explain build.sh"),
+                ("system", "model: anthropic::2024-10-22::claude-sonnet-4-latest"),
                 ("assistant", "It runs make."),
             ],
         )
@@ -5921,8 +6025,8 @@ class CodyTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / CODY_JB_REL)
         rows = self.rows_for(CodyParser(), CODY_JB_REL)
-        self.assertEqual(len(rows), 11)
-        self.assertEqual([r.turn_type for r in rows[:3]], ["system", "user", "assistant"])
+        self.assertEqual(len(rows), 15)
+        self.assertEqual([r.turn_type for r in rows[:4]], ["system", "user", "system", "assistant"])
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser: chat history did not parse; recovered 2 chat(s)", rows[-1].text)
 
@@ -5948,6 +6052,7 @@ class TwinnyTests(ParserBase):
             [
                 "system",
                 "user",
+                "system",
                 "assistant",
                 "tool_use",
                 "tool_result",
@@ -5955,27 +6060,52 @@ class TwinnyTests(ParserBase):
                 "tool_result",
                 "system",
                 "system",
+                "assistant",
+                "tool_use",
+                "tool_result",
+                "system",
+                "tool_use",
+                "tool_result",
+                "system",
+                "system",
                 "user",
             ],
         )
-        for r in rows[:8]:
+        for r in rows[:17]:
             self.assertEqual(
                 (r.agent, r.session_id, r.timestamp_utc, r.source_line, r.project_path),
                 ("twinny", TWINNY_CONVERSATION, "2026-10-03T12:00:05.000Z", 0, ""),
             )
-        self.assertEqual(rows[0].text, "conversation: List the tests | messages=2")
-        self.assertEqual((rows[2].text, rows[2].model), ("Two tests fail.", "qwen2.5-coder:7b"))
+        self.assertEqual(rows[0].text, "conversation: List the tests | messages=3")
         self.assertEqual(
-            (rows[3].tool_name, rows[3].tool_use_id, rows[3].text),
+            (rows[2].text, rows[2].model), ("model: qwen2.5-coder:7b", "qwen2.5-coder:7b")
+        )
+        self.assertEqual((rows[3].text, rows[3].model), ("Two tests fail.", "qwen2.5-coder:7b"))
+        self.assertEqual(
+            (rows[4].tool_name, rows[4].tool_use_id, rows[4].text),
             ("run_command", "step-1", '{"command":"npm test"}'),
         )
-        self.assertEqual((rows[4].tool_use_id, rows[4].text), ("step-1", "2 failing"))
-        self.assertEqual(rows[6].text, "[failed] permission denied")
-        self.assertEqual(rows[7].text, 'secret shield withheld: [{"count":1,"kind":"aws-key"}]')
+        self.assertEqual((rows[5].tool_use_id, rows[5].text), ("step-1", "2 failing"))
+        self.assertEqual(rows[7].text, "[failed] permission denied")
+        self.assertEqual(rows[8].text, 'secret shield withheld: [{"count":1,"kind":"aws-key"}]')
         self.assertEqual(
-            {r.session_id for r in rows[8:]}, {TWINNY_ACTIVE}
+            (rows[9].text, rows[9].model),
+            ("model: qwen2.5-coder:7b -> qwen2.5-coder:14b", "qwen2.5-coder:14b"),
+        )
+        self.assertEqual((rows[11].text, rows[12].text), ("rm -rf build", "[waiting]"))
+        self.assertEqual(
+            (rows[13].text, rows[13].tool_use_id, rows[13].tool_name),
+            ("permission decision: waiting approval=command", "step-3", "run_command"),
+        )
+        self.assertEqual(rows[15].text, "[skipped] skipped by the user")
+        self.assertEqual(
+            (rows[16].text, rows[16].tool_use_id, rows[16].tool_name),
+            ("permission decision: skipped", "step-4", "delete_file"),
+        )
+        self.assertEqual(
+            {r.session_id for r in rows[17:]}, {TWINNY_ACTIVE}
         )  # unsaved active conversation
-        self.assertEqual(rows[9].text, "unsaved question")
+        self.assertEqual(rows[18].text, "unsaved question")
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(TwinnyParser(), TWINNY_VSCDB_REL, include_thinking=True)

@@ -138,6 +138,28 @@ Inputs: the `sourcegraph.cody-ai` row of any collected `state.vscdb`
 | text | `text`; for tool_use the `arguments`; for tool_result its `content` |
 | source_line | 1 (single JSON value) |
 
+Model and permission rows, all `system` (issues 96 and 97):
+
+- `model: <id>` at the first assistant message of a chat whose `model`
+  is set and `model: <old> -> <new>` on every later assistant message
+  with a different `model`, before that message's rows, at the chat's
+  time. The model is recorded per assistant message, so a change inside
+  a chat shows.
+- `permission decision: confirmation state=<state> title=<title>` for a
+  `processes[]` entry of `type` `confirmation`, which the source
+  describes as "a process that prompts the user confirmation"
+  ([`messages.ts:76-79`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/chat/transcript/messages.ts#L76-L79)),
+  with its `description` and `content` on the following lines and
+  `tool_use_id` its `id`. `state` is printed as recorded (`pending`,
+  `success`, `error`,
+  [`messages.ts:117-124`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/chat/transcript/messages.ts#L117-L124)):
+  this document does not trace which state an approval or a refusal
+  leaves, so the row does not interpret it.
+
+Neither this document nor
+[`collectors/research/cody.md`](../../collectors/research/cody.md) names
+a standing permission file for Cody, so none is read.
+
 Fixture (`JetBrains-globalState/cody-local-chatHistory-v2`):
 
 ```json
