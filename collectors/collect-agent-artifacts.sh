@@ -2486,8 +2486,15 @@ collect_tree() {
   find "$@" 2>>"$LOG"
 }
 
-# ---------------------------------------------------------------------------
-# User enumeration -> "user:home" lines (home is a full path incl. ROOT)
+# ===========================================================================
+# 7. Users
+# ===========================================================================
+
+# enumerate_users -> user:home lines, home a full path including ROOT, from
+# every source in turn, duplicates left to filter_users: getent passwd (live
+# mode) or ROOT/etc/passwd; dscl on a live macOS host; then the directories
+# under the usual home parents of macOS, Linux, the BSDs, Solaris and Windows
+# images. Reads MODE and ROOT. Temporaries: _eu_.
 enumerate_users() {
   {
     if [ "$MODE" = live ] && command -v getent >/dev/null 2>&1; then
@@ -2495,169 +2502,243 @@ enumerate_users() {
     elif [ -f "$ROOT/etc/passwd" ]; then
       cat "$ROOT/etc/passwd"
     fi
-  } | awk -F: -v r="$ROOT" 'NF>=6 && $6!="" {print $1":"r$6}'
+  } | awk -F: -v root="$ROOT" 'NF>=6 && $6!="" {print $1":"root$6}'
   if [ "$MODE" = live ] && command -v dscl >/dev/null 2>&1; then
     dscl . -list /Users NFSHomeDirectory 2>/dev/null | awk 'NF>=2 {print $1":"$2}'
   fi
-  for _eu_g in home/* Users/* root var/root usr/home/* export/home/*; do
-    expand_glob "$ROOT" "$_eu_g" | while IFS= read -r _eu_h; do
-      [ -d "$_eu_h" ] && printf '%s:%s\n' "${_eu_h##*/}" "$_eu_h"
+  for _eu_glob in home/* Users/* root var/root usr/home/* export/home/*; do
+    expand_glob "$ROOT" "$_eu_glob" | while IFS= read -r _eu_home; do
+      [ -d "$_eu_home" ] && printf '%s:%s\n' "${_eu_home##*/}" "$_eu_home"
     done
   done
 }
 
+# filter_users: user:home lines on stdin -> the same lines without system
+# accounts' homes (/, /bin, /dev/null, /nonexistent, /var/empty, ...) and
+# the shared Windows profiles, without users that -u did not name, and
+# without a home already listed. Reads ROOT and USERS.
 filter_users() {
   awk -F: -v root="$ROOT" -v want="$USERS" '
-    BEGIN { n=split(want, w, ","); for(i=1;i<=n;i++) if (w[i]!="") sel[w[i]]=1 }
+    BEGIN { wanted_count=split(want, wanted, ",")
+      for(i=1;i<=wanted_count;i++) if (wanted[i]!="") selected[wanted[i]]=1 }
     {
-      u=$1; h=substr($0, index($0, ":")+1)
-      rel=h; if (root!="" && index(h, root)==1) rel=substr(h, length(root)+1)
-      if (rel=="" || rel=="/" || rel=="/bin" || rel=="/sbin" || rel=="/usr" || rel=="/usr/bin" || rel=="/usr/sbin" ||
-          rel=="/dev" || rel=="/dev/null" || rel=="/proc" || rel=="/sys" || rel=="/nonexistent" || rel=="/var/empty" ||
-          rel=="/Users/Shared" || rel=="/Users/Public" || rel=="/Users/Default" || rel=="/Users/All Users" || rel=="/Users/Default User") next
-      if (n>0 && !(u in sel)) next
-      if (seen[h]++) next
-      print u":"h
+      user=$1; home=substr($0, index($0, ":")+1)
+      rel=home; if (root!="" && index(home, root)==1) rel=substr(home, length(root)+1)
+      if (rel=="" || rel=="/" || rel=="/bin" || rel=="/sbin" || rel=="/usr" ||
+          rel=="/usr/bin" || rel=="/usr/sbin" || rel=="/dev" || rel=="/dev/null" ||
+          rel=="/proc" || rel=="/sys" || rel=="/nonexistent" || rel=="/var/empty" ||
+          rel=="/Users/Shared" || rel=="/Users/Public" || rel=="/Users/Default" ||
+          rel=="/Users/All Users" || rel=="/Users/Default User") next
+      if (wanted_count>0 && !(user in selected)) next
+      if (seen[home]++) next
+      print user":"home
     }'
 }
 
-USER_LIST=$(enumerate_users | filter_users | while IFS=: read -r u h; do [ -d "$h" ] && printf '%s:%s\n' "$u" "$h"; done)
-if [ -z "$USER_LIST" ]; then
-  log_line "WARNING: no user home directories found"
-fi
+# get_user_homes -> user:home lines for the homes to collect, in enumeration
+# order: enumerate_users, filtered by filter_users, keeping only homes that
+# are directories. Temporaries: _guh_.
+get_user_homes() {
+  enumerate_users | filter_users | while IFS=: read -r _guh_user _guh_home; do
+    [ -d "$_guh_home" ] && printf '%s:%s\n' "$_guh_user" "$_guh_home"
+  done
+}
 
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Per-user collection (--inventory walks the homes after project discovery)
-# shellcheck disable=SC2030 # _h is per-iteration; inv_secret reads it below
-[ "$INVENTORY" = 1 ] || printf '%s\n' "$USER_LIST" | while IFS=: read -r _u _h; do
-  [ -n "$_h" ] || continue
-  # A home that cannot be listed or entered gets one error_read row. The
-  # catalog is still tried: a home that can be entered but not listed
-  # (mode 711) still yields the entries that are not globs.
-  if _he=$(get_dir_read_error "$_h"); then write_read_error_row "$MANIFEST" "$_u" "$_h" "" "$_h" "$_he"; fi
-  collect_catalog "$_u" "$_h" "$CATALOG" "User $_u ($_h)"
-done
+# collect_user_homes: the main step for homes outside --inventory (which
+# walks them in write_inventory instead): collect_catalog with CATALOG for
+# every home in USER_LIST. A home that cannot be listed or entered gets one
+# error_read row. The catalog is still tried: a home that can be entered but
+# not listed (mode 711) still yields the entries that are not globs. Reads
+# USER_LIST, CATALOG, MANIFEST. Temporaries: _cuh_.
+collect_user_homes() {
+  printf '%s\n' "$USER_LIST" | while IFS=: read -r _cuh_user _cuh_home; do
+    [ -n "$_cuh_home" ] || continue
+    if _cuh_dir_error=$(get_dir_read_error "$_cuh_home"); then
+      write_read_error_row "$MANIFEST" "$_cuh_user" "$_cuh_home" "" "$_cuh_home" \
+        "$_cuh_dir_error"
+    fi
+    collect_catalog "$_cuh_user" "$_cuh_home" "$CATALOG" "User $_cuh_user ($_cuh_home)"
+  done
+}
 
-# ---------------------------------------------------------------------------
-# Docker and Podman named volumes. Enumerated from the filesystem, never with
-# the docker binary, so the same code covers live hosts and disk images. Each
-# volume is <volumes dir>/<name>/_data. A volume whose name matches
-# DOCKER_VOLUMES is collected whole as user "docker" with _data as its home;
-# any other volume gets one skipped_unmatched_volume row with its size.
-# Failures (an unreadable volumes directory, a volume that cannot be walked)
-# are counted, noted in collection.json and printed in the summary; they never
-# stop the collection.
-NOTES=
-DOCKER_SEEN=0; DOCKER_FOUND=0; DOCKER_COLLECTED=0; DOCKER_UNREADABLE=0; DOCKER_DESKTOP=0
-DOCKER_INV=
-# docker_volume_rule NAME -> the first DOCKER_VOLUMES line (agent|glob) whose glob matches
-docker_volume_rule() {
-  _dv_ifs=$IFS
+# ===========================================================================
+# 8. Docker and Podman volumes
+# ===========================================================================
+# Enumerated from the filesystem, never with the docker binary, so the same
+# code covers live hosts and disk images. Each volume is <volumes
+# dir>/<name>/_data. A volume whose name matches DOCKER_VOLUMES is collected
+# whole as user "docker" with _data as its home; any other volume gets one
+# skipped_unmatched_volume row with its size. Failures (an unreadable volumes
+# directory, a volume that cannot be walked) are counted, noted in
+# collection.json and printed in the summary; they never stop the
+# collection. The counters are globals: DOCKER_SEEN (any Docker or Podman
+# data found), DOCKER_FOUND, DOCKER_COLLECTED, DOCKER_UNREADABLE,
+# DOCKER_DESKTOP; with --inventory, DOCKER_INV holds the M| and F| lines of
+# the collected volumes. Every function here that sets them runs in the main
+# shell, never in a pipeline or $(...).
+
+# get_docker_volume_rule NAME -> the first DOCKER_VOLUMES line (agent|glob)
+# whose glob matches NAME, or nothing. Globbing is off while the table is
+# split on newlines, so a glob is only matched by case, never expanded
+# against the working directory. Temporaries: _gdvr_.
+get_docker_volume_rule() {
+  _gdvr_saved_ifs=$IFS
   IFS='
 '
   set -f
-  for _dv_l in $DOCKER_VOLUMES; do
-    case "$_dv_l" in ''|'#'*) continue ;; esac
-    _dv_p=${_dv_l#*|}
+  for _gdvr_line in $DOCKER_VOLUMES; do
+    case "$_gdvr_line" in ''|'#'*) continue ;; esac
+    _gdvr_glob=${_gdvr_line#*|}
     # shellcheck disable=SC2254 # the table entry is a glob
-    case "$1" in $_dv_p) set +f; IFS=$_dv_ifs; printf '%s' "$_dv_l"; return 0 ;; esac
+    case "$1" in $_gdvr_glob) set +f; IFS=$_gdvr_saved_ifs; printf '%s' "$_gdvr_line"; return 0 ;; esac
   done
   set +f
-  IFS=$_dv_ifs
-}
-# find_errors_since LINE -> number of find(1) error lines appended to the log after LINE
-find_errors_since() { tail -n "+$(( $1 + 1 ))" "$LOG" 2>/dev/null | grep -c '^find: '; }
-# collect_volume_dir BASE REL: every <name>/_data under the volumes directory
-# BASE/REL. Each component of REL is checked on the way down, so a data root
-# the responder cannot enter (/var/lib/docker and /var/lib/containers are
-# root-only) or a symlinked one is reported rather than silently skipped.
-collect_volume_dir() {
-  _vd=$1; _vr=$2/
-  while [ -n "$_vr" ]; do
-    _vd="$_vd/${_vr%%/*}"; _vr=${_vr#*/}
-    if [ -L "$_vd" ]; then
-      DOCKER_SEEN=1
-      add_note "docker: $_vd is a symlink and was not followed; collect its target by hand"
-      return
-    fi
-    [ -d "$_vd" ] || return
-    if [ ! -x "$_vd" ] || { [ -z "$_vr" ] && [ ! -r "$_vd" ]; }; then
-      DOCKER_SEEN=1; DOCKER_UNREADABLE=$(( DOCKER_UNREADABLE + 1 ))
-      add_note "docker: $_vd is not readable; run as root to collect the volumes under it"
-      return
-    fi
-  done
-  DOCKER_SEEN=1
-  log_line "Docker volumes in $_vd"
-  _vd_list=$(expand_glob "$_vd" '*')
-  while IFS= read -r _vv; do
-    [ -n "$_vv" ] || continue
-    if [ -L "$_vv" ] || [ ! -d "$_vv" ]; then continue; fi
-    DOCKER_FOUND=$(( DOCKER_FOUND + 1 ))
-    _vn=${_vv##*/}; _vdata="$_vv/_data"
-    _vrule=$(docker_volume_rule "$_vn")
-    _va=${_vrule%%|*}
-    if [ ! -r "$_vv" ] || [ ! -x "$_vv" ] || { [ -d "$_vdata" ] && { [ ! -r "$_vdata" ] || [ ! -x "$_vdata" ]; }; }; then
-      DOCKER_UNREADABLE=$(( DOCKER_UNREADABLE + 1 ))
-      add_note "docker: volume $_vn (${_va:-unmatched}) at $_vv is not readable; run as root to collect it"
-    elif [ -L "$_vdata" ] || [ ! -d "$_vdata" ]; then
-      log_line "  volume $_vn has no _data directory, skipped"
-    elif [ -z "$_va" ] && [ "$INVENTORY" = 1 ]; then
-      :
-    elif [ -z "$_va" ]; then
-      _vkb=$(du -sk "$_vdata" 2>/dev/null | cut -f1)
-      write_manifest_row "$MANIFEST" docker "$_vdata" "" "$_vdata" "" dir "$(( $(to_number "$_vkb") * 1024 ))" 0 0 0 0 0 0 0 "" false skipped_unmatched_volume "" ""
-    elif [ "$INVENTORY" = 1 ]; then
-      log_line "  [$_va] $_vdata"
-      DOCKER_INV="$DOCKER_INV
-M|$_vrule
-$(collect_path docker "$_vdata" "$_va" "$_vdata" </dev/null)"
-      DOCKER_COLLECTED=$(( DOCKER_COLLECTED + 1 ))
-    else
-      log_line "  [$_va] $_vdata"
-      _vl=$(wc -l <"$LOG" | tr -d ' ')
-      collect_path docker "$_vdata" "$_va" "$_vdata" </dev/null
-      _vfe=$(to_number "$(find_errors_since "$(to_number "$_vl")")")
-      DOCKER_COLLECTED=$(( DOCKER_COLLECTED + 1 ))
-      if [ "$_vfe" -gt 0 ]; then
-        DOCKER_UNREADABLE=$(( DOCKER_UNREADABLE + 1 ))
-        add_note "docker: volume $_vn ($_va) could not be walked completely ($_vfe unreadable paths, see collector.log); run as root to collect it"
-      fi
-    fi
-  done <<EOF_VOLUMES
-$_vd_list
-EOF_VOLUMES
+  IFS=$_gdvr_saved_ifs
 }
 
-if [ "$NO_DOCKER" != 1 ]; then
-  # Root Docker, root Podman and Windows-container Docker data roots, then the
-  # rootless Docker and Podman roots of each (selected) user.
+# find_errors_since LINE -> number of find(1) error lines appended to LOG
+# after its line LINE
+find_errors_since() { tail -n "+$(( $1 + 1 ))" "$LOG" 2>/dev/null | grep -c '^find: '; }
+
+# test_volume_root BASE REL: checks each component of the volumes directory
+# BASE/REL on the way down, so a data root the responder cannot enter
+# (/var/lib/docker and /var/lib/containers are root-only) or a symlinked one
+# is reported rather than silently skipped. Returns 0 and sets
+# _ret_volume_dir to BASE/REL when every component is a directory that can
+# be entered and the last one can also be listed; returns 1 silently when a
+# component is missing, and with a note when one is a symlink or unreadable
+# (DOCKER_SEEN, DOCKER_UNREADABLE). Temporaries: _tvr_.
+test_volume_root() {
+  _tvr_dir=$1; _tvr_rest=$2/
+  while [ -n "$_tvr_rest" ]; do
+    _tvr_dir="$_tvr_dir/${_tvr_rest%%/*}"; _tvr_rest=${_tvr_rest#*/}
+    if [ -L "$_tvr_dir" ]; then
+      DOCKER_SEEN=1
+      add_note "docker: $_tvr_dir is a symlink and was not followed; collect its target by hand"
+      return 1
+    fi
+    [ -d "$_tvr_dir" ] || return 1
+    if [ ! -x "$_tvr_dir" ] || { [ -z "$_tvr_rest" ] && [ ! -r "$_tvr_dir" ]; }; then
+      DOCKER_SEEN=1; DOCKER_UNREADABLE=$(( DOCKER_UNREADABLE + 1 ))
+      add_note "docker: $_tvr_dir is not readable; run as root to collect the volumes under it"
+      return 1
+    fi
+  done
+  _ret_volume_dir=$_tvr_dir
+  return 0
+}
+
+# collect_volume VOLUME: collects or records one volume directory
+# <volumes dir>/<name>. An unreadable volume is counted and noted; one
+# without a _data directory is logged and skipped; an unmatched one gets a
+# skipped_unmatched_volume row (nothing with --inventory); a matched one is
+# collected with collect_path as user docker, its _data the home, and a walk
+# that logged find errors is counted unreadable and noted. Sets DOCKER_*
+# counters, DOCKER_INV and NOTES. Temporaries: _cv_.
+collect_volume() {
+  _cv_name=${1##*/}; _cv_data="$1/_data"
+  _cv_rule=$(get_docker_volume_rule "$_cv_name")
+  _cv_agent=${_cv_rule%%|*}
+  if [ ! -r "$1" ] || [ ! -x "$1" ] ||
+    { [ -d "$_cv_data" ] && { [ ! -r "$_cv_data" ] || [ ! -x "$_cv_data" ]; }; }; then
+    DOCKER_UNREADABLE=$(( DOCKER_UNREADABLE + 1 ))
+    _cv_volume="volume $_cv_name (${_cv_agent:-unmatched})"
+    add_note "docker: $_cv_volume at $1 is not readable; run as root to collect it"
+  elif [ -L "$_cv_data" ] || [ ! -d "$_cv_data" ]; then
+    log_line "  volume $_cv_name has no _data directory, skipped"
+  elif [ -z "$_cv_agent" ] && [ "$INVENTORY" = 1 ]; then
+    :
+  elif [ -z "$_cv_agent" ]; then
+    _cv_size_kib=$(du -sk "$_cv_data" 2>/dev/null | cut -f1)
+    write_manifest_row "$MANIFEST" docker "$_cv_data" "" "$_cv_data" "" dir \
+      "$(( $(to_number "$_cv_size_kib") * 1024 ))" 0 0 0 0 0 0 0 "" false \
+      skipped_unmatched_volume "" ""
+  elif [ "$INVENTORY" = 1 ]; then
+    log_line "  [$_cv_agent] $_cv_data"
+    DOCKER_INV="$DOCKER_INV
+M|$_cv_rule
+$(collect_path docker "$_cv_data" "$_cv_agent" "$_cv_data" </dev/null)"
+    DOCKER_COLLECTED=$(( DOCKER_COLLECTED + 1 ))
+  else
+    log_line "  [$_cv_agent] $_cv_data"
+    _cv_log_lines=$(wc -l <"$LOG" | tr -d ' ')
+    collect_path docker "$_cv_data" "$_cv_agent" "$_cv_data" </dev/null
+    _cv_find_errors=$(to_number "$(find_errors_since "$(to_number "$_cv_log_lines")")")
+    DOCKER_COLLECTED=$(( DOCKER_COLLECTED + 1 ))
+    if [ "$_cv_find_errors" -gt 0 ]; then
+      DOCKER_UNREADABLE=$(( DOCKER_UNREADABLE + 1 ))
+      _cv_note="docker: volume $_cv_name ($_cv_agent) could not be walked completely"
+      _cv_note="$_cv_note ($_cv_find_errors unreadable paths, see collector.log)"
+      add_note "$_cv_note; run as root to collect it"
+    fi
+  fi
+}
+
+# collect_volume_dir BASE REL: every volume under the volumes directory
+# BASE/REL, after test_volume_root has checked the way down; each real
+# directory in it is counted in DOCKER_FOUND and given to collect_volume.
+# Sets DOCKER_SEEN. Temporaries: _cvd_.
+collect_volume_dir() {
+  test_volume_root "$1" "$2" || return
+  _cvd_dir=$_ret_volume_dir
+  DOCKER_SEEN=1
+  log_line "Docker volumes in $_cvd_dir"
+  _cvd_list=$(expand_glob "$_cvd_dir" '*')
+  while IFS= read -r _cvd_volume; do
+    [ -n "$_cvd_volume" ] || continue
+    if [ -L "$_cvd_volume" ] || [ ! -d "$_cvd_volume" ]; then continue; fi
+    DOCKER_FOUND=$(( DOCKER_FOUND + 1 ))
+    collect_volume "$_cvd_volume"
+  done <<EOF_VOLUME_LIST
+$_cvd_list
+EOF_VOLUME_LIST
+}
+
+# collect_docker_volumes: the main step. The root Docker, root Podman and
+# Windows-container Docker data roots, then the rootless Docker and Podman
+# roots of each (selected) user in USER_LIST. Docker Desktop keeps Linux
+# volumes inside a VM disk that no file walk reaches, so its data
+# directories (system-wide, then each user's macOS and Windows ones) only
+# get a note. Sets DOCKER_SEEN, DOCKER_DESKTOP and the other DOCKER_*
+# counters and NOTES. Temporaries: _cdv_.
+collect_docker_volumes() {
   collect_volume_dir "$ROOT/var/lib" docker/volumes </dev/null
   collect_volume_dir "$ROOT/var/lib" containers/storage/volumes </dev/null
   collect_volume_dir "$ROOT/ProgramData" Docker/volumes </dev/null
-  # Docker Desktop keeps Linux volumes inside a VM disk that no file walk reaches.
-  _dk_desktop="$ROOT/ProgramData/DockerDesktop"
-  while IFS= read -r _dk_line; do
-    [ -n "$_dk_line" ] || continue
-    _dk_h=${_dk_line#*:}
-    collect_volume_dir "$_dk_h/.local/share" docker/volumes </dev/null
-    collect_volume_dir "$_dk_h/.local/share" containers/storage/volumes </dev/null
-    _dk_desktop="$_dk_desktop
-$_dk_h/Library/Containers/com.docker.docker
-$_dk_h/AppData/Local/Docker"
-  done <<EOF_DKUSERS
+  _cdv_desktop_dirs="$ROOT/ProgramData/DockerDesktop"
+  while IFS= read -r _cdv_line; do
+    [ -n "$_cdv_line" ] || continue
+    _cdv_home=${_cdv_line#*:}
+    collect_volume_dir "$_cdv_home/.local/share" docker/volumes </dev/null
+    collect_volume_dir "$_cdv_home/.local/share" containers/storage/volumes </dev/null
+    _cdv_desktop_dirs="$_cdv_desktop_dirs
+$_cdv_home/Library/Containers/com.docker.docker
+$_cdv_home/AppData/Local/Docker"
+  done <<EOF_USER_LIST
 $USER_LIST
-EOF_DKUSERS
-  while IFS= read -r _dk_d; do
-    if [ -n "$_dk_d" ] && [ -d "$_dk_d" ] && [ ! -L "$_dk_d" ]; then
+EOF_USER_LIST
+  while IFS= read -r _cdv_dir; do
+    if [ -n "$_cdv_dir" ] && [ -d "$_cdv_dir" ] && [ ! -L "$_cdv_dir" ]; then
       DOCKER_SEEN=1; DOCKER_DESKTOP=1
-      add_note "docker: Docker Desktop data at $_dk_d; volumes inside its virtual machine disk are not collected"
+      _cdv_note="docker: Docker Desktop data at $_cdv_dir;"
+      add_note "$_cdv_note volumes inside its virtual machine disk are not collected"
     fi
-  done <<EOF_DKDESKTOP
-$_dk_desktop
-EOF_DKDESKTOP
+  done <<EOF_DOCKER_DESKTOP_DIRS
+$_cdv_desktop_dirs
+EOF_DOCKER_DESKTOP_DIRS
+}
+
+# ---------------------------------------------------------------------------
+# Main program, part to be moved: users and Docker volumes
+USER_LIST=$(get_user_homes)
+if [ -z "$USER_LIST" ]; then
+  log_line "WARNING: no user home directories found"
 fi
+[ "$INVENTORY" = 1 ] || collect_user_homes
+NOTES=
+DOCKER_SEEN=0; DOCKER_FOUND=0; DOCKER_COLLECTED=0; DOCKER_UNREADABLE=0; DOCKER_DESKTOP=0
+DOCKER_INV=
+[ "$NO_DOCKER" = 1 ] || collect_docker_volumes
 
 # ---------------------------------------------------------------------------
 # Project discovery: paths referenced by agent state files, prefixed with ROOT.
