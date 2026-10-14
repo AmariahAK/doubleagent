@@ -53,7 +53,7 @@ collectors/
   README.md                    collector user documentation, keep in sync with behaviour
   docs/<topic>.md              detailed collector documentation: options, output and
                                manifest schema, coverage, Docker, privileges, inventory,
-                               Windows, deployment, testing
+                               Windows, deployment, testing, internals
   CHANGELOG.md                 collector release history, one entry per VERSION
   tests/smoke.sh               end-to-end test of the sh collector (fake disk image)
   tests/smoke.ps1              end-to-end test of the PowerShell collector
@@ -220,6 +220,73 @@ inside another tool's directory.
 `error_copy`, `skipped_unmatched_volume`) and the `fs/<original path>` archive layout are documented in
 [`collectors/docs/output.md`](collectors/docs/output.md). Add fields if needed, but do not rename or remove them
 without updating that page and noting it in the commit message.
+
+### Readability
+
+A responder reads a collector before running it as root, so both are
+written to be audited (issue 99). The architecture and the function tables
+are in [`collectors/docs/internals.md`](collectors/docs/internals.md).
+
+- **One layout.** Both scripts have the same twelve sections, in this
+  order and under these banner titles: Reader's guide, Data tables, Shared
+  helpers, Manifest writer, Staging files, Catalog walk, Users, Docker and
+  Podman volumes, Project discovery, Inventory output, Summary and archive,
+  Main program. A section one script lacks keeps its banner and a line
+  saying why. The reader's guide at the top of each file lists the
+  sections, states the data flow in one paragraph and the naming rules;
+  it changes with the flow. New code goes in the section that owns its
+  step, and the main program stays a list of one call per step.
+- **One comment per function**, directly above it: what it takes (in sh,
+  also the globals it reads), what it returns, prints or writes (files,
+  globals, `_ret_` variables), in sh its temporaries' prefix, and the shell
+  or platform quirk it exists for, when there is one.
+- **sh names.** Globals shared between functions are `UPPER_CASE`. A
+  function's temporaries are `_<prefix>_<name>`, the prefix an abbreviation
+  of the function's name (`_cp_` for `collect_path`), since sh has no
+  `local`. A function that assigns its result instead of printing it sets
+  `_ret_<what>` (`_ret_json`). A worker program is held in `<NAME>_WORKER`,
+  read from the here-document `EOF_<NAME>_WORKER`, and its first line names
+  its positional arguments; other here-document labels name what they
+  feed (`EOF_USER_LIST`).
+- **PowerShell names.** Script state is `$script:PascalCase`; parameters
+  and locals are `$camelCase`. Functions use approved verbs, and a
+  function that sets up or changes run state is named with `Initialize`,
+  `Open`, `Close`, `Switch` or `Clear`, because PSScriptAnalyzer's
+  `PSUseShouldProcessForStateChangingFunctions` rule wants `-WhatIf`
+  support for `New`, `Set`, `Remove`, `Start`, `Stop` and `Update`.
+- **Both.** No single-letter or cryptic names except a loop index whose
+  scope is a few lines; a variable that fills a manifest field is named
+  like the field (`mtime`, `archive_path`, `sha256`).
+- **One name per job.** The sh and PowerShell functions for one step have
+  matching names (`collect_path` and `Add-CollectedPath`) and one row in
+  the pairs table in [`collectors/docs/internals.md`](collectors/docs/internals.md#function-pairs);
+  a function added, renamed or removed on either side updates that page
+  in the same commit.
+- **Bounds.** A function body stays under 40 lines and never exceeds 60.
+  Longer than 40 is allowed only for a per-item loop that a split would
+  give an extra call per file or member (`Add-CollectedFile`,
+  `Write-TarEntries`), a flat list of discovery sources
+  (`Find-AgentSessionProjects`) or one literal (`Initialize-Summary`).
+  Lines are at most 100 characters outside the data tables: break sh
+  commands with `\` or a `set --` argument list, PowerShell ones with
+  splatting or intermediate variables, never a backtick continuation. No
+  new fork, pipeline or external command per file in the sh workers or in
+  `Add-CollectedFile`.
+- **Acceptance test for a refactor.** A change made for readability
+  changes no behaviour: options, `--list`, manifest rows (every field,
+  value and the row order), `collection.json`, the log lines and their
+  order, stdout, stderr, exit codes, the archive's members, the tables
+  byte for byte and the `COLLECTOR_SH` and `CAC_*` environment variables.
+  The smoke tests passing is not enough, since they check selected rows.
+  Run the collector before and after the change on the smoke test's fake
+  image with the same arguments, for every collector run the smoke tests
+  make, under every shell of the matrix and under PowerShell 7 and 5.1,
+  and compare the manifests (every field but `atime`, which the first
+  run's reads can move), `collection.json` (less `started`, `finished` and
+  `archive`), the logs, stdout, stderr, exit codes and archive member
+  lists, allowing only timestamps, the output directory and the archive's
+  own size and hash to differ. A bug found on the way is filed and fixed
+  in its own commit.
 
 ## Analyzer standards
 
@@ -400,8 +467,11 @@ find. The validation for every current entry is recorded in the index table in
    source cited in the comment above it, and add volume-relative forms of
    its exclusions and secret globs (paths relative to the container mount
    point) at the end of `EXCLUDES` and `SECRET_GLOBS`.
-5. If the tool records project paths, add extraction to `discover_projects`
-   in the sh collector and `Find-Projects` in the PowerShell collector, and
+5. If the tool records project paths, add extraction to the matching
+   source group of `discover_projects` in the sh collector and
+   `Find-Projects` in the PowerShell collector, at the same position on
+   both sides (the groups are listed in
+   [`collectors/docs/internals.md`](collectors/docs/internals.md#project-discovery)), and
    any per-project files to `PROJECT_CATALOG`. Process names are not
    listed anywhere: running processes are the EDR's job (see Purpose).
 6. Add a fixture and assertions to `collectors/tests/smoke.sh` and

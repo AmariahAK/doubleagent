@@ -128,6 +128,7 @@ one document per agent under [research/](research/README.md).
 | [docs/windows.md](docs/windows.md) | Windows specifics: `tar.exe`, the PowerShell tar writer and zip, symlinks and reparse points, locked files, long paths |
 | [docs/deployment.md](docs/deployment.md) | Running through an EDR remote shell, fleet inventory, access times |
 | [docs/testing.md](docs/testing.md) | The smoke tests, the catalog drift check and CI |
+| [docs/internals.md](docs/internals.md) | For maintainers: the shared section layout, the run flow, the sh worker programs, glob matching, the manifest writer, capability detection, project discovery, naming, and the table of matching sh and PowerShell functions |
 
 ## License
 
