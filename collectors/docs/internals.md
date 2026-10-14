@@ -293,7 +293,9 @@ and records the result in the log and in `collection.json`'s
 - `WORKER_SH`: see [Worker programs](#worker-programs-sh).
 
 The main program puts `/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin` ahead
-of the inherited `PATH` and sets `LC_ALL=C`. Two smoke-test checks build a
+of the inherited `PATH`, sets `LC_ALL=C` and unsets `CDPATH`, which `cd`
+would otherwise search for the relative `-r` and `-o` that `resolve_root`
+and `check_prerequisites` resolve with `cd` and `pwd`. Two smoke-test checks build a
 patched copy of the script with `sed`: one rewrites the line that starts
 `PATH="/usr/bin:`, the other the text `command -v sha256sum ` (with its
 trailing space). Both strings must stay byte-identical.

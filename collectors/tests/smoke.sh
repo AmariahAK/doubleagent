@@ -853,6 +853,11 @@ printf 'x\n' >"$FILE108"
 mkdir -p "$H/.claude/plugins/y/node_modules" "$WORK/cwd109/.claude/plugins/x/node_modules"
 printf 'module.exports = 1\n' >"$H/.claude/plugins/y/node_modules/f.js"
 
+# 2026-10-14 CDPATH in the environment (#110), sh only: PowerShell has no
+# CDPATH. A directory for CDPATH that holds a decoy root, named like the
+# image root, for the cdpath110 run below.
+mkdir -p "$WORK/cdp110/root/home"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1449,6 +1454,12 @@ check "#108 output dir under a file exits 2 with only the create error" "[ $? -e
 (cd "$WORK/cwd109" && run cwd109 --no-docker --no-projects); _rc109=$?
 M109=$(ls "$OUT/cwd109"/*.manifest.jsonl 2>/dev/null)
 check "#109 wildcard exclusion holds from a directory with a matching tree" "[ $_rc109 -eq 0 ] && grep -F '\"path\":\"$H/.claude/plugins/y/node_modules\"' \"$M109\" | grep -q '\"status\":\"skipped_excluded\"' && ! grep -q 'node_modules/f.js' \"$M109\""
+
+# 2026-10-14 CDPATH in the environment (#110), sh only: a relative -r with
+# CDPATH naming the directory that holds the decoy root, run from the
+# directory that holds the image root.
+(cd "$WORK" && CDPATH="$WORK/cdp110" COLLECTOR_SH="$SHELL_UNDER_TEST" "$SHELL_UNDER_TEST" "$SCRIPT" -r root -o "$OUT/cdpath110" -q --no-docker --no-projects >"$OUT/cdpath110.stdout" 2>"$OUT/cdpath110.stderr"); _rc110=$?
+check "#110 relative -r with CDPATH set collects the image in the working directory" "[ $_rc110 -eq 0 ] && grep -q '^  \"root\": \"$ROOT\",\$' \"$OUT\"/cdpath110/*.collection.json && grep -q '\"user\":\"alice\"' \"$OUT\"/cdpath110/*.manifest.jsonl"
 
 # 2026-10-04 bug round: #29 x #32
 # An unreadable catalog match gets one error_read row, and a case variant

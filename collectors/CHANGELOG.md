@@ -122,6 +122,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   those paths and stopped matching the collected homes, so their trees
   under it were collected instead of getting one `skipped_excluded` row
   ([#109]).
+- The sh collector unsets `CDPATH` at startup. With `CDPATH` in the
+  environment, a relative `-r` or `-o` was looked up in the `CDPATH`
+  directories first, and `cd` printed the directory it chose, so the
+  root or output directory could become a same-named directory elsewhere,
+  recorded as a two-line path ([#110]).
 
 ## [1.11.0] - 2026-10-12
 
@@ -668,6 +673,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#110]: https://github.com/seanthegeek/doubleagent/issues/110
 [#109]: https://github.com/seanthegeek/doubleagent/issues/109
 [#108]: https://github.com/seanthegeek/doubleagent/issues/108
 [#107]: https://github.com/seanthegeek/doubleagent/issues/107

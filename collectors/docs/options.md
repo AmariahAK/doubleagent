@@ -53,9 +53,10 @@ When it is unset or empty the workers run under `dash` if `dash` is on the
 under `sh` otherwise; dash runs the workers nearly twice as fast as bash,
 which is macOS's `sh`. `CAC_NO_BATCH=1` is a test hook that makes the
 workers stat, copy and hash one file at a time instead of in batches; the
-manifest is the same either way. It sets `LC_ALL=C` and puts
+manifest is the same either way. It sets `LC_ALL=C`, puts
 `/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin` ahead of the inherited
-`PATH`.
+`PATH`, and unsets `CDPATH`, so a relative `-r` or `-o` is always resolved
+against the current directory.
 
 The PowerShell collector reads `COMPUTERNAME` for the host name (falling
 back to the DNS host name), `SystemDrive` for the drive whose `Users` and

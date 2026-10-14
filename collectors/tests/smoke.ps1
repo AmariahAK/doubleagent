@@ -1876,6 +1876,8 @@ Check '#108 output dir under a file exits 2 with only the create error' { $proc1
 Push-Location -LiteralPath $cwd109
 try { Run 'cwd109' @{ NoDocker = $true; NoProjects = $true } } finally { Pop-Location }
 Check '#109 wildcard exclusion holds from a directory with a matching tree' { $script:rc -eq 0 -and (StatusOf 'Users/alice/.claude/plugins/y/node_modules') -eq 'skipped_excluded' -and -not ($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like '*node_modules/f.js' }) }
+# 2026-10-14 CDPATH in the environment (#110): sh only, PowerShell has no
+# CDPATH; the check is in smoke.sh.
 
 # An unreadable home and an unlistable directory inside a walk: POSIX and not
 # root only, since chmod does not deny on Windows or to root.

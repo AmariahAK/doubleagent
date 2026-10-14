@@ -83,9 +83,12 @@ TOOL="collect-agent-artifacts"
 
 # Settings every later line relies on: the C locale for byte-wise matching
 # and sorting, the base system's tools first on PATH, and output that only
-# the user running the collector can read.
+# the user running the collector can read. CDPATH is unset because cd
+# searches it for a relative -r or -o and then prints the directory, which
+# would resolve the wrong tree into a two-line path (#110).
 LC_ALL=C
 export LC_ALL
+unset CDPATH
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:$PATH"
 export PATH
 umask 077
