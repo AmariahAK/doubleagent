@@ -117,11 +117,11 @@ $TOOL = 'collect-agent-artifacts'
 # the staged copy rather than the source, and writes its manifest row
 # through Write-ManifestRow. Then collection.json summarises the run and
 # the staging tree is archived (tar.exe, else the PowerShell tar writer,
-# else a zip). Docker and Podman named volumes (DOCKER_VOLUMES) and the
-# discovered project directories (PROJECT_CATALOG) are further bases fed
-# through the same catalog walk. -Inventory is the same walk with no
-# writes: each file feeds per-agent counters, and Write-Inventory prints
-# JSON lines.
+# else a zip). Docker and Podman named volumes (DOCKER_VOLUMES) are
+# collected whole, each as one match; the discovered project directories
+# are further bases walked with PROJECT_CATALOG. -Inventory is the same
+# walk with no writes: each file feeds per-agent counters, and
+# Write-Inventory prints JSON lines.
 #
 # Naming. Script state shared between functions is $script:PascalCase and
 # is written and read with that prefix; the parameters (-Root, -Inventory,

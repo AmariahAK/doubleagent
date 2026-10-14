@@ -60,10 +60,10 @@
 # still be appending to) and writes one manifest row per file. collection.json
 # and the stdout summary are built from the manifest, and the staging
 # directory, with the manifest, the log and collection.json, becomes the
-# archive. Docker and Podman volumes (with DOCKER_VOLUMES) and discovered
-# projects (with PROJECT_CATALOG) are further bases fed through the same
-# catalog walk. --inventory is the same walk with no writes: the workers only
-# stat, and section 10 prints one JSON line per user and agent.
+# archive. Docker and Podman volumes matched by DOCKER_VOLUMES are collected
+# whole, each as one match; discovered projects are further bases walked
+# with PROJECT_CATALOG. --inventory is the same walk with no writes: the
+# workers only stat, and section 10 prints one JSON line per user and agent.
 #
 # Naming: globals that functions share (configuration, counters, file paths,
 # the tables) are UPPER_CASE. POSIX sh has no local, so a function's own
@@ -3084,7 +3084,7 @@ json_bool() { if [ "$1" = 1 ]; then printf true; else printf false; fi; }
 # here-document removes together with the newline. Temporaries: _ws_.
 write_summary() {
   _ws_platform="$(uname -s 2>/dev/null) $(uname -r 2>/dev/null) $(uname -m 2>/dev/null)"
-  cat >"$SUMMARY" <<EOF
+  cat >"$SUMMARY" <<EOF_SUMMARY
 {
   "tool": "$TOOL",
   "version": "$VERSION",
@@ -3116,7 +3116,7 @@ write_summary() {
   "notes": $(json_list "$NOTES"),
   "archive": "$(json_escape "$1")"
 }
-EOF
+EOF_SUMMARY
   cp "$SUMMARY" "$STAGE/collection.json"
 }
 
@@ -3208,7 +3208,7 @@ print_result() {
 
 # usage: prints the help text to stdout
 usage() {
-  cat <<EOF
+  cat <<EOF_USAGE
 Usage: $0 [options]
 
   -o, --output DIR        Directory for the archive (default: current dir)
@@ -3233,7 +3233,7 @@ Usage: $0 [options]
 Environment: COLLECTOR_SH overrides the shell used for per-file workers
 (default: dash when it is on PATH, otherwise sh). Run as root to collect
 every user's home.
-EOF
+EOF_USAGE
 }
 
 # need_value COUNT: exits 1 with the usage on stderr when an option that

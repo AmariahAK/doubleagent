@@ -437,8 +437,8 @@ sh, which has no `local`:
   here-document `EOF_<NAME>_WORKER`; its variables need no prefix. Other
   here-document labels name what they feed (`EOF_USER_LIST`,
   `EOF_VOLUME_LIST`, `EOF_DOCKER_DESKTOP_DIRS`, `EOF_EXTRA_PROJECTS`,
-  `EOF_COMMON_HELPERS`, `EOF_COMMON_MANIFEST`); the usage text and
-  `collection.json` keep a plain `EOF`.
+  `EOF_COMMON_HELPERS`, `EOF_COMMON_MANIFEST`, `EOF_SUMMARY` for
+  `collection.json`, `EOF_USAGE` for the usage text).
 
 PowerShell:
 
