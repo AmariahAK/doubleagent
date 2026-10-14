@@ -1043,7 +1043,7 @@ AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude*/ccd-sess
 *.gemini/extensions/*/.env
 *.gemini/antigravity-cli/antigravity-oauth-token
 *.gemini/antigravity*/plugin_data/*/token.json
-.config/antigravity/plugin-secrets.json
+.config/[Aa]ntigravity/plugin-secrets.json
 Library/Application Support/[Aa]ntigravity/plugin-secrets.json
 AppData/Roaming/[Aa]ntigravity/plugin-secrets.json
 .qwen/oauth_creds.json
