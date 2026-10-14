@@ -2368,7 +2368,9 @@ collect_tree() {
 # every source in turn, duplicates left to filter_users: getent passwd (live
 # mode) or ROOT/etc/passwd; dscl on a live macOS host; then the directories
 # under the usual home parents of macOS, Linux, the BSDs, Solaris and Windows
-# images. Reads MODE and ROOT. Temporaries: _eu_.
+# images. The home patterns are quoted so that they reach expand_glob as
+# patterns: unquoted, the shell would expand them against the current
+# directory first (#105). Reads MODE and ROOT. Temporaries: _eu_.
 enumerate_users() {
   {
     if [ "$MODE" = live ] && command -v getent >/dev/null 2>&1; then
@@ -2380,7 +2382,7 @@ enumerate_users() {
   if [ "$MODE" = live ] && command -v dscl >/dev/null 2>&1; then
     dscl . -list /Users NFSHomeDirectory 2>/dev/null | awk 'NF>=2 {print $1":"$2}'
   fi
-  for _eu_glob in home/* Users/* root var/root usr/home/* export/home/*; do
+  for _eu_glob in 'home/*' 'Users/*' root var/root 'usr/home/*' 'export/home/*'; do
     expand_glob "$ROOT" "$_eu_glob" | while IFS= read -r _eu_home; do
       [ -d "$_eu_home" ] && printf '%s:%s\n' "${_eu_home##*/}" "$_eu_home"
     done

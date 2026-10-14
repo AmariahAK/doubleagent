@@ -813,6 +813,14 @@ Mk 'Users/alice/.gemini/config/projects/91919191-0000-4000-8000-000000000091.jso
 Mk 'Users/alice/.gemini/config/projects/91919191-0000-4000-8000-000000000092.json' (@('{', '  "id": "91919191-0000-4000-8000-000000000092",', '  "projectResources": {', '    "resources": [', '      {', '        "folderUri":  "file:///c%3A/agywin"', '      }', '    ]', '  }', '}', '') -join "`n")
 Mk 'agyapp/.antigravityignore' 'ignore'
 Mk 'agywin/.antigravityignore' 'ignore'
+# 2026-10-14 home patterns and the working directory (#105)
+# A directory outside the image with home and Users subdirectories, the
+# working directory of the cwd105 run below: the image's homes must still
+# be found, bob's among them. The same in smoke.sh, where the sh collector
+# once expanded its home patterns here.
+$cwd105 = Join-Path $Work 'cwd105'
+New-Item -ItemType Directory -Path (Join-Path (Join-Path $cwd105 'home') 'analyst') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path (Join-Path $cwd105 'Users') 'analyst') -Force | Out-Null
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1396,6 +1404,13 @@ Check 'NoDocker collects no volume' { -not ($script:Rows | Where-Object { ($_.pa
 $sum = Get-Content -LiteralPath $script:S.FullName -Raw | ConvertFrom-Json
 Check 'NoDocker recorded in options' { $sum.options.no_docker -eq $true }
 Check 'NoDocker prints no docker line' { $script:stdout -notmatch '(?m)^docker:' }
+
+# 2026-10-14 home patterns and the working directory (#105)
+Push-Location -LiteralPath $cwd105
+try { Run 'cwd105' @{ NoDocker = $true; NoProjects = $true } } finally { Pop-Location }
+$users105 = ''
+if ($script:S) { $users105 = @((Get-Content -LiteralPath $script:S.FullName -Raw | ConvertFrom-Json).users) -join ',' }
+Check '#105 image homes found from a directory with home and Users subdirectories' { $script:rc -eq 0 -and ($script:Rows | Where-Object { $_.user -eq 'bob' }) -and $users105 -ne '' -and $users105 -eq (@($dsum0.users) -join ',') }
 
 # ---- Docker Desktop note ----------------------------------------------------
 Mk 'Users/alice/AppData/Local/Docker/wsl/disk/readme.txt' 'vhdx lives here'

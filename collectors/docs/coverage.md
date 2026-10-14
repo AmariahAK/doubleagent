@@ -257,7 +257,7 @@ because agents run as them too, for example the `ollama` system user.
 | --- | --- | --- |
 | Live mode | `getent passwd`, or `/etc/passwd` where there is no `getent`; on macOS also `dscl . -list /Users NFSHomeDirectory`. | The registry `ProfileList`, and the globs below. |
 | Image mode | `<root>/etc/passwd`, with every home prefixed with the root. | Globs only, the same six patterns as the sh collector. It does not read `etc/passwd`, so in a Linux image it misses any home outside those directories. |
-| Globs | In both modes, `home/*`, `Users/*`, `root`, `var/root`, `usr/home/*` and `export/home/*` under the root, taking the directory name as the user. | In image mode, the same six patterns; in live mode, `Users\*` and `home\*` on the system drive. |
+| Globs | In both modes, `home/*`, `Users/*`, `root`, `var/root`, `usr/home/*` and `export/home/*` under the root, taking the directory name as the user. The patterns are expanded under the root only, whatever directory the collector is run from. | In image mode, the same six patterns; in live mode, `Users\*` and `home\*` on the system drive. |
 | Dropped | Homes that do not exist; system paths that are not real homes (`/`, `/bin`, `/sbin`, `/usr`, `/usr/bin`, `/usr/sbin`, `/dev`, `/dev/null`, `/proc`, `/sys`, `/nonexistent`, `/var/empty`); `Shared`, `Public`, `Default`, `Default User` and `All Users` under `/Users`. | Profiles named `Public`, `Default`, `Default User`, `All Users`, `Shared`, `defaultuser0`, `UMFD-<n>`, `DWM-<n>` or `TEMP`. |
 
 The PowerShell collector logs a profile path that cannot be seen as

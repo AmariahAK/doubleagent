@@ -823,6 +823,14 @@ printf '{\n  "id": "91919191-0000-4000-8000-000000000092",\n  "projectResources"
 printf 'ignore\n' >"$ROOT/srv/agyapp/.antigravityignore"
 printf 'ignore\n' >"$ROOT/srv/agywin/.antigravityignore"
 
+# 2026-10-14 home patterns and the working directory (#105)
+# A directory outside the image with home and Users subdirectories, the
+# working directory of the cwd105 run below: the home patterns must be
+# expanded under the image root, not here, so bob (no passwd entry, found
+# only by the Users/* pattern) is still collected. The same in smoke.ps1.
+CWD105="$WORK/cwd105"
+mkdir -p "$CWD105/home/analyst" "$CWD105/Users/analyst"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1127,6 +1135,12 @@ run nodocker --no-docker; check "no-docker exit 0" "[ $? -eq 0 ]"
 check "no-docker collects no volume" "! grep -q 'docker/volumes' \"\$M\""
 check "no-docker recorded in options" "grep -q '\"no_docker\": true' \"\$S\""
 check "no-docker prints no docker line" "! grep -q '^docker:' \"$OUT/nodocker.stdout\""
+
+# 2026-10-14 home patterns and the working directory (#105)
+(cd "$CWD105" && run cwd105 --no-docker --no-projects); _rc105=$?
+M105=$(ls "$OUT/cwd105"/*.manifest.jsonl 2>/dev/null)
+S105=$(ls "$OUT/cwd105"/*.collection.json 2>/dev/null)
+check "#105 image homes found from a directory with home and Users subdirectories" "[ $_rc105 -eq 0 ] && grep -q '\"user\":\"bob\"' \"$M105\" && [ \"\$(grep '^  \"users\":' \"$S105\")\" = \"\$(grep '^  \"users\":' \"$OUT\"/default/*.collection.json)\" ]"
 
 # ---- unreadable volume (needs a non-root user; chmod 000 does not stop root)
 if [ "$(id -u)" != 0 ]; then

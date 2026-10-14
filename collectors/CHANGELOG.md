@@ -88,6 +88,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   URI (`file:///C:/x`, also `file:///c%3A/x`) now yields the
   drive-relative `/x`, which image mode prefixes with the root, as the
   PowerShell collector already did ([#91]).
+- The sh collector's home patterns (`home/*`, `Users/*`, `usr/home/*`,
+  `export/home/*`) are expanded under the root only. Since 1.0.0 the shell
+  expanded them against the current directory first, so in image mode,
+  run from a directory with a `home` or `Users` subdirectory (`/` on
+  macOS), the homes found only by those patterns were lost: a Windows
+  image yielded no users, and a Linux image only those in its
+  `etc/passwd` ([#105]).
 
 ## [1.11.0] - 2026-10-12
 
@@ -634,6 +641,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#105]: https://github.com/seanthegeek/doubleagent/issues/105
 [#104]: https://github.com/seanthegeek/doubleagent/issues/104
 [#99]: https://github.com/seanthegeek/doubleagent/issues/99
 [#91]: https://github.com/seanthegeek/doubleagent/issues/91
