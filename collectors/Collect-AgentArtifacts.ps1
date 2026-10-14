@@ -2519,6 +2519,127 @@ function Add-CollectedTree([string]$user, [string]$homeDir, [string]$agent, [str
   }
 }
 
+# ===========================================================================
+# 7. Users
+# ===========================================================================
+# Every profile directory is a base for CATALOG. Each home is a hashtable
+# @{ user; home }; $script:UserList holds them in enumeration order.
+
+# Profile names that are never a person's home.
+$script:SkipHomes = @('Public', 'Default', 'Default User', 'All Users', 'Shared', 'defaultuser0')
+# Transient Windows service profiles: font driver hosts, desktop window
+# manager, TEMP.
+$script:SkipHomeRe = '^(UMFD-\d+|DWM-\d+|TEMP)(\..*)?$'
+# Homes that were listed but could not be entered, in the plain form.
+$script:InaccessibleHomes = @()
+# The inaccessible homes whose parent lists them (access denied), set by
+# Add-UserHomes.
+$script:DeniedHomes = @()
+$script:UserList = @()
+
+# Returns every candidate home as @{ user; home }, duplicates included. A
+# live run reads the registry's ProfileList and then lists Users/* and
+# home/* on the system drive; image mode lists the usual Windows and Unix
+# home roots under -Root.
+function Get-CandidateHomes {
+  $candidates = @()
+  if ($Mode -eq 'live') {
+    $profileList = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList'
+    try {
+      foreach ($key in (Get-ChildItem $profileList -ErrorAction Stop)) {
+        $properties = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
+        $profilePath = $properties.ProfileImagePath
+        if ($profilePath) {
+          $profilePath = [Environment]::ExpandEnvironmentVariables($profilePath)
+          $candidates += @{ user = (Split-Path -Leaf $profilePath); home = $profilePath }
+        }
+      }
+    } catch { }
+    $drive = $env:SystemDrive; if (-not $drive) { $drive = 'C:' }
+    $driveRoot = $drive + $script:Sep; if ($script:Sep -eq '/') { $driveRoot = '/' }
+    $roots = @('Users/*', 'home/*'); $base = $driveRoot
+  } else {
+    $roots = @('Users/*', 'home/*', 'root', 'var/root', 'usr/home/*', 'export/home/*')
+    $base = $Root
+  }
+  foreach ($glob in $roots) {
+    foreach ($homeDir in (Expand-Glob $base $glob)) {
+      $candidates += @{ user = (Split-Path -Leaf $homeDir); home = $homeDir }
+    }
+  }
+  return $candidates
+}
+
+# Returns the homes to collect as @{ user; home }, in enumeration order:
+# trailing separators trimmed, skip-listed and transient profiles left out,
+# files left out, -Users applied, and each home kept once (compared without
+# case). A home that is not a directory .NET can see is appended to
+# $script:InaccessibleHomes instead.
+function Get-UserHomes {
+  $wanted = @(); if ($Users -ne '') { $wanted = @($Users -split ',' | Where-Object { $_ -ne '' }) }
+  $seen = @{}; $selected = @()
+  foreach ($candidate in (Get-CandidateHomes)) {
+    $homePath = $candidate.home.TrimEnd('\', '/')
+    if ($script:SkipHomes -contains $candidate.user -or $candidate.user -match $script:SkipHomeRe) {
+      continue
+    }
+    if ([System.IO.File]::Exists((ConvertTo-ExtendedPath $homePath))) { continue }
+    if ($wanted.Count -gt 0 -and -not ($wanted -contains $candidate.user)) { continue }
+    if (-not (Test-PathQuiet $homePath 'Container')) {
+      if (-not ($script:InaccessibleHomes -contains $homePath)) {
+        $script:InaccessibleHomes += $homePath
+      }
+      continue
+    }
+    $key = $homePath.ToLowerInvariant()
+    if ($seen.ContainsKey($key)) { continue }
+    $seen[$key] = $true
+    $selected += @{ user = $candidate.user; home = $homePath }
+  }
+  return $selected
+}
+
+# Returns the inaccessible homes that are denied rather than gone: .NET
+# reports the home missing although its parent directory lists it (access
+# denied; a ProfileList entry for a deleted profile is not counted).
+function Get-DeniedHomes {
+  foreach ($homePath in $script:InaccessibleHomes) {
+    $leaf = Split-Path -Leaf $homePath; $parent = Split-Path -Parent $homePath
+    try {
+      $listed = @([System.IO.Directory]::GetDirectories((ConvertTo-ExtendedPath $parent), $leaf))
+      if ($listed.Count -gt 0) { $homePath }
+    } catch { }
+  }
+}
+
+# Main step: collects CATALOG under every home in $script:UserList. Sets
+# $script:DeniedHomes; unless -Inventory, writes one error_read row for each
+# denied home and for each listed home that cannot be walked. Under
+# -Inventory, each user's accumulator is kept in $script:InvUsers as
+# @(home, accumulator) for Write-Inventory.
+function Add-UserHomes {
+  $script:DeniedHomes = @(Get-DeniedHomes)
+  if (-not $Inventory) {
+    foreach ($deniedHome in $script:DeniedHomes) {
+      $why = 'access denied'
+      $extendedHome = ConvertTo-ExtendedPath $deniedHome
+      try { [void](Get-Item -LiteralPath $extendedHome -Force -ErrorAction Stop) }
+      catch { $why = ConvertFrom-ExtendedText $_.Exception.Message }
+      Write-ReadErrorRow (Split-Path -Leaf $deniedHome) $deniedHome '' $deniedHome $why
+    }
+  }
+  foreach ($userHome in $script:UserList) {
+    $script:Inv = [ordered]@{}
+    if (-not $Inventory) {
+      $why = Get-DirReadError $userHome.home
+      if ($why) { Write-ReadErrorRow $userHome.user $userHome.home '' $userHome.home $why }
+    }
+    $header = "User $($userHome.user) ($($userHome.home))"
+    Add-CatalogMatches $userHome.user $userHome.home $CATALOG $header
+    if ($Inventory) { $script:InvUsers += , @($userHome, $script:Inv) }
+  }
+}
+
 if ($Version) { Write-Output "$TOOL $ToolVersion"; exit 0 }
 
 if ($List) {
@@ -2920,47 +3041,7 @@ function Get-InvLines([string]$user, $acc, [int]$projects) {
   }
 }
 
-# ---------------------------------------------------------------------------
-# User enumeration -> list of @{ user; home }
-# ---------------------------------------------------------------------------
-$SkipHomes = @('Public', 'Default', 'Default User', 'All Users', 'Shared', 'defaultuser0')
-# Transient Windows service profiles: font driver hosts, desktop window manager, TEMP
-$SkipHomeRe = '^(UMFD-\d+|DWM-\d+|TEMP)(\..*)?$'
-function Get-UserHomes {
-  $homes = @()
-  if ($Mode -eq 'live') {
-    try {
-      foreach ($k in (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList' -ErrorAction Stop)) {
-        $p = (Get-ItemProperty -LiteralPath $k.PSPath -ErrorAction SilentlyContinue).ProfileImagePath
-        if ($p) { $p = [Environment]::ExpandEnvironmentVariables($p); $homes += @{ user = (Split-Path -Leaf $p); home = $p } }
-      }
-    } catch { }
-    $drive = $env:SystemDrive; if (-not $drive) { $drive = 'C:' }
-    $driveRoot = $drive + $script:Sep; if ($script:Sep -eq '/') { $driveRoot = '/' }
-    foreach ($g in @('Users/*', 'home/*')) { foreach ($d in (Expand-Glob $driveRoot $g)) { $homes += @{ user = (Split-Path -Leaf $d); home = $d } } }
-  } else {
-    foreach ($g in @('Users/*', 'home/*', 'root', 'var/root', 'usr/home/*', 'export/home/*')) {
-      foreach ($d in (Expand-Glob $Root $g)) { $homes += @{ user = (Split-Path -Leaf $d); home = $d } }
-    }
-  }
-  $wanted = @(); if ($Users -ne '') { $wanted = @($Users -split ',' | Where-Object { $_ -ne '' }) }
-  $seen = @{}; $out = @()
-  foreach ($h in $homes) {
-    $hp = $h.home.TrimEnd('\', '/')
-    if ($SkipHomes -contains $h.user -or $h.user -match $SkipHomeRe) { continue }
-    if ([System.IO.File]::Exists((ConvertTo-ExtendedPath $hp))) { continue }
-    if ($wanted.Count -gt 0 -and -not ($wanted -contains $h.user)) { continue }
-    if (-not (Test-PathQuiet $hp 'Container')) { if (-not ($script:InaccessibleHomes -contains $hp)) { $script:InaccessibleHomes += $hp }; continue }
-    $key = $hp.ToLowerInvariant()
-    if ($seen.ContainsKey($key)) { continue }
-    $seen[$key] = $true
-    $out += @{ user = $h.user; home = $hp }
-  }
-  return $out
-}
-
-$script:InaccessibleHomes = @()
-$UserList = @(Get-UserHomes)
+$script:UserList = @(Get-UserHomes)
 
 Write-CollectorLog "$TOOL $ToolVersion starting on $HostName ($([Environment]::OSVersion.VersionString), PowerShell $($PSVersionTable.PSVersion)) mode=$Mode root=$(if ($Root) { $Root } else { '\' })"
 $archiveVia = 'none'; if ($Archivers.Count -eq 0) { } elseif ($Archivers[0] -eq 'zip') { $archiveVia = 'zip' } elseif ($Archivers[0] -eq 'tar') { $archiveVia = 'tar.gz via ' + $TarExe } elseif ($Archivers[0] -eq 'writer') { $archiveVia = 'tar.gz via PowerShell tar writer' }
@@ -2970,31 +3051,11 @@ $IsAdmin = $false
 try { $IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) } catch { }
 if ($Inventory -and $PSBoundParameters.ContainsKey('OutputDir')) { Write-CollectorLog "NOTE: -Inventory writes nothing; -OutputDir $OutputDir ignored" }
 if ($Mode -eq 'live' -and -not $IsAdmin) { Write-CollectorLog "WARNING: not running as Administrator; other users' profiles will probably be unreadable" }
-if ($UserList.Count -eq 0) { Write-CollectorLog 'WARNING: no user profile directories found' }
+if ($script:UserList.Count -eq 0) { Write-CollectorLog 'WARNING: no user profile directories found' }
 foreach ($ih in $script:InaccessibleHomes) { Write-CollectorLog "profile not accessible (skipped): $ih" }
 
-# ---------------------------------------------------------------------------
-# Per-user collection
-# ---------------------------------------------------------------------------
-# A home is denied when .NET reports it missing although its parent directory
-# lists it (access denied; a ProfileList entry for a deleted profile is not
-# counted). Each denied or unlistable home gets one error_read row.
-$script:DeniedHomes = @($script:InaccessibleHomes | Where-Object {
-  $leaf = Split-Path -Leaf $_; $parent = Split-Path -Parent $_
-  try { @([System.IO.Directory]::GetDirectories((ConvertTo-ExtendedPath $parent), $leaf)).Count -gt 0 } catch { $false } })
-if (-not $Inventory) {
-  foreach ($dh in $script:DeniedHomes) {
-    $e = 'access denied'; try { [void](Get-Item -LiteralPath (ConvertTo-ExtendedPath $dh) -Force -ErrorAction Stop) } catch { $e = ConvertFrom-ExtendedText $_.Exception.Message }
-    Write-ReadErrorRow (Split-Path -Leaf $dh) $dh '' $dh $e
-  }
-}
 $script:InvUsers = @()
-foreach ($u in $UserList) {
-  $script:Inv = [ordered]@{}
-  if (-not $Inventory) { $e = Get-DirReadError $u.home; if ($e) { Write-ReadErrorRow $u.user $u.home '' $u.home $e } }
-  Add-CatalogMatches $u.user $u.home $CATALOG "User $($u.user) ($($u.home))"
-  if ($Inventory) { $script:InvUsers += , @($u, $script:Inv) }
-}
+Add-UserHomes
 
 # ---------------------------------------------------------------------------
 # Docker and Podman named volumes, enumerated from the filesystem as in the sh
@@ -3097,7 +3158,7 @@ if (-not $NoDocker) {
   Invoke-VolumeDir (Join-PathSafe $dockerBase 'var/lib') 'containers/storage/volumes'
   Invoke-VolumeDir $programData 'Docker/volumes'
   $desktopDirs = @(Join-PathSafe $programData 'DockerDesktop')
-  foreach ($u in $UserList) {
+  foreach ($u in $script:UserList) {
     Invoke-VolumeDir (Join-PathSafe $u.home '.local/share') 'docker/volumes'
     Invoke-VolumeDir (Join-PathSafe $u.home '.local/share') 'containers/storage/volumes'
     $desktopDirs += (Join-PathSafe $u.home 'Library/Containers/com.docker.docker')
@@ -3219,12 +3280,12 @@ function Get-CommonDir([string[]]$paths) {
 }
 # The user whose home contains a -Project directory, or ''.
 function Get-ProjectOwner([string]$p) {
-  foreach ($u in $UserList) { if ($p.StartsWith($u.home + $script:Sep, [System.StringComparison]::OrdinalIgnoreCase)) { return $u.user } }
+  foreach ($u in $script:UserList) { if ($p.StartsWith($u.home + $script:Sep, [System.StringComparison]::OrdinalIgnoreCase)) { return $u.user } }
   return ''
 }
 function Find-Projects {
   $found = @()
-  foreach ($u in $UserList) {
+  foreach ($u in $script:UserList) {
     $h = $u.home
     $script:DiscoveryHome = $h
     $vals = @()
@@ -3283,7 +3344,7 @@ function Find-Projects {
     $found += @{ user = (Get-ProjectOwner $p); path = $p.TrimEnd('\', '/') }
   }
   $seen = @{}; $out = @()
-  $homeKeys = @{}; foreach ($u in $UserList) { $homeKeys[$u.home.ToLowerInvariant()] = $true }
+  $homeKeys = @{}; foreach ($u in $script:UserList) { $homeKeys[$u.home.ToLowerInvariant()] = $true }
   foreach ($f in $found) {
     $key = $f.path.ToLowerInvariant()
     if ($seen.ContainsKey($key)) { if ($seen[$key].user -eq '' -and $f.user -ne '') { $seen[$key].user = $f.user }; continue }
@@ -3323,9 +3384,9 @@ if ($Inventory) {
   # profile is not counted), or when its entries cannot be listed.
   $denied = $script:DeniedHomes
   $unreadable = $denied.Count
-  foreach ($u in $UserList) { if (-not (Test-DirReadable $u.home)) { $unreadable++; Write-CollectorLog "WARNING: home of $($u.user) is not readable: $($u.home)" } }
+  foreach ($u in $script:UserList) { if (-not (Test-DirReadable $u.home)) { $unreadable++; Write-CollectorLog "WARNING: home of $($u.user) is not readable: $($u.home)" } }
   $hostLine = [ordered]@{ type = 'host'; host = $HostName; collector = $ToolVersion; mode = $Mode; at = $StartTs
-    users_scanned = ($UserList.Count + $denied.Count); users_unreadable = $unreadable; docker_volumes = $script:Docker.found }
+    users_scanned = ($script:UserList.Count + $denied.Count); users_unreadable = $unreadable; docker_volumes = $script:Docker.found }
   Write-Output ($hostLine | ConvertTo-Json -Compress)
   foreach ($pair in $script:InvUsers) {
     $u = $pair[0]
@@ -3341,7 +3402,7 @@ if ($Inventory) {
 # ---------------------------------------------------------------------------
 $EndTs = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 # Users whose home gave at least one manifest row, in enumeration order
-$ActiveUsers = @($UserList | Where-Object { $script:RowHomes.ContainsKey($_.home) })
+$ActiveUsers = @($script:UserList | Where-Object { $script:RowHomes.ContainsKey($_.home) })
 # 512 -> "512 B", 21868755 -> "20.9 MiB"
 function Format-HumanSize([int64]$bytes) {
   $units = @('B', 'KiB', 'MiB', 'GiB', 'TiB')
@@ -3361,8 +3422,8 @@ $summary = [ordered]@{
   started = $StartTs; finished = $EndTs
   options = [ordered]@{ full = $Full.IsPresent; no_secrets = $NoSecrets.IsPresent; max_file_size_bytes = $MaxSize; users_filter = $Users; no_docker = $NoDocker.IsPresent; no_projects = $NoProjects.IsPresent; projects = @($Project) }
   capabilities = [ordered]@{ hash_tool = 'System.Security.Cryptography.SHA256'; archiver = $ArchiverLabels[$Archivers[0]] }
-  users = @($UserList | ForEach-Object { $_.user })
-  homes = @($UserList | ForEach-Object { $_.home })
+  users = @($script:UserList | ForEach-Object { $_.user })
+  homes = @($script:UserList | ForEach-Object { $_.home })
   users_with_artifacts = @($ActiveUsers | ForEach-Object { $_.user })
   projects = @($ProjectList | ForEach-Object { $_.path })
   counts = [ordered]@{ collected = $script:Counts.collected; symlink = $script:Counts.symlink; skipped_excluded = $script:Counts.skipped_excluded; skipped_size = $script:Counts.skipped_size; skipped_secret = $script:Counts.skipped_secret; error_copy = $script:Counts.error_copy; skipped_unmatched_volume = $script:Counts.skipped_unmatched_volume; error_read = $script:Counts.error_read; collected_bytes = $script:Counts.bytes }
