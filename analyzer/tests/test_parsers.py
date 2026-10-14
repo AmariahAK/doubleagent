@@ -18,6 +18,8 @@ from doubleagent.parsers.gemini_cli import GeminiCliParser, resolve_project
 from doubleagent.parsers.goose import GooseParser, unescape_history
 from doubleagent.timeutil import to_utc
 from fixtures import (
+    AGY_APP_CONVERSATION,
+    AGY_APP_PROJECT,
     AGY_CONVERSATION,
     CLAUDE_295_SESSION,
     CLAUDE_BRIDGE_SESSION,
@@ -720,6 +722,7 @@ class TimelineTests(ParserBase):
             CLAUDE_SESSION,
             CODEX_SESSION,
             AGY_CONVERSATION,
+            AGY_APP_CONVERSATION,
             "99999999-0000-4000-8000-000000000000",
             "e5f6a7b8-4444-4000-8000-000000000011",
             "0a0b0c0d-4444-4000-8000-000000000022",
@@ -1036,6 +1039,13 @@ class AntigravityTests(ParserBase):
             if a.rel.endswith((".db-wal", ".db-shm", "antigravity-oauth-token")):
                 self.assertFalse(p.wants(a), a.rel)
 
+    def test_session_start_names_cli_source(self):
+        start = self.rows_for(AntigravityParser(), self.REL)[0]
+        self.assertEqual(
+            start.text,
+            "session start | source=cli | data_dir=antigravity-cli | project_id=default-cli-project",
+        )
+
     def test_helpers(self):
         self.assertEqual(uri_to_path("file:///home/u/proj"), "/home/u/proj")
         self.assertEqual(uri_to_path("file:///c%3A/Users/u/proj"), "c:/Users/u/proj")
@@ -1043,6 +1053,124 @@ class AntigravityTests(ParserBase):
         self.assertEqual(tool_args_summary('{"CommandLine":"ls","Cwd":"/x"}'), "ls")
         self.assertEqual(tool_args_summary('{"Other":1}'), '{"Other":1}')
         self.assertEqual(tool_args_summary("not json"), "not json")
+
+
+class AntigravityAppTests(ParserBase):
+    """The desktop app's conversations under ~/.gemini/antigravity (#83)."""
+
+    BASE = ".gemini/antigravity/"
+    REL = BASE + "conversations/%s.db" % AGY_APP_CONVERSATION
+
+    def test_rows(self):
+        rows = self.rows_for(AntigravityParser(), self.REL)
+        self.assertEqual(
+            [r.turn_type for r in rows],
+            [
+                "system",
+                "user",
+                "assistant",
+                "tool_use",
+                "tool_result",
+                "system",
+                "system",
+                "assistant",
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.agent, r.session_id, r.project_path),
+                ("antigravity", AGY_APP_CONVERSATION, "/home/u/proj"),
+            )
+            self.assertTrue(r.timestamp_utc.endswith("Z"), r)
+        start, user, asst, use, res, sysmsg, err, final = rows
+        self.assertEqual(
+            start.text,
+            "session start | source=cascade_client | data_dir=antigravity"
+            " | project_id=%s" % AGY_APP_PROJECT,
+        )
+        self.assertEqual(start.timestamp_utc, "2026-10-01T10:59:59.000Z")
+        self.assertEqual(
+            (user.text, user.timestamp_utc),
+            ("which packages are outdated?", "2026-10-01T11:00:00.000Z"),
+        )
+        self.assertEqual((asst.text, asst.model), ("I will ask Homebrew.", "gemini-3.8-pro"))
+        self.assertEqual(
+            (use.tool_name, use.tool_use_id, use.text), ("run_command", "call_7", "brew outdated")
+        )
+        self.assertEqual(
+            (res.tool_name, res.tool_use_id, res.text),
+            ("run_command", "call_7", "node (24.1.0) < 24.2.0"),
+        )
+        self.assertEqual(sysmsg.text, "system_message: background task finished")
+        self.assertEqual(err.text, "error: model overloaded")
+        self.assertEqual(
+            (final.text, final.model), ("One package is outdated: node.", "gemini-3.8-pro")
+        )
+        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 1, 2, 3, 4, 5])
+
+    def test_thinking_opt_in(self):
+        rows = self.rows_for(AntigravityParser(), self.REL)
+        self.assertNotIn("thinking", [r.turn_type for r in rows])
+        rows = self.rows_for(AntigravityParser(), self.REL, include_thinking=True)
+        self.assertEqual([r.text for r in rows if r.turn_type == "thinking"], ["brew knows"])
+
+    def test_summaries(self):
+        rows = self.rows_for(AntigravityParser(), self.BASE + "conversation_summaries.db")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(
+            (rows[0].turn_type, rows[0].session_id, rows[0].timestamp_utc),
+            ("system", AGY_APP_CONVERSATION, "2026-10-01T11:00:13.002Z"),
+        )
+        self.assertEqual(
+            rows[0].text,
+            "conversation summary | Outdated packages | CASCADE_RUN_STATUS_IDLE | 6 steps",
+        )
+
+    def test_other_data_directories_wanted(self):
+        p = AntigravityParser()
+
+        def art(rel):
+            return cast(Artifact, type("A", (), {"rel": rel})())
+
+        for d in ("antigravity-cli", "antigravity", "antigravity-ide", "antigravity-backup"):
+            self.assertTrue(p.wants(art(".gemini/%s/conversations/x.db" % d)), d)
+            self.assertTrue(p.wants(art(".gemini/%s/conversation_summaries.db" % d)), d)
+        for rel in (
+            ".gemini/antigravity/history.jsonl",  # the app writes none; CLI only
+            ".gemini/antigravity-other/conversations/x.db",
+            ".gemini/antigravity/conversations/x.db-wal",
+            ".gemini/config/projects/default-cli-project.json",
+        ):
+            self.assertFalse(p.wants(art(rel)), rel)
+
+    def test_token_and_brain_not_wanted(self):
+        p = AntigravityParser()
+        rels = {a.rel: a for a in self.col.artifacts}
+        token = self.BASE + "plugin_data/gdocs/token.json"
+        brain = (
+            self.BASE + "brain/%s/.system_generated/logs/transcript.jsonl" % AGY_APP_CONVERSATION
+        )
+        for rel in (token, brain):
+            self.assertEqual(rels[rel].agent, "antigravity", rel)
+            self.assertFalse(p.wants(rels[rel]), rel)
+
+    def test_bad_step_is_reported_not_fatal(self):
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.REL))
+        con.execute(
+            "INSERT INTO steps (idx, step_type, status, step_payload) VALUES (99, 15, 3, ?)",
+            (b"\xa2\x01\x05ab",),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(AntigravityParser(), self.REL)
+        self.assertEqual(len(rows), 9)
+        self.assertEqual(rows[7].text, "One package is outdated: node.")
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].text),
+            ("system", "parser: 1 step(s) could not be decoded"),
+        )
 
 
 from doubleagent.parsers.qwen_code import QwenCodeParser, args_summary

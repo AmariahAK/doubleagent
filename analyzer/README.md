@@ -98,7 +98,8 @@ which subcommands take it, and the full exit-code table.
 ## Parsers
 
 Parsers exist for Claude Code, Claude Desktop, Codex CLI, Gemini CLI,
-Antigravity, Qwen Code, Amazon Q CLI (the `kiro` entry), VS Code chat
+Antigravity (CLI and desktop app), Qwen Code, Amazon Q CLI (the `kiro`
+entry), VS Code chat
 (including Copilot Chat), Cline, Roo Code, Kilo Code, Continue, Aider,
 OpenCode, Crush, Goose, Zed, Tabby, OpenHands, ShellGPT, pi, little-coder,
 Letta, Hermes, Agent Zero, Open Interpreter, OpenClaw, nanobot, Sourcegraph

@@ -1,4 +1,4 @@
-"""Antigravity CLI (`agy`) conversations.
+"""Antigravity CLI (`agy`) and Antigravity desktop app conversations.
 
 Antigravity stores each conversation as a SQLite database of protobuf blobs.
 There is no public schema, so the message definitions below were taken from
@@ -10,12 +10,35 @@ trajectory.proto`, `third_party/jetski/cortex_pb/cortex.proto`,
 against a real install. `analyzer/tools/proto_descriptors.py` re-extracts them
 from a binary when a new release changes the format.
 
-Files, relative to the home directory:
+Descriptor drift check (2026-10-13): `exa.cortex_pb.CortexStepType`,
+`CortexStepStatus`, `CortexTrajectorySource`, `gemini_coder.Step` and every
+message in `SCHEMA` were diffed against the descriptors of `agy` 1.2.16
+(macOS arm64) and of the desktop app's `language_server` 2.23.0 (macOS
+arm64). Field numbers, names and types match in both, and `STEP_TYPES` lists
+the same 118 values; nothing drifted from the Linux 1.2.15 descriptors the
+tables were built from. The new real data has steps with `permissions`
+(`gemini_coder.Step` field 133) and `task_details` (148), neither read here.
 
-* `.gemini/antigravity-cli/conversations/<conversation id>.db`, with `-wal`
+The CLI and the desktop app run the same Go backend (the app calls it the
+language server) and write the same stores, each into its own data
+directory under `~/.gemini`:
+
+* `antigravity-cli/`: the CLI's (`trajectory_meta.source` 17, `cli`).
+* `antigravity/`: the desktop app 2.x's (`source` 1, `cascade_client`); the
+  app passes the name to the backend as `--app_data_dir`, and its summaries
+  rows carry it in `app_data_dir`.
+* `antigravity-ide/`: the separately installed Antigravity IDE's, after the
+  app's install wizard migrates pre-2.0 IDE data out of `antigravity/`.
+* `antigravity-backup/`: the backup the app takes during that migration.
+
+Files, relative to the home directory, under each of those directories
+(`<dir>`):
+
+* `.gemini/<dir>/conversations/<conversation id>.db`, with `-wal`
   and `-shm` sidecars (WAL mode, so the sidecars hold the newest steps):
   - `trajectory_meta(trajectory_id, cascade_id, trajectory_type, source)`:
-    `cascade_id` is the conversation id; `source` 17 is the CLI.
+    `cascade_id` is the conversation id; `source` is a
+    `CortexTrajectorySource` (`TRAJECTORY_SOURCES`).
   - `trajectory_metadata_blob(id, data)`: `exa.cortex_pb.CortexTrajectoryMetadata`
     with `workspaces[].workspace_folder_absolute_uri` and `branch_name`,
     `created_at`, `parent_conversation_id`, `project_id`.
@@ -27,23 +50,32 @@ Files, relative to the home directory:
     The payload oneof names the step kind: `user_input.query`,
     `planner_response.response` with `thinking` and `tool_calls[]`, and one
     message per tool (`run_command`, `view_file`, `write_to_file`,
-    `code_action`, `mcp_tool`, `generic`, ...).
+    `code_action`, `mcp_tool`, `generic`, ...), plus `system_message`
+    (`message`, `event_type`; step type 101) and `error_message`
+    (`error.short_error`, `user_error_message`, `full_error`; step type 17),
+    both seen in the desktop app's real data and yielded as `system` rows.
   - `gen_metadata(idx, data)`: `exa.cortex_pb.CortexStepGeneratorMetadata`
     with `step_indices[]` and `chat_model.response_model`, the only place
     the model name is recorded.
-* `.gemini/antigravity-cli/conversation_summaries.db`, table
+* `.gemini/<dir>/conversation_summaries.db`, table
   `conversation_summaries`: one row per conversation with `title`,
   `preview`, `step_count`, `last_modified_time`, `workspace_uris` (JSON
   array), `status`, `agent_name`, `parent_conversation_id`, `project_id`.
-* `.gemini/antigravity-cli/history.jsonl`: `{display, timestamp, workspace}`
-  per prompt, `timestamp` in epoch milliseconds, no conversation id.
+  The app's copy also has an FTS5 table `conversations_fts` and
+  `search_schema_version`, which are not read.
+* `.gemini/antigravity-cli/history.jsonl` (CLI only; the app writes none):
+  `{display, timestamp, workspace}` per prompt, `timestamp` in epoch
+  milliseconds, no conversation id.
 
 Rows: one `user` row per user_input step (`system` when the source is
 USER_IMPLICIT); for each planner_response step an `assistant` row, one
 `tool_use` row per proposed tool call, and a `thinking` row with
 `--include-thinking`; one `tool_result` row per executed tool step, keyed by
 the planner's call id; `system` rows for the session start, checkpoints,
-system messages, errors and the conversation summary. Step timestamps come
+system messages, errors and the conversation summary. The session start
+row's text names `source=<trajectory source>` (the number when it is not in
+`TRAJECTORY_SOURCES`) and `data_dir=<the .gemini subdirectory>`, so a CLI
+conversation and a desktop-app one can be told apart. Step timestamps come
 from the step metadata; tool results use `completed_at`.
 """
 
@@ -62,9 +94,40 @@ from ..timeutil import to_utc
 from .base import Options, Parser, compact_json, iter_jsonl
 
 BASE = ".gemini/antigravity-cli/"
-CONV_RX = re.compile(r"^\.gemini/antigravity-cli/conversations/[^/]+\.db$")
-SUMMARIES_REL = BASE + "conversation_summaries.db"
+# The four data directories under ~/.gemini that hold the same stores: the
+# CLI's, the desktop app's, the separately installed IDE's and the backup the
+# app takes when it migrates pre-2.0 IDE data. Group 1 is the directory name.
+DATA_DIR = r"^\.gemini/(antigravity(?:-cli|-ide|-backup)?)/"
+CONV_RX = re.compile(DATA_DIR + r"conversations/[^/]+\.db$")
+SUMMARIES_RX = re.compile(DATA_DIR + r"conversation_summaries\.db$")
 HISTORY_REL = BASE + "history.jsonl"
+
+# exa.cortex_pb.CortexTrajectorySource, lower-cased without the prefix: the
+# surface that started the conversation (trajectory_meta.source).
+TRAJECTORY_SOURCES = {
+    0: "unspecified",
+    1: "cascade_client",
+    2: "explain_problem",
+    3: "refactor_function",
+    4: "eval",
+    5: "eval_task",
+    6: "async_prr",
+    7: "async_cf",
+    8: "async_sl",
+    9: "async_prd",
+    10: "async_cm",
+    12: "interactive_cascade",
+    13: "replay",
+    15: "sdk",
+    16: "subagent",
+    17: "cli",
+    18: "jetbox",
+    19: "agent_api",
+    20: "cider",
+    21: "gemini_app",
+    22: "vscode",
+    23: "visual_studio",
+}
 
 # exa.cortex_pb.CortexStepType, lower-cased without the prefix.
 STEP_TYPES = {
@@ -613,12 +676,16 @@ class AntigravityParser(Parser):
     name = "antigravity"
 
     def wants(self, artifact: Artifact) -> bool:
-        return artifact.rel in (SUMMARIES_REL, HISTORY_REL) or bool(CONV_RX.match(artifact.rel))
+        return (
+            artifact.rel == HISTORY_REL
+            or bool(SUMMARIES_RX.match(artifact.rel))
+            or bool(CONV_RX.match(artifact.rel))
+        )
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if artifact.rel == HISTORY_REL:
             yield from self._parse_history(artifact, opts)
-        elif artifact.rel == SUMMARIES_REL:
+        elif SUMMARIES_RX.match(artifact.rel):
             yield from self._parse_summaries(artifact, opts)
         else:
             yield from self._parse_conversation(artifact, opts)
@@ -680,11 +747,14 @@ class AntigravityParser(Parser):
                 return
             session_id = artifact.disk_path.name[:-3]
             project_path = branch = source = ""
+            m = CONV_RX.match(artifact.rel)
+            data_dir = m.group(1) if m else ""
             if "trajectory_meta" in tables:
                 tm = con.execute("select * from trajectory_meta limit 1").fetchone()
                 if tm:
                     session_id = tm["cascade_id"] or session_id
-                    source = str(tm["source"])
+                    if tm["source"] is not None:
+                        source = TRAJECTORY_SOURCES.get(tm["source"], str(tm["source"]))
             if "trajectory_metadata_blob" in tables:
                 blob = con.execute("select data from trajectory_metadata_blob limit 1").fetchone()
                 if blob and blob[0]:
@@ -706,6 +776,7 @@ class AntigravityParser(Parser):
                             _join(
                                 "session start",
                                 "source=%s" % source if source else "",
+                                "data_dir=%s" % data_dir if data_dir else "",
                                 "project_id=%s" % meta["project_id"]
                                 if meta.get("project_id")
                                 else "",

@@ -47,7 +47,8 @@ mounted image, detects which agents left state in it using the collectors'
 own catalog, and parses the transcripts it understands into a normalised
 JSONL timeline of turns, tool calls and tool results, plus a per-session
 summary. Parsers exist for Claude Code, Claude Desktop, Codex CLI, Gemini
-CLI, Antigravity, Qwen Code, Amazon Q CLI (the `kiro` entry), VS Code chat
+CLI, Antigravity (CLI and desktop app), Qwen Code, Amazon Q CLI (the
+`kiro` entry), VS Code chat
 (including Copilot Chat), Cline, Roo Code, Kilo Code, Continue, Aider,
 OpenCode, Crush, Goose, Zed, Tabby, OpenHands, ShellGPT, pi, little-coder,
 Letta, Hermes, Agent Zero, Open Interpreter, OpenClaw, nanobot, Sourcegraph

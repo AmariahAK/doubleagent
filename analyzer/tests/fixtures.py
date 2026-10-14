@@ -4,6 +4,7 @@ CLI files as of October 2026 (see the parser module docstrings)."""
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import sqlite3
@@ -1265,6 +1266,7 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     # Nested catalog entries: Antigravity CLI inside ~/.gemini, and a Cline
     # extension inside VS Code's globalStorage. The nested agent must win.
     build_antigravity(home / ".gemini/antigravity-cli")
+    build_antigravity_app(home / ".gemini/antigravity")
     build_gemini_cli(home / ".gemini")
     build_zed(home)
     build_vscode(home)
@@ -1330,6 +1332,9 @@ def write_bad_line(path: Path) -> None:
 
 AGY_CONVERSATION = "799062d5-0000-4000-8000-000000000099"
 AGY_T0 = 1790848800  # 2026-10-01T10:00:00Z
+AGY_APP_CONVERSATION = "a1b2c3d4-0000-4000-8000-0000000000a2"
+AGY_APP_PROJECT = "5e1d7c2a-0000-4000-8000-0000000000a1"
+AGY_APP_T0 = AGY_T0 + 3600  # 2026-10-01T11:00:00Z
 
 
 def _step(
@@ -1479,10 +1484,150 @@ def antigravity_steps() -> list[tuple[int, int, dict]]:
     ]
 
 
-def build_antigravity(base: Path) -> None:
+def antigravity_app_steps() -> list[tuple[int, int, dict]]:
+    """Steps of a desktop-app conversation: the kinds the macOS real install
+    of app 2.23.0 showed (user_input, planner_response, generic) plus a
+    system_message (101) and an error_message (17) step, both seen there."""
+    tc = {
+        "id": "call_7",
+        "name": "run_command",
+        "arguments_json": json.dumps({"CommandLine": "brew outdated", "Cwd": "/home/u/proj"}),
+    }
+    t = AGY_APP_T0
+    return [
+        (
+            14,
+            3,
+            dict(
+                _step("user_input", {"query": "which packages are outdated?"}, t, source=4),
+                type=14,
+            ),
+        ),
+        (
+            15,
+            3,
+            dict(
+                _step(
+                    "planner_response",
+                    {
+                        "response": "I will ask Homebrew.",
+                        "thinking": "brew knows",
+                        "tool_calls": [tc],
+                    },
+                    t + 1,
+                    t + 2,
+                ),
+                type=15,
+            ),
+        ),
+        (
+            132,
+            3,
+            dict(
+                _step(
+                    "generic",
+                    {
+                        "args": [{"key": "CommandLine", "value": "brew outdated"}],
+                        "result": {"result": "node (24.1.0) < 24.2.0"},
+                    },
+                    t + 2,
+                    t + 3,
+                    tool_call=tc,
+                ),
+                type=132,
+            ),
+        ),
+        (
+            101,
+            3,
+            dict(
+                _step("system_message", {"message": "background task finished"}, t + 4, source=5),
+                type=101,
+            ),
+        ),
+        (
+            17,
+            3,
+            dict(
+                _step(
+                    "error_message",
+                    {"error": {"short_error": "model overloaded", "full_error": "HTTP 529"}},
+                    t + 5,
+                    source=5,
+                ),
+                type=17,
+            ),
+        ),
+        (
+            15,
+            3,
+            dict(
+                _step(
+                    "planner_response", {"response": "One package is outdated: node."}, t + 6, t + 7
+                ),
+                type=15,
+            ),
+        ),
+    ]
+
+
+def build_antigravity_app(base: Path) -> None:
+    """The desktop app's data directory, ~/.gemini/antigravity: the same
+    stores as the CLI's with source 1 and app_data_dir `antigravity`, no
+    history.jsonl, and noise the parser must not want (the gdocs plugin's
+    OAuth token, a brain transcript)."""
+    build_antigravity(
+        base,
+        conversation=AGY_APP_CONVERSATION,
+        source=1,
+        steps=antigravity_app_steps(),
+        t0=AGY_APP_T0,
+        project_id=AGY_APP_PROJECT,
+        title="Outdated packages",
+        app_data_dir="antigravity",
+        models={"gemini-3.8-pro": [1, 5]},
+        cli=False,
+    )
+    token = base / "plugin_data/gdocs/token.json"
+    token.parent.mkdir(parents=True)
+    token.write_text(
+        json.dumps({"client_id": "x", "token": {"access_token": "y"}}), encoding="utf-8"
+    )
+    _jsonl(
+        base / "brain" / AGY_APP_CONVERSATION / ".system_generated/logs/transcript.jsonl",
+        [
+            {
+                "type": "USER_INPUT",
+                "content": "which packages are outdated?",
+                "created_at": "2026-10-01T11:00:00Z",
+                "source": "USER_EXPLICIT",
+                "status": "DONE",
+                "step_index": 0,
+            }
+        ],
+    )
+
+
+def build_antigravity(
+    base: Path,
+    conversation: str = AGY_CONVERSATION,
+    source: int = 17,
+    steps: list[tuple[int, int, dict]] | None = None,
+    t0: int = AGY_T0,
+    project_id: str = "default-cli-project",
+    title: str = "",
+    app_data_dir: str = "antigravity-cli",
+    models: dict[str, list[int]] | None = None,
+    cli: bool = True,
+) -> None:
+    """One Antigravity data directory: a conversation database, the
+    summaries database and, for the CLI (`cli`), history.jsonl and the
+    OAuth token file."""
+    steps = antigravity_steps() if steps is None else steps
+    models = {"gemini-3.8-flash": [1, 3, 5, 8]} if models is None else models
     conv = base / "conversations"
     conv.mkdir(parents=True, exist_ok=True)
-    db = conv / (AGY_CONVERSATION + ".db")
+    db = conv / (conversation + ".db")
     con = sqlite3.connect(str(db))
     con.executescript("""
     CREATE TABLE trajectory_meta (trajectory_id text, cascade_id text, trajectory_type integer, source integer, PRIMARY KEY (trajectory_id));
@@ -1492,33 +1637,34 @@ def build_antigravity(base: Path) -> None:
     CREATE TABLE gen_metadata (idx integer, data blob, size integer NOT NULL DEFAULT 0, PRIMARY KEY (idx));
     CREATE TABLE trajectory_metadata_blob (id text DEFAULT "main", data blob, PRIMARY KEY (id));
     """)
-    con.execute("INSERT INTO trajectory_meta VALUES (?,?,?,?)", ("traj-1", AGY_CONVERSATION, 4, 17))
+    con.execute("INSERT INTO trajectory_meta VALUES (?,?,?,?)", ("traj-1", conversation, 4, source))
     meta = encode(
         {
             "workspaces": [
                 {"workspace_folder_absolute_uri": "file:///home/u/proj", "branch_name": "main"}
             ],
-            "created_at": AGY_T0 - 1,
+            "created_at": t0 - 1,
             "workspace_uris": ["file:///home/u/proj"],
-            "project_id": "default-cli-project",
+            "project_id": project_id,
         },
         "CortexTrajectoryMetadata",
         AGY,
     )
     con.execute("INSERT INTO trajectory_metadata_blob VALUES ('main', ?)", (meta,))
-    for idx, (step_type, status, step) in enumerate(antigravity_steps()):
+    for idx, (step_type, status, step) in enumerate(steps):
         payload = encode(step, "Step", AGY)
         md = encode(step["metadata"], "CortexStepMetadata", AGY)
         con.execute(
             "INSERT INTO steps (idx, step_type, status, metadata, step_payload) VALUES (?,?,?,?,?)",
             (idx, step_type, status, md, payload),
         )
-    gen = encode(
-        {"chat_model": {"response_model": "gemini-3.8-flash"}, "step_indices": [1, 3, 5, 8]},
-        "CortexStepGeneratorMetadata",
-        AGY,
-    )
-    con.execute("INSERT INTO gen_metadata VALUES (0, ?, ?)", (gen, len(gen)))
+    for n, (model, indices) in enumerate(models.items()):
+        gen = encode(
+            {"chat_model": {"response_model": model}, "step_indices": indices},
+            "CortexStepGeneratorMetadata",
+            AGY,
+        )
+        con.execute("INSERT INTO gen_metadata VALUES (?, ?, ?)", (n, gen, len(gen)))
     con.commit()
     con.close()
     summ = sqlite3.connect(str(base / "conversation_summaries.db"))
@@ -1535,25 +1681,34 @@ def build_antigravity(base: Path) -> None:
         "INSERT INTO conversation_summaries (conversation_id, title, preview, step_count, last_modified_time, workspace_uris, status, "
         "project_id, last_user_input_time, app_data_dir) VALUES (?,?,?,?,?,?,?,?,?,?)",
         (
-            AGY_CONVERSATION,
-            "",
-            "clean the logs",
-            10,
-            "2026-10-01 10:00:13.002530482+00:00",
+            conversation,
+            title,
+            "clean the logs" if cli else "",
+            len(steps),
+            "%s.002530482+00:00" % _utc_text(t0 + 13),
             json.dumps(["file:///home/u/proj"]),
             "CASCADE_RUN_STATUS_IDLE",
-            "default-cli-project",
-            "2026-10-01 10:00:00.000000000+00:00",
-            "antigravity-cli",
+            project_id,
+            "%s.000000000+00:00" % _utc_text(t0),
+            app_data_dir,
         ),
     )
     summ.commit()
     summ.close()
+    if not cli:
+        return
     _jsonl(
         base / "history.jsonl",
-        [{"display": "clean the logs", "timestamp": AGY_T0 * 1000, "workspace": "/home/u/proj"}],
+        [{"display": "clean the logs", "timestamp": t0 * 1000, "workspace": "/home/u/proj"}],
     )
     (base / "antigravity-oauth-token").write_text("secret", encoding="utf-8")
+
+
+def _utc_text(epoch: int) -> str:
+    """`YYYY-MM-DD HH:MM:SS` in UTC, the summaries database's time text."""
+    return datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
 
 QWEN_SESSION = "e5f6a7b8-4444-4000-8000-000000000011"
