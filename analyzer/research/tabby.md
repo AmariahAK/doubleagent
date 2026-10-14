@@ -115,6 +115,9 @@ Globs: `.tabby/ee/db.sqlite`, `.tabby/ee/db.backup-*.sqlite`,
 | tool_name, tool_use_id | empty |
 | text | `content`; completion `prompt` and choice text; others the event kind |
 
+Tabby records no model in the thread or event stores, so the parser yields
+no `model:` rows.
+
 Add the thread owner's `users.email` to `text` or a note, since one
 server serves many people.
 

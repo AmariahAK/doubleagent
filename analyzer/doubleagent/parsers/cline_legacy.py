@@ -33,7 +33,12 @@ directory, Cline's `~/.cline/data`, Roo's `~/.vscode-mock/global-storage`):
   user_edit_date}]` (Cline prefixes `cline_`, Roo `roo_`), and in Cline
   `model_usage[{ts, model_id, model_provider_id, mode}]` and
   `environment_history[{ts, os_name, os_version, os_arch, host_name,
-  host_version, cline_version}]`. One `system` row per dated event.
+  host_version, cline_version}]`. One `system` row per dated event, except
+  that `model_usage` entries yield `model: <model_id> model_provider_id=<p>
+  mode=<m>` at the task's first entry and `model: <old> -> <new> ...` when
+  `model_id` changes, and `permission mode: <mode>` at the first entry and
+  `permission mode: <old> -> <new>` when the entry's `mode`
+  changes; an entry that changes neither yields no row.
 * The task index, `HistoryItem {id, ts, task, tokensIn, tokensOut,
   cacheWrites, cacheReads, totalCost, size}` plus Cline's
   `cwdOnTaskInitialization`, `modelId`, `apiProvider` or Roo's `workspace`,
@@ -66,7 +71,7 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, text_of
+from .base import Options, Parser, compact_json, text_of, track_change
 from .claude_code import tool_summary
 
 UI_FILE = "ui_messages.json"
@@ -485,15 +490,10 @@ class LegacyTaskParser(Parser):
                 )
         for n, e in enumerate(data.get("model_usage") or [], 1):
             if isinstance(e, dict):
-                events.append(
-                    (
-                        e.get("ts") or 0,
-                        n,
-                        str(e.get("model_id") or ""),
-                        "model_usage: %s"
-                        % _fmt_counts(e, ("model_id", "model_provider_id", "mode")),
-                    )
-                )
+                # Text is decided after sorting: a model_usage entry becomes a
+                # `model:` row when the model changes and a `permission mode:`
+                # row when the plan/act mode changes.
+                events.append((e.get("ts") or 0, n, str(e.get("model_id") or ""), e))
         for n, e in enumerate(data.get("environment_history") or [], 1):
             if isinstance(e, dict):
                 events.append(
@@ -516,11 +516,28 @@ class LegacyTaskParser(Parser):
                     )
                 )
         events.sort(key=lambda x: x[0] if isinstance(x[0], (int, float)) else 0)
+        models: dict = {}
+        modes: dict = {}
         for ts, n, model, text in events:
-            row = self._row(artifact, ctx, n, to_utc(ts), model)
-            row.turn_type = "system"
-            row.text = compact(text)
-            yield row
+            if isinstance(text, dict):
+                usage = text
+                texts = []
+                change = track_change("model", models, ctx.task_id, model)
+                if change:
+                    extra = _fmt_counts(usage, ("model_provider_id", "mode"))
+                    texts.append("%s %s" % (change, extra) if extra else change)
+                mode = track_change(
+                    "permission mode", modes, ctx.task_id, str(usage.get("mode") or "")
+                )
+                if mode:
+                    texts.append(mode)
+            else:
+                texts = [text]
+            for t in texts:
+                row = self._row(artifact, ctx, n, to_utc(ts), model)
+                row.turn_type = "system"
+                row.text = compact(t)
+                yield row
 
     # -- task index entries
 

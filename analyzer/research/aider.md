@@ -93,6 +93,12 @@ Rows: one per `#### ` block (user), per assistant run, per `> ` run
 | tool_name, tool_use_id | empty |
 | text | prompt text, assistant text, blockquote text |
 
+Aider records no model in these files, so the parser yields no `model:`
+rows. Its confirmation prompts are written as `> ` blockquote lines
+([section 3](#3-record-schema)), which the parser already emits with the
+rest of the blockquote run as `tool_result` rows; no separate `permission
+decision:` row is derived from them.
+
 Fixture `.aider.chat.history.md`:
 
 ```markdown

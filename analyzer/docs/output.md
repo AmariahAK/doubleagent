@@ -244,6 +244,23 @@ share, as one `permission setting: <path>=<true|false> (from
 .pi/agent/trust.json, file mtime)` row per project, with `project_path`
 the project, the file's modification time and an empty `session_id`.
 
+The `cline`, `continue` and `pearai` parsers write the same `model:`
+rows, with the `model` column the new model. Cline's SDK sessions write
+`model: <id> provider=<provider>` after the session start (or
+`sessions.db` index) row, from the manifest's `model` and `provider`, and
+`model: <old> -> <new> provider=<provider>` before a message whose
+`modelInfo.id` differs; its legacy tasks write `model: <model_id>
+model_provider_id=<id> mode=<mode>` and `model: <old> -> <new> ...` from
+the `model_usage` entries of `task_metadata.json` at each entry's time,
+and `permission mode: <mode>` and `permission mode: <old> -> <new>` from
+the same entries' `mode`. Continue writes `model: <chatModelTitle>` after
+the session row and `model: <old> -> <new>` before a history item whose
+`promptLogs[].modelTitle` differs; PearAI's chat sessions write
+`model: <id>` and `model: <old> -> <new>` from each item's
+`promptLogs[].completionOptions.model`. These rows inherit the session's
+time like every other row of a Continue or PearAI session. `roo-code`,
+`aider`, `shellgpt` and `tabby` record no model and write no such row.
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and

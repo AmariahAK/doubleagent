@@ -176,6 +176,31 @@ history because it has `ts`), one per content block of SDK messages.
 | tool_use_id | `ts` | `tool_use.id` / `tool_use_id` |
 | text | `text` | first text or tool input |
 
+Model and mode rows, all typed `system`:
+
+- Legacy: the task's first `task_metadata.json` `model_usage[]` entry
+  yields `model: <model_id> model_provider_id=<model_provider_id>
+  mode=<mode>`, and a later entry whose `model_id` differs yields
+  `model: <old> -> <new>` with the same pairs, at the entry's `ts`.
+- Legacy: the first entry's `mode` yields `permission mode: <mode>` and a
+  later entry whose `mode` differs yields `permission mode: <old> ->
+  <new>`, so an entry that changes only the mode still has a row.
+- SDK: the manifest `model` and `provider` (or the `sessions.db` row of a
+  session whose manifest is gone) yield `model: <model>
+  provider=<provider>` at `started_at`, and the session start row no
+  longer carries `model=`.
+- SDK: a message whose `modelInfo.id` differs from the model before it
+  yields `model: <old> -> <new> provider=<modelInfo.provider>` ahead of
+  its rows. The lead transcript starts from the manifest `model`; a
+  subagent transcript starts from its own first `modelInfo.id`.
+- `ui_messages.json` `modelInfo` and `HistoryItem.modelId` fill the
+  `model` column only.
+
+Permission decisions: whether the answer to an `ask` (approve or reject)
+is stored, and where the auto-approval settings live, are not in this
+research, so the parser yields no `permission decision:` or `permission
+setting:` row.
+
 Fixtures (invented content, real field names):
 
 ```json

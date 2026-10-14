@@ -142,6 +142,15 @@ XML-in-text tool calls; otherwise rows are emitted per message.
 | tool_use_id | empty | empty |
 | text | `message.content` (text parts joined) | text block |
 
+Model rows, typed `system`, chat sessions only: the first item whose
+`promptLogs[].completionOptions.model` names a model yields `model:
+<model>` ahead of the item's rows, and a later item naming a different
+one yields `model: <old> -> <new>`. Mid-session switching is not
+researched: the format has no switch record, so a change shows only as a
+different value between items. Agent tasks record no model (the Roo fork
+writes no `modelInfo` and no `model_usage`). Permission state was not
+researched for either surface, and the parser reads none.
+
 Fixture `.pearai/sessions/9b1c2d3e-0000-4000-8000-000000000001.json`:
 
 ```json

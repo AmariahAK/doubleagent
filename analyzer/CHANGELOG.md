@@ -127,6 +127,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the first `.letta/sessions.jsonl` line of each CLI session that names a
   model, and `model: <old> -> <new> provider=<provider>` when a later
   line of the session names another ([#96]).
+- The `continue` and `pearai` chat-session parsers yield a `system` row
+  `model: <id>` at a session's first model and `model: <old> -> <new>`
+  ahead of a later history item that names a different one: Continue
+  starts from `chatModelTitle` (else the first `promptLogs[].modelTitle`)
+  and compares each item's `promptLogs[].modelTitle`, PearAI compares each
+  item's `promptLogs[].completionOptions.model` ([#96]).
 
 ### Changed
 
@@ -163,6 +169,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   provider=<provider>` on each change, with ` requested=<model>` and the
   repeated `model_change` row as above, in place of
   `model change: <provider>/<id>` ([#96]).
+- The `cline` parser's model rows take the `model: <id>` and
+  `model: <old> -> <new>` form. An SDK session's start row no longer ends
+  with `model=<id>`; a `model: <id> provider=<provider>` row follows it
+  (also for a `sessions.db` index row), and a message whose
+  `modelInfo.id` differs yields `model: <old> -> <new>
+  provider=<provider>`. The legacy `model_usage: model_id=...` rows from
+  `task_metadata.json` become `model: <id> model_provider_id=<p>
+  mode=<m>` at the first entry and on a change of `model_id`, and
+  `permission mode: <mode>` and `permission mode: <old> -> <new>` rows
+  carry the entry's `mode`; an entry that changes neither has no row
+  ([#96], [#97]).
 
 ### Fixed
 

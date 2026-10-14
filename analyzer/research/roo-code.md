@@ -95,6 +95,9 @@ available as a fallback timestamp, `condense_context` typed `system`,
 `session_id` the directory name, `project_path` from `history_item.workspace`,
 and `model` always empty.
 
+Roo Code records no model in any of these files (`apiConfigName` is a
+profile name, not a model id), so the parser yields no `model:` rows.
+
 Fixture:
 
 ```json

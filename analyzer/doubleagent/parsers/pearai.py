@@ -26,7 +26,12 @@ the 1-based item position, continuing from `history[]` into
 context items (`description`, else `name`); assistant rows list citation
 URLs. A truncated session file keeps the `history[]` items decoded before
 the cut (via `continue_dev.load_session`) plus one `system` row;
-`perplexityHistory[]` is not recovered from a damaged file.
+`perplexityHistory[]` is not recovered from a damaged file. The first
+item whose `promptLogs[].completionOptions.model` names a model yields
+`model: <model>` ahead of the item's rows, and a later item naming a
+different one yields `model: <old> -> <new>`. The format has no switch
+record, so a change is only seen as a different value between items. No
+permission state is read: the research did not look for any.
 
 Agent tasks, `<editor User dir>/globalStorage/pearai.pearai-roo-cline/tasks/
 <taskId>/` (Roo Code 3.15): `ui_messages.json`, `api_conversation_history.json`
@@ -64,7 +69,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
 from ..vscode_state import read_item
-from .base import Options
+from .base import Options, track_change
 from .cline_legacy import LegacyTaskParser, content_rows, read_text
 from .continue_dev import ContinueParser, load_session, message_text
 
@@ -271,6 +276,7 @@ class PearAiParser(LegacyTaskParser):
             bits.append("dateCreated unknown")
         yield base(0, "system", " | ".join(bits))
 
+        models: dict = {}
         for i, item in enumerate(history + search, 1):
             if not isinstance(item, dict) or not isinstance(item.get("message"), dict):
                 continue
@@ -282,6 +288,9 @@ class PearAiParser(LegacyTaskParser):
                 co = pl.get("completionOptions") if isinstance(pl, dict) else None
                 if isinstance(co, dict) and co.get("model"):
                     model = str(co["model"])
+                    change = track_change("model", models, session_id, model)
+                    if change:
+                        yield base(i, "system", change, model)
             if role == "user":
                 ctx = [
                     str(c.get("description") or c.get("name") or "")

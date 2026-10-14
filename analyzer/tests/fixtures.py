@@ -3093,6 +3093,14 @@ def continue_session():
                     "toolCalls": [term],
                 },
                 "contextItems": [],
+                "promptLogs": [
+                    {
+                        "modelTitle": "Claude Sonnet 4.5",
+                        "modelProvider": "anthropic",
+                        "prompt": "<long prompt>",
+                        "completion": "Renamed. Cleaning the build too.",
+                    }
+                ],
                 "toolCallStates": [
                     {
                         "toolCallId": "call_2",
@@ -4185,11 +4193,23 @@ def cline_task_metadata(t0=CLINE_T0):
         ],
         "model_usage": [
             {
+                "ts": t0 + 300,
+                "model_id": "claude-sonnet-4-5",
+                "model_provider_id": "anthropic",
+                "mode": "plan",
+            },
+            {
                 "ts": t0 + 500,
                 "model_id": "claude-sonnet-4-5",
                 "model_provider_id": "anthropic",
                 "mode": "act",
-            }
+            },
+            {
+                "ts": t0 + 8000,
+                "model_id": "claude-opus-4-5",
+                "model_provider_id": "anthropic",
+                "mode": "act",
+            },
         ],
         "environment_history": [
             {
@@ -4287,7 +4307,12 @@ def cline_sdk_messages(t0=CLINE_T0 + 100000):
                 ],
                 "ts": t0 + 3000,
             },
-            {"id": "m4", "role": "assistant", "content": [{"type": "text", "text": "Fixed."}]},
+            {
+                "id": "m4",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Fixed."}],
+                "modelInfo": {"id": "claude-opus-4-5", "provider": "anthropic"},
+            },
         ],
     }
 
@@ -6492,6 +6517,18 @@ def pearai_session():
                         "completionOptions": {"model": "pearai_model"},
                         "prompt": "<user>why does build.sh fail",
                         "completion": "The make target is missing.",
+                    }
+                ],
+            },
+            {"message": {"role": "user", "content": "add the target"}, "contextItems": []},
+            {
+                "message": {"role": "assistant", "content": "Added `all:` to the Makefile."},
+                "contextItems": [],
+                "promptLogs": [
+                    {
+                        "completionOptions": {"model": "pearai_model_2"},
+                        "prompt": "<user>add the target",
+                        "completion": "Added `all:` to the Makefile.",
                     }
                 ],
             },

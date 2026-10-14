@@ -130,6 +130,18 @@ Rows: one per `history[]` item (user, assistant, thinking, tool), plus one
 | tool_name, tool_use_id | `toolCall.function.name`, `toolCallId` |
 | text | text, `function.arguments`, output `content` |
 
+Model rows, typed `system`: `model: <chatModelTitle>` right after the
+session row, and `model: <old> -> <new>` ahead of a `history[]` item whose
+`promptLogs[].modelTitle` differs from the model before it. When
+`chatModelTitle` is missing (or lost after a cut in a truncated file), the
+first `modelTitle` starts the session. Mid-session switching is not
+researched: the session format has no switch record, so a change shows
+only as a different `modelTitle` between items, and `chatModelTitle` is
+one value per file with no record of when it was set. The CLI's
+`permissions.yaml` is named in
+[`collectors/research/continue.md`](../../collectors/research/continue.md)
+but its shape is not recorded, so the parser does not read it.
+
 Fixture `sessions/0f1e.json`:
 
 ```json

@@ -2678,7 +2678,17 @@ class ContinueTests(ParserBase):
         rows = self.rows_for(ContinueParser(), self.REL)
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "user", "tool_use", "tool_result", "assistant", "tool_use", "tool_result"],
+            [
+                "system",
+                "system",
+                "user",
+                "tool_use",
+                "tool_result",
+                "system",
+                "assistant",
+                "tool_use",
+                "tool_result",
+            ],
         )
         for r in rows:
             self.assertEqual(
@@ -2688,8 +2698,16 @@ class ContinueTests(ParserBase):
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
             # no per-message time: every row inherits sessions.json dateCreated
             self.assertEqual(r.timestamp_utc, "2026-10-02T10:00:00.000Z")
-        start, user, use1, res1, asst, _use2, res2 = rows
+        start, model, user, use1, res1, switch, asst, _use2, res2 = rows
         self.assertIn("session start: Fix bug mode=agent items=5", start.text)
+        # chatModelTitle starts the session; item 5's promptLogs switch it
+        self.assertEqual(
+            (model.text, model.model, model.source_line), ("model: GPT-4o", "GPT-4o", 0)
+        )
+        self.assertEqual(
+            (switch.text, switch.model, switch.source_line),
+            ("model: GPT-4o -> Claude Sonnet 4.5", "Claude Sonnet 4.5", 5),
+        )
         self.assertEqual(user.text, "rename foo\n[image]")
         self.assertEqual(
             (use1.tool_name, use1.tool_use_id, use1.text, use1.model),
@@ -2701,7 +2719,7 @@ class ContinueTests(ParserBase):
         self.assertEqual(asst.text, "Renamed. Cleaning the build too.")
         # a call with no tool message keeps its outcome in toolCallStates
         self.assertEqual((res2.tool_use_id, res2.text), ("call_2", "[canceled]"))
-        self.assertEqual([r.source_line for r in rows], [0, 1, 3, 4, 5, 5, 5])
+        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 3, 4, 5, 5, 5, 5])
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(ContinueParser(), self.REL, include_thinking=True)
@@ -2741,8 +2759,11 @@ class ContinueTests(ParserBase):
         path.write_text(raw[: raw.index('"toolCallId": "call_2"')], encoding="utf-8")
         rows = self.rows_for(ContinueParser(), self.REL)
         self.assertEqual(
-            [r.turn_type for r in rows], ["system", "user", "tool_use", "tool_result", "system"]
+            [r.turn_type for r in rows],
+            ["system", "user", "system", "tool_use", "tool_result", "system"],
         )
+        # chatModelTitle sits after the cut, so the first promptLogs title starts it
+        self.assertEqual((rows[2].text, rows[2].source_line), ("model: GPT-4o", 3))
         self.assertIn("recovered 4 history item(s)", rows[-1].text)
         self.assertEqual(rows[1].session_id, CONTINUE_SESSION)
 
@@ -3700,24 +3721,104 @@ class ClineTests(ParserBase):
         self.assertTrue(rows[0].text.startswith("task: fix tests | tokensIn=1200"))
         rows = self.rows_for(ClineParser(), CLINE_GS + "tasks/%s/task_metadata.json" % CLINE_TASK)
         self.assertEqual(
-            [r.text.split(":")[0] for r in rows], ["environment", "model_usage", "file cline_read"]
+            [r.text.split(":")[0] for r in rows],
+            [
+                "environment",
+                "model",
+                "permission mode",
+                "permission mode",
+                "file cline_read",
+                "model",
+            ],
         )
-        self.assertEqual(rows[2].timestamp_utc, "2026-10-03T10:00:02.000Z")
-        self.assertIn("src/app.py", rows[2].text)
+        self.assertEqual(rows[4].timestamp_utc, "2026-10-03T10:00:02.000Z")
+        self.assertIn("src/app.py", rows[4].text)
+
+    def test_model_and_mode_rows_from_model_usage(self):
+        rows = self.rows_for(ClineParser(), CLINE_GS + "tasks/%s/task_metadata.json" % CLINE_TASK)
+        got = [
+            (r.turn_type, r.text, r.timestamp_utc, r.model, r.session_id, r.source_line)
+            for r in rows
+            if r.text.startswith(("model", "permission"))
+        ]
+        self.assertEqual(
+            got,
+            [
+                (
+                    "system",
+                    "model: claude-sonnet-4-5 model_provider_id=anthropic mode=plan",
+                    "2026-10-03T10:00:00.300Z",
+                    "claude-sonnet-4-5",
+                    CLINE_TASK,
+                    1,
+                ),
+                (
+                    "system",
+                    "permission mode: plan",
+                    "2026-10-03T10:00:00.300Z",
+                    "claude-sonnet-4-5",
+                    CLINE_TASK,
+                    1,
+                ),
+                # the second entry changes only the mode
+                (
+                    "system",
+                    "permission mode: plan -> act",
+                    "2026-10-03T10:00:00.500Z",
+                    "claude-sonnet-4-5",
+                    CLINE_TASK,
+                    2,
+                ),
+                (
+                    "system",
+                    "model: claude-sonnet-4-5 -> claude-opus-4-5 model_provider_id=anthropic "
+                    "mode=act",
+                    "2026-10-03T10:00:08.000Z",
+                    "claude-opus-4-5",
+                    CLINE_TASK,
+                    3,
+                ),
+            ],
+        )
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
 
     def test_sdk_session(self):
         rows = self.rows_for(ClineParser(), self.SDK + ".json")
-        self.assertEqual([r.text.split(":")[0] for r in rows], ["session start", "session end"])
+        self.assertEqual(
+            [r.text.split(":")[0] for r in rows], ["session start", "model", "session end"]
+        )
         self.assertEqual(
             (rows[0].session_id, rows[0].project_path, rows[0].timestamp_utc),
             (CLINE_SESSION, "/srv/proj", "2026-10-03T10:01:40.000Z"),
         )
         self.assertIn("title=fix tests", rows[0].text)
+        self.assertNotIn("model=", rows[0].text)  # the model has its own row
+        self.assertEqual(
+            (rows[1].turn_type, rows[1].text, rows[1].model, rows[1].timestamp_utc),
+            (
+                "system",
+                "model: claude-sonnet-4-5 provider=anthropic",
+                "claude-sonnet-4-5",
+                "2026-10-03T10:01:40.000Z",
+            ),
+        )
+        self.assertEqual((rows[1].session_id, rows[1].project_path), (CLINE_SESSION, "/srv/proj"))
         rows = self.rows_for(ClineParser(), self.SDK + ".messages.json")
         self.assertEqual(
-            [r.turn_type for r in rows], ["user", "tool_use", "tool_result", "assistant"]
+            [r.turn_type for r in rows], ["user", "tool_use", "tool_result", "system", "assistant"]
         )
-        _user, use, res, asst = rows
+        _user, use, res, switch, asst = rows
+        # m2 names the manifest's model, so no row; m4 switches
+        self.assertEqual(
+            (switch.text, switch.model, switch.timestamp_utc, switch.source_line),
+            (
+                "model: claude-sonnet-4-5 -> claude-opus-4-5 provider=anthropic",
+                "claude-opus-4-5",
+                res.timestamp_utc,
+                4,
+            ),
+        )
+        self.assertEqual(asst.model, "claude-opus-4-5")
         self.assertEqual({r.session_id for r in rows}, {CLINE_SESSION})
         self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
         self.assertEqual(
@@ -3725,13 +3826,29 @@ class ClineTests(ParserBase):
         )
         self.assertEqual((res.tool_name, res.tool_use_id, res.text), ("bash", "call_1", "3 passed"))
         self.assertEqual(asst.timestamp_utc, res.timestamp_utc)  # no ts: previous message's time
-        self.assertEqual([r.source_line for r in rows], [1, 2, 3, 4])
+        self.assertEqual([r.source_line for r in rows], [1, 2, 3, 4, 4])
+
+    def test_sdk_messages_without_manifest_start_from_first_model(self):
+        (self.home / (self.SDK + ".json")).unlink()
+        rows = self.rows_for(ClineParser(), self.SDK + ".messages.json")
+        models = [(r.text, r.source_line) for r in rows if r.text.startswith("model:")]
+        self.assertEqual(
+            models,
+            [
+                ("model: claude-sonnet-4-5 provider=anthropic", 2),
+                ("model: claude-sonnet-4-5 -> claude-opus-4-5 provider=anthropic", 4),
+            ],
+        )
 
     def test_sessions_db_only_lists_sessions_without_manifest(self):
         rows = self.rows_for(ClineParser(), ".cline/data/db/sessions.db")
-        self.assertEqual([r.session_id for r in rows], [CLINE_OLD_SESSION])
+        self.assertEqual([r.session_id for r in rows], [CLINE_OLD_SESSION] * 2)
         self.assertEqual(rows[0].timestamp_utc, "2026-10-02T23:00:00.000Z")
         self.assertIn("an older deleted session", rows[0].text)
+        self.assertEqual(
+            (rows[1].text, rows[1].timestamp_utc),
+            ("model: claude-sonnet-4-5 provider=anthropic", "2026-10-02T23:00:00.000Z"),
+        )
 
     def test_config_and_secrets_not_wanted(self):
         p = ClineParser()
@@ -3801,9 +3918,10 @@ class ClineTests(ParserBase):
             },
         )
         s = sessions[CLINE_TASK]
+        # task_metadata.json's model_usage records the later switch to Opus
         self.assertEqual(
             (s.models, s.user_turns, s.assistant_turns, s.tool_calls),
-            ({"claude-sonnet-4-5": None}, 1, 2, 2),
+            ({"claude-sonnet-4-5": None, "claude-opus-4-5": None}, 1, 2, 2),
         )
         self.assertTrue(s.source_file.endswith("ui_messages.json"), s.source_file)
         self.assertEqual(sessions[CLINE_SESSION].first_timestamp_utc, "2026-10-03T10:01:40.000Z")
@@ -5915,7 +6033,15 @@ class PearAiTests(ParserBase):
         rows = self.rows_for(PearAiParser(), self.SESSION)
         self.assertEqual(
             [(r.turn_type, r.source_line) for r in rows],
-            [("system", 0), ("user", 1), ("assistant", 2)],
+            [
+                ("system", 0),
+                ("user", 1),
+                ("system", 2),
+                ("assistant", 2),
+                ("user", 3),
+                ("system", 4),
+                ("assistant", 4),
+            ],
         )
         for r in rows:
             self.assertEqual(
@@ -5925,11 +6051,19 @@ class PearAiTests(ParserBase):
         self.assertEqual(
             rows[0].text,
             "session start: why does build.sh fail | integration=continue | "
-            "history=2 perplexityHistory=0",
+            "history=4 perplexityHistory=0",
         )
         self.assertEqual(rows[1].text, "why does build.sh fail\n[context: /srv/proj/build.sh]")
         self.assertEqual(
-            (rows[2].text, rows[2].model), ("The make target is missing.", "pearai_model")
+            (rows[3].text, rows[3].model), ("The make target is missing.", "pearai_model")
+        )
+        # promptLogs[].completionOptions.model: the first one starts, a new one switches
+        self.assertEqual(
+            [(r.text, r.model) for r in (rows[2], rows[5])],
+            [
+                ("model: pearai_model", "pearai_model"),
+                ("model: pearai_model -> pearai_model_2", "pearai_model_2"),
+            ],
         )
         rows = self.rows_for(PearAiParser(), ".pearai/sessions/%s.json" % PEARAI_SEARCH_SESSION)
         self.assertEqual(
@@ -6000,7 +6134,10 @@ class PearAiTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.SESSION)
         rows = self.rows_for(PearAiParser(), self.SESSION)
-        self.assertEqual([r.turn_type for r in rows], ["system", "user", "assistant", "system"])
+        self.assertEqual(
+            [r.turn_type for r in rows],
+            ["system", "user", "system", "assistant", "user", "system", "assistant", "system"],
+        )
         self.assertIn("parser:", rows[-1].text)
         write_bad_line(self.home / self.API)
         rows = self.rows_for(PearAiParser(), self.API)

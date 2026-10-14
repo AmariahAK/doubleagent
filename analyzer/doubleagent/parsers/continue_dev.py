@@ -38,6 +38,15 @@ and toolUsage rows join the session's tool calls on `tool_use_id` but carry
 no session id of their own. `logs/prompt.log` has no date or session id and
 is not parsed. A truncated session file yields the turns decoded before the
 cut plus one `system` row.
+
+Model rows: `model: <chatModelTitle>` follows the session row (same time,
+`source_line` 0), and an item whose `promptLogs[].modelTitle` differs from
+the model before it yields `model: <old> -> <new>` ahead of the item's
+rows, with the item's `source_line`. The format has no switch record, so a
+change is only seen as a different `modelTitle` between items, and
+`chatModelTitle` is a single value per session file. `dev_data` events
+fill the `model` column only. `permissions.yaml` (the `cn` CLI's tool
+policy) is not read: its shape is not recorded in the research.
 """
 
 from __future__ import annotations
@@ -49,7 +58,7 @@ from collections.abc import Iterator
 from ..inputs import Artifact, error_reason
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl, text_of
+from .base import Options, Parser, compact_json, iter_jsonl, text_of, track_change
 
 SESSION_RX = re.compile(r"^(?:.*/)?\.continue/sessions/([^/]+)\.json$")
 DEV_DATA_RX = re.compile(
@@ -236,6 +245,13 @@ class ContinueParser(Parser):
             bits.append("dateCreated unknown")
         row.text = compact(" ".join(bits))
         yield row
+        models: dict = {}
+        change = track_change("model", models, session_id, session_model)
+        if change:
+            row = base(0, session_model)
+            row.turn_type = "system"
+            row.text = change
+            yield row
 
         # Tool results normally arrive as a later `tool` message; a call that
         # never got one (canceled, errored) keeps its output in toolCallStates.
@@ -259,6 +275,12 @@ class ContinueParser(Parser):
                 for pl in logs:
                     if isinstance(pl, dict) and pl.get("modelTitle"):
                         model = str(pl["modelTitle"])
+                        change = track_change("model", models, session_id, model)
+                        if change:
+                            row = base(i, model)
+                            row.turn_type = "system"
+                            row.text = change
+                            yield row
             reasoning = item.get("reasoning")
             if opts.include_thinking and isinstance(reasoning, dict) and reasoning.get("text"):
                 row = base(i, model)

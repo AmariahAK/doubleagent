@@ -23,8 +23,9 @@ SDK session layout, `~/.cline/data/sessions/<sessionId>/`:
 
 * `<sessionId>.json` manifest: `session_id, source, pid, started_at,
   ended_at, exit_code, status, interactive, provider, model, cwd,
-  workspace_root, prompt, metadata.title`. A `system` row for the start and,
-  when `ended_at` is set, one for the end.
+  workspace_root, prompt, metadata.title`. A `system` row for the start,
+  then `model: <model> provider=<provider>` when the manifest names a
+  model, and, when `ended_at` is set, one row for the end.
 * `<sessionId>.messages.json` and subagent `<agentId>[__<teamTaskId>]
   .messages.json`: `{version, updated_at, agent, sessionId, messages:
   [{id, role, content, modelInfo: {id, provider}, metrics, ts}]}` with
@@ -35,11 +36,17 @@ SDK session layout, `~/.cline/data/sessions/<sessionId>/`:
   message's time, or for the first message the manifest `started_at` and
   then the file's `updated_at`. `session_id` is the session directory
   name, so subagent rows group with their lead session; `project_path` and
-  the fallback model come from the manifest beside it.
+  the fallback model come from the manifest beside it. A message whose
+  `modelInfo.id` differs from the model before it yields `model: <old> ->
+  <new> provider=<modelInfo.provider>` ahead of its rows; the lead
+  transcript starts from the manifest `model`, so its first message yields
+  `model: <id>` only when the manifest names none, and a subagent
+  transcript starts from its own first `modelInfo.id`.
 * `~/.cline/data/db/sessions.db`, table `sessions` (`session_id, source,
   started_at, ended_at, status, provider, model, cwd, workspace_root,
-  prompt, parent_session_id, is_subagent`): a `system` row only for a
-  session whose manifest is not on disk, so deleted sessions still show.
+  prompt, parent_session_id, is_subagent`): a `system` row, followed by
+  `model: <model> provider=<provider>`, only for a session whose manifest
+  is not on disk, so deleted sessions still show.
 
 Not read: `<sessionId>.compaction.json`, `sessions/sessions.index.json`,
 `db/session-search.db` (a full-text copy of the transcripts),
@@ -51,13 +58,14 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options
+from .base import Options, track_change
 from .cline_legacy import (
     LegacyTaskParser,
     content_rows,
@@ -139,10 +147,22 @@ class ClineParser(LegacyTaskParser):
         row.text = compact("%s: %s" % (label, detail))
         return row
 
+    def _model_start(self, start: Row, m: dict) -> Iterator[Row]:
+        """`model: <model> provider=<provider>` after a session start or index
+        row, with its time, session and project."""
+        model = str(m.get("model") or "")
+        if not model:
+            return
+        provider = str(m.get("provider") or "")
+        yield replace(
+            start,
+            model=model,
+            text=compact("model: %s%s" % (model, " provider=%s" % provider if provider else "")),
+        )
+
     START_KEYS = (
         "source",
         "provider",
-        "model",
         "status",
         "interactive",
         "pid",
@@ -168,9 +188,11 @@ class ClineParser(LegacyTaskParser):
         meta = m.get("metadata")
         if isinstance(meta, dict) and meta.get("title"):
             m["title"] = meta["title"]
-        yield self._session_start(
+        start = self._session_start(
             m, artifact, 0, opts, "started_at", "session start", self.START_KEYS
         )
+        yield start
+        yield from self._model_start(start, m)
         if m.get("ended_at"):
             yield self._session_start(
                 m, artifact, 0, opts, "ended_at", "session end", self.END_KEYS
@@ -206,15 +228,31 @@ class ClineParser(LegacyTaskParser):
         else:
             messages = iter(())
             fallback = ""
+        # The lead transcript continues from the manifest's model, whose start
+        # row the manifest yields; a subagent transcript tracks its own.
+        seen: dict = {}
+        if artifact.disk_path.name == session_id + ".messages.json" and manifest.get("model"):
+            seen[session_id] = str(manifest["model"])
         for n, msg in messages:
             if not isinstance(msg, dict):
                 continue
             ts = to_utc(msg.get("ts")) or fallback
             fallback = ts
             info = msg.get("modelInfo")
-            model = str(
-                (info.get("id") if isinstance(info, dict) else "") or manifest.get("model") or ""
-            )
+            info = info if isinstance(info, dict) else {}
+            model = str(info.get("id") or manifest.get("model") or "")
+            change = track_change("model", seen, session_id, str(info.get("id") or ""))
+            if change:
+                row = self.base_row(artifact)
+                row.source_line = n
+                row.timestamp_utc = ts
+                row.session_id = session_id
+                row.project_path = project
+                row.model = model
+                row.turn_type = "system"
+                provider = str(info.get("provider") or "")
+                row.text = compact(change + (" provider=%s" % provider if provider else ""))
+                yield row
             role = msg.get("role")
             base_turn = (
                 "user" if role == "user" else "assistant" if role == "assistant" else "system"
@@ -257,7 +295,7 @@ class ClineParser(LegacyTaskParser):
                 meta = load_json_text(r["metadata_json"])
                 if isinstance(meta, dict) and meta.get("title"):
                     r["title"] = meta["title"]
-            yield self._session_start(
+            start = self._session_start(
                 r,
                 artifact,
                 int(r.get("_rowid") or 0),
@@ -266,6 +304,8 @@ class ClineParser(LegacyTaskParser):
                 "session index",
                 (*self.START_KEYS, "ended_at", "exit_code"),
             )
+            yield start
+            yield from self._model_start(start, r)
 
 
 def load_json_text(s):

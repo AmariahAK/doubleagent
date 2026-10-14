@@ -130,6 +130,9 @@ content parses as a JSON array of objects with `role`.
 | text | `content`; for tool_use, `shell_command` from the parsed `arguments` when present, else `arguments` |
 | source_line | 1 for every row (single-line file); the array index can go in the text or a later column |
 
+ShellGPT records no model in the chat cache, so the parser yields no
+`model:` rows.
+
 Fixture (`chat_cache/deploy-check`, shown wrapped; the real file is one line):
 
 ```json
