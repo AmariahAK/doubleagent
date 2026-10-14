@@ -377,7 +377,7 @@ their state must be copied by hand.
 
 | Location | Collected |
 | --- | --- |
-| Linux and macOS, `~/.local/bin` | Only Muse's own dot files (`.local/bin/.muse-*`: `.muse-version`, `.muse-release-info.json`, `.muse-update-checked-at` and the like), since other tools share the directory. The `muse-bin-<version>` binary next to them is not collected and leaves no manifest row. |
+| Linux and macOS, `~/.local/bin` | Only Muse's own dot files (`.local/bin/.muse-*`: `.muse-version`, `.muse-release-info.json`, `.muse-update-checked-at` and the like), since other tools share the directory. The launcher's transient update directory `.muse-update.XXXXXX/`, which holds a candidate binary during an update, is excluded and gets one `skipped_excluded` row with its size. The `muse-bin-<version>` binary next to them is not collected and leaves no manifest row. |
 | Windows, `AppData/Local/Programs/muse` | The install directory whole. Its `muse-bin-<version>.exe` and staged `.muse-update.<pid>.exe` binaries are excluded, so their `skipped_excluded` rows record the installed version and size. |
 | Anywhere else (`MUSE_INSTALL_DIR`) | Not collected. |
 
@@ -492,6 +492,12 @@ credential pattern.
 - **Base:** a home, a discovered project or a Docker volume's `_data`. The
   same `.claude/worktrees` pattern therefore prunes both
   `~/.claude/worktrees` and a project's `.claude/worktrees`.
+- **Matched paths:** a path a catalog entry matches is tested as well as
+  every path under it, a file as well as a directory. A matched file that
+  an exclusion covers (a file `.local/bin/.muse-update.<suffix>`, which
+  the catalog line `.local/bin/.muse-*` and the exclusion
+  `.local/bin/.muse-update.*` both match) gets one `skipped_excluded` row
+  with its size, and the inventory does not count it.
 - **Case:** the sh collector matches with `case` and `find -path`, which are
   case-sensitive. The PowerShell collector converts the patterns to regular
   expressions and matches them, and the catalog globs, without regard to

@@ -100,6 +100,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and Podman volume walks read it without setting it, so a value in the
   environment the collector was started with pruned the paths it named
   from every matched volume, with no manifest row ([#106]).
+- The sh collector tests a catalog match that is a file, not only a
+  directory, against the exclusions: an excluded file match now gets one
+  `skipped_excluded` row with its size instead of being collected, and
+  `--inventory` no longer counts it, as in the PowerShell collector. A
+  file named `.local/bin/.muse-update.<suffix>`, matched by the Muse Code
+  catalog line `.local/bin/.muse-*` and by the exclusion
+  `.local/bin/.muse-update.*`, was collected whole. `--full` still
+  collects it ([#107]).
 
 ## [1.11.0] - 2026-10-12
 
@@ -646,6 +654,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#107]: https://github.com/seanthegeek/doubleagent/issues/107
 [#106]: https://github.com/seanthegeek/doubleagent/issues/106
 [#105]: https://github.com/seanthegeek/doubleagent/issues/105
 [#104]: https://github.com/seanthegeek/doubleagent/issues/104

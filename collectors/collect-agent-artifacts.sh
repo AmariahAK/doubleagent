@@ -2072,8 +2072,9 @@ EOF_STAGE_FILES_WORKER
 STAGE_FILES_WORKER="$COMMON
 $_ret_heredoc_text"
 
-# EXCLUDED_PATHS_WORKER: run by find -exec for every pruned (excluded) path;
-# one skipped_excluded row each, with the size from du -sk for a directory
+# EXCLUDED_PATHS_WORKER: run by find -exec for every pruned (excluded) path,
+# and by collect_path for an excluded match that is not a directory; one
+# skipped_excluded row each, with the size from du -sk for a directory
 # (its other metadata 0) and from lstat for a file.
 # Arguments: root user home agent manifest paths...
 heredoc_var <<'EOF_EXCLUDED_PATHS_WORKER'
@@ -2280,12 +2281,35 @@ collect_catalog() {
   NESTED_CLAIMS=
 }
 
+# test_excluded HOME PATH: returns 0 when PATH, relative to HOME, matches a
+# glob of ACTIVE_EXCLUDES, as find -path "HOME/GLOB" does in collect_tree: a
+# case pattern, in which * also matches / and a leading dot. Globbing is off
+# while the table is split, so a glob is never expanded against the current
+# directory. Reads ACTIVE_EXCLUDES. Temporaries: _te_.
+test_excluded() {
+  _te_saved_ifs=$IFS
+  IFS='
+'
+  set -f
+  for _te_glob in $ACTIVE_EXCLUDES; do
+    [ -n "$_te_glob" ] || continue
+    # shellcheck disable=SC2254 # the table entry is a glob
+    case "$2" in "$1"/$_te_glob) set +f; IFS=$_te_saved_ifs; return 0 ;; esac
+  done
+  set +f
+  IFS=$_te_saved_ifs
+  return 1
+}
+
 # collect_path USER HOME AGENT PATH: collects one matched PATH. A directory
-# (not a symlink to one) is walked with collect_tree; anything else is staged
-# by STAGE_FILES_WORKER, which records a symlink as a symlink. With
-# --inventory the same walk runs, but excluded subtrees are pruned without a
+# (not a symlink to one) is walked with collect_tree; anything else is tested
+# against ACTIVE_EXCLUDES here, since find never sees it (#107), and gets one
+# skipped_excluded row from EXCLUDED_PATHS_WORKER when it matches, or else is
+# staged by STAGE_FILES_WORKER, which records a symlink as a symlink. With
+# --inventory the same walk runs, but excluded paths are skipped without a
 # manifest row and regular files are only stat'ed by INVENTORY_FILES_WORKER.
-# Reads INVENTORY, MANIFEST, STAGE, ROOT, WORKER_SH. Temporaries: _cp_.
+# Reads INVENTORY, ACTIVE_EXCLUDES, MANIFEST, STAGE, ROOT, WORKER_SH.
+# Temporaries: _cp_.
 collect_path() {
   _cp_user=$1; _cp_home=$2; _cp_agent=$3; _cp_match=$4
   if [ -d "$_cp_match" ] && [ ! -L "$_cp_match" ]; then
@@ -2299,6 +2323,9 @@ collect_path() {
       return 0
     fi
     collect_tree "$_cp_user" "$_cp_home" "$_cp_agent" "$_cp_match"
+  elif [ -n "$ACTIVE_EXCLUDES" ] && test_excluded "$_cp_home" "$_cp_match"; then
+    [ "$INVENTORY" = 1 ] || "$WORKER_SH" -c "$EXCLUDED_PATHS_WORKER" sh "$ROOT" "$_cp_user" \
+      "$_cp_home" "$_cp_agent" "$MANIFEST" "$_cp_match"
   elif [ "$INVENTORY" = 1 ]; then
     if [ -f "$_cp_match" ] && [ ! -L "$_cp_match" ]; then
       "$WORKER_SH" -c "$INVENTORY_FILES_WORKER" sh "$_cp_agent" "$_cp_match"

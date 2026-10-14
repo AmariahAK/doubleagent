@@ -831,6 +831,14 @@ printf 'ignore\n' >"$ROOT/srv/agywin/.antigravityignore"
 CWD105="$WORK/cwd105"
 mkdir -p "$CWD105/home/analyst" "$CWD105/Users/analyst"
 
+# 2026-10-14 catalog match that is an excluded file (#107)
+# Muse Code's staged updater as a file, matched by the catalog line
+# .local/bin/.muse-* and by the exclusion .local/bin/.muse-update.*: one
+# skipped_excluded row with its size, as for a file a walk prunes; collected
+# with --full; counted by the inventory only with --full. The same file is
+# in smoke.ps1.
+printf '1070\n' >"$H/.local/bin/.muse-update.107.exe"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1110,6 +1118,9 @@ check "#83 Antigravity app sidecar SDK under lib/node_modules excluded" "[ \"\$(
 check "#83 Antigravity config/node_modules excluded" "[ \"\$(status_of \"$H/.gemini/config/node_modules\")\" = skipped_excluded ] && ! grep -q 'config/node_modules/sidecar_sdk/index.mjs\"' \"\$M\""
 check "#91 Antigravity project folderUri discovers project" "[ \"\$(status_of \"$ROOT/srv/agyapp/.antigravityignore\")\" = collected ]"
 check "#91 Antigravity drive-letter folderUri discovers project" "[ \"\$(status_of \"$ROOT/srv/agywin/.antigravityignore\")\" = collected ]"
+# 2026-10-14 catalog match that is an excluded file (#107)
+check "#107 excluded file match gets a skipped_excluded row with its size" "row \"$H/.local/bin/.muse-update.107.exe\" | grep -q '^{\"user\":\"alice\",\"home\":\"$H\",\"agent\":\"muse-code\",\"path\":\"[^\"]*\",\"archive_path\":\"\",\"type\":\"file\",\"size\":5,.*\"sha256\":\"\",\"secret\":false,\"status\":\"skipped_excluded\",\"target\":\"\",\"error\":\"\"}\$'"
+check "#107 excluded file match not archived" "! tar -tzf \"\$A\" | grep -q 'muse-update.107.exe'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
@@ -1125,6 +1136,8 @@ check "#90 Antigravity CLI plugin-secrets.json skipped without secrets" "[ \"\$(
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"
 check "cache contents collected with --full" "[ \"\$(status_of \"$ROOT/home/alice/.claude/cache/junk.bin\")\" = collected ]"
+# 2026-10-14 catalog match that is an excluded file (#107)
+check "#107 excluded file match collected with --full" "[ \"\$(status_of \"$H/.local/bin/.muse-update.107.exe\")\" = collected ]"
 
 # ---- -u filter ------------------------------------------------------------
 run users -u bob; check "users exit 0" "[ $? -eq 0 ]"
@@ -1252,6 +1265,12 @@ check "inventory with -o notes it on stderr" "grep -q 'NOTE: --inventory writes 
 check "inventory without -q logs to stderr only" "[ -s \"$OUT/inventory-o.stderr\" ] && [ \"\$(grep -vc '$INV_HOST_RE' \"$OUT/inventory-o.stdout\" | head -n1)\" = \"\$(grep -c '$INV_AGENT_RE' \"$OUT/inventory-o.stdout\")\" ]"
 inv inventory-full -q --full
 check "inventory --full counts excluded files" "agent_line inventory-full ollama ollama | grep -q '\"files\":3,\"bytes\":30,'"
+# 2026-10-14 catalog match that is an excluded file (#107)
+# --full adds one file for each excl and exclf case of CASES_MUSE, plus the
+# updater file, which the default inventory must not count either.
+# shellcheck disable=SC2317,SC2329 # called from the eval'd check string
+inv_files() { agent_line "$1" alice muse-code | sed 's/.*"files":\([0-9]*\),.*/\1/'; }
+check "#107 inventory counts an excluded file match only with --full" "[ \"\$(( \$(inv_files inventory-full) - \$(inv_files inventory) ))\" = \"\$(( \$(printf '%s\\n' \"\$CASES_MUSE\" | grep -c '^excl') + 1 ))\" ]"
 inv inventory-u -q -u bob --no-docker
 check "inventory -u keeps one user" "! grep -q '\"user\":\"alice\"' \"$OUT/inventory-u.stdout\" && grep -q '\"user\":\"bob\"' \"$OUT/inventory-u.stdout\""
 check "inventory --no-docker: no volumes, no docker lines" "head -n1 \"$OUT/inventory-u.stdout\" | grep -q '\"users_scanned\":1,\"users_unreadable\":0,\"docker_volumes\":0}' && ! grep -q '\"user\":\"docker\"' \"$OUT/inventory-u.stdout\""

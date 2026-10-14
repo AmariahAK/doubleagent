@@ -821,6 +821,13 @@ Mk 'agywin/.antigravityignore' 'ignore'
 $cwd105 = Join-Path $Work 'cwd105'
 New-Item -ItemType Directory -Path (Join-Path (Join-Path $cwd105 'home') 'analyst') -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path (Join-Path $cwd105 'Users') 'analyst') -Force | Out-Null
+# 2026-10-14 catalog match that is an excluded file (#107)
+# Muse Code's staged updater as a file, matched by the catalog line
+# .local/bin/.muse-* and by the exclusion .local/bin/.muse-update.*: one
+# skipped_excluded row with its size, as for a file a walk prunes; collected
+# with -Full; counted by the inventory only with -Full. The same file is in
+# smoke.sh.
+Mk 'Users/alice/.local/bin/.muse-update.107.exe' "1070`n"
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1202,6 +1209,10 @@ Check '#83 Antigravity app sidecar SDK under lib/node_modules excluded' { (Statu
 Check '#83 Antigravity config/node_modules excluded' { (StatusOf 'Users/alice/.gemini/config/node_modules') -eq 'skipped_excluded' -and (NoRow83 'config/node_modules/sidecar_sdk/index.mjs') }
 Check '#91 Antigravity project folderUri discovers project' { (StatusOf 'agyapp/.antigravityignore') -eq 'collected' }
 Check '#91 Antigravity drive-letter folderUri discovers project' { (StatusOf 'agywin/.antigravityignore') -eq 'collected' }
+# 2026-10-14 catalog match that is an excluded file (#107)
+$r107 = Row 'Users/alice/.local/bin/.muse-update.107.exe'
+Check '#107 excluded file match gets a skipped_excluded row with its size' { $r107 -and $r107.user -eq 'alice' -and $r107.home -eq (P 'Users/alice') -and $r107.agent -eq 'muse-code' -and $r107.archive_path -eq '' -and $r107.type -eq 'file' -and $r107.size -eq 5 -and $r107.sha256 -eq '' -and $r107.secret -eq $false -and $r107.status -eq 'skipped_excluded' -and $r107.target -eq '' -and $r107.error -eq '' }
+Check '#107 excluded file match not archived' { -not ($DefaultEntries | Where-Object { $_ -like '*muse-update.107.exe' }) }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
@@ -1391,6 +1402,8 @@ Check '#90 Antigravity CLI plugin-secrets.json skipped without secrets' { (Statu
 Run 'full' @{ Full = $true }
 Check 'Full exit 0' { $script:rc -eq 0 }
 Check 'cache contents collected with -Full' { (StatusOf 'cache/junk.bin') -eq 'collected' }
+# 2026-10-14 catalog match that is an excluded file (#107)
+Check '#107 excluded file match collected with --full' { (StatusOf 'Users/alice/.local/bin/.muse-update.107.exe') -eq 'collected' }
 
 # ---- -Users ---------------------------------------------------------------
 Run 'users' @{ Users = 'bob' }
@@ -1508,6 +1521,11 @@ Check 'Inventory: matched directory with no files of its own gives no line' { $n
 Check 'Inventory: no agent line has zero files' { -not ($script:inv | Where-Object { $_.type -eq 'agent' } | Where-Object { $_.files -eq 0 }) }
 Check 'Inventory projects counted per user' { $r.projects -ge 1 }
 Check 'Inventory nested entry claimed from the enclosing agent' { (InvAgent 'alice' 'antigravity').evidence -like '*.gemini/antigravity-cli*' -and (InvAgent 'alice' 'gemini-cli').evidence -eq '.gemini' }
+# 2026-10-14 catalog match that is an excluded file (#107): alice's Muse Code
+# file count, compared with the -Full inventory's below.
+$files107 = -1
+$r = InvAgent 'alice' 'muse-code'
+if ($r) { $files107 = $r.files }
 $r = InvAgent 'docker' 'agent-zero'
 Check 'Inventory docker volume line' { $r -and $r.files -eq 2 -and $r.bytes -eq 61 -and $r.projects -eq 0 -and $r.evidence -eq '*a0_usr' }
 $r = InvAgent 'docker' 'tabby'
@@ -1520,6 +1538,11 @@ Check 'Inventory with -OutputDir exit 0' { $script:rc -eq 0 }
 Check 'Inventory with -OutputDir creates no output directory' { -not (Test-Path -LiteralPath $invO) }
 Inv @{ Full = $true }
 Check 'Inventory -Full counts excluded files' { $r = InvAgent 'bob' 'ollama'; $r -and $r.files -eq 3 -and $r.bytes -eq 27 }
+# 2026-10-14 catalog match that is an excluded file (#107)
+# -Full adds one file for each excl and exclf case of $CasesMuse, plus the
+# updater file, which the default inventory must not count either.
+$full107 = InvAgent 'alice' 'muse-code'
+Check '#107 inventory counts an excluded file match only with --full' { $files107 -ge 0 -and $full107 -and ($full107.files - $files107) -eq (@($CasesMuse | Where-Object { $_ -like 'excl*' }).Count + 1) }
 Inv @{ Users = 'bob'; NoDocker = $true }
 Check 'Inventory -Users keeps one user' { $a = @($script:inv | Where-Object { $_.type -eq 'agent' }); -not ($a | Where-Object { $_.user -eq 'alice' }) -and ($a | Where-Object { $_.user -eq 'bob' }) }
 Check 'Inventory -NoDocker: no volumes, no docker lines' { $script:inv[0].users_scanned -eq 1 -and $script:inv[0].docker_volumes -eq 0 -and -not ($script:inv | Where-Object { $_.type -eq 'agent' } | Where-Object { $_.user -eq 'docker' }) }

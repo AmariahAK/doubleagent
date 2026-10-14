@@ -115,7 +115,7 @@ The four workers:
 | Worker | `find` gives it | Arguments | Writes |
 | --- | --- | --- | --- |
 | `STAGE_FILES_WORKER` | every regular file and symlink | `stage_dir root user home agent manifest files...` | the staged copies, symlinks and one manifest row per file |
-| `EXCLUDED_PATHS_WORKER` | every pruned `EXCLUDES` match | `root user home agent manifest paths...` | one `skipped_excluded` row each: a directory's size from `du -sk` with its other metadata 0, a file's from `stat_file` |
+| `EXCLUDED_PATHS_WORKER` | every pruned `EXCLUDES` match; also run by `collect_path` for an excluded match that is not a directory | `root user home agent manifest paths...` | one `skipped_excluded` row each: a directory's size from `du -sk` with its other metadata 0, a file's from `stat_file` |
 | `UNREADABLE_DIRS_WORKER` | every directory | `user home agent manifest dirs...` | one `error_read` row for each directory `get_dir_read_error_var` says cannot be listed or entered |
 | `INVENTORY_FILES_WORKER` | every regular file, under `--inventory` | `agent files...` | `F\|agent\|size\|mtime` lines on stdout, nothing on disk |
 
@@ -162,7 +162,7 @@ keeps the banner and says so.
 | Glob | Matched against | sh | PowerShell |
 | --- | --- | --- | --- |
 | `CATALOG`, `PROJECT_CATALOG` | the base (home, project), one path segment at a time; `*` and `?` do not cross `/` | shell pathname expansion of `BASE/GLOB` in `expand_glob`, with `IFS` set to newline only so a base with spaces stays one word; a pattern that matches nothing expands to itself and fails the existence test. As in any POSIX shell, `*` does not match a name's leading `.`. | `Expand-Glob` splits the glob on `/`; a wildcard segment lists the directory and matches each name with `Convert-GlobToRegex` (`*` is `[^/]*`, so it matches a leading `.`) and `-match`, which ignores case; a literal segment is tested for existence and respelled as on disk by `Get-OnDiskName`. |
-| `EXCLUDES` | the path relative to the base; `*` crosses `/` | `find -path "$base/$glob"` in `collect_tree`, case-sensitive | `$script:ExcludeRegex`, built by `ConvertTo-TableRegex`, tested in `Add-CollectedPath` and `Add-CollectedTree`; case-insensitive |
+| `EXCLUDES` | the path relative to the base; `*` crosses `/` | `find -path "$base/$glob"` in `collect_tree`, and a `case` pattern in `test_excluded` for a match that is not a directory, case-sensitive | `$script:ExcludeRegex`, built by `ConvertTo-TableRegex`, tested in `Add-CollectedPath` and `Add-CollectedTree`; case-insensitive |
 | `SECRET_GLOBS` | the path relative to the base; `*` crosses `/` | a `case` pattern in `plan_chunk` (and in `test_inventory_secret`), case-sensitive | `$script:SecretRegex`, built by `ConvertTo-TableRegex`, tested in `Add-CollectedFile` and `Test-InventorySecret`; case-insensitive |
 | `DOCKER_VOLUMES` | the volume directory's name | a `case` pattern in `get_docker_volume_rule`, with globbing off | `Convert-GlobToRegex` and `-cmatch`, case-sensitive, in `Get-DockerVolumeRule` |
 
@@ -177,9 +177,11 @@ matches nothing.
 The base is the home, the project or the volume's `_data` directory, so one
 exclusion such as `.claude/worktrees` applies in each. In the sh collector
 the `EXCLUDES` test is part of the `find` expression, so it applies to a
-matched directory and everything under it; in the PowerShell collector
-`Add-CollectedPath` tests the match itself and `Add-CollectedTree` each
-child.
+matched directory and everything under it; a match that is not a directory
+is never given to `find`, so `collect_path` tests it with `test_excluded`
+and gives it to `EXCLUDED_PATHS_WORKER` when it matches. In the PowerShell
+collector `Add-CollectedPath` tests the match itself and
+`Add-CollectedTree` each child.
 
 ## Claimed paths and case variants
 
@@ -413,7 +415,8 @@ output is described in [inventory.md](inventory.md).
   staging directory. `collect_catalog` prints `M|agent|glob` for each
   match of an agent other than `shared` (a `shared` match still claims its
   path but is not walked), `collect_tree` prunes exclusions without a row
-  and gives regular files to `INVENTORY_FILES_WORKER`, and
+  and gives regular files to `INVENTORY_FILES_WORKER`, `collect_path`
+  skips a matched file that `test_excluded` matches, and
   `write_inventory` pipes each user's lines through `aggregate_inventory`
   (awk, which also converts epoch seconds to dates with plain arithmetic)
   and `write_inventory_lines`. `count_inventory_homes` counts the homes
@@ -538,6 +541,7 @@ PowerShell functions that do their job.
 | `UNREADABLE_DIRS_WORKER` | Staging files | `error_read` rows for directories inside a walk; PowerShell does this in `Add-CollectedTree` |
 | `print_file_rows` | Staging files | Inside `INVENTORY_FILES_WORKER`: the `F\|` lines from one `stat` call |
 | `classify_case_matches`, `fold_case_matches` | Catalog walk | Case-variant folding; PowerShell uses `Get-OnDiskName` |
+| `test_excluded` | Catalog walk | Whether a match that is not a directory is excluded; PowerShell tests `$script:ExcludeRegex` in `Add-CollectedPath` |
 | `filter_users` | Users | Drops system and shared homes, applies `-u`, keeps each home once; PowerShell does this in `Get-UserHomes` |
 | `find_errors_since` | Docker and Podman volumes | `find:` log lines since a given line |
 | `session_cwds` | Project discovery | `cwd` values in rollout files found with `find` |
