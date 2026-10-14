@@ -232,7 +232,9 @@ provider=<provider>` at the first entry of a session that names a model
 and `model: <old> -> <new> provider=<provider>` on each change, with
 ` requested=<model>` when an assistant message's `responseModel` (the
 model the provider reported) differs from its `model` (the one asked
-for); a `model_change` entry is one of those entries, and for `openclaw`
+for); a `model_change` entry is one of those entries, and one that
+names the model already in force, being the user's own switch, still
+gets the plain `model: <id> provider=<provider>` row; for `openclaw`
 the `session_windows` `model` and `model_provider` start the session at
 its start time. The `letta` parser adds the same row after the first
 `.letta/sessions.jsonl` line of each CLI session and a change row when a

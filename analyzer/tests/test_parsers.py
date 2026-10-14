@@ -4430,6 +4430,22 @@ class PiTests(ParserBase):
             ],
         )
 
+    def test_repeated_model_change_keeps_its_row(self):
+        # A model_change is the user's switch: one naming the model in
+        # force still yields the plain row; a repeating assistant does not.
+        path = self.home / self.REL
+        recs = pi_session_records()[:4]
+        recs.append(dict(recs[1], id="9a0b1c2d", timestamp="2026-10-01T09:00:05.000Z"))
+        _jsonl(path, recs)
+        rows = [r for r in self.rows_for(PiParser(), self.REL) if r.text.startswith("model:")]
+        self.assertEqual(
+            [(r.text, r.timestamp_utc, r.source_line) for r in rows],
+            [
+                ("model: claude-sonnet-4-5 provider=anthropic", "2026-10-01T09:00:00.100Z", 2),
+                ("model: claude-sonnet-4-5 provider=anthropic", "2026-10-01T09:00:05.000Z", 5),
+            ],
+        )
+
     def test_trust_standing_rows(self):
         self.assertTrue(PiParser().wants(next(a for a in self.col.artifacts if a.rel == PI_TRUST)))
         rows = self.rows_for(PiParser(), PI_TRUST)
@@ -5259,6 +5275,7 @@ from fixtures import (
     OPENCLAW_RESET_SESSION,
     OPENCLAW_SESSION,
     OPENCLAW_TOKEN,
+    openclaw_legacy_records,
 )
 
 
@@ -5314,6 +5331,31 @@ class OpenClawTests(ParserBase):
         self.assertEqual(
             [r.source_line for r in rows], [1, 1, 2, 3, 3, 4, 5]
         )  # transcript_events rowid
+
+    def test_repeated_model_change_keeps_its_row(self):
+        path = self.home / self.LEGACY
+        recs = openclaw_legacy_records()
+        recs.append(
+            {
+                "type": "model_change",
+                "id": "e5",
+                "parentId": "e4",
+                "timestamp": "2026-09-20T08:06:00.000Z",
+                "provider": "openai",
+                "modelId": "gpt-5",
+            }
+        )
+        _jsonl(path, recs)
+        rows = [
+            r for r in self.rows_for(OpenClawParser(), self.LEGACY) if r.text.startswith("model:")
+        ]
+        self.assertEqual(
+            [(r.text, r.model, r.timestamp_utc) for r in rows],
+            [
+                ("model: gpt-5", "gpt-5", "2026-09-20T08:05:10.000Z"),
+                ("model: gpt-5 provider=openai", "gpt-5", "2026-09-20T08:06:00.000Z"),
+            ],
+        )
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(OpenClawParser(), self.DB, include_thinking=True)

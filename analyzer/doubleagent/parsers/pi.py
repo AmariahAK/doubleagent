@@ -36,7 +36,10 @@ synthetic fixture; see `research/pi.md`. Files:
   provider=<provider>` on every later entry whose model differs, with
   ` requested=<model>` when an assistant `responseModel` (the concrete
   model the provider reported) differs from its `model` (the one asked
-  for). The `model` column is `responseModel`, else `model`. No entry type
+  for). A `model_change` entry is the user's own switch, so one that
+  names the model already in force still yields `model: <id>
+  provider=<provider>`; an assistant message that repeats it yields
+  nothing. The `model` column is `responseModel`, else `model`. No entry type
   records a per-call permission decision.
 * Forks: pi copies every parent entry into the child file verbatim, ids
   and timestamps included. When the header's `parentSession` resolves to a
@@ -157,6 +160,16 @@ def model_text(seen: dict, key: str, model: str, provider: str, requested: str =
     return text
 
 
+def switch_text(seen: dict, key: str, model: str, provider: str) -> str:
+    """The row text for a `model_change` entry, the user's own switch: the
+    `model_text` row, or, when it names the model already in force, the
+    plain `model: <id> provider=<provider>` row, so the switch keeps a row."""
+    text = model_text(seen, key, model, provider)
+    if not text and model:
+        text = "model: %s" % model + (" provider=%s" % provider if provider else "")
+    return text
+
+
 def entry_rows(
     parser: Parser,
     artifact: Artifact,
@@ -197,7 +210,7 @@ def entry_rows(
             yield from _message_rows(msg, rec, base, emit, opts, seen, session_id)
         elif etype == "model_change":
             model = str(rec.get("modelId") or "")
-            text = model_text(seen, session_id, model, str(rec.get("provider") or ""))
+            text = switch_text(seen, session_id, model, str(rec.get("provider") or ""))
             if text:
                 yield emit(base(model), "system", text)
         elif etype == "thinking_level_change":

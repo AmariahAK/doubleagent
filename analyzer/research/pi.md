@@ -173,7 +173,11 @@ provider=<provider>` on each later entry whose model differs, both with the
   the provider when different from the requested `model`"
   ([types.ts:553-554](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/ai/src/types.ts#L553-L554)).
 
-The row precedes the entry's own rows and carries its timestamp.
+The row precedes the entry's own rows and carries its timestamp. A
+`model_change` entry is the user's own switch, so one that names the
+model already in force still yields the plain `model: <id>
+provider=<provider>` row; an assistant message that repeats the current
+model yields none.
 
 **Permission rows.** No entry type or message role in
 [section 3](#3-record-schema) records a permission decision. The standing

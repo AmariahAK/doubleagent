@@ -71,7 +71,9 @@ provider=<provider>` at the first model a session names (the
 else a `model_change` `modelId` or an assistant `responseModel`, else
 `model`) and `model: <old> -> <new> provider=<provider>` on every later
 entry whose model differs, with ` requested=<model>` when an assistant
-`responseModel` differs from its `model` (`pi.model_text`). The
+`responseModel` differs from its `model` (`pi.model_text`). A
+`model_change` entry naming the model already in force still yields the
+plain `model: <id> provider=<provider>` row (`pi.switch_text`). The
 permission tables of `state/openclaw.sqlite` (`exec_approvals_config`,
 `operator_approvals`, `audit_events`) are not read: their columns are not
 in the research. Timestamps are the entry `timestamp`,
@@ -91,7 +93,7 @@ from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
 from .base import Options, Parser, compact_json, text_of
-from .pi import model_text
+from .pi import model_text, switch_text
 from .zed import decompress
 
 STATE = r"(?:\.openclaw(?:-[^/]+)?|\.clawdbot|\.moltbot)"
@@ -268,7 +270,7 @@ class OpenClawParser(Parser):
 
         if etype == "model_change":
             s.model = str(rec.get("modelId") or "")
-            mtext = model_text(s.seen, s.session_id, s.model, str(rec.get("provider") or ""))
+            mtext = switch_text(s.seen, s.session_id, s.model, str(rec.get("provider") or ""))
             if mtext:
                 yield system(mtext, s.model)
         elif etype == "thinking_level_change":

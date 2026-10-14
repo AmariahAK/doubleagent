@@ -150,16 +150,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a model (a `model_change` or an assistant message) and
   `model: <old> -> <new> provider=<provider>` on each change, with
   ` requested=<model>` when the assistant's `responseModel` differs from
-  the `model` asked for. It replaces `model_change: <provider>/<id>`,
-  which appeared only for a `model_change` entry and repeated an
-  unchanged model; a session whose model was named only on assistant
-  messages had no model row. The `model` column is now `responseModel`
-  when the message has one ([#96]).
+  the `model` asked for. A `model_change` entry that names the model
+  already in force, a switch the user made, still gets the plain
+  `model: <id> provider=<provider>` row. It replaces
+  `model_change: <provider>/<id>`, which appeared only for a
+  `model_change` entry, so a session whose model was named only on
+  assistant messages had no model row. The `model` column is now
+  `responseModel` when the message has one ([#96]).
 - The `openclaw` parser writes `model: <id> provider=<provider>` at a
   session's first model (the `session_windows` `model`, else the first
   `model_change` or assistant message) and `model: <old> -> <new>
-  provider=<provider>` on each change, with ` requested=<model>` as
-  above, in place of `model change: <provider>/<id>` ([#96]).
+  provider=<provider>` on each change, with ` requested=<model>` and the
+  repeated `model_change` row as above, in place of
+  `model change: <provider>/<id>` ([#96]).
 
 ### Fixed
 

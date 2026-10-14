@@ -185,6 +185,9 @@ else `model`, with `provider`; when `responseModel` differs from `model`
 the row ends ` requested=<model>`. `responseModel` is the concrete model the
 stream reported "when different from the requested `model`"
 ([`llm-core/src/types.ts:533`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/packages/llm-core/src/types.ts#L533)).
+A `model_change` entry naming the model already in force still yields the
+plain `model: <id> provider=<provider>` row, since it records a switch;
+an assistant message that repeats the current model yields none.
 
 **Permission rows.** No transcript entry records a per-call permission
 decision; `bashExecution.cancelled` stays on the bash `tool_result` row. The
