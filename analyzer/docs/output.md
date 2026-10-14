@@ -318,6 +318,36 @@ settings-file rows these live in the thread blob, so their `session_id` is
 the thread id and their `timestamp_utc` is the thread's `updated_at`, the
 blob's last write rather than the time of the grant.
 
+OpenHands, Agent Zero, nanobot and Muse Code write the same kinds of row.
+`openhands` writes `model: <id>` after each conversation's header row, at
+the header's time, from `agent.llm.model` in `base_state.json`; a
+rejected call's `tool_result` is followed by `permission decision:
+rejected rejection_source=<source> <reason>` with the call's `tool_name`
+and `tool_use_id`, and an action's `tool_use` text ends with
+` security_risk=<value>` when the event has one. `agent-zero` writes
+`model: <id>` before an agent's first reply and `model: <old> -> <new>`
+on a change, tracked per chat and agent number, with ` agent=<n>` for a
+subordinate agent. `nanobot` writes `model: <preset> (preset)` after
+the session start row: the value is a model preset of nanobot's
+configuration, not a model id. `muse-code` writes, per session log,
+`permission mode: approval=<approval> reviewer=<reviewer>
+profile=<profile id>` followed by ` cause=<cause>` and
+` format=<format>` from the log's permission frame,
+`permission mode: security_mode=<value>`, and `permission mode: <old> ->
+<new>` on a change of either; `model: <id> provider=<provider>` at the
+first model a log names and `model: <old> -> <new>` on a change or a
+`/model` command; `permission decision: <outcome>
+kind=automated_review_completed risk_level=<r> user_authorization=<u>
+status=<s> <rationale>` for the automated reviewer's verdict and
+`permission decision: <decision> source=<source kind> policy_result=<p>
+amendment=<a>` for the decision applied (`-` for a missing value), both
+at the record's place in the log, before the call's `tool_result`, and
+carrying the call's `tool_name` and `tool_use_id`; and one
+`permission setting: projects.<path>.decision=<decision> (from
+.config/muse/trust.json, file mtime)` row per trusted project, with
+`project_path` the project, the file's modification time and an empty
+`session_id`.
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and

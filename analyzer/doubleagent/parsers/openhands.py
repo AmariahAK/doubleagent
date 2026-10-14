@@ -17,7 +17,7 @@ Files, relative to the home directory (the same layout on every OS):
     tool_call_id, reasoning_content, thinking_blocks[].thinking}`.
   - `ActionEvent`: `thought[]`, `reasoning_content`, `thinking_blocks[]`,
     `action.{kind, command, path}`, `tool_name`, `tool_call_id`,
-    `tool_call.arguments`.
+    `tool_call.arguments`, `security_risk`.
   - `ObservationEvent`: `tool_name`, `tool_call_id`, `observation.{content[],
     is_error}`; `UserRejectObservation`: `rejection_reason`,
     `rejection_source`; `AgentErrorEvent`: `error`.
@@ -58,7 +58,17 @@ with any `tool_calls` as `tool_use` rows; `ActionEvent` and
 `ACPToolCallEvent` are `tool_use` (an ACP call that has output also yields a
 `tool_result`); `ObservationEvent`, `UserRejectObservation` and
 `AgentErrorEvent` are `tool_result` joined on `tool_call_id`; everything else
-is `system`. Thoughts, `reasoning_content` and thinking blocks become
+is `system`. An `ActionEvent` with a `security_risk` (the security
+analyzer's rating, `UNKNOWN`, `LOW`, ...) ends its `tool_use` text with
+` security_risk=<value>`. A `UserRejectObservation` keeps its `tool_result`
+row, `[rejected by <rejection_source>] <rejection_reason>`, and is followed
+by a `system` row `permission decision: rejected rejection_source=<source>
+<rejection_reason>` (`-` for a missing source) with the call's `tool_name`
+and `tool_use_id`. The conversation's model, `agent.llm.model` from
+`base_state.json`, becomes a `system` row `model: <id>` after the header
+row, at the header's time; `base_state.json` holds one model per
+conversation and no event in the research records a switch, so no change
+row is written. Thoughts, `reasoning_content` and thinking blocks become
 `thinking` rows with `--include-thinking`. The session id is the directory
 name, `project_path` is `workspace.working_dir` from `meta.json`, else from
 `base_state.json` (a container path under Canvas in Docker), and the model
@@ -168,6 +178,11 @@ class OpenHandsParser(Parser):
             row.timestamp_utc = conv.created
             row.text = compact(conv.header)
             yield row
+            if conv.model:
+                row = self._row(artifact, conv, "system")
+                row.timestamp_utc = conv.created
+                row.text = "model: " + conv.model
+                yield row
         ev = _read_json(artifact.disk_path)
         if not isinstance(ev, dict):
             row = self._row(artifact, conv, "system")
@@ -321,9 +336,10 @@ class OpenHandsParser(Parser):
                 thinking = _join(text_of(ev.get("thought")), _thinking(ev))
                 if thinking:
                     yield mk("thinking", thinking)
+            risk = ev.get("security_risk")
             yield mk(
                 "tool_use",
-                _action_text(ev),
+                _action_text(ev) + (" security_risk=%s" % risk if risk not in (None, "") else ""),
                 str(ev.get("tool_name") or ""),
                 str(ev.get("tool_call_id") or ""),
             )
@@ -339,12 +355,26 @@ class OpenHandsParser(Parser):
                 str(ev.get("tool_call_id") or ""),
             )
         elif kind == "UserRejectObservation":
+            tool_name, tool_use_id = (
+                str(ev.get("tool_name") or ""),
+                str(ev.get("tool_call_id") or ""),
+            )
             yield mk(
                 "tool_result",
                 "[rejected by %s] %s"
                 % (ev.get("rejection_source") or "user", ev.get("rejection_reason") or ""),
-                str(ev.get("tool_name") or ""),
-                str(ev.get("tool_call_id") or ""),
+                tool_name,
+                tool_use_id,
+            )
+            yield mk(
+                "system",
+                _join_space(
+                    "permission decision: rejected rejection_source=%s"
+                    % (ev.get("rejection_source") or "-"),
+                    str(ev.get("rejection_reason") or ""),
+                ),
+                tool_name,
+                tool_use_id,
             )
         elif kind == "AgentErrorEvent":
             yield mk(
@@ -447,6 +477,10 @@ class OpenHandsParser(Parser):
             "times are host local, emitted as if UTC" % len(numbers),
         )
         yield row
+
+
+def _join_space(*parts: str) -> str:
+    return " ".join(p for p in parts if p)
 
 
 def _thinking(rec: dict) -> str:

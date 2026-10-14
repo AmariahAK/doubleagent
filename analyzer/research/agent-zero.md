@@ -138,6 +138,16 @@ a `system` row saying the log was trimmed.
 | text | `content`; for tool_use the `code`/`command`/`url` key of `kvps`, else `kvps` as JSON |
 | source_line | log item `no` |
 
+Model rows (issue 96): before an `agent` log item, or a history-only
+assistant message when the log was trimmed, whose
+`metadata.responses.provider_model_key` is new for that agent, a `system`
+row `model: <key>` at the agent's first model and `model: <old> -> <new>`
+on a change, tracked per chat `id` and agent `number` (`agentno` on log
+items), with ` agent=<n>` after it for a subordinate agent. The research
+names no permission or approval record in `chat.json`, so the parser
+writes no permission rows; whether Agent Zero keeps permission state is
+not researched.
+
 Fixture `usr/chats/AbCd1234/chat.json`:
 
 ```json

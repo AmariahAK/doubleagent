@@ -390,8 +390,8 @@ Read every line with `iter_jsonl`; a bad line (a log cut mid-write) is one
 1. `retained_marker`: skip (no content, no time).
 2. `retained_frame`: decode each `children[].record_json` with
    `json.loads` and process the inner envelopes in `child_index` order with
-   the outer `source_line`. They are permission records: no rows by
-   default.
+   the outer `source_line`. They are permission records, read for the
+   `permission mode:` row (coverage table).
 3. Envelope: dispatch on `payload_type`, then `payload.kind`, then
    `payload.event.kind`, per the table. Ignore unknown types silently.
 
@@ -418,15 +418,20 @@ Coverage:
 | run `terminal` with `terminal != "completed"` | `system`, text `run <terminal>: <reason>` |
 | run `context_compaction_installed`, `run_retracted`, `turn_task_died` | `system`, compact JSON of the event |
 | approval `requested` | `system`, `tool_name` from `tool_name`, `tool_use_id` from `tool_call_id`, text `approval requested: <raw_args>` |
-| approval `decision_applied` | `system`, text `approval <decision> by <decision_source.kind>` |
+| approval `automated_review_completed` | `system`, text `permission decision: <assessment.outcome> kind=automated_review_completed risk_level=<assessment.risk_level> user_authorization=<assessment.user_authorization> status=<status> <assessment.rationale>`, `tool_name` and `tool_use_id` of the latest `requested` before it (the record names no pending action); `-` for a missing value |
+| approval `decision_applied` | `system`, text `permission decision: <decision> source=<decision_source.kind> policy_result=<policy_result> amendment=<amendment>` (`-` for a missing or null value), joined to its request on `pending_action_id`; it stays at its place in the log, before the call's `tool_result`, since the decision precedes the execution |
+| frame child `runtime.session.permission_profile_committed` | `system`, text `permission mode: approval=<resolved_snapshot.approval> reviewer=<resolved_snapshot.reviewer> profile=<source.id>` at the log's first profile and `permission mode: <old> -> <new>` on a change, followed by ` cause=<cause>` and ` format=<format>` from the `runtime.session.permission_format_declared` child before it (field names from the sample frame below) |
+| `session.opened.observed` | `system`, text `permission mode: security_mode=<record.security_mode>` and `permission mode: <old> -> <new>` on a change, tracked apart from the profile; the values are not recorded |
 | `user_shell.command` / `user_shell.result` | `tool_use` / `tool_result`, `tool_name` `user_shell`, `tool_use_id` `command_id`, text `command_text` / `visible_output` |
 | `session.name.changed` | `system`, text `session name: <new_name>` |
-| `runtime.model_reconfigure.completed` | `system`, text `model: <effective.model_id>` |
+| `runtime.model_reconfigure.completed` | `system`, text `model: <old> -> <effective.model_id>`, kept when the model is unchanged (the user typed `/model`), preceded by `model: <previous.model_id>` when the log named no model before it, and followed by ` apply_outcome=<apply_outcome>` when set; `previous{...}` is listed above without its fields, and `model_id` is read there because `effective` carries it |
 | `subagent.control.spawn_accepted`, `.start_attested` | `system`, compact JSON (shape unverified) |
-| `runtime.session.metadata`, `session.workspace_branch.observed`, `run.model.configured` | no row; fill `project_path`, `git_branch`, `model` |
+| `session.workspace_branch.observed` | no row; fills `git_branch` |
+| `runtime.session.metadata` `record.model_id`, `run.model.configured` `record.model_id`, run `model_completed` `model` (when the run has no configured model) | fill `model` (the metadata record also fills `project_path`), and a `system` row `model: <id> provider=<provider_id>` at the log's first model and `model: <old> -> <new>` on a change (` provider=` only when the record has `provider_id`) |
 | `runtime.user_intent.accepted` | skip; same prompt as `started` (use it for `user` text only if `started` is missing) |
-| run `model_completed` | no row; fills `model` |
-| all task events, `tool_batch.effect.*`, approval `automated_review_*`, `model_request_configured` and the other bookkeeping run events, `session.opened.observed`, `session.end`, telemetry, permission records | skip: duplicates or bookkeeping |
+| all task events, `tool_batch.effect.*`, approval `automated_review_started`, `model_request_configured` and the other bookkeeping run events, `session.end`, telemetry | skip: duplicates or bookkeeping |
+| `~/.config/muse/trust.json` `projects.<path>.decision` | one `system` row per project, `permission setting: projects.<path>.decision=<decision> (from .config/muse/trust.json, file mtime)`, `project_path` the path, `timestamp_utc` the file's modification time, `session_id` empty; shape in [`collectors/research/muse-code.md`](../../collectors/research/muse-code.md) |
+| `~/.config/muse/skills/.muse/lock.json` `trust` | not read: the collector research lists the file's keys but not its structure, and the file was not present on the real install |
 | `tui-history.jsonl` entry | `user`, empty `timestamp_utc` |
 
 Columns:

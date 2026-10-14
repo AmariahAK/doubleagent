@@ -123,6 +123,18 @@ as if UTC, stated in the parser table in [`docs/parsers.md`](../docs/parsers.md)
 | text | `content` text; for tool_use the `command`/`path`/`url` key of the parsed `arguments`, else the arguments string |
 | source_line | line number |
 
+Model and permission rows (issues 96 and 97): when the metadata line has
+`metadata._nanobot_model_preset`, a `system` row `model: <preset>
+(preset)` follows the session start row at its time; the value names a
+model preset of nanobot's configuration, not a model id, and the row says
+so. A session file has one metadata line, so it names one preset and no
+`model: <old> -> <new>` row is written; per-call models are in
+`llm_usage.sqlite3` `llm_calls`, which the parser does not read. No
+permission state is read: `pairing.json`, the chat senders the operator
+approved
+([`collectors/research/nanobot.md`](../../collectors/research/nanobot.md)),
+is named in the research without its shape, so the file is not read.
+
 Fixture, file `.nanobot/sessions/0123456789abcdef0123456789abcdef/dGVsZWdyYW06MTIzNDU2Nzg5.jsonl`,
 with `.workspace` containing `/home/alice/.nanobot/workspace`:
 

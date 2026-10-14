@@ -187,6 +187,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The `ollama` parser yields `model: <model_name>` before a chat's first
   assistant message that names a model and `model: <old> -> <new>` before
   each assistant message whose `model_name` differs ([#96]).
+- The `openhands`, `agent-zero` and `nanobot` parsers record the model
+  as an event: `openhands` writes `model: <agent.llm.model>` after each
+  conversation's header row; `agent-zero` writes `model: <id>` before an
+  agent's first reply and `model: <old> -> <new>` when
+  `metadata.responses.provider_model_key` changes, ending ` agent=<n>`
+  for a subordinate agent; `nanobot` writes `model: <preset> (preset)`
+  after the session start row, since the session records a model preset
+  of its configuration, not a model id ([#96]).
+- The `openhands` parser follows a rejected call's `tool_result` with a
+  `system` row `permission decision: rejected
+  rejection_source=<source> <reason>`, and ends an action's `tool_use`
+  text with ` security_risk=<value>`, the security analyzer's rating
+  ([#97]).
+- The `muse-code` parser records the starting permission profile and
+  security mode as `permission mode: approval=<a> reviewer=<r>
+  profile=<id>` (with its `cause` and declared `format`) and
+  `permission mode: security_mode=<value>`, the automated reviewer's
+  verdict as `permission decision: <outcome>
+  kind=automated_review_completed ...` with its rationale, the model as
+  `model: <id> provider=<provider>` at the first model a session log
+  names and `model: <old> -> <new>` on each change, and each trusted
+  project in `.config/muse/trust.json`, not read before, as a
+  `permission setting: projects.<path>.decision=<decision> (from
+  .config/muse/trust.json, file mtime)` row ([#96], [#97]).
 
 ### Changed
 
@@ -234,6 +258,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `permission mode: <mode>` and `permission mode: <old> -> <new>` rows
   carry the entry's `mode`; an entry that changes neither has no row
   ([#96], [#97]).
+- The `muse-code` approval decision row reads `permission decision:
+  <decision> source=<decision_source.kind> policy_result=<p>
+  amendment=<a>`, where it read `approval <decision> by <source>`; and the
+  `/model` row reads `model: <old> -> <new>`, preceded by `model:
+  <previous>` when the log named no model before it, where it read
+  `model: <new>` ([#96], [#97]).
 
 ### Fixed
 

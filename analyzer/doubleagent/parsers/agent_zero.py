@@ -44,7 +44,11 @@ Rows come from the log, which has the timestamps: `user` → `user` (full text
 from the matching history message); `agent` → `assistant` with the headline
 and thoughts (else the history or log text), the model from the matching
 history message, and `kvps.reasoning` as `thinking` with
-`--include-thinking`; `response` → `assistant`; `tool`, `mcp`, `code_exe`,
+`--include-thinking`; before an `agent` item (or a history-only assistant
+message) whose `metadata.responses.provider_model_key` is new for that
+agent, a `system` row `model: <key>` at the agent's first model and
+`model: <old> -> <new>` on a change, tracked per chat and agent number,
+ending ` agent=<n>` for a subordinate agent; `response` → `assistant`; `tool`, `mcp`, `code_exe`,
 `browser` and `subagent` → `tool_use` (the `code`, `command`, `url`, `query`
 or `path` argument, else the arguments; `tool_use_id` is the log item id)
 then `tool_result` (the `messages/<n>.txt` file, else the history result,
@@ -56,7 +60,9 @@ without a timestamp. Rows of subordinate agents are prefixed `[agent N]`.
 container, and is empty for chats outside a project. No git branch is
 recorded. `source_line` is the log item's `no`. A `chat.json` that does not
 parse yields one `system` row plus whatever complete log items can be
-recovered from it, without the history.
+recovered from it, without the history (and so without model rows). The
+research names no permission or approval record in `chat.json`, so no
+permission rows are written.
 """
 
 from __future__ import annotations
@@ -68,7 +74,7 @@ from collections.abc import Iterator
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, text_of
+from .base import Options, Parser, compact_json, text_of, track_change
 
 A0 = r"(?:Desktop/)?agent-zero/(?:[^/]+/)?(?:usr|tmp)/chats"
 CHAT_RX = re.compile(r"^%s/[^/]+/chat\.json$" % A0)
@@ -197,7 +203,7 @@ class AgentZeroParser(Parser):
                 "parser: chat.json did not parse (%s); log items recovered without history" % e,
                 opts,
             )
-            yield from self._log_rows(base, recover_logs(raw), {}, None, opts)
+            yield from self._log_rows(base, recover_logs(raw), {}, None, opts, {})
             return
 
         base.session_id = str(chat.get("id") or fallback_id)
@@ -230,6 +236,7 @@ class AgentZeroParser(Parser):
             log = {}
         logs = [i for i in (log.get("logs") or []) if isinstance(i, dict)]
         trimmed = len(logs) >= LOG_SIZE
+        models: dict = {}
 
         history: dict[str, tuple[int, dict]] = {}
         ordered: list[tuple[int, str, dict]] = []
@@ -272,10 +279,10 @@ class AgentZeroParser(Parser):
                         opts,
                     )
                 elif str(node.get("id") or "") not in log_ids:
-                    yield from self._history_rows(base, agentno, node, opts)
+                    yield from self._history_rows(base, agentno, node, opts, models)
 
         yield from self._log_rows(
-            base, logs, history, path.parent / "messages" if not legacy else None, opts
+            base, logs, history, path.parent / "messages" if not legacy else None, opts, models
         )
 
     # -- helpers -----------------------------------------------------------------------
@@ -303,12 +310,32 @@ class AgentZeroParser(Parser):
             return ""
         return f.read_bytes().decode("utf-8", errors="replace")
 
-    def _history_rows(self, base: Row, agentno, msg: dict, opts: Options) -> Iterator[Row]:
+    def _model_row(
+        self, base: Row, agentno, model: str, models: dict, opts: Options, line=0, ts=""
+    ):
+        """`model: <id>` at an agent's first model and `model: <old> -> <new>`
+        on a change, tracked per chat and agent number; a subordinate
+        agent's row ends ` agent=<n>`."""
+        text = track_change("model", models, (base.session_id, str(agentno)), model)
+        if not text:
+            return None
+        if agentno not in (0, None, "0"):
+            text += " agent=%s" % agentno
+        row = self._row(base, "system", text, opts, line, ts)
+        row.model = model
+        return row
+
+    def _history_rows(
+        self, base: Row, agentno, msg: dict, opts: Options, models: dict
+    ) -> Iterator[Row]:
         content = msg.get("content")
         mid = str(msg.get("id") or "")
         if msg.get("ai"):
             parsed = parse_ai(content)
             model = model_of(msg)
+            mrow = self._model_row(base, agentno, model, models, opts)
+            if mrow is not None:
+                yield mrow
             text = headline_text(parsed) if parsed else _content_text(content)
             if text:
                 row = self._row(base, "assistant", self._prefix(agentno, text), opts)
@@ -349,6 +376,7 @@ class AgentZeroParser(Parser):
         history: dict[str, tuple[int, dict]],
         msg_dir,
         opts: Options,
+        models: dict,
     ) -> Iterator[Row]:
         for item in logs:
             kind = str(item.get("type") or "")
@@ -379,6 +407,9 @@ class AgentZeroParser(Parser):
                 yield mk("user", text)
             elif kind == "agent":
                 model = model_of(hist)
+                mrow = self._model_row(base, agentno, model, models, opts, line, ts)
+                if mrow is not None:
+                    yield mrow
                 if opts.include_thinking and kvps.get("reasoning"):
                     row = mk("thinking", _content_text(kvps["reasoning"]))
                     row.model = model

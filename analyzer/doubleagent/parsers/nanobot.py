@@ -39,8 +39,14 @@ convention as the Aider parser; correct them by the host's offset, which
 without a timestamp inherit the previous one, else the metadata
 `updated_at`. No model is recorded per message: the session's
 `_nanobot_model_preset`, when set, is the `model` of every row. No git
-branch is recorded. `/new` empties a session file, so earlier turns may
-survive only in `memory/history.jsonl`.
+branch is recorded. A preset also becomes a `system` row after the session
+start row, at its time, `model: <preset> (preset)`: the value names a model
+preset of nanobot's configuration, not a model id. A file has one
+metadata line, so it names one preset and no change row is written. No
+permission state is read: `pairing.json` (the chat senders the operator
+approved) is named in the collector research without its shape. `/new`
+empties a session file, so earlier turns may survive only in
+`memory/history.jsonl`.
 """
 
 from __future__ import annotations
@@ -52,7 +58,7 @@ from collections.abc import Iterator
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, iter_jsonl, text_of
+from .base import Options, Parser, iter_jsonl, text_of, track_change
 from .openclaw import tool_args_text
 
 STATE = r"\.nanobot(?:-[^/]+)?"
@@ -113,6 +119,7 @@ class NanobotParser(Parser):
         model = ""
         last_ts = ""
         errors: list = []
+        models: dict = {}
 
         def row(
             n: int, turn_type: str, text: str, tool_name: str = "", tool_use_id: str = ""
@@ -155,6 +162,9 @@ class NanobotParser(Parser):
                         if x
                     ),
                 )
+                text = track_change("model", models, session_id, model)
+                if text:
+                    yield row(n, "system", text + " (preset)")
                 continue
             if rtype is not None and "role" not in rec:
                 continue  # provider_state and future record types

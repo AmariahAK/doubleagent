@@ -5577,8 +5577,9 @@ def _a0_message(mid, ai, content, metadata=None):
 def agent_zero_history():
     """Agent 0's history from research/agent-zero.md section 8, with the
     assistant message carrying the id of the `agent` log item that streamed
-    it (agent.py:529-534) and its provider model, and a second tool result
-    long enough to be saved to messages/1.txt."""
+    it (agent.py:529-534) and its provider model, a second tool result
+    long enough to be saved to messages/1.txt, and a later assistant message
+    from another provider model (a model change)."""
     ai = json.dumps(
         {
             "thoughts": ["list"],
@@ -5619,6 +5620,18 @@ def agent_zero_history():
                         "tool_name": "code_execution_tool",
                         "tool_result": AGENT_ZERO_LONG,
                         "file": "/a0/usr/chats/%s/messages/1.txt" % AGENT_ZERO_CHAT,
+                    },
+                ),
+                _a0_message(
+                    "a2",
+                    True,
+                    json.dumps({"thoughts": ["done"], "headline": "Checking again"}),
+                    {
+                        "responses": {
+                            "response_id": "resp_2",
+                            "provider_model_key": "openai/gpt-5",
+                            "usage": {"input": 30, "output": 5},
+                        }
                     },
                 ),
             ],
@@ -5697,6 +5710,16 @@ def agent_zero_logs():
             "content": "There is one file, a.txt.",
             "kvps": {},
             "timestamp": 1790856005.0,
+            "agentno": 0,
+        },
+        {
+            "no": 6,
+            "id": "a2",
+            "type": "agent",
+            "heading": "A0: Checking again",
+            "content": "",
+            "kvps": {"thoughts": ["done"], "headline": "Checking again"},
+            "timestamp": 1790856006.0,
             "agentno": 0,
         },
     ]
@@ -6774,6 +6797,8 @@ MUSE_SESSION = "01a0f000-0000-7000-8000-000000000001"
 MUSE_CHILD = "0f3c2b1a-5d6e-4f70-8a9b-0c1d2e3f4a5b"
 MUSE_RUN = "0b7e6f5a-4c3d-4e2f-9a1b-2c3d4e5f6a7b"
 MUSE_MODEL = "muse-spark-1.3-contributor"
+MUSE_MODEL_2 = "muse-spark-1.3-fast"
+MUSE_TRUST_REL = ".config/muse/trust.json"
 MUSE_DIR = ".local/share/muse/sessions/2026/10/01/%s/" % MUSE_SESSION
 MUSE_REL = MUSE_DIR + "session.jsonl"
 MUSE_CHILD_REL = MUSE_DIR + "subagent/%s/session.jsonl" % MUSE_CHILD
@@ -6881,7 +6906,12 @@ def _muse_model(sid, seq, t_us, run_id, ns="8000"):
 
 def muse_session_records():
     """The main fixture of research/muse-code.md section 8, less the cut
-    line (tests append one with `write_bad_line`)."""
+    line (tests append one with `write_bad_line`), plus a
+    `session.opened.observed` record with a `security_mode`, an automated
+    review verdict between the approval request and its decision, and a
+    `/model` change after the run (issues 96 and 97). The `security_mode`,
+    `outcome`, `risk_level` and `user_authorization` values are synthetic:
+    the research records the keys, not their values."""
     s, r, t = MUSE_SESSION, MUSE_RUN, MUSE_T0
     bash = {
         "chunk_id": "exec-1-1",
@@ -6933,6 +6963,21 @@ def muse_session_records():
                     "reference": {"kind": "branch", "name": "main"},
                     "vcs": "git",
                     "workspace_root": "/srv/proj",
+                },
+            },
+        ),
+        _muse_env(
+            s,
+            5,
+            t + 250000,
+            "session.opened.observed",
+            {
+                "kind": "session_opened",
+                "record": {
+                    "resume": False,
+                    "security_mode": "example_mode",
+                    "session_id": s,
+                    "workspace_kind": "git",
                 },
             },
         ),
@@ -7150,6 +7195,30 @@ def muse_session_records():
         _muse_env(
             s,
             19,
+            t + 5900000,
+            "runtime.session",
+            {
+                "event": {
+                    "assessment": {
+                        "outcome": "allow",
+                        "rationale": "Fetching a package index is low risk.",
+                        "risk_level": "low",
+                        "user_authorization": "not_required",
+                    },
+                    "completed_at_ms": 1790845205900,
+                    "duration_ms": 900,
+                    "kind": "automated_review_completed",
+                    "status": "completed",
+                    "usage": {},
+                },
+                "kind": "approval",
+                "run_id": r,
+            },
+            version=3,
+        ),
+        _muse_env(
+            s,
+            19,
             t + 6000000,
             "runtime.session",
             {
@@ -7216,6 +7285,19 @@ def muse_session_records():
                 "turn_duration_ms": 8100,
             },
             31,
+        ),
+        _muse_env(
+            s,
+            23,
+            t + 15000000,
+            "runtime.model_reconfigure.completed",
+            {
+                "kind": "model_reconfigure",
+                "record": {
+                    "effective": {"model_id": MUSE_MODEL_2},
+                    "previous": {"model_id": MUSE_MODEL},
+                },
+            },
         ),
         _muse_env(
             s,
@@ -7338,6 +7420,17 @@ def build_muse_code(home: Path) -> None:
     _jsonl(home / MUSE_DIR / "approval-review/7a7a7a7a-0000-4000-8000-000000000001.jsonl", [review])
     (home / ".config/muse").mkdir(parents=True, exist_ok=True)
     (home / ".config/muse/settings.json").write_text("{}", encoding="utf-8")
+    # Trusted projects (collectors/research/muse-code.md section 2).
+    _json_file(
+        home / MUSE_TRUST_REL,
+        {
+            "schema_version": 1,
+            "projects": {
+                "/srv/proj": {"decision": "trusted"},
+                "/srv/other": {"decision": "trusted"},
+            },
+        },
+    )
 
 
 OLLAMA_CHAT = "0190a000-0000-7000-8000-00000000c001"

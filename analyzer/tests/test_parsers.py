@@ -4446,11 +4446,13 @@ class OpenHandsTests(ParserBase):
             [
                 "system",
                 "system",
+                "system",
                 "user",
                 "tool_use",
                 "tool_result",
                 "tool_use",
                 "tool_result",
+                "system",
                 "assistant",
             ],
         )
@@ -4464,8 +4466,12 @@ class OpenHandsTests(ParserBase):
                 ("/srv/proj", "", "litellm_proxy/claude-sonnet-4-5"),
             )
             self.assertEqual(r.source_line, 1)
-        header, prompt, user, ls, out, view, reject, asst = rows
+        header, model, prompt, user, ls, out, view, reject, decision, asst = rows
         self.assertTrue(header.text.startswith("conversation start | List files"), header.text)
+        self.assertEqual(
+            (model.text, model.timestamp_utc),
+            ("model: litellm_proxy/claude-sonnet-4-5", "2026-10-01T10:00:00.000Z"),
+        )
         self.assertIn("corrected by UTC+02:00", header.text)
         self.assertEqual(header.timestamp_utc, "2026-10-01T10:00:00.000Z")
         self.assertEqual(prompt.text, "system prompt, 2 tools: You are OpenHands agent.")
@@ -4473,7 +4479,10 @@ class OpenHandsTests(ParserBase):
         self.assertEqual(
             (user.text, user.timestamp_utc), ("list the files", "2026-10-01T10:00:01.000Z")
         )
-        self.assertEqual((ls.tool_name, ls.tool_use_id, ls.text), ("terminal", "call_1", "ls"))
+        self.assertEqual(
+            (ls.tool_name, ls.tool_use_id, ls.text),
+            ("terminal", "call_1", "ls security_risk=LOW"),
+        )
         self.assertEqual(
             (out.tool_use_id, out.text, out.timestamp_utc),
             ("call_1", "README.md", "2026-10-01T10:00:04.000Z"),
@@ -4482,6 +4491,16 @@ class OpenHandsTests(ParserBase):
         self.assertEqual(
             (reject.tool_use_id, reject.text), ("call_2", "[rejected by user] not that file")
         )
+        self.assertEqual(
+            (decision.tool_name, decision.tool_use_id, decision.text, decision.timestamp_utc),
+            (
+                "file_editor",
+                "call_2",
+                "permission decision: rejected rejection_source=user not that file",
+                reject.timestamp_utc,
+            ),
+        )
+        self.assertEqual(rows.index(decision), rows.index(reject) + 1)
         self.assertEqual(asst.text, "The project has a README.")
         self.assertTrue(asst.source_file.endswith(".json"))
 
@@ -4489,7 +4508,8 @@ class OpenHandsTests(ParserBase):
         rows = self.conversation(self.CLI)
         self.assertEqual(rows[0].turn_type, "system")
         self.assertIn("emitted as if UTC", rows[0].text)
-        self.assertEqual(rows[2].timestamp_utc, "2026-10-02T08:30:01.000Z")
+        self.assertEqual(rows[1].text, "model: litellm_proxy/claude-sonnet-4-5")
+        self.assertEqual(rows[3].timestamp_utc, "2026-10-02T08:30:01.000Z")
         self.assertEqual({r.session_id for r in rows}, {OPENHANDS_CLI_CONV})
 
     def test_thinking_opt_in(self):
@@ -4528,7 +4548,7 @@ class OpenHandsTests(ParserBase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].turn_type, "system")
         self.assertIn("parser:", rows[0].text)
-        self.assertEqual(len(self.conversation(self.CANVAS)), 8)  # the other events still parse
+        self.assertEqual(len(self.conversation(self.CANVAS)), 10)  # the other events still parse
 
 
 class ShellGptTests(ParserBase):
@@ -5299,11 +5319,14 @@ class AgentZeroTests(ParserBase):
             [
                 "system",
                 "user",
+                "system",
                 "assistant",
                 "tool_use",
                 "tool_result",
                 "tool_use",
                 "tool_result",
+                "system",
+                "assistant",
                 "system",
                 "assistant",
             ],
@@ -5315,7 +5338,26 @@ class AgentZeroTests(ParserBase):
             )
             self.assertEqual((r.project_path, r.git_branch), ("/a0/usr/projects/demo", ""))
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        start, user, asst, use, result, use2, result2, warn, resp = rows
+        start, user, model, asst, use, result, use2, result2, warn, resp, change, asst2 = rows
+        self.assertEqual(
+            (model.text, model.model, model.timestamp_utc, model.source_line),
+            (
+                "model: openrouter/anthropic/claude-sonnet-4",
+                "openrouter/anthropic/claude-sonnet-4",
+                "2026-10-01T12:00:02.000Z",
+                1,
+            ),
+        )
+        self.assertEqual(
+            (change.text, change.model, change.timestamp_utc, change.source_line),
+            (
+                "model: openrouter/anthropic/claude-sonnet-4 -> openai/gpt-5",
+                "openai/gpt-5",
+                "2026-10-01T12:00:06.000Z",
+                6,
+            ),
+        )
+        self.assertEqual((asst2.text, asst2.model), ("Checking again\ndone", "openai/gpt-5"))
         self.assertEqual(
             (start.text, start.timestamp_utc),
             (
@@ -5342,7 +5384,7 @@ class AgentZeroTests(ParserBase):
             (resp.text, resp.timestamp_utc),
             ("There is one file, a.txt.", "2026-10-01T12:00:05.000Z"),
         )
-        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 2, 2, 3, 3, 4, 5])
+        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 1, 2, 2, 3, 3, 4, 5, 6, 6])
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(AgentZeroParser(), self.REL, include_thinking=True)
@@ -5353,7 +5395,7 @@ class AgentZeroTests(ParserBase):
     def test_history_used_when_file_absent_and_log_cut(self):
         (self.home / "agent-zero/usr/chats" / AGENT_ZERO_CHAT / "messages/1.txt").unlink()
         rows = self.rows_for(AgentZeroParser(), self.REL)
-        self.assertEqual(rows[6].text, AGENT_ZERO_LONG)
+        self.assertEqual(rows[7].text, AGENT_ZERO_LONG)
 
     def test_trimmed_log_adds_history_without_timestamps(self):
         history = agent_zero_history()
@@ -5380,27 +5422,79 @@ class AgentZeroTests(ParserBase):
             "log trimmed to its last 1000 items; earlier turns follow from the agent "
             "history without timestamps",
         )
-        early = rows[2:9]
+        early = rows[2:12]
         self.assertEqual(
             [(r.turn_type, r.timestamp_utc) for r in early],
             [
                 ("system", ""),
                 ("user", ""),
+                ("system", ""),
                 ("assistant", ""),
                 ("tool_use", ""),
                 ("tool_result", ""),
                 ("tool_result", ""),
+                ("system", ""),
+                ("assistant", ""),
                 ("system", "2026-10-01T12:01:40.000Z"),
             ],
         )
         self.assertEqual(early[0].text, "[summary] earlier: set up the repo")
+        self.assertEqual(early[2].text, "model: openrouter/anthropic/claude-sonnet-4")
         self.assertEqual(
-            (early[2].text, early[2].model),
+            (early[3].text, early[3].model),
             ("Listing\nlist", "openrouter/anthropic/claude-sonnet-4"),
         )
-        self.assertEqual((early[3].tool_name, early[3].text), ("code_execution_tool", "ls"))
-        self.assertEqual(early[6].text, "info: tick 0")
-        self.assertEqual(len(rows), 2 + 6 + 1000)
+        self.assertEqual((early[4].tool_name, early[4].text), ("code_execution_tool", "ls"))
+        self.assertEqual(
+            early[7].text, "model: openrouter/anthropic/claude-sonnet-4 -> openai/gpt-5"
+        )
+        self.assertEqual(early[9].text, "info: tick 0")
+        self.assertEqual(len(rows), 2 + 9 + 1000)
+
+    def test_subordinate_agent_tracks_its_own_model(self):
+        chat = agent_zero_chat()
+        sub = {
+            "_cls": "History",
+            "counter": 1,
+            "bulks": [],
+            "topics": [],
+            "current": {
+                "_cls": "Topic",
+                "summary": "",
+                "messages": [
+                    {
+                        "_cls": "Message",
+                        "id": "b1",
+                        "ai": True,
+                        "content": json.dumps({"headline": "Sub step"}),
+                        "metadata": {"responses": {"provider_model_key": "ollama/qwen3"}},
+                    }
+                ],
+            },
+        }
+        chat["agents"].append({"number": 1, "history": json.dumps(sub)})
+        chat["log"]["logs"].append(
+            {
+                "no": 7,
+                "id": "b1",
+                "type": "agent",
+                "content": "",
+                "kvps": {"headline": "Sub step"},
+                "timestamp": 1790856007.0,
+                "agentno": 1,
+            }
+        )
+        (self.home / self.REL).write_text(json.dumps(chat), encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), self.REL)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.model) for r in rows[-2:]],
+            [
+                ("system", "model: ollama/qwen3 agent=1", "ollama/qwen3"),
+                ("assistant", "[agent 1] Sub step", "ollama/qwen3"),
+            ],
+        )
+        # Agent 0's tracker is untouched: its change row is still the only one.
+        self.assertEqual(sum(1 for r in rows if r.text.startswith("model: ")), 3)
 
     def test_paths_and_noise(self):
         p = AgentZeroParser()
@@ -5964,12 +6058,17 @@ class NanobotTests(ParserBase):
             [(r.turn_type, r.session_id, r.model) for r in rows],
             [
                 ("system", "cli:direct", "fast"),
+                ("system", "cli:direct", "fast"),
                 ("user", "cli:direct", "fast"),
                 ("assistant", "cli:direct", "fast"),
             ],
         )
         self.assertEqual(
-            rows[2].timestamp_utc, "2026-09-01T08:00:01.000Z"
+            (rows[1].text, rows[1].timestamp_utc, rows[1].source_line),
+            ("model: fast (preset)", rows[0].timestamp_utc, 1),
+        )
+        self.assertEqual(
+            rows[3].timestamp_utc, "2026-09-01T08:00:01.000Z"
         )  # inherits the previous message
         self.assertEqual(rows[0].project_path, "")
 
@@ -6489,10 +6588,12 @@ from fixtures import (
     MUSE_DIR,
     MUSE_HISTORY_REL,
     MUSE_MODEL,
+    MUSE_MODEL_2,
     MUSE_REL,
     MUSE_RUN,
     MUSE_SESSION,
     MUSE_T0,
+    MUSE_TRUST_REL,
     _muse_env,
     _muse_run,
 )
@@ -6508,17 +6609,64 @@ class MuseCodeTests(ParserBase):
         rows = self.rows_for(MuseCodeParser(), MUSE_REL)
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "user", "tool_use", "tool_result", "system", "system", "assistant"],
+            [
+                "system",
+                "system",
+                "system",
+                "system",
+                "user",
+                "tool_use",
+                "tool_result",
+                "system",
+                "system",
+                "system",
+                "assistant",
+                "system",
+            ],
         )
         for r in rows:
             self.assertEqual(
                 (r.host, r.user, r.agent, r.session_id), ("h1", "alice", "muse-code", MUSE_SESSION)
             )
-            self.assertEqual(
-                (r.project_path, r.git_branch, r.model), ("/srv/proj", "main", MUSE_MODEL)
-            )
+            self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", "main"))
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        name, user, use, result, req, dec, asst = rows
+        mode, model, security, name, user, use, result, req, review, dec, asst, change = rows
+        self.assertEqual({r.model for r in rows[:-1]}, {MUSE_MODEL})
+        self.assertEqual(
+            (mode.text, mode.timestamp_utc),
+            (
+                "permission mode: approval=on_request reviewer=auto_review profile=:auto-review"
+                " cause=new_session_default format=profile_v1",
+                "2026-10-01T09:00:00.000Z",
+            ),
+        )
+        self.assertEqual(
+            (model.text, model.timestamp_utc),
+            ("model: muse-spark-1.3-contributor provider=meta", "2026-10-01T09:00:00.100Z"),
+        )
+        self.assertEqual(
+            (security.text, security.timestamp_utc),
+            ("permission mode: security_mode=example_mode", "2026-10-01T09:00:00.250Z"),
+        )
+        self.assertEqual(
+            (review.tool_name, review.tool_use_id, review.text, review.timestamp_utc),
+            (
+                "network",
+                "call_02",
+                "permission decision: allow kind=automated_review_completed risk_level=low"
+                " user_authorization=not_required status=completed"
+                " Fetching a package index is low risk.",
+                "2026-10-01T09:00:05.900Z",
+            ),
+        )
+        self.assertEqual(
+            (change.text, change.model, change.timestamp_utc),
+            (
+                "model: muse-spark-1.3-contributor -> muse-spark-1.3-fast",
+                MUSE_MODEL_2,
+                "2026-10-01T09:00:15.000Z",
+            ),
+        )
         self.assertEqual(
             (name.text, name.timestamp_utc),
             ("session name: quiet-lyra", "2026-10-01T09:00:00.300Z"),
@@ -6539,10 +6687,14 @@ class MuseCodeTests(ParserBase):
         )
         self.assertEqual(
             (dec.tool_name, dec.tool_use_id, dec.text),
-            ("network", "call_02", "approval approved by llm_judge"),
+            (
+                "network",
+                "call_02",
+                "permission decision: approved source=llm_judge policy_result=allow amendment=-",
+            ),
         )
         self.assertEqual(asst.text, "The test fails because the fixture date is stale.")
-        self.assertEqual([r.source_line for r in rows], [4, 7, 12, 16, 17, 18, 20])
+        self.assertEqual([r.source_line for r in rows], [1, 2, 4, 5, 8, 13, 17, 18, 19, 20, 22, 24])
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(MuseCodeParser(), MUSE_REL, include_thinking=True)
@@ -6551,14 +6703,20 @@ class MuseCodeTests(ParserBase):
         # record has empty text. One row.
         self.assertEqual(
             [(r.text, r.source_line, r.model) for r in thinking],
-            [("Running the tests first.", 9, MUSE_MODEL)],
+            [("Running the tests first.", 10, MUSE_MODEL)],
         )
 
     def test_subagent_takes_parent_project(self):
         rows = self.rows_for(MuseCodeParser(), MUSE_CHILD_REL)
-        self.assertEqual([r.turn_type for r in rows], ["system", "tool_use", "tool_result"])
+        self.assertEqual(
+            [r.turn_type for r in rows], ["system", "system", "system", "tool_use", "tool_result"]
+        )
         self.assertEqual({r.session_id for r in rows}, {MUSE_CHILD})
         self.assertEqual({(r.project_path, r.git_branch) for r in rows}, {("/srv/proj", "main")})
+        # Each subagent log tracks its own permission mode and model.
+        self.assertTrue(rows[0].text.startswith("permission mode: approval=on_request"))
+        self.assertEqual(rows[1].text, "model: muse-spark-1.3-contributor provider=meta")
+        rows = rows[2:]
         self.assertEqual(
             rows[0].text, "subagent task: You are a reminder observer for the main agent."
         )
@@ -6573,7 +6731,7 @@ class MuseCodeTests(ParserBase):
     def test_subagent_without_parent(self):
         (self.home / MUSE_REL).unlink()
         rows = self.rows_for(MuseCodeParser(), MUSE_CHILD_REL)
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), 5)
         self.assertEqual({(r.project_path, r.git_branch) for r in rows}, {("", "")})
 
     def test_history(self):
@@ -6645,11 +6803,11 @@ class MuseCodeTests(ParserBase):
         self.assertEqual(
             [(r.turn_type, r.text, r.source_line) for r in rows],
             [
-                ("user", "also check the linter", 23),
-                ("thinking", "First.\n\nSecond.", 25),
-                ("system", "run failed: 402 Payment Required", 26),
-                ("tool_use", "ls", 27),
-                ("tool_result", "[exit 2] no such file", 28),
+                ("user", "also check the linter", 26),
+                ("thinking", "First.\n\nSecond.", 28),
+                ("system", "run failed: 402 Payment Required", 29),
+                ("tool_use", "ls", 30),
+                ("tool_result", "[exit 2] no such file", 31),
             ],
         )
         self.assertEqual({(r.tool_name, r.tool_use_id) for r in rows[3:]}, {("user_shell", "sh1")})
@@ -6680,10 +6838,91 @@ class MuseCodeTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / MUSE_REL)
         rows = self.rows_for(MuseCodeParser(), MUSE_REL)
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), 13)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser:", rows[-1].text)
-        self.assertEqual((rows[-1].source_line, rows[-1].session_id), (23, MUSE_SESSION))
+        self.assertEqual((rows[-1].source_line, rows[-1].session_id), (26, MUSE_SESSION))
+
+    def test_reconfigure_without_earlier_model_uses_previous(self):
+        rel = (
+            MUSE_DIR.replace(MUSE_SESSION, "01a0f000-0000-7000-8000-0000000000ff") + "session.jsonl"
+        )
+        _jsonl(
+            self.home / rel,
+            [
+                _muse_env(
+                    "s2",
+                    1,
+                    MUSE_T0,
+                    "runtime.model_reconfigure.completed",
+                    {
+                        "record": {
+                            "effective": {"model_id": MUSE_MODEL_2},
+                            "previous": {"model_id": MUSE_MODEL},
+                            "apply_outcome": "applied",
+                        }
+                    },
+                ),
+                _muse_env(
+                    "s2",
+                    2,
+                    MUSE_T0 + 1000000,
+                    "runtime.model_reconfigure.completed",
+                    {"record": {"effective": {"model_id": MUSE_MODEL_2}}},
+                ),
+            ],
+        )
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(MuseCodeParser(), rel)
+        self.assertEqual(
+            [(r.text, r.model, r.source_line) for r in rows],
+            [
+                ("model: %s" % MUSE_MODEL, MUSE_MODEL, 1),
+                (
+                    "model: %s -> %s apply_outcome=applied" % (MUSE_MODEL, MUSE_MODEL_2),
+                    MUSE_MODEL_2,
+                    1,
+                ),
+                # A `/model` to the same model keeps its row.
+                ("model: %s -> %s" % (MUSE_MODEL_2, MUSE_MODEL_2), MUSE_MODEL_2, 2),
+            ],
+        )
+
+    def test_trusted_projects(self):
+        art = next(a for a in self.col.artifacts if a.rel == MUSE_TRUST_REL)
+        rows = list(MuseCodeParser().parse(art, Options()))
+        mtime = file_mtime(art)
+        self.assertTrue(mtime)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.project_path) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: projects./srv/proj.decision=trusted"
+                    " (from .config/muse/trust.json, file mtime)",
+                    "/srv/proj",
+                ),
+                (
+                    "system",
+                    "permission setting: projects./srv/other.decision=trusted"
+                    " (from .config/muse/trust.json, file mtime)",
+                    "/srv/other",
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual((r.timestamp_utc, r.session_id, r.source_line), (mtime, "", 1))
+
+    def test_unreadable_trust_file(self):
+        (self.home / MUSE_TRUST_REL).write_text("[1, 2", encoding="utf-8")
+        rows = self.rows_for(MuseCodeParser(), MUSE_TRUST_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.session_id) for r in rows],
+            [("system", "parser: trust.json is not a JSON object", "")],
+        )
+        self.assertTrue(rows[0].timestamp_utc)
+        # The session log still yields every row.
+        self.assertEqual(len(self.rows_for(MuseCodeParser(), MUSE_REL)), 12)
 
 
 from doubleagent.parsers.ollama import OllamaParser, call_text

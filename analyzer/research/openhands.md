@@ -177,6 +177,21 @@ Globs: `.openhands/agent-canvas/dev_conversations/*/events/event-*.json`,
 | tool_name, tool_use_id | `tool_name`, `tool_call_id` |
 | text | message text; `action.command` or `tool_call.arguments`; observation `content[].text`; `error`; `summary` |
 
+Model and permission rows (issues 96 and 97):
+
+- `model: <id>`: a `system` row after the conversation's header row, at
+  the header's time, from `base_state.json` `agent.llm.model`. The
+  research records one model per conversation and no event that records a
+  model switch, so no `model: <old> -> <new>` row is written; whether a
+  switch in the middle of a conversation is persisted is not researched.
+- `permission decision: rejected rejection_source=<rejection_source>
+  <rejection_reason>`: a `system` row immediately after the
+  `UserRejectObservation`'s `tool_result` row, with its `tool_name` and
+  `tool_call_id`, from `rejection_source` (`-` when missing) and
+  `rejection_reason`.
+- ` security_risk=<value>` at the end of an `ActionEvent`'s `tool_use`
+  text, from `security_risk`.
+
 Fixture (`.openhands/conversations/0f0e0d0c111140008000000000000001/`):
 
 `meta.json`:

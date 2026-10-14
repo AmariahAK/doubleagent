@@ -14,8 +14,8 @@ macOS and Windows, which resolve `XDG_DATA_HOME` or the home):
     `recorded_at` (integer microseconds since the epoch, UTC),
     `payload_type`, `payload`.
   - `retained_frame`: `children[].child_index`, `children[].record_json`
-    (a JSON string holding a whole envelope; the observed children are
-    permission records, which give no rows).
+    (a JSON string holding a whole envelope; the observed children are the
+    permission records below).
   - `retained_marker`: a placeholder for a live-only record; skipped.
   A file whose first parseable record is neither an envelope nor a frame
   is not Muse and gives no rows.
@@ -46,20 +46,52 @@ macOS and Windows, which resolve `XDG_DATA_HOME` or the home):
   - `terminal` (`terminal`, `reason`): a `system` row unless `completed`.
   - `context_compaction_installed`, `run_retracted`, `turn_task_died`:
     `system` rows with the event as compact JSON.
-  - `model_completed` (`model`): no row; the run's model when
-    `run.model.configured` gave none.
-* `payload.kind: "approval"`: `requested` (`tool_name`, `tool_call_id`,
-  `raw_args`, `pending_action_id`) and `decision_applied` (`decision`,
-  `decision_source.kind`, `pending_action_id`, joined to the request) are
-  `system` rows carrying the tool name and call id.
+  - `model_completed` (`model`): the run's model when
+    `run.model.configured` gave none (and then a model row, below).
+* `payload.kind: "approval"`, all `system` rows carrying the tool name and
+  call id: `requested` (`tool_name`, `tool_call_id`, `raw_args`,
+  `pending_action_id`) is `approval requested: <raw_args>`;
+  `automated_review_completed` (`assessment.outcome`, `.risk_level`,
+  `.user_authorization`, `.rationale`, `status`) is `permission decision:
+  <outcome> kind=automated_review_completed risk_level=<r>
+  user_authorization=<u> status=<s> <rationale>`, joined to the latest
+  request before it (the record names no pending action);
+  `decision_applied` (`decision`, `decision_source.kind`, `policy_result`,
+  `amendment`, `pending_action_id`, joined to the request) is
+  `permission decision: <decision> source=<decision_source.kind>
+  policy_result=<p> amendment=<a>`. A missing or null value is `-`. These
+  rows stay at the record's place in the log, before the call's
+  `tool_result`, because the decision precedes the execution.
+* Permission mode (issue 97), tracked per log: a
+  `runtime.session.permission_profile_committed` record (a frame child;
+  `resolved_snapshot.approval`, `resolved_snapshot.reviewer`, `source.id`,
+  `cause`) is `permission mode: approval=<a> reviewer=<r> profile=<id>`
+  the first time and `permission mode: <old> -> <new>` on a change,
+  followed by ` cause=<cause>` and ` format=<format>` from the
+  `runtime.session.permission_format_declared` record (`format`) before it.
+  `session.opened.observed` (`security_mode`) is tracked on its own as
+  `permission mode: security_mode=<value>`.
+* Model (issue 96), tracked per log: the first model named by
+  `runtime.session.metadata` `model_id`, `run.model.configured`
+  `model_id` or a run's `model_completed` `model` (when the run has no
+  configured model) is `model: <id>`, and each different one later
+  `model: <old> -> <new>`, followed by ` provider=<provider_id>` when the
+  record has one. `runtime.model_reconfigure.completed` (a `/model`
+  change; `effective.model_id`, `previous.model_id`, `apply_outcome`)
+  first yields `model: <previous>` when no model was named yet, then
+  `model: <old> -> <effective>` (even when unchanged, since the user typed
+  it), followed by ` apply_outcome=<value>` when set; without an
+  `effective.model_id` it is a `system` row of its compact JSON. The
+  research lists `previous{...}` without its fields; `model_id` is read
+  there because `effective` carries it.
 * Fact records, read from `payload.record` then `payload`:
   `runtime.session.metadata` (`workspace_root`, `model_id`),
   `runtime.session.route_facts` (`cwd`, the project fallback),
   `session.workspace_branch.observed` (`reference.kind`, `reference.name`),
-  `run.model.configured` (`model_id`, `run_stream.id` = the run id) fill
-  columns and give no row. `session.name.changed` (`new_name`) and
-  `runtime.model_reconfigure.completed` (`effective.model_id`) are
-  `system` rows. `runtime.user_intent.accepted` (`intent_id`,
+  `run.model.configured` (`model_id`, `run_stream.id` = the run id,
+  `provider_id`) fill columns and give only the model rows above.
+  `session.name.changed` (`new_name`) is a `system` row.
+  `runtime.user_intent.accepted` (`intent_id`,
   `model_messages[].content[].text`) repeats the run's `started` prompt
   and is used only when that run has no `started` record.
   `user_shell.command` (`command_id`, `command_text`) and
@@ -73,6 +105,14 @@ macOS and Windows, which resolve `XDG_DATA_HOME` or the home):
   to `PARENT_SCAN_LINES` lines.
 * `.local/share/muse/tui-history.jsonl`: two lines per prompt, a JSON
   string (the text) then `{project, session}`. No timestamp.
+* `.config/muse/trust.json` (`projects.<absolute path>.decision`): one
+  `system` row per project, `permission setting:
+  projects.<path>.decision=<decision> (from .config/muse/trust.json, file
+  mtime)`, with `project_path` the path, `timestamp_utc` the file's
+  modification time and `session_id` empty; a file that is not a JSON
+  object is one `system` row. No other key is read. The `trust` key of
+  `.config/muse/skills/.muse/lock.json` is not read: the research names
+  the file's keys but not its structure.
 
 Not read: `approval-review/*.jsonl` (the automated reviewer's log, on a
 synthetic clock), `tool-outputs/`, `cli-*.log`, `.msp-view-v1/`, the
@@ -89,13 +129,22 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    file_mtime,
+    iter_jsonl,
+    setting_value,
+    track_change,
+)
 from .pi import error_row
 
 SESSION_RX = re.compile(
     r"^\.local/share/muse/sessions/\d{4}/\d{2}/\d{2}/[^/]+/(?:subagent/[^/]+/)*session\.jsonl$"
 )
 HISTORY_REL = ".local/share/muse/tui-history.jsonl"
+TRUST_REL = ".config/muse/trust.json"
 PARENT_SCAN_LINES = 2000
 
 ARG_KEYS = (
@@ -123,6 +172,11 @@ def _str(v) -> str:
     if v is None:
         return ""
     return v if isinstance(v, str) else compact_json(v)
+
+
+def _v(value) -> str:
+    """A field value in a `key=value` pair: `-` when missing or null."""
+    return "-" if value in (None, "") else setting_value(value)
 
 
 def _fact(payload: dict) -> dict:
@@ -234,11 +288,13 @@ class MuseCodeParser(Parser):
         self._parent_cache: dict[Path, tuple[str, str]] = {}
 
     def wants(self, artifact: Artifact) -> bool:
-        return artifact.rel == HISTORY_REL or bool(SESSION_RX.match(artifact.rel))
+        return artifact.rel in (HISTORY_REL, TRUST_REL) or bool(SESSION_RX.match(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if artifact.rel == HISTORY_REL:
             yield from self._parse_history(artifact, opts)
+        elif artifact.rel == TRUST_REL:
+            yield from self._parse_trust(artifact)
         else:
             yield from self._parse_session(artifact, opts)
 
@@ -308,7 +364,11 @@ class MuseCodeParser(Parser):
         deltas: dict[str, list[str]] = {}
         calls: dict[str, str] = {}
         approvals: dict[str, tuple[str, str]] = {}
+        last_request: tuple[str, str] = ("", "")
         shell_ids: list[str] = []
+        models: dict = {}
+        modes: dict = {}
+        declared_format = ""
 
         for i, (n, rec) in enumerate(recs):
             ptype = rec.get("payload_type")
@@ -348,9 +408,40 @@ class MuseCodeParser(Parser):
             if ptype == "runtime.session.metadata":
                 if fact.get("model_id"):
                     session_model = str(fact.get("model_id"))
+                    yield from self._model_row(row, models, session_id, session_model, fact)
                 ws = fact.get("workspace_root") or payload.get("workspace_root")
                 if ws:
                     project = str(ws)
+            elif ptype == "run.model.configured" and fact.get("model_id"):
+                yield from self._model_row(row, models, session_id, str(fact["model_id"]), fact)
+            elif ptype == "runtime.session.permission_format_declared":
+                declared_format = _str(fact.get("format"))
+            elif ptype == "runtime.session.permission_profile_committed":
+                snap = _dict(fact.get("resolved_snapshot"))
+                value = "approval=%s reviewer=%s profile=%s" % (
+                    _v(snap.get("approval")),
+                    _v(snap.get("reviewer")),
+                    _v(_dict(fact.get("source")).get("id")),
+                )
+                text = track_change("permission mode", modes, session_id, value)
+                if text:
+                    if fact.get("cause") not in (None, ""):
+                        text += " cause=%s" % _v(fact.get("cause"))
+                    if declared_format:
+                        text += " format=%s" % declared_format
+                    yield row("system", text)
+            elif ptype == "session.opened.observed" and fact.get("security_mode") not in (
+                None,
+                "",
+            ):
+                text = track_change(
+                    "permission mode",
+                    modes,
+                    (session_id, "security_mode"),
+                    "security_mode=%s" % _v(fact.get("security_mode")),
+                )
+                if text:
+                    yield row("system", text)
             elif ptype == "session.workspace_branch.observed":
                 ref = _dict(fact.get("reference"))
                 branch = str(ref.get("name") or "") if ref.get("kind") == "branch" else ""
@@ -358,9 +449,19 @@ class MuseCodeParser(Parser):
                 yield row("system", "session name: %s" % _str(fact.get("new_name")))
             elif ptype == "runtime.model_reconfigure.completed":
                 m = _str(_dict(fact.get("effective")).get("model_id"))
-                if m:
-                    session_model = m
-                yield row("system", "model: %s" % m, model=m or model)
+                prev = _str(_dict(fact.get("previous")).get("model_id"))
+                if not m:
+                    yield row("system", "%s: %s" % (ptype, compact_json(fact)))
+                    continue
+                session_model = m
+                if prev and session_id not in models:
+                    yield row("system", track_change("model", models, session_id, prev), model=prev)
+                # A `/model` the user typed keeps its row even when the model
+                # did not change.
+                text = track_change("model", models, session_id, m) or "model: %s -> %s" % (m, m)
+                if fact.get("apply_outcome") not in (None, ""):
+                    text += " apply_outcome=%s" % _v(fact.get("apply_outcome"))
+                yield row("system", text, model=m)
             elif ptype == "runtime.user_intent.accepted":
                 intent = str(payload.get("intent_id") or "")
                 if intent and intent not in started_runs:
@@ -398,6 +499,12 @@ class MuseCodeParser(Parser):
                 kind = payload.get("kind")
                 ev = _dict(payload.get("event"))
                 if kind == "run":
+                    if (
+                        ev.get("kind") == "model_completed"
+                        and ev.get("model")
+                        and run_id not in run_model
+                    ):
+                        yield from self._model_row(row, models, session_id, str(ev["model"]), {})
                     yield from self._run_event(
                         ev,
                         i,
@@ -415,18 +522,39 @@ class MuseCodeParser(Parser):
                         tname = _str(ev.get("tool_name"))
                         tid = _str(ev.get("tool_call_id"))
                         approvals[_str(ev.get("pending_action_id"))] = (tname, tid)
+                        last_request = (tname, tid)
                         yield row(
                             "system",
                             "approval requested: %s" % _str(ev.get("raw_args")),
                             tname,
                             tid,
                         )
+                    elif ekind == "automated_review_completed":
+                        a = _dict(ev.get("assessment"))
+                        text = (
+                            "permission decision: %s kind=automated_review_completed "
+                            "risk_level=%s user_authorization=%s status=%s"
+                            % (
+                                _v(a.get("outcome")),
+                                _v(a.get("risk_level")),
+                                _v(a.get("user_authorization")),
+                                _v(ev.get("status")),
+                            )
+                        )
+                        if a.get("rationale") not in (None, ""):
+                            text += " " + _str(a.get("rationale"))
+                        yield row("system", text, *last_request)
                     elif ekind == "decision_applied":
                         tname, tid = approvals.get(_str(ev.get("pending_action_id")), ("", ""))
-                        src = _str(_dict(ev.get("decision_source")).get("kind"))
                         yield row(
                             "system",
-                            "approval %s by %s" % (_str(ev.get("decision")), src),
+                            "permission decision: %s source=%s policy_result=%s amendment=%s"
+                            % (
+                                _v(ev.get("decision")),
+                                _v(_dict(ev.get("decision_source")).get("kind")),
+                                _v(ev.get("policy_result")),
+                                _v(ev.get("amendment")),
+                            ),
                             tname,
                             tid,
                         )
@@ -436,6 +564,51 @@ class MuseCodeParser(Parser):
         if errors:
             r = error_row(self, artifact, errors, session_id, project)
             r.git_branch = branch
+            yield r
+
+    @staticmethod
+    def _model_row(row, models: dict, session_id: str, model: str, fact: dict) -> Iterator[Row]:
+        """`model: <id>` at the log's first model and `model: <old> -> <new>`
+        on a change, with ` provider=<provider_id>` when the record has one."""
+        text = track_change("model", models, session_id, model)
+        if text:
+            if fact.get("provider_id") not in (None, ""):
+                text += " provider=%s" % _v(fact.get("provider_id"))
+            yield row("system", text, model=model)
+
+    # -- trusted projects ---------------------------------------------------
+
+    def _parse_trust(self, artifact: Artifact) -> Iterator[Row]:
+        """`~/.config/muse/trust.json`: one `permission setting:` row per
+        `projects.<path>.decision`, at the file's modification time."""
+        ts = file_mtime(artifact)
+        try:
+            doc = json.loads(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
+        except (OSError, ValueError):
+            doc = None
+        if not isinstance(doc, dict):
+            r = self.base_row(artifact)
+            r.source_line = 1
+            r.turn_type = "system"
+            r.timestamp_utc = ts
+            r.text = "parser: trust.json is not a JSON object"
+            yield r
+            return
+        projects = doc.get("projects")
+        if not isinstance(projects, dict):
+            return
+        for path, entry in projects.items():
+            if not isinstance(entry, dict) or "decision" not in entry:
+                continue
+            r = self.base_row(artifact)
+            r.source_line = 1
+            r.turn_type = "system"
+            r.timestamp_utc = ts
+            r.project_path = str(path)
+            r.text = compact(
+                "permission setting: projects.%s.decision=%s (from %s, file mtime)"
+                % (path, setting_value(entry["decision"]), artifact.rel)
+            )
             yield r
 
     def _run_event(
