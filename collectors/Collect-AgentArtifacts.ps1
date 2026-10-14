@@ -2640,6 +2640,183 @@ function Add-UserHomes {
   }
 }
 
+# ===========================================================================
+# 8. Docker and Podman volumes
+# ===========================================================================
+# Named volumes are enumerated from the filesystem as in the sh collector:
+# <volumes dir>/<name>/_data. A volume whose name matches DOCKER_VOLUMES is
+# collected whole as user "docker" with _data as its home, through the same
+# walk as a catalog match; any other volume gets one skipped_unmatched_volume
+# row with its size. This reaches Linux data roots in an image (or under
+# PowerShell 7 on Linux) and Windows-container volumes under
+# ProgramData\Docker. Docker Desktop keeps Linux volumes inside a WSL
+# virtual disk, which is only noted. Failures are noted in collection.json
+# and the summary and never stop the collection.
+
+# What the volume step saw, for collection.json and the stdout docker line.
+$script:Docker = @{ seen = $false; found = 0; collected = 0; unreadable = 0; desktop = $false }
+# DOCKER_VOLUMES as @(agent, name regex, glob), in table order.
+$script:DockerVolumeRules = @()
+foreach ($line in (Get-TableLines $DOCKER_VOLUMES)) {
+  $parts = @($line -split '\|', 2)
+  if ($parts.Count -lt 2) { continue }
+  $script:DockerVolumeRules += , @($parts[0], (Convert-GlobToRegex $parts[1] $false), $parts[1])
+}
+# The -Inventory accumulator for matched volumes, reported as user docker.
+$script:InvDocker = [ordered]@{}
+
+# Takes a volume name; returns the first DOCKER_VOLUMES rule (agent, regex,
+# glob) whose glob matches it, or $null. Volume names are case-sensitive,
+# as in the sh collector's case(1) match, so -cmatch.
+function Get-DockerVolumeRule([string]$name) {
+  foreach ($rule in $script:DockerVolumeRules) { if ($name -cmatch $rule[1]) { return , $rule } }
+  return $null
+}
+
+# Takes a base directory and a relative volumes path (docker/volumes);
+# returns the full volumes directory when it can be listed, otherwise ''.
+# Each component is checked on the way down, so a data root the responder
+# cannot enter, or a symlinked one, is noted (and counted in
+# $script:Docker) rather than skipped silently. A directory that cannot be
+# listed may still be searchable; the walk goes on when the next component
+# is visible, as the sh collector's -x test would.
+function Test-VolumeRoot([string]$base, [string]$rel) {
+  $volumesDir = $base
+  $segments = @($rel -split '/')
+  for ($i = 0; $i -lt $segments.Count; $i++) {
+    $volumesDir = Join-PathSafe $volumesDir $segments[$i]
+    if (Test-IsLink $volumesDir) {
+      $script:Docker.seen = $true
+      Add-Note "docker: $volumesDir is a symlink and was not followed; collect its target by hand"
+      return ''
+    }
+    if (-not (Test-PathQuiet $volumesDir 'Container')) { return '' }
+    $last = ($i -eq $segments.Count - 1)
+    $nextVisible = (-not $last) -and
+      (Test-PathQuiet (Join-PathSafe $volumesDir $segments[$i + 1]) 'Container')
+    if (-not (Test-DirReadable $volumesDir) -and -not $nextVisible) {
+      $script:Docker.seen = $true; $script:Docker.unreadable++
+      Add-Note "docker: $volumesDir is not readable; run as root to collect the volumes under it"
+      return ''
+    }
+  }
+  return $volumesDir
+}
+
+# Takes a base directory and a relative volumes path; collects or records
+# every volume directory in it (Add-Volume), skipping files and reparse
+# points, and counts each in $script:Docker.found.
+function Add-VolumeDir([string]$base, [string]$rel) {
+  $volumesDir = Test-VolumeRoot $base $rel
+  if (-not $volumesDir) { return }
+  $script:Docker.seen = $true
+  $listing = @{ LiteralPath = (ConvertTo-ExtendedPath $volumesDir); Force = $true }
+  $children = @(Get-ChildItem @listing -ErrorAction SilentlyContinue)
+  Write-CollectorLog "Docker volumes in $volumesDir"
+  foreach ($volume in $children) {
+    if (-not $volume.PSIsContainer) { continue }
+    if (($volume.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+    $script:Docker.found++
+    Add-Volume $volume
+  }
+}
+
+# Takes one volume directory's Get-ChildItem entry. An unreadable volume is
+# noted, one with no _data directory is logged and skipped, an unmatched one
+# gets its skipped_unmatched_volume row (none under -Inventory), and a
+# matched one has its _data collected under the rule's agent (under
+# -Inventory, into the $script:InvDocker accumulator). A matched volume
+# whose walk met unreadable paths ($script:WalkErrors) is noted as well.
+function Add-Volume($volume) {
+  $name = $volume.Name
+  $volumePath = ConvertFrom-ExtendedPath $volume.FullName
+  $data = Join-PathSafe $volumePath '_data'
+  $rule = Get-DockerVolumeRule $name
+  $agent = ''; if ($rule) { $agent = $rule[0] }
+  $label = $agent; if (-not $label) { $label = 'unmatched' }
+  $dataIsDir = Test-PathQuiet $data 'Container'
+  if (-not (Test-DirReadable $volumePath) -or ($dataIsDir -and -not (Test-DirReadable $data))) {
+    $script:Docker.unreadable++
+    Add-Note ("docker: volume $name ($label) at $volumePath is not readable; " +
+      'run as root to collect it')
+    return
+  }
+  if ((Test-IsLink $data) -or -not $dataIsDir) {
+    Write-CollectorLog "  volume $name has no _data directory, skipped"
+    return
+  }
+  if (-not $agent) {
+    if ($Inventory) { return }
+    $attributes = ''
+    try {
+      $dataItem = Get-Item -LiteralPath (ConvertTo-ExtendedPath $data) -Force -ErrorAction Stop
+      $attributes = [string]$dataItem.Attributes
+    } catch { }
+    $row = @('docker', $data, '', $data, '', 'dir', (Get-DirSize $data), 0, 0, 0, 0, '',
+      $attributes, '', $false, 'skipped_unmatched_volume', '', '')
+    Write-ManifestRow @row
+    return
+  }
+  Write-CollectorLog "  [$agent] $data"
+  $script:WalkErrors = 0
+  $script:ClaimedPaths = Get-ClaimTable
+  if ($Inventory) {
+    $savedInv = $script:Inv; $script:Inv = $script:InvDocker
+    Add-InvEvidence $agent $rule[2]
+    Add-CollectedPath 'docker' $data $agent $data
+    $script:Inv = $savedInv
+  } else {
+    Add-CollectedPath 'docker' $data $agent $data
+  }
+  $script:Docker.collected++
+  if ($script:WalkErrors -gt 0) {
+    $script:Docker.unreadable++
+    Add-Note ("docker: volume $name ($agent) could not be walked completely " +
+      "($($script:WalkErrors) unreadable paths, see collector.log); run as root to collect it")
+  }
+}
+
+# Takes the Docker Desktop data directories to look for; notes each that
+# exists and is not a link, and sets $script:Docker.desktop. Docker Desktop
+# keeps Linux volumes inside a VM disk that no file walk reaches.
+function Find-DockerDesktop([string[]]$desktopDirs) {
+  foreach ($desktopDir in $desktopDirs) {
+    if ((Test-PathQuiet $desktopDir 'Container') -and -not (Test-IsLink $desktopDir)) {
+      $script:Docker.seen = $true; $script:Docker.desktop = $true
+      Add-Note ("docker: Docker Desktop data at $desktopDir; volumes inside its virtual " +
+        'machine disk are not collected')
+    }
+  }
+}
+
+# Main step: the root Docker, root Podman and Windows-container Docker data
+# roots (under -Root in image mode, the system drive or / live), then the
+# rootless Docker and Podman roots of each selected user, then the Docker
+# Desktop data directories.
+function Add-DockerVolumes {
+  if ($Mode -eq 'image') { $dockerBase = $Root }
+  elseif ($script:Sep -eq '/') { $dockerBase = '/' }
+  else {
+    $dockerBase = $env:SystemDrive; if (-not $dockerBase) { $dockerBase = 'C:' }
+    $dockerBase += $script:Sep
+  }
+  $programData = Join-PathSafe $dockerBase 'ProgramData'
+  if ($Mode -eq 'live' -and $env:ProgramData) { $programData = $env:ProgramData }
+  $varLib = Join-PathSafe $dockerBase 'var/lib'
+  Add-VolumeDir $varLib 'docker/volumes'
+  Add-VolumeDir $varLib 'containers/storage/volumes'
+  Add-VolumeDir $programData 'Docker/volumes'
+  $desktopDirs = @(Join-PathSafe $programData 'DockerDesktop')
+  foreach ($userHome in $script:UserList) {
+    $localShare = Join-PathSafe $userHome.home '.local/share'
+    Add-VolumeDir $localShare 'docker/volumes'
+    Add-VolumeDir $localShare 'containers/storage/volumes'
+    $desktopDirs += (Join-PathSafe $userHome.home 'Library/Containers/com.docker.docker')
+    $desktopDirs += (Join-PathSafe $userHome.home 'AppData/Local/Docker')
+  }
+  Find-DockerDesktop $desktopDirs
+}
+
 if ($Version) { Write-Output "$TOOL $ToolVersion"; exit 0 }
 
 if ($List) {
@@ -3057,121 +3234,7 @@ foreach ($ih in $script:InaccessibleHomes) { Write-CollectorLog "profile not acc
 $script:InvUsers = @()
 Add-UserHomes
 
-# ---------------------------------------------------------------------------
-# Docker and Podman named volumes, enumerated from the filesystem as in the sh
-# collector: <volumes dir>/<name>/_data. A volume whose name matches
-# DOCKER_VOLUMES is collected whole as user "docker" with _data as its home;
-# any other volume gets one skipped_unmatched_volume row with its size. This
-# reaches Linux data roots in an image (or under PowerShell 7 on Linux) and
-# Windows-container volumes under ProgramData\Docker. Docker Desktop keeps
-# Linux volumes inside a WSL virtual disk, which is only noted. Failures are
-# noted in collection.json and the summary and never stop the collection.
-# ---------------------------------------------------------------------------
-$script:Docker = @{ seen = $false; found = 0; collected = 0; unreadable = 0; desktop = $false }
-$script:DockerVolumeRules = @()
-foreach ($line in (Get-TableLines $DOCKER_VOLUMES)) {
-  $parts = @($line -split '\|', 2)
-  if ($parts.Count -lt 2) { continue }
-  $script:DockerVolumeRules += , @($parts[0], (Convert-GlobToRegex $parts[1] $false), $parts[1])
-}
-$script:InvDocker = [ordered]@{}
-# The first DOCKER_VOLUMES rule (agent, regex, glob) whose glob matches, or $null.
-function Get-DockerVolumeRule([string]$name) {
-  # Volume names are case-sensitive, as in the sh collector's case(1) match.
-  foreach ($rule in $script:DockerVolumeRules) { if ($name -cmatch $rule[1]) { return , $rule } }
-  return $null
-}
-# Each component of $rel is checked on the way down, so a data root the
-# responder cannot enter, or a symlinked one, is reported rather than skipped.
-function Invoke-VolumeDir([string]$base, [string]$rel) {
-  $vd = $base
-  $segs = @($rel -split '/')
-  for ($i = 0; $i -lt $segs.Count; $i++) {
-    $vd = Join-PathSafe $vd $segs[$i]
-    if (Test-IsLink $vd) {
-      $script:Docker.seen = $true
-      Add-Note "docker: $vd is a symlink and was not followed; collect its target by hand"
-      return
-    }
-    if (-not (Test-PathQuiet $vd 'Container')) { return }
-    $last = ($i -eq $segs.Count - 1)
-    # A directory that cannot be listed may still be searchable; go on when
-    # the next component is visible, as the sh collector's -x test would.
-    if (-not (Test-DirReadable $vd) -and ($last -or -not (Test-PathQuiet (Join-PathSafe $vd $segs[$i + 1]) 'Container'))) {
-      $script:Docker.seen = $true; $script:Docker.unreadable++
-      Add-Note "docker: $vd is not readable; run as root to collect the volumes under it"
-      return
-    }
-  }
-  $script:Docker.seen = $true
-  $children = @(Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $vd) -Force -ErrorAction SilentlyContinue)
-  Write-CollectorLog "Docker volumes in $vd"
-  foreach ($v in $children) {
-    if (-not $v.PSIsContainer) { continue }
-    if (($v.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
-    $script:Docker.found++
-    $name = $v.Name
-    $vfull = ConvertFrom-ExtendedPath $v.FullName
-    $data = Join-PathSafe $vfull '_data'
-    $rule = Get-DockerVolumeRule $name
-    $agent = ''; if ($rule) { $agent = $rule[0] }
-    $label = $agent; if (-not $label) { $label = 'unmatched' }
-    if (-not (Test-DirReadable $vfull) -or ((Test-PathQuiet $data 'Container') -and -not (Test-DirReadable $data))) {
-      $script:Docker.unreadable++
-      Add-Note "docker: volume $name ($label) at $vfull is not readable; run as root to collect it"
-    } elseif ((Test-IsLink $data) -or -not (Test-PathQuiet $data 'Container')) {
-      Write-CollectorLog "  volume $name has no _data directory, skipped"
-    } elseif (-not $agent -and $Inventory) {
-    } elseif (-not $agent) {
-      $attrs = ''; try { $attrs = [string](Get-Item -LiteralPath (ConvertTo-ExtendedPath $data) -Force -ErrorAction Stop).Attributes } catch { }
-      Write-ManifestRow 'docker' $data '' $data '' 'dir' (Get-DirSize $data) 0 0 0 0 '' $attrs '' $false 'skipped_unmatched_volume' '' ''
-    } else {
-      Write-CollectorLog "  [$agent] $data"
-      $script:WalkErrors = 0
-      $script:ClaimedPaths = Get-ClaimTable
-      if ($Inventory) {
-        $saved = $script:Inv; $script:Inv = $script:InvDocker
-        Add-InvEvidence $agent $rule[2]
-        Add-CollectedPath 'docker' $data $agent $data
-        $script:Inv = $saved
-      } else {
-        Add-CollectedPath 'docker' $data $agent $data
-      }
-      $script:Docker.collected++
-      if ($script:WalkErrors -gt 0) {
-        $script:Docker.unreadable++
-        Add-Note "docker: volume $name ($agent) could not be walked completely ($($script:WalkErrors) unreadable paths, see collector.log); run as root to collect it"
-      }
-    }
-  }
-}
-
-if (-not $NoDocker) {
-  if ($Mode -eq 'image') { $dockerBase = $Root }
-  elseif ($script:Sep -eq '/') { $dockerBase = '/' }
-  else { $dockerBase = $env:SystemDrive; if (-not $dockerBase) { $dockerBase = 'C:' }; $dockerBase += $script:Sep }
-  $programData = Join-PathSafe $dockerBase 'ProgramData'
-  if ($Mode -eq 'live' -and $env:ProgramData) { $programData = $env:ProgramData }
-  # Root Docker, root Podman and Windows-container Docker data roots, then the
-  # rootless Docker and Podman roots of each (selected) user.
-  Invoke-VolumeDir (Join-PathSafe $dockerBase 'var/lib') 'docker/volumes'
-  Invoke-VolumeDir (Join-PathSafe $dockerBase 'var/lib') 'containers/storage/volumes'
-  Invoke-VolumeDir $programData 'Docker/volumes'
-  $desktopDirs = @(Join-PathSafe $programData 'DockerDesktop')
-  foreach ($u in $script:UserList) {
-    Invoke-VolumeDir (Join-PathSafe $u.home '.local/share') 'docker/volumes'
-    Invoke-VolumeDir (Join-PathSafe $u.home '.local/share') 'containers/storage/volumes'
-    $desktopDirs += (Join-PathSafe $u.home 'Library/Containers/com.docker.docker')
-    $desktopDirs += (Join-PathSafe $u.home 'AppData/Local/Docker')
-  }
-  # Docker Desktop keeps Linux volumes inside a VM disk that no file walk reaches.
-  foreach ($dd in $desktopDirs) {
-    if ((Test-PathQuiet $dd 'Container') -and -not (Test-IsLink $dd)) {
-      $script:Docker.seen = $true; $script:Docker.desktop = $true
-      Add-Note "docker: Docker Desktop data at $dd; volumes inside its virtual machine disk are not collected"
-    }
-  }
-}
+if (-not $NoDocker) { Add-DockerVolumes }
 
 # ---------------------------------------------------------------------------
 # Project discovery: plain-text sources only, same list as the sh script.
