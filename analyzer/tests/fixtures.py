@@ -761,7 +761,8 @@ def codex_rollout_records(cwd="/srv/proj"):
                 "turn_id": "t1",
                 "cwd": cwd,
                 "model": "gpt-5-codex",
-                "approval_policy": "never",
+                "approval_policy": "on-request",
+                "sandbox_policy": {"type": "workspace-write"},
             },
         },
         {
@@ -977,6 +978,21 @@ def codex_rollout_records(cwd="/srv/proj"):
             "ordinal": 12,
             "type": "token_usage_record",
             "payload": {"thread_id": CODEX_SESSION},
+        },
+        {
+            # The next turn switches model and loosens every policy field.
+            "timestamp": ts % 8,
+            "ordinal": 13,
+            "type": "turn_context",
+            "payload": {
+                "turn_id": "t2",
+                "cwd": cwd,
+                "model": "gpt-5.5-codex",
+                "approval_policy": "never",
+                "sandbox_policy": {"type": "danger-full-access"},
+                "permission_profile": {"type": "disabled"},
+                "network": {"allowed_domains": ["github.com"], "denied_domains": []},
+            },
         },
     ]
     for i, rec in enumerate(recs):
@@ -5477,6 +5493,18 @@ def open_interpreter_rollout_records(cwd="/srv/proj"):
             "timestamp": "2026-10-01T10:00:05.000Z",
             "type": "event_msg",
             "payload": {"type": "task_complete", "turn_id": "t1", "duration_ms": 5000},
+        },
+        {
+            # The next turn switches model and approval policy.
+            "timestamp": "2026-10-01T10:00:06.000Z",
+            "type": "turn_context",
+            "payload": {
+                "turn_id": "t2",
+                "cwd": cwd,
+                "approval_policy": "never",
+                "sandbox_policy": {"type": "workspace-write"},
+                "model": "kimi-k3-turbo",
+            },
         },
     ]
 

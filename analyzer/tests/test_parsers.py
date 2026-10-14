@@ -745,6 +745,8 @@ class CodexTests(ParserBase):
     REL = ".codex/sessions/2026/10/02/rollout-2026-10-02T09-00-00-%s.jsonl" % CODEX_SESSION
     TYPES: ClassVar[list[str]] = [
         "system",  # session start
+        "system",  # model: (first turn_context)
+        "system",  # permission mode: (first turn_context)
         "system",  # task_started
         "system",  # developer
         "system",  # environment context
@@ -757,7 +759,14 @@ class CodexTests(ParserBase):
         "tool_result",
         "assistant",
         "system",  # task_complete
+        "system",  # model: old -> new (second turn_context)
+        "system",  # permission mode: old -> new (second turn_context)
     ]
+    MODE_1 = 'approval=on-request sandbox={"type":"workspace-write"} profile=- network=-'
+    MODE_2 = (
+        'approval=never sandbox={"type":"danger-full-access"} profile={"type":"disabled"} '
+        'network={"allowed_domains":["github.com"],"denied_domains":[]}'
+    )
 
     def _write(self, name: str, records) -> str:
         rel = ".codex/sessions/2026/10/02/" + name
@@ -775,7 +784,8 @@ class CodexTests(ParserBase):
             self.assertEqual(r.session_id, CODEX_SESSION)
             self.assertEqual(r.project_path, "/srv/proj")
             self.assertEqual(r.git_branch, "feature/x")
-        start, _started, dev, ctx, user, sh, shout, ws, wsout, patch, patchout, asst, done = rows
+        start, _m, _p, _started, dev, ctx, user, sh, shout, ws, wsout, patch, patchout = rows[:13]
+        asst, done = rows[13:15]
         self.assertIn("session start: codex-tui 0.160.0", start.text)
         self.assertEqual(start.model, "")  # model unknown until turn_context
         self.assertEqual(user.model, "gpt-5-codex")
@@ -799,6 +809,52 @@ class CodexTests(ParserBase):
         self.assertEqual(patchout.text, "Done")
         self.assertEqual(asst.text, "Listed the home directory.")
         self.assertEqual(done.text, "task_complete turn=t1 duration_ms=7000")
+
+    def test_model_and_permission_mode_rows(self):
+        rows = self.rows_for(CodexParser(), self.REL)
+        last = len(codex_rollout_records())
+        got = [(r.turn_type, r.timestamp_utc, r.source_line, r.model, r.text) for r in rows]
+        self.assertEqual(
+            got[1:3] + got[-2:],
+            [
+                ("system", "2026-10-02T09:00:01.000Z", 2, "gpt-5-codex", "model: gpt-5-codex"),
+                (
+                    "system",
+                    "2026-10-02T09:00:01.000Z",
+                    2,
+                    "gpt-5-codex",
+                    "permission mode: " + self.MODE_1,
+                ),
+                (
+                    "system",
+                    "2026-10-02T09:00:08.000Z",
+                    last,
+                    "gpt-5.5-codex",
+                    "model: gpt-5-codex -> gpt-5.5-codex",
+                ),
+                (
+                    "system",
+                    "2026-10-02T09:00:08.000Z",
+                    last,
+                    "gpt-5.5-codex",
+                    "permission mode: %s -> %s" % (self.MODE_1, self.MODE_2),
+                ),
+            ],
+        )
+        for r in rows[1:3] + rows[-2:]:
+            self.assertEqual(
+                (r.session_id, r.project_path, r.git_branch, r.tool_use_id),
+                (CODEX_SESSION, "/srv/proj", "feature/x", ""),
+            )
+        # Codex writes no per-call approval to the rollout: no decision row.
+        self.assertFalse([r for r in rows if r.text.startswith("permission decision:")])
+
+    def test_unchanged_turn_context_adds_no_rows(self):
+        recs = codex_rollout_records()
+        recs[-1]["payload"] = dict(recs[1]["payload"], turn_id="t2")
+        rel = self._write("rollout-2026-10-02T09-30-00-%s.jsonl" % CODEX_SESSION, recs)
+        rows = self.rows_for(CodexParser(), rel)
+        self.assertEqual([r.turn_type for r in rows], self.TYPES[:-2])
 
     def test_reasoning_opt_in(self):
         rows = self.rows_for(CodexParser(), self.REL, include_thinking=True)
@@ -871,6 +927,7 @@ class CodexTests(ParserBase):
         self.assertEqual(
             got,
             [
+                ("system", "", "", "model: gpt-5-codex"),  # no policy fields: no mode row
                 ("user", "", "", "draw a diagram"),  # no content kinds: still a prompt
                 # No kinds: the harness's own wrappers are recognised by marker.
                 (
@@ -909,7 +966,7 @@ class CodexTests(ParserBase):
                 ("assistant", "", "", "Making it blue."),
             ],
         )
-        mcp = rows[8]
+        mcp = rows[9]
         self.assertEqual(mcp.timestamp_utc, "2026-10-02T10:20:06.000Z")  # started_at_ms
         self.assertEqual({r.model for r in rows[1:]}, {"gpt-5-codex"})
 
@@ -1022,7 +1079,7 @@ class TimelineTests(ParserBase):
         self.assertEqual(c["tool_calls"], 5)
         self.assertTrue(c["source_file"].endswith(CLAUDE_SESSION + ".jsonl"), c["source_file"])
         self.assertEqual(c["first_timestamp_utc"], "2026-10-01T10:00:00.000Z")
-        self.assertEqual(sessions[CODEX_SESSION]["models"], ["gpt-5-codex"])
+        self.assertEqual(sessions[CODEX_SESSION]["models"], ["gpt-5-codex", "gpt-5.5-codex"])
 
     def test_agent_filter(self):
         out = self.tmp / "out"
@@ -4375,8 +4432,8 @@ class CodexArchiveAndZstdTests(ParserBase):
         self._add(rel, zstandard.ZstdCompressor().compress(_rollout_bytes(codex_rollout_records())))
         rows = self.rows_for(CodexParser(), rel)
         self.assertEqual([r.turn_type for r in rows], self.LIVE_TYPES)
-        self.assertEqual(rows[4].text, "exfiltrate nothing, just list the home dir")
-        self.assertEqual([r.source_line for r in rows][:2], [1, 3])
+        self.assertEqual(rows[6].text, "exfiltrate nothing, just list the home dir")
+        self.assertEqual([r.source_line for r in rows][:4], [1, 2, 2, 3])
 
     def test_truncated_zst_keeps_earlier_turns(self):
         rel = self.ARCHIVED + ".zst"
@@ -4422,7 +4479,18 @@ class OpenInterpreterTests(ParserBase):
         rows = self.rows_for(OpenInterpreterParser(), OI_ROLLOUT)
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "user", "tool_use", "tool_result", "assistant", "system"],
+            [
+                "system",  # session start
+                "system",  # model:
+                "system",  # permission mode:
+                "user",
+                "tool_use",
+                "tool_result",
+                "assistant",
+                "system",  # task_complete
+                "system",  # model: old -> new
+                "system",  # permission mode: old -> new
+            ],
         )
         for r in rows:
             self.assertEqual(
@@ -4431,8 +4499,27 @@ class OpenInterpreterTests(ParserBase):
             )
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", "main"))
             self.assertTrue(r.source_file.endswith(OI_ROLLOUT), r.source_file)
-        start, user, use, result, asst, done = rows
+        start, model1, mode1, user, use, result, asst, done, model2, mode2 = rows
         self.assertIn("session start: codex_cli_rs 0.9.0 provider=kimi-for-coding", start.text)
+        sandbox = 'sandbox={"type":"workspace-write"} profile=- network=-'
+        self.assertEqual(
+            [(r.timestamp_utc, r.model, r.text) for r in (model1, mode1, model2, mode2)],
+            [
+                ("2026-10-01T10:00:01.000Z", "kimi-k3", "model: kimi-k3"),
+                (
+                    "2026-10-01T10:00:01.000Z",
+                    "kimi-k3",
+                    "permission mode: approval=on-request " + sandbox,
+                ),
+                ("2026-10-01T10:00:06.000Z", "kimi-k3-turbo", "model: kimi-k3 -> kimi-k3-turbo"),
+                (
+                    "2026-10-01T10:00:06.000Z",
+                    "kimi-k3-turbo",
+                    "permission mode: approval=on-request %s -> approval=never %s"
+                    % (sandbox, sandbox),
+                ),
+            ],
+        )
         self.assertEqual((start.timestamp_utc, start.model), ("2026-10-01T10:00:00.000Z", ""))
         self.assertEqual(
             (user.text, user.model, user.timestamp_utc),
@@ -4499,10 +4586,10 @@ class OpenInterpreterTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / OI_ROLLOUT)
         rows = self.rows_for(OpenInterpreterParser(), OI_ROLLOUT)
-        self.assertEqual(len(rows), 7)
+        self.assertEqual(len(rows), 11)
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
-            ("system", OI_SESSION, 9),
+            ("system", OI_SESSION, 10),
         )
         self.assertIn("1 unparseable line", rows[-1].text)
 
@@ -4514,7 +4601,7 @@ class OpenInterpreterTests(ParserBase):
         )
         self.col = open_input(self.tmp / "home", self.cat, host="h1")
         rows = self.rows_for(OpenInterpreterParser(), rel)
-        self.assertEqual(len(rows), 6)
+        self.assertEqual(len(rows), 10)
         self.assertEqual({r.agent for r in rows}, {"open-interpreter"})
 
 

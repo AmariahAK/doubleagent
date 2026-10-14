@@ -166,6 +166,20 @@ the record's `lastActivityAt` (else `createdAt`), which the text names as
 `permission auto-approved:` and `permission auto-denied:` (the Claude
 Desktop audit log).
 
+The `codex-cli` and `open-interpreter` parsers (one shared reader) write
+`model: <id>` at the first `turn_context` record of a rollout that names
+a model and `model: <old> -> <new>` at each later one whose model
+differs, and one composite `permission mode: approval=<approval_policy>
+sandbox=<sandbox_policy> profile=<permission_profile> network=<network>`
+row at the first `turn_context` with any of those four fields and
+`permission mode: <old> -> <new>` whenever the composite changes. A
+missing field is `-` and an object field is compact JSON, so a value
+reads `sandbox={"type":"workspace-write"}`. Both rows take the
+`turn_context` line's timestamp and precede that turn's rows, and the
+`model` column of both is the turn's model. Codex records no per-call
+approval in its rollouts, so these parsers write no `permission
+decision:` row.
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and

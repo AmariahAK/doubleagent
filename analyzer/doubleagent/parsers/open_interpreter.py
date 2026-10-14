@@ -12,6 +12,12 @@ openinterpreter/openinterpreter at 2767e5f (see
   `session_meta.originator` is still `codex_cli_rs` in the fork, so only the
   file's location tells it from Codex. Tool names follow the emulated
   harness (`Bash`, `Read` under the claude-code harness), not the Codex set.
+  `turn_context` keeps Codex's `model`, `approval_policy`,
+  `sandbox_policy`, `permission_profile` and `network`
+  (`protocol/src/protocol.rs:3287-3343`), so the shared reader's
+  `model:` and `permission mode:` rows apply unchanged. The fork, like
+  Codex, keeps approval requests out of the rollout
+  (`rollout/src/policy.rs:140-204`), so there is no per-call decision row.
 * `.openinterpreter/history.jsonl`: `{session_id, ts, text}`.
 * `.openinterpreter/external_agent_session_imports.json`: the `/import`
   ledger, `records[]` with `source_path`, `content_sha256`,

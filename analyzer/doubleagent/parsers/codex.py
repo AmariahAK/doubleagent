@@ -26,8 +26,19 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
     fork a `forked from <id>` row. A later `session_meta` with another id is
     an ancestor's, copied into a fork, and becomes a `copied from ancestor:`
     row; one with the same id is skipped.
-  - `turn_context`: payload `turn_id`, `cwd`, `model`; updates the current
-    project path and model.
+  - `turn_context`: payload `turn_id`, `cwd`, `model`, `approval_policy`,
+    `sandbox_policy`, `permission_profile`, `network`; updates the current
+    project path and model. The first `turn_context` that names a model
+    yields a `system` row `model: <id>` and each later one with another
+    model `model: <old> -> <new>`. The four policy fields are one
+    composite `permission mode: approval=<p> sandbox=<s> profile=<pp>
+    network=<n>` row (a missing field is `-`, an object compact JSON) at
+    the first `turn_context` that has any of them and
+    `permission mode: <old> -> <new>` on every change. Both rows take the
+    `turn_context` line's timestamp and precede the turn's rows. Codex
+    writes no per-call approval to the rollout (approval requests are
+    transient events, `rollout/src/policy.rs:160-223`), so there is no
+    `permission decision:` row.
   - `response_item`: payload `type` is `message` (`role` user, assistant or
     developer; `content` blocks with `text`;
     `internal_chat_message_metadata_passthrough.content_item_kinds`, one
@@ -122,7 +133,15 @@ import zstandard
 from ..inputs import Artifact, error_reason
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl, text_of
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    iter_jsonl,
+    setting_value,
+    text_of,
+    track_change,
+)
 
 ROLLOUT_TMPL = r"^%s/(?:archived_)?sessions/(?:.*/)?rollout-[^/]*\.jsonl(?:\.zst)?$"
 ROLLOUT_RX = re.compile(ROLLOUT_TMPL % re.escape(".codex"))
@@ -359,6 +378,28 @@ def _prescan(records: list) -> tuple[set, dict]:
     return carried, exit_codes
 
 
+# `turn_context` policy fields, in the order of the `permission mode:` row,
+# as (label, payload key); research/codex-cli.md section 3.
+POLICY_FIELDS = (
+    ("approval", "approval_policy"),
+    ("sandbox", "sandbox_policy"),
+    ("profile", "permission_profile"),
+    ("network", "network"),
+)
+
+
+def policy_text(payload: dict) -> str:
+    """The composite permission mode of a `turn_context` payload,
+    `approval=<p> sandbox=<s> profile=<pp> network=<n>` with `-` for a
+    missing field, or "" when it has none of them."""
+    pairs = [(label, payload.get(key)) for label, key in POLICY_FIELDS]
+    if all(v in (None, "") for _label, v in pairs):
+        return ""
+    return " ".join(
+        "%s=%s" % (label, "-" if v in (None, "") else setting_value(v)) for label, v in pairs
+    )
+
+
 def _with_exit(text: str, code) -> str:
     if code in (None, 0):
         return text
@@ -564,6 +605,8 @@ class RolloutParser(Parser):
         model = ""
         branch = ""
         meta_seen = False
+        seen_model: dict = {}  # session id -> last model, for the model rows
+        seen_mode: dict = {}  # session id -> last composite permission mode
         task_pending = False  # a subagent file whose first prompt is still to come
         for n, rec in records:
             rtype = rec.get("type")
@@ -645,6 +688,12 @@ class RolloutParser(Parser):
             elif rtype == "turn_context":
                 cwd = str(payload.get("cwd") or cwd)
                 model = str(payload.get("model") or model)
+                for text in (
+                    track_change("model", seen_model, session_id, str(payload.get("model") or "")),
+                    track_change("permission mode", seen_mode, session_id, policy_text(payload)),
+                ):
+                    if text:
+                        yield self._fill(base(), text, opts)
             elif rtype == "response_item":
                 meta = rec.get("metadata")
                 if isinstance(meta, dict) and meta.get("inherited_user_message"):

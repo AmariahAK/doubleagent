@@ -58,7 +58,8 @@ Types: `session_meta`, `response_item`, `inter_agent_communication`,
   fork too ([`login/src/auth/default_client.rs:42`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/login/src/auth/default_client.rs#L42),[`64-68`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/login/src/auth/default_client.rs#L64-L68)), so
   only the file's location tells Open Interpreter from Codex.
 - `turn_context`: `turn_id`, `cwd`, `model`, `approval_policy`,
-  `sandbox_policy`, `timezone`, `effort` and more
+  `sandbox_policy`, `permission_profile`, `network`, `timezone`, `effort`
+  and more, the same field names as Codex's `turn_context`
   ([`protocol.rs:3287-3343`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/protocol/src/protocol.rs#L3287-L3343)). The emulated harness
   (`claude-code`, `kimi-code`, `zcode` and others) is a `config.toml` key
   ([`config/src/config_toml.rs:166-170`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/config/src/config_toml.rs#L166-L170)) and is not recorded per turn.
@@ -129,8 +130,14 @@ listed in the import ledger with a `system` row naming `source_path`.
 | git_branch | `session_meta.payload.git.branch` |
 | turn_type | `message` by role; `function_call`, `custom_tool_call`, `local_shell_call`, `web_search_call` → tool_use; `*_output` → tool_result; `reasoning` → thinking; `task_started`/`task_complete` → system |
 | model | `turn_context.payload.model` |
+| model row | `system` `model: <model>` at the first `turn_context` that names one, `model: <old> -> <new>` at each change (the shared Codex reader) |
+| permission mode row | `system` `permission mode: approval=<approval_policy> sandbox=<sandbox_policy> profile=<permission_profile> network=<network>` at the first `turn_context` with any of them and `permission mode: <old> -> <new>` on every change, `-` for a missing field |
 | tool_name, tool_use_id | `name`, `call_id` |
 | text | message text, `arguments`/`input`/`action.command`, `output` |
+
+There is no per-call decision row: the fork, like Codex, lists the
+approval request events among the transient events the rollout never
+stores ([`rollout/src/policy.rs:140-204`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/rollout/src/policy.rs#L140-L204)).
 
 Fixture (`.openinterpreter/sessions/2026/10/01/rollout-2026-10-01T12-00-00-0199a1b2-0000-7000-8000-000000000001.jsonl`):
 

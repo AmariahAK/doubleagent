@@ -75,6 +75,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   entries, `chromePermissionMode`, `chromeAllowedDomains`,
   `cuAllowedApps`, `cuGrantFlags`, `cuFlagsGrantedAt`) is a
   `permission grant:` row at the record's `lastActivityAt` ([#93]).
+- The `codex-cli` and `open-interpreter` parsers record the model and
+  the permission policy of each turn as events: `model: <id>` at the
+  first `turn_context` that names a model and `model: <old> -> <new>` on
+  each change, and `permission mode: approval=<approval_policy>
+  sandbox=<sandbox_policy> profile=<permission_profile> network=<network>`
+  at the first `turn_context` with a policy and `permission mode: <old> ->
+  <new>` on each change (`-` for a missing field). Codex writes no
+  per-call approval to its rollouts, so there is no decision row
+  ([#96], [#97]).
 
 ### Changed
 
@@ -523,6 +532,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#97]: https://github.com/seanthegeek/doubleagent/issues/97
+[#96]: https://github.com/seanthegeek/doubleagent/issues/96
 [#93]: https://github.com/seanthegeek/doubleagent/issues/93
 [#92]: https://github.com/seanthegeek/doubleagent/issues/92
 [#90]: https://github.com/seanthegeek/doubleagent/issues/90

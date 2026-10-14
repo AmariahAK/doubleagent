@@ -116,7 +116,20 @@ git repository
 `turn_id`, `root_turn_id`, `cwd`, `workspace_roots`, `current_date`,
 `timezone`, `approval_policy`, `sandbox_policy`, `permission_profile`,
 `network`, `model`, `collaboration_mode` (with its own `settings.model`),
-`effort`, `summary`, `personality` and more.
+`effort`, `summary`, `personality` and more. The four policy fields:
+`approval_policy` is a kebab-case string, `untrusted`, `on-request` (the
+default, also read from the old `on-failure`) or `never`, or an object
+`{"granular": {...}}` for per-flow controls
+([protocol.rs:986-1009](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L986-L1009));
+`sandbox_policy` is an object tagged by `type`: `danger-full-access`,
+`read-only`, `external-sandbox` or `workspace-write`, the last three
+with fields of their own
+([protocol.rs:1072-1120](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L1072-L1120));
+`permission_profile`, optional, is an object tagged by `type`: `managed`
+(`file_system`, `network`), `disabled` or `external` (`network`)
+([models.rs:421-435](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L421-L435)); `network`,
+optional, is `{allowed_domains, denied_domains}`, two lists of strings
+([protocol.rs:3291-3294](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3291-L3294)).
 
 **`event_msg`** (tagged enum,
 [protocol.rs:1352-1358](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L1352-L1358)). Persisted in every mode
@@ -376,7 +389,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 | --- | --- |
 | first `session_meta` | `system` ("session start: originator version provider cwd"); plus `system` `subagent <id> of <parent> [agent_path= agent_role= agent_nickname=]` when `parent_thread_id`, `source.subagent.thread_spawn.parent_thread_id`, or a `session_id` other than `id` on a non-fork names a parent; plus `system` `forked from <id>` for `forked_from_id` |
 | later `session_meta` | `system` `copied from ancestor: session start ... id= cwd=` when its id differs; none when it repeats the file's own |
-| `turn_context` | none; sets project and model |
+| `turn_context` | sets project and model; `system` `model: <model>` at the first one that names a model and `model: <old> -> <new>` at each later one whose `model` differs; `system` `permission mode: approval=<approval_policy> sandbox=<sandbox_policy> profile=<permission_profile> network=<network>` at the first one with any of the four fields and `permission mode: <old> -> <new>` on every change to the composite (a missing field is `-`, an object compact JSON); both at the line's `timestamp`, before the turn's rows, keyed per session |
 | `response_item` with `metadata.inherited_user_message` | none (copied from the parent thread) |
 | `response_item` `message` user | per `content_item_kinds` run: `user` for `user.*`, `unknown` or empty kinds; `system` `context: <kind>: ...` for any other kind; without a kinds list as long as `content`, per block: `system` `context: <marker name>: ...` for a block that is wholly one of the harness wrappers below, else `user`. In a subagent file the first prompt is `system` `subagent task: ...`; later ones stay `user` (below) |
 | `response_item` `message` assistant / developer | `assistant` / `system` (`developer: ...`); empty text skipped |
@@ -401,6 +414,14 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `token_usage_record`, `world_state`, `inter_agent_communication_metadata`, `retained_context`, `security_risk_score` | skipped |
 | bad line or cut zstd frame | one `system` row at the end |
 | `history.jsonl` line | `user` |
+
+Permission state is the per-turn `turn_context` policy above. There is no
+per-call decision row: approval requests and their answers are transient
+events that the rollout never stores
+([policy.rs:160-223](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/policy.rs#L160-L223)), so a
+rollout shows what the policy allowed, not what the user approved. The
+model is recorded only per turn, in `turn_context.model`; there is no
+per-message model, so the model rows follow the turns.
 
 Rollouts without content kinds are classified per content block by the
 wrappers Codex itself recognises as injected user-role context
