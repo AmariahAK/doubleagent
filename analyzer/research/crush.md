@@ -110,6 +110,15 @@ Rows: one per part in `parts`.
 | tool_name, tool_use_id | `data.name`, `data.id` or `data.tool_call_id` |
 | text | text, input JSON, output |
 
+Model rows. A `system` row `model: <model> provider=<provider>` precedes
+the first message of a session whose `model` (else `prism_model_id`) is
+set, and `model: <old> -> <new> provider=<provider>` every later message
+of the session whose model or provider differs, with the message's
+`created_at`; `tool` messages store an empty model and are skipped. The
+research records no permission state for Crush (no approval, denial or
+standing grant is named in [section 3](#3-record-schema)), so the parser
+emits no permission rows.
+
 Fixture rows:
 
 ```sql

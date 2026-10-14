@@ -81,7 +81,7 @@ carry `id`, `name`, `state.status`, `state.input`, `state.content[]`
 completed?}`. User `data`: `text`, `files?`, `agents?` ([`:44-51`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/session-message.ts#L44-L51)). Migration
 [`20260622170816_reset_v2_session_state.ts:8-14`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/migration/20260622170816_reset_v2_session_state.ts#L8-L14) wipes `session_message`,
 `session_input` and `event` on upgrade, so `message`/`part` are the durable
-transcript; treat `session_message` as supplementary.
+transcript; treat `session_message` as supplementary. The two switch records carry the common base `id`, `metadata?` and `time.created` ([`session-message.ts:24-28`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/session-message.ts#L24-L28)) plus `agent` (a string) for `agent-switched` ([`:30-35`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/session-message.ts#L30-L35)) and `model` for `model-switched` ([`:37-42`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/session-message.ts#L37-L42)), a `Model.Ref` `{id, providerID, variant?}` ([`packages/schema/src/model.ts:13-18`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/model.ts#L13-L18)). The projector stores `id` and `type` in their own columns and the rest of the record in `data` ([`packages/core/src/session/projector.ts:192-208`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/session/projector.ts#L192-L208)), so `data` is `{time, agent}` or `{time, model}`.
 
 `event` ([`core/src/event/sql.ts:10-25`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/event/sql.ts#L10-L25)): `aggregate_id` = session id, `seq`,
 `type` such as `message.updated.1` and `message.part.updated.1`
@@ -151,6 +151,22 @@ Rows: one per `part`, plus a `user` row per user message.
 | model | `data.providerID/modelID` |
 | tool_name, tool_use_id | `data.tool`, `data.callID` |
 | text | text, input JSON, output or error |
+
+Model and mode rows. A `system` row `model: <modelID> provider=<providerID>`
+precedes the first message of a session that names a model (V1 user
+`model.{providerID, modelID}`, V1 assistant `providerID` and `modelID`, V2
+assistant `model.{id, providerID}`), and `model: <old> -> <new>
+provider=<providerID>` precedes every later message, or stands for every V2
+`model-switched` record, whose model differs. The message's `agent` (V1 user
+and assistant, V2 assistant, V2 `agent-switched` `agent`) is tracked the
+same way as `permission mode: agent=<name>` and `permission mode:
+agent=<old> -> agent=<new>`, because an agent (`build`, `plan` or a custom
+one) is a mode that carries its own permission ruleset (the agent's `permission: PermissionV1.Ruleset`, [`packages/opencode/src/agent/agent.ts:44`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/agent/agent.ts#L44)). Both rows take the
+message's timestamp. The session's `permission` JSON and the project's
+`sandboxes` array are named in [section 3](#3-record-schema) without their
+shape, so the parser does not read them (issue 98); the research records
+no per-call approval or denial, and whether a denied call shows as a tool
+`state.status` of `error` is not researched.
 
 Fixture rows:
 

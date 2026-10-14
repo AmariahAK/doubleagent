@@ -38,6 +38,14 @@ content_filter, unknown) or carries a message, since every message ends with
 one. Parts carry no timestamp of their own: they inherit the message's
 `created_at`, except tool calls and results, which use `finished_at` or the
 finish part's `time` when set. No git branch is recorded.
+
+Model rows: the first message of a session whose `model` (or
+`prism_model_id`) is set is preceded by a `system` row `model: <model>
+provider=<provider>`, and every later message of the session whose model or
+provider differs by `model: <old> -> <new> provider=<provider>`, with the
+message's `created_at` and `source_line`; `tool` messages carry no model and
+are skipped. The research records no permission state for Crush, so no
+permission rows are emitted.
 """
 
 from __future__ import annotations
@@ -52,6 +60,7 @@ from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
 from .base import Options, Parser, compact_json
+from .opencode import model_row_text
 
 DB_RX = re.compile(r"(^|/)\.crush/crush\.db$")
 PROJECTS_RX = re.compile(r"^(\.local/share/crush|AppData/Local/crush)/projects\.json$")
@@ -150,21 +159,25 @@ class CrushParser(Parser):
                             ),
                         )
                         yield row
+                models: dict = {}
                 for m in con.execute(
                     "select rowid as _rowid, * from messages order by created_at, rowid"
                 ):
-                    yield from self._message_rows(artifact, dict(m), project_path, opts)
+                    yield from self._message_rows(artifact, dict(m), project_path, opts, models)
         except sqlite3.DatabaseError as e:
             row = self._system(artifact, "parser: SQLite error: %s" % e)
             row.project_path = project_path
             yield row
 
     def _message_rows(
-        self, artifact: Artifact, m: dict, project_path: str, opts: Options
+        self, artifact: Artifact, m: dict, project_path: str, opts: Options, models: dict
     ) -> Iterator[Row]:
         role = str(m.get("role") or "")
-        provider, model = m.get("provider") or "", m.get("model") or m.get("prism_model_id") or ""
-        model = "%s/%s" % (provider, model) if provider and model else model
+        provider, model_id = (
+            m.get("provider") or "",
+            m.get("model") or m.get("prism_model_id") or "",
+        )
+        model = "%s/%s" % (provider, model_id) if provider and model_id else model_id
         created = to_utc(m.get("created_at"))
 
         def base(ts: str = "") -> Row:
@@ -176,6 +189,12 @@ class CrushParser(Parser):
             row.timestamp_utc = ts or created
             return row
 
+        text = model_row_text(models, str(m.get("session_id") or ""), provider, model_id)
+        if text:
+            row = base()
+            row.turn_type = "system"
+            row.text = text
+            yield row
         try:
             parts = json.loads(m.get("parts") or "[]")
             if not isinstance(parts, list):

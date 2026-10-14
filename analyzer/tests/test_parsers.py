@@ -2439,7 +2439,16 @@ class CrushTests(ParserBase):
         rows = self.rows_for(CrushParser(), self.REL)
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "user", "tool_use", "tool_result", "assistant", "system"],
+            [
+                "system",
+                "system",
+                "user",
+                "tool_use",
+                "tool_result",
+                "system",
+                "assistant",
+                "system",
+            ],
         )
         for r in rows:
             self.assertEqual(
@@ -2449,10 +2458,30 @@ class CrushTests(ParserBase):
                 (r.project_path, r.git_branch), ("/alice", "")
             )  # the directory holding .crush
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        start, user, use, result, asst, finish = rows
+        start, model, user, use, result, switch, asst, finish = rows
         self.assertEqual(
             start.text, "session start | Fix bug | 3 messages | tokens in=10 out=5 | cost=0.01"
         )
+        self.assertEqual(
+            (model.text, model.model, model.timestamp_utc, model.source_line),
+            (
+                "model: claude-sonnet-4 provider=anthropic",
+                "anthropic/claude-sonnet-4",
+                "2025-10-09T08:53:21.000Z",
+                1,
+            ),
+        )
+        # The tool message (m3) names no model and is not a change.
+        self.assertEqual(
+            (switch.text, switch.model, switch.timestamp_utc, switch.source_line),
+            (
+                "model: claude-sonnet-4 -> gpt-5 provider=openai",
+                "openai/gpt-5",
+                "2025-10-09T08:53:24.000Z",
+                4,
+            ),
+        )
+        self.assertEqual(asst.model, "openai/gpt-5")
         self.assertEqual(
             (user.text, user.model, user.timestamp_utc),
             ("list files", "anthropic/claude-sonnet-4", "2025-10-09T08:53:21.000Z"),
@@ -2518,10 +2547,12 @@ class CrushTests(ParserBase):
         con.commit()
         con.close()
         rows = self.rows_for(CrushParser(), self.REL)
-        self.assertEqual(len(rows), 7)
+        # m5 names model "m" from provider "p", so its parse error follows a model row.
+        self.assertEqual(len(rows), 10)
+        self.assertEqual(rows[-2].text, "model: gpt-5 -> m provider=p")
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("m5 parts did not parse", rows[-1].text)
-        self.assertEqual(rows[1].text, "list files")
+        self.assertEqual(rows[2].text, "list files")
 
     def test_not_sqlite_is_reported(self):
         (self.home / self.REL).write_bytes(b"not a database")
@@ -3140,6 +3171,8 @@ class OpenCodeTests(ParserBase):
             [
                 (OPENCODE_SESSION, "system"),
                 (OPENCODE_V2_SESSION, "system"),
+                (OPENCODE_SESSION, "system"),
+                (OPENCODE_SESSION, "system"),
                 (OPENCODE_SESSION, "user"),
                 (OPENCODE_SESSION, "system"),
                 (OPENCODE_SESSION, "tool_use"),
@@ -3147,9 +3180,13 @@ class OpenCodeTests(ParserBase):
                 (OPENCODE_SESSION, "assistant"),
                 (OPENCODE_SESSION, "system"),
                 (OPENCODE_V2_SESSION, "user"),
+                (OPENCODE_V2_SESSION, "system"),
+                (OPENCODE_V2_SESSION, "system"),
                 (OPENCODE_V2_SESSION, "assistant"),
                 (OPENCODE_V2_SESSION, "tool_use"),
                 (OPENCODE_V2_SESSION, "tool_result"),
+                (OPENCODE_V2_SESSION, "system"),
+                (OPENCODE_V2_SESSION, "system"),
             ],
         )
         for r in rows:
@@ -3159,8 +3196,70 @@ class OpenCodeTests(ParserBase):
             )
             self.assertEqual(r.source_file, "/alice/" + self.DB)
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        start, _, user, synth, use, res, asst, finish, v2user, v2asst, v2use, v2res = rows
+        (
+            start,
+            _,
+            model,
+            mode,
+            user,
+            synth,
+            use,
+            res,
+            asst,
+            finish,
+            v2user,
+            v2model,
+            v2mode,
+            v2asst,
+            v2use,
+            v2res,
+            v2agent_switch,
+            v2model_switch,
+        ) = rows
         self.assertIn("session start: Fix bug", start.text)
+        # The assistant message names the same model and agent, so no change row.
+        self.assertEqual(
+            [(r.text, r.timestamp_utc, r.source_line, r.model) for r in (model, mode)],
+            [
+                (
+                    "model: claude-sonnet-4 provider=anthropic",
+                    "2026-10-03T09:00:01.000Z",
+                    1,
+                    "anthropic/claude-sonnet-4",
+                ),
+                (
+                    "permission mode: agent=build",
+                    "2026-10-03T09:00:01.000Z",
+                    1,
+                    "anthropic/claude-sonnet-4",
+                ),
+            ],
+        )
+        self.assertEqual(
+            [(r.text, r.timestamp_utc) for r in (v2model, v2mode)],
+            [
+                ("model: gpt-5 provider=openai", "2026-10-03T09:00:12.000Z"),
+                ("permission mode: agent=build", "2026-10-03T09:00:12.000Z"),
+            ],
+        )
+        self.assertEqual(
+            (v2agent_switch.text, v2agent_switch.timestamp_utc, v2agent_switch.source_line),
+            ("permission mode: agent=build -> agent=plan", "2026-10-03T09:00:15.000Z", 3),
+        )
+        self.assertEqual(
+            (
+                v2model_switch.text,
+                v2model_switch.timestamp_utc,
+                v2model_switch.source_line,
+                v2model_switch.model,
+            ),
+            (
+                "model: gpt-5 -> gpt-5-mini provider=openai",
+                "2026-10-03T09:00:16.000Z",
+                4,
+                "openai/gpt-5-mini",
+            ),
+        )
         self.assertEqual(
             (user.text, user.timestamp_utc, user.model),
             ("list files", "2026-10-03T09:00:01.000Z", "anthropic/claude-sonnet-4"),
@@ -3197,9 +3296,22 @@ class OpenCodeTests(ParserBase):
         )
         self.assertIn("Old session", rows[0].text)
         rows = self.rows_for(p, self.STORAGE + "message/%s/msg_a.json" % OPENCODE_LEGACY_SESSION)
-        self.assertEqual([(r.turn_type, r.text) for r in rows], [("user", "cat the secrets file")])
-        self.assertEqual(rows[0].source_file, "/alice/" + self.STORAGE + "part/msg_a/prt_a1.json")
-        self.assertEqual(rows[0].timestamp_utc, "2026-10-02T09:00:01.000Z")
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [
+                ("system", "model: claude-sonnet-4 provider=anthropic"),
+                ("system", "permission mode: agent=build"),
+                ("user", "cat the secrets file"),
+            ],
+        )
+        self.assertEqual(
+            rows[0].source_file,
+            "/alice/" + self.STORAGE + "message/%s/msg_a.json" % OPENCODE_LEGACY_SESSION,
+        )
+        self.assertEqual(rows[2].source_file, "/alice/" + self.STORAGE + "part/msg_a/prt_a1.json")
+        self.assertEqual({r.timestamp_utc for r in rows}, {"2026-10-02T09:00:01.000Z"})
+        # msg_b names the model and agent msg_a did, the message before it in
+        # the session directory, so its file yields no model or mode row.
         rows = self.rows_for(p, self.STORAGE + "message/%s/msg_b.json" % OPENCODE_LEGACY_SESSION)
         self.assertEqual(
             [r.turn_type for r in rows], ["tool_use", "tool_result", "assistant", "system"]
@@ -3355,13 +3467,51 @@ class KiloCodeTests(ParserBase):
     def test_rows(self):
         rows = self.rows_for(KiloCodeParser(), self.DB)
         # The V2 session_message copy of the tool call is not repeated.
-        self.assertEqual([r.turn_type for r in rows], ["system", "user", "tool_use", "tool_result"])
+        self.assertEqual(
+            [r.turn_type for r in rows],
+            [
+                "system",
+                "system",
+                "system",
+                "user",
+                "tool_use",
+                "tool_result",
+                "system",
+                "system",
+                "user",
+            ],
+        )
         for r in rows:
             self.assertEqual(
                 (r.host, r.user, r.agent, r.session_id, r.project_path),
                 ("h1", "alice", "kilo-code", KILO_SESSION, "/srv/proj"),
             )
-        start, user, use, res = rows
+        start, model, mode, user, use, res, switch, mode_switch, user2 = rows
+        self.assertEqual(
+            [(r.text, r.timestamp_utc) for r in (model, mode)],
+            [
+                ("model: claude-sonnet-4-5 provider=anthropic", "2026-10-03T10:00:01.000Z"),
+                ("permission mode: agent=build", "2026-10-03T10:00:01.000Z"),
+            ],
+        )
+        # The later user message changes model and agent (from the V1 message,
+        # since V2 switch records are read only for sessions with no V1 rows).
+        self.assertEqual(
+            [(r.text, r.timestamp_utc, r.model) for r in (switch, mode_switch)],
+            [
+                (
+                    "model: claude-sonnet-4-5 -> gpt-5 provider=openai",
+                    "2026-10-03T10:00:04.000Z",
+                    "openai/gpt-5",
+                ),
+                (
+                    "permission mode: agent=build -> agent=plan",
+                    "2026-10-03T10:00:04.000Z",
+                    "openai/gpt-5",
+                ),
+            ],
+        )
+        self.assertEqual(user2.text, "plan the next fix")
         self.assertIn("session start: fix tests", start.text)
         self.assertEqual((user.text, user.model), ("fix the tests", "anthropic/claude-sonnet-4-5"))
         self.assertEqual(

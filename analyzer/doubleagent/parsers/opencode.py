@@ -14,8 +14,8 @@ Files, relative to the home directory (XDG paths on every OS):
     agent, time_created)`: `directory` is the cwd.
   - `project(id, worktree)`: repository root; `/` for the `global` project.
   - `message(id, session_id, time_created, data)`: `data` JSON is the V1
-    message without `id` and `sessionID`: `role`, `time.created`, user
-    `model.{providerID, modelID}`, assistant `providerID`, `modelID`,
+    message without `id` and `sessionID`: `role`, `time.created`, `agent`,
+    user `model.{providerID, modelID}`, assistant `providerID`, `modelID`,
     `path.cwd`, `error.{name, data.message}`.
   - `part(id, message_id, session_id, time_created, data)`: `data` JSON has
     a `type` discriminator: `text` (`text`, `synthetic`, `time.start`),
@@ -29,8 +29,9 @@ Files, relative to the home directory (XDG paths on every OS):
     newer V2 projection. It was wiped once by a migration, so it is read
     only for sessions that have no V1 `message` rows. `data` for `user`
     (`text`), `synthetic` and `system` (`text`), `shell` (`callID`,
-    `command`, `output`), `compaction` (`summary`) and `assistant`
-    (`model.{id or modelID, providerID}`, `content[]` of `text`,
+    `command`, `output`), `compaction` (`summary`), `model-switched`
+    (`model.{id, providerID}`), `agent-switched` (`agent`) and `assistant`
+    (`agent`, `model.{id or modelID, providerID}`, `content[]` of `text`,
     `reasoning` and `tool` items with `id`, `name`, `state.{status, input,
     content[], error.message}`, `time.{created, completed}`).
   The `credential`, `account` and `event` tables are not read.
@@ -52,7 +53,23 @@ a `tool_use` row plus a `tool_result` row once the status is `completed` or
 `error`, `step-finish`, `subtask`, `compaction`, `file`, `agent`, `retry`,
 `patch` and synthetic text are `system`; `step-start` and `snapshot` carry
 nothing but a snapshot hash and are skipped. A message-level `error` is a
-`system` row. The model is `providerID/modelID`. Timestamps come from the
+`system` row. The model column is `providerID/modelID`.
+
+Model and mode rows, per session: the first message that names a model
+(a user message's `model` or an assistant's `providerID`/`modelID`; a V2
+assistant's `model`) is preceded by a `system` row `model: <modelID>
+provider=<providerID>`, and every later message or V2 `model-switched`
+record whose model differs by `model: <old> -> <new> provider=<providerID>`.
+The message's `agent` (V1 user and assistant, V2 assistant, V2
+`agent-switched`) is tracked the same way as `permission mode:
+agent=<name>` and `permission mode: agent=<old> -> agent=<new>`: an
+OpenCode agent is a mode with its own permission ruleset. Both rows take
+the message's timestamp and `source_line` and sit before its other rows.
+In the JSON trees, where a file holds one message, the starting value is
+the message file before it in the same session directory. The session's
+`permission` JSON and the project's `sandboxes` are not read, because their
+shape is not in the research; no per-call approval or denial is recorded
+that the research names. Timestamps come from the
 part's `time.start` (tool results: `state.time.end`), else the part row's
 `time_created`, else the message's `time.created`; user text parts carry no
 time of their own and inherit the message's. `project_path` is the
@@ -74,7 +91,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json
+from .base import Options, Parser, compact_json, track_change
 
 # Which tool input field best identifies the action, in order of preference.
 TOOL_KEYS = (
@@ -114,13 +131,44 @@ def model_name(provider, model) -> str:
     return model or provider
 
 
-def message_model(msg: dict) -> str:
+def message_ref(msg: dict) -> tuple[object, object]:
+    """(providerID, model id) of a V1 message: the assistant's own
+    `providerID`/`modelID`, else the user message's `model` object."""
     if msg.get("role") == "assistant":
-        return model_name(msg.get("providerID"), msg.get("modelID"))
+        return msg.get("providerID"), msg.get("modelID")
     m = msg.get("model")
     if isinstance(m, dict):
-        return model_name(m.get("providerID"), m.get("modelID") or m.get("id"))
-    return ""
+        return m.get("providerID"), m.get("modelID") or m.get("id")
+    return None, None
+
+
+def message_model(msg: dict) -> str:
+    return model_name(*message_ref(msg))
+
+
+def model_row_text(seen: dict, key, provider, model_id) -> str:
+    """The `model:` row text for a model reference, through `track_change`:
+    `model: <id> provider=<provider>` for the first model of a session and
+    `model: <old id> -> <new id> provider=<provider>` when the id or the
+    provider changes; "" when it is unchanged or names no model id."""
+    provider = provider if isinstance(provider, str) else ""
+    model_id = model_id if isinstance(model_id, str) else ""
+    if not model_id:
+        return ""
+    old = seen.get(key)
+    if not track_change("model", seen, key, "%s\n%s" % (provider, model_id)):
+        return ""
+    text = "model: %s -> %s" % (old.split("\n", 1)[1], model_id) if old else "model: " + model_id
+    return text + (" provider=" + provider if provider else "")
+
+
+def agent_row_text(seen: dict, key, agent) -> str:
+    """The `permission mode: agent=<name>` row text when a session's agent is
+    new or changed. An OpenCode agent (`build`, `plan`, a custom one) is a
+    mode with its own permission set, so it is tracked as the mode."""
+    if not isinstance(agent, str) or not agent:
+        return ""
+    return track_change("permission mode", seen, key, "agent=" + agent)
 
 
 def _d(value) -> dict:
@@ -166,6 +214,9 @@ class _Ctx:
     def __init__(self, session_id: str = "", project_path: str = ""):
         self.session_id = session_id
         self.project_path = project_path
+        # The model and agent last seen in the session, for `track_change`.
+        self.models: dict = {}
+        self.modes: dict = {}
 
 
 class OpenCodeParser(Parser):
@@ -270,6 +321,15 @@ class OpenCodeParser(Parser):
         msg_ts = to_utc(_d(msg.get("time")).get("created")) or to_utc(msg_time)
         if not ctx.project_path:
             ctx.project_path = str(_d(msg.get("path")).get("cwd") or "")
+        for text in (
+            model_row_text(ctx.models, ctx.session_id, *message_ref(msg)),
+            agent_row_text(ctx.modes, ctx.session_id, msg.get("agent")),
+        ):
+            if text:
+                row = self._row(artifact, ctx, msg_file, msg_line, msg_ts, model)
+                row.turn_type = "system"
+                row.text = text
+                yield row
         bad = 0
         user_text: list[str] = []
         first_user: tuple[str, int, int] | None = None
@@ -523,7 +583,17 @@ class OpenCodeParser(Parser):
             row.text = compact(text)
             return row
 
-        if mtype == "user":
+        if mtype == "model-switched":
+            text = model_row_text(
+                ctx.models, ctx.session_id, m.get("providerID"), m.get("id") or m.get("modelID")
+            )
+            if text:
+                yield mk("system", text)
+        elif mtype == "agent-switched":
+            text = agent_row_text(ctx.modes, ctx.session_id, data.get("agent"))
+            if text:
+                yield mk("system", text)
+        elif mtype == "user":
             yield mk("user", data.get("text") or "")
         elif mtype in ("synthetic", "system"):
             yield mk("system", _join("%s:" % mtype, data.get("text") or ""))
@@ -542,6 +612,14 @@ class OpenCodeParser(Parser):
                 "system", _join("compaction", data.get("reason") or "", data.get("summary") or "")
             )
         elif mtype == "assistant":
+            for text in (
+                model_row_text(
+                    ctx.models, ctx.session_id, m.get("providerID"), m.get("id") or m.get("modelID")
+                ),
+                agent_row_text(ctx.modes, ctx.session_id, data.get("agent")),
+            ):
+                if text:
+                    yield mk("system", text)
             for item in data.get("content") or []:
                 item = _d(item)
                 itype = item.get("type")
@@ -609,6 +687,14 @@ class OpenCodeParser(Parser):
             )
         except OSError:
             return []
+
+    def _previous_message(self, path: Path) -> dict | None:
+        siblings = self._children(path.parent)
+        names = [p.name for p in siblings]
+        if path.name not in names:
+            return None
+        i = names.index(path.name)
+        return _read_json(siblings[i - 1]) if i > 0 else None
 
     def _session_ctx(self, root: Path, session_id: str, old: bool, msg: dict) -> tuple[_Ctx, dict]:
         s: dict | None = None
@@ -680,6 +766,12 @@ class OpenCodeParser(Parser):
         msg_id = str(msg.get("id") or artifact.disk_path.stem)
         msg.setdefault("id", msg_id)
         ctx, _ = self._session_ctx(root, session_id, old, msg)
+        # One file holds one message, so the model and agent in force come
+        # from the message before it (message ids sort in time order).
+        prev = self._previous_message(artifact.disk_path)
+        if prev is not None:
+            model_row_text(ctx.models, ctx.session_id, *message_ref(prev))
+            agent_row_text(ctx.modes, ctx.session_id, prev.get("agent"))
         pdir_rel = ["part", session_id, msg_id] if old else ["part", msg_id]
         pdir = root.joinpath(*pdir_rel)
         parts = []

@@ -210,6 +210,21 @@ the call's `tool_name`, `tool_use_id` and result time, and a
 `run_command` result that ran in Antigravity's sandbox ends with
 ` sandbox=true`.
 
+The `opencode` and `kilo-code` parsers write `model: <modelID>
+provider=<providerID>` before the first message of a session that names a
+model and `model: <old> -> <new> provider=<providerID>` before each later
+message, or V2 `model-switched` record, whose model differs; the `model`
+column of the row is the new `<providerID>/<modelID>`. They write
+`permission mode: agent=<name>` and `permission mode: agent=<old> ->
+agent=<new>` for the message's `agent` and for a V2 `agent-switched`
+record, because an OpenCode or Kilo Code agent (`build`, `plan`, a custom
+one) is a mode with its own permission ruleset. Both rows take the
+message's timestamp and `source_line` and precede its other rows. The
+`crush` parser writes `model: <model> provider=<provider>` and `model:
+<old> -> <new> provider=<provider>` the same way, from each message's
+`model` and `provider`; it writes no permission rows, because Crush
+records no permission state the research names.
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and

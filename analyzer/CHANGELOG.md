@@ -103,6 +103,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   of a `run_command` or `mcp_tool` call the user rejected, with the call's
   `tool_use_id`; a `run_command` result that ran in the sandbox ends with
   `sandbox=true` ([#96], [#97]).
+- The `opencode` and `kilo-code` parsers record the model and the agent
+  as events: `model: <modelID> provider=<providerID>` before the first
+  message of a session that names a model and `model: <old> -> <new>
+  provider=<providerID>` before each message that changes it, and
+  `permission mode: agent=<name>` and `permission mode: agent=<old> ->
+  agent=<new>` for the message's `agent`, since an OpenCode agent carries
+  its own permission ruleset. In a session that only the V2
+  `session_message` table holds, the `model-switched` and
+  `agent-switched` records, which were printed as raw JSON before, become
+  the change rows ([#96], [#97]).
+- The `crush` parser records the model as events: `model: <model>
+  provider=<provider>` before the first message of a session that names
+  one and `model: <old> -> <new> provider=<provider>` before each message
+  that changes it ([#96]).
 
 ### Changed
 

@@ -13,6 +13,10 @@ Files, relative to the home directory:
   `opencode-<channel>.db` in the same directory, with WAL sidecars. Kilo
   writes both the V1 `message`/`part` tables and V2 `session_message`;
   V1 is read and V2 only for sessions with no V1 rows, as for OpenCode.
+  The `model:` and `permission mode: agent=<name>` rows therefore come
+  from each V1 message's model and `agent` (see `opencode.py`); the V2
+  `model-switched` and `agent-switched` records are read only for a
+  session that has no V1 rows.
 * `.local/share/kilo/storage/{session,message,part,project}/...` and the
   older `.local/share/kilo/project/<slug>/storage/session/...` JSON trees,
   laid out exactly as OpenCode's.

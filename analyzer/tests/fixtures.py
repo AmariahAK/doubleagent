@@ -2874,7 +2874,8 @@ CREATE TABLE files (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, path TEXT NOT
 
 def crush_records():
     """The INSERT statements of research/crush.md section 8, plus a final
-    assistant message with reasoning, text and an abnormal finish."""
+    assistant message with reasoning, text and an abnormal finish, answered
+    by another provider's model so the session has a model change."""
     return [
         "INSERT INTO sessions(id,title,message_count,prompt_tokens,completion_tokens,cost,updated_at,created_at) "
         "VALUES('6f1c0001','Fix bug',3,10,5,0.01,1760000005,1760000001)",
@@ -2883,7 +2884,7 @@ def crush_records():
         """('m2','6f1c0001','assistant','[{"type":"tool_call","data":{"id":"call_x1","name":"bash","input":"{\\"command\\":\\"ls\\"}","provider_executed":false,"finished":true}},{"type":"finish","data":{"reason":"tool_use","time":1760000003}}]','claude-sonnet-4','anthropic',1760000002,1760000003,1760000003,0),"""
         """('m3','6f1c0001','tool','[{"type":"tool_result","data":{"tool_call_id":"call_x1","name":"bash","content":"a.txt","data":"","mime_type":"","metadata":"","is_error":false}},{"type":"finish","data":{"reason":"stop","time":0}}]','','',1760000003,1760000003,NULL,0)""",
         "INSERT INTO messages(id,session_id,role,parts,model,provider,created_at,updated_at,finished_at,is_summary_message) VALUES "
-        """('m4','6f1c0001','assistant','[{"type":"reasoning","data":{"thinking":"one file only","signature":"sig","started_at":1760000004,"finished_at":1760000004}},{"type":"text","data":{"text":"There is one file, a.txt."}},{"type":"finish","data":{"reason":"max_tokens","time":1760000005}}]','claude-sonnet-4','anthropic',1760000004,1760000005,1760000005,0)""",
+        """('m4','6f1c0001','assistant','[{"type":"reasoning","data":{"thinking":"one file only","signature":"sig","started_at":1760000004,"finished_at":1760000004}},{"type":"text","data":{"text":"There is one file, a.txt."}},{"type":"finish","data":{"reason":"max_tokens","time":1760000005}}]','gpt-5','openai',1760000004,1760000005,1760000005,0)""",
     ]
 
 
@@ -3712,6 +3713,37 @@ def build_opencode_db(db: Path, t0: int = OPENCODE_T0) -> None:
             ),
         ),
     )
+    # Switch records (packages/schema/src/session-message.ts AgentSwitched and
+    # ModelSwitched at 907b3bc): `id` and `type` are columns, `data` keeps the rest.
+    con.execute(
+        "INSERT INTO session_message VALUES (?,?,?,?,?,?,?)",
+        (
+            "msg_v2s1",
+            OPENCODE_V2_SESSION,
+            "agent-switched",
+            3,
+            t0 + 15000,
+            t0 + 15000,
+            json.dumps({"time": {"created": t0 + 15000}, "agent": "plan"}),
+        ),
+    )
+    con.execute(
+        "INSERT INTO session_message VALUES (?,?,?,?,?,?,?)",
+        (
+            "msg_v2s2",
+            OPENCODE_V2_SESSION,
+            "model-switched",
+            4,
+            t0 + 16000,
+            t0 + 16000,
+            json.dumps(
+                {
+                    "time": {"created": t0 + 16000},
+                    "model": {"id": "gpt-5-mini", "providerID": "openai"},
+                }
+            ),
+        ),
+    )
     con.execute(
         "INSERT INTO credential (id, provider_id, type, name, value, active, time_created, time_updated) "
         "VALUES (?,?,?,?,?,?,?,?)",
@@ -3939,6 +3971,27 @@ def build_kilo(home: Path) -> None:
                 "time": {"start": t0 + 2500, "end": t0 + 3000},
             },
         },
+    )
+    # A later turn the user sent with another model and the plan agent.
+    _oc_message(
+        con,
+        "msg_01JAXV",
+        KILO_SESSION,
+        t0 + 4000,
+        {
+            "role": "user",
+            "time": {"created": t0 + 4000},
+            "agent": "plan",
+            "model": {"providerID": "openai", "modelID": "gpt-5"},
+        },
+    )
+    _oc_part(
+        con,
+        "prt_01JAXQ",
+        "msg_01JAXV",
+        KILO_SESSION,
+        t0 + 4000,
+        {"type": "text", "text": "plan the next fix"},
     )
     # Kilo writes the V2 projection alongside V1; it must not duplicate the rows.
     con.execute(
