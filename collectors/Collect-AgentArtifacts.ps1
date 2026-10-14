@@ -2289,6 +2289,236 @@ function Add-ExcludedPath([string]$user, [string]$homeDir, [string]$agent, $item
   Write-ManifestRow @row
 }
 
+# ===========================================================================
+# 6. Catalog walk
+# ===========================================================================
+# A table (CATALOG for a home or a Docker volume, PROJECT_CATALOG for a
+# project) is expanded against a base directory all at once, so a nested
+# entry (.gemini/antigravity-cli inside .gemini) claims its subtree before
+# the enclosing entry is walked; then each match is collected, a directory
+# by walking it without following reparse points, testing every path
+# against EXCLUDES on the way down.
+
+# Matched paths of the table being collected, which the walk of an
+# enclosing match skips. Keys are compared ordinally (the Dictionary
+# default) except on Windows, so pwsh on Linux keeps .config/Cursor/User and
+# .config/cursor/User apart; Expand-Glob gives on-disk spellings, so the
+# case-sensitive compare still meets the names Get-ChildItem returns on
+# macOS.
+function Get-ClaimTable {
+  if ($env:OS -eq 'Windows_NT') { return @{} }
+  return (New-Object 'System.Collections.Generic.Dictionary[string,bool]')
+}
+$script:ClaimedPaths = Get-ClaimTable
+# Paths that could not be walked since the counter was last reset; the
+# Docker volume step reads it per volume.
+$script:WalkErrors = 0
+# Directories a wildcard segment could not list (path -> message), filled by
+# Expand-Glob and read by Expand-Catalog.
+$script:GlobReadErrors = [ordered]@{}
+
+# Takes a directory and a literal catalog segment; returns the name the
+# segment has on disk. On a case-insensitive filesystem (Windows, macOS)
+# .config/Goose finds .config/goose; the search pattern returns the stored
+# spelling, so two catalog entries that differ only by case expand to one
+# path and Expand-Catalog keeps the first. When the pattern does not give
+# exactly one entry (two names that differ by case on a case-sensitive
+# filesystem, or an error), the segment is kept as written, so distinct
+# directories stay distinct.
+function Get-OnDiskName([string]$dir, [string]$segment) {
+  try {
+    $extendedDir = ConvertTo-ExtendedPath $dir
+    $found = @([System.IO.Directory]::GetFileSystemEntries($extendedDir, $segment))
+    if ($found.Count -eq 1) {
+      $name = [System.IO.Path]::GetFileName($found[0])
+      $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
+      if ([string]::Equals($name, $segment, $ignoreCase)) { return $name }
+    }
+  } catch { }
+  return $segment
+}
+
+# Takes a base directory and a catalog glob (segments split on /, * does
+# not cross a separator); returns the full paths of the existing items it
+# matches, in on-disk spelling, or nothing when it matches only the base. A
+# directory that cannot be listed for a wildcard segment is recorded in
+# $script:GlobReadErrors (path -> message), which Expand-Catalog turns into
+# error_read rows.
+function Expand-Glob([string]$base, [string]$pattern) {
+  $current = @($base)
+  foreach ($segment in ($pattern -split '/')) {
+    if ($segment -eq '') { continue }
+    $next = @()
+    $isWild = ($segment -match '[\*\?\[]')
+    foreach ($dir in $current) {
+      if ($isWild) {
+        $segmentRegex = Convert-GlobToRegex $segment $false
+        $extendedDir = ConvertTo-ExtendedPath $dir
+        try { $children = Get-ChildItem -LiteralPath $extendedDir -Force -ErrorAction Stop }
+        catch {
+          $children = @()
+          if (-not $script:GlobReadErrors.Contains($dir)) {
+            $script:GlobReadErrors[$dir] = (ConvertFrom-ExtendedText $_.Exception.Message)
+          }
+        }
+        foreach ($child in $children) {
+          if ($child.Name -match $segmentRegex) {
+            $next += (ConvertFrom-ExtendedPath $child.FullName)
+          }
+        }
+      } else {
+        $candidate = Join-PathSafe $dir $segment
+        if (Test-PathQuiet $candidate 'Any') {
+          $next += (Join-PathSafe $dir (Get-OnDiskName $dir $segment))
+        }
+      }
+    }
+    $current = $next
+    if ($current.Count -eq 0) { break }
+  }
+  if ($current.Count -gt 0 -and $current[0] -eq $base) { return @() }
+  return $current
+}
+
+# Takes a base directory and a table; expands every line first and returns
+# @{ Entries; GlobErrors }. Entries lists each match in table order as
+# @(agent, path, glob); a path an earlier line already matched (two lines
+# that differ only by case meeting one directory on a case-insensitive
+# filesystem) is listed as @('', path, 'agent|glob') so the caller logs and
+# skips it. Every kept match is claimed in $script:ClaimedPaths, which is
+# reset first. GlobErrors maps each directory a wildcard segment could not
+# list to @(first agent whose line needed it, message).
+function Expand-Catalog([string]$base, [string]$table) {
+  $entries = New-Object System.Collections.ArrayList
+  $script:ClaimedPaths = Get-ClaimTable
+  $globErrors = [ordered]@{}
+  foreach ($line in (Get-TableLines $table)) {
+    $parts = @($line -split '\|', 2)
+    if ($parts.Count -lt 2) { continue }
+    $agent = $parts[0]; $pattern = $parts[1]
+    $script:GlobReadErrors = [ordered]@{}
+    foreach ($matchPath in @(Expand-Glob $base $pattern)) {
+      if ($script:ClaimedPaths.ContainsKey($matchPath)) {
+        [void]$entries.Add(@('', $matchPath, "$agent|$pattern")); continue
+      }
+      [void]$entries.Add(@($agent, $matchPath, $pattern))
+      $script:ClaimedPaths[$matchPath] = $true
+    }
+    foreach ($errorDir in @($script:GlobReadErrors.Keys)) {
+      if (-not $globErrors.Contains($errorDir)) {
+        $globErrors[$errorDir] = @($agent, $script:GlobReadErrors[$errorDir])
+      }
+    }
+  }
+  $script:GlobReadErrors = [ordered]@{}
+  return @{ Entries = $entries; GlobErrors = $globErrors }
+}
+
+# Takes the user, base and the GlobErrors of Expand-Catalog; writes one
+# error_read row for each directory, so a catalog match below it is never
+# lost silently. The base itself was already checked by Get-DirReadError,
+# and a directory at or under a matched path gets its row from
+# Add-CollectedTree, so both are skipped. Counts $script:WalkErrors.
+function Write-GlobErrorRows([string]$user, [string]$base, $globErrors) {
+  $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
+  foreach ($errorDir in @($globErrors.Keys)) {
+    if ($errorDir.TrimEnd('\', '/') -eq $base.TrimEnd('\', '/')) { continue }
+    $underMatch = $false
+    foreach ($claimedPath in $script:ClaimedPaths.Keys) {
+      $isUnder = $errorDir.StartsWith($claimedPath + $script:Sep, $ignoreCase)
+      if ($errorDir -eq $claimedPath -or $isUnder) { $underMatch = $true; break }
+    }
+    if ($underMatch) { continue }
+    $script:WalkErrors++
+    Write-ReadErrorRow $user $base $globErrors[$errorDir][0] $errorDir $globErrors[$errorDir][1]
+  }
+}
+
+# Takes the user, a base directory, a table and an optional progress header;
+# collects every match of the table under the base: Expand-Catalog, the
+# error_read rows for unlistable directories, then Add-CollectedPath for
+# each match with a "  [agent] path" log line. The header, when given, is
+# logged once before the first match, so a home with no matches leaves no
+# progress line. Under -Inventory, shared entries still claim their paths
+# but are not walked, and every other match is recorded as evidence.
+function Add-CatalogMatches([string]$user, [string]$base, [string]$table, [string]$header = '') {
+  $expansion = Expand-Catalog $base $table
+  Write-GlobErrorRows $user $base $expansion.GlobErrors
+  foreach ($entry in $expansion.Entries) {
+    $agent = $entry[0]; $matchPath = $entry[1]
+    if (-not $agent) {
+      if ($header) { Write-CollectorLog $header; $header = '' }
+      $duplicate = @($entry[2] -split '\|', 2)
+      $lineText = "catalog line $($duplicate[1]) names the same path as an earlier line"
+      Write-CollectorLog ("  [$($duplicate[0])] ${matchPath}: $lineText" +
+        ' (case-insensitive filesystem), collected there')
+      continue
+    }
+    if ($Inventory) {
+      if ($agent -eq 'shared') { continue }
+      Add-InvEvidence $agent $entry[2]
+    }
+    if ($header) { Write-CollectorLog $header; $header = '' }
+    Write-CollectorLog "  [$agent] $matchPath"
+    Add-CollectedPath $user $base $agent $matchPath
+  }
+  $script:ClaimedPaths = Get-ClaimTable
+}
+
+# Takes the user, home, agent and a matched path; collects it: an excluded
+# path gets its skipped_excluded row, a directory that is not a reparse
+# point is walked by Add-CollectedTree, anything else is staged by
+# Add-CollectedFile. A path that cannot be read is logged ("stat failed")
+# and counted in $script:WalkErrors.
+function Add-CollectedPath([string]$user, [string]$homeDir, [string]$agent, [string]$path) {
+  $item = $null
+  try { $item = Get-Item -LiteralPath (ConvertTo-ExtendedPath $path) -Force -ErrorAction Stop }
+  catch {
+    $script:WalkErrors++
+    Write-CollectorLog "stat failed: ${path}: $(ConvertFrom-ExtendedText $_.Exception.Message)"
+    return
+  }
+  $homeRel = Get-RelPath $homeDir $path
+  if ($script:ExcludeRegex.IsMatch($homeRel)) {
+    Add-ExcludedPath $user $homeDir $agent $item; return
+  }
+  $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+  if ($item.PSIsContainer -and -not $isLink) { Add-CollectedTree $user $homeDir $agent $path }
+  else { Add-CollectedFile $user $homeDir $agent $item }
+}
+
+# Takes the user, home, agent and a directory; walks it depth first: a
+# child another catalog entry claimed is left to that entry, an excluded
+# child gets its skipped_excluded row and is not descended, a directory
+# that is not a reparse point is walked, and everything else is staged. The
+# directory is listed through its extended form, so a tree deeper than 260
+# characters is walked on 5.1 without LongPathsEnabled (#77); a directory
+# that cannot be listed gets an error_read row, never silence, and counts in
+# $script:WalkErrors.
+function Add-CollectedTree([string]$user, [string]$homeDir, [string]$agent, [string]$dir) {
+  $children = @()
+  $extendedDir = ConvertTo-ExtendedPath $dir
+  try { $children = @(Get-ChildItem -LiteralPath $extendedDir -Force -ErrorAction Stop) }
+  catch {
+    $script:WalkErrors++
+    Write-ReadErrorRow $user $homeDir $agent $dir (ConvertFrom-ExtendedText $_.Exception.Message)
+    return
+  }
+  foreach ($child in $children) {
+    $childPath = ConvertFrom-ExtendedPath $child.FullName
+    if ($script:ClaimedPaths.ContainsKey($childPath)) { continue }
+    $homeRel = Get-RelPath $homeDir $childPath
+    if ($script:ExcludeRegex.IsMatch($homeRel)) {
+      Add-ExcludedPath $user $homeDir $agent $child; continue
+    }
+    $isLink = (($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+    if ($child.PSIsContainer -and -not $isLink) {
+      Add-CollectedTree $user $homeDir $agent $childPath
+    }
+    else { Add-CollectedFile $user $homeDir $agent $child }
+  }
+}
+
 if ($Version) { Write-Output "$TOOL $ToolVersion"; exit 0 }
 
 if ($List) {
@@ -2312,58 +2542,6 @@ $MaxSize = [int64]$MaxFileSizeMB * 1024 * 1024
 $excludeGlobs = @(Get-TableLines $EXCLUDES); if ($Full) { $excludeGlobs = @() }
 $script:ExcludeRegex = ConvertTo-TableRegex $excludeGlobs
 $script:SecretRegex = ConvertTo-TableRegex @($SECRET_GLOBS -split "`r?`n" | Where-Object { $_ -ne '' })
-# The name a literal catalog segment has on disk. On a case-insensitive
-# filesystem (Windows, macOS) .config/Goose finds .config/goose; the search
-# pattern returns the stored spelling, so two catalog entries that differ only
-# by case expand to one path and Invoke-CatalogCollection keeps the first.
-# When the pattern does not give exactly one entry (two names that differ by
-# case on a case-sensitive filesystem, or an error), the segment is kept as
-# written, so distinct directories stay distinct.
-function Get-OnDiskName([string]$dir, [string]$seg) {
-  try {
-    $found = @([System.IO.Directory]::GetFileSystemEntries((ConvertTo-ExtendedPath $dir), $seg))
-    if ($found.Count -eq 1) {
-      $name = [System.IO.Path]::GetFileName($found[0])
-      if ([string]::Equals($name, $seg, [System.StringComparison]::OrdinalIgnoreCase)) { return $name }
-    }
-  } catch { }
-  return $seg
-}
-
-# Expand a catalog glob (segments split on /, * does not cross separators)
-# under a base directory. Returns full paths of existing items. A directory
-# that cannot be listed for a wildcard segment is recorded in
-# $script:GlobReadErrors (path -> message), which Invoke-CatalogCollection
-# turns into error_read rows.
-$script:GlobReadErrors = [ordered]@{}
-function Expand-Glob([string]$base, [string]$pattern) {
-  $segments = $pattern -split '/'
-  $current = @($base)
-  foreach ($seg in $segments) {
-    if ($seg -eq '') { continue }
-    $next = @()
-    $isWild = ($seg -match '[\*\?\[]')
-    foreach ($dir in $current) {
-      if ($isWild) {
-        $rx = Convert-GlobToRegex $seg $false
-        try {
-          $children = Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $dir) -Force -ErrorAction Stop
-        } catch {
-          $children = @()
-          if (-not $script:GlobReadErrors.Contains($dir)) { $script:GlobReadErrors[$dir] = (ConvertFrom-ExtendedText $_.Exception.Message) }
-        }
-        foreach ($child in $children) { if ($child.Name -match $rx) { $next += (ConvertFrom-ExtendedPath $child.FullName) } }
-      } else {
-        $candidate = Join-PathSafe $dir $seg
-        if (Test-PathQuiet $candidate 'Any') { $next += (Join-PathSafe $dir (Get-OnDiskName $dir $seg)) }
-      }
-    }
-    $current = $next
-    if ($current.Count -eq 0) { break }
-  }
-  if ($current.Count -gt 0 -and $current[0] -eq $base) { return @() }
-  return $current
-}
 
 # Deletes the staged links themselves, never what they point to, so the
 # cleanup does not depend on how each PowerShell version's Remove-Item
@@ -2406,7 +2584,7 @@ function Clear-LinkArchivePaths([string]$reason) {
 # ---------------------------------------------------------------------------
 $ArchiverLabels = @{ tar = 'tar.exe'; writer = 'PowerShell tar writer'; zip = 'ZipFile' }
 
-# Lists the staging tree without following links, as Add-Tree walks the
+# Lists the staging tree without following links, as Add-CollectedTree walks the
 # source: a reparse point (a staged link) is an entry of its own and never
 # descended. Each entry is @(name, FileSystemInfo, kind) with kind d, f or l;
 # names are relative to the stage with / separators, and a directory's name
@@ -2699,17 +2877,6 @@ if (-not $Inventory) {
   $script:ManifestWriter = New-Object System.IO.StreamWriter($XManifestPath, $false, $script:Utf8NoBom)
   $script:LogWriter.AutoFlush = $true
 }
-$script:WalkErrors = 0
-# Paths claimed by catalog matches. Keys are compared ordinally (the
-# Dictionary default) except on Windows, so pwsh on Linux keeps
-# .config/Cursor/User and .config/cursor/User apart; Expand-Glob gives
-# on-disk spellings, so the case-sensitive compare still meets the names
-# Get-ChildItem returns on macOS.
-function Get-ClaimTable {
-  if ($env:OS -eq 'Windows_NT') { return @{} }
-  return (New-Object 'System.Collections.Generic.Dictionary[string,bool]')
-}
-$script:ClaimedPaths = Get-ClaimTable
 
 # ---------------------------------------------------------------------------
 # Inventory accumulators. $script:Inv maps agent -> files, bytes, first and
@@ -2751,98 +2918,6 @@ function Get-InvLines([string]$user, $acc, [int]$projects) {
       first = (Format-InvTime $e.first); last = (Format-InvTime $e.last); projects = $projects; evidence = (@($e.evidence) -join ',') }
     $o | ConvertTo-Json -Compress
   }
-}
-
-# ---------------------------------------------------------------------------
-# Collection
-# ---------------------------------------------------------------------------
-# Lists $dir through its extended form, so a tree deeper than 260 characters
-# is walked on 5.1 without LongPathsEnabled (#77); a directory that cannot be
-# listed gets an error_read row, never silence.
-function Add-Tree([string]$user, [string]$homeDir, [string]$agent, [string]$dir) {
-  $children = @()
-  try { $children = @(Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $dir) -Force -ErrorAction Stop) }
-  catch { $script:WalkErrors++; Write-ReadErrorRow $user $homeDir $agent $dir (ConvertFrom-ExtendedText $_.Exception.Message); return }
-  foreach ($child in $children) {
-    $cfull = ConvertFrom-ExtendedPath $child.FullName
-    # A path matched by another catalog entry is collected under that entry.
-    if ($script:ClaimedPaths.ContainsKey($cfull)) { continue }
-    $hrel = Get-RelPath $homeDir $cfull
-    if ($script:ExcludeRegex.IsMatch($hrel)) { Add-ExcludedPath $user $homeDir $agent $child; continue }
-    $isLink = (($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
-    if ($child.PSIsContainer -and -not $isLink) { Add-Tree $user $homeDir $agent $cfull }
-    else { Add-CollectedFile $user $homeDir $agent $child }
-  }
-}
-
-function Add-Path([string]$user, [string]$homeDir, [string]$agent, [string]$path) {
-  $item = $null
-  try { $item = Get-Item -LiteralPath (ConvertTo-ExtendedPath $path) -Force -ErrorAction Stop } catch { $script:WalkErrors++; Write-CollectorLog "stat failed: ${path}: $(ConvertFrom-ExtendedText $_.Exception.Message)"; return }
-  $hrel = Get-RelPath $homeDir $path
-  if ($script:ExcludeRegex.IsMatch($hrel)) { Add-ExcludedPath $user $homeDir $agent $item; return }
-  $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
-  if ($item.PSIsContainer -and -not $isLink) { Add-Tree $user $homeDir $agent $path } else { Add-CollectedFile $user $homeDir $agent $item }
-}
-
-function Invoke-CatalogCollection([string]$user, [string]$base, [string]$table, [string]$header = '') {
-  # Expand every entry first so a nested match (.gemini/antigravity-cli inside
-  # .gemini) is attributed to its own agent and collected once; Add-Tree skips
-  # children that another entry claimed. $header, when given, is logged once
-# before the first match, so a home with no matches leaves no progress line.
-  # ($matches would shadow PowerShell's automatic regex variable.)
-  # Expand-Glob returns on-disk spellings, so entries that differ only by
-  # case and meet one directory give the same path: the first catalog line
-  # keeps it and the later one is logged and skipped (an empty agent below).
-  $claimed = @()
-  $script:ClaimedPaths = Get-ClaimTable
-  # Directories a wildcard segment could not list, with the first agent whose
-  # line needed them.
-  $globErrors = [ordered]@{}
-  foreach ($line in (Get-TableLines $table)) {
-    $parts = @($line -split '\|', 2)
-    if ($parts.Count -lt 2) { continue }
-    $agent = $parts[0]; $pattern = $parts[1]
-    $script:GlobReadErrors = [ordered]@{}
-    foreach ($m in @(Expand-Glob $base $pattern)) {
-      if ($script:ClaimedPaths.ContainsKey($m)) { $claimed += ,@('', $m, "$agent|$pattern"); continue }
-      $claimed += ,@($agent, $m, $pattern)
-      $script:ClaimedPaths[$m] = $true
-    }
-    foreach ($gd in @($script:GlobReadErrors.Keys)) { if (-not $globErrors.Contains($gd)) { $globErrors[$gd] = @($agent, $script:GlobReadErrors[$gd]) } }
-  }
-  $script:GlobReadErrors = [ordered]@{}
-  # Each gets one error_read row, so a catalog match below it is never lost
-  # silently. The base itself was already checked by Get-DirReadError, and a
-  # directory at or under a matched path gets its row from Add-Tree.
-  foreach ($gd in @($globErrors.Keys)) {
-    if ($gd.TrimEnd('\', '/') -eq $base.TrimEnd('\', '/')) { continue }
-    $under = $false
-    foreach ($cp in $script:ClaimedPaths.Keys) {
-      if ($gd -eq $cp -or $gd.StartsWith($cp + $script:Sep, [System.StringComparison]::OrdinalIgnoreCase)) { $under = $true; break }
-    }
-    if ($under) { continue }
-    $script:WalkErrors++
-    Write-ReadErrorRow $user $base $globErrors[$gd][0] $gd $globErrors[$gd][1]
-  }
-  foreach ($pair in $claimed) {
-    $agent = $pair[0]; $m = $pair[1]
-    if (-not $agent) {
-      if ($header) { Write-CollectorLog $header; $header = '' }
-      $dup = @($pair[2] -split '\|', 2)
-      Write-CollectorLog "  [$($dup[0])] ${m}: catalog line $($dup[1]) names the same path as an earlier line (case-insensitive filesystem), collected there"
-      continue
-    }
-    # -Inventory: shared entries still claim their paths above but
-    # are not walked; every other match is recorded as evidence.
-    if ($Inventory) {
-      if ($agent -eq 'shared') { continue }
-      Add-InvEvidence $agent $pair[2]
-    }
-    if ($header) { Write-CollectorLog $header; $header = '' }
-    Write-CollectorLog "  [$agent] $m"
-    Add-Path $user $base $agent $m
-  }
-  $script:ClaimedPaths = Get-ClaimTable
 }
 
 # ---------------------------------------------------------------------------
@@ -2917,7 +2992,7 @@ $script:InvUsers = @()
 foreach ($u in $UserList) {
   $script:Inv = [ordered]@{}
   if (-not $Inventory) { $e = Get-DirReadError $u.home; if ($e) { Write-ReadErrorRow $u.user $u.home '' $u.home $e } }
-  Invoke-CatalogCollection $u.user $u.home $CATALOG "User $($u.user) ($($u.home))"
+  Add-CatalogMatches $u.user $u.home $CATALOG "User $($u.user) ($($u.home))"
   if ($Inventory) { $script:InvUsers += , @($u, $script:Inv) }
 }
 
@@ -2996,10 +3071,10 @@ function Invoke-VolumeDir([string]$base, [string]$rel) {
       if ($Inventory) {
         $saved = $script:Inv; $script:Inv = $script:InvDocker
         Add-InvEvidence $agent $rule[2]
-        Add-Path 'docker' $data $agent $data
+        Add-CollectedPath 'docker' $data $agent $data
         $script:Inv = $saved
       } else {
-        Add-Path 'docker' $data $agent $data
+        Add-CollectedPath 'docker' $data $agent $data
       }
       $script:Docker.collected++
       if ($script:WalkErrors -gt 0) {
@@ -3234,7 +3309,7 @@ if (-not $NoProjects) {
   if (-not $Inventory) { foreach ($pj in $ProjectList) {
     Write-CollectorLog "Project $(if ($pj.user) { '[' + $pj.user + '] ' })$($pj.path)"
     $e = Get-DirReadError $pj.path; if ($e) { Write-ReadErrorRow $pj.user $pj.path '' $pj.path $e }
-    Invoke-CatalogCollection $pj.user $pj.path $PROJECT_CATALOG
+    Add-CatalogMatches $pj.user $pj.path $PROJECT_CATALOG
   } }
 }
 
