@@ -1518,6 +1518,21 @@ def antigravity_steps() -> list[tuple[int, int, dict]]:
         "name": "write_to_file",
         "arguments_json": json.dumps({"TargetFile": "/home/u/proj/notes.md"}),
     }
+    tc4 = {
+        "id": "call_4",
+        "name": "run_command",
+        "arguments_json": json.dumps({"CommandLine": "make test", "Cwd": "/home/u/proj"}),
+    }
+    tc5 = {
+        "id": "call_5",
+        "name": "create_issue",
+        "arguments_json": json.dumps({"Name": "flaky test"}),
+    }
+    tc6 = {
+        "id": "call_6",
+        "name": "run_command",
+        "arguments_json": json.dumps({"CommandLine": "ls", "Cwd": "/home/u/proj"}),
+    }
     t = AGY_T0
     return [
         (14, 3, dict(_step("user_input", {"query": "clean the logs"}, t, source=4), type=14)),
@@ -1624,6 +1639,79 @@ def antigravity_steps() -> list[tuple[int, int, dict]]:
             ),
         ),
         (23, 3, dict(_step("checkpoint", {"conversation_title": "Clean logs"}, t + 13), type=23)),
+        # A later planner step on another model (#96), a run_command and an
+        # mcp_tool call the user rejected, and a sandboxed run_command (#97).
+        (
+            15,
+            3,
+            dict(
+                _step("planner_response", {"response": "", "tool_calls": [tc4]}, t + 14, t + 15),
+                type=15,
+            ),
+        ),
+        (
+            21,
+            3,
+            dict(
+                _step(
+                    "run_command",
+                    {"command_line": "make test", "user_rejected": True},
+                    t + 15,
+                    t + 16,
+                    tool_call=tc4,
+                ),
+                type=21,
+            ),
+        ),
+        (
+            15,
+            3,
+            dict(
+                _step("planner_response", {"response": "", "tool_calls": [tc5]}, t + 17, t + 18),
+                type=15,
+            ),
+        ),
+        (
+            38,
+            3,
+            dict(
+                _step(
+                    "mcp_tool",
+                    {"server_name": "github", "tool_call": tc5, "user_rejected": True},
+                    t + 18,
+                    t + 19,
+                    tool_call=tc5,
+                ),
+                type=38,
+            ),
+        ),
+        (
+            15,
+            3,
+            dict(
+                _step("planner_response", {"response": "", "tool_calls": [tc6]}, t + 20, t + 21),
+                type=15,
+            ),
+        ),
+        (
+            21,
+            3,
+            dict(
+                _step(
+                    "run_command",
+                    {
+                        "command_line": "ls",
+                        "exit_code": 0,
+                        "combined_output": {"full": "README.md"},
+                        "ran_in_sandbox": True,
+                    },
+                    t + 21,
+                    t + 22,
+                    tool_call=tc6,
+                ),
+                type=21,
+            ),
+        ),
     ]
 
 
@@ -1816,7 +1904,8 @@ def build_antigravity(
     summaries database and, for the CLI (`cli`), history.jsonl and the
     OAuth token file."""
     steps = antigravity_steps() if steps is None else steps
-    models = {"gemini-3.8-flash": [1, 3, 5, 8]} if models is None else models
+    if models is None:
+        models = {"gemini-3.8-flash": [1, 3, 5, 8], "gemini-3.8-pro": [10, 12, 14]}
     conv = base / "conversations"
     conv.mkdir(parents=True, exist_ok=True)
     db = conv / (conversation + ".db")

@@ -1275,6 +1275,7 @@ class AntigravityTests(ParserBase):
             [
                 "system",
                 "user",
+                "system",
                 "assistant",
                 "tool_use",
                 "tool_result",
@@ -1285,6 +1286,16 @@ class AntigravityTests(ParserBase):
                 "system",
                 "assistant",
                 "system",
+                # The steps added for #96 and #97, checked in their own tests.
+                "system",
+                "tool_use",
+                "tool_result",
+                "system",
+                "tool_use",
+                "tool_result",
+                "system",
+                "tool_use",
+                "tool_result",
             ],
         )
         for r in rows:
@@ -1294,7 +1305,9 @@ class AntigravityTests(ParserBase):
             )
             self.assertEqual((r.project_path, r.git_branch), ("/home/u/proj", "main"))
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        start, user, asst, use1, res1, use2, res2, use3, res3, injected, final, ckpt = rows
+        start, user, _model, asst, use1, res1, use2, res2, use3, res3, injected, final, ckpt = rows[
+            :13
+        ]
         self.assertIn("session start", start.text)
         self.assertIn("project_id=default-cli-project", start.text)
         self.assertEqual(user.text, "clean the logs")
@@ -1318,13 +1331,90 @@ class AntigravityTests(ParserBase):
         self.assertEqual(injected.turn_type, "system")  # USER_IMPLICIT source
         self.assertEqual(final.text, "Done. Three log files were removed.")
         self.assertEqual(ckpt.text, "checkpoint: Clean logs")
-        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        self.assertEqual(
+            [r.source_line for r in rows],
+            [0, 0, 1, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 11, 12, 13, 13, 14, 15],
+        )
+
+    def test_model_rows(self):
+        # gen_metadata names gemini-3.8-flash for steps 1-8 and
+        # gemini-3.8-pro from step 10 (#96): a start row before the first
+        # planner step's rows and a change row before step 10's, each with
+        # the step's created_at and the new id in the model column.
+        rows = self.rows_for(AntigravityParser(), self.REL)
+        models = [r for r in rows if r.text.startswith("model:")]
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.source_line, r.model) for r in models],
+            [
+                (
+                    "system",
+                    "model: gemini-3.8-flash",
+                    "2026-10-01T10:00:01.000Z",
+                    1,
+                    "gemini-3.8-flash",
+                ),
+                (
+                    "system",
+                    "model: gemini-3.8-flash -> gemini-3.8-pro",
+                    "2026-10-01T10:00:14.000Z",
+                    10,
+                    "gemini-3.8-pro",
+                ),
+            ],
+        )
+        for m in models:
+            i = rows.index(m)
+            self.assertEqual(rows[i + 1].source_line, m.source_line)
+            self.assertEqual(rows[i + 1].model, m.model)
+        self.assertEqual(rows[3].text, "I will read the README first.")
+
+    def test_rejection_decision_rows(self):
+        # run_command.user_rejected and mcp_tool.user_rejected (#97): a
+        # `permission decision:` row right after the tool_result, which
+        # keeps its [rejected by user] marker.
+        rows = self.rows_for(AntigravityParser(), self.REL)
+        decisions = [i for i, r in enumerate(rows) if r.text.startswith("permission decision:")]
+        self.assertEqual(len(decisions), 2)
+        expected = [
+            ("run_command", "call_4", "make test | [rejected by user]", "2026-10-01T10:00:16.000Z"),
+            (
+                "create_issue",
+                "call_5",
+                "github/create_issue | [rejected by user]",
+                "2026-10-01T10:00:19.000Z",
+            ),
+        ]
+        for i, (tool, call, res_text, ts) in zip(decisions, expected, strict=True):
+            res, dec = rows[i - 1], rows[i]
+            self.assertEqual(
+                (res.turn_type, res.tool_name, res.tool_use_id, res.text),
+                ("tool_result", tool, call, res_text),
+            )
+            self.assertEqual(
+                (dec.turn_type, dec.text, dec.tool_name, dec.tool_use_id, dec.timestamp_utc),
+                ("system", "permission decision: user_rejected", tool, call, ts),
+            )
+            self.assertEqual(dec.source_line, res.source_line)
+
+    def test_sandbox_flag_on_result(self):
+        # run_command.ran_in_sandbox (#97) is appended to the result text;
+        # it is not a decision, so no row of its own.
+        rows = self.rows_for(AntigravityParser(), self.REL)
+        res = rows[-1]
+        self.assertEqual(
+            (res.turn_type, res.tool_use_id, res.text),
+            ("tool_result", "call_6", "ls | exit=0 | README.md sandbox=true"),
+        )
+        self.assertNotIn("sandbox=true", " ".join(r.text for r in rows[:-1]))
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(AntigravityParser(), self.REL, include_thinking=True)
         self.assertEqual(
             [r.text for r in rows if r.turn_type == "thinking"], ["look before leaping"]
         )
+        # With thinking on, the model row still precedes the step's rows.
+        i = next(i for i, r in enumerate(rows) if r.turn_type == "thinking")
+        self.assertEqual(rows[i - 1].text, "model: gemini-3.8-flash")
 
     def test_summaries_and_history(self):
         rows = self.rows_for(
@@ -1382,6 +1472,7 @@ class AntigravityAppTests(ParserBase):
             [
                 "system",
                 "user",
+                "system",
                 "assistant",
                 "tool_use",
                 "tool_result",
@@ -1400,7 +1491,26 @@ class AntigravityAppTests(ParserBase):
                 ("antigravity", AGY_APP_CONVERSATION, "/home/u/proj"),
             )
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        start, user, asst, use, res, _grant, _files, sysmsg, err, final, del_use, del_res = rows
+        (
+            start,
+            user,
+            model,
+            asst,
+            use,
+            res,
+            _grant,
+            _files,
+            sysmsg,
+            err,
+            final,
+            del_use,
+            del_res,
+        ) = rows
+        # One model for the whole conversation: a start row only (#96).
+        self.assertEqual(
+            (model.text, model.timestamp_utc, model.model),
+            ("model: gemini-3.8-pro", "2026-10-01T11:00:01.000Z", "gemini-3.8-pro"),
+        )
         self.assertEqual(
             start.text,
             "session start | source=cascade_client | data_dir=antigravity"
@@ -1434,14 +1544,14 @@ class AntigravityAppTests(ParserBase):
             (del_res.tool_name, del_res.tool_use_id, del_res.text),
             ("delete_file", "call_8", "delete_file | /home/u/proj/old.log | remove the stale log"),
         )
-        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 1, 2, 2, 2, 3, 4, 5, 6, 7])
+        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 1, 1, 2, 2, 2, 3, 4, 5, 6, 7])
 
     def test_permission_grant_rows(self):
         # steps.permissions on the run_command step (#92): one row per
         # permission_grants entry and per file_access_permissions entry,
         # after the step's tool_result, keyed to its call.
         rows = self.rows_for(AntigravityParser(), self.REL)
-        res, grant, files = rows[4:7]
+        res, grant, files = rows[5:8]
         self.assertEqual(res.turn_type, "tool_result")
         for r in (grant, files):
             self.assertEqual(
@@ -1601,8 +1711,8 @@ class AntigravityAppTests(ParserBase):
         con.commit()
         con.close()
         rows = self.rows_for(AntigravityParser(), self.REL)
-        self.assertEqual(len(rows), 13)
-        self.assertEqual(rows[9].text, "One package is outdated: node.")
+        self.assertEqual(len(rows), 14)
+        self.assertEqual(rows[10].text, "One package is outdated: node.")
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].text),
             ("system", "parser: 1 step(s) could not be decoded"),

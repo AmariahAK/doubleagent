@@ -411,6 +411,29 @@ The app's databases have one `gen_metadata` row per planner step
 `battle_mode_infos` none, and `trajectory_metadata_blob` one row of 618-698
 B.
 
+The parser yields the model as a `system` row (issue 96): `model: <id>`
+before the rows of the conversation's first step that a `gen_metadata`
+row lists in `step_indices`, and `model: <old> -> <new>` before the rows
+of each later step whose model differs, at the step's
+`metadata.created_at`, with the new id in the `model` column. The id is
+`chat_model.response_model`, else `model_display_name`. No step kind in
+the parser's `SCHEMA` records a model switch, and the real-install rounds
+did not record the `response_model` values per conversation, so whether
+the model changes within a conversation has not been observed; a change
+would show only as a different `response_model` on a later planner step.
+
+Three tool-payload fields carry permission evidence (issue 97), all bool
+and identical in the `agy` 1.2.16 and `language_server` 2.23.0
+descriptors (macOS arm64): `CortexStepRunCommand` 14 `user_rejected` and
+34 `ran_in_sandbox`, and `CortexStepMcpTool` 7 `user_rejected`. A step
+with `user_rejected` set yields, right after its `tool_result` row (whose
+text keeps `[rejected by user]`), a `system` row `permission decision:
+user_rejected` with the step's `tool_name`, `tool_use_id` and result
+time. `ran_in_sandbox` is not a decision: a `run_command` result with it
+set ends with ` sandbox=true`. None of the three has been seen set in
+real data, since every observed tool step was a `generic` step whose
+typed payload sits in a `google.protobuf.Any` the parser does not unpack.
+
 `trajectory_metadata_blob.data` is `CortexTrajectoryMetadata`: 1
 `workspaces[]` (`CortexWorkspaceMetadata`: 1 `workspace_folder_absolute_uri`,
 2 `git_root_absolute_uri`, 4 `branch_name`), 2 `created_at`, 5

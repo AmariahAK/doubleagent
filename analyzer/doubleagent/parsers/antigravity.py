@@ -127,6 +127,22 @@ mtime)` row per list entry and per flag, `<key>` the JSON path in the file
 file's modification time (the manifest's `mtime`, or the file's own when
 there is no manifest), `session_id` empty, `source_line` the entry's
 1-based position among the file's rows.
+
+Model rows (issue 96), `system`: `model: <id>` before the rows of the
+conversation's first step that `gen_metadata` names a model for, and
+`model: <old> -> <new>` before the rows of every later step whose model
+differs, with the step's `created_at`, its index as `source_line` and the
+new id in the `model` column. The id is `chat_model.response_model`, else
+`model_display_name`; the descriptors give no separate switch record, so a
+change is seen only as a different model on a later step.
+
+Per-call rows (issue 97): a `run_command` step with `user_rejected` (field
+14) or an `mcp_tool` step with `user_rejected` (field 7) yields, right
+after its `tool_result` row (which keeps its `[rejected by user]` marker),
+a `system` row `permission decision: user_rejected` with the step's
+`tool_name`, `tool_use_id` and result time. A `run_command` step with
+`ran_in_sandbox` (field 34) gets ` sandbox=true` at the end of its result
+row's text.
 """
 
 from __future__ import annotations
@@ -141,7 +157,15 @@ from ..model import Row, compact
 from ..protobuf import Schema, decode
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, file_mtime, iter_jsonl, setting_value
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    file_mtime,
+    iter_jsonl,
+    setting_value,
+    track_change,
+)
 
 BASE = ".gemini/antigravity-cli/"
 # The four data directories under ~/.gemini that hold the same stores: the
@@ -1019,6 +1043,7 @@ class AntigravityParser(Parser):
                     model = cm.get("response_model") or cm.get("model_display_name") or ""
                     for idx in gm.get("step_indices", []):
                         models[idx] = model
+            seen_models: dict = {}
             bad = 0
             cols = {r[1] for r in con.execute("pragma table_info(steps)")}
             perm_col = "permissions" if "permissions" in cols else "NULL AS permissions"
@@ -1036,6 +1061,18 @@ class AntigravityParser(Parser):
                 except ValueError:
                     bad += 1
                     continue
+                model = models.get(idx, "")
+                change = track_change("model", seen_models, session_id, model)
+                if change:
+                    # The model at the conversation's first generated step and
+                    # on every change, before that step's own rows (#96).
+                    md = step.get("metadata") or {}
+                    row = self._row(artifact, idx, session_id, project_path, branch)
+                    row.timestamp_utc = md.get("created_at") or md.get("completed_at", "")
+                    row.turn_type = "system"
+                    row.model = model
+                    row.text = change
+                    yield row
                 yield from self._step_rows(
                     artifact,
                     idx,
@@ -1045,7 +1082,7 @@ class AntigravityParser(Parser):
                     session_id,
                     project_path,
                     branch,
-                    models.get(idx, ""),
+                    model,
                     opts,
                 )
                 yield from self._permission_rows(
@@ -1167,6 +1204,8 @@ class AntigravityParser(Parser):
         text = describe_payload(kind, payload) if kind else "step %s" % type_name
         if status_name != "done":
             text = "[%s] %s" % (status_name, text)
+        if kind == "run_command" and payload.get("ran_in_sandbox"):
+            text += " sandbox=true"
         if tc:
             row = base(completed)
             row.turn_type = "tool_result"
@@ -1177,3 +1216,12 @@ class AntigravityParser(Parser):
             row.turn_type = "system"
         row.text = compact(text)
         yield row
+        if kind in ("run_command", "mcp_tool") and payload.get("user_rejected"):
+            # The user's rejection of the call as its own row, beside the
+            # result that also carries `[rejected by user]` (#97).
+            decision = base(row.timestamp_utc)
+            decision.turn_type = "system"
+            decision.tool_name = row.tool_name or (payload.get("tool_call") or {}).get("name", "")
+            decision.tool_use_id = row.tool_use_id
+            decision.text = "permission decision: user_rejected"
+            yield decision

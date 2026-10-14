@@ -96,6 +96,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and `qwen-code` writes `model: <id>` from the first assistant record
   when no `session_model` record named one, and a change row when an
   assistant record's model differs ([#96], [#97]).
+- The `antigravity` parser writes `model: <id>` before the rows of a
+  conversation's first step that `gen_metadata` names a model for and
+  `model: <old> -> <new>` before those of every later step on another
+  model, and a `permission decision: user_rejected` row after the result
+  of a `run_command` or `mcp_tool` call the user rejected, with the call's
+  `tool_use_id`; a `run_command` result that ran in the sandbox ends with
+  `sandbox=true` ([#96], [#97]).
 
 ### Changed
 

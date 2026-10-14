@@ -197,6 +197,19 @@ where `<value>` is the recorded trust level (`TRUST_FOLDER`,
 `TRUST_PARENT` or `DO_NOT_TRUST`), with `project_path` the folder, the
 file's modification time and an empty `session_id`.
 
+The `antigravity` parser writes `model: <id>` before the rows of a
+conversation's first step that the `gen_metadata` table names a model for
+(`chat_model.response_model`, else `model_display_name`) and
+`model: <old> -> <new>` before the rows of each later step whose model
+differs, at the step's `created_at`, with the new model in the `model`
+column; the format has no switch record, so a change is seen only as a
+different model on a later step. A `run_command` or `mcp_tool` call the
+user rejected is followed, after its `tool_result` row (which keeps its
+`[rejected by user]` marker), by `permission decision: user_rejected` with
+the call's `tool_name`, `tool_use_id` and result time, and a
+`run_command` result that ran in Antigravity's sandbox ends with
+` sandbox=true`.
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and
