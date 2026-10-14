@@ -3190,6 +3190,107 @@ function Add-Projects {
     Add-CatalogMatches $projectDir.user $projectDir.path $PROJECT_CATALOG
   }
 }
+
+# ===========================================================================
+# 10. Inventory output
+# ===========================================================================
+# -Inventory runs the same walk with no writes: Add-CollectedFile feeds
+# these accumulators instead of copying, and Write-Inventory prints JSON
+# lines on stdout (the host line, one line per user and agent, then the
+# Docker volume agents as user docker). Nothing is written to disk.
+
+# The accumulator being filled: agent -> files, bytes, first and last mtime
+# (epoch seconds, 0 when unknown) and the matched catalog globs in order of
+# first match. Add-UserHomes starts one per user and keeps it in
+# $script:InvUsers as @(home, accumulator); matched Docker volumes fill
+# $script:InvDocker (declared with the Docker state).
+$script:Inv = [ordered]@{}
+$script:InvUsers = @()
+
+# Takes an agent; returns its entry in $script:Inv, creating it empty.
+function Get-InvEntry([string]$agent) {
+  if (-not $script:Inv.Contains($agent)) {
+    $script:Inv[$agent] = @{
+      files = 0; bytes = [int64]0; first = [int64]0; last = [int64]0
+      evidence = (New-Object System.Collections.ArrayList)
+    }
+  }
+  return $script:Inv[$agent]
+}
+
+# Takes an agent and the catalog glob that matched; adds the glob to the
+# agent's evidence once.
+function Add-InvEvidence([string]$agent, [string]$glob) {
+  $entry = Get-InvEntry $agent
+  if (-not $entry.evidence.Contains($glob)) { [void]$entry.evidence.Add($glob) }
+}
+
+# Takes an agent and a regular file's Get-Item; counts the file, its bytes
+# and its modification time in the agent's entry.
+function Add-InvFile([string]$agent, $item) {
+  $entry = Get-InvEntry $agent
+  $entry.files++
+  try { $entry.bytes += [int64]$item.Length } catch { }
+  $mtime = Get-Epoch $item.LastWriteTimeUtc
+  if ($mtime -gt 0) {
+    if ($entry.first -eq 0 -or $mtime -lt $entry.first) { $entry.first = $mtime }
+    if ($mtime -gt $entry.last) { $entry.last = $mtime }
+  }
+}
+
+# Takes epoch seconds; returns UTC ISO 8601 without fractions, or '' for 0.
+function Format-InvTime([int64]$epoch) {
+  if ($epoch -le 0) { return '' }
+  $culture = [Globalization.CultureInfo]::InvariantCulture
+  $utc = [DateTimeOffset]::FromUnixTimeSeconds($epoch).UtcDateTime
+  return $utc.ToString('yyyy-MM-ddTHH:mm:ssZ', $culture)
+}
+
+# Takes a user, one accumulator and the user's project count; returns the
+# agent lines of the accumulator as compressed JSON in the documented key
+# order. A match with no files of its own after exclusions and nested
+# claims gives no line.
+function Write-InventoryLines([string]$user, $accumulator, [int]$projects) {
+  foreach ($agent in @($accumulator.Keys)) {
+    $entry = $accumulator[$agent]
+    if ($entry.files -eq 0) { continue }
+    $line = [ordered]@{
+      type = 'agent'; host = $script:HostName; user = $user; agent = $agent
+      files = [int64]$entry.files; bytes = [int64]$entry.bytes
+      first = (Format-InvTime $entry.first); last = (Format-InvTime $entry.last)
+      projects = $projects; evidence = (@($entry.evidence) -join ',')
+    }
+    $line | ConvertTo-Json -Compress
+  }
+}
+
+# Main step under -Inventory: logs each home that cannot be listed, then
+# returns the host line, the agent lines of each user (with that user's
+# discovered project count) and the Docker volume agents. A home is
+# unreadable when it was denied (see Get-DeniedHomes) or its entries cannot
+# be listed.
+function Write-Inventory {
+  $denied = $script:DeniedHomes
+  $unreadable = $denied.Count
+  foreach ($userHome in $script:UserList) {
+    if (-not (Test-DirReadable $userHome.home)) {
+      $unreadable++
+      Write-CollectorLog "WARNING: home of $($userHome.user) is not readable: $($userHome.home)"
+    }
+  }
+  $hostLine = [ordered]@{
+    type = 'host'; host = $script:HostName; collector = $ToolVersion; mode = $Mode
+    at = $script:StartTs; users_scanned = ($script:UserList.Count + $denied.Count)
+    users_unreadable = $unreadable; docker_volumes = $script:Docker.found
+  }
+  Write-Output ($hostLine | ConvertTo-Json -Compress)
+  foreach ($pair in $script:InvUsers) {
+    $userHome = $pair[0]
+    $projectCount = @($script:ProjectList | Where-Object { $_.user -eq $userHome.user }).Count
+    Write-InventoryLines $userHome.user $pair[1] $projectCount
+  }
+  Write-InventoryLines 'docker' $script:InvDocker 0
+}
 if ($Version) { Write-Output "$TOOL $ToolVersion"; exit 0 }
 
 if ($List) {
@@ -3549,48 +3650,6 @@ if (-not $Inventory) {
   $script:LogWriter.AutoFlush = $true
 }
 
-# ---------------------------------------------------------------------------
-# Inventory accumulators. $script:Inv maps agent -> files, bytes, first and
-# last mtime (epoch seconds, 0 when unknown) and the matched catalog globs, in
-# order of first match. Add-CollectedFile feeds it instead of copying under -Inventory.
-# ---------------------------------------------------------------------------
-$script:Inv = [ordered]@{}
-function Get-InvEntry([string]$agent) {
-  if (-not $script:Inv.Contains($agent)) {
-    $script:Inv[$agent] = @{ files = 0; bytes = [int64]0; first = [int64]0; last = [int64]0; evidence = (New-Object System.Collections.ArrayList) }
-  }
-  return $script:Inv[$agent]
-}
-function Add-InvEvidence([string]$agent, [string]$glob) {
-  $e = Get-InvEntry $agent
-  if (-not $e.evidence.Contains($glob)) { [void]$e.evidence.Add($glob) }
-}
-function Add-InvFile([string]$agent, $item) {
-  $e = Get-InvEntry $agent
-  $e.files++
-  try { $e.bytes += [int64]$item.Length } catch { }
-  $mt = Get-Epoch $item.LastWriteTimeUtc
-  if ($mt -gt 0) {
-    if ($e.first -eq 0 -or $mt -lt $e.first) { $e.first = $mt }
-    if ($mt -gt $e.last) { $e.last = $mt }
-  }
-}
-function Format-InvTime([int64]$t) {
-  if ($t -le 0) { return '' }
-  return [DateTimeOffset]::FromUnixTimeSeconds($t).UtcDateTime.ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)
-}
-# Agent lines of one accumulator, as compressed JSON in the documented key order.
-function Get-InvLines([string]$user, $acc, [int]$projects) {
-  foreach ($agent in @($acc.Keys)) {
-    $e = $acc[$agent]
-    # A match with no files of its own after exclusions and nested claims gives no line.
-    if ($e.files -eq 0) { continue }
-    $o = [ordered]@{ type = 'agent'; host = $HostName; user = $user; agent = $agent; files = [int64]$e.files; bytes = [int64]$e.bytes
-      first = (Format-InvTime $e.first); last = (Format-InvTime $e.last); projects = $projects; evidence = (@($e.evidence) -join ',') }
-    $o | ConvertTo-Json -Compress
-  }
-}
-
 $script:UserList = @(Get-UserHomes)
 
 Write-CollectorLog "$TOOL $ToolVersion starting on $HostName ($([Environment]::OSVersion.VersionString), PowerShell $($PSVersionTable.PSVersion)) mode=$Mode root=$(if ($Root) { $Root } else { '\' })"
@@ -3604,7 +3663,6 @@ if ($Mode -eq 'live' -and -not $IsAdmin) { Write-CollectorLog "WARNING: not runn
 if ($script:UserList.Count -eq 0) { Write-CollectorLog 'WARNING: no user profile directories found' }
 foreach ($ih in $script:InaccessibleHomes) { Write-CollectorLog "profile not accessible (skipped): $ih" }
 
-$script:InvUsers = @()
 Add-UserHomes
 
 if (-not $NoDocker) { Add-DockerVolumes }
@@ -3614,26 +3672,8 @@ if (-not $NoProjects) {
   Add-Projects
 }
 
-# ---------------------------------------------------------------------------
-# Inventory output: the host line, then one line per (user, agent), then the
-# Docker volume agents as user docker. Nothing is written to disk.
-# ---------------------------------------------------------------------------
 if ($Inventory) {
-  # A home is unreadable when .NET reports it missing although its parent
-  # directory lists it (access denied; a ProfileList entry for a deleted
-  # profile is not counted), or when its entries cannot be listed.
-  $denied = $script:DeniedHomes
-  $unreadable = $denied.Count
-  foreach ($u in $script:UserList) { if (-not (Test-DirReadable $u.home)) { $unreadable++; Write-CollectorLog "WARNING: home of $($u.user) is not readable: $($u.home)" } }
-  $hostLine = [ordered]@{ type = 'host'; host = $HostName; collector = $ToolVersion; mode = $Mode; at = $StartTs
-    users_scanned = ($script:UserList.Count + $denied.Count); users_unreadable = $unreadable; docker_volumes = $script:Docker.found }
-  Write-Output ($hostLine | ConvertTo-Json -Compress)
-  foreach ($pair in $script:InvUsers) {
-    $u = $pair[0]
-    $np = @($script:ProjectList | Where-Object { $_.user -eq $u.user }).Count
-    Get-InvLines $u.user $pair[1] $np
-  }
-  Get-InvLines 'docker' $script:InvDocker 0
+  Write-Inventory
   exit 0
 }
 
