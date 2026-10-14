@@ -40,6 +40,13 @@ eight hex digits). Files:
   `num_turns`, `is_error`. Permission events (`system` subtypes
   `permission_request`, `permission_response`, `permission_auto_approved`,
   `permission_auto_denied`) and `result` lines are always `system` rows.
+  The `system` `init` line's `model` is always a `system` row
+  `model: <id>` (issues 96 and 97), even when a transcript exists, and in
+  the full fallback each `assistant` line whose `message.model` differs
+  is `model: <old> -> <new>` before its rows; one tracker per session
+  id. A `system` `model_refusal_fallback` line (the subtype is in the
+  bundle, its fields are not recorded) is always a `system` row
+  `model_refusal_fallback: <compact JSON of the line less its envelope>`.
   The `user`, `assistant` and `system` `init` lines duplicate the
   transcript and are read only when the session dir holds no
   `.claude/projects/*/*.jsonl` (the full fallback): desktop prompts
@@ -75,9 +82,26 @@ eight hex digits). Files:
   `lastActivityAt` (the grant was held by then), else `createdAt`, and
   `<field>` names which. The entries' inner shape is not determined: real
   installs have shown both lists empty and `chromePermissionMode` a string.
+  The Cowork grants `approvedToolNames`, `webFetchAllowedUrls`,
+  `egressAllowedDomains`, `userApprovedFileAccessPaths`, `enabledMcpTools`
+  and `fileDeleteApprovedMounts` (issue 97; "arrays and objects" in the
+  bundle, which key is which not determined) follow at the same time: a
+  list is one `permission grant: <key> <entry> (as of <field>)` row per
+  entry, an object one `permission grant: <key>.<member>=<value> (as of
+  <field>)` row per member, and any other value one `permission grant:
+  <key>=<value> (as of <field>)` row.
 * `.../scheduled-tasks.json`: `scheduledTasks[]` with `id`,
   `cronExpression` or `fireAt`, `enabled`, `createdAt`, `cwd`,
-  `userSelectedFolders`.
+  `userSelectedFolders`, `permissionMode`, `model`; the row ends with
+  ` permission_mode=<permissionMode> model=<model>` (`-` when absent) and
+  its `model` column is the task's model.
+* `local-agent-mode-sessions/<acct>/<org>/remote-session-spaces.json`:
+  `entries[]` with `sessionId` (the server-side session id) and
+  `folders[]`, the folders granted to a remote Cowork session. One
+  `system` row per folder, `permission setting:
+  entries.<sessionId>.folders=<folder> (from <file>, file mtime)`, at the
+  file's modification time, `project_path` the folder, `session_id`
+  empty. A file that is not a JSON object is one `system` row.
 * `git-worktrees.json`: `worktrees{}` values with `path`, `branch`,
   `sourceBranch`, `baseRepo`, `leasedBy` (the desktop session id, kept in
   the text, not as `session_id`), `createdAt`.
@@ -86,7 +110,9 @@ Every `createdAt`, `errorAt` and `fireAt` is epoch milliseconds, which
 `to_utc` takes as milliseconds because the value is above 1e11.
 
 Not parsed: the claude.ai LevelDB stores, the logs, `spaces.json`,
-memory files, `rpm/` and caches.
+memory files, `rpm/` and caches, and `claude_desktop_config.json`, whose
+`preferences.remoteChatFolderGrants` holds folder grants but which is a
+secret-glob file (its `mcpServers.*.env` can embed API keys).
 """
 
 from __future__ import annotations
@@ -99,7 +125,7 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, compact_json, iter_jsonl, text_of
+from .base import Options, compact_json, file_mtime, iter_jsonl, text_of, track_change
 from .claude_code import ClaudeCodeParser, result_text, tool_summary
 
 BASE = (
@@ -126,6 +152,7 @@ AUDIT_RX = re.compile(
 RECORD_RX = re.compile(BASE + r"(?P<tree>" + _TREES + r")(?:agent/)?local_[0-9a-f-]{36}\.json$")
 SCHED_RX = re.compile(BASE + _TREES + r"scheduled-tasks\.json$")
 WORKTREE_RX = re.compile(BASE + r"git-worktrees\.json$")
+SPACES_RX = re.compile(BASE + r"local-agent-mode-sessions/[^/]+/[^/]+/remote-session-spaces\.json$")
 
 LONG_RX = re.compile(r"^local_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 SHORT_RX = re.compile(r"^[0-9a-f]{8}$")
@@ -161,6 +188,30 @@ GRANT_KEYS = (
     "cuAllowedApps",
     "cuGrantFlags",
     "cuFlagsGrantedAt",
+)
+# Cowork tool, network and folder grants (research section 3, "arrays and
+# objects"; which key is which type is not determined): a list is one row
+# per entry, an object one row per member, anything else one row.
+COWORK_GRANTS = (
+    "approvedToolNames",
+    "webFetchAllowedUrls",
+    "egressAllowedDomains",
+    "userApprovedFileAccessPaths",
+    "enabledMcpTools",
+    "fileDeleteApprovedMounts",
+)
+# Envelope keys of an audit line, left out of a generic row's JSON.
+AUDIT_ENVELOPE = frozenset(
+    (
+        "type",
+        "subtype",
+        "uuid",
+        "session_id",
+        "timestamp",
+        "_audit_timestamp",
+        "_audit_hmac",
+        "_audit_redactions",
+    )
 )
 
 
@@ -249,7 +300,15 @@ class ClaudeDesktopParser(ClaudeCodeParser):
         rel = artifact.rel
         return any(
             rx.match(rel)
-            for rx in (TRANSCRIPT_RX, STAGED_RX, AUDIT_RX, RECORD_RX, SCHED_RX, WORKTREE_RX)
+            for rx in (
+                TRANSCRIPT_RX,
+                STAGED_RX,
+                AUDIT_RX,
+                RECORD_RX,
+                SCHED_RX,
+                WORKTREE_RX,
+                SPACES_RX,
+            )
         )
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
@@ -269,6 +328,8 @@ class ClaudeDesktopParser(ClaudeCodeParser):
             yield from self._scheduled(artifact)
         elif WORKTREE_RX.match(rel):
             yield from self._worktrees(artifact)
+        elif SPACES_RX.match(rel):
+            yield from self._spaces(artifact)
 
     @staticmethod
     def _sess(artifact: Artifact, sess_rel: str) -> Path:
@@ -298,6 +359,7 @@ class ClaudeDesktopParser(ClaudeCodeParser):
         project = _folder(rec) or (_str(rec.get("cwd")) if rec else "")
         cli_id = _str(rec.get("cliSessionId")) if rec else ""
         errors: list = []
+        models: dict = {}
         last_sid = cli_id
         for n, line in iter_jsonl(artifact.disk_path, errors):
             sid = cli_id or _str(line.get("session_id"))
@@ -356,14 +418,33 @@ class ClaudeDesktopParser(ClaudeCodeParser):
                         _bool(line.get("is_error")),
                     ),
                 )
+            elif ltype == "system" and subtype == "init":
+                # The session's model, even when a transcript exists.
+                model = _str(line.get("model"))
+                text = track_change("model", models, sid, model)
+                if text:
+                    r = row("system", text)
+                    r.model = model
+                    yield r
+                if full:
+                    parts = ["%s=%s" % (k, line.get(k)) for k in ("cwd", "model") if line.get(k)]
+                    yield row("system", "init: " + " ".join(parts) if parts else "init")
+            elif ltype == "system" and subtype == "model_refusal_fallback":
+                # The subtype is in the bundle, its fields are not recorded:
+                # print them as they are.
+                rest = {k: v for k, v in line.items() if k not in AUDIT_ENVELOPE}
+                yield row("system", "model_refusal_fallback: " + compact_json(rest))
             elif not full:
                 continue
-            elif ltype == "system" and subtype == "init":
-                parts = ["%s=%s" % (k, line.get(k)) for k in ("cwd", "model") if line.get(k)]
-                yield row("system", "init: " + " ".join(parts) if parts else "init")
             elif ltype == "user":
                 yield from self._audit_user(line, row)
             elif ltype == "assistant":
+                model = _str((line.get("message") or {}).get("model"))
+                text = track_change("model", models, sid, model)
+                if text:
+                    r = row("system", text)
+                    r.model = model
+                    yield r
                 yield from self._audit_assistant(line, row, opts)
         if errors:
             r = self._system(
@@ -521,6 +602,26 @@ class ClaudeDesktopParser(ClaudeCodeParser):
             if v is None or v == "" or v == [] or v == {}:
                 continue
             yield row("system", "permission grant: %s=%s (as of %s)" % (key, _value(v), field), ts)
+        for key in COWORK_GRANTS:
+            v = rec.get(key)
+            if isinstance(v, list):
+                for entry in v:
+                    yield row(
+                        "system",
+                        "permission grant: %s %s (as of %s)" % (key, _value(entry), field),
+                        ts,
+                    )
+            elif isinstance(v, dict):
+                for k, entry in v.items():
+                    yield row(
+                        "system",
+                        "permission grant: %s.%s=%s (as of %s)" % (key, k, _value(entry), field),
+                        ts,
+                    )
+            elif v is not None and v != "":
+                yield row(
+                    "system", "permission grant: %s=%s (as of %s)" % (key, _value(v), field), ts
+                )
 
     @staticmethod
     def _session_collected(artifact: Artifact, rec: dict) -> bool:
@@ -568,11 +669,18 @@ class ClaudeDesktopParser(ClaudeCodeParser):
             when = task.get("cronExpression") or to_utc(task.get("fireAt"))
             r = self._system(
                 artifact,
-                "scheduled task: %s %s enabled=%s"
-                % (_str(task.get("id")), _str(when), _bool(task.get("enabled"))),
+                "scheduled task: %s %s enabled=%s permission_mode=%s model=%s"
+                % (
+                    _str(task.get("id")),
+                    _str(when),
+                    _bool(task.get("enabled")),
+                    _str(task.get("permissionMode")) or "-",
+                    _str(task.get("model")) or "-",
+                ),
                 i,
             )
             r.timestamp_utc = to_utc(task.get("createdAt"))
+            r.model = _str(task.get("model"))
             r.project_path = _str(task.get("cwd")) or _folder(task)
             yield r
 
@@ -601,3 +709,31 @@ class ClaudeDesktopParser(ClaudeCodeParser):
             r.project_path = _str(wt.get("baseRepo"))
             r.git_branch = _str(wt.get("branch"))
             yield r
+
+    # -- remote-session-spaces.json --------------------------------------------
+
+    def _spaces(self, artifact: Artifact) -> Iterator[Row]:
+        """One standing row per folder granted to a remote Cowork session:
+        `entries[].folders[]`, keyed by the entry's `sessionId` (the server's
+        id, kept in the text; `session_id` stays empty)."""
+        doc, bad = self._settings_doc(artifact, "remote-session-spaces.json")
+        if doc is None:
+            if bad is not None:
+                yield bad
+            return
+        entries = doc.get("entries")
+        if not isinstance(entries, list):
+            return
+        ts = file_mtime(artifact)
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            folders = entry.get("folders")
+            if not isinstance(folders, list):
+                continue
+            sid = _str(entry.get("sessionId"))
+            key = "entries.%s.folders" % sid if sid else "entries.folders"
+            for folder in folders:
+                if folder in (None, ""):
+                    continue
+                yield self._standing_row(artifact, ts, _str(folder), key, folder)

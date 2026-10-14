@@ -32,7 +32,14 @@ evidence is in `analyzer/research/claude-code.md`. Files:
     `permission decision: <decision> source=<source> reason=<reasonType>`
     (`-` for a missing key), followed by the object's compact JSON when it
     has other keys; its `tool_use_id` is the line's first `tool_result`
-    block's and `tool_name` is empty, as on `tool_result` rows.
+    block's and `tool_name` is empty, as on `tool_result` rows. The same
+    line's `toolDenialKind` and `userFeedback` (no value set recorded,
+    printed as they are) are appended as ` toolDenialKind=<kind>
+    userFeedback=<text>` when present; a line with either key and no
+    `permissionDecision` gets the row with `-` for the three decision
+    keys. The `plan_mode`, `plan_mode_exit`, `plan_mode_reentry` and
+    `auto_mode` attachments are not read: their field shapes are not
+    recorded in the research.
   - `assistant` records: `message.model` and `requestedModel` (2.1.295);
     `wireToolInputs[<tool_use id>]`
     is the input as the model sent it, used for the Bash command because
@@ -256,6 +263,10 @@ SYSTEM_ENVELOPE = frozenset(
 )
 
 TRANSCRIPT_TYPES = ("user", "assistant", "system", "attachment")
+
+# `user` record keys appended to the `permission decision:` row, in this
+# order; `userFeedback` is free text, so it comes last (research section 3).
+DENIAL_KEYS = ("toolDenialKind", "userFeedback")
 
 
 def tool_summary(name: str, inp) -> str:
@@ -644,7 +655,8 @@ class ClaudeCodeParser(Parser):
     def _user(self, rec, base, artifact: Artifact, opts: Options, is_task: bool) -> Iterator[Row]:
         yield from self._user_blocks(rec, base, artifact, is_task)
         decision = rec.get("permissionDecision")
-        if decision is not None:
+        denial = any(rec.get(k) not in (None, "") for k in DENIAL_KEYS)
+        if decision is not None or denial:
             yield self._permission_row(rec, decision, base)
 
     @staticmethod
@@ -660,8 +672,15 @@ class ClaudeCodeParser(Parser):
             )
             if first is not None:
                 row.tool_use_id = str(first.get("tool_use_id") or "")
+        denial = "".join(
+            " %s=%s" % (k, setting_value(rec[k]))
+            for k in DENIAL_KEYS
+            if rec.get(k) not in (None, "")
+        )
+        if decision is None:
+            decision = {}
         if not isinstance(decision, dict):
-            row.text = compact("permission decision: " + compact_json(decision))
+            row.text = compact("permission decision: " + compact_json(decision) + denial)
             return row
 
         def val(key: str) -> str:
@@ -675,7 +694,7 @@ class ClaudeCodeParser(Parser):
         )
         if set(decision) - {"decision", "source", "reasonType"}:
             text += " " + compact_json(decision)
-        row.text = compact(text)
+        row.text = compact(text + denial)
         return row
 
     def _user_blocks(self, rec, base, artifact: Artifact, is_task: bool) -> Iterator[Row]:

@@ -348,6 +348,29 @@ carrying the call's `tool_name` and `tool_use_id`; and one
 `project_path` the project, the file's modification time and an empty
 `session_id`.
 
+From issues 96 and 97, the `claude-code` decision row also ends with
+` toolDenialKind=<value> userFeedback=<text>` when the same line records
+either key, each printed as recorded and `userFeedback` last because it
+is free text; a line with either key and no `permissionDecision` yields
+`permission decision: - source=- reason=- toolDenialKind=<value>`. The
+`claude-desktop` parser writes `model: <id>` from each audit log's
+`system` `init` line, even when the session's transcript exists, and in
+the full fallback `model: <old> -> <new>` when an `assistant` line's
+model changes; a `model_refusal_fallback` line, whose fields are not
+recorded, is `model_refusal_fallback: <compact JSON of its fields>`. A
+Cowork session record adds one `permission grant: <key> <entry>`,
+`permission grant: <key>.<member>=<value>` or `permission grant:
+<key>=<value>` row, with the same `(as of <field>)` time, per entry of
+`approvedToolNames`, `webFetchAllowedUrls`, `egressAllowedDomains`,
+`userApprovedFileAccessPaths`, `enabledMcpTools` and
+`fileDeleteApprovedMounts`. A scheduled task's row ends with
+` permission_mode=<permissionMode> model=<model>` (`-` when absent) and
+carries the task's model in the `model` column. Each folder in
+`remote-session-spaces.json` is `permission setting:
+entries.<sessionId>.folders=<folder> (from <file>, file mtime)`, with
+`project_path` the folder and `session_id` empty, because the
+`<sessionId>` there is the server-side id of a remote Cowork session.
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and

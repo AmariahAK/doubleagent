@@ -211,6 +211,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   project in `.config/muse/trust.json`, not read before, as a
   `permission setting: projects.<path>.decision=<decision> (from
   .config/muse/trust.json, file mtime)` row ([#96], [#97]).
+- The `claude-code` `permission decision:` row ends with
+  `toolDenialKind=<value> userFeedback=<text>` when the line records
+  either key, and a line with either key but no `permissionDecision`
+  gets the row too ([#97]).
+- The `claude-desktop` parser writes `model: <id>` from each audit log's
+  `init` line even when the transcript exists, `model: <old> -> <new>`
+  in the full audit fallback, and a `model_refusal_fallback:` row; adds
+  one `permission grant:` row per entry of `approvedToolNames`,
+  `webFetchAllowedUrls`, `egressAllowedDomains`,
+  `userApprovedFileAccessPaths`, `enabledMcpTools` and
+  `fileDeleteApprovedMounts` in a session record; ends each scheduled
+  task row with `permission_mode=<mode> model=<model>`; and reads
+  `remote-session-spaces.json`, not read before, as one
+  `permission setting:` row per folder granted to a remote Cowork
+  session, at the file's modification time ([#96], [#97]).
 
 ### Changed
 

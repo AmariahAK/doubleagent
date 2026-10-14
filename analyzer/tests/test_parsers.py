@@ -432,6 +432,63 @@ class ClaudeCode295Tests(ParserBase):
             'permission decision: deny source=- reason=- {"decision":"deny","ruleId":"r1"}',
         )
 
+    def _append_result(self, tool_use_id: str, **keys):
+        rec = {
+            "type": "user",
+            "sessionId": CLAUDE_295_SESSION,
+            "timestamp": "2026-10-01T11:00:10.000Z",
+            "message": {
+                "role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": tool_use_id, "content": "no"}],
+            },
+        }
+        rec.update(keys)
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+
+    def test_denial_kind_and_feedback(self):
+        # Issue 97: `toolDenialKind` and `userFeedback` on the same line are
+        # appended to the decision row, printed as recorded (no value set is
+        # in the research; these values are fixture only).
+        self._append_result(
+            "toolu_95",
+            permissionDecision={"decision": "deny", "source": "user", "reasonType": "rule"},
+            toolDenialKind="user_rejected",
+            userFeedback="use the read-only listing instead",
+        )
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        # Every earlier row is unchanged.
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[: len(self.EXPECTED)]],
+            self.EXPECTED,
+        )
+        perm = rows[-1]
+        self.assertEqual(
+            (perm.turn_type, perm.tool_use_id, perm.timestamp_utc, perm.text),
+            (
+                "system",
+                "toolu_95",
+                "2026-10-01T11:00:10.000Z",
+                "permission decision: deny source=user reason=rule "
+                "toolDenialKind=user_rejected userFeedback=use the read-only listing instead",
+            ),
+        )
+
+    def test_denial_keys_without_decision(self):
+        self._append_result("toolu_95", toolDenialKind="user_rejected")
+        rows = self.rows_for(ClaudeCodeParser(), self.REL)
+        self.assertEqual(
+            [(r.turn_type, r.tool_use_id, r.text) for r in rows[-2:]],
+            [
+                ("tool_result", "toolu_95", "no"),
+                (
+                    "system",
+                    "toolu_95",
+                    "permission decision: - source=- reason=- toolDenialKind=user_rejected",
+                ),
+            ],
+        )
+
     def test_thinking_opt_in(self):
         rows = self.rows_for(ClaudeCodeParser(), self.REL, include_thinking=True)
         self.assertEqual([r for r in rows if r.turn_type == "thinking"], [])
@@ -7204,8 +7261,10 @@ from fixtures import (
     CD_FALLBACK_DIR,
     CD_FALLBACK_REL,
     CD_RECORD_REL,
+    CD_REMOTE_SESSION,
     CD_SCHED_REL,
     CD_SESSION,
+    CD_SPACES_REL,
     CD_TRANSCRIPT_REL,
     CD_WORKTREES_REL,
     claude_subagent_records,
@@ -7260,11 +7319,19 @@ class ClaudeDesktopTests(ParserBase):
         self.assertEqual({r.agent for r in rows}, {"claude-desktop"})
 
     def test_audit_with_transcript(self):
-        # The transcript holds the turns: only permission and result rows.
+        # The transcript holds the turns: only the init model, permission
+        # and result rows.
         rows = self.rows_for(ClaudeDesktopParser(), CD_AUDIT_REL)
         self.assertEqual(
             [(r.source_line, r.turn_type, r.tool_name, r.timestamp_utc, r.text) for r in rows],
             [
+                (
+                    2,
+                    "system",
+                    "",
+                    "2026-10-01T10:00:01.000Z",
+                    "model: claude-fable-5-1",
+                ),
                 (
                     4,
                     "system",
@@ -7291,6 +7358,7 @@ class ClaudeDesktopTests(ParserBase):
         for r in rows:
             self.assertEqual((r.agent, r.session_id), ("claude-desktop", CD_CLI_SESSION))
             self.assertEqual(r.project_path, "/srv/proj")
+        self.assertEqual(rows[0].model, "claude-fable-5-1")
 
     def test_audit_fallback(self):
         rows = self.rows_for(ClaudeDesktopParser(), CD_FALLBACK_REL)
@@ -7298,6 +7366,7 @@ class ClaudeDesktopTests(ParserBase):
             [(r.source_line, r.turn_type, r.text) for r in rows],
             [
                 (1, "user", "list the files"),
+                (2, "system", "model: claude-fable-5-1"),
                 (2, "system", "init: cwd=/sessions/quiet-river-1234 model=claude-fable-5-1"),
                 (3, "system", "context: notification: folder mounted"),
                 (4, "assistant", "Listing."),
@@ -7306,7 +7375,19 @@ class ClaudeDesktopTests(ParserBase):
                 (6, "tool_result", "README.md"),
                 (7, "assistant", "One file: README.md"),
                 (9, "system", "result: success turns=1 error=false"),
+                (
+                    10,
+                    "system",
+                    'model_refusal_fallback: {"note":"fields not recorded; fixture only"}',
+                ),
+                (11, "system", "model: claude-fable-5-1 -> claude-opus-5-5"),
+                (11, "assistant", "Answered by the fallback."),
             ],
+        )
+        change = rows[-2]
+        self.assertEqual(
+            (change.timestamp_utc, change.model, change.session_id),
+            ("2026-10-02T09:00:10.000Z", "claude-opus-5-5", CD_FALLBACK_CLI),
         )
         by = {(r.source_line, r.turn_type): r for r in rows}
         # The prompt's own timestamp wins over the audit write time.
@@ -7348,9 +7429,14 @@ class ClaudeDesktopTests(ParserBase):
 
     def test_cowork_record(self):
         rows = self.rows_for(ClaudeDesktopParser(), CD_RECORD_REL)
-        # The transcript and audit log exist, so initialMessage is not repeated.
+        # The transcript and audit log exist, so initialMessage is not
+        # repeated; the grant rows follow (test_cowork_record_grants).
         self.assertEqual(
-            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (r.source_line, r.turn_type, r.text)
+                for r in rows
+                if not r.text.startswith("permission grant:")
+            ],
             [
                 (
                     1,
@@ -7366,6 +7452,49 @@ class ClaudeDesktopTests(ParserBase):
             ("2026-09-30T10:00:00.000Z", CD_CLI_SESSION, "/srv/proj", "", "claude-fable-5-1"),
         )
 
+    def test_cowork_record_grants(self):
+        # Issue 97: one row per list entry and object member of the Cowork
+        # tool, network and folder grants, at lastActivityAt; an empty list
+        # (fileDeleteApprovedMounts) yields nothing.
+        rows = self.rows_for(ClaudeDesktopParser(), CD_RECORD_REL)[1:]
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission grant: approvedToolNames Bash (as of lastActivityAt)",
+                "permission grant: approvedToolNames WebFetch (as of lastActivityAt)",
+                "permission grant: webFetchAllowedUrls https://example.invalid/docs "
+                "(as of lastActivityAt)",
+                "permission grant: egressAllowedDomains example.invalid (as of lastActivityAt)",
+                "permission grant: userApprovedFileAccessPaths /srv/proj/data "
+                "(as of lastActivityAt)",
+                "permission grant: enabledMcpTools.github:create_issue=true (as of lastActivityAt)",
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.source_line),
+                ("system", "2026-09-30T10:01:00.000Z", CD_CLI_SESSION, "/srv/proj", 1),
+            )
+
+    def test_cowork_grant_scalar_value(self):
+        path = self.home / CD_RECORD_REL
+        rec = json.loads(path.read_text(encoding="utf-8"))
+        for key in (
+            "approvedToolNames",
+            "webFetchAllowedUrls",
+            "egressAllowedDomains",
+            "userApprovedFileAccessPaths",
+            "enabledMcpTools",
+        ):
+            rec.pop(key)
+        rec["fileDeleteApprovedMounts"] = "proj"
+        path.write_text(json.dumps(rec), encoding="utf-8")
+        rows = self.rows_for(ClaudeDesktopParser(), CD_RECORD_REL)
+        self.assertEqual(
+            [r.text for r in rows[1:]],
+            ["permission grant: fileDeleteApprovedMounts=proj (as of lastActivityAt)"],
+        )
+
     def test_record_without_session_and_with_error(self):
         shutil.rmtree(self.home / CD_COWORK_ORG / CD_SESSION)
         path = self.home / CD_RECORD_REL
@@ -7374,7 +7503,11 @@ class ClaudeDesktopTests(ParserBase):
         path.write_text(json.dumps(rec), encoding="utf-8")
         rows = self.rows_for(ClaudeDesktopParser(), CD_RECORD_REL)
         self.assertEqual(
-            [(r.turn_type, r.timestamp_utc, r.text) for r in rows],
+            [
+                (r.turn_type, r.timestamp_utc, r.text)
+                for r in rows
+                if not r.text.startswith("permission grant:")
+            ],
             [
                 (
                     "system",
@@ -7546,10 +7679,12 @@ class ClaudeDesktopTests(ParserBase):
                     "system",
                     "2026-09-30T10:00:00.000Z",
                     "/srv/proj",
-                    "scheduled task: daily-report 0 9 * * 1-5 enabled=true",
+                    "scheduled task: daily-report 0 9 * * 1-5 enabled=true "
+                    "permission_mode=default model=claude-fable-5-1",
                 )
             ],
         )
+        self.assertEqual(rows[0].model, "claude-fable-5-1")
         rows = self.rows_for(ClaudeDesktopParser(), CD_WORKTREES_REL)
         self.assertEqual(len(rows), 1)
         r = rows[0]
@@ -7562,6 +7697,62 @@ class ClaudeDesktopTests(ParserBase):
             "worktree created: /srv/proj/.claude/worktrees/brave-otter "
             "branch=claude/brave-otter from=main leased by "
             "local_e2e2e2e2-9999-4aaa-8bbb-cccccccccccc",
+        )
+
+    def test_scheduled_task_without_mode_or_model(self):
+        doc = json.loads((self.home / CD_SCHED_REL).read_text(encoding="utf-8"))
+        del doc["scheduledTasks"][0]["permissionMode"], doc["scheduledTasks"][0]["model"]
+        (self.home / CD_SCHED_REL).write_text(json.dumps(doc), encoding="utf-8")
+        rows = self.rows_for(ClaudeDesktopParser(), CD_SCHED_REL)
+        self.assertEqual(
+            [(r.text, r.model) for r in rows],
+            [
+                (
+                    "scheduled task: daily-report 0 9 * * 1-5 enabled=true "
+                    "permission_mode=- model=-",
+                    "",
+                )
+            ],
+        )
+
+    def test_remote_session_spaces(self):
+        # Issue 97: one standing row per granted folder, at the file mtime,
+        # with the folder as project_path and no session id.
+        rows = self.rows_for(ClaudeDesktopParser(), CD_SPACES_REL)
+        key = "entries.%s.folders" % CD_REMOTE_SESSION
+        self.assertEqual(
+            [
+                (r.turn_type, r.text, r.timestamp_utc, r.session_id, r.project_path, r.source_line)
+                for r in rows
+            ],
+            [
+                (
+                    "system",
+                    "permission setting: %s=%s (from %s, file mtime)"
+                    % (key, folder, CD_SPACES_REL),
+                    "2026-10-01T10:00:00.000Z",
+                    "",
+                    folder,
+                    1,
+                )
+                for folder in ("/srv/proj", "/srv/docs")
+            ],
+        )
+
+    def test_remote_session_spaces_not_object(self):
+        (self.home / CD_SPACES_REL).write_text("[1]", encoding="utf-8")
+        rows = self.rows_for(ClaudeDesktopParser(), CD_SPACES_REL)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text) for r in rows],
+            [("system", 1, "parser: remote-session-spaces.json is not a JSON object")],
+        )
+        (self.home / CD_SPACES_REL).write_text(
+            '{"entries": [{"folders": ["/x"]}, 3]}', encoding="utf-8"
+        )
+        rows = self.rows_for(ClaudeDesktopParser(), CD_SPACES_REL)
+        self.assertEqual(
+            [r.text for r in rows],
+            ["permission setting: entries.folders=/x (from %s, file mtime)" % CD_SPACES_REL],
         )
 
     def test_thinking_opt_in(self):
@@ -7619,7 +7810,7 @@ class ClaudeDesktopTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / CD_AUDIT_REL)
         rows = self.rows_for(ClaudeDesktopParser(), CD_AUDIT_REL)
-        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(rows), 5)
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
             ("system", CD_CLI_SESSION, 8),

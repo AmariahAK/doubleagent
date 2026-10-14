@@ -7568,6 +7568,9 @@ CD_CODE_RC_CLI = "e3e3e3e3-5555-4666-8777-888888888888"
 CD_CODE_RC_RECORD_REL = "%s/%s.json" % (CD_CODE_ORG, CD_CODE_RC_SESSION)
 CD_SCHED_REL = "%s/scheduled-tasks.json" % CD_COWORK_ORG
 CD_WORKTREES_REL = "%s/git-worktrees.json" % CD_BASE
+CD_SPACES_REL = "%s/remote-session-spaces.json" % CD_COWORK_ORG
+CD_REMOTE_SESSION = "0123456789abcdef0123456789abcdef"
+CD_SPACES_MTIME = 1790848800  # 2026-10-01T10:00:00Z
 
 
 def claude_desktop_record():
@@ -7587,6 +7590,14 @@ def claude_desktop_record():
         "initialMessage": "why does the test fail?",
         "sessionType": "agent",
         "emailAddress": "user@example.invalid",
+        # Cowork grants (issue 97): "arrays and objects" in the bundle, the
+        # type of each key not determined; these values are fixture only.
+        "approvedToolNames": ["Bash", "WebFetch"],
+        "webFetchAllowedUrls": ["https://example.invalid/docs"],
+        "egressAllowedDomains": ["example.invalid"],
+        "userApprovedFileAccessPaths": ["/srv/proj/data"],
+        "enabledMcpTools": {"github:create_issue": True},
+        "fileDeleteApprovedMounts": [],
     }
 
 
@@ -7804,6 +7815,26 @@ def claude_desktop_fallback_records():
             num_turns=1,
             uuid="00000000-0000-4000-8000-0000000000b6",
         ),  # 9
+        # The subtype is in the bundle, its fields are not recorded.
+        line(
+            10,
+            "09",
+            type="system",
+            subtype="model_refusal_fallback",
+            note="fields not recorded; fixture only",
+        ),  # 10
+        line(
+            11,
+            "10",
+            type="assistant",
+            uuid="00000000-0000-4000-8000-0000000000b7",
+            parent_tool_use_id=None,
+            message={
+                "model": "claude-opus-5-5",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Answered by the fallback."}],
+            },
+        ),  # 11
     ]
 
 
@@ -7882,6 +7913,8 @@ def claude_desktop_scheduled_tasks():
                 "filePath": "/home/user/Claude/Scheduled/daily-report/SKILL.md",
                 "createdAt": 1790762400000,
                 "cwd": "/srv/proj",
+                "permissionMode": "default",
+                "model": "claude-fable-5-1",
             }
         ],
         "recordedSkips": {},
@@ -7908,6 +7941,12 @@ def claude_desktop_worktrees():
     }
 
 
+def claude_desktop_remote_spaces():
+    """Research section 3: `entries[]` with `sessionId` (32 hex) and
+    `folders[]`; observed shape, fixture values."""
+    return {"entries": [{"sessionId": CD_REMOTE_SESSION, "folders": ["/srv/proj", "/srv/docs"]}]}
+
+
 def build_claude_desktop(home: Path) -> None:
     cowork = home / CD_COWORK_ORG
     cowork.mkdir(parents=True, exist_ok=True)
@@ -7925,6 +7964,8 @@ def build_claude_desktop(home: Path) -> None:
     )
     (home / CD_SCHED_REL).write_text(json.dumps(claude_desktop_scheduled_tasks()), encoding="utf-8")
     (home / CD_WORKTREES_REL).write_text(json.dumps(claude_desktop_worktrees()), encoding="utf-8")
+    (home / CD_SPACES_REL).write_text(json.dumps(claude_desktop_remote_spaces()), encoding="utf-8")
+    os.utime(home / CD_SPACES_REL, (CD_SPACES_MTIME, CD_SPACES_MTIME))
     # Noise the parser must not want.
     (cowork / "spaces.json").write_text('{"spaces":[]}', encoding="utf-8")
     (cowork / "cowork_settings.json").write_text("{}", encoding="utf-8")

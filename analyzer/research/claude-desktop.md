@@ -669,6 +669,8 @@ skipped when a transcript for the same session dir exists. Always yield:
 | `system` `permission_response` | `system` | `permission response: <tool_name> <decision> granted=<bool>` | `tool_name` |
 | `system` `permission_auto_approved` / `_denied` | `system` | `permission auto-approved: <tool_name> (<source or scheduled_task_id>)` | `tool_name` |
 | `result` | `system` | `result: <subtype> turns=<num_turns> error=<is_error>` | |
+| `system` `init` | `system` | `model: <model>` the first time a session's model is seen (issues 96 and 97) | `model` the line's `model`; one tracker per session id in the file |
+| `system` `model_refusal_fallback` | `system` | `model_refusal_fallback: <compact JSON of the line less type, subtype, uuid, session_id, timestamp and the _audit_ keys>` | the subtype is in the bundle loop above, but its fields are not recorded, so the parser prints them as they are rather than a `model: <old> -> <new>` row |
 
 When no transcript exists for the session dir (deleted, never written,
 or not collected), fall back to the full audit log: `user` lines with
@@ -677,7 +679,10 @@ or not collected), fall back to the full audit log: `user` lines with
 (`context: notification:`), `assistant` content blocks become
 `assistant`, `tool_use` (`tool_name` = `name`, `tool_use_id` = `id`) and
 `thinking` (opt-in), `user` `tool_result` blocks become `tool_result`
-rows joined on `tool_use_id`, `system` `init` becomes one `system` row.
+rows joined on `tool_use_id`, `system` `init` becomes one `system` row
+(after its `model:` row), and an `assistant` line whose `message.model`
+differs from the session's last one is preceded by
+`model: <old> -> <new>` with `model` the new id.
 `timestamp_utc` is the line's `timestamp` when present, else
 `_audit_timestamp`; `model` is `message.model`. A line that does not
 parse is one `system` row and reading continues. `session_id` is the
@@ -723,10 +728,22 @@ which. The entries' inner shape is not determined: the bundle reading
 above did not cover these keys, and the real installs showed both lists
 `[]` and `chromePermissionMode` a string, so the fixture's entries (a
 rule string, and an object shaped like the CLI's permission update
-`{type, rules, behavior, destination}`) are invented. Not read:
-`approvedToolNames`, `webFetchAllowedUrls`, `egressAllowedDomains`,
-`userApprovedFileAccessPaths` and `chromePermsBeforeUnsupervised`, which
-are Cowork grants too but were outside issue 93.
+`{type, rules, behavior, destination}`) are invented.
+
+Cowork grants (issue 97), after those rows and at the same time with the
+same `(as of <field>)` suffix: `approvedToolNames`, `webFetchAllowedUrls`,
+`egressAllowedDomains`, `userApprovedFileAccessPaths`, `enabledMcpTools`
+and `fileDeleteApprovedMounts`. [Section 3](#3-record-schema) types them only as
+"arrays and objects", without saying which key is which, so a list is one
+row per entry, `permission grant: <key> <entry>`, an object one row per
+member, `permission grant: <key>.<member>=<value>`, and any other
+non-empty value one row, `permission grant: <key>=<value>`; the fixture's
+values are invented. Not read: `remoteMcpServersConfig` (it can carry
+server credentials) and `chromePermsBeforeUnsupervised`.
+`preferences.remoteChatFolderGrants` is not in the session record but in
+`claude_desktop_config.json`, a secret-glob file (its `mcpServers.*.env`
+can embed API keys), so the parser does not read it and its folder
+grants get no row.
 
 If the record has `initialMessage` and no transcript or audit file for
 the session was collected, also yield it as a `user` row at `createdAt`.
@@ -734,9 +751,20 @@ If `error` is set, one `system` row `session error: <errorCategory>:
 <error>` at `errorAt`. `source_line` is `1`.
 
 **Scheduled tasks.** One `system` row per task at `createdAt`:
-`scheduled task: <id> <cronExpression or fireAt as ISO> enabled=<bool>`
-with `project_path` = `cwd` or `userSelectedFolders[0]`; `source_line`
-is the array index plus one.
+`scheduled task: <id> <cronExpression or fireAt as ISO> enabled=<bool>
+permission_mode=<permissionMode> model=<model>` (`-` for an absent key)
+with `project_path` = `cwd` or `userSelectedFolders[0]` and `model` the
+task's `model`; `source_line` is the array index plus one.
+
+**Remote session folders.** `remote-session-spaces.json`: one `system`
+row per `entries[].folders[]` entry, `permission setting:
+entries.<sessionId>.folders=<folder> (from <file>, file mtime)`
+(`entries.folders` when the entry has no `sessionId`), at the file's
+modification time (the manifest `mtime` when there is one), with
+`project_path` the folder and `session_id` empty, because the entry's
+`sessionId` is the server-side id, not a CLI session; `source_line` 1. A
+file that is not a JSON object is one `system` row `parser:
+remote-session-spaces.json is not a JSON object`.
 
 **Worktrees.** One `system` row per entry at `createdAt`:
 `worktree created: <path> branch=<branch> from=<sourceBranch>`,
@@ -745,7 +773,7 @@ is the array index plus one.
 text).
 
 Not parsed: LevelDB stores, logs, `spaces.json`, memory Markdown,
-`rpm/`, caches.
+`rpm/`, caches, `claude_desktop_config.json`.
 
 ### Synthetic fixture records
 
