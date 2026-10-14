@@ -1947,7 +1947,9 @@ function Write-ManifestRow {
   if ($script:Counts.ContainsKey($status)) { $script:Counts[$status]++ }
   # The error_read row for an unreadable home itself does not make it a home
   # with artifacts.
-  if (-not ($status -eq 'error_read' -and $path -eq $homeDir)) { $script:RowHomes[$homeDir] = $true }
+  if (-not ($status -eq 'error_read' -and $path -eq $homeDir)) {
+    $script:RowHomes[$homeDir] = $true
+  }
   if ($status -eq 'collected') { $script:Counts['bytes'] += $size }
 }
 
@@ -1982,6 +1984,308 @@ function Write-ReadErrorRow {
   $owner = ''; if (Test-PathQuiet $dir 'Container') { $owner = Get-OwnerName $dir }
   $row = @($user, $homeDir, $agent, $dir, '', 'dir', 0, $mtime, $atime, 0, $btime, $owner,
     $attributes, '', $false, 'error_read', '', $errorText)
+  Write-ManifestRow @row
+}
+
+# ===========================================================================
+# 5. Staging files
+# ===========================================================================
+# PowerShell has no worker programs: the sh collector needs them because
+# find -exec cannot call shell functions, while here Add-CollectedTree calls
+# Add-CollectedFile in this process for every file. Each file is read with
+# Get-Item (which does not follow a reparse point) before it is copied, so
+# the row holds the pre-copy times; it is copied with shared access into the
+# staging tree at fs/<original path>, and the staged copy, not the source,
+# is hashed, so the hash matches the archived bytes even when a running
+# agent appends to the source mid-collection.
+
+# Takes a full source path; returns its archive path: fs/ plus the path
+# relative to -Root in image mode, fs/<drive letter>/... for a drive path,
+# or fs/ plus the path with its leading separators removed otherwise.
+function Get-ArchivePath([string]$full) {
+  if ($Mode -eq 'image') { return 'fs/' + (Get-RelPath $Root $full) }
+  if ($full.Length -ge 3 -and $full[1] -eq ':') {
+    return 'fs/' + $full.Substring(0, 1).ToUpper() + '/' + $full.Substring(3).Replace('\', '/')
+  }
+  return 'fs/' + $full.TrimStart('\').Replace('\', '/')
+}
+
+# Staging directories already created or found, so each file does not test
+# its parent again.
+$script:StagedDirs = New-Object 'System.Collections.Generic.HashSet[string]'
+
+# Takes the source path, the staging path and the source's pre-copy
+# Get-Item from Add-CollectedFile; creates the staging directory when
+# $script:StagedDirs does not have it yet, copies the file and returns the
+# SHA-256 of the staged copy ('' when it cannot be read back). Throws when
+# the directory or the copy fails. The source is opened with
+# FileShare.ReadWrite|Delete so files held open by a running editor (SQLite
+# state stores, LevelDB) can still be read.
+# The hash reads the staged file back through the handle that wrote it,
+# before it is closed: reopening a file just written waits for the
+# antivirus scan of it on Windows, which made the hash the slowest step.
+# The copy gets the source's timestamps after the hash has read it. Both
+# paths are opened in the extended form, so neither side is limited to 260
+# characters (#77).
+function Copy-FileShared([string]$source, [string]$destination, $item) {
+  $inStream = $null; $outStream = $null; $sha256 = ''
+  $source = ConvertTo-ExtendedPath $source; $destination = ConvertTo-ExtendedPath $destination
+  $stageDir = [System.IO.Path]::GetDirectoryName($destination)
+  if (-not $script:StagedDirs.Contains($stageDir)) {
+    if (-not (Test-PathQuiet $stageDir 'Any')) {
+      [void][System.IO.Directory]::CreateDirectory($stageDir)
+    }
+    [void]$script:StagedDirs.Add($stageDir)
+  }
+  try {
+    $inStream = New-Object System.IO.FileStream($source, [System.IO.FileMode]::Open,
+      [System.IO.FileAccess]::Read, $script:ShareReadWriteDelete)
+    $outStream = New-Object System.IO.FileStream($destination, [System.IO.FileMode]::Create,
+      [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+    $inStream.CopyTo($outStream)
+    $inStream.Dispose(); $inStream = $null
+    try {
+      $outStream.Flush(); $outStream.Position = 0
+      $hash = $script:Sha256.ComputeHash($outStream)
+      $sha256 = [System.BitConverter]::ToString($hash).Replace('-', '').ToLowerInvariant()
+    } catch { $sha256 = '' }
+  } finally {
+    if ($outStream) { $outStream.Dispose() }
+    if ($inStream) { $inStream.Dispose() }
+  }
+  try {
+    [System.IO.File]::SetCreationTimeUtc($destination, $item.CreationTimeUtc)
+    [System.IO.File]::SetLastWriteTimeUtc($destination, $item.LastWriteTimeUtc)
+    [System.IO.File]::SetLastAccessTimeUtc($destination, $item.LastAccessTimeUtc)
+  } catch { }
+  return $sha256
+}
+
+# ---------------------------------------------------------------------------
+# Symlinks are recreated in the staging tree with their target string as
+# stored, as the sh collector does with ln -s, so tar archives the link
+# itself. PowerShell 7 (.NET 6+) has File/Directory.CreateSymbolicLink;
+# Windows PowerShell 5.1 runs cmd.exe's mklink, which keeps the target
+# verbatim, accepts one that does not exist, and works unprivileged in
+# Developer Mode from Windows 10 1703. New-Item -ItemType SymbolicLink is not
+# used: on 5.1 it resolves a relative target against the current directory
+# and refuses a target that does not exist. A zip cannot store links, so the
+# zip path never has them: none are made when zip is the archiver from the
+# start (CAC_ARCHIVER=zip), and they are removed before a fall back to zip.
+# Each staged link keeps its target string, which the PowerShell tar writer
+# stores as it was given to the link API.
+# ---------------------------------------------------------------------------
+$script:LinkApi = $null
+$script:LinkApiError = ''
+$script:LinkFileMethod = $null
+$script:LinkDirMethod = $null
+$script:CmdExe = ''
+# Each staged link as @(plain staging path, is a directory link, target).
+$script:StagedLinks = New-Object System.Collections.ArrayList
+# Links left out because the archive is a zip, and links that failed.
+$script:LinkCounts = @{ zip = 0; failed = 0 }
+
+# Returns the link API this PowerShell has, detected once and cached in
+# $script:LinkApi: 'dotnet' (CreateSymbolicLink, PowerShell 7), 'mklink'
+# (cmd.exe, Windows PowerShell 5.1), or '' with the reason in
+# $script:LinkApiError. The .NET methods are looked up by reflection: they
+# do not exist in .NET Framework.
+function Get-LinkApi {
+  if ($null -ne $script:LinkApi) { return $script:LinkApi }
+  $script:LinkApi = ''
+  $twoStrings = [Type[]]@([string], [string])
+  $script:LinkFileMethod = [System.IO.File].GetMethod('CreateSymbolicLink', $twoStrings)
+  $script:LinkDirMethod = [System.IO.Directory].GetMethod('CreateSymbolicLink', $twoStrings)
+  if ($null -ne $script:LinkFileMethod -and $null -ne $script:LinkDirMethod) {
+    $script:LinkApi = 'dotnet'
+  }
+  elseif ($env:OS -eq 'Windows_NT') {
+    $cmdPath = ''
+    if ($env:SystemRoot) { $cmdPath = Join-PathSafe $env:SystemRoot 'System32\cmd.exe' }
+    if ($cmdPath -ne '' -and (Test-PathQuiet $cmdPath 'Leaf')) {
+      $script:CmdExe = $cmdPath; $script:LinkApi = 'mklink'
+    }
+    else { $script:LinkApiError = 'cmd.exe not found for mklink' }
+  } else { $script:LinkApiError = 'no symlink API in this PowerShell' }
+  return $script:LinkApi
+}
+
+# Takes the link path, its target and whether it is a directory link; runs
+# cmd.exe /d /v:off /c mklink [/D] "link" "target" with an argument string
+# built here, so PowerShell's native-argument quoting is not involved.
+# Returns '' on success, otherwise mklink's message and exit code.
+function Invoke-Mklink([string]$linkPath, [string]$target, [bool]$isDir) {
+  # cmd expands %NAME% even inside quotes, and a quote would end the argument.
+  if ($linkPath.Contains('%') -or $linkPath.Contains('"') -or $target.Contains('%') -or
+    $target.Contains('"')) {
+    return 'link path or target contains % or ", which cmd.exe mklink cannot take verbatim'
+  }
+  $dirSwitch = ''; if ($isDir) { $dirSwitch = '/D ' }
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = $script:CmdExe
+  $quotedArgs = '"' + $linkPath + '" "' + $target + '"'
+  $startInfo.Arguments = '/d /v:off /c mklink ' + $dirSwitch + $quotedArgs
+  # The link path is absolute; a UNC current directory would add a cmd.exe
+  # warning to stderr.
+  $startInfo.WorkingDirectory = $env:SystemRoot
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $process = [System.Diagnostics.Process]::Start($startInfo)
+  # mklink's messages are short, so reading one stream to the end cannot
+  # block on the other.
+  $errText = $process.StandardError.ReadToEnd()
+  [void]$process.StandardOutput.ReadToEnd()
+  $process.WaitForExit()
+  if ($process.ExitCode -eq 0) { return '' }
+  $message = ($errText -replace '\s+', ' ').Trim()
+  if ($message -eq '') { $message = 'mklink failed' }
+  return "$message (mklink exit $($process.ExitCode))"
+}
+
+# Takes the plain staging path of a link, its target and whether it is a
+# directory link; makes the link and returns '' on success, otherwise the
+# reason. The link is made at the extended form of the path (mklink accepts
+# it too) and recorded in $script:StagedLinks under the plain one, which the
+# tar writer compares with the stage.
+function Invoke-CreateSymlink([string]$linkPath, [string]$target, [bool]$isDir) {
+  $api = Get-LinkApi
+  $extendedLinkPath = ConvertTo-ExtendedPath $linkPath
+  try {
+    if ($api -eq 'dotnet') {
+      $method = $script:LinkFileMethod; if ($isDir) { $method = $script:LinkDirMethod }
+      # Plain strings: Invoke rejects PSObject-wrapped arguments.
+      $methodArgs = New-Object 'object[]' 2
+      $methodArgs[0] = [string]$extendedLinkPath; $methodArgs[1] = [string]$target
+      [void]$method.Invoke($null, $methodArgs)
+    } elseif ($api -eq 'mklink') {
+      $why = Invoke-Mklink $extendedLinkPath $target $isDir
+      if ($why -ne '') { return (ConvertFrom-ExtendedText $why) }
+    } else { return $script:LinkApiError }
+  } catch {
+    # Invoke wraps the IOException; report the innermost message.
+    $exception = $_.Exception
+    while ($null -ne $exception.InnerException) { $exception = $exception.InnerException }
+    return (ConvertFrom-ExtendedText $exception.Message)
+  }
+  [void]$script:StagedLinks.Add(@($linkPath, $isDir, $target))
+  return ''
+}
+
+# Takes a reparse point's Get-Item and its plain staging path; recreates the
+# link there and returns '' or the row's error. Counts zip and failed links
+# in $script:LinkCounts and logs a failure.
+function Add-StagedLink($item, [string]$stagePath) {
+  if (-not $script:LinksInArchive) {
+    $script:LinkCounts.zip++
+    return 'not recreated in the archive: zip cannot store symlinks'
+  }
+  $targets = @()
+  try {
+    $targetProperty = $item.PSObject.Properties['Target']
+    if ($targetProperty -and $targetProperty.Value) {
+      $targets = @([string[]]$targetProperty.Value)
+    }
+  } catch { }
+  if ($targets.Count -ne 1 -or $targets[0] -eq '') {
+    $script:LinkCounts.failed++
+    return 'not recreated in the archive: reparse point has no single link target'
+  }
+  # Only Windows distinguishes file and directory links.
+  $isDir = ($env:OS -eq 'Windows_NT') -and
+    (($item.Attributes -band [System.IO.FileAttributes]::Directory) -ne 0)
+  $why = ''
+  try {
+    $parentDir = [System.IO.Path]::GetDirectoryName($stagePath)
+    if (-not (Test-PathQuiet $parentDir 'Any')) {
+      [void][System.IO.Directory]::CreateDirectory((ConvertTo-ExtendedPath $parentDir))
+    }
+    $why = Invoke-CreateSymlink $stagePath $targets[0] $isDir
+  } catch { $why = ConvertFrom-ExtendedText $_.Exception.Message }
+  if ($why -eq '') { return '' }
+  $script:LinkCounts.failed++
+  Write-CollectorLog "symlink not recreated: $(ConvertFrom-ExtendedPath $item.FullName): $why"
+  return "not recreated in the archive: $why"
+}
+
+# Takes the user, home, agent and the file's Get-Item (from an extended path
+# on Windows); stages it and writes its manifest row. A reparse point is
+# recreated as a link (status symlink); a secret under -NoSecrets
+# (skipped_secret) and a file over -MaxFileSizeMB (skipped_size) get a row
+# and no copy; anything else is copied and hashed (collected, or error_copy
+# with the exception message). Under -Inventory it only feeds Add-InvFile.
+# Runs once per file, so Join-PathSafe and Get-Epoch are inlined and nothing
+# here starts a pipeline or another process.
+function Add-CollectedFile([string]$user, [string]$homeDir, [string]$agent, $item) {
+  if ($Inventory) {
+    # Regular files only: reparse points are neither followed nor counted.
+    $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+    if (-not $isLink -and -not $item.PSIsContainer) { Add-InvFile $agent $item }
+    return
+  }
+  # $extendedPath opens past 260 characters and $path is what the row records.
+  $extendedPath = $item.FullName
+  $path = ConvertFrom-ExtendedPath $extendedPath
+  $homeRel = Get-RelPath $homeDir $path
+  $archiveRel = Get-ArchivePath $path
+  $stageRel = $script:Sep + $archiveRel.Replace('\', $script:Sep).Replace('/', $script:Sep)
+  $stagePath = $script:Stage + $stageRel; $extendedStagePath = $script:XStage + $stageRel
+  $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+  $size = [int64]0; if (-not $item.PSIsContainer) { try { $size = [int64]$item.Length } catch { } }
+  try {
+    $mtime = [DateTimeOffset]::new($item.LastWriteTimeUtc).ToUnixTimeSeconds()
+    $atime = [DateTimeOffset]::new($item.LastAccessTimeUtc).ToUnixTimeSeconds()
+    $btime = [DateTimeOffset]::new($item.CreationTimeUtc).ToUnixTimeSeconds()
+  } catch {
+    $mtime = Get-Epoch $item.LastWriteTimeUtc; $atime = Get-Epoch $item.LastAccessTimeUtc
+    $btime = Get-Epoch $item.CreationTimeUtc
+  }
+  $owner = Get-OwnerName $path
+  $attributes = [string]$item.Attributes
+  $secret = $script:SecretRegex.IsMatch($homeRel)
+  $type = 'file'; $status = 'collected'; $sha256 = ''; $target = ''; $errorText = ''
+  if ($isLink) {
+    $type = 'symlink'; $status = 'symlink'; $target = Get-LinkTarget $item
+    $errorText = Add-StagedLink $item $stagePath
+  } elseif ($secret -and $NoSecrets) {
+    $status = 'skipped_secret'
+  } elseif ($script:MaxSize -gt 0 -and $size -gt $script:MaxSize) {
+    $status = 'skipped_size'
+  } else {
+    try { $sha256 = Copy-FileShared $extendedPath $extendedStagePath $item }
+    catch {
+      $status = 'error_copy'; $errorText = ConvertFrom-ExtendedText $_.Exception.Message
+      Write-CollectorLog "copy failed: ${path}: $errorText"
+      try {
+        if (Test-PathQuiet $extendedStagePath 'Any') {
+          Remove-Item -LiteralPath $extendedStagePath -Force
+        }
+      } catch { }
+    }
+  }
+  $archivePath = ''
+  if ($status -eq 'collected' -or ($status -eq 'symlink' -and $errorText -eq '')) {
+    $archivePath = $archiveRel
+  }
+  $row = @($user, $homeDir, $agent, $path, $archivePath, $type, $size, $mtime, $atime, 0, $btime,
+    $owner, $attributes, $sha256, $secret, $status, $target, $errorText)
+  Write-ManifestRow @row
+}
+
+# Takes the user, home, agent and the Get-Item of a path that matched
+# EXCLUDES; unless -Inventory, writes its skipped_excluded row: a directory
+# with the total size of the files under it, a file with its own size.
+function Add-ExcludedPath([string]$user, [string]$homeDir, [string]$agent, $item) {
+  if ($Inventory) { return }
+  $path = ConvertFrom-ExtendedPath $item.FullName
+  if ($item.PSIsContainer) { $type = 'dir'; $size = Get-DirSize $path }
+  else { $type = 'file'; $size = [int64]0; try { $size = [int64]$item.Length } catch { } }
+  $mtime = Get-Epoch $item.LastWriteTimeUtc
+  $atime = Get-Epoch $item.LastAccessTimeUtc
+  $btime = Get-Epoch $item.CreationTimeUtc
+  $row = @($user, $homeDir, $agent, $path, '', $type, $size, $mtime, $atime, 0, $btime, '',
+    ([string]$item.Attributes), '', $false, 'skipped_excluded', '', '')
   Write-ManifestRow @row
 }
 
@@ -2059,150 +2363,6 @@ function Expand-Glob([string]$base, [string]$pattern) {
   }
   if ($current.Count -gt 0 -and $current[0] -eq $base) { return @() }
   return $current
-}
-
-# Copy with FileShare.ReadWrite|Delete so files held open by a running editor
-# (SQLite state stores, LevelDB) can still be read, and return the SHA-256 of
-# the staged copy ('' when it cannot be read back). The hash reads the staged
-# file back through the handle that wrote it, before it is closed: reopening
-# a file just written waits for the antivirus scan of it on Windows, which
-# made the hash the slowest step. $item is the source's pre-copy Get-Item
-# from Add-File; the copy gets its timestamps after the hash has read it.
-# Both paths are opened in the extended form, so neither side is limited to
-# 260 characters (#77).
-function Copy-FileShared([string]$src, [string]$dst, $item) {
-  $in = $null; $out = $null; $sha = ''
-  $src = ConvertTo-ExtendedPath $src; $dst = ConvertTo-ExtendedPath $dst
-  try {
-    $in = New-Object System.IO.FileStream($src, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
-    $out = New-Object System.IO.FileStream($dst, [System.IO.FileMode]::Create, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
-    $in.CopyTo($out)
-    $in.Dispose(); $in = $null
-    try {
-      $out.Flush(); $out.Position = 0
-      $sha = [System.BitConverter]::ToString($script:Sha256.ComputeHash($out)).Replace('-', '').ToLowerInvariant()
-    } catch { $sha = '' }
-  } finally {
-    if ($out) { $out.Dispose() }
-    if ($in) { $in.Dispose() }
-  }
-  try {
-    [System.IO.File]::SetCreationTimeUtc($dst, $item.CreationTimeUtc)
-    [System.IO.File]::SetLastWriteTimeUtc($dst, $item.LastWriteTimeUtc)
-    [System.IO.File]::SetLastAccessTimeUtc($dst, $item.LastAccessTimeUtc)
-  } catch { }
-  return $sha
-}
-
-# ---------------------------------------------------------------------------
-# Symlinks are recreated in the staging tree with their target string as
-# stored, as the sh collector does with ln -s, so tar archives the link
-# itself. PowerShell 7 (.NET 6+) has File/Directory.CreateSymbolicLink;
-# Windows PowerShell 5.1 runs cmd.exe's mklink, which keeps the target
-# verbatim, accepts one that does not exist, and works unprivileged in
-# Developer Mode from Windows 10 1703. New-Item -ItemType SymbolicLink is not
-# used: on 5.1 it resolves a relative target against the current directory
-# and refuses a target that does not exist. A zip cannot store links, so the
-# zip path never has them: none are made when zip is the archiver from the
-# start (CAC_ARCHIVER=zip), and they are removed before a fall back to zip.
-# Each staged link keeps its target string, which the PowerShell tar writer
-# stores as it was given to the link API.
-# ---------------------------------------------------------------------------
-$script:LinkApi = $null
-$script:LinkApiError = ''
-$script:LinkFileMethod = $null
-$script:LinkDirMethod = $null
-$script:CmdExe = ''
-$script:StagedLinks = New-Object System.Collections.ArrayList
-$script:LinkCounts = @{ zip = 0; failed = 0 }
-function Get-LinkApi {
-  if ($null -ne $script:LinkApi) { return $script:LinkApi }
-  $script:LinkApi = ''
-  # Looked up by reflection: the methods do not exist in .NET Framework.
-  $script:LinkFileMethod = [System.IO.File].GetMethod('CreateSymbolicLink', [Type[]]@([string], [string]))
-  $script:LinkDirMethod = [System.IO.Directory].GetMethod('CreateSymbolicLink', [Type[]]@([string], [string]))
-  if ($null -ne $script:LinkFileMethod -and $null -ne $script:LinkDirMethod) { $script:LinkApi = 'dotnet' }
-  elseif ($env:OS -eq 'Windows_NT') {
-    $c = ''
-    if ($env:SystemRoot) { $c = Join-PathSafe $env:SystemRoot 'System32\cmd.exe' }
-    if ($c -ne '' -and (Test-PathQuiet $c 'Leaf')) { $script:CmdExe = $c; $script:LinkApi = 'mklink' }
-    else { $script:LinkApiError = 'cmd.exe not found for mklink' }
-  } else { $script:LinkApiError = 'no symlink API in this PowerShell' }
-  return $script:LinkApi
-}
-
-# Runs cmd.exe /d /v:off /c mklink [/D] "link" "target" with an argument
-# string built here, so PowerShell's native-argument quoting is not involved.
-# Returns '' on success, otherwise mklink's message and exit code.
-function Invoke-Mklink([string]$dest, [string]$target, [bool]$isDir) {
-  # cmd expands %NAME% even inside quotes, and a quote would end the argument.
-  if ($dest.Contains('%') -or $dest.Contains('"') -or $target.Contains('%') -or $target.Contains('"')) {
-    return 'link path or target contains % or ", which cmd.exe mklink cannot take verbatim'
-  }
-  $sw = ''; if ($isDir) { $sw = '/D ' }
-  $psi = New-Object System.Diagnostics.ProcessStartInfo
-  $psi.FileName = $script:CmdExe
-  $psi.Arguments = '/d /v:off /c mklink ' + $sw + '"' + $dest + '" "' + $target + '"'
-  # The link path is absolute; a UNC current directory would add a cmd.exe warning to stderr.
-  $psi.WorkingDirectory = $env:SystemRoot
-  $psi.UseShellExecute = $false
-  $psi.CreateNoWindow = $true
-  $psi.RedirectStandardOutput = $true
-  $psi.RedirectStandardError = $true
-  $pr = [System.Diagnostics.Process]::Start($psi)
-  # mklink's messages are short, so reading one stream to the end cannot block on the other.
-  $errText = $pr.StandardError.ReadToEnd()
-  [void]$pr.StandardOutput.ReadToEnd()
-  $pr.WaitForExit()
-  if ($pr.ExitCode -eq 0) { return '' }
-  $msg = ($errText -replace '\s+', ' ').Trim()
-  if ($msg -eq '') { $msg = 'mklink failed' }
-  return "$msg (mklink exit $($pr.ExitCode))"
-}
-
-# Makes the link at $dest; returns '' on success, otherwise the reason. The
-# link is made at the extended form of $dest (mklink accepts it too) and
-# recorded under the plain one, which the tar writer compares with the stage.
-function Invoke-CreateSymlink([string]$dest, [string]$target, [bool]$isDir) {
-  $api = Get-LinkApi
-  $xdest = ConvertTo-ExtendedPath $dest
-  try {
-    if ($api -eq 'dotnet') {
-      $m = $script:LinkFileMethod; if ($isDir) { $m = $script:LinkDirMethod }
-      # Plain strings: Invoke rejects PSObject-wrapped arguments.
-      $margs = New-Object 'object[]' 2; $margs[0] = [string]$xdest; $margs[1] = [string]$target
-      [void]$m.Invoke($null, $margs)
-    } elseif ($api -eq 'mklink') {
-      $why = Invoke-Mklink $xdest $target $isDir
-      if ($why -ne '') { return (ConvertFrom-ExtendedText $why) }
-    } else { return $script:LinkApiError }
-  } catch {
-    # Invoke wraps the IOException; report the innermost message.
-    $e = $_.Exception; while ($null -ne $e.InnerException) { $e = $e.InnerException }
-    return (ConvertFrom-ExtendedText $e.Message)
-  }
-  [void]$script:StagedLinks.Add(@($dest, $isDir, $target))
-  return ''
-}
-
-# Recreates the reparse point $item at $dest; returns '' or the row's error.
-function Add-StagedLink($item, [string]$dest) {
-  if (-not $script:LinksInArchive) { $script:LinkCounts.zip++; return 'not recreated in the archive: zip cannot store symlinks' }
-  $vals = @()
-  try { $p = $item.PSObject.Properties['Target']; if ($p -and $p.Value) { $vals = @([string[]]$p.Value) } } catch { }
-  if ($vals.Count -ne 1 -or $vals[0] -eq '') { $script:LinkCounts.failed++; return 'not recreated in the archive: reparse point has no single link target' }
-  # Only Windows distinguishes file and directory links.
-  $isDir = ($env:OS -eq 'Windows_NT') -and (($item.Attributes -band [System.IO.FileAttributes]::Directory) -ne 0)
-  $why = ''
-  try {
-    $d = [System.IO.Path]::GetDirectoryName($dest)
-    if (-not (Test-PathQuiet $d 'Any')) { [void][System.IO.Directory]::CreateDirectory((ConvertTo-ExtendedPath $d)) }
-    $why = Invoke-CreateSymlink $dest $vals[0] $isDir
-  } catch { $why = ConvertFrom-ExtendedText $_.Exception.Message }
-  if ($why -eq '') { return '' }
-  $script:LinkCounts.failed++
-  Write-CollectorLog "symlink not recreated: $(ConvertFrom-ExtendedPath $item.FullName): $why"
-  return "not recreated in the archive: $why"
 }
 
 # Deletes the staged links themselves, never what they point to, so the
@@ -2551,16 +2711,10 @@ function Get-ClaimTable {
 }
 $script:ClaimedPaths = Get-ClaimTable
 
-function Get-ArchiveRel([string]$full) {
-  if ($Mode -eq 'image') { return 'fs/' + (Get-RelPath $Root $full) }
-  if ($full.Length -ge 3 -and $full[1] -eq ':') { return 'fs/' + $full.Substring(0, 1).ToUpper() + '/' + $full.Substring(3).Replace('\', '/') }
-  return 'fs/' + $full.TrimStart('\').Replace('\', '/')
-}
-
 # ---------------------------------------------------------------------------
 # Inventory accumulators. $script:Inv maps agent -> files, bytes, first and
 # last mtime (epoch seconds, 0 when unknown) and the matched catalog globs, in
-# order of first match. Add-File feeds it instead of copying under -Inventory.
+# order of first match. Add-CollectedFile feeds it instead of copying under -Inventory.
 # ---------------------------------------------------------------------------
 $script:Inv = [ordered]@{}
 function Get-InvEntry([string]$agent) {
@@ -2602,67 +2756,6 @@ function Get-InvLines([string]$user, $acc, [int]$projects) {
 # ---------------------------------------------------------------------------
 # Collection
 # ---------------------------------------------------------------------------
-# Staging directories already created or found, so each file does not test its
-# parent again.
-$script:StagedDirs = New-Object 'System.Collections.Generic.HashSet[string]'
-function Add-File([string]$user, [string]$homeDir, [string]$agent, $item) {
-  if ($Inventory) {
-    # Regular files only: reparse points are neither followed nor counted.
-    if ((($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) -and -not $item.PSIsContainer) { Add-InvFile $agent $item }
-    return
-  }
-  # $item comes from an extended path on Windows (Add-Tree, Add-Path), so
-  # $xfull opens past 260 characters and $full is what the row records.
-  $xfull = $item.FullName
-  $full = ConvertFrom-ExtendedPath $xfull
-  $hrel = Get-RelPath $homeDir $full
-  $arel = Get-ArchiveRel $full
-  # Join-PathSafe and Get-Epoch, inlined: this runs once per file.
-  $destRel = $script:Sep + $arel.Replace('\', $script:Sep).Replace('/', $script:Sep)
-  $dest = $Stage + $destRel; $xdest = $XStage + $destRel
-  $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
-  $size = [int64]0; if (-not $item.PSIsContainer) { try { $size = [int64]$item.Length } catch { } }
-  try {
-    $mtime = [DateTimeOffset]::new($item.LastWriteTimeUtc).ToUnixTimeSeconds()
-    $atime = [DateTimeOffset]::new($item.LastAccessTimeUtc).ToUnixTimeSeconds()
-    $btime = [DateTimeOffset]::new($item.CreationTimeUtc).ToUnixTimeSeconds()
-  } catch { $mtime = Get-Epoch $item.LastWriteTimeUtc; $atime = Get-Epoch $item.LastAccessTimeUtc; $btime = Get-Epoch $item.CreationTimeUtc }
-  $owner = Get-OwnerName $full
-  $attrs = [string]$item.Attributes
-  $secret = $script:SecretRegex.IsMatch($hrel)
-  $type = 'file'; $status = 'collected'; $sha = ''; $target = ''; $err = ''
-  if ($isLink) {
-    $type = 'symlink'; $status = 'symlink'; $target = Get-LinkTarget $item
-    $err = Add-StagedLink $item $dest
-  } elseif ($secret -and $NoSecrets) {
-    $status = 'skipped_secret'
-  } elseif ($MaxSize -gt 0 -and $size -gt $MaxSize) {
-    $status = 'skipped_size'
-  } else {
-    try {
-      $d = [System.IO.Path]::GetDirectoryName($xdest)
-      if (-not $script:StagedDirs.Contains($d)) {
-        if (-not (Test-PathQuiet $d 'Any')) { [void][System.IO.Directory]::CreateDirectory($d) }
-        [void]$script:StagedDirs.Add($d)
-      }
-      $sha = Copy-FileShared $xfull $xdest $item
-    } catch {
-      $status = 'error_copy'; $err = ConvertFrom-ExtendedText $_.Exception.Message
-      Write-CollectorLog "copy failed: ${full}: $err"
-      try { if (Test-PathQuiet $xdest 'Any') { Remove-Item -LiteralPath $xdest -Force } } catch { }
-    }
-  }
-  $apath = ''; if ($status -eq 'collected' -or ($status -eq 'symlink' -and $err -eq '')) { $apath = $arel }
-  Write-ManifestRow $user $homeDir $agent $full $apath $type $size $mtime $atime 0 $btime $owner $attrs $sha $secret $status $target $err
-}
-
-function Add-Excluded([string]$user, [string]$homeDir, [string]$agent, $item) {
-  if ($Inventory) { return }
-  $full = ConvertFrom-ExtendedPath $item.FullName
-  if ($item.PSIsContainer) { $type = 'dir'; $size = Get-DirSize $full } else { $type = 'file'; $size = [int64]0; try { $size = [int64]$item.Length } catch { } }
-  Write-ManifestRow $user $homeDir $agent $full '' $type $size (Get-Epoch $item.LastWriteTimeUtc) (Get-Epoch $item.LastAccessTimeUtc) 0 (Get-Epoch $item.CreationTimeUtc) '' ([string]$item.Attributes) '' $false 'skipped_excluded' '' ''
-}
-
 # Lists $dir through its extended form, so a tree deeper than 260 characters
 # is walked on 5.1 without LongPathsEnabled (#77); a directory that cannot be
 # listed gets an error_read row, never silence.
@@ -2675,10 +2768,10 @@ function Add-Tree([string]$user, [string]$homeDir, [string]$agent, [string]$dir)
     # A path matched by another catalog entry is collected under that entry.
     if ($script:ClaimedPaths.ContainsKey($cfull)) { continue }
     $hrel = Get-RelPath $homeDir $cfull
-    if ($script:ExcludeRegex.IsMatch($hrel)) { Add-Excluded $user $homeDir $agent $child; continue }
+    if ($script:ExcludeRegex.IsMatch($hrel)) { Add-ExcludedPath $user $homeDir $agent $child; continue }
     $isLink = (($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
     if ($child.PSIsContainer -and -not $isLink) { Add-Tree $user $homeDir $agent $cfull }
-    else { Add-File $user $homeDir $agent $child }
+    else { Add-CollectedFile $user $homeDir $agent $child }
   }
 }
 
@@ -2686,9 +2779,9 @@ function Add-Path([string]$user, [string]$homeDir, [string]$agent, [string]$path
   $item = $null
   try { $item = Get-Item -LiteralPath (ConvertTo-ExtendedPath $path) -Force -ErrorAction Stop } catch { $script:WalkErrors++; Write-CollectorLog "stat failed: ${path}: $(ConvertFrom-ExtendedText $_.Exception.Message)"; return }
   $hrel = Get-RelPath $homeDir $path
-  if ($script:ExcludeRegex.IsMatch($hrel)) { Add-Excluded $user $homeDir $agent $item; return }
+  if ($script:ExcludeRegex.IsMatch($hrel)) { Add-ExcludedPath $user $homeDir $agent $item; return }
   $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
-  if ($item.PSIsContainer -and -not $isLink) { Add-Tree $user $homeDir $agent $path } else { Add-File $user $homeDir $agent $item }
+  if ($item.PSIsContainer -and -not $isLink) { Add-Tree $user $homeDir $agent $path } else { Add-CollectedFile $user $homeDir $agent $item }
 }
 
 function Invoke-CatalogCollection([string]$user, [string]$base, [string]$table, [string]$header = '') {
