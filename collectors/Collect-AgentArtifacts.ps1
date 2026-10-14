@@ -2817,6 +2817,379 @@ function Add-DockerVolumes {
   Find-DockerDesktop $desktopDirs
 }
 
+
+# ===========================================================================
+# 9. Project discovery
+# ===========================================================================
+# Project directories are read from the agents' own plain-text state (the
+# same sources as the sh collector, in the same order) with a regex per
+# format, never a parser: JSON and JSONL values and keys, YAML, JSON5 and
+# TOML lines, and whole files that hold one path. Each discovered directory
+# is a base for PROJECT_CATALOG. Agents whose project paths live only in
+# SQLite are left to the analyzer.
+
+$script:ProjectList = @()
+# The home whose sources are being read, for Test-InventorySecret.
+$script:DiscoveryHome = ''
+
+# Takes a value read from a discovery source; returns it as a local
+# directory path, or $null when it is not an absolute path this host or
+# image can hold. file:// URIs are unescaped (file:///c:/x is a drive path;
+# file:///home/x keeps its leading slash), JSON-escaped separators are
+# undone, and in image mode the path is placed under -Root (a drive path
+# without its drive letter).
+function ConvertTo-LocalPath([string]$value) {
+  $value = $value.Trim()
+  if ($value -eq '') { return $null }
+  if ($value.StartsWith('file://')) {
+    $value = $value.Substring(7); try { $value = [uri]::UnescapeDataString($value) } catch { }
+    if ($value -match '^/[A-Za-z]:') { $value = $value.Substring(1) }
+  }
+  $value = $value.Replace('\\', '\').Replace('\/', '/')
+  if ($value -match '^[A-Za-z]:[\\/]') {
+    $rest = $value.Substring(1).Replace('/', $script:Sep).Replace('\', $script:Sep)
+    $value = $value.Substring(0, 1).ToUpper() + $rest
+    if ($Mode -eq 'image') { return $Root + $value.Substring(2) }
+    return $value
+  }
+  if ($value.StartsWith('/')) {
+    if ($Mode -eq 'image') { return $Root + $value.Replace('/', $script:Sep) }
+    if ($script:Sep -eq '/') { return $value }
+    return $null
+  }
+  return $null
+}
+
+# Takes a discovery source path; returns whether -Inventory must skip it.
+# -Inventory never opens a credential file: a source whose path relative to
+# the home being scanned ($script:DiscoveryHome) matches SECRET_GLOBS
+# (.claude.json, the OpenClaw and nanobot configs, Tabby's config.toml) is
+# skipped in that mode.
+function Test-InventorySecret([string]$file) {
+  if (-not $Inventory -or -not $script:DiscoveryHome) { return $false }
+  return $script:SecretRegex.IsMatch((Get-RelPath $script:DiscoveryHome $file))
+}
+
+# Takes a discovery source path; returns its text, or $null when it is not a
+# file, is a credential file under -Inventory, or cannot be read.
+function Read-DiscoverySource([string]$file) {
+  if (-not $file -or -not (Test-PathQuiet $file 'Leaf')) { return $null }
+  if (Test-InventorySecret $file) { return $null }
+  try { return [System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $file)) }
+  catch { return $null }
+}
+
+# Takes a regex and source files; returns capture group 1 of every match in
+# every readable file, in file order. The readers below build the regex for
+# one format each.
+function Get-RegexCaptures([string]$regex, [string[]]$files) {
+  foreach ($file in $files) {
+    $text = Read-DiscoverySource $file
+    if ($null -eq $text) { continue }
+    foreach ($match in [regex]::Matches($text, $regex)) { $match.Groups[1].Value }
+  }
+}
+
+# Takes a JSON key and source files; returns every string value of that key.
+function Get-JsonValues([string]$key, [string[]]$files) {
+  Get-RegexCaptures ('"' + [regex]::Escape($key) + '"\s*:\s*"((?:[^"\\]|\\.)*)"') $files
+}
+
+# Takes a regex for what follows the colon and source files; returns every
+# JSON key that is an absolute or drive-letter path (projects keyed by path).
+function Get-JsonKeys([string]$suffix, [string[]]$files) {
+  Get-RegexCaptures ('"([A-Za-z]:(?:[^"\\]|\\.)*|/(?:[^"\\]|\\.)*)"\s*:\s*' + $suffix) $files
+}
+
+# Takes source files; returns every quoted absolute path, drive-letter path
+# or file:// URI in them.
+function Get-PathStrings([string[]]$files) {
+  Get-RegexCaptures '"((?:file:///|/|[A-Za-z]:\\\\)(?:[^"\\]|\\.)*)"' $files
+}
+
+# Takes a YAML key and source files; returns the value of every top-level
+# "key: value" line, without quotes.
+function Get-YamlValues([string]$key, [string[]]$files) {
+  $regex = '(?m)^' + [regex]::Escape($key) + ':[ \t]*["'']?([^"''\r\n]+)["'']?[ \t]*$'
+  Get-RegexCaptures $regex $files
+}
+
+# Takes a key and source files; returns every string value of that key in
+# JSON5, which allows unquoted keys and single-quoted strings (OpenClaw
+# config).
+function Get-Json5Values([string]$key, [string[]]$files) {
+  $regex = '(?<![\w$])["'']?' + [regex]::Escape($key) +
+    '["'']?\s*:\s*(?:"((?:[^"\\]|\\.)*)"|''([^'']*)'')'
+  foreach ($file in $files) {
+    $text = Read-DiscoverySource $file
+    if ($null -eq $text) { continue }
+    foreach ($match in [regex]::Matches($text, $regex)) {
+      if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
+    }
+  }
+}
+
+# Takes a TOML key and source files; returns every key = "file://..." value
+# (Tabby repositories).
+function Get-TomlFileUrls([string]$key, [string[]]$files) {
+  $regex = '(?m)^[ \t]*' + [regex]::Escape($key) + '[ \t]*=[ \t]*["''](file://[^"''\r\n]*)["'']'
+  Get-RegexCaptures $regex $files
+}
+
+# Takes source files that each hold one path (Gemini CLI's .project_root,
+# nanobot's .workspace); returns the text of each readable one. Unlike the
+# readers above, these are read under -Inventory too.
+function Get-FileTexts([string[]]$files) {
+  foreach ($file in $files) {
+    try { [System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $file)) } catch { }
+  }
+}
+
+# Takes absolute file paths; returns the deepest directory they share, in
+# the raw form for ConvertTo-LocalPath, or $null when they share less than
+# two segments (Twinny records indexed files, not the workspace root).
+function Get-CommonDir([string[]]$paths) {
+  $common = $null
+  foreach ($value in $paths) {
+    $path = ([string]$value).Replace('\\', '\').Replace('\/', '/')
+    if ($path.StartsWith('file://')) { continue }
+    $parts = @($path -split '[\\/]')
+    if ($parts.Count -lt 3) { continue }
+    $parts = @($parts[0..($parts.Count - 2)])
+    if ($null -eq $common) { $common = $parts; continue }
+    $limit = [Math]::Min($common.Count, $parts.Count); $shared = 0
+    while ($shared -lt $limit -and $common[$shared] -eq $parts[$shared]) { $shared++ }
+    if ($shared -eq 0) { $common = @() } else { $common = @($common[0..($shared - 1)]) }
+  }
+  if ($null -eq $common -or $common.Count -lt 2) { return $null }
+  return ($common -join '/')
+}
+
+# Takes a -Project directory; returns the user whose home contains it, or ''.
+function Get-ProjectOwner([string]$projectDir) {
+  $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
+  foreach ($userHome in $script:UserList) {
+    if ($projectDir.StartsWith($userHome.home + $script:Sep, $ignoreCase)) { return $userHome.user }
+  }
+  return ''
+}
+
+# The six source groups below each take a home and return the raw values
+# they read, in source order; Find-Projects calls them in this order.
+
+# Claude Code: the prompt history and .claude.json, also in config homes
+# moved with CLAUDE_CONFIG_DIR (.claude-*), which keep .claude.json inside.
+function Find-ClaudeCodeProjects([string]$homeDir) {
+  Get-JsonValues 'project' @((Join-PathSafe $homeDir '.claude/history.jsonl'))
+  Get-JsonKeys '\{' @((Join-PathSafe $homeDir '.claude.json'))
+  Get-JsonValues 'project' @(Expand-Glob $homeDir '.claude-*/history.jsonl')
+  Get-JsonKeys '\{' @(Expand-Glob $homeDir '.claude-*/.claude.json')
+}
+
+# Codex, Qwen Code, Cline CLI, Cursor CLI chats, Continue, Goose sessions,
+# OpenCode and Crush.
+function Find-CliSessionProjects([string]$homeDir) {
+  Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.codex/sessions/*/*/*/*.jsonl')
+  Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.qwen/projects/*/chats/*.jsonl')
+  Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.cline/data/sessions/*/*.json')
+  Get-JsonValues 'workspace_root' @(Expand-Glob $homeDir '.cline/data/sessions/*/*.json')
+  Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.cursor/chats/*/*/meta.json')
+  Get-JsonValues 'workspaceDirectory' @((Join-PathSafe $homeDir '.continue/sessions/sessions.json'))
+  Get-JsonValues 'working_dir' @(Expand-Glob $homeDir '.local/share/goose/sessions/*.jsonl')
+  Get-JsonValues 'worktree' @(Expand-Glob $homeDir '.local/share/opencode/storage/project/*.json')
+  Get-JsonValues 'path' @((Join-PathSafe $homeDir '.local/share/crush/projects.json'))
+}
+
+# Gemini CLI (projects, trusted folders, per-project .project_root files)
+# and Antigravity (CLI history, settings and project caches).
+function Find-GeminiProjects([string]$homeDir) {
+  Get-JsonKeys '"' @((Join-PathSafe $homeDir '.gemini/projects.json'))
+  Get-JsonKeys '"' @((Join-PathSafe $homeDir '.gemini/trustedFolders.json'))
+  Get-FileTexts @(
+    Expand-Glob $homeDir '.gemini/tmp/*/.project_root'
+    Expand-Glob $homeDir '.gemini/history/*/.project_root'
+  )
+  Get-JsonValues 'workspace' @((Join-PathSafe $homeDir '.gemini/antigravity-cli/history.jsonl'))
+  Get-PathStrings @(
+    Join-PathSafe $homeDir '.gemini/antigravity-cli/settings.json'
+    Join-PathSafe $homeDir '.gemini/antigravity-cli/cache/projects.json'
+    Expand-Glob $homeDir '.gemini/config/projects/*.json'
+  )
+}
+
+# Amp, Factory, Kiro, Cursor ACP sessions, Goose recent directories,
+# Copilot CLI, Hermes, Letta, pi, muse, Open Interpreter, OpenHands and
+# PearAI.
+function Find-AgentSessionProjects([string]$homeDir) {
+  Get-JsonValues 'cwd' @(
+    Join-PathSafe $homeDir '.local/share/amp/history.jsonl'
+    Expand-Glob $homeDir '.factory/sessions/*/*.jsonl'
+    Expand-Glob $homeDir '.factory/sessions/*.jsonl'
+    Expand-Glob $homeDir '.kiro/sessions/cli/*.json'
+    Expand-Glob $homeDir '.cursor/acp-sessions/*/meta.json'
+  )
+  Get-JsonValues 'root' @(Expand-Glob $homeDir '.kiro/workspace-roots/*/.trust-migration.json')
+  Get-PathStrings @(
+    Expand-Glob $homeDir '.kiro/sessions/*/sess_*/session.json'
+    Join-PathSafe $homeDir '.config/Goose/recent-dirs.json'
+    Join-PathSafe $homeDir 'Library/Application Support/Goose/recent-dirs.json'
+    Join-PathSafe $homeDir 'AppData/Roaming/Goose/recent-dirs.json'
+  )
+  Get-YamlValues 'cwd' @(Expand-Glob $homeDir '.copilot/session-state/*/workspace.yaml')
+  Get-JsonValues 'workdir' @(
+    Expand-Glob $homeDir '.hermes/checkpoints/store/projects/*.json'
+    Expand-Glob $homeDir '.hermes/profiles/*/checkpoints/store/projects/*.json'
+    Expand-Glob $homeDir 'AppData/Local/hermes/checkpoints/store/projects/*.json'
+    Expand-Glob $homeDir 'AppData/Local/hermes/profiles/*/checkpoints/store/projects/*.json'
+  )
+  Get-JsonValues 'project' @((Join-PathSafe $homeDir '.letta/sessions.jsonl'))
+  Get-JsonValues 'cwd' @(
+    Expand-Glob $homeDir '.letta/lc-local-backend/conversations/*/messages.jsonl'
+    Expand-Glob $homeDir '.pi/agent/sessions/*/*.jsonl'
+    Expand-Glob $homeDir '.pi/agent/*.jsonl'
+    Join-PathSafe $homeDir '.pi/agent/crashes.json'
+    Expand-Glob $homeDir '.pi/agent/experimental/sessions/*/meta.json'
+  )
+  Get-JsonKeys '(?:true|false)' @((Join-PathSafe $homeDir '.pi/agent/trust.json'))
+  Get-JsonKeys '\{' @((Join-PathSafe $homeDir '.config/muse/trust.json'))
+  $museSessions = '.local/share/muse/sessions/*/*/*/*/session.jsonl'
+  Get-JsonValues 'workspace_root' @(Expand-Glob $homeDir $museSessions)
+  Get-JsonValues 'cwd' @(
+    Expand-Glob $homeDir '.openinterpreter/sessions/*/*/*/rollout-*.jsonl'
+    Expand-Glob $homeDir '.openinterpreter/archived_sessions/rollout-*.jsonl'
+    Expand-Glob $homeDir '.openinterpreter/archived_sessions/*/*/*/rollout-*.jsonl'
+  )
+  Get-JsonValues 'path' @((Join-PathSafe $homeDir '.openhands/workspaces.json'))
+  Get-JsonValues 'working_dir' @(
+    Expand-Glob $homeDir '.openhands/agent-canvas/dev_conversations/*/meta.json'
+    Expand-Glob $homeDir '.openhands/agent-canvas/conversations/*/meta.json'
+    Expand-Glob $homeDir '.openhands/conversations/*/base_state.json'
+  )
+  Get-JsonValues 'workspaceDirectory' @((Join-PathSafe $homeDir '.pearai/sessions/sessions.json'))
+}
+
+# Configuration files that name a workspace: OpenClaw (and its clawdbot
+# name), nanobot, Tabby repositories and Twinny embedding manifests.
+function Find-ConfigFileProjects([string]$homeDir) {
+  $openClawConfigs = @(
+    Expand-Glob $homeDir '.openclaw*/openclaw.json'
+    Join-PathSafe $homeDir '.clawdbot/clawdbot.json'
+  )
+  Get-Json5Values 'workspace' $openClawConfigs
+  Get-Json5Values 'agentDir' $openClawConfigs
+  Get-FileTexts @(Expand-Glob $homeDir '.nanobot*/sessions/*/.workspace')
+  Get-JsonValues 'workspace' @(Expand-Glob $homeDir '.nanobot*/config.json')
+  Get-TomlFileUrls 'git_url' @((Join-PathSafe $homeDir '.tabby/config.toml'))
+  foreach ($manifest in @(Expand-Glob $homeDir '.twinny/embeddings/*/manifest.json')) {
+    $commonDir = Get-CommonDir @(Get-PathStrings @($manifest))
+    if ($commonDir) { $commonDir }
+  }
+}
+
+# VS Code-family editors: every User directory (Code, Cursor, Windsurf and
+# the other forks, and remote-server data directories) with its workspace
+# storage and the Cline, Roo Code and Kilo Code task indexes.
+function Find-EditorProjects([string]$homeDir) {
+  $userDirs = @(
+    Expand-Glob $homeDir 'AppData/Roaming/*/User'
+    Expand-Glob $homeDir '.config/*/User'
+    Expand-Glob $homeDir 'Library/Application Support/*/User'
+    Expand-Glob $homeDir '.*-server*/data/User'
+  )
+  foreach ($userDir in $userDirs) {
+    Get-JsonValues 'folder' @(Expand-Glob $userDir 'workspaceStorage/*/workspace.json')
+    Get-JsonValues 'cwdOnTaskInitialization' @(
+      Expand-Glob $userDir 'globalStorage/saoudrizwan.claude-dev/state/taskHistory.json'
+      Expand-Glob $userDir 'globalStorage/saoudrizwan.claude-dev/tasks/*/task_metadata.json'
+    )
+    Get-JsonValues 'workspace' @(
+      Expand-Glob $userDir 'globalStorage/rooveterinaryinc.roo-cline/tasks/_index.json'
+      Expand-Glob $userDir 'globalStorage/kilocode.kilo-code/tasks/_index.json'
+    )
+  }
+}
+
+# Takes the discovered @{ user; path } entries in discovery order; returns
+# each existing directory once (compared without case), dropping the homes
+# themselves. A path seen first without a user (a -Project outside every
+# home) takes the user of a later entry for it.
+function Select-UniqueProjects($found) {
+  $seen = @{}; $unique = @()
+  $homeKeys = @{}
+  foreach ($userHome in $script:UserList) { $homeKeys[$userHome.home.ToLowerInvariant()] = $true }
+  foreach ($entry in $found) {
+    $key = $entry.path.ToLowerInvariant()
+    if ($seen.ContainsKey($key)) {
+      if ($seen[$key].user -eq '' -and $entry.user -ne '') { $seen[$key].user = $entry.user }
+      continue
+    }
+    if ($homeKeys.ContainsKey($key)) { continue }
+    if (-not (Test-PathQuiet $entry.path 'Container')) { continue }
+    $seen[$key] = $entry; $unique += $entry
+  }
+  return $unique
+}
+
+# Returns every project directory to collect as @{ user; path }: the values
+# of the six source groups for each home, then each -Project, through
+# Select-UniqueProjects.
+function Find-Projects {
+  $found = @()
+  foreach ($userHome in $script:UserList) {
+    $homeDir = $userHome.home
+    $script:DiscoveryHome = $homeDir
+    $values = @(
+      Find-ClaudeCodeProjects $homeDir
+      Find-CliSessionProjects $homeDir
+      Find-GeminiProjects $homeDir
+      Find-AgentSessionProjects $homeDir
+      Find-ConfigFileProjects $homeDir
+      Find-EditorProjects $homeDir
+    )
+    $script:DiscoveryHome = ''
+    foreach ($value in $values) {
+      $localPath = ConvertTo-LocalPath ([string]$value)
+      if ($localPath) { $found += @{ user = $userHome.user; path = $localPath.TrimEnd('\', '/') } }
+    }
+  }
+  foreach ($projectArg in $Project) {
+    $found += @{ user = (Get-ProjectOwner $projectArg); path = $projectArg.TrimEnd('\', '/') }
+  }
+  return (Select-UniqueProjects $found)
+}
+
+# Main step: collects PROJECT_CATALOG under every directory in
+# $script:ProjectList. A -Project value that is not a directory was left out
+# of the list; it gets a log line and, unless -Inventory, one error_read
+# row, so it is never dropped silently. Under -Inventory nothing is walked.
+function Add-Projects {
+  foreach ($projectArg in $Project) {
+    if (Test-PathQuiet $projectArg 'Container') { continue }
+    if (Test-PathQuiet $projectArg 'Leaf') { $why = 'Not a directory' }
+    else {
+      $why = "Cannot find path '$projectArg' because it does not exist."
+      $extendedArg = ConvertTo-ExtendedPath $projectArg
+      try { [void](Get-Item -LiteralPath $extendedArg -Force -ErrorAction Stop) }
+      catch { $why = ConvertFrom-ExtendedText $_.Exception.Message }
+    }
+    $warning = 'WARNING: project given with -Project is not a directory'
+    Write-CollectorLog "${warning}: ${projectArg}: $why"
+    if (-not $Inventory) {
+      $owner = Get-ProjectOwner $projectArg
+      $row = @($owner, $projectArg, '', $projectArg, '', 'dir', 0, 0, 0, 0, 0, '', '', '', $false,
+        'error_read', '', $why)
+      Write-ManifestRow @row
+    }
+  }
+  if ($Inventory) { return }
+  foreach ($projectDir in $script:ProjectList) {
+    $userLabel = ''; if ($projectDir.user) { $userLabel = '[' + $projectDir.user + '] ' }
+    Write-CollectorLog "Project $userLabel$($projectDir.path)"
+    $why = Get-DirReadError $projectDir.path
+    if ($why) { Write-ReadErrorRow $projectDir.user $projectDir.path '' $projectDir.path $why }
+    Add-CatalogMatches $projectDir.user $projectDir.path $PROJECT_CATALOG
+  }
+}
 if ($Version) { Write-Output "$TOOL $ToolVersion"; exit 0 }
 
 if ($List) {
@@ -3236,205 +3609,9 @@ Add-UserHomes
 
 if (-not $NoDocker) { Add-DockerVolumes }
 
-# ---------------------------------------------------------------------------
-# Project discovery: plain-text sources only, same list as the sh script.
-# ---------------------------------------------------------------------------
-function ConvertTo-LocalPath([string]$v) {
-  $v = $v.Trim()
-  if ($v -eq '') { return $null }
-  if ($v.StartsWith('file://')) {
-    $v = $v.Substring(7); try { $v = [uri]::UnescapeDataString($v) } catch { }
-    # file:///c:/x is a drive path; file:///home/x keeps its leading slash
-    if ($v -match '^/[A-Za-z]:') { $v = $v.Substring(1) }
-  }
-  $v = $v.Replace('\\', '\').Replace('\/', '/')
-  if ($v -match '^[A-Za-z]:[\\/]') {
-    $v = $v.Substring(0, 1).ToUpper() + $v.Substring(1).Replace('/', $script:Sep).Replace('\', $script:Sep)
-    if ($Mode -eq 'image') { return $Root + $v.Substring(2) }
-    return $v
-  }
-  if ($v.StartsWith('/')) {
-    if ($Mode -eq 'image') { return $Root + $v.Replace('/', $script:Sep) }
-    if ($script:Sep -eq '/') { return $v }
-    return $null
-  }
-  return $null
-}
-# -Inventory never opens a credential file: a discovery source whose path
-# relative to the home being scanned matches SECRET_GLOBS (.claude.json, the
-# OpenClaw and nanobot configs, Tabby's config.toml) is skipped in that mode.
-$script:DiscoveryHome = ''
-function Test-InventorySecret([string]$f) {
-  if (-not $Inventory -or -not $script:DiscoveryHome) { return $false }
-  return $script:SecretRegex.IsMatch((Get-RelPath $script:DiscoveryHome $f))
-}
-function Get-JsonValues([string]$key, [string[]]$files) {
-  $rx = '"' + [regex]::Escape($key) + '"\s*:\s*"((?:[^"\\]|\\.)*)"'
-  foreach ($f in $files) {
-    if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
-    if (Test-InventorySecret $f) { continue }
-    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) { $m.Groups[1].Value } } catch { }
-  }
-}
-function Get-JsonKeys([string]$suffix, [string[]]$files) {
-  $rx = '"([A-Za-z]:(?:[^"\\]|\\.)*|/(?:[^"\\]|\\.)*)"\s*:\s*' + $suffix
-  foreach ($f in $files) {
-    if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
-    if (Test-InventorySecret $f) { continue }
-    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) { $m.Groups[1].Value } } catch { }
-  }
-}
-function Get-PathStrings([string[]]$files) {
-  # every quoted absolute path, drive-letter path or file:// URI in the files
-  $rx = '"((?:file:///|/|[A-Za-z]:\\\\)(?:[^"\\]|\\.)*)"'
-  foreach ($f in $files) {
-    if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
-    if (Test-InventorySecret $f) { continue }
-    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) { $m.Groups[1].Value } } catch { }
-  }
-}
-function Get-YamlValues([string]$key, [string[]]$files) {
-  $rx = '(?m)^' + [regex]::Escape($key) + ':[ \t]*["'']?([^"''\r\n]+)["'']?[ \t]*$'
-  foreach ($f in $files) {
-    if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
-    if (Test-InventorySecret $f) { continue }
-    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) { $m.Groups[1].Value } } catch { }
-  }
-}
-function Get-Json5Values([string]$key, [string[]]$files) {
-  # JSON5 allows unquoted keys and single-quoted strings (OpenClaw config)
-  $rx = '(?<![\w$])["'']?' + [regex]::Escape($key) + '["'']?\s*:\s*(?:"((?:[^"\\]|\\.)*)"|''([^'']*)'')'
-  foreach ($f in $files) {
-    if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
-    if (Test-InventorySecret $f) { continue }
-    try {
-      foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) {
-        if ($m.Groups[1].Success) { $m.Groups[1].Value } else { $m.Groups[2].Value }
-      }
-    } catch { }
-  }
-}
-function Get-TomlFileUrls([string]$key, [string[]]$files) {
-  # key = "file://..." lines (Tabby repositories)
-  $rx = '(?m)^[ \t]*' + [regex]::Escape($key) + '[ \t]*=[ \t]*["''](file://[^"''\r\n]*)["'']'
-  foreach ($f in $files) {
-    if (-not $f -or -not (Test-PathQuiet $f 'Leaf')) { continue }
-    if (Test-InventorySecret $f) { continue }
-    try { foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $f)), $rx)) { $m.Groups[1].Value } } catch { }
-  }
-}
-function Get-CommonDir([string[]]$paths) {
-  # deepest directory shared by absolute file paths (Twinny records indexed
-  # files, not the workspace root); returned in the raw form for ConvertTo-LocalPath
-  $common = $null
-  foreach ($v in $paths) {
-    $s = ([string]$v).Replace('\\', '\').Replace('\/', '/')
-    if ($s.StartsWith('file://')) { continue }
-    $parts = @($s -split '[\\/]')
-    if ($parts.Count -lt 3) { continue }
-    $parts = @($parts[0..($parts.Count - 2)])
-    if ($null -eq $common) { $common = $parts; continue }
-    $n = [Math]::Min($common.Count, $parts.Count); $k = 0
-    while ($k -lt $n -and $common[$k] -eq $parts[$k]) { $k++ }
-    if ($k -eq 0) { $common = @() } else { $common = @($common[0..($k - 1)]) }
-  }
-  if ($null -eq $common -or $common.Count -lt 2) { return $null }
-  return ($common -join '/')
-}
-# The user whose home contains a -Project directory, or ''.
-function Get-ProjectOwner([string]$p) {
-  foreach ($u in $script:UserList) { if ($p.StartsWith($u.home + $script:Sep, [System.StringComparison]::OrdinalIgnoreCase)) { return $u.user } }
-  return ''
-}
-function Find-Projects {
-  $found = @()
-  foreach ($u in $script:UserList) {
-    $h = $u.home
-    $script:DiscoveryHome = $h
-    $vals = @()
-    $vals += Get-JsonValues 'project' @((Join-PathSafe $h '.claude/history.jsonl'))
-    $vals += Get-JsonKeys '\{' @((Join-PathSafe $h '.claude.json'))
-    # config homes moved with CLAUDE_CONFIG_DIR keep .claude.json inside
-    $vals += Get-JsonValues 'project' @(Expand-Glob $h '.claude-*/history.jsonl')
-    $vals += Get-JsonKeys '\{' @(Expand-Glob $h '.claude-*/.claude.json')
-    $vals += Get-JsonValues 'cwd' @(Expand-Glob $h '.codex/sessions/*/*/*/*.jsonl')
-    $vals += Get-JsonValues 'cwd' @(Expand-Glob $h '.qwen/projects/*/chats/*.jsonl')
-    $vals += Get-JsonValues 'cwd' @(Expand-Glob $h '.cline/data/sessions/*/*.json')
-    $vals += Get-JsonValues 'workspace_root' @(Expand-Glob $h '.cline/data/sessions/*/*.json')
-    $vals += Get-JsonValues 'cwd' @(Expand-Glob $h '.cursor/chats/*/*/meta.json')
-    $vals += Get-JsonValues 'workspaceDirectory' @((Join-PathSafe $h '.continue/sessions/sessions.json'))
-    $vals += Get-JsonValues 'working_dir' @(Expand-Glob $h '.local/share/goose/sessions/*.jsonl')
-    $vals += Get-JsonValues 'worktree' @(Expand-Glob $h '.local/share/opencode/storage/project/*.json')
-    $vals += Get-JsonValues 'path' @((Join-PathSafe $h '.local/share/crush/projects.json'))
-    $vals += Get-JsonKeys '"' @((Join-PathSafe $h '.gemini/projects.json'))
-    $vals += Get-JsonKeys '"' @((Join-PathSafe $h '.gemini/trustedFolders.json'))
-    foreach ($pr in (@(Expand-Glob $h '.gemini/tmp/*/.project_root') + @(Expand-Glob $h '.gemini/history/*/.project_root'))) { try { $vals += [System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $pr)) } catch { } }
-    $vals += Get-JsonValues 'workspace' @((Join-PathSafe $h '.gemini/antigravity-cli/history.jsonl'))
-    $vals += Get-PathStrings (@((Join-PathSafe $h '.gemini/antigravity-cli/settings.json'), (Join-PathSafe $h '.gemini/antigravity-cli/cache/projects.json')) + @(Expand-Glob $h '.gemini/config/projects/*.json'))
-    $vals += Get-JsonValues 'cwd' (@((Join-PathSafe $h '.local/share/amp/history.jsonl')) + @(Expand-Glob $h '.factory/sessions/*/*.jsonl') + @(Expand-Glob $h '.factory/sessions/*.jsonl') + @(Expand-Glob $h '.kiro/sessions/cli/*.json') + @(Expand-Glob $h '.cursor/acp-sessions/*/meta.json'))
-    $vals += Get-JsonValues 'root' @(Expand-Glob $h '.kiro/workspace-roots/*/.trust-migration.json')
-    $vals += Get-PathStrings (@(Expand-Glob $h '.kiro/sessions/*/sess_*/session.json') + @((Join-PathSafe $h '.config/Goose/recent-dirs.json'), (Join-PathSafe $h 'Library/Application Support/Goose/recent-dirs.json'), (Join-PathSafe $h 'AppData/Roaming/Goose/recent-dirs.json')))
-    $vals += Get-YamlValues 'cwd' @(Expand-Glob $h '.copilot/session-state/*/workspace.yaml')
-    $vals += Get-JsonValues 'workdir' (@(Expand-Glob $h '.hermes/checkpoints/store/projects/*.json') + @(Expand-Glob $h '.hermes/profiles/*/checkpoints/store/projects/*.json') + @(Expand-Glob $h 'AppData/Local/hermes/checkpoints/store/projects/*.json') + @(Expand-Glob $h 'AppData/Local/hermes/profiles/*/checkpoints/store/projects/*.json'))
-    $vals += Get-JsonValues 'project' @((Join-PathSafe $h '.letta/sessions.jsonl'))
-    $vals += Get-JsonValues 'cwd' (@(Expand-Glob $h '.letta/lc-local-backend/conversations/*/messages.jsonl') + @(Expand-Glob $h '.pi/agent/sessions/*/*.jsonl') + @(Expand-Glob $h '.pi/agent/*.jsonl') + @((Join-PathSafe $h '.pi/agent/crashes.json')) + @(Expand-Glob $h '.pi/agent/experimental/sessions/*/meta.json'))
-    $vals += Get-JsonKeys '(?:true|false)' @((Join-PathSafe $h '.pi/agent/trust.json'))
-    $vals += Get-JsonKeys '\{' @((Join-PathSafe $h '.config/muse/trust.json'))
-    $vals += Get-JsonValues 'workspace_root' @(Expand-Glob $h '.local/share/muse/sessions/*/*/*/*/session.jsonl')
-    $vals += Get-JsonValues 'cwd' (@(Expand-Glob $h '.openinterpreter/sessions/*/*/*/rollout-*.jsonl') + @(Expand-Glob $h '.openinterpreter/archived_sessions/rollout-*.jsonl') + @(Expand-Glob $h '.openinterpreter/archived_sessions/*/*/*/rollout-*.jsonl'))
-    $vals += Get-JsonValues 'path' @((Join-PathSafe $h '.openhands/workspaces.json'))
-    $vals += Get-JsonValues 'working_dir' (@(Expand-Glob $h '.openhands/agent-canvas/dev_conversations/*/meta.json') + @(Expand-Glob $h '.openhands/agent-canvas/conversations/*/meta.json') + @(Expand-Glob $h '.openhands/conversations/*/base_state.json'))
-    $vals += Get-JsonValues 'workspaceDirectory' @((Join-PathSafe $h '.pearai/sessions/sessions.json'))
-    $oc = @(Expand-Glob $h '.openclaw*/openclaw.json') + @((Join-PathSafe $h '.clawdbot/clawdbot.json'))
-    $vals += Get-Json5Values 'workspace' $oc
-    $vals += Get-Json5Values 'agentDir' $oc
-    foreach ($nw in @(Expand-Glob $h '.nanobot*/sessions/*/.workspace')) { try { $vals += [System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $nw)) } catch { } }
-    $vals += Get-JsonValues 'workspace' @(Expand-Glob $h '.nanobot*/config.json')
-    $vals += Get-TomlFileUrls 'git_url' @((Join-PathSafe $h '.tabby/config.toml'))
-    foreach ($tm in @(Expand-Glob $h '.twinny/embeddings/*/manifest.json')) { $cd = Get-CommonDir @(Get-PathStrings @($tm)); if ($cd) { $vals += $cd } }
-    foreach ($ws in (@(Expand-Glob $h 'AppData/Roaming/*/User') + @(Expand-Glob $h '.config/*/User') + @(Expand-Glob $h 'Library/Application Support/*/User') + @(Expand-Glob $h '.*-server*/data/User'))) {
-      $vals += Get-JsonValues 'folder' @(Expand-Glob $ws 'workspaceStorage/*/workspace.json')
-      $vals += Get-JsonValues 'cwdOnTaskInitialization' (@(Expand-Glob $ws 'globalStorage/saoudrizwan.claude-dev/state/taskHistory.json') + @(Expand-Glob $ws 'globalStorage/saoudrizwan.claude-dev/tasks/*/task_metadata.json'))
-      $vals += Get-JsonValues 'workspace' (@(Expand-Glob $ws 'globalStorage/rooveterinaryinc.roo-cline/tasks/_index.json') + @(Expand-Glob $ws 'globalStorage/kilocode.kilo-code/tasks/_index.json'))
-    }
-    $script:DiscoveryHome = ''
-    foreach ($v in $vals) {
-      $lp = ConvertTo-LocalPath ([string]$v)
-      if ($lp) { $found += @{ user = $u.user; path = $lp.TrimEnd('\', '/') } }
-    }
-  }
-  foreach ($p in $Project) {
-    $found += @{ user = (Get-ProjectOwner $p); path = $p.TrimEnd('\', '/') }
-  }
-  $seen = @{}; $out = @()
-  $homeKeys = @{}; foreach ($u in $script:UserList) { $homeKeys[$u.home.ToLowerInvariant()] = $true }
-  foreach ($f in $found) {
-    $key = $f.path.ToLowerInvariant()
-    if ($seen.ContainsKey($key)) { if ($seen[$key].user -eq '' -and $f.user -ne '') { $seen[$key].user = $f.user }; continue }
-    if ($homeKeys.ContainsKey($key)) { continue }
-    if (-not (Test-PathQuiet $f.path 'Container')) { continue }
-    $seen[$key] = $f; $out += $f
-  }
-  return $out
-}
-
-$ProjectList = @()
 if (-not $NoProjects) {
-  $ProjectList = @(Find-Projects)
-  # A -Project value that is not a directory is left out of the list above;
-  # it gets a log line and one error_read row, so it is never dropped silently.
-  foreach ($p in $Project) {
-    if (Test-PathQuiet $p 'Container') { continue }
-    if (Test-PathQuiet $p 'Leaf') { $e = 'Not a directory' }
-    else { $e = "Cannot find path '$p' because it does not exist."; try { [void](Get-Item -LiteralPath (ConvertTo-ExtendedPath $p) -Force -ErrorAction Stop) } catch { $e = ConvertFrom-ExtendedText $_.Exception.Message } }
-    Write-CollectorLog "WARNING: project given with -Project is not a directory: ${p}: $e"
-    if (-not $Inventory) { Write-ManifestRow (Get-ProjectOwner $p) $p '' $p '' 'dir' 0 0 0 0 0 '' '' '' $false 'error_read' '' $e }
-  }
-  if (-not $Inventory) { foreach ($pj in $ProjectList) {
-    Write-CollectorLog "Project $(if ($pj.user) { '[' + $pj.user + '] ' })$($pj.path)"
-    $e = Get-DirReadError $pj.path; if ($e) { Write-ReadErrorRow $pj.user $pj.path '' $pj.path $e }
-    Add-CatalogMatches $pj.user $pj.path $PROJECT_CATALOG
-  } }
+  $script:ProjectList = @(Find-Projects)
+  Add-Projects
 }
 
 # ---------------------------------------------------------------------------
@@ -3453,7 +3630,7 @@ if ($Inventory) {
   Write-Output ($hostLine | ConvertTo-Json -Compress)
   foreach ($pair in $script:InvUsers) {
     $u = $pair[0]
-    $np = @($ProjectList | Where-Object { $_.user -eq $u.user }).Count
+    $np = @($script:ProjectList | Where-Object { $_.user -eq $u.user }).Count
     Get-InvLines $u.user $pair[1] $np
   }
   Get-InvLines 'docker' $script:InvDocker 0
@@ -3488,7 +3665,7 @@ $summary = [ordered]@{
   users = @($script:UserList | ForEach-Object { $_.user })
   homes = @($script:UserList | ForEach-Object { $_.home })
   users_with_artifacts = @($ActiveUsers | ForEach-Object { $_.user })
-  projects = @($ProjectList | ForEach-Object { $_.path })
+  projects = @($script:ProjectList | ForEach-Object { $_.path })
   counts = [ordered]@{ collected = $script:Counts.collected; symlink = $script:Counts.symlink; skipped_excluded = $script:Counts.skipped_excluded; skipped_size = $script:Counts.skipped_size; skipped_secret = $script:Counts.skipped_secret; error_copy = $script:Counts.error_copy; skipped_unmatched_volume = $script:Counts.skipped_unmatched_volume; error_read = $script:Counts.error_read; collected_bytes = $script:Counts.bytes }
   docker = [ordered]@{ volumes_found = $script:Docker.found; volumes_collected = $script:Docker.collected; unreadable = $script:Docker.unreadable; docker_desktop = $script:Docker.desktop }
   notes = @($script:Notes)
@@ -3598,7 +3775,7 @@ Write-Output "manifest:   $ManifestPath"
 Write-Output "summary:    $SummaryPath"
 Write-Output "log:        $LogPath"
 Write-Output "users:      $($ActiveUsers.Count)"
-Write-Output "projects:   $($ProjectList.Count)"
+Write-Output "projects:   $($script:ProjectList.Count)"
 Write-Output "collected:  $($c.collected) files, $($c.bytes) bytes ($(Format-HumanSize $c.bytes))"
 Write-Output "skipped:    $($c.skipped_excluded) excluded, $($c.skipped_size) too large, $($c.skipped_secret) secret"
 Write-Output "errors:     $($c.error_copy + $c.error_read) ($($c.error_copy) error_copy, $($c.error_read) error_read)"
