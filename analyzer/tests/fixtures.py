@@ -3159,7 +3159,19 @@ def continue_dev_data():
         succeeded=True,
         output=[{"name": "Edit", "description": "", "content": "ok"}],
     )
-    return [chat], [tool]
+    rejected = dict(
+        base,
+        eventName="toolUsage",
+        timestamp="2026-10-02T10:00:06.000Z",
+        toolCallId="call_2",
+        functionName="run_terminal_command",
+        functionParams={"command": "rm -rf build"},
+        toolCallArgs='{"command":"rm -rf build"}',
+        accepted=False,
+        succeeded=False,
+        output=[],
+    )
+    return [chat], [tool, rejected]
 
 
 def build_continue(home: Path) -> None:

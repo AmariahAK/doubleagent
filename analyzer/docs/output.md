@@ -258,7 +258,13 @@ the session row and `model: <old> -> <new>` before a history item whose
 `promptLogs[].modelTitle` differs; PearAI's chat sessions write
 `model: <id>` and `model: <old> -> <new>` from each item's
 `promptLogs[].completionOptions.model`. These rows inherit the session's
-time like every other row of a Continue or PearAI session. `roo-code`,
+time like every other row of a Continue or PearAI session. Continue
+also writes per-call decisions with the call's `tool_use_id` and
+`tool_name`: `permission decision: accepted=<accepted>` after each
+`dev_data` `toolUsage.jsonl` record's `tool_result` row, at the record's
+time and with an empty `session_id` (the record names none), and
+`permission decision: canceled` after a session tool call whose
+`toolCallStates[]` status is `canceled`, at the session time. `roo-code`,
 `aider`, `shellgpt` and `tabby` record no model and write no such row.
 
 ## sessions.jsonl

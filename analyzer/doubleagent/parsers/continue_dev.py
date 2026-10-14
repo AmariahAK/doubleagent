@@ -47,6 +47,14 @@ change is only seen as a different `modelTitle` between items, and
 `chatModelTitle` is a single value per session file. `dev_data` events
 fill the `model` column only. `permissions.yaml` (the `cn` CLI's tool
 policy) is not read: its shape is not recorded in the research.
+
+Per-call decisions: each `toolUsage.jsonl` record that has `accepted`
+yields `permission decision: accepted=<accepted>` after its `tool_result`
+row (which keeps its own `accepted=` text), with the record's time,
+`tool_use_id` and `tool_name`. A `toolCallStates[]` entry whose `status`
+is `canceled` yields `permission decision: canceled` with the call's
+`tool_use_id` and `tool_name`, after the state's `tool_result` row when
+there is one, at the session time.
 """
 
 from __future__ import annotations
@@ -58,7 +66,15 @@ from collections.abc import Iterator
 from ..inputs import Artifact, error_reason
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl, text_of, track_change
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    iter_jsonl,
+    setting_value,
+    text_of,
+    track_change,
+)
 
 SESSION_RX = re.compile(r"^(?:.*/)?\.continue/sessions/([^/]+)\.json$")
 DEV_DATA_RX = re.compile(
@@ -332,19 +348,29 @@ class ContinueParser(Parser):
                     )
                 for st in states:
                     call_id = str(st.get("toolCallId") or "")
-                    if not call_id or call_id in answered:
+                    if not call_id:
                         continue
                     out = output_text(st.get("output"))
                     status = str(st.get("status") or "")
-                    if not out and status in ("", "done", "generated", "generating", "calling"):
-                        continue
-                    row = base(i, model)
-                    row.turn_type = "tool_result"
-                    row.tool_use_id = call_id
-                    row.tool_name = names.get(call_id, "")
-                    yield self._fill(
-                        row, "[%s] %s" % (status, out) if status and status != "done" else out, opts
-                    )
+                    if call_id not in answered and (
+                        out or status not in ("", "done", "generated", "generating", "calling")
+                    ):
+                        row = base(i, model)
+                        row.turn_type = "tool_result"
+                        row.tool_use_id = call_id
+                        row.tool_name = names.get(call_id, "")
+                        yield self._fill(
+                            row,
+                            "[%s] %s" % (status, out) if status and status != "done" else out,
+                            opts,
+                        )
+                    if status == "canceled":
+                        row = base(i, model)
+                        row.turn_type = "system"
+                        row.tool_use_id = call_id
+                        row.tool_name = names.get(call_id, "")
+                        row.text = "permission decision: canceled"
+                        yield row
             elif role == "thinking":
                 if opts.include_thinking and text:
                     row = base(i, model)
@@ -435,6 +461,15 @@ class ContinueParser(Parser):
                 ),
                 opts,
             )
+            if "accepted" in rec:
+                row = self.base_row(artifact)
+                row.source_line = n
+                row.timestamp_utc = ts
+                row.turn_type = "system"
+                row.tool_name = name
+                row.tool_use_id = call_id
+                row.text = "permission decision: accepted=%s" % setting_value(rec["accepted"])
+                yield row
         yield from self._errors(artifact, errors)
 
     def _errors(self, artifact: Artifact, errors: list) -> Iterator[Row]:

@@ -132,7 +132,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ahead of a later history item that names a different one: Continue
   starts from `chatModelTitle` (else the first `promptLogs[].modelTitle`)
   and compares each item's `promptLogs[].modelTitle`, PearAI compares each
-  item's `promptLogs[].completionOptions.model` ([#96]).
+  item's `promptLogs[].completionOptions.model`. The `continue` parser
+  also yields `permission decision: accepted=<value>` after each
+  `toolUsage.jsonl` record's `tool_result` row and
+  `permission decision: canceled` for a session tool call whose state is
+  `canceled` ([#96], [#97]).
 
 ### Changed
 

@@ -2688,6 +2688,7 @@ class ContinueTests(ParserBase):
                 "assistant",
                 "tool_use",
                 "tool_result",
+                "system",
             ],
         )
         for r in rows:
@@ -2698,7 +2699,7 @@ class ContinueTests(ParserBase):
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
             # no per-message time: every row inherits sessions.json dateCreated
             self.assertEqual(r.timestamp_utc, "2026-10-02T10:00:00.000Z")
-        start, model, user, use1, res1, switch, asst, _use2, res2 = rows
+        start, model, user, use1, res1, switch, asst, _use2, res2, canceled = rows
         self.assertIn("session start: Fix bug mode=agent items=5", start.text)
         # chatModelTitle starts the session; item 5's promptLogs switch it
         self.assertEqual(
@@ -2719,7 +2720,17 @@ class ContinueTests(ParserBase):
         self.assertEqual(asst.text, "Renamed. Cleaning the build too.")
         # a call with no tool message keeps its outcome in toolCallStates
         self.assertEqual((res2.tool_use_id, res2.text), ("call_2", "[canceled]"))
-        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 3, 4, 5, 5, 5, 5])
+        # the canceled state is a per-call decision, after its result row
+        self.assertEqual(
+            (canceled.text, canceled.tool_use_id, canceled.tool_name, canceled.timestamp_utc),
+            (
+                "permission decision: canceled",
+                "call_2",
+                "run_terminal_command",
+                "2026-10-02T10:00:00.000Z",
+            ),
+        )
+        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 3, 4, 5, 5, 5, 5, 5])
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(ContinueParser(), self.REL, include_thinking=True)
@@ -2743,9 +2754,22 @@ class ContinueTests(ParserBase):
             [
                 ("tool_use", "edit_existing_file", "call_1"),
                 ("tool_result", "edit_existing_file", "call_1"),
+                ("system", "edit_existing_file", "call_1"),
+                ("tool_use", "run_terminal_command", "call_2"),
+                ("tool_result", "run_terminal_command", "call_2"),
+                ("system", "run_terminal_command", "call_2"),
             ],
         )
         self.assertEqual(rows[1].text, "accepted=true succeeded=true ok")
+        self.assertEqual(
+            (rows[2].text, rows[2].timestamp_utc, rows[2].session_id),
+            ("permission decision: accepted=true", "2026-10-02T10:00:03.000Z", ""),
+        )
+        self.assertEqual(rows[4].text, "accepted=false succeeded=false")
+        self.assertEqual(
+            (rows[5].text, rows[5].timestamp_utc, rows[5].source_line),
+            ("permission decision: accepted=false", "2026-10-02T10:00:06.000Z", 2),
+        )
 
     def test_index_and_config_not_wanted(self):
         p = ContinueParser()

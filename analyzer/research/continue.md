@@ -142,6 +142,17 @@ one value per file with no record of when it was set. The CLI's
 [`collectors/research/continue.md`](../../collectors/research/continue.md)
 but its shape is not recorded, so the parser does not read it.
 
+Per-call decision rows, typed `system`:
+
+- `toolUsage.jsonl` `accepted` yields `permission decision:
+  accepted=<accepted>` after the record's `tool_result` row, with its
+  `timestamp`, `toolCallId` and `functionName`; the result row keeps its
+  `accepted=` and `succeeded=` text.
+- A `ToolCallState` whose `status` is `canceled` yields `permission
+  decision: canceled` with the call's `toolCallId` and function name,
+  after the state's `tool_result` row when there is one, at the session
+  time.
+
 Fixture `sessions/0f1e.json`:
 
 ```json
