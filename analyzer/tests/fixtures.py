@@ -4930,6 +4930,8 @@ PI_FORK_FILE = "2026-10-01T09-30-00-000Z_%s.jsonl" % PI_FORK
 LC_SESSION = "0b9e2f4c-1111-4000-8000-000000000001"
 LC_FILE = "2026-10-01T11-00-00-000Z_%s.jsonl" % LC_SESSION
 PI_EXPERIMENTAL = "exp-session-1"
+PI_TRUST = ".pi/agent/trust.json"
+PI_TRUST_MTIME = 1790852000  # 2026-10-01T10:53:20Z
 LETTA_LOCAL_CONV = "local-conv-1"
 LETTA_LOCAL_DIR = "Y29udmVyc2F0aW9uOmxvY2FsLWNvbnYtMQ"  # base64url("conversation:local-conv-1")
 LETTA_AGENT = "agent-1a2b"
@@ -5039,6 +5041,14 @@ def pi_session_records(cwd="/srv/proj"):
             "timestamp": "2026-10-01T09:00:10.000Z",
             "name": "test fix",
         },
+        {
+            "type": "model_change",
+            "id": "8192a3b5",
+            "parentId": "6f708192",
+            "timestamp": "2026-10-01T09:00:11.000Z",
+            "provider": "openai",
+            "modelId": "gpt-5",
+        },
     ]
 
 
@@ -5138,6 +5148,21 @@ def little_coder_session_records(cwd="/srv/proj"):
                 "timestamp": 1790852409000,
             },
         },
+        {
+            "type": "message",
+            "id": "a5",
+            "parentId": "a4",
+            "timestamp": "2026-10-01T11:00:12.000Z",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "One test fails."}],
+                "api": "openai-completions",
+                "provider": "llamacpp",
+                "model": "qwen3.6-27b",
+                "stopReason": "stop",
+                "timestamp": 1790852412000,
+            },
+        },
     ]
 
 
@@ -5151,6 +5176,8 @@ def build_pi(home: Path) -> None:
     )
     _json(home / ".pi/agent/auth.json", {"anthropic": {"type": "api_key", "key": "sk-not-real"}})
     _json(home / ".pi/agent/settings.json", {"defaultProvider": "anthropic"})
+    _json(home / PI_TRUST, {"/srv/proj": True, "/srv/untrusted": False})
+    os.utime(home / PI_TRUST, (PI_TRUST_MTIME, PI_TRUST_MTIME))
 
 
 def build_little_coder(home: Path) -> None:
@@ -5267,6 +5294,21 @@ def letta_local_records(cwd="/srv/proj"):
                 "content": [{"type": "text", "text": "README.md"}],
                 "isError": False,
                 "timestamp": 1790856003000,
+            },
+        },
+        {
+            "type": "message",
+            "id": "d4e5f6a7",
+            "parentId": "c3d4e5f6",
+            "timestamp": "2026-10-01T12:00:04.000Z",
+            "message": {
+                "id": "letta-msg-4",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "One file: README.md"}],
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5",
+                "stopReason": "stop",
+                "timestamp": 1790856004000,
             },
         },
     ]

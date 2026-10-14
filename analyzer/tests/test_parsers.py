@@ -4280,7 +4280,9 @@ from fixtures import (
     PI_FORK,
     PI_FORK_FILE,
     PI_SESSION,
+    PI_TRUST,
     _jsonl,
+    pi_session_records,
 )
 
 
@@ -4302,6 +4304,7 @@ class PiTests(ParserBase):
                 "tool_use",
                 "tool_result",
                 "system",
+                "system",
             ],
         )
         for r in rows:
@@ -4310,13 +4313,28 @@ class PiTests(ParserBase):
             )
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        start, mc, user, use, result, bash, bash_out, info = rows
+        start, mc, user, use, result, bash, bash_out, info, change = rows
         self.assertEqual(
             (start.text, start.timestamp_utc),
             ("session start: version=3 cwd=/srv/proj", "2026-10-01T09:00:00.000Z"),
         )
+        # The model_change entry starts the model; the assistant message on
+        # line 4 names the same model and adds no row.
         self.assertEqual(
-            (mc.model, mc.text), ("claude-sonnet-4-5", "model_change: anthropic/claude-sonnet-4-5")
+            (mc.model, mc.text, mc.timestamp_utc),
+            (
+                "claude-sonnet-4-5",
+                "model: claude-sonnet-4-5 provider=anthropic",
+                "2026-10-01T09:00:00.100Z",
+            ),
+        )
+        self.assertEqual(
+            (change.model, change.text, change.timestamp_utc),
+            (
+                "gpt-5",
+                "model: claude-sonnet-4-5 -> gpt-5 provider=openai",
+                "2026-10-01T09:00:11.000Z",
+            ),
         )
         self.assertEqual(
             (user.text, user.timestamp_utc), ("fix the failing test", "2026-10-01T09:00:01.000Z")
@@ -4334,7 +4352,7 @@ class PiTests(ParserBase):
         self.assertEqual((bash_out.tool_use_id, bash_out.text), ("5e6f7081", "M src/a.ts"))
         self.assertEqual(info.text, "session_info: name=test fix")
         self.assertEqual(
-            [r.source_line for r in rows], [1, 2, 3, 4, 5, 6, 6, 8]
+            [r.source_line for r in rows], [1, 2, 3, 4, 5, 6, 6, 8, 9]
         )  # the label on line 7 is skipped
         self.assertEqual(
             pi_args_summary({"edits": [{"oldText": "a", "newText": "b"}], "path": "src/a.ts"}),
@@ -4350,12 +4368,15 @@ class PiTests(ParserBase):
 
     def test_fork_drops_entries_copied_from_parent(self):
         rows = self.rows_for(PiParser(), self.FORK)
-        self.assertEqual([r.turn_type for r in rows], ["system", "system", "assistant"])
+        self.assertEqual([r.turn_type for r in rows], ["system", "system", "system", "assistant"])
         self.assertIn("parentSession=/home/alice/" + self.REL, rows[0].text)
         self.assertTrue(
             rows[1].text.startswith("fork: 3 entries copied from the parent session"), rows[1].text
         )
-        self.assertEqual((rows[2].session_id, rows[2].text), (PI_FORK, "Trying another way."))
+        # The copied model_change is dropped, so the fork's own first
+        # assistant message starts its model.
+        self.assertEqual(rows[2].text, "model: claude-sonnet-4-5 provider=anthropic")
+        self.assertEqual((rows[3].session_id, rows[3].text), (PI_FORK, "Trying another way."))
 
     def test_fork_kept_whole_without_parent(self):
         (self.home / self.REL).unlink()
@@ -4389,18 +4410,89 @@ class PiTests(ParserBase):
             ("system", PI_EXPERIMENTAL, "/srv/proj", "2026-10-01T12:00:00.000Z"),
         )
 
+    def test_response_model_and_requested(self):
+        path = self.home / self.REL
+        recs = pi_session_records()[:4]
+        asst = dict(recs[3]["message"], responseModel="claude-sonnet-4-5-20250929")
+        recs[3] = dict(recs[3], message=asst)
+        _jsonl(path, recs)
+        rows = [r for r in self.rows_for(PiParser(), self.REL) if r.text.startswith("model:")]
+        self.assertEqual(
+            [(r.text, r.model, r.source_line) for r in rows],
+            [
+                ("model: claude-sonnet-4-5 provider=anthropic", "claude-sonnet-4-5", 2),
+                (
+                    "model: claude-sonnet-4-5 -> claude-sonnet-4-5-20250929 provider=anthropic "
+                    "requested=claude-sonnet-4-5",
+                    "claude-sonnet-4-5-20250929",
+                    4,
+                ),
+            ],
+        )
+
+    def test_trust_standing_rows(self):
+        self.assertTrue(PiParser().wants(next(a for a in self.col.artifacts if a.rel == PI_TRUST)))
+        rows = self.rows_for(PiParser(), PI_TRUST)
+        self.assertEqual(
+            [
+                (r.turn_type, r.text, r.timestamp_utc, r.session_id, r.project_path, r.source_line)
+                for r in rows
+            ],
+            [
+                (
+                    "system",
+                    "permission setting: /srv/proj=true (from .pi/agent/trust.json, file mtime)",
+                    "2026-10-01T10:53:20.000Z",
+                    "",
+                    "/srv/proj",
+                    1,
+                ),
+                (
+                    "system",
+                    "permission setting: /srv/untrusted=false "
+                    "(from .pi/agent/trust.json, file mtime)",
+                    "2026-10-01T10:53:20.000Z",
+                    "",
+                    "/srv/untrusted",
+                    1,
+                ),
+            ],
+        )
+        self.assertEqual({r.agent for r in rows}, {"pi"})
+
+    def test_trust_not_an_object(self):
+        (self.home / PI_TRUST).write_text('["/srv/proj"]', encoding="utf-8")
+        rows = self.rows_for(PiParser(), PI_TRUST)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.session_id) for r in rows],
+            [("system", "parser: .pi/agent/trust.json is not a JSON object", "")],
+        )
+        (self.home / PI_TRUST).write_text('{"/srv/proj": tr', encoding="utf-8")
+        rows = self.rows_for(PiParser(), PI_TRUST)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("is not a JSON object", rows[0].text)
+
     def test_config_not_wanted(self):
         for rel in (".pi/agent/auth.json", ".pi/agent/settings.json"):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertFalse(PiParser().wants(art), rel)
+        for rel in (
+            ".pi/agent/auth.json",
+            ".pi/agent/mcp-auth.json",
+            ".pi/agent/models.json",
+            ".pi/agent/oauth.json",
+            ".pi/agent/mcp.json",
+        ):
+            self.assertFalse(PiParser().wants(rel_only(rel)), rel)
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.REL)
         rows = self.rows_for(PiParser(), self.REL)
-        self.assertEqual(len(rows), 9)
+        self.assertEqual(len(rows), 10)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser:", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 9)
+        self.assertEqual(rows[-1].source_line, 10)
+        self.assertIn("model: claude-sonnet-4-5 -> gpt-5 provider=openai", [r.text for r in rows])
 
 
 class LittleCoderTests(ParserBase):
@@ -4434,6 +4526,33 @@ class LittleCoderTests(ParserBase):
         rows = self.rows_for(LittleCoderParser(), self.HISTORY, include_thinking=True)
         self.assertNotIn("thinking", [r.turn_type for r in rows])
 
+    def test_session_model_rows_through_pi_reader(self):
+        # little-coder sessions are pi files: the pi parser yields their
+        # model rows, from the assistant `model` (no model_change entry).
+        rows = self.rows_for(PiParser(), PI_DIR + LC_FILE)
+        models = [r for r in rows if r.text.startswith("model:")]
+        self.assertEqual(
+            [(r.text, r.model, r.timestamp_utc, r.session_id, r.source_line) for r in models],
+            [
+                (
+                    "model: qwen3.6-35b-a3b provider=llamacpp",
+                    "qwen3.6-35b-a3b",
+                    "2026-10-01T11:00:05.000Z",
+                    LC_SESSION,
+                    4,
+                ),
+                (
+                    "model: qwen3.6-35b-a3b -> qwen3.6-27b provider=llamacpp",
+                    "qwen3.6-27b",
+                    "2026-10-01T11:00:12.000Z",
+                    LC_SESSION,
+                    6,
+                ),
+            ],
+        )
+        i = rows.index(models[0])
+        self.assertEqual(rows[i + 1].turn_type, "tool_use")  # before the record's own rows
+
     def test_settings_and_sessions_not_wanted(self):
         art = next(a for a in self.col.artifacts if a.rel == ".config/little-coder/settings.json")
         self.assertFalse(LittleCoderParser().wants(art))
@@ -4457,12 +4576,32 @@ class LettaTests(ParserBase):
 
     def test_local_backend_rows(self):
         rows = self.rows_for(LettaParser(), self.LOCAL)
-        self.assertEqual([r.turn_type for r in rows], ["system", "user", "tool_use", "tool_result"])
+        self.assertEqual(
+            [r.turn_type for r in rows],
+            ["system", "user", "system", "tool_use", "tool_result", "system", "assistant"],
+        )
         for r in rows:
             self.assertEqual(
                 (r.agent, r.session_id, r.project_path), ("letta", LETTA_LOCAL_CONV, "/srv/proj")
             )
-        _, user, use, result = rows
+        _, user, start_model, use, result, change, _ = rows
+        self.assertEqual(
+            (start_model.text, start_model.model, start_model.timestamp_utc),
+            (
+                "model: claude-sonnet-4-5 provider=anthropic",
+                "claude-sonnet-4-5",
+                "2026-10-01T12:00:02.000Z",
+            ),
+        )
+        self.assertEqual(
+            (change.text, change.model, change.timestamp_utc, change.source_line),
+            (
+                "model: claude-sonnet-4-5 -> claude-haiku-4-5 provider=anthropic",
+                "claude-haiku-4-5",
+                "2026-10-01T12:00:04.000Z",
+                6,
+            ),
+        )
         self.assertEqual(
             (user.text, user.timestamp_utc), ("list the repo", "2026-10-01T12:00:01.000Z")
         )
@@ -4511,12 +4650,25 @@ class LettaTests(ParserBase):
             [(r.turn_type, r.session_id, r.project_path) for r in rows],
             [
                 ("system", "s-0", "/srv/old"),
+                ("system", "s-0", "/srv/old"),
+                ("system", "s-1", "/srv/proj"),
                 ("system", "s-1", "/srv/proj"),
                 ("system", "s-1", "/srv/proj"),
             ],
         )
-        self.assertIn("exit_reason=user_exit messages=4 tool_calls=1", rows[2].text)
-        self.assertEqual(rows[1].model, "claude-sonnet-4-5")
+        self.assertIn("exit_reason=user_exit messages=4 tool_calls=1", rows[4].text)
+        self.assertEqual(rows[2].model, "claude-sonnet-4-5")
+        # One model row per CLI session, after its start line; the exit
+        # line names the same model and adds none.
+        self.assertEqual(
+            (rows[3].text, rows[3].model, rows[3].timestamp_utc, rows[3].source_line),
+            (
+                "model: claude-sonnet-4-5 provider=anthropic",
+                "claude-sonnet-4-5",
+                "2026-10-01T12:00:00.000Z",
+                2,
+            ),
+        )
 
     def test_schema_1_bare_messages(self):
         path = self.home / self.LOCAL
@@ -4544,6 +4696,12 @@ class LettaTests(ParserBase):
             [(r.turn_type, r.text, r.timestamp_utc, r.session_id) for r in rows],
             [
                 ("user", "hi", "2026-10-01T12:00:01.000Z", LETTA_LOCAL_CONV),
+                (
+                    "system",
+                    "model: claude-sonnet-4-5",
+                    "2026-10-01T12:00:02.000Z",
+                    LETTA_LOCAL_CONV,
+                ),
                 ("assistant", "hello", "2026-10-01T12:00:02.000Z", LETTA_LOCAL_CONV),
             ],
         )
@@ -4558,7 +4716,7 @@ class LettaTests(ParserBase):
             self.assertFalse(LettaParser().wants(art), rel)
 
     def test_truncated_line_is_reported_not_fatal(self):
-        for rel, n in ((self.TRANSCRIPT, 4), (self.LOCAL, 4)):
+        for rel, n in ((self.TRANSCRIPT, 4), (self.LOCAL, 7)):
             write_bad_line(self.home / rel)
             rows = self.rows_for(LettaParser(), rel)
             self.assertEqual(len(rows), n + 1, rel)
@@ -5114,13 +5272,23 @@ class OpenClawTests(ParserBase):
         ]
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "user", "assistant", "tool_use", "tool_result", "system"],
+            ["system", "system", "user", "assistant", "tool_use", "tool_result", "system"],
         )
         for r in rows:
             self.assertEqual((r.host, r.user, r.agent), ("h1", "alice", "openclaw"))
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
             self.assertEqual(r.source_file, "/alice/" + self.DB)
-        start, user, asst, use, result, change = rows
+        start, start_model, user, asst, use, result, change = rows
+        # The session window names the starting model; the assistant reply
+        # names the same one and adds no row.
+        self.assertEqual(
+            (start_model.text, start_model.model, start_model.timestamp_utc),
+            (
+                "model: claude-sonnet-4-5 provider=anthropic",
+                "claude-sonnet-4-5",
+                "2026-10-01T09:00:00.000Z",
+            ),
+        )
         self.assertIn("key=" + OPENCLAW_KEY, start.text)
         self.assertIn("channel=telegram", start.text)
         self.assertIn("chat_type=direct", start.text)
@@ -5135,9 +5303,16 @@ class OpenClawTests(ParserBase):
             (result.tool_name, result.tool_use_id, result.text),
             ("exec", "call_01", "/dev/sda1  50G  20G  30G  40% /"),
         )
-        self.assertEqual((change.text, change.model), ("model change: openai/gpt-5", "gpt-5"))
         self.assertEqual(
-            [r.source_line for r in rows], [1, 2, 3, 3, 4, 5]
+            (change.text, change.model, change.timestamp_utc),
+            (
+                "model: claude-sonnet-4-5 -> gpt-5 provider=openai",
+                "gpt-5",
+                "2026-10-01T09:01:00.000Z",
+            ),
+        )
+        self.assertEqual(
+            [r.source_line for r in rows], [1, 1, 2, 3, 3, 4, 5]
         )  # transcript_events rowid
 
     def test_thinking_opt_in(self):
@@ -5167,9 +5342,22 @@ class OpenClawTests(ParserBase):
         rows = self.rows_for(OpenClawParser(), self.LEGACY)
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "system", "tool_use", "tool_result", "system", "assistant", "system"],
+            [
+                "system",
+                "system",
+                "tool_use",
+                "tool_result",
+                "system",
+                "system",
+                "assistant",
+                "system",
+            ],
         )
-        start, ctx, bash, out, compaction, asst, err = rows
+        start, ctx, bash, out, compaction, model, asst, err = rows
+        self.assertEqual(
+            (model.text, model.model, model.timestamp_utc),
+            ("model: gpt-5", "gpt-5", "2026-09-20T08:05:10.000Z"),
+        )
         self.assertEqual({r.session_id for r in rows}, {OPENCLAW_LEGACY})
         self.assertIn("key=" + OPENCLAW_KEY, start.text)  # from the legacy sessions.json
         self.assertTrue(ctx.text.startswith("runtime context:"))
@@ -5180,7 +5368,7 @@ class OpenClawTests(ParserBase):
         self.assertEqual(compaction.text, "compaction (tokens_before=5000): checked uptime")
         self.assertEqual(asst.timestamp_utc, "2026-09-20T08:05:10.000Z")  # message ms timestamp
         self.assertEqual((err.text, err.model), ("assistant error: rate limited", "gpt-5"))
-        self.assertEqual([r.source_line for r in rows], [1, 2, 3, 3, 4, 5, 5])
+        self.assertEqual([r.source_line for r in rows], [1, 2, 3, 3, 4, 5, 5, 5])
 
     def test_deleted_archive_file(self):
         rel = next(a.rel for a in self.col.artifacts if ".jsonl.deleted." in a.rel)
@@ -5236,7 +5424,7 @@ class OpenClawTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.LEGACY)
         rows = self.rows_for(OpenClawParser(), self.LEGACY)
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), 9)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser:", rows[-1].text)
 
@@ -5251,7 +5439,7 @@ class OpenClawTests(ParserBase):
         rows = [
             r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
         ]
-        self.assertEqual(len(rows), 7)
+        self.assertEqual(len(rows), 8)
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].timestamp_utc), ("system", "2026-10-01T09:01:40.000Z")
         )
@@ -5271,7 +5459,7 @@ class OpenClawTests(ParserBase):
         rows = [
             r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
         ]
-        self.assertEqual(len(rows), 7)
+        self.assertEqual(len(rows), 8)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("event seq 9 unreadable: not a JSON object", rows[-1].text)
 

@@ -22,7 +22,7 @@ synthetic fixture; see `research/pi.md`. Files:
     the entry has none): `user` (`content` string or text/image parts);
     `assistant` (`content[]` of `text`, `thinking` (`thinking`,
     `redacted`), `toolCall` (`id`, `name`, `arguments`); `provider`,
-    `model`, `stopReason`, `errorMessage`); `toolResult` (`toolCallId`,
+    `model`, `responseModel`, `stopReason`, `errorMessage`); `toolResult` (`toolCallId`,
     `toolName`, `content[]`, `isError`); `bashExecution` (a user
     `!command`: `command`, `output`, `exitCode`, `cancelled`), emitted as a
     tool_use and a tool_result joined on the entry `id`; `system`
@@ -30,6 +30,14 @@ synthetic fixture; see `research/pi.md`. Files:
     `branchSummary` and `compactionSummary` (`summary`) as system rows.
   The file holds every branch of the `id`/`parentId` tree; rows follow
   file order, not the active branch.
+  Model rows: `model: <id> provider=<provider>` at the first entry that
+  names a model (a `model_change` `modelId` or an assistant
+  `responseModel`, else `model`) and `model: <old> -> <new>
+  provider=<provider>` on every later entry whose model differs, with
+  ` requested=<model>` when an assistant `responseModel` (the concrete
+  model the provider reported) differs from its `model` (the one asked
+  for). The `model` column is `responseModel`, else `model`. No entry type
+  records a per-call permission decision.
 * Forks: pi copies every parent entry into the child file verbatim, ids
   and timestamps included. When the header's `parentSession` resolves to a
   file present in the same collected home, child entries whose `id` and
@@ -40,6 +48,14 @@ synthetic fixture; see `research/pi.md`. Files:
   `customType` starts `lc-`, an assistant `provider` of `llamacpp`, or a
   `~/.little-coder/checkpoints/<this file name>/` directory gets one
   system row saying so; its rows stay agent `pi`, as the manifest says.
+* `~/.pi/agent/trust.json` (in the directory little-coder shares; pi
+  v0.83.0, which little-coder pins, writes it too): an object whose keys
+  are absolute project paths and whose values are `true` (trusted) or
+  `false`. One `permission setting: <path>=<value> (from
+  .pi/agent/trust.json, file mtime)` row per key, `project_path` the key,
+  `session_id` empty, timestamped by the file's modification time, which
+  is not the time of the decision. A file that is not a JSON object is
+  one `system` row.
 * `~/.pi/agent/experimental/sessions/<id>/meta.json` (`PI_EXPERIMENTAL=1`,
   not at v0.83.0): `{createdAt (ms), cwd}`, one system row per session.
   The transcript beside it, `session.sqlite`, is not parsed: its `record`
@@ -60,9 +76,19 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl, text_of
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    file_mtime,
+    iter_jsonl,
+    setting_value,
+    text_of,
+    track_change,
+)
 
 SESSION_RX = re.compile(r"^\.pi/agent/(?:sessions/[^/]+/)?[^/]+\.jsonl$")
+TRUST_REL = ".pi/agent/trust.json"
 META_RX = re.compile(r"^\.pi/agent/experimental/sessions/([^/]+)/meta\.json$")
 
 ARG_KEYS = ("command", "path", "file_path", "pattern", "code", "url", "query")
@@ -119,6 +145,18 @@ def _label(prefix: str, text: str) -> str:
     return "%s: %s" % (prefix, text) if text else prefix
 
 
+def model_text(seen: dict, key: str, model: str, provider: str, requested: str = "") -> str:
+    """The `model:` row text when `model` is new or changed for `key`, with
+    ` provider=` and, when the provider reported a concrete model other than
+    the one asked for, ` requested=<model asked for>`; empty otherwise."""
+    text = track_change("model", seen, key, model)
+    if text and provider:
+        text += " provider=%s" % provider
+    if text and requested and requested != model:
+        text += " requested=%s" % requested
+    return text
+
+
 def entry_rows(
     parser: Parser,
     artifact: Artifact,
@@ -131,6 +169,7 @@ def entry_rows(
     """Timeline rows for the entries of a pi-format session. `skip` holds
     (id, timestamp) keys to drop (entries a fork copied from its parent)."""
     skip = skip or set()
+    seen: dict = {}  # the model in use, for the `model:` rows
     for n, rec in session.entries:
         if skip and (str(rec.get("id") or ""), str(rec.get("timestamp") or "")) in skip:
             continue
@@ -155,12 +194,12 @@ def entry_rows(
             return row
 
         if etype == "message":
-            yield from _message_rows(msg, rec, base, emit, opts)
+            yield from _message_rows(msg, rec, base, emit, opts, seen, session_id)
         elif etype == "model_change":
             model = str(rec.get("modelId") or "")
-            yield emit(
-                base(model), "system", "model_change: %s/%s" % (rec.get("provider") or "", model)
-            )
+            text = model_text(seen, session_id, model, str(rec.get("provider") or ""))
+            if text:
+                yield emit(base(model), "system", text)
         elif etype == "thinking_level_change":
             yield emit(
                 base(), "system", "thinking_level_change: %s" % (rec.get("thinkingLevel") or "")
@@ -204,14 +243,20 @@ def entry_rows(
         # custom, label, usage and unknown types carry no conversation content.
 
 
-def _message_rows(msg: dict, rec: dict, base, emit, opts: Options) -> Iterator[Row]:
+def _message_rows(
+    msg: dict, rec: dict, base, emit, opts: Options, seen: dict, session_id: str
+) -> Iterator[Row]:
     role = msg.get("role")
     if role == "user":
         text = text_of(msg.get("content"))
         if text:
             yield emit(base(), "user", text)
     elif role == "assistant":
-        model = str(msg.get("model") or "")
+        requested = str(msg.get("model") or "")
+        model = str(msg.get("responseModel") or "") or requested
+        text = model_text(seen, session_id, model, str(msg.get("provider") or ""), requested)
+        if text:
+            yield emit(base(model), "system", text)
         content = msg.get("content")
         if isinstance(content, str):
             content = [{"type": "text", "text": content}]
@@ -334,9 +379,14 @@ class PiParser(Parser):
         self._parent_cache: dict[Path, set[tuple[str, str]]] = {}
 
     def wants(self, artifact: Artifact) -> bool:
-        return bool(SESSION_RX.match(artifact.rel) or META_RX.match(artifact.rel))
+        return artifact.rel == TRUST_REL or bool(
+            SESSION_RX.match(artifact.rel) or META_RX.match(artifact.rel)
+        )
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        if artifact.rel == TRUST_REL:
+            yield from self._parse_trust(artifact)
+            return
         m = META_RX.match(artifact.rel)
         if m:
             yield from self._parse_meta(artifact, m.group(1), opts)
@@ -400,6 +450,30 @@ class PiParser(Parser):
             yield row
         if session.errors:
             yield error_row(self, artifact, session.errors, sid, cwd)
+
+    def _parse_trust(self, artifact: Artifact) -> Iterator[Row]:
+        """`trust.json`: one standing row per project path, `true` or
+        `false`, timestamped by the file's modification time."""
+        try:
+            doc = json.loads(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
+        except (OSError, ValueError):
+            doc = None
+        ts = file_mtime(artifact)
+        if not isinstance(doc, dict):
+            row = self.base_row(artifact)
+            row.source_line, row.turn_type, row.timestamp_utc = 1, "system", ts
+            row.text = "parser: %s is not a JSON object" % TRUST_REL
+            yield row
+            return
+        for path, value in doc.items():
+            row = self.base_row(artifact)
+            row.source_line, row.turn_type, row.timestamp_utc = 1, "system", ts
+            row.project_path = str(path)
+            row.text = compact(
+                "permission setting: %s=%s (from %s, file mtime)"
+                % (path, setting_value(value), artifact.rel)
+            )
+            yield row
 
     def _parse_meta(self, artifact: Artifact, sid: str, opts: Options) -> Iterator[Row]:
         row = self.base_row(artifact)

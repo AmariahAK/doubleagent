@@ -65,7 +65,16 @@ injected context, not human input, and become `system` rows. A
 `bashExecution` (a `!` command the operator ran) becomes a `tool_use` row
 named `bash` and a `tool_result` row, joined on the entry `id`. An assistant
 message that ended with `stopReason` `error` or `aborted`, or carries an
-`errorMessage`, adds a `system` row. Timestamps are the entry `timestamp`,
+`errorMessage`, adds a `system` row. Model rows: `model: <id>
+provider=<provider>` at the first model a session names (the
+`session_windows` `model` and `model_provider`, at the session-start time,
+else a `model_change` `modelId` or an assistant `responseModel`, else
+`model`) and `model: <old> -> <new> provider=<provider>` on every later
+entry whose model differs, with ` requested=<model>` when an assistant
+`responseModel` differs from its `model` (`pi.model_text`). The
+permission tables of `state/openclaw.sqlite` (`exec_approvals_config`,
+`operator_approvals`, `audit_events`) are not read: their columns are not
+in the research. Timestamps are the entry `timestamp`,
 else the message's ms timestamp, else the row's `created_at`. `source_line`
 is the `transcript_events` (or archive table) rowid, or the JSONL line. No
 git branch is recorded.
@@ -82,6 +91,7 @@ from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
 from .base import Options, Parser, compact_json, text_of
+from .pi import model_text
 from .zed import decompress
 
 STATE = r"(?:\.openclaw(?:-[^/]+)?|\.clawdbot|\.moltbot)"
@@ -139,13 +149,22 @@ def _iter_lines(data: bytes, errors: list) -> Iterator[tuple[int, dict]]:
 class _Session:
     """State carried across one transcript's entries."""
 
-    def __init__(self, session_id: str = "", key: str = "", extra: str = "", model: str = ""):
+    def __init__(
+        self,
+        session_id: str = "",
+        key: str = "",
+        extra: str = "",
+        model: str = "",
+        provider: str = "",
+    ):
         self.session_id = session_id
         self.key = key
         self.extra = extra
         self.model = model
+        self.provider = provider
         self.cwd = ""
         self.started = False
+        self.seen: dict = {}  # the model in use, for the `model:` rows
 
 
 class OpenClawParser(Parser):
@@ -200,7 +219,9 @@ class OpenClawParser(Parser):
         ts: str,
         header: dict | None,
         opts: Options,
-    ) -> Row:
+    ) -> Iterator[Row]:
+        """The session-start row, then a `model:` row when the session
+        window names the model the session started with."""
         s.started = True
         header = header or {}
         if header.get("id") and not s.session_id:
@@ -219,9 +240,11 @@ class OpenClawParser(Parser):
             )
             if x
         )
-        return self._row(
-            artifact, s, line, ts or to_utc(header.get("timestamp")), "system", text, opts, s.model
-        )
+        ts = ts or to_utc(header.get("timestamp"))
+        yield self._row(artifact, s, line, ts, "system", text, opts, s.model)
+        mtext = model_text(s.seen, s.session_id, s.model, s.provider)
+        if mtext:
+            yield self._row(artifact, s, line, ts, "system", mtext, opts, s.model)
 
     def _entry_rows(
         self, artifact: Artifact, s: _Session, line: int, rec: dict, created_at, opts: Options
@@ -232,10 +255,10 @@ class OpenClawParser(Parser):
             msg = {}
         ts = to_utc(rec.get("timestamp")) or to_utc(msg.get("timestamp")) or to_utc(created_at)
         if etype == "session":
-            yield self._start(artifact, s, line, ts, rec, opts)
+            yield from self._start(artifact, s, line, ts, rec, opts)
             return
         if not s.started:
-            yield self._start(artifact, s, line, ts, None, opts)
+            yield from self._start(artifact, s, line, ts, None, opts)
         if etype == "message":
             yield from self._message_rows(artifact, s, line, ts, rec, msg, opts)
             return
@@ -245,11 +268,9 @@ class OpenClawParser(Parser):
 
         if etype == "model_change":
             s.model = str(rec.get("modelId") or "")
-            yield system(
-                "model change: %s"
-                % "/".join(str(x) for x in (rec.get("provider"), rec.get("modelId")) if x),
-                s.model,
-            )
+            mtext = model_text(s.seen, s.session_id, s.model, str(rec.get("provider") or ""))
+            if mtext:
+                yield system(mtext, s.model)
         elif etype == "thinking_level_change":
             yield system("thinking level: %s" % (rec.get("thinkingLevel") or ""))
         elif etype == "compaction":
@@ -310,9 +331,16 @@ class OpenClawParser(Parser):
             else:
                 yield self._row(artifact, s, line, ts, "user", text, opts)
         elif role == "assistant":
-            model = str(msg.get("responseModel") or msg.get("model") or s.model or "")
+            requested = str(msg.get("model") or "")
+            model = str(msg.get("responseModel") or "") or requested or s.model
             if model:
                 s.model = model
+            if msg.get("responseModel") or requested:
+                mtext = model_text(
+                    s.seen, s.session_id, model, str(msg.get("provider") or ""), requested
+                )
+                if mtext:
+                    yield self._row(artifact, s, line, ts, "system", mtext, opts, model)
             content = msg.get("content")
             if isinstance(content, str):
                 content = [{"type": "text", "text": content}]
@@ -554,6 +582,7 @@ class OpenClawParser(Parser):
             key or str(w.get("session_key") or ""),
             " ".join(parts),
             str(w.get("model") or ""),
+            str(w.get("model_provider") or ""),
         )
 
     def _db_events(
@@ -574,7 +603,7 @@ class OpenClawParser(Parser):
                 data, err = _maybe_zstd(r["event_zstd"])
                 if data is None:
                     if not s.started:
-                        yield self._start(
+                        yield from self._start(
                             artifact, s, line, to_utc(r.get("created_at")), None, opts
                         )
                     yield self._bad(
@@ -599,7 +628,9 @@ class OpenClawParser(Parser):
                 err = str(e)
             if not isinstance(rec, dict):
                 if not s.started:
-                    yield self._start(artifact, s, line, to_utc(r.get("created_at")), None, opts)
+                    yield from self._start(
+                        artifact, s, line, to_utc(r.get("created_at")), None, opts
+                    )
                 yield self._bad(
                     artifact,
                     s,

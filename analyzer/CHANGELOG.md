@@ -117,6 +117,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   provider=<provider>` before the first message of a session that names
   one and `model: <old> -> <new> provider=<provider>` before each message
   that changes it ([#96]).
+- The `pi` parser reads `.pi/agent/trust.json`, the project trust
+  decisions in the agent directory pi and little-coder share: one
+  `permission setting: <path>=<true|false> (from .pi/agent/trust.json,
+  file mtime)` row per project, with `project_path` the project and
+  `timestamp_utc` the file's modification time, not the time of the
+  decision. The file was not read before ([#97]).
+- The `letta` parser adds a `model: <id> provider=<provider>` row after
+  the first `.letta/sessions.jsonl` line of each CLI session that names a
+  model, and `model: <old> -> <new> provider=<provider>` when a later
+  line of the session names another ([#96]).
 
 ### Changed
 
@@ -134,6 +144,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `session_model: <id> auth=<authType>`), and a `logs.json`
   `model_switch` entry reads `model: <from> -> <to> reason=<reason>`
   (was `model_switch: <from> -> <to> (<reason>)`) ([#96]).
+- The pi session reader, which parses `pi` sessions, the little-coder
+  sessions in pi's directory and Letta's local-backend `messages.jsonl`,
+  writes `model: <id> provider=<provider>` at the first entry that names
+  a model (a `model_change` or an assistant message) and
+  `model: <old> -> <new> provider=<provider>` on each change, with
+  ` requested=<model>` when the assistant's `responseModel` differs from
+  the `model` asked for. It replaces `model_change: <provider>/<id>`,
+  which appeared only for a `model_change` entry and repeated an
+  unchanged model; a session whose model was named only on assistant
+  messages had no model row. The `model` column is now `responseModel`
+  when the message has one ([#96]).
+- The `openclaw` parser writes `model: <id> provider=<provider>` at a
+  session's first model (the `session_windows` `model`, else the first
+  `model_change` or assistant message) and `model: <old> -> <new>
+  provider=<provider>` on each change, with ` requested=<model>` as
+  above, in place of `model change: <provider>/<id>` ([#96]).
 
 ### Fixed
 

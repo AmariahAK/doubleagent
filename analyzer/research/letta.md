@@ -126,9 +126,25 @@ times). Use `sessions.jsonl` only for project attribution.
 | project_path | `sessions.jsonl` `project` (heuristic) | header `cwd` |
 | git_branch | empty | empty |
 | turn_type | `user`, `assistant`; `reasoning` → thinking; `error` → system; `tool_call` → one tool_use and one tool_result row | role/part type; `compaction` → system |
-| model | empty | `message.model` |
+| model | empty | `message.model` (`responseModel` when set) |
 | tool_name, tool_use_id | `name`, empty | `toolCall.name`/`id`, `toolResult.toolName`/`toolCallId` |
 | text | `text`; `argsText`; `resultText` | text, thinking, arguments JSON, result text |
+
+**Model rows.** `messages.jsonl` goes through pi's reader, so it gets pi's
+`model: <id> provider=<provider>` row at the first assistant
+`message.model` of a conversation and `model: <old> -> <new>
+provider=<provider>` on each change
+([section 8 of `pi.md`](pi.md#8-parser-plan)). Each `sessions.jsonl` line
+is one `system` row; after the first line of a `session_id` that names a
+`model`, a `model: <model> provider=<provider>` row follows, and a later
+line of the same `session_id` with another `model` gets a `model: <old> ->
+<new> provider=<provider>` row. `transcript.jsonl` records no model.
+
+**Permission rows.** None of the record shapes in
+[section 3](#3-record-schema) records a permission decision. A project's
+`.letta/settings.local.json` holds its permissions
+([`collectors/research/letta.md`](../../collectors/research/letta.md)), but
+their shape is not recorded here, so the file is not read.
 
 Fixture `.letta/transcripts/agent-1a2b/conv-9f/transcript.jsonl`:
 

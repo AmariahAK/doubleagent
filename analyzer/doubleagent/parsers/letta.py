@@ -30,7 +30,17 @@ parsed:
 * `~/.letta/sessions.jsonl`: per CLI session, a start line and an exit
   line with `agent_id`, `session_id`, `timestamp` (ms), `project`,
   `model`, `provider`, and on exit `message_count`, `tool_call_count`,
-  `exit_reason`, `duration.wall_ms`. One system row per line.
+  `exit_reason`, `duration.wall_ms`. One system row per line, followed by
+  `model: <model> provider=<provider>` on the first line of a
+  `session_id` that names a model and `model: <old> -> <new>
+  provider=<provider>` when a later line of it names another.
+
+Model rows in `messages.jsonl` come from the pi reader (`pi.model_text`):
+`model: <id> provider=<provider>` at the first assistant `message.model`
+(or `responseModel`) of a conversation and `model: <old> -> <new> ...` on
+each change. The reflection transcript records no model. No permission
+state is read: a project's `.letta/settings.local.json` holds its
+permissions, but the research does not record their shape.
 
 Not parsed: `logs/chunk-logs/` (stream chunks cut to 200 characters) and
 the retired Letta server's `sqlite.db` (column encodings unverified).
@@ -48,7 +58,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
 from .base import Options, Parser, iter_jsonl
-from .pi import SessionFile, entry_rows, error_row, read_session
+from .pi import SessionFile, entry_rows, error_row, model_text, read_session
 
 TRANSCRIPT_RX = re.compile(r"^\.letta/transcripts/([^/]+)/([^/]+)/transcript\.jsonl$")
 LOCAL_RX = re.compile(r"^\.letta/lc-local-backend/conversations/([^/]+)/messages\.jsonl$")
@@ -262,6 +272,7 @@ class LettaParser(Parser):
 
     def _parse_sessions(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
+        seen: dict = {}  # the model per CLI session, for the `model:` rows
         for n, rec in iter_jsonl(artifact.disk_path, errors):
             row = self.base_row(artifact)
             row.source_line = n
@@ -293,5 +304,13 @@ class LettaParser(Parser):
                 )
             row.text = compact(text)
             yield row
+            mtext = model_text(seen, row.session_id, row.model, str(rec.get("provider") or ""))
+            if mtext:
+                mrow = self.base_row(artifact)
+                mrow.source_line, mrow.turn_type = n, "system"
+                mrow.timestamp_utc, mrow.session_id = row.timestamp_utc, row.session_id
+                mrow.project_path, mrow.model = row.project_path, row.model
+                mrow.text = compact(mtext)
+                yield mrow
         if errors:
             yield error_row(self, artifact, errors)

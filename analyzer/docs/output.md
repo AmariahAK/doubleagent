@@ -225,6 +225,23 @@ message's timestamp and `source_line` and precede its other rows. The
 `model` and `provider`; it writes no permission rows, because Crush
 records no permission state the research names.
 
+The pi session reader (the `pi` parser, the little-coder sessions in
+pi's directory, which stay agent `pi`, and Letta's local-backend
+`messages.jsonl`) and the `openclaw` parser write `model: <id>
+provider=<provider>` at the first entry of a session that names a model
+and `model: <old> -> <new> provider=<provider>` on each change, with
+` requested=<model>` when an assistant message's `responseModel` (the
+model the provider reported) differs from its `model` (the one asked
+for); a `model_change` entry is one of those entries, and for `openclaw`
+the `session_windows` `model` and `model_provider` start the session at
+its start time. The `letta` parser adds the same row after the first
+`.letta/sessions.jsonl` line of each CLI session and a change row when a
+later line of the session names another model. The `pi` parser reads
+`.pi/agent/trust.json`, the project trust decisions pi and little-coder
+share, as one `permission setting: <path>=<true|false> (from
+.pi/agent/trust.json, file mtime)` row per project, with `project_path`
+the project, the file's modification time and an empty `session_id`.
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and

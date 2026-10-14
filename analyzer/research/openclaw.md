@@ -175,6 +175,25 @@ Put `session_key` (channel and peer) into the system row for each session.
 The shell tool is named `exec` ([`agents/core-tool-factory-descriptors.ts:20`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/agents/core-tool-factory-descriptors.ts#L20)); `api` values include
 `anthropic-messages` ([`llm-core/src/types.ts:23`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/packages/llm-core/src/types.ts#L23)).
 
+**Model rows.** `system` row `model: <id> provider=<provider>` at the first
+model a session names and `model: <old> -> <new> provider=<provider>` on
+every later entry whose model differs, with the `model` column set to the
+new id. Sources, in order: the `session_windows` `model` and
+`model_provider` (the row follows the session-start row, at its time),
+`model_change` `modelId` and `provider`, and the assistant `responseModel`,
+else `model`, with `provider`; when `responseModel` differs from `model`
+the row ends ` requested=<model>`. `responseModel` is the concrete model the
+stream reported "when different from the requested `model`"
+([`llm-core/src/types.ts:533`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/packages/llm-core/src/types.ts#L533)).
+
+**Permission rows.** No transcript entry records a per-call permission
+decision; `bashExecution.cancelled` stays on the bash `tool_result` row. The
+`exec_approvals_config`, `operator_approvals` and `audit_events` tables of
+`state/openclaw.sqlite`
+([`collectors/research/openclaw.md`](../../collectors/research/openclaw.md))
+hold approvals, but their columns are not recorded here, so they are not
+read.
+
 Fixture (JSONL form; the SQLite form stores the same strings in `event_json`):
 
 ```json

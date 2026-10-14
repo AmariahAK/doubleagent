@@ -156,10 +156,41 @@ For files elsewhere (custom session dir) detect by that header shape.
 | project_path | header `cwd` |
 | git_branch | empty (not recorded) |
 | turn_type | `user`; `assistant` text parts; `toolCall` → tool_use; `toolResult` → tool_result; `thinking` → thinking; `bashExecution` → tool_use + tool_result; `system` role, `custom` role, `custom_message`, `model_change`, `thinking_level_change`, `compaction`, `branch_summary`, `context_edit`, `session_info` → system; skip `custom` entries, `label`, `usage` |
-| model | assistant `model`; `model_change.modelId` |
+| model | assistant `responseModel`, else `model`; `model_change.modelId` |
 | tool_name | `toolCall.name`, `toolResult.toolName`; `bash` for `bashExecution` |
 | tool_use_id | `toolCall.id` / `toolResult.toolCallId`; entry `id` for `bashExecution` |
 | text | text parts joined; tool_use: `command`, `path`, `pattern` or `code`, else JSON; tool_result: text parts; compaction/branch: `summary` |
+
+**Model rows.** `system` row `model: <id> provider=<provider>` at the
+first entry of a session that names a model, and `model: <old> -> <new>
+provider=<provider>` on each later entry whose model differs, both with the
+`model` column set to the new id:
+
+- `model_change`: `modelId` and `provider`.
+- assistant message: `responseModel`, else `model`, and `provider`; when
+  `responseModel` is set and differs from `model`, the row ends
+  ` requested=<model>`. `responseModel` is the "concrete model reported by
+  the provider when different from the requested `model`"
+  ([types.ts:553-554](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/ai/src/types.ts#L553-L554)).
+
+The row precedes the entry's own rows and carries its timestamp.
+
+**Permission rows.** No entry type or message role in
+[section 3](#3-record-schema) records a permission decision. The standing
+state is `~/.pi/agent/trust.json`
+([`collectors/research/pi.md`](../../collectors/research/pi.md)): an object
+whose keys are project paths and whose values are `true` or `false`; a
+`null` decision deletes the key
+([trust-manager.ts:28](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L28),
+[214](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L214),
+[232-241](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L232-L241)); v0.83.0,
+which little-coder pins, writes the same file
+([trust-manager.ts:212](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/trust-manager.ts#L212)).
+One `system` row per key, `permission setting: <path>=<value> (from
+.pi/agent/trust.json, file mtime)`, with `project_path` the key,
+`session_id` empty, `source_line` 1 and `timestamp_utc` the file's
+modification time. A file that is not a JSON object is one `system` row
+`parser: .pi/agent/trust.json is not a JSON object`.
 
 When a file's `parentSession` parent is also in the collection, drop
 child entries whose `id` and `timestamp` match a parent entry, so a fork

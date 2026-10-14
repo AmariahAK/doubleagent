@@ -105,7 +105,7 @@ session.
 | project_path | header `cwd` |
 | git_branch | empty |
 | turn_type | `user`, `assistant`; `toolCall` → tool_use; `toolResult` → tool_result; `thinking` → thinking; `custom_message`, `model_change`, `compaction`, `bashExecution` → system |
-| model | assistant `provider`/`model` |
+| model | assistant `provider`/`model`; a `model: <id> provider=<provider>` `system` row at the first assistant message that names a model and `model: <old> -> <new> provider=<provider>` on each change, from pi's reader ([section 8 of `pi.md`](pi.md#8-parser-plan)) |
 | tool_name, tool_use_id | `toolCall.name`/`id`; `toolResult.toolName`/`toolCallId` |
 | text | text parts; tool_use: `arguments.command` or `path`, else JSON; tool_result: text parts |
 
