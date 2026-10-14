@@ -79,10 +79,74 @@ $ErrorActionPreference = 'Continue'
 $ToolVersion = '1.12.0'
 $TOOL = 'collect-agent-artifacts'
 
-# ---------------------------------------------------------------------------
-# Artifact catalog. Identical to the tables in collect-agent-artifacts.sh;
-# tests/catalog-sync.sh fails if they drift. agent|glob relative to each home.
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Reader's guide
+# ===========================================================================
+# The collector is one file so that an EDR console can upload it and run
+# it once. PowerShell requires the comment-based help and param() above to
+# come first; after this preamble the file reads top to bottom in twelve
+# sections, the same sections in the same order as the sh collector,
+# collect-agent-artifacts.sh:
+#
+#    1. Reader's guide             this block
+#    2. Data tables                CATALOG, PROJECT_CATALOG, EXCLUDES,
+#                                  SECRET_GLOBS and DOCKER_VOLUMES
+#    3. Shared helpers             logging, notes, JSON escaping, glob to
+#                                  regex, extended paths, owner, epoch, hash
+#    4. Manifest writer            the row writer and the error_read row
+#    5. Staging files              one file: metadata first, copy, hash the
+#                                  copy, row; symlinks; excluded paths
+#    6. Catalog walk               glob expansion, claimed paths, the walk
+#    7. Users                      enumerating and filtering home directories
+#    8. Docker and Podman volumes  named volumes as further bases
+#    9. Project discovery          project paths read from agent state
+#   10. Inventory output           the -Inventory counters and JSON lines
+#   11. Summary and archive        collection.json, the archivers, stdout
+#   12. Main program               setup, then one call per step, in order
+#
+# Data flow. The tables are data, not code: an agent is added by adding
+# lines to them. Get-UserHomes lists the home directories. For each home,
+# Expand-Catalog expands every CATALOG line before anything is walked and
+# claims each match, so a nested entry (.gemini/antigravity-cli inside
+# .gemini) keeps its subtree and the walk of the enclosing entry skips it.
+# Add-CollectedPath and Add-CollectedTree walk each match without following
+# reparse points; a path matching EXCLUDES is pruned with one
+# skipped_excluded row, and a file matching SECRET_GLOBS is flagged secret.
+# Add-CollectedFile reads a file's metadata before copying it, copies it
+# with shared access into the staging tree under fs/<original path>, hashes
+# the staged copy rather than the source, and writes its manifest row
+# through Write-ManifestRow. Then collection.json summarises the run and
+# the staging tree is archived (tar.exe, else the PowerShell tar writer,
+# else a zip). Docker and Podman named volumes (DOCKER_VOLUMES) and the
+# discovered project directories (PROJECT_CATALOG) are further bases fed
+# through the same catalog walk. -Inventory is the same walk with no
+# writes: each file feeds per-agent counters, and Write-Inventory prints
+# JSON lines.
+#
+# Naming. Script state shared between functions is $script:PascalCase and
+# is written and read with that prefix; the parameters (-Root, -Inventory,
+# ...), the five tables, $TOOL and $ToolVersion are read by their plain
+# names. Parameters of functions and locals are $camelCase and never take
+# an automatic variable's name ($home, $host, $args, $input, $error,
+# $matches, $pid, $profile). Functions use approved verbs, and a function
+# that does the same step as one in the sh collector has the matching name
+# (Add-CollectedPath and collect_path, Write-ManifestRow and
+# write_manifest_row). Every function has a comment above it: what it
+# takes, what it returns or sets, and the quirk it works around when there
+# is one. There are no worker programs on this side; every step runs in
+# this process.
+#
+# collectors/docs/internals.md describes the architecture and lists the sh
+# and PowerShell function pairs.
+
+# ===========================================================================
+# Data tables
+# ===========================================================================
+# CATALOG (agent|glob relative to each home), PROJECT_CATALOG (agent|glob
+# relative to each discovered project), EXCLUDES and SECRET_GLOBS (globs
+# relative to the collection base, where * crosses /) and DOCKER_VOLUMES
+# (agent|volume name glob). Byte-identical to the tables in
+# collect-agent-artifacts.sh; tests/catalog-sync.sh fails if they drift.
 $CATALOG = @'
 # Anthropic
 claude-code|.claude
@@ -1581,9 +1645,8 @@ openclaw|*clawdbot*
 nanobot|*nanobot*
 '@
 
-
 # ===========================================================================
-# 3. Shared helpers
+# Shared helpers
 # ===========================================================================
 # Constants and small functions every later section uses: the table reader,
 # logging and notes, JSON string escaping, the glob-to-regex converter,
@@ -1594,6 +1657,8 @@ nanobot|*nanobot*
 $script:Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 # \ on Windows, / under PowerShell 7 on Linux or macOS.
 $script:Sep = [string][System.IO.Path]::DirectorySeparatorChar
+# Windows, as opposed to PowerShell 7 on Linux or macOS.
+$script:IsWindowsHost = ($env:OS -eq 'Windows_NT')
 
 # Takes a table here-string; returns its lines that are neither empty nor a
 # # comment.
@@ -1604,6 +1669,7 @@ function Get-TableLines([string]$table) {
 # Takes a message; appends "<UTC time> <message>" to the run log through
 # $script:LogWriter when one is open (-Inventory opens none) and writes the
 # message alone to stderr unless -Quiet.
+$script:LogWriter = $null
 function Write-CollectorLog([string]$message) {
   $timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
   if ($script:LogWriter) { $script:LogWriter.WriteLine("$timestamp $message") }
@@ -1898,7 +1964,7 @@ function Test-DirReadable([string]$path) {
 }
 
 # ===========================================================================
-# 4. Manifest writer
+# Manifest writer
 # ===========================================================================
 # Every row of manifest.jsonl goes through Write-ManifestRow, which also
 # keeps the per-status counts for collection.json and stdout. The fields and
@@ -1911,6 +1977,8 @@ $script:Counts = @{
 }
 # Homes (and other bases) that gave at least one manifest row.
 $script:RowHomes = @{}
+# The manifest.jsonl writer, opened by Open-RunFiles unless -Inventory.
+$script:ManifestWriter = $null
 
 # Takes the manifest fields in manifest order (uid and gid are always 0 and
 # mode always '' on this side, so they are not parameters); writes one JSON
@@ -1988,7 +2056,7 @@ function Write-ReadErrorRow {
 }
 
 # ===========================================================================
-# 5. Staging files
+# Staging files
 # ===========================================================================
 # PowerShell has no worker programs: the sh collector needs them because
 # find -exec cannot call shell functions, while here Add-CollectedTree calls
@@ -2003,7 +2071,7 @@ function Write-ReadErrorRow {
 # relative to -Root in image mode, fs/<drive letter>/... for a drive path,
 # or fs/ plus the path with its leading separators removed otherwise.
 function Get-ArchivePath([string]$full) {
-  if ($Mode -eq 'image') { return 'fs/' + (Get-RelPath $Root $full) }
+  if ($script:Mode -eq 'image') { return 'fs/' + (Get-RelPath $Root $full) }
   if ($full.Length -ge 3 -and $full[1] -eq ':') {
     return 'fs/' + $full.Substring(0, 1).ToUpper() + '/' + $full.Substring(3).Replace('\', '/')
   }
@@ -2290,7 +2358,7 @@ function Add-ExcludedPath([string]$user, [string]$homeDir, [string]$agent, $item
 }
 
 # ===========================================================================
-# 6. Catalog walk
+# Catalog walk
 # ===========================================================================
 # A table (CATALOG for a home or a Docker volume, PROJECT_CATALOG for a
 # project) is expanded against a base directory all at once, so a nested
@@ -2520,7 +2588,7 @@ function Add-CollectedTree([string]$user, [string]$homeDir, [string]$agent, [str
 }
 
 # ===========================================================================
-# 7. Users
+# Users
 # ===========================================================================
 # Every profile directory is a base for CATALOG. Each home is a hashtable
 # @{ user; home }; $script:UserList holds them in enumeration order.
@@ -2543,7 +2611,7 @@ $script:UserList = @()
 # home roots under -Root.
 function Get-CandidateHomes {
   $candidates = @()
-  if ($Mode -eq 'live') {
+  if ($script:Mode -eq 'live') {
     $profileList = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList'
     try {
       foreach ($key in (Get-ChildItem $profileList -ErrorAction Stop)) {
@@ -2641,7 +2709,7 @@ function Add-UserHomes {
 }
 
 # ===========================================================================
-# 8. Docker and Podman volumes
+# Docker and Podman volumes
 # ===========================================================================
 # Named volumes are enumerated from the filesystem as in the sh collector:
 # <volumes dir>/<name>/_data. A volume whose name matches DOCKER_VOLUMES is
@@ -2721,6 +2789,20 @@ function Add-VolumeDir([string]$base, [string]$rel) {
   }
 }
 
+# Takes the _data directory of a volume no DOCKER_VOLUMES rule matches;
+# writes its skipped_unmatched_volume row: user docker, type dir, the total
+# size of the files under it, its attributes, no times.
+function Write-UnmatchedVolumeRow([string]$data) {
+  $attributes = ''
+  try {
+    $dataItem = Get-Item -LiteralPath (ConvertTo-ExtendedPath $data) -Force -ErrorAction Stop
+    $attributes = [string]$dataItem.Attributes
+  } catch { }
+  $row = @('docker', $data, '', $data, '', 'dir', (Get-DirSize $data), 0, 0, 0, 0, '',
+    $attributes, '', $false, 'skipped_unmatched_volume', '', '')
+  Write-ManifestRow @row
+}
+
 # Takes one volume directory's Get-ChildItem entry. An unreadable volume is
 # noted, one with no _data directory is logged and skipped, an unmatched one
 # gets its skipped_unmatched_volume row (none under -Inventory), and a
@@ -2746,15 +2828,7 @@ function Add-Volume($volume) {
     return
   }
   if (-not $agent) {
-    if ($Inventory) { return }
-    $attributes = ''
-    try {
-      $dataItem = Get-Item -LiteralPath (ConvertTo-ExtendedPath $data) -Force -ErrorAction Stop
-      $attributes = [string]$dataItem.Attributes
-    } catch { }
-    $row = @('docker', $data, '', $data, '', 'dir', (Get-DirSize $data), 0, 0, 0, 0, '',
-      $attributes, '', $false, 'skipped_unmatched_volume', '', '')
-    Write-ManifestRow @row
+    if (-not $Inventory) { Write-UnmatchedVolumeRow $data }
     return
   }
   Write-CollectorLog "  [$agent] $data"
@@ -2794,14 +2868,14 @@ function Find-DockerDesktop([string[]]$desktopDirs) {
 # rootless Docker and Podman roots of each selected user, then the Docker
 # Desktop data directories.
 function Add-DockerVolumes {
-  if ($Mode -eq 'image') { $dockerBase = $Root }
+  if ($script:Mode -eq 'image') { $dockerBase = $Root }
   elseif ($script:Sep -eq '/') { $dockerBase = '/' }
   else {
     $dockerBase = $env:SystemDrive; if (-not $dockerBase) { $dockerBase = 'C:' }
     $dockerBase += $script:Sep
   }
   $programData = Join-PathSafe $dockerBase 'ProgramData'
-  if ($Mode -eq 'live' -and $env:ProgramData) { $programData = $env:ProgramData }
+  if ($script:Mode -eq 'live' -and $env:ProgramData) { $programData = $env:ProgramData }
   $varLib = Join-PathSafe $dockerBase 'var/lib'
   Add-VolumeDir $varLib 'docker/volumes'
   Add-VolumeDir $varLib 'containers/storage/volumes'
@@ -2817,9 +2891,8 @@ function Add-DockerVolumes {
   Find-DockerDesktop $desktopDirs
 }
 
-
 # ===========================================================================
-# 9. Project discovery
+# Project discovery
 # ===========================================================================
 # Project directories are read from the agents' own plain-text state (the
 # same sources as the sh collector, in the same order) with a regex per
@@ -2849,11 +2922,11 @@ function ConvertTo-LocalPath([string]$value) {
   if ($value -match '^[A-Za-z]:[\\/]') {
     $rest = $value.Substring(1).Replace('/', $script:Sep).Replace('\', $script:Sep)
     $value = $value.Substring(0, 1).ToUpper() + $rest
-    if ($Mode -eq 'image') { return $Root + $value.Substring(2) }
+    if ($script:Mode -eq 'image') { return $Root + $value.Substring(2) }
     return $value
   }
   if ($value.StartsWith('/')) {
-    if ($Mode -eq 'image') { return $Root + $value.Replace('/', $script:Sep) }
+    if ($script:Mode -eq 'image') { return $Root + $value.Replace('/', $script:Sep) }
     if ($script:Sep -eq '/') { return $value }
     return $null
   }
@@ -3192,7 +3265,7 @@ function Add-Projects {
 }
 
 # ===========================================================================
-# 10. Inventory output
+# Inventory output
 # ===========================================================================
 # -Inventory runs the same walk with no writes: Add-CollectedFile feeds
 # these accumulators instead of copying, and Write-Inventory prints JSON
@@ -3279,7 +3352,7 @@ function Write-Inventory {
     }
   }
   $hostLine = [ordered]@{
-    type = 'host'; host = $script:HostName; collector = $ToolVersion; mode = $Mode
+    type = 'host'; host = $script:HostName; collector = $ToolVersion; mode = $script:Mode
     at = $script:StartTs; users_scanned = ($script:UserList.Count + $denied.Count)
     users_unreadable = $unreadable; docker_volumes = $script:Docker.found
   }
@@ -3293,7 +3366,7 @@ function Write-Inventory {
 }
 
 # ===========================================================================
-# 11. Summary and archive
+# Summary and archive
 # ===========================================================================
 # After the walk: collection.json (written, and rewritten before each
 # fallback archiver), the archive of the staging tree, its .sha256 file,
@@ -3663,13 +3736,10 @@ function Format-HumanSize([int64]$bytes) {
   return $value.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture) + ' ' + $units[$i]
 }
 
-# Main step after the walk: sets $script:EndTs and $script:ActiveUsers (the
-# users whose home gave at least one manifest row, in enumeration order),
-# notes symlinks the archive will not hold, and builds $script:Summary, the
-# content of collection.json, in its documented key order.
-function Initialize-Summary {
-  $script:EndTs = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-  $script:ActiveUsers = @($script:UserList | Where-Object { $script:RowHomes.ContainsKey($_.home) })
+# Adds a note for the symlinks that are in the manifest only: those a zip
+# could not hold and those that could not be recreated
+# ($script:LinkCounts).
+function Add-LinkNotes {
   if ($script:LinkCounts.zip -gt 0) {
     Add-Note ("$($script:LinkCounts.zip) symlinks are in the manifest only: " +
       'the zip archive cannot store symlinks')
@@ -3678,6 +3748,17 @@ function Initialize-Summary {
     Add-Note ("$($script:LinkCounts.failed) symlinks could not be recreated in the archive; " +
       "each row's error says why")
   }
+}
+
+# Main step after the walk: sets $script:EndTs and $script:ActiveUsers (the
+# users whose home gave at least one manifest row, in enumeration order),
+# notes symlinks the archive will not hold (Add-LinkNotes), and builds
+# $script:Summary, the content of collection.json, in its documented key
+# order. The body is long because the summary is one literal.
+function Initialize-Summary {
+  $script:EndTs = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+  $script:ActiveUsers = @($script:UserList | Where-Object { $script:RowHomes.ContainsKey($_.home) })
+  Add-LinkNotes
   $rootText = '\'; if ($Root) { $rootText = $Root }
   $platform = "Windows $([Environment]::OSVersion.Version) $env:PROCESSOR_ARCHITECTURE"
   $platform += " PowerShell $($PSVersionTable.PSVersion)"
@@ -3685,7 +3766,7 @@ function Initialize-Summary {
   catch { $runAs = [Environment]::UserDomainName + '\' + [Environment]::UserName }
   $counts = $script:Counts
   $script:Summary = [ordered]@{
-    tool = $TOOL; version = $ToolVersion; hostname = $script:HostName; mode = $Mode
+    tool = $TOOL; version = $ToolVersion; hostname = $script:HostName; mode = $script:Mode
     root = $rootText
     platform = $platform; run_as = $runAs; run_as_admin = $script:IsAdmin
     started = $script:StartTs; finished = $script:EndTs
@@ -3916,143 +3997,264 @@ function Write-Result {
     Write-Output $dockerLine
   }
 }
-if ($Version) { Write-Output "$TOOL $ToolVersion"; exit 0 }
 
-if ($List) {
+# ===========================================================================
+# Main program
+# ===========================================================================
+# The options come from param() at the top of the file. The setup functions
+# below check and resolve them, name the output files and open the log and
+# manifest; the run list at the end of the file calls one step per section,
+# in run order.
+
+# Takes a table here-string; returns all its non-empty lines, comments
+# included (the form -List prints).
+function Get-NonEmptyLines([string]$table) {
+  $table -split "`r?`n" | Where-Object { $_ -ne '' }
+}
+
+# Prints the five tables for -List, each under its header line. The output
+# is identical to the sh collector's --list (tests/catalog-sync.sh).
+function Write-CatalogList {
   Write-Output '# home artifacts (agent|glob relative to home)'
-  $CATALOG -split "`r?`n" | Where-Object { $_ -ne '' } | ForEach-Object { Write-Output $_ }
+  Get-NonEmptyLines $CATALOG
   Write-Output '# project artifacts (relative to each discovered project)'
-  $PROJECT_CATALOG -split "`r?`n" | Where-Object { $_ -ne '' } | ForEach-Object { Write-Output $_ }
+  Get-NonEmptyLines $PROJECT_CATALOG
   Write-Output '# excluded unless --full'
-  $EXCLUDES -split "`r?`n" | Where-Object { $_ -ne '' } | ForEach-Object { Write-Output $_ }
+  Get-NonEmptyLines $EXCLUDES
   Write-Output ''
   Write-Output '# credential files (flagged secret, skipped with --no-secrets)'
-  $SECRET_GLOBS -split "`r?`n" | Where-Object { $_ -ne '' } | ForEach-Object { Write-Output $_ }
+  Get-NonEmptyLines $SECRET_GLOBS
   Write-Output '# docker volumes (agent|volume name glob)'
-  $DOCKER_VOLUMES -split "`r?`n" | Where-Object { $_ -ne '' } | ForEach-Object { Write-Output $_ }
-  exit 0
+  Get-NonEmptyLines $DOCKER_VOLUMES
 }
 
-if ($MaxFileSizeMB -lt 0) { Write-Error 'Invalid -MaxFileSizeMB'; exit 1 }
-$MaxSize = [int64]$MaxFileSizeMB * 1024 * 1024
-
-$excludeGlobs = @(Get-TableLines $EXCLUDES); if ($Full) { $excludeGlobs = @() }
-$script:ExcludeRegex = ConvertTo-TableRegex $excludeGlobs
-$script:SecretRegex = ConvertTo-TableRegex @($SECRET_GLOBS -split "`r?`n" | Where-Object { $_ -ne '' })
-
-# ---------------------------------------------------------------------------
-# Setup
-# ---------------------------------------------------------------------------
-# A relative -Project is resolved against the current location, in image mode
-# too: -Project is a path on the machine running the collector and is never
-# prefixed with the root, as in the sh collector. Repeated values are kept once.
-$resolvedProjects = @()
-foreach ($p in @($Project)) {
-  if (-not $p) { continue }
-  $rp = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($p)
-  if ($rp.Length -gt 1) { $rp = $rp.TrimEnd('\', '/') }
-  if ($rp.EndsWith(':')) { $rp += '\' }
-  if (-not ($resolvedProjects -contains $rp)) { $resolvedProjects += $rp }
-}
-$Project = $resolvedProjects
-
-$Mode = 'live'
-if ($Root -ne '') {
-  if (-not (Test-PathQuiet $Root 'Container')) { Write-Error "Root is not a directory: $Root"; exit 2 }
-  $Root = (ConvertFrom-ExtendedPath (Resolve-Path -LiteralPath (ConvertTo-ExtendedPath $Root)).ProviderPath).TrimEnd('\', '/')
-  $Mode = 'image'
-}
-# -Inventory writes nothing: no output directory, staging, log or archive.
-if (-not $Inventory) {
-if (-not (Test-PathQuiet $OutputDir 'Any')) { try { New-Item -ItemType Directory -Path (ConvertTo-ExtendedPath $OutputDir) -Force -ErrorAction Stop | Out-Null } catch { Write-Error "Cannot create output dir: $OutputDir"; exit 2 } }
-$OutputDir = (ConvertFrom-ExtendedPath (Resolve-Path -LiteralPath (ConvertTo-ExtendedPath $OutputDir)).ProviderPath).TrimEnd('\', '/')
-if ($OutputDir -eq '') { $OutputDir = $script:Sep }
-# Same startup check as the sh collector's [ -w ]: create and remove a probe
-# file, so a read-only directory fails here rather than after the walk.
-$probe = Join-PathSafe $OutputDir ".write-probe-$([guid]::NewGuid().ToString('N'))"
-try { $fs = [System.IO.File]::Open((ConvertTo-ExtendedPath $probe), [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write); $fs.Close() }
-catch { Write-Error "Output dir not writable: $OutputDir"; exit 2 }
-try { [System.IO.File]::Delete((ConvertTo-ExtendedPath $probe)) } catch { }
+# Sets $script:ExcludeRegex from EXCLUDES (a regex that matches nothing
+# under -Full) and $script:SecretRegex from SECRET_GLOBS.
+function Initialize-TableRegexes {
+  $excludeGlobs = @(Get-TableLines $EXCLUDES); if ($Full) { $excludeGlobs = @() }
+  $script:ExcludeRegex = ConvertTo-TableRegex $excludeGlobs
+  $script:SecretRegex = ConvertTo-TableRegex @(Get-NonEmptyLines $SECRET_GLOBS)
 }
 
-$StartTs = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-$Stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
-$HostName = $env:COMPUTERNAME; if (-not $HostName) { $HostName = [System.Net.Dns]::GetHostName() }
-$HostSafe = ($HostName -replace '[^A-Za-z0-9._-]', '-')
-$script:RunName = "${HostSafe}_${Stamp}_agent-artifacts"
-$Stage = Join-PathSafe $OutputDir ".stage-$script:RunName"
-$LogPath = Join-PathSafe $OutputDir "$script:RunName.log"
-$ManifestPath = Join-PathSafe $OutputDir "$script:RunName.manifest.jsonl"
-$SummaryPath = Join-PathSafe $OutputDir "$script:RunName.collection.json"
-# The extended forms, for .NET calls; the plain ones are what is printed.
-$XStage = ConvertTo-ExtendedPath $Stage
-$XLogPath = ConvertTo-ExtendedPath $LogPath
-$XManifestPath = ConvertTo-ExtendedPath $ManifestPath
-$XSummaryPath = ConvertTo-ExtendedPath $SummaryPath
-
-$TarExe = $null
-$tarCmd = $null
-$IsWindowsHost = ($env:OS -eq 'Windows_NT')
-if ($Inventory) { }
-elseif ($IsWindowsHost) { $tarCmd = Get-Command tar.exe -ErrorAction SilentlyContinue } else { $tarCmd = Get-Command tar -ErrorAction SilentlyContinue }
-if ($tarCmd) { $TarExe = $tarCmd.Source }
-# The archivers to try in order; see "Archivers" above. A tar that is not on
-# the PATH is left out. Links are staged unless the zip comes first.
-$Archivers = @()
-$ArchiverWhy = ''
-if (-not $Inventory) {
-  $spec = 'tar,writer,zip'
-  if ($env:CAC_ARCHIVER) { $spec = $env:CAC_ARCHIVER; $ArchiverWhy = "CAC_ARCHIVER=$spec" }
-  foreach ($a in @($spec -split ',')) {
-    $a = $a.Trim()
-    if (-not $ArchiverLabels.ContainsKey($a)) { Write-Error "CAC_ARCHIVER: unknown archiver '$a' (use tar, writer or zip, comma-separated)"; exit 2 }
-    if ($a -eq 'tar' -and -not $TarExe) { if (-not $ArchiverWhy) { $ArchiverWhy = 'tar.exe not found' }; continue }
-    if (-not ($Archivers -contains $a)) { $Archivers += $a }
+# Takes the -Project values; returns each resolved against the current
+# location, without a trailing separator, once. A relative -Project is
+# resolved this way in image mode too: -Project is a path on the machine
+# running the collector and is never prefixed with -Root, as in the sh
+# collector.
+function Resolve-ProjectArgs([string[]]$projectArgs) {
+  $resolved = @()
+  foreach ($projectArg in @($projectArgs)) {
+    if (-not $projectArg) { continue }
+    $path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($projectArg)
+    if ($path.Length -gt 1) { $path = $path.TrimEnd('\', '/') }
+    if ($path.EndsWith(':')) { $path += '\' }
+    if (-not ($resolved -contains $path)) { $resolved += $path }
   }
-  if ($Archivers.Count -eq 0) { Write-Error "CAC_ARCHIVER: no archiver left to try ($spec, $ArchiverWhy)"; exit 2 }
-  if (-not ($Archivers -contains 'tar')) { $TarExe = $null }
+  return $resolved
 }
-$script:LinksInArchive = ($Archivers.Count -gt 0 -and $Archivers[0] -ne 'zip')
-if ($Archivers.Count -gt 0 -and $Archivers[0] -eq 'zip') { $Archive = Join-PathSafe $OutputDir "$script:RunName.zip" } else { $Archive = Join-PathSafe $OutputDir "$script:RunName.tar.gz" }
 
-$script:LogWriter = $null
-$script:ManifestWriter = $null
-if (-not $Inventory) {
-  [void][System.IO.Directory]::CreateDirectory((Join-PathSafe $XStage 'fs'))
-  $script:LogWriter = New-Object System.IO.StreamWriter($XLogPath, $false, $script:Utf8NoBom)
-  $script:ManifestWriter = New-Object System.IO.StreamWriter($XManifestPath, $false, $script:Utf8NoBom)
+# Sets $script:Mode to live, or to image when -Root is given; in image mode
+# -Root is resolved to its full plain form without a trailing separator.
+# Returns '' or the error for a -Root that is not a directory.
+function Resolve-RootArg {
+  $script:Mode = 'live'
+  if ($Root -eq '') { return '' }
+  if (-not (Test-PathQuiet $Root 'Container')) { return "Root is not a directory: $Root" }
+  # One statement, so -Root is left as given if Resolve-Path fails.
+  $script:Root = (ConvertFrom-ExtendedPath (
+      Resolve-Path -LiteralPath (ConvertTo-ExtendedPath $Root)).ProviderPath).TrimEnd('\', '/')
+  $script:Mode = 'image'
+  return ''
+}
+
+# Creates -OutputDir when it does not exist and resolves it to its full
+# plain form. Then the same startup check as the sh collector's [ -w ]:
+# create and remove a probe file, so a read-only directory fails here
+# rather than after the walk. Returns '' or the error.
+function Initialize-OutputDir {
+  if (-not (Test-PathQuiet $OutputDir 'Any')) {
+    $directory = @{ ItemType = 'Directory'; Path = (ConvertTo-ExtendedPath $OutputDir) }
+    try { New-Item @directory -Force -ErrorAction Stop | Out-Null }
+    catch { return "Cannot create output dir: $OutputDir" }
+  }
+  # One statement, so -OutputDir is left as given if Resolve-Path fails
+  # (the error is written and the probe below reports the directory).
+  $script:OutputDir = (ConvertFrom-ExtendedPath (
+      Resolve-Path -LiteralPath (ConvertTo-ExtendedPath $OutputDir)).ProviderPath).TrimEnd('\', '/')
+  if ($script:OutputDir -eq '') { $script:OutputDir = $script:Sep }
+  $probe = Join-PathSafe $script:OutputDir ".write-probe-$([guid]::NewGuid().ToString('N'))"
+  try {
+    $probeStream = [System.IO.File]::Open((ConvertTo-ExtendedPath $probe),
+      [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write)
+    $probeStream.Close()
+  }
+  catch { return "Output dir not writable: $($script:OutputDir)" }
+  try { [System.IO.File]::Delete((ConvertTo-ExtendedPath $probe)) } catch { }
+  return ''
+}
+
+# Sets the run's names: $script:StartTs, $script:HostName, the base name
+# $script:RunName (<host>_<UTC stamp>_agent-artifacts), the staging
+# directory, log, manifest and summary paths, and the extended forms of
+# those for .NET calls (the plain ones are what is printed).
+function Initialize-RunNames {
+  $script:StartTs = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+  $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+  $script:HostName = $env:COMPUTERNAME
+  if (-not $script:HostName) { $script:HostName = [System.Net.Dns]::GetHostName() }
+  $hostSafe = ($script:HostName -replace '[^A-Za-z0-9._-]', '-')
+  $script:RunName = "${hostSafe}_${stamp}_agent-artifacts"
+  $script:Stage = Join-PathSafe $OutputDir ".stage-$($script:RunName)"
+  $script:LogPath = Join-PathSafe $OutputDir "$($script:RunName).log"
+  $script:ManifestPath = Join-PathSafe $OutputDir "$($script:RunName).manifest.jsonl"
+  $script:SummaryPath = Join-PathSafe $OutputDir "$($script:RunName).collection.json"
+  $script:XStage = ConvertTo-ExtendedPath $script:Stage
+  $script:XLogPath = ConvertTo-ExtendedPath $script:LogPath
+  $script:XManifestPath = ConvertTo-ExtendedPath $script:ManifestPath
+  $script:XSummaryPath = ConvertTo-ExtendedPath $script:SummaryPath
+}
+
+# Chooses the archivers (see "Archivers" under Summary and archive). Sets
+# $script:TarExe (tar.exe on Windows, tar elsewhere, none under
+# -Inventory), $script:Archivers in the order to try them,
+# $script:ArchiverWhy (the CAC_ARCHIVER value, or why tar was left out),
+# $script:LinksInArchive (links are staged unless the zip comes first) and
+# $script:Archive (.zip when the zip comes first, else .tar.gz). A tar that
+# is not on the PATH is left out. Returns '' or the error for a
+# CAC_ARCHIVER that names an unknown archiver or leaves none.
+function Initialize-Archivers {
+  $script:TarExe = $null
+  $tarCommand = $null
+  if ($Inventory) { }
+  elseif ($script:IsWindowsHost) { $tarCommand = Get-Command tar.exe -ErrorAction SilentlyContinue }
+  else { $tarCommand = Get-Command tar -ErrorAction SilentlyContinue }
+  if ($tarCommand) { $script:TarExe = $tarCommand.Source }
+  $script:Archivers = @()
+  $script:ArchiverWhy = ''
+  if (-not $Inventory) {
+    $spec = 'tar,writer,zip'
+    if ($env:CAC_ARCHIVER) { $spec = $env:CAC_ARCHIVER; $script:ArchiverWhy = "CAC_ARCHIVER=$spec" }
+    foreach ($kind in @($spec -split ',')) {
+      $kind = $kind.Trim()
+      if (-not $script:ArchiverLabels.ContainsKey($kind)) {
+        return "CAC_ARCHIVER: unknown archiver '$kind' (use tar, writer or zip, comma-separated)"
+      }
+      if ($kind -eq 'tar' -and -not $script:TarExe) {
+        if (-not $script:ArchiverWhy) { $script:ArchiverWhy = 'tar.exe not found' }
+        continue
+      }
+      if (-not ($script:Archivers -contains $kind)) { $script:Archivers += $kind }
+    }
+    if ($script:Archivers.Count -eq 0) {
+      return "CAC_ARCHIVER: no archiver left to try ($spec, $($script:ArchiverWhy))"
+    }
+    if (-not ($script:Archivers -contains 'tar')) { $script:TarExe = $null }
+  }
+  $zipFirst = ($script:Archivers.Count -gt 0 -and $script:Archivers[0] -eq 'zip')
+  $script:LinksInArchive = ($script:Archivers.Count -gt 0 -and $script:Archivers[0] -ne 'zip')
+  $extension = 'tar.gz'; if ($zipFirst) { $extension = 'zip' }
+  $script:Archive = Join-PathSafe $OutputDir "$($script:RunName).$extension"
+  return ''
+}
+
+# Unless -Inventory, creates the staging tree and opens the log (flushed
+# after every line) and manifest writers, $script:LogWriter and
+# $script:ManifestWriter; under -Inventory both stay $null, so nothing is
+# written.
+function Open-RunFiles {
+  $script:LogWriter = $null
+  $script:ManifestWriter = $null
+  if ($Inventory) { return }
+  [void][System.IO.Directory]::CreateDirectory((Join-PathSafe $script:XStage 'fs'))
+  $utf8 = $script:Utf8NoBom
+  $script:LogWriter = New-Object System.IO.StreamWriter($script:XLogPath, $false, $utf8)
+  $script:ManifestWriter = New-Object System.IO.StreamWriter($script:XManifestPath, $false, $utf8)
   $script:LogWriter.AutoFlush = $true
 }
 
-$script:UserList = @(Get-UserHomes)
+# Returns whether the current identity is in the Administrators role, or
+# $false when that cannot be determined (always off Windows).
+function Test-Administrator {
+  try {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]$identity
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  } catch { return $false }
+}
 
-Write-CollectorLog "$TOOL $ToolVersion starting on $HostName ($([Environment]::OSVersion.VersionString), PowerShell $($PSVersionTable.PSVersion)) mode=$Mode root=$(if ($Root) { $Root } else { '\' })"
-$archiveVia = 'none'; if ($Archivers.Count -eq 0) { } elseif ($Archivers[0] -eq 'zip') { $archiveVia = 'zip' } elseif ($Archivers[0] -eq 'tar') { $archiveVia = 'tar.gz via ' + $TarExe } elseif ($Archivers[0] -eq 'writer') { $archiveVia = 'tar.gz via PowerShell tar writer' }
-if ($ArchiverWhy -and $Archivers.Count -gt 0 -and $Archivers[0] -ne 'tar') { $archiveVia += " ($ArchiverWhy)" }
-Write-CollectorLog "archive=$archiveVia max_file_size=${MaxFileSizeMB}MB full=$($Full.IsPresent) no_secrets=$($NoSecrets.IsPresent) no_docker=$($NoDocker.IsPresent)"
-$IsAdmin = $false
-try { $IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) } catch { }
-if ($Inventory -and $PSBoundParameters.ContainsKey('OutputDir')) { Write-CollectorLog "NOTE: -Inventory writes nothing; -OutputDir $OutputDir ignored" }
-if ($Mode -eq 'live' -and -not $IsAdmin) { Write-CollectorLog "WARNING: not running as Administrator; other users' profiles will probably be unreadable" }
-if ($script:UserList.Count -eq 0) { Write-CollectorLog 'WARNING: no user profile directories found' }
-foreach ($ih in $script:InaccessibleHomes) { Write-CollectorLog "profile not accessible (skipped): $ih" }
+# Logs the start lines: version, host, PowerShell, mode and root; the
+# archiver and options; then the note about -OutputDir under -Inventory,
+# the warnings about a live run without Administrator rights and about no
+# profiles found, and each profile that could not be entered.
+function Write-StartLog {
+  $osVersion = [Environment]::OSVersion.VersionString
+  $rootText = '\'; if ($Root) { $rootText = $Root }
+  Write-CollectorLog ("$TOOL $ToolVersion starting on $($script:HostName) ($osVersion, " +
+    "PowerShell $($PSVersionTable.PSVersion)) mode=$script:Mode root=$rootText")
+  $archiveVia = 'none'
+  if ($script:Archivers.Count -eq 0) { }
+  elseif ($script:Archivers[0] -eq 'zip') { $archiveVia = 'zip' }
+  elseif ($script:Archivers[0] -eq 'tar') { $archiveVia = 'tar.gz via ' + $script:TarExe }
+  elseif ($script:Archivers[0] -eq 'writer') { $archiveVia = 'tar.gz via PowerShell tar writer' }
+  if ($script:ArchiverWhy -and $script:Archivers.Count -gt 0 -and $script:Archivers[0] -ne 'tar') {
+    $archiveVia += " ($($script:ArchiverWhy))"
+  }
+  Write-CollectorLog ("archive=$archiveVia max_file_size=${MaxFileSizeMB}MB " +
+    "full=$($Full.IsPresent) no_secrets=$($NoSecrets.IsPresent) no_docker=$($NoDocker.IsPresent)")
+  if ($Inventory -and $script:OutputDirGiven) {
+    Write-CollectorLog "NOTE: -Inventory writes nothing; -OutputDir $OutputDir ignored"
+  }
+  if ($script:Mode -eq 'live' -and -not $script:IsAdmin) {
+    Write-CollectorLog ('WARNING: not running as Administrator; ' +
+      "other users' profiles will probably be unreadable")
+  }
+  if ($script:UserList.Count -eq 0) {
+    Write-CollectorLog 'WARNING: no user profile directories found'
+  }
+  foreach ($inaccessible in $script:InaccessibleHomes) {
+    Write-CollectorLog "profile not accessible (skipped): $inaccessible"
+  }
+}
 
-Add-UserHomes
+# ---------------------------------------------------------------------------
+# Run. Each step is defined in the section named beside it.
+# ---------------------------------------------------------------------------
+if ($Version) { Write-Output "$TOOL $ToolVersion"; exit 0 }
+if ($List) { Write-CatalogList; exit 0 }
+if ($MaxFileSizeMB -lt 0) { Write-Error 'Invalid -MaxFileSizeMB'; exit 1 }
+$script:MaxSize = [int64]$MaxFileSizeMB * 1024 * 1024
+# $PSBoundParameters inside a function is the function's own, so it is read here.
+$script:OutputDirGiven = $PSBoundParameters.ContainsKey('OutputDir')
 
-if (-not $NoDocker) { Add-DockerVolumes }
+# Setup: resolve the options, name the outputs, open the log and manifest.
+Initialize-TableRegexes
+$Project = @(Resolve-ProjectArgs $Project)
+$setupError = Resolve-RootArg
+if ($setupError) { Write-Error $setupError; exit 2 }
+# -Inventory writes nothing: no output directory, staging, log or archive.
+if (-not $Inventory) {
+  $setupError = Initialize-OutputDir
+  if ($setupError) { Write-Error $setupError; exit 2 }
+}
+Initialize-RunNames
+$setupError = Initialize-Archivers
+if ($setupError) { Write-Error $setupError; exit 2 }
+Open-RunFiles
 
+$script:UserList = @(Get-UserHomes)                     # 7. Users
+$script:IsAdmin = Test-Administrator
+Write-StartLog
+Add-UserHomes                                           # 7. Users (and the -Inventory walk)
+if (-not $NoDocker) { Add-DockerVolumes }               # 8. Docker and Podman volumes
 if (-not $NoProjects) {
-  $script:ProjectList = @(Find-Projects)
+  $script:ProjectList = @(Find-Projects)                # 9. Project discovery
   Add-Projects
 }
-
 if ($Inventory) {
-  Write-Inventory
+  Write-Inventory                                       # 10. Inventory output
   exit 0
 }
-
-
-Initialize-Summary
+Initialize-Summary                                      # 11. Summary and archive
 Write-Summary
 Close-RunFiles
 Write-Archive
