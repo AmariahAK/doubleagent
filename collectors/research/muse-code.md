@@ -326,8 +326,9 @@ Sizes from the host after two sessions (I):
   names are excluded: `muse-bin-*.exe` (443 MB for 1.4.2) and the staged
   `.muse-update.*.exe`. Both collectors apply `EXCLUDES` to files as well
   as directories: the sh collector prunes any `find -path` match and
-  records a file with its `stat` size (`SKIP_PROG`), and the PowerShell
-  collector's `Add-Excluded` records a file's `Length`; the existing
+  its `EXCLUDED_PATHS_WORKER` records a file with its `stat` size, and
+  the PowerShell collector's `Add-ExcludedPath` records a file's
+  `Length`; the existing
   `.continue/index/*.sqlite` exclusion is a file pattern. The excluded
   binary still leaves a `skipped_excluded` row whose name and size
   record the installed version.
