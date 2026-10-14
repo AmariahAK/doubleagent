@@ -87,6 +87,8 @@ Paths, credentials and the rest of the per-user state are in
     Linux descriptors: field numbers, names and types match in both macOS
     binaries, and the two define `CortexTrajectorySource` identically
     ([section 5](#5-joins-and-gaps)). Nothing the parser reads drifted.
+    The diff did find one error in the tables themselves, the
+    `delete_file` layout ([section 3](#3-conversation-database)).
 
 ## 2. Stores, relative to home
 
@@ -222,6 +224,16 @@ payload messages the parser understands: `run_command` (1 `command`, 2
 `checkpoint`, `system_message`, `ephemeral_message`, `task_boundary`,
 `notify_user`, `error_message`, `finish`, `memory`, `directory_rules`,
 `conversation_history`, `send_command_input`.
+
+The paths inside `action_spec` sit at different field numbers per action:
+`ActionSpecCommand` 4 `file`, `ActionSpecCreateFile` 2 `path`,
+`ActionSpecDeleteFile` 1 `path` and `ActionSpecSed` 3 `path`, each a
+`PathScopeItem` (descriptors of `agy` 1.2.16 and `language_server` 2.23.0,
+macOS arm64). Up to analyzer 0.11.0 the parser read `delete_file` with
+the `create_file` layout, `path` at field 2, so a delete action lost its
+path or its step failed to decode; the 2026-10-13 descriptor diff found
+it and analyzer 0.12.0 reads field 1 (issue 88). No `code_action` step
+has been seen in real data.
 
 `gen_metadata.data` is `CortexStepGeneratorMetadata`: 1 `chat_model`
 (`ChatModelMetadata`: 19 `response_model` such as `gemini-3.8-flash`, 21

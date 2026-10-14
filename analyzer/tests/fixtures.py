@@ -1493,6 +1493,11 @@ def antigravity_app_steps() -> list[tuple[int, int, dict]]:
         "name": "run_command",
         "arguments_json": json.dumps({"CommandLine": "brew outdated", "Cwd": "/home/u/proj"}),
     }
+    tc_del = {
+        "id": "call_8",
+        "name": "delete_file",
+        "arguments_json": json.dumps({"TargetFile": "/home/u/proj/old.log"}),
+    }
     t = AGY_APP_T0
     return [
         (
@@ -1566,6 +1571,35 @@ def antigravity_app_steps() -> list[tuple[int, int, dict]]:
                     "planner_response", {"response": "One package is outdated: node."}, t + 6, t + 7
                 ),
                 type=15,
+            ),
+        ),
+        # A code_action that deletes a file: ActionSpecDeleteFile keeps its
+        # path in field 1 (#88).
+        (
+            15,
+            3,
+            dict(
+                _step("planner_response", {"response": "", "tool_calls": [tc_del]}, t + 8, t + 9),
+                type=15,
+            ),
+        ),
+        (
+            5,
+            3,
+            dict(
+                _step(
+                    "code_action",
+                    {
+                        "action_spec": {
+                            "delete_file": {"path": {"absolute_uri": "file:///home/u/proj/old.log"}}
+                        },
+                        "description": "remove the stale log",
+                    },
+                    t + 9,
+                    t + 10,
+                    tool_call=tc_del,
+                ),
+                type=5,
             ),
         ),
     ]

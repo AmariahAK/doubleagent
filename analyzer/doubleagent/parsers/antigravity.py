@@ -15,9 +15,13 @@ Descriptor drift check (2026-10-13): `exa.cortex_pb.CortexStepType`,
 message in `SCHEMA` were diffed against the descriptors of `agy` 1.2.16
 (macOS arm64) and of the desktop app's `language_server` 2.23.0 (macOS
 arm64). Field numbers, names and types match in both, and `STEP_TYPES` lists
-the same 118 values; nothing drifted from the Linux 1.2.15 descriptors the
-tables were built from. The new real data has steps with `permissions`
-(`gemini_coder.Step` field 133) and `task_details` (148), neither read here.
+the same 118 values; nothing drifted from the Linux x86-64 descriptors the
+tables were built from. The diff did find one error in the tables
+themselves: `ActionSpecDeleteFile` keeps its `path` in field 1, and the
+parser had read it with the `ActionSpecCreateFile` layout (field 2); it has
+its own entry since analyzer 0.12.0 (issue 88). The new real data has steps
+with `permissions` (`gemini_coder.Step` field 133) and `task_details` (148),
+neither read here.
 
 The CLI and the desktop app run the same Go backend (the app calls it the
 language server) and write the same stores, each into its own data
@@ -402,11 +406,12 @@ SCHEMA: Schema = {
     "ActionSpec": {
         1: ("command", "ActionSpecCommand"),
         2: ("create_file", "ActionSpecPath"),
-        4: ("delete_file", "ActionSpecPath"),
+        4: ("delete_file", "ActionSpecDeleteFile"),
         5: ("sed", "ActionSpecSed"),
     },
     "ActionSpecCommand": {1: ("instruction", "str"), 4: ("file", "PathScopeItem")},
     "ActionSpecPath": {1: ("instruction", "str"), 2: ("path", "PathScopeItem")},
+    "ActionSpecDeleteFile": {1: ("path", "PathScopeItem")},
     "ActionSpecSed": {3: ("path", "PathScopeItem")},
     "PathScopeItem": {1: ("absolute_path_migrate_me_to_uri", "str"), 5: ("absolute_uri", "str")},
     "CortexStepReadUrlContent": {1: ("url", "str"), 3: ("resolved_url", "str")},

@@ -47,6 +47,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `tools/proto_descriptors.py extract` no longer fails with a `TypeError`
   on Mach-O binaries such as the macOS builds of `agy` and the Antigravity
   desktop app's language server ([#86]).
+- The `antigravity` parser reads the path of a `code_action` step that
+  deletes a file: `ActionSpecDeleteFile` keeps the path in field 1, where
+  the parser had read field 2, so the `tool_result` row lost the path or
+  the step could not be decoded ([#88]).
 
 ## [0.11.0] - 2026-10-12
 
@@ -473,6 +477,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#88]: https://github.com/seanthegeek/doubleagent/issues/88
 [#86]: https://github.com/seanthegeek/doubleagent/issues/86
 [#85]: https://github.com/seanthegeek/doubleagent/issues/85
 [#83]: https://github.com/seanthegeek/doubleagent/issues/83

@@ -18,6 +18,7 @@ from doubleagent.parsers.gemini_cli import GeminiCliParser, resolve_project
 from doubleagent.parsers.goose import GooseParser, unescape_history
 from doubleagent.timeutil import to_utc
 from fixtures import (
+    AGY,
     AGY_APP_CONVERSATION,
     AGY_APP_PROJECT,
     AGY_CONVERSATION,
@@ -1074,6 +1075,8 @@ class AntigravityAppTests(ParserBase):
                 "system",
                 "system",
                 "assistant",
+                "tool_use",
+                "tool_result",
             ],
         )
         for r in rows:
@@ -1082,7 +1085,7 @@ class AntigravityAppTests(ParserBase):
                 ("antigravity", AGY_APP_CONVERSATION, "/home/u/proj"),
             )
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        start, user, asst, use, res, sysmsg, err, final = rows
+        start, user, asst, use, res, sysmsg, err, final, del_use, del_res = rows
         self.assertEqual(
             start.text,
             "session start | source=cascade_client | data_dir=antigravity"
@@ -1106,7 +1109,30 @@ class AntigravityAppTests(ParserBase):
         self.assertEqual(
             (final.text, final.model), ("One package is outdated: node.", "gemini-3.8-pro")
         )
-        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 1, 2, 3, 4, 5])
+        # A delete_file code action: the path is in ActionSpecDeleteFile
+        # field 1 (#88).
+        self.assertEqual(
+            (del_use.tool_name, del_use.tool_use_id, del_use.text),
+            ("delete_file", "call_8", "/home/u/proj/old.log"),
+        )
+        self.assertEqual(
+            (del_res.tool_name, del_res.tool_use_id, del_res.text),
+            ("delete_file", "call_8", "delete_file | /home/u/proj/old.log | remove the stale log"),
+        )
+        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 1, 2, 3, 4, 5, 6, 7])
+
+    def test_delete_file_path_is_field_1(self):
+        # The fixture is encoded with the parser's own SCHEMA, so check the
+        # wire layout from the descriptors by hand: ActionSpec field 4 is
+        # ActionSpecDeleteFile, whose field 1 is the PathScopeItem (#88).
+        uri = b"file:///home/u/proj/old.log"
+        scope = b"\x2a" + bytes([len(uri)]) + uri  # PathScopeItem 5 absolute_uri
+        delete = b"\x0a" + bytes([len(scope)]) + scope  # ActionSpecDeleteFile 1 path
+        spec = b"\x22" + bytes([len(delete)]) + delete  # ActionSpec 4 delete_file
+        self.assertEqual(
+            protobuf.decode(spec, "ActionSpec", AGY),
+            {"delete_file": {"path": {"absolute_uri": uri.decode()}}},
+        )
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(AntigravityParser(), self.REL)
@@ -1123,7 +1149,7 @@ class AntigravityAppTests(ParserBase):
         )
         self.assertEqual(
             rows[0].text,
-            "conversation summary | Outdated packages | CASCADE_RUN_STATUS_IDLE | 6 steps",
+            "conversation summary | Outdated packages | CASCADE_RUN_STATUS_IDLE | 8 steps",
         )
 
     def test_other_data_directories_wanted(self):
@@ -1165,7 +1191,7 @@ class AntigravityAppTests(ParserBase):
         con.commit()
         con.close()
         rows = self.rows_for(AntigravityParser(), self.REL)
-        self.assertEqual(len(rows), 9)
+        self.assertEqual(len(rows), 11)
         self.assertEqual(rows[7].text, "One package is outdated: node.")
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].text),
