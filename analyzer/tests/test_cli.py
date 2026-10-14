@@ -118,8 +118,14 @@ class AgentsSummaryTests(unittest.TestCase):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
             rc = cli.main(
-                ["timeline", str(self.tmp / "home"), "-o", str(self.tmp / "out")]
-                + ["--agent", "claude-code"]
+                [
+                    "timeline",
+                    str(self.tmp / "home"),
+                    "-o",
+                    str(self.tmp / "out"),
+                    "--agent",
+                    "claude-code",
+                ]
             )
         self.assertEqual(rc, 0, buf.getvalue())
         self.assertEqual(
