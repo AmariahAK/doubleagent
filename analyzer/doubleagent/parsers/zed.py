@@ -41,6 +41,22 @@ There are no per-message timestamps. Every message row carries the thread's
 thread-start row carries `initial_project_snapshot.timestamp`, falling back
 to `created_at`. `source_line` is the SQLite `rowid` of the thread or
 sidebar row. The git branch is the one captured at thread start.
+
+Model and permission rows (issues 96 and 97), all `system`, after the
+thread-start row and before the first message:
+
+* `model: <model.model> provider=<model.provider>` once per thread, at the
+  thread-start time. The blob holds one `model` per thread, so a switch
+  inside a thread is not recorded and there is no change row.
+* `permission setting: <key>=<value> (thread blob, as of updated_at)`, one
+  row per entry of `profile`, `sandbox_grants.write_paths[]` (a path string,
+  or an object in newer blobs, printed as compact JSON) and
+  `sandbox_grants.network_hosts[]`, and one per `sandbox_grants` flag
+  `network_any_host`, `allow_fs_write_all`, `unsandboxed` and
+  `sandbox_fallback` that is `true`. These are the grants the user gave
+  "for the rest of this thread", stored in the blob, so the row carries the
+  thread id as `session_id` and the thread's `updated_at` as its time (the
+  last write, not the moment of the grant, which is not recorded).
 """
 
 from __future__ import annotations
@@ -56,9 +72,10 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json
+from .base import Options, Parser, compact_json, setting_value
 
 DATA_DIR = r"(?:\.local/share/zed|Library/Application Support/Zed|AppData/Local/Zed|\.var/app/dev\.zed\.Zed[A-Za-z]*/data/zed)"
+SANDBOX_FLAGS = ("network_any_host", "allow_fs_write_all", "unsandboxed", "sandbox_fallback")
 THREADS_RX = re.compile(r"^" + DATA_DIR + r"/threads/threads\.db$")
 SIDEBAR_RX = re.compile(r"^" + DATA_DIR + r"/db/0-[^/]+/db\.sqlite$")
 
@@ -249,6 +266,20 @@ class ZedParser(Parser):
             model,
             branch,
         )
+        if m.get("model"):
+            text = "model: %s" % m["model"]
+            if m.get("provider"):
+                text += " provider=%s" % m["provider"]
+            yield base("system", text, start_ts, model, branch)
+        for key, value in self._grants(thread):
+            yield base(
+                "system",
+                "permission setting: %s=%s (thread blob, as of updated_at)"
+                % (key, setting_value(value)),
+                "",
+                model,
+                branch,
+            )
 
         for kind, text, tool_name, tool_id in self._messages(thread):
             if kind == "thinking" and not opts.include_thinking:
@@ -259,6 +290,25 @@ class ZedParser(Parser):
             row.tool_name = tool_name
             row.tool_use_id = tool_id
             yield row
+
+    @staticmethod
+    def _grants(thread: dict) -> Iterator[tuple[str, object]]:
+        """(dotted key, value) per thread-scoped grant: the agent profile,
+        each granted write path and network host, and each sandbox escape
+        flag that is set (`DbSandboxGrants`, db.rs:91-122 at a84689073d29)."""
+        if thread.get("profile") not in (None, ""):
+            yield "profile", thread["profile"]
+        grants = thread.get("sandbox_grants")
+        if not isinstance(grants, dict):
+            return
+        for key in ("write_paths", "network_hosts"):
+            entries = grants.get(key)
+            if isinstance(entries, list):
+                for e in entries:
+                    yield "sandbox_grants.%s" % key, e
+        for key in SANDBOX_FLAGS:
+            if grants.get(key) is True:
+                yield "sandbox_grants.%s" % key, True
 
     @staticmethod
     def _decode(r: dict) -> tuple[dict | None, str]:

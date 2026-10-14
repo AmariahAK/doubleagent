@@ -2050,17 +2050,17 @@ class KiroTests(ParserBase):
 
     def test_rows(self):
         rows = self.rows_for(KiroParser(), self.DB)
-        conv = [r for r in rows if r.session_id == KIRO_SESSION]
+        conv = [r for r in rows if r.session_id == KIRO_SESSION and not model_or_permission_row(r)]
         self.assertEqual(
             [r.turn_type for r in conv],
             ["user", "assistant", "tool_use", "tool_result", "assistant"],
         )
         for r in conv:
             self.assertEqual((r.host, r.user, r.agent), ("h1", "alice", "kiro"))
-            self.assertEqual(
-                (r.project_path, r.git_branch, r.model), ("/srv/proj", "", "claude-sonnet-4")
-            )
+            self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
             self.assertEqual(r.source_line, 1)
+        # the second request was answered by another model
+        self.assertEqual([r.model for r in conv], ["claude-sonnet-4"] * 3 + ["claude-opus-4"] * 2)
         user, asst, use, res, final = conv
         self.assertEqual(
             (user.text, user.timestamp_utc), ("list the files here", "2026-04-24T03:17:15.123Z")
@@ -2082,7 +2082,9 @@ class KiroTests(ParserBase):
         self.assertEqual(final.timestamp_utc, "2026-04-24T03:17:18.100Z")
 
     def test_export_variants(self):
-        rows = self.rows_for(KiroParser(), self.EXPORT)
+        rows = [
+            r for r in self.rows_for(KiroParser(), self.EXPORT) if not model_or_permission_row(r)
+        ]
         self.assertEqual(
             [r.turn_type for r in rows],
             [
@@ -2124,6 +2126,38 @@ class KiroTests(ParserBase):
         )
         self.assertEqual(pending.text, "pending message (not sent): now push it")
 
+    def test_model_rows(self):
+        rows = [r for r in self.rows_for(KiroParser(), self.DB) if r.session_id == KIRO_SESSION]
+        state = [(i, r) for i, r in enumerate(rows) if model_or_permission_row(r)]
+        self.assertEqual(
+            [(i, r.text, r.timestamp_utc, r.model) for i, r in state],
+            [
+                (0, "model: claude-sonnet-4", "2026-04-24T03:17:15.123Z", "claude-sonnet-4"),
+                # before the second entry's rows; its user timestamp is null,
+                # so the request start
+                (
+                    4,
+                    "model: claude-sonnet-4 -> claude-opus-4",
+                    "2026-04-24T03:17:17.000Z",
+                    "claude-opus-4",
+                ),
+            ],
+        )
+        for _, r in state:
+            self.assertEqual(
+                (r.turn_type, r.project_path, r.source_line), ("system", "/srv/proj", 1)
+            )
+        # an entry without model_id falls back to the conversation's model and says so
+        rows = self.rows_for(KiroParser(), self.EXPORT)
+        self.assertEqual(
+            [r.text for r in rows if model_or_permission_row(r)],
+            [
+                "model: claude-3.7-sonnet source=model",
+                "model: claude-3.7-sonnet -> claude-sonnet-4",
+            ],
+        )
+        self.assertEqual(rows[0].timestamp_utc, "2026-04-24T14:00:00.000Z")
+
     def test_thinking_opt_in(self):
         # the format records no reasoning, so the option changes nothing
         for rel in (self.DB, self.EXPORT):
@@ -2156,7 +2190,7 @@ class KiroTests(ParserBase):
     def test_truncated_export_is_reported_not_fatal(self):
         rows = self.rows_for(KiroParser(), ".aws/amazonq/exports/issue-chat-cut.json")
         self.assertEqual(
-            [r.turn_type for r in rows],
+            [r.turn_type for r in rows if not model_or_permission_row(r)],
             ["user", "tool_use", "tool_result", "assistant", "tool_use", "system"],
         )
         self.assertEqual(rows[0].session_id, KIRO_EXPORT_SESSION)
@@ -2566,7 +2600,7 @@ class GooseTests(ParserBase):
     REL = ".local/share/goose/sessions/sessions.db"
 
     def test_rows(self):
-        rows = self.rows_for(GooseParser(), self.REL)
+        rows = [r for r in self.rows_for(GooseParser(), self.REL) if not model_or_permission_row(r)]
         self.assertEqual(
             [r.turn_type for r in rows], ["system", "user", "tool_use", "tool_result", "assistant"]
         )
@@ -2575,8 +2609,12 @@ class GooseTests(ParserBase):
                 (r.host, r.user, r.agent, r.session_id), ("h1", "alice", "goose", GOOSE_SESSION)
             )
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
-            self.assertEqual(r.model, "anthropic/claude-sonnet-4-5")
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
+        # the last assistant message names its own provider and model
+        self.assertEqual(
+            [r.model for r in rows],
+            ["anthropic/claude-sonnet-4-5"] * 4 + ["openai/gpt-4.1-2025-04-14"],
+        )
         start, user, use, result, asst = rows
         self.assertEqual(
             (start.text, start.timestamp_utc),
@@ -2658,12 +2696,54 @@ class GooseTests(ParserBase):
         )
         con.commit()
         con.close()
-        rows = self.rows_for(GooseParser(), self.REL)
+        rows = [r for r in self.rows_for(GooseParser(), self.REL) if not model_or_permission_row(r)]
         self.assertEqual(
             [r.turn_type for r in rows],
             ["system", "user", "tool_use", "tool_result", "assistant", "system"],
         )
         self.assertIn("content_json did not parse", rows[-1].text)
+
+    def test_model_and_mode_rows(self):
+        rows = self.rows_for(GooseParser(), self.REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows[:4]],
+            [
+                ("system", "session start | Fix flaky test | type=user"),
+                ("system", "model: claude-sonnet-4-5 provider=anthropic"),
+                ("system", "permission mode: auto"),
+                ("user", "run the tests"),
+            ],
+        )
+        for r in rows[1:3]:
+            self.assertEqual(
+                (r.timestamp_utc, r.session_id, r.project_path, r.model, r.source_line),
+                (
+                    "2026-03-01T09:00:00.000Z",
+                    GOOSE_SESSION,
+                    "/srv/proj",
+                    "anthropic/claude-sonnet-4-5",
+                    1,
+                ),
+            )
+        # message 2 requests the session's model: no row; message 4 switches
+        change = [r for r in rows if r.text.startswith("model: ") and "->" in r.text]
+        self.assertEqual(len(change), 1)
+        c = change[0]
+        self.assertEqual(
+            c.text,
+            "model: claude-sonnet-4-5 -> gpt-4.1-2025-04-14 provider=openai requested=gpt-4.1",
+        )
+        self.assertEqual(
+            (c.turn_type, c.timestamp_utc, c.session_id, c.model, c.source_line),
+            ("system", "2026-03-01T09:00:05.000Z", GOOSE_SESSION, "openai/gpt-4.1-2025-04-14", 4),
+        )
+        self.assertEqual(rows[rows.index(c) + 1].text, "All 3 tests pass.")
+
+    def test_legacy_and_request_log_have_no_model_rows(self):
+        for rel in (GOOSE_LEGACY_REL, ".local/state/goose/logs/llm_request.0.jsonl"):
+            self.assertFalse(
+                [r for r in self.rows_for(GooseParser(), rel) if model_or_permission_row(r)]
+            )
 
 
 from doubleagent.parsers.aider import AiderParser
@@ -2960,6 +3040,11 @@ def rel_only(rel: str) -> Artifact:
     return cast(Artifact, SimpleNamespace(rel=rel))
 
 
+def model_or_permission_row(r) -> bool:
+    """A `model:` or `permission ...:` system row (issues 96 and 97)."""
+    return r.turn_type == "system" and r.text.startswith(("model: ", "permission "))
+
+
 class ZedTests(ParserBase):
     REL = ".local/share/zed/threads/threads.db"
     SIDEBAR = ".local/share/zed/db/0-stable/db.sqlite"
@@ -2974,7 +3059,7 @@ class ZedTests(ParserBase):
         con.close()
 
     def test_rows(self):
-        rows = self.rows_for(ZedParser(), self.REL)
+        rows = [r for r in self.rows_for(ZedParser(), self.REL) if not model_or_permission_row(r)]
         self.assertEqual(
             [r.turn_type for r in rows],
             ["system", "user", "tool_use", "tool_result", "assistant", "system", "system"],
@@ -3036,7 +3121,7 @@ class ZedTests(ParserBase):
         blob = zstandard.ZstdCompressor().compress(b'{"version":"0.3.0","messages":[]}' * 50)
         self._insert("bad-thread", "zstd", blob[: len(blob) // 2])
         rows = self.rows_for(ZedParser(), self.REL)
-        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 7)
+        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 13)
         bad = [r for r in rows if r.session_id == "bad-thread"]
         self.assertEqual(len(bad), 1)
         self.assertEqual(
@@ -3084,6 +3169,44 @@ class ZedTests(ParserBase):
             ],
         )
         self.assertEqual(rows[1].timestamp_utc, "2026-10-03T12:00:00.000Z")
+
+    def test_model_and_thread_grant_rows(self):
+        rows = self.rows_for(ZedParser(), self.REL)
+        state = [r for r in rows if model_or_permission_row(r)]
+        self.assertEqual(
+            [r.text for r in state],
+            [
+                "model: claude-sonnet-4-5 provider=anthropic",
+                "permission setting: profile=write (thread blob, as of updated_at)",
+                "permission setting: sandbox_grants.write_paths=/srv/proj/build"
+                " (thread blob, as of updated_at)",
+                'permission setting: sandbox_grants.write_paths={"requested":"/tmp/out",'
+                '"resolved":"/private/tmp/out"} (thread blob, as of updated_at)',
+                "permission setting: sandbox_grants.network_hosts=*.npmjs.org"
+                " (thread blob, as of updated_at)",
+                "permission setting: sandbox_grants.unsandboxed=true"
+                " (thread blob, as of updated_at)",
+            ],
+        )
+        # the model row follows the thread-start row at its time; the grants
+        # carry the thread id and the thread's updated_at, and come before
+        # the first message
+        self.assertEqual(rows[1], state[0])
+        self.assertEqual(state[0].timestamp_utc, "2026-10-03T09:00:00.000Z")
+        for r in state:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.project_path, r.source_line),
+                ("system", ZED_THREAD, "/srv/proj", 1),
+            )
+            self.assertEqual(r.model, "anthropic/claude-sonnet-4-5")
+        for r in state[1:]:
+            self.assertEqual(r.timestamp_utc, "2026-10-03T09:01:05.000Z")
+        self.assertEqual(rows[len(state) + 1].turn_type, "user")
+
+    def test_thread_without_model_or_grants_has_no_state_rows(self):
+        self._insert("bare", "json", b'{"version":"0.3.0","messages":[]}')
+        rows = [r for r in self.rows_for(ZedParser(), self.REL) if r.session_id == "bare"]
+        self.assertEqual([r.text for r in rows], ["thread start: extra version=0.3.0"])
 
 
 class VsCodeTests(ParserBase):
@@ -4982,7 +5105,9 @@ class HermesTests(ParserBase):
     REL = ".hermes/state.db"
 
     def test_rows(self):
-        rows = self.rows_for(HermesParser(), self.REL)
+        rows = [
+            r for r in self.rows_for(HermesParser(), self.REL) if not model_or_permission_row(r)
+        ]
         self.assertEqual(
             [r.turn_type for r in rows],
             [
@@ -5040,6 +5165,62 @@ class HermesTests(ParserBase):
             [("thinking", "User wants a listing.")],
         )
         self.assertNotIn("thinking", [r.turn_type for r in self.rows_for(HermesParser(), self.REL)])
+
+    def test_model_rows(self):
+        rows = self.rows_for(HermesParser(), self.REL)
+        state = [r for r in rows if model_or_permission_row(r)]
+        self.assertEqual(
+            [(r.session_id, r.text, r.timestamp_utc, r.model, r.source_line) for r in state],
+            [
+                # session_model_usage main-loop rows by first_seen; the
+                # title_generation task row is skipped
+                (
+                    HERMES_SESSION,
+                    "model: anthropic/claude-sonnet-4 provider=openrouter",
+                    "2026-10-01T12:00:02.500Z",
+                    "anthropic/claude-sonnet-4",
+                    1,
+                ),
+                (
+                    HERMES_SESSION,
+                    "model: anthropic/claude-sonnet-4 -> anthropic/claude-opus-4 provider=openrouter",
+                    "2026-10-01T12:00:04.000Z",
+                    "anthropic/claude-opus-4",
+                    2,
+                ),
+                # no usage rows: sessions.model at started_at
+                (
+                    HERMES_CHILD,
+                    "model: openai/gpt-5",
+                    "2026-10-01T12:15:00.000Z",
+                    "openai/gpt-5",
+                    2,
+                ),
+            ],
+        )
+        for r in state:
+            self.assertEqual((r.turn_type, r.project_path), ("system", "/srv/proj"))
+        self.assertEqual(rows[1], state[0])  # right after the session's start row
+        self.assertEqual(rows[4], state[2])
+
+    def test_database_without_usage_table_uses_session_model(self):
+        db = self.tmp / "nousage" / "state.db"
+        db.parent.mkdir()
+        con = sqlite3.connect(str(db))
+        con.executescript(
+            "CREATE TABLE sessions (id TEXT, source TEXT, model TEXT, started_at REAL);"
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT,"
+            " content TEXT, timestamp REAL);"
+            "INSERT INTO sessions VALUES ('s1','cli','m1',1790856000.0);"
+        )
+        con.commit()
+        con.close()
+        art = dc_replace(next(a for a in self.col.artifacts if a.rel == self.REL), disk_path=db)
+        rows = list(HermesParser().parse(art, Options()))
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("system", "session start | source=cli"), ("system", "model: m1")],
+        )
 
     def test_diverted_jsonl_transcript(self):
         rows = self.rows_for(HermesParser(), HERMES_DIVERTED_REL)
@@ -6533,7 +6714,11 @@ class OllamaTests(ParserBase):
         return out
 
     def test_rows(self):
-        rows = self.rows_for(OllamaParser(), OLLAMA_DB_REL)
+        rows = [
+            r
+            for r in self.rows_for(OllamaParser(), OLLAMA_DB_REL)
+            if not model_or_permission_row(r)
+        ]
         self.assertEqual(
             [r.turn_type for r in rows], ["user", "tool_use", "tool_result", "assistant"]
         )
@@ -6569,11 +6754,33 @@ class OllamaTests(ParserBase):
         )
         self.assertEqual(
             (asst.text, asst.model, asst.timestamp_utc, asst.source_line),
-            ("Release 2.0 adds X.", "gemma4:e4b", "2026-03-01T17:00:04.125Z", 4),
+            ("Release 2.0 adds X.", "qwen3:8b", "2026-03-01T17:00:04.125Z", 4),
         )
+
+    def test_model_rows(self):
+        for thinking in (False, True):
+            rows = self.rows_for(OllamaParser(), OLLAMA_DB_REL, include_thinking=thinking)
+            state = [r for r in rows if model_or_permission_row(r)]
+            self.assertEqual(
+                [(r.text, r.timestamp_utc, r.model, r.source_line, r.session_id) for r in state],
+                [
+                    ("model: gemma4:e4b", "2026-03-01T17:00:01.250Z", "gemma4:e4b", 2, OLLAMA_CHAT),
+                    (
+                        "model: gemma4:e4b -> qwen3:8b",
+                        "2026-03-01T17:00:04.125Z",
+                        "qwen3:8b",
+                        4,
+                        OLLAMA_CHAT,
+                    ),
+                ],
+            )
+            # each sits immediately before its message's first row
+            self.assertEqual(rows[rows.index(state[0]) + 1].source_line, 2 if thinking else 1)
+            self.assertEqual(rows[rows.index(state[1]) + 1].text, "Release 2.0 adds X.")
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(OllamaParser(), OLLAMA_DB_REL, include_thinking=True)
+        rows = [r for r in rows if not model_or_permission_row(r)]
         self.assertEqual(
             [r.turn_type for r in rows],
             ["user", "thinking", "tool_use", "tool_result", "assistant"],
@@ -6642,7 +6849,11 @@ class OllamaTests(ParserBase):
         for s in sessions:
             self.assertEqual(
                 (s["first_timestamp_utc"], s["last_timestamp_utc"], s["models"]),
-                ("2026-03-01T17:00:00.500Z", "2026-03-01T17:00:04.125Z", ["gemma4:e4b"]),
+                (
+                    "2026-03-01T17:00:00.500Z",
+                    "2026-03-01T17:00:04.125Z",
+                    ["gemma4:e4b", "qwen3:8b"],
+                ),
             )
         rows = read_jsonl(self.run_timeline("since", "--since", "2026-03-01") / "timeline.jsonl")
         self.assertTrue(rows)
@@ -6671,7 +6882,13 @@ class OllamaTests(ParserBase):
         )
         con.commit()
         con.close()
-        rows = self.rows_for(OllamaParser(), OLLAMA_DB_REL)[4:]
+        rows = self.rows_for(OllamaParser(), OLLAMA_DB_REL)
+        # message 6 switches back to gemma4; the placeholder 10 yields nothing
+        self.assertEqual(
+            [r.text for r in rows if model_or_permission_row(r)][2:],
+            ["model: qwen3:8b -> gemma4:e4b"],
+        )
+        rows = [r for r in rows if not model_or_permission_row(r)][4:]
         self.assertEqual(
             [(r.turn_type, r.tool_name, r.tool_use_id, r.text, r.source_line) for r in rows],
             [

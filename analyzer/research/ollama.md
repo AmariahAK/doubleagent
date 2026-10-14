@@ -453,6 +453,13 @@ Read schema versions 16 to 19 the same way.
 | text | `content`; for tool_use the `url` or `query` argument when present, else `function_arguments`; for user rows with attachments, append `[attachment: <filename>, <n> bytes]` per row, never the BLOB |
 | source_line | `messages.id` (or `tool_calls.id` for tool_use rows) |
 
+Model rows (issue 96), `system`: `model: <model_name>` before the rows of
+a chat's first assistant message that names a model, and
+`model: <old> -> <new>` before the rows of each later assistant message
+whose `model_name` differs, with the message's time and `source_line`.
+`config.json` `last_model` is not read for rows. The research records no
+permission state for the app, so there are no permission rows.
+
 An assistant message with empty `content`, no thinking and no tool calls
 (the placeholder written while the model is being pulled,
 [`ui.go:832-841`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L832-L841)) yields no row. A chat with

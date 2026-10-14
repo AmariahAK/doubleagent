@@ -294,6 +294,30 @@ decision: skipped`, each with ` approval=<command|change>` when the
 step records what was asked, after the step's `tool_result` row with
 its `tool_use_id`.
 
+The `zed`, `goose`, `kiro`, `hermes` and `ollama` parsers write model rows
+in the same form. `zed` writes `model: <model> provider=<provider>` once
+per thread, after the thread-start row, since a thread blob keeps one
+model. `goose` writes `model: <model_name> provider=<provider_name>` after
+each session's start row and `model: <old> -> <new> provider=<provider>`
+before a message whose recorded model differs, with
+` requested=<requestedModel>` when the resolved model is another id.
+`kiro` writes `model: <id>` and `model: <old> -> <new>` before the rows of
+the history entry whose `request_metadata.model_id` names it, ending
+` source=model_info` or ` source=model` when the entry had none and the
+conversation-level field stood in. `hermes` writes them from the
+`session_model_usage` table at each model's first use, with
+` provider=<billing_provider>`, or one `model: <id>` from the session row
+at its start. `ollama` writes them before the assistant message whose
+`model_name` names the model. `goose` also writes
+`permission mode: <goose_mode>` after each session's start row. `zed`
+writes one `permission setting: <key>=<value> (thread blob, as of
+updated_at)` row per grant the user gave for the rest of a thread
+(`profile`, each `sandbox_grants.write_paths` and `network_hosts` entry,
+and each `sandbox_grants` escape flag that is `true`): unlike the
+settings-file rows these live in the thread blob, so their `session_id` is
+the thread id and their `timestamp_utc` is the thread's `updated_at`, the
+blob's last write rather than the time of the grant.
+
 ## sessions.jsonl
 
 `sessions.jsonl` has one record per `host`, `user`, `agent` and

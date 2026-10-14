@@ -160,6 +160,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ` approval=<command|change>` when recorded) after the result of a tool
   step saved while it waited for the user's Run or Skip, or after the
   user skipped it ([#96], [#97]).
+- The `zed` parser yields `model: <model> provider=<provider>` once per
+  thread after the thread-start row, and one `permission setting:
+  <key>=<value> (thread blob, as of updated_at)` row per thread-scoped
+  grant in the thread blob: `profile`, each `sandbox_grants.write_paths`
+  and `sandbox_grants.network_hosts` entry, and each of the
+  `network_any_host`, `allow_fs_write_all`, `unsandboxed` and
+  `sandbox_fallback` flags that is set, with the thread id as
+  `session_id` and the thread's `updated_at` as the time ([#96], [#97]).
+- The `goose` parser yields `model: <model_name> provider=<provider_name>`
+  and `permission mode: <goose_mode>` after each session's start row, and
+  `model: <old> -> <new> provider=<provider>` (with
+  ` requested=<requestedModel>` when the resolved model differs) before a
+  message whose `metadata_json.inference` names another model ([#96],
+  [#97]).
+- The `kiro` parser yields `model: <id>` before a conversation's first
+  history entry and `model: <old> -> <new>` before each entry whose
+  `request_metadata.model_id` differs; an entry without one falls back to
+  `model_info.model_id` (or the legacy `model`) and the row ends
+  ` source=model_info` (or ` source=model`) ([#96]).
+- The `hermes` parser yields `model: <id>` and
+  `model: <old> -> <new>` rows from the main-loop rows of the
+  `session_model_usage` table, at each model's `first_seen` and with
+  ` provider=<billing_provider>`, or one `model: <sessions.model>` row at
+  `started_at` when the session has none ([#96]).
+- The `ollama` parser yields `model: <model_name>` before a chat's first
+  assistant message that names a model and `model: <old> -> <new>` before
+  each assistant message whose `model_name` differs ([#96]).
 
 ### Changed
 

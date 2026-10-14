@@ -165,6 +165,28 @@ Rows: one per `content_json` block, plus one `system` row per session from
 | tool_use_id | `toolRequest.id` / `toolResponse.id` |
 | text | text, `arguments` JSON, result text |
 
+Model and permission rows (issues 96 and 97), all `system`, from
+`sessions.db`:
+
+- `model: <model_config_json.model_name> provider=<provider_name>` after
+  each session's start row, at `created_at`.
+- `model: <old> -> <new> provider=<inference.provider>` before the rows of
+  a message whose `metadata_json.inference.resolvedModel` (else
+  `requestedModel`) differs from the session's current model, with
+  ` requested=<requestedModel>` when the two differ. User messages carry no
+  `inference` and change nothing.
+- `permission mode: <goose_mode>` after each session's start row;
+  `goose_mode` is one value per session row (default `auto`), so there is
+  no change row.
+- The answer to a `toolConfirmationRequest` is not recorded in this
+  research, so there is no `permission decision:` row; the request keeps
+  its `confirmation requested:` row. The config `permissions/` directory
+  and `roaming_trust.json` (named in
+  [`collectors/research/goose.md`](../../collectors/research/goose.md)) have
+  no recorded shape and are not read.
+- The legacy JSONL sessions record no model and the request log has no
+  session id, so neither yields model rows.
+
 Fixture:
 
 ```sql

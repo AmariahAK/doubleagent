@@ -70,7 +70,17 @@ platform; [`hermes_state.py:471-473`](https://github.com/NousResearch/hermes-age
 
 Model per message is not stored; use `sessions.model`, or
 `session_model_usage.model` ([`hermes_state_common.py:482-502`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_common.py#L482-L502)) when a
-session switched models.
+session switched models. `session_model_usage` has one row per
+(`session_id`, `model`, `billing_provider`, `billing_base_url`,
+`billing_mode`, `task`), upserted with the token delta of each API call
+that reports usage;
+`first_seen` and `last_seen` are `time.time()` epoch seconds, `task` is
+empty for the main agent loop and names the work (`vision`, `compression`,
+`title_generation`) for auxiliary calls
+([`hermes_state_usage.py:337-365`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_usage.py#L337-L365)).
+`sessions.model` is overwritten by a mid-session `/model` switch
+([`hermes_state_sessions.py:708-735`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_sessions.py#L708-L735)),
+so it holds the latest model, not the first.
 
 ## 4. Joins
 
@@ -135,6 +145,20 @@ evidence of rewound or compacted turns.
 | tool_use_id | `tool_calls[].id` / `messages.tool_call_id` |
 | text | `content` (strip `\x00json:` and join text parts); for tool_use the `command`/`path` key of `arguments`, else the arguments |
 | source_line | `messages.id` |
+
+Model rows (issue 96), `system`, after each session's start row: the
+session's `session_model_usage` rows with `task` empty, ordered by
+`first_seen`, give `model: <model>` for the first and
+`model: <old> -> <new>` for each later one, at `first_seen`, with
+` provider=<billing_provider>` when it is set; auxiliary task rows are
+skipped. The table aggregates per model, so a switch back to a model
+already used is not visible. A session with no such rows gets one
+`model: <sessions.model>` row at `started_at`. The `model` column of the
+other rows stays `sessions.model`.
+
+Permission: the pairing stores named in
+[section 3 of `collectors/research/hermes.md`](../../collectors/research/hermes.md#3-credentials)
+have no recorded shape and are not read, so there are no permission rows.
 
 Fixture:
 

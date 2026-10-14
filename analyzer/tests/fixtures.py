@@ -2397,7 +2397,9 @@ def kiro_conversation_records():
                         "content": "The directory contains README.md.",
                     }
                 },
-                "request_metadata": _kiro_meta(2, 1777000637000, 1777000638100),
+                "request_metadata": dict(
+                    _kiro_meta(2, 1777000637000, 1777000638100), model_id="claude-opus-4"
+                ),
             },
         ],
         "valid_history_range": [0, 2],
@@ -2957,7 +2959,7 @@ def goose_records(cwd="/srv/proj"):
         """('msg_20260301_1_a2','20260301_1','assistant','[{"type":"toolRequest","id":"call_1","toolCall":{"status":"success","value":{"name":"developer__shell","arguments":{"command":"pytest -q"}}}}]',1772355601,"""
         """ '{"userVisible":true,"agentVisible":true,"inference":{"provider":"anthropic","requestedModel":"claude-sonnet-4-5"}}'),"""
         """('msg_20260301_1_a3','20260301_1','user','[{"type":"toolResponse","id":"call_1","toolResult":{"status":"success","value":{"content":[{"type":"text","text":"3 passed"}]}}}]',1772355603,'{"userVisible":true,"agentVisible":true}'),"""
-        """('msg_20260301_1_a4','20260301_1','assistant','[{"type":"thinking","thinking":"all green","signature":"sig"},{"type":"text","text":"All 3 tests pass."}]',1772355605,'{"userVisible":true,"agentVisible":true}')""",
+        """('msg_20260301_1_a4','20260301_1','assistant','[{"type":"thinking","thinking":"all green","signature":"sig"},{"type":"text","text":"All 3 tests pass."}]',1772355605, '{"userVisible":true,"agentVisible":true,"inference":{"provider":"openai","requestedModel":"gpt-4.1","resolvedModel":"gpt-4.1-2025-04-14"}}')""",
         "INSERT INTO usage_ledger(session_id,created_timestamp,model,input_tokens,output_tokens,total_tokens) "
         "VALUES ('20260301_1',1772355605,'claude-sonnet-4-5',120,30,150)",
     ]
@@ -3246,6 +3248,18 @@ def zed_thread_record(cwd="/srv/proj"):
             "timestamp": "2026-10-03T09:00:00Z",
         },
         "model": {"provider": "anthropic", "model": "claude-sonnet-4-5"},
+        "profile": "write",
+        "sandbox_grants": {
+            "write_paths": [
+                cwd + "/build",
+                {"requested": "/tmp/out", "resolved": "/private/tmp/out"},
+            ],
+            "network_hosts": ["*.npmjs.org"],
+            "network_any_host": False,
+            "allow_fs_write_all": False,
+            "unsandboxed": True,
+            "sandbox_fallback": False,
+        },
         "messages": [
             {
                 "User": {
@@ -5455,6 +5469,11 @@ CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT
   role TEXT NOT NULL, content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT,
   timestamp REAL NOT NULL, finish_reason TEXT, reasoning TEXT, reasoning_content TEXT,
   active INTEGER NOT NULL DEFAULT 1, compacted INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE session_model_usage (session_id TEXT NOT NULL, model TEXT NOT NULL,
+  billing_provider TEXT NOT NULL DEFAULT '', billing_base_url TEXT NOT NULL DEFAULT '',
+  billing_mode TEXT NOT NULL DEFAULT '', task TEXT NOT NULL DEFAULT '',
+  api_call_count INTEGER NOT NULL DEFAULT 0, first_seen REAL, last_seen REAL,
+  PRIMARY KEY (session_id, model, billing_provider, billing_base_url, billing_mode, task));
 """
 
 
@@ -5487,6 +5506,12 @@ def hermes_records(cwd="/srv/proj"):
         % HERMES_SESSION,
         "INSERT INTO messages (session_id,role,content,timestamp) VALUES ('%s','user','df -h',1790856901.0)"
         % HERMES_CHILD,
+        "INSERT INTO session_model_usage (session_id,model,billing_provider,task,api_call_count,"
+        "first_seen,last_seen) VALUES "
+        "('%s','anthropic/claude-sonnet-4','openrouter','',2,1790856002.5,1790856003.5),"
+        "('%s','anthropic/claude-opus-4','openrouter','',1,1790856004.0,1790856004.0),"
+        "('%s','google/gemini-flash','openrouter','title_generation',1,1790856001.5,1790856001.5)"
+        % (HERMES_SESSION, HERMES_SESSION, HERMES_SESSION),
     ]
 
 
@@ -7373,7 +7398,7 @@ def ollama_records(schema_version: int = 19):
         "(3, '%s', 'tool', 'Release 2.0 adds X.', '', NULL, "
         "'2026-03-01 09:00:03-08:00', '2026-03-01 09:00:03-08:00', "
         """'{"title":"Notes","content":"Release 2.0 adds X."}'),"""
-        "(4, '%s', 'assistant', 'Release 2.0 adds X.', '', 'gemma4:e4b', "
+        "(4, '%s', 'assistant', 'Release 2.0 adds X.', '', 'qwen3:8b', "
         "'2026-03-01 09:00:04.125-08:00', '2026-03-01 09:00:05-08:00', NULL)" % (c, c, c, c),
         "INSERT INTO tool_calls VALUES (1, 2, 'function', 'web_fetch', "
         """'{"url":"https://example.invalid/notes"}', NULL)""",

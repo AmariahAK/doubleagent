@@ -53,6 +53,25 @@ The request log has no session id or cwd: its request line becomes one
 `system` row and each response message becomes rows like a transcript's,
 timestamped by the response's `created`; the request row inherits the first
 response's time. History entries carry no timestamp.
+
+Model and permission rows from `sessions.db` (issues 96 and 97), all
+`system`:
+
+* `model: <model_config_json.model_name> provider=<provider_name>` and
+  `permission mode: <goose_mode>` after each session's start row, at
+  `created_at`. `goose_mode` (default `auto`) is one value per session row,
+  so there is no mode change row.
+* `model: <old> -> <new> provider=<inference.provider>` before the rows of
+  a message whose `metadata_json.inference` names a different model
+  (`resolvedModel`, else `requestedModel`), with ` requested=<requestedModel>`
+  when the two differ; the start value is the session's model. Messages
+  without `inference` (user messages) do not change it.
+* The answer to a `toolConfirmationRequest` is not recorded in the research
+  (analyzer/research/goose.md), so there is no `permission decision:` row;
+  the request keeps its `confirmation requested:` row.
+
+The legacy JSONL sessions record no model, and the request log has no
+session id, so neither yields model rows.
 """
 
 from __future__ import annotations
@@ -66,7 +85,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl, text_of
+from .base import Options, Parser, compact_json, iter_jsonl, text_of, track_change
 
 DATA = r"(?:\.local/share/goose|AppData/Roaming/Block/goose/data)"
 STATE = r"(?:\.local/state/goose|AppData/Roaming/Block/goose/data)"
@@ -173,6 +192,16 @@ class GooseParser(Parser):
         row.timestamp_utc = ts
         return row
 
+    @staticmethod
+    def _system_copy(base: Row, text: str) -> Row:
+        """A `system` row with `base`'s attribution, time and model."""
+        row = Row(**base.__dict__)
+        row.turn_type = "system"
+        row.tool_name = ""
+        row.tool_use_id = ""
+        row.text = text
+        return row
+
     # -- content blocks, shared by every store ------------------------------------------
     def _block_rows(
         self,
@@ -269,16 +298,18 @@ class GooseParser(Parser):
                 if "messages" not in tables:
                     return
                 sessions: dict[str, dict] = {}
+                seen_model: dict[str, str] = {}
+                seen_mode: dict[str, str] = {}
                 if "sessions" in tables:
                     for s in con.execute(
                         "select rowid as _rowid, * from sessions order by created_at, rowid"
                     ):
                         s = dict(s)
                         cfg = _json(s.get("model_config_json"), {})
-                        s["_model"] = _model(
-                            s.get("provider_name") or "",
-                            (cfg.get("model_name") if isinstance(cfg, dict) else "") or "",
+                        model_name = str(
+                            (cfg.get("model_name") if isinstance(cfg, dict) else "") or ""
                         )
+                        s["_model"] = _model(s.get("provider_name") or "", model_name)
                         sid = str(s.get("id") or "")
                         sessions[sid] = s
                         row = self._row(
@@ -304,6 +335,16 @@ class GooseParser(Parser):
                             ),
                         )
                         yield row
+                        text = track_change("model", seen_model, sid, model_name)
+                        if text:
+                            if s.get("provider_name"):
+                                text += " provider=%s" % s["provider_name"]
+                            yield self._system_copy(row, text)
+                        text = track_change(
+                            "permission mode", seen_mode, sid, str(s.get("goose_mode") or "")
+                        )
+                        if text:
+                            yield self._system_copy(row, text)
                 tool_names: dict[str, str] = {}
                 for m in con.execute(
                     "select * from messages order by session_id, created_timestamp, id"
@@ -326,6 +367,15 @@ class GooseParser(Parser):
                         model,
                         epoch(m.get("created_timestamp")) or to_utc(m.get("timestamp")),
                     )
+                    resolved = str(inf.get("resolvedModel") or inf.get("requestedModel") or "")
+                    text = track_change("model", seen_model, sid, resolved)
+                    if text:
+                        if inf.get("provider"):
+                            text += " provider=%s" % inf["provider"]
+                        requested = str(inf.get("requestedModel") or "")
+                        if requested and requested != resolved:
+                            text += " requested=%s" % requested
+                        yield self._system_copy(base, text)
                     content = _json(m.get("content_json"), None)
                     if content is None:
                         base.turn_type = "system"

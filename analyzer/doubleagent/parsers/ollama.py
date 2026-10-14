@@ -43,7 +43,14 @@ name and no id, as the app's reload does. `session_id` is the chat id,
 `project_path` and `git_branch` stay empty (the app has one global working
 directory and no file tools). `source_line` is `messages.id`, or
 `tool_calls.id` on `tool_use` rows. Messages whose chat row is gone are
-still read. The `users` table (account name and email), `settings` and the
+still read. Model rows (issue 96): a `system` row `model: <model_name>`
+before the rows of a chat's first assistant message that names a model,
+and `model: <old> -> <new>` before the rows of each later assistant
+message whose `model_name` differs (the model is chosen per message in the
+app), with that message's time and `source_line`; an assistant placeholder
+that yields no rows yields no model row either. The research records no
+permission state for the app, so there are no permission rows. The `users`
+table (account name and email), `settings` and the
 attachment bytes are never read.
 
 Rows from `.ollama/history`: `user`, or `system` prefixed `slash command:`
@@ -64,7 +71,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json
+from .base import Options, Parser, compact_json, track_change
 
 DB_RX = re.compile(r"^(?:Library/Application Support/Ollama|AppData/Local/Ollama)/db\.sqlite$")
 HISTORY_RX = re.compile(r"^\.ollama/history$")
@@ -154,6 +161,7 @@ class OllamaParser(Parser):
                 files.setdefault(a["message_id"], []).append((a["filename"] or "", a["n"] or 0))
 
         chat = None
+        seen_model: dict[str, str] = {}
         pending: list[dict] = []  # calls of the last assistant message with calls
         used = 0
         for m in con.execute("select * from messages order by chat_id, id"):
@@ -177,6 +185,14 @@ class OllamaParser(Parser):
                 yield row
             elif role == "assistant":
                 thinking = m.get("thinking") or ""
+                if content or thinking or calls.get(mid):
+                    text = track_change("model", seen_model, sid, model)
+                    if text:
+                        row = self._row(artifact, mid, sid, ts)
+                        row.turn_type = "system"
+                        row.model = model
+                        row.text = text
+                        yield row
                 if thinking and opts.include_thinking:
                     row = self._row(artifact, mid, sid, ts)
                     row.turn_type = "thinking"

@@ -54,6 +54,18 @@ neither (old releases without `request_metadata`) inherit the previous
 row's timestamp. `project_path` is the database row key, else the first
 `current_working_directory`. No git branch is recorded.
 
+Model rows (issue 96), `system`: `model: <id>` before the rows of the first
+history entry and `model: <old> -> <new>` before the rows of each entry
+whose model differs, timestamped like the entry's user row. The model is
+the entry's `request_metadata.model_id`; an entry without one falls back to
+the conversation's `model_info.model_id` (or the legacy `model`), and the
+row then ends ` source=model_info` (or ` source=model`), because that field
+is a conversation-level value serialised with the whole state, not a record
+of the request. No permission rows: a cancelled tool use stays a
+`tool_result` prefixed `cancelled`, and Kiro CLI's `settings/permissions.yaml`,
+`sandbox-state/` and `workspace-roots/<hash>/.trust-migration.json` have no
+recorded shape and are not read.
+
 A blob or export that fails to parse as a whole (an export truncated
 mid-write) is salvaged entry by entry: the history entries before the cut
 are still yielded, followed by one `system` row.
@@ -75,7 +87,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json
+from .base import Options, Parser, compact_json, track_change
 
 DB_RX = re.compile(
     r"^(?:\.local/share|Library/Application Support|AppData/Local)/(?:amazon-q|kiro-cli)/data\.sqlite3$"
@@ -241,12 +253,14 @@ class KiroParser(Parser):
         session_id = str(state.get("conversation_id") or "")
         info = state.get("model_info")
         conv_model = ""
+        conv_source = ""
         if isinstance(info, dict) and info.get("model_id"):
-            conv_model = str(info["model_id"])
+            conv_model, conv_source = str(info["model_id"]), "model_info"
         elif isinstance(state.get("model"), str):
-            conv_model = state["model"]
+            conv_model, conv_source = state["model"], "model"
         project = key or self._first_cwd(state)
         names: dict[str, str] = {}
+        seen_model: dict[str, str] = {}
         last_ts = [""]
 
         def base(ts: str, model: str = "") -> Row:
@@ -273,8 +287,16 @@ class KiroParser(Parser):
             start_ts = to_utc(meta.get("request_start_timestamp_ms"))
             end_ts = to_utc(meta.get("stream_end_timestamp_ms")) or start_ts
             user = entry.get("user")
+            user_ts = to_utc(user.get("timestamp")) if isinstance(user, dict) else ""
+            text = track_change("model", seen_model, session_id, model)
+            if text:
+                if not meta.get("model_id"):
+                    text += " source=%s" % conv_source
+                row = base(user_ts or start_ts or end_ts, model)
+                row.turn_type = "system"
+                yield fill(row, text)
             if isinstance(user, dict):
-                user_ts = to_utc(user.get("timestamp")) or start_ts
+                user_ts = user_ts or start_ts
                 yield from self._user(user.get("content"), user_ts, model, names, base, fill)
             assistant = entry.get("assistant")
             tag, body = _variant(assistant)

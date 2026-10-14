@@ -59,6 +59,20 @@ sandboxed_terminal_temp_dir, sandbox_grants{write_paths, network_hosts, ...}`
 ([`agent.rs:89-93`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/agent.rs#L89-L93); [`project/src/telemetry_snapshot.rs:33-45`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/project/src/telemetry_snapshot.rs#L33-L45);
 [`legacy_thread.rs:45-49`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/legacy_thread.rs#L45-L49); [`language_model_core.rs:525-535`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/language_model_core/src/language_model_core.rs#L525-L535)).
 
+`sandbox_grants` is `DbSandboxGrants`, the sandbox escalations the user
+approved "for the rest of this thread" (the "Allow for this thread" prompt
+option): `write_paths` (granted write paths, each covering its subtree),
+`network_hosts` (host patterns such as `*.npmjs.org`), and the booleans
+`network_any_host`, `allow_fs_write_all`, `unsandboxed` and
+`sandbox_fallback` (commands allowed to run unsandboxed because the OS
+sandbox could not be created), all `#[serde(default)]`
+([`db.rs:84-122`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L84-L122)). A `write_paths`
+entry is a bare path string when no canonical target was resolved (and in
+legacy rows), else an object `{requested, resolved, on_windows_fs?}`
+([`granted_write_path.rs:64-87`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/settings/src/granted_write_path.rs#L64-L87)).
+`profile` is the agent profile id the thread ran under
+([`db.rs:69`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L69)).
+
 There are no per-message timestamps, only the thread's `updated_at` and
 `created_at` and `initial_project_snapshot.timestamp`. Git branch is
 `initial_project_snapshot.worktree_snapshots[].git_state.current_branch`,
@@ -160,6 +174,22 @@ no transcript).
 | model | `model.provider/model.model` |
 | tool_name, tool_use_id | `ToolUse.name` / `tool_name`, `ToolUse.id` / `tool_use_id` |
 | text | text, `arguments` JSON, result text; `Mention.uri` for mentions |
+
+Model and permission rows (issues 96 and 97), all `system`, after the
+thread-start row and before the first message:
+
+- `model: <model.model> provider=<model.provider>` once per thread at the
+  thread-start time, from the blob's `model`. The blob holds one `model`
+  per thread, so a switch inside a thread is not recorded and there is no
+  change row.
+- `permission setting: <key>=<value> (thread blob, as of updated_at)`, one
+  row per `profile`, per `sandbox_grants.write_paths[]` entry (a string, or
+  the object printed as compact JSON), per `sandbox_grants.network_hosts[]`
+  entry, and per `sandbox_grants` boolean (`network_any_host`,
+  `allow_fs_write_all`, `unsandboxed`, `sandbox_fallback`) that is `true`.
+  The grants live in the thread blob, so `session_id` is the thread id and
+  `timestamp_utc` the thread's `updated_at` (the blob's last write; the
+  moment of the grant is not recorded).
 
 Fixtures. `threads.db` (`data` is the zstd of the JSON below,
 `data_type='zstd'`):

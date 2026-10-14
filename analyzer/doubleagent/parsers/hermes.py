@@ -39,6 +39,23 @@ is the session's `model`; messages record none of their own. `project_path`
 is `sessions.cwd`, else `git_repo_root`, and `git_branch` is
 `sessions.git_branch`. The legacy `sessions/<id>.json` snapshots, `/save`
 exports and `response_store.db` are not parsed.
+
+Model rows (issue 96), `system`, after each session's start row:
+`session_model_usage` (`session_id`, `model`, `billing_provider`, `task`,
+`first_seen` in epoch seconds) holds one row per model, billing route and
+task that a session's API calls used, so its main-loop rows (`task` empty;
+auxiliary calls such as compression or title generation name their task
+and are skipped) ordered by `first_seen` give `model: <id>` for the first
+and `model: <old> -> <new>` for each later one, timestamped at
+`first_seen` and suffixed ` provider=<billing_provider>` when set. The
+table aggregates per model, so a switch back to a model already used is
+not visible. A session with no such rows (an older database, or no API call
+yet) gets one `model: <sessions.model>` row at `started_at`;
+`sessions.model` is rewritten by a `/model` switch, so it is the latest
+model, not necessarily the first. The `model` column of the other rows
+stays `sessions.model`. Hermes's pairing stores are named in the collector
+research without a recorded shape and are not read, so there are no
+permission rows.
 """
 
 from __future__ import annotations
@@ -52,7 +69,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl, text_of
+from .base import Options, Parser, compact_json, iter_jsonl, text_of, track_change
 
 HOME = r"(?:\.hermes(?:_[^/]+)?|AppData/Local/hermes(?:_[^/]+)?)(?:/profiles/[^/]+)?"
 DB_RX = re.compile(r"^%s/state\.db$" % HOME)
@@ -191,6 +208,41 @@ class HermesParser(Parser):
             tool_names[row.tool_use_id] = row.tool_name
             yield row
 
+    def _model_rows(
+        self,
+        artifact: Artifact,
+        session: dict,
+        start: Row,
+        usage: dict[str, list[dict]],
+        seen: dict[str, str],
+    ) -> Iterator[Row]:
+        sid = start.session_id
+        uses = usage.get(sid) or []
+        if not uses:
+            text = track_change("model", seen, sid, str(session.get("model") or ""))
+            if text:
+                yield self._copy(start, text, str(session.get("model") or ""))
+            return
+        for u in uses:
+            model = str(u.get("model") or "")
+            text = track_change("model", seen, sid, model)
+            if not text:
+                continue
+            if u.get("billing_provider"):
+                text += " provider=%s" % u["billing_provider"]
+            row = self._copy(start, text, model)
+            row.source_line = u["_rowid"]
+            row.timestamp_utc = to_utc(u.get("first_seen")) or start.timestamp_utc
+            yield row
+
+    @staticmethod
+    def _copy(base: Row, text: str, model: str) -> Row:
+        row = Row(**base.__dict__)
+        row.turn_type = "system"
+        row.model = model
+        row.text = text
+        return row
+
     # -- state.db ------------------------------------------------------------------------
     def _parse_db(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if not is_sqlite(artifact.disk_path):
@@ -202,6 +254,16 @@ class HermesParser(Parser):
                 if "messages" not in tables:
                     return
                 sessions: dict[str, dict] = {}
+                seen_model: dict[str, str] = {}
+                usage: dict[str, list[dict]] = {}
+                if "session_model_usage" in tables:
+                    for u in con.execute(
+                        "select rowid as _rowid, * from session_model_usage"
+                        " order by first_seen, rowid"
+                    ):
+                        u = dict(u)
+                        if not u.get("task"):
+                            usage.setdefault(str(u.get("session_id") or ""), []).append(u)
                 if "sessions" in tables:
                     for s in con.execute(
                         "select rowid as _rowid, * from sessions order by started_at, rowid"
@@ -226,6 +288,7 @@ class HermesParser(Parser):
                         )
                         row.timestamp_utc = to_utc(s.get("started_at"))
                         yield row
+                        yield from self._model_rows(artifact, s, row, usage, seen_model)
                 tool_names: dict[str, str] = {}
                 for m in con.execute("select * from messages order by timestamp, id"):
                     m = dict(m)

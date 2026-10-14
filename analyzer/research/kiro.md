@@ -193,6 +193,20 @@ Rows: one per user prompt, assistant message, `tool_uses[]` entry and
 | tool_use_id | `id` / `tool_use_id` |
 | text | prompt, content, `json.dumps(args)` or result text, with status appended for results |
 
+Model rows (issue 96), `system`: `model: <id>` before the rows of the
+first history entry and `model: <old> -> <new>` before the rows of each
+entry whose model differs, timestamped like the entry's user row. The
+model is `request_metadata.model_id`; an entry without one falls back to
+`model_info.model_id`, else the legacy `model`, and the row then ends
+` source=model_info` or ` source=model`, since those are conversation-level
+fields serialised with the whole state rather than per-request records.
+
+Permission: a `CancelledToolUses` result stays a `tool_result` prefixed
+`cancelled`. Kiro CLI's `settings/permissions.yaml`, `sandbox-state/` and
+`workspace-roots/<hash>/.trust-migration.json` (named in
+[`collectors/research/kiro.md`](../../collectors/research/kiro.md)) have no
+recorded shape and are not read.
+
 Fixture:
 
 ```sql
