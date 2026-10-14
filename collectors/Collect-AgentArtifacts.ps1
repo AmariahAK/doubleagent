@@ -1582,11 +1582,410 @@ nanobot|*nanobot*
 '@
 
 
-if ($Version) { Write-Output "$TOOL $ToolVersion"; exit 0 }
+# ===========================================================================
+# 3. Shared helpers
+# ===========================================================================
+# Constants and small functions every later section uses: the table reader,
+# logging and notes, JSON string escaping, the glob-to-regex converter,
+# extended-length paths, and file-system probes that never throw.
 
+# UTF-8 without a byte order mark, for every file the collector writes
+# (Add-Content on 5.1 defaults to ASCII and mangles non-ASCII paths).
+$script:Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+# \ on Windows, / under PowerShell 7 on Linux or macOS.
+$script:Sep = [string][System.IO.Path]::DirectorySeparatorChar
+
+# Takes a table here-string; returns its lines that are neither empty nor a
+# # comment.
 function Get-TableLines([string]$table) {
   $table -split "`r?`n" | Where-Object { $_ -ne '' -and -not $_.StartsWith('#') }
 }
+
+# Takes a message; appends "<UTC time> <message>" to the run log through
+# $script:LogWriter when one is open (-Inventory opens none) and writes the
+# message alone to stderr unless -Quiet.
+function Write-CollectorLog([string]$message) {
+  $timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+  if ($script:LogWriter) { $script:LogWriter.WriteLine("$timestamp $message") }
+  if (-not $Quiet) { [Console]::Error.WriteLine($message) }
+}
+
+# Takes a message; appends it to $script:Notes, the notes list of
+# collection.json, and logs it as "NOTE: <message>".
+$script:Notes = @()
+function Add-Note([string]$message) {
+  $script:Notes += $message
+  Write-CollectorLog "NOTE: $message"
+}
+
+# Takes a string; returns its JSON string body (no surrounding quotes) the
+# way PowerShell 7's ConvertTo-Json writes it: " and \ escaped, every control
+# character below 0x20 escaped (\b \t \n \f \r short, the rest \u00xx), and
+# U+0085, U+2028 and U+2029 as \u escapes; everything else, non-ASCII
+# included, is kept as is and encoded as UTF-8 by the writer, which turns a
+# lone surrogate into U+FFFD as ConvertTo-Json's output does. Windows
+# PowerShell 5.1's ConvertTo-Json also escaped < > ' & as \u003c and so on;
+# the parsed rows are the same. Write-ManifestRow calls it only for a row
+# that holds one of the rare characters ($script:JsonRareRx).
+$script:JsonRareRx = New-Object System.Text.RegularExpressions.Regex(
+  '[\x00-\x1f\u0085\u2028\u2029]')
+$script:JsonInv = [System.Globalization.CultureInfo]::InvariantCulture
+function ConvertTo-JsonEscaped([string]$text) {
+  $builder = New-Object System.Text.StringBuilder ($text.Length + 16)
+  foreach ($char in $text.ToCharArray()) {
+    $code = [int]$char
+    if ($char -eq '"') { [void]$builder.Append('\"') }
+    elseif ($char -eq '\') { [void]$builder.Append('\\') }
+    elseif ($code -eq 8) { [void]$builder.Append('\b') }
+    elseif ($code -eq 9) { [void]$builder.Append('\t') }
+    elseif ($code -eq 10) { [void]$builder.Append('\n') }
+    elseif ($code -eq 12) { [void]$builder.Append('\f') }
+    elseif ($code -eq 13) { [void]$builder.Append('\r') }
+    elseif ($code -lt 0x20 -or $code -eq 0x85 -or $code -eq 0x2028 -or $code -eq 0x2029) {
+      [void]$builder.Append('\u').Append($code.ToString('x4', $script:JsonInv))
+    }
+    else { [void]$builder.Append($char) }
+  }
+  return $builder.ToString()
+}
+
+# Takes a glob and whether * and ? may cross /; returns an anchored regex
+# (^...$). Catalog globs are matched one path segment at a time, so their *
+# stops at /; exclusion and secret globs are matched against a whole
+# relative path, so theirs crosses it. [...] classes are kept, and the sh
+# negated class [!...] becomes the regex [^...].
+function Convert-GlobToRegex([string]$glob, [bool]$starCrossesSeparator) {
+  $builder = New-Object System.Text.StringBuilder
+  [void]$builder.Append('^')
+  $star = '[^/]*'; $question = '[^/]'
+  if ($starCrossesSeparator) { $star = '.*'; $question = '.' }
+  $i = 0
+  while ($i -lt $glob.Length) {
+    $char = $glob[$i]
+    switch ($char) {
+      '*' { [void]$builder.Append($star) }
+      '?' { [void]$builder.Append($question) }
+      '[' {
+        $close = $glob.IndexOf(']', $i + 1)
+        if ($close -gt $i) {
+          $class = $glob.Substring($i, $close - $i + 1)
+          if ($class.StartsWith('[!')) { $class = '[^' + $class.Substring(2) }
+          [void]$builder.Append($class); $i = $close
+        }
+        else { [void]$builder.Append('\[') }
+      }
+      default { [void]$builder.Append([regex]::Escape([string]$char)) }
+    }
+    $i++
+  }
+  [void]$builder.Append('$')
+  $builder.ToString()
+}
+
+# Takes the globs of one table; returns one Regex that matches a relative
+# path when any glob does. Each table is one alternation of its per-glob
+# regexes, tested with one IsMatch per path instead of a PowerShell loop of
+# -match. Every per-glob regex is ^body$, so the anchors are hoisted out
+# (^(?:b1|b2|...)$) and the engine tries only the start of the path. The
+# options give -match's semantics: IgnoreCase with the current culture (no
+# CultureInvariant). RegexOptions.Compiled is left off: it is slower here on
+# Windows PowerShell 5.1. An empty table (-Full for exclusions) matches
+# nothing.
+function ConvertTo-TableRegex([string[]]$globs) {
+  $bodies = @(foreach ($glob in $globs) {
+      $globRegex = Convert-GlobToRegex $glob $true
+      $globRegex.Substring(1, $globRegex.Length - 2)
+    })
+  $pattern = '(?!)'
+  if ($bodies.Count -gt 0) { $pattern = '^(?:' + ($bodies -join '|') + ')$' }
+  $options = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+  return (New-Object System.Text.RegularExpressions.Regex($pattern, $options))
+}
+
+# Paths longer than 260 characters (#77). Windows PowerShell 5.1 runs on
+# .NET Framework, where a plain path past MAX_PATH fails unless the host has
+# LongPathsEnabled set; the extended-length form (\\?\C:\... or
+# \\?\UNC\server\share\...) works without it, under 5.1 and 7. Every file
+# system call (.NET and -LiteralPath alike) gets the extended form on
+# Windows; everything the collector writes out (manifest path, archive_path,
+# target, collection.json, the log, stdout) keeps the plain form, and tar.exe
+# is given plain paths. Elsewhere (PowerShell 7 on Linux or macOS) and for a
+# relative path both helpers return their argument unchanged.
+$script:UseExtendedPaths = ($env:OS -eq 'Windows_NT')
+# A . or .. segment or a doubled separator, which the prefix stops Win32 from
+# resolving, so ConvertTo-ExtendedPath resolves it first.
+$script:ExtendedNormRx = New-Object System.Text.RegularExpressions.Regex(
+  '\\\.{1,2}(?:\\|$)|\\\\')
+
+# Takes a path; returns its extended-length form on Windows (\\?\C:\... for
+# a drive path, \\?\UNC\server\share\... for a UNC path) with . and ..
+# segments and doubled separators resolved, or the path unchanged elsewhere,
+# for a relative path, or when it is already extended.
+function ConvertTo-ExtendedPath([string]$path) {
+  $ordinal = [System.StringComparison]::Ordinal
+  if (-not $script:UseExtendedPaths -or -not $path -or $path.StartsWith('\\?\', $ordinal)) {
+    return $path
+  }
+  $backslashed = $path.Replace('/', '\')
+  if ($backslashed.Length -ge 3 -and $backslashed[1] -eq ':' -and $backslashed[2] -eq '\') {
+    $prefix = '\\?\'; $body = $backslashed; $keepSegments = 1
+  }
+  elseif ($backslashed.Length -gt 2 -and $backslashed.StartsWith('\\', $ordinal) -and
+    $backslashed[2] -ne '?' -and $backslashed[2] -ne '.') {
+    $prefix = '\\?\UNC\'; $body = $backslashed.Substring(2); $keepSegments = 2
+  }
+  else { return $path }
+  if ($script:ExtendedNormRx.IsMatch($body)) {
+    # $keepSegments leading segments (the drive, or server and share) are
+    # never popped.
+    $segments = New-Object System.Collections.ArrayList
+    foreach ($segment in $body.Split([char]'\')) {
+      if ($segments.Count -lt $keepSegments) { [void]$segments.Add($segment); continue }
+      if ($segment -eq '' -or $segment -eq '.') { continue }
+      if ($segment -eq '..') {
+        if ($segments.Count -gt $keepSegments) { $segments.RemoveAt($segments.Count - 1) }
+        continue
+      }
+      [void]$segments.Add($segment)
+    }
+    $body = [string]::Join('\', [string[]]$segments.ToArray())
+    if ($segments.Count -le $keepSegments) { $body += '\' }
+  }
+  return $prefix + $body
+}
+
+# Takes a path; returns its plain form (\\?\UNC\ becomes \\, \\?\ is
+# dropped), or the path unchanged when it is not extended.
+function ConvertFrom-ExtendedPath([string]$path) {
+  if (-not $path) { return $path }
+  if ($path.StartsWith('\\?\UNC\', [System.StringComparison]::OrdinalIgnoreCase)) {
+    return '\\' + $path.Substring(8)
+  }
+  if ($path.StartsWith('\\?\', [System.StringComparison]::Ordinal)) { return $path.Substring(4) }
+  return $path
+}
+
+# Takes an exception message; returns it with every extended path in it
+# turned back into the plain form. An exception names the path it was given,
+# so one about an extended path is cleaned before it reaches a row or the log.
+function ConvertFrom-ExtendedText([string]$text) {
+  if (-not $text -or $text.IndexOf('\\?\', [System.StringComparison]::Ordinal) -lt 0) {
+    return $text
+  }
+  return $text.Replace('\\?\UNC\', '\\').Replace('\\?\', '')
+}
+
+# Takes a path and a kind (Leaf, Container, or anything else for either);
+# returns whether it exists as that kind. Test-Path throws a real
+# UnauthorizedAccessException on protected profiles even with -ErrorAction,
+# so this probes through .NET, which never throws.
+function Test-PathQuiet([string]$path, [string]$kind) {
+  if (-not $path) { return $false }
+  $path = ConvertTo-ExtendedPath $path
+  try {
+    if ($kind -eq 'Leaf') { return [System.IO.File]::Exists($path) }
+    if ($kind -eq 'Container') { return [System.IO.Directory]::Exists($path) }
+    return ([System.IO.File]::Exists($path) -or [System.IO.Directory]::Exists($path))
+  } catch { return $false }
+}
+
+# Takes a parent path and a child that may use / or \; returns them joined
+# with the platform separator. Join-Path is not used: its three-argument form
+# is PowerShell 7 only, and it resolves PowerShell drives.
+function Join-PathSafe([string]$parent, [string]$child) {
+  $child = $child.Replace('\', $script:Sep).Replace('/', $script:Sep)
+  if ($parent.EndsWith('\') -or $parent.EndsWith('/')) { return $parent + $child }
+  return $parent + $script:Sep + $child
+}
+
+# Takes a base directory and a full path; returns the path relative to the
+# base with / separators (the form exclusion and secret globs are matched
+# against), or the whole path with / separators when it is not under the
+# base. The prefix test ignores case.
+function Get-RelPath([string]$base, [string]$full) {
+  $trimmedBase = $base.TrimEnd('\', '/')
+  $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
+  if ($full.Length -gt $trimmedBase.Length -and $full.StartsWith($trimmedBase, $ignoreCase)) {
+    return $full.Substring($trimmedBase.Length).TrimStart('\', '/').Replace('\', '/')
+  }
+  return $full.Replace('\', '/')
+}
+
+# Takes a DateTime; returns Unix epoch seconds, or 0 when it cannot be
+# converted.
+function Get-Epoch($dateTime) {
+  try { return [int64]([DateTimeOffset]::new([DateTime]$dateTime).ToUnixTimeSeconds()) }
+  catch { return [int64]0 }
+}
+
+# Takes a path; returns its owner as an account name, or its SID when the
+# name cannot be resolved, or '' when the security descriptor cannot be read
+# (always under PowerShell 7, whose File class has no GetAccessControl). Only
+# the owner section is read, and each SID is translated once per run
+# ($script:OwnerNames caches SID -> name).
+$script:OwnerNames = @{}
+function Get-OwnerName([string]$path) {
+  try {
+    $sections = [System.Security.AccessControl.AccessControlSections]::Owner
+    $security = [System.IO.File]::GetAccessControl((ConvertTo-ExtendedPath $path), $sections)
+    $sid = $security.GetOwner([System.Security.Principal.SecurityIdentifier])
+    $key = $sid.Value
+  } catch { return '' }
+  if (-not $script:OwnerNames.ContainsKey($key)) {
+    $accountName = $key
+    try { $accountName = $sid.Translate([System.Security.Principal.NTAccount]).Value } catch { }
+    $script:OwnerNames[$key] = $accountName
+  }
+  return $script:OwnerNames[$key]
+}
+
+# Takes a path; returns the lowercase hex SHA-256 of the file, or '' when it
+# cannot be read. One SHA256 object serves the run instead of a Get-FileHash
+# call per file. Used for the archive; Copy-FileShared hashes each staged
+# copy itself.
+$script:Sha256 = [System.Security.Cryptography.SHA256]::Create()
+$script:ShareReadWriteDelete = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+function Get-FileSha256([string]$path) {
+  $stream = $null
+  try {
+    $stream = New-Object System.IO.FileStream((ConvertTo-ExtendedPath $path),
+      [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, $script:ShareReadWriteDelete)
+    $hash = $script:Sha256.ComputeHash($stream)
+    return [System.BitConverter]::ToString($hash).Replace('-', '').ToLowerInvariant()
+  } catch { return '' }
+  finally { if ($stream) { $stream.Dispose() } }
+}
+
+# Takes a directory; returns the total size in bytes of the files under it,
+# or 0 when it cannot be listed. Used for skipped_excluded and
+# skipped_unmatched_volume rows.
+function Get-DirSize([string]$dir) {
+  try {
+    $listing = @{ LiteralPath = (ConvertTo-ExtendedPath $dir); Recurse = $true; Force = $true }
+    $measure = Get-ChildItem @listing -File -ErrorAction SilentlyContinue |
+      Measure-Object -Property Length -Sum
+    if ($measure.Sum) { return [int64]$measure.Sum } else { return [int64]0 }
+  } catch { return [int64]0 }
+}
+
+# Takes a FileSystemInfo; returns its link target (several joined with ;),
+# or '' when it has none or it cannot be read.
+function Get-LinkTarget($item) {
+  try {
+    $targetProperty = $item.PSObject.Properties['Target']
+    if ($targetProperty -and $targetProperty.Value) {
+      return ([string[]]$targetProperty.Value) -join ';'
+    }
+  } catch { }
+  return ''
+}
+
+# Takes a path; returns whether it is a reparse point (a symlink or
+# junction), $false when it cannot be read.
+function Test-IsLink([string]$path) {
+  try {
+    $item = Get-Item -LiteralPath (ConvertTo-ExtendedPath $path) -Force -ErrorAction Stop
+    return (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+  } catch { return $false }
+}
+
+# Takes a directory; returns whether its entries can be listed.
+function Test-DirReadable([string]$path) {
+  try {
+    [void][System.IO.Directory]::GetFileSystemEntries((ConvertTo-ExtendedPath $path))
+    return $true
+  } catch { return $false }
+}
+
+# ===========================================================================
+# 4. Manifest writer
+# ===========================================================================
+# Every row of manifest.jsonl goes through Write-ManifestRow, which also
+# keeps the per-status counts for collection.json and stdout. The fields and
+# status values are an interface (collectors/docs/output.md).
+
+# Rows per status, and the bytes of collected files.
+$script:Counts = @{
+  collected = 0; symlink = 0; skipped_excluded = 0; skipped_size = 0; skipped_secret = 0
+  error_copy = 0; skipped_unmatched_volume = 0; error_read = 0; bytes = [int64]0
+}
+# Homes (and other bases) that gave at least one manifest row.
+$script:RowHomes = @{}
+
+# Takes the manifest fields in manifest order (uid and gid are always 0 and
+# mode always '' on this side, so they are not parameters); writes one JSON
+# line through $script:ManifestWriter, counts the row in $script:Counts and
+# marks its home in $script:RowHomes. Rows are written by hand rather than
+# through ConvertTo-Json, which is far slower per row and differs between
+# 5.1 and 7: the same keys in the same order with the same JSON types, and
+# PowerShell 7's ConvertTo-Json string bytes (see ConvertTo-JsonEscaped).
+function Write-ManifestRow {
+  param([string]$user, [string]$homeDir, [string]$agent, [string]$path, [string]$archivePath,
+    [string]$type, [int64]$size, [int64]$mtime, [int64]$atime, [int64]$ctime, [int64]$btime,
+    [string]$owner, [string]$attributes, [string]$sha256, [bool]$secret, [string]$status,
+    [string]$target, [string]$errorText)
+  $fields = [string[]]@($user, $homeDir, $agent, $path, $archivePath, $type, $owner, $attributes,
+    $sha256, $status, $target, $errorText)
+  if ($script:JsonRareRx.IsMatch([string]::Concat($fields))) {
+    for ($i = 0; $i -lt $fields.Length; $i++) { $fields[$i] = ConvertTo-JsonEscaped $fields[$i] }
+  } else {
+    # No field holds a control character, so U+0000 can separate them while
+    # " and \ are escaped in one pass.
+    $joined = [string]::Join([string][char]0, $fields)
+    $fields = $joined.Replace('\', '\\').Replace('"', '\"').Split([char]0)
+  }
+  $secretJson = 'false'; if ($secret) { $secretJson = 'true' }
+  $culture = $script:JsonInv
+  $script:ManifestWriter.WriteLine([string]::Concat([string[]]@(
+        '{"user":"', $fields[0], '","home":"', $fields[1], '","agent":"', $fields[2],
+        '","path":"', $fields[3], '","archive_path":"', $fields[4], '","type":"', $fields[5],
+        '","size":', $size.ToString($culture), ',"mtime":', $mtime.ToString($culture),
+        ',"atime":', $atime.ToString($culture), ',"ctime":', $ctime.ToString($culture),
+        ',"btime":', $btime.ToString($culture), ',"uid":0,"gid":0,"mode":"","owner":"', $fields[6],
+        '","attributes":"', $fields[7], '","sha256":"', $fields[8], '","secret":', $secretJson,
+        ',"status":"', $fields[9], '","target":"', $fields[10], '","error":"', $fields[11], '"}')))
+  if ($script:Counts.ContainsKey($status)) { $script:Counts[$status]++ }
+  # The error_read row for an unreadable home itself does not make it a home
+  # with artifacts.
+  if (-not ($status -eq 'error_read' -and $path -eq $homeDir)) { $script:RowHomes[$homeDir] = $true }
+  if ($status -eq 'collected') { $script:Counts['bytes'] += $size }
+}
+
+# Takes a directory; returns why it cannot be walked (the exception
+# message), or '' when it can be listed. On Linux and macOS Get-ChildItem
+# also fails on a directory that can be listed but not entered, so this
+# matches the sh collector's -r and -x tests.
+function Get-DirReadError([string]$dir) {
+  try {
+    [void]@(Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $dir) -Force -ErrorAction Stop)
+    return ''
+  }
+  catch { return (ConvertFrom-ExtendedText $_.Exception.Message) }
+}
+
+# Takes the user, home, agent, a directory that could not be walked and the
+# reason; logs "read failed" and, unless -Inventory, writes one error_read
+# row (type dir, size 0) with whatever metadata of the directory itself can
+# still be read.
+function Write-ReadErrorRow {
+  param([string]$user, [string]$homeDir, [string]$agent, [string]$dir, [string]$errorText)
+  Write-CollectorLog "read failed: ${dir}: $errorText"
+  if ($Inventory) { return }
+  $mtime = 0; $atime = 0; $btime = 0; $attributes = ''
+  try {
+    $dirItem = Get-Item -LiteralPath (ConvertTo-ExtendedPath $dir) -Force -ErrorAction Stop
+    $mtime = Get-Epoch $dirItem.LastWriteTimeUtc
+    $atime = Get-Epoch $dirItem.LastAccessTimeUtc
+    $btime = Get-Epoch $dirItem.CreationTimeUtc
+    $attributes = [string]$dirItem.Attributes
+  } catch { }
+  $owner = ''; if (Test-PathQuiet $dir 'Container') { $owner = Get-OwnerName $dir }
+  $row = @($user, $homeDir, $agent, $dir, '', 'dir', 0, $mtime, $atime, 0, $btime, $owner,
+    $attributes, '', $false, 'error_read', '', $errorText)
+  Write-ManifestRow @row
+}
+
+if ($Version) { Write-Output "$TOOL $ToolVersion"; exit 0 }
 
 if ($List) {
   Write-Output '# home artifacts (agent|glob relative to home)'
@@ -1606,119 +2005,9 @@ if ($List) {
 if ($MaxFileSizeMB -lt 0) { Write-Error 'Invalid -MaxFileSizeMB'; exit 1 }
 $MaxSize = [int64]$MaxFileSizeMB * 1024 * 1024
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-$Utf8NoBom = New-Object System.Text.UTF8Encoding $false
-$Sep = [string][System.IO.Path]::DirectorySeparatorChar
-
-function Convert-GlobToRegex([string]$glob, [bool]$starCrossesSeparator) {
-  $sb = New-Object System.Text.StringBuilder
-  [void]$sb.Append('^')
-  $i = 0
-  while ($i -lt $glob.Length) {
-    $c = $glob[$i]
-    switch ($c) {
-      '*' { if ($starCrossesSeparator) { [void]$sb.Append('.*') } else { [void]$sb.Append('[^/]*') } }
-      '?' { if ($starCrossesSeparator) { [void]$sb.Append('.') } else { [void]$sb.Append('[^/]') } }
-      '[' {
-        $j = $glob.IndexOf(']', $i + 1)
-        if ($j -gt $i) {
-          # [!...] is the sh negated class; the regex form is [^...]
-          $cls = $glob.Substring($i, $j - $i + 1)
-          if ($cls.StartsWith('[!')) { $cls = '[^' + $cls.Substring(2) }
-          [void]$sb.Append($cls); $i = $j
-        }
-        else { [void]$sb.Append('\[') }
-      }
-      default { [void]$sb.Append([regex]::Escape([string]$c)) }
-    }
-    $i++
-  }
-  [void]$sb.Append('$')
-  $sb.ToString()
-}
-
-# Each table is one alternation of its per-glob regexes, tested with one
-# IsMatch per path instead of a PowerShell loop of -match. Every per-glob
-# regex is ^body$, so the anchors are hoisted out (^(?:b1|b2|...)$) and the
-# engine tries only the start of the path. The options give -match's
-# semantics: IgnoreCase with the current culture (no CultureInvariant).
-# RegexOptions.Compiled is left off: it is slower here on Windows
-# PowerShell 5.1. An empty table (-Full for exclusions) matches nothing.
-function ConvertTo-TableRegex([string[]]$globs) {
-  $bodies = @(foreach ($g in $globs) { $r = Convert-GlobToRegex $g $true; $r.Substring(1, $r.Length - 2) })
-  $pattern = '(?!)'; if ($bodies.Count -gt 0) { $pattern = '^(?:' + ($bodies -join '|') + ')$' }
-  return (New-Object System.Text.RegularExpressions.Regex($pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase))
-}
 $excludeGlobs = @(Get-TableLines $EXCLUDES); if ($Full) { $excludeGlobs = @() }
 $script:ExcludeRegex = ConvertTo-TableRegex $excludeGlobs
 $script:SecretRegex = ConvertTo-TableRegex @($SECRET_GLOBS -split "`r?`n" | Where-Object { $_ -ne '' })
-
-# Paths longer than 260 characters (#77). Windows PowerShell 5.1 runs on
-# .NET Framework, where a plain path past MAX_PATH fails unless the host has
-# LongPathsEnabled set; the extended-length form (\\?\C:\... or
-# \\?\UNC\server\share\...) works without it, under 5.1 and 7. Every file
-# system call (.NET and -LiteralPath alike) gets the extended form on
-# Windows; everything the collector writes out (manifest path, archive_path,
-# target, collection.json, the log, stdout) keeps the plain form, and tar.exe
-# is given plain paths. Elsewhere (PowerShell 7 on Linux or macOS) and for a
-# relative path both helpers return their argument unchanged.
-$script:UseExtendedPaths = ($env:OS -eq 'Windows_NT')
-# A . or .. segment or a doubled separator, which the prefix stops Win32 from
-# resolving, so ConvertTo-ExtendedPath resolves it first.
-$script:ExtendedNormRx = New-Object System.Text.RegularExpressions.Regex('\\\.{1,2}(?:\\|$)|\\\\')
-function ConvertTo-ExtendedPath([string]$p) {
-  if (-not $script:UseExtendedPaths -or -not $p -or $p.StartsWith('\\?\', [System.StringComparison]::Ordinal)) { return $p }
-  $q = $p.Replace('/', '\')
-  if ($q.Length -ge 3 -and $q[1] -eq ':' -and $q[2] -eq '\') { $pre = '\\?\'; $body = $q; $keep = 1 }
-  elseif ($q.Length -gt 2 -and $q.StartsWith('\\', [System.StringComparison]::Ordinal) -and $q[2] -ne '?' -and $q[2] -ne '.') { $pre = '\\?\UNC\'; $body = $q.Substring(2); $keep = 2 }
-  else { return $p }
-  if ($script:ExtendedNormRx.IsMatch($body)) {
-    # $keep leading segments (the drive, or server and share) are never popped.
-    $segs = New-Object System.Collections.ArrayList
-    foreach ($s in $body.Split([char]'\')) {
-      if ($segs.Count -lt $keep) { [void]$segs.Add($s); continue }
-      if ($s -eq '' -or $s -eq '.') { continue }
-      if ($s -eq '..') { if ($segs.Count -gt $keep) { $segs.RemoveAt($segs.Count - 1) }; continue }
-      [void]$segs.Add($s)
-    }
-    $body = [string]::Join('\', [string[]]$segs.ToArray())
-    if ($segs.Count -le $keep) { $body += '\' }
-  }
-  return $pre + $body
-}
-function ConvertFrom-ExtendedPath([string]$p) {
-  if (-not $p) { return $p }
-  if ($p.StartsWith('\\?\UNC\', [System.StringComparison]::OrdinalIgnoreCase)) { return '\\' + $p.Substring(8) }
-  if ($p.StartsWith('\\?\', [System.StringComparison]::Ordinal)) { return $p.Substring(4) }
-  return $p
-}
-# An exception message names the path it was given, so one about an extended
-# path is turned back into the plain form before it reaches a row or the log.
-function ConvertFrom-ExtendedText([string]$s) {
-  if (-not $s -or $s.IndexOf('\\?\', [System.StringComparison]::Ordinal) -lt 0) { return $s }
-  return $s.Replace('\\?\UNC\', '\\').Replace('\\?\', '')
-}
-
-# Test-Path throws a real UnauthorizedAccessException on protected profiles
-# even with -ErrorAction, so probe through .NET which never throws.
-function Test-PathQuiet([string]$p, [string]$kind) {
-  if (-not $p) { return $false }
-  $p = ConvertTo-ExtendedPath $p
-  try {
-    if ($kind -eq 'Leaf') { return [System.IO.File]::Exists($p) }
-    if ($kind -eq 'Container') { return [System.IO.Directory]::Exists($p) }
-    return ([System.IO.File]::Exists($p) -or [System.IO.Directory]::Exists($p))
-  } catch { return $false }
-}
-
-function Join-PathSafe([string]$a, [string]$b) {
-  $b = $b.Replace('\', $Sep).Replace('/', $Sep)
-  if ($a.EndsWith('\') -or $a.EndsWith('/')) { return $a + $b }
-  return $a + $Sep + $b
-}
-
 # The name a literal catalog segment has on disk. On a case-insensitive
 # filesystem (Windows, macOS) .config/Goose finds .config/goose; the search
 # pattern returns the stored spelling, so two catalog entries that differ only
@@ -1772,49 +2061,6 @@ function Expand-Glob([string]$base, [string]$pattern) {
   return $current
 }
 
-function Get-RelPath([string]$base, [string]$full) {
-  $b = $base.TrimEnd('\', '/')
-  if ($full.Length -gt $b.Length -and $full.StartsWith($b, [System.StringComparison]::OrdinalIgnoreCase)) {
-    return $full.Substring($b.Length).TrimStart('\', '/').Replace('\', '/')
-  }
-  return $full.Replace('\', '/')
-}
-
-function Get-Epoch($dt) {
-  try { return [int64]([DateTimeOffset]::new([DateTime]$dt).ToUnixTimeSeconds()) } catch { return [int64]0 }
-}
-
-# The owner as an account name, or its SID when the name cannot be resolved,
-# or '' when the security descriptor cannot be read (always under PowerShell
-# 7, whose File class has no GetAccessControl). Only the owner section is
-# read, and each SID is translated once per run.
-$script:OwnerNames = @{}
-function Get-OwnerName([string]$path) {
-  try {
-    $sid = [System.IO.File]::GetAccessControl((ConvertTo-ExtendedPath $path), [System.Security.AccessControl.AccessControlSections]::Owner).GetOwner([System.Security.Principal.SecurityIdentifier])
-    $key = $sid.Value
-  } catch { return '' }
-  if (-not $script:OwnerNames.ContainsKey($key)) {
-    $name = $key
-    try { $name = $sid.Translate([System.Security.Principal.NTAccount]).Value } catch { }
-    $script:OwnerNames[$key] = $name
-  }
-  return $script:OwnerNames[$key]
-}
-
-# One SHA256 object for the run instead of a Get-FileHash call per file.
-# Lowercase hex, or '' when the file cannot be read. Used for the archive;
-# Copy-FileShared hashes each staged copy itself.
-$script:Sha256 = [System.Security.Cryptography.SHA256]::Create()
-function Get-FileSha256([string]$path) {
-  $fs = $null
-  try {
-    $fs = New-Object System.IO.FileStream((ConvertTo-ExtendedPath $path), [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
-    return [System.BitConverter]::ToString($script:Sha256.ComputeHash($fs)).Replace('-', '').ToLowerInvariant()
-  } catch { return '' }
-  finally { if ($fs) { $fs.Dispose() } }
-}
-
 # Copy with FileShare.ReadWrite|Delete so files held open by a running editor
 # (SQLite state stores, LevelDB) can still be read, and return the SHA-256 of
 # the staged copy ('' when it cannot be read back). The hash reads the staged
@@ -1846,21 +2092,6 @@ function Copy-FileShared([string]$src, [string]$dst, $item) {
     [System.IO.File]::SetLastAccessTimeUtc($dst, $item.LastAccessTimeUtc)
   } catch { }
   return $sha
-}
-
-function Get-DirSize([string]$dir) {
-  try {
-    $m = Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $dir) -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
-    if ($m.Sum) { return [int64]$m.Sum } else { return [int64]0 }
-  } catch { return [int64]0 }
-}
-
-function Get-LinkTarget($item) {
-  try {
-    $p = $item.PSObject.Properties['Target']
-    if ($p -and $p.Value) { return ([string[]]$p.Value) -join ';' }
-  } catch { }
-  return ''
 }
 
 # ---------------------------------------------------------------------------
@@ -1984,7 +2215,7 @@ function Clear-StagedLinks {
   foreach ($l in @($script:StagedLinks)) {
     $xl = ConvertTo-ExtendedPath $l[0]
     try { if ($l[1]) { [System.IO.Directory]::Delete($xl) } else { [System.IO.File]::Delete($xl) } }
-    catch { $left++; [System.IO.File]::AppendAllText($XLogPath, "could not remove staged link $($l[0]): $(ConvertFrom-ExtendedText $_.Exception.Message)`n", $Utf8NoBom) }
+    catch { $left++; [System.IO.File]::AppendAllText($XLogPath, "could not remove staged link $($l[0]): $(ConvertFrom-ExtendedText $_.Exception.Message)`n", $script:Utf8NoBom) }
   }
   $script:StagedLinks.Clear()
   return $left
@@ -1993,8 +2224,8 @@ function Clear-StagedLinks {
 # After a late fall back to zip the staged links are gone, so their rows lose
 # archive_path and say why; the manifest is rewritten before it is archived.
 function Clear-LinkArchivePaths([string]$reason) {
-  $lines = [System.IO.File]::ReadAllLines($XManifestPath, $Utf8NoBom)
-  $w = New-Object System.IO.StreamWriter($XManifestPath, $false, $Utf8NoBom)
+  $lines = [System.IO.File]::ReadAllLines($XManifestPath, $script:Utf8NoBom)
+  $w = New-Object System.IO.StreamWriter($XManifestPath, $false, $script:Utf8NoBom)
   try {
     foreach ($ln in $lines) {
       if ($ln.Contains('"status":"symlink"')) {
@@ -2137,7 +2368,7 @@ function Write-TarGz([string]$stage, [string]$archive) {
   $cmp = [StringComparer]::Ordinal; if ($IsWindowsHost) { $cmp = [StringComparer]::OrdinalIgnoreCase }
   $targets = New-Object 'System.Collections.Generic.Dictionary[string,string]' ($cmp)
   foreach ($l in @($script:StagedLinks)) {
-    if ($l[0].Length -gt $stage.Length + 1) { $targets[$l[0].Substring($stage.Length + 1).Replace($Sep, '/')] = $l[2] }
+    if ($l[0].Length -gt $stage.Length + 1) { $targets[$l[0].Substring($stage.Length + 1).Replace($script:Sep, '/')] = $l[2] }
   }
   $share = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
   $buf = New-Object byte[] 1048576
@@ -2213,7 +2444,7 @@ function Write-StageZip([string]$stage, [string]$archive) {
     $zip = [System.IO.Compression.ZipFile]::Open((ConvertTo-ExtendedPath $archive), 'Create')
     foreach ($e in $entries) {
       $info = $e[1]; $kind = $e[2]
-      if ($kind -eq 'l') { [System.IO.File]::AppendAllText($XLogPath, "zip: staged link left out: $(ConvertFrom-ExtendedPath $info.FullName)`n", $Utf8NoBom); continue }
+      if ($kind -eq 'l') { [System.IO.File]::AppendAllText($XLogPath, "zip: staged link left out: $(ConvertFrom-ExtendedPath $info.FullName)`n", $script:Utf8NoBom); continue }
       if ($kind -eq 'd' -and $hasChild.Contains($e[0])) { continue }
       $ze = $zip.CreateEntry($e[0], $level)
       # A zip time holds 1980 to 2107 only; outside that the entry keeps the default.
@@ -2251,7 +2482,7 @@ if ($Root -ne '') {
 if (-not $Inventory) {
 if (-not (Test-PathQuiet $OutputDir 'Any')) { try { New-Item -ItemType Directory -Path (ConvertTo-ExtendedPath $OutputDir) -Force -ErrorAction Stop | Out-Null } catch { Write-Error "Cannot create output dir: $OutputDir"; exit 2 } }
 $OutputDir = (ConvertFrom-ExtendedPath (Resolve-Path -LiteralPath (ConvertTo-ExtendedPath $OutputDir)).ProviderPath).TrimEnd('\', '/')
-if ($OutputDir -eq '') { $OutputDir = $Sep }
+if ($OutputDir -eq '') { $OutputDir = $script:Sep }
 # Same startup check as the sh collector's [ -w ]: create and remove a probe
 # file, so a read-only directory fails here rather than after the walk.
 $probe = Join-PathSafe $OutputDir ".write-probe-$([guid]::NewGuid().ToString('N'))"
@@ -2304,11 +2535,10 @@ $script:LogWriter = $null
 $script:ManifestWriter = $null
 if (-not $Inventory) {
   [void][System.IO.Directory]::CreateDirectory((Join-PathSafe $XStage 'fs'))
-  $script:LogWriter = New-Object System.IO.StreamWriter($XLogPath, $false, $Utf8NoBom)
-  $script:ManifestWriter = New-Object System.IO.StreamWriter($XManifestPath, $false, $Utf8NoBom)
+  $script:LogWriter = New-Object System.IO.StreamWriter($XLogPath, $false, $script:Utf8NoBom)
+  $script:ManifestWriter = New-Object System.IO.StreamWriter($XManifestPath, $false, $script:Utf8NoBom)
   $script:LogWriter.AutoFlush = $true
 }
-$script:Counts = @{ collected = 0; symlink = 0; skipped_excluded = 0; skipped_size = 0; skipped_secret = 0; error_copy = 0; skipped_unmatched_volume = 0; error_read = 0; bytes = [int64]0 }
 $script:WalkErrors = 0
 # Paths claimed by catalog matches. Keys are compared ordinally (the
 # Dictionary default) except on Windows, so pwsh on Linux keeps
@@ -2320,67 +2550,6 @@ function Get-ClaimTable {
   return (New-Object 'System.Collections.Generic.Dictionary[string,bool]')
 }
 $script:ClaimedPaths = Get-ClaimTable
-# Homes (and other bases) that gave at least one manifest row
-$script:RowHomes = @{}
-
-function Write-CollectorLog([string]$msg) {
-  $ts = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-  if ($script:LogWriter) { $script:LogWriter.WriteLine("$ts $msg") }
-  if (-not $Quiet) { [Console]::Error.WriteLine($msg) }
-}
-
-# Manifest rows are written by hand rather than through ConvertTo-Json: the
-# same keys in the same order with the same JSON types, and PowerShell 7's
-# ConvertTo-Json bytes. Strings escape " and \, every control character
-# below 0x20 (\b \t \n \f \r short, the rest \u00xx) and U+0085, U+2028 and
-# U+2029, as ConvertTo-Json does; everything else, non-ASCII included, is
-# written as is and encoded as UTF-8 by the writer, which turns a lone
-# surrogate into U+FFFD as ConvertTo-Json's output does. Windows PowerShell
-# 5.1's ConvertTo-Json also escaped < > ' & as < and so on; the parsed
-# rows are the same.
-$script:JsonRareRx = New-Object System.Text.RegularExpressions.Regex('[\x00-\x1f\u0085\u2028\u2029]')
-$script:JsonInv = [System.Globalization.CultureInfo]::InvariantCulture
-function ConvertTo-JsonBody([string]$s) {
-  $sb = New-Object System.Text.StringBuilder ($s.Length + 16)
-  foreach ($c in $s.ToCharArray()) {
-    $n = [int]$c
-    if ($c -eq '"') { [void]$sb.Append('\"') }
-    elseif ($c -eq '\') { [void]$sb.Append('\\') }
-    elseif ($n -eq 8) { [void]$sb.Append('\b') }
-    elseif ($n -eq 9) { [void]$sb.Append('\t') }
-    elseif ($n -eq 10) { [void]$sb.Append('\n') }
-    elseif ($n -eq 12) { [void]$sb.Append('\f') }
-    elseif ($n -eq 13) { [void]$sb.Append('\r') }
-    elseif ($n -lt 0x20 -or $n -eq 0x85 -or $n -eq 0x2028 -or $n -eq 0x2029) { [void]$sb.Append('\u').Append($n.ToString('x4', $script:JsonInv)) }
-    else { [void]$sb.Append($c) }
-  }
-  return $sb.ToString()
-}
-
-function Write-Row([string]$user, [string]$homeDir, [string]$agent, [string]$path, [string]$archivePath, [string]$type,
-                   [int64]$size, [int64]$mtime, [int64]$atime, [int64]$ctime, [int64]$btime, [string]$owner, [string]$attributes,
-                   [string]$sha, [bool]$secret, [string]$status, [string]$target, [string]$err) {
-  $f = [string[]]@($user, $homeDir, $agent, $path, $archivePath, $type, $owner, $attributes, $sha, $status, $target, $err)
-  if ($script:JsonRareRx.IsMatch([string]::Concat($f))) {
-    for ($i = 0; $i -lt $f.Length; $i++) { $f[$i] = ConvertTo-JsonBody $f[$i] }
-  } else {
-    # No field holds a control character, so U+0000 can separate them while
-    # " and \ are escaped in one pass.
-    $f = [string]::Join([string][char]0, $f).Replace('\', '\\').Replace('"', '\"').Split([char]0)
-  }
-  $sec = 'false'; if ($secret) { $sec = 'true' }
-  $inv = $script:JsonInv
-  $script:ManifestWriter.WriteLine([string]::Concat([string[]]@(
-    '{"user":"', $f[0], '","home":"', $f[1], '","agent":"', $f[2], '","path":"', $f[3], '","archive_path":"', $f[4],
-    '","type":"', $f[5], '","size":', $size.ToString($inv), ',"mtime":', $mtime.ToString($inv), ',"atime":', $atime.ToString($inv),
-    ',"ctime":', $ctime.ToString($inv), ',"btime":', $btime.ToString($inv), ',"uid":0,"gid":0,"mode":"","owner":"', $f[6],
-    '","attributes":"', $f[7], '","sha256":"', $f[8], '","secret":', $sec, ',"status":"', $f[9], '","target":"', $f[10],
-    '","error":"', $f[11], '"}')))
-  if ($script:Counts.ContainsKey($status)) { $script:Counts[$status]++ }
-  # The error_read row for an unreadable home itself does not make it a home with artifacts.
-  if (-not ($status -eq 'error_read' -and $path -eq $homeDir)) { $script:RowHomes[$homeDir] = $true }
-  if ($status -eq 'collected') { $script:Counts['bytes'] += $size }
-}
 
 function Get-ArchiveRel([string]$full) {
   if ($Mode -eq 'image') { return 'fs/' + (Get-RelPath $Root $full) }
@@ -2449,7 +2618,7 @@ function Add-File([string]$user, [string]$homeDir, [string]$agent, $item) {
   $hrel = Get-RelPath $homeDir $full
   $arel = Get-ArchiveRel $full
   # Join-PathSafe and Get-Epoch, inlined: this runs once per file.
-  $destRel = $Sep + $arel.Replace('\', $Sep).Replace('/', $Sep)
+  $destRel = $script:Sep + $arel.Replace('\', $script:Sep).Replace('/', $script:Sep)
   $dest = $Stage + $destRel; $xdest = $XStage + $destRel
   $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
   $size = [int64]0; if (-not $item.PSIsContainer) { try { $size = [int64]$item.Length } catch { } }
@@ -2484,35 +2653,14 @@ function Add-File([string]$user, [string]$homeDir, [string]$agent, $item) {
     }
   }
   $apath = ''; if ($status -eq 'collected' -or ($status -eq 'symlink' -and $err -eq '')) { $apath = $arel }
-  Write-Row $user $homeDir $agent $full $apath $type $size $mtime $atime 0 $btime $owner $attrs $sha $secret $status $target $err
+  Write-ManifestRow $user $homeDir $agent $full $apath $type $size $mtime $atime 0 $btime $owner $attrs $sha $secret $status $target $err
 }
 
 function Add-Excluded([string]$user, [string]$homeDir, [string]$agent, $item) {
   if ($Inventory) { return }
   $full = ConvertFrom-ExtendedPath $item.FullName
   if ($item.PSIsContainer) { $type = 'dir'; $size = Get-DirSize $full } else { $type = 'file'; $size = [int64]0; try { $size = [int64]$item.Length } catch { } }
-  Write-Row $user $homeDir $agent $full '' $type $size (Get-Epoch $item.LastWriteTimeUtc) (Get-Epoch $item.LastAccessTimeUtc) 0 (Get-Epoch $item.CreationTimeUtc) '' ([string]$item.Attributes) '' $false 'skipped_excluded' '' ''
-}
-
-# Why a directory cannot be walked (the exception message), or '' when it can
-# be listed. On Linux and macOS Get-ChildItem also fails on a directory that
-# can be listed but not entered, so this matches the sh collector's -r and -x tests.
-function Get-DirReadError([string]$dir) {
-  try { [void]@(Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $dir) -Force -ErrorAction Stop); return '' }
-  catch { return (ConvertFrom-ExtendedText $_.Exception.Message) }
-}
-
-# One error_read row (type dir, size 0) for a directory that could not be walked.
-function Add-ReadError([string]$user, [string]$homeDir, [string]$agent, [string]$dir, [string]$err) {
-  Write-CollectorLog "read failed: ${dir}: $err"
-  if ($Inventory) { return }
-  $mt = 0; $at = 0; $bt = 0; $attrs = ''
-  try {
-    $it = Get-Item -LiteralPath (ConvertTo-ExtendedPath $dir) -Force -ErrorAction Stop
-    $mt = Get-Epoch $it.LastWriteTimeUtc; $at = Get-Epoch $it.LastAccessTimeUtc; $bt = Get-Epoch $it.CreationTimeUtc; $attrs = [string]$it.Attributes
-  } catch { }
-  $owner = ''; if (Test-PathQuiet $dir 'Container') { $owner = Get-OwnerName $dir }
-  Write-Row $user $homeDir $agent $dir '' 'dir' 0 $mt $at 0 $bt $owner $attrs '' $false 'error_read' '' $err
+  Write-ManifestRow $user $homeDir $agent $full '' $type $size (Get-Epoch $item.LastWriteTimeUtc) (Get-Epoch $item.LastAccessTimeUtc) 0 (Get-Epoch $item.CreationTimeUtc) '' ([string]$item.Attributes) '' $false 'skipped_excluded' '' ''
 }
 
 # Lists $dir through its extended form, so a tree deeper than 260 characters
@@ -2521,7 +2669,7 @@ function Add-ReadError([string]$user, [string]$homeDir, [string]$agent, [string]
 function Add-Tree([string]$user, [string]$homeDir, [string]$agent, [string]$dir) {
   $children = @()
   try { $children = @(Get-ChildItem -LiteralPath (ConvertTo-ExtendedPath $dir) -Force -ErrorAction Stop) }
-  catch { $script:WalkErrors++; Add-ReadError $user $homeDir $agent $dir (ConvertFrom-ExtendedText $_.Exception.Message); return }
+  catch { $script:WalkErrors++; Write-ReadErrorRow $user $homeDir $agent $dir (ConvertFrom-ExtendedText $_.Exception.Message); return }
   foreach ($child in $children) {
     $cfull = ConvertFrom-ExtendedPath $child.FullName
     # A path matched by another catalog entry is collected under that entry.
@@ -2577,11 +2725,11 @@ function Invoke-CatalogCollection([string]$user, [string]$base, [string]$table, 
     if ($gd.TrimEnd('\', '/') -eq $base.TrimEnd('\', '/')) { continue }
     $under = $false
     foreach ($cp in $script:ClaimedPaths.Keys) {
-      if ($gd -eq $cp -or $gd.StartsWith($cp + $Sep, [System.StringComparison]::OrdinalIgnoreCase)) { $under = $true; break }
+      if ($gd -eq $cp -or $gd.StartsWith($cp + $script:Sep, [System.StringComparison]::OrdinalIgnoreCase)) { $under = $true; break }
     }
     if ($under) { continue }
     $script:WalkErrors++
-    Add-ReadError $user $base $globErrors[$gd][0] $gd $globErrors[$gd][1]
+    Write-ReadErrorRow $user $base $globErrors[$gd][0] $gd $globErrors[$gd][1]
   }
   foreach ($pair in $claimed) {
     $agent = $pair[0]; $m = $pair[1]
@@ -2620,7 +2768,7 @@ function Get-UserHomes {
       }
     } catch { }
     $drive = $env:SystemDrive; if (-not $drive) { $drive = 'C:' }
-    $driveRoot = $drive + $Sep; if ($Sep -eq '/') { $driveRoot = '/' }
+    $driveRoot = $drive + $script:Sep; if ($script:Sep -eq '/') { $driveRoot = '/' }
     foreach ($g in @('Users/*', 'home/*')) { foreach ($d in (Expand-Glob $driveRoot $g)) { $homes += @{ user = (Split-Path -Leaf $d); home = $d } } }
   } else {
     foreach ($g in @('Users/*', 'home/*', 'root', 'var/root', 'usr/home/*', 'export/home/*')) {
@@ -2669,13 +2817,13 @@ $script:DeniedHomes = @($script:InaccessibleHomes | Where-Object {
 if (-not $Inventory) {
   foreach ($dh in $script:DeniedHomes) {
     $e = 'access denied'; try { [void](Get-Item -LiteralPath (ConvertTo-ExtendedPath $dh) -Force -ErrorAction Stop) } catch { $e = ConvertFrom-ExtendedText $_.Exception.Message }
-    Add-ReadError (Split-Path -Leaf $dh) $dh '' $dh $e
+    Write-ReadErrorRow (Split-Path -Leaf $dh) $dh '' $dh $e
   }
 }
 $script:InvUsers = @()
 foreach ($u in $UserList) {
   $script:Inv = [ordered]@{}
-  if (-not $Inventory) { $e = Get-DirReadError $u.home; if ($e) { Add-ReadError $u.user $u.home '' $u.home $e } }
+  if (-not $Inventory) { $e = Get-DirReadError $u.home; if ($e) { Write-ReadErrorRow $u.user $u.home '' $u.home $e } }
   Invoke-CatalogCollection $u.user $u.home $CATALOG "User $($u.user) ($($u.home))"
   if ($Inventory) { $script:InvUsers += , @($u, $script:Inv) }
 }
@@ -2690,9 +2838,7 @@ foreach ($u in $UserList) {
 # Linux volumes inside a WSL virtual disk, which is only noted. Failures are
 # noted in collection.json and the summary and never stop the collection.
 # ---------------------------------------------------------------------------
-$script:Notes = @()
 $script:Docker = @{ seen = $false; found = 0; collected = 0; unreadable = 0; desktop = $false }
-function Add-Note([string]$msg) { $script:Notes += $msg; Write-CollectorLog "NOTE: $msg" }
 $script:DockerVolumeRules = @()
 foreach ($line in (Get-TableLines $DOCKER_VOLUMES)) {
   $parts = @($line -split '\|', 2)
@@ -2705,15 +2851,6 @@ function Get-DockerVolumeRule([string]$name) {
   # Volume names are case-sensitive, as in the sh collector's case(1) match.
   foreach ($rule in $script:DockerVolumeRules) { if ($name -cmatch $rule[1]) { return , $rule } }
   return $null
-}
-function Test-IsLink([string]$p) {
-  try {
-    $it = Get-Item -LiteralPath (ConvertTo-ExtendedPath $p) -Force -ErrorAction Stop
-    return (($it.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
-  } catch { return $false }
-}
-function Test-DirReadable([string]$p) {
-  try { [void][System.IO.Directory]::GetFileSystemEntries((ConvertTo-ExtendedPath $p)); return $true } catch { return $false }
 }
 # Each component of $rel is checked on the way down, so a data root the
 # responder cannot enter, or a symlinked one, is reported rather than skipped.
@@ -2758,7 +2895,7 @@ function Invoke-VolumeDir([string]$base, [string]$rel) {
     } elseif (-not $agent -and $Inventory) {
     } elseif (-not $agent) {
       $attrs = ''; try { $attrs = [string](Get-Item -LiteralPath (ConvertTo-ExtendedPath $data) -Force -ErrorAction Stop).Attributes } catch { }
-      Write-Row 'docker' $data '' $data '' 'dir' (Get-DirSize $data) 0 0 0 0 '' $attrs '' $false 'skipped_unmatched_volume' '' ''
+      Write-ManifestRow 'docker' $data '' $data '' 'dir' (Get-DirSize $data) 0 0 0 0 '' $attrs '' $false 'skipped_unmatched_volume' '' ''
     } else {
       Write-CollectorLog "  [$agent] $data"
       $script:WalkErrors = 0
@@ -2782,8 +2919,8 @@ function Invoke-VolumeDir([string]$base, [string]$rel) {
 
 if (-not $NoDocker) {
   if ($Mode -eq 'image') { $dockerBase = $Root }
-  elseif ($Sep -eq '/') { $dockerBase = '/' }
-  else { $dockerBase = $env:SystemDrive; if (-not $dockerBase) { $dockerBase = 'C:' }; $dockerBase += $Sep }
+  elseif ($script:Sep -eq '/') { $dockerBase = '/' }
+  else { $dockerBase = $env:SystemDrive; if (-not $dockerBase) { $dockerBase = 'C:' }; $dockerBase += $script:Sep }
   $programData = Join-PathSafe $dockerBase 'ProgramData'
   if ($Mode -eq 'live' -and $env:ProgramData) { $programData = $env:ProgramData }
   # Root Docker, root Podman and Windows-container Docker data roots, then the
@@ -2820,13 +2957,13 @@ function ConvertTo-LocalPath([string]$v) {
   }
   $v = $v.Replace('\\', '\').Replace('\/', '/')
   if ($v -match '^[A-Za-z]:[\\/]') {
-    $v = $v.Substring(0, 1).ToUpper() + $v.Substring(1).Replace('/', $Sep).Replace('\', $Sep)
+    $v = $v.Substring(0, 1).ToUpper() + $v.Substring(1).Replace('/', $script:Sep).Replace('\', $script:Sep)
     if ($Mode -eq 'image') { return $Root + $v.Substring(2) }
     return $v
   }
   if ($v.StartsWith('/')) {
-    if ($Mode -eq 'image') { return $Root + $v.Replace('/', $Sep) }
-    if ($Sep -eq '/') { return $v }
+    if ($Mode -eq 'image') { return $Root + $v.Replace('/', $script:Sep) }
+    if ($script:Sep -eq '/') { return $v }
     return $null
   }
   return $null
@@ -2914,7 +3051,7 @@ function Get-CommonDir([string[]]$paths) {
 }
 # The user whose home contains a -Project directory, or ''.
 function Get-ProjectOwner([string]$p) {
-  foreach ($u in $UserList) { if ($p.StartsWith($u.home + $Sep, [System.StringComparison]::OrdinalIgnoreCase)) { return $u.user } }
+  foreach ($u in $UserList) { if ($p.StartsWith($u.home + $script:Sep, [System.StringComparison]::OrdinalIgnoreCase)) { return $u.user } }
   return ''
 }
 function Find-Projects {
@@ -2999,11 +3136,11 @@ if (-not $NoProjects) {
     if (Test-PathQuiet $p 'Leaf') { $e = 'Not a directory' }
     else { $e = "Cannot find path '$p' because it does not exist."; try { [void](Get-Item -LiteralPath (ConvertTo-ExtendedPath $p) -Force -ErrorAction Stop) } catch { $e = ConvertFrom-ExtendedText $_.Exception.Message } }
     Write-CollectorLog "WARNING: project given with -Project is not a directory: ${p}: $e"
-    if (-not $Inventory) { Write-Row (Get-ProjectOwner $p) $p '' $p '' 'dir' 0 0 0 0 0 '' '' '' $false 'error_read' '' $e }
+    if (-not $Inventory) { Write-ManifestRow (Get-ProjectOwner $p) $p '' $p '' 'dir' 0 0 0 0 0 '' '' '' $false 'error_read' '' $e }
   }
   if (-not $Inventory) { foreach ($pj in $ProjectList) {
     Write-CollectorLog "Project $(if ($pj.user) { '[' + $pj.user + '] ' })$($pj.path)"
-    $e = Get-DirReadError $pj.path; if ($e) { Add-ReadError $pj.user $pj.path '' $pj.path $e }
+    $e = Get-DirReadError $pj.path; if ($e) { Write-ReadErrorRow $pj.user $pj.path '' $pj.path $e }
     Invoke-CatalogCollection $pj.user $pj.path $PROJECT_CATALOG
   } }
 }
@@ -3069,7 +3206,7 @@ $summary = [ordered]@{
 # archiver, so the archived and the on-disk summary name the archive and the
 # archiver actually used.
 function Write-Summary {
-  [System.IO.File]::WriteAllText($XSummaryPath, ($summary | ConvertTo-Json -Depth 4), $Utf8NoBom)
+  [System.IO.File]::WriteAllText($XSummaryPath, ($summary | ConvertTo-Json -Depth 4), $script:Utf8NoBom)
   Copy-Item -LiteralPath $XSummaryPath -Destination (Join-PathSafe $XStage 'collection.json') -Force
 }
 Write-Summary
@@ -3090,7 +3227,7 @@ function Format-ExitCode($code) {
 }
 function Clear-PartialArchive {
   try { if (Test-PathQuiet $Archive 'Any') { [System.IO.File]::Delete((ConvertTo-ExtendedPath $Archive)) } }
-  catch { [System.IO.File]::AppendAllText($XLogPath, "could not remove partial archive ${Archive}: $($_.Exception.Message)`n", $Utf8NoBom) }
+  catch { [System.IO.File]::AppendAllText($XLogPath, "could not remove partial archive ${Archive}: $($_.Exception.Message)`n", $script:Utf8NoBom) }
 }
 Clear-PartialArchive
 $archiveOk = $false
@@ -3106,11 +3243,11 @@ for ($ai = 0; $ai -lt $Archivers.Count -and -not $archiveOk; $ai++) {
         if ((Clear-StagedLinks) -gt 0) { throw 'staged symlinks could not be removed; not zipping through them' }
         Clear-LinkArchivePaths 'not in the archive: tar failed and zip cannot store symlinks'
         $script:Notes += "tar failed; $nl symlinks were removed from the staging tree before zipping, because zip cannot store symlinks"
-        [System.IO.File]::AppendAllText($XLogPath, "NOTE: tar failed; $nl staged symlinks removed before zipping`n", $Utf8NoBom)
+        [System.IO.File]::AppendAllText($XLogPath, "NOTE: tar failed; $nl staged symlinks removed before zipping`n", $script:Utf8NoBom)
         Copy-Item -LiteralPath $XManifestPath -Destination (Join-PathSafe $XStage 'manifest.jsonl') -Force
       }
       $script:Notes += "$failedWhy; fell back to $($ArchiverLabels[$kind])"
-      [System.IO.File]::AppendAllText($XLogPath, "NOTE: falling back to $($ArchiverLabels[$kind])`n", $Utf8NoBom)
+      [System.IO.File]::AppendAllText($XLogPath, "NOTE: falling back to $($ArchiverLabels[$kind])`n", $script:Utf8NoBom)
       if ($kind -eq 'zip') { $Archive = Join-PathSafe $OutputDir "$Name.zip"; Clear-PartialArchive }
       # Write-Summary writes and restages collection.json with the notes,
       # the archive's name and the archiver.
@@ -3121,7 +3258,7 @@ for ($ai = 0; $ai -lt $Archivers.Count -and -not $archiveOk; $ai++) {
       Copy-Item -LiteralPath $XLogPath -Destination (Join-PathSafe $XStage 'collector.log') -Force
     }
   } catch {
-    [System.IO.File]::AppendAllText($XLogPath, "FATAL: archive failed: $($_.Exception.Message)`n", $Utf8NoBom)
+    [System.IO.File]::AppendAllText($XLogPath, "FATAL: archive failed: $($_.Exception.Message)`n", $script:Utf8NoBom)
     break
   }
   if ($kind -eq 'tar') {
@@ -3132,7 +3269,7 @@ for ($ai = 0; $ai -lt $Archivers.Count -and -not $archiveOk; $ai++) {
     if ($rcTar -eq 0 -and (Test-PathQuiet $Archive 'Any')) { $archiveOk = $true; break }
     if ($rcTar -eq 0) { $failedWhy = "$tarName failed (exit code 0 but no archive was written)" }
     else { $failedWhy = "$tarName failed (exit code $(Format-ExitCode $rcTar))" }
-    [System.IO.File]::AppendAllText($XLogPath, "${tarName} failed: exit code $(Format-ExitCode $rcTar)`n", $Utf8NoBom)
+    [System.IO.File]::AppendAllText($XLogPath, "${tarName} failed: exit code $(Format-ExitCode $rcTar)`n", $script:Utf8NoBom)
   } else {
     try {
       if ($kind -eq 'writer') { Write-TarGz $Stage $Archive } else { Write-StageZip $Stage $Archive }
@@ -3141,7 +3278,7 @@ for ($ai = 0; $ai -lt $Archivers.Count -and -not $archiveOk; $ai++) {
     } catch {
       $e = $_.Exception; while ($null -ne $e.InnerException) { $e = $e.InnerException }
       $failedWhy = "$($ArchiverLabels[$kind]) failed ($($e.Message))"
-      [System.IO.File]::AppendAllText($XLogPath, "$($ArchiverLabels[$kind]) failed: $($e.Message)`n", $Utf8NoBom)
+      [System.IO.File]::AppendAllText($XLogPath, "$($ArchiverLabels[$kind]) failed: $($e.Message)`n", $script:Utf8NoBom)
     }
   }
   Clear-PartialArchive
@@ -3150,15 +3287,15 @@ if (-not $archiveOk) { Write-Error 'FATAL: archive not written'; exit 2 }
 
 $ArchiveSha = Get-FileSha256 $Archive
 $ArchiveSize = (Get-Item -LiteralPath (ConvertTo-ExtendedPath $Archive)).Length
-[System.IO.File]::WriteAllText((ConvertTo-ExtendedPath "$Archive.sha256"), "$ArchiveSha  $(Split-Path -Leaf $Archive)`n", $Utf8NoBom)
-[System.IO.File]::AppendAllText($XLogPath, "$EndTs done: $Archive ($ArchiveSize bytes, sha256 $ArchiveSha)`n", $Utf8NoBom)
+[System.IO.File]::WriteAllText((ConvertTo-ExtendedPath "$Archive.sha256"), "$ArchiveSha  $(Split-Path -Leaf $Archive)`n", $script:Utf8NoBom)
+[System.IO.File]::AppendAllText($XLogPath, "$EndTs done: $Archive ($ArchiveSize bytes, sha256 $ArchiveSha)`n", $script:Utf8NoBom)
 # The archive's size and hash follow on stdout, so stderr gets only "done".
 if (-not $Quiet) { [Console]::Error.WriteLine('done') }
 
 if (-not $KeepStaging) {
   # A link that could not be deleted keeps the staging directory, which the log names.
   if ((Clear-StagedLinks) -eq 0) { try { Remove-Item -LiteralPath $XStage -Recurse -Force -ErrorAction Stop } catch { } }
-  else { [System.IO.File]::AppendAllText($XLogPath, "staging directory kept because a staged link could not be removed: $Stage`n", $Utf8NoBom) }
+  else { [System.IO.File]::AppendAllText($XLogPath, "staging directory kept because a staged link could not be removed: $Stage`n", $script:Utf8NoBom) }
 }
 
 $c = $script:Counts
