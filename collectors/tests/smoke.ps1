@@ -828,6 +828,12 @@ New-Item -ItemType Directory -Path (Join-Path (Join-Path $cwd105 'Users') 'analy
 # with -Full; counted by the inventory only with -Full. The same file is in
 # smoke.sh.
 Mk 'Users/alice/.local/bin/.muse-update.107.exe' "1070`n"
+# 2026-10-14 output directory under a file (#108)
+# A plain file outside the image: the check after the read-only output
+# directory check below gives -OutputDir a path under it. The same in
+# smoke.sh.
+$file108 = Join-Path $Work 'file108'
+[System.IO.File]::WriteAllText($file108, "x`n")
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1846,6 +1852,17 @@ if ($roSet) {
   $roWant = ('Output dir not writable: ' + $ro) -replace '\s', ''
   Check 'read-only output dir exits 2 before collecting' { $roRc -eq 2 -and $roText.Contains($roWant) -and @(Get-ChildItem -LiteralPath $ro -Force).Count -eq 0 }
 } else { Write-Output 'note: read-only output dir check needs a non-root user on POSIX, skipped' }
+# 2026-10-14 output directory under a file (#108): the one error, written
+# by Write-Error (whitespace stripped as above), with no Resolve-Path or
+# StrictMode error and no writability message after it.
+$out108 = Join-Path $file108 'out'
+$err108 = Join-Path $Out 'file108.stderr'
+$args108 = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Root "{1}" -OutputDir "{2}" -Quiet -NoDocker' -f $Collector, $Root, $out108
+$proc108 = Start-Process -FilePath $self -ArgumentList $args108 -NoNewWindow -PassThru -RedirectStandardError $err108 -RedirectStandardOutput (Join-Path $Out 'file108.stdout')
+$null = $proc108.Handle; $proc108.WaitForExit()
+$text108 = [string](Get-Content -LiteralPath $err108 -Raw) -replace '\s', ''
+$want108 = ('Cannot create output dir: ' + $out108) -replace '\s', ''
+Check '#108 output dir under a file exits 2 with only the create error' { $proc108.ExitCode -eq 2 -and $text108.Contains($want108) -and ($text108.Length - $text108.Replace('Cannotcreateoutputdir', '').Length) -eq 'Cannotcreateoutputdir'.Length -and $text108 -notmatch 'Resolve-Path|ProviderPath|Outputdirnotwritable' -and [System.IO.File]::Exists($file108) }
 
 # An unreadable home and an unlistable directory inside a walk: POSIX and not
 # root only, since chmod does not deny on Windows or to root.

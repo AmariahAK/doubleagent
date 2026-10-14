@@ -839,6 +839,12 @@ mkdir -p "$CWD105/home/analyst" "$CWD105/Users/analyst"
 # in smoke.ps1.
 printf '1070\n' >"$H/.local/bin/.muse-update.107.exe"
 
+# 2026-10-14 output directory under a file (#108)
+# A plain file outside the image: the check after the read-only output
+# directory check below gives -o a path under it. The same in smoke.ps1.
+FILE108="$WORK/file108"
+printf 'x\n' >"$FILE108"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1427,6 +1433,9 @@ if [ "$(id -u)" != 0 ]; then
 else
   printf 'skip unreadable home, directory and output dir checks (running as root)\n'
 fi
+# 2026-10-14 output directory under a file (#108)
+COLLECTOR_SH="$SHELL_UNDER_TEST" "$SHELL_UNDER_TEST" "$SCRIPT" -r "$ROOT" -o "$FILE108/out" -q --no-docker >"$OUT/file108.stdout" 2>"$OUT/file108.stderr"
+check "#108 output dir under a file exits 2 with only the create error" "[ $? -eq 2 ] && [ \"\$(cat \"$OUT/file108.stderr\")\" = \"Cannot create output dir: $FILE108/out\" ] && [ ! -s \"$OUT/file108.stdout\" ] && [ -f \"$FILE108\" ]"
 
 # 2026-10-04 bug round: #29 x #32
 # An unreadable catalog match gets one error_read row, and a case variant

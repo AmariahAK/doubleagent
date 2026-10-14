@@ -4067,15 +4067,19 @@ function Resolve-RootArg {
   return ''
 }
 
-# Creates -OutputDir when it does not exist and resolves it to its full
+# Creates -OutputDir when it is not a directory and resolves it to its full
 # plain form. Then the same startup check as the sh collector's [ -w ]:
 # create and remove a probe file, so a read-only directory fails here
-# rather than after the walk. Returns '' or the error.
+# rather than after the walk. Returns '' or the error. New-Item -Force
+# neither throws nor returns an item when the path is a file or lies under
+# one, so the missing item, not only an exception, is the creation error
+# (#108).
 function Initialize-OutputDir {
-  if (-not (Test-PathQuiet $OutputDir 'Any')) {
+  if (-not (Test-PathQuiet $OutputDir 'Container')) {
     $directory = @{ ItemType = 'Directory'; Path = (ConvertTo-ExtendedPath $OutputDir) }
-    try { New-Item @directory -Force -ErrorAction Stop | Out-Null }
-    catch { return "Cannot create output dir: $OutputDir" }
+    $created = $null
+    try { $created = New-Item @directory -Force -ErrorAction Stop } catch { }
+    if ($null -eq $created) { return "Cannot create output dir: $OutputDir" }
   }
   # One statement, so -OutputDir is left as given if Resolve-Path fails
   # (the error is written and the probe below reports the directory).

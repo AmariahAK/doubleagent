@@ -108,6 +108,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   catalog line `.local/bin/.muse-*` and by the exclusion
   `.local/bin/.muse-update.*`, was collected whole. `--full` still
   collects it ([#107]).
+- The PowerShell collector reports an `-OutputDir` that is a file, or lies
+  under one, as `Cannot create output dir: <dir>` and exits 2, as the sh
+  collector does. `New-Item` neither fails nor creates the directory
+  there, so a path under a file went on to print a `Resolve-Path` error,
+  a `ProviderPath` error from strict mode and then
+  `Output dir not writable: <dir>`, and a path that is a file printed the
+  last message alone ([#108]).
 
 ## [1.11.0] - 2026-10-12
 
@@ -654,6 +661,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#108]: https://github.com/seanthegeek/doubleagent/issues/108
 [#107]: https://github.com/seanthegeek/doubleagent/issues/107
 [#106]: https://github.com/seanthegeek/doubleagent/issues/106
 [#105]: https://github.com/seanthegeek/doubleagent/issues/105
