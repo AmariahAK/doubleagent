@@ -80,7 +80,7 @@ to exclude.
 `.clai/settings.json` and `.clai/mcp_servers.json`
 ([project_settings.py:10](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/config/project_settings.py#L10),
 [mcp/_store.py:25](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/mcp/_store.py#L25)),
-collected through the `project|.clai` project catalog entry.
+collected through the `pydantic-clai|.clai` project catalog entry.
 
 ## 6. Where the project path is recorded
 

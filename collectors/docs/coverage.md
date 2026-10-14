@@ -324,8 +324,15 @@ agent state that can be read with grep, and from every `-p` directory.
 ### What is taken from each project
 
 From each project only the `PROJECT_CATALOG` entries are collected. Their
-rows have agent `project`, `home` set to the project directory, and the user
-whose state referenced it (the first one, when several did). `-p`
+rows have as agent the catalog agent that owns the file (`claude-code` for
+`.claude/` and `CLAUDE.md`, `aider` for `.aider.chat.history.md`, `little-coder`
+for `.pi/approved-plan.md` inside pi's `.pi/`), or `project` for a file
+several agents read (`AGENTS.md`, `AGENTS.override.md`, `AGENT.md`, `.agents/`,
+`.mcp.json`, `.github/copilot-instructions.md`,
+`.github/git-commit-instructions.md`, `.github/instructions/`, `SOUL.md`,
+`USER.md`); `--list` prints the table. Before collector 1.12.0 every project
+row had agent `project`. Each row has `home` set to the project directory,
+and the user whose state referenced it (the first one, when several did). `-p`
 directories join the same list. Each gets as its user the owner of the home
 it sits under, or none.
 

@@ -106,7 +106,7 @@ one ([`agent/context.py:194-202`](https://github.com/HKUDS/nanobot/blob/acdae3d0
 High: every path in [section 2](#2-per-user-storage) to [section 6](#6-where-the-project-path-is-recorded), read from constants in the cited files.
 Medium: that `matrix-store/` holds credentials (inferred from its role; not
 read); `.nanobot-*` as an instance naming convention comes from docs, and any
-other `--config` location is missed. `project|memory/...` lines assume the
+other `--config` location is missed. `nanobot|memory/...` lines assume the
 collector's project globs accept a sub-path, as `.github/...` entries do. Not
 determined: the contents of `webui/workspace-state.json`, `weixin/` and
 `mochat/` state; whether the Docker image's `/root/.nanobot` differs.

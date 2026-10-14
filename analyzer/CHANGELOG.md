@@ -234,6 +234,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The bundled catalog copy follows collector 1.12.0's project catalog: a
+  project-directory file is detected as the agent that owns it
+  (`claude-code` for `.claude/` and `CLAUDE.md`, `cursor` for `.cursor/`,
+  `aider` for `.aider.chat.history.md`), and only files several agents
+  read (`AGENTS.md`, `AGENTS.override.md`, `AGENT.md`, `.agents/`, `.mcp.json`, the shared
+  GitHub Copilot instruction files, `SOUL.md`, `USER.md`) stay `project`
+  ([#104]).
 - The `agents:` line `timeline` prints reads
   `parsed: <list>; detected but not parsed: <list>`, with `none` for an
   empty list, followed by `; parser found no rows: <list>` when a
@@ -720,6 +727,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#104]: https://github.com/seanthegeek/doubleagent/issues/104
 [#103]: https://github.com/seanthegeek/doubleagent/issues/103
 [#97]: https://github.com/seanthegeek/doubleagent/issues/97
 [#96]: https://github.com/seanthegeek/doubleagent/issues/96

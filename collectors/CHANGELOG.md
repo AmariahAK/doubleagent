@@ -57,6 +57,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (Chromium's spell-check dictionary, 452 KB on Linux), the sidecar SDK
   the desktop app installs under `.gemini/antigravity*/lib/node_modules`,
   and its copy under `.gemini/config/node_modules` are excluded ([#83]).
+- Manifest change: files collected from a project directory now carry the
+  agent that owns them in the manifest `agent` field (`claude-code` for a
+  project's `.claude/` and `CLAUDE.md`, `cursor` for `.cursor/`, `aider`
+  for `.aider.chat.history.md`, `little-coder` for `.pi/approved-plan.md`
+  inside pi's `.pi/`), taken from the `PROJECT_CATALOG` table that
+  `--list` prints. Files several agents read (`AGENTS.md`,
+  `AGENTS.override.md`, `AGENT.md`, `.agents/`, `.mcp.json`,
+  `.github/copilot-instructions.md`, `.github/git-commit-instructions.md`,
+  `.github/instructions/`, `SOUL.md`, `USER.md`) keep the agent
+  `project`, which until now every project row had ([#104]).
 
 ### Fixed
 
@@ -617,6 +627,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#104]: https://github.com/seanthegeek/doubleagent/issues/104
 [#91]: https://github.com/seanthegeek/doubleagent/issues/91
 [#90]: https://github.com/seanthegeek/doubleagent/issues/90
 [#84]: https://github.com/seanthegeek/doubleagent/issues/84

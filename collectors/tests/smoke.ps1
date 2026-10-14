@@ -959,6 +959,11 @@ if ($linkOk) {
 Check 'project from history.jsonl (drive path mapped into image) collected' { (StatusOf 'proj/CLAUDE.md') -eq 'collected' }
 Check 'project .claude settings collected' { (StatusOf 'proj/.claude/settings.local.json') -eq 'collected' }
 Check 'project owner attributed' { (Row 'proj/CLAUDE.md').user -eq 'alice' }
+# 2026-10-14 project files attributed to their agent (#104)
+$r = Row 'proj/.claude/settings.local.json'
+Check 'project .claude file attributed to claude-code' { $r -and ($r.home -replace '\\', '/').EndsWith('/proj') -and $r.agent -eq 'claude-code' -and $r.status -eq 'collected' }
+$r = Row 'droid/AGENTS.md'
+Check 'shared project AGENTS.md keeps agent project' { $r -and ($r.home -replace '\\', '/').EndsWith('/droid') -and $r.agent -eq 'project' -and $r.status -eq 'collected' }
 Check 'project from workspace.json file URI collected' { (StatusOf 'Documents/app/.cursorrules') -eq 'collected' }
 Check 'project from codex rollout cwd collected' { (StatusOf 'Documents/app/AGENTS.md') -eq 'collected' }
 Check 'project from cline taskHistory collected' { (StatusOf 'cl/.clinerules') -eq 'collected' }
@@ -1067,7 +1072,7 @@ Check 'muse windows binary excluded with its size' { $r -and $r.type -eq 'file' 
 Check 'muse .local/bin glob leaves other tools alone' { $null -eq (Row 'alice/.local/bin/othertool') }
 Check 'muse trust.json projects key discovers project' { (StatusOf 'musetrust/AGENTS.md') -eq 'collected' -and (Row 'musetrust/AGENTS.md').user -eq 'alice' }
 $r = Row 'museproj/.muse/hooks.json'
-Check 'muse session.jsonl workspace_root discovers project' { $r -and $r.user -eq 'alice' -and $r.agent -eq 'project' -and $r.status -eq 'collected' }
+Check 'muse session.jsonl workspace_root discovers project' { $r -and $r.user -eq 'alice' -and $r.agent -eq 'muse-code' -and $r.status -eq 'collected' }
 Check 'muse project .muse/worktrees excluded' { (StatusOf 'museproj/.muse/worktrees') -eq 'skipped_excluded' }
 # 2026-10-04 relocated Claude Code home
 $r = Row $CcwS
@@ -1080,9 +1085,9 @@ $r = Row 'alice/.claude-work/.claude.json'
 Check 'relocated claude home .claude.json flagged secret' { $r -and $r.agent -eq 'claude-code' -and $r.secret -eq $true -and $r.status -eq 'collected' }
 Check 'claude-code-router not collected' { $null -eq (Row 'alice/.claude-code-router/config.json') }
 $r = Row 'ccwork/.claude/settings.json'
-Check 'relocated .claude.json projects key discovers project' { $r -and $r.user -eq 'alice' -and $r.agent -eq 'project' -and $r.status -eq 'collected' }
+Check 'relocated .claude.json projects key discovers project' { $r -and $r.user -eq 'alice' -and $r.agent -eq 'claude-code' -and $r.status -eq 'collected' }
 $r = Row 'cchist/.claude/settings.json'
-Check 'relocated history.jsonl discovers project' { $r -and $r.user -eq 'alice' -and $r.agent -eq 'project' -and $r.status -eq 'collected' }
+Check 'relocated history.jsonl discovers project' { $r -and $r.user -eq 'alice' -and $r.agent -eq 'claude-code' -and $r.status -eq 'collected' }
 Check 'Public profile skipped' { $null -eq (Row 'Public/Desktop/readme.txt') }
 Check 'Default profile skipped' { $null -eq (Row 'Default/NTUSER.DAT') }
 $entries = ArchiveEntries
