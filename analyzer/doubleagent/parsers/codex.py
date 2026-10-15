@@ -755,6 +755,12 @@ class RolloutParser(Parser):
             row.turn_type = "user"
             row.text = compact(rec.get("text"))
             yield row
+        if errors:
+            yield self._system(
+                artifact,
+                "parser: %d unparseable line(s), first at line %d" % (len(errors), errors[0][0]),
+                line=errors[0][0],
+            )
 
     def _parse_rollout(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []

@@ -9,6 +9,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Codex and Open Interpreter history files now report malformed JSONL rows
+  in a `system` row while preserving valid prompts ([#125]).
+
 ## [0.13.0] - 2026-10-15
 
 ### Added
@@ -969,6 +974,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
 [#122]: https://github.com/seanthegeek/doubleagent/issues/122
+[#125]: https://github.com/seanthegeek/doubleagent/issues/125
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121
 [#119]: https://github.com/seanthegeek/doubleagent/issues/119
 [#118]: https://github.com/seanthegeek/doubleagent/issues/118

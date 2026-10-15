@@ -1048,6 +1048,28 @@ class CodexTests(ParserBase):
         self.assertEqual(rows[0].timestamp_utc, "2026-10-02T09:00:02.000Z")
         self.assertEqual(rows[0].session_id, CODEX_SESSION)
 
+    def test_history_reports_truncated_line_and_keeps_valid_rows(self):
+        path = self.home / ".codex/history.jsonl"
+        path.write_text(
+            '{"session_id":"before","text":"keep before"}\n'
+            '{"session_id":\n'
+            '{"session_id":"after","text":"keep after"}\n',
+            encoding="utf-8",
+        )
+        rows = self.rows_for(CodexParser(), ".codex/history.jsonl")
+        self.assertEqual(
+            [(row.session_id, row.text) for row in rows if row.turn_type == "user"],
+            [("before", "keep before"), ("after", "keep after")],
+        )
+        self.assertEqual(
+            [
+                (row.turn_type, row.source_line, row.text)
+                for row in rows
+                if row.turn_type == "system"
+            ],
+            [("system", 2, "parser: 1 unparseable line(s), first at line 2")],
+        )
+
     def test_config_not_wanted(self):
         art = next(a for a in self.col.artifacts if a.rel == ".codex/config.toml")
         self.assertFalse(CodexParser().wants(art))
@@ -6975,6 +6997,28 @@ class OpenInterpreterTests(ParserBase):
         self.assertEqual(
             [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
             [("user", OI_SESSION, "2026-10-01T10:00:01.000Z", "list the files")],
+        )
+
+    def test_history_reports_truncated_line_and_keeps_valid_rows(self):
+        path = self.home / ".openinterpreter/history.jsonl"
+        path.write_text(
+            '{"session_id":"before","text":"keep before"}\n'
+            '{"session_id":\n'
+            '{"session_id":"after","text":"keep after"}\n',
+            encoding="utf-8",
+        )
+        rows = self.rows_for(OpenInterpreterParser(), ".openinterpreter/history.jsonl")
+        self.assertEqual(
+            [(row.session_id, row.text) for row in rows if row.turn_type == "user"],
+            [("before", "keep before"), ("after", "keep after")],
+        )
+        self.assertEqual(
+            [
+                (row.turn_type, row.source_line, row.text)
+                for row in rows
+                if row.turn_type == "system"
+            ],
+            [("system", 2, "parser: 1 unparseable line(s), first at line 2")],
         )
 
     def test_archived_and_import_ledger(self):
