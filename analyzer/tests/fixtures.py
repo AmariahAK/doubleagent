@@ -31,6 +31,10 @@ CODEX_SUBAGENT = "aaaaaaaa-bbbb-4ccc-8ddd-000000000002"
 CODEX_FORK = "aaaaaaaa-bbbb-4ccc-8ddd-000000000003"
 CODEX_LEGACY = "aaaaaaaa-bbbb-4ccc-8ddd-000000000004"
 CODEX_REVERT_ROLLOUT = "aaaaaaaa-bbbb-4ccc-8ddd-000000000005"
+# Synthetic ChatGPT ids of the shapes Codex Desktop writes in session_meta (#118):
+# a 36-character uuid account id and a 29-character user id.
+CODEX_ACCOUNT = "11111111-2222-4333-8444-555555555555"
+CODEX_USER = "user-AbCdEfGhIjKlMnOpQrStUvWx"
 
 
 def _jsonl(path: Path, records) -> None:
@@ -751,6 +755,8 @@ def codex_rollout_records(cwd="/srv/proj"):
                 "model_provider": "openai",
                 "history_mode": "paginated",
                 "git": {"commit_hash": "0a1b2c3d", "branch": "feature/x"},
+                "creator_account_id": CODEX_ACCOUNT,
+                "creator_user_id": CODEX_USER,
             },
         },
         {
@@ -998,6 +1004,37 @@ def codex_rollout_records(cwd="/srv/proj"):
     for i, rec in enumerate(recs):
         rec["ordinal"] = i
     return recs
+
+
+# The ChatGPT desktop app's scheduled automation (#119): the key set observed
+# on Windows, 2026-10-15, with synthetic values. The directory is a slug of
+# the name the user typed.
+CODEX_AUTOMATION_REL = ".codex/automations/check-the-nightly-build/automation.toml"
+CODEX_AUTOMATION_TOML = (
+    """version = 1
+id = "check-the-nightly-build"
+kind = "heartbeat"
+name = "Check the nightly build"
+prompt = "Check the nightly build and \\"summarise\\" failures"
+status = "ACTIVE"
+rrule = "RRULE:FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0;BYDAY=MO,TU,WE,TH,FR"
+target_thread_id = "%s"
+created_at = 1791991549000
+updated_at = 1791991551000
+"""
+    % CODEX_SESSION
+)
+CODEX_AUTOMATION_MTIME = 1791991552
+
+
+def build_codex_automation(home: Path) -> None:
+    """`.codex/automations/<slug>/automation.toml` and the directory's
+    `.run-jitter-salt`, which the parser must not want."""
+    path = home / CODEX_AUTOMATION_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(CODEX_AUTOMATION_TOML, encoding="utf-8")
+    os.utime(path, (CODEX_AUTOMATION_MTIME, CODEX_AUTOMATION_MTIME))
+    (home / ".codex/automations/.run-jitter-salt").write_text("c2FsdA==\n", encoding="utf-8")
 
 
 def codex_history_records():
@@ -1403,6 +1440,7 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     )
     _jsonl(home / ".codex/history.jsonl", codex_history_records())
     (home / ".codex/config.toml").write_text('model = "gpt-5-codex"\n', encoding="utf-8")
+    build_codex_automation(home)
     # Nested catalog entries: Antigravity CLI inside ~/.gemini, and a Cline
     # extension inside VS Code's globalStorage. The nested agent must win.
     build_antigravity(home / ".gemini/antigravity-cli")

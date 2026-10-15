@@ -16,7 +16,12 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
   `metadata` object. Types:
   - `session_meta`: payload `id` (thread id), `session_id` (root thread),
     `timestamp`, `cwd`, `originator`, `cli_version`, `model_provider`,
-    optional `git` (`branch`), and for spawned threads `parent_thread_id`,
+    optional `git` (`branch`), optional `creator_account_id` and
+    `creator_user_id` (the ChatGPT account and user that created the
+    thread, `protocol/src/protocol.rs:3117-3198`; seen filled in rollouts
+    of Codex Desktop 0.162.0-alpha.17.2; appended to the `session start:`
+    row as `account=<id> user=<id>`, each only when present), and for
+    spawned threads `parent_thread_id`,
     `thread_source`, `source.subagent.thread_spawn.parent_thread_id`,
     `agent_path`, `agent_role`, `agent_nickname`; `forked_from_id` on a fork.
     Only the file's first `session_meta` sets the session id, project and
@@ -117,14 +122,33 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
   imported_at, source_modified_at?}]}` (times epoch seconds), one `system`
   row per record. See `open_interpreter.py`.
 
+* Codex only: `automations/<slug>/automation.toml`, one scheduled
+  automation of the ChatGPT desktop app (observed on Windows, ChatGPT
+  26.1007.9446.0, 2026-10-15; the directory name is a slug of the name the
+  user typed). Flat TOML: `version`, `id` (the slug), `kind` (`heartbeat`),
+  `name`, `prompt`, `status` (`ACTIVE`), `rrule` (an iCalendar recurrence
+  rule, `RRULE:FREQ=WEEKLY;...`), `target_thread_id` (the thread the
+  automation runs in), `created_at` and `updated_at` (epoch ms). One
+  `system` row `scheduled task: <id> name=<name> kind=<kind>
+  status=<status> rrule=<rrule> target_thread=<id> created=<UTC>
+  updated=<UTC> (from <file>, file mtime) prompt: <prompt>`, at the
+  file's modification time, with `session_id` the target thread. Read
+  with `tomllib` on Python 3.11 and later; on 3.10 a reader of top-level
+  `key = value` lines (basic, literal and multi-line strings, integers,
+  booleans) stands in, and a file neither can read is one
+  `parser: unreadable automation.toml` row.
+
 Not read: `session_index.jsonl` (thread names), `state_5.sqlite` and
-`thread_history_1.sqlite` (projections of the rollouts).
+`thread_history_1.sqlite` (projections of the rollouts),
+`sqlite/codex-dev.db` (the desktop app's thread catalog and automation
+store; the `automations` table repeats `automation.toml`).
 """
 
 from __future__ import annotations
 
 import json
 import re
+import sys
 from collections.abc import Iterator
 from typing import cast
 
@@ -137,6 +161,7 @@ from .base import (
     Options,
     Parser,
     compact_json,
+    file_mtime,
     iter_jsonl,
     setting_value,
     text_of,
@@ -144,6 +169,7 @@ from .base import (
 )
 
 ROLLOUT_TMPL = r"^%s/(?:archived_)?sessions/(?:.*/)?rollout-[^/]*\.jsonl(?:\.zst)?$"
+AUTOMATION_TMPL = r"^%s/automations/[^/]+/automation\.toml$"
 ROLLOUT_RX = re.compile(ROLLOUT_TMPL % re.escape(".codex"))
 HISTORY_REL = ".codex/history.jsonl"
 UUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -518,15 +544,101 @@ def item_rows(item: dict, payload: dict) -> list[tuple[str, object, dict, str]]:
     return [("system", t1, {}, "item %s: %s" % (itype, compact_json(rest)))]
 
 
+TOML_KEY_RX = re.compile(r"([A-Za-z0-9_-]+)\s*=\s*(.*)")
+TOML_BASIC_RX = re.compile(r'"((?:[^"\\]|\\.)*)"')
+TOML_ESCAPE_RX = re.compile(r"\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|.)", re.S)
+TOML_ESCAPES = {"b": "\b", "t": "\t", "n": "\n", "f": "\f", "r": "\r", '"': '"', "\\": "\\"}
+
+
+def _toml_unescape(body: str) -> str:
+    """The escapes of a TOML basic string; a line-ending backslash joins lines."""
+    body = re.sub(r"\\[ \t]*\r?\n\s*", "", body)
+
+    def one(m: re.Match) -> str:
+        esc = m.group(1)
+        if esc[0] in "uU" and len(esc) > 1:
+            return chr(int(esc[1:], 16))
+        if esc not in TOML_ESCAPES:
+            raise ValueError("bad escape \\%s" % esc)
+        return TOML_ESCAPES[esc]
+
+    return TOML_ESCAPE_RX.sub(one, body)
+
+
+def _toml_value(raw: str) -> object:
+    """One single-line TOML value of the kinds `automation.toml` holds: a
+    basic or literal string, an integer or a boolean. Raises ValueError
+    for anything else."""
+    if raw.startswith('"'):
+        m = TOML_BASIC_RX.match(raw)
+        if not m:
+            raise ValueError("unterminated string")
+        return _toml_unescape(m.group(1))
+    if raw.startswith("'"):
+        end = raw.find("'", 1)
+        if end < 0:
+            raise ValueError("unterminated string")
+        return raw[1:end]
+    word = raw.split("#", 1)[0].strip()
+    if word in ("true", "false"):
+        return word == "true"
+    return int(word.replace("_", ""))
+
+
+def flat_toml(text: str) -> dict:
+    """Read the top-level `key = value` lines of a TOML document: the
+    stand-in for `tomllib` on Python 3.10. Multi-line basic and literal
+    strings are joined; the first table header ends the top level. Raises
+    ValueError on a line it cannot read."""
+    out: dict = {}
+    lines = iter(text.splitlines())
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("["):
+            break
+        m = TOML_KEY_RX.fullmatch(stripped)
+        if not m:
+            raise ValueError("not a key = value line")
+        key, raw = m.group(1), m.group(2).strip()
+        quote = raw[:3]
+        if quote not in ('"""', "'''"):
+            out[key] = _toml_value(raw)
+            continue
+        body = raw[3:]
+        while quote not in body:
+            more = next(lines, None)
+            if more is None:
+                raise ValueError("unterminated multi-line string")
+            body += "\n" + more
+        body = body[: body.index(quote)]
+        body = body[1:] if body.startswith("\n") else body
+        out[key] = body if quote == "'''" else _toml_unescape(body)
+    return out
+
+
+if sys.version_info >= (3, 11):
+    import tomllib
+
+    def load_toml(text: str) -> dict:
+        return tomllib.loads(text)
+
+else:
+    load_toml = flat_toml
+
+
 class RolloutParser(Parser):
     """Codex rollouts and prompt history under `home_prefix`. Codex forks
     that keep the format subclass this with their own agent and home."""
 
     home_prefix = ".codex"
     ledger_name = ""  # import ledger file under home_prefix; empty when the agent has none
+    automations = False  # read `automations/<slug>/automation.toml` (the ChatGPT desktop app)
 
     def __init__(self) -> None:
         self.rollout_rx = re.compile(ROLLOUT_TMPL % re.escape(self.home_prefix))
+        self.automation_rx = re.compile(AUTOMATION_TMPL % re.escape(self.home_prefix))
         self.history_rel = self.home_prefix + "/history.jsonl"
         self.ledger_rel = self.home_prefix + "/" + self.ledger_name if self.ledger_name else ""
 
@@ -536,11 +648,14 @@ class RolloutParser(Parser):
             rel == self.history_rel
             or bool(self.rollout_rx.match(rel))
             or bool(self.ledger_rel and rel == self.ledger_rel)
+            or bool(self.automations and self.automation_rx.match(rel))
         )
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if artifact.rel == self.history_rel:
             yield from self._parse_history(artifact, opts)
+        elif self.automations and self.automation_rx.match(artifact.rel):
+            yield from self._parse_automation(artifact)
         elif self.ledger_rel and artifact.rel == self.ledger_rel:
             yield from self._parse_ledger(artifact, opts)
         else:
@@ -580,6 +695,38 @@ class RolloutParser(Parser):
                 text += " source_modified=%s" % modified
             row.text = compact(text)
             yield row
+
+    def _parse_automation(self, artifact: Artifact) -> Iterator[Row]:
+        try:
+            with open(artifact.disk_path, "rb") as fh:
+                doc = load_toml(fh.read().decode("utf-8", errors="replace"))
+        except (OSError, ValueError) as e:
+            yield self._system(artifact, "parser: unreadable automation.toml: %s" % error_reason(e))
+            return
+
+        def field(key: str) -> str:
+            value = doc.get(key)
+            return "" if value is None else str(value)
+
+        row = self._system(artifact, "", field("target_thread_id"), 1)
+        row.timestamp_utc = file_mtime(artifact)
+        row.text = (
+            "scheduled task: %s name=%s kind=%s status=%s rrule=%s target_thread=%s "
+            "created=%s updated=%s (from %s, file mtime) prompt: %s"
+            % (
+                field("id"),
+                field("name"),
+                field("kind"),
+                field("status"),
+                field("rrule"),
+                field("target_thread_id"),
+                to_utc(doc.get("created_at")),
+                to_utc(doc.get("updated_at")),
+                artifact.rel,
+                field("prompt"),
+            )
+        )
+        yield row
 
     def _parse_history(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
@@ -655,17 +802,16 @@ class RolloutParser(Parser):
                 git = payload.get("git") or {}
                 if isinstance(git, dict):
                     branch = str(git.get("branch") or branch)
-                yield self._fill(
-                    base(ts=payload.get("timestamp")),
-                    "session start: %s %s provider=%s cwd=%s"
-                    % (
-                        payload.get("originator") or "codex",
-                        payload.get("cli_version") or "",
-                        payload.get("model_provider") or "",
-                        cwd,
-                    ),
-                    opts,
+                start = "session start: %s %s provider=%s cwd=%s" % (
+                    payload.get("originator") or "codex",
+                    payload.get("cli_version") or "",
+                    payload.get("model_provider") or "",
+                    cwd,
                 )
+                for key, label in (("creator_account_id", "account"), ("creator_user_id", "user")):
+                    if payload.get(key):
+                        start += " %s=%s" % (label, payload.get(key))
+                yield self._fill(base(ts=payload.get("timestamp")), start, opts)
                 parent = _parent_of(payload)
                 if parent:
                     extra = " ".join(
@@ -836,3 +982,4 @@ class CodexParser(RolloutParser):
     agent = "codex-cli"
     name = "codex-cli"
     home_prefix = ".codex"
+    automations = True

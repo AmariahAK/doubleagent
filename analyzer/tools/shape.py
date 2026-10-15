@@ -33,9 +33,17 @@ What it prints, per file, in sorted path order:
   character class of its content (`hex`, `base64`, `printable`, `binary`).
 
 Keys and paths are redacted: a UUID becomes `<uuid>`, a run of 32 or more
-hex digits `<hex>`, an e-mail address `<email>`, and a key that is itself an
-absolute path or a URL becomes `<abs-path>` or `<url>`. Keys that are equal
-after redaction print once with a count. Paths print relative to the PATH
+hex digits `<hex>`, an e-mail address `<email>`, an OpenAI user or
+organisation id (`user-` or `org-` and 20 or more letters and digits)
+`<user-id>` or `<org-id>`, and a key that is itself an absolute path, a
+`win32:` path (`win32:/mnt/c/...`, Codex Desktop's spelling of a Windows
+path) or a URL becomes `<abs-path>` or `<url>`, and so does an absolute
+path after a `<prefix>:` inside a key (`local:<abs-path>`). A key that is
+a JSON-encoded array (Codex Desktop keys some state by
+`["local","<thread>","<path>"]`) prints as that array with each string
+element redacted by the same rules and any other element replaced by
+`<type>`. Keys that are equal after
+redaction print once with a count. Paths print relative to the PATH
 argument that contained them. Symlinks are listed and never followed.
 """
 
@@ -69,6 +77,12 @@ DEFAULT_SKIP: tuple[str, ...] = (
 UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 HEX_RUN_RE = re.compile(r"[0-9a-fA-F]{32,}")
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+USER_ID_RE = re.compile(r"(?<![A-Za-z0-9])user-[A-Za-z0-9]{20,}")
+ORG_ID_RE = re.compile(r"(?<![A-Za-z0-9])org-[A-Za-z0-9]{20,}")
+WIN32_PATH_RE = re.compile(r"win32:(?:/|[A-Za-z]:\\)")
+# An absolute path after a `<prefix>:` inside a key (`local:C:\Users\...`);
+# `://` is left to URL_RE.
+EMBEDDED_PATH_RE = re.compile(r"(?<=:)(?:[A-Za-z]:\\|/(?!/))[^\s\"]*")
 ISO_DATE_RE = re.compile(
     r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
 )
@@ -84,18 +98,37 @@ SMALL = 1024
 
 
 def redact(text: str) -> str:
-    """Replace UUIDs, long hex runs and e-mail addresses inside a key or path."""
+    """Replace UUIDs, long hex runs, e-mail addresses and OpenAI user and
+    organisation ids inside a key or path."""
     text = UUID_RE.sub("<uuid>", text)
+    text = USER_ID_RE.sub("<user-id>", text)
+    text = ORG_ID_RE.sub("<org-id>", text)
     text = HEX_RUN_RE.sub("<hex>", text)
     return EMAIL_RE.sub("<email>", text)
 
 
 def redact_key(key: str) -> str:
-    if ABS_PATH_RE.match(key):
+    """Redact a key: a whole path or URL becomes its class, a JSON-encoded
+    array is redacted element by element, an absolute path after a
+    `<prefix>:` becomes `<abs-path>`, and the rest goes through `redact`."""
+    if ABS_PATH_RE.match(key) or WIN32_PATH_RE.match(key):
         return "<abs-path>"
     if URL_RE.match(key):
         return "<url>"
-    return redact(key)
+    if key.startswith("["):
+        try:
+            items = json.loads(key)
+        except (ValueError, RecursionError):
+            items = None
+        if isinstance(items, list):
+            return json.dumps(
+                [
+                    redact_key(item) if isinstance(item, str) else "<%s>" % type(item).__name__
+                    for item in items
+                ],
+                separators=(",", ":"),
+            )
+    return redact(EMBEDDED_PATH_RE.sub("<abs-path>", key))
 
 
 def str_class(value: str, enums: bool) -> str:

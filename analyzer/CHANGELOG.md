@@ -274,6 +274,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The catalog copy detects the ChatGPT desktop app's renamed Windows
   package, `OpenAI.Codex` (its Chromium profile, log directory and
   settings hive), as `chatgpt-desktop` ([#113]).
+- The `codex-cli` and `open-interpreter` session start row ends with
+  `account=<creator_account_id> user=<creator_user_id>` when the
+  rollout's `session_meta` names the ChatGPT account and user that
+  created the thread, as Codex Desktop inside the ChatGPT desktop app
+  writes them; a rollout without them keeps the old text ([#118]).
+- The `codex-cli` parser reads the ChatGPT desktop app's scheduled
+  automations, `.codex/automations/<slug>/automation.toml`, not read
+  before: one `system` row per file, `scheduled task: <id> name=<name>
+  kind=<kind> status=<status> rrule=<rrule> target_thread=<thread id>
+  created=<UTC> updated=<UTC> (from <file>, file mtime) prompt:
+  <prompt>`, at the file's modification time, with `session_id` the
+  thread the automation runs in ([#119]).
 
 ### Changed
 
@@ -364,6 +376,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   deletes a file: `ActionSpecDeleteFile` keeps the path in field 1, where
   the parser had read field 2, so the `tool_result` row lost the path or
   the step could not be decoded ([#88]).
+- `tools/shape.py` redacts OpenAI user and organisation ids (`user-` or
+  `org-` and 20 or more letters and digits) as `<user-id>` and
+  `<org-id>` in keys and paths, a `win32:/...` path key and an absolute
+  path after a `<prefix>:` in a key (`local:C:\...`) as `<abs-path>`,
+  and the elements of a key that is a JSON-encoded array, which it
+  printed whole before: Codex Desktop's `.codex-global-state.json` keys
+  state by arrays holding the user id and absolute file paths ([#117]).
 
 ### Removed
 
@@ -796,6 +815,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#119]: https://github.com/seanthegeek/doubleagent/issues/119
+[#118]: https://github.com/seanthegeek/doubleagent/issues/118
+[#117]: https://github.com/seanthegeek/doubleagent/issues/117
 [#113]: https://github.com/seanthegeek/doubleagent/issues/113
 [#104]: https://github.com/seanthegeek/doubleagent/issues/104
 [#103]: https://github.com/seanthegeek/doubleagent/issues/103
