@@ -36,6 +36,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   accept `Antigravity` as well, since on a case-insensitive filesystem
   the file shares the desktop app's Electron user-data directory
   ([#90]).
+- `AppData/Local/antigravity` is collected as `antigravity`: the Windows
+  counterpart of `.cache/antigravity`, the plugin marketplace staging
+  directory under Go's user cache directory, which the desktop app 2.23.1
+  created (empty) on a Windows 11 install. The installer's
+  `AppData/Local/antigravity-updater` and the app's program directory
+  `AppData/Local/Programs/antigravity` are not matched ([#83]).
 
 ### Changed
 
