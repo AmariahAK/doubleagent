@@ -76,8 +76,17 @@ eight hex digits). Files:
   `sessionId`, `cliSessionId`, `sessionType`, `title`, `createdAt`,
   `model`, `userSelectedFolders`, `originCwd`, `cwd`, `branch` (Code tab),
   `initialMessage`, `error`, `errorCategory`, `errorAt`. One `system` row
-  at `createdAt`; `initialMessage` becomes a `user` row only when neither
-  a transcript nor an audit log for the session is in the input. On a
+  at `createdAt`. Both forms are a secondary source (issue 122). A Cowork
+  record's `initialMessage` is always a `user` row, with an empty
+  `timestamp_utc` because the record keeps no time for the prompt
+  (`createdAt` is the session's), so it matches the transcript's or the
+  audit log's copy on text within the session, and survives when both
+  are gone; the record's own `system` rows have no twin and are always
+  kept. A Code-tab record's `initialMessage` is a `user` row at
+  `createdAt` only when the session's transcript is not in the input
+  (`_session_collected`): that transcript is `~/.claude/projects/` under
+  agent `claude-code`, and the rule pairs rows of one agent only, so a
+  row yielded beside it would be shown twice. On a
   Code-tab record the row's text ends with the persisted Remote Control
   state, `remote_control=<remoteControlUserEnabled> bridges=<number of
   bridgeSessionIds> spawned_remotely=<remoteControlSpawn is a non-empty
@@ -371,7 +380,7 @@ class ClaudeDesktopParser(ClaudeCodeParser):
     # -- audit.jsonl -----------------------------------------------------------
 
     def secondary(self, artifact: Artifact) -> bool:
-        return bool(AUDIT_RX.match(artifact.rel))
+        return bool(AUDIT_RX.match(artifact.rel) or RECORD_RX.match(artifact.rel))
 
     @staticmethod
     def _init_cwd(artifact: Artifact) -> str:
@@ -595,7 +604,12 @@ class ClaudeDesktopParser(ClaudeCodeParser):
             )
         yield from self._grants(rec, row, created)
         initial = _str(rec.get("initialMessage"))
-        if initial and not self._session_collected(artifact, rec):
+        if initial and not code:
+            # Cowork: always, with no time of its own (a secondary source).
+            yield row("user", initial, "")
+        elif initial and not self._session_collected(artifact, rec):
+            # Code tab: its transcript is claude-code's, another agent, so
+            # the rule could not pair the two; only when it is absent.
             yield row("user", initial)
         if rec.get("error"):
             cat = _str(rec.get("errorCategory"))

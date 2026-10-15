@@ -517,8 +517,10 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # rows within 600 seconds, the shortened tool output on its tool_use_id;
 # the orphan conversation's chunk rows have no database and are kept.
 # Claude Desktop's audit.jsonl repeats its transcript's "thanks" prompt and
-# `model: claude-fable-5-1` row; its other lines (a prompt and a call the
-# transcript lacks, permission and result lines) are kept.
+# `model: claude-fable-5-1` row; the Cowork record's undated initialMessage
+# "why does the test fail?" collapses onto the audit log's dated copy, which
+# is kept with the call the transcript lacks and the permission and result
+# lines.
 # Cline: the session-search.db index's plain-string "fix tests" (session
 # scope) takes the SDK session's user row and the CLI
 # user_input_history.jsonl's undated, unscoped copy collapses onto it; the
@@ -557,7 +559,7 @@ FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 14,  # history 1; brain mirror 7 (CLI) + 6 (app)
     "claude-code": 2,  # .claude and .claude-work history.jsonl
-    "claude-desktop": 2,  # audit.jsonl "thanks" and its init model row
+    "claude-desktop": 3,  # audit.jsonl "thanks" and model row, record initialMessage
     "cline": 2,  # session-search.db and user_input_history.jsonl "fix tests"
     "codex-cli": 11,  # history.jsonl 1, thread_history_1.sqlite 8, state_5.sqlite 2
     "gemini-cli": 1,  # "list files in src"

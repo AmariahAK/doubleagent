@@ -1034,7 +1034,7 @@ drops are counted per agent on the `dropped:` line of stdout and under
 | `aider` | `.aider.input.history` and `.aider.llm.history`, in a home or a repository | `.aider.chat.history.md` beside them |
 | `antigravity` | `.gemini/antigravity-cli/history.jsonl`; the brain mirror `.gemini/<dir>/brain/<uuid>/.system_generated/logs/transcript_full.jsonl`, else its chunks, else `transcript.jsonl`, else its chunks, `<dir>` each of `antigravity-cli`, `antigravity`, `antigravity-ide` and `antigravity-backup` (600 seconds: the mirror records a step's start, the database row its completion) | `.gemini/<dir>/conversations/<uuid>.db` |
 | `claude-code` | `.claude/history.jsonl` (and `.claude-<name>/history.jsonl`) | `.claude/projects/<slug>/*.jsonl` and its subagent files |
-| `claude-desktop` | each Cowork session's `local-agent-mode-sessions/<acct>/<org>/[agent/]<session dir>/audit.jsonl` under the app-data directory | the session dir's `.claude/projects/<slug>/*.jsonl` and its subagent files |
+| `claude-desktop` | each Cowork session's `local-agent-mode-sessions/<acct>/<org>/[agent/]<session dir>/audit.jsonl` under the app-data directory; the session records `local_<uuid>.json` beside the session dirs and under `claude-code-sessions/` (a Cowork record's first prompt has no timestamp: matches on text within the session) | the session dir's `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `cline` | `.cline/data/db/session-search.db` (no timestamp per message: matches on text and session; a message of content blocks keeps their type names and tool ids, so only plain-string prompts match); `.cline/data/cache/user_input_history.jsonl` (only the last line timestamped: the others match on text alone) | `.cline/data/sessions/<id>/<id>.messages.json` |
 | `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite` | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
@@ -1072,28 +1072,30 @@ carries true UTC, unlike every other nanobot row.
 Several sources record no time for an event, and their rows match on
 text and scope alone: Muse Code's `tui-history.jsonl`, Goose's
 `history.txt` and Roo Code's `cli-history.json` record none at all;
-Cline's `session-search.db` records none per message, and its CLI
-`user_input_history.jsonl` only on its newest line, since every rewrite
-stamps every line with the time of that rewrite; Codex CLI's and Open
-Interpreter's `state_5.sqlite` hold a thread's first prompt beside the
-thread's creation time, which can precede the prompt, so the prompt row
-has none. A row with neither a session nor a project, such as a Goose
-`history.txt` line, can match a primary row of any session of the same
-user, so a prompt typed in two sessions is dropped once, against the
-earliest database row.
+Claude Desktop's Cowork session record keeps its first prompt with no
+time of its own; Cline's `session-search.db` records none per message,
+and its CLI `user_input_history.jsonl` only on its newest line, since
+every rewrite stamps every line with the time of that rewrite; Codex
+CLI's and Open Interpreter's `state_5.sqlite` hold a thread's first
+prompt beside the thread's creation time, which can precede the prompt,
+so the prompt row has none. A row with neither a session nor a project,
+such as a Goose `history.txt` line, can match a primary row of any
+session of the same user, so a prompt typed in two sessions is dropped
+once, against the earliest database row.
 
 Some secondary rows never match, because the primary store has no twin
-for them or renders the event differently, and are always kept:
-Tabby's event-log `system` rows, which name the server user by an
-encoded id where the database gives an email; Cline's `session-search.db`
-messages stored as content blocks, which the index keeps with their
-block type names and tool ids; a nanobot WebUI prompt whose session copy
-has runtime context appended (a quoted reply, an automation template);
+for them or renders the event differently, and are always kept: Tabby's
+event-log `system` rows, which name the server user by an encoded id
+where the database gives an email; Cline's `session-search.db` messages
+stored as content blocks, which the index keeps with their block type
+names and tool ids; a nanobot WebUI prompt whose session copy has
+runtime context appended (a quoted reply, an automation template);
 Claude Desktop's permission requests, responses and auto-decisions,
 `result` lines and `init: cwd=... model=...` rows, which the audit log
-alone records (its `model: <id>` row does match the transcript's); and
-the session-start row each OpenClaw copy begins with, which names the
-copy.
+alone records (its `model: <id>` row does match the transcript's), and
+the session records' `system` rows (the session, its grants, its error);
+and the session-start row each OpenClaw copy begins with, which names
+the copy.
 
 Two sources that look like second copies are primary. Ollama's
 `.ollama/history` is the `ollama run` REPL's readline history, while

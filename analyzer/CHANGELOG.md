@@ -129,7 +129,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   session dir holds no transcript, and is a secondary source of that
   transcript; the audit rows without a session record take the `init`
   line's `cwd` as `project_path`, as the transcript's rows take the
-  JSONL `cwd` ([#122]).
+  JSONL `cwd`. The Cowork session record `local_<uuid>.json` is a
+  secondary source too, and its `initialMessage` is now always a `user`
+  row, with no timestamp, instead of only when neither a transcript nor
+  an audit log was collected; a Code-tab record's stays a fallback,
+  since its transcript belongs to agent `claude-code` ([#122]).
 - The `letta` parser reads `.letta/transcripts/<agent>/<conversation>/transcript.jsonl`
   always, also when the conversation's local-backend `messages.jsonl` was
   collected (it gave one `system` row pointing at it before), as a

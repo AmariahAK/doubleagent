@@ -779,8 +779,16 @@ server credentials) and `chromePermsBeforeUnsupervised`.
 can embed API keys), so the parser does not read it and its folder
 grants get no row.
 
-If the record has `initialMessage` and no transcript or audit file for
-the session was collected, also yield it as a `user` row at `createdAt`.
+If a Cowork record has `initialMessage`, also yield it as a `user` row,
+always, with an empty `timestamp_utc`: the record keeps no time for the
+prompt (`createdAt` is the session's). The record is a secondary source
+(issue 122), so the row drops when the audit log or the transcript holds
+the same prompt in the same session, and survives when both are gone;
+the record's `system` rows have no twin and are always kept. A Code-tab
+record's `initialMessage` is yielded at `createdAt` only when the
+session's transcript was not collected, because that transcript is a
+`~/.claude/projects/` file of agent `claude-code` and the rule pairs rows
+of one agent only.
 If `error` is set, one `system` row `session error: <errorCategory>:
 <error>` at `errorAt`. `source_line` is `1`.
 

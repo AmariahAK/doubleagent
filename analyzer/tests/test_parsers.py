@@ -8799,13 +8799,41 @@ class ClaudeDesktopTests(ParserBase):
         self.assertEqual({r.agent for r in rows}, {"claude-desktop"})
 
     def test_secondary(self):
-        # Issue 122: the audit log is a secondary source of the transcript;
-        # the transcript, the record and the index files are primary.
+        # Issue 122: the audit log and the session records are secondary
+        # sources of the transcript; the transcript and the index files are
+        # primary.
         p = ClaudeDesktopParser()
-        self.assertTrue(p.secondary(self.artifact(CD_AUDIT_REL)))
-        self.assertTrue(p.secondary(self.artifact(CD_FALLBACK_REL)))
-        for rel in (CD_TRANSCRIPT_REL, CD_RECORD_REL, CD_SCHED_REL, CD_SPACES_REL):
+        for rel in (CD_AUDIT_REL, CD_FALLBACK_REL, CD_RECORD_REL, CD_CODE_RECORD_REL):
+            self.assertTrue(p.secondary(self.artifact(rel)), rel)
+        for rel in (CD_TRANSCRIPT_REL, CD_SCHED_REL, CD_SPACES_REL):
             self.assertFalse(p.secondary(self.artifact(rel)), rel)
+
+    def test_record_initial_message_secondary(self):
+        # The Cowork record's initialMessage is yielded beside the
+        # transcript and the audit log, with no time of its own, and drops
+        # as a copy of the audit log's prompt; the record's session row has
+        # no twin and is kept.
+        p = ClaudeDesktopParser()
+        primary = self.rows_for(p, CD_TRANSCRIPT_REL)
+        secondary = [
+            (r, p.secondary_tolerance(self.artifact(rel)))
+            for rel in (CD_AUDIT_REL, CD_RECORD_REL)
+            for r in self.rows_for(p, rel)
+        ]
+        initial = [r for r, _ in secondary if r.source_file.endswith(".json")]
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc) for r in initial if r.turn_type == "user"],
+            [("user", "")],
+        )
+        kept, _ = deduplicate(primary, secondary)
+        from_record = [r for r in kept if r.source_file.endswith(CD_SESSION + ".json")]
+        self.assertEqual({r.turn_type for r in from_record}, {"system"})
+        self.assertIn(
+            'desktop session: agent "Summarise the test failures" permission_mode=default effort=-',
+            [r.text for r in from_record],
+        )
+        prompts = [r for r in kept if r.text == "why does the test fail?"]
+        self.assertEqual([r.source_file.endswith("audit.jsonl") for r in prompts], [True])
 
     def test_audit_with_transcript(self):
         # Every line is read although the transcript exists (issue 122);
@@ -8946,11 +8974,12 @@ class ClaudeDesktopTests(ParserBase):
 
     def test_cowork_record(self):
         rows = self.rows_for(ClaudeDesktopParser(), CD_RECORD_REL)
-        # The transcript and audit log exist, so initialMessage is not
-        # repeated; the grant rows follow (test_cowork_record_grants).
+        # The session row, the grant rows (test_cowork_record_grants), then
+        # initialMessage, yielded whether or not the transcript and the
+        # audit log exist, with no time of its own (issue 122).
         self.assertEqual(
             [
-                (r.source_line, r.turn_type, r.text)
+                (r.source_line, r.turn_type, r.timestamp_utc, r.text)
                 for r in rows
                 if not r.text.startswith("permission grant:")
             ],
@@ -8958,9 +8987,11 @@ class ClaudeDesktopTests(ParserBase):
                 (
                     1,
                     "system",
+                    "2026-09-30T10:00:00.000Z",
                     'desktop session: agent "Summarise the test failures" '
                     "permission_mode=default effort=-",
-                )
+                ),
+                (1, "user", "", "why does the test fail?"),
             ],
         )
         r = rows[0]
@@ -8974,6 +9005,7 @@ class ClaudeDesktopTests(ParserBase):
         # tool, network and folder grants, at lastActivityAt; an empty list
         # (fileDeleteApprovedMounts) yields nothing.
         rows = self.rows_for(ClaudeDesktopParser(), CD_RECORD_REL)[1:]
+        rows = [r for r in rows if r.turn_type == "system"]
         self.assertEqual(
             [r.text for r in rows],
             [
@@ -9008,7 +9040,7 @@ class ClaudeDesktopTests(ParserBase):
         path.write_text(json.dumps(rec), encoding="utf-8")
         rows = self.rows_for(ClaudeDesktopParser(), CD_RECORD_REL)
         self.assertEqual(
-            [r.text for r in rows[1:]],
+            [r.text for r in rows[1:] if r.turn_type == "system"],
             ["permission grant: fileDeleteApprovedMounts=proj (as of lastActivityAt)"],
         )
 
@@ -9032,7 +9064,7 @@ class ClaudeDesktopTests(ParserBase):
                     'desktop session: agent "Summarise the test failures" '
                     "permission_mode=default effort=-",
                 ),
-                ("user", "2026-09-30T10:00:00.000Z", "why does the test fail?"),
+                ("user", "", "why does the test fail?"),
                 ("system", "2026-09-30T10:00:30.000Z", "session error: vm: VM failed to start"),
             ],
         )
