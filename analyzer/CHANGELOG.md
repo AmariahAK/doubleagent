@@ -84,6 +84,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The `hermes` parser's `sessions/<id>.jsonl` diverts are a secondary
   source: a message the live `state.db` also holds for that session is
   shown once ([#122]).
+- Tabby's pre-migration backups `db.backup-*.sqlite` and the event log
+  `events/YYYY-MM-DD.json` are secondary sources: a backup's thread and
+  event rows that the live database (or an earlier backup) also holds,
+  and an event log prompt or choice that `user_events` also holds, are
+  dropped. The backup's leading `system` row now names the backup file
+  ([#122]).
 
 ## [0.12.0] - 2026-10-15
 

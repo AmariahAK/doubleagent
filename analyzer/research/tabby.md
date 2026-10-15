@@ -71,6 +71,68 @@ events of the same completion. Project identity is the `git_url` and
 `filepath` in attachments or `segments`; no local cwd is recorded.
 `page_sections.page_id → pages.id` for pages.
 
+### Second copies
+
+Two files repeat what the live database records; [doubleagent issue 122](https://github.com/seanthegeek/doubleagent/issues/122)
+is the rule that parses both and drops the repeats.
+
+**Backups.** `backup_db` copies the database file byte for byte, named
+`db.backup-<UTC date>.sqlite` (`dev-db.backup-` for source builds), only
+when a migration is pending
+([ee/tabby-db/src/lib.rs:189-221](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/lib.rs#L189-L221)). A backup therefore holds the same
+thread ids, message texts, attachments and times as the live database
+had on that day, in the schema of the release before the migration (a
+pre-0.25 backup keeps its attachments in the old per-kind columns, which
+the parser renders the same way). It survives the 7-day deletion of
+ephemeral threads and the three-month pruning of `user_events` below;
+several backups hold the same threads when nothing deleted them in
+between. They join the live database on thread id (`session_id`) and on
+text and time exactly.
+
+**Event log against `user_events`.** The server hands every event to two
+loggers through `ComposedLogger`
+([crates/tabby-common/src/api/event.rs:133-149](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/api/event.rs#L133-L149);
+[ee/tabby-webserver/src/webserver.rs:45-46](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/webserver.rs#L45-L46)): the file
+logger, which appends the serialised `LogEntry` to the day's file
+([crates/tabby/src/services/event.rs:104-117](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby/src/services/event.rs#L104-L117)), and the database
+logger, which writes the same `entry.event`, pretty-printed, to
+`user_events` with `entry.ts` as `created_at`
+([ee/tabby-webserver/src/service/event_logger.rs:20-127](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/event_logger.rs#L20-L127)). So a
+`user_events` row is the same event as a log line, with:
+
+- `created_at` truncated to the second: the millisecond `ts` becomes a
+  `%F %X` string
+  ([ee/tabby-db/src/user_events.rs:20-42](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/user_events.rs#L20-L42);
+  [lib.rs:307-310](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/lib.rs#L307-L310)), under a second from the log line;
+- a row only when the log line's `user` decodes to a user row id; the
+  `user` field is the id Tabby's GraphQL API (served with the juniper
+  library) hands out, the row id encoded with Hashids (a
+  reversible integer-to-string encoding, salt `tabby-id-serializer`,
+  minimum length 6), and an event with no user is not stored
+  ([event_logger.rs:16-18](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/event_logger.rs#L16-L18);
+  [ee/tabby-schema/src/dao.rs:556-575](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-schema/src/dao.rs#L556-L575));
+- rows older than three months deleted by the database background job
+  ([user_events.rs:77-95](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/user_events.rs#L77-L95);
+  [ee/tabby-webserver/src/service/background_job/db.rs:88](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/background_job/db.rs#L88)),
+  while the log has no retention.
+
+The log is the fuller record, but the database is the store Tabby reads
+back: its user-event service (`UserEventService::list`) queries `user_events`
+([ee/tabby-webserver/src/service/user_event.rs:23-37](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/user_event.rs#L23-L37)), and nothing but the
+writer opens the events directory
+([crates/tabby-common/src/path.rs:52](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/path.rs#L52);
+[event.rs:21](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby/src/services/event.rs#L21)). The analyzer also marks whole files, and
+the database file holds the threads as well, so the database is primary
+and the log secondary. Nothing is lost by it: a log line with no
+`user_events` twin (no user, a server run without the database, pruned
+after three months) is kept. The rows join on `completion_id`
+(`session_id`), `segments.git_url` (`project_path`), the prompt and
+choice texts and a time within a second. The `system` rows do not join:
+the parser names the owner by the log's encoded id in one and by the
+account's email in the other, and the encoded id cannot be resolved to an
+email without the database, so both copies of a completion's `system`
+row and of a view, select, dismiss or chat-completion event are kept.
+
 ## 5. SQLite specifics
 
 WAL journal ([lib.rs:165-176](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/lib.rs#L165-L176)); collect `-wal` or lose recent rows.
@@ -118,6 +180,14 @@ Globs: `.tabby/ee/db.sqlite`, `.tabby/ee/db.backup-*.sqlite`,
 Tabby records no model in the thread or event stores, so the parser yields
 no `model:` rows.
 
+Sources, primary or secondary (see [Second copies](#second-copies)):
+
+| File | Role | Time rule |
+| --- | --- | --- |
+| `.tabby/ee/db.sqlite`, `dev-db.sqlite` | primary | own `created_at` |
+| `.tabby/ee/db.backup-*.sqlite`, `dev-db.backup-*.sqlite` | secondary, one leading `system` row naming the file | own `created_at`, identical to the live copy; default 2-second window |
+| `.tabby/events/YYYY-MM-DD.json` | secondary | own `ts` in milliseconds, under a second after `user_events.created_at`; default 2-second window |
+
 Add the thread owner's `users.email` to `text` or a note, since one
 server serves many people.
 
@@ -138,6 +208,6 @@ INSERT INTO thread_messages(id,thread_id,role,content,created_at,updated_at,atta
 
 Confidence. High: table and column names, role values, event JSON shape
 and `ts` unit, WAL, backups, ephemeral cleanup (source). Medium: the exact
-form of `user` in the event log (an encoded user id string; not traced
+form of `user` in the event log (the Hashids-encoded user row id the database logger decodes, see [Second copies](#second-copies); how a request's user reaches the entry was not traced
 through the auth middleware). Not determined: `pages` and `page_sections`
 content shape beyond `title`/`content` ([schema.sql:267-288](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L267-L288)).

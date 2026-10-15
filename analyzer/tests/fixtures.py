@@ -4719,6 +4719,10 @@ def tabby_records():
         """(2,7,'assistant','In `clear()` in src/cache.rs.','2026-10-01 10:00:02','2026-10-01 10:00:09','{"code":[{"git_url":"https://github.com/acme/app","commit":"abc123","language":"rust","filepath":"src/cache.rs","content":"fn clear() {}","start_line":10}],"client_code":null,"doc":null}')""",
         "INSERT INTO user_events(id,user_id,kind,created_at,payload) VALUES(1,1,'select','2026-10-01 10:00:01',"
         "'%s')" % TABBY_SELECT_PAYLOAD,
+        # The event log's completion line as the database logger stores it
+        # (event_logger.rs:79-109): `ts` truncated to the second (#122).
+        "INSERT INTO user_events(id,user_id,kind,created_at,payload) "
+        "VALUES(2,1,'completion','2025-10-01 10:00:00','%s')" % TABBY_COMPLETION_PAYLOAD,
     ]
 
 
@@ -4730,6 +4734,7 @@ TABBY_BACKUP_SCHEMA = TABBY_SCHEMA.replace(
 )
 TABBY_REL = ".tabby/ee/db.sqlite"
 TABBY_BACKUP_REL = ".tabby/ee/db.backup-20260915.sqlite"
+TABBY_BACKUP2_REL = ".tabby/ee/db.backup-20261005.sqlite"
 TABBY_EVENTS_REL = ".tabby/events/2025-10-01.json"
 
 
@@ -4783,16 +4788,40 @@ def tabby_event_records():
     ]
 
 
+TABBY_COMPLETION_PAYLOAD = json.dumps(tabby_event_records()[0]["event"], indent=2)
+
+
+def tabby_backup2_records():
+    """A later backup in the current schema (#122): the ephemeral thread of
+    the first backup, copied again, and the live database's thread 7."""
+    n = len(tabby_secret_records())
+    return [
+        *tabby_secret_records(),
+        "INSERT INTO threads(id,is_ephemeral,user_id,created_at,updated_at) "
+        "VALUES(3,1,1,'2026-09-10 08:00:00','2026-09-10 08:00:04')",
+        "INSERT INTO thread_messages(id,thread_id,role,content,created_at,updated_at,attachment) VALUES "
+        """(5,3,'user','dump the users table','2026-09-10 08:00:00','2026-09-10 08:00:00','{}'),"""
+        """(6,3,'assistant','Run `select * from users`.','2026-09-10 08:00:04','2026-09-10 08:00:04','{"code":[{"git_url":"https://github.com/acme/ops","filepath":"db.sql","content":"select 1","language":"sql","start_line":null}]}')""",
+        # Thread 7 and its messages, as the live database holds them.
+        *tabby_records()[n : n + 2],
+    ]
+
+
 def build_tabby(home: Path) -> None:
-    """A Tabby server's home: the live WAL database, a pre-migration backup,
-    one day of the event log, and the config file as noise."""
+    """A Tabby server's home: the live WAL database, a pre-migration backup
+    and a later one holding copies of the same threads, one day of the event
+    log, and the config file as noise."""
     _wal_db(home / TABBY_REL, TABBY_SCHEMA, tabby_records())
-    con = sqlite3.connect(str(home / TABBY_BACKUP_REL))
-    con.executescript(TABBY_BACKUP_SCHEMA)
-    for sql in tabby_backup_records():
-        con.execute(sql)
-    con.commit()
-    con.close()
+    for rel, schema, records in (
+        (TABBY_BACKUP_REL, TABBY_BACKUP_SCHEMA, tabby_backup_records()),
+        (TABBY_BACKUP2_REL, TABBY_SCHEMA, tabby_backup2_records()),
+    ):
+        con = sqlite3.connect(str(home / rel))
+        con.executescript(schema)
+        for sql in records:
+            con.execute(sql)
+        con.commit()
+        con.close()
     _jsonl(home / TABBY_EVENTS_REL, tabby_event_records())
     (home / ".tabby/config.toml").write_text(
         '[model.chat.http]\napi_key = "sk-tabby-test"\n', encoding="utf-8"

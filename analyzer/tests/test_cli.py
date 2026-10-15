@@ -521,6 +521,9 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # with the 11:00:00 snapshot's earlier copy, and the main session's divert
 # repeats the screenshot prompt; the pruned session (once), the two snapshot
 # rows and "and the hidden files?" are kept.
+# Tabby's 8: the event log's completion prompt and choice
+# (user_events copies them), the later backup's thread 7 (the live database
+# has it) and the second backup copy of ephemeral thread 3.
 FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 1,  # "clean the logs"
@@ -534,6 +537,7 @@ FIXTURE_DEDUPLICATED = {
     "muse-code": 1,  # "fix the failing test", no timestamp
     "open-interpreter": 1,  # "list the files"
     "qwen-code": 1,  # "run the tests"
+    "tabby": 8,  # completion prompt and choice, threads 7 and 3 in the backups
 }
 
 
