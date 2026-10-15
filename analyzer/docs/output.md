@@ -7,36 +7,257 @@ schemas. Back to the [analyzer README](../README.md).
 ## detect
 
 `detect` prints the input, its kind (`archive`, `collected` for an extracted
-collection, or `loose`), the host, any notes, and one line per user, home
-and agent with the number of files, their bytes (from the manifest `size`,
-or from disk in loose mode), and whether a parser exists. The notes cover the
+collection, or `loose`), the host, any notes, and up to two tables: one
+line per user, home and agent outside any project directory, and, when the
+input holds project directories, one line per agent of each project. Both
+give the number of files, their bytes (from the manifest `size`, or from
+disk in loose mode), and whether a parser exists. The notes cover the
 archive hash check, unreadable `collection.json`, manifest rows that do not
 parse, and how a loose root was interpreted. One `problem:` line follows the
 notes for each directory or file inside the input that could not be read
-(see [Unreadable inputs](inputs.md#unreadable-inputs)). `--files` adds one
-`user<TAB>agent<TAB>path` line per attributed file. With `--json` the same
-data is printed as one object with the keys `input`, `kind`, `host`,
-`notes`, `homes` (`user`, `home`, `inferred`), `agents` (`user`, `home`,
-`agent`, `files`, `bytes`, `parser`, `inferred`), `problems` (an array of
-the problem line texts, without the `problem:` prefix), and with `--files`
-also `files` (`user`, `agent`, `path`). Collections made by collectors before
-1.6.0 also hold a `live/` system snapshot, which appears as agent `live`
-with no user, and `detect only`.
+(see [Unreadable inputs](inputs.md#unreadable-inputs)). `no agent artifacts
+found` is printed, with exit code `1`, only when both tables are empty.
+`--files` adds one `user<TAB>agent<TAB>path` line per attributed file.
+Collections made by collectors before 1.6.0 also hold a `live/` system
+snapshot, which appears as agent `live` with no user, and `detect only`.
+
+The first table has the columns `user`, `home` (cut to 32 characters),
+`agent`, `files`, `bytes` and `parser` (`yes` or `detect only`), in the
+order each user, home and agent's first file was met. Its homes are user
+homes and Docker volumes, never a project directory.
 
 Files the collector gathered from a project directory (a repository that
-agent state referenced, or one given with `-p`) are listed under the
-agent that owns them, with the project directory in the `home` column:
-a repository's `.claude/` under `claude-code`, its
-`.aider.chat.history.md` under `aider`. A file several agents read, such
-as `AGENTS.md`, is listed under agent `project`, with no parser. Collectors
-before 1.12.0 recorded every project file as `project`; for such a
+agent state referenced, or one given with `-p`) are listed in the second
+table under the agent that owns them: a repository's `.claude/` under
+`claude-code`, its `.aider.chat.history.md` under `aider`. Collectors
+before 1.12.0 recorded every project file with agent `project`; for such a
 collection the analyzer names the agent itself, from the project catalog
 in its bundled catalog copy (the `# project artifacts` section of
 `doubleagent catalog`): the most specific entry whose glob matches the
 file's path relative to the project directory, so an old and a new
-collection of the same host list the same agents. A file no entry
-matches, or whose entry is `project`, stays `project`. Nothing is printed
-about the re-attribution.
+collection of the same host list the same agents. Nothing is printed about
+the re-attribution. A file several agents read, such as `AGENTS.md` or
+`.mcp.json`, or one no project catalog entry matches, keeps agent
+`project`, which is not an agent: it is counted on the project's
+`(shared)` line, and `project` never appears as an agent in either table.
+
+The project directories are the homes the analyzer marks as projects: the
+paths in `collection.json` `projects` and, for a collection from a
+collector before 1.12.0, the `home` of each collected row with agent
+`project`. A loose input holds none, so the second table is not printed
+there, nor for a collection without project files. The table follows the
+first after a blank line, sorted by project path:
+
+```text
+project                                  users          agent                 files        bytes  parser
+/srv/proj                                alice          claude-code               2         1800  yes
+                                                        cursor                    3          920  detect only
+                                                        (shared)                  1          310
+/srv/shared                              alice          (shared)                  1          120
+```
+
+Each project has one line per agent, sorted by agent, then a `(shared)`
+line when it holds shared files, with an empty `parser` column. The path
+(cut to 40 characters) and `users` (the users whose manifest rows name the
+directory, sorted and joined by `,`) are printed on the project's first
+line only.
+
+### detect --json
+
+With `--json`, `detect` prints the same data as one JSON object, indented
+by two spaces, and exits `0` even when nothing was found. This example
+is a real run on a test collection of host `ws01` with `--json --files`;
+the `files` key appears only with `--files`:
+
+```json
+{
+  "input": "/cases/ws01/ws01",
+  "kind": "collected",
+  "host": "ws01",
+  "notes": [
+    "1 manifest rows did not parse"
+  ],
+  "homes": [
+    {
+      "user": "alice",
+      "home": "/home/alice",
+      "inferred": false
+    },
+    {
+      "user": "bob",
+      "home": "/home/bob",
+      "inferred": false
+    }
+  ],
+  "outside_projects": [
+    {
+      "user": "alice",
+      "home": "/home/alice",
+      "agent": "claude-code",
+      "files": 3,
+      "bytes": 4251,
+      "parser": true,
+      "inferred": false
+    },
+    {
+      "user": "bob",
+      "home": "/home/bob",
+      "agent": "ollama",
+      "files": 1,
+      "bytes": 25,
+      "parser": true,
+      "inferred": false
+    },
+    {
+      "user": "alice",
+      "home": "/home/alice",
+      "agent": "copilot-cli",
+      "files": 1,
+      "bytes": 2,
+      "parser": false,
+      "inferred": false
+    },
+    {
+      "user": "bob",
+      "home": "/home/bob",
+      "agent": "gemini-cli",
+      "files": 1,
+      "bytes": 2,
+      "parser": true,
+      "inferred": false
+    }
+  ],
+  "projects": [
+    {
+      "path": "/srv/proj",
+      "users": [
+        "alice"
+      ],
+      "agents": [
+        {
+          "agent": "aider",
+          "files": 1,
+          "bytes": 41,
+          "parser": true
+        },
+        {
+          "agent": "cursor",
+          "files": 1,
+          "bytes": 10,
+          "parser": false
+        }
+      ],
+      "shared_files": 1,
+      "shared_bytes": 9
+    },
+    {
+      "path": "/srv/shared",
+      "users": [
+        "alice"
+      ],
+      "agents": [],
+      "shared_files": 1,
+      "shared_bytes": 9
+    }
+  ],
+  "problems": [
+    "/home/bob/.gemini/tmp/chats/gone.json: missing from the collection"
+  ],
+  "files": [
+    {
+      "user": "alice",
+      "agent": "claude-code",
+      "path": "/home/alice/.claude/history.jsonl"
+    },
+    {
+      "user": "alice",
+      "agent": "claude-code",
+      "path": "/home/alice/.claude/projects/-srv-proj/11111111-2222-4333-8444-555555555555.jsonl"
+    },
+    {
+      "user": "alice",
+      "agent": "claude-code",
+      "path": "/home/alice/.claude/projects/-/99999999-8888-4777-8666-555555555555.jsonl"
+    },
+    {
+      "user": "bob",
+      "agent": "ollama",
+      "path": "/home/bob/.ollama/history"
+    },
+    {
+      "user": "alice",
+      "agent": "copilot-cli",
+      "path": "/home/alice/.copilot/config.json"
+    },
+    {
+      "user": "bob",
+      "agent": "gemini-cli",
+      "path": "/home/bob/.gemini/settings.json"
+    },
+    {
+      "user": "alice",
+      "agent": "aider",
+      "path": "/srv/proj/.aider.input.history"
+    },
+    {
+      "user": "alice",
+      "agent": "cursor",
+      "path": "/srv/proj/.cursor/rules/style.mdc"
+    },
+    {
+      "user": "alice",
+      "agent": "project",
+      "path": "/srv/proj/AGENTS.md"
+    },
+    {
+      "user": "alice",
+      "agent": "project",
+      "path": "/srv/shared/AGENTS.md"
+    }
+  ]
+}
+```
+
+`inferred` is `true` only in loose mode, where `projects` is always `[]`,
+so no single run shows both. Its keys, in order:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `input` | string | The input path as given on the command line, as on the `input:` line. |
+| `kind` | string | `archive` (an archive the analyzer extracted), `collected` (an extracted collection: `manifest.jsonl` and `fs/`) or `loose` (any other directory, or an archive that did not unpack to a collection). |
+| `host` | string | `--host` when given, else `collection.json` `hostname`, else `""`. |
+| `notes` | array of strings | The `note:` lines without their prefix, in the order they were made: the archive sha256 check (`archive sha256 verified against <name>`, or a line starting `WARNING`), `collection.json unreadable: <reason>`, `<n> manifest rows did not parse`, `fs/ found without manifest.jsonl; treating fs/ as the root`, `root is a <agent> directory; treating its parent as the home`. `[]` when there are none. |
+| `homes` | array of objects | One per user home and Docker volume, in the order its first collected row was met; project directories are left out. |
+| `homes[].user` | string | The home's owner: the manifest `user`, or in loose mode the user inferred from the path; `--user` when neither names one; `""` when unknown. |
+| `homes[].home` | string | The manifest `home`, the path on the source host. In loose mode the home's path relative to the input root with a leading `/`, or `""` when the input root is the home or an agent directory. |
+| `homes[].inferred` | boolean | `true` in loose mode, where user and home come from the path; `false` when they come from a manifest. |
+| `outside_projects` | array of objects | The first table: one per user, home and agent outside any project directory, in the order the first file of each was met (manifest order, or the walk order in loose mode). `[]` when nothing was detected outside a project. |
+| `outside_projects[].user` | string | As `homes[].user`. |
+| `outside_projects[].home` | string | The base the files were collected relative to, the manifest `home`: a user's home or a Docker volume's `_data`, never a project directory. In loose mode as `homes[].home`, but the home's path on the analyst's disk where that is `""`. |
+| `outside_projects[].agent` | string | Catalog agent name; never `project`. |
+| `outside_projects[].files` | integer | Files attributed to this user, home and agent: collected manifest rows of type `file` whose file is present under `fs/`, or files under a matched catalog path in loose mode. |
+| `outside_projects[].bytes` | integer | Their total size: the sum of the manifest `size` values, or of the sizes on disk in loose mode. |
+| `outside_projects[].parser` | boolean | `true` when the analyzer has a parser for this agent, `false` when it is detected only. |
+| `outside_projects[].inferred` | boolean | As `homes[].inferred`. |
+| `projects` | array of objects | The second table: one per project directory the input holds (see [detect](#detect) for which they are), sorted by `path`. `[]` when there is none, always in loose mode. |
+| `projects[].path` | string | The project directory as the manifest's `home` records it, the collector's path; in image mode it still starts with the `-r` root. |
+| `projects[].users` | array of strings | The distinct users whose rows name the directory, sorted. |
+| `projects[].agents` | array of objects | One per agent that owns at least one file in the directory, sorted by `agent`. Never holds `project`; `[]` when the directory holds only shared files. |
+| `projects[].agents[].agent` | string | Catalog agent name. |
+| `projects[].agents[].files` | integer | Files of this agent in the directory, counted as for `outside_projects[].files`. |
+| `projects[].agents[].bytes` | integer | Their total manifest `size`. |
+| `projects[].agents[].parser` | boolean | `true` when the analyzer has a parser for this agent, `false` when it is detected only. |
+| `projects[].shared_files` | integer | Files in the directory with agent `project`, those no single agent owns (`AGENTS.md`, `.mcp.json`); 0 when there is none. |
+| `projects[].shared_bytes` | integer | Their total manifest `size`. |
+| `problems` | array of strings | The `problem:` lines without their prefix, `<path>: <reason>`: each directory or file inside the input that could not be read while it was opened, and each collected manifest row whose file is missing from `fs/` (see [Unreadable inputs](inputs.md#unreadable-inputs)). `[]` when there are none. |
+| `files` | array of objects | Only with `--files`: one per attributed file, in the order the manifest lists them (the walk order in loose mode). It mirrors the manifest file by file, so shared files appear here with agent `project`. |
+| `files[].user` | string | As `homes[].user`. |
+| `files[].agent` | string | The attributed agent: the manifest `agent`, re-attributed from the bundled project catalog for a project file of a collection before 1.12.0; `project` for a shared file. |
+| `files[].path` | string | The file's path on the source host, as the manifest records it. |
+
+Before analyzer 0.12.0 `outside_projects` was named `agents` and also
+held the project directories, as rows whose `home` was the directory, and
+`homes` listed them too.
 
 ## timeline
 
@@ -48,8 +269,8 @@ were produced:
 | --- | --- | --- |
 | `timeline.jsonl` | One record per turn, tool call, tool result or system event, sorted by time. | [timeline.jsonl](#timelinejsonl) |
 | `sessions.jsonl` | One record per session, with its first and last timestamp, models and counts. | [sessions.jsonl](#sessionsjsonl) |
-| `detect.json` | What was detected in the input: per user, home and agent the files, bytes and whether a parser exists, plus the notes and problems. | [detect.json](#detectjson) |
-| `inventory.json` | Row and session counts per project and outside any project, whether each project directory was collected, and the lists of agents parsed and not parsed. | [inventory.json](#inventoryjson) |
+| `detect.json` | What was detected in the input: per user, home and agent outside any project, and per project directory and agent, the files, bytes and whether a parser exists, plus the notes and problems. | [detect.json](#detectjson) |
+| `inventory.json` | Row and session counts per project and outside any project, whether each project directory was collected and the files each agent left in it, and the lists of agents parsed and not parsed. | [inventory.json](#inventoryjson) |
 
 On stdout it prints the input, host and notes, one `problem:` line per
 directory or file that could not be read (see
@@ -90,13 +311,14 @@ agents:    none were found
 
 `parsed` names the agents that produced rows before filtering. `detected
 but not parsed` names the agents in the input that have no parser (the
-agents `detect` shows without one). `parser found no rows` names the agents
+agents `detect` shows without one, in either table, so an agent whose only
+files are in a project directory counts). `parser found no rows` names the agents
 in the input that have a parser which read their files and produced no
 rows, such as a data directory holding only an empty database; the group
 appears only when it has an entry, and with `--agent` it counts only the
 agents selected. Files with agent `project` (a project file several agents
 read, see [detect](#detect)), which every parser is offered, are never
-listed in the last two groups. Each list is sorted and
+listed in any group. Each list is sorted and
 comma-separated, and `parsed` or `detected but not parsed` reads `none`
 when it is empty. `none were found` means the input holds no agent data,
 where `detect` prints `no agent artifacts found`. Before analyzer 0.12.0
@@ -106,56 +328,179 @@ empty list.
 ## detect.json
 
 `detect.json` is one JSON object, UTF-8 without a byte order mark,
-indented by two spaces: the object `detect --json` prints, without its
-`homes` and `files` keys, and with the problems the parsers met added. It
-describes the whole input: `--since`, `--until` and `--match` do not
-change it, and `--agent` changes only the parser problems, which come
-from the parsers that ran. Its keys, in order:
-
-| Key | Type | Meaning |
-| --- | --- | --- |
-| `input` | string | The input path as given on the command line, as on the `input:` line. |
-| `kind` | string | `archive` (an archive extracted by the analyzer), `collected` (an extracted collection: `manifest.jsonl` and `fs/`) or `loose` (any other directory, or an archive that did not unpack to a collection). |
-| `host` | string | `--host` when given, else `collection.json` `hostname`, else `""`. |
-| `notes` | array of strings | The `note:` lines without their prefix, in the order they were made: the archive sha256 check (`archive sha256 verified against <name>`, or a line starting `WARNING`), `collection.json unreadable: <reason>`, `<n> manifest rows did not parse`, `fs/ found without manifest.jsonl; treating fs/ as the root`, `root is a <agent> directory; treating its parent as the home`. `[]` when there are none. |
-| `agents` | array of objects | One object per user, home and agent, in the order their first file was met (manifest order, or the walk order in loose mode); the keys are in the next table. `[]` when nothing was detected. |
-| `problems` | array of strings | The `problem:` lines without their prefix, `<path>: <reason>`: first each directory or file inside the input that could not be read while it was opened, and each collected manifest row whose file is missing from `fs/` (see [Unreadable inputs](inputs.md#unreadable-inputs)), then each file a parser could not read, by its path on the source host. `[]` when there are none. |
-
-Each object in `agents`:
-
-| Key | Type | Meaning |
-| --- | --- | --- |
-| `user` | string | The home's owner: the manifest `user`, or in loose mode the user inferred from the path; `--user` when neither names one; `""` when unknown. |
-| `home` | string | The base the files were collected relative to, the manifest `home`: a user's home, a project directory (for project files, see [detect](#detect)) or a Docker volume's `_data`. In loose mode the home's path relative to the input root with a leading `/`, or its path on the analyst's disk when the input root is the home or an agent directory. |
-| `agent` | string | Catalog agent name. `project` for a project file several agents read. |
-| `files` | integer | The number of files attributed to this user, home and agent: collected manifest rows of type `file` whose file is present under `fs/`, or files under a matched catalog path in loose mode. |
-| `bytes` | integer | Their total size: the sum of the manifest `size` values, or of the sizes on disk in loose mode. |
-| `parser` | boolean | `true` when the analyzer has a parser for this agent. Always `false` for `project`, whose files are offered to every parser. |
-| `inferred` | boolean | `true` in loose mode, where user and home come from the path, not a manifest. |
+indented by two spaces: the object [`detect --json`](#detect---json)
+prints, without its `homes` and `files` keys, so its keys are `input`,
+`kind`, `host`, `notes`, `outside_projects`, `projects` and `problems`, in
+that order. Its `problems` also hold, after the problems met while the
+input was opened, each file a parser could not read, by its path on the
+source host. It describes the whole input: `--since`, `--until` and
+`--match` do not change it, and `--agent` changes only the parser
+problems, which come from the parsers that ran.
 
 ## inventory.json
 
 `inventory.json` is one JSON object, UTF-8 without a byte order mark,
-indented by two spaces. It counts what `timeline.jsonl` and
-`sessions.jsonl` hold, so with `--since`, `--until` or `--match` it counts
-the rows and sessions left after filtering, and with `--agent` only the
-agents selected. Its keys, in order:
+indented by two spaces. Its row and session counts follow what
+`timeline.jsonl` and `sessions.jsonl` hold, so with `--since`, `--until`
+or `--match` they count the rows and sessions left after filtering, and
+with `--agent` only the agents selected. Its file counts (`files`,
+`bytes`, `shared_files`) come from the manifest and do not follow the
+filters. This example is a real run of `timeline` on the test collection
+of the [`detect --json`](#detect---json) example:
+
+```json
+{
+  "input": "/cases/ws01/ws01",
+  "host": "ws01",
+  "rows": 18,
+  "sessions": 2,
+  "parsed": [
+    "aider",
+    "claude-code",
+    "ollama"
+  ],
+  "detected_not_parsed": [
+    "copilot-cli",
+    "cursor"
+  ],
+  "no_rows": [
+    "gemini-cli"
+  ],
+  "projects": {
+    "/srv/gone": {
+      "status": "referenced",
+      "rows": 1,
+      "sessions": 0,
+      "agents": {
+        "claude-code": {
+          "rows": 1,
+          "sessions": 0,
+          "turn_types": {
+            "user": 1
+          },
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "shared_files": 0
+    },
+    "/srv/proj": {
+      "status": "collected",
+      "rows": 8,
+      "sessions": 1,
+      "agents": {
+        "aider": {
+          "rows": 1,
+          "sessions": 0,
+          "turn_types": {
+            "user": 1
+          },
+          "files": 1,
+          "bytes": 41
+        },
+        "claude-code": {
+          "rows": 7,
+          "sessions": 1,
+          "turn_types": {
+            "assistant": 2,
+            "system": 1,
+            "tool_result": 1,
+            "tool_use": 1,
+            "user": 2
+          },
+          "files": 0,
+          "bytes": 0
+        },
+        "cursor": {
+          "rows": 0,
+          "sessions": 0,
+          "turn_types": {},
+          "files": 1,
+          "bytes": 10
+        }
+      },
+      "shared_files": 1
+    },
+    "/srv/shared": {
+      "status": "collected",
+      "rows": 0,
+      "sessions": 0,
+      "agents": {},
+      "shared_files": 1
+    }
+  },
+  "outside_projects": {
+    "rows": 9,
+    "sessions": 1,
+    "agents": {
+      "claude-code": {
+        "rows": 7,
+        "sessions": 1,
+        "turn_types": {
+          "assistant": 2,
+          "system": 1,
+          "tool_result": 1,
+          "tool_use": 1,
+          "user": 2
+        }
+      },
+      "ollama": {
+        "rows": 2,
+        "sessions": 0,
+        "turn_types": {
+          "system": 1,
+          "user": 1
+        }
+      }
+    }
+  }
+}
+```
+
+`claude-code` is counted in three places. Under `/srv/proj` it has 7
+rows and 1 session: one `history.jsonl` line and the six rows of a
+session transcript whose working directory is `/srv/proj`; it has no
+project files there, because its transcripts are in alice's home. Under
+`/srv/gone`, a `referenced` project, it has one history line. Under
+`outside_projects` it has the other 7 rows and 1 session: the history
+line with no project and a session transcript that records no working
+directory. `cursor` has project files and no parser, so no rows;
+`gemini-cli` has a parser that found no rows. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `input` | string | The input path, as on the `input:` line. |
 | `host` | string | The host name, `""` when unknown. |
-| `rows` | integer | The number of records in `timeline.jsonl`. |
-| `sessions` | integer | The number of records in `sessions.jsonl`. |
-| `parsed` | array of strings | The `parsed` group of the `agents:` line: the agents that produced rows before filtering. |
-| `detected_not_parsed` | array of strings | The `detected but not parsed` group: the agents in the input that have no parser. |
-| `no_rows` | array of strings | The `parser found no rows` group, `[]` when it is empty. |
-| `projects` | object | One count object per distinct non-empty `project_path`, keyed by that path exactly as the rows record it, plus one per project directory the input holds that no row names. Each has a `status`. |
-| `no_project` | object | The count object for the rows and sessions whose `project_path` is empty. It has no `status`. |
+| `rows` | integer | The number of records in `timeline.jsonl`, after the filters. |
+| `sessions` | integer | The number of records in `sessions.jsonl`, after the filters. |
+| `parsed` | array of strings | The `parsed` group of the `agents:` line: the agents that produced rows before filtering, sorted. |
+| `detected_not_parsed` | array of strings | The `detected but not parsed` group: the agents in the input, outside or inside a project directory, that have no parser, sorted. |
+| `no_rows` | array of strings | The `parser found no rows` group, sorted; `[]` when it is empty. |
+| `projects` | object | Keyed by project path, sorted: every distinct non-empty `project_path` of the rows, as the rows record it, and every project directory the input holds, as the collector's path with the image root removed (see below). `{}` when there is neither. |
+| `projects.<path>.status` | string | `collected` when the path is a project directory the input holds, so its project files are in the collection; `referenced` when only rows name it, because the directory was deleted, was out of the collector's reach, was skipped with `--no-projects`, or is recorded in another form (see below). |
+| `projects.<path>.rows` | integer | Rows with this `project_path`, after the filters. |
+| `projects.<path>.sessions` | integer | Sessions whose `project_path` in `sessions.jsonl` is this one, after the filters. |
+| `projects.<path>.agents` | object | Keyed by agent name, sorted: every agent with rows in the project or files in its directory, so the keys are the agents used on the project. Never has the key `project`; `{}` for a project with neither. |
+| `projects.<path>.agents.<agent>.rows` | integer | This agent's rows with this `project_path`, after the filters; 0 for an agent with files and no rows. |
+| `projects.<path>.agents.<agent>.sessions` | integer | This agent's sessions counted under this project, after the filters. |
+| `projects.<path>.agents.<agent>.turn_types` | object | Keyed by `turn_type`, sorted: this agent's rows of each type in the project, after the filters, listing only the types that occur; `{}` with no rows. |
+| `projects.<path>.agents.<agent>.files` | integer | The files the collection holds for this agent in this directory, not filtered; 0 for an agent with rows and no files there, and for every agent of a `referenced` project. |
+| `projects.<path>.agents.<agent>.bytes` | integer | Their total manifest `size`, not filtered. |
+| `projects.<path>.shared_files` | integer | Files in the directory with agent `project`, those no single agent owns (`AGENTS.md`, `.mcp.json`), not filtered; 0 for a `referenced` project. |
+| `outside_projects` | object | The counts for the rows and sessions whose `project_path` is empty. It has no status and no file counts: files outside projects are counted per home by `detect`. |
+| `outside_projects.rows` | integer | Rows with an empty `project_path`, after the filters. |
+| `outside_projects.sessions` | integer | Sessions with an empty `project_path`, after the filters. |
+| `outside_projects.agents` | object | Keyed by agent name, sorted: the agents with such rows or sessions; `{}` when there is none. |
+| `outside_projects.agents.<agent>.rows` | integer | This agent's rows with an empty `project_path`, after the filters. |
+| `outside_projects.agents.<agent>.sessions` | integer | This agent's sessions with an empty `project_path`, after the filters. |
+| `outside_projects.agents.<agent>.turn_types` | object | Keyed by `turn_type`, sorted: this agent's rows of each type, listing only the types that occur. |
 
-The three agent lists are sorted. `projects` is `{}` when no row has a
-project path and the input holds no project directory, and its keys are
-sorted.
+A row is counted under its own `project_path` and a session under the
+session's, the first non-empty `project_path` among its rows, so a session
+whose rows name two projects has rows under both and is counted once, under
+the first. Rows with no `session_id` belong to no session. The `rows` of
+`projects` and `outside_projects` add up to the top-level `rows`, and their
+`sessions` to the top-level `sessions`.
 
 The project directories the input holds are the paths in `collection.json`
 `projects` (the directories the collector gathered project files from,
@@ -164,77 +509,20 @@ discovered or given with `-p`) and, for a collection whose
 collected manifest row with agent `project`. A loose input holds none:
 the analyzer does not look for project directories in a loose tree, so
 every key there is `referenced`. Each such directory is listed even when
-no row names it, with zero counts and `"agents": {}`, and even when the
-filters left no rows at all.
+no row names it, and even when the filters left no rows at all.
 
 Paths are compared and counted exactly as recorded, with one exception:
 for a collection made in image mode (`collection.json` `mode` `image`),
 the `root` given with `-r` is removed from the front of each project
 directory, so `/mnt/image/srv/proj` in `collection.json` matches the
-`/srv/proj` the transcripts on that host recorded. Nothing else is
+`/srv/proj` the transcripts on that host recorded; the file counts of two
+directories that map to one path are added together. Nothing else is
 normalised, so one repository recorded in two forms has two keys: a
 trailing slash, a different case on Windows, or a Windows image collected
 on Linux or macOS, whose transcripts say `C:\Users\alice\proj` while the
 collector's path, once the root is removed, is `/Users/alice/proj`. The
-collector's form then has `status` `collected` and, when no row names it,
-zero counts, and the transcripts' form has the rows and `status`
-`referenced`.
-
-A count object has three keys, and under `projects` a fourth, `status`:
-
-| Key | Type | Meaning |
-| --- | --- | --- |
-| `rows` | integer | Rows with this `project_path`. |
-| `sessions` | integer | Sessions whose `project_path` in `sessions.jsonl` is this one. |
-| `agents` | object | Keyed by agent name, sorted: `rows`, `sessions`, and `turn_types`, an object of row counts keyed by `turn_type`, sorted, listing only the types that occur. |
-| `status` | string | Only under `projects`, after the counts. `collected` when the path is a project directory the input holds, so its project files (such as `.claude/settings.local.json` or `.aider.chat.history.md`) are in the collection; `referenced` when only rows name it, because the directory was deleted, was out of the collector's reach, was skipped with `--no-projects`, or is recorded in another form (see above). |
-
-A row is counted under its own `project_path` and a session under the
-session's, the first non-empty `project_path` among its rows, so a session
-whose rows name two projects has rows under both and is counted once, under
-the first. Rows with no `session_id` are counted in `rows` and belong to no
-session. The `rows` of `projects` and `no_project` add up to the top-level
-`rows`, and their `sessions` to the top-level `sessions`. With no rows,
-`no_project` is `{"rows": 0, "sessions": 0, "agents": {}}`.
-
-```json
-{
-  "input": "/cases/ws01/collection.tar.gz",
-  "host": "ws01",
-  "rows": 214,
-  "sessions": 6,
-  "parsed": ["claude-code", "codex-cli"],
-  "detected_not_parsed": ["copilot-cli"],
-  "no_rows": [],
-  "projects": {
-    "/srv/empty": {"rows": 0, "sessions": 0, "agents": {}, "status": "collected"},
-    "/srv/proj": {
-      "rows": 200,
-      "sessions": 5,
-      "agents": {
-        "claude-code": {
-          "rows": 150,
-          "sessions": 4,
-          "turn_types": {"assistant": 40, "tool_result": 30, "tool_use": 30, "user": 50}
-        },
-        "codex-cli": {
-          "rows": 50,
-          "sessions": 1,
-          "turn_types": {"assistant": 20, "user": 30}
-        }
-      },
-      "status": "collected"
-    }
-  },
-  "no_project": {
-    "rows": 14,
-    "sessions": 1,
-    "agents": {
-      "codex-cli": {"rows": 14, "sessions": 1, "turn_types": {"system": 4, "user": 10}}
-    }
-  }
-}
-```
+collector's form then has `status` `collected` and the files, and the
+transcripts' form has the rows and `status` `referenced`.
 
 A jq query that lists projects by row count:
 
@@ -242,8 +530,21 @@ A jq query that lists projects by row count:
 jq -r '.projects | to_entries | sort_by(-.value.rows)[] | "\(.value.rows)\t\(.key)"' out/inventory.json
 ```
 
-The keys are an interface like the JSONL fields: new ones are added, the
-existing ones keep their names, types and meaning.
+One that lists each project with the agents used on it:
+
+```sh
+jq -r '.projects | to_entries[] | "\(.key)\t\(.value.agents | keys | join(", "))"' out/inventory.json
+```
+
+And one that lists the agents that left files in a project but no rows:
+
+```sh
+jq -r '.projects | to_entries[] | .key as $p | .value.agents | to_entries[] | select(.value.rows == 0 and .value.files > 0) | "\($p)\t\(.key)"' out/inventory.json
+```
+
+Before analyzer 0.12.0 there was no `inventory.json`. The keys are an
+interface like the JSONL fields: new ones are added, the existing ones
+keep their names, types and meaning.
 
 ## JSONL encoding
 

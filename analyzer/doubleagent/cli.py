@@ -226,10 +226,18 @@ def cmd_inventory(args: argparse.Namespace) -> int:
 # ---- detect ---------------------------------------------------------------------
 
 
-def detect_table(col: Collection) -> list[dict]:
+def detect_table(col: Collection, include_projects: bool = True) -> list[dict]:
+    """One row per user, home and agent, in the order the first file was
+    met: `user`, `home`, `agent`, `files`, `bytes` (manifest `size`, or the
+    size on disk in loose mode), `parser`, `inferred`. With
+    `include_projects` false, artifacts in a project directory (a home
+    marked `project`) are left out: that is `outside_projects` in
+    `detect --json`."""
     parsers = by_agent()
     rows: dict[tuple[str, str, str], dict] = OrderedDict()
     for a in col.artifacts:
+        if a.home.project and not include_projects:
+            continue
         key = (a.home.user, a.home.original, a.agent)
         r = rows.get(key)
         if r is None:
@@ -243,30 +251,123 @@ def detect_table(col: Collection) -> list[dict]:
                 "inferred": a.home.inferred,
             }
         r["files"] += 1
-        if a.manifest is not None:
-            r["bytes"] += int(a.manifest.get("size") or 0)
-        else:
-            try:
-                r["bytes"] += a.disk_path.lstat().st_size
-            except OSError:
-                pass
+        r["bytes"] += artifact_bytes(a)
     return list(rows.values())
 
 
-def cmd_detect(args: argparse.Namespace, col: Collection) -> int:
-    table = detect_table(col)
-    if args.json:
-        out = {
-            "input": str(col.source),
-            "kind": col.kind,
-            "host": col.host,
-            "notes": col.notes,
-            "homes": [
-                {"user": h.user, "home": h.original, "inferred": h.inferred} for h in col.homes
-            ],
-            "agents": table,
-            "problems": col.problems,
+def artifact_bytes(a) -> int:
+    """The size of one artifact: the manifest `size` when the input has a
+    manifest, else the file's `lstat` size (0 when it cannot be read)."""
+    if a.manifest is not None:
+        return int(a.manifest.get("size") or 0)
+    try:
+        return a.disk_path.lstat().st_size
+    except OSError:
+        return 0
+
+
+def project_agents(col: Collection) -> dict[str, dict]:
+    """The agents used on each project directory the input holds, keyed by
+    the directory's path on the source host (`home.original`, which in image
+    mode still carries the `-r` root) and sorted by it. Only artifacts whose
+    home is marked `project` count, so loose input yields an empty dict.
+
+    Each value has `users` (sorted distinct users whose rows name the
+    directory), `agents` (keyed by agent, sorted: `files` and `bytes` of
+    that agent's files in the directory), and `shared_files` and
+    `shared_bytes`, the files with agent `project` (those no single agent
+    owns, such as AGENTS.md), which is not an agent and so never a key of
+    `agents`. Bytes are the manifest `size`, as in `detect_table`."""
+    groups: dict[str, dict] = {}
+    for a in col.artifacts:
+        if not a.home.project:
+            continue
+        path = a.home.original or str(a.home.disk_path)
+        g = groups.setdefault(
+            path, {"users": set(), "agents": {}, "shared_files": 0, "shared_bytes": 0}
+        )
+        if a.home.user:
+            g["users"].add(a.home.user)
+        size = artifact_bytes(a)
+        if a.agent == PROJECT_AGENT:
+            g["shared_files"] += 1
+            g["shared_bytes"] += size
+        else:
+            counts = g["agents"].setdefault(a.agent, {"files": 0, "bytes": 0})
+            counts["files"] += 1
+            counts["bytes"] += size
+    return {
+        path: {
+            "users": sorted(g["users"]),
+            "agents": dict(sorted(g["agents"].items())),
+            "shared_files": g["shared_files"],
+            "shared_bytes": g["shared_bytes"],
         }
+        for path, g in sorted(groups.items())
+    }
+
+
+def detect_object(col: Collection) -> dict:
+    """The keys `detect --json` and `detect.json` share, in order: `input`,
+    `kind`, `host`, `notes`, `outside_projects` (`detect_table` without the
+    project directories) and `projects` (one object per project directory
+    from `project_agents`, its `agents` an array of `agent`, `files`,
+    `bytes`, `parser`). The callers add `homes`, `problems` and `files`."""
+    parsers = by_agent()
+    projects = [
+        {
+            "path": path,
+            "users": p["users"],
+            "agents": [
+                {"agent": agent, **counts, "parser": agent in parsers}
+                for agent, counts in p["agents"].items()
+            ],
+            "shared_files": p["shared_files"],
+            "shared_bytes": p["shared_bytes"],
+        }
+        for path, p in project_agents(col).items()
+    ]
+    return {
+        "input": str(col.source),
+        "kind": col.kind,
+        "host": col.host,
+        "notes": col.notes,
+        "outside_projects": detect_table(col, include_projects=False),
+        "projects": projects,
+    }
+
+
+def print_project_table(projects: list[dict]) -> None:
+    """The second table of `detect`: one line per agent of each project,
+    then a `(shared)` line when the project holds shared files; the path
+    and users appear on the project's first line only."""
+    line = "%-40s %-14s %-18s %8s %12s  %s"
+    print(line % ("project", "users", "agent", "files", "bytes", "parser"))
+    for p in projects:
+        lines = [
+            (a["agent"], a["files"], a["bytes"], "yes" if a["parser"] else "detect only")
+            for a in p["agents"]
+        ]
+        if p["shared_files"]:
+            lines.append(("(shared)", p["shared_files"], p["shared_bytes"], ""))
+        first = (p["path"][:40], ",".join(p["users"]) or "?")
+        for i, (agent, files, size, parser) in enumerate(lines):
+            path, users = first if i == 0 else ("", "")
+            print((line % (path, users, agent, files, size, parser)).rstrip())
+
+
+def cmd_detect(args: argparse.Namespace, col: Collection) -> int:
+    det = detect_object(col)
+    table, projects = det["outside_projects"], det["projects"]
+    if args.json:
+        homes = [
+            {"user": h.user, "home": h.original, "inferred": h.inferred}
+            for h in col.homes
+            if not h.project
+        ]
+        out = {k: det[k] for k in ("input", "kind", "host", "notes")}
+        out.update(homes=homes, outside_projects=table, projects=projects)
+        out["problems"] = col.problems
         if args.files:
             out["files"] = [
                 {"user": a.home.user, "agent": a.agent, "path": a.original} for a in col.artifacts
@@ -287,11 +388,14 @@ def cmd_detect(args: argparse.Namespace, col: Collection) -> int:
         print("note:    %s" % n)
     for p in col.problems:
         print("problem: %s" % p)
-    if not table:
+    if not table and not projects:
         print("no agent artifacts found")
         return 1
-    print()
-    print("%-14s %-32s %-18s %8s %12s  %s" % ("user", "home", "agent", "files", "bytes", "parser"))
+    if table:
+        print()
+        print(
+            "%-14s %-32s %-18s %8s %12s  %s" % ("user", "home", "agent", "files", "bytes", "parser")
+        )
     for r in table:
         print(
             "%-14s %-32s %-18s %8d %12d  %s"
@@ -304,6 +408,9 @@ def cmd_detect(args: argparse.Namespace, col: Collection) -> int:
                 "yes" if r["parser"] else "detect only",
             )
         )
+    if projects:
+        print()
+        print_project_table(projects)
     if args.files:
         print()
         for a in col.artifacts:
@@ -415,45 +522,78 @@ def agents_summary(
 
 
 def project_inventory(
-    rows: list[Row], sessions: list[SessionSummary], collected: list[str] | None = None
+    rows: list[Row],
+    sessions: list[SessionSummary],
+    collected: list[str] | None = None,
+    files: dict[str, dict] | None = None,
 ) -> dict[str, dict]:
     """Counts per `project_path`, the empty path included: rows and sessions
     in total, and per agent the rows, sessions and rows by `turn_type`. A
     session is counted under its summary's project, the first non-empty
     `project_path` among its rows.
 
-    Each non-empty path also gets `status`, after the counts: `collected`
-    when it is one of `collected` (the project directories the input holds),
-    else `referenced` (named only by rows). A collected project no row names
-    is listed with zero counts. Paths are compared exactly as recorded."""
+    Each non-empty path is a project entry with the keys `status`, `rows`,
+    `sessions`, `agents` and `shared_files`, in that order. `status` is
+    `collected` when the path is one of `collected` (the project directories
+    the input holds), else `referenced` (named only by rows); a collected
+    project no row names is listed with zero counts. `files` maps a project
+    path to `project_files` output; each agent of a project entry gets
+    `files` and `bytes` after `turn_types` from it (0 when absent), an agent
+    with files and no rows is listed with zero counts, and `shared_files` is
+    the project's files with agent `project`. The empty path's entry keeps
+    `rows`, `sessions` and `agents` only, with no file counts. Paths are
+    compared exactly as recorded."""
+    files = files or {}
     groups: dict[str, dict] = {}
-    for path in collected or []:
-        if path:
-            groups.setdefault(path, {"rows": 0, "sessions": 0, "agents": {}})
 
-    def group(path: str, agent: str) -> tuple[dict, dict]:
-        g = groups.setdefault(path, {"rows": 0, "sessions": 0, "agents": {}})
+    def group(path: str) -> dict:
+        return groups.setdefault(path, {"rows": 0, "sessions": 0, "agents": {}})
+
+    def agent_of(path: str, agent: str) -> tuple[dict, dict]:
+        g = group(path)
         a = g["agents"].setdefault(agent, {"rows": 0, "sessions": 0, "turn_types": {}})
         return g, a
 
+    for path in collected or []:
+        if path:
+            group(path)
     for r in rows:
-        g, a = group(r.project_path, r.agent)
+        g, a = agent_of(r.project_path, r.agent)
         g["rows"] += 1
         a["rows"] += 1
         a["turn_types"][r.turn_type] = a["turn_types"].get(r.turn_type, 0) + 1
     for s in sessions:
-        g, a = group(s.project_path, s.agent)
+        g, a = agent_of(s.project_path, s.agent)
         g["sessions"] += 1
         a["sessions"] += 1
-    for g in groups.values():
-        g["agents"] = {k: g["agents"][k] for k in sorted(g["agents"])}
-        for a in g["agents"].values():
-            a["turn_types"] = dict(sorted(a["turn_types"].items()))
-    collected_set = set(collected or [])
-    for path, g in groups.items():
+    for path, f in files.items():
         if path:
-            g["status"] = "collected" if path in collected_set else "referenced"
-    return {k: groups[k] for k in sorted(groups)}
+            for agent in f["agents"]:
+                agent_of(path, agent)
+    collected_set = set(collected or [])
+    out: dict[str, dict] = {}
+    for path in sorted(groups):
+        g = groups[path]
+        on_disk = files.get(path, {"agents": {}, "shared_files": 0}) if path else None
+        agents = {}
+        for name in sorted(g["agents"]):
+            a = g["agents"][name]
+            a["turn_types"] = dict(sorted(a["turn_types"].items()))
+            if on_disk is not None:
+                counts = on_disk["agents"].get(name, {"files": 0, "bytes": 0})
+                a["files"], a["bytes"] = counts["files"], counts["bytes"]
+            agents[name] = a
+        if on_disk is None:
+            out[path] = {"rows": g["rows"], "sessions": g["sessions"], "agents": agents}
+            continue
+        out[path] = {
+            "status": "collected" if path in collected_set else "referenced",
+            "rows": g["rows"],
+            "sessions": g["sessions"],
+            "agents": agents,
+            "shared_files": on_disk["shared_files"],
+        }
+    return out
 
 
 def collected_projects(col: Collection) -> list[str]:
@@ -467,6 +607,23 @@ def collected_projects(col: Collection) -> list[str]:
     paths = {str(p) for p in (listed if isinstance(listed, list) else []) if p}
     paths.update(h.original for h in col.homes if h.project and h.original)
     return sorted({strip_image_root(p, summary) for p in paths})
+
+
+def project_files(col: Collection) -> dict[str, dict]:
+    """`project_agents` keyed as `collected_projects` keys its paths, with
+    the image root stripped, and summed when two directories strip to one
+    path: per path `agents` (agent to `files` and `bytes`) and
+    `shared_files`."""
+    summary = col.summary or {}
+    merged: dict[str, dict] = {}
+    for path, p in project_agents(col).items():
+        m = merged.setdefault(strip_image_root(path, summary), {"agents": {}, "shared_files": 0})
+        m["shared_files"] += p["shared_files"]
+        for agent, counts in p["agents"].items():
+            c = m["agents"].setdefault(agent, {"files": 0, "bytes": 0})
+            c["files"] += counts["files"]
+            c["bytes"] += counts["bytes"]
+    return merged
 
 
 def strip_image_root(path: str, summary: dict) -> str:
@@ -496,21 +653,10 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     sess = args.output / "sessions.jsonl"
     write_jsonl(timeline, rows)
     write_jsonl(sess, sessions)
-    detect = detect_table(col)
+    detect = detect_object(col)
     detect_path = args.output / "detect.json"
     with open(detect_path, "w", encoding="utf-8") as fh:
-        json.dump(
-            {
-                "input": str(col.source),
-                "kind": col.kind,
-                "host": col.host,
-                "notes": col.notes,
-                "agents": detect,
-                "problems": problems,
-            },
-            fh,
-            indent=2,
-        )
+        json.dump({**detect, "problems": problems}, fh, indent=2)
     print("input:     %s (%s)" % (col.source, col.kind))
     print("host:      %s" % (col.host or "(unknown)"))
     for n in col.notes:
@@ -539,9 +685,11 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
             "filtered:  %d outside the window, %d without a timestamp, %d not matching"
             % (rf.dropped_window, rf.dropped_undated, rf.dropped_match)
         )
-    # Project-tagged files are routed to every parser, so they are never
+    # The agents outside and inside project directories. Shared project
+    # files (agent `project`) are routed to every parser, so they are never
     # "detected but not parsed" in their own right.
-    agents = [r for r in detect if r["agent"] != PROJECT_AGENT]
+    agents = [r for r in detect["outside_projects"] if r["agent"] != PROJECT_AGENT]
+    agents += [a for p in detect["projects"] for a in p["agents"]]
     unparsed = [r["agent"] for r in agents if not r["parser"]]
     # An agent left out by --agent was not parsed, so it did not come up empty.
     no_rows = [
@@ -551,7 +699,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
         and r["agent"] not in parsed_agents
         and (not args.agent or r["agent"] in args.agent)
     ]
-    groups = project_inventory(rows, sessions, collected_projects(col))
+    groups = project_inventory(rows, sessions, collected_projects(col), project_files(col))
     empty = {"rows": 0, "sessions": 0, "agents": {}}
     inventory_path = args.output / "inventory.json"
     with open(inventory_path, "w", encoding="utf-8") as fh:
@@ -565,7 +713,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
                 "detected_not_parsed": sorted(set(unparsed)),
                 "no_rows": sorted(set(no_rows)),
                 "projects": {k: v for k, v in groups.items() if k},
-                "no_project": groups.get("", empty),
+                "outside_projects": groups.get("", empty),
             },
             fh,
             indent=2,

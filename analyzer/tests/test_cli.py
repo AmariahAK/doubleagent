@@ -172,7 +172,7 @@ class InventoryJsonTests(unittest.TestCase):
         self.assertEqual(inv["sessions"], len(sessions))
         groups = dict(inv["projects"])
         self.assertNotIn("", groups)
-        groups[""] = inv["no_project"]
+        groups[""] = inv["outside_projects"]
         # Every row and session lands in exactly one group, and each
         # group's totals are the sum of its agents'.
         self.assertEqual(sum(g["rows"] for g in groups.values()), len(rows))
@@ -217,8 +217,10 @@ class InventoryJsonTests(unittest.TestCase):
         inv = self.check_totals(path)
         self.assertEqual(list(inv["projects"]), ["/srv/proj"])
         self.assertEqual(inv["projects"]["/srv/proj"]["rows"], 1)
-        self.assertEqual(inv["no_project"]["rows"], 1)
-        self.assertEqual(inv["no_project"]["agents"]["claude-code"]["turn_types"], {"user": 1})
+        self.assertEqual(inv["outside_projects"]["rows"], 1)
+        self.assertEqual(
+            inv["outside_projects"]["agents"]["claude-code"]["turn_types"], {"user": 1}
+        )
         self.assertEqual(inv["detected_not_parsed"], [])
         self.assertEqual(inv["no_rows"], [])
 
@@ -230,7 +232,7 @@ class InventoryJsonTests(unittest.TestCase):
         inv = self.check_totals(path)
         self.assertEqual(inv["rows"], 0)
         self.assertEqual(inv["projects"], {})
-        self.assertEqual(inv["no_project"], {"rows": 0, "sessions": 0, "agents": {}})
+        self.assertEqual(inv["outside_projects"], {"rows": 0, "sessions": 0, "agents": {}})
         # `parsed` names the agents with rows before filtering, as stdout does.
         self.assertIn("claude-code", inv["parsed"])
 
@@ -437,16 +439,20 @@ class TimelineProjectStatusTests(unittest.TestCase):
             {k: v["status"] for k, v in projects.items()},
             {"/srv/empty": "collected", "/srv/gone": "referenced", "/srv/proj": "collected"},
         )
-        # A collected project with no rows has zero counts; `status` is last.
+        # A collected project with no rows has zero counts; `status` comes
+        # first and the shared files last (issue 104).
         self.assertEqual(
             projects["/srv/empty"],
-            {"rows": 0, "sessions": 0, "agents": {}, "status": "collected"},
+            {"status": "collected", "rows": 0, "sessions": 0, "agents": {}, "shared_files": 1},
         )
         self.assertEqual(projects["/srv/proj"]["rows"], 1)
         self.assertEqual(projects["/srv/gone"]["rows"], 1)
-        self.assertEqual(list(projects["/srv/proj"]), ["rows", "sessions", "agents", "status"])
-        self.assertNotIn("status", inv["no_project"])
-        self.assertEqual(inv["no_project"]["rows"], 1)
+        self.assertEqual(
+            list(projects["/srv/proj"]),
+            ["status", "rows", "sessions", "agents", "shared_files"],
+        )
+        self.assertNotIn("status", inv["outside_projects"])
+        self.assertEqual(inv["outside_projects"]["rows"], 1)
         self.assertEqual(inv["rows"], 3)
 
     def test_image_root_removed(self):
@@ -480,6 +486,288 @@ class TimelineProjectStatusTests(unittest.TestCase):
         self.assertEqual(heads[-4:], ["rows", "sessions", "detect", "inventory"])
         for name in ("timeline.jsonl", "sessions.jsonl", "detect.json", "inventory.json"):
             self.assertTrue((out / name).is_file(), name)
+
+
+def run_detect(root: Path, *extra: str) -> tuple[int, str]:
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+        rc = cli.main(["detect", str(root), *extra])
+    return rc, buf.getvalue()
+
+
+AIDER_HISTORY = "# 2026-10-01\n+ hi\n"
+
+# project_agents() for ProjectAgentsTests.build, new or old style.
+PROJECT_AGENTS = {
+    "/srv/proj": {
+        "users": ["alice"],
+        "agents": {
+            "aider": {"files": 1, "bytes": len(AIDER_HISTORY)},
+            "claude-code": {"files": 1, "bytes": 2},
+        },
+        "shared_files": 1,
+        "shared_bytes": 4,
+    },
+    "/srv/shared": {"users": ["alice"], "agents": {}, "shared_files": 1, "shared_bytes": 9},
+}
+
+
+class ProjectAgentsTests(unittest.TestCase):
+    """The agents used on each collected project, in `detect`, detect.json
+    and inventory.json; `project` is never shown as an agent (issue 104)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-projagents-test-"))
+        self.cat = catalog.parse(SYNTHETIC_CATALOG)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def build(self, new: bool, name: str = "col") -> Path:
+        # new: collector 1.12.0, collection.json `projects` and agent-named
+        # rows; old: no `projects` key and every project row `project`.
+        c = Collected(self.tmp / name, ["/srv/proj", "/srv/shared"] if new else None)
+        c.add("alice", "/home/alice", "claude-code", ".claude/settings.json", "{}")
+        files = [
+            ("/srv/proj", "claude-code", ".claude/settings.local.json", "{}"),
+            ("/srv/proj", "aider", ".aider.input.history", AIDER_HISTORY),
+            ("/srv/proj", "project", "AGENTS.md", "# x\n"),
+            ("/srv/shared", "project", "AGENTS.md", "# shared\n"),
+        ]
+        for home, agent, rel, text in files:
+            c.add("alice", home, agent if new else "project", rel, text)
+        return c.write()
+
+    def agents_of(self, root: Path) -> dict[str, dict]:
+        col = open_input(root, self.cat)
+        try:
+            return cli.project_agents(col)
+        finally:
+            col.cleanup()
+
+    def test_project_agents(self):
+        self.assertEqual(self.agents_of(self.build(True)), PROJECT_AGENTS)
+
+    def test_old_collection_agrees(self):
+        self.assertEqual(self.agents_of(self.build(False, "old")), PROJECT_AGENTS)
+
+    def test_detect_json(self):
+        rc, out = run_detect(self.build(True), "--json")
+        self.assertEqual(rc, 0, out)
+        doc = json.loads(out)
+        self.assertEqual(
+            list(doc),
+            [
+                "input",
+                "kind",
+                "host",
+                "notes",
+                "homes",
+                "outside_projects",
+                "projects",
+                "problems",
+            ],
+        )
+        self.assertEqual(
+            doc["homes"], [{"user": "alice", "home": "/home/alice", "inferred": False}]
+        )
+        self.assertEqual({r["home"] for r in doc["outside_projects"]}, {"/home/alice"})
+        self.assertEqual(
+            doc["projects"],
+            [
+                {
+                    "path": "/srv/proj",
+                    "users": ["alice"],
+                    "agents": [
+                        {"agent": "aider", "files": 1, "bytes": 18, "parser": True},
+                        {"agent": "claude-code", "files": 1, "bytes": 2, "parser": True},
+                    ],
+                    "shared_files": 1,
+                    "shared_bytes": 4,
+                },
+                {
+                    "path": "/srv/shared",
+                    "users": ["alice"],
+                    "agents": [],
+                    "shared_files": 1,
+                    "shared_bytes": 9,
+                },
+            ],
+        )
+        # --files still names every file with its attributed agent.
+        rc, out = run_detect(self.build(True, "col2"), "--json", "--files")
+        doc = json.loads(out)
+        self.assertEqual(list(doc)[-1], "files")
+        self.assertIn(
+            {"user": "alice", "agent": "project", "path": "/srv/shared/AGENTS.md"}, doc["files"]
+        )
+
+    def test_detect_text(self):
+        rc, out = run_detect(self.build(True))
+        self.assertEqual(rc, 0, out)
+        lines = out.splitlines()
+        fmt = "%-40s %-14s %-18s %8s %12s  %s"
+        head = fmt % ("project", "users", "agent", "files", "bytes", "parser")
+        self.assertIn(head, lines)
+        at = lines.index(head)
+        self.assertEqual(lines[at - 1], "")
+        self.assertEqual(
+            lines[at + 1 : at + 5],
+            [
+                fmt % ("/srv/proj", "alice", "aider", 1, 18, "yes"),
+                fmt % ("", "", "claude-code", 1, 2, "yes"),
+                (fmt % ("", "", "(shared)", 1, 4, "")).rstrip(),
+                (fmt % ("/srv/shared", "alice", "(shared)", 1, 9, "")).rstrip(),
+            ],
+        )
+        self.assertEqual(len(lines), at + 5)
+        # The first table holds the user home only; `project` is no agent.
+        self.assertNotIn("/srv/", "\n".join(lines[:at]))
+        self.assertNotIn(" project ", out)
+
+    def test_detect_text_without_projects(self):
+        c = Collected(self.tmp / "col", [])
+        c.add("alice", "/home/alice", "claude-code", ".claude/settings.json", "{}")
+        rc, out = run_detect(c.write())
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("project", out)
+
+    def test_detect_json_matches_detect_file(self):
+        root = self.build(True)
+        rc, out = run_detect(root, "--json")
+        self.assertEqual(rc, 0, out)
+        doc = json.loads(out)
+        rc, stdout = run_timeline(root, self.tmp / "out")
+        self.assertEqual(rc, 0, stdout)
+        saved = json.loads((self.tmp / "out" / "detect.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            list(saved),
+            ["input", "kind", "host", "notes", "outside_projects", "projects", "problems"],
+        )
+        self.assertEqual(saved["outside_projects"], doc["outside_projects"])
+        self.assertEqual(saved["projects"], doc["projects"])
+
+    def timeline_inventory(self, root: Path, want_rc: int = 0) -> dict:
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(root, out)
+        self.assertEqual(rc, want_rc, stdout)
+        return json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+
+    def test_inventory(self):
+        c = Collected(self.tmp / "col", ["/srv/proj", "/srv/shared"])
+        history = [
+            {"display": "in proj", "timestamp": 1790848800000, "project": "/srv/proj"},
+            {"display": "gone", "timestamp": 1790848860000, "project": "/srv/gone"},
+        ]
+        c.add(
+            "alice",
+            "/home/alice",
+            "claude-code",
+            ".claude/history.jsonl",
+            "".join(json.dumps(x) + "\n" for x in history),
+        )
+        c.add("alice", "/srv/proj", "cursor", ".cursor/rules/x.mdc", "x\n")
+        c.add("alice", "/srv/proj", "project", "AGENTS.md", "# x\n")
+        c.add("alice", "/srv/shared", "project", "AGENTS.md", "# y\n")
+        inv = self.timeline_inventory(c.write())
+        self.assertEqual(
+            list(inv),
+            [
+                "input",
+                "host",
+                "rows",
+                "sessions",
+                "parsed",
+                "detected_not_parsed",
+                "no_rows",
+                "projects",
+                "outside_projects",
+            ],
+        )
+        projects = inv["projects"]
+        for path, entry in projects.items():
+            self.assertEqual(
+                list(entry), ["status", "rows", "sessions", "agents", "shared_files"], path
+            )
+        proj = projects["/srv/proj"]
+        # Rows and no files; files and no rows.
+        self.assertEqual(
+            proj["agents"]["claude-code"],
+            {"rows": 1, "sessions": 0, "turn_types": {"user": 1}, "files": 0, "bytes": 0},
+        )
+        self.assertEqual(
+            proj["agents"]["cursor"],
+            {"rows": 0, "sessions": 0, "turn_types": {}, "files": 1, "bytes": 2},
+        )
+        self.assertEqual(proj["shared_files"], 1)
+        self.assertEqual(
+            projects["/srv/gone"],
+            {
+                "status": "referenced",
+                "rows": 1,
+                "sessions": 0,
+                "agents": {
+                    "claude-code": {
+                        "rows": 1,
+                        "sessions": 0,
+                        "turn_types": {"user": 1},
+                        "files": 0,
+                        "bytes": 0,
+                    }
+                },
+                "shared_files": 0,
+            },
+        )
+        self.assertEqual(
+            projects["/srv/shared"],
+            {"status": "collected", "rows": 0, "sessions": 0, "agents": {}, "shared_files": 1},
+        )
+        self.assertEqual(inv["outside_projects"], {"rows": 0, "sessions": 0, "agents": {}})
+        # cursor is in no home, only in a project: still detected.
+        self.assertEqual(inv["detected_not_parsed"], ["cursor"])
+
+    def test_outside_projects_has_no_file_counts(self):
+        c = Collected(self.tmp / "col", [])
+        history = [{"display": "nowhere", "timestamp": 1790848920000}]
+        c.add(
+            "alice",
+            "/home/alice",
+            "claude-code",
+            ".claude/history.jsonl",
+            "".join(json.dumps(x) + "\n" for x in history),
+        )
+        inv = self.timeline_inventory(c.write())
+        self.assertEqual(inv["projects"], {})
+        self.assertEqual(
+            inv["outside_projects"]["agents"]["claude-code"],
+            {"rows": 1, "sessions": 0, "turn_types": {"user": 1}},
+        )
+
+    def test_inventory_image_root(self):
+        c = Collected(self.tmp / "col", ["/mnt/image/srv/proj"])
+        summary = {
+            "hostname": "h1",
+            "mode": "image",
+            "root": "/mnt/image",
+            "projects": ["/mnt/image/srv/proj"],
+        }
+        (c.root / "collection.json").write_text(json.dumps(summary), encoding="utf-8")
+        c.add("alice", "/mnt/image/srv/proj", "cursor", ".cursor/rules/x.mdc", "x\n")
+        inv = self.timeline_inventory(c.write(), want_rc=1)  # no rows
+        self.assertEqual(list(inv["projects"]), ["/srv/proj"])
+        self.assertEqual(
+            inv["projects"]["/srv/proj"]["agents"]["cursor"],
+            {"rows": 0, "sessions": 0, "turn_types": {}, "files": 1, "bytes": 2},
+        )
+
+    def test_loose_has_none(self):
+        home = self.tmp / "home" / "alice"
+        (home / ".claude").mkdir(parents=True)
+        (home / ".claude/settings.json").write_text("{}", encoding="utf-8")
+        self.assertEqual(self.agents_of(self.tmp / "home"), {})
+        rc, out = run_detect(self.tmp / "home", "--json")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(json.loads(out)["projects"], [])
 
 
 if __name__ == "__main__":

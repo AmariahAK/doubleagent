@@ -14,15 +14,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - `timeline` writes a fourth file, `inventory.json`: row and session
-  counts per project and outside any project, each split by agent and
-  `turn_type`, and the lists of agents parsed, detected but not parsed,
-  and whose parser found no rows. The counts follow the filters, as the
-  stdout breakdown does ([#103]).
-- Each `inventory.json` project gains a last key, `status`: `collected`
-  when the path is a project directory the collection holds
+  counts per project (`projects`) and outside any project
+  (`outside_projects`), each split by agent and `turn_type`, and the
+  lists of agents parsed, detected but not parsed, and whose parser found
+  no rows. The row and session counts follow the filters, as the stdout
+  breakdown does ([#103]).
+- Each `inventory.json` project starts with `status`: `collected` when
+  the path is a project directory the collection holds
   (`collection.json` `projects`), `referenced` when only timeline rows
   name it. A collected project that no row names is listed with zero
   counts ([#104]).
+- Each `inventory.json` project counts the files the collection holds in
+  its directory: every agent gains `files` and `bytes`, an agent with
+  project files and no rows (a `.cursor/` directory, an agent with no
+  parser) is listed with zero rows, so the keys of `agents` are every
+  agent used on the project, and `shared_files` counts the files no
+  single agent owns (`AGENTS.md`, `.mcp.json`). These counts do not
+  follow the filters ([#104]).
+- `detect` prints project directories in a table of their own after the
+  table of homes: one line per agent of each project with its files,
+  bytes and parser, and a `(shared)` line for files such as `AGENTS.md`.
+  `detect --json` and `detect.json` hold them as `projects` (`path`,
+  `users`, `agents` with `agent`, `files`, `bytes`, `parser`,
+  `shared_files`, `shared_bytes`). `project` never appears as an agent.
+  Collections from collectors before and after 1.12.0 give the same
+  lists, and loose input lists no project ([#104]).
+- An agent whose only files are in a project directory counts as
+  detected on the timeline's `agents:` line and in `inventory.json`
+  ([#104]).
 - `timeline` prints one line per file it writes after the `sessions:`
   line: `detect: <path> (agents and files detected, problems)` and
   `inventory: <path> (counts per project and agent)`. The `rows:` and
@@ -262,10 +281,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `.aider.chat.history.md` `aider`. A manifest row with agent `project`,
   as collectors before 1.12.0 wrote for every project file, is
   re-attributed from the bundled project catalog; a file several agents
-  read (`AGENTS.md`) stays `project`. Project directories are recognised
+  read (`AGENTS.md`) stays `project` and is counted as a shared file of
+  its project. Project directories are recognised
   from `collection.json` `projects` (or a row with agent `project`), not
   from the agent, so the `claude-code` parser still gives a project's
   settings rows the project's `project_path` ([#104]).
+- `detect --json` and `detect.json`: the key `agents` is renamed
+  `outside_projects` and lists only user homes and Docker volumes, since
+  project directories moved to `projects`; `homes` in `detect --json`
+  lists user homes only. The first table `detect` prints changes the same
+  way. A script that read `.agents` reads `.outside_projects`, plus
+  `.projects[].agents` for project files ([#104]).
 - The `agents:` line `timeline` prints reads
   `parsed: <list>; detected but not parsed: <list>`, with `none` for an
   empty list, followed by `; parser found no rows: <list>` when a

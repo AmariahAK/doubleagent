@@ -227,9 +227,11 @@ class LooseDetectTests(unittest.TestCase):
         out = json.loads(buf.getvalue())
         self.assertEqual(out["kind"], "loose")
         self.assertEqual(out["host"], "h1")
-        self.assertEqual(out["agents"][0]["agent"], "codex-cli")
-        self.assertEqual(out["agents"][0]["user"], "mallory")
-        self.assertTrue(out["agents"][0]["parser"])
+        self.assertEqual(out["outside_projects"][0]["agent"], "codex-cli")
+        self.assertEqual(out["outside_projects"][0]["user"], "mallory")
+        self.assertTrue(out["outside_projects"][0]["parser"])
+        # Loose input marks no home as a project (issue 104).
+        self.assertEqual(out["projects"], [])
 
     def test_missing_input(self):
         self.assertEqual(cli.main(["detect", str(self.tmp / "nope")]), 2)
