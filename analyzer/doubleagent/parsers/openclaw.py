@@ -17,11 +17,14 @@ was checked. The state directory is `.openclaw`, a profile's
     parent_session_key, spawned_by, display_name)`: one row per transcript
     generation, read for the session-start row.
   - `session_transcript_archives(session_id, session_key, reason, encoding,
-    archive_blob, archive_name, published_at)`: reset or deleted
-    generations as JSONL (zstd when `encoding` is `zstd`). Archives not yet
-    `published_at` exist only here and are parsed; published ones are also
-    the `.jsonl.reset.*` / `.jsonl.deleted.*` file, which is parsed instead,
-    so they become one `system` row naming that file.
+    archive_blob, archive_name, created_at)`: reset or deleted
+    generations as JSONL (zstd when `encoding` is `zstd`), every one parsed,
+    whether or not `published_at` says it was also written to the sessions
+    directory. The schema calls this table the
+    canonical owner of a reclaimed generation, from which the
+    `.jsonl.reset.*` / `.jsonl.deleted.*` file is derived and may be
+    recreated (`openclaw-agent-schema.sql:606-607`), so the blob is the
+    primary copy and the file the secondary one.
   - `session_transcript_cold_archives(session_id, archive_name, storage,
     archive_blob)` with `storage` `sqlite`: a zstd JSONL envelope of
     `{"kind":"event","row":{"seq","event_json","created_at"}}` records
@@ -32,14 +35,48 @@ was checked. The state directory is `.openclaw`, a profile's
     hold credentials and are never read.
 * `agents/<agentId>/sessions/<sessionId>.jsonl` (and `sessions/` at the
   state root, the older single-agent layout): legacy transcripts not yet
-  imported by `openclaw doctor`. `<sessionId>.jsonl.reset.<ts>[.<gen>][.zst]`
-  and `.jsonl.deleted.<...>`: archives of reset or deleted sessions, one
-  zstd frame when `.zst`. Same entry format. The sibling legacy
-  `sessions.json`, `{<sessionKey>: {"sessionId", ...}}`
+  imported by `openclaw doctor`. The sibling legacy `sessions.json`,
+  `{<sessionKey>: {"sessionId", ...}}`
   (`src/infra/state-migrations.legacy-session-store.ts:202-205`), gives the
-  session key. Checkpoint (`*.checkpoint.<uuid>.jsonl`), trajectory,
-  `*.migrated*` and `*.bak` copies duplicate other transcripts and are
-  skipped.
+  session key.
+* Copies of a transcript in the same `sessions/` directory, each a
+  secondary source (`secondary()`), in the same entry format and read the
+  same way; their rows carry the entries' own timestamps, ids and header
+  `cwd`, so they pair exactly with the primary store's rows for the same
+  entries:
+  - `<sessionId>.jsonl.reset.<ts>[.<gen>][.zst]` and `.jsonl.deleted.<...>`:
+    the published file of a `session_transcript_archives` blob, one zstd
+    frame when `.zst`. Kept after the database is lost or excluded; the
+    blob outlives the file otherwise, since retention deletes the row
+    only once the file is gone (`session-history-archive-pruning.worker.ts:105-114`).
+  - `<sessionId>.checkpoint.<uuid>.jsonl`: a pre-compaction snapshot,
+    `fs.copyFile` of the session file before compaction (written by
+    releases before openclaw/openclaw c59635a,
+    `src/gateway/session-compaction-checkpoints.ts:383-389` at 6814525; no
+    release at 3b16db7 writes new ones, `legacy-compaction-history.ts:3-7`).
+    It holds the entries the compaction later summarised.
+  - `<sessionId>.jsonl.pre-doctor-(branch|openai-codex)-repair-<ts>.bak`:
+    `fs.copyFile` of a legacy transcript before `openclaw doctor` rewrote
+    it (`src/commands/doctor-session-transcripts.ts:258-261`, `285-288` at
+    6559e3f, before 4273ca9 removed the file-era runtime). A branch repair
+    keeps only the active branch, so the copy holds the abandoned branches
+    too, which no other store has.
+  The session id of every JSONL file, the legacy transcript and its
+  copies alike, is its header `id`, else the name before the suffix, so a
+  copy carries the id the database and the legacy file carry: a session
+  forked from a checkpoint was written as `<ts>_<sessionId>.jsonl` (line
+  323 at 6814525), its own checkpoints named after that file, and an
+  archive of an id over 96 bytes is named `session-<sha256>`
+  (`session-accessor.sqlite-archive-artifact.ts:24-29`). The session-start
+  row of a copy names it (`archive=<reason>.<ts>`, `copy=<suffix>`), so it
+  never pairs and each copy shows one row of its own.
+  Not read: `*.trajectory.jsonl`, the trajectory flight recorder, whose
+  runtime events are a different schema (`openclaw-trajectory`,
+  `docs/tools/trajectory.md:76-102`); `*.migrated[.N]`, whose transcript
+  writer is not in the source at 3b16db7 or 6559e3f (the suffix is used
+  there for other migrated files, cron logs and pairing stores); and the
+  `.jsonl.bak.<ts>` legacy compact backups (`artifacts.ts:43-50`), whose
+  content is not recorded.
 
 Entry fields: header `{type:"session", version, id, timestamp, cwd,
 parentSession}`; then `type`, `id`, `parentId`, `timestamp` (ISO 8601) and
@@ -100,11 +137,22 @@ STATE = r"(?:\.openclaw(?:-[^/]+)?|\.clawdbot|\.moltbot)"
 DB_RX = re.compile(r"^" + STATE + r"/agents/[^/]+/agent/openclaw-agent\.sqlite$")
 SESSIONS = r"^" + STATE + r"/(?:agents/[^/]+/)?sessions/"
 ARCHIVE_SUFFIX = r"\.jsonl\.(reset|deleted)\.\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d(?:\.\d{3})?Z(?:\.[0-9a-f]{32})?(?:\.zst)?"
+# A pre-compaction checkpoint and a pre-doctor repair backup (`artifacts.ts:13-17`).
+COPY_SUFFIX = (
+    r"\.checkpoint\.[0-9a-fA-F-]{36}\.jsonl"
+    r"|\.jsonl\.pre-doctor-(?:branch|openai-codex)-repair-"
+    r"\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d-\d{3}Z\.bak"
+)
 JSONL_RX = re.compile(
-    SESSIONS + r"(?P<name>[^/]+?)(?:(?P<archive>" + ARCHIVE_SUFFIX + r")|\.jsonl)$"
+    SESSIONS
+    + r"(?P<name>[^/]+?)(?:(?P<archive>"
+    + ARCHIVE_SUFFIX
+    + r")|(?P<copy>"
+    + COPY_SUFFIX
+    + r")|\.jsonl)$"
 )
 COLD_RX = re.compile(SESSIONS + r"cold/[0-9a-f]{64}\.jsonl\.zst$")
-SKIP_NAME_RX = re.compile(r"\.checkpoint\.[0-9a-fA-F-]{36}$|\.trajectory$")
+SKIP_NAME_RX = re.compile(r"\.trajectory$")
 ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 
 
@@ -165,6 +213,7 @@ class _Session:
         self.model = model
         self.provider = provider
         self.cwd = ""
+        self.header_id = False  # True: the header `id` replaces session_id
         self.started = False
         self.seen: dict = {}  # the model in use, for the `model:` rows
 
@@ -179,6 +228,12 @@ class OpenClawParser(Parser):
             return True
         m = JSONL_RX.match(rel)
         return bool(m) and not SKIP_NAME_RX.search(m.group("name"))
+
+    def secondary(self, artifact: Artifact) -> bool:
+        """The published archive files and the checkpoint and pre-doctor
+        copies; the database and the plain legacy `.jsonl` are primary."""
+        m = JSONL_RX.match(artifact.rel)
+        return bool(m) and bool(m.group("archive") or m.group("copy"))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if DB_RX.match(artifact.rel):
@@ -226,7 +281,7 @@ class OpenClawParser(Parser):
         window names the model the session started with."""
         s.started = True
         header = header or {}
-        if header.get("id") and not s.session_id:
+        if header.get("id") and (s.header_id or not s.session_id):
             s.session_id = str(header["id"])
         if isinstance(header.get("cwd"), str):
             s.cwd = header["cwd"]
@@ -504,8 +559,11 @@ class OpenClawParser(Parser):
     def _parse_file(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         m = JSONL_RX.match(artifact.rel)
         s = _Session(session_id=m.group("name") if m else "")
+        s.header_id = True
         if m and m.group("archive"):
             s.extra = "archive=%s" % m.group("archive")[len(".jsonl.") :]
+        elif m and m.group("copy"):
+            s.extra = "copy=%s" % m.group("copy").lstrip(".")
         if m:
             s.key = self._legacy_key(artifact, s.session_id)
         with open(artifact.disk_path, "rb") as fh:
@@ -650,7 +708,7 @@ class OpenClawParser(Parser):
     ) -> Iterator[Row]:
         for r in con.execute(
             "select rowid as _rowid, session_id, session_key, reason, encoding, archive_name, "
-            "created_at, published_at, archive_blob from session_transcript_archives "
+            "created_at, archive_blob from session_transcript_archives "
             "order by created_at"
         ):
             r = dict(r)
@@ -658,18 +716,6 @@ class OpenClawParser(Parser):
             extra = "archive=%s name=%s" % (r.get("reason") or "", r.get("archive_name") or "")
             s = self._window_session(sid, windows, str(r.get("session_key") or ""), extra)
             line = r["_rowid"]
-            if r.get("published_at"):
-                yield self._row(
-                    artifact,
-                    s,
-                    line,
-                    to_utc(r.get("created_at")),
-                    "system",
-                    "session %s archive %s is in the sessions directory as %s; its rows come from that file"
-                    % (r.get("reason") or "", sid, r.get("archive_name") or ""),
-                    opts,
-                )
-                continue
             data, err = _maybe_zstd(r.get("archive_blob") or b"")
             if data is None:
                 yield self._bad(

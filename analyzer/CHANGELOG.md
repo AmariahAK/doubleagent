@@ -19,6 +19,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ([#122]).
 - `inventory.json` key `deduplicated`, the new last key: the dropped
   rows per agent, `{}` when none ([#122]).
+- OpenClaw: compaction checkpoints (`*.checkpoint.<uuid>.jsonl`) and
+  pre-doctor repair backups (`*.jsonl.pre-doctor-*-repair-*.bak`) in the
+  sessions directory are parsed as secondary sources; a backup keeps the
+  abandoned branches a doctor repair removed ([#122]).
 
 ### Changed
 
@@ -56,6 +60,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   different file, so two identical lines in one file both stay. Secondary rows with no match are
   kept, so a prompt whose transcript is gone is still in the timeline
   ([#122]).
+- OpenClaw: a published reset or deleted archive blob in
+  `session_transcript_archives` is parsed in full instead of one `system`
+  row naming its file, and the `.jsonl.reset.*` / `.jsonl.deleted.*` file
+  is a secondary source; the session id of a legacy JSONL file is now its
+  header `id` ([#122]).
 
 ## [0.12.0] - 2026-10-15
 

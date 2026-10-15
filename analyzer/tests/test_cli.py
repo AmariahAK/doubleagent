@@ -506,7 +506,11 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # /srv/proj" (a rewind removed it from the session), the Qwen logs.json
 # model_switch entry (a `system` row whose text no session row has). The Muse
 # tui-history.jsonl prompt records no time and matches its session's prompt
-# on text alone.
+# on text alone. OpenClaw: the deleted archive file's prompt (the blob
+# holds it) and the pre-doctor backup's seven entry rows (the legacy file
+# holds them); the backup's abandoned-branch prompt, every copy's
+# session-start row and the checkpoint's three entry rows, whose primary
+# twins the backup's copies took first, are kept.
 FIXTURE_DEDUPLICATED = {
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
@@ -514,6 +518,7 @@ FIXTURE_DEDUPLICATED = {
     "gemini-cli": 1,  # "list files in src"
     "muse-code": 1,  # "fix the failing test", no timestamp
     "open-interpreter": 1,  # "list the files"
+    "openclaw": 8,  # .jsonl.deleted.* file 1, pre-doctor-branch-repair .bak 7
     "qwen-code": 1,  # "run the tests"
 }
 
