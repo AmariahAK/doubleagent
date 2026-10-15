@@ -1055,7 +1055,10 @@ a second from the database step. Qwen Code's `logs.json` rows have no
 project path and match by `sessionId` only. A known miss: a prompt the
 agent queued and sent later (Claude Code queues input typed while it
 works) can be minutes from its transcript record, and is then shown
-twice, the history row at the time it was typed.
+twice, the history row at the time it was typed. Hermes's quick
+snapshots (`state-snapshots/`) are excluded by the collector unless it
+runs with `--full`, so they appear only in a full collection or loose
+input.
 
 Three sources have a wider window, because they stamp an event later
 than the primary store does. Antigravity's brain mirror records only
@@ -1103,9 +1106,7 @@ its `db.sqlite` holds the desktop app's chats, a different surface, so
 both are parsed as primary records. little-coder's prompt history rows
 carry agent `little-coder`, while its transcripts are pi sessions under
 agent `pi`; the rule pairs rows of one agent only, so it cannot pair
-them, and both stay. Hermes's quick snapshots (`state-snapshots/`) are
-excluded by the collector unless it runs with `--full`, so they appear
-only in a full collection or loose input. Continue's `toolUsage.jsonl`
+them, and both stay. Continue's `toolUsage.jsonl`
 is not a secondary source either: its event rows carry their own time
 but no session or project, and the session rows they repeat carry only
 the session's creation time, so a match within 2 seconds would be
