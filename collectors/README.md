@@ -64,7 +64,7 @@ log:        /var/tmp/ir/host01_20261003T165531Z_agent-artifacts.log
 users:      4
 projects:   12
 collected:  5985 files, 110669230 bytes (105.5 MiB)
-skipped:    7 excluded, 0 too large, 0 secret
+skipped:    7 excluded, 0 too large, 0 secret, 0 special
 errors:     2 (2 error_copy, 0 error_read)
 docker:     4 volumes found, 1 collected, 0 unreadable
 ```

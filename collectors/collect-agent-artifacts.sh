@@ -50,22 +50,23 @@
 #   11. Summary and archive  collection.json, the archivers, the stdout summary
 #   12. Main program         options, setup, then one call per step
 #
-# Data flow: the tables are applied to every home the user enumeration
-# lists. For each home the catalog walk expands every CATALOG entry first and
-# prunes each match that lies inside another match from the enclosing walk (a
-# claimed subtree, collected once, under the more specific agent), then walks
-# each match with one find(1). find prunes the EXCLUDES globs with one
+# Data flow: the tables are applied to every home the user enumeration lists.
+# For each home the catalog walk expands every CATALOG entry first and prunes
+# each match that lies inside another match from the enclosing walk (a claimed
+# subtree, collected once, under the more specific agent), then walks each
+# match with one find(1). find prunes the EXCLUDES globs with one
 # skipped_excluded row each and hands the files to the stage worker, which
-# tests SECRET_GLOBS, lstats every file before anything is copied, recreates
-# a symlink instead of following it, copies the file into the staging
-# directory, hashes the staged copy (not the source, which a running agent may
-# still be appending to) and writes one manifest row per file. collection.json
-# and the stdout summary are built from the manifest, and the staging
-# directory, with the manifest, the log and collection.json, becomes the
-# archive. Docker and Podman volumes matched by DOCKER_VOLUMES are collected
-# whole, each as one match; discovered projects are further bases walked
-# with PROJECT_CATALOG. --inventory is the same walk with no writes: the
-# workers only stat, and section 10 prints one JSON line per user and agent.
+# tests SECRET_GLOBS, lstats every file before anything is copied, recreates a
+# symlink instead of following it, records a socket, FIFO or device without
+# opening it, copies the file into the staging directory, hashes the staged
+# copy (not the source, which a running agent may still be appending to) and
+# writes one manifest row per file. collection.json and the stdout summary are
+# built from the manifest, and the staging directory, with the manifest, the
+# log and collection.json, becomes the archive. Docker and Podman volumes
+# matched by DOCKER_VOLUMES are collected whole, each as one match; discovered
+# projects are further bases walked with PROJECT_CATALOG. --inventory is the
+# same walk with no writes: the workers only stat, and section 10 prints one
+# JSON line per user and agent.
 #
 # Naming: globals that functions share (configuration, counters, file paths,
 # the tables) are UPPER_CASE. POSIX sh has no local, so a function's own
@@ -80,7 +81,7 @@
 # Maintainer documentation, with the table of sh and PowerShell function
 # pairs: collectors/docs/internals.md.
 
-VERSION="1.12.0"
+VERSION="1.13.0"
 TOOL="collect-agent-artifacts"
 
 # Settings every later line relies on: the C locale for byte-wise matching
@@ -1942,8 +1943,10 @@ $_ret_heredoc_text"
 # bash), else sh. A worker runs in its own process, so its variables need no
 # prefix; its first line names its positional arguments.
 
-# STAGE_FILES_WORKER: run by find -exec for every regular file and symlink to
-# collect. Arguments: stage_dir root user home agent manifest files...
+# STAGE_FILES_WORKER: run by find -exec for every file to collect that is not
+# a directory: regular files, symlinks, and special files (sockets, FIFOs,
+# devices), which get a skipped_special row and are never opened.
+# Arguments: stage_dir root user home agent manifest files...
 #
 # The files are taken in chunks of at most 256 paths or about 64 KiB of
 # names, so no argument list built here is much longer than the one find
@@ -1954,7 +1957,8 @@ $_ret_heredoc_text"
 #      stat_file per file when that output does not have one line per file (a
 #      file vanished, stat failed, or there is no stat);
 #   2. plan_chunk: create the staging directories with one mkdir -p, recreate
-#      symlinks (readlink, ln -s) and decide the secret and size skips;
+#      symlinks (readlink, ln -s), classify special files (skipped_special)
+#      and decide the secret and size skips;
 #   3. copy_chunk: copy with one cp -p per run of consecutive files from the
 #      same directory; a run whose cp fails or prints anything is redone per
 #      file, so each failing file gets its own error text and log line;
@@ -1967,9 +1971,10 @@ $_ret_heredoc_text"
 # POSIX sh has no arrays, so the chunk is held in numbered variables set by
 # eval, for N from 1 to chunk_size: path_N the source path, stat_N its
 # stat_file line, status_N its manifest status (copy until pass 3 decides),
-# secret_N true or false, target_N the symlink target, copy_error_N the cp
-# error text, hash_N the sha256 of the staged copy. CAC_NO_BATCH=1, a test
-# hook, takes the per-file path in passes 1, 3 and 4.
+# type_N its manifest type, secret_N true or false, target_N the symlink
+# target, copy_error_N the cp error text, hash_N the sha256 of the staged
+# copy. CAC_NO_BATCH=1, a test hook, takes the per-file path in passes 1, 3
+# and 4.
 heredoc_var <<'EOF_STAGE_FILES_WORKER'
 stage_dir=$1; root=$2; user=$3; home=$4; agent=$5; manifest=$6; shift 6
 set -f
@@ -2000,10 +2005,14 @@ lstat_chunk() {
     done
   fi
 }
-# plan_chunk: pass 2, staging directories, symlinks, secret and size skips.
-# Reads path_N, stat_N, SECRET_GLOBS, NO_SECRETS, MAX_SIZE; sets status_N
-# (symlink, skipped_secret, skipped_size or copy), secret_N and target_N, and
-# clears copy_error_N and hash_N. last_mkdir_dir carries over between chunks.
+# plan_chunk: pass 2, staging directories, symlinks, special files, secret
+# and size skips. Reads path_N, stat_N, SECRET_GLOBS, NO_SECRETS, MAX_SIZE;
+# sets status_N (symlink, skipped_special, skipped_secret, skipped_size or
+# copy), type_N (file, symlink, or socket, fifo, device or other for a file
+# that exists but is not regular, which is never copied: cp would block on a
+# FIFO), secret_N and target_N, and clears copy_error_N and hash_N. A file
+# that vanished since find listed it stays "copy" and becomes error_copy.
+# last_mkdir_dir carries over between chunks.
 plan_chunk() {
   set --
   i=1; while [ "$i" -le "$chunk_size" ]; do
@@ -2025,11 +2034,17 @@ plan_chunk() {
       case "$home_rel" in $secret_glob) secret=true; break ;; esac
     done
     IFS=$saved_ifs
-    target=
+    target=; type=file
     if [ -L "$path" ]; then
-      status=symlink
+      status=symlink; type=symlink
       target=$(readlink "$path" 2>/dev/null)
       ln -s "$target" "$stage_dir/fs${path#"$root"}" 2>/dev/null
+    elif [ -e "$path" ] && [ ! -f "$path" ]; then
+      status=skipped_special
+      if [ -S "$path" ]; then type=socket
+      elif [ -p "$path" ]; then type=fifo
+      elif [ -b "$path" ] || [ -c "$path" ]; then type=device
+      else type=other; fi
     elif [ "$secret" = true ] && [ "${NO_SECRETS:-0}" = 1 ]; then
       status=skipped_secret
     elif to_number_var "$1" && [ "${MAX_SIZE:-0}" -gt 0 ] && [ "$_ret_number" -gt "$MAX_SIZE" ]
@@ -2038,7 +2053,8 @@ plan_chunk() {
     else
       status=copy
     fi
-    eval "status_$i=\$status; secret_$i=\$secret; target_$i=\$target; copy_error_$i=; hash_$i="
+    eval "status_$i=\$status; type_$i=\$type; secret_$i=\$secret; target_$i=\$target"
+    eval "copy_error_$i=; hash_$i="
     i=$((i + 1))
   done
 }
@@ -2137,10 +2153,9 @@ hash_chunk() {
 write_chunk_rows() {
   i=1; while [ "$i" -le "$chunk_size" ]; do
     eval "path=\$path_$i; stat_line=\$stat_$i; status=\$status_$i; secret=\$secret_$i"
-    eval "target=\$target_$i; copy_error=\$copy_error_$i; sha256=\$hash_$i"
+    eval "type=\$type_$i; target=\$target_$i; copy_error=\$copy_error_$i; sha256=\$hash_$i"
     [ -n "$stat_line" ] || stat_line='0 0 0 0 0 0 0 0'
     set -- $stat_line
-    case "$status" in symlink) type=symlink ;; *) type=file ;; esac
     case "$status" in
       collected | symlink) archive_path="fs${path#"$root"}" ;;
       *) archive_path= ;;
@@ -2401,11 +2416,11 @@ test_excluded() {
 # (not a symlink to one) is walked with collect_tree; anything else is tested
 # against ACTIVE_EXCLUDES here, since find never sees it (#107), and gets one
 # skipped_excluded row from EXCLUDED_PATHS_WORKER when it matches, or else is
-# staged by STAGE_FILES_WORKER, which records a symlink as a symlink. With
-# --inventory the same walk runs, but excluded paths are skipped without a
-# manifest row and regular files are only stat'ed by INVENTORY_FILES_WORKER.
-# Reads INVENTORY, ACTIVE_EXCLUDES, MANIFEST, STAGE, ROOT, WORKER_SH.
-# Temporaries: _cp_.
+# staged by STAGE_FILES_WORKER, which records a symlink as a symlink and a
+# socket, FIFO or device as skipped_special. With --inventory the same walk
+# runs, but excluded paths are skipped without a manifest row and regular
+# files are only stat'ed by INVENTORY_FILES_WORKER. Reads INVENTORY,
+# ACTIVE_EXCLUDES, MANIFEST, STAGE, ROOT, WORKER_SH. Temporaries: _cp_.
 collect_path() {
   _cp_user=$1; _cp_home=$2; _cp_agent=$3; _cp_match=$4
   if [ -d "$_cp_match" ] && [ ! -L "$_cp_match" ]; then
@@ -2438,12 +2453,13 @@ collect_path() {
 # entry collects them); prune ACTIVE_EXCLUDES (globs relative to HOME) with
 # one skipped_excluded row each from EXCLUDED_PATHS_WORKER, or silently with
 # --inventory; give every directory to UNREADABLE_DIRS_WORKER for its
-# error_read check; give every regular file and symlink to
-# STAGE_FILES_WORKER, or every regular file to INVENTORY_FILES_WORKER with
-# --inventory. find's own messages go to LOG. Reads NESTED_CLAIMS,
-# ACTIVE_EXCLUDES, INVENTORY, MANIFEST, STAGE, ROOT, WORKER_SH, LOG. Both
-# lists are split with globbing off, so a glob is never expanded against the
-# current directory before it reaches find (#109). Temporaries: _ct_.
+# error_read check; give every other path (regular file, symlink or special
+# file) to STAGE_FILES_WORKER, or every regular file to
+# INVENTORY_FILES_WORKER with --inventory. find's own messages go to LOG.
+# Reads NESTED_CLAIMS, ACTIVE_EXCLUDES, INVENTORY, MANIFEST, STAGE, ROOT,
+# WORKER_SH, LOG. Both lists are split with globbing off, so a glob is never
+# expanded against the current directory before it reaches find (#109).
+# Temporaries: _ct_.
 collect_tree() {
   _ct_user=$1; _ct_home=$2; _ct_agent=$3
   set -- "$4"
@@ -2479,7 +2495,7 @@ collect_tree() {
   else
     set -- "$@" -type d -exec "$WORKER_SH" -c "$UNREADABLE_DIRS_WORKER" sh \
       "$_ct_user" "$_ct_home" "$_ct_agent" "$MANIFEST" '{}' + -o
-    set -- "$@" '(' -type f -o -type l ')' -exec "$WORKER_SH" -c "$STAGE_FILES_WORKER" sh \
+    set -- "$@" ! -type d -exec "$WORKER_SH" -c "$STAGE_FILES_WORKER" sh \
       "$STAGE" "$ROOT" "$_ct_user" "$_ct_home" "$_ct_agent" "$MANIFEST" '{}' +
   fi
   find "$@" 2>>"$LOG"
@@ -3235,7 +3251,8 @@ write_summary() {
   "counts": {"collected": $(count_status collected), "symlink": $(count_status symlink), \
 "skipped_excluded": $(count_status skipped_excluded), \
 "skipped_size": $(count_status skipped_size), \
-"skipped_secret": $(count_status skipped_secret), "error_copy": $(count_status error_copy), \
+"skipped_secret": $(count_status skipped_secret), \
+"skipped_special": $(count_status skipped_special), "error_copy": $(count_status error_copy), \
 "skipped_unmatched_volume": $(count_status skipped_unmatched_volume), \
 "error_read": $(count_status error_read), "collected_bytes": $BYTES},
   "docker": {"volumes_found": $DOCKER_FOUND, "volumes_collected": $DOCKER_COLLECTED, \
@@ -3311,9 +3328,9 @@ print_result() {
   printf 'projects:   %s\n' "$(printf '%s\n' "$PROJECT_LIST" | grep -c .)"
   printf 'collected:  %s files, %s bytes (%s)\n' "$(count_status collected)" "$BYTES" \
     "$(format_human_size "$BYTES")"
-  printf 'skipped:    %s excluded, %s too large, %s secret\n' \
+  printf 'skipped:    %s excluded, %s too large, %s secret, %s special\n' \
     "$(count_status skipped_excluded)" "$(count_status skipped_size)" \
-    "$(count_status skipped_secret)"
+    "$(count_status skipped_secret)" "$(count_status skipped_special)"
   _pr_copy_errors=$(count_status error_copy); _pr_read_errors=$(count_status error_read)
   printf 'errors:     %s (%s error_copy, %s error_read)\n' \
     "$(( _pr_copy_errors + _pr_read_errors ))" "$_pr_copy_errors" "$_pr_read_errors"

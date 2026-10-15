@@ -10,6 +10,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-10-15
+
+### Added
+
+- Manifest status `skipped_special` for a special file: neither a regular
+  file, a directory nor a symbolic link, such as the Unix domain sockets
+  Codex CLI 0.162.1 keeps under `.codex`. The file is never opened or
+  copied; the row keeps its size, times and `secret` flag and has an empty
+  `archive_path`, `sha256`, `target` and `error`. This is a new status
+  value in `manifest.jsonl` ([#120]).
+- Manifest `type` values for a `skipped_special` row: `socket`, `fifo`,
+  `device` (block or character) and `other`. The sh collector names the
+  kind with `test -S`, `-p`, `-b` and `-c`; the PowerShell collector names
+  it from `UnixMode` under PowerShell 7.1 and later on Linux and macOS, and
+  records a Windows reparse point that is neither a symbolic link nor a
+  junction (an AF_UNIX socket) as `other` ([#120]).
+- `collection.json` `counts.skipped_special`, between `skipped_secret`
+  and `error_copy` in both collectors ([#120]).
+
+### Changed
+
+- The stdout `skipped:` line ends with the number of special files:
+  `skipped:    N excluded, N too large, N secret, N special` ([#120]).
+- The sh walk gives every path that is not a directory to the stage
+  worker (`find ! -type d`), not only regular files and symlinks, so a
+  socket or FIFO under a matched directory gets a `skipped_special` row
+  instead of no row at all. `--inventory` still counts regular files only
+  ([#120]).
+- The PowerShell collector records a Windows reparse point as `symlink`
+  only when its `LinkType` is `SymbolicLink` or `Junction`. Up to 1.12.0
+  every reparse point was a `symlink`, so an AF_UNIX socket under `.codex`
+  got a `symlink` row whose `target` was its own path and was recreated
+  in the archive as a link to itself ([#120]).
+
 ## [1.12.0] - 2026-10-15
 
 ### Added
@@ -738,7 +772,8 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
   overridden by `--full`; credential files collected and flagged
   `secret: true` by default.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.12.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.13.0...HEAD
+[1.13.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.12.0...collector-v1.13.0
 [1.12.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.11.0...collector-v1.12.0
 [1.11.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.10.3...collector-v1.11.0
 [1.10.3]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.10.2...collector-v1.10.3
@@ -758,6 +793,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121
+[#120]: https://github.com/seanthegeek/doubleagent/issues/120
 [#116]: https://github.com/seanthegeek/doubleagent/issues/116
 [#115]: https://github.com/seanthegeek/doubleagent/issues/115
 [#114]: https://github.com/seanthegeek/doubleagent/issues/114

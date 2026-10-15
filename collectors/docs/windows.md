@@ -53,7 +53,22 @@ one beside it name the archiver that wrote it.
 
 ## Symlinks and reparse points
 
-Symlinks and other reparse points are recreated in the staging directory as
+A reparse point is an NTFS entry whose contents are interpreted by a file
+system filter named by its reparse tag; symbolic links and junctions are
+the common ones. The collector reads the item's `LinkType`: a reparse point
+whose `LinkType` is `SymbolicLink` or `Junction` is a link and gets a
+`symlink` row, and any other reparse point, whose `LinkType` is empty, is a
+special file with a `skipped_special` row of `type` `other`, never opened
+or followed. Windows PowerShell 5.1 exposes no reparse tag, so the kind
+cannot be named. The case seen is the AF_UNIX (Unix domain) socket, reparse
+tag `IO_REPARSE_TAG_AF_UNIX` (`0x80000023`), which Codex CLI 0.162.1 keeps
+under `.codex\app-server-control` and `.codex\app-server-daemon` while
+its app-server daemon runs; collector 1.12.0 recorded each as a `symlink`
+whose `target` was its own path in extended-length form. When `LinkType`
+cannot be read at all, the reparse point is still treated as a link. See
+[Special files](output.md#special-files).
+
+Symlinks and junctions are recreated in the staging directory as
 symbolic links with the target string exactly as `Target` reports it, as the
 sh collector does with `ln -s`, so a relative target stays relative and a
 dangling one is kept. A junction is recreated as a directory symlink to the
@@ -146,8 +161,9 @@ profile and partitions, and also held its package's settings hive
 bundled Codex's `.codex\.sqlite-maintenance.lock` and
 `.codex\thread-writer-locks\<uuid>.lock` files. The lock files are
 empty, so only the cookie store and the settings hive are lost; close the app or collect from
-an image to get it. Reparse points (symlinks and junctions) are recorded
-with their target and never followed.
+an image to get it. Symlinks and junctions are recorded
+with their target and never followed; other reparse points, such as
+AF_UNIX sockets, get a `skipped_special` row.
 
 A file a running process holds open and keeps writing can have a stale
 length in its directory entry: NTFS updates the length it lists only
@@ -160,7 +176,7 @@ reads the real bytes, and from collector 1.12.0 a `collected` row's
 `size` is the number of bytes copied, so it matches the `sha256` and the
 archived member; earlier versions wrote the stale listed length. A
 `skipped_size` decision, and the size of a `skipped_size`,
-`skipped_secret`, `symlink`, `error_copy` or excluded row, still use the
+`skipped_secret`, `skipped_special`, `symlink`, `error_copy` or excluded row, still use the
 listed length (see the `size` field in [output.md](output.md#manifest)).
 
 Every file system call addresses its path in the extended-length form,

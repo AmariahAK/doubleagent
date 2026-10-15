@@ -933,6 +933,29 @@ printf 'cookies\n' >"$B/Library/HTTPStorages/com.openai.codex.binarycookies"
 printf 'plist\n' >"$U121/Codex Computer Use.app/Contents/Info.plist"
 printf '{}\n' >"$U121/config.json"
 
+# 2026-10-15 special files (#120)
+# Codex CLI 0.162.1 keeps Unix domain sockets under .codex
+# (app-server-daemon/daemon-updater.sock, ipc/ipc.sock). A socket and a FIFO
+# each get one skipped_special row naming their kind and are never opened.
+# The FIFO is sh only: PowerShell cannot create one. The socket is bound with
+# python3 from inside its directory, since a full path under a long TMPDIR
+# can pass the 104-byte (macOS) or 108-byte (Linux) socket path limit; when
+# python3 is absent or the bind fails, the socket checks are skipped. Checks
+# follow the default run below; the socket is in smoke.ps1 under alice.
+S120="$ROOT/home/alice/.codex"
+mkdir -p "$S120/ipc" "$S120/app-server-daemon"
+mkfifo "$S120/ipc/ipc.fifo"
+SOCK120=0
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import os,socket,sys
+os.chdir(os.path.dirname(sys.argv[1]))
+socket.socket(socket.AF_UNIX).bind(os.path.basename(sys.argv[1]))' \
+  "$S120/app-server-daemon/daemon-updater.sock" 2>/dev/null &&
+  [ -S "$S120/app-server-daemon/daemon-updater.sock" ]; then
+  SOCK120=1
+else
+  printf 'note: no Unix domain socket could be created; socket checks skipped\n'
+fi
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1241,6 +1264,17 @@ check "#121 ChatGPT macOS preferences collected" "row \"$B/Library/Preferences/c
 check "#121 ChatGPT macOS binary cookies flagged secret" "row \"$B/Library/HTTPStorages/com.openai.codex.binarycookies\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"secret\":true,\"status\":\"collected\"'"
 check "#121 ChatGPT computer-use group container collected" "row \"$G121/IPC/computeruse.sock.lock\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"status\":\"collected\"'"
 check "#121 Codex computer-use app bundle excluded, config collected" "[ \"\$(status_of \"$U121/Codex Computer Use.app\")\" = skipped_excluded ] && ! grep -q 'Computer Use.app/Contents/Info.plist\"' \"\$M\" && row \"$U121/config.json\" | grep -q '\"agent\":\"codex-cli\".*\"status\":\"collected\"'"
+# 2026-10-15 special files (#120)
+# shellcheck disable=SC2034 # read by the eval'd check strings
+N120=$((1 + SOCK120))
+check "#120 FIFO recorded as skipped_special, not copied" "row \"$S120/ipc/ipc.fifo\" | grep -q '\"archive_path\":\"\",\"type\":\"fifo\".*\"sha256\":\"\",\"secret\":false,\"status\":\"skipped_special\",\"target\":\"\",\"error\":\"\"'"
+if [ "$SOCK120" = 1 ]; then
+  check "#120 socket recorded as skipped_special, not copied" "row \"$S120/app-server-daemon/daemon-updater.sock\" | grep -q '\"archive_path\":\"\",\"type\":\"socket\".*\"sha256\":\"\",\"secret\":false,\"status\":\"skipped_special\",\"target\":\"\",\"error\":\"\"'"
+fi
+check "#120 special files not in the archive" "! tar -tzf \"\$A\" | grep -q 'ipc.fifo\\|daemon-updater.sock'"
+check "#120 summary counts skipped_special" "grep -q '\"skipped_special\": $N120,' \"\$S\""
+check "#120 stdout skipped line counts special files" "grep -q '^skipped:    [0-9]* excluded, [0-9]* too large, [0-9]* secret, $N120 special\$' \"$OUT/default.stdout\""
+check "#120 no symlink row targets its own path" "! grep '\"status\":\"symlink\"' \"\$M\" | sed 's/.*\"path\":\"\([^\"]*\)\".*\"target\":\"\([^\"]*\)\".*/\1|\2/' | grep -q '^\\(.*\\)|\\1\$'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

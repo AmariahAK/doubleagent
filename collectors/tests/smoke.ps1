@@ -908,6 +908,58 @@ Mk 'Users/alice/Library/HTTPStorages/com.openai.codex.binarycookies' "cookies`n"
 Mk "$g121/IPC/computeruse.sock.lock" ''
 Mk "$u121/Codex Computer Use.app/Contents/Info.plist" "plist`n"
 Mk "$u121/config.json" "{}`n"
+
+# 2026-10-15 special files (#120)
+# Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
+# is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
+# which 1.12.0 recorded as a symlink to itself. The socket gets one
+# skipped_special row, type 'other' on Windows (PowerShell exposes no
+# reparse tag) and 'socket' elsewhere. UnixDomainSocketEndPoint exists only
+# in PowerShell 7 (.NET Core); under 5.1 a minimal EndPoint subclass builds
+# the address. The socket is bound from inside its directory, so a long temp
+# path cannot pass the socket path limit, and kept open until the checks
+# after the default run. The FIFO of smoke.sh is not here: PowerShell cannot
+# create one. When no socket can be bound, the socket checks are skipped.
+$sock120Rel = 'Users/alice/.codex/app-server-daemon/daemon-updater.sock'
+$sock120 = $null
+$endPoint120Source = @'
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+public class Cac120UnixEndPoint : EndPoint {
+  private readonly string path;
+  public Cac120UnixEndPoint(string path) { this.path = path; }
+  public override AddressFamily AddressFamily { get { return AddressFamily.Unix; } }
+  public override SocketAddress Serialize() {
+    byte[] bytes = Encoding.UTF8.GetBytes(path);
+    SocketAddress address = new SocketAddress(AddressFamily.Unix, 110);
+    for (int i = 0; i < bytes.Length; i++) { address[2 + i] = bytes[i]; }
+    return address;
+  }
+  public override EndPoint Create(SocketAddress address) { return new Cac120UnixEndPoint(path); }
+}
+'@
+try {
+  $dir120 = [System.IO.Path]::GetDirectoryName((P $sock120Rel))
+  [void][System.IO.Directory]::CreateDirectory($dir120)
+  $endPoint120Type = 'System.Net.Sockets.UnixDomainSocketEndPoint' -as [type]
+  if (-not $endPoint120Type) {
+    if (-not ('Cac120UnixEndPoint' -as [type])) { Add-Type -TypeDefinition $endPoint120Source }
+    $endPoint120Type = 'Cac120UnixEndPoint' -as [type]
+  }
+  $socketArgs120 = @([System.Net.Sockets.AddressFamily]::Unix,
+    [System.Net.Sockets.SocketType]::Stream, [System.Net.Sockets.ProtocolType]::Unspecified)
+  $sock120 = New-Object System.Net.Sockets.Socket -ArgumentList $socketArgs120
+  $cwd120 = [Environment]::CurrentDirectory
+  try {
+    [Environment]::CurrentDirectory = $dir120
+    $sock120.Bind((New-Object $endPoint120Type.FullName -ArgumentList 'daemon-updater.sock'))
+  } finally { [Environment]::CurrentDirectory = $cwd120 }
+} catch {
+  if ($sock120) { $sock120.Close() }
+  $sock120 = $null
+  Write-Output "note: no Unix domain socket could be created ($($_.Exception.Message)); socket checks skipped"
+}
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1320,6 +1372,19 @@ Check '#121 ChatGPT macOS preferences collected' { Is113 'Users/alice/Library/Pr
 Check '#121 ChatGPT macOS binary cookies flagged secret' { Is113 'Users/alice/Library/HTTPStorages/com.openai.codex.binarycookies' 'chatgpt-desktop' $true }
 Check '#121 ChatGPT computer-use group container collected' { Is113 "$g121/IPC/computeruse.sock.lock" 'chatgpt-desktop' $false }
 Check '#121 Codex computer-use app bundle excluded, config collected' { (StatusOf "$u121/Codex Computer Use.app") -eq 'skipped_excluded' -and (NoRow83 'Computer Use.app/Contents/Info.plist') -and (Is113 "$u121/config.json" 'codex-cli' $false) }
+# 2026-10-15 special files (#120)
+$n120 = 0
+if ($sock120) {
+  $n120 = 1
+  $type120 = 'socket'; if ($env:OS -eq 'Windows_NT') { $type120 = 'other' }
+  $r = Row $sock120Rel
+  Check '#120 socket recorded as skipped_special, not copied' { $r -and $r.archive_path -eq '' -and $r.type -eq $type120 -and $r.sha256 -eq '' -and $r.secret -eq $false -and $r.status -eq 'skipped_special' -and $r.target -eq '' -and $r.error -eq '' }
+  $sock120.Close()
+}
+Check '#120 special files not in the archive' { -not (ArchiveEntries | Where-Object { $_ -like '*ipc.fifo' -or $_ -like '*daemon-updater.sock' }) }
+Check '#120 summary counts skipped_special' { $sum.counts.skipped_special -eq $n120 }
+Check '#120 stdout skipped line counts special files' { $script:stdout -match "(?m)^skipped:    \d+ excluded, \d+ too large, \d+ secret, $n120 special\s*$" }
+Check '#120 no symlink row targets its own path' { -not ($script:Rows | Where-Object { $_.status -eq 'symlink' -and ($_.target -replace '^\\\\\?\\', '' -replace '[\\/]+', '/') -eq ($_.path -replace '[\\/]+', '/') }) }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

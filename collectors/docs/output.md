@@ -19,8 +19,10 @@ is in the [README](../README.md#quick-start)):
 - `projects` counts the project directories collected from.
 - `collected` counts the manifest rows with status `collected` and their
   bytes, followed by the same total in binary units.
-- `skipped` counts the `skipped_excluded`, `skipped_size` and
-  `skipped_secret` rows.
+- `skipped` counts the `skipped_excluded`, `skipped_size`,
+  `skipped_secret` and `skipped_special` rows, in that order, as
+  `N excluded, N too large, N secret, N special` (the `special` count
+  since collector 1.13.0).
 - `errors` is the number of `error_copy` and `error_read` rows together,
   followed by each of the two counts in parentheses.
 - The `docker:` line appears only when a Docker or Podman volume directory
@@ -119,7 +121,7 @@ Each manifest row is one JSON object:
 | `agent` | Catalog agent name. For a file found through the project catalog, the agent the `PROJECT_CATALOG` line names: the agent that owns the file (`claude-code` for a project's `.claude/`), or `project` for a file several agents read (`AGENTS.md`, `.mcp.json` and the other `project` lines in `--list`); before collector 1.12.0 every project row had `project`. For a volume row, the `DOCKER_VOLUMES` agent of the matched volume. Empty for `skipped_unmatched_volume` and for the `error_read` row of a home, project or `-p` directory. |
 | `path` | The original full path, including the `-r` root in image mode. |
 | `archive_path` | Where the file is in the archive: `fs/<original path>`. Set for `collected` rows and for `symlink` rows whose link is in the archive: always from the sh collector, and from the PowerShell collector when the link was recreated and the archive is a tar (see [windows.md](windows.md#symlinks-and-reparse-points)). Empty otherwise. |
-| `type` | `file`, `symlink`, or `dir` (an excluded directory, an unmatched volume, or an `error_read` directory). |
+| `type` | `file`, `symlink`, or `dir` (an excluded directory, an unmatched volume, or an `error_read` directory). A `skipped_special` row names the kind of special file instead: `socket` (a Unix domain socket), `fifo` (a named pipe), `device` (a block or character device) or `other`; see [Special files](#special-files). |
 | `size` | Bytes. For a `collected` row from the PowerShell collector, the number of bytes copied, the length of the archived copy that `sha256` covers; for every other file and symlink row, and for every row from the sh collector, the length `lstat` or the directory listing reported before the copy. On Windows that pre-copy length is the file's directory entry, which NTFS updates only when a handle on the file closes, so it can be stale for a file a running process holds open and writes: a `skipped_size` decision and a `skipped_excluded` file row use it as it was. `0` for an `error_read` row. For any other `dir` row, the size of everything under it: `du -sk` × 1024 from the sh collector, the sum of file lengths from the PowerShell collector. |
 | `mtime`, `atime`, `ctime`, `btime` | Epoch seconds, read before the copy. `btime` (creation) is `0` where the platform cannot report it, and `ctime` is `0` from the PowerShell collector. All four are `0` for an excluded directory from the sh collector, for an unmatched volume, for an `error_read` row of a `-p` value that does not exist, and on a host with neither GNU nor BSD `stat` (where `uid`, `gid` and `mode` are `0` too). |
 | `uid`, `gid`, `mode` | Numeric owner and group, and the permission bits as an octal string (`"644"`), from `lstat`. `0`, `0` and `""` from the PowerShell collector. |
@@ -150,10 +152,11 @@ escapes; the parsed values are the same.
 | Status | Meaning |
 | --- | --- |
 | `collected` | Copied, hashed and archived. |
-| `symlink` | A symbolic link (on Windows any reparse point, including junctions), recorded with its target and never followed. Both collectors recreate the link in the archive with its target as stored. The PowerShell collector cannot where Windows refuses to create it or where the archive is a `.zip`; the row then has no `archive_path` and `error` says why. |
+| `symlink` | A symbolic link (on Windows a symbolic link or junction: a reparse point whose `LinkType` is `SymbolicLink` or `Junction`), recorded with its target and never followed. Both collectors recreate the link in the archive with its target as stored. The PowerShell collector cannot where Windows refuses to create it or where the archive is a `.zip`; the row then has no `archive_path` and `error` says why. |
 | `skipped_excluded` | Matched an `EXCLUDES` pattern. An excluded directory is one `dir` row with its total size; an excluded file, found in a walk or matched by a catalog entry itself, is one `file` row with its size. An excluded symlink is not a `symlink` row: it gets the same `file` row, or a `dir` row when it points to a directory. |
 | `skipped_size` | Larger than `--max-file-size`. |
 | `skipped_secret` | A credential file left out by `--no-secrets`. |
+| `skipped_special` | A special file: neither a regular file, a directory nor a symbolic link, such as the Unix domain sockets Codex CLI keeps under `.codex`. Never opened or copied; `type` names the kind, `size` and the times are as `lstat` (sh) or `Get-Item` (PowerShell) reported them, `archive_path`, `sha256`, `target` and `error` are empty, and `secret` is set as for any path. See [Special files](#special-files). Since collector 1.13.0. |
 | `error_copy` | Could not be read or copied; see `error`. |
 | `skipped_unmatched_volume` | A Docker or Podman volume that matched no `DOCKER_VOLUMES` line: one `dir` row with its size, `user` `docker`, an empty `agent`, and `home` and `path` both the volume's `_data`. |
 | `error_read` | A directory that could not be listed or entered: a home, a project directory, a `-p` value that is not a directory, or a directory inside a walk (see [privileges.md](privileges.md)). One `dir` row with size `0`, no `archive_path` and the reason in `error`; nothing under it is collected. |
@@ -161,9 +164,30 @@ escapes; the parsed values are the same.
 ### Check order
 
 A path that was not excluded is checked first for being a symlink, then
-for `--no-secrets`, then for size. A symlink is therefore never skipped for
-size, and a credential file is `skipped_secret` under `--no-secrets`
-whatever its size.
+for being a special file, then for `--no-secrets`, then for size. A
+symlink is therefore never skipped for size, a special file is
+`skipped_special` even when it matches a secret pattern under
+`--no-secrets` (its `secret` field still says so), and a credential file
+is `skipped_secret` under `--no-secrets` whatever its size.
+
+### Special files
+
+A socket, FIFO (named pipe) or device is never opened, because reading one can block
+the collector (a FIFO waits for a writer) or read something that is not a
+file's contents; it gets one `skipped_special` row, so it is recorded
+rather than silently left out. How each collector names the kind in
+`type`:
+
+| Collector | How the kind is found | `type` values |
+| --- | --- | --- |
+| sh | Every path the walk finds that is not a directory goes to the stage worker (`find ! -type d`). After the symlink test, a path that exists and is not a regular file (`test -f`) is tested with `test -S`, `-p`, then `-b` or `-c`. | `socket`, `fifo`, `device`, else `other` |
+| PowerShell on Windows | A reparse point whose `LinkType` is neither `SymbolicLink` nor `Junction`. Windows PowerShell 5.1 exposes no reparse tag, so the kind cannot be named; the case seen is the AF_UNIX (Unix domain) socket, reparse tag `IO_REPARSE_TAG_AF_UNIX` (`0x80000023`), which collector 1.12.0 recorded as a `symlink` whose target was its own path. A reparse point whose `LinkType` cannot be read is still recorded as a `symlink`. | `other` |
+| PowerShell 7 on Linux and macOS | The first character of the item's `UnixMode` property (PowerShell 7.1 and later): `s`, `p`, `b` or `c`. Without `UnixMode` the collector cannot tell a special file from a regular one and behaves as before 1.13.0: it tries the copy, which fails for a socket (an `error_copy` row) and can wait for a writer on a FIFO. | `socket`, `fifo`, `device` |
+
+Up to collector 1.12.0 the sh walk passed only regular files and symlinks
+to the stage worker, so a socket or FIFO under a matched directory had no
+manifest row at all. `--inventory` and `-Inventory` leave the special files
+they recognise out of the file counts.
 
 ## collection.json
 
@@ -184,7 +208,7 @@ whatever its size.
 | `users`, `homes` | Parallel lists of every user and home scanned, including homes with no agent state. |
 | `users_with_artifacts` | The users whose home produced at least one manifest row, in the order of `users`. Rows from discovered projects and Docker volumes do not count. The stdout `users:` line is its length. |
 | `projects` | The project directories collected from, discovered or given with `-p`. A `-p` value that is not a directory is left out and has an `error_read` row instead. |
-| `counts` | Rows per status (`collected`, `symlink`, `skipped_excluded`, `skipped_size`, `skipped_secret`, `error_copy`, `skipped_unmatched_volume`, `error_read`) and `collected_bytes`. |
+| `counts` | Rows per status (`collected`, `symlink`, `skipped_excluded`, `skipped_size`, `skipped_secret`, `skipped_special`, `error_copy`, `skipped_unmatched_volume`, `error_read`) and `collected_bytes`. `skipped_special` since collector 1.13.0. |
 | `docker` | `volumes_found`, `volumes_collected`, `unreadable` and `docker_desktop`; see [docker.md](docker.md). |
 | `notes` | Messages about what could not be collected, such as an unreadable or symlinked Docker volume directory, Docker Desktop data, or (PowerShell) symlinks that are not in the archive and why, and (PowerShell) each archiver that failed and the one that was used instead, such as `tar.exe failed (exit code 0xC0000005); fell back to PowerShell tar writer`. |
 | `archive` | The file name of the archive written: `.tar.gz`, `.tar` after the sh collector's uncompressed fallback, or `.zip` from the PowerShell collector after both `tar.exe` and its PowerShell tar writer failed. |

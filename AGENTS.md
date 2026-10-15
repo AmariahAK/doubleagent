@@ -217,7 +217,8 @@ inside another tool's directory.
 **Manifest schema is an interface.** The analyzer and analysts depend on
 `manifest.jsonl` and `collection.json`. Fields, status values
 (`collected`, `symlink`, `skipped_excluded`, `skipped_size`, `skipped_secret`,
-`error_copy`, `skipped_unmatched_volume`) and the `fs/<original path>` archive layout are documented in
+`skipped_special`, `error_copy`, `skipped_unmatched_volume`, `error_read`) and the
+`fs/<original path>` archive layout are documented in
 [`collectors/docs/output.md`](collectors/docs/output.md). Add fields if needed, but do not rename or remove them
 without updating that page and noting it in the commit message.
 

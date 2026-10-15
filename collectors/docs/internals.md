@@ -114,7 +114,7 @@ The four workers:
 
 | Worker | `find` gives it | Arguments | Writes |
 | --- | --- | --- | --- |
-| `STAGE_FILES_WORKER` | every regular file and symlink | `stage_dir root user home agent manifest files...` | the staged copies, symlinks and one manifest row per file |
+| `STAGE_FILES_WORKER` | every path that is not a directory (`! -type d`): regular files, symlinks and special files | `stage_dir root user home agent manifest files...` | the staged copies, symlinks and one manifest row per file |
 | `EXCLUDED_PATHS_WORKER` | every pruned `EXCLUDES` match; also run by `collect_path` for an excluded match that is not a directory | `root user home agent manifest paths...` | one `skipped_excluded` row each: a directory's size from `du -sk` with its other metadata 0, a file's from `stat_file` |
 | `UNREADABLE_DIRS_WORKER` | every directory | `user home agent manifest dirs...` | one `error_read` row for each directory `get_dir_read_error_var` says cannot be listed or entered |
 | `INVENTORY_FILES_WORKER` | every regular file, under `--inventory` | `agent files...` | `F\|agent\|size\|mtime` lines on stdout, nothing on disk |
@@ -130,8 +130,12 @@ this order, which keeps the per-file order of the forensic rules:
    or there is no `stat`), it falls back to `stat_file` per file.
 2. `plan_chunk` creates the staging directories with one `mkdir -p`,
    recreates symlinks with `readlink` and `ln -s`, tests `SECRET_GLOBS`,
-   and marks each file `symlink`, `skipped_secret`, `skipped_size` or
-   `copy`.
+   and marks each file `symlink`, `skipped_special`, `skipped_secret`,
+   `skipped_size` or `copy`. A path that exists and is neither a symlink
+   nor a regular file is `skipped_special`, its `type_N` set to `socket`,
+   `fifo`, `device` or `other` by `test -S`, `-p`, `-b` and `-c`; it is
+   never copied (see
+   [Special files in `output.md`](output.md#special-files)).
 3. `copy_chunk` gives each run of consecutive `copy` files from one
    directory to `copy_run`, which copies a run of more than one file with
    one `cp -p`; a run whose `cp` fails or prints anything is redone per
@@ -147,10 +151,11 @@ this order, which keeps the per-file order of the forensic rules:
 
 POSIX sh has no arrays, so a chunk is held in numbered variables set with
 `eval`, for N from 1 to `chunk_size`: `path_N` (the source path), `stat_N`
-(its `stat_file` line), `status_N`, `secret_N`, `target_N` (a symlink's
-target), `copy_error_N` and `hash_N`. `CAC_NO_BATCH=1`, a test hook, makes
-passes 1, 3 and 4 and `INVENTORY_FILES_WORKER` take the per-file path; the
-manifest is the same either way.
+(its `stat_file` line), `status_N`, `type_N` (the manifest `type`),
+`secret_N`, `target_N` (a symlink's target), `copy_error_N` and `hash_N`.
+`CAC_NO_BATCH=1`, a test hook, makes passes 1, 3 and 4 and
+`INVENTORY_FILES_WORKER` take the per-file path; the manifest is the same
+either way.
 
 **Why PowerShell has none.** The PowerShell collector walks with
 `Get-ChildItem` in its own process, and `Add-CollectedTree` calls
@@ -482,6 +487,7 @@ PowerShell functions that do their job.
 | Why a directory cannot be walked | `get_dir_read_error`, `get_dir_read_error_var` | `Get-DirReadError` |
 | Write an `error_read` row | `write_read_error_row` | `Write-ReadErrorRow` |
 | Stage one file: metadata, symlink or copy, hash, row | `STAGE_FILES_WORKER` | `Add-CollectedFile` |
+| Classify a path: file, symlink or special file (`socket`, `fifo`, `device`, `other`) | the `type_N` tests in `plan_chunk` | `Get-ManifestType` |
 | Record an excluded path | `EXCLUDED_PATHS_WORKER` | `Add-ExcludedPath` |
 | Count one file under inventory | `INVENTORY_FILES_WORKER` | `Add-InventoryFile` |
 | Expand one glob under a base | `expand_glob` | `Expand-Glob` |

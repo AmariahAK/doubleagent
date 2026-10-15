@@ -76,7 +76,7 @@ param(
 
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Continue'
-$ToolVersion = '1.12.0'
+$ToolVersion = '1.13.0'
 $TOOL = 'collect-agent-artifacts'
 
 # ===========================================================================
@@ -115,7 +115,9 @@ $TOOL = 'collect-agent-artifacts'
 # Add-CollectedFile reads a file's metadata before copying it, copies it
 # with shared access into the staging tree under fs/<original path>, hashes
 # the staged copy rather than the source, and writes its manifest row
-# through Write-ManifestRow. Then collection.json summarises the run and
+# through Write-ManifestRow; it recreates a symbolic link or junction
+# instead of following it, and records a socket, FIFO, device or other
+# reparse point without opening it. Then collection.json summarises the run and
 # the staging tree is archived (tar.exe, else the PowerShell tar writer,
 # else a zip). Docker and Podman named volumes (DOCKER_VOLUMES) are
 # collected whole, each as one match; the discovered project directories
@@ -2045,6 +2047,37 @@ function Test-IsLink([string]$path) {
   } catch { return $false }
 }
 
+# Takes a FileSystemInfo; returns its manifest type: 'symlink' for a symbolic
+# link or junction, 'file' for a regular file, or for a special file, which
+# is never copied, 'socket', 'fifo', 'device' or 'other'. On Windows, a
+# reparse point whose LinkType is neither SymbolicLink nor Junction (an
+# AF_UNIX socket, #120) is 'other': PowerShell 5.1 exposes no reparse tag to
+# name it by. A reparse point whose LinkType cannot be read stays 'symlink'.
+# Elsewhere the first character of UnixMode (PowerShell 7.1 and later) names
+# the kind; without UnixMode every non-link is 'file'.
+function Get-ManifestType($item) {
+  if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+    $linkType = $null
+    try {
+      $linkProperty = $item.PSObject.Properties['LinkType']
+      if ($linkProperty) { $linkType = [string]$linkProperty.Value }
+    } catch { }
+    if ($null -eq $linkType -or $linkType -eq 'SymbolicLink' -or $linkType -eq 'Junction') {
+      return 'symlink'
+    }
+    return 'other'
+  }
+  $unixMode = ''
+  try {
+    $modeProperty = $item.PSObject.Properties['UnixMode']
+    if ($modeProperty) { $unixMode = [string]$modeProperty.Value }
+  } catch { }
+  if ($unixMode.StartsWith('s')) { return 'socket' }
+  if ($unixMode.StartsWith('p')) { return 'fifo' }
+  if ($unixMode.StartsWith('b') -or $unixMode.StartsWith('c')) { return 'device' }
+  return 'file'
+}
+
 # Takes a directory; returns whether its entries can be listed.
 function Test-DirReadable([string]$path) {
   try {
@@ -2063,7 +2096,8 @@ function Test-DirReadable([string]$path) {
 # Rows per status, and the bytes of collected files.
 $script:Counts = @{
   collected = 0; symlink = 0; skipped_excluded = 0; skipped_size = 0; skipped_secret = 0
-  error_copy = 0; skipped_unmatched_volume = 0; error_read = 0; bytes = [int64]0
+  skipped_special = 0; error_copy = 0; skipped_unmatched_volume = 0; error_read = 0
+  bytes = [int64]0
 }
 # Homes (and other bases) that gave at least one manifest row.
 $script:RowHomes = @{}
@@ -2374,8 +2408,10 @@ function Add-StagedLink($item, [string]$stagePath) {
 }
 
 # Takes the user, home, agent and the file's Get-Item (from an extended path
-# on Windows); stages it and writes its manifest row. A reparse point is
-# recreated as a link (status symlink); a secret under -NoSecrets
+# on Windows); stages it and writes its manifest row. A symbolic link or
+# junction is recreated as a link (status symlink); a socket, FIFO, device or
+# other reparse point (skipped_special, typed by Get-ManifestType) is never
+# opened; a secret under -NoSecrets
 # (skipped_secret) and a file over -MaxFileSizeMB (skipped_size) get a row
 # and no copy; anything else is copied and hashed (collected, or error_copy
 # with the exception message). A collected row's size is the byte count
@@ -2385,9 +2421,10 @@ function Add-StagedLink($item, [string]$stagePath) {
 # here starts a pipeline or another process.
 function Add-CollectedFile([string]$user, [string]$homeDir, [string]$agent, $item) {
   if ($Inventory) {
-    # Regular files only: reparse points are neither followed nor counted.
-    $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
-    if (-not $isLink -and -not $item.PSIsContainer) { Add-InventoryFile $agent $item }
+    # Regular files only: links and special files are neither followed nor counted.
+    if ((Get-ManifestType $item) -eq 'file' -and -not $item.PSIsContainer) {
+      Add-InventoryFile $agent $item
+    }
     return
   }
   # $extendedPath opens past 260 characters and $path is what the row records.
@@ -2397,7 +2434,6 @@ function Add-CollectedFile([string]$user, [string]$homeDir, [string]$agent, $ite
   $archiveRel = Get-ArchivePath $path
   $stageRel = $script:Sep + $archiveRel.Replace('\', $script:Sep).Replace('/', $script:Sep)
   $stagePath = $script:Stage + $stageRel; $extendedStagePath = $script:XStage + $stageRel
-  $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
   $size = [int64]0; if (-not $item.PSIsContainer) { try { $size = [int64]$item.Length } catch { } }
   try {
     $mtime = [DateTimeOffset]::new($item.LastWriteTimeUtc).ToUnixTimeSeconds()
@@ -2410,10 +2446,13 @@ function Add-CollectedFile([string]$user, [string]$homeDir, [string]$agent, $ite
   $owner = Get-OwnerName $path
   $attributes = [string]$item.Attributes
   $secret = $script:SecretRegex.IsMatch($homeRel)
-  $type = 'file'; $status = 'collected'; $sha256 = ''; $target = ''; $errorText = ''
-  if ($isLink) {
-    $type = 'symlink'; $status = 'symlink'; $target = Get-LinkTarget $item
+  $type = Get-ManifestType $item
+  $status = 'collected'; $sha256 = ''; $target = ''; $errorText = ''
+  if ($type -eq 'symlink') {
+    $status = 'symlink'; $target = Get-LinkTarget $item
     $errorText = Add-StagedLink $item $stagePath
+  } elseif ($type -ne 'file') {
+    $status = 'skipped_special'
   } elseif ($secret -and $NoSecrets) {
     $status = 'skipped_secret'
   } elseif ($script:MaxSize -gt 0 -and $size -gt $script:MaxSize) {
@@ -3901,7 +3940,8 @@ function Initialize-Summary {
     counts = [ordered]@{
       collected = $counts.collected; symlink = $counts.symlink
       skipped_excluded = $counts.skipped_excluded; skipped_size = $counts.skipped_size
-      skipped_secret = $counts.skipped_secret; error_copy = $counts.error_copy
+      skipped_secret = $counts.skipped_secret; skipped_special = $counts.skipped_special
+      error_copy = $counts.error_copy
       skipped_unmatched_volume = $counts.skipped_unmatched_volume; error_read = $counts.error_read
       collected_bytes = $counts.bytes
     }
@@ -4098,7 +4138,8 @@ function Write-Result {
   $collectedSize = Format-HumanSize $counts.bytes
   Write-Output "collected:  $($counts.collected) files, $($counts.bytes) bytes ($collectedSize)"
   $skipped = "$($counts.skipped_excluded) excluded, $($counts.skipped_size) too large"
-  Write-Output "skipped:    $skipped, $($counts.skipped_secret) secret"
+  $skipped += ", $($counts.skipped_secret) secret, $($counts.skipped_special) special"
+  Write-Output "skipped:    $skipped"
   $errorCount = $counts.error_copy + $counts.error_read
   $errorKinds = "$($counts.error_copy) error_copy, $($counts.error_read) error_read"
   Write-Output "errors:     $errorCount ($errorKinds)"
