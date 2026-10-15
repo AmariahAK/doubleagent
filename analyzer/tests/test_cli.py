@@ -506,12 +506,17 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # /srv/proj" (a rewind removed it from the session), the Qwen logs.json
 # model_switch entry (a `system` row whose text no session row has). The Muse
 # tui-history.jsonl prompt records no time and matches its session's prompt
-# on text alone.
+# on text alone. Hermes: the 12:00:04 state snapshot's six rows of the main
+# session pair with the live state.db's, its four rows of the pruned session
+# with the 11:00:00 snapshot's earlier copy, and the main session's divert
+# repeats the screenshot prompt; the pruned session (once), the two snapshot
+# rows and "and the hidden files?" are kept.
 FIXTURE_DEDUPLICATED = {
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
     "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
     "gemini-cli": 1,  # "list files in src"
+    "hermes": 11,  # snapshot copies and the divert's screenshot prompt
     "muse-code": 1,  # "fix the failing test", no timestamp
     "open-interpreter": 1,  # "list the files"
     "qwen-code": 1,  # "run the tests"

@@ -21,10 +21,36 @@ optionally followed by `profiles/<name>` (named profiles are complete homes):
     call_id, type, function: {name, arguments}}`, `arguments` a JSON
     string), `tool_call_id`, `tool_name`, `timestamp` (epoch seconds),
     `reasoning`, `reasoning_content`, `finish_reason`, `active`.
+* `<hermes>/state-snapshots/<id>/state.db`: quick snapshots, consistent
+  copies of `state.db` made with SQLite's backup API by `/snapshot`,
+  `hermes backup --quick` and `hermes update` (20 kept by default). `<id>` is
+  the UTC time `YYYYmmdd-HHMMSS`, optionally followed by `-<label>` and a
+  `-<n>` collision suffix. Read with the `state.db` reader, after one
+  `system` row `state snapshot <id>: older copy of state.db`, timestamped
+  from the id when it starts with a valid time, else empty. The collector
+  excludes `state-snapshots` unless run with `--full`.
 * `<hermes>/sessions/<session_id>.jsonl`: written only when `state.db` was
   replaced under a running process; one message dict per line with the same
   keys as a `messages` row (`tool_calls` may be a list rather than a string,
   `timestamp` may be absent). It records no working directory or model.
+
+Secondary sources (issue 122, `secondary`): the snapshots and the
+`sessions/<id>.jsonl` diverts. `state.db` is the store of record; a
+snapshot is a copy of it at the snapshot time, so its rows carry the same
+`session_id`, `cwd` project path and message timestamps as the live rows
+and pair with them exactly; what survives is what the live database has
+lost since (a session pruned after 90 idle days, a deleted session, a
+`state.db` replaced or rebuilt). Repeats across several snapshots
+collapse to the first copy. A row whose text changed since the snapshot
+(a turn rewound or compacted later, now `[rewound] ...`; a session whose
+`end_reason` was set later) does not pair and both are kept. A divert
+holds the messages a live process could not write to the replaced
+database, so its rows pair only when those messages also reached a
+database the parser reads (a snapshot, a later `state.db`); they carry the
+message's own `timestamp` when the line has one, else none (they then
+match on text within the session), the session id from the file name and
+no project path. Both use the default 2-second tolerance; the copies are
+exact.
 
 Rows: one `system` row per session (title, source, parent, end reason); per
 message one `user`, `assistant`, `tool_result` (role `tool`, joined on
@@ -37,8 +63,10 @@ set the same flags, so the two cannot be told apart); those rows are still
 evidence and are emitted with a `[rewound]` prefix on their text. The model
 is the session's `model`; messages record none of their own. `project_path`
 is `sessions.cwd`, else `git_repo_root`, and `git_branch` is
-`sessions.git_branch`. The legacy `sessions/<id>.json` snapshots, `/save`
-exports and `response_store.db` are not parsed.
+`sessions.git_branch`. Not parsed: the legacy `sessions/<id>.json` and
+`session_<id>.json` snapshots (nothing at the checked commit writes them,
+only `_remove_session_files` deletes them, so their shape is not known),
+`/save` exports, the `backups/*.zip` archives and `response_store.db`.
 
 Model rows (issue 96), `system`, after each session's start row:
 `session_model_usage` (`session_id`, `model`, `billing_provider`, `task`,
@@ -74,6 +102,8 @@ from .base import Options, Parser, compact_json, iter_jsonl, text_of, track_chan
 HOME = r"(?:\.hermes(?:_[^/]+)?|AppData/Local/hermes(?:_[^/]+)?)(?:/profiles/[^/]+)?"
 DB_RX = re.compile(r"^%s/state\.db$" % HOME)
 JSONL_RX = re.compile(r"^%s/sessions/[^/]+\.jsonl$" % HOME)
+SNAP_RX = re.compile(r"^%s/state-snapshots/([^/]+)/state\.db$" % HOME)
+SNAP_TIME_RX = re.compile(r"^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-|$)")
 
 JSON_PREFIX = "\x00json:"
 ROLE_TYPES = {"user": "user", "assistant": "assistant", "tool": "tool_result", "system": "system"}
@@ -132,13 +162,30 @@ class HermesParser(Parser):
     name = "hermes"
 
     def wants(self, artifact: Artifact) -> bool:
-        return bool(DB_RX.match(artifact.rel) or JSONL_RX.match(artifact.rel))
+        rel = artifact.rel
+        return bool(DB_RX.match(rel) or SNAP_RX.match(rel) or JSONL_RX.match(rel))
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return bool(SNAP_RX.match(artifact.rel) or JSONL_RX.match(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
-        if DB_RX.match(artifact.rel):
+        snap = SNAP_RX.match(artifact.rel)
+        if snap:
+            yield self._snapshot_row(artifact, snap.group(1))
+            yield from self._parse_db(artifact, opts)
+        elif DB_RX.match(artifact.rel):
             yield from self._parse_db(artifact, opts)
         else:
             yield from self._parse_jsonl(artifact, opts)
+
+    def _snapshot_row(self, artifact: Artifact, snap_id: str) -> Row:
+        """The `system` row naming a quick snapshot, at the UTC time its id
+        starts with (`backup.py` names it `%Y%m%d-%H%M%S[-label]`)."""
+        row = self._system(artifact, 0, {}, "state snapshot %s: older copy of state.db" % snap_id)
+        m = SNAP_TIME_RX.match(snap_id)
+        if m:
+            row.timestamp_utc = to_utc("%s-%s-%sT%s:%s:%sZ" % m.groups())
+        return row
 
     def _row(self, artifact: Artifact, line: int, session: dict, ts: str = "") -> Row:
         row = self.base_row(artifact)
