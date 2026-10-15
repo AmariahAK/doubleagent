@@ -142,13 +142,15 @@ Files, relative to the home directory, under each of those directories
   twice. Known misses, kept as two rows: a `SYSTEM_MESSAGE` whose database
   step has an `event_type` (the database row reads `<event_type>:
   <message>`, and the mirror records no event type), a queued prompt
-  (the database row starts `[queued] `), a shortened field, and a
-  `GENERIC` line whose `content` differs from the database step's
-  `generic.result.result`, which no install has compared, and a
-  conversation's opening prompt when `history.jsonl` records it without
-  `conversationId`: the history row, matched by workspace, can take the
-  database row first, and the mirror's row, matched by session, then
-  pairs with neither.
+  (the database row starts `[queued] `), a shortened field of a row
+  without a `tool_use_id` (a shortened tool call or result pairs on its
+  id), and a `GENERIC` line whose `content` differs from the database
+  step's `generic.result.result` with no tool id inferred for it, which
+  no install has compared. A conversation's opening prompt that
+  `history.jsonl` records without `conversationId` is matched once: the
+  history row, matched by workspace, can take the database row first, and
+  the mirror's row then pairs with the history row under the broader
+  scope of `dedup.deduplicate`.
 
 Standing permission files (issue 92), read only for the keys named here;
 every other key in them (`plugins`, `remoteControlHostname`, a project's

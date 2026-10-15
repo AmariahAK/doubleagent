@@ -783,14 +783,17 @@ not pair, and so appear twice when both stores survive: a
 `task_notification` events of every real install; the database row reads
 `task_notification: <message>`, and the line records no event type), a
 queued prompt (the database row starts `[queued] `), a field shortened in
-`transcript.jsonl`, a step that ran longer than ten minutes, and a
-`GENERIC` line whose `content` differs from the database step's
-`generic.result.result`, which no install has compared. One more: a
-conversation's opening prompt is in `history.jsonl` without
-`conversationId`, in the mirror and in the database; the history line,
-matched by workspace, can take the database row first, and the mirror's
-row, matched by session, then has neither the database row nor the
-history row to pair with (the history row has no session id) and is kept.
+`transcript.jsonl` on a row with no `tool_use_id` (a shortened tool call
+or result pairs on the id the parser infers for it, since analyzer
+0.13.0 pairs tool rows on their ids), a step that ran longer than ten
+minutes, and a `GENERIC` line whose `content` differs from the database
+step's `generic.result.result` and that has no inferred id, which no
+install has compared. A conversation's opening prompt is in
+`history.jsonl` without `conversationId`, in the mirror and in the
+database; the history line, matched by workspace, can take the database
+row first, and the mirror's row, matched by session, then finds the
+history row under the broader scope `dedup.deduplicate` tries among
+secondary rows, so the prompt is shown once.
 
 ## 6. Secrets
 

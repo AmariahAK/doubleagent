@@ -2314,14 +2314,11 @@ class AntigravityBrainTests(ParserBase):
 
     def test_pairs_with_database(self):
         # Rendered as the database reader renders the same steps, and within
-        # the tolerance of its rows' times, so every mirror row of the CLI
-        # conversation pairs with a database row; of the app's, all but the
-        # shortened tool output.
+        # the tolerance of its rows' times, so every mirror row of both
+        # conversations pairs with a database row: the app's shortened tool
+        # output on its tool_use_id, the others on their text too.
         p = AntigravityParser()
-        for db, mirror, kept in (
-            (self.DB, self.FULL, []),
-            (self.APP_DB, self.APP, ["node (24.1.0) < [truncated: content]"]),
-        ):
+        for db, mirror in ((self.DB, self.FULL), (self.APP_DB, self.APP)):
             for thinking in (False, True):
                 primary = self.rows_for(p, db, include_thinking=thinking)
                 secondary = [
@@ -2329,17 +2326,23 @@ class AntigravityBrainTests(ParserBase):
                     for r in self.rows_for(p, mirror, include_thinking=thinking)
                 ]
                 rows, dropped = deduplicate(primary, secondary)
-                self.assertEqual(dropped["antigravity"], len(secondary) - len(kept))
-                self.assertEqual([r.text for r in rows[len(primary) :]], kept)
+                self.assertEqual(dropped["antigravity"], len(secondary))
+                self.assertEqual(rows[len(primary) :], [])
                 # The pairs are close in time: the mirror's created_at is at
                 # most two seconds before the database's completed_at here.
                 for r, _ in secondary:
-                    if r.text not in kept:
+                    if r.text.endswith("[truncated: content]"):
+                        twin = next(
+                            q
+                            for q in primary
+                            if (q.turn_type, q.tool_use_id) == (r.turn_type, r.tool_use_id)
+                        )
+                    else:
                         twin = next(
                             q for q in primary if (q.turn_type, q.text) == (r.turn_type, r.text)
                         )
-                        gap = (epoch_ms(twin.timestamp_utc) or 0) - (epoch_ms(r.timestamp_utc) or 0)
-                        self.assertTrue(0 <= gap <= 2000, (r.text, gap))
+                    gap = (epoch_ms(twin.timestamp_utc) or 0) - (epoch_ms(r.timestamp_utc) or 0)
+                    self.assertTrue(0 <= gap <= 2000, (r.text, gap))
 
     def test_truncated_line(self):
         write_bad_line(self.home / self.ORPHAN1)
@@ -7268,12 +7271,13 @@ class OpenClawTests(ParserBase):
         # The deleted archive file's user row and the backup's seven entry
         # rows pair with the primary rows. The checkpoint's three entry
         # rows lose the one-to-one primary match to the backup's copies of
-        # the same entries, and `dedup` does not pair a secondary row with
-        # one a primary row already took, so they are kept (reported in
-        # issue 122's round).
-        self.assertEqual(dropped["openclaw"], 8)
+        # the same entries and collapse onto those copies, so only the
+        # checkpoint's session-start row is kept.
+        self.assertEqual(dropped["openclaw"], 11)
         ckpt = "/alice/" + OPENCLAW_AGENT + "/sessions/" + OPENCLAW_LEGACY + OPENCLAW_CHECKPOINT
-        self.assertEqual(len([r for r in rows if r.source_file == ckpt]), 4)
+        kept_ckpt = [r for r in rows if r.source_file == ckpt]
+        self.assertEqual(len(kept_ckpt), 1)
+        self.assertTrue(kept_ckpt[0].text.startswith("session start:"))
         users = [r for r in rows if r.turn_type == "user"]
         # The abandoned branch survives only in the backup and is kept.
         self.assertEqual(
@@ -8849,7 +8853,7 @@ class ClaudeDesktopTests(ParserBase):
             self.assertEqual((r.agent, r.session_id), ("claude-desktop", CD_CLI_SESSION))
             self.assertEqual(r.project_path, "/srv/proj")
         self.assertEqual(rows[1].model, "claude-fable-5-1")
-        self.assertEqual((rows[3].tool_use_id, rows[6].tool_use_id), ("toolu_01", "toolu_01"))
+        self.assertEqual((rows[3].tool_use_id, rows[6].tool_use_id), ("toolu_a1", "toolu_a1"))
 
     def test_audit_pairs_with_transcript(self):
         # Both files are parsed; the audit rows the transcript repeats (same

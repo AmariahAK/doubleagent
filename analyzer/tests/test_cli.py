@@ -499,84 +499,78 @@ class TimelineProjectStatusTests(unittest.TestCase):
         )
 
 
-# The rows build_home's secondary sources repeat from a primary store, per
-# agent (issue 122). Not dropped, because no transcript row matches: the
-# Antigravity CLI history's "now the tests" (the conversation database holds
-# only "clean the logs"), the Gemini logs.json "delete everything in
-# /srv/proj" (a rewind removed it from the session), the Qwen logs.json
-# model_switch entry (a `system` row whose text no session row has). The Muse
-# tui-history.jsonl prompt records no time and matches its session's prompt
-# on text alone. The Goose history.txt "run the tests" records no time,
-# session or project and matches the sessions.db prompt on text alone.
-# Aider's input history repeats both chat-history prompts at
-# the very times the chat rows take from it; its "delete the migrations
-# folder" has no chat line and is kept, and its LLM history pairs with nothing.
-# Claude Desktop's audit.jsonl repeats its transcript's
-# "thanks" prompt and `model: claude-fable-5-1` row; its other lines (a
-# prompt the transcript lacks, permission and result lines) are kept.
-# The Letta transcript.jsonl turn its messages.jsonl lacks
-# ("now delete the build directory" and its reply) is kept.
-# Hermes: the 12:00:04 state snapshot's six rows of the main
-# session pair with the live state.db's, its four rows of the pruned session
-# with the 11:00:00 snapshot's earlier copy, and the main session's divert
-# repeats the screenshot prompt; the pruned session (once), the two snapshot
-# rows and "and the hidden files?" are kept.
-# Tabby's 8: the event log's completion prompt and choice
-# (user_events copies them), the later backup's thread 7 (the live database
-# has it) and the second backup copy of ephemeral thread 3.
-# The Cline session-search.db index's plain-string prompt "fix
-# tests" and the CLI user_input_history.jsonl's undated "fix tests" both
-# repeat the SDK session's user row; the history line, read first, takes it,
-# and the index copy stays, since a secondary row that matched a primary row
-# is not offered to the others. The index's block-array messages keep their
-# type names and stay; the history's dated "list the open ports" has no
-# transcript.
-# OpenClaw: the deleted archive file's prompt (the blob
-# holds it) and the pre-doctor backup's seven entry rows (the legacy file
-# holds them); the backup's abandoned-branch prompt, every copy's
-# session-start row and the checkpoint's three entry rows, whose primary
-# twins the backup's copies took first, are kept.
-# The nanobot WebUI mirror's user, tool_use, tool_result and
-# assistant rows of "show disk usage" pair with the session file's within
-# the 15-hour WebUI window, and the CLI history's "hello" with the legacy
-# cli:direct session's; the segment's older turn and the second CLI prompt
-# are kept.
-# Codex CLI: the history line and seven
-# thread_history_1.sqlite rows (task_started, the shell call and its
-# result, the web search and its result, the answer, task_complete). The
-# history line takes the rollout's prompt, so the projection's copy and
-# the state_5.sqlite first prompt (no time) are kept: a row a primary row
-# took is no candidate among the secondary rows, and a dated row never
-# pairs with an earlier undated one. Open Interpreter's state_5.sqlite
-# first prompt is kept the same way.
-# The Roo CLI cli-history.json records no time or task and
-# matches the task rows on text alone; "/new" and "summarise the open
-# issues" are kept.
-# Antigravity's brain mirror (#87): six of the CLI
-# conversation's seven transcript_full.jsonl rows pair with database rows
-# within the 600-second window; its "clean the logs" is kept, because the
-# history line without conversationId takes the database row first and the
-# two secondary rows have different scopes (session and project); five of
-# the app conversation's six transcript.jsonl rows pair, the shortened tool
-# output is kept; the orphan conversation's chunk rows have no database.
+# The rows build_home's secondary sources repeat from a primary store, or
+# from another secondary source, per agent (issue 122). Kept, because no
+# primary row matches: the Antigravity CLI history's "now the tests" (the
+# conversation database holds only "clean the logs"), the Gemini logs.json
+# "delete everything in /srv/proj" (a rewind removed it from the session),
+# the Qwen logs.json model_switch entry (a `system` row whose text no
+# session row has). The Muse tui-history.jsonl prompt and the Goose
+# history.txt "run the tests" record no time and match on text alone.
+# Aider's input history repeats both chat-history prompts at the very times
+# the chat rows take from it; its "delete the migrations folder" has no chat
+# line and is kept, and its LLM history pairs with nothing.
+# Antigravity: the history line "clean the logs" takes the database row
+# (project scope) and the CLI brain mirror's copy (session scope) meets it
+# under the broader scope; six more mirror rows of that conversation and
+# six of the app conversation's transcript.jsonl rows pair with database
+# rows within 600 seconds, the shortened tool output on its tool_use_id;
+# the orphan conversation's chunk rows have no database and are kept.
+# Claude Desktop's audit.jsonl repeats its transcript's "thanks" prompt and
+# `model: claude-fable-5-1` row; its other lines (a prompt and a call the
+# transcript lacks, permission and result lines) are kept.
+# Cline: the session-search.db index's plain-string "fix tests" (session
+# scope) takes the SDK session's user row and the CLI
+# user_input_history.jsonl's undated, unscoped copy collapses onto it; the
+# index's block-array messages and the history's "list the open ports" are
+# kept.
+# Codex CLI: the history line takes the rollout's prompt; the
+# thread_history_1.sqlite rows (the prompt, task_started, the shell call and
+# its result, the web search and its result, the answer, task_complete) pair
+# with the rollout or collapse onto the history line, and both state_5.sqlite first
+# prompts (no time) collapse onto a dated copy, the orphan thread's onto its
+# thread_history_1.sqlite prompt, which is kept. Open Interpreter: the
+# history line, and both state_5.sqlite first prompts the same way.
+# Hermes: the 12:00:04 state snapshot's six rows of the main session pair
+# with the live state.db's, its four rows of the pruned session with the
+# 11:00:00 snapshot's earlier copy, and the main session's divert repeats
+# the screenshot prompt; the pruned session (once), the two snapshot rows
+# and "and the hidden files?" are kept.
+# The Letta transcript.jsonl turn its messages.jsonl also holds pairs within
+# the one-hour window; the turn it lacks ("now delete the build directory"
+# and its reply) is kept.
+# nanobot: the WebUI mirror's user, tool_use, tool_result and assistant rows
+# of "show disk usage" pair with the session file's within the 15-hour
+# window, and the CLI history's "hello" with the legacy cli:direct
+# session's; the segment's older turn and the second CLI prompt are kept.
+# OpenClaw: the deleted archive file's prompt (the blob holds it), the
+# pre-doctor backup's seven entry rows (the legacy file holds them) and the
+# checkpoint's three entry rows, which collapse onto the backup's copies of
+# the same entries; the backup's abandoned-branch prompt and every copy's
+# session-start row are kept.
+# The Roo CLI cli-history.json records no time or task and matches the task
+# rows on text alone; "/new" and "summarise the open issues" are kept.
+# Tabby: the event log's completion prompt and choice (user_events copies
+# them), the later backup's thread 7 (the live database has it) and the
+# second backup copy of ephemeral thread 3.
 FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
-    "antigravity": 12,  # history "clean the logs"; brain mirror 6 (CLI) + 5 (app)
+    "antigravity": 14,  # history 1; brain mirror 7 (CLI) + 6 (app)
     "claude-code": 2,  # .claude and .claude-work history.jsonl
     "claude-desktop": 2,  # audit.jsonl "thanks" and its init model row
-    "cline": 1,  # user_input_history.jsonl "fix tests", no timestamp
-    "codex-cli": 8,  # history.jsonl and thread_history_1.sqlite
+    "cline": 2,  # session-search.db and user_input_history.jsonl "fix tests"
+    "codex-cli": 11,  # history.jsonl 1, thread_history_1.sqlite 8, state_5.sqlite 2
     "gemini-cli": 1,  # "list files in src"
     "goose": 1,  # "run the tests", no timestamp
-    "letta": 4,  # transcript.jsonl turn: prompt, tool_use, tool_result, reply
     "hermes": 11,  # snapshot copies and the divert's screenshot prompt
+    "letta": 4,  # transcript.jsonl turn: prompt, tool_use, tool_result, reply
     "muse-code": 1,  # "fix the failing test", no timestamp
     "nanobot": 5,  # four WebUI rows of one turn, the CLI history's "hello"
-    "open-interpreter": 1,  # "list the files"
-    "openclaw": 8,  # .jsonl.deleted.* file 1, pre-doctor-branch-repair .bak 7
+    "open-interpreter": 3,  # history.jsonl "list the files", state_5.sqlite 2
+    "openclaw": 11,  # .jsonl.deleted.* 1, pre-doctor .bak 7, checkpoint 3
     "qwen-code": 1,  # "run the tests"
-    "tabby": 8,  # completion prompt and choice, threads 7 and 3 in the backups
     "roo-code": 2,  # "rename the helper" and "yes", no timestamp
+    "tabby": 8,  # completion prompt and choice, threads 7 and 3 in the backups
 }
 
 

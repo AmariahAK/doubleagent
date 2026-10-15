@@ -821,20 +821,22 @@ a message at `completed_at_ms`, when the response item is written; a
 tool item at its start and end, as the rollout reader stamps an
 `item_completed` item; a turn at its `started_at` and `completed_at`,
 under a second from the `task_started` and `task_complete` lines. The
-fixture pairs all of them within the default 2 seconds. Known misses,
-each shown twice: a tool call made through a function call, whose
-rollout `tool_use` text is the model's arguments (`{"cmd": ...}` for
-`exec_command`, the patch for `apply_patch`) and whose projection text
-is the parsed command or the changed paths; a web search longer than 2
-seconds whose rollout also holds the `web_search_call` response item,
-stamped at the end; on Open Interpreter, an `agentMessage`, stamped at
-its start because the fork has no migration 0007. A thread's first
-prompt is in three secondary sources (`history.jsonl`,
-`first_user_message`, the projection's `userMessage`); one pairs with the
-rollout's prompt, and `dedup.deduplicate` pairs a later copy neither with
-a secondary row a primary row already took nor, when the copy is dated,
-with an earlier undated one, so two copies are kept beside the rollout's
-row (fixture: `FIXTURE_DEDUPLICATED` in `tests/test_cli.py`).
+fixture pairs all of them within the default 2 seconds. A tool call
+made through a function call has a rollout `tool_use` text of the
+model's arguments (`{"cmd": ...}` for `exec_command`, the patch for
+`apply_patch`) and a projection text of the parsed command or the
+changed paths, so the two never pair on text; `dedup.deduplicate` pairs
+`tool_use` and `tool_result` rows that both carry a `tool_use_id` on
+that id instead (analyzer 0.13.0). Known misses, each shown twice: a web
+search longer than 2 seconds whose rollout also holds the
+`web_search_call` response item, stamped at the end; on Open
+Interpreter, an `agentMessage`, stamped at its start because the fork
+has no migration 0007. A thread's first prompt is in three secondary
+sources (`history.jsonl`, `first_user_message`, the projection's
+`userMessage`); one pairs with the rollout's prompt, and
+`dedup.deduplicate` collapses the other two onto that copy, the undated
+`first_user_message` included, so only the rollout's row is kept
+(fixture: `FIXTURE_DEDUPLICATED` in `tests/test_cli.py`).
 
 Permission state is the per-turn `turn_context` policy above. There is no
 per-call decision row: approval requests and their answers are transient

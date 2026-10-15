@@ -85,17 +85,17 @@ without a rollout is a rollout removed outside Codex. Citations are in
 The time rule: the projection's rows pair with the rollout's within the
 default 2 seconds, since both are stamped from the same events. Known
 misses, where a projection row and its rollout row differ and the event
-is shown twice: a tool call the model made through a function call (the
-rollout's `tool_use` text is the call's arguments, the projection's the
-parsed command, so `exec_command` calls and `apply_patch` patches differ);
-an `agentMessage` on Open Interpreter, stamped at its start; a web search
-that took longer than 2 seconds when the rollout also has its
-`web_search_call` response item. A thread's first prompt is in
-`history.jsonl`, in `first_user_message` and in the projection: only one
-of the three pairs with the rollout's prompt, and `dedup.deduplicate`
-pairs neither a row a primary row already took nor an undated row with a
-later dated one, so the other two are kept (`research/codex-cli.md`
-section 8). A corrupt `item_json` is counted in one `system` row and the
+is shown twice: an `agentMessage` on Open Interpreter, stamped at its
+start; a web search that took longer than 2 seconds when the rollout also
+has its `web_search_call` response item. A tool call the model made
+through a function call has different texts in the two (the rollout's
+`tool_use` text is the call's arguments, the projection's the parsed
+command, so `exec_command` calls and `apply_patch` patches differ), and
+pairs on the `tool_use_id` both rows carry. A thread's first prompt is in
+`history.jsonl`, in `first_user_message` and in the projection: one of
+the three pairs with the rollout's prompt and `dedup.deduplicate`
+collapses the other two onto it (`research/codex-cli.md` section 8). A
+corrupt `item_json` is counted in one `system` row and the
 other items are still read.
 """
 

@@ -8556,9 +8556,11 @@ def _cd_hmac(n: int) -> str:
 
 
 def claude_desktop_audit_records():
-    """Research section 8, verbatim (HMAC values are placeholders). Line 1's
-    prompt has no transcript twin; line 8's and the `init` model repeat the
-    transcript's rows (issue 122)."""
+    """Research section 8, verbatim (HMAC values and tool ids are
+    placeholders). Line 1's prompt has no transcript twin; line 8's and the
+    `init` model repeat the transcript's rows (issue 122). The `npm test`
+    call is not the transcript's, so its id is not the transcript's
+    `toolu_01`: tool rows pair on their id."""
     sid = CD_CLI_SESSION
     return [
         {
@@ -8595,7 +8597,7 @@ def claude_desktop_audit_records():
                 "content": [
                     {
                         "type": "tool_use",
-                        "id": "toolu_01",
+                        "id": "toolu_a1",
                         "name": "Bash",
                         "input": {"command": "npm test"},
                     }
@@ -8633,7 +8635,7 @@ def claude_desktop_audit_records():
             "message": {
                 "role": "user",
                 "content": [
-                    {"type": "tool_result", "tool_use_id": "toolu_01", "content": "1 failing"}
+                    {"type": "tool_result", "tool_use_id": "toolu_a1", "content": "1 failing"}
                 ],
             },
             "_audit_timestamp": "2026-10-01T10:00:09.000Z",
