@@ -15,8 +15,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - A `dropped:` line on the `timeline` stdout, always printed before
   `agents:`, counting the rows of secondary sources dropped because a
-  primary store records the same event, with the agents that had any
-  ([#122]).
+  primary store, or another secondary source, records the same event,
+  with the agents that had any ([#122]).
 - `inventory.json` key `deduplicated`, the new last key: the dropped
   rows per agent, `{}` when none ([#122]).
 - The `hermes` parser reads the quick snapshots
@@ -83,11 +83,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   project the input does not hold is keyed by the first spelling the rows
   record. Project directories from `collection.json` are in the same
   canonical form ([#112]).
-- Interface change: `timeline.jsonl` no longer holds a history row that
-  repeats a transcript row. The secondary sources are Claude Code's
-  `history.jsonl`, Codex CLI's and Open Interpreter's `history.jsonl`,
-  Antigravity's CLI `history.jsonl`, Gemini CLI's and Qwen Code's
-  `logs.json` and Muse Code's `tui-history.jsonl`; one of their rows is
+- Interface change: `timeline.jsonl` no longer holds a row of a second
+  copy that repeats a transcript row or another copy. The secondary
+  sources are Aider's `.aider.input.history` and `.aider.llm.history`;
+  Antigravity's CLI `history.jsonl` and brain mirror; Claude Code's
+  `history.jsonl`; Claude Desktop's Cowork `audit.jsonl`; Cline's
+  `session-search.db` and CLI `user_input_history.jsonl`; Codex CLI's
+  and Open Interpreter's `history.jsonl`, `state_5.sqlite` and
+  `thread_history_1.sqlite`; Gemini CLI's and Qwen Code's `logs.json`;
+  Goose's `history.txt`; Hermes's `state-snapshots/<id>/state.db` and
+  `sessions/<id>.jsonl` diverts; Letta's `transcript.jsonl`; Muse Code's
+  `tui-history.jsonl`; nanobot's WebUI transcript and `cli_history`;
+  OpenClaw's reset and deleted archive files, compaction checkpoints and
+  pre-doctor repair backups; Roo Code's `cli-history.json`; and Tabby's
+  database backups and `events/` log. One of their rows is
   dropped when a primary-store row of the same host, user and agent has
   the same `turn_type` and `text` (two `tool_use` or two `tool_result`
   rows that both carry a `tool_use_id`: the same `tool_use_id` instead),

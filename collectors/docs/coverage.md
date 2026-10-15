@@ -408,8 +408,9 @@ histories beside it) and Crush's session database (`.crush/crush.db`) live
 only inside the project, so a project deleted before collection leaves
 nothing under the home to recover those sessions from. The other agents in
 [Secondary sources](../../analyzer/docs/output.md#secondary-sources) keep
-their transcript store and its second copy under the home, where both
-survive the project.
+their transcript store and its second copy under the home, or together in
+the agent's Docker or Podman volume (Hermes, Letta, nanobot, OpenClaw and
+Tabby have `DOCKER_VOLUMES` lines), where both survive the project.
 
 ### Left to the analyzer
 

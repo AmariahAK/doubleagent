@@ -297,7 +297,8 @@ is filtered, a `window:` line with the resolved UTC bounds, a `match:`
 line with the patterns, and a `filtered:` line counting the rows dropped
 outside the window, without a timestamp, and not matching. Then comes
 the `dropped:` line, always printed, which counts the rows of secondary
-sources left out because a primary store records the same event (see
+sources left out because a primary store, or another secondary source,
+records the same event (see
 [Secondary sources](#secondary-sources)), with the agents that had any
 in parentheses, sorted by name, and no parentheses when the count is 0:
 
@@ -582,7 +583,7 @@ records, so every history line is kept. Its keys, in order:
 | `outside_projects.agents.<agent>.rows` | integer | This agent's rows with an empty `project_path`, after the filters. |
 | `outside_projects.agents.<agent>.sessions` | integer | This agent's sessions with an empty `project_path`, after the filters. |
 | `outside_projects.agents.<agent>.turn_types` | object | Keyed by `turn_type`, sorted: this agent's rows of each type, listing only the types that occur. |
-| `deduplicated` | object | Keyed by agent name, sorted: the agents with rows of a secondary source dropped because a primary store records the same event (see [Secondary sources](#secondary-sources)), the counts of the `dropped:` line. With `--agent`, only the agents selected; not changed by `--since`, `--until` or `--match`, which apply to the rows kept. `{}` when no row was dropped. |
+| `deduplicated` | object | Keyed by agent name, sorted: the agents with rows of a secondary source dropped because a primary store or another secondary source records the same event (see [Secondary sources](#secondary-sources)), the counts of the `dropped:` line. With `--agent`, only the agents selected; not changed by `--since`, `--until` or `--match`, which apply to the rows kept. `{}` when no row was dropped. |
 | `deduplicated.<agent>` | integer | The number of this agent's secondary-source rows dropped, never 0. |
 
 A row is counted under its own `project_path` and a session under the
@@ -955,9 +956,12 @@ entries.<sessionId>.folders=<folder> (from <file>, file mtime)`, with
 
 ### Secondary sources
 
-Some agents keep a per-prompt history file beside their transcript store,
-and the same prompt is then recorded in both. The analyzer parses every
-source on every run, and keeps each event once: a row from a secondary
+Many agents keep a second copy of some of their events beside their
+transcript store: a per-prompt history file, a mirror or projection of
+the transcript, a full-text index, a backup or snapshot of the store, a
+copy kept by a reset, a compaction or a repair. The table below names
+them for each agent. The analyzer parses every source on every run, and
+keeps each event once: a row from a secondary
 source is dropped when a row from the agent's primary store has
 
 - the same `host`, `user`, `agent`, `turn_type` and `text`; two
@@ -1035,28 +1039,75 @@ drops are counted per agent on the `dropped:` line of stdout and under
 | `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite` | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
 | `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone) | `.local/share/goose/sessions/sessions.db` |
+| `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full`) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session), also under `.hermes_<suffix>`, `AppData/Local/hermes` and `profiles/<name>/` | `.hermes/state.db` |
 | `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |
-| `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to the first copy) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session), also under `.hermes_<suffix>`, `AppData/Local/hermes` and `profiles/<name>/` | `.hermes/state.db` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
 | `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot/history/cli_history` (no session or project: matches on text and time) | `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
-| `openclaw` | `.openclaw/agents/<id>/sessions/` copies of a transcript: the published `*.jsonl.reset.*` / `*.jsonl.deleted.*` archive files, `*.checkpoint.<uuid>.jsonl` and `*.jsonl.pre-doctor-*-repair-*.bak` (each copy's session-start row names it and is kept) | `.openclaw/agents/<id>/agent/openclaw-agent.sqlite` (`transcript_events` and the `session_transcript_archives` blobs) and the legacy `sessions/<id>.jsonl` |
 | `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
+| `openclaw` | `.openclaw/agents/<id>/sessions/` copies of a transcript: the published `*.jsonl.reset.*` / `*.jsonl.deleted.*` archive files, `*.checkpoint.<uuid>.jsonl` and `*.jsonl.pre-doctor-*-repair-*.bak` (each copy's session-start row names it and is kept) | `.openclaw/agents/<id>/agent/openclaw-agent.sqlite` (`transcript_events` and the `session_transcript_archives` blobs) and the legacy `sessions/<id>.jsonl` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
-| `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
+| `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
 
 The 2 seconds cover Codex's `history.jsonl`, which records whole seconds
 beside the rollouts' milliseconds, and Antigravity's history line, under
-a second from the database step. Muse Code's `tui-history.jsonl` records
-no time, so its rows match a session row of the same session on text
-alone. Qwen Code's `logs.json` rows have no project path and match by `sessionId` only. A
-known miss: a prompt the agent queued and sent later (Claude Code queues
-input typed while it works) can be minutes from its transcript record,
-and is then shown twice, the history row at the time it was typed.
-Continue's `toolUsage.jsonl` is not a secondary source: its event rows
-carry their own time but no session or project, and the session rows
-they repeat carry only the session's creation time, so a match within 2
-seconds would be chance, and both are kept.
+a second from the database step. Qwen Code's `logs.json` rows have no
+project path and match by `sessionId` only. A known miss: a prompt the
+agent queued and sent later (Claude Code queues input typed while it
+works) can be minutes from its transcript record, and is then shown
+twice, the history row at the time it was typed.
+
+Three sources have a wider window, because they stamp an event later
+than the primary store does. Antigravity's brain mirror records only
+when a step started, while the database rows of a response or a tool
+result carry its completion, so its rows match within 600 seconds.
+Letta's `transcript.jsonl` stamps every line of a turn when the turn
+ends, so its window is one hour; a turn longer than that leaves its
+earlier lines shown twice. nanobot's WebUI transcript stamps events in
+true UTC while its session files record host local time, emitted as if
+UTC, so its window is 15 hours (the largest UTC offset, 14 hours, plus
+an hour of turn); a WebUI row kept because no session row matched
+carries true UTC, unlike every other nanobot row.
+
+Several sources record no time for an event, and their rows match on
+text and scope alone: Muse Code's `tui-history.jsonl`, Goose's
+`history.txt` and Roo Code's `cli-history.json` record none at all;
+Cline's `session-search.db` records none per message, and its CLI
+`user_input_history.jsonl` only on its newest line, since every rewrite
+stamps every line with the time of that rewrite; Codex CLI's and Open
+Interpreter's `state_5.sqlite` hold a thread's first prompt beside the
+thread's creation time, which can precede the prompt, so the prompt row
+has none. A row with neither a session nor a project, such as a Goose
+`history.txt` line, can match a primary row of any session of the same
+user, so a prompt typed in two sessions is dropped once, against the
+earliest database row.
+
+Some secondary rows never match, because the primary store has no twin
+for them or renders the event differently, and are always kept:
+Tabby's event-log `system` rows, which name the server user by an
+encoded id where the database gives an email; Cline's `session-search.db`
+messages stored as content blocks, which the index keeps with their
+block type names and tool ids; a nanobot WebUI prompt whose session copy
+has runtime context appended (a quoted reply, an automation template);
+Claude Desktop's permission requests, responses and auto-decisions,
+`result` lines and `init: cwd=... model=...` rows, which the audit log
+alone records (its `model: <id>` row does match the transcript's); and
+the session-start row each OpenClaw copy begins with, which names the
+copy.
+
+Two sources that look like second copies are primary. Ollama's
+`.ollama/history` is the `ollama run` REPL's readline history, while
+its `db.sqlite` holds the desktop app's chats, a different surface, so
+both are parsed as primary records. little-coder's prompt history rows
+carry agent `little-coder`, while its transcripts are pi sessions under
+agent `pi`; the rule pairs rows of one agent only, so it cannot pair
+them, and both stay. Hermes's quick snapshots (`state-snapshots/`) are
+excluded by the collector unless it runs with `--full`, so they appear
+only in a full collection or loose input. Continue's `toolUsage.jsonl`
+is not a secondary source either: its event rows carry their own time
+but no session or project, and the session rows they repeat carry only
+the session's creation time, so a match within 2 seconds would be
+chance, and both are kept.
 
 ## sessions.jsonl
 

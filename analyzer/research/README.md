@@ -83,8 +83,11 @@ the transcripts are kept (a directory under the home survives deleting
 the project; a store inside the project does not), whether a per-prompt
 history file is written beside them and what each line holds, where the
 working directory is recorded, and whether a second copy of the
-transcript exists that would survive loss of the primary store. "Not
-stated" means the document does not say. The unified-timeline design that
+transcript exists that would survive loss of the primary store, and,
+since analyzer 0.13.0, which of the history files and copies the
+analyzer parses as secondary sources (see
+[Secondary sources](../docs/output.md#secondary-sources)). "Not stated"
+means the document does not say. The unified-timeline design that
 parses every source and shows each event once is
 [doubleagent issue 122](https://github.com/seanthegeek/doubleagent/issues/122).
 
@@ -110,8 +113,8 @@ parses every source and shows each event once is
 | `muse-code` | home `~/.local/share/muse/sessions/` | yes | `tui-history.jsonl`: a prompt line then `{project, session}`; no timestamp | session `workspace_root` | `.msp-view-v1` journal; `session-index.db` (first prompt) |
 | `nanobot` | home `~/.nanobot/sessions/<workspace-id>/` | yes | `~/.nanobot/history/cli_history`: local timestamp and prompt text, no session or workspace | a `.workspace` file per directory | WebUI transcript `webui/<key>.jsonl` and `.segments/` (WebUI chats; survives `/new`); `memory/history.jsonl` holds summaries, not copies |
 | `ollama` | app data `db.sqlite` (desktop app) | yes | `~/.ollama/history`: text only, last 100 | none | REPL `/save` into a model blob |
-| `openclaw` | home `~/.openclaw/agents/<id>/agent/*.sqlite` | yes | none | header `cwd` | `.reset` and `.deleted` archive files (copies of the archive blobs), compaction checkpoints and pre-doctor repair backups, all parsed as secondary sources; legacy JSONL |
 | `open-interpreter` | home `~/.openinterpreter/sessions/` | yes | `~/.openinterpreter/history.jsonl`: `session_id`, `ts`, `text` | `session_meta` and per turn | `state_5.sqlite` and `thread_history_1.sqlite` as for Codex (no item lifecycle times), parsed as secondary sources |
+| `openclaw` | home `~/.openclaw/agents/<id>/agent/*.sqlite` | yes | none | header `cwd` | `.reset` and `.deleted` archive files (copies of the archive blobs), compaction checkpoints and pre-doctor repair backups, all parsed as secondary sources; legacy JSONL |
 | `opencode` | home `~/.local/share/opencode/opencode.db` | yes | none | session `directory` and assistant `path.cwd` | legacy `storage/` JSON tree |
 | `openhands` | home `~/.openhands/conversations/<hex>/` | yes | `~/.openhands/projects/<sha256(cwd)>/prompt_history.json`, fields not stated | per conversation `workspace.working_dir` | not stated |
 | `pearai` | `~/.pearai/sessions/` and `globalStorage` tasks | yes | none | session `workspaceDirectory`; task `workspace` | `dev_data/chat.jsonl` (only on feedback) |
