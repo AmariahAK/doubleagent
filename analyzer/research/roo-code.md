@@ -30,6 +30,8 @@ root: `~/.vscode-mock/global-storage/` ([`apps/cli/src/lib/task-history/index.ts
 `claude_messages.json` is read and then deleted on upgrade
 ([`src/core/task-persistence/apiMessages.ts:73-91`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/apiMessages.ts#L73-L91)).
 
+The CLI also keeps an input history, `~/.roo/cli-history.json`: the file name is joined to `getConfigDir()` ([`apps/cli/src/lib/storage/history.ts:20-22`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L20-L22)), which is `~/.roo` on every platform ([`apps/cli/src/lib/storage/config-dir.ts:5-9`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/config-dir.ts#L5-L9)). The catalog line `roo-code|.roo` collects it. It is the history the interactive prompt steps through with the arrow keys, not a transcript: see [section 3](#3-record-schema) for its shape.
+
 ## 3. Record schema
 
 `api_conversation_history.json` is the Anthropic `MessageParam[]` shape as
@@ -60,12 +62,16 @@ workspace?, mode?, apiConfigName?, status?, delegatedToId?, childIds?, ...`.
 
 Timestamps are millisecond epochs. No git branch is recorded.
 
+`cli-history.json` is `{version: 1, entries: string[]}` ([`history.ts:9-15`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L9-L15)), written pretty-printed with tabs and trimmed to the newest `MAX_HISTORY_ENTRIES` (500) on every save ([`history.ts:6-7`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L6-L7), [`64-77`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L64-L77)). `addToHistory` appends the trimmed line, skipping an empty one and one equal to the last entry ([`history.ts:90-108`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L90-L108)); `loadHistory` keeps only non-blank strings ([`history.ts:44-45`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L44-L45)). Entries are oldest first and carry no time, task id or workspace. The input box adds every submitted line before acting on it ([`apps/cli/src/ui/components/autocomplete/AutocompleteInput.tsx:180-198`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/components/autocomplete/AutocompleteInput.tsx#L180-L198); [`apps/cli/src/ui/hooks/useInputHistory.ts:83-97`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/hooks/useInputHistory.ts#L83-L97)), so it holds the first prompt of a task, the answers to follow-up questions and later messages, and CLI commands such as `/new` that the CLI handles itself and never sends to a task ([`apps/cli/src/ui/hooks/useTaskSubmit.ts:56-132`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/hooks/useTaskSubmit.ts#L56-L132)). A prompt given on the command line rather than typed into the input box does not pass through it.
+
 ## 4. Joins
 
 Directory name = `HistoryItem.id`; workspace = `workspace` in
 `history_item.json` or `_index.json`; `rootTaskId` and `parentTaskId` link
 subtasks. `ClineMessage.conversationHistoryIndex` indexes into the API
 history.
+
+A `cli-history.json` entry joins a task on text only. The first prompt of a task becomes the task's first `say: "text"` record with the same text ([`src/core/task/Task.ts:1908`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L1908)), and a later message or follow-up answer becomes a `say: "user_feedback"` record ([`Task.ts:2027-2029`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L2027-L2029)); both are `user` rows of the task. The API history wraps the first prompt in `<user_message>` tags ([`Task.ts:1935`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L1935)), so a task that has only `api_conversation_history.json` left does not match on text. The file outlives a deleted task directory, a removed workspace and the extension's task-history pruning, since nothing but the 500-entry cap removes an entry; it does not record which task or workspace a line went to.
 
 ## 5. SQLite stores
 
@@ -88,7 +94,10 @@ issue 23). Transcripts carry file contents and command output.
 
 Globs: `<GS>/rooveterinaryinc.roo-cline/tasks/*/{api_conversation_history,ui_messages,history_item}.json`,
 `<GS>/rooveterinaryinc.roo-cline/tasks/_index.json`,
-`.vscode-mock/global-storage/tasks/**` (same files).
+`.vscode-mock/global-storage/tasks/**` (same files),
+`.roo/cli-history.json`.
+
+The task files are the primary store. `cli-history.json` is a secondary source (issue 122): one `user` row per entry, with empty `timestamp_utc`, `session_id` and `project_path` because the file records none, so the timeline's deduplication pairs it with a task's `user` row of the same text and keeps it only when no task has the text (a prompt whose task directory was deleted, or a CLI command such as `/new`).
 
 Rows and columns follow the Cline legacy mapping, with `ApiMessage.ts`
 available as a fallback timestamp, `condense_context` typed `system`,

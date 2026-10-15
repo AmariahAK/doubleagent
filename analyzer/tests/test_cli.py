@@ -506,7 +506,9 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # /srv/proj" (a rewind removed it from the session), the Qwen logs.json
 # model_switch entry (a `system` row whose text no session row has). The Muse
 # tui-history.jsonl prompt records no time and matches its session's prompt
-# on text alone.
+# on text alone. The Roo CLI cli-history.json records no time or task and
+# matches the task rows on text alone; "/new" and "summarise the open
+# issues" are kept.
 FIXTURE_DEDUPLICATED = {
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
@@ -515,6 +517,7 @@ FIXTURE_DEDUPLICATED = {
     "muse-code": 1,  # "fix the failing test", no timestamp
     "open-interpreter": 1,  # "list the files"
     "qwen-code": 1,  # "run the tests"
+    "roo-code": 2,  # "rename the helper" and "yes", no timestamp
 }
 
 

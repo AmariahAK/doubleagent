@@ -19,6 +19,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ([#122]).
 - `inventory.json` key `deduplicated`, the new last key: the dropped
   rows per agent, `{}` when none ([#122]).
+- Roo Code: the CLI's input history `~/.roo/cli-history.json` is read,
+  one `user` row per entry with no timestamp, task or project, as a
+  secondary source that matches the task rows on text alone ([#122]).
 
 ### Changed
 

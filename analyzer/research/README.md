@@ -117,7 +117,7 @@ parses every source and shows each event once is
 | `pearai` | `~/.pearai/sessions/` and `globalStorage` tasks | yes | none | session `workspaceDirectory`; task `workspace` | `dev_data/chat.jsonl` (only on feedback) |
 | `pi` | home `~/.pi/agent/sessions/--<cwd>--/` (or `--session-dir` anywhere) | yes | none | header `cwd` | user exports `session-*.jsonl` and `.html`, written into project directories; forks copy entries |
 | `qwen-code` | home `~/.qwen/projects/<cwd>/chats/` | yes | `~/.qwen/tmp/<sha256(cwd)>/logs.json`; per-session `<id>.ledger.jsonl` (fields not stated) | every record (`cwd`) | `logs.json`, checkpoints |
-| `roo-code` | `globalStorage` `tasks/<id>/` or `~/.vscode-mock` | yes | CLI `cli-history.json`: raw prompts | per task `workspace` | none |
+| `roo-code` | `globalStorage` `tasks/<id>/` or `~/.vscode-mock` | yes | CLI `~/.roo/cli-history.json`: text only, every submitted line, the newest 500 | per task `workspace` | none |
 | `shellgpt` | the system temp directory `chat_cache/<id>` | yes, but lost to temp cleanup instead | none | none | none |
 | `tabby` | home `~/.tabby/ee/db.sqlite` | yes | none | none (`git_url` only) | `db.backup-*.sqlite`, `events/*.json` |
 | `twinny` | the editor's `state.vscdb` | yes | none | none | optional twinny-server recordings |

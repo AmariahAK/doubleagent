@@ -1455,6 +1455,7 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     (gs / "state.vscdb").write_text("sqlite", encoding="utf-8")
     (gs / "saoudrizwan.claude-dev/state").mkdir(parents=True, exist_ok=True)
     (gs / "saoudrizwan.claude-dev/state/taskHistory.json").write_text("[]", encoding="utf-8")
+    build_roo_cli_history(home)
     build_qwen(home)
     build_kiro(home)
     build_crush(home)
@@ -4580,6 +4581,28 @@ def roo_history_item(task_id, ts, task, workspace="/srv/proj"):
         "mode": "code",
         "status": "completed",
     }
+
+
+# The Roo CLI's input history (`.roo/cli-history.json`, issue 122): text
+# only, so "rename the helper" and the follow-up "yes" pair with the task's
+# own user rows on text alone (any task: the file names none); "/new" (a
+# CLI command that never reaches a task) and "summarise the open issues"
+# (its task directory is gone) are kept. The number and the blank entry are
+# skipped, as the CLI's loadHistory skips them.
+ROO_CLI_HISTORY_ENTRIES = [
+    "rename the helper",
+    "yes",
+    "/new",
+    42,
+    "  ",
+    "summarise the open issues",
+]
+
+
+def build_roo_cli_history(home: Path) -> None:
+    roo = home / ".roo"
+    _json(roo / "cli-history.json", {"version": 1, "entries": ROO_CLI_HISTORY_ENTRIES})
+    _json(roo / "cli-settings.json", {"mode": "code", "provider": "anthropic"})
 
 
 def build_roo_code(home: Path) -> None:
