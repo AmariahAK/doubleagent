@@ -4834,6 +4834,7 @@ class ShellGptTests(ParserBase):
         self.assertTrue(err)
 
 
+from doubleagent.dedup import deduplicate
 from doubleagent.parsers.letta import LettaParser, decode_key
 from doubleagent.parsers.little_coder import LittleCoderParser
 from doubleagent.parsers.pi import PiParser
@@ -5220,16 +5221,59 @@ class LettaTests(ParserBase):
                 (r.session_id, r.project_path, r.model, r.timestamp_utc),
                 (LETTA_CONV, "/srv/proj", "", "2026-10-01T12:00:05.120Z"),
             )
-        self.assertEqual((rows[1].tool_name, rows[1].text), ("Bash", '{"command":"ls"}'))
+        # argsText rendered as the messages.jsonl row renders the call.
+        self.assertEqual((rows[1].tool_name, rows[1].text), ("Bash", "ls"))
         self.assertEqual(
             (rows[2].tool_name, rows[2].tool_use_id, rows[2].text), ("Bash", "", "README.md")
         )
 
-    def test_transcript_defers_to_local_backend(self):
+    def test_secondary(self):
+        parser = LettaParser()
+        for rel in (self.TRANSCRIPT, self.TWIN):
+            self.assertTrue(parser.secondary(self.artifact(rel)), rel)
+            self.assertEqual(parser.secondary_tolerance(self.artifact(rel)), 3600.0)
+        for rel in (self.LOCAL, ".letta/sessions.jsonl"):
+            self.assertFalse(parser.secondary(self.artifact(rel)), rel)
+
+    def test_transcript_read_beside_local_backend(self):
+        # Read always, not only when messages.jsonl is missing (issue 122).
         rows = self.rows_for(LettaParser(), self.TWIN)
-        self.assertEqual(len(rows), 1)
-        self.assertEqual((rows[0].turn_type, rows[0].session_id), ("system", LETTA_LOCAL_CONV))
-        self.assertIn("messages.jsonl", rows[0].text)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc) for r in rows],
+            [
+                ("user", "list the repo", "2026-10-01T12:00:05.120Z"),
+                ("tool_use", "ls", "2026-10-01T12:00:05.120Z"),
+                ("tool_result", "README.md", "2026-10-01T12:00:05.120Z"),
+                ("assistant", "One file: README.md", "2026-10-01T12:00:05.120Z"),
+                ("user", "now delete the build directory", "2026-10-01T12:00:40.500Z"),
+                ("assistant", "Deleted build/", "2026-10-01T12:00:40.500Z"),
+            ],
+        )
+        local = self.rows_for(LettaParser(), self.LOCAL)
+        # The same conversation id and project path as the messages.jsonl
+        # rows, so the scope clause of the rule can pair them.
+        self.assertEqual(
+            {(r.session_id, r.project_path) for r in rows},
+            {(r.session_id, r.project_path) for r in local},
+        )
+        self.assertEqual({r.session_id for r in rows}, {LETTA_LOCAL_CONV})
+
+    def test_transcript_pairs_with_local_backend(self):
+        parser = LettaParser()
+        primary = self.rows_for(parser, self.LOCAL)
+        twin = self.rows_for(parser, self.TWIN)
+        tolerance = parser.secondary_tolerance(self.artifact(self.TWIN))
+        kept, dropped = deduplicate(primary, [(r, tolerance) for r in twin])
+        # Every line of the first turn pairs, the user prompt 4.12 s after
+        # its messages.jsonl twin; the turn messages.jsonl lacks survives.
+        self.assertEqual(dropped["letta"], 4)
+        self.assertEqual(
+            [r.text for r in kept[len(primary) :]],
+            ["now delete the build directory", "Deleted build/"],
+        )
+        # The default window pairs the assistant line only.
+        _, dropped = deduplicate(primary, [(r, 2.0) for r in twin])
+        self.assertEqual(dropped["letta"], 1)
 
     def test_sessions_history(self):
         rows = self.rows_for(LettaParser(), ".letta/sessions.jsonl")
@@ -5298,12 +5342,13 @@ class LettaTests(ParserBase):
             ".letta/settings.json",
             ".letta/transcripts/%s/%s/state.json" % (LETTA_AGENT, LETTA_CONV),
             ".letta/lc-local-backend/conversations/%s/manifest.json" % LETTA_LOCAL_DIR,
+            ".letta/transcripts/%s/%s/payload-auto-a1b2c3.json" % (LETTA_AGENT, LETTA_LOCAL_CONV),
         ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertFalse(LettaParser().wants(art), rel)
 
     def test_truncated_line_is_reported_not_fatal(self):
-        for rel, n in ((self.TRANSCRIPT, 4), (self.LOCAL, 7)):
+        for rel, n in ((self.TRANSCRIPT, 4), (self.TWIN, 6), (self.LOCAL, 7)):
             write_bad_line(self.home / rel)
             rows = self.rows_for(LettaParser(), rel)
             self.assertEqual(len(rows), n + 1, rel)
