@@ -428,8 +428,8 @@ On Windows (observed, app 2.23.1, Windows 11 ARM64 build 26300,
   install; `tasks/task-7.log` (988 B) sits beside it.
 - One `transcript_full.jsonl` (163,340 B) is also split into
   `chunks/transcript_full/00000000.jsonl` (102,400 B) and
-  `00000001.jsonl` (60,940 B), the first time a second chunk was seen:
-  the chunks are cut at 102,400 B. The four conversations'
+  `00000001.jsonl` (60,940 B): the chunks are cut at 102,400 B (a
+  macOS conversation had two chunks too, with sizes not recorded). The four conversations'
   `transcript.jsonl` and `transcript_full.jsonl` are 12,720 and 12,357 B,
   17,119 and 17,053 B, 56,481 and 163,340 B, and 55,052 and 63,094 B.
 - In the automation task's conversation, `steps/26/content.md` is

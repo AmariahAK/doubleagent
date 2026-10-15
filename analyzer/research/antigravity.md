@@ -646,8 +646,8 @@ since the parser passes a plain path through unchanged and turns a
 case and uses forward slashes. The Windows install (**observed**) gave
 three: `c:/Users/sean/demo`, from the app's `file:///c%3A/Users/sean/demo`
 URIs (a percent-encoded colon and a lower-case drive letter, as the
-project file's `folderUri` records it); `C:/users/sean/demo2`, from a
-`file:` URI of the CLI conversation's workspace; and `C:\users\sean\demo2`,
+project file's `folderUri` records it); `C:/users/sean/demo2`, from the
+`file:` URI in the CLI conversation's `conversation_summaries.workspace_uris`; and `C:\users\sean\demo2`,
 the plain path of the `history.jsonl` `workspace`. The lower-case `users`
 is how the user typed the CLI's working folder. Grouping by
 `project_path` therefore splits one Windows folder into several;
