@@ -54,6 +54,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Codex projects from a rollout) as secondary sources, so a thread whose
   rollout was removed outside Codex, excluded by size or truncated is
   still in the timeline ([#122]).
+- Roo Code: the CLI's input history `~/.roo/cli-history.json` is read,
+  one `user` row per entry with no timestamp, task or project, as a
+  secondary source that matches the task rows on text alone ([#122]).
 
 ### Changed
 

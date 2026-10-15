@@ -26,6 +26,21 @@ the fields. Roots: the extension's
 * `tasks/_index.json`: `{version, updatedAt, entries: HistoryItem[]}`. A
   `system` row only for entries whose `history_item.json` is not on disk,
   so a deleted task still shows without doubling the others.
+* `.roo/cli-history.json`, the Roo CLI's input history (the `.roo` directory
+  is `getConfigDir()`): `{version: 1, entries: string[]}`, every line
+  submitted in the interactive CLI (a task prompt, a follow-up answer, a
+  slash command such as `/new`), trimmed, oldest first, consecutive
+  duplicates and empty lines skipped, capped at the newest 500. One `user`
+  row per string entry in file order, `source_line` the 1-based entry
+  index; non-string and blank entries are skipped as the CLI's own
+  `loadHistory` skips them. A file cut mid-write yields the entries before
+  the cut and one `system` row; a file with no `entries` array is one
+  `system` row. The file records no time, no task id
+  and no workspace, so the rows have an empty `timestamp_utc`,
+  `session_id` and `project_path`. A secondary source (`dedup.py`): each
+  row matches a task's `user` row (the prompt's `say: "text"` or a
+  `user_feedback`) on text alone, any task, and is kept only when no task
+  has the text, which recovers a prompt whose task directory was deleted.
 
 No model name is recorded anywhere in Roo transcripts (`apiConfigName` is a
 profile name), so `model` is always empty. No git branch is recorded.
@@ -40,11 +55,13 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row
 from .base import Options
-from .cline_legacy import LegacyTaskParser, error_row, load_json
+from .cline_legacy import LegacyTaskParser, error_row, iter_array_at, load_json, read_text
 
 ROOT = r"(?:(?:.*/)?User/globalStorage/rooveterinaryinc\.roo-cline|\.vscode-mock/global-storage)"
 ITEM_RX = re.compile(r"^%s/tasks/[^/]+/history_item\.json$" % ROOT, re.I)
 INDEX_RX = re.compile(r"^%s/tasks/_index\.json$" % ROOT, re.I)
+CLI_HISTORY_REL = ".roo/cli-history.json"
+ENTRIES_KEY_RX = re.compile(r'"entries"\s*:\s*(?=\[)')
 ITEM_FILE = "history_item.json"
 
 
@@ -56,8 +73,14 @@ class RooCodeParser(LegacyTaskParser):
 
     def wants(self, artifact: Artifact) -> bool:
         return bool(
-            self.task_match(artifact) or ITEM_RX.match(artifact.rel) or INDEX_RX.match(artifact.rel)
+            self.task_match(artifact)
+            or ITEM_RX.match(artifact.rel)
+            or INDEX_RX.match(artifact.rel)
+            or artifact.rel == CLI_HISTORY_REL
         )
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return artifact.rel == CLI_HISTORY_REL
 
     def history_item(self, task_dir: Path, root: Path, task_id: str) -> dict | None:
         item = load_json(task_dir / ITEM_FILE)
@@ -87,6 +110,36 @@ class RooCodeParser(LegacyTaskParser):
                 )
         elif INDEX_RX.match(artifact.rel):
             yield from self._parse_index(artifact, opts)
+        elif artifact.rel == CLI_HISTORY_REL:
+            yield from self._parse_cli_history(artifact)
+
+    def _parse_cli_history(self, artifact: Artifact) -> Iterator[Row]:
+        errors: list = []
+        data = load_json(artifact.disk_path)
+        if isinstance(data, dict) and isinstance(data.get("entries"), list):
+            entries = enumerate(data["entries"], 1)
+        else:
+            # Cut mid-write (the CLI rewrites the whole file per prompt): walk
+            # the entries array as far as it parses.
+            s = read_text(artifact.disk_path) if data is None else None
+            m = ENTRIES_KEY_RX.search(s) if s is not None else None
+            if m and s is not None:
+                entries = iter_array_at(s, m.end(), errors)
+            else:
+                errors.append((0, "cli-history.json has no entries array"))
+                entries = iter(())
+        for n, entry in entries:
+            if not isinstance(entry, str) or not entry.strip():
+                continue
+            row = self.base_row(artifact)
+            row.source_line = n
+            row.turn_type = "user"
+            row.text = entry
+            yield row
+        if data is None and not errors:
+            errors.append((0, "cli-history.json unparseable after its entries array"))
+        if errors:
+            yield error_row(self, artifact, errors)
 
     def _parse_index(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         index = load_json(artifact.disk_path)

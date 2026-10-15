@@ -549,6 +549,9 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # took is no candidate among the secondary rows, and a dated row never
 # pairs with an earlier undated one. Open Interpreter's state_5.sqlite
 # first prompt is kept the same way.
+# The Roo CLI cli-history.json records no time or task and
+# matches the task rows on text alone; "/new" and "summarise the open
+# issues" are kept.
 FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 1,  # "clean the logs"
@@ -566,6 +569,7 @@ FIXTURE_DEDUPLICATED = {
     "openclaw": 8,  # .jsonl.deleted.* file 1, pre-doctor-branch-repair .bak 7
     "qwen-code": 1,  # "run the tests"
     "tabby": 8,  # completion prompt and choice, threads 7 and 3 in the backups
+    "roo-code": 2,  # "rename the helper" and "yes", no timestamp
 }
 
 

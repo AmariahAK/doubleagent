@@ -4884,6 +4884,61 @@ class RooCodeTests(ParserBase):
         self.assertFalse(RooCodeParser().wants(art))
         self.assertFalse(ClineParser().wants(art))
 
+    CLI_HISTORY = ".roo/cli-history.json"
+
+    def test_secondary(self):
+        p = RooCodeParser()
+        self.assertTrue(p.secondary(self.artifact(self.CLI_HISTORY)))
+        for rel in (self.UI, self.CLI_API, ROO_GS + "tasks/_index.json"):
+            self.assertFalse(p.secondary(self.artifact(rel)), rel)
+        self.assertEqual(p.secondary_tolerance(self.artifact(self.CLI_HISTORY)), 2.0)
+
+    def test_cli_history_rows(self):
+        p = RooCodeParser()
+        self.assertTrue(p.wants(self.artifact(self.CLI_HISTORY)))
+        rows = self.rows_for(p, self.CLI_HISTORY)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (1, "user", "rename the helper"),
+                (2, "user", "yes"),
+                (3, "user", "/new"),
+                (6, "user", "summarise the open issues"),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.host, r.user, r.agent, r.session_id, r.project_path, r.timestamp_utc),
+                ("h1", "alice", "roo-code", "", "", ""),
+            )
+            self.assertTrue(r.source_file.endswith(self.CLI_HISTORY), r.source_file)
+        # The settings file beside it is configuration, not history.
+        self.assertFalse(p.wants(self.artifact(".roo/cli-settings.json")))
+
+    def test_cli_history_truncated(self):
+        write_bad_line(self.home / self.CLI_HISTORY)
+        rows = self.rows_for(RooCodeParser(), self.CLI_HISTORY)
+        self.assertEqual([r.turn_type for r in rows], ["user"] * 4 + ["system"])
+        self.assertEqual(
+            rows[-1].text, "parser: cli-history.json unparseable after its entries array"
+        )
+
+    def test_cli_history_malformed(self):
+        path = self.home / self.CLI_HISTORY
+        path.write_text('{"version": 1, "entries": ["rename the helper", "ye', encoding="utf-8")
+        rows = self.rows_for(RooCodeParser(), self.CLI_HISTORY)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("user", "rename the helper"), ("system", rows[1].text)],
+        )
+        self.assertTrue(rows[1].text.startswith("parser: record 2 unparseable"), rows[1].text)
+        path.write_text('{"version": 1}', encoding="utf-8")
+        rows = self.rows_for(RooCodeParser(), self.CLI_HISTORY)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("system", "parser: cli-history.json has no entries array")],
+        )
+
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.UI)
         rows = self.rows_for(RooCodeParser(), self.UI)
