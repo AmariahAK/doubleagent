@@ -1037,6 +1037,212 @@ def build_codex_automation(home: Path) -> None:
     (home / ".codex/automations/.run-jitter-salt").write_text("c2FsdA==\n", encoding="utf-8")
 
 
+# Codex's SQLite projections (#122): `state_5.sqlite` `threads` and
+# `thread_history_1.sqlite` (research/codex-cli.md section 5, migrations at
+# 3e23877). CODEX_SESSION's rows repeat the rollout fixture's events;
+# CODEX_ORPHAN's rollout is gone, so only the databases hold it.
+CODEX_ORPHAN = "aaaaaaaa-bbbb-4ccc-8ddd-000000000006"
+CODEX_STATE_SCHEMA = """
+create table threads (id text primary key, rollout_path text not null,
+  created_at integer not null, updated_at integer not null, source text not null,
+  model_provider text not null, cwd text not null, title text not null,
+  sandbox_policy text not null, approval_mode text not null,
+  tokens_used integer not null default 0, has_user_event integer not null default 0,
+  archived integer not null default 0, archived_at integer, git_sha text,
+  git_branch text, git_origin_url text, cli_version text not null default '',
+  first_user_message text not null default '', created_at_ms integer,
+  updated_at_ms integer, model text, thread_source text,
+  preview text not null default '', name text);
+"""
+THREAD_TURNS_SCHEMA = """
+create table thread_turns (thread_id text not null, turn_id text not null,
+  rollout_ordinal integer not null, status text not null, error_json text,
+  started_at integer, completed_at integer, duration_ms integer,
+  first_user_item_id text, final_agent_item_id text, rollout_byte_offset integer,
+  rollout_end_ordinal integer, rollout_end_byte_offset integer,
+  primary key (thread_id, turn_id));
+create table thread_history_projection_state (thread_id text primary key,
+  next_rollout_byte_offset integer not null, next_rollout_ordinal integer not null);
+"""
+THREAD_ITEMS_SCHEMA = """
+create table thread_items (thread_id text not null, turn_id text not null,
+  item_id text not null, rollout_ordinal integer not null,
+  created_at_ms integer not null, item_json text not null,
+  item_type text not null default '', updated_at_ordinal integer not null default 0%s,
+  primary key (thread_id, turn_id, item_id));
+"""
+# Migration 0007 adds the item lifecycle times; Open Interpreter at 2767e5f
+# has no 0007.
+THREAD_ITEMS_LIFECYCLE = ",\n  started_at_ms integer, completed_at_ms integer"
+
+
+def codex_thread_rows(rollout_dir="/home/alice/.codex/sessions"):
+    """`threads` rows as (id, rollout_path, created_at, title, first prompt,
+    name, archived, thread_source, git_branch, model)."""
+    return [
+        (
+            CODEX_SESSION,
+            rollout_dir + "/2026/10/02/rollout-2026-10-02T09-00-00-%s.jsonl" % CODEX_SESSION,
+            1790931600,
+            "exfiltrate nothing, just list the home dir",
+            "exfiltrate nothing, just list the home dir",
+            None,
+            0,
+            "user",
+            "feature/x",
+            "gpt-5.5-codex",
+        ),
+        (
+            CODEX_ORPHAN,
+            rollout_dir + "/2026/10/01/rollout-2026-10-01T08-00-00-%s.jsonl" % CODEX_ORPHAN,
+            1790841600,
+            "remove the old build artifacts",
+            "remove the old build artifacts",
+            "cleanup",
+            1,
+            "user",
+            None,
+            "gpt-5-codex",
+        ),
+    ]
+
+
+def write_codex_state(path: Path, threads, cwd="/srv/proj") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(path))
+    con.executescript(CODEX_STATE_SCHEMA)
+    for tid, rollout, created, title, first, name, archived, source, branch, model in threads:
+        con.execute(
+            "insert into threads (id, rollout_path, created_at, updated_at, source,"
+            " model_provider, cwd, title, sandbox_policy, approval_mode, archived,"
+            " git_branch, first_user_message, created_at_ms, updated_at_ms, model,"
+            " thread_source, preview, name)"
+            " values (?, ?, ?, ?, 'cli', 'openai', ?, ?, '{}', 'on-request', ?, ?, ?, ?, ?,"
+            " ?, ?, ?, ?)",
+            (
+                tid,
+                rollout,
+                created,
+                created + 10,
+                cwd,
+                title,
+                archived,
+                branch,
+                first,
+                created * 1000,
+                (created + 10) * 1000,
+                model,
+                source,
+                first,
+                name,
+            ),
+        )
+    con.commit()
+    con.close()
+
+
+def codex_thread_history():
+    """(turns, items) of the projection. A turn is (thread, turn, ordinal,
+    end ordinal, status, started_at s, completed_at s, duration_ms); an item
+    (thread, turn, ordinal, created ms, started ms, completed ms, item). The
+    CODEX_SESSION items repeat the rollout fixture's events at its times."""
+    turns = [
+        (CODEX_SESSION, "t1", 2, 16, "completed", 1790931601, 1790931607, 7000),
+        (CODEX_ORPHAN, "t1", 1, 9, "completed", 1790841601, 1790841610, 9000),
+    ]
+    prompt = "exfiltrate nothing, just list the home dir"
+    user = {
+        "type": "userMessage",
+        "id": "u1",
+        "clientId": None,
+        "content": [{"type": "text", "text": prompt, "text_elements": []}],
+    }
+    shell = {
+        "type": "commandExecution",
+        "id": "call_1",
+        "command": "ls -la ~",
+        "cwd": "/srv/proj",
+        "processId": None,
+        "source": "agent",
+        "status": "failed",
+        "commandActions": [],
+        "aggregatedOutput": "total 42",
+        "exitCode": 2,
+        "durationMs": 1000,
+    }
+    search = {
+        "type": "webSearch",
+        "id": "ws_1",
+        "query": "ls flags",
+        "action": {"type": "search", "query": "ls flags"},
+        "results": [{"title": "ls(1)"}],
+    }
+    thinking = {"type": "reasoning", "id": "r1", "summary": ["thinking"], "content": []}
+    answer = {"type": "agentMessage", "id": "a1", "text": "Listed the home directory."}
+    orphan_user = {
+        "type": "userMessage",
+        "id": "u9",
+        "content": [{"type": "text", "text": "remove the old build artifacts"}],
+    }
+    orphan_patch = {
+        "type": "fileChange",
+        "id": "call_9",
+        "changes": [{"path": "/srv/proj/build/out.o", "kind": {"type": "delete"}, "diff": ""}],
+        "status": "completed",
+    }
+    orphan_answer = {"type": "agentMessage", "id": "a9", "text": "Removed build/."}
+    compaction = {"type": "contextCompaction", "id": "cc9"}
+    items = [
+        (CODEX_SESSION, "t1", 6, 1790931602000, 1790931602000, 1790931602000, user),
+        (CODEX_SESSION, "t1", 9, 1790931603000, 1790931603000, 1790931604000, shell),
+        (CODEX_SESSION, "t1", 10, 1790931603500, 1790931603500, 1790931603900, search),
+        (CODEX_SESSION, "t1", 13, 1790931604500, 1790931604500, 1790931605000, thinking),
+        (CODEX_SESSION, "t1", 15, 1790931605500, 1790931605500, 1790931606000, answer),
+        (CODEX_ORPHAN, "t1", 3, 1790841602000, 1790841602000, 1790841602000, orphan_user),
+        (CODEX_ORPHAN, "t1", 5, 1790841603000, 1790841603000, 1790841604000, orphan_patch),
+        (CODEX_ORPHAN, "t1", 7, 1790841608000, 1790841608000, 1790841609000, orphan_answer),
+        (CODEX_ORPHAN, "t1", 8, 1790841609500, 1790841609500, 1790841609500, compaction),
+    ]
+    return turns, items
+
+
+def write_thread_history(path: Path, turns, items, lifecycle: bool = True) -> None:
+    """A `thread_history_1.sqlite`; without `lifecycle`, in the schema before
+    migration 0007 (no `started_at_ms`, `completed_at_ms`)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(path))
+    con.executescript(THREAD_TURNS_SCHEMA)
+    con.executescript(THREAD_ITEMS_SCHEMA % (THREAD_ITEMS_LIFECYCLE if lifecycle else ""))
+    for thread, turn, ordinal, end, status, started, completed, duration in turns:
+        con.execute(
+            "insert into thread_turns (thread_id, turn_id, rollout_ordinal, status,"
+            " started_at, completed_at, duration_ms, rollout_end_ordinal)"
+            " values (?, ?, ?, ?, ?, ?, ?, ?)",
+            (thread, turn, ordinal, status, started, completed, duration, end),
+        )
+    for thread, turn, ordinal, created, started, completed, item in items:
+        cols = "thread_id, turn_id, item_id, rollout_ordinal, created_at_ms, item_json, item_type"
+        vals = [thread, turn, item["id"], ordinal, created, json.dumps(item), item["type"]]
+        if lifecycle:
+            cols += ", started_at_ms, completed_at_ms"
+            vals += [started, completed]
+        marks = ", ".join("?" * len(vals))
+        con.execute("insert into thread_items (%s) values (%s)" % (cols, marks), vals)
+    con.commit()
+    con.close()
+
+
+def build_codex_stores(home: Path) -> None:
+    """`.codex/state_5.sqlite` and `.codex/thread_history_1.sqlite`, plus
+    `logs_2.sqlite`, which the parser must not want."""
+    write_codex_state(home / ".codex/state_5.sqlite", codex_thread_rows())
+    write_thread_history(home / ".codex/thread_history_1.sqlite", *codex_thread_history())
+    con = sqlite3.connect(str(home / ".codex/logs_2.sqlite"))
+    con.execute("create table logs (id integer primary key, message text)")
+    con.commit()
+    con.close()
+
+
 def codex_history_records():
     return [
         {
@@ -1441,6 +1647,7 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     _jsonl(home / ".codex/history.jsonl", codex_history_records())
     (home / ".codex/config.toml").write_text('model = "gpt-5-codex"\n', encoding="utf-8")
     build_codex_automation(home)
+    build_codex_stores(home)
     # Nested catalog entries: Antigravity CLI inside ~/.gemini, and a Cline
     # extension inside VS Code's globalStorage. The nested agent must win.
     build_antigravity(home / ".gemini/antigravity-cli")
@@ -6231,6 +6438,76 @@ def build_open_interpreter(home: Path) -> None:
     )
     (oi / "config.toml").write_text('harness = "claude-code"\n', encoding="utf-8")
     (oi / "auth.json").write_text('{"OPENAI_API_KEY": "sk-not-real"}', encoding="utf-8")
+    build_open_interpreter_stores(home)
+
+
+# The fork's SQLite set (#122): OI_SESSION's thread row repeats its first
+# prompt; OI_ORPHAN's rollout is gone and only the projection, in the
+# fork's schema without item lifecycle times, holds its turn.
+OI_ORPHAN = "0199a1b2-0000-7000-8000-000000000003"
+
+
+def build_open_interpreter_stores(home: Path) -> None:
+    oi = home / ".openinterpreter"
+    sessions = "/home/alice/.openinterpreter/sessions"
+    write_codex_state(
+        oi / "state_5.sqlite",
+        [
+            (
+                OI_SESSION,
+                sessions + "/2026/10/01/rollout-2026-10-01T12-00-00-%s.jsonl" % OI_SESSION,
+                1790848800,
+                "list the files",
+                "list the files",
+                None,
+                0,
+                "user",
+                "main",
+                "kimi-k3-turbo",
+            ),
+            (
+                OI_ORPHAN,
+                sessions + "/2026/09/29/rollout-2026-09-29T07-00-00-%s.jsonl" % OI_ORPHAN,
+                1790665200,
+                "summarise the README",
+                "summarise the README",
+                None,
+                0,
+                "user",
+                None,
+                "kimi-k3",
+            ),
+        ],
+    )
+    write_thread_history(
+        oi / "thread_history_1.sqlite",
+        [(OI_ORPHAN, "t1", 1, 6, "completed", 1790665201, 1790665206, 5000)],
+        [
+            (
+                OI_ORPHAN,
+                "t1",
+                3,
+                1790665202000,
+                None,
+                None,
+                {
+                    "type": "userMessage",
+                    "id": "u1",
+                    "content": [{"type": "text", "text": "summarise the README"}],
+                },
+            ),
+            (
+                OI_ORPHAN,
+                "t1",
+                5,
+                1790665204000,
+                None,
+                None,
+                {"type": "agentMessage", "id": "a1", "text": "It describes the project."},
+            ),
+        ],
+        lifecycle=False,
+    )
 
 
 # -- OpenClaw (openclaw/openclaw at 3b16db7) ---------------------------------------

@@ -119,6 +119,10 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
 * `history.jsonl`: `{session_id, text, ts}` per prompt, `ts` epoch seconds.
   A secondary source: the timeline drops a line whose event a rollout also
   records (`dedup.py`).
+* `state_5.sqlite` (`threads`: a thread record and the first prompt) and
+  `thread_history_1.sqlite` (`thread_turns` and `thread_items`, the
+  projection of the rollout's turn events and turn items): secondary
+  sources, read by `codex_state.py`, whose docstring lists the fields.
 * Forks only, when `ledger_name` is set: an import ledger
   `{"records": [{source_path, content_sha256, imported_thread_id,
   imported_at, source_modified_at?}]}` (times epoch seconds), one `system`
@@ -140,8 +144,7 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
   booleans) stands in, and a file neither can read is one
   `parser: unreadable automation.toml` row.
 
-Not read: `session_index.jsonl` (thread names), `state_5.sqlite` and
-`thread_history_1.sqlite` (projections of the rollouts),
+Not read: `session_index.jsonl` (thread names),
 `sqlite/codex-dev.db` (the desktop app's thread catalog and automation
 store; the `automations` table repeats `automation.toml`).
 """
@@ -642,23 +645,32 @@ class RolloutParser(Parser):
         self.rollout_rx = re.compile(ROLLOUT_TMPL % re.escape(self.home_prefix))
         self.automation_rx = re.compile(AUTOMATION_TMPL % re.escape(self.home_prefix))
         self.history_rel = self.home_prefix + "/history.jsonl"
+        self.state_rel = self.home_prefix + "/state_5.sqlite"
+        self.thread_history_rel = self.home_prefix + "/thread_history_1.sqlite"
         self.ledger_rel = self.home_prefix + "/" + self.ledger_name if self.ledger_name else ""
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
         return (
-            rel == self.history_rel
+            rel in (self.history_rel, self.state_rel, self.thread_history_rel)
             or bool(self.rollout_rx.match(rel))
             or bool(self.ledger_rel and rel == self.ledger_rel)
             or bool(self.automations and self.automation_rx.match(rel))
         )
 
     def secondary(self, artifact: Artifact) -> bool:
-        return artifact.rel == self.history_rel
+        return artifact.rel in (self.history_rel, self.state_rel, self.thread_history_rel)
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        # codex_state imports item_rows from this module, so it is imported here.
+        from .codex_state import parse_state, parse_thread_history
+
         if artifact.rel == self.history_rel:
             yield from self._parse_history(artifact, opts)
+        elif artifact.rel == self.state_rel:
+            yield from parse_state(self, artifact, opts)
+        elif artifact.rel == self.thread_history_rel:
+            yield from parse_thread_history(self, artifact, opts)
         elif self.automations and self.automation_rx.match(artifact.rel):
             yield from self._parse_automation(artifact)
         elif self.ledger_rel and artifact.rel == self.ledger_rel:

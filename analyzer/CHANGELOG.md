@@ -48,6 +48,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The `nanobot` parser reads `~/.nanobot/history/cli_history`, the CLI's
   prompt history, as a secondary source: one `user` row per prompt at
   its own local time, with no session or project ([#122]).
+- The `codex-cli` and `open-interpreter` parsers read `state_5.sqlite`
+  (a `thread record:` system row per thread and its first prompt, with
+  no timestamp) and `thread_history_1.sqlite` (the turns and turn items
+  Codex projects from a rollout) as secondary sources, so a thread whose
+  rollout was removed outside Codex, excluded by size or truncated is
+  still in the timeline ([#122]).
 
 ### Changed
 

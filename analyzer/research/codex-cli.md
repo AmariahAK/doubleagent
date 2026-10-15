@@ -267,7 +267,8 @@ Paths relative to the home; `$CODEX_HOME` replaces `.codex` when set.
 - `.codex/automations/<slug>/automation.toml`: a scheduled automation of
   the ChatGPT desktop app ([section 5](#5-other-files)). **Parser reads.**
 - `.codex/state_5.sqlite`, `.codex/thread_history_1.sqlite`: thread metadata
-  and a projection of paginated rollouts ([section 5](#5-other-files)). Not read.
+  and a projection of paginated rollouts ([section 5](#5-other-files)).
+  **Parser reads**, as secondary sources (issue 122).
 
 ## 3. Record envelope and types
 
@@ -500,7 +501,42 @@ to the call except its position between the call and its output (local).
   [0032_threads_preview.sql:1](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0032_threads_preview.sql#L1)); `thread_spawn_edges`
   links parent and child threads
   ([0021_thread_spawn_edges.sql:1-5](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0021_thread_spawn_edges.sql#L1-L5)). A row whose rollout is gone still holds the
-  first prompt.
+  first prompt. The file name is fixed beside the other databases
+  ([state/src/sqlite.rs:34-39](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/sqlite.rs#L34-L39)).
+  The columns the parser reads (issue 122), each only when the table has
+  it:
+  - `id`, the thread id: the rollout's `session_meta.id`, so the rows join
+    the rollout's on `session_id`.
+  - `created_at` in epoch seconds and `created_at_ms` in epoch ms
+    ([0025_thread_timestamps_millis.sql:1-2](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0025_thread_timestamps_millis.sql#L1-L2)),
+    both the thread's creation time
+    ([state/src/runtime/threads.rs:666-670](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/runtime/threads.rs#L666-L670)).
+  - `cwd`, `title`, `git_branch`, `rollout_path`, `archived`, `model` (the
+    last turn's, set from each `turn_context`;
+    [state/src/extract.rs:122-130](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/extract.rs#L122-L130)),
+    `name` (a rename;
+    [0041_threads_name.sql:1](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0041_threads_name.sql#L1)),
+    `source` and `thread_source`
+    ([0030_threads_thread_source.sql:1](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0030_threads_thread_source.sql#L1)).
+  - `first_user_message`: the first `UserMessage` event's text, trimmed
+    and with the `## My request for Codex:` prefix removed, or `[Image]`
+    or `[Audio]` for a prompt with no text
+    ([state/src/extract.rs:184-196](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/extract.rs#L184-L196),
+    [protocol/src/protocol.rs:145-150](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L145-L150),
+    [2614-2635](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2614-L2635)). No column
+    records when the prompt was typed: `created_at` is the thread's
+    creation, which the TUI does before the first prompt.
+
+  Not read: `sandbox_policy` and `approval_mode` (the latest
+  `turn_context` policy, which the rollout's `permission mode:` rows
+  already carry), `preview` (the first prompt again, or a thread goal's
+  objective), the token and recency bookkeeping. What it survives: a
+  rollout deleted, moved or truncated outside Codex, or excluded by the
+  collector's size limit. Codex's own thread delete removes the rollout
+  and the database rows together
+  ([thread-store/src/local/delete_thread.rs:66-92](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/local/delete_thread.rs#L66-L92)),
+  so it survives no delete made in Codex. Whether a rollback or a revert
+  rewrites `first_user_message` was not determined.
 - `thread_history_1.sqlite`: `thread_turns`, `thread_items` (`item_json`,
   the app-server's camelCase `ThreadItem`), `thread_realtime_items`, keyed
   by `rollout_ordinal`
@@ -510,7 +546,61 @@ to the call except its position between the call and its output (local).
   `item_completed` lines. Nothing found that is not in the rollout.
   Codex Desktop on Windows (observed 2026-10-15,
   [section 1](#1-evidence)) added `reasoning`, `commandExecution` and
-  `fileChange` items, also all in its rollouts.
+  `fileChange` items, also all in its rollouts. Record shapes from source
+  (issue 122):
+  - What is projected: one rollout line at a time, `task_started`,
+    `task_complete` and `turn_aborted` into `thread_turns` and each
+    `item_completed` into `thread_items`; every other line type
+    projects nothing
+    ([app-server-protocol/src/protocol/thread_history_projection.rs:21-99](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs#L21-L99)).
+    `history_mode` `legacy` rollouts are not projected
+    ([line 1-4](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs#L1-L4)).
+  - `thread_turns`: `status` `inProgress`, `completed`, `interrupted` or
+    `failed`, `started_at` and `completed_at` in epoch seconds (the turn
+    events' fields;
+    [protocol/src/protocol.rs:2189-2192](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2189-L2192)),
+    `duration_ms`, `error_json`; `rollout_end_ordinal` from migration
+    0003 ([0003_turn_rollout_positions.sql:1-3](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/thread_history_migrations/0003_turn_rollout_positions.sql#L1-L3);
+    written at [thread-store/src/local/thread_history.rs:316-351](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/local/thread_history.rs#L316-L351)).
+    The two events are the rollout's `task_started` and `task_complete`
+    lines ([protocol/src/protocol.rs:1407-1418](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L1407-L1418)).
+  - `thread_items`: `created_at_ms` is the item's `started_at_ms`, or the
+    rollout line's `timestamp` when the event has none
+    ([thread_history.rs:431-438](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/local/thread_history.rs#L431-L438),
+    [thread_history_materialization.rs:245-252](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/local/thread_history_materialization.rs#L245-L252));
+    `started_at_ms` and `completed_at_ms` from migration 0007
+    ([0007_thread_item_lifecycle_timestamps.sql:1-2](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/thread_history_migrations/0007_thread_item_lifecycle_timestamps.sql#L1-L2))
+    are the `item_completed` event's, when the item started and when it
+    completed
+    ([core/src/session/mod.rs:2546-2601](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/session/mod.rs#L2546-L2601)).
+    `item_type` is `item_json.type`
+    ([0002_thread_items_item_type.sql:1-5](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/thread_history_migrations/0002_thread_items_item_type.sql#L1-L5)).
+  - `item_json` is `ThreadItem`, tagged by `type` in camelCase
+    ([app-server-protocol/src/protocol/v2/item.rs:232-429](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/v2/item.rs#L232-L429)),
+    converted from the rollout's turn item
+    ([869-1063](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/v2/item.rs#L869-L1063)):
+    `userMessage` (`content[]` of `UserInput`, `text` inputs with
+    `text`; [v2/turn.rs:425-459](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/v2/turn.rs#L425-L459)),
+    `agentMessage` (`text`, the content blocks concatenated, `phase`),
+    `reasoning` (`summary[]`, `content[]`, strings), `commandExecution`
+    (`command` a display string, `cwd`, `status`, `aggregatedOutput`,
+    `exitCode`, `durationMs`), `fileChange` (`changes[]` of `path`,
+    `kind`, `diff`; [v2/item.rs:1137-1144](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/v2/item.rs#L1137-L1144)),
+    `mcpToolCall` (`server`, `tool`, `arguments`, `result`, `error`),
+    `dynamicToolCall` (`tool`, `arguments`, `contentItems`),
+    `functionCallOutput`, `plan` (`text`), `subAgentActivity`,
+    `webSearch` (`id`, `query`, `action`, `results`;
+    [ext/items/src/web_search.rs:11-22](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/ext/items/src/web_search.rs#L11-L22)),
+    `imageGeneration` (`revisedPrompt`, `status`, `savedPath`, and the
+    image itself in `result`), `sleep` (`durationMs`), `hookPrompt`,
+    `collabAgentToolCall`, `imageView`, `enteredReviewMode`,
+    `exitedReviewMode`, `contextCompaction`.
+
+  The two files join the rollout on the thread id, which is the rollout
+  rows' `session_id`; the projection has no `cwd`, so its project path is
+  taken from the `threads` row of the same thread. What it survives is
+  what `state_5.sqlite` survives; it never holds a legacy rollout's
+  thread.
 - `sqlite/codex-dev.db`: written only by the ChatGPT desktop app (observed
   on Windows, ChatGPT 26.1007.9446.0, 2026-10-15; not in the Codex
   source this document cites). It is the app's own thread catalog and
@@ -707,7 +797,44 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `token_usage_record`, `world_state`, `inter_agent_communication_metadata`, `retained_context`, `security_risk_score` | skipped |
 | bad line or cut zstd frame | one `system` row at the end |
 | `history.jsonl` line | `user` |
+| `state_5.sqlite` `threads` row (secondary) | `system` `thread record: <id> title=<title> rollout=<rollout_path>`, then ` name=`, ` branch=`, ` model=` (the last turn's) and ` archived` when set, at `created_at_ms` (else `created_at`); then `first_user_message` as `user` with no timestamp, `system` `subagent task: ...` in a subagent's thread |
+| `thread_history_1.sqlite` `thread_turns` row (secondary) | `system` `task_started turn=<id>` at `started_at`; `task_complete turn=<id> duration_ms=<n>` at `completed_at` for a completed or failed turn; an interrupted turn has no closing row (its reason is only in the rollout) |
+| `thread_history_1.sqlite` `thread_items` row (secondary) | `userMessage` `user`, `agentMessage` `assistant`, `reasoning` `thinking` (opt-in), at `completed_at_ms`; `hookPrompt`, `contextCompaction` none; any other item renamed to the turn-item form and rendered as the `item_completed` rows above, at `started_at_ms` and `completed_at_ms` (else `created_at_ms`); a bad `item_json` is counted in one `system` row |
 | `automations/<slug>/automation.toml` (Codex only) | one `system` row `scheduled task: <id> name=<name> kind=<kind> status=<status> rrule=<rrule> target_thread=<target_thread_id> created=<created_at> updated=<updated_at> (from <file>, file mtime) prompt: <prompt>` at the file's modification time, `session_id` the target thread; an unreadable file is one `system` row (issue 119) |
+
+Sources, by role (issue 122). The rollouts are the primary store: Codex
+writes every other file from them. `history.jsonl`, `state_5.sqlite` and
+`thread_history_1.sqlite` are secondary sources, read on every run; the
+timeline drops a row of theirs that a rollout row of the same session
+repeats (same `turn_type` and `text`, time within 2 seconds, or any time
+for a row with none) and keeps the rest. How each joins:
+
+| Source | session_id | project_path | Time |
+| --- | --- | --- | --- |
+| `history.jsonl` | `session_id` | none | `ts`, whole seconds |
+| `state_5.sqlite` thread record | `threads.id` | `threads.cwd` | `created_at_ms`, the thread's creation |
+| `state_5.sqlite` first prompt | `threads.id` | `threads.cwd` | none: matches on text and session |
+| `thread_history_1.sqlite` | `thread_id` | the same thread's `threads.cwd` from the `state_5.sqlite` beside it, else empty | the item's or turn's own, as the rollout row it repeats |
+
+The projection's rows take the times of the rollout rows they repeat:
+a message at `completed_at_ms`, when the response item is written; a
+tool item at its start and end, as the rollout reader stamps an
+`item_completed` item; a turn at its `started_at` and `completed_at`,
+under a second from the `task_started` and `task_complete` lines. The
+fixture pairs all of them within the default 2 seconds. Known misses,
+each shown twice: a tool call made through a function call, whose
+rollout `tool_use` text is the model's arguments (`{"cmd": ...}` for
+`exec_command`, the patch for `apply_patch`) and whose projection text
+is the parsed command or the changed paths; a web search longer than 2
+seconds whose rollout also holds the `web_search_call` response item,
+stamped at the end; on Open Interpreter, an `agentMessage`, stamped at
+its start because the fork has no migration 0007. A thread's first
+prompt is in three secondary sources (`history.jsonl`,
+`first_user_message`, the projection's `userMessage`); one pairs with the
+rollout's prompt, and `dedup.deduplicate` pairs a later copy neither with
+a secondary row a primary row already took nor, when the copy is dated,
+with an earlier undated one, so two copies are kept beside the rollout's
+row (fixture: `FIXTURE_DEDUPLICATED` in `tests/test_cli.py`).
 
 Permission state is the per-turn `turn_context` policy above. There is no
 per-call decision row: approval requests and their answers are transient
@@ -795,4 +922,9 @@ sample (`/root/...` is illustrative). Not determined: pre-envelope rollouts
 from the earliest releases; whether `local_shell_call_output` exists (the
 parser lists it but `ResponseItem` has no such variant at this commit; it
 is harmless); how often the harness emits `agent_message` response items
-versus `inter_agent_communication` lines.
+versus `inter_agent_communication` lines. The `state_5.sqlite` and
+`thread_history_1.sqlite` columns and `item_json` shapes are from the
+migrations and structs at 3e23877 (high); the table and column names agree
+with the Windows install of [section 1](#1-evidence), whose values were not
+read, so the rows rest on a synthetic fixture (medium for the times'
+pairing with the rollout, which no real install has shown).

@@ -541,13 +541,21 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # the 15-hour WebUI window, and the CLI history's "hello" with the legacy
 # cli:direct session's; the segment's older turn and the second CLI prompt
 # are kept.
+# Codex CLI: the history line and seven
+# thread_history_1.sqlite rows (task_started, the shell call and its
+# result, the web search and its result, the answer, task_complete). The
+# history line takes the rollout's prompt, so the projection's copy and
+# the state_5.sqlite first prompt (no time) are kept: a row a primary row
+# took is no candidate among the secondary rows, and a dated row never
+# pairs with an earlier undated one. Open Interpreter's state_5.sqlite
+# first prompt is kept the same way.
 FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
     "claude-desktop": 2,  # audit.jsonl "thanks" and its init model row
     "cline": 1,  # user_input_history.jsonl "fix tests", no timestamp
-    "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
+    "codex-cli": 8,  # history.jsonl and thread_history_1.sqlite
     "gemini-cli": 1,  # "list files in src"
     "goose": 1,  # "run the tests", no timestamp
     "letta": 4,  # transcript.jsonl turn: prompt, tool_use, tool_result, reply

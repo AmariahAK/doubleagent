@@ -101,6 +101,22 @@ Same SQLite set as Codex (`state_5.sqlite`, `logs_2.sqlite`,
 [`state/src/sqlite.rs:29-34`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/src/sqlite.rs#L29-L34)); the rollouts are the primary record. zstd
 for `.jsonl.zst` rollouts.
 
+`state_5.sqlite` and `thread_history_1.sqlite` are parsed as secondary
+sources by the shared Codex reader (issue 122); their record shapes, joins
+and what they survive are in
+[section 5 of `codex-cli.md`](codex-cli.md#5-other-files). The fork's
+`threads` migrations that the parser reads match Codex's
+([`state/migrations/0001_threads.sql:1-19`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/migrations/0001_threads.sql#L1-L19),
+[`0007_threads_first_user_message.sql:1`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/migrations/0007_threads_first_user_message.sql#L1),
+[`0025_thread_timestamps_millis.sql:1-2`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/migrations/0025_thread_timestamps_millis.sql#L1-L2)),
+and the thread history migrations stop at 0006
+([`state/thread_history_migrations/0006_thread_turn_ends.sql:1-3`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/thread_history_migrations/0006_thread_turn_ends.sql#L1-L3)):
+there is no `started_at_ms` or `completed_at_ms` on `thread_items`, so
+`created_at_ms`, the item's start or the rollout line's time
+([`thread-store/src/local/thread_history.rs:431-438`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/thread-store/src/local/thread_history.rs#L431-L438)),
+stamps every item row, and an `agentMessage` row precedes its rollout
+twin by the time the message took to stream.
+
 ## 6. Format versions
 
 Tracks upstream Codex; no fork-specific version marker in the records.
@@ -121,6 +137,9 @@ Reuse `CodexParser`, matching `.openinterpreter/sessions/` and
 parser matches only `^\.codex/sessions/` and plain `.jsonl`; extending it to
 `archived_sessions/` and `.jsonl.zst` would fix Codex as well. Mark rollouts
 listed in the import ledger with a `system` row naming `source_path`.
+The rollouts are the primary store; `history.jsonl`, `state_5.sqlite` and
+`thread_history_1.sqlite` are secondary sources, read as for Codex
+([section 8 of `codex-cli.md`](codex-cli.md#8-parser-plan-the-existing-parser)).
 
 | Column | Source |
 | --- | --- |
