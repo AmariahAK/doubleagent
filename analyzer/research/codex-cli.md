@@ -169,6 +169,73 @@ Paths and the rest of the per-user state are in
   - Not exercised: a resumed thread, a denied tool call, an "allow
     always" grant, a model switch within a thread, subagents, an
     automation run.
+- **Observed (macOS)**: the author's macOS lab VM, macOS 26.6.2 (build
+  25G83), arm64, one user, 2026-10-15, 16:25Z to 17:05Z (times in UTC;
+  issues 118 and 121), read for file names, sizes, key names, value
+  types and row counts only. The user repeated the Windows round: the
+  ChatGPT app 26.1007.71326 (an Electron build, bundle identifier
+  `com.openai.codex`; its own files are in
+  [`collectors/research/chatgpt-desktop.md`](../../collectors/research/chatgpt-desktop.md)),
+  with its bundled Codex reporting `originator` `Codex Desktop` and
+  `cli_version` `0.162.0-alpha.17.2` as on Windows, then the standalone
+  Codex CLI 0.162.1 from its shell installer. Both wrote the same
+  `~/.codex` tree as on Windows.
+  - Four rollouts under `sessions/2026/10/15/` (348 KB in all): a task
+    in the project folder `~/Demo` (16:39Z to 16:40Z, Codex Desktop,
+    model `gpt-6.1-sol`); the automation's target thread in
+    `~/Documents/Codex/2026-10-15/new-chat` (16:44Z, Codex Desktop,
+    `gpt-5.6-terra`); a thread in the projectless output directory
+    `~/Documents/Codex/2026-10-15/e` (16:50Z, Codex Desktop,
+    `gpt-6.1-sol`, with a `codex_app.load_workspace_dependencies` tool
+    call; which user action it was is not determined); and the CLI's
+    thread in `~/demo2` (16:55Z to 16:56Z, `originator` `codex-tui`,
+    `cli_version` `0.162.1`, `gpt-6.1-sol`). The analyzer gave 91 rows
+    in 4 sessions, each session start naming the account and user ids,
+    plus the automation's `scheduled task:` row.
+  - `automations/<slug>/automation.toml` (written 16:44:05Z) with the
+    same keys as on Windows ([section 5](#5-other-files)), `rrule` of the
+    form `FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0;BYDAY=MO`, and one
+    `sqlite/codex-dev.db` `automations` row; `automation_runs` empty.
+    `local_thread_catalog` held 3 `vscode` rows and 3 `chatgpt` rows
+    (two with `conversation_origin` null, one `tpp`): the ChatGPT chat
+    and image generation again left no local transcript.
+  - `history.jsonl` was written by the CLI, as on Windows.
+  - `app-server-daemon/daemon.pid` (472 bytes) and `daemon-updater.pid`
+    (194 bytes) carry a `processIdentity` object (`bootId` UUID,
+    `startSeconds`, `startMicroseconds`, `uniqueId`) that the Windows
+    files lack. The parser reads neither.
+  - Not exercised: as on Windows.
+- **Observed (Ubuntu)**: the author's Ubuntu 26.04.1 LTS lab VM, aarch64,
+  kernel 7.0.0-38-generic, one user, 2026-10-15, 17:12Z to 17:22Z (times
+  in UTC; issue 118), read for file names, sizes, key names, value types
+  and line counts only. The user installed the standalone Codex CLI
+  0.162.1 with its shell installer (no ChatGPT app exists for Linux),
+  logged in through the browser flow and ran two turns in `~/demo`. The
+  install layout is in
+  [`collectors/research/codex-cli.md`](../../collectors/research/codex-cli.md).
+  - One rollout, `sessions/2026/10/15/rollout-2026-10-15T13-16-43-<uuid>.jsonl`
+    (440,924 bytes, 108 lines: `session_meta` 1, `turn_context` 2, one
+    per turn, `world_state` 1, `response_item` 41, `event_msg` 49,
+    `token_usage_record` 14, 0 bad lines), `originator` `codex-tui`,
+    `cli_version` `0.162.1`, `source` `vscode`, `thread_source` `user`,
+    the granular approval object, model `gpt-6.1-sol`. The turns wrote
+    seven files into `~/demo`.
+  - The analyzer gave 78 rows: 4 `user` (the two prompts from the
+    rollout and the same two from `history.jsonl`), 7 `assistant`, 28
+    tool calls with their results (`exec` 11, `shell` 8, `web_search` 8,
+    and one `request_user_input_async`, a tool name not seen on the
+    other platforms: the CLI asking the user a question mid-turn),
+    `task_started` and `task_complete` for both turns (62,724 ms and
+    43,305 ms), and the `model:` and `permission mode:` rows.
+  - `history.jsonl` (370 bytes) held 2 lines, one per turn, with
+    `session_id`, `text` and `ts`. There was no `sqlite/codex-dev.db`,
+    no `automations/` and no `.codex-global-state.json`: those are the
+    desktop app's.
+  - `app-server-daemon/daemon.pid` (423 bytes) and `daemon-updater.pid`
+    (145 bytes) carry `processIdentity` with `bootId` and `startTicks`
+    on Linux, against `startSeconds`, `startMicroseconds` and `uniqueId`
+    on macOS and no `processIdentity` on Windows. The parser reads
+    neither.
 
 ## 2. Transcript files
 
