@@ -32,6 +32,17 @@ a home with at least one catalog match, just before that match. The last
 progress line is `done`; the log file's `done:` line also records the
 archive path, size in bytes and sha256.
 
+A project discovery source (a file the collector reads project paths
+from, listed in [internals.md](internals.md#project-discovery)) that the
+PowerShell collector cannot read gets the line
+`discovery source unreadable: <path>: <message>`, with the .NET exception
+message, on stderr unless `-q` is given and always in the log; discovery
+goes on with the next source and the file itself is still collected or
+reported in the manifest like any other. The reader opens the file with
+the same shared access as the copy, so a rollout a running agent holds
+open is read. The sh collector reads these sources with `grep`, discards
+its error messages, and logs nothing for an unreadable source.
+
 ## Output files
 
 The output directory receives five files named

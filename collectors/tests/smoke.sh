@@ -872,6 +872,34 @@ printf 'staged\n' >"$L83/antigravity/staging/s1"
 printf 'exe\n' >"$L83/antigravity-updater/installer.exe"
 printf 'exe\n' >"$L83/Programs/antigravity/Antigravity.exe"
 
+# 2026-10-15 ChatGPT desktop as the OpenAI.Codex package (#113)
+# From the Windows 11 install of ChatGPT 26.1007.9446.0: the Chromium
+# profile under the package's web/Codex user-data directory, with a
+# storage partition, the app log and the MSIX settings hive. The component
+# cache beside the profile is not a catalog line and must get no row. The
+# bundled Codex's copied binaries and global state go in bob's .codex
+# (#115, #116). Checks follow the default and --no-secrets runs below; the
+# same files are in smoke.ps1 under alice.
+P113="$H/AppData/Local/Packages/OpenAI.Codex_2p2nqsd0c76g0"
+C113="$P113/LocalCache/Roaming/Codex/web/Codex"
+X113="$C113/Default/Partitions/codex-browser-app"
+mkdir -p "$C113/Default/Local Storage/leveldb" "$C113/Default/Network" "$C113/Default/Cache" \
+  "$X113/Network" "$X113/Cache" "$C113/component_crx_cache" \
+  "$P113/LocalCache/Local/Codex/Logs/2026/10/15" "$P113/Settings" \
+  "$B/.codex/plugins/.plugin-appserver"
+printf 'ldb\n' >"$C113/Default/Local Storage/leveldb/000003.log"
+printf '{"os_crypt":{}}\n' >"$C113/Local State"
+printf 'cookies\n' >"$C113/Default/Network/Cookies"
+printf 'cookies\n' >"$X113/Network/Cookies"
+printf 'logins\n' >"$C113/Default/Login Data"
+printf 'cache\n' >"$C113/Default/Cache/data_0"
+printf 'cache\n' >"$X113/Cache/data_0"
+printf '{}\n' >"$C113/component_crx_cache/metadata.json"
+printf 'log\n' >"$P113/LocalCache/Local/Codex/Logs/2026/10/15/codex-desktop-x.log"
+printf 'hive\n' >"$P113/Settings/settings.dat"
+printf 'exe\n' >"$B/.codex/plugins/.plugin-appserver/codex.exe"
+printf '{}\n' >"$B/.codex/.codex-global-state.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1157,6 +1185,17 @@ check "#107 excluded file match not archived" "! tar -tzf \"\$A\" | grep -q 'mus
 # 2026-10-14 Antigravity on Windows (#83)
 check "#83 Antigravity Windows staging file collected as antigravity" "row \"$L83/antigravity/staging/s1\" | grep -q '\"agent\":\"antigravity\".*\"status\":\"collected\"'"
 check "#83 Antigravity installer and program directory not collected" "! grep -q 'antigravity-updater/installer.exe\"' \"\$M\" && ! grep -q 'Programs/antigravity/Antigravity.exe\"' \"\$M\""
+# 2026-10-15 ChatGPT desktop as the OpenAI.Codex package (#113)
+check "#113 ChatGPT profile Local Storage collected as chatgpt-desktop" "row \"$C113/Default/Local Storage/leveldb/000003.log\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"secret\":false,\"status\":\"collected\"'"
+check "#113 ChatGPT Local State flagged secret" "row \"$C113/Local State\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"secret\":true,\"status\":\"collected\"'"
+check "#113 ChatGPT profile and partition cookies flagged secret" "row \"$C113/Default/Network/Cookies\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$X113/Network/Cookies\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+check "#113 ChatGPT Login Data flagged secret" "row \"$C113/Default/Login Data\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+check "#113 ChatGPT profile and partition Cache excluded" "[ \"\$(status_of \"$C113/Default/Cache\")\" = skipped_excluded ] && [ \"\$(status_of \"$X113/Cache\")\" = skipped_excluded ] && ! grep -q 'Cache/data_0\"' \"\$M\""
+check "#113 ChatGPT component cache beside the profile not in the manifest" "! grep -q 'component_crx_cache' \"\$M\""
+check "#113 ChatGPT app log collected as chatgpt-desktop" "row \"$P113/LocalCache/Local/Codex/Logs/2026/10/15/codex-desktop-x.log\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"status\":\"collected\"'"
+check "#113 ChatGPT MSIX settings hive collected" "row \"$P113/Settings/settings.dat\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"status\":\"collected\"'"
+check "#116 Codex plugin app-server binaries excluded" "[ \"\$(status_of \"$B/.codex/plugins/.plugin-appserver\")\" = skipped_excluded ] && ! grep -q '.plugin-appserver/codex.exe\"' \"\$M\""
+check "#115 Codex desktop global state flagged secret" "row \"$B/.codex/.codex-global-state.json\" | grep -q '\"agent\":\"codex-cli\".*\"secret\":true,\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
@@ -1168,6 +1207,8 @@ check "#73 #76 --no-secrets skips link-key and the session key" "[ \"\$(status_o
 check "#84 Antigravity plugin token skipped without secrets" "[ \"\$(status_of \"$G83/plugin_data/gdocs/token.json\")\" = skipped_secret ]"
 # 2026-10-13 Antigravity Linux round (#83, #90, #91)
 check "#90 Antigravity CLI plugin-secrets.json skipped without secrets" "[ \"\$(status_of \"$H/.config/antigravity/plugin-secrets.json\")\" = skipped_secret ]"
+# 2026-10-15 ChatGPT desktop as the OpenAI.Codex package (#113)
+check "#115 Codex desktop global state skipped without secrets" "[ \"\$(status_of \"$B/.codex/.codex-global-state.json\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"

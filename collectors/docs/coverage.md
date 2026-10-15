@@ -248,6 +248,49 @@ unit, autostart entry or cron entry: it runs inside the app's language
 server while the app runs, its definition is the `sidecar.json` above,
 and its scheduler log is in `.gemini/antigravity/sidecar_data/<name>/logs/`.
 
+## ChatGPT desktop data directories
+
+On Windows the ChatGPT desktop app installs from the Microsoft Store as
+an MSIX package (the Windows app package format, whose per-user data
+directory is `AppData/Local/Packages/<package family name>`). By October
+2026 the package was named `OpenAI.Codex` (ChatGPT 26.1007.9446.0,
+observed on Windows 11 ARM64): the app is a Chromium build with OpenAI's
+Codex agent bundled, and the bundled Codex keeps its state in `~/.codex`,
+collected as `codex-cli`. The catalog lines for the older
+`OpenAI.ChatGPT-Desktop` package are kept. Collected as
+`chatgpt-desktop`, with `<pkg>` for `AppData/Local/Packages/OpenAI.Codex_*`:
+
+| Location | What it holds |
+| --- | --- |
+| `<pkg>/LocalCache/Roaming/Codex/web/Codex/Default` | The Chromium profile: `Preferences`, `History`, `Local Storage/`, `IndexedDB/` (one `app://` origin, the app's own UI), `Network/Cookies`, `Login Data`, and two storage partitions (Chromium's isolated storage for an embedded web view) under `Partitions/`, `codex-browser-app` (the in-app browser the agent drives) and `codex-mcp-app-sandbox%3Ashared`. |
+| `<pkg>/LocalCache/Roaming/Codex/web/Codex/Local State`, `Last Version`, `statsig-state.json`, `.codex-tpp-local-executor-installation-id` | The files beside the profile; `Local State` holds the key that decrypts the cookie and login databases. |
+| `<pkg>/LocalCache/Local/Codex` | The app's own log, `Logs/<yyyy>/<mm>/<dd>/codex-desktop-*.log`. |
+| `<pkg>/Settings` | The package's settings hive, `settings.dat`. |
+
+The rest of the `web/Codex` directory, Chromium's component data, crash
+reporting and metrics (about 160 MB on the install), is not named by a
+catalog line and gets no manifest row. The profile's caches (`Cache`,
+`Code Cache`, `GPUCache`, `DawnGraphiteCache`, `DawnWebGPUCache`,
+`blob_storage`, `Service Worker/CacheStorage` and `ScriptCache`) and its
+bundled `Extensions` are excluded in `Default` and in each partition.
+`Local State`, `Network/Cookies*` and `Login Data*` are flagged
+`secret: true`; while the app runs the cookie stores, the LevelDB `LOCK`
+files and the settings hive cannot be copied (see
+[Locked files and long paths](windows.md#locked-files-and-long-paths)).
+In `~/.codex` the app adds `.codex-global-state.json`, which holds
+ChatGPT conversation resume tokens and the user's prompts and is
+flagged `secret: true`, and copies of the Codex binaries in
+`plugins/.plugin-appserver`, which are excluded.
+
+On the install checked, a plain chat and an image generation left no
+local transcript: the chat's only local traces are a title and a resume
+token, so ChatGPT conversations are server-side. Not collected: the
+binary copies and Node.js runtime under `AppData/Local/OpenAI/Codex`, the
+1.27 GB runtime under `.cache/codex-runtimes`, and the sandbox's scratch
+directories in `AppData/Local/Temp`, which have no stable name. The
+evidence is in
+[`research/chatgpt-desktop.md`](../research/chatgpt-desktop.md).
+
 ## Home directories
 
 Home directories are gathered from several sources, merged, and

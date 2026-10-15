@@ -855,6 +855,30 @@ $l83 = 'Users/alice/AppData/Local'
 Mk "$l83/antigravity/staging/s1" "staged`n"
 Mk "$l83/antigravity-updater/installer.exe" "exe`n"
 Mk "$l83/Programs/antigravity/Antigravity.exe" "exe`n"
+
+# 2026-10-15 ChatGPT desktop as the OpenAI.Codex package (#113)
+# From the Windows 11 install of ChatGPT 26.1007.9446.0: the Chromium
+# profile under the package's web/Codex user-data directory, with a
+# storage partition, the app log and the MSIX settings hive. The component
+# cache beside the profile is not a catalog line and must get no row. The
+# bundled Codex's copied binaries and global state go in alice's .codex
+# (#115, #116). Checks follow the default and -NoSecrets runs below; the
+# same files are in smoke.sh, the .codex ones under bob.
+$p113 = 'Users/alice/AppData/Local/Packages/OpenAI.Codex_2p2nqsd0c76g0'
+$c113 = "$p113/LocalCache/Roaming/Codex/web/Codex"
+$x113 = "$c113/Default/Partitions/codex-browser-app"
+Mk "$c113/Default/Local Storage/leveldb/000003.log" "ldb`n"
+Mk "$c113/Local State" "{`"os_crypt`":{}}`n"
+Mk "$c113/Default/Network/Cookies" "cookies`n"
+Mk "$x113/Network/Cookies" "cookies`n"
+Mk "$c113/Default/Login Data" "logins`n"
+Mk "$c113/Default/Cache/data_0" "cache`n"
+Mk "$x113/Cache/data_0" "cache`n"
+Mk "$c113/component_crx_cache/metadata.json" "{}`n"
+Mk "$p113/LocalCache/Local/Codex/Logs/2026/10/15/codex-desktop-x.log" "log`n"
+Mk "$p113/Settings/settings.dat" "hive`n"
+Mk 'Users/alice/.codex/plugins/.plugin-appserver/codex.exe' "exe`n"
+Mk 'Users/alice/.codex/.codex-global-state.json' "{}`n"
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1243,6 +1267,18 @@ Check '#107 excluded file match not archived' { -not ($DefaultEntries | Where-Ob
 # 2026-10-14 Antigravity on Windows (#83)
 Check '#83 Antigravity Windows staging file collected as antigravity' { Is83 "$l83/antigravity/staging/s1" $false }
 Check '#83 Antigravity installer and program directory not collected' { (NoRow83 'antigravity-updater/installer.exe') -and (NoRow83 'Programs/antigravity/Antigravity.exe') }
+# 2026-10-15 ChatGPT desktop as the OpenAI.Codex package (#113)
+function Is113([string]$rel, [string]$agent, [bool]$secret) { $r = Row $rel; return ($r -and $r.agent -eq $agent -and $r.secret -eq $secret -and $r.status -eq 'collected') }
+Check '#113 ChatGPT profile Local Storage collected as chatgpt-desktop' { Is113 "$c113/Default/Local Storage/leveldb/000003.log" 'chatgpt-desktop' $false }
+Check '#113 ChatGPT Local State flagged secret' { Is113 "$c113/Local State" 'chatgpt-desktop' $true }
+Check '#113 ChatGPT profile and partition cookies flagged secret' { (Is113 "$c113/Default/Network/Cookies" 'chatgpt-desktop' $true) -and (Is113 "$x113/Network/Cookies" 'chatgpt-desktop' $true) }
+Check '#113 ChatGPT Login Data flagged secret' { Is113 "$c113/Default/Login Data" 'chatgpt-desktop' $true }
+Check '#113 ChatGPT profile and partition Cache excluded' { (StatusOf "$c113/Default/Cache") -eq 'skipped_excluded' -and (StatusOf "$x113/Cache") -eq 'skipped_excluded' -and (NoRow83 'Cache/data_0') }
+Check '#113 ChatGPT component cache beside the profile not in the manifest' { -not ($script:Rows | Where-Object { $_.path -like '*component_crx_cache*' }) }
+Check '#113 ChatGPT app log collected as chatgpt-desktop' { Is113 "$p113/LocalCache/Local/Codex/Logs/2026/10/15/codex-desktop-x.log" 'chatgpt-desktop' $false }
+Check '#113 ChatGPT MSIX settings hive collected' { Is113 "$p113/Settings/settings.dat" 'chatgpt-desktop' $false }
+Check '#116 Codex plugin app-server binaries excluded' { (StatusOf 'Users/alice/.codex/plugins/.plugin-appserver') -eq 'skipped_excluded' -and (NoRow83 '.plugin-appserver/codex.exe') }
+Check '#115 Codex desktop global state flagged secret' { Is113 'Users/alice/.codex/.codex-global-state.json' 'codex-cli' $true }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
@@ -1433,6 +1469,8 @@ Check '#73 #76 NoSecrets skips link-key and the session key' { (StatusOf $l76) -
 Check '#84 Antigravity plugin token skipped without secrets' { (StatusOf "$g83/plugin_data/gdocs/token.json") -eq 'skipped_secret' }
 # 2026-10-13 Antigravity Linux round (#83, #90, #91)
 Check '#90 Antigravity CLI plugin-secrets.json skipped without secrets' { (StatusOf "$w83/plugin-secrets.json") -eq 'skipped_secret' }
+# 2026-10-15 ChatGPT desktop as the OpenAI.Codex package (#113)
+Check '#115 Codex desktop global state skipped without secrets' { (StatusOf 'Users/alice/.codex/.codex-global-state.json') -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }

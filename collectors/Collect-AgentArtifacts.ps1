@@ -231,6 +231,17 @@ codex-cli|Library/Application Support/com.openai.codex
 chatgpt-desktop|Library/Application Support/com.openai.chat
 chatgpt-desktop|AppData/Local/Packages/OpenAI.ChatGPT-Desktop_*/LocalCache/Roaming/ChatGPT
 chatgpt-desktop|AppData/Local/Packages/OpenAI.ChatGPT-Desktop_*/LocalState
+# ChatGPT desktop on Windows: the Store package was renamed OpenAI.Codex by
+# October 2026, and the app is a Chromium build whose user-data directory is
+# LocalCache/Roaming/Codex/web/Codex. Its profile and the files beside it are
+# named rather than the directory, so the Chromium component data is not walked.
+chatgpt-desktop|AppData/Local/Packages/OpenAI.Codex_*/LocalCache/Roaming/Codex/web/Codex/Default
+chatgpt-desktop|AppData/Local/Packages/OpenAI.Codex_*/LocalCache/Roaming/Codex/web/Codex/Local State
+chatgpt-desktop|AppData/Local/Packages/OpenAI.Codex_*/LocalCache/Roaming/Codex/web/Codex/Last Version
+chatgpt-desktop|AppData/Local/Packages/OpenAI.Codex_*/LocalCache/Roaming/Codex/web/Codex/statsig-state.json
+chatgpt-desktop|AppData/Local/Packages/OpenAI.Codex_*/LocalCache/Roaming/Codex/web/Codex/.codex-tpp-local-executor-installation-id
+chatgpt-desktop|AppData/Local/Packages/OpenAI.Codex_*/LocalCache/Local/Codex
+chatgpt-desktop|AppData/Local/Packages/OpenAI.Codex_*/Settings
 # GitHub Copilot (CLI, and the OAuth token store used by Copilot plugins)
 copilot-cli|.copilot
 copilot-cli|.config/.copilot
@@ -753,6 +764,8 @@ AppData/Local/agy
 .codex/cache
 .codex/.tmp
 .codex/plugins/cache
+.codex/plugins/.plugin-appserver
+.codex/plugins/.remote-plugin-install-staging
 .codex/skills/.system
 .codex/worktrees
 .codex/.sandbox
@@ -764,6 +777,24 @@ AppData/Local/agy
 */Roaming/ChatGPT/GPUCache
 */Roaming/ChatGPT/DawnGraphiteCache
 */Roaming/ChatGPT/DawnWebGPUCache
+*/Roaming/Codex/web/Codex/Default/Cache
+*/Roaming/Codex/web/Codex/Default/Code Cache
+*/Roaming/Codex/web/Codex/Default/GPUCache
+*/Roaming/Codex/web/Codex/Default/DawnGraphiteCache
+*/Roaming/Codex/web/Codex/Default/DawnWebGPUCache
+*/Roaming/Codex/web/Codex/Default/blob_storage
+*/Roaming/Codex/web/Codex/Default/Extensions
+*/Roaming/Codex/web/Codex/Default/Service Worker/CacheStorage
+*/Roaming/Codex/web/Codex/Default/Service Worker/ScriptCache
+*/Roaming/Codex/web/Codex/Default/Partitions/*/Cache
+*/Roaming/Codex/web/Codex/Default/Partitions/*/Code Cache
+*/Roaming/Codex/web/Codex/Default/Partitions/*/GPUCache
+*/Roaming/Codex/web/Codex/Default/Partitions/*/DawnGraphiteCache
+*/Roaming/Codex/web/Codex/Default/Partitions/*/DawnWebGPUCache
+*/Roaming/Codex/web/Codex/Default/Partitions/*/blob_storage
+*/Roaming/Codex/web/Codex/Default/Partitions/*/Extensions
+*/Roaming/Codex/web/Codex/Default/Partitions/*/Service Worker/CacheStorage
+*/Roaming/Codex/web/Codex/Default/Partitions/*/Service Worker/ScriptCache
 .copilot/pkg
 .copilot/installed-plugins
 .cache/copilot/pkg
@@ -1218,8 +1249,14 @@ AppData/Roaming/[Aa]ntigravity/plugin-secrets.json
 .codex/.sandbox-secrets/*
 .codex/config.toml
 .codex/.env
+.codex/.codex-global-state.json*
 */Roaming/ChatGPT/Network/Cookies*
 */Roaming/ChatGPT/Local State
+*/Roaming/Codex/web/Codex/Default/Network/Cookies*
+*/Roaming/Codex/web/Codex/Default/Partitions/*/Network/Cookies*
+*/Roaming/Codex/web/Codex/Default/Login Data*
+*/Roaming/Codex/web/Codex/Default/Partitions/*/Login Data*
+*/Roaming/Codex/web/Codex/Local State
 .config/github-copilot/*.json
 AppData/Local/github-copilot/*.json
 .copilot/config.json
@@ -2959,12 +2996,26 @@ function Test-InventorySecret([string]$file) {
 }
 
 # Takes a discovery source path; returns its text, or $null when it is not a
-# file, is a credential file under -Inventory, or cannot be read.
+# file, is a credential file under -Inventory, or cannot be read, logging
+# "discovery source unreadable" in the last case. The file is opened with the
+# share mode Copy-FileShared uses, because File.ReadAllText refuses a rollout
+# that a running Codex or ChatGPT desktop app holds open for writing (#114).
 function Read-DiscoverySource([string]$file) {
   if (-not $file -or -not (Test-PathQuiet $file 'Leaf')) { return $null }
   if (Test-InventorySecret $file) { return $null }
-  try { return [System.IO.File]::ReadAllText((ConvertTo-ExtendedPath $file)) }
-  catch { return $null }
+  $stream = $null; $reader = $null
+  try {
+    $stream = New-Object System.IO.FileStream((ConvertTo-ExtendedPath $file),
+      [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, $script:ShareReadWriteDelete)
+    $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8, $true)
+    return $reader.ReadToEnd()
+  } catch {
+    $errorText = ConvertFrom-ExtendedText $_.Exception.Message
+    Write-CollectorLog "discovery source unreadable: ${file}: $errorText"
+    return $null
+  } finally {
+    if ($reader) { $reader.Dispose() } elseif ($stream) { $stream.Dispose() }
+  }
 }
 
 # Takes a regex and source files; returns capture group 1 of every match in

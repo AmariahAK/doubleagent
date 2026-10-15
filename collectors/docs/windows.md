@@ -139,8 +139,13 @@ Chromium keeps them in). This was seen on a live Claude Desktop host,
 where the cookies are the claude.ai session cookies and flagged secret,
 and on a live Antigravity desktop app 2.23.1 on Windows 11 (October
 2026), where the 0-byte `presence\<uuid>.lock` of the open conversation
-under `.gemini\antigravity` failed the same way. The lock files are
-empty, so only the cookie store is lost; close the app or collect from
+under `.gemini\antigravity` failed the same way. The ChatGPT desktop app
+26.1007.9446.0 (October 2026) showed the same classes in its Chromium
+profile and partitions, and also held its package's settings hive
+`Settings\settings.dat` and its `.LOG1` and `.LOG2` logs, and the
+bundled Codex's `.codex\.sqlite-maintenance.lock` and
+`.codex\thread-writer-locks\<uuid>.lock` files. The lock files are
+empty, so only the cookie store and the settings hive are lost; close the app or collect from
 an image to get it. Reparse points (symlinks and junctions) are recorded
 with their target and never followed.
 

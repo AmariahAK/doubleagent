@@ -42,6 +42,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   created (empty) on a Windows 11 install. The installer's
   `AppData/Local/antigravity-updater` and the app's program directory
   `AppData/Local/Programs/antigravity` are not matched ([#83]).
+- The ChatGPT desktop app's Windows package, renamed `OpenAI.Codex` by
+  October 2026 (ChatGPT 26.1007.9446.0 from the Microsoft Store, checked
+  on a real Windows 11 install), is collected as `chatgpt-desktop`. The
+  app is now a Chromium build, and the collector found none of it,
+  since the catalog named only the old `OpenAI.ChatGPT-Desktop_*`
+  package. The new lines, under
+  `AppData/Local/Packages/OpenAI.Codex_*`, name the browser profile
+  `LocalCache/Roaming/Codex/web/Codex/Default` (with its storage
+  partitions under `Default/Partitions`) and the files beside it
+  (`Local State`, `Last Version`, `statsig-state.json`,
+  `.codex-tpp-local-executor-installation-id`) rather than the whole
+  user-data directory, so its Chromium component data (about 160 MB on
+  the install) is not walked; and the app's own log directory
+  `LocalCache/Local/Codex` and the package's `Settings` hive. The old
+  package lines stay for older installs ([#113]).
+- The new ChatGPT profile's credential stores are flagged
+  `secret: true`: `Network/Cookies*` and `Login Data*` in `Default` and
+  in each `Default/Partitions/<partition>`, and the user-data
+  directory's `Local State`, which holds the DPAPI-wrapped key that
+  decrypts them ([#113]).
+- `.codex/.codex-global-state.json` and its `.bak` copy, which the Codex
+  inside the ChatGPT desktop app writes, are flagged `secret: true`: they
+  hold ChatGPT conversation resume tokens and the user's prompt history
+  ([#115]).
 
 ### Changed
 
@@ -80,6 +104,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   [docs/internals.md](docs/internals.md)). Options, `--list` output,
   the manifest, `collection.json`, the log, stdout, the archive and the
   exit codes are unchanged ([#99]).
+- The Chromium caches of the ChatGPT desktop profile are excluded, in
+  `Default` and in every `Default/Partitions/<partition>`: `Cache`,
+  `Code Cache`, `GPUCache`, `DawnGraphiteCache`, `DawnWebGPUCache`,
+  `blob_storage`, `Extensions` (a bundled extension's code) and
+  `Service Worker/CacheStorage` and `ScriptCache` ([#113]).
+- `.codex/plugins/.plugin-appserver`, where the ChatGPT desktop app
+  copies the Codex binaries (`codex.exe`, 283 MB, and three helpers of
+  7 to 70 MB that were collected), and the empty staging directory
+  `.codex/plugins/.remote-plugin-install-staging` are excluded ([#116]).
 
 ### Fixed
 
@@ -141,6 +174,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   copy of 218,747 or 210,152 (Antigravity's `language_server.log` and
   Chromium's `DIPS-wal`), and `collected_bytes` understated the archive.
   Other statuses keep the listing's length ([#111]).
+- The PowerShell collector reads project discovery sources with shared
+  access and logs `discovery source unreadable: <path>: <message>` when
+  one still cannot be read. It used `File.ReadAllText`, which fails on a
+  Codex rollout that a running ChatGPT desktop app holds open, and
+  dropped the error silently, so a live run on Windows found no project
+  although both rollouts named one ([#114]).
 
 ## [1.11.0] - 2026-10-12
 
@@ -687,6 +726,10 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#116]: https://github.com/seanthegeek/doubleagent/issues/116
+[#115]: https://github.com/seanthegeek/doubleagent/issues/115
+[#114]: https://github.com/seanthegeek/doubleagent/issues/114
+[#113]: https://github.com/seanthegeek/doubleagent/issues/113
 [#111]: https://github.com/seanthegeek/doubleagent/issues/111
 [#110]: https://github.com/seanthegeek/doubleagent/issues/110
 [#109]: https://github.com/seanthegeek/doubleagent/issues/109

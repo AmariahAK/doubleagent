@@ -271,6 +271,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `remote-session-spaces.json`, not read before, as one
   `permission setting:` row per folder granted to a remote Cowork
   session, at the file's modification time ([#96], [#97]).
+- The catalog copy detects the ChatGPT desktop app's renamed Windows
+  package, `OpenAI.Codex` (its Chromium profile, log directory and
+  settings hive), as `chatgpt-desktop` ([#113]).
 
 ### Changed
 
@@ -793,6 +796,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#113]: https://github.com/seanthegeek/doubleagent/issues/113
 [#104]: https://github.com/seanthegeek/doubleagent/issues/104
 [#103]: https://github.com/seanthegeek/doubleagent/issues/103
 [#97]: https://github.com/seanthegeek/doubleagent/issues/97
