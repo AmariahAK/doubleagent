@@ -137,6 +137,35 @@ Paths and the rest of the per-user state are in
     took a token refresh in `auth.json` and a longer `models_cache.json`
     (9 models, 5 before); connecting GitHub wrote nothing locally (the
     connection is held by the ChatGPT account on the server).
+  - Then (15:38Z to 15:46Z) the user installed the standalone Codex CLI
+    beside the app with OpenAI's PowerShell installer for Windows (the
+    exact command was not recorded; its layout is in
+    [`collectors/research/codex-cli.md`](../../collectors/research/codex-cli.md))
+    and gave it one prompt from a PowerShell console in a new folder
+    `~\demo-cli`. The CLI shared `~\.codex` and the app's login: no
+    second credential file appeared. Its rollout
+    (`rollout-2026-10-15T11-41-45-<uuid>.jsonl`, 106,200 bytes, 47 lines:
+    `session_meta` 1, `turn_context` 1, `world_state` 1, `response_item`
+    20, `event_msg` 18, `token_usage_record` 6, 0 bad lines) names
+    `originator` `codex-tui`, `cli_version` `0.162.1`, and `source`
+    `vscode`, as the desktop app's do; its `session_meta.payload` has
+    the same keys as the desktop rollouts, `creator_user_id` and
+    `creator_account_id` included. The parser gave 31 rows: 2 `user`, 2
+    `assistant`, 9 tool calls with their results (`exec` 5,
+    `node_repl.js` 2, `shell` 1, `apply_patch` 1; `node_repl.js` is a
+    tool of the `node_repl` MCP (Model Context Protocol) server the
+    app's `config.toml` configures), `task_started` 15:42:43Z to
+    `task_complete` 15:43:59Z (75,943 ms), `model: gpt-6.1-sol` (a third
+    model id), and a `permission mode:` row with the granular approval
+    object (`request_permissions` and `mcp_elicitations` true, the rest
+    false) and the `workspace-write` sandbox. The sandbox failed to
+    start a process during the run (`.sandbox/setup_error.json` `code`
+    `helper_unknown_error`), so some tool calls failed. The CLI also
+    wrote `history.jsonl`, which the desktop app had not: one line with
+    `session_id`, `text` and `ts`, the shape of
+    [section 5](#5-other-files). The console commands that started it
+    are in PowerShell's own history file, which is shell history and
+    left to the EDR.
   - Not exercised: a resumed thread, a denied tool call, an "allow
     always" grant, a model switch within a thread, subagents, an
     automation run.
@@ -488,6 +517,11 @@ and key names.
 - **Ids.** `session_meta.payload.id` is the thread id and the file-name
   UUID; `session_id` is the root thread's id, so a subagent's rollout has
   `id` ≠ `session_id`. Reverted rollouts end `<thread id>_<rollout id>`.
+- **Surface.** `session_meta.payload.originator` is the key that tells
+  the surfaces apart: `codex-tui` for the CLI and `Codex Desktop` for
+  the ChatGPT desktop app. `source` was `vscode` for both on the Windows
+  install observed on 2026-10-15 (desktop 0.162.0-alpha.17.2, standalone
+  CLI 0.162.1), so it does not separate them.
 - **Account and user.** `session_meta.payload.creator_account_id` (a
   UUID) and `creator_user_id` (the ChatGPT user id, 29 characters) name
   who created the thread; Codex Desktop fills them (observed on Windows,
@@ -539,6 +573,14 @@ and key names.
   [recorder.rs:82](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/recorder.rs#L82)); the current lister walks only
   `YYYY/MM/DD`
   ([list.rs:900-920](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/list.rs#L900-L920)).
+- **Standalone CLI and desktop app on one host.** On Windows the
+  standalone CLI (installed by OpenAI's PowerShell installer under
+  `.codex/packages/standalone`) and Codex Desktop inside the ChatGPT app
+  write the same `.codex` tree, sessions and login (observed
+  2026-10-15, CLI 0.162.1, desktop 0.162.0-alpha.17.2). Their rollouts
+  have the same envelope and `session_meta` keys and differ in
+  `originator` and `cli_version` ([section 6](#6-timestamps-ids-project-branch-model-subagents));
+  only the CLI wrote `history.jsonl`. The parser reads both alike.
 - **Renames kept for compatibility.** `session_meta` without `session_id`,
   `agent_type` for `agent_role`, `turn_started`/`turn_complete` aliases,
   `compaction_summary` for `compaction`; `TurnContextItem.summary` is
