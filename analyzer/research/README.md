@@ -108,7 +108,7 @@ parses every source and shows each event once is
 | `letta` | home `~/.letta/transcripts/` | yes | none (`sessions.jsonl` is per session: `agent_id`, `session_id`, `timestamp`, `project`) | header `cwd` (local backend), else a heuristic | local-backend `messages.jsonl`; chunk logs (truncated) |
 | `little-coder` | home `~/.pi/agent/sessions/` | yes | `~/.pi/agent/little-coder-prompt-history.json`: strings only | header `cwd` | none |
 | `muse-code` | home `~/.local/share/muse/sessions/` | yes | `tui-history.jsonl`: a prompt line then `{project, session}`; no timestamp | session `workspace_root` | `.msp-view-v1` journal; `session-index.db` (first prompt) |
-| `nanobot` | home `~/.nanobot/sessions/<workspace-id>/` | yes | `~/.nanobot/history/cli_history`: prompts only | a `.workspace` file per directory | WebUI transcript mirror; `memory/history.jsonl` |
+| `nanobot` | home `~/.nanobot/sessions/<workspace-id>/` | yes | `~/.nanobot/history/cli_history`: local timestamp and prompt text, no session or workspace | a `.workspace` file per directory | WebUI transcript `webui/<key>.jsonl` and `.segments/` (WebUI chats; survives `/new`); `memory/history.jsonl` holds summaries, not copies |
 | `ollama` | app data `db.sqlite` (desktop app) | yes | `~/.ollama/history`: text only, last 100 | none | REPL `/save` into a model blob |
 | `open-interpreter` | home `~/.openinterpreter/sessions/` | yes | `~/.openinterpreter/history.jsonl`: `session_id`, `ts`, `text` | `session_meta` and per turn | the Codex-style SQLite set |
 | `openclaw` | home `~/.openclaw/agents/<id>/agent/*.sqlite` | yes | none | header `cwd` | `.reset` and `.deleted` archives, archive blobs, legacy JSONL |

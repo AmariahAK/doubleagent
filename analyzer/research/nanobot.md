@@ -32,9 +32,15 @@ elsewhere ([`nanobot/config/paths.py:20-27`](https://github.com/HKUDS/nanobot/bl
   ([`agent/memory.py:311-322`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/memory.py#L311-L322)); legacy `memory/HISTORY.md`.
 - `.nanobot/webui/<safe key>.jsonl` and `<safe key>.segments/NNNNNN.jsonl`:
   WebUI display transcript, schema version 3, a rendering mirror of the
-  session ([`webui/transcript.py:1`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1),[`31-39`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L31-L39),[`172-188`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L172-L188)). Not parsed in v1 of the parser.
+  session ([`webui/transcript.py:1`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1),[`31-39`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L31-L39),[`172-188`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L172-L188)). The
+  directory is the instance's data directory, so `.nanobot-<instance>/webui/`
+  for an instance ([`config/paths.py:20-27`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/paths.py#L20-L27),[`46-48`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/paths.py#L46-L48)). Parsed since analyzer
+  0.13.0 as a secondary source; record shape in
+  [section 3](#3-record-schema). The legacy `<safe key>.json` snapshot beside
+  it ([`webui/transcript.py:186-188`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L186-L188)) is not read: its shape was not traced.
 - `.nanobot/history/cli_history`: prompt_toolkit input history, user prompts
-  only ([`config/paths.py:64-66`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/paths.py#L64-L66)).
+  only ([`config/paths.py:64-66`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/paths.py#L64-L66)), always under `~/.nanobot` whatever instance
+  runs. Parsed since analyzer 0.13.0 as a secondary source.
 
 ## 3. Record schema
 
@@ -67,6 +73,81 @@ No model is recorded per message. The session's model preset is
 summary is `metadata._last_summary {text, last_active}` and the last
 delivery route `metadata.last_channel` ([`session/keys.py:10`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/keys.py#L10),[`38`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/keys.py#L38)).
 
+### WebUI display transcript
+
+The WebUI is nanobot's browser chat interface, served by its gateway over a
+WebSocket channel; its chats are sessions with the key `websocket:<chat_id>`
+([`webui/session_identity.py:8`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/session_identity.py#L8),[`17-19`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/session_identity.py#L17-L19)). Every transcript append goes
+through `webui_session_key(chat_id)` ([`webui/transcript.py:1274-1281`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1274-L1281)), so
+only WebUI chats have one. The file stem is `SessionManager.safe_key`, the
+key with `:` replaced by `_` and unsafe characters by `_`
+([`session/manager.py:899-900`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L899-L900); [`utils/helpers.py:372-374`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/utils/helpers.py#L372-L374)), so
+`websocket:chat-1` is `websocket_chat-1.jsonl`, unlike the base64 stem of
+the session file ([`:903-904`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L903-L904)).
+
+Layout. Records are appended to the active `<safe key>.jsonl`
+([`webui/transcript.py:1075-1086`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1075-L1086),[`1118-1127`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1118-L1127)). After a `turn_end`, when the
+file passes 2 MiB, the older turns move into the next numbered
+`<safe key>.segments/NNNNNN.jsonl` and the active file is rewritten with the
+recent turns only ([`:35-36`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L35-L36),[`629-668`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L629-L668),[`671-711`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L671-L711)); `segments/manifest.json`
+indexes the segments. The files hold disjoint turns, not copies of each
+other: nanobot reads the segments in order, then the active file
+([`:1058-1065`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1058-L1065)).
+
+Records. One JSON object per line, `event` naming it, `chat_id`, the turn
+annotations `turn_id`, `turn_phase` and `turn_seq`
+([`:1289-1305`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1289-L1305)), and `created_at_ms`, set to `time.time()` in epoch
+milliseconds when the record is appended, unless the caller gave one
+([`:1089-1106`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1089-L1106)). This is true UTC, unlike every other nanobot time.
+
+- `user`: `text`, optional `media_paths[]`, `cli_apps[]`, `mcp_presets[]`,
+  `session_mentions[]` ([`:1494-1530`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1494-L1530)), appended when the WebUI channel accepts
+  the message, before the agent turn ([`webui/inbound_commands.py:658-669`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/inbound_commands.py#L658-L669)).
+- `message`: `text`, optional `kind` (`tool_hint`, `progress`, `reasoning`),
+  `tool_events[]`, `media[]`, `latency_ms`
+  ([`channels/websocket/runtime.py:1185-1227`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/websocket/runtime.py#L1185-L1227); [`webui/transcript.py:2245-2278`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L2245-L2278)). No
+  `kind` is an assistant reply; `tool_hint` and `progress` are breadcrumbs.
+  A tool event is `{version, phase, call_id, name, arguments (an object),
+  result, error, files, embeds}`, `phase` `start` when the call is made and
+  `end` or `error` when it returns ([`utils/progress_events.py:91-102`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/utils/progress_events.py#L91-L102),[`116-143`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/utils/progress_events.py#L116-L143)).
+- `stream_end` and `reasoning_end`: the completed text of a streamed answer
+  or reasoning segment in `text`. A `stream_end` with `merge_next` keeps its
+  buffer, so the next `stream_end` repeats its text
+  ([`channels/websocket/runtime.py:1273-1297`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/websocket/runtime.py#L1273-L1297),[`1338-1377`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/websocket/runtime.py#L1338-L1377)). `delta` and
+  `reasoning_delta` chunks are not written ([`webui/transcript.py:1229-1247`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1229-L1247));
+  older files may hold them, folded into the end record at `turn_end`
+  ([`:325-362`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L325-L362)).
+- `file_edit`: `edits[]` of `{version, call_id, tool, path, absolute_path,
+  phase, added, deleted, approximate, status, binary?, operation?}`
+  ([`channels/websocket/runtime.py:1304-1321`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/websocket/runtime.py#L1304-L1321); [`utils/file_edit_events.py:531-558`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/utils/file_edit_events.py#L531-L558)).
+- `turn_end` (`latency_ms`, `usage`, `round_usages`,
+  `context_window_tokens`), `context_compaction` (`compaction_id`,
+  `phase`), and `fork_marker`, the boundary where a forked chat starts
+  ([`webui/transcript.py:2289-2326`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L2289-L2326),[`1361-1369`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1361-L1369)).
+
+A fork writes the target's transcript from the source's rows or from the
+truncated session messages, `user` and `message` only, every record then
+stamped at the fork ([`:1319-1358`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1319-L1358),[`1372-1407`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1372-L1407)).
+
+### CLI input history
+
+`nanobot agent` reads input through a prompt_toolkit `PromptSession` with a
+`FileHistory` on `~/.nanobot/history/cli_history`
+([`cli/terminal.py:86-95`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/cli/terminal.py#L86-L95),[`182-188`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/cli/terminal.py#L182-L188)). The format is the one Aider's input history
+uses ([`aider.md`](aider.md)): an entry is a `# <local timestamp>` line
+followed by one `+<line>` per input line. The timestamp is naive host local
+time, the same convention as the session files. No session key or
+workspace is written, and the file is shared by every CLI session.
+
+### Memory journal
+
+`memory/history.jsonl` is not a copy of session events. An entry is a
+summary the model wrote of archived messages
+([`agent/memory.py:1006-1007`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/memory.py#L1006-L1007)) or, when summarising fails, a `[RAW] <n>
+messages` block of several formatted messages
+([`:627-647`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/memory.py#L627-L647),[`649-672`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/memory.py#L649-L672)), stamped to the minute
+([`:311-324`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/memory.py#L311-L324)).
+
 ## 4. Joins
 
 - Session: file = metadata `key`. Keys are `<channel>:<chat_id>`, or
@@ -78,6 +159,31 @@ delivery route `metadata.last_channel` ([`session/keys.py:10`](https://github.co
   (UTC epoch ms, [`providers/base.py:1283`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/providers/base.py#L1283); [`llm_usage/store.py:196-218`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/llm_usage/store.py#L196-L218)), which also
   gives the host's clock offset.
 - Subagents: not persisted as separate session files as far as traced.
+- WebUI transcript to session file: session key `websocket:` + `chat_id`
+  = the session file's metadata `key`; its file is
+  `sessions/<workspace-id>/<base64 of the key>.jsonl`, whose `.workspace`
+  gives the project. Tool calls join on `call_id` = `tool_calls[].id`.
+  Text: the WebUI `user` text is the typed message, while the session's
+  copy has any runtime context (a quoted reply, an automation template)
+  appended ([`runtime_context.py:120-145`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/runtime_context.py#L120-L145); [`agent/loop.py:693-699`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/loop.py#L693-L699)), so
+  those two differ. Time: the session user message is stamped when it is
+  persisted at the start of the turn ([`agent/loop.py:663-705`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/loop.py#L663-L705);
+  [`session/manager.py:208-217`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L208-L217)), its assistant and tool messages when the turn
+  is saved at its end ([`agent/loop.py:2430`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/loop.py#L2430)), all in host local time; the
+  WebUI stamps each record in true UTC as it streams. The two differ by
+  the host's UTC offset (at most 14 hours) plus up to the turn's length.
+- CLI history to session file: text and time only; the CLI's session key
+  is `cli:direct` unless `--session` names another ([`cli/agent.py:146`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/cli/agent.py#L146)),
+  and the file records neither. The entry is written when the prompt is
+  submitted and the session user message at the start of the turn, both
+  in local time.
+- What each survives. `/new` empties the session file and leaves the WebUI
+  transcript ([`command/builtin.py:314-346`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/command/builtin.py#L314-L346)), so the WebUI turns
+  before it survive only there and in the memory journal's summary.
+  Deleting a WebUI chat deletes the session file and the transcript
+  together ([`webui/ws_http.py:1250-1251`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/ws_http.py#L1250-L1251); [`webui/thread_disk.py:19-31`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/thread_disk.py#L19-L31)). The
+  CLI history survives `/new` and any session deletion; nothing in the
+  traced source truncates it.
 
 ## 5. SQLite or binary stores
 
@@ -135,6 +241,23 @@ approved
 ([`collectors/research/nanobot.md`](../../collectors/research/nanobot.md)),
 is named in the research without its shape, so the file is not read.
 
+Sources, primary or secondary (issue 122; every one read on every run):
+
+| File | Role | Rows |
+| --- | --- | --- |
+| `sessions/<workspace-id>/<stem>.jsonl`, legacy and `.migration-conflicts/` copies | primary | as above |
+| `<workspace>/memory/history.jsonl` | primary: summaries, not copies of events | one `system` row per entry, `memory history #<cursor>: <content>` |
+| `webui/<safe key>.jsonl`, `webui/<safe key>.segments/NNNNNN.jsonl` | secondary, tolerance 15 hours | `user`; `assistant` (`message` with no `kind`, `stream_end` without `merge_next`); `tool_use` and `tool_result` per tool event; `thinking` (opt-in); `system` for breadcrumbs without tool events, finished file edits, `fork_marker`, `context_compaction` and unknown events; nothing for `delta`, `reasoning_delta`, `turn_end` |
+| `.nanobot/history/cli_history` | secondary, tolerance 2 seconds | one `user` row per entry at its own time, no session or project |
+
+The WebUI rows carry `created_at_ms` as true UTC, the session file's rows
+local time as if UTC; the 15-hour window is the largest UTC offset (14
+hours) plus an hour of turn, for the assistant and tool messages the
+session stamps at the turn's end. Known misses, each shown twice: a turn
+longer than that hour, a forked chat's transcript (every record stamped at
+the fork), and a user message whose session copy carries appended runtime
+context. A kept WebUI row keeps its true-UTC time.
+
 Fixture, file `.nanobot/sessions/0123456789abcdef0123456789abcdef/dGVsZWdyYW06MTIzNDU2Nzg5.jsonl`,
 with `.workspace` containing `/home/alice/.nanobot/workspace`:
 
@@ -149,5 +272,8 @@ with `.workspace` containing `/home/alice/.nanobot/workspace`:
 Confidence. High: file naming, metadata and message field names, naive
 local timestamps, tool call shape. The shell tool is
 named `exec` ([`agent/tools/shell.py:247-248`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/tools/shell.py#L247-L248)). Medium: `thinking_blocks` element
-shape is provider-defined. Not determined: whether
-subagent runs are persisted anywhere; the WebUI transcript record shape.
+shape is provider-defined. High, from source: the WebUI transcript record
+shape and layout; medium: that the fixture's pairing holds on a real
+install, since no WebUI or CLI history was observed. Not determined: whether
+subagent runs are persisted anywhere; the legacy WebUI `<safe key>.json`
+snapshot shape.

@@ -506,13 +506,18 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # /srv/proj" (a rewind removed it from the session), the Qwen logs.json
 # model_switch entry (a `system` row whose text no session row has). The Muse
 # tui-history.jsonl prompt records no time and matches its session's prompt
-# on text alone.
+# on text alone. The nanobot WebUI mirror's user, tool_use, tool_result and
+# assistant rows of "show disk usage" pair with the session file's within
+# the 15-hour WebUI window, and the CLI history's "hello" with the legacy
+# cli:direct session's; the segment's older turn and the second CLI prompt
+# are kept.
 FIXTURE_DEDUPLICATED = {
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
     "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
     "gemini-cli": 1,  # "list files in src"
     "muse-code": 1,  # "fix the failing test", no timestamp
+    "nanobot": 5,  # four WebUI rows of one turn, the CLI history's "hello"
     "open-interpreter": 1,  # "list the files"
     "qwen-code": 1,  # "run the tests"
 }

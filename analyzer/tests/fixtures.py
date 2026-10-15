@@ -1476,6 +1476,7 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     build_open_interpreter(home)
     build_openclaw(home)
     build_nanobot(home)
+    build_nanobot_webui(home)
     build_cody(home)
     build_twinny(home)
     build_pearai(home)
@@ -6358,6 +6359,166 @@ def build_nanobot(home: Path) -> None:
     )
     (home / ".nanobot/config.json").write_text(
         '{"providers": {"openai": {"apiKey": "sk-not-real"}}}', encoding="utf-8"
+    )
+
+
+# nanobot WebUI mirror and CLI history (issue 122). The host is taken to be
+# at UTC+2: the session file's local times read two hours later than the
+# WebUI's true-UTC created_at_ms.
+NANOBOT_WEBUI_KEY = "websocket:chat-1"
+NANOBOT_WEBUI_SESSION_REL = ".nanobot/sessions/%s/d2Vic29ja2V0OmNoYXQtMQ.jsonl" % NANOBOT_WS
+NANOBOT_WEBUI_REL = ".nanobot/webui/websocket_chat-1.jsonl"
+NANOBOT_WEBUI_SEGMENT_REL = ".nanobot/webui/websocket_chat-1.segments/000001.jsonl"
+NANOBOT_CLI_HISTORY_REL = ".nanobot/history/cli_history"
+
+
+def nanobot_webui_records():
+    """The active WebUI file: one turn the session file also holds."""
+    turn = {"chat_id": "chat-1", "turn_id": "t-2"}
+    return [
+        {"event": "user", **turn, "text": "show disk usage", "created_at_ms": 1790924400900},
+        {
+            "event": "reasoning_end",
+            **turn,
+            "text": "Run df.",
+            "created_at_ms": 1790924401500,
+        },
+        {
+            "event": "message",
+            **turn,
+            "kind": "tool_hint",
+            "text": 'exec("df -h")',
+            "tool_events": [
+                {
+                    "version": 1,
+                    "phase": "start",
+                    "call_id": "call_df1",
+                    "name": "exec",
+                    "arguments": {"command": "df -h"},
+                    "result": None,
+                }
+            ],
+            "created_at_ms": 1790924402000,
+        },
+        {
+            "event": "message",
+            **turn,
+            "kind": "progress",
+            "text": "",
+            "tool_events": [
+                {
+                    "version": 1,
+                    "phase": "end",
+                    "call_id": "call_df1",
+                    "name": "exec",
+                    "arguments": {"command": "df -h"},
+                    "result": "/dev/sda1 42%",
+                }
+            ],
+            "created_at_ms": 1790924404000,
+        },
+        {
+            "event": "file_edit",
+            **turn,
+            "edits": [
+                {
+                    "call_id": "call_w1",
+                    "tool": "write_file",
+                    "path": "notes.txt",
+                    "absolute_path": "/srv/proj/notes.txt",
+                    "phase": "end",
+                    "status": "done",
+                    "added": 1,
+                    "deleted": 0,
+                }
+            ],
+            "created_at_ms": 1790924404500,
+        },
+        {"event": "delta", **turn, "text": "The disk", "created_at_ms": 1790924405000},
+        {
+            "event": "stream_end",
+            **turn,
+            "text": "The disk is",
+            "merge_next": True,
+            "created_at_ms": 1790924405200,
+        },
+        {
+            "event": "stream_end",
+            **turn,
+            "text": "The disk is 42% full.",
+            "created_at_ms": 1790924405500,
+        },
+        {"event": "turn_end", **turn, "latency_ms": 5100, "created_at_ms": 1790924406000},
+    ]
+
+
+def build_nanobot_webui(home: Path) -> None:
+    """A WebUI chat whose session file holds only the second turn (a `/new`
+    emptied the first), its WebUI mirror (the first turn rotated into a
+    segment), and the CLI history with one prompt of the legacy cli:direct
+    session and one whose session is gone."""
+    _jsonl(
+        home / NANOBOT_WEBUI_SESSION_REL,
+        [
+            {
+                "_type": "metadata",
+                "key": NANOBOT_WEBUI_KEY,
+                "created_at": "2026-10-02T09:00:00",
+                "updated_at": "2026-10-02T09:00:06",
+                "metadata": {"last_channel": NANOBOT_WEBUI_KEY},
+            },
+            {"role": "user", "content": "show disk usage", "timestamp": "2026-10-02T09:00:01"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_df1",
+                        "type": "function",
+                        "function": {"name": "exec", "arguments": '{"command": "df -h"}'},
+                    }
+                ],
+                "timestamp": "2026-10-02T09:00:06",
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_df1",
+                "name": "exec",
+                "content": "/dev/sda1 42%",
+                "timestamp": "2026-10-02T09:00:06",
+            },
+            {
+                "role": "assistant",
+                "content": "The disk is 42% full.",
+                "timestamp": "2026-10-02T09:00:06",
+            },
+        ],
+    )
+    _jsonl(home / NANOBOT_WEBUI_REL, nanobot_webui_records())
+    old = {"chat_id": "chat-1", "turn_id": "t-1"}
+    _jsonl(
+        home / NANOBOT_WEBUI_SEGMENT_REL,
+        [
+            {"event": "user", **old, "text": "list the old logs", "created_at_ms": 1789905600000},
+            {
+                "event": "message",
+                **old,
+                "text": "There are 3 old logs.",
+                "created_at_ms": 1789905603000,
+            },
+            {"event": "fork_marker", "chat_id": "chat-1", "created_at_ms": 1789905604000},
+        ],
+    )
+    segments = (home / NANOBOT_WEBUI_SEGMENT_REL).parent
+    (segments / "manifest.json").write_text(
+        '{"version": 2, "segments": [{"id": "000001", "turn_count": 1}]}', encoding="utf-8"
+    )
+    (home / ".nanobot/webui/sidebar-state.json").write_text("{}", encoding="utf-8")
+    (home / NANOBOT_CLI_HISTORY_REL).parent.mkdir(parents=True, exist_ok=True)
+    (home / NANOBOT_CLI_HISTORY_REL).write_text(
+        "\n# 2026-09-01 08:00:01.200000\n+hello\n"
+        "\n# 2026-09-01 07:59:00.000000\n+first line\n+second line\n",
+        encoding="utf-8",
     )
 
 
