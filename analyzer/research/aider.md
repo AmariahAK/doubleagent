@@ -58,6 +58,52 @@ no session id; synthesise one per `# aider chat started at` header. Input
 history timestamps join to `#### ` prompts by order and text. No model name
 and no git branch are recorded.
 
+Which file is primary. `.aider.chat.history.md` is the store of record: it
+is the only file with session headers and assistant and tool output, and
+the one Aider itself reads back with `--restore-chat-history`
+([`base_coder.py:519-520`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L519-L520)). The
+input and LLM histories are secondary sources (files that repeat some of a
+primary store's events, in the sense of
+[doubleagent issue 122](https://github.com/seanthegeek/doubleagent/issues/122)):
+
+- Every prompt typed at the terminal is written to both: prompt_toolkit's
+  `FileHistory` on the prompt session appends it to the input history
+  ([`io.py:355-356`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L355-L356)), and `get_input` then
+  calls `user_input`, which writes the `#### ` lines
+  ([`io.py:732-733`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L732-L733),
+  [`:775-789`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L775-L789)). A `--message` prompt is
+  added with `add_to_input_history`
+  ([`main.py:1126-1127`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/main.py#L1126-L1127),
+  [`io.py:736-745`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L736-L745)) and written to the chat
+  history by the coder
+  ([`base_coder.py:877-879`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L877-L879)).
+  The parser stamps the chat row with the matching input-history entry's
+  time, so the two rows carry the same text, synthesised session id,
+  project path and timestamp, and pair exactly.
+- Input-history entries with no chat twin: a `/run <command>` entry Aider
+  adds when it runs a shell command it suggested, whose chat trace is a
+  `> Running <command>` blockquote instead
+  ([`base_coder.py:2471-2474`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L2471-L2474));
+  every prompt after a chat-history write error, which sets
+  `chat_history_file` to `None` for the rest of the run
+  ([`io.py:1133-1136`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L1133-L1136)); and every prompt
+  of a run whose `--chat-history-file` pointed elsewhere, since the two
+  paths are separate options
+  ([`args.py:276-287`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L276-L287)). These rows are
+  kept.
+- What the input history survives: the chat history being deleted,
+  truncated or redirected. It does not survive the project, since both
+  default to the git root
+  ([`args.py:270-275`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L270-L275)); neither is written
+  under the home unless Aider ran there outside any repository.
+- The LLM history's `TO LLM` blocks become `system` rows that no chat row
+  repeats. Its `LLM RESPONSE` block is timestamped when the response
+  arrived ([`io.py:754-764`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L754-L764)), while the chat
+  history's assistant row inherits the prompt's time and may be split by
+  `> ` lines, so an `assistant` row pairs only for a reply of identical
+  text that arrived within the two-second window. Expect the LLM
+  history's rows to stay in the timeline.
+
 ## 5. SQLite stores
 
 None. `.aider.tags.cache.v*` is a repository-map cache, not chat, and is
@@ -82,6 +128,10 @@ collector's project catalog).
 
 Rows: one per `#### ` block (user), per assistant run, per `> ` run
 (tool_result); `# aider chat started` becomes `system`.
+
+Sources: `.aider.chat.history.md` is primary; `.aider.input.history` and
+`.aider.llm.history` are secondary, parsed on every run, with each row's
+own time and the default two-second window (see [section 4](#4-joins)).
 
 | Column | Source |
 | --- | --- |

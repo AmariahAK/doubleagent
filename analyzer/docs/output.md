@@ -1006,6 +1006,7 @@ drops are counted per agent on the `dropped:` line of stdout and under
 
 | Agent | Secondary source | Primary store |
 | --- | --- | --- |
+| `aider` | `.aider.input.history` and `.aider.llm.history`, in a home or a repository | `.aider.chat.history.md` beside them |
 | `antigravity` | `.gemini/antigravity-cli/history.jsonl` | `.gemini/antigravity-cli/conversations/*.db` |
 | `claude-code` | `.claude/history.jsonl` (and `.claude-<name>/history.jsonl`) | `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `codex-cli` | `.codex/history.jsonl` | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |

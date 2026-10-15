@@ -3243,7 +3243,12 @@ AIDER_CHAT = "".join(
     ]
 )
 
-AIDER_INPUT = "\n# 2026-10-02 12:00:05.123456\n+rename foo to bar\n\n# 2026-10-02 13:00:02.000000\n+/add b.py\n"
+# The last entry has no chat-history twin (a prompt whose chat line is gone),
+# so it survives deduplication; the other two pair with the chat rows.
+AIDER_INPUT = (
+    "\n# 2026-10-02 12:00:05.123456\n+rename foo to bar\n\n# 2026-10-02 13:00:02.000000\n+/add b.py\n"
+    "\n# 2026-10-02 13:05:00.000000\n+delete the migrations folder\n"
+)
 
 AIDER_LLM = (
     "TO LLM 2026-10-02T12:00:05\n-------\nSYSTEM Act as an expert\nSYSTEM software developer\n-------\n"

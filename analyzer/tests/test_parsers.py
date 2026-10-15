@@ -3135,6 +3135,37 @@ class AiderTests(ParserBase):
     S1 = "/alice/.aider.chat.history.md#2026-10-02 12:00:00"
     S2 = "/alice/.aider.chat.history.md#2026-10-02 13:00:00"
 
+    def test_secondary(self):
+        # The input and LLM histories are secondary sources, the chat history
+        # is the primary store (#122).
+        p = AiderParser()
+        self.assertFalse(p.secondary(self.artifact(self.CHAT)))
+        self.assertTrue(p.secondary(self.artifact(".aider.input.history")))
+        self.assertTrue(p.secondary(self.artifact(".aider.llm.history")))
+
+    def test_deduplicated(self):
+        """The input-history rows the chat history timed are dropped; the one
+        whose chat line is gone and the LLM rows are kept."""
+        rows, _, problems, deduplicated = cli.collect_rows(self.col, Options(), ["aider"])
+        self.assertEqual(problems, [])
+        self.assertEqual(deduplicated, {"aider": 2})
+        users = [r for r in rows if r.turn_type == "user"]
+        self.assertEqual(
+            [(r.text, r.timestamp_utc, r.session_id, r.source_file) for r in users],
+            [
+                ("rename foo to bar", "2026-10-02T12:00:05.123Z", self.S1, "/alice/" + self.CHAT),
+                ("/add b.py", "2026-10-02T13:00:02.000Z", self.S2, "/alice/" + self.CHAT),
+                ("<blank>", "2026-10-02T13:00:02.000Z", self.S2, "/alice/" + self.CHAT),
+                (
+                    "delete the migrations folder",
+                    "2026-10-02T13:05:00.000Z",
+                    self.S2,
+                    "/alice/.aider.input.history",
+                ),
+            ],
+        )
+        self.assertEqual(sum(r.source_file == "/alice/.aider.llm.history" for r in rows), 2)
+
     def test_rows(self):
         rows = self.rows_for(AiderParser(), self.CHAT)
         self.assertEqual(
@@ -3178,8 +3209,10 @@ class AiderTests(ParserBase):
             [
                 ("user", "rename foo to bar", "2026-10-02T12:00:05.123Z", self.S1),
                 ("user", "/add b.py", "2026-10-02T13:00:02.000Z", self.S2),
+                ("user", "delete the migrations folder", "2026-10-02T13:05:00.000Z", self.S2),
             ],
         )
+        self.assertEqual({r.project_path for r in rows}, {"/alice"})
         rows = self.rows_for(AiderParser(), ".aider.llm.history")
         self.assertEqual([r.turn_type for r in rows], ["system", "assistant"])
         self.assertEqual(
@@ -3199,9 +3232,9 @@ class AiderTests(ParserBase):
     def test_truncated_line(self):
         write_bad_line(self.home / ".aider.input.history")
         rows = self.rows_for(AiderParser(), ".aider.input.history")
-        self.assertEqual([r.turn_type for r in rows], ["user", "user", "system"])
+        self.assertEqual([r.turn_type for r in rows], ["user", "user", "user", "system"])
         self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 7)
+        self.assertEqual(rows[-1].source_line, 10)
 
     def test_project_artifacts_from_manifest(self):
         """The collector attributes repository files to agent `project` with
@@ -3249,9 +3282,11 @@ class AiderTests(ParserBase):
                 )
             },
         )
-        rows, _, problems, _ = cli.collect_rows(col, Options(), [])
+        rows, _, problems, deduplicated = cli.collect_rows(col, Options(), [])
         self.assertEqual(problems, [])
-        self.assertEqual(len(rows), 8 + 2 + 2)
+        # 8 chat rows, 3 input-history rows less the 2 the chat rows repeat, 2 LLM rows.
+        self.assertEqual(len(rows), 8 + 3 - 2 + 2)
+        self.assertEqual(deduplicated, {"aider": 2})
         self.assertEqual(
             {(r.host, r.user, r.agent, r.project_path) for r in rows},
             {("h2", "alice", "aider", "/srv/proj")},

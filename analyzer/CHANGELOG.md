@@ -59,6 +59,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Goose's CLI `history.txt` (both locations) is a secondary source: a
   history row is dropped when a `sessions.db` user row has the same text,
   and kept when none does, such as a prompt of a removed session ([#122]).
+- Aider's `.aider.input.history` and `.aider.llm.history` are secondary
+  sources of `.aider.chat.history.md`: an input-history prompt the chat
+  history records is dropped, since the chat row takes its time from it,
+  and one the chat history lacks is kept ([#122]).
 
 ## [0.12.0] - 2026-10-15
 

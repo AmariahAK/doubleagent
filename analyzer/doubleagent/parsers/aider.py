@@ -41,6 +41,24 @@ header at or before their own time when the chat history sits beside them.
 No model, git branch or tool call id is recorded. Each `TO LLM` request
 becomes one `system` row naming the message count and the last user
 message; the full prompt is at `source_file:source_line`.
+
+The chat history is the primary store; the input and LLM histories are
+secondary sources (`secondary()`, issue 122), read on every run beside it.
+Aider writes the same prompt to both the input history (prompt_toolkit's
+`FileHistory`, `aider/io.py` `add_to_input_history`) and the chat history
+(`user_input`), so an input-history row and the chat row it timed carry
+the same text, session id, project path and timestamp and pair exactly:
+the input-history row is dropped. One the chat history lacks is kept: an
+entry written after a chat-history write error, which turns chat logging
+off for the rest of the run (`append_chat_history`), a `/run <command>`
+entry Aider adds for a shell command it suggested
+(`base_coder.py` `handle_shell_commands`), or a prompt whose chat history
+was deleted or written elsewhere with `--chat-history-file`. Both files
+record each event's own time, so the default two-second window applies.
+The LLM history rarely pairs: its `system` rows summarise a request no
+chat row repeats, and an `LLM RESPONSE` row is stamped when the response
+arrived, while the chat history's assistant row takes the prompt's time
+and may hold several such responses or be split by blockquote lines.
 """
 
 from __future__ import annotations
@@ -118,6 +136,10 @@ class AiderParser(Parser):
 
     def wants(self, artifact: Artifact) -> bool:
         return bool(FILE_RX.match(artifact.rel))
+
+    def secondary(self, artifact: Artifact) -> bool:
+        m = FILE_RX.match(artifact.rel)
+        return bool(m) and m.group(1) != CHAT
 
     def base_row(self, artifact: Artifact) -> Row:
         row = Row(
