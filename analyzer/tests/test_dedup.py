@@ -196,22 +196,106 @@ class DeduplicateTests(unittest.TestCase):
         # The tolerance is that of the row being tested.
         self.assertEqual(deduplicate([], [(a, 2.0), (far, 600.0)])[0], [a])
 
-    def test_earlier_copy_kept(self):
-        # Input order decides, not time: the later row in the input goes.
+    def test_earliest_copy_kept(self):
+        # Time decides among timestamped copies, not input order: the
+        # earlier copy is kept wherever it comes in the input.
         late = hist("2026-10-01T10:00:01.000Z", source_file=BACKUP_A)
         early = hist("2026-10-01T10:00:00.000Z", source_file=BACKUP_B)
-        self.assertEqual(dedup([], [late, early])[0], [late])
+        self.assertEqual(dedup([], [late, early])[0], [early])
 
-    def test_copy_matched_to_primary_not_reused(self):
-        # The first copy pairs with the primary row and is dropped; the
-        # second cannot pair with it, so it is kept: one primary row and
-        # one history line for two recorded events.
+    def test_copies_of_primary_event_collapse(self):
+        # Three copies of one primary event in two files: the first takes
+        # the primary row, the other two collapse onto it and onto each
+        # other, and only the primary row is left.
         p = row()
         a = hist(source_file=BACKUP_A)
-        b = hist(source_file=BACKUP_B)
-        kept, dropped = dedup([p], [a, b])
-        self.assertEqual(kept, [p, b])
-        self.assertEqual(dropped, Counter({"claude-code": 1}))
+        b = hist("2026-10-01T10:00:00.500Z", source_file=BACKUP_B)
+        c = hist("2026-10-01T10:00:01.000Z", source_file=BACKUP_A, source_line=2)
+        kept, dropped = dedup([p], [a, b, c])
+        self.assertEqual(kept, [p])
+        self.assertEqual(dropped, Counter({"claude-code": 3}))
+        # Undated copies the same way, in either input order.
+        u1 = hist("", source_file=BACKUP_A)
+        u2 = hist("", source_file=BACKUP_B)
+        for secondary in ([u1, u2], [u2, u1]):
+            kept, dropped = dedup([p], secondary)
+            self.assertEqual(kept, [p])
+            self.assertEqual(dropped, Counter({"claude-code": 2}))
+
+    def test_undated_copy_of_dated_dropped(self):
+        # An undated copy pairs with a dated one, whichever comes first in
+        # the input, and the dated copy is the one kept.
+        dated = hist("2026-10-01T10:00:00.000Z", source_file=BACKUP_A)
+        undated = hist("", source_file=BACKUP_B)
+        for secondary in ([dated, undated], [undated, dated]):
+            kept, dropped = dedup([], secondary)
+            self.assertEqual(kept, [dated])
+            self.assertEqual(dropped, Counter({"claude-code": 1}))
+
+    def test_most_specific_undated_copy_takes_primary(self):
+        # Two undated copies of one event, an unscoped history line first in
+        # the input and a session-scoped index row second, and the primary
+        # row: the session-scoped copy takes the primary row, the unscoped
+        # line collapses onto it, and both drop.
+        p = row()
+        loose = hist("", session_id="", project_path="", source_file=BACKUP_A)
+        scoped = hist("", source_file=BACKUP_B)
+        kept, dropped = dedup([p], [loose, scoped])
+        self.assertEqual(kept, [p])
+        self.assertEqual(dropped, Counter({"claude-code": 2}))
+
+    def test_broader_scope_among_secondary(self):
+        # A history line with a project and no session and a mirror line
+        # with a session and no project, both copies of one primary event:
+        # the history line takes the primary row (project scope), and the
+        # mirror line, finding nothing under its session, meets it under its
+        # identity alone.
+        p = row()
+        history = hist(session_id="", source_file=BACKUP_A)
+        mirror = hist("2026-10-01T10:00:00.300Z", project_path="", source_file=BACKUP_B)
+        kept, dropped = dedup([p], [history, mirror])
+        self.assertEqual(kept, [p])
+        self.assertEqual(dropped, Counter({"claude-code": 2}))
+        # Under a broader scope a candidate of another session or project is
+        # never taken: "yes" in two sessions of two backups is two events.
+        other = "99999999-0000-4000-8000-000000000000"
+        s1 = hist(text="yes", source_file=BACKUP_A)
+        s2 = hist(text="yes", session_id=other, source_file=BACKUP_B)
+        self.assertEqual(dedup([], [s1, s2])[0], [s1, s2])
+        p1 = hist(text="yes", session_id="", source_file=BACKUP_A)
+        p2 = hist(text="yes", project_path="/srv/other", source_file=BACKUP_B)
+        self.assertEqual(dedup([], [p1, p2])[0], [p1, p2])
+        # The primary pass stays strict: a row with a session never takes a
+        # primary row of no session under a broader key.
+        scoped = hist(session_id=other, project_path="")
+        self.assertEqual(self.kept_secondary([row(session_id="")], [scoped]), [scoped])
+
+    def test_tool_rows_pair_on_id(self):
+        for turn_type in ("tool_use", "tool_result"):
+            p = row(turn_type=turn_type, tool_use_id="call_1", text='{"cmd": ["ls", "-la"]}')
+            same_id = hist(turn_type=turn_type, tool_use_id="call_1", text="ls -la")
+            kept, dropped = dedup([p], [same_id])
+            self.assertEqual(kept, [p], turn_type)
+            self.assertEqual(dropped, Counter({"claude-code": 1}), turn_type)
+            other_id = hist(turn_type=turn_type, tool_use_id="call_2", text=p.text)
+            self.assertEqual(self.kept_secondary([p], [other_id]), [other_id], turn_type)
+            # When either row has no id, text decides: a secondary row
+            # without one pairs with the primary row with one.
+            no_id = hist(turn_type=turn_type, text=p.text)
+            self.assertEqual(self.kept_secondary([p], [no_id]), [], turn_type)
+            other_text = hist(turn_type=turn_type, text="ls")
+            self.assertEqual(self.kept_secondary([p], [other_text]), [other_text], turn_type)
+            p_no_id = row(turn_type=turn_type, text="ls -la")
+            self.assertEqual(
+                self.kept_secondary([p_no_id], [hist(turn_type=turn_type, text="ls -la")]), []
+            )
+            # The id never stands in for a user row's text.
+            u = hist(tool_use_id="call_1", text="other")
+            self.assertEqual(self.kept_secondary([row(tool_use_id="call_1")], [u]), [u])
+            # Copies among secondary rows pair on the id too.
+            a = hist(turn_type=turn_type, tool_use_id="call_1", text="a", source_file=BACKUP_A)
+            b = hist(turn_type=turn_type, tool_use_id="call_1", text="b", source_file=BACKUP_B)
+            self.assertEqual(dedup([], [a, b])[0], [a], turn_type)
 
     def test_copies_one_to_one_and_chained(self):
         # Two backups each holding "continue" twice, a minute apart, keep

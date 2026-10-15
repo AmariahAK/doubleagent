@@ -960,7 +960,13 @@ and the same prompt is then recorded in both. The analyzer parses every
 source on every run, and keeps each event once: a row from a secondary
 source is dropped when a row from the agent's primary store has
 
-- the same `host`, `user`, `agent`, `turn_type` and `text`;
+- the same `host`, `user`, `agent`, `turn_type` and `text`; two
+  `tool_use` or two `tool_result` rows that both carry a `tool_use_id`
+  match on the same `tool_use_id` instead, and never on text when the
+  ids differ, because a mirror can record a call in another form than
+  the transcript does (Codex CLI's `thread_history_1.sqlite` holds the
+  parsed command, the rollout the model's arguments) and a call id is
+  unique within a session; a tool row without an id matches on text;
 - the same `session_id`, when the secondary row has one; when it has
   none, the same `project_path` (whatever the primary row's
   `session_id`), when it has one; when it has neither, as a text-only
@@ -979,22 +985,37 @@ Matching is one-to-one. The secondary rows with a timestamp go first, in
 timestamp order, each matched to the nearest primary row within its
 tolerance that no earlier secondary row took, so a transcript cut after
 three of five identical prompts keeps two of the five history lines.
-Then the secondary rows with no timestamp go, in input order, each
-matched to the earliest-timestamped primary row still untaken (primary
-rows with no timestamp last, in input order); taking them second keeps
-an undated row from claiming the primary row a timestamped one pairs
-with. The primary row always survives, with its own `source_file` and
-`source_line`.
+Then the secondary rows with no timestamp go, those with a `session_id`
+first, then those with only a `project_path`, then those with neither,
+each group in input order, each matched to the earliest-timestamped
+primary row still untaken (primary rows with no timestamp last, in input
+order); taking them second keeps an undated row from claiming the
+primary row a timestamped one pairs with, and taking the most specific
+first lets a session's copy, not a text-only history line, take the
+primary row. The primary row always survives, with its own `source_file`
+and `source_line`.
 
-Last, the secondary rows that no primary row took are
-matched among themselves in input order under the same rule (the
-tolerance of the row being tested), one-to-one, and a row that pairs
-with an earlier one is dropped and counted with the others, so the
-copies of one event that several backups or snapshots keep after the
-primary store is gone are shown once, as the first copy. A row pairs
-only with an earlier row from a different `source_file`, so two
-identical prompts in one history file, with a timestamp or without, are
-both kept as the two events the file records.
+Last, the secondary rows that no primary row took are matched against
+the other secondary rows, one-to-one, under the same rule (the tolerance
+of the row being tested), and a row that matches is dropped and counted
+with the others. Its candidates are every secondary row a primary row
+took, so a third copy of a primary event collapses onto the copy that
+took it and only the primary row is left, and every secondary row tested
+before it: the rows with a timestamp in timestamp order, then those with
+none in input order. The copy kept of several is therefore the earliest
+one with a timestamp, and a copy with no timestamp matches one with a
+timestamp, with no time constraint, rather than the reverse. In this pass
+only, a row that finds no candidate under its own scope tries the
+broader ones, its `project_path` when it has one and then any scope, so
+Antigravity's history line (a project, no session) and its brain mirror
+line (a session, no project) of the same prompt meet; under a broader
+scope a candidate whose `session_id` or `project_path` differs from one
+the row records is never taken, so the same prompt typed in two sessions
+stays two events. The copies of one event that several backups,
+snapshots, archives or mirrors keep are thus shown once, also after the
+primary store is gone. A row matches only a row from a different
+`source_file`, so two identical prompts in one history file, with a
+timestamp or without, are both kept as the two events the file records.
 
 A secondary row with no match is kept, which recovers a prompt whose
 transcript was deleted, excluded by size or truncated, and a prompt the

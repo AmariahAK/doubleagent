@@ -89,17 +89,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Antigravity's CLI `history.jsonl`, Gemini CLI's and Qwen Code's
   `logs.json` and Muse Code's `tui-history.jsonl`; one of their rows is
   dropped when a primary-store row of the same host, user and agent has
-  the same `turn_type` and `text`, the same `session_id` (or, without
-  one, the same `project_path`, or, without either, any session or
-  project) and, when the secondary row has a `timestamp_utc`, one at
-  most 2 seconds away (a wider window where the parser table says so);
-  a row with no timestamp, such as Muse Code's, matches on text alone.
-  Secondary rows that no primary row took are then matched among
-  themselves the same way, so copies of one event kept by several
-  backups appear once, as the first; a row pairs only with one from a
-  different file, so two identical lines in one file both stay. Secondary rows with no match are
-  kept, so a prompt whose transcript is gone is still in the timeline
-  ([#122]).
+  the same `turn_type` and `text` (two `tool_use` or two `tool_result`
+  rows that both carry a `tool_use_id`: the same `tool_use_id` instead),
+  the same `session_id` (or, without one, the same `project_path`, or,
+  without either, any session or project) and, when the secondary row
+  has a `timestamp_utc`, one at most 2 seconds away (a wider window
+  where the parser table says so); a row with no timestamp, such as Muse
+  Code's, matches on text alone, the session-scoped ones first, so the
+  most specific copy takes the primary row. Secondary rows that no
+  primary row took are then matched against the copies a primary row
+  took and against each other the same way, the timestamped rows first
+  in time order and the undated ones after, and looking under a broader
+  scope too (the project, then any) when a candidate's session and
+  project do not differ from the row's; so three copies of a primary
+  event leave only the primary row, copies of one event kept by several
+  backups appear once, as the earliest timestamped copy, and of an
+  undated and a timestamped copy the timestamped one is kept. A row pairs only with one from a
+  different file, so two identical lines in one file both stay.
+  Secondary rows with no match are kept, so a prompt whose transcript is
+  gone is still in the timeline ([#122]).
 - Goose's CLI `history.txt` (both locations) is a secondary source: a
   history row is dropped when a `sessions.db` user row has the same text,
   and kept when none does, such as a prompt of a removed session ([#122]).
