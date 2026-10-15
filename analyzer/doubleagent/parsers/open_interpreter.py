@@ -21,6 +21,13 @@ openinterpreter/openinterpreter at 2767e5f (see
 * `.openinterpreter/history.jsonl`: `{session_id, ts, text}`. A secondary
   source: the timeline drops a line whose event a rollout also records
   (`dedup.py`).
+* `.openinterpreter/state_5.sqlite` and
+  `.openinterpreter/thread_history_1.sqlite`: the fork keeps Codex's
+  SQLite set under its own home (`state/src/sqlite.rs:29-34`), with the
+  same `threads` columns and the thread history schema up to migration
+  0006, without the item lifecycle times of Codex's 0007. Read by the
+  shared reader in `codex_state.py` as secondary sources; every item row
+  then takes `created_at_ms`.
 * `.openinterpreter/external_agent_session_imports.json`: the `/import`
   ledger, `records[]` with `source_path`, `content_sha256`,
   `imported_thread_id`, `imported_at` and optional `source_modified_at`

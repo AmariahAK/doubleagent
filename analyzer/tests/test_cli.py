@@ -506,11 +506,18 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # /srv/proj" (a rewind removed it from the session), the Qwen logs.json
 # model_switch entry (a `system` row whose text no session row has). The Muse
 # tui-history.jsonl prompt records no time and matches its session's prompt
-# on text alone.
+# on text alone. Codex CLI: the history line and seven
+# thread_history_1.sqlite rows (task_started, the shell call and its
+# result, the web search and its result, the answer, task_complete). The
+# history line takes the rollout's prompt, so the projection's copy and
+# the state_5.sqlite first prompt (no time) are kept: a row a primary row
+# took is no candidate among the secondary rows, and a dated row never
+# pairs with an earlier undated one. Open Interpreter's state_5.sqlite
+# first prompt is kept the same way.
 FIXTURE_DEDUPLICATED = {
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
-    "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
+    "codex-cli": 8,  # history.jsonl and thread_history_1.sqlite
     "gemini-cli": 1,  # "list files in src"
     "muse-code": 1,  # "fix the failing test", no timestamp
     "open-interpreter": 1,  # "list the files"

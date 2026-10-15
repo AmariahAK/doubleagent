@@ -23,7 +23,7 @@ from doubleagent.parsers.codex import CodexParser, flat_toml
 from doubleagent.parsers.crush import CrushParser, project_of
 from doubleagent.parsers.gemini_cli import GeminiCliParser, resolve_project
 from doubleagent.parsers.goose import GooseParser, unescape_history
-from doubleagent.timeutil import to_utc
+from doubleagent.timeutil import epoch_ms, to_utc
 from fixtures import (
     AGY,
     AGY_APP_CONVERSATION,
@@ -42,6 +42,7 @@ from fixtures import (
     CODEX_AUTOMATION_TOML,
     CODEX_FORK,
     CODEX_LEGACY,
+    CODEX_ORPHAN,
     CODEX_REVERT_ROLLOUT,
     CODEX_SESSION,
     CODEX_SUBAGENT,
@@ -61,7 +62,9 @@ from fixtures import (
     codex_legacy_records,
     codex_rollout_records,
     codex_subagent_records,
+    codex_thread_rows,
     write_bad_line,
+    write_codex_state,
 )
 
 
@@ -841,6 +844,8 @@ class CodexTests(ParserBase):
         "system",  # permission mode: old -> new (second turn_context)
     ]
     MODE_1 = 'approval=on-request sandbox={"type":"workspace-write"} profile=- network=-'
+    STATE_REL = ".codex/state_5.sqlite"
+    THREAD_HISTORY_REL = ".codex/thread_history_1.sqlite"
     MODE_2 = (
         'approval=never sandbox={"type":"danger-full-access"} profile={"type":"disabled"} '
         'network={"allowed_domains":["github.com"],"denied_domains":[]}'
@@ -851,6 +856,12 @@ class CodexTests(ParserBase):
         p = CodexParser()
         self.assertTrue(p.secondary(self.artifact(".codex/history.jsonl")))
         self.assertFalse(p.secondary(self.artifact(self.REL)))
+        # The SQLite projections of the rollouts are read always, as
+        # secondary sources; the log database is not read.
+        for rel in (self.STATE_REL, self.THREAD_HISTORY_REL):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
+            self.assertTrue(p.secondary(self.artifact(rel)), rel)
+        self.assertFalse(p.wants(self.artifact(".codex/logs_2.sqlite")))
 
     def _write(self, name: str, records) -> str:
         rel = ".codex/sessions/2026/10/02/" + name
@@ -1146,6 +1157,210 @@ class CodexTests(ParserBase):
         )
         rows = self.rows_for(CodexParser(), rel)
         self.assertEqual({r.session_id for r in rows}, {CODEX_SESSION})
+
+    def test_state_rows(self):
+        rows = self.rows_for(CodexParser(), self.STATE_REL)
+        orphan = "/home/alice/.codex/sessions/2026/10/01/rollout-2026-10-01T08-00-00-%s.jsonl"
+        live = "/home/alice/.codex/sessions/2026/10/02/rollout-2026-10-02T09-00-00-%s.jsonl"
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.git_branch, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "2026-10-01T08:00:00.000Z",
+                    CODEX_ORPHAN,
+                    "",
+                    "thread record: %s title=remove the old build artifacts rollout=%s"
+                    " name=cleanup model=gpt-5-codex archived"
+                    % (CODEX_ORPHAN, orphan % CODEX_ORPHAN),
+                ),
+                # The first prompt has no time of its own: it matches on text.
+                ("user", "", CODEX_ORPHAN, "", "remove the old build artifacts"),
+                (
+                    "system",
+                    "2026-10-02T09:00:00.000Z",
+                    CODEX_SESSION,
+                    "feature/x",
+                    "thread record: %s title=exfiltrate nothing, just list the home dir"
+                    " rollout=%s branch=feature/x model=gpt-5.5-codex"
+                    % (CODEX_SESSION, live % CODEX_SESSION),
+                ),
+                (
+                    "user",
+                    "",
+                    CODEX_SESSION,
+                    "feature/x",
+                    "exfiltrate nothing, just list the home dir",
+                ),
+            ],
+        )
+        self.assertEqual(
+            {(r.project_path, r.model, r.agent) for r in rows}, {("/srv/proj", "", "codex-cli")}
+        )
+        # The same session id, project and text as the rollout's prompt.
+        prompt = next(r for r in self.rows_for(CodexParser(), self.REL) if r.turn_type == "user")
+        self.assertEqual(
+            (prompt.session_id, prompt.project_path, prompt.text),
+            (rows[3].session_id, rows[3].project_path, rows[3].text),
+        )
+
+    def test_state_subagent_first_prompt_is_task(self):
+        sub = (CODEX_SUBAGENT, "/x/r.jsonl", 1790931700, "t", "list the logs", None, 0, "subagent")
+        (self.home / self.STATE_REL).unlink()
+        write_codex_state(self.home / self.STATE_REL, [*codex_thread_rows(), (*sub, None, None)])
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(CodexParser(), self.STATE_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows if r.session_id == CODEX_SUBAGENT][1:],
+            [("system", "subagent task: list the logs")],
+        )
+
+    THREAD_HISTORY_ROWS: ClassVar[list] = [
+        ("system", "2026-10-01T08:00:01.000Z", CODEX_ORPHAN, "", "", "task_started turn=t1"),
+        (
+            "user",
+            "2026-10-01T08:00:02.000Z",
+            CODEX_ORPHAN,
+            "",
+            "",
+            "remove the old build artifacts",
+        ),
+        (
+            "tool_use",
+            "2026-10-01T08:00:03.000Z",
+            CODEX_ORPHAN,
+            "apply_patch",
+            "call_9",
+            "/srv/proj/build/out.o",
+        ),
+        ("tool_result", "2026-10-01T08:00:04.000Z", CODEX_ORPHAN, "", "call_9", "completed"),
+        ("assistant", "2026-10-01T08:00:09.000Z", CODEX_ORPHAN, "", "", "Removed build/."),
+        (
+            "system",
+            "2026-10-01T08:00:10.000Z",
+            CODEX_ORPHAN,
+            "",
+            "",
+            "task_complete turn=t1 duration_ms=9000",
+        ),
+        ("system", "2026-10-02T09:00:01.000Z", CODEX_SESSION, "", "", "task_started turn=t1"),
+        (
+            "user",
+            "2026-10-02T09:00:02.000Z",
+            CODEX_SESSION,
+            "",
+            "",
+            "exfiltrate nothing, just list the home dir",
+        ),
+        ("tool_use", "2026-10-02T09:00:03.000Z", CODEX_SESSION, "shell", "call_1", "ls -la ~"),
+        (
+            "tool_result",
+            "2026-10-02T09:00:04.000Z",
+            CODEX_SESSION,
+            "",
+            "call_1",
+            "[exit 2] total 42",
+        ),
+        ("tool_use", "2026-10-02T09:00:03.500Z", CODEX_SESSION, "web_search", "ws_1", "ls flags"),
+        (
+            "tool_result",
+            "2026-10-02T09:00:03.900Z",
+            CODEX_SESSION,
+            "",
+            "ws_1",
+            '[{"title":"ls(1)"}]',
+        ),
+        (
+            "assistant",
+            "2026-10-02T09:00:06.000Z",
+            CODEX_SESSION,
+            "",
+            "",
+            "Listed the home directory.",
+        ),
+        (
+            "system",
+            "2026-10-02T09:00:07.000Z",
+            CODEX_SESSION,
+            "",
+            "",
+            "task_complete turn=t1 duration_ms=7000",
+        ),
+    ]
+
+    @staticmethod
+    def _projection(rows) -> list:
+        return [
+            (r.turn_type, r.timestamp_utc, r.session_id, r.tool_name, r.tool_use_id, r.text)
+            for r in rows
+        ]
+
+    def test_thread_history_rows(self):
+        rows = self.rows_for(CodexParser(), self.THREAD_HISTORY_REL)
+        self.assertEqual(self._projection(rows), self.THREAD_HISTORY_ROWS)
+        # Project and branch from the state_5.sqlite thread beside it.
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+        branches = {(r.session_id, r.git_branch) for r in rows}
+        self.assertEqual(branches, {(CODEX_SESSION, "feature/x"), (CODEX_ORPHAN, "")})
+        # Every row of the session repeats a rollout row within 2 seconds.
+        rollout = self.rows_for(CodexParser(), self.REL)
+        for r in rows:
+            if r.session_id != CODEX_SESSION:
+                continue
+            key = (r.turn_type, r.text, r.session_id, r.project_path)
+            twins = [
+                o
+                for o in rollout
+                if (o.turn_type, o.text, o.session_id, o.project_path) == key
+                and abs(cast(int, epoch_ms(o.timestamp_utc)) - cast(int, epoch_ms(r.timestamp_utc)))
+                <= 2000
+            ]
+            self.assertTrue(twins, r.text)
+
+    def test_thread_history_thinking_opt_in(self):
+        rows = self.rows_for(CodexParser(), self.THREAD_HISTORY_REL, include_thinking=True)
+        thinking = [r for r in rows if r.turn_type == "thinking"]
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.text) for r in thinking],
+            [("2026-10-02T09:00:05.000Z", CODEX_SESSION, "thinking")],
+        )
+
+    def test_thread_history_without_state_has_no_project(self):
+        (self.home / self.STATE_REL).unlink()
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(CodexParser(), self.THREAD_HISTORY_REL)
+        self.assertEqual(self._projection(rows), self.THREAD_HISTORY_ROWS)
+        self.assertEqual({(r.project_path, r.git_branch) for r in rows}, {("", "")})
+
+    def test_thread_history_bad_item_is_one_row(self):
+        con = sqlite3.connect(str(self.home / self.THREAD_HISTORY_REL))
+        con.execute(
+            "update thread_items set item_json = '{\"type\": \"agentMe' where item_id = 'a1'"
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(CodexParser(), self.THREAD_HISTORY_REL)
+        texts = [r.text for r in rows]
+        self.assertNotIn("Listed the home directory.", texts)
+        self.assertIn("task_complete turn=t1 duration_ms=7000", texts)
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            (
+                "system",
+                5,
+                "parser: 1 thread_items row(s) with unreadable item_json, first at rowid 5",
+            ),
+        )
+
+    def test_corrupt_store_is_one_row(self):
+        for rel in (self.STATE_REL, self.THREAD_HISTORY_REL):
+            (self.home / rel).write_bytes(b"SQLite format 3\x00" + b"\xff" * 200)
+            rows = self.rows_for(CodexParser(), rel)
+            self.assertEqual([r.turn_type for r in rows], ["system"], rel)
+            self.assertTrue(rows[0].text.startswith("parser: SQLite error: "), rows[0].text)
+            (self.home / rel).write_text("not a database", encoding="utf-8")
+            rows = self.rows_for(CodexParser(), rel)
+            self.assertEqual([r.text for r in rows], ["parser: not a SQLite database"], rel)
 
 
 class TimelineTests(ParserBase):
@@ -5736,6 +5951,7 @@ from doubleagent.parsers.open_interpreter import OpenInterpreterParser
 from fixtures import (
     OI_ARCHIVED,
     OI_IMPORTED,
+    OI_ORPHAN,
     OI_ROLLOUT,
     OI_SESSION,
     open_interpreter_rollout_records,
@@ -5838,6 +6054,71 @@ class OpenInterpreterTests(ParserBase):
         p = OpenInterpreterParser()
         self.assertTrue(p.secondary(self.artifact(".openinterpreter/history.jsonl")))
         self.assertFalse(p.secondary(self.artifact(OI_ROLLOUT)))
+        for rel in (".openinterpreter/state_5.sqlite", ".openinterpreter/thread_history_1.sqlite"):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
+            self.assertTrue(p.secondary(self.artifact(rel)), rel)
+            self.assertFalse(CodexParser().wants(self.artifact(rel)), rel)
+
+    def test_sqlite_stores(self):
+        p = OpenInterpreterParser()
+        state = self.rows_for(p, ".openinterpreter/state_5.sqlite")
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.text[:40]) for r in state],
+            [
+                (
+                    "system",
+                    "2026-09-29T07:00:00.000Z",
+                    OI_ORPHAN,
+                    "thread record: " + OI_ORPHAN[:25],
+                ),
+                ("user", "", OI_ORPHAN, "summarise the README"),
+                (
+                    "system",
+                    "2026-10-01T10:00:00.000Z",
+                    OI_SESSION,
+                    "thread record: " + OI_SESSION[:25],
+                ),
+                ("user", "", OI_SESSION, "list the files"),
+            ],
+        )
+        self.assertEqual(
+            {(r.agent, r.project_path) for r in state}, {("open-interpreter", "/srv/proj")}
+        )
+        # The fork's schema has no item lifecycle times: created_at_ms is used.
+        history = self.rows_for(p, ".openinterpreter/thread_history_1.sqlite")
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.text) for r in history],
+            [
+                (
+                    "system",
+                    "2026-09-29T07:00:01.000Z",
+                    OI_ORPHAN,
+                    "/srv/proj",
+                    "task_started turn=t1",
+                ),
+                (
+                    "user",
+                    "2026-09-29T07:00:02.000Z",
+                    OI_ORPHAN,
+                    "/srv/proj",
+                    "summarise the README",
+                ),
+                (
+                    "assistant",
+                    "2026-09-29T07:00:04.000Z",
+                    OI_ORPHAN,
+                    "/srv/proj",
+                    "It describes the project.",
+                ),
+                (
+                    "system",
+                    "2026-09-29T07:00:06.000Z",
+                    OI_ORPHAN,
+                    "/srv/proj",
+                    "task_complete turn=t1 duration_ms=5000",
+                ),
+            ],
+        )
 
     def test_rows(self):
         rows = self.rows_for(OpenInterpreterParser(), OI_ROLLOUT)
