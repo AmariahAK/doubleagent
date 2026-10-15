@@ -879,6 +879,35 @@ Mk "$p113/LocalCache/Local/Codex/Logs/2026/10/15/codex-desktop-x.log" "log`n"
 Mk "$p113/Settings/settings.dat" "hive`n"
 Mk 'Users/alice/.codex/plugins/.plugin-appserver/codex.exe' "exe`n"
 Mk 'Users/alice/.codex/.codex-global-state.json' "{}`n"
+
+# 2026-10-15 ChatGPT desktop on macOS (#121)
+# From the macOS 26.6.2 install of ChatGPT 26.1007.71326 (bundle id
+# com.openai.codex): the Chromium profile under Application Support/Codex
+# (its cookie store directly in the profile), the bundled MCP server's
+# script beside its manifest, the app log, preferences, URL-session
+# cookies and the computer-use group container, and the computer-use app
+# bundle the app copies into .codex. The component cache beside the
+# profile gets no row. Checks follow the default run below; the same
+# files are in smoke.sh under bob.
+$m121 = 'Users/alice/Library/Application Support/Codex'
+$x121 = "$m121/Default/Partitions/codex-browser-app"
+$g121 = 'Users/alice/Library/Group Containers/2DC432GLL2.com.openai.sky.CUAService'
+$u121 = 'Users/alice/.codex/computer-use'
+Mk "$m121/Default/Local Storage/leveldb/000003.log" "ldb`n"
+Mk "$m121/Default/Cookies" "cookies`n"
+Mk "$x121/Cookies" "cookies`n"
+Mk "$m121/Default/Login Data" "logins`n"
+Mk "$m121/Default/Cache/data_0" "cache`n"
+Mk "$x121/Cache/data_0" "cache`n"
+Mk "$m121/executor-plugins/codex-app-tools/server.mjs" "js`n"
+Mk "$m121/executor-plugins/codex-app-tools/.mcp.json" "{}`n"
+Mk "$m121/component_crx_cache/metadata.json" "{}`n"
+Mk 'Users/alice/Library/Logs/com.openai.codex/2026/10/15/codex-desktop-x.log' "log`n"
+Mk 'Users/alice/Library/Preferences/com.openai.codex.plist' "plist`n"
+Mk 'Users/alice/Library/HTTPStorages/com.openai.codex.binarycookies' "cookies`n"
+Mk "$g121/IPC/computeruse.sock.lock" ''
+Mk "$u121/Codex Computer Use.app/Contents/Info.plist" "plist`n"
+Mk "$u121/config.json" "{}`n"
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1279,6 +1308,18 @@ Check '#113 ChatGPT app log collected as chatgpt-desktop' { Is113 "$p113/LocalCa
 Check '#113 ChatGPT MSIX settings hive collected' { Is113 "$p113/Settings/settings.dat" 'chatgpt-desktop' $false }
 Check '#116 Codex plugin app-server binaries excluded' { (StatusOf 'Users/alice/.codex/plugins/.plugin-appserver') -eq 'skipped_excluded' -and (NoRow83 '.plugin-appserver/codex.exe') }
 Check '#115 Codex desktop global state flagged secret' { Is113 'Users/alice/.codex/.codex-global-state.json' 'codex-cli' $true }
+# 2026-10-15 ChatGPT desktop on macOS (#121)
+Check '#121 ChatGPT macOS Local Storage collected as chatgpt-desktop' { Is113 "$m121/Default/Local Storage/leveldb/000003.log" 'chatgpt-desktop' $false }
+Check '#121 ChatGPT macOS profile and partition cookies flagged secret' { (Is113 "$m121/Default/Cookies" 'chatgpt-desktop' $true) -and (Is113 "$x121/Cookies" 'chatgpt-desktop' $true) }
+Check '#121 ChatGPT macOS Login Data flagged secret' { Is113 "$m121/Default/Login Data" 'chatgpt-desktop' $true }
+Check '#121 ChatGPT macOS profile and partition Cache excluded' { (StatusOf "$m121/Default/Cache") -eq 'skipped_excluded' -and (StatusOf "$x121/Cache") -eq 'skipped_excluded' -and (NoRow83 'Codex/Default/Cache/data_0') -and (NoRow83 'codex-browser-app/Cache/data_0') }
+Check '#121 ChatGPT macOS MCP server script excluded, manifest collected' { (StatusOf "$m121/executor-plugins/codex-app-tools/server.mjs") -eq 'skipped_excluded' -and (Is113 "$m121/executor-plugins/codex-app-tools/.mcp.json" 'chatgpt-desktop' $false) }
+Check '#121 ChatGPT macOS component cache not in the manifest' { -not ($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like '*Application Support/Codex/component_crx_cache*' }) }
+Check '#121 ChatGPT macOS app log collected as chatgpt-desktop' { Is113 'Users/alice/Library/Logs/com.openai.codex/2026/10/15/codex-desktop-x.log' 'chatgpt-desktop' $false }
+Check '#121 ChatGPT macOS preferences collected' { Is113 'Users/alice/Library/Preferences/com.openai.codex.plist' 'chatgpt-desktop' $false }
+Check '#121 ChatGPT macOS binary cookies flagged secret' { Is113 'Users/alice/Library/HTTPStorages/com.openai.codex.binarycookies' 'chatgpt-desktop' $true }
+Check '#121 ChatGPT computer-use group container collected' { Is113 "$g121/IPC/computeruse.sock.lock" 'chatgpt-desktop' $false }
+Check '#121 Codex computer-use app bundle excluded, config collected' { (StatusOf "$u121/Codex Computer Use.app") -eq 'skipped_excluded' -and (NoRow83 'Computer Use.app/Contents/Info.plist') -and (Is113 "$u121/config.json" 'codex-cli' $false) }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

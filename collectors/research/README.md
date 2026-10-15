@@ -36,11 +36,11 @@ file names to check only those. It exits `1` when any link fails.
 | `augment` | [augment.md](augment.md) | shipped bundle, docs | `~/.augment` on every OS |
 | `autogen-studio` | [autogen-studio.md](autogen-studio.md) | source | `~/.autogenstudio` on every OS; run history and model client API keys in one SQLite database |
 | `camel-ai` | [camel-ai.md](camel-ai.md) | source | `~/.camel` is shared with Apache Camel JBang, so only CAMEL's Gmail token and skills dirs are collected |
-| `chatgpt-desktop` | [chatgpt-desktop.md](chatgpt-desktop.md) | write-ups and press, real install (Windows) | Windows package renamed `OpenAI.Codex`, a Chromium build with no local chat transcript; macOS conversations encrypted with a Keychain key |
+| `chatgpt-desktop` | [chatgpt-desktop.md](chatgpt-desktop.md) | write-ups and press, real install (Windows, macOS) | since 26.1007 one Chromium-based build on both platforms (Windows package `OpenAI.Codex`, macOS bundle id `com.openai.codex`) with no local chat transcript; the former native macOS app encrypted conversations with a Keychain key |
 | `claude-code` | [claude-code.md](claude-code.md) | shipped bundle, docs, real install | `CLAUDE_CONFIG_DIR`; several credential files beyond `.credentials.json` |
 | `claude-desktop` | [claude-desktop.md](claude-desktop.md) | official docs, GitHub issues, real install (MSIX build, Linux deb, macOS) | encrypted token cache in `config.json`; local-agent sessions |
 | `cline` | [cline.md](cline.md) | source | `~/.cline/data` shared by VS Code, CLI and JetBrains |
-| `codex-cli` | [codex-cli.md](codex-cli.md) | source, real install (macOS CLI; Windows desktop and standalone CLI) | rollouts may be zstd-compressed; the ChatGPT desktop app adds `sqlite/codex-dev.db` and `.codex-global-state.json`, which holds ChatGPT resume tokens |
+| `codex-cli` | [codex-cli.md](codex-cli.md) | source, real install (macOS and Windows: desktop app and standalone CLI; Linux: standalone CLI) | rollouts may be zstd-compressed; the ChatGPT desktop app adds `sqlite/codex-dev.db` and `.codex-global-state.json`, which holds ChatGPT resume tokens |
 | `cody` | [cody.md](cody.md) | source (frozen public snapshot, August 2025) | chat history and token are rows in `state.vscdb`; the nested entry claims only the symf index |
 | `continue` | [continue.md](continue.md) | source | `~/.continue` only |
 | `copilot` | [copilot.md](copilot.md) | source (vendored language server) | editor OAuth store `github-copilot/apps.json` |

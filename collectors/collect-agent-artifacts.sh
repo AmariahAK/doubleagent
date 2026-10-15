@@ -182,7 +182,6 @@ antigravity|AppData/Roaming/Antigravity IDE/User
 antigravity|AppData/Roaming/Antigravity IDE/logs
 # OpenAI
 codex-cli|.codex
-codex-cli|Library/Application Support/com.openai.codex
 chatgpt-desktop|Library/Application Support/com.openai.chat
 chatgpt-desktop|AppData/Local/Packages/OpenAI.ChatGPT-Desktop_*/LocalCache/Roaming/ChatGPT
 chatgpt-desktop|AppData/Local/Packages/OpenAI.ChatGPT-Desktop_*/LocalState
@@ -197,6 +196,29 @@ chatgpt-desktop|AppData/Local/Packages/OpenAI.Codex_*/LocalCache/Roaming/Codex/w
 chatgpt-desktop|AppData/Local/Packages/OpenAI.Codex_*/LocalCache/Roaming/Codex/web/Codex/.codex-tpp-local-executor-installation-id
 chatgpt-desktop|AppData/Local/Packages/OpenAI.Codex_*/LocalCache/Local/Codex
 chatgpt-desktop|AppData/Local/Packages/OpenAI.Codex_*/Settings
+# ChatGPT desktop on macOS: since 26.1007 the same Electron build, bundle id
+# com.openai.codex, with the Chromium user-data directory Application
+# Support/Codex (profile and files beside it named, as on Windows). The
+# com.openai.chat line above is kept for the former native app.
+chatgpt-desktop|Library/Application Support/com.openai.codex
+chatgpt-desktop|Library/Application Support/Codex/Default
+chatgpt-desktop|Library/Application Support/Codex/Local State
+chatgpt-desktop|Library/Application Support/Codex/Last Version
+chatgpt-desktop|Library/Application Support/Codex/statsig-state.json
+chatgpt-desktop|Library/Application Support/Codex/.codex-tpp-local-executor-installation-id
+chatgpt-desktop|Library/Application Support/Codex/browser-sidebar-page-states.json
+chatgpt-desktop|Library/Application Support/Codex/executor-plugins
+chatgpt-desktop|Library/Application Support/Codex/artifact-sessions
+chatgpt-desktop|Library/Application Support/com.openai.codex.installer
+chatgpt-desktop|Library/Logs/com.openai.codex
+chatgpt-desktop|Library/Preferences/com.openai.codex.plist
+chatgpt-desktop|Library/Preferences/com.openai.codex.installer.plist
+chatgpt-desktop|Library/Preferences/com.openai.sky.CUAService.plist
+chatgpt-desktop|Library/HTTPStorages/com.openai.codex
+chatgpt-desktop|Library/HTTPStorages/com.openai.codex.binarycookies
+chatgpt-desktop|Library/HTTPStorages/com.openai.sky.CUAService
+chatgpt-desktop|Library/HTTPStorages/com.openai.sky.CUAService.binarycookies
+chatgpt-desktop|Library/Group Containers/2DC432GLL2.com.openai.sky.CUAService
 # GitHub Copilot (CLI, and the OAuth token store used by Copilot plugins)
 copilot-cli|.copilot
 copilot-cli|.config/.copilot
@@ -727,6 +749,7 @@ AppData/Local/agy
 .codex/plugins/cache
 .codex/plugins/.plugin-appserver
 .codex/plugins/.remote-plugin-install-staging
+.codex/computer-use/*.app
 .codex/skills/.system
 .codex/worktrees
 .codex/.sandbox
@@ -756,6 +779,25 @@ AppData/Local/agy
 */Roaming/Codex/web/Codex/Default/Partitions/*/Extensions
 */Roaming/Codex/web/Codex/Default/Partitions/*/Service Worker/CacheStorage
 */Roaming/Codex/web/Codex/Default/Partitions/*/Service Worker/ScriptCache
+Library/Application Support/Codex/Default/Cache
+Library/Application Support/Codex/Default/Code Cache
+Library/Application Support/Codex/Default/GPUCache
+Library/Application Support/Codex/Default/DawnGraphiteCache
+Library/Application Support/Codex/Default/DawnWebGPUCache
+Library/Application Support/Codex/Default/blob_storage
+Library/Application Support/Codex/Default/Extensions
+Library/Application Support/Codex/Default/Service Worker/CacheStorage
+Library/Application Support/Codex/Default/Service Worker/ScriptCache
+Library/Application Support/Codex/Default/Partitions/*/Cache
+Library/Application Support/Codex/Default/Partitions/*/Code Cache
+Library/Application Support/Codex/Default/Partitions/*/GPUCache
+Library/Application Support/Codex/Default/Partitions/*/DawnGraphiteCache
+Library/Application Support/Codex/Default/Partitions/*/DawnWebGPUCache
+Library/Application Support/Codex/Default/Partitions/*/blob_storage
+Library/Application Support/Codex/Default/Partitions/*/Extensions
+Library/Application Support/Codex/Default/Partitions/*/Service Worker/CacheStorage
+Library/Application Support/Codex/Default/Partitions/*/Service Worker/ScriptCache
+Library/Application Support/Codex/executor-plugins/*/server.mjs
 .copilot/pkg
 .copilot/installed-plugins
 .cache/copilot/pkg
@@ -1221,6 +1263,12 @@ AppData/Roaming/[Aa]ntigravity/plugin-secrets.json
 */Roaming/Codex/web/Codex/Default/Login Data*
 */Roaming/Codex/web/Codex/Default/Partitions/*/Login Data*
 */Roaming/Codex/web/Codex/Local State
+Library/Application Support/Codex/Default/Cookies*
+Library/Application Support/Codex/Default/Partitions/*/Cookies*
+Library/Application Support/Codex/Default/Login Data*
+Library/Application Support/Codex/Default/Partitions/*/Login Data*
+Library/HTTPStorages/com.openai.codex.binarycookies
+Library/HTTPStorages/com.openai.sky.CUAService.binarycookies
 .config/github-copilot/*.json
 AppData/Local/github-copilot/*.json
 .copilot/config.json

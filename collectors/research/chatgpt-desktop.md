@@ -1,18 +1,19 @@
 # chatgpt-desktop
 
-OpenAI's ChatGPT desktop app. On Windows it now bundles Codex, OpenAI's
-coding agent, whose state goes to `~/.codex` and is collected as
+OpenAI's ChatGPT desktop app. On Windows and macOS it now bundles Codex,
+OpenAI's coding agent, whose state goes to `~/.codex` and is collected as
 `codex-cli`; that half of the app is described in
 [`codex-cli.md`](codex-cli.md), under
 [Codex Desktop](codex-cli.md#codex-desktop-inside-the-chatgpt-app). No
-analyzer research document exists: on the Windows install checked the app
-keeps no local chat transcript to parse
+analyzer research document exists: on the Windows and macOS installs
+checked the app keeps no local chat transcript to parse
 ([section 2](#2-per-user-storage)).
 
 ## 1. Source and evidence level
 
-Closed source. Windows evidence is a **real install** (below); macOS
-evidence is **DFIR write-ups and press** (DFIR is digital forensics and
+Closed source. Windows and macOS evidence is a **real install** of each
+(below); the former native macOS app and the previous Windows package
+rest on **DFIR write-ups and press** (DFIR is digital forensics and
 incident response), and Linux has no app. No official OpenAI
 documentation of on-disk paths was found.
 
@@ -134,15 +135,76 @@ service `CodexSandboxService.OpenAI.Codex` and two enabled local accounts
 processes are the EDR's job (the endpoint detection and response tool
 the responder already has) and are not collected.
 
-**macOS** (not observed on any real install): the native Swift app keeps
-its data in `~/Library/Application Support/com.openai.chat/`;
-conversations were plain JSON in `conversations-{uuid}/` until
-1.2024.171 and are encrypted since, in `conversations-v2-{uuid}/`
+**Observed (macOS)** (issues 113, 121): ChatGPT `26.1007.71326`
+(`CFBundleShortVersionString`; `CFBundleVersion` `20398`), observed
+2026-10-15 (16:25Z to 17:05Z) in the author's macOS lab VM, macOS 26.6.2
+build 25G83, arm64 (64-bit Arm), one user, no Homebrew, Node.js or
+Python. `/Applications/ChatGPT.app` has the bundle identifier
+**`com.openai.codex`**, and its `Contents/Frameworks/` holds
+`Codex Framework.framework` (`com.openai.codex.framework`, version
+`155.0.8059.40`: the Electron framework under the app's own name, at the
+Chromium version of the Windows build) and `Sparkle.framework` 2.9.1
+(Sparkle is the macOS update framework). So the macOS app is the same
+Electron build as on Windows, not the native Swift app the 2024
+write-ups describe, and nothing under `~/Library` carries the old
+`com.openai.chat` identifier. Its version string is the `app_version`
+the Windows build's `codex-dev.db` records. `Contents/Resources/` holds
+`app.asar` (567,770,955 B), `codex-cli/` (the bundled Codex, run from
+`codex-cli/CodexCLI.app/Contents/MacOS/codex` according to the app log),
+`cua_node/`, `plugins/`, `skills/`, `rg`, `owl-app.ini`,
+`owl-electron-app.json` and `scripting.sdef`; a dock-tile plug-in
+`com.openai.codex.dock-tile-plugin` is under `Contents/PlugIns/`. The
+bundled Codex reports `originator` `Codex Desktop`, `cli_version`
+`0.162.0-alpha.17.2`, as on Windows. The user repeated the Windows
+rounds; no listing was taken between tasks:
+
+- Install and first launch (16:26Z): `~/Library/Application Support/Codex/`
+  (the Chromium user-data directory), the other `~/Library` entries of
+  [section 2](#2-per-user-storage), and `~/.codex`.
+- A plain chat and an image generation: no local transcript, as on
+  Windows. `codex-dev.db` `local_thread_catalog` gained three
+  `source_kind` `chatgpt` rows (one with `conversation_origin` `tpp`)
+  and nothing else recorded them.
+- A task in the project folder `~/Demo` (16:39Z to 16:40Z) and a thread
+  in the projectless output directory `~/Documents/Codex/2026-10-15/e`
+  (16:50Z; which user action it was is not determined): one rollout
+  each.
+- A scheduled automation (16:44Z): `~/.codex/automations/<slug>/automation.toml`,
+  one `automations` row and its target thread in
+  `~/Documents/Codex/2026-10-15/new-chat`. The
+  `codex-browser-app` partition was created the same minute.
+- The standalone Codex CLI, installed with its shell installer and given
+  one prompt in `~/demo2` (16:55Z to 16:56Z): `~/.codex/packages`, two
+  `~/.local/bin` symlinks and a block in `~/.zprofile`; see
+  [Codex Desktop](codex-cli.md#codex-desktop-inside-the-chatgpt-app).
+- No launchd agent or daemon, no `~/Applications` entry, and no item in
+  the login keychain with an OpenAI, Codex or ChatGPT identifier
+  (`security dump-keychain` listed 17 items; the old app's
+  `com.openai.chat.conversations_v2_cache` item is absent).
+
+The sh collector from `main` (1.12.0 before the macOS lines) ran live as
+the user, not root, at 17:02Z: `users: 1`, 4 projects (`~/demo2`,
+`~/Demo` and the two output directories, since the sh `grep` reads
+rollouts the running app holds open), `codex-cli` 220 files (85.8 MiB,
+77 MB of it the computer-use app bundle), 9 excluded, 1 `symlink`, and
+30 `error_read` rows for system accounts' homes under `/var` that a
+non-root run cannot list (logged with "WARNING: not running as root").
+It collected nothing of the app outside `~/.codex` and
+`~/Library/Application Support/com.openai.codex`. A scratch copy with the
+macOS lines of the catalog, at 17:05Z: 497 collected, of which
+`chatgpt-desktop` 444 files and 4,990,271 B with 20 secret rows, 18
+excluded (among them `Codex Computer Use.app`, 76,967,936 B), 1
+`symlink` (the group container's `Application Scripts` link).
+
+**Former native macOS app** (write-ups, not observed): the native Swift
+app, bundle identifier `com.openai.chat`, kept its data in
+`~/Library/Application Support/com.openai.chat/`; conversations were
+plain JSON in `conversations-{uuid}/` until 1.2024.171 and are encrypted
+since, in `conversations-v2-{uuid}/`
 ([pvieito.com, ChatGPT unprotected conversations](https://pvieito.com/2024/07/chatgpt-unprotected-conversations);
 [9to5mac.com, 2024-07-03 ChatGPT Mac app report](https://9to5mac.com/2024/07/03)).
-Whether the 2026 macOS app also bundles Codex, and where it would keep
-that state beyond `~/.codex`, is not determined. **Linux**: no official
-app.
+Its catalog line stays for hosts that still have it. **Linux**: no
+official app.
 
 **Previous Windows package** (not observed): the
 `OpenAI.ChatGPT-Desktop_2p2nqsd0c76g0` package of 2024 and 2025, an
@@ -216,12 +278,35 @@ timestamps in `Local Storage\leveldb\`, and the standard Chromium
 siblings (garr3ttmjo). The package's `LocalState\` may hold app
 settings (MSIX convention, not cited).
 
-**macOS** (write-ups, not observed): `~/Library/Application Support/com.openai.chat/`
-with `conversations-v2-{uuid}/` (pvieito; 9to5mac). Expect also
-`~/Library/Caches/com.openai.chat/`,
-`~/Library/Preferences/com.openai.chat.plist` and
-`~/Library/HTTPStorages/com.openai.chat/` (the standard layout of a
-non-sandboxed app; not cited, medium).
+**macOS, `com.openai.codex`** (observed). Under `~/Library`:
+
+| Path under `~/Library` | What it holds | Catalog |
+| --- | --- | --- |
+| `Application Support/Codex/Default/` | The Chromium profile, 742 files, 10.9 MB, with the Windows profile's entries except that the cookie store is `Cookies` and `Cookies-journal` directly in the profile, not under `Network/` (`Network Persistent State`, `TransportSecurity`, `Reporting and NEL`, `Trust Tokens` sit in the profile too); `IndexedDB/` with the single `app_-_0` origin (292 KB), `Local Storage/leveldb`, `Session Storage`, and the partitions `Partitions/codex-browser-app` and `Partitions/codex-mcp-app-sandbox%3Ashared` | collected |
+| `Application Support/Codex/Local State`, `Last Version`, `statsig-state.json`, `.codex-tpp-local-executor-installation-id`, `browser-sidebar-page-states.json` | The files beside the profile. `Local State` (6,317 B) has the Windows keys except `os_crypt`: on macOS Chromium keeps the cookie key in the login keychain (not observed there), so the file is not flagged. `browser-sidebar-page-states.json` is 25 B (`pages`, `version`) | collected |
+| `Application Support/Codex/executor-plugins/codex-app-tools/` | A bundled MCP server for the app's own tools: `.codex-plugin/plugin.json`, `.mcp.json`, `server.mjs` (949,032 B, excluded), `scripts/launch_codex_app_tools_mcp` | collected |
+| `Application Support/Codex/artifact-sessions/runtime-generations/` | Empty on the install | collected |
+| `Application Support/Codex/` other children | `component_crx_cache/` (58 MB), the twenty Chromium component directories of the Windows build, `BrowserMetrics-spare.pma` (4 MB), `GraphiteDawnCache/` (6 MB), `GPUPersistentCache/`, `Crashpad/`, `sentry/`, `ChromeFeatureState`, `OriginTrials/`, `Safe Browsing/`, `first_party_sets.db`, `segmentation_platform/`, and the `SingletonLock`, `SingletonSocket`, `SingletonCookie` and `RunningChromeVersion` symlinks (Chromium's single-instance lock) | not matched |
+| `Application Support/com.openai.codex/production-appcast-bootstrap.json` | 30 B, `backendAppcastEnabled` (bool): the Sparkle appcast (update feed) switch. Collected as `codex-cli` before the macOS round, now as `chatgpt-desktop`, since the bundle id that owns it is the ChatGPT app | collected |
+| `Application Support/com.openai.codex.installer/` | `attribution.json` (289 B: `created_at_ms`, `install_id`, `installed_version`, `installer_session_id`, `installer_stable_id`, `installer_version`, `schema_version`) and `attribution-acknowledgment.json` (137 B: `schema_version`, `install_id`, `app_version`, `acknowledged_at_ms`): install identifiers | collected |
+| `Logs/com.openai.codex/<yyyy>/<mm>/<dd>/codex-desktop-<uuid>-<pid>-t<n>-i1-<hhmmss>-0.log` | The app's own log, the same `key=value` form as on Windows; three files, 1,593 lines in the largest; components include `[AppServerConnection]`, `[electron-message-handler]`, `[tpp-local-executor]`, `[mcp-app-sandbox]` and `[sparkle]` | collected |
+| `Preferences/com.openai.codex.plist`, `com.openai.codex.installer.plist`, `com.openai.sky.CUAService.plist` | The app's preferences (`DockIconPreference`, `LastRunAppBundlePath`, `NSOSPLastRootDirectory`, the Sparkle `SU*` keys), the installer's `installer_stable_id`, and the computer-use service's status-item and Statsig stable id keys | collected |
+| `HTTPStorages/com.openai.codex/`, `HTTPStorages/com.openai.sky.CUAService/` and the `.binarycookies` beside each | The macOS URL-session stores (`httpstorages.sqlite` with `-wal` and `-shm`) and their cookie files (461 B and 673 B) | collected; cookies secret |
+| `Group Containers/2DC432GLL2.com.openai.sky.CUAService/` | The group container (a directory macOS shares between an app and its helpers) of the computer-use service: `IPC/computeruse.sock.lock`, `Library/Application Support/Software/Analytics.db` (one `distinct_id` row), a `Library/Application Scripts` symlink, empty `Caches` and `Preferences` | collected |
+| `Caches/Codex/Default/` (`Cache`, `Code Cache`, `Partitions`; 6.2 MB), `Caches/com.openai.codex/`, `Caches/com.openai.sky.CUAService/` | The HTTP cache Electron keeps outside the profile on macOS, and the URL caches (`Cache.db`, `fsCachedData/`) | not matched |
+| `Application Support/OpenAI/Codex/NativeMessagingHosts/` | Empty; the counterpart of the Windows `%LOCALAPPDATA%\OpenAI\Codex`, which here holds no binaries | not matched |
+
+"sky" is OpenAI's internal name for the computer-use agent, read from
+the bundle ids `com.openai.sky.CUAService` (an XPC service, a macOS
+helper process) and the copy of `Codex Computer Use.app`
+(`com.openai.sky.CUAService` 26.1005.1001425, 168 files, 76.6 MB) that
+the app places in `~/.codex/computer-use/`. The `~/.codex` tree matches
+Windows' with the differences listed in
+[Codex Desktop](codex-cli.md#codex-desktop-inside-the-chatgpt-app).
+
+**Former native macOS app** (write-ups, not observed):
+`~/Library/Application Support/com.openai.chat/` with
+`conversations-v2-{uuid}/` (pvieito; 9to5mac).
 
 No environment variable relocates the data on any platform.
 
@@ -247,10 +332,19 @@ No environment variable relocates the data on any platform.
 - Windows, previous package (write-up): `Network\Cookies` with
   `Local State`; `Local Storage\leveldb` holds session identifiers. No
   plaintext token file reported.
-- macOS (write-up): the conversation encryption key is the Keychain item
-  `com.openai.chat.conversations_v2_cache` (the Keychain is the macOS
-  credential store) (pvieito). Sign-in tokens are expected in the
-  Keychain too (not cited).
+- macOS, `com.openai.codex` (observed): `Default/Cookies*` and
+  `Default/Partitions/<partition>/Cookies*`, `Login Data*` in each, and
+  `Library/HTTPStorages/com.openai.codex.binarycookies` and
+  `com.openai.sky.CUAService.binarycookies` are flagged `secret: true`.
+  The Chromium cookie key is not in `Local State` on macOS; the login
+  keychain (the macOS credential store) held no item with an OpenAI,
+  Codex or ChatGPT identifier, so where the key lives was not
+  determined. The bundled Codex's `auth.json` and
+  `.codex-global-state.json` are flagged as on Windows; there is no
+  `.sandbox-secrets` on macOS.
+- Former native macOS app (write-up): the conversation encryption key
+  is the Keychain item `com.openai.chat.conversations_v2_cache`
+  (pvieito); absent on the 2026 install.
 - No config file embeds an API key; the app uses account sign-in.
 - Connecting a GitHub account (observed 2026-10-15) wrote no credential
   or configuration on the host: no `.git-credentials`, `.gitconfig`,
@@ -287,9 +381,26 @@ Not catalogued, so not collected and not listed in the manifest:
 - `%LOCALAPPDATA%\Temp` scratch directories and files: no stable name to
   catalogue.
 
-Previous package: `*/Roaming/ChatGPT/Cache`, `Code Cache`, `GPUCache`,
-`DawnGraphiteCache`, `DawnWebGPUCache`. macOS:
-`Library/Caches/com.openai.chat`, which no catalog line names.
+macOS, `com.openai.codex`: the same nine profile caches, in `Default`
+and in every `Default/Partitions/<partition>`, as
+`Library/Application Support/Codex/Default/...` exclusions;
+`executor-plugins/*/server.mjs` (the bundled MCP server's 949 KB
+script; its manifest and launcher are collected); and
+`.codex/computer-use/*.app`, the 77 MB computer-use app bundle, whose
+sibling `config.json` is collected. Not catalogued:
+
+- `Library/Caches/Codex`, `Library/Caches/com.openai.codex` and
+  `Library/Caches/com.openai.sky.CUAService`: HTTP and URL caches.
+- `Library/Application Support/OpenAI`: empty on the install.
+- The component directories, `component_crx_cache`, `sentry`,
+  `Crashpad`, `BrowserMetrics-spare.pma` (a 4 MB metrics file) and the
+  `Singleton*` symlinks under `Library/Application Support/Codex`: the
+  catalog names only the profile and the files and directories beside
+  it that the app writes.
+
+Previous Windows package: `*/Roaming/ChatGPT/Cache`, `Code Cache`,
+`GPUCache`, `DawnGraphiteCache`, `DawnWebGPUCache`. Former native macOS
+app: `Library/Caches/com.openai.chat`, which no catalog line names.
 
 ## 5. Project-local files
 
@@ -320,10 +431,11 @@ High (observed on Windows 11, ChatGPT 26.1007.9446.0): the package name
 and layout, the catalog lines, exclusions and secret globs of
 [section 2](#2-per-user-storage) to [section 4](#4-exclusions), that the
 chat surface keeps no local transcript, and the locked-file failures.
-High (write-ups): the macOS `conversations-v2-*` encryption and the
-previous Windows package's layout. Medium: the macOS Caches, Preferences
-and HTTPStorages directories (convention, uncited). Not determined: the
-2026 macOS layout and whether the macOS app bundles Codex; what the
+High (observed on macOS 26.6.2, ChatGPT 26.1007.71326): the bundle id,
+the `~/Library` layout and the macOS catalog lines, exclusions and secret
+globs. High (write-ups): the former native app's `conversations-v2-*`
+encryption and the previous Windows package's layout. Not determined:
+where the macOS app keeps its Chromium cookie key; what the
 `app://` IndexedDB blob and `Local Storage` hold; the bundled
 extension's purpose; what "tpp" and "owl" stand for; the app's behaviour
 on x64 Windows (only ARM64 was observed); which of the user's actions

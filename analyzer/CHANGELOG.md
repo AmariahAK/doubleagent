@@ -286,6 +286,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   created=<UTC> updated=<UTC> (from <file>, file mtime) prompt:
   <prompt>`, at the file's modification time, with `session_id` the
   thread the automation runs in ([#119]).
+- The catalog copy detects the ChatGPT desktop app on macOS (its
+  `Library/Application Support/Codex` profile, logs, preferences,
+  `HTTPStorages` and computer-use group container) as `chatgpt-desktop`,
+  and attributes `Library/Application Support/com.openai.codex` to
+  `chatgpt-desktop` instead of `codex-cli` ([#121]).
 
 ### Changed
 
@@ -815,6 +820,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#121]: https://github.com/seanthegeek/doubleagent/issues/121
 [#119]: https://github.com/seanthegeek/doubleagent/issues/119
 [#118]: https://github.com/seanthegeek/doubleagent/issues/118
 [#117]: https://github.com/seanthegeek/doubleagent/issues/117

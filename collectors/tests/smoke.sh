@@ -900,6 +900,39 @@ printf 'hive\n' >"$P113/Settings/settings.dat"
 printf 'exe\n' >"$B/.codex/plugins/.plugin-appserver/codex.exe"
 printf '{}\n' >"$B/.codex/.codex-global-state.json"
 
+# 2026-10-15 ChatGPT desktop on macOS (#121)
+# From the macOS 26.6.2 install of ChatGPT 26.1007.71326 (bundle id
+# com.openai.codex): the Chromium profile under Application Support/Codex
+# (its cookie store directly in the profile), the bundled MCP server's
+# script beside its manifest, the app log, preferences, URL-session
+# cookies and the computer-use group container, and the computer-use app
+# bundle the app copies into .codex. The component cache beside the
+# profile gets no row. Checks follow the default run below; the same
+# files are in smoke.ps1 under alice.
+M121="$B/Library/Application Support/Codex"
+X121="$M121/Default/Partitions/codex-browser-app"
+G121="$B/Library/Group Containers/2DC432GLL2.com.openai.sky.CUAService"
+U121="$B/.codex/computer-use"
+mkdir -p "$M121/Default/Local Storage/leveldb" "$M121/Default/Cache" "$X121/Cache" \
+  "$M121/executor-plugins/codex-app-tools" "$M121/component_crx_cache" \
+  "$B/Library/Logs/com.openai.codex/2026/10/15" "$B/Library/Preferences" \
+  "$B/Library/HTTPStorages" "$G121/IPC" "$U121/Codex Computer Use.app/Contents"
+printf 'ldb\n' >"$M121/Default/Local Storage/leveldb/000003.log"
+printf 'cookies\n' >"$M121/Default/Cookies"
+printf 'cookies\n' >"$X121/Cookies"
+printf 'logins\n' >"$M121/Default/Login Data"
+printf 'cache\n' >"$M121/Default/Cache/data_0"
+printf 'cache\n' >"$X121/Cache/data_0"
+printf 'js\n' >"$M121/executor-plugins/codex-app-tools/server.mjs"
+printf '{}\n' >"$M121/executor-plugins/codex-app-tools/.mcp.json"
+printf '{}\n' >"$M121/component_crx_cache/metadata.json"
+printf 'log\n' >"$B/Library/Logs/com.openai.codex/2026/10/15/codex-desktop-x.log"
+printf 'plist\n' >"$B/Library/Preferences/com.openai.codex.plist"
+printf 'cookies\n' >"$B/Library/HTTPStorages/com.openai.codex.binarycookies"
+: >"$G121/IPC/computeruse.sock.lock"
+printf 'plist\n' >"$U121/Codex Computer Use.app/Contents/Info.plist"
+printf '{}\n' >"$U121/config.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1196,6 +1229,18 @@ check "#113 ChatGPT app log collected as chatgpt-desktop" "row \"$P113/LocalCach
 check "#113 ChatGPT MSIX settings hive collected" "row \"$P113/Settings/settings.dat\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"status\":\"collected\"'"
 check "#116 Codex plugin app-server binaries excluded" "[ \"\$(status_of \"$B/.codex/plugins/.plugin-appserver\")\" = skipped_excluded ] && ! grep -q '.plugin-appserver/codex.exe\"' \"\$M\""
 check "#115 Codex desktop global state flagged secret" "row \"$B/.codex/.codex-global-state.json\" | grep -q '\"agent\":\"codex-cli\".*\"secret\":true,\"status\":\"collected\"'"
+# 2026-10-15 ChatGPT desktop on macOS (#121)
+check "#121 ChatGPT macOS Local Storage collected as chatgpt-desktop" "row \"$M121/Default/Local Storage/leveldb/000003.log\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"secret\":false,\"status\":\"collected\"'"
+check "#121 ChatGPT macOS profile and partition cookies flagged secret" "row \"$M121/Default/Cookies\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$X121/Cookies\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+check "#121 ChatGPT macOS Login Data flagged secret" "row \"$M121/Default/Login Data\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+check "#121 ChatGPT macOS profile and partition Cache excluded" "[ \"\$(status_of \"$M121/Default/Cache\")\" = skipped_excluded ] && [ \"\$(status_of \"$X121/Cache\")\" = skipped_excluded ] && ! grep -q 'Codex/Default/Cache/data_0\"' \"\$M\" && ! grep -q 'codex-browser-app/Cache/data_0\"' \"\$M\""
+check "#121 ChatGPT macOS MCP server script excluded, manifest collected" "[ \"\$(status_of \"$M121/executor-plugins/codex-app-tools/server.mjs\")\" = skipped_excluded ] && row \"$M121/executor-plugins/codex-app-tools/.mcp.json\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"status\":\"collected\"'"
+check "#121 ChatGPT macOS component cache not in the manifest" "! grep -q 'Application Support/Codex/component_crx_cache' \"\$M\""
+check "#121 ChatGPT macOS app log collected as chatgpt-desktop" "row \"$B/Library/Logs/com.openai.codex/2026/10/15/codex-desktop-x.log\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"status\":\"collected\"'"
+check "#121 ChatGPT macOS preferences collected" "row \"$B/Library/Preferences/com.openai.codex.plist\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"status\":\"collected\"'"
+check "#121 ChatGPT macOS binary cookies flagged secret" "row \"$B/Library/HTTPStorages/com.openai.codex.binarycookies\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"secret\":true,\"status\":\"collected\"'"
+check "#121 ChatGPT computer-use group container collected" "row \"$G121/IPC/computeruse.sock.lock\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"status\":\"collected\"'"
+check "#121 Codex computer-use app bundle excluded, config collected" "[ \"\$(status_of \"$U121/Codex Computer Use.app\")\" = skipped_excluded ] && ! grep -q 'Computer Use.app/Contents/Info.plist\"' \"\$M\" && row \"$U121/config.json\" | grep -q '\"agent\":\"codex-cli\".*\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

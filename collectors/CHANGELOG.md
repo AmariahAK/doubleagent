@@ -66,6 +66,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   inside the ChatGPT desktop app writes, are flagged `secret: true`: they
   hold ChatGPT conversation resume tokens and the user's prompt history
   ([#115]).
+- The ChatGPT desktop app on macOS is collected as `chatgpt-desktop`.
+  Since 26.1007 (26.1007.71326, checked on a real macOS 26.6.2 install)
+  it is the same Electron build as on Windows, with the bundle id
+  `com.openai.codex`, and none of the earlier `com.openai.chat` paths
+  exist, so the collector found none of it. The new lines name the
+  Chromium profile `Library/Application Support/Codex/Default` and the
+  files beside it (`Local State`, `Last Version`, `statsig-state.json`,
+  `.codex-tpp-local-executor-installation-id`,
+  `browser-sidebar-page-states.json`), the app's `executor-plugins`
+  (a bundled MCP server) and `artifact-sessions` directories,
+  `Library/Application Support/com.openai.codex.installer` (install
+  identifiers), the log directory `Library/Logs/com.openai.codex`, the
+  `com.openai.codex`, `com.openai.codex.installer` and
+  `com.openai.sky.CUAService` preferences, the `HTTPStorages` stores and
+  binary cookies of `com.openai.codex` and `com.openai.sky.CUAService`
+  (the computer-use service), and the computer-use group container
+  `Library/Group Containers/2DC432GLL2.com.openai.sky.CUAService`. The
+  `com.openai.chat` line stays for the former native app ([#121]).
+- The macOS profile's `Cookies*` and `Login Data*`, in `Default` and in
+  each `Default/Partitions/<partition>`, and the two `.binarycookies`
+  files are flagged `secret: true` ([#121]).
 
 ### Changed
 
@@ -113,6 +134,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   copies the Codex binaries (`codex.exe`, 283 MB, and three helpers of
   7 to 70 MB that were collected), and the empty staging directory
   `.codex/plugins/.remote-plugin-install-staging` are excluded ([#116]).
+- `Library/Application Support/com.openai.codex` is attributed to
+  `chatgpt-desktop` instead of `codex-cli`: the bundle id that owns it is
+  now the ChatGPT app, which bundles Codex ([#121]).
+- The Chromium caches of the macOS ChatGPT profile are excluded, in
+  `Default` and in every `Default/Partitions/<partition>`, as on Windows,
+  and so is the bundled MCP server's script
+  `executor-plugins/<plugin>/server.mjs` (949 KB). The computer-use app
+  bundle the app copies into `.codex/computer-use/`
+  (`Codex Computer Use.app`, 77 MB) is excluded with `.codex/computer-use/*.app`; its
+  `config.json` is still collected ([#121]).
 
 ### Fixed
 
@@ -726,6 +757,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#121]: https://github.com/seanthegeek/doubleagent/issues/121
 [#116]: https://github.com/seanthegeek/doubleagent/issues/116
 [#115]: https://github.com/seanthegeek/doubleagent/issues/115
 [#114]: https://github.com/seanthegeek/doubleagent/issues/114

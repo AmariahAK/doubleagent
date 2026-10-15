@@ -291,6 +291,29 @@ directories in `AppData/Local/Temp`, which have no stable name. The
 evidence is in
 [`research/chatgpt-desktop.md`](../research/chatgpt-desktop.md).
 
+On macOS the app is the same Electron build (ChatGPT 26.1007.71326,
+observed on macOS 26.6.2, October 2026), with the bundle identifier
+`com.openai.codex`; the paths of the former native app
+(`com.openai.chat`) no longer appear, and its catalog line is kept for
+hosts that still have it. Collected as `chatgpt-desktop`:
+
+| Location | What it holds |
+| --- | --- |
+| `Library/Application Support/Codex/Default`, and `Local State`, `Last Version`, `statsig-state.json`, `.codex-tpp-local-executor-installation-id` and `browser-sidebar-page-states.json` beside it | The Chromium profile and the files beside it, as on Windows, except that the cookie store is `Default/Cookies` and `Local State` holds no cookie key. |
+| `Library/Application Support/Codex/executor-plugins`, `artifact-sessions` | A bundled MCP server for the app's own tools (its 949 KB `server.mjs` is excluded), and an empty working directory. |
+| `Library/Application Support/com.openai.codex`, `Library/Application Support/com.openai.codex.installer` | The Sparkle update switch (collected as `codex-cli` before collector 1.12.0) and the installer's install identifiers. |
+| `Library/Logs/com.openai.codex` | The app's own log. |
+| `Library/Preferences/com.openai.codex.plist`, `com.openai.codex.installer.plist`, `com.openai.sky.CUAService.plist` | Preferences of the app, its installer and the computer-use service (`com.openai.sky.CUAService`). |
+| `Library/HTTPStorages/com.openai.codex`, `com.openai.sky.CUAService` and the `.binarycookies` beside each | URL-session stores and cookies; the cookies are flagged `secret: true`. |
+| `Library/Group Containers/2DC432GLL2.com.openai.sky.CUAService` | The computer-use service's group container. |
+
+The same profile caches are excluded, in `Default` and in each partition.
+`Library/Caches/Codex`, `Library/Caches/com.openai.codex` and
+`Library/Caches/com.openai.sky.CUAService` are caches and are not
+collected. In `~/.codex` the app places the computer-use app bundle,
+`computer-use/Codex Computer Use.app` (77 MB), which is excluded with
+`.codex/computer-use/*.app`.
+
 ## Home directories
 
 Home directories are gathered from several sources, merged, and
