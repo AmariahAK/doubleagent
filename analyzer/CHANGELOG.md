@@ -9,6 +9,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-15
+
+### Changed
+
+- Interface change: the `timeline.jsonl` and `sessions.jsonl`
+  `project_path` of a Windows path (a drive letter or a `\\` network
+  share) is written in one canonical form, whichever agent and store
+  recorded it: upper-case drive letter, backslash separators, no repeated
+  or trailing separator (except in a drive root such as `C:\`), and the
+  extended-length prefix `\\?\` removed. Antigravity's
+  `c:/Users/sean/demo` (from a `file:` URI) and `C:/users/sean/demo2`
+  are now `C:\Users\sean\demo` and `C:\users\sean\demo2`. The case
+  after the drive is kept as recorded; POSIX paths are unchanged
+  ([#112]).
+- Interface change: `inventory.json` `projects` groups Windows paths that
+  differ only in case into one project, keyed by the spelling of the
+  collected project directory when it is one, so its `status` is
+  `collected` and its rows, sessions and files are under one key; a
+  project the input does not hold is keyed by the first spelling the rows
+  record. Project directories from `collection.json` are in the same
+  canonical form ([#112]).
+
 ## [0.12.0] - 2026-10-15
 
 ### Added
@@ -804,7 +826,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--summary-length` (default 400), `--include-thinking` and `--agent`;
   `detect --json` and `--files`; `catalog --agents`.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.12.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.13.0...HEAD
+[0.13.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.12.0...analyzer-v0.13.0
 [0.12.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.11.0...analyzer-v0.12.0
 [0.11.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.10.0...analyzer-v0.11.0
 [0.10.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.9.0...analyzer-v0.10.0
@@ -825,6 +848,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [#118]: https://github.com/seanthegeek/doubleagent/issues/118
 [#117]: https://github.com/seanthegeek/doubleagent/issues/117
 [#113]: https://github.com/seanthegeek/doubleagent/issues/113
+[#112]: https://github.com/seanthegeek/doubleagent/issues/112
 [#104]: https://github.com/seanthegeek/doubleagent/issues/104
 [#103]: https://github.com/seanthegeek/doubleagent/issues/103
 [#97]: https://github.com/seanthegeek/doubleagent/issues/97

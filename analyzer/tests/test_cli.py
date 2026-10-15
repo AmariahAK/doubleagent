@@ -12,6 +12,7 @@ from unittest import mock
 
 from doubleagent import catalog, cli
 from doubleagent.inputs import open_input
+from doubleagent.model import Row, canonical_project_path, project_key, summarise
 from doubleagent.parsers import ALL, Options, by_agent
 from fixtures import build_home
 
@@ -494,6 +495,130 @@ class TimelineProjectStatusTests(unittest.TestCase):
             sorted(p.name for p in out.iterdir()),
             ["inventory.json", "sessions.jsonl", "timeline.jsonl"],
         )
+
+
+class WindowsProjectPathTests(unittest.TestCase):
+    """One Windows project folder recorded under several spellings is one
+    `project_path` and one inventory.json project (issue 112)."""
+
+    # The spellings the Windows Antigravity round recorded (CLI 1.3.5 and
+    # app 2.23.1, 2026-10-14) and the folders collection.json listed.
+    SPELLINGS = ("c:/Users/sean/demo", "C:/users/sean/demo2", "C:\\users\\sean\\demo2")
+    COLLECTED = ("C:\\Users\\sean\\demo", "C:\\users\\sean\\demo2")
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-winpath-test-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_canonical_project_path(self):
+        cases = {
+            "c:/Users/sean/demo": "C:\\Users\\sean\\demo",
+            "C:\\users\\sean\\demo2": "C:\\users\\sean\\demo2",
+            "C:/users//sean\\\\demo2": "C:\\users\\sean\\demo2",
+            "C:\\Users\\sean\\demo\\": "C:\\Users\\sean\\demo",
+            "c:/Users/sean/demo/": "C:\\Users\\sean\\demo",
+            "C:\\": "C:\\",
+            "C:/": "C:\\",
+            "c:\\\\": "C:\\",
+            "\\\\?\\C:\\x": "C:\\x",
+            "\\\\?\\c:/x/": "C:\\x",
+            "\\\\?\\UNC\\srv\\share\\x": "\\\\srv\\share\\x",
+            "\\\\?\\unc\\srv\\share": "\\\\srv\\share",
+            "\\\\srv/share//x/": "\\\\srv\\share\\x",
+            "\\\\srv\\Share\\X": "\\\\srv\\Share\\X",
+            # Not Windows forms: unchanged.
+            "/srv/a\\b": "/srv/a\\b",
+            "/srv/proj/": "/srv/proj/",
+            "//srv/share": "//srv/share",
+            "C:": "C:",
+            "C:relative": "C:relative",
+            "\\\\": "\\\\",
+            "": "",
+        }
+        for raw, want in cases.items():
+            self.assertEqual(canonical_project_path(raw), want, raw)
+            # Idempotent.
+            self.assertEqual(canonical_project_path(want), want, want)
+
+    def test_project_key(self):
+        self.assertEqual(project_key("c:/Users/sean/demo"), "c:\\users\\sean\\demo")
+        self.assertEqual(project_key("C:\\USERS\\sean\\Demo\\"), "c:\\users\\sean\\demo")
+        self.assertEqual(project_key("\\\\?\\UNC\\Srv\\Share"), "\\\\srv\\share")
+        # A POSIX path is compared exactly: case and backslashes count.
+        self.assertEqual(project_key("/srv/Proj"), "/srv/Proj")
+        self.assertEqual(project_key("/srv/a\\b"), "/srv/a\\b")
+        self.assertEqual(project_key(""), "")
+
+    def rows(self) -> list[Row]:
+        return [
+            Row(
+                timestamp_utc="2026-10-14T10:00:0%d.000Z" % i,
+                agent="antigravity",
+                session_id="s%d" % i,
+                project_path=path,
+                turn_type="user",
+            )
+            for i, path in enumerate(self.SPELLINGS)
+        ]
+
+    def test_inventory_groups_spellings(self):
+        rows = self.rows()
+        sessions = summarise(rows)
+        files = {
+            "C:\\Users\\sean\\demo": {
+                "agents": {"antigravity": {"files": 2, "bytes": 30}},
+                "shared_files": 1,
+            }
+        }
+        out = cli.project_inventory(rows, sessions, list(self.COLLECTED), files)
+        self.assertEqual(list(out), ["C:\\Users\\sean\\demo", "C:\\users\\sean\\demo2"])
+        demo, demo2 = out["C:\\Users\\sean\\demo"], out["C:\\users\\sean\\demo2"]
+        self.assertEqual((demo["status"], demo["rows"], demo["sessions"]), ("collected", 1, 1))
+        self.assertEqual((demo2["status"], demo2["rows"], demo2["sessions"]), ("collected", 2, 2))
+        self.assertEqual(demo["agents"]["antigravity"]["files"], 2)
+        self.assertEqual(demo["shared_files"], 1)
+        self.assertEqual(demo2["agents"]["antigravity"]["files"], 0)
+
+    def test_inventory_first_spelling_names_referenced(self):
+        rows = [
+            Row(agent="a", project_path="D:\\Work\\x", turn_type="user"),
+            Row(agent="a", project_path="d:\\work\\X", turn_type="user"),
+            Row(agent="a", project_path="/srv/x", turn_type="user"),
+            Row(agent="a", project_path="/srv/X", turn_type="user"),
+        ]
+        out = cli.project_inventory(rows, [], [], {})
+        self.assertEqual(list(out), ["/srv/X", "/srv/x", "D:\\Work\\x"])
+        self.assertEqual(out["D:\\Work\\x"]["rows"], 2)
+        self.assertEqual(out["D:\\Work\\x"]["status"], "referenced")
+
+    def test_timeline_canonical(self):
+        # A parser's Windows path comes out canonical in timeline.jsonl and
+        # sessions.jsonl, and matches the collected folder.
+        c = Collected(self.tmp / "col", ["c:/Users/sean/demo/"])
+        history = [
+            {"display": "one", "timestamp": 1790848800000, "project": "c:/Users/sean/demo"},
+            {"display": "two", "timestamp": 1790848860000, "project": "C:\\USERS\\sean\\demo"},
+            {"display": "posix", "timestamp": 1790848920000, "project": "/srv/a\\b/"},
+        ]
+        c.add(
+            "sean",
+            "/home/sean",
+            "claude-code",
+            ".claude/history.jsonl",
+            "".join(json.dumps(x) + "\n" for x in history),
+        )
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(c.write(), out)
+        self.assertEqual(rc, 0, stdout)
+        paths = [r["project_path"] for r in read_jsonl(out / "timeline.jsonl")]
+        self.assertEqual(paths, ["C:\\Users\\sean\\demo", "C:\\USERS\\sean\\demo", "/srv/a\\b/"])
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        self.assertEqual(list(inv["projects"]), ["/srv/a\\b/", "C:\\Users\\sean\\demo"])
+        demo = inv["projects"]["C:\\Users\\sean\\demo"]
+        self.assertEqual((demo["status"], demo["rows"]), ("collected", 2))
+        self.assertEqual(inv["projects"]["/srv/a\\b/"]["status"], "referenced")
 
 
 def run_detect(root: Path, *extra: str) -> tuple[int, str]:

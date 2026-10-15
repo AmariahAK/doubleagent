@@ -15,7 +15,7 @@ from . import catalog as catalog_mod
 from . import inventory as inventory_mod
 from .filters import FORMS_HELP, RowFilter, parse_bound
 from .inputs import PROJECT_AGENT, Collection, describe_error, error_reason, open_input
-from .model import Row, SessionSummary, summarise
+from .model import Row, SessionSummary, canonical_project_path, project_key, summarise
 from .parsers import ALL, Options, by_agent
 
 PROG = "doubleagent"
@@ -477,6 +477,9 @@ def collect_rows(
                 continue
             try:
                 for row in p.parse(a, opts):
+                    # One spelling per Windows folder, whichever parser and
+                    # store the path came from (issue 112).
+                    row.project_path = canonical_project_path(row.project_path)
                     rows.append(row)
                     counts[(p.agent, row.turn_type)] += 1
             except OSError as e:
@@ -554,36 +557,56 @@ def project_inventory(
     collected: list[str] | None = None,
     files: dict[str, dict] | None = None,
 ) -> dict[str, dict]:
-    """Counts per `project_path`, the empty path included: rows and sessions
-    in total, and per agent the rows, sessions and rows by `turn_type`. A
+    """Counts per project, the empty path included: rows and sessions in
+    total, and per agent the rows, sessions and rows by `turn_type`. A
     session is counted under its summary's project, the first non-empty
     `project_path` among its rows.
 
-    Each non-empty path is a project entry with the keys `status`, `rows`,
+    Paths are grouped by `project_key`, so the spellings of one Windows
+    folder that differ only in case are one project; any other path is
+    compared exactly as recorded. A group is keyed by the spelling of the
+    collected project it matches, else by the first spelling seen, in the
+    rows (timeline order), then the sessions, then `files`; the output is
+    sorted by that key.
+
+    Each non-empty key is a project entry with the keys `status`, `rows`,
     `sessions`, `agents` and `shared_files`, in that order. `status` is
-    `collected` when the path is one of `collected` (the project directories
-    the input holds), else `referenced` (named only by rows); a collected
-    project no row names is listed with zero counts. `files` maps a project
-    path to `project_files` output; each agent of a project entry gets
-    `files` and `bytes` after `turn_types` from it (0 when absent), an agent
-    with files and no rows is listed with zero counts, and `shared_files` is
-    the project's files with agent `project`. The empty path's entry keeps
-    `rows`, `sessions` and `agents` only, with no file counts. Paths are
-    compared exactly as recorded."""
-    files = files or {}
+    `collected` when the group matches one of `collected` (the project
+    directories the input holds), else `referenced` (named only by rows); a
+    collected project no row names is listed with zero counts. `files` maps
+    a project path to `project_files` output, looked up through
+    `project_key` (the counts of paths with one key are added); each agent
+    of a project entry gets `files` and `bytes` after `turn_types` from it
+    (0 when absent), an agent with files and no rows is listed with zero
+    counts, and `shared_files` is the project's files with agent `project`.
+    The empty path's entry keeps `rows`, `sessions` and `agents` only, with
+    no file counts."""
     groups: dict[str, dict] = {}
+    names: dict[str, str] = {}
 
     def group(path: str) -> dict:
-        return groups.setdefault(path, {"rows": 0, "sessions": 0, "agents": {}})
+        key = project_key(path)
+        names.setdefault(key, path)
+        return groups.setdefault(key, {"rows": 0, "sessions": 0, "agents": {}})
 
     def agent_of(path: str, agent: str) -> tuple[dict, dict]:
         g = group(path)
         a = g["agents"].setdefault(agent, {"rows": 0, "sessions": 0, "turn_types": {}})
         return g, a
 
+    # Collected spellings first, so they name their groups.
     for path in collected or []:
         if path:
             group(path)
+    collected_keys = set(groups)
+    on_disk_by_key: dict[str, dict] = {}
+    for path, f in (files or {}).items():
+        m = on_disk_by_key.setdefault(project_key(path), {"agents": {}, "shared_files": 0})
+        m["shared_files"] += f["shared_files"]
+        for agent, counts in f["agents"].items():
+            c = m["agents"].setdefault(agent, {"files": 0, "bytes": 0})
+            c["files"] += counts["files"]
+            c["bytes"] += counts["bytes"]
     for r in rows:
         g, a = agent_of(r.project_path, r.agent)
         g["rows"] += 1
@@ -593,15 +616,15 @@ def project_inventory(
         g, a = agent_of(s.project_path, s.agent)
         g["sessions"] += 1
         a["sessions"] += 1
-    for path, f in files.items():
+    for path, f in (files or {}).items():
         if path:
             for agent in f["agents"]:
                 agent_of(path, agent)
-    collected_set = set(collected or [])
     out: dict[str, dict] = {}
-    for path in sorted(groups):
-        g = groups[path]
-        on_disk = files.get(path, {"agents": {}, "shared_files": 0}) if path else None
+    for key in sorted(groups, key=names.__getitem__):
+        g, path = groups[key], names[key]
+        empty_disk = {"agents": {}, "shared_files": 0}
+        on_disk = on_disk_by_key.get(key, empty_disk) if path else None
         agents = {}
         for name in sorted(g["agents"]):
             a = g["agents"][name]
@@ -614,7 +637,7 @@ def project_inventory(
             out[path] = {"rows": g["rows"], "sessions": g["sessions"], "agents": agents}
             continue
         out[path] = {
-            "status": "collected" if path in collected_set else "referenced",
+            "status": "collected" if key in collected_keys else "referenced",
             "rows": g["rows"],
             "sessions": g["sessions"],
             "agents": agents,
@@ -628,23 +651,24 @@ def collected_projects(col: Collection) -> list[str]:
     host: collection.json `projects`, even one none of whose files were
     collected, and the homes marked `project` (which adds the bases of rows
     with agent `project` in a collection whose collection.json is missing),
-    sorted and de-duplicated."""
+    each in `canonical_project_path` form, sorted and de-duplicated."""
     summary = col.summary or {}
     listed = summary.get("projects")
     paths = {str(p) for p in (listed if isinstance(listed, list) else []) if p}
     paths.update(h.original for h in col.homes if h.project and h.original)
-    return sorted({strip_image_root(p, summary) for p in paths})
+    return sorted({canonical_project_path(strip_image_root(p, summary)) for p in paths})
 
 
 def project_files(col: Collection) -> dict[str, dict]:
     """`project_agents` keyed as `collected_projects` keys its paths, with
-    the image root stripped, and summed when two directories strip to one
-    path: per path `agents` (agent to `files` and `bytes`) and
-    `shared_files`."""
+    the image root stripped and in `canonical_project_path` form, and summed
+    when two directories map to one path: per path `agents` (agent to
+    `files` and `bytes`) and `shared_files`."""
     summary = col.summary or {}
     merged: dict[str, dict] = {}
     for path, p in project_agents(col).items():
-        m = merged.setdefault(strip_image_root(path, summary), {"agents": {}, "shared_files": 0})
+        key = canonical_project_path(strip_image_root(path, summary))
+        m = merged.setdefault(key, {"agents": {}, "shared_files": 0})
         m["shared_files"] += p["shared_files"]
         for agent, counts in p["agents"].items():
             c = m["agents"].setdefault(agent, {"files": 0, "bytes": 0})

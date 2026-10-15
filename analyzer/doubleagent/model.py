@@ -4,6 +4,7 @@ without a note in docs/output.md."""
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, fields
 
 TIMELINE_COLUMNS = [
@@ -142,3 +143,56 @@ def compact(text: object | None) -> str:
         return ""
     s = text if isinstance(text, str) else str(text)
     return s.strip()
+
+
+# A drive-letter path (`C:\x`, `c:/x`) and the extended-length prefixes
+# `\\?\` and `\\?\UNC\` that Windows APIs and some agents put in front.
+_DRIVE = re.compile(r"[A-Za-z]:[\\/]")
+_EXTENDED = re.compile(r"\\\\\?\\(UNC\\)?", re.IGNORECASE)
+
+
+def _windows_path(path: str) -> str | None:
+    """`path` in the canonical Windows form `canonical_project_path`
+    describes, or None when it is not a Windows form."""
+    m = _EXTENDED.match(path)
+    if m:
+        path = ("\\\\" if m.group(1) else "") + path[m.end() :]
+    if _DRIVE.match(path):
+        parts = [p for p in path[2:].replace("/", "\\").split("\\") if p]
+        return path[0].upper() + ":\\" + "\\".join(parts)
+    if path.startswith("\\\\"):
+        parts = [p for p in path[2:].replace("/", "\\").split("\\") if p]
+        if parts:
+            return "\\\\" + "\\".join(parts)
+    return None
+
+
+def canonical_project_path(path: str) -> str:
+    r"""One spelling for a Windows `project_path`, so a folder that agents
+    record as `c:/Users/a/demo`, `C:\Users\a\demo\` and
+    `\\?\C:\Users\a\demo` is `C:\Users\a\demo` in every row.
+
+    A Windows form is a path that starts with a drive letter, a colon and a
+    separator, or with two backslashes (UNC, `\\server\share`), after the
+    extended-length prefix `\\?\` is removed (`\\?\UNC\server\share`
+    becomes `\\server\share`). Its canonical form has an upper-case drive
+    letter, backslash separators, no repeated separators after the drive or
+    the UNC prefix and no trailing separator, except in the root `C:\`.
+    The case of everything after the drive is kept as recorded, because the
+    analyzer cannot know the folder's real casing. Any other path, POSIX
+    paths and `//server/share` included, is returned unchanged: a backslash
+    is a legal character in a POSIX file name, and `file:` URIs are decoded
+    by the parser that reads them."""
+    if not path:
+        return path
+    win = _windows_path(path)
+    return path if win is None else win
+
+
+def project_key(path: str) -> str:
+    """The key under which `inventory.json` groups a `project_path`: the
+    canonical form from `canonical_project_path`, lower-cased when it is a
+    Windows form, because Windows file names are case-insensitive; any
+    other path unchanged, compared exactly."""
+    win = _windows_path(path) if path else None
+    return path if win is None else win.lower()

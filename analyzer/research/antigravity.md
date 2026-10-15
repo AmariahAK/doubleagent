@@ -642,20 +642,27 @@ and a line without it keeps `session_id` empty. Which lines get the key
 cannot be told from two lines; the one CLI 1.3.5 line on Windows
 (**observed**) had none.
 
-On Windows one folder can reach `project_path` under several spellings,
+On Windows one folder can reach the parser under several spellings,
 since the parser passes a plain path through unchanged and turns a
 `file:` URI into a path with `uri_to_path`, which keeps the drive letter's
-case and uses forward slashes. The Windows install (**observed**) gave
-three: `c:/Users/sean/demo`, from the app's `file:///c%3A/Users/sean/demo`
+case and uses forward slashes. The Windows install (**observed**, Windows
+11, CLI 1.3.5 and app 2.23.1, 2026-10-14) gave three: `c:/Users/sean/demo`, from the app's `file:///c%3A/Users/sean/demo`
 URIs (a percent-encoded colon and a lower-case drive letter, as the
 project file's `folderUri` records it); `C:/users/sean/demo2`, from the
 `file:` URI in the CLI conversation's `conversation_summaries.workspace_uris`; and `C:\users\sean\demo2`,
 the plain path of the `history.jsonl` `workspace`. The lower-case `users`
-is how the user typed the CLI's working folder. Grouping by
-`project_path` therefore splits one Windows folder into several;
-[doubleagent issue 112](https://github.com/seanthegeek/doubleagent/issues/112)
-proposes normalising the spellings, and the parser is unchanged in this
-round.
+is how the user typed the CLI's working folder. `collection.json` listed
+the two folders as `C:\Users\sean\demo` and `C:\users\sean\demo2`.
+Up to analyzer 0.12.0 the rows carried the three spellings as recorded,
+so `inventory.json` split one folder into two projects and neither
+matched the collected folder's spelling. From analyzer 0.13.0
+([doubleagent issue 112](https://github.com/seanthegeek/doubleagent/issues/112))
+the timeline writes every Windows `project_path` in one canonical form
+(upper-case drive letter, backslash separators, no trailing separator),
+so the three become `C:\Users\sean\demo` and `C:\users\sean\demo2`,
+and `inventory.json` groups spellings that differ only in case; the
+canonicalisation is applied to every parser's rows in `collect_rows` in
+`cli.py`, and the parser itself is unchanged.
 
 Which surface wrote a conversation is recorded twice: the data directory
 the database sits in, and `trajectory_meta.source`, an

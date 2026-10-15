@@ -550,12 +550,12 @@ directory. `cursor` has project files and no parser, so no rows;
 | `homes[].agents[].files` | integer | Files of this agent in this home, counted as in `detect --json`; not filtered. |
 | `homes[].agents[].bytes` | integer | Their total size, the manifest `size` or the size on disk in loose mode; not filtered. |
 | `homes[].agents[].parser` | boolean | `true` when the analyzer has a parser for this agent, `false` when it is detected only. |
-| `projects` | object | Keyed by project path, sorted: every distinct non-empty `project_path` of the rows, as the rows record it, and every project directory the input holds, as the collector's path with the image root removed (see below). `{}` when there is neither. |
+| `projects` | object | Keyed by project path, sorted: every distinct non-empty `project_path` of the rows, and every project directory the input holds, as the collector's path with the image root removed and Windows paths in the canonical form of [`timeline.jsonl`](#timelinejsonl) `project_path` (see below). Windows paths that differ only in case are one project, keyed by the collected directory's spelling when the project is one, else by the first spelling the rows record. `{}` when there is neither. |
 | `projects.<path>.status` | string | `collected` when the path is a project directory the input holds, so its project files are in the collection; `referenced` when only rows name it, because the directory was deleted, was out of the collector's reach, was skipped with `--no-projects`, or is recorded in another form (see below). |
-| `projects.<path>.rows` | integer | Rows with this `project_path`, after the filters. |
-| `projects.<path>.sessions` | integer | Sessions whose `project_path` in `sessions.jsonl` is this one, after the filters. |
+| `projects.<path>.rows` | integer | Rows with this `project_path`, or for a Windows path any spelling of it that differs only in case, after the filters. |
+| `projects.<path>.sessions` | integer | Sessions whose `project_path` in `sessions.jsonl` is this one, compared as for `rows`, after the filters. |
 | `projects.<path>.agents` | object | Keyed by agent name, sorted: every agent with rows in the project or files in its directory, so the keys are the agents used on the project. Never has the key `project`; `{}` for a project with neither. |
-| `projects.<path>.agents.<agent>.rows` | integer | This agent's rows with this `project_path`, after the filters; 0 for an agent with files and no rows. |
+| `projects.<path>.agents.<agent>.rows` | integer | This agent's rows with this `project_path`, compared as for `rows`, after the filters; 0 for an agent with files and no rows. |
 | `projects.<path>.agents.<agent>.sessions` | integer | This agent's sessions counted under this project, after the filters. |
 | `projects.<path>.agents.<agent>.turn_types` | object | Keyed by `turn_type`, sorted: this agent's rows of each type in the project, after the filters, listing only the types that occur; `{}` with no rows. |
 | `projects.<path>.agents.<agent>.files` | integer | The files the collection holds for this agent in this directory, not filtered; 0 for an agent with rows and no files there, and for every agent of a `referenced` project. |
@@ -588,18 +588,30 @@ the analyzer does not look for project directories in a loose tree, so
 every key there is `referenced`. Each such directory is listed even when
 no row names it, and even when the filters left no rows at all.
 
-Paths are compared and counted exactly as recorded, with one exception:
+Paths are compared and counted as recorded, with two exceptions. First,
 for a collection made in image mode (`collection.json` `mode` `image`),
 the `root` given with `-r` is removed from the front of each project
 directory, so `/mnt/image/srv/proj` in `collection.json` matches the
 `/srv/proj` the transcripts on that host recorded; the file counts of two
-directories that map to one path are added together. Nothing else is
-normalised, so one repository recorded in two forms has two keys: a
-trailing slash, a different case on Windows, or a Windows image collected
-on Linux or macOS, whose transcripts say `C:\Users\alice\proj` while the
-collector's path, once the root is removed, is `/Users/alice/proj`. The
-collector's form then has `status` `collected` and the files, and the
-transcripts' form has the rows and `status` `referenced`.
+directories that map to one path are added together. Second, a Windows
+path (one that starts with a drive letter, or with `\\` for a network
+share) is in the canonical form described under
+[`timeline.jsonl`](#timelinejsonl) `project_path`, in the rows and in the
+project directories alike, and is compared ignoring case, because Windows
+file names are case-insensitive: `c:/Users/sean/demo`,
+`C:\Users\sean\demo\` and `C:\USERS\sean\demo` are one project. Its
+key is the spelling of the collected directory when the project is one,
+so a collected project's rows, files and `status` `collected` stay under
+the path `collection.json` names; otherwise it is the first spelling seen
+in the rows in timeline order, then in the sessions. The case after the
+drive is never changed, since the analyzer cannot know the folder's real
+casing. Nothing else is normalised, so one repository recorded in two
+forms has two keys: a trailing slash or a different case on a POSIX path,
+or a Windows image collected on Linux or macOS, whose transcripts say
+`C:\Users\alice\proj` while the collector's path, once the root is
+removed, is `/Users/alice/proj`. The collector's form then has `status`
+`collected` and the files, and the transcripts' form has the rows and
+`status` `referenced`.
 
 A jq query that lists projects by row count:
 
@@ -651,7 +663,7 @@ alike. [searching.md](searching.md) has recipes.
 | `user` | string | From the manifest, inferred from the path, or `--user`. |
 | `agent` | string | Catalog agent name of the parser that produced the row. |
 | `session_id` | string | The agent's own session or thread identifier. |
-| `project_path` | string | Working directory recorded for the turn. |
+| `project_path` | string | Working directory recorded for the turn. A Windows path, one that starts with a drive letter and a separator or with `\\`, is written in one canonical form whichever store recorded it: upper-case drive letter, backslash separators, no repeated separators and no trailing separator except in a drive root (`C:\`), and the extended-length prefix `\\?\` removed (`\\?\UNC\server\share` becomes `\\server\share`), so `c:/Users/sean/demo/` is `C:\Users\sean\demo`. The case after the drive is kept as recorded. Any other path, POSIX paths included, is written as recorded. A `file:` URI is turned into a path by the parser that reads it. |
 | `git_branch` | string | Branch recorded for the turn, where the agent logs one. |
 | `turn_type` | string | `user`, `assistant`, `tool_use`, `tool_result`, `system`, or `thinking` with `--include-thinking`. |
 | `model` | string | Model that produced the turn, where recorded. |
@@ -939,7 +951,7 @@ no timestamp come first. Its fields, in order:
 | `user` | string | The `user` of the session's timeline records. |
 | `agent` | string | The `agent` of the session's timeline records. |
 | `session_id` | string | The `session_id` of the session's timeline records, never empty. |
-| `project_path` | string | The first non-empty `project_path` among the session's records in timeline order; `""` when none has one. `inventory.json` counts the session under this path. |
+| `project_path` | string | The first non-empty `project_path` among the session's records in timeline order, so a Windows path is in the canonical form described under [`timeline.jsonl`](#timelinejsonl); `""` when none has one. `inventory.json` counts the session under this path. |
 | `first_timestamp_utc` | string | The earliest non-empty `timestamp_utc` among the session's records, `""` when none has one. |
 | `last_timestamp_utc` | string | The latest non-empty `timestamp_utc` among the session's records, `""` when none has one. |
 | `models` | array of strings | Each distinct non-empty `model` of the session's records, in order of first use in the timeline; `[]` when none was recorded. |
