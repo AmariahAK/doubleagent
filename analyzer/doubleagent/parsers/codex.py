@@ -16,7 +16,12 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
   `metadata` object. Types:
   - `session_meta`: payload `id` (thread id), `session_id` (root thread),
     `timestamp`, `cwd`, `originator`, `cli_version`, `model_provider`,
-    optional `git` (`branch`), and for spawned threads `parent_thread_id`,
+    optional `git` (`branch`), optional `creator_account_id` and
+    `creator_user_id` (the ChatGPT account and user that created the
+    thread, `protocol/src/protocol.rs:3117-3198`; seen filled in rollouts
+    of Codex Desktop 0.162.0-alpha.17.2; appended to the `session start:`
+    row as `account=<id> user=<id>`, each only when present), and for
+    spawned threads `parent_thread_id`,
     `thread_source`, `source.subagent.thread_spawn.parent_thread_id`,
     `agent_path`, `agent_role`, `agent_nickname`; `forked_from_id` on a fork.
     Only the file's first `session_meta` sets the session id, project and
@@ -655,17 +660,16 @@ class RolloutParser(Parser):
                 git = payload.get("git") or {}
                 if isinstance(git, dict):
                     branch = str(git.get("branch") or branch)
-                yield self._fill(
-                    base(ts=payload.get("timestamp")),
-                    "session start: %s %s provider=%s cwd=%s"
-                    % (
-                        payload.get("originator") or "codex",
-                        payload.get("cli_version") or "",
-                        payload.get("model_provider") or "",
-                        cwd,
-                    ),
-                    opts,
+                start = "session start: %s %s provider=%s cwd=%s" % (
+                    payload.get("originator") or "codex",
+                    payload.get("cli_version") or "",
+                    payload.get("model_provider") or "",
+                    cwd,
                 )
+                for key, label in (("creator_account_id", "account"), ("creator_user_id", "user")):
+                    if payload.get(key):
+                        start += " %s=%s" % (label, payload.get(key))
+                yield self._fill(base(ts=payload.get("timestamp")), start, opts)
                 parent = _parent_of(payload)
                 if parent:
                     extra = " ".join(

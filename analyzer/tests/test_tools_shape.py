@@ -186,6 +186,35 @@ class RedactionTests(ShapeBase):
         for text in (UUID, hexname, "alice", "bob", "example.com"):
             self.assertNotIn(text, out)
 
+    def test_openai_ids_and_array_keys(self):
+        user = "user-" + "Ab1" * 8
+        org = "org-" + "Cd2" * 8
+        d = self.root / user
+        d.mkdir()
+        doc = {
+            json.dumps([user, UUID]): 1,
+            json.dumps(["local", "client-new-thread:" + UUID, "win32:/mnt/c/users/bob/x.py"]): 2,
+            json.dumps(["local", "C:\\Users\\bob\\x.py", 3, None]): 3,
+            "win32:/mnt/c/users/bob/y.py": 4,
+            "%s:%s" % (org, user): 5,
+            "[not json": 6,
+            "local:C:\\Users\\bob\\.codex": 7,
+            "host:/home/bob/.codex": 8,
+        }
+        (d / "state.json").write_text(json.dumps(doc), encoding="utf-8")
+        out = shape(self.root)
+        self.assertIn("== <user-id>/state.json (", out)
+        self.assertIn('    ["<user-id>","<uuid>"]: number', out)
+        self.assertIn('    ["local","client-new-thread:<uuid>","<abs-path>"]: number', out)
+        self.assertIn('    ["local","<abs-path>","<int>","<NoneType>"]: number', out)
+        self.assertIn("    <abs-path>: number", out)
+        self.assertIn("    <org-id>:<user-id>: number", out)
+        self.assertIn("    [not json: number", out)
+        self.assertIn("    host:<abs-path>: number", out)
+        self.assertIn("    local:<abs-path>: number", out)
+        for text in (user, org, UUID, "bob", "mnt"):
+            self.assertNotIn(text, out)
+
     def test_relative_paths(self):
         (self.root / "a" / "b").mkdir(parents=True)
         (self.root / "a" / "b" / "c.json").write_text("{}", encoding="utf-8")

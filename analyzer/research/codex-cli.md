@@ -26,6 +26,97 @@ Paths and the rest of the per-user state are in
   paths, value types and enum values were tabulated; no content was read
   into this document. The one rollout is `history_mode: "paginated"` and
   has no `git` block, so the legacy event set and `git` are source only.
+- **Observed (Windows)**: the author's Windows 11 ARM64 lab VM (`ver`
+  prints `10.0.26300.9550`), 2026-10-15, times in UTC, read for file
+  names, sizes, key names, value types, enum values and row counts only
+  (issues 113 and 118). The Codex here is Codex Desktop, the copy of Codex
+  bundled in the ChatGPT desktop app, installed from the Microsoft Store as
+  the MSIX package `OpenAI.Codex` 26.1007.9446.0 (MSIX is the Windows app
+  package format); its rollouts name it `originator` `Codex Desktop`,
+  `cli_version` `0.162.0-alpha.17.2`. It writes to the standard
+  `CODEX_HOME`, `~\.codex`. The paths and the app's other directories are
+  in [`collectors/research/chatgpt-desktop.md`](../../collectors/research/chatgpt-desktop.md)
+  and [`collectors/research/codex-cli.md`](../../collectors/research/codex-cli.md).
+  The user asked a question in a plain chat, generated an image and ran
+  a task in a project folder; no listing was taken between tasks, so the
+  mapping from task to file is by modification time only.
+  - Two rollouts under `sessions/2026/10/15/`, both
+    `history_mode` `paginated`, 0 bad lines. The first (37 lines:
+    `session_meta` 1, `turn_context` 1, `world_state` 1, `response_item`
+    17, `event_msg` 13, `token_usage_record` 4) ran 14:26:37Z to
+    14:27:19Z in the app's default output directory for a thread with no
+    project, `~\Documents\Codex\2026-10-15\d`; the second (32 lines:
+    `session_meta` 1, `turn_context` 1, `world_state` 1, `response_item`
+    15, `event_msg` 11, `token_usage_record` 3) ran 14:30:05Z to
+    14:32:47Z in a project folder on the Desktop and wrote eleven files
+    there. The file-name time is local time, as on the CLI. The parser
+    gave 27 and 23 rows: user turns, assistant messages, `exec`, `shell`,
+    `web_search` and `apply_patch` calls, `task_started` and
+    `task_complete`, `model: gpt-6-luna` and one `permission mode:` row
+    each.
+  - `session_meta.payload` keys: `id`, `session_id`, `timestamp`, `cwd`,
+    `runtime_workspace_roots` (1 entry), `originator` `Codex Desktop`,
+    `cli_version`, `source` `vscode`, `thread_source` `user`,
+    `model_provider` `openai`, `base_instructions` (`text`, and
+    `provenance` with `type` `model` and `model`), `history_mode`
+    `paginated`, `context_window` (`window_id`), `creator_user_id` (29
+    characters) and `creator_account_id` (36 characters, a UUID). Every
+    top-level key is in the source list in
+    [section 3](#3-record-envelope-and-types); `base_instructions.provenance`
+    is observed, not checked against source at 3e23877. No `git` block
+    (neither directory was a repository). `source` is `vscode` for these
+    desktop threads, so `originator` is the key that names the desktop
+    app.
+  - `turn_context.payload` keys: `turn_id`, `root_turn_id`, `cwd`,
+    `workspace_roots` (2), `current_date`, `timezone`, `approval_policy`
+    `on-request`, `sandbox_policy` (`type`
+    `workspace-write`, `writable_roots`, `network_access`,
+    `exclude_tmpdir_env_var`, `exclude_slash_tmp`), `permission_profile`
+    (`type` `managed`, `file_system` with `type` `restricted` and 13
+    `entries`, `network` `restricted`), `model` `gpt-6-luna`,
+    `collaboration_mode` (`mode` `default`, `settings` with `model`,
+    `reasoning_effort` `medium` and `developer_instructions`), `effort`
+    `medium`, `summary` `detailed`, `personality` `friendly`. Observed
+    and not among the fields [section 3](#3-record-envelope-and-types)
+    lists from source at 3e23877 (whether that commit's struct already
+    has them was not rechecked): `disabled_plugin_ids`,
+    `approvals_reviewer` `user`, `active_permission_profile` (`id`
+    `:workspace`), `file_system_sandbox_policy` (`kind` `restricted`, 13
+    `entries`), `comp_hash`, `multi_agent_version` `v2`,
+    `realtime_active`, `cyber_access_program` `standard`. The parser
+    reads none of them.
+  - `state_5.sqlite` `threads` (2 rows) had the columns `id`,
+    `rollout_path`, `created_at`, `updated_at`, `source`,
+    `model_provider`, `cwd`, `title`, `sandbox_policy`, `approval_mode`,
+    `tokens_used`, `has_user_event`, `archived`, `archived_at`, `git_sha`,
+    `git_branch`, `git_origin_url`, `cli_version`, `first_user_message`,
+    `agent_nickname`, `agent_role`, `memory_mode`, `model`,
+    `reasoning_effort`, `agent_path`, `created_at_ms`, `updated_at_ms`,
+    `thread_source`, `preview`, `recency_at`, `recency_at_ms`,
+    `history_mode`, `name`, `is_pinned`, `thread_section_id`,
+    `section_position`, `section_entered_at_ms`, `project_id`,
+    `originator`, `daybreak_enabled`, `creator_user_id`,
+    `creator_account_id`. `approval_mode` held the approval policy: the
+    first thread's a JSON object `{"granular": {"sandbox_approval":
+    false, "rules": false, "skill_approval": false,
+    "request_permissions": true, "mcp_elicitations": true}}`, the
+    second's the string `on-request`; `sandbox_policy` held JSON of 2,389
+    and 1,725 characters. The first thread's rollout row
+    (`permission mode:`) carries the same granular object. The database
+    also held `projects` (1 row), `project_roots` (1), `thread_sections`
+    (1), `remote_control_enrollments` (0) and
+    `external_agent_config_imports` (0) beside the tables the source
+    describes.
+  - `thread_history_1.sqlite` `thread_items` (13 rows): `item_type`
+    `agentMessage` 4, `commandExecution` 2, `fileChange` 1, `reasoning`
+    2, `userMessage` 2, `webSearch` 2; `thread_turns` 2 rows, both
+    `status` `completed`.
+  - The ChatGPT chat and the image generation left no rollout and no row
+    in `state_5.sqlite` or `thread_history_1.sqlite`; their only local
+    trace is in the desktop app's own `sqlite/codex-dev.db`
+    ([section 5](#5-other-files)) and `.codex-global-state.json`. Not
+    exercised: a resumed thread, a denied tool call, an "allow always"
+    grant, a model switch, subagents.
 
 ## 2. Transcript files
 
@@ -296,6 +387,34 @@ to the call except its position between the call and its output (local).
   A projection of paginated rollouts; local item types were `userMessage`,
   `webSearch`, `agentMessage`, the same three items as the rollout's
   `item_completed` lines. Nothing found that is not in the rollout.
+  Codex Desktop on Windows (observed 2026-10-15,
+  [section 1](#1-evidence)) added `reasoning`, `commandExecution` and
+  `fileChange` items, also all in its rollouts.
+- `sqlite/codex-dev.db`: written only by the ChatGPT desktop app (observed
+  on Windows, ChatGPT 26.1007.9446.0, 2026-10-15; not in the Codex
+  source this document cites). It is the app's own thread catalog and
+  automation store. `local_thread_catalog` has one row per thread the
+  app lists (`host_id`, `thread_id`, `display_title`,
+  `source_created_at`, `source_updated_at`, `cwd`, `source_kind`,
+  `source_detail`, `model_provider`, `git_branch`, `thread_source`,
+  `project_id`, `conversation_origin`, `chatgpt_async_status` and
+  bookkeeping columns): the two local Codex threads as `source_kind`
+  `vscode` with a `cwd`, and the ChatGPT chat as `source_kind` `chatgpt`
+  with every other column but the title empty. `local_thread_catalog_hosts`
+  (`host_id`, `host_kind`) held `local` and
+  `chatgpt:<workspace uuid>:<user id>`. `automations` (`id`, `name`,
+  `prompt`, `status`, `next_run_at`, `last_run_at`, `cwds`, `rrule`,
+  `model`, `reasoning_effort`, `target_type`, `project_id`, `kind`,
+  `target_thread_id`, `execution_environment`, `account_id`, `user_id`
+  and more) and `automation_runs` (`thread_id`, `automation_id`,
+  `status`, `thread_title`, `source_cwd`, `inbox_title`,
+  `inbox_summary`, `archived_user_message`, `archived_assistant_message`
+  and more) were empty, since the one automation the user tried failed
+  to save; `inbox_items` was empty too. `codex_schema_migrations` rows
+  carry the app version (`app_version` `26.1007.71326`, `build_flavor`
+  `prod`). The chat's text is not in it. The analyzer does not read it;
+  by its columns, an `automations` row is where a scheduled prompt would
+  be kept, but no row was observed.
 
 Opened only from scratchpad copies, and only for table names, row counts
 and key names.
@@ -311,6 +430,13 @@ and key names.
 - **Ids.** `session_meta.payload.id` is the thread id and the file-name
   UUID; `session_id` is the root thread's id, so a subagent's rollout has
   `id` ≠ `session_id`. Reverted rollouts end `<thread id>_<rollout id>`.
+- **Account and user.** `session_meta.payload.creator_account_id` (a
+  UUID) and `creator_user_id` (the ChatGPT user id, 29 characters) name
+  who created the thread; Codex Desktop fills them (observed on Windows,
+  2026-10-15). The same pair is in the `state_5.sqlite` `threads`
+  columns of the same names, and the user id, with the ChatGPT workspace
+  id, in the `codex-dev.db` `local_thread_catalog_hosts` host id
+  `chatgpt:<workspace uuid>:<user id>` ([section 5](#5-other-files)).
 - **Project.** `session_meta.payload.cwd`, updated per turn by
   `turn_context.payload.cwd`; `workspace_roots` lists extra roots.
 - **Branch.** `session_meta.payload.git.branch`, set once at thread
@@ -387,7 +513,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 
 | Record | Row |
 | --- | --- |
-| first `session_meta` | `system` ("session start: originator version provider cwd"); plus `system` `subagent <id> of <parent> [agent_path= agent_role= agent_nickname=]` when `parent_thread_id`, `source.subagent.thread_spawn.parent_thread_id`, or a `session_id` other than `id` on a non-fork names a parent; plus `system` `forked from <id>` for `forked_from_id` |
+| first `session_meta` | `system` ("session start: originator version provider cwd", then ` account=<creator_account_id> user=<creator_user_id>` with only the keys present, issue 118); plus `system` `subagent <id> of <parent> [agent_path= agent_role= agent_nickname=]` when `parent_thread_id`, `source.subagent.thread_spawn.parent_thread_id`, or a `session_id` other than `id` on a non-fork names a parent; plus `system` `forked from <id>` for `forked_from_id` |
 | later `session_meta` | `system` `copied from ancestor: session start ... id= cwd=` when its id differs; none when it repeats the file's own |
 | `turn_context` | sets project and model; `system` `model: <model>` at the first one that names a model and `model: <old> -> <new>` at each later one whose `model` differs; `system` `permission mode: approval=<approval_policy> sandbox=<sandbox_policy> profile=<permission_profile> network=<network>` at the first one with any of the four fields and `permission mode: <old> -> <new>` on every change to the composite (a missing field is `-`, an object compact JSON); both at the line's `timestamp`, before the turn's rows, keyed per session |
 | `response_item` with `metadata.inherited_user_message` | none (copied from the parent thread) |

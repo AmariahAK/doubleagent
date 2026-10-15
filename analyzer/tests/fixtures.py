@@ -31,6 +31,10 @@ CODEX_SUBAGENT = "aaaaaaaa-bbbb-4ccc-8ddd-000000000002"
 CODEX_FORK = "aaaaaaaa-bbbb-4ccc-8ddd-000000000003"
 CODEX_LEGACY = "aaaaaaaa-bbbb-4ccc-8ddd-000000000004"
 CODEX_REVERT_ROLLOUT = "aaaaaaaa-bbbb-4ccc-8ddd-000000000005"
+# Synthetic ChatGPT ids of the shapes Codex Desktop writes in session_meta (#118):
+# a 36-character uuid account id and a 29-character user id.
+CODEX_ACCOUNT = "11111111-2222-4333-8444-555555555555"
+CODEX_USER = "user-AbCdEfGhIjKlMnOpQrStUvWx"
 
 
 def _jsonl(path: Path, records) -> None:
@@ -751,6 +755,8 @@ def codex_rollout_records(cwd="/srv/proj"):
                 "model_provider": "openai",
                 "history_mode": "paginated",
                 "git": {"commit_hash": "0a1b2c3d", "branch": "feature/x"},
+                "creator_account_id": CODEX_ACCOUNT,
+                "creator_user_id": CODEX_USER,
             },
         },
         {

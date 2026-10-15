@@ -35,11 +35,13 @@ from fixtures import (
     CLAUDE_SESSION,
     CLAUDE_SETTINGS_MTIME,
     CLAUDE_WORK_SESSION,
+    CODEX_ACCOUNT,
     CODEX_FORK,
     CODEX_LEGACY,
     CODEX_REVERT_ROLLOUT,
     CODEX_SESSION,
     CODEX_SUBAGENT,
+    CODEX_USER,
     CRUSH_SESSION,
     GEMINI_HASH,
     GEMINI_LEGACY,
@@ -873,6 +875,31 @@ class CodexTests(ParserBase):
         self.assertEqual(patchout.text, "Done")
         self.assertEqual(asst.text, "Listed the home directory.")
         self.assertEqual(done.text, "task_complete turn=t1 duration_ms=7000")
+
+    def test_session_start_names_creator_account_and_user(self):
+        rows = self.rows_for(CodexParser(), self.REL)
+        self.assertEqual(
+            rows[0].text,
+            "session start: codex-tui 0.160.0 provider=openai cwd=/srv/proj account=%s user=%s"
+            % (CODEX_ACCOUNT, CODEX_USER),
+        )
+        # Only the keys present are named.
+        recs = codex_rollout_records()
+        del recs[0]["payload"]["creator_account_id"]
+        rel = self._write("rollout-2026-10-02T09-40-00-%s.jsonl" % CODEX_SESSION, recs)
+        rows = self.rows_for(CodexParser(), rel)
+        self.assertEqual(
+            rows[0].text,
+            "session start: codex-tui 0.160.0 provider=openai cwd=/srv/proj user=%s" % CODEX_USER,
+        )
+        # A rollout without either key keeps the old text.
+        rel = self._write(
+            "rollout-2026-10-02T10-20-00-%s.jsonl" % CODEX_LEGACY, codex_legacy_records()
+        )
+        rows = self.rows_for(CodexParser(), rel)
+        self.assertEqual(
+            rows[0].text, "session start: codex_cli_rs 0.99.0 provider=openai cwd=/srv/proj"
+        )
 
     def test_model_and_permission_mode_rows(self):
         rows = self.rows_for(CodexParser(), self.REL)
