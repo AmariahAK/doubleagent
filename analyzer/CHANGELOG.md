@@ -19,6 +19,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ([#122]).
 - `inventory.json` key `deduplicated`, the new last key: the dropped
   rows per agent, `{}` when none ([#122]).
+- The `antigravity` parser reads the brain mirror of each conversation,
+  `brain/<uuid>/.system_generated/logs/transcript_full.jsonl` (else its
+  chunks, else the shortened `transcript.jsonl`, else its chunks) under
+  every data directory, as a secondary source paired with the
+  conversation database within 600 seconds, so a conversation whose
+  database is gone or unreadable is still in the timeline ([#122]).
 
 ### Changed
 

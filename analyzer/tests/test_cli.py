@@ -506,9 +506,15 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # /srv/proj" (a rewind removed it from the session), the Qwen logs.json
 # model_switch entry (a `system` row whose text no session row has). The Muse
 # tui-history.jsonl prompt records no time and matches its session's prompt
-# on text alone.
+# on text alone. Antigravity's brain mirror (#87): six of the CLI
+# conversation's seven transcript_full.jsonl rows pair with database rows
+# within the 600-second window; its "clean the logs" is kept, because the
+# history line without conversationId takes the database row first and the
+# two secondary rows have different scopes (session and project); five of
+# the app conversation's six transcript.jsonl rows pair, the shortened tool
+# output is kept; the orphan conversation's chunk rows have no database.
 FIXTURE_DEDUPLICATED = {
-    "antigravity": 1,  # "clean the logs"
+    "antigravity": 12,  # history "clean the logs"; brain mirror 6 (CLI) + 5 (app)
     "claude-code": 2,  # .claude and .claude-work history.jsonl
     "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
     "gemini-cli": 1,  # "list files in src"

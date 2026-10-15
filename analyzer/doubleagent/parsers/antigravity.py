@@ -83,6 +83,72 @@ Files, relative to the home directory, under each of those directories
   conversation's UUID, which becomes the row's `session_id` (older lines
   have none and keep it empty). A secondary source: the timeline drops a
   line whose event a conversation database also records (`dedup.py`).
+* `.gemini/<dir>/brain/<conversation id>/.system_generated/logs/`, the brain
+  mirror (issue 87): one JSON line per step, written by the backend beside
+  the database, in four copies of one transcript: `transcript_full.jsonl`;
+  `transcript.jsonl`, the same lines with long fields shortened and the
+  shortened field names in `truncated_fields`; and each split into chunks
+  of 100 KiB, `chunks/transcript_full/<n>.jsonl` and
+  `chunks/transcript/<n>.jsonl` (`<n>` eight digits from 00000000), cut
+  mid-line at the boundary. One copy is read per conversation, the most
+  complete present: `transcript_full.jsonl`, else its chunks concatenated
+  in order (which makes the cut line whole), else `transcript.jsonl`, else
+  its chunks; the other copies yield nothing. Fields read: `type`
+  (`USER_INPUT`, `PLANNER_RESPONSE`, `GENERIC`, `SYSTEM_MESSAGE`,
+  `ERROR_MESSAGE`), `source` (`USER_EXPLICIT`, `USER_IMPLICIT`, `MODEL`,
+  `SYSTEM`), `status` (`DONE`, `ERROR`, ...), `created_at` (ISO 8601),
+  `content`, `thinking`, `tool_calls[]` (`id`, `name` and the arguments as
+  `arguments_json`, `args` or `arguments`, an object or a JSON string;
+  the element shape is not recorded from a real install, so the parser
+  takes the first of the three it finds), `error` (an object with
+  `short_error`, `user_error_message`, `full_error`, or a string) and
+  `truncated_fields`. The key names are from the real installs
+  (`analyzer/research/antigravity.md` section 2); the value forms of
+  `source`, `status`, `created_at` and `truncated_fields` are from the
+  format description embedded in `agy` 1.3.6 (macOS arm64). Not read:
+  `step_index`, `media`, the token counts, and the brain directory's
+  `steps/<idx>/output.txt`, `steps/<idx>/content.md`,
+  `messages/<uuid>.json` and `tasks/task-<idx>.log`.
+  Rows, rendered as the database reader renders the step of the same
+  kind so the timeline can pair them: `USER_INPUT` a `user` row (`system`
+  when `source` is `USER_IMPLICIT`); `PLANNER_RESPONSE` a `thinking` row
+  (`--include-thinking` only), an `assistant` row when `content` is not
+  empty and one `tool_use` row per `tool_calls[]` entry, its text the
+  argument `tool_args_summary` picks; `GENERIC` a `tool_result` row,
+  `content` as text, with the `tool_name` and `tool_use_id` of the next
+  unused call of the last `PLANNER_RESPONSE` (the line itself names no
+  call; the database runs a planner step's calls as the steps after it,
+  so the n-th `GENERIC` line after it is taken as the n-th call), a
+  `system` row when no call is pending; `SYSTEM_MESSAGE` a `system` row
+  `system_message: <content>`; `ERROR_MESSAGE` a `system` row
+  `error: <error>`; any other type a `tool_result` or `system` row as for
+  `GENERIC`. `GENERIC`, `SYSTEM_MESSAGE`, `ERROR_MESSAGE` and other rows
+  get `[<status>] ` in front when `status` is not `DONE`, as the database
+  rows do. A row whose field is in `truncated_fields` ends with
+  ` [truncated: <field>]`. Every row has the line's `created_at`,
+  `session_id` the `<conversation id>` of the directory (the database's
+  `cascade_id`), `source_line` the line number (in the concatenated chunks
+  for a chunked copy, whose `source_file` is the first chunk), and empty
+  `project_path`, `git_branch` and `model`, which the mirror does not
+  record; no model or permission rows, for the same reason. A bad line is
+  one `system` row after the others.
+  A secondary source of the conversation database: the timeline drops a
+  row the database also yields. Its time rule: the mirror records only a
+  step's `created_at`, while the database reader stamps `assistant`,
+  `tool_use` and `tool_result` rows with the step's `completed_at`, so the
+  mirror's row comes before the database's by the time the model took to
+  generate the response or the tool took to run. `secondary_tolerance` is
+  therefore 600 seconds; a step that ran longer than ten minutes is shown
+  twice. Known misses, kept as two rows: a `SYSTEM_MESSAGE` whose database
+  step has an `event_type` (the database row reads `<event_type>:
+  <message>`, and the mirror records no event type), a queued prompt
+  (the database row starts `[queued] `), a shortened field, and a
+  `GENERIC` line whose `content` differs from the database step's
+  `generic.result.result`, which no install has compared, and a
+  conversation's opening prompt when `history.jsonl` records it without
+  `conversationId`: the history row, matched by workspace, can take the
+  database row first, and the mirror's row, matched by session, then
+  pairs with neither.
 
 Standing permission files (issue 92), read only for the keys named here;
 every other key in them (`plugins`, `remoteControlHostname`, a project's
@@ -151,6 +217,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterator
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from ..inputs import Artifact
@@ -165,6 +232,7 @@ from .base import (
     file_mtime,
     iter_jsonl,
     setting_value,
+    text_of,
     track_change,
 )
 
@@ -176,6 +244,20 @@ DATA_DIR = r"^\.gemini/(antigravity(?:-cli|-ide|-backup)?)/"
 CONV_RX = re.compile(DATA_DIR + r"conversations/[^/]+\.db$")
 SUMMARIES_RX = re.compile(DATA_DIR + r"conversation_summaries\.db$")
 HISTORY_REL = BASE + "history.jsonl"
+# The brain mirror (issue 87): per conversation, the step transcript in its
+# complete form, its shortened twin, or either split into numbered chunks.
+# Group 2 is the conversation id; group 3 the file form, or groups 4 and 5
+# the chunked form and the chunk number.
+BRAIN_RX = re.compile(
+    DATA_DIR + r"brain/([^/]+)/\.system_generated/logs/"
+    r"(?:(transcript(?:_full)?)\.jsonl|chunks/(transcript(?:_full)?)/(\d+)\.jsonl)$"
+)
+FULL = "transcript_full"
+SHORT = "transcript"
+# How far a brain row's time may be from the database row's for the timeline
+# to pair them: the mirror records only `created_at`, the database reader
+# stamps assistant, tool_use and tool_result rows with `completed_at`.
+BRAIN_TOLERANCE_SECONDS = 600.0
 # Standing permission files (issue 92).
 CONFIG_REL = ".gemini/config/config.json"
 PROJECT_RX = re.compile(r"^\.gemini/config/projects/[^/]+\.json$")
@@ -690,6 +772,57 @@ def _read_json(artifact: Artifact) -> object:
         return None
 
 
+def _regular(path: Path) -> bool:
+    """True for a regular file, never through a symlink."""
+    return path.is_file() and not path.is_symlink()
+
+
+def _chunks(logs: Path, form: str) -> list[Path]:
+    """The chunk files of `form` under `logs/chunks`, in chunk order."""
+    d = logs / "chunks" / form
+    try:
+        names = [p for p in d.iterdir() if p.suffix == ".jsonl" and p.stem.isdigit()]
+    except OSError:
+        return []
+    return sorted((p for p in names if _regular(p)), key=lambda p: int(p.stem))
+
+
+def brain_copy(path: Path, form: str, chunk_form: str) -> bytes | None:
+    """The bytes of the brain transcript that `path` stands for, or None when
+    another copy of the same transcript is the one read. The copies, in order
+    of preference: `transcript_full.jsonl`; its chunks, concatenated (a line
+    cut at a chunk boundary is whole again); the shortened `transcript.jsonl`;
+    its chunks. A chunked form is read through its first chunk present."""
+    logs = path.parent if form else path.parent.parent.parent
+    full = logs / (FULL + ".jsonl")
+    if form == FULL:
+        return path.read_bytes()
+    if form == SHORT:
+        if _regular(full) or _chunks(logs, FULL):
+            return None
+        return path.read_bytes()
+    chunks = _chunks(logs, chunk_form)
+    if not chunks or chunks[0].name != path.name:
+        return None
+    if _regular(full):
+        return None
+    if chunk_form == SHORT and (_chunks(logs, FULL) or _regular(logs / (SHORT + ".jsonl"))):
+        return None
+    return b"".join(p.read_bytes() for p in chunks)
+
+
+def _brain_args(tc: dict) -> str:
+    """A brain tool call's arguments as a JSON string: `arguments_json` as the
+    database records it, else `args` or `arguments`, an object or a string."""
+    for key in ("arguments_json", "args", "arguments"):
+        v = tc.get(key)
+        if isinstance(v, str) and v:
+            return v
+        if isinstance(v, (dict, list)):
+            return json.dumps(v, ensure_ascii=False)
+    return ""
+
+
 def permission_texts(perms: dict) -> list[str]:
     """One `permission grant:` text per entry of a TrajectoryPermissions."""
     out = []
@@ -889,6 +1022,7 @@ class AntigravityParser(Parser):
     def wants(self, artifact: Artifact) -> bool:
         return (
             artifact.rel == HISTORY_REL
+            or bool(BRAIN_RX.match(artifact.rel))
             or bool(SUMMARIES_RX.match(artifact.rel))
             or bool(CONV_RX.match(artifact.rel))
             or self._standing(artifact.rel)
@@ -903,11 +1037,18 @@ class AntigravityParser(Parser):
         )
 
     def secondary(self, artifact: Artifact) -> bool:
-        return artifact.rel == HISTORY_REL
+        return artifact.rel == HISTORY_REL or bool(BRAIN_RX.match(artifact.rel))
+
+    def secondary_tolerance(self, artifact: Artifact) -> float:
+        if BRAIN_RX.match(artifact.rel):
+            return BRAIN_TOLERANCE_SECONDS
+        return super().secondary_tolerance(artifact)
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if artifact.rel == HISTORY_REL:
             yield from self._parse_history(artifact, opts)
+        elif BRAIN_RX.match(artifact.rel):
+            yield from self._parse_brain(artifact, opts)
         elif self._standing(artifact.rel):
             yield from self._parse_standing(artifact)
         elif SUMMARIES_RX.match(artifact.rel):
@@ -927,6 +1068,107 @@ class AntigravityParser(Parser):
             row.turn_type = "user"
             row.text = compact(rec.get("display"))
             yield row
+
+    # -- brain/<uuid>/.system_generated/logs ------------------------------------
+    def _parse_brain(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        m = BRAIN_RX.match(artifact.rel)
+        if not m:
+            return
+        blob = brain_copy(artifact.disk_path, m.group(3) or "", m.group(4) or "")
+        if blob is None:
+            return
+        session_id = m.group(2)
+        errors: list[int] = []
+        calls: list[dict] = []
+        for n, raw in enumerate(blob.split(b"\n"), 1):
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                rec = json.loads(raw.decode("utf-8", errors="replace"))
+            except ValueError:
+                errors.append(n)
+                continue
+            if isinstance(rec, dict):
+                yield from self._brain_rows(artifact, n, rec, session_id, calls, opts)
+        if errors:
+            row = self.base_row(artifact)
+            row.session_id = session_id
+            row.source_line = errors[0]
+            row.turn_type = "system"
+            row.text = "parser: %d unparseable line(s), first at line %d" % (
+                len(errors),
+                errors[0],
+            )
+            yield row
+
+    def _brain_rows(
+        self,
+        artifact: Artifact,
+        n: int,
+        rec: dict,
+        session_id: str,
+        calls: list[dict],
+        opts: Options,
+    ) -> Iterator[Row]:
+        """The rows of one brain line, rendered as `_step_rows` renders the
+        database step of the same kind. `calls` holds the tool calls of the
+        last PLANNER_RESPONSE not yet matched to a GENERIC line."""
+        kind = str(rec.get("type") or "")
+        status = str(rec.get("status") or "").lower()
+        content = text_of(rec.get("content"))
+        truncated = [str(f) for f in _list(rec.get("truncated_fields"))]
+
+        def base(turn_type: str, text: str, field: str = "content") -> Row:
+            row = self.base_row(artifact)
+            row.source_line = n
+            row.session_id = session_id
+            row.timestamp_utc = to_utc(rec.get("created_at"))
+            row.turn_type = turn_type
+            if field in truncated:
+                text += " [truncated: %s]" % field
+            row.text = compact(text)
+            return row
+
+        if kind == "USER_INPUT":
+            implicit = rec.get("source") == "USER_IMPLICIT"
+            calls.clear()
+            yield base("system" if implicit else "user", content)
+            return
+        if kind == "PLANNER_RESPONSE":
+            thinking = text_of(rec.get("thinking"))
+            if thinking and opts.include_thinking:
+                yield base("thinking", thinking, "thinking")
+            if content:
+                yield base("assistant", content)
+            calls[:] = [_dict(tc) for tc in _list(rec.get("tool_calls"))]
+            for tc in calls:
+                row = base("tool_use", tool_args_summary(_brain_args(tc)), "tool_calls")
+                row.tool_name = str(tc.get("name") or "")
+                row.tool_use_id = str(tc.get("id") or "")
+                yield row
+            return
+        if kind == "SYSTEM_MESSAGE":
+            text = "system_message: " + content
+        elif kind == "ERROR_MESSAGE":
+            err = rec.get("error")
+            if isinstance(err, dict):
+                err = (
+                    err.get("short_error") or err.get("user_error_message") or err.get("full_error")
+                )
+            text = "error: " + (err if isinstance(err, str) and err else content)
+        else:
+            text = content or "step %s" % kind.lower()
+        if status and status != "done":
+            text = "[%s] %s" % (status, text)
+        if kind in ("SYSTEM_MESSAGE", "ERROR_MESSAGE") or not calls:
+            yield base("system", text)
+            return
+        tc = calls.pop(0)
+        row = base("tool_result", text)
+        row.tool_name = str(tc.get("name") or "")
+        row.tool_use_id = str(tc.get("id") or "")
+        yield row
 
     # -- standing permission files ----------------------------------------------
     def _parse_standing(self, artifact: Artifact) -> Iterator[Row]:
