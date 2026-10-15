@@ -24,6 +24,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `state.db`, after one `system` row naming the snapshot, as a secondary
   source, so a session pruned or deleted from the live database is
   recovered once however many snapshots hold it ([#122]).
+- Cline's `~/.cline/data/db/session-search.db`, the SDK's full-text index
+  of each session, is read as a secondary source: one `system` row per
+  indexed session at its start, then a `user` or `assistant` row per
+  message with no timestamp, so a session whose transcript is gone still
+  shows its turns ([#122]).
+- Cline's CLI prompt history `~/.cline/data/cache/user_input_history.jsonl`
+  is read as a secondary source: one `user` row per prompt, the last one
+  at its `ts` and the others with no timestamp, since the CLI restamps
+  every line each time it rewrites the file ([#122]).
 
 ### Changed
 

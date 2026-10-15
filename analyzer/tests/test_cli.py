@@ -524,11 +524,19 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # Tabby's 8: the event log's completion prompt and choice
 # (user_events copies them), the later backup's thread 7 (the live database
 # has it) and the second backup copy of ephemeral thread 3.
+# The Cline session-search.db index's plain-string prompt "fix
+# tests" and the CLI user_input_history.jsonl's undated "fix tests" both
+# repeat the SDK session's user row; the history line, read first, takes it,
+# and the index copy stays, since a secondary row that matched a primary row
+# is not offered to the others. The index's block-array messages keep their
+# type names and stay; the history's dated "list the open ports" has no
+# transcript.
 FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
     "claude-desktop": 2,  # audit.jsonl "thanks" and its init model row
+    "cline": 1,  # user_input_history.jsonl "fix tests", no timestamp
     "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
     "gemini-cli": 1,  # "list files in src"
     "goose": 1,  # "run the tests", no timestamp
