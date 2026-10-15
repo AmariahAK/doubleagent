@@ -40,6 +40,23 @@ Fallback index `sessions/sessions.index.json`
 ([section 5](#5-sqlite-stores)). Hook audit `~/.cline/data/logs/hooks.jsonl`
 ([`hooks/hook-file-hooks.ts:647`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/hooks/hook-file-hooks.ts#L647)).
 
+The CLI's prompt history for up-arrow recall is
+`~/.cline/data/cache/user_input_history.jsonl`
+([`apps/cli/src/utils/input-history.ts:7-9`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L7-L9)). Each line is
+`{"prompt": <string>, "ts": <epoch ms>}`. When the terminal UI submits a
+prompt that is not a queued delivery
+([`apps/cli/src/tui/hooks/use-prompt-input-controller.ts:335-337`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/tui/hooks/use-prompt-input-controller.ts#L335-L337),
+[`use-input-history.ts:109-116`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/tui/hooks/use-input-history.ts#L109-L116)),
+the CLI reads the file, removes any earlier copy of the trimmed prompt,
+appends it, keeps the last 20 (`MAX_HISTORY`) and rewrites the whole file,
+stamping every line with that write's `Date.now()`
+([`input-history.ts:5`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L5), [`:37-72`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L37-L72)). So the lines
+are oldest first, each prompt once, and only the last line's `ts` is its
+own prompt's time; the others carry the time of the last write. No
+session id, working directory or model is recorded. Malformed lines are
+skipped when the CLI reads it ([`:11-30`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L11-L30)) and dropped at the
+next rewrite.
+
 ## 3. Record schema
 
 `api_conversation_history.json` is `Anthropic.MessageParam[]` ([`disk.ts:155`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L155)):
@@ -224,7 +241,8 @@ Globs (home-relative; `<GS>` is each VS Code `User/globalStorage`):
 `<GS>/saoudrizwan.claude-dev/state/taskHistory.json`, the same under
 `.cline/data/`, `.cline/data/sessions/*/*.json`,
 `.cline/data/sessions/*/*.messages.json`, `.cline/data/db/sessions.db`,
-`.cline/data/db/session-search.db`, `.cline/data/logs/hooks.jsonl`.
+`.cline/data/db/session-search.db`, `.cline/data/cache/user_input_history.jsonl`,
+`.cline/data/logs/hooks.jsonl`.
 
 Sources, primary or secondary (the analyzer drops a row of a secondary
 source that a primary store records too, issue 122):
@@ -251,6 +269,17 @@ source that a primary store records too, issue 122):
   whether or not the transcript survives. When the SQLite build lacks
   FTS5, one `system` row says so and `indexed_sessions` is read alone,
   each session row without a time.
+- Secondary: `cache/user_input_history.jsonl`
+  ([section 2](#2-transcript-files)). One `user` row per line, with no
+  `session_id` or `project_path`; the last line at its `ts`, every other
+  line with no `timestamp_utc`, and every line undated when the file has a
+  bad line, since the last line read may then not be the newest. An
+  undated row matches a transcript prompt of any Cline session on text
+  alone; the dated one matches within 2 seconds. It survives the deletion
+  of the sessions it came from, holding their last 20 distinct prompts.
+  When a prompt is in this file and in `session-search.db` too, whichever
+  secondary row the duplicate rule reaches first takes the transcript row,
+  and in the fixture the index's copy is the one left over.
 
 The API history is not a second copy of `ui_messages.json` that the rule
 could pair, so it stays a fallback for a task without `ui_messages.json`.

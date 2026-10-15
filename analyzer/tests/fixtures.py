@@ -1465,6 +1465,7 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     build_kilo(home)
     build_cline(home)
     build_cline_session_search(home)
+    build_cline_input_history(home)
     build_roo_code(home)
     build_tabby(home)
     build_openhands(home)
@@ -4581,6 +4582,22 @@ def build_cline_session_search(home: Path) -> None:
     con.execute("CREATE TABLE cron_jobs (id TEXT PRIMARY KEY, prompt TEXT)")
     con.commit()
     con.close()
+
+
+def build_cline_input_history(home: Path) -> None:
+    """The CLI's `~/.cline/data/cache/user_input_history.jsonl`
+    (apps/cli/src/utils/input-history.ts:54-72 at 39ff2359): every line
+    stamped with the last rewrite's time. "fix tests" repeats the SDK
+    session's prompt; "list the open ports" has no transcript. A model
+    cache beside it is noise the parser must not want."""
+    cache = home / ".cline/data/cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    rewrite = CLINE_T0 + 300000  # 2026-10-03T10:05:00Z
+    lines = [{"prompt": p, "ts": rewrite} for p in ("fix tests", "list the open ports")]
+    (cache / "user_input_history.jsonl").write_text(
+        "".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8"
+    )
+    _json(cache / "openrouter_models.json", {"anthropic/claude-sonnet-4-5": {}})
 
 
 def roo_ui_records(t0=CLINE_T0 + 200000):

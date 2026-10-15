@@ -4284,10 +4284,38 @@ class ClineTests(ParserBase):
         )
 
     SEARCH = ".cline/data/db/session-search.db"
+    INPUT_HISTORY = ".cline/data/cache/user_input_history.jsonl"
+
+    def test_input_history_rows(self):
+        rows = self.rows_for(ClineParser(), self.INPUT_HISTORY)
+        self.assertEqual(
+            [
+                (r.source_line, r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.text)
+                for r in rows
+            ],
+            [
+                # Stamped with the last rewrite's time, not its own: undated.
+                (1, "user", "", "", "", "fix tests"),
+                # The newest prompt, written by that rewrite.
+                (2, "user", "2026-10-03T10:05:00.000Z", "", "", "list the open ports"),
+            ],
+        )
+
+    def test_input_history_truncated_line(self):
+        write_bad_line(self.home / self.INPUT_HISTORY)
+        rows = self.rows_for(ClineParser(), self.INPUT_HISTORY)
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.text) for r in rows[:2]],
+            [("user", "", "fix tests"), ("user", "", "list the open ports")],
+        )
+        self.assertEqual(len(rows), 3)
+        self.assertEqual((rows[2].turn_type, rows[2].source_line), ("system", 3))
+        self.assertIn("parser: line 3 unparseable", rows[2].text)
 
     def test_secondary(self):
         p = ClineParser()
         self.assertTrue(p.secondary(self.artifact(self.SEARCH)))
+        self.assertTrue(p.secondary(self.artifact(self.INPUT_HISTORY)))
         for rel in (self.UI, self.SDK + ".messages.json", ".cline/data/db/sessions.db"):
             self.assertFalse(p.secondary(self.artifact(rel)), rel)
 
@@ -4396,6 +4424,7 @@ class ClineTests(ParserBase):
             ".cline/data/secrets.json",
             self.SDK + ".compaction.json",
             ".cline/data/db/cron.db",
+            ".cline/data/cache/openrouter_models.json",
         ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertFalse(p.wants(art), rel)

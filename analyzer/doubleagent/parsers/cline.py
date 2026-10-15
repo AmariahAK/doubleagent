@@ -86,6 +86,19 @@ SDK session layout, `~/.cline/data/sessions/<sessionId>/`:
   FTS5, one `system` row says so and only `indexed_sessions` is read, each
   session row then without a time.
 
+* `~/.cline/data/cache/user_input_history.jsonl`, a secondary source
+  (issue 122): the CLI's prompt history for up-arrow recall, one JSON line
+  `{prompt, ts}` per prompt submitted in the terminal UI, trimmed, oldest
+  first, each prompt kept once (a repeat moves to the end) and the last 20
+  kept. No session id and no project are recorded. The CLI rewrites the
+  whole file on every prompt and stamps every line with that write's
+  `Date.now()`, so only the last line's `ts` (epoch milliseconds) is its
+  own prompt's time. Rows: one `user` row per line, `source_line` the
+  line; the last line has its `ts`, the others an empty `timestamp_utc`,
+  and every line is undated when the file has a bad line, since the last
+  parsed line may then not be the newest. Undated rows match a
+  transcript row of any Cline session on text alone.
+
 Not read: `<sessionId>.compaction.json`, `sessions/sessions.index.json`,
 `teams/teams.db` and `logs/hooks.jsonl`.
 """
@@ -103,7 +116,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, track_change
+from .base import Options, iter_jsonl, track_change
 from .cline_legacy import (
     LegacyTaskParser,
     content_rows,
@@ -120,6 +133,7 @@ MANIFEST_RX = re.compile(r"^\.cline/data/sessions/([^/]+)/\1\.json$")
 MESSAGES_RX = re.compile(r"^\.cline/data/sessions/[^/]+/[^/]+\.messages\.json$")
 SESSIONS_DB_REL = ".cline/data/db/sessions.db"
 SEARCH_DB_REL = ".cline/data/db/session-search.db"
+INPUT_HISTORY_REL = ".cline/data/cache/user_input_history.jsonl"
 SEARCH_COLUMNS = (
     "session_id, document_id, ordinal, role, started_at, workspace_root, title, content"
 )
@@ -140,10 +154,10 @@ class ClineParser(LegacyTaskParser):
             or STATE_RX.match(rel)
             or MANIFEST_RX.match(rel)
             or MESSAGES_RX.match(rel)
-        ) or rel in (SESSIONS_DB_REL, SEARCH_DB_REL)
+        ) or rel in (SESSIONS_DB_REL, SEARCH_DB_REL, INPUT_HISTORY_REL)
 
     def secondary(self, artifact: Artifact) -> bool:
-        return artifact.rel == SEARCH_DB_REL
+        return artifact.rel in (SEARCH_DB_REL, INPUT_HISTORY_REL)
 
     def history_item(self, task_dir: Path, root: Path, task_id: str) -> dict | None:
         items = self.cached_json(root / "state" / "taskHistory.json")
@@ -167,6 +181,8 @@ class ClineParser(LegacyTaskParser):
             yield from self._parse_sessions_db(artifact, opts)
         elif rel == SEARCH_DB_REL:
             yield from self._parse_search_db(artifact)
+        elif rel == INPUT_HISTORY_REL:
+            yield from self._parse_input_history(artifact)
 
     def _parse_task_history(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
@@ -351,6 +367,29 @@ class ClineParser(LegacyTaskParser):
             )
             yield start
             yield from self._model_start(start, r)
+
+    # -- cache/user_input_history.jsonl
+
+    def _parse_input_history(self, artifact: Artifact) -> Iterator[Row]:
+        errors: list = []
+        entries = [
+            (n, rec["prompt"], rec.get("ts"))
+            for n, rec in iter_jsonl(artifact.disk_path, errors)
+            if isinstance(rec.get("prompt"), str) and rec["prompt"].strip()
+        ]
+        for k, (n, prompt, ts) in enumerate(entries):
+            row = self.base_row(artifact)
+            row.source_line = n
+            row.turn_type = "user"
+            # Every line carries the time of the file's last rewrite, the
+            # newest prompt's own time only; a bad line makes that unsure.
+            if k == len(entries) - 1 and not errors and isinstance(ts, (int, float)):
+                row.timestamp_utc = to_utc(ts)
+            row.text = compact(prompt)
+            yield row
+        if errors:
+            n, e = errors[0]
+            yield error_row(self, artifact, [(n, "line %d unparseable (%s)" % (n, e))])
 
     # -- session-search.db
 

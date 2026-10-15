@@ -507,12 +507,16 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # model_switch entry (a `system` row whose text no session row has). The Muse
 # tui-history.jsonl prompt records no time and matches its session's prompt
 # on text alone. The Cline session-search.db index's plain-string prompt "fix
-# tests" matches its SDK session's user row on text and session id, with no
-# timestamp; its block-array messages keep their type names and stay.
+# tests" and the CLI user_input_history.jsonl's undated "fix tests" both
+# repeat the SDK session's user row; the history line, read first, takes it,
+# and the index copy stays, since a secondary row that matched a primary row
+# is not offered to the others. The index's block-array messages keep their
+# type names and stay; the history's dated "list the open ports" has no
+# transcript.
 FIXTURE_DEDUPLICATED = {
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
-    "cline": 1,  # session-search.db "fix tests", no timestamp
+    "cline": 1,  # user_input_history.jsonl "fix tests", no timestamp
     "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
     "gemini-cli": 1,  # "list files in src"
     "muse-code": 1,  # "fix the failing test", no timestamp
