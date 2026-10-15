@@ -506,12 +506,14 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # /srv/proj" (a rewind removed it from the session), the Qwen logs.json
 # model_switch entry (a `system` row whose text no session row has). The Muse
 # tui-history.jsonl prompt records no time and matches its session's prompt
-# on text alone.
+# on text alone. The Goose history.txt "run the tests" records no time,
+# session or project and matches the sessions.db prompt on text alone.
 FIXTURE_DEDUPLICATED = {
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
     "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
     "gemini-cli": 1,  # "list files in src"
+    "goose": 1,  # "run the tests", no timestamp
     "muse-code": 1,  # "fix the failing test", no timestamp
     "open-interpreter": 1,  # "list the files"
     "qwen-code": 1,  # "run the tests"

@@ -30,7 +30,17 @@ Windows data directory):
   lines with `data` (a message: `role`, `created`, `content`) and `usage`.
 * `<state>/history.txt` and the older `.config/goose/history.txt`: rustyline
   V2 history, `#V2` header then one prompt per line with `\\n` and `\\\\`
-  escaped. No timestamps and no session id.
+  escaped. No timestamps and no session id. A secondary source (issue
+  122): `secondary()` is True for it and the database is the primary
+  store. The CLI adds every non-empty line typed at its prompt, slash
+  commands included, and saves the file before the message is sent
+  (`goose-cli/src/session/input.rs`, `session/mod.rs` at 591edd4), so a
+  prompt's text equals its `messages` row's once both are stripped; a
+  session removed with `goose session remove` leaves its prompts here.
+  Rows have an empty `timestamp_utc`, `session_id` and `project_path`, so
+  `dedup.deduplicate` pairs them with a database `user` row of any
+  session on text alone. rustyline keeps the last 100 entries and drops
+  a consecutive repeat. When both files exist each is read.
 
 Content blocks (`type`, camelCase): `text` {`text`}; `image` {`mimeType`};
 `document` {`name`, `mimeType`}; `toolRequest` {`id`, `toolCall`: {`status`,
@@ -163,6 +173,9 @@ class GooseParser(Parser):
         return bool(
             DB_RX.match(rel) or LEGACY_RX.match(rel) or LLM_RX.match(rel) or HISTORY_RX.match(rel)
         )
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return bool(HISTORY_RX.match(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         rel = artifact.rel

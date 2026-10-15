@@ -109,6 +109,36 @@ lists, no secrets).
 Tool pairing: `toolRequest.id` (assistant row) with `toolResponse.id` (user
 row). Project path: `sessions.working_dir`.
 
+CLI history (`history.txt`) to `sessions.db`, on text alone (issue 122).
+The CLI adds every input line that is not blank to the rustyline history,
+slash commands included, before it decides what the line is
+([`goose-cli/src/session/input.rs:193-195`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/session/input.rs#L193-L195)),
+and sends a prompt as the line with surrounding whitespace trimmed
+([`input.rs:210`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/session/input.rs#L210)).
+The file is saved before the message is added to the session
+([`session/mod.rs:786-787`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/session/mod.rs#L786-L787)),
+so a prompt's history line, stripped, equals the `text` block of its
+`messages` row. The line records no time, session id or working directory,
+so the only join is the text, against any session of the same user. A
+saved history replaces `.config/goose/history.txt` with
+`.local/state/goose/history.txt` and deletes the old file
+([`session/mod.rs:225-230`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/session/mod.rs#L225-L230)),
+so both exist only when the save or that deletion failed. No other code at this
+commit names `history.txt` (the `ui/` desktop app included), so the file
+holds CLI prompts only.
+
+What the history survives: `goose session remove` deletes the session's
+`messages`, `usage_ledger` and `sessions` rows
+([`commands/session.rs:44-46`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/commands/session.rs#L44-L46);
+[`session_manager.rs:2302-2315`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L2302-L2315))
+and leaves `history.txt` alone, so the prompts of a removed session stay
+in it. It does not survive many sessions: the editor is built without a
+history size ([`session/mod.rs:648-660`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/session/mod.rs#L648-L660)),
+so rustyline's default of 100 entries applies and a consecutive repeat is
+not added
+([`rustyline-18.0.1/src/config.rs:248-251`](https://github.com/kkawakam/rustyline/blob/cc1aab036d62aff3dbdc681b08949076ec275030/src/config.rs#L248-L251);
+[`history.rs:264-277`](https://github.com/kkawakam/rustyline/blob/cc1aab036d62aff3dbdc681b08949076ec275030/src/history.rs#L264-L277)).
+
 ## 5. SQLite specifics
 
 Opened with `journal_mode=WAL`, `busy_timeout` 30 s, directory mode 0700
@@ -152,6 +182,14 @@ Globs: `.local/share/goose/sessions/sessions.db*`,
 
 Rows: one per `content_json` block, plus one `system` row per session from
 `sessions`.
+
+Sources (issue 122): `sessions.db` is the primary store, and the legacy
+JSONL sessions and the `llm_request` logs are read as primary records.
+Both `history.txt` files are secondary sources: one `user` row per entry,
+with an empty `timestamp_utc`, `session_id` and `project_path`, which
+`dedup.deduplicate` drops when a database `user` row of the same user has
+the same text and keeps otherwise (a removed session's prompt, a slash
+command). See [section 4](#4-joins).
 
 | Column | Source |
 | --- | --- |

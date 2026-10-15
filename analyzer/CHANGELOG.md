@@ -56,6 +56,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   different file, so two identical lines in one file both stay. Secondary rows with no match are
   kept, so a prompt whose transcript is gone is still in the timeline
   ([#122]).
+- Goose's CLI `history.txt` (both locations) is a secondary source: a
+  history row is dropped when a `sessions.db` user row has the same text,
+  and kept when none does, such as a prompt of a removed session ([#122]).
 
 ## [0.12.0] - 2026-10-15
 
