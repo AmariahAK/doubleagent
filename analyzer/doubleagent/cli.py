@@ -231,8 +231,9 @@ def detect_table(col: Collection, include_projects: bool = True) -> list[dict]:
     met: `user`, `home`, `agent`, `files`, `bytes` (manifest `size`, or the
     size on disk in loose mode), `parser`, `inferred`. With
     `include_projects` false, artifacts in a project directory (a home
-    marked `project`) are left out: that is `outside_projects` in
-    `detect --json`."""
+    marked `project`) are left out: that is the first table of `detect`,
+    whose rows keep this order rather than the per-home grouping of
+    `home_agents`."""
     parsers = by_agent()
     rows: dict[tuple[str, str, str], dict] = OrderedDict()
     for a in col.artifacts:
@@ -264,6 +265,39 @@ def artifact_bytes(a) -> int:
         return a.disk_path.lstat().st_size
     except OSError:
         return 0
+
+
+def home_agents(col: Collection) -> list[dict]:
+    """The `homes` array of `detect --json` and inventory.json: one object
+    per user home or Docker volume (a home not marked `project`), in the
+    order its first collected row was met, with the keys `user`, `home`
+    (`home.original`: the manifest `home`, or in loose mode the path
+    relative to the input root with a leading `/`, `""` when the root is
+    the home), `inferred` and `agents`. `agents` is sorted by agent, one
+    object of `agent`, `files`, `bytes` (as in `detect_table`) and
+    `parser` per agent with files in that home; a home whose files were
+    all missing from the collection has an empty array."""
+    parsers = by_agent()
+    counts: dict[int, dict[str, dict]] = {}
+    for a in col.artifacts:
+        if a.home.project:
+            continue
+        c = counts.setdefault(id(a.home), {}).setdefault(a.agent, {"files": 0, "bytes": 0})
+        c["files"] += 1
+        c["bytes"] += artifact_bytes(a)
+    return [
+        {
+            "user": h.user,
+            "home": h.original,
+            "inferred": h.inferred,
+            "agents": [
+                {"agent": agent, **c, "parser": agent in parsers}
+                for agent, c in sorted(counts.get(id(h), {}).items())
+            ],
+        }
+        for h in col.homes
+        if not h.project
+    ]
 
 
 def project_agents(col: Collection) -> dict[str, dict]:
@@ -308,11 +342,11 @@ def project_agents(col: Collection) -> dict[str, dict]:
 
 
 def detect_object(col: Collection) -> dict:
-    """The keys `detect --json` and `detect.json` share, in order: `input`,
-    `kind`, `host`, `notes`, `outside_projects` (`detect_table` without the
-    project directories) and `projects` (one object per project directory
-    from `project_agents`, its `agents` an array of `agent`, `files`,
-    `bytes`, `parser`). The callers add `homes`, `problems` and `files`."""
+    """The keys `detect --json` and inventory.json share, in order: `input`,
+    `kind`, `host`, `notes`, `homes` (`home_agents`) and `projects` (one
+    object per project directory from `project_agents`, its `agents` an
+    array of `agent`, `files`, `bytes`, `parser`, as in `homes`). The
+    callers add `problems`, and `detect --json --files` adds `files`."""
     parsers = by_agent()
     projects = [
         {
@@ -332,7 +366,7 @@ def detect_object(col: Collection) -> dict:
         "kind": col.kind,
         "host": col.host,
         "notes": col.notes,
-        "outside_projects": detect_table(col, include_projects=False),
+        "homes": home_agents(col),
         "projects": projects,
     }
 
@@ -358,16 +392,8 @@ def print_project_table(projects: list[dict]) -> None:
 
 def cmd_detect(args: argparse.Namespace, col: Collection) -> int:
     det = detect_object(col)
-    table, projects = det["outside_projects"], det["projects"]
     if args.json:
-        homes = [
-            {"user": h.user, "home": h.original, "inferred": h.inferred}
-            for h in col.homes
-            if not h.project
-        ]
-        out = {k: det[k] for k in ("input", "kind", "host", "notes")}
-        out.update(homes=homes, outside_projects=table, projects=projects)
-        out["problems"] = col.problems
+        out = {**det, "problems": col.problems}
         if args.files:
             out["files"] = [
                 {"user": a.home.user, "agent": a.agent, "path": a.original} for a in col.artifacts
@@ -388,6 +414,7 @@ def cmd_detect(args: argparse.Namespace, col: Collection) -> int:
         print("note:    %s" % n)
     for p in col.problems:
         print("problem: %s" % p)
+    table, projects = detect_table(col, include_projects=False), det["projects"]
     if not table and not projects:
         print("no agent artifacts found")
         return 1
@@ -654,9 +681,6 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     write_jsonl(timeline, rows)
     write_jsonl(sess, sessions)
     detect = detect_object(col)
-    detect_path = args.output / "detect.json"
-    with open(detect_path, "w", encoding="utf-8") as fh:
-        json.dump({**detect, "problems": problems}, fh, indent=2)
     print("input:     %s (%s)" % (col.source, col.kind))
     print("host:      %s" % (col.host or "(unknown)"))
     for n in col.notes:
@@ -688,7 +712,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     # The agents outside and inside project directories. Shared project
     # files (agent `project`) are routed to every parser, so they are never
     # "detected but not parsed" in their own right.
-    agents = [r for r in detect["outside_projects"] if r["agent"] != PROJECT_AGENT]
+    agents = [a for h in detect["homes"] for a in h["agents"] if a["agent"] != PROJECT_AGENT]
     agents += [a for p in detect["projects"] for a in p["agents"]]
     unparsed = [r["agent"] for r in agents if not r["parser"]]
     # An agent left out by --agent was not parsed, so it did not come up empty.
@@ -705,13 +729,14 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     with open(inventory_path, "w", encoding="utf-8") as fh:
         json.dump(
             {
-                "input": str(col.source),
-                "host": col.host,
+                **{k: detect[k] for k in ("input", "kind", "host", "notes")},
+                "problems": problems,
                 "rows": len(rows),
                 "sessions": len(sessions),
                 "parsed": parsed_agents,
                 "detected_not_parsed": sorted(set(unparsed)),
                 "no_rows": sorted(set(no_rows)),
+                "homes": detect["homes"],
                 "projects": {k: v for k, v in groups.items() if k},
                 "outside_projects": groups.get("", empty),
             },
@@ -725,6 +750,5 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     for (agent, tt), n in sorted(counts.items()):
         print("           %-14s %-12s %d" % (agent, tt, n))
     print("sessions:  %d in %s" % (len(sessions), sess))
-    print("detect:    %s (agents and files detected, problems)" % detect_path)
-    print("inventory: %s (counts per project and agent)" % inventory_path)
+    print("inventory: %s (homes, projects, counts per agent, problems)" % inventory_path)
     return 0 if rows else 1

@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from doubleagent import catalog, cli
 from doubleagent.inputs import open_input
@@ -454,6 +455,11 @@ class TimelineProjectStatusTests(unittest.TestCase):
         self.assertNotIn("status", inv["outside_projects"])
         self.assertEqual(inv["outside_projects"]["rows"], 1)
         self.assertEqual(inv["rows"], 3)
+        # The home's files are under `homes`, never under outside_projects.
+        home = inv["homes"][0]
+        self.assertEqual((home["user"], home["home"]), ("alice", "/home/alice"))
+        self.assertEqual([(a["agent"], a["files"]) for a in home["agents"]], [("claude-code", 1)])
+        self.assertNotIn("files", inv["outside_projects"]["agents"]["claude-code"])
 
     def test_image_root_removed(self):
         # In image mode collection.json names `<root>/srv/proj`, while the
@@ -477,15 +483,17 @@ class TimelineProjectStatusTests(unittest.TestCase):
         self.assertIn("rows:      3 in %s" % (out / "timeline.jsonl"), lines)
         self.assertIn("sessions:  0 in %s" % (out / "sessions.jsonl"), lines)
         self.assertIn(
-            "detect:    %s (agents and files detected, problems)" % (out / "detect.json"), lines
-        )
-        self.assertIn(
-            "inventory: %s (counts per project and agent)" % (out / "inventory.json"), lines
+            "inventory: %s (homes, projects, counts per agent, problems)"
+            % (out / "inventory.json"),
+            lines,
         )
         heads = [ln.split(":")[0] for ln in lines if not ln.startswith(" ")]
-        self.assertEqual(heads[-4:], ["rows", "sessions", "detect", "inventory"])
-        for name in ("timeline.jsonl", "sessions.jsonl", "detect.json", "inventory.json"):
-            self.assertTrue((out / name).is_file(), name)
+        self.assertEqual(heads[-3:], ["rows", "sessions", "inventory"])
+        self.assertNotIn("detect", heads)
+        self.assertEqual(
+            sorted(p.name for p in out.iterdir()),
+            ["inventory.json", "sessions.jsonl", "timeline.jsonl"],
+        )
 
 
 def run_detect(root: Path, *extra: str) -> tuple[int, str]:
@@ -513,8 +521,9 @@ PROJECT_AGENTS = {
 
 
 class ProjectAgentsTests(unittest.TestCase):
-    """The agents used on each collected project, in `detect`, detect.json
-    and inventory.json; `project` is never shown as an agent (issue 104)."""
+    """The agents used on each home and collected project, in `detect`,
+    `detect --json` and inventory.json; `project` is never shown as an
+    agent (issue 104)."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="cac-projagents-test-"))
@@ -563,15 +572,21 @@ class ProjectAgentsTests(unittest.TestCase):
                 "host",
                 "notes",
                 "homes",
-                "outside_projects",
                 "projects",
                 "problems",
             ],
         )
         self.assertEqual(
-            doc["homes"], [{"user": "alice", "home": "/home/alice", "inferred": False}]
+            doc["homes"],
+            [
+                {
+                    "user": "alice",
+                    "home": "/home/alice",
+                    "inferred": False,
+                    "agents": [{"agent": "claude-code", "files": 1, "bytes": 2, "parser": True}],
+                }
+            ],
         )
-        self.assertEqual({r["home"] for r in doc["outside_projects"]}, {"/home/alice"})
         self.assertEqual(
             doc["projects"],
             [
@@ -603,9 +618,24 @@ class ProjectAgentsTests(unittest.TestCase):
         )
 
     def test_detect_text(self):
-        rc, out = run_detect(self.build(True))
+        root = self.build(True)
+        rc, out = run_detect(root)
         self.assertEqual(rc, 0, out)
         lines = out.splitlines()
+        # The header lines and the first table, as before 0.12.0 (issue 104).
+        homes_fmt = "%-14s %-32s %-18s %8s %12s  %s"
+        self.assertEqual(
+            lines[:7],
+            [
+                "input:   %s" % root,
+                "kind:    collected",
+                "host:    h1",
+                "",
+                homes_fmt % ("user", "home", "agent", "files", "bytes", "parser"),
+                homes_fmt % ("alice", "/home/alice", "claude-code", 1, 2, "yes"),
+                "",
+            ],
+        )
         fmt = "%-40s %-14s %-18s %8s %12s  %s"
         head = fmt % ("project", "users", "agent", "files", "bytes", "parser")
         self.assertIn(head, lines)
@@ -625,6 +655,36 @@ class ProjectAgentsTests(unittest.TestCase):
         self.assertNotIn("/srv/", "\n".join(lines[:at]))
         self.assertNotIn(" project ", out)
 
+    def test_detect_text_first_table(self):
+        # The first table keeps its 0.11.0 layout: one line per user, home
+        # and agent in the order the first file was met, which is not the
+        # sorted order of homes[].agents (issue 104).
+        c = Collected(self.tmp / "col", ["/srv/proj"])
+        c.add("alice", "/home/alice", "codex-cli", ".codex/config.toml", "x=1\n")
+        c.add("bob", "/home/bob", "claude-code", ".claude/settings.json", "{}")
+        c.add("alice", "/srv/proj", "project", "AGENTS.md", "# x\n")
+        c.add("alice", "/home/alice", "aider", ".aider.conf.yml", "x\n")
+        root = c.write()
+        rc, out = run_detect(root)
+        self.assertEqual(rc, 0, out)
+        fmt = "%-14s %-32s %-18s %8s %12s  %s"
+        lines = out.splitlines()
+        at = lines.index(fmt % ("user", "home", "agent", "files", "bytes", "parser"))
+        self.assertEqual(lines[at - 1], "")
+        self.assertEqual(
+            lines[at + 1 : at + 5],
+            [
+                fmt % ("alice", "/home/alice", "codex-cli", 1, 4, "yes"),
+                fmt % ("bob", "/home/bob", "claude-code", 1, 2, "yes"),
+                fmt % ("alice", "/home/alice", "aider", 1, 2, "yes"),
+                "",
+            ],
+        )
+        rc, js = run_detect(root, "--json")
+        homes = json.loads(js)["homes"]
+        self.assertEqual([h["user"] for h in homes], ["alice", "bob"])
+        self.assertEqual([a["agent"] for a in homes[0]["agents"]], ["aider", "codex-cli"])
+
     def test_detect_text_without_projects(self):
         c = Collected(self.tmp / "col", [])
         c.add("alice", "/home/alice", "claude-code", ".claude/settings.json", "{}")
@@ -632,20 +692,61 @@ class ProjectAgentsTests(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         self.assertNotIn("project", out)
 
-    def test_detect_json_matches_detect_file(self):
+    def test_detect_json_matches_inventory(self):
         root = self.build(True)
+        # A file missing from fs/ is a problem met while opening the input;
+        # an aider history the parser cannot read is a parser problem.
+        manifest = root / "manifest.jsonl"
+        gone = {
+            "user": "alice",
+            "home": "/home/alice",
+            "agent": "claude-code",
+            "path": "/home/alice/.claude/gone.json",
+            "archive_path": "fs/home/alice/.claude/gone.json",
+            "type": "file",
+            "status": "collected",
+            "size": 1,
+        }
+        with open(manifest, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(gone) + "\n")
         rc, out = run_detect(root, "--json")
         self.assertEqual(rc, 0, out)
         doc = json.loads(out)
-        rc, stdout = run_timeline(root, self.tmp / "out")
-        self.assertEqual(rc, 0, stdout)
-        saved = json.loads((self.tmp / "out" / "detect.json").read_text(encoding="utf-8"))
+        aider = by_agent()["aider"][0]
+        denied = PermissionError(13, "Permission denied")
+        with mock.patch.object(aider, "parse", side_effect=denied):
+            rc, stdout = run_timeline(root, self.tmp / "out")
+        self.assertEqual(rc, 1, stdout)  # no rows; inventory.json is written anyway
+        inv = json.loads((self.tmp / "out" / "inventory.json").read_text(encoding="utf-8"))
         self.assertEqual(
-            list(saved),
-            ["input", "kind", "host", "notes", "outside_projects", "projects", "problems"],
+            list(inv),
+            [
+                "input",
+                "kind",
+                "host",
+                "notes",
+                "problems",
+                "rows",
+                "sessions",
+                "parsed",
+                "detected_not_parsed",
+                "no_rows",
+                "homes",
+                "projects",
+                "outside_projects",
+            ],
         )
-        self.assertEqual(saved["outside_projects"], doc["outside_projects"])
-        self.assertEqual(saved["projects"], doc["projects"])
+        for key in ("input", "kind", "host", "notes", "homes"):
+            self.assertEqual(inv[key], doc[key], key)
+        self.assertEqual(inv["kind"], "collected")
+        self.assertEqual(
+            doc["problems"], ["/home/alice/.claude/gone.json: missing from the collection"]
+        )
+        self.assertEqual(
+            inv["problems"],
+            doc["problems"] + ["/srv/proj/.aider.input.history: permission denied"],
+        )
+        self.assertFalse((self.tmp / "out" / "detect.json").exists())
 
     def timeline_inventory(self, root: Path, want_rc: int = 0) -> dict:
         out = self.tmp / "out"
@@ -674,16 +775,21 @@ class ProjectAgentsTests(unittest.TestCase):
             list(inv),
             [
                 "input",
+                "kind",
                 "host",
+                "notes",
+                "problems",
                 "rows",
                 "sessions",
                 "parsed",
                 "detected_not_parsed",
                 "no_rows",
+                "homes",
                 "projects",
                 "outside_projects",
             ],
         )
+        self.assertEqual(inv["problems"], [])
         projects = inv["projects"]
         for path, entry in projects.items():
             self.assertEqual(

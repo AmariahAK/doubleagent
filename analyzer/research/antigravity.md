@@ -203,6 +203,8 @@ Paths, credentials and the rest of the per-user state are in
     1.12.0 archive of this VM (PowerShell collector, 213 `collected`
     files): `detect` verified the archive's sha256 and listed the one user
     with `antigravity`, 213 files and 14,339,425 B, and its `detect.json`
+    (a file `timeline` wrote until its content moved into
+    [`inventory.json`](../docs/output.md#inventoryjson) later in 0.12.0)
     `problems` list was empty. `timeline --include-thinking` reported
     `antigravity` parsed and nothing detected but not parsed, with 285
     rows (8 `user`, 10 `assistant`, 72 `tool_use`, 72 `tool_result`, 33

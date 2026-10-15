@@ -121,8 +121,8 @@ class MissingFromCollectionTests(ErrorTestBase):
         self.assertEqual(out.count("problem:   " + self.line + "\n"), 1, out)
         rows = (self.tmp / "tl" / "timeline.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertGreater(len(rows), 0)
-        detect = json.loads((self.tmp / "tl" / "detect.json").read_text(encoding="utf-8"))
-        self.assertEqual(detect["problems"], [self.line])
+        inv = json.loads((self.tmp / "tl" / "inventory.json").read_text(encoding="utf-8"))
+        self.assertEqual(inv["problems"], [self.line])
         rc, out, err = run_cli(["detect", str(path)])
         self.assertEqual(rc, 0, out + err)
         self.assertIn("problem: " + self.line + "\n", out)
@@ -202,6 +202,9 @@ class PermissionTests(ErrorTestBase):
         self.assertNotIn("Traceback", out + err)
         self.assertIn("problem:   /home/alice/%s: permission denied\n" % SESSION_REL, out)
         self.assertNotIn("Errno", out)
+        # The parser problem is in inventory.json as well (issue 104).
+        inv = json.loads((self.tmp / "tl" / "inventory.json").read_text(encoding="utf-8"))
+        self.assertEqual(inv["problems"], ["/home/alice/%s: permission denied" % SESSION_REL])
 
 
 if __name__ == "__main__":

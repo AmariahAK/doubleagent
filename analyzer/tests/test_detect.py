@@ -227,9 +227,9 @@ class LooseDetectTests(unittest.TestCase):
         out = json.loads(buf.getvalue())
         self.assertEqual(out["kind"], "loose")
         self.assertEqual(out["host"], "h1")
-        self.assertEqual(out["outside_projects"][0]["agent"], "codex-cli")
-        self.assertEqual(out["outside_projects"][0]["user"], "mallory")
-        self.assertTrue(out["outside_projects"][0]["parser"])
+        self.assertEqual(out["homes"][0]["user"], "mallory")
+        self.assertEqual(out["homes"][0]["agents"][0]["agent"], "codex-cli")
+        self.assertTrue(out["homes"][0]["agents"][0]["parser"])
         # Loose input marks no home as a project (issue 104).
         self.assertEqual(out["projects"], [])
 
@@ -307,7 +307,9 @@ class ArchiveTests(unittest.TestCase):
         self.assertIsInstance(rows[0]["source_line"], int)
         sessions = (self.tmp / "tl" / "sessions.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual(list(json.loads(sessions[0])), model.SESSION_COLUMNS)
-        self.assertTrue((self.tmp / "tl" / "detect.json").exists())
+        self.assertTrue((self.tmp / "tl" / "inventory.json").exists())
+        # detect.json was folded into inventory.json in 0.12.0 (issue 104).
+        self.assertFalse((self.tmp / "tl" / "detect.json").exists())
         # host comes from collection.json, users from the manifest
         self.assertLessEqual({r["user"] for r in rows}, {"alice", "bob", "carol"})
 
