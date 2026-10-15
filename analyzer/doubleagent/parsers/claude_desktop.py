@@ -40,20 +40,37 @@ eight hex digits). Files:
   `num_turns`, `is_error`. Permission events (`system` subtypes
   `permission_request`, `permission_response`, `permission_auto_approved`,
   `permission_auto_denied`) and `result` lines are always `system` rows.
-  The `system` `init` line's `model` is always a `system` row
-  `model: <id>` (issues 96 and 97), even when a transcript exists, and in
-  the full fallback each `assistant` line whose `message.model` differs
-  is `model: <old> -> <new>` before its rows; one tracker per session
-  id. A `system` `model_refusal_fallback` line (the subtype is in the
-  bundle, its fields are not recorded) is always a `system` row
+  The `system` `init` line's `model` is a `system` row `model: <id>`
+  (issues 96 and 97) followed by an `init: cwd=<cwd> model=<model>` row,
+  and each `assistant` line whose `message.model` differs is
+  `model: <old> -> <new>` before its rows; one tracker per session id. A
+  `system` `model_refusal_fallback` line (the subtype is in the bundle,
+  its fields are not recorded) is a `system` row
   `model_refusal_fallback: <compact JSON of the line less its envelope>`.
-  The `user`, `assistant` and `system` `init` lines duplicate the
-  transcript and are read only when the session dir holds no
-  `.claude/projects/*/*.jsonl` (the full fallback): desktop prompts
-  (`client_platform` `desktop_app`) are `user` rows, `isSynthetic`
-  notifications and other user text are `context:` system rows. The
-  session id is the record's `cliSessionId`, else the line's `session_id`;
-  `project_path` is the record's `userSelectedFolders[0]`, else its `cwd`.
+  Desktop prompts (`client_platform` `desktop_app`) are `user` rows,
+  `isSynthetic` notifications and other user text are `context:` system
+  rows, and the `assistant` and `tool_result` blocks are rows as in the
+  transcript. Every line is read on every run, whether or not the session
+  dir holds a transcript. The file is a secondary source (issue 122): its
+  `user`, `assistant`, tool and `model:` rows repeat the transcript's, and
+  `dedup.deduplicate` drops those the transcript also yields, so a session
+  whose transcript is gone keeps its turns from the audit log, and the
+  permission, `result` and `init` rows, which the transcript does not
+  record, are always kept. Each row carries the line's own time (the
+  prompt's `timestamp`, else `_audit_timestamp`, the write time) and the
+  default 2-second window applies: the desktop stamps a prompt as it sends
+  it and logs each SDK message as the query loop yields it, but no real
+  audit log has been compared with its transcript, so the gap is not
+  measured. Known misses, shown twice: a Bash `tool_use` whose transcript
+  record has `wireToolInputs` (the audit line has only `input`), a
+  persisted tool output, and a prompt the CLI received later than the
+  desktop stamped it.
+  To pair with the transcript rows, the session id is the record's
+  `cliSessionId` (the transcript's file name and JSONL `sessionId`), else
+  the line's `session_id`, and `project_path` is the record's
+  `userSelectedFolders[0]`, as for the transcript, else the first `init`
+  line's `cwd` (the CLI's working directory, which the transcript records
+  as its JSONL `cwd`), else the record's `cwd`.
 * `local-agent-mode-sessions/<acct>/<org>/[agent/]local_<uuid>.json` (Cowork)
   and `claude-code-sessions/<acct>/<org>/local_<uuid>.json` (Code tab):
   `sessionId`, `cliSessionId`, `sessionType`, `title`, `createdAt`,
@@ -353,10 +370,23 @@ class ClaudeDesktopParser(ClaudeCodeParser):
 
     # -- audit.jsonl -----------------------------------------------------------
 
+    def secondary(self, artifact: Artifact) -> bool:
+        return bool(AUDIT_RX.match(artifact.rel))
+
+    @staticmethod
+    def _init_cwd(artifact: Artifact) -> str:
+        """The `cwd` of the audit log's first `system` `init` line, the CLI's
+        working directory, which its transcript records as the JSONL `cwd`."""
+        for _, line in iter_jsonl(artifact.disk_path, []):
+            if line.get("type") == "system" and line.get("subtype") == "init":
+                cwd = _str(line.get("cwd"))
+                if cwd:
+                    return cwd
+        return ""
+
     def _audit(self, artifact: Artifact, opts: Options, sess: Path) -> Iterator[Row]:
         rec = _find_record(sess)
-        full = not _has_transcript(sess)
-        project = _folder(rec) or (_str(rec.get("cwd")) if rec else "")
+        project = _folder(rec) or self._init_cwd(artifact) or (_str(rec.get("cwd")) if rec else "")
         cli_id = _str(rec.get("cliSessionId")) if rec else ""
         errors: list = []
         models: dict = {}
@@ -426,16 +456,13 @@ class ClaudeDesktopParser(ClaudeCodeParser):
                     r = row("system", text)
                     r.model = model
                     yield r
-                if full:
-                    parts = ["%s=%s" % (k, line.get(k)) for k in ("cwd", "model") if line.get(k)]
-                    yield row("system", "init: " + " ".join(parts) if parts else "init")
+                parts = ["%s=%s" % (k, line.get(k)) for k in ("cwd", "model") if line.get(k)]
+                yield row("system", "init: " + " ".join(parts) if parts else "init")
             elif ltype == "system" and subtype == "model_refusal_fallback":
                 # The subtype is in the bundle, its fields are not recorded:
                 # print them as they are.
                 rest = {k: v for k, v in line.items() if k not in AUDIT_ENVELOPE}
                 yield row("system", "model_refusal_fallback: " + compact_json(rest))
-            elif not full:
-                continue
             elif ltype == "user":
                 yield from self._audit_user(line, row)
             elif ltype == "assistant":

@@ -936,9 +936,9 @@ either key, each printed as recorded and `userFeedback` last because it
 is free text; a line with either key and no `permissionDecision` yields
 `permission decision: - source=- reason=- toolDenialKind=<value>`. The
 `claude-desktop` parser writes `model: <id>` from each audit log's
-`system` `init` line, even when the session's transcript exists, and in
-the full fallback `model: <old> -> <new>` when an `assistant` line's
-model changes; a `model_refusal_fallback` line, whose fields are not
+`system` `init` line and `model: <old> -> <new>` when an `assistant`
+line's model changes, from every audit log whether or not the session's
+transcript exists; a `model_refusal_fallback` line, whose fields are not
 recorded, is `model_refusal_fallback: <compact JSON of its fields>`. A
 Cowork session record adds one `permission grant: <key> <entry>`,
 `permission grant: <key>.<member>=<value>` or `permission grant:
@@ -1008,6 +1008,7 @@ drops are counted per agent on the `dropped:` line of stdout and under
 | --- | --- | --- |
 | `antigravity` | `.gemini/antigravity-cli/history.jsonl` | `.gemini/antigravity-cli/conversations/*.db` |
 | `claude-code` | `.claude/history.jsonl` (and `.claude-<name>/history.jsonl`) | `.claude/projects/<slug>/*.jsonl` and its subagent files |
+| `claude-desktop` | each Cowork session's `local-agent-mode-sessions/<acct>/<org>/[agent/]<session dir>/audit.jsonl` under the app-data directory | the session dir's `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `codex-cli` | `.codex/history.jsonl` | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |

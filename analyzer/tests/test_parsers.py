@@ -7410,6 +7410,7 @@ class OllamaTests(ParserBase):
         self.assertEqual(rows[-1].text, "half a pro�")
 
 
+from doubleagent.dedup import deduplicate
 from doubleagent.parsers.claude_desktop import ClaudeDesktopParser
 from fixtures import (
     CD_AUDIT_REL,
@@ -7422,6 +7423,7 @@ from fixtures import (
     CD_FALLBACK_CLI,
     CD_FALLBACK_DIR,
     CD_FALLBACK_REL,
+    CD_GUEST_CWD,
     CD_RECORD_REL,
     CD_REMOTE_SESSION,
     CD_SCHED_REL,
@@ -7480,20 +7482,32 @@ class ClaudeDesktopTests(ParserBase):
         self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
         self.assertEqual({r.agent for r in rows}, {"claude-desktop"})
 
+    def test_secondary(self):
+        # Issue 122: the audit log is a secondary source of the transcript;
+        # the transcript, the record and the index files are primary.
+        p = ClaudeDesktopParser()
+        self.assertTrue(p.secondary(self.artifact(CD_AUDIT_REL)))
+        self.assertTrue(p.secondary(self.artifact(CD_FALLBACK_REL)))
+        for rel in (CD_TRANSCRIPT_REL, CD_RECORD_REL, CD_SCHED_REL, CD_SPACES_REL):
+            self.assertFalse(p.secondary(self.artifact(rel)), rel)
+
     def test_audit_with_transcript(self):
-        # The transcript holds the turns: only the init model, permission
-        # and result rows.
+        # Every line is read although the transcript exists (issue 122);
+        # dedup drops the rows the transcript repeats (next test).
         rows = self.rows_for(ClaudeDesktopParser(), CD_AUDIT_REL)
         self.assertEqual(
             [(r.source_line, r.turn_type, r.tool_name, r.timestamp_utc, r.text) for r in rows],
             [
+                (1, "user", "", "2026-10-01T10:00:00.000Z", "why does the test fail?"),
+                (2, "system", "", "2026-10-01T10:00:01.000Z", "model: claude-fable-5-1"),
                 (
                     2,
                     "system",
                     "",
                     "2026-10-01T10:00:01.000Z",
-                    "model: claude-fable-5-1",
+                    "init: cwd=/sessions/quiet-river-1234 model=claude-fable-5-1",
                 ),
+                (3, "tool_use", "Bash", "2026-10-01T10:00:03.000Z", "npm test"),
                 (
                     4,
                     "system",
@@ -7508,6 +7522,7 @@ class ClaudeDesktopTests(ParserBase):
                     "2026-10-01T10:00:05.000Z",
                     "permission response: Bash once granted=true",
                 ),
+                (6, "tool_result", "", "2026-10-01T10:00:09.000Z", "1 failing"),
                 (
                     7,
                     "system",
@@ -7515,14 +7530,37 @@ class ClaudeDesktopTests(ParserBase):
                     "2026-10-01T10:00:12.000Z",
                     "result: success turns=2 error=false",
                 ),
+                (8, "user", "", "2026-10-01T10:00:20.000Z", "thanks"),
             ],
         )
         for r in rows:
             self.assertEqual((r.agent, r.session_id), ("claude-desktop", CD_CLI_SESSION))
             self.assertEqual(r.project_path, "/srv/proj")
-        self.assertEqual(rows[0].model, "claude-fable-5-1")
+        self.assertEqual(rows[1].model, "claude-fable-5-1")
+        self.assertEqual((rows[3].tool_use_id, rows[6].tool_use_id), ("toolu_01", "toolu_01"))
 
-    def test_audit_fallback(self):
+    def test_audit_pairs_with_transcript(self):
+        # Both files are parsed; the audit rows the transcript repeats (same
+        # text, session id and project, time within 2 seconds) are dropped,
+        # the others kept.
+        p = ClaudeDesktopParser()
+        primary = self.rows_for(p, CD_TRANSCRIPT_REL)
+        audit = self.rows_for(p, CD_AUDIT_REL)
+        tolerance = p.secondary_tolerance(self.artifact(CD_AUDIT_REL))
+        kept, dropped = deduplicate(primary, [(r, tolerance) for r in audit])
+        self.assertEqual(dropped, {"claude-desktop": 2})
+        kept_ids = {id(r) for r in kept}
+        gone = [(r.source_line, r.text) for r in audit if id(r) not in kept_ids]
+        self.assertEqual(gone, [(2, "model: claude-fable-5-1"), (8, "thanks")])
+        texts = [r.text for r in kept if r.source_file.endswith("audit.jsonl")]
+        self.assertIn("why does the test fail?", texts)
+        self.assertIn("result: success turns=2 error=false", texts)
+        twin = next(r for r in primary if r.text == "thanks")
+        self.assertEqual(
+            (twin.session_id, twin.project_path), (audit[-1].session_id, audit[-1].project_path)
+        )
+
+    def test_audit_without_transcript(self):
         rows = self.rows_for(ClaudeDesktopParser(), CD_FALLBACK_REL)
         self.assertEqual(
             [(r.source_line, r.turn_type, r.text) for r in rows],
@@ -7560,9 +7598,10 @@ class ClaudeDesktopTests(ParserBase):
             (use.tool_name, use.tool_use_id, use.model), ("Bash", "toolu_b1", "claude-fable-5-1")
         )
         self.assertEqual(by[6, "tool_result"].tool_use_id, "toolu_b1")
-        # No session record: the line's session id, no project.
+        # No session record: the line's session id, and the init line's cwd
+        # as the project, as the transcript reader keeps the JSONL cwd.
         self.assertEqual({r.session_id for r in rows}, {CD_FALLBACK_CLI})
-        self.assertEqual({r.project_path for r in rows}, {""})
+        self.assertEqual({r.project_path for r in rows}, {CD_GUEST_CWD})
 
     def test_audit_short_dir_joins_record(self):
         # A record under agent/ whose UUID starts with the short dir name.
@@ -7972,10 +8011,11 @@ class ClaudeDesktopTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / CD_AUDIT_REL)
         rows = self.rows_for(ClaudeDesktopParser(), CD_AUDIT_REL)
-        self.assertEqual(len(rows), 5)
+        self.assertEqual(len(rows), 10)
+        self.assertEqual(rows[-2].text, "thanks")
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
-            ("system", CD_CLI_SESSION, 8),
+            ("system", CD_CLI_SESSION, 9),
         )
         self.assertIn("1 unparseable line", rows[-1].text)
         write_bad_line(self.home / CD_TRANSCRIPT_REL)

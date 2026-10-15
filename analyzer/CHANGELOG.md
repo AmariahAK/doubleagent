@@ -56,6 +56,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   different file, so two identical lines in one file both stay. Secondary rows with no match are
   kept, so a prompt whose transcript is gone is still in the timeline
   ([#122]).
+- Claude Desktop: each Cowork session's `audit.jsonl` is read in full on
+  every run, its prompts, replies and tool calls too, not only when the
+  session dir holds no transcript, and is a secondary source of that
+  transcript; the audit rows without a session record take the `init`
+  line's `cwd` as `project_path`, as the transcript's rows take the
+  JSONL `cwd` ([#122]).
 
 ## [0.12.0] - 2026-10-15
 
