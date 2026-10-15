@@ -1464,6 +1464,7 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     build_opencode(home)
     build_kilo(home)
     build_cline(home)
+    build_cline_session_search(home)
     build_roo_code(home)
     build_tabby(home)
     build_openhands(home)
@@ -4469,6 +4470,115 @@ def build_cline(home: Path) -> None:
                 started,
             ),
         )
+    con.commit()
+    con.close()
+
+
+def cline_search_text(message: dict) -> str:
+    """A message as session-search.db indexes it: every string value under
+    `content`, skipping the `data`, `image`, `images`, `reasoning`,
+    `thinking` and `metadata` keys, joined with line breaks
+    (session-history-search.ts:54-95 at 39ff2359)."""
+    parts: list[str] = []
+
+    def walk(value) -> None:
+        if isinstance(value, str):
+            if value:
+                parts.append(value)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                if key not in ("data", "image", "images", "reasoning", "thinking", "metadata"):
+                    walk(item)
+
+    walk(message.get("content", message))
+    return "\n".join(parts).strip()
+
+
+def cline_session_search_sessions():
+    """(session id, started_at, workspace_root, title, prompt, messages) per
+    indexed session: the fixture's SDK session, whose transcript is on disk,
+    and the older session whose manifest and transcript are gone."""
+    return [
+        (
+            CLINE_SESSION,
+            "2026-10-03T10:01:40.000Z",
+            "/srv/proj",
+            "fix tests",
+            "fix tests",
+            cline_sdk_messages()["messages"],
+        ),
+        (
+            CLINE_OLD_SESSION,
+            "2026-10-02T23:00:00.000Z",
+            "/srv/proj",
+            "an older deleted session",
+            "an older deleted session",
+            [
+                {"role": "user", "content": "prune the stale branches"},
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Deleted two branches."}],
+                },
+            ],
+        ),
+    ]
+
+
+CLINE_SEARCH_FTS = (
+    "CREATE VIRTUAL TABLE session_search USING fts5(session_id UNINDEXED, document_id "
+    "UNINDEXED, ordinal UNINDEXED, role UNINDEXED, started_at UNINDEXED, workspace_root, "
+    "title, content, tokenize='unicode61 remove_diacritics 2 tokenchars ''_-@''')"
+)
+
+
+def build_cline_session_search(home: Path) -> None:
+    """`~/.cline/data/db/session-search.db` as the SDK hub writes it
+    (session-history-search.ts:120-154 and 402-465 at 39ff2359), and
+    `cron.db` beside it, which the parser must not want."""
+    db = home / ".cline/data/db"
+    db.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(db / "session-search.db"))
+    con.execute(
+        "CREATE TABLE indexed_sessions (session_id TEXT PRIMARY KEY, source_revision TEXT NOT "
+        "NULL, indexed_at TEXT NOT NULL, document_count INTEGER NOT NULL, index_version INTEGER "
+        "NOT NULL, title TEXT NOT NULL DEFAULT '')"
+    )
+    con.execute(CLINE_SEARCH_FTS)
+    insert = "INSERT INTO session_search VALUES (?,?,?,?,?,?,?,?)"
+    for sid, started, workspace, title, prompt, messages in cline_session_search_sessions():
+        con.execute(
+            insert, (sid, sid + ":metadata", -1, "session", started, workspace, title, prompt)
+        )
+        count = 1
+        for ordinal, message in enumerate(messages):
+            content = cline_search_text(message)
+            if not content:
+                continue
+            con.execute(
+                insert,
+                (
+                    sid,
+                    "%s:%d" % (sid, ordinal),
+                    ordinal,
+                    message.get("role") or "unknown",
+                    started,
+                    workspace,
+                    "",
+                    content,
+                ),
+            )
+            count += 1
+        con.execute(
+            "INSERT INTO indexed_sessions VALUES (?,?,?,?,?,?)",
+            (sid, started + ":1024:1791021710000", "2026-10-03T10:02:00.000Z", count, 2, title),
+        )
+    con.commit()
+    con.close()
+    con = sqlite3.connect(str(db / "cron.db"))
+    con.execute("CREATE TABLE cron_jobs (id TEXT PRIMARY KEY, prompt TEXT)")
     con.commit()
     con.close()
 

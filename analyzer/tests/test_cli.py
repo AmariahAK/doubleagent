@@ -506,10 +506,13 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # /srv/proj" (a rewind removed it from the session), the Qwen logs.json
 # model_switch entry (a `system` row whose text no session row has). The Muse
 # tui-history.jsonl prompt records no time and matches its session's prompt
-# on text alone.
+# on text alone. The Cline session-search.db index's plain-string prompt "fix
+# tests" matches its SDK session's user row on text and session id, with no
+# timestamp; its block-array messages keep their type names and stay.
 FIXTURE_DEDUPLICATED = {
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
+    "cline": 1,  # session-search.db "fix tests", no timestamp
     "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
     "gemini-cli": 1,  # "list files in src"
     "muse-code": 1,  # "fix the failing test", no timestamp

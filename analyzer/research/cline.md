@@ -110,7 +110,11 @@ Legacy: directory name = `HistoryItem.id`; workspace =
 `tool_result.tool_use_id` within the array (rare, since most tool traffic is
 XML text). SDK: `messages.json.sessionId` = manifest `session_id` =
 `sessions.session_id`; workspace = manifest `cwd` or `workspace_root`;
-`tool_use.id` pairs with `tool_result.tool_use_id`. VS Code merges the legacy
+`tool_use.id` pairs with `tool_result.tool_use_id`. `session-search.db`
+`session_search.session_id` = `sessions.session_id` = the session directory
+name, and a message document's `ordinal` is the message's 0-based position
+in the lead `<sessionId>.messages.json` ([section 5](#5-sqlite-stores)).
+VS Code merges the legacy
 and SDK lists ([`apps/vscode/src/sdk/sdk-task-history.ts:413-424`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/sdk/sdk-task-history.ts#L413-L424)), stamping
 `metadata.legacyTask`.
 
@@ -126,10 +130,71 @@ metadata_json, transcript_path, hook_path, messages_path, updated_at)`,
 `schedule_executions`. `db/session-search.db`: `indexed_sessions` plus FTS5
 `session_search(session_id, document_id, ordinal, role, started_at,
 workspace_root, title, content)` ([`session/search/session-history-search.ts:123-153`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L123-L153),[`196`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L196)),
-a full-text copy of every transcript. `teams/teams.db`
+a full-text copy of every transcript, described below. `teams/teams.db`
 ([`services/storage/sqlite-team-store.ts:210-330`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/storage/sqlite-team-store.ts#L210-L330),[`431-445`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/storage/sqlite-team-store.ts#L431-L445)): `team_events(payload_json)`,
 `team_tasks`, `team_runs`, `team_mailbox(data_json)`,
 `team_mission_log(data_json)`.
+
+`session-search.db` in detail. It sits beside `sessions.db` in the
+directory `resolveDbDataDir()` names, `~/.cline/data/db` unless
+`CLINE_DB_DATA_DIR` or `CLINE_DATA_DIR` moves it
+([`paths.ts:179-185`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L179-L185),
+[`240-246`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L240-L246),
+[`session-history-search.ts:196`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L196)); nothing writes it under an
+editor's `globalStorage`. FTS5 is SQLite's full-text search extension; the
+table is created with five `UNINDEXED` columns (stored, not searchable)
+and three indexed ones ([`:143-153`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L143-L153)), and
+`indexed_sessions(session_id, source_revision, indexed_at, document_count,
+index_version, title)` records one row per indexed session
+([`:123-142`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L123-L142)). The SDK's hub server builds and maintains
+it
+([`hub-server-transport.ts:283-287`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/hub/server/hub-server-transport.ts#L283-L287)).
+Per session ([`session-history-search.ts:402-465`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L402-L465)):
+
+- one document `<sessionId>:metadata`, `ordinal` -1, `role` `session`,
+  `title` the session's `metadata.title` or else its `prompt`, whitespace
+  collapsed and cut to 240 characters
+  ([`:102-109`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L102-L109),
+  [`prompt/format.ts:195-206`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/prompt/format.ts#L195-L206)),
+  and `content` the session's `prompt` ([`:423-432`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L423-L432));
+- one document `<sessionId>:<n>` per message of the lead transcript with any
+  text, `ordinal` the message's 0-based index in the array (so a message
+  with no text leaves a gap), `role` the message's `role` or `unknown`
+  ([`:97-100`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L97-L100), [`:434-448`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L434-L448)). The
+  messages are read from the session's `messages_path`
+  ([`local-runtime-host.ts:1559-1570`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/runtime/host/local-runtime-host.ts#L1559-L1570)),
+  the lead `<sessionId>.messages.json`; subagent transcripts are not
+  indexed;
+- `started_at` and `workspace_root` on every document are the session's
+  (`SessionRecord.startedAt`, an ISO 8601 string, and `workspaceRoot`,
+  [`shared/src/session/records.ts:34-55`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/session/records.ts#L34-L55)).
+  No document records a time of its own.
+
+A document's `content` is every string value found by walking the
+message's `content` (or the message, when it has none), object keys in
+order, skipping the keys `data`, `image`, `images`, `reasoning`,
+`thinking` and `metadata`, joined with line breaks, trimmed, and capped at
+128 KiB ([`:14`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L14), [`:54-95`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L54-L95)). A plain-string
+`content` is therefore indexed as itself: a user prompt with no attached
+image or file is a string
+([`user-input-builder.ts:10-37`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/runtime/orchestration/user-input-builder.ts#L10-L37)).
+A block array is indexed with the block `type` names, tool ids, tool names
+and tool input strings in it (`[{"type":"text","text":"Fixed."}]` becomes
+`text` and `Fixed.` on two lines), and the text of `thinking` blocks is
+left out. Numbers and booleans are left out.
+
+What it survives. The hub reconciles the index when it starts and every
+five minutes while it runs ([`:13`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L13), [`:204-216`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L204-L216)):
+a session no longer listed in `sessions.db` is deleted from the index, and
+a session whose `updated_at`, messages file size or mtime changed is
+re-indexed from the file as it now is, so a deleted messages file leaves
+only the metadata document ([`:350-400`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L350-L400)). Deleting a
+session through the hub removes it at once ([`:242-257`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L242-L257)).
+The index therefore holds a session's turns after its transcript is gone
+only until the hub next runs: a session deleted by hand, by a cleanup
+script or by an attacker while no Cline process ran is still in it at
+collection time. It holds no compaction or rewind history of its own,
+since each re-index replaces a session's documents.
 
 ## 6. Format versions
 
@@ -159,7 +224,47 @@ Globs (home-relative; `<GS>` is each VS Code `User/globalStorage`):
 `<GS>/saoudrizwan.claude-dev/state/taskHistory.json`, the same under
 `.cline/data/`, `.cline/data/sessions/*/*.json`,
 `.cline/data/sessions/*/*.messages.json`, `.cline/data/db/sessions.db`,
-`.cline/data/logs/hooks.jsonl`.
+`.cline/data/db/session-search.db`, `.cline/data/logs/hooks.jsonl`.
+
+Sources, primary or secondary (the analyzer drops a row of a secondary
+source that a primary store records too, issue 122):
+
+- Primary: `ui_messages.json`, `api_conversation_history.json` (when no
+  `ui_messages.json` is beside it), `task_metadata.json`,
+  `state/taskHistory.json`, the SDK manifest and `*.messages.json`, and
+  `sessions.db` (only for sessions whose manifest is gone).
+- Secondary: `session-search.db`. One `system` row per indexed session at
+  its `started_at`, `session search index: title=<title>
+  workspace_root=<workspace_root> prompt=<metadata content>
+  document_count=<n> indexed_at=<indexed_at>`; then one row per message
+  document in `ordinal` order, `user` or `assistant` by `role`, `system`
+  for any other, `source_line` `ordinal + 1` (the message's position in
+  the transcript, as the messages reader numbers it), and no
+  `timestamp_utc`, since the index records none per message.
+  `session_id` is the index's `session_id`, which is the session
+  directory name the messages reader uses; `project_path` is the
+  manifest's `cwd` (else `workspace_root`) when the manifest is on disk,
+  as the messages reader takes it, and the document's `workspace_root`
+  otherwise. A plain-string message pairs with its transcript row on
+  text and session; a block-array message's text carries the block type
+  names and tool ids and never equals a transcript row, so it is kept
+  whether or not the transcript survives. When the SQLite build lacks
+  FTS5, one `system` row says so and `indexed_sessions` is read alone,
+  each session row without a time.
+
+The API history is not a second copy of `ui_messages.json` that the rule
+could pair, so it stays a fallback for a task without `ui_messages.json`.
+The two record different texts for the same turn: the API history wraps
+the first prompt as `<task>\n...\n</task>` (with environment details in
+real tasks) where `ui_messages.json` holds the prompt as typed, as the
+extension's own sample-task generator writes them
+([`apps/vscode/src/dev/commands/tasks.ts:95-117`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/dev/commands/tasks.ts#L95-L117),
+[`:172-177`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/dev/commands/tasks.ts#L172-L177)).
+Its tool calls are content blocks or XML inside text, where
+`ui_messages.json` has one `say`/`ask` record per tool with JSON text, and
+its records carry no time. In the fixture the task's API user row is
+`<task>fix tests</task>` beside the UI row `fix tests | [1 image(s)]`, and
+its tool rows have no UI twin with the same text.
 
 Rows: one per `ui_messages` entry for legacy tasks (preferred over the API
 history because it has `ts`), one per content block of SDK messages.

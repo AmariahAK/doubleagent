@@ -4283,12 +4283,119 @@ class ClineTests(ParserBase):
             ("model: claude-sonnet-4-5 provider=anthropic", "2026-10-02T23:00:00.000Z"),
         )
 
+    SEARCH = ".cline/data/db/session-search.db"
+
+    def test_secondary(self):
+        p = ClineParser()
+        self.assertTrue(p.secondary(self.artifact(self.SEARCH)))
+        for rel in (self.UI, self.SDK + ".messages.json", ".cline/data/db/sessions.db"):
+            self.assertFalse(p.secondary(self.artifact(rel)), rel)
+
+    def test_session_search_rows(self):
+        rows = self.rows_for(ClineParser(), self.SEARCH)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    0,
+                    "system",
+                    CLINE_SESSION,
+                    "2026-10-03T10:01:40.000Z",
+                    "session search index: title=fix tests workspace_root=/srv/proj "
+                    "prompt=fix tests document_count=5 indexed_at=2026-10-03T10:02:00.000Z",
+                ),
+                # A plain-string prompt: the same text as the transcript's row.
+                (1, "user", CLINE_SESSION, "", "fix tests"),
+                # Block arrays keep their type names and tool ids.
+                (2, "assistant", CLINE_SESSION, "", "thinking\ntool_use\ncall_1\nbash\npytest -q"),
+                (3, "user", CLINE_SESSION, "", "tool_result\ncall_1\nbash\n3 passed"),
+                (4, "assistant", CLINE_SESSION, "", "text\nFixed."),
+                (
+                    0,
+                    "system",
+                    CLINE_OLD_SESSION,
+                    "2026-10-02T23:00:00.000Z",
+                    "session search index: title=an older deleted session "
+                    "workspace_root=/srv/proj prompt=an older deleted session "
+                    "document_count=3 indexed_at=2026-10-03T10:02:00.000Z",
+                ),
+                # The transcript is gone; the index still holds its turns.
+                (1, "user", CLINE_OLD_SESSION, "", "prune the stale branches"),
+                (2, "assistant", CLINE_OLD_SESSION, "", "text\nDeleted two branches."),
+            ],
+        )
+        self.assertEqual(
+            {(r.project_path, r.model, r.agent) for r in rows}, {("/srv/proj", "", "cline")}
+        )
+        # The session id and project the transcript reader gives the same session.
+        sdk = self.rows_for(ClineParser(), self.SDK + ".messages.json")
+        self.assertEqual(
+            {(r.session_id, r.project_path) for r in sdk},
+            {(r.session_id, r.project_path) for r in rows if r.session_id == CLINE_SESSION},
+        )
+        self.assertIn(("user", "fix tests"), [(r.turn_type, r.text) for r in sdk])
+
+    def test_session_search_project_from_manifest(self):
+        manifest = self.home / (self.SDK + ".json")
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        data["cwd"] = "/srv/proj/sub"
+        manifest.write_text(json.dumps(data), encoding="utf-8")
+        rows = self.rows_for(ClineParser(), self.SEARCH)
+        got = {(r.session_id, r.project_path) for r in rows}
+        self.assertEqual(got, {(CLINE_SESSION, "/srv/proj/sub"), (CLINE_OLD_SESSION, "/srv/proj")})
+
+    def test_session_search_without_fts5(self):
+        # A SQLite build without the module: the virtual table cannot be read.
+        path = self.home / self.SEARCH
+        con = sqlite3.connect(str(path))
+        con.execute("PRAGMA writable_schema = ON")
+        con.execute(
+            "UPDATE sqlite_master SET sql = replace(sql, 'fts5(', 'nofts(') "
+            "WHERE name = 'session_search'"
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(ClineParser(), self.SEARCH)
+        self.assertEqual(rows[0].turn_type, "system")
+        self.assertIn("parser: session_search unreadable (no such module: nofts)", rows[0].text)
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.text) for r in rows[1:]],
+            [
+                (
+                    CLINE_SESSION,
+                    "",
+                    "session search index: title=fix tests document_count=5 "
+                    "indexed_at=2026-10-03T10:02:00.000Z",
+                ),
+                (
+                    CLINE_OLD_SESSION,
+                    "",
+                    "session search index: title=an older deleted session document_count=3 "
+                    "indexed_at=2026-10-03T10:02:00.000Z",
+                ),
+            ],
+        )
+
+    def test_session_search_damaged(self):
+        path = self.home / self.SEARCH
+        path.write_bytes(path.read_bytes()[:16] + b"\0" * 84 + b"cut mid-write")
+        rows = self.rows_for(ClineParser(), self.SEARCH)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].turn_type, "system")
+        self.assertIn("parser: session-search.db unreadable", rows[0].text)
+        path.write_text("not a database", encoding="utf-8")
+        rows = self.rows_for(ClineParser(), self.SEARCH)
+        self.assertEqual(
+            [r.text for r in rows], ["parser: session-search.db is not a SQLite database"]
+        )
+
     def test_config_and_secrets_not_wanted(self):
         p = ClineParser()
         for rel in (
             CLINE_GS + "settings/cline_mcp_settings.json",
             ".cline/data/secrets.json",
             self.SDK + ".compaction.json",
+            ".cline/data/db/cron.db",
         ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertFalse(p.wants(art), rel)

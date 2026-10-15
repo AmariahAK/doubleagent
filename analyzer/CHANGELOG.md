@@ -19,6 +19,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ([#122]).
 - `inventory.json` key `deduplicated`, the new last key: the dropped
   rows per agent, `{}` when none ([#122]).
+- Cline's `~/.cline/data/db/session-search.db`, the SDK's full-text index
+  of each session, is read as a secondary source: one `system` row per
+  indexed session at its start, then a `user` or `assistant` row per
+  message with no timestamp, so a session whose transcript is gone still
+  shows its turns ([#122]).
 
 ### Changed
 
