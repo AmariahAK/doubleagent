@@ -101,7 +101,7 @@ parses every source and shows each event once is
 | `continue` | `~/.continue/sessions/` | yes | CLI `input_history.json`, fields not stated | per session `workspaceDirectory` | `dev_data/*.jsonl` events; `logs/prompt.log` (JetBrains only) |
 | `crush` | the project: `<project>/.crush/crush.db` | no | none | the database's location; `~/.local/share/crush/projects.json` | none |
 | `gemini-cli` | home `~/.gemini/tmp/<slug>/chats/` | yes | `~/.gemini/tmp/<slug>/logs.json`: `sessionId`, `messageId`, `timestamp`, `type`, `message` | per project directory (`.project_root`) | `/chat save` checkpoints, tool checkpoints, shadow git |
-| `goose` | home `~/.local/share/goose/sessions/sessions.db` | yes | `~/.local/state/goose/history.txt`: text only | per session `working_dir` | `llm_request.<N>.jsonl` logs, per call |
+| `goose` | home `~/.local/share/goose/sessions/sessions.db` | yes | `~/.local/state/goose/history.txt`: text only, the last 100 CLI inputs; a secondary source matched on text alone | per session `working_dir` | `llm_request.<N>.jsonl` logs, per call (parsed, not marked secondary) |
 | `hermes` | home `~/.hermes/state.db` | yes | none | per session `cwd` (updated) | `state-snapshots/*/state.db`, `sessions/*.jsonl` fallback, `/save` |
 | `kilo-code` | home `~/.local/share/kilo/kilo.db` | yes | none | session `directory` and per message `path.cwd` | none separate (V1 and V2 tables in one database) |
 | `kiro` | home `amazon-q/data.sqlite3`, the latest conversation per working directory only | yes | `~/.aws/amazonq/.cli_bash_history`, adjacent evidence, fields not stated | the row key and per message `env_context` | `/save <path>` only |

@@ -2800,6 +2800,49 @@ class CrushTests(ParserBase):
 
 class GooseTests(ParserBase):
     REL = ".local/share/goose/sessions/sessions.db"
+    HISTORY = ".local/state/goose/history.txt"
+
+    def test_secondary(self):
+        # The CLI history is a secondary source, the database is not (#122).
+        p = GooseParser()
+        self.assertTrue(p.secondary(self.artifact(self.HISTORY)))
+        self.assertFalse(p.secondary(self.artifact(self.REL)))
+        self.assertFalse(p.secondary(self.artifact(GOOSE_LEGACY_REL)))
+        self.assertFalse(p.secondary(self.artifact(".local/state/goose/logs/llm_request.0.jsonl")))
+
+    def test_history_rows_have_no_time_session_or_project(self):
+        # "run the tests" repeats the database's first prompt; the second
+        # entry is only in the history. Neither carries time or scope, so
+        # dedup matches them on text alone.
+        rows = self.rows_for(GooseParser(), self.HISTORY)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [(2, "user", "run the tests"), (3, "user", "line one\nline two \\ done")],
+        )
+        self.assertEqual(
+            {(r.timestamp_utc, r.session_id, r.project_path) for r in rows}, {("", "", "")}
+        )
+        db = [r.text for r in self.rows_for(GooseParser(), self.REL) if r.turn_type == "user"]
+        self.assertIn("run the tests", db)
+        self.assertNotIn("line one\nline two \\ done", db)
+
+    def test_old_history_file_is_read_and_secondary(self):
+        old = self.home / ".config/goose/history.txt"
+        old.write_text("#V2\nan older prompt\n", encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        p = GooseParser()
+        self.assertTrue(p.wants(self.artifact(".config/goose/history.txt")))
+        self.assertTrue(p.secondary(self.artifact(".config/goose/history.txt")))
+        rows = self.rows_for(p, ".config/goose/history.txt")
+        self.assertEqual([(r.turn_type, r.text) for r in rows], [("user", "an older prompt")])
+        # Both history files are read when both exist.
+        self.assertEqual(len(self.rows_for(p, self.HISTORY)), 2)
+
+    def test_malformed_history_is_not_fatal(self):
+        # Bytes that are not UTF-8 and a last line cut without its newline.
+        (self.home / self.HISTORY).write_bytes(b"#V2\nfirst\n\xff\xfebad\ncut mid-wri")
+        rows = self.rows_for(GooseParser(), self.HISTORY)
+        self.assertEqual([r.text for r in rows], ["first", "��bad", "cut mid-wri"])
 
     def test_rows(self):
         rows = [r for r in self.rows_for(GooseParser(), self.REL) if not model_or_permission_row(r)]
