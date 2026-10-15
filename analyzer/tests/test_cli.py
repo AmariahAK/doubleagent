@@ -536,6 +536,11 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # holds them); the backup's abandoned-branch prompt, every copy's
 # session-start row and the checkpoint's three entry rows, whose primary
 # twins the backup's copies took first, are kept.
+# The nanobot WebUI mirror's user, tool_use, tool_result and
+# assistant rows of "show disk usage" pair with the session file's within
+# the 15-hour WebUI window, and the CLI history's "hello" with the legacy
+# cli:direct session's; the segment's older turn and the second CLI prompt
+# are kept.
 FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 1,  # "clean the logs"
@@ -548,6 +553,7 @@ FIXTURE_DEDUPLICATED = {
     "letta": 4,  # transcript.jsonl turn: prompt, tool_use, tool_result, reply
     "hermes": 11,  # snapshot copies and the divert's screenshot prompt
     "muse-code": 1,  # "fix the failing test", no timestamp
+    "nanobot": 5,  # four WebUI rows of one turn, the CLI history's "hello"
     "open-interpreter": 1,  # "list the files"
     "openclaw": 8,  # .jsonl.deleted.* file 1, pre-doctor-branch-repair .bak 7
     "qwen-code": 1,  # "run the tests"

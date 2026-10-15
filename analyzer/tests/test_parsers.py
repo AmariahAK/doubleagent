@@ -6798,6 +6798,15 @@ class OpenClawTests(ParserBase):
         self.assertIn("event seq 9 unreadable: not a JSON object", rows[-1].text)
 
 
+from fixtures import (
+    NANOBOT_CLI_HISTORY_REL,
+    NANOBOT_WEBUI_KEY,
+    NANOBOT_WEBUI_REL,
+    NANOBOT_WEBUI_SEGMENT_REL,
+    NANOBOT_WEBUI_SESSION_REL,
+)
+
+
 class NanobotTests(ParserBase):
     def test_rows(self):
         rows = self.rows_for(NanobotParser(), NANOBOT_REL)
@@ -6887,7 +6896,16 @@ class NanobotTests(ParserBase):
             ".nanobot/sessions/0123456789abcdef0123456789abcdef/.migration-conflicts/Y2xpOmRpcmVjdA.jsonl",
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
-        for rel in (".nanobot/webui/cli_direct.jsonl", ".nanobot/webui/x.segments/000001.jsonl"):
+        for rel in (
+            ".nanobot/webui/websocket_chat-1.segments/manifest.json",
+            ".nanobot/webui/sidebar-state.json",
+        ):
+            art = next(a for a in self.col.artifacts if a.rel == rel)
+            self.assertFalse(p.wants(art), rel)
+        for rel in (
+            ".nanobot/webui/websocket_chat-1.json",  # legacy thread, shape not recorded
+            ".nanobot-work/history/cli_history",  # the CLI writes only ~/.nanobot
+        ):
             self.assertFalse(p.wants(rel_only(rel)), rel)
 
     def test_truncated_line_is_reported_not_fatal(self):
@@ -6896,6 +6914,128 @@ class NanobotTests(ParserBase):
         self.assertEqual(len(rows), 7)
         self.assertEqual((rows[-1].turn_type, rows[-1].session_id), ("system", NANOBOT_KEY))
         self.assertIn("parser:", rows[-1].text)
+
+    def test_secondary(self):
+        p = NanobotParser()
+        for rel in (NANOBOT_WEBUI_REL, NANOBOT_WEBUI_SEGMENT_REL, NANOBOT_CLI_HISTORY_REL):
+            self.assertTrue(p.secondary(self.artifact(rel)), rel)
+        for rel in (
+            NANOBOT_REL,
+            NANOBOT_WEBUI_SESSION_REL,
+            NANOBOT_LEGACY_REL,
+            NANOBOT_HISTORY_REL,
+        ):
+            self.assertFalse(p.secondary(self.artifact(rel)), rel)
+        self.assertEqual(p.secondary_tolerance(self.artifact(NANOBOT_WEBUI_REL)), 15 * 3600.0)
+        self.assertEqual(p.secondary_tolerance(self.artifact(NANOBOT_CLI_HISTORY_REL)), 2.0)
+
+    def test_webui_rows(self):
+        rows = self.rows_for(NanobotParser(), NANOBOT_WEBUI_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.timestamp_utc) for r in rows],
+            [
+                (1, "user", "show disk usage", "2026-10-02T07:00:00.900Z"),
+                (3, "tool_use", "df -h", "2026-10-02T07:00:02.000Z"),
+                (4, "tool_result", "/dev/sda1 42%", "2026-10-02T07:00:04.000Z"),
+                (
+                    5,
+                    "system",
+                    "file edit: done /srv/proj/notes.txt +1 -0",
+                    "2026-10-02T07:00:04.500Z",
+                ),
+                (8, "assistant", "The disk is 42% full.", "2026-10-02T07:00:05.500Z"),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.agent, r.session_id, r.project_path), ("nanobot", NANOBOT_WEBUI_KEY, "/srv/proj")
+            )
+        self.assertEqual(
+            [(r.tool_name, r.tool_use_id) for r in rows[1:4]],
+            [("exec", "call_df1"), ("exec", "call_df1"), ("write_file", "call_w1")],
+        )
+        thinking = self.rows_for(NanobotParser(), NANOBOT_WEBUI_REL, include_thinking=True)
+        self.assertEqual([r.text for r in thinking if r.turn_type == "thinking"], ["Run df."])
+
+    def test_webui_segment(self):
+        rows = self.rows_for(NanobotParser(), NANOBOT_WEBUI_SEGMENT_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [
+                ("user", "list the old logs", "2026-09-20T12:00:00.000Z", NANOBOT_WEBUI_KEY),
+                (
+                    "assistant",
+                    "There are 3 old logs.",
+                    "2026-09-20T12:00:03.000Z",
+                    NANOBOT_WEBUI_KEY,
+                ),
+                (
+                    "system",
+                    "webui fork marker: the fork starts here",
+                    "2026-09-20T12:00:04.000Z",
+                    NANOBOT_WEBUI_KEY,
+                ),
+            ],
+        )
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+
+    def test_webui_session_from_file_name(self):
+        path = self.home / NANOBOT_WEBUI_REL
+        path.write_text('{"event": "user", "text": "no chat id"}\n', encoding="utf-8")
+        rows = self.rows_for(NanobotParser(), NANOBOT_WEBUI_REL)
+        self.assertEqual(
+            [(r.session_id, r.project_path, r.timestamp_utc) for r in rows],
+            [(NANOBOT_WEBUI_KEY, "/srv/proj", "")],
+        )
+
+    def test_webui_truncated_line(self):
+        write_bad_line(self.home / NANOBOT_WEBUI_REL)
+        rows = self.rows_for(NanobotParser(), NANOBOT_WEBUI_REL)
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
+            ("system", NANOBOT_WEBUI_KEY, 10),
+        )
+        self.assertIn("parser: 1 unparseable line(s)", rows[-1].text)
+
+    def test_cli_history(self):
+        rows = self.rows_for(NanobotParser(), NANOBOT_CLI_HISTORY_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.timestamp_utc) for r in rows],
+            [
+                (2, "user", "hello", "2026-09-01T08:00:01.200Z"),
+                (5, "user", "first line\nsecond line", "2026-09-01T07:59:00.000Z"),
+            ],
+        )
+        self.assertEqual({(r.session_id, r.project_path) for r in rows}, {("", "")})
+
+    def test_cli_history_bad_line(self):
+        with open(self.home / NANOBOT_CLI_HISTORY_REL, "a", encoding="utf-8") as fh:
+            fh.write("not a history line\n")
+        rows = self.rows_for(NanobotParser(), NANOBOT_CLI_HISTORY_REL)
+        self.assertEqual([r.turn_type for r in rows], ["user", "user", "system"])
+        self.assertIn("parser: 1 unparseable line(s), first at line 8", rows[-1].text)
+
+    def test_timeline_pairs_secondary_rows(self):
+        import contextlib
+
+        out = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--agent", "nanobot"])
+        rows = read_jsonl(out / "timeline.jsonl")
+        by_text: dict = {}
+        for r in rows:
+            by_text.setdefault(r["text"], []).append(r["source_file"].rsplit("/", 1)[-1])
+        # The session file's copy survives; the WebUI and CLI history copies go.
+        self.assertEqual(by_text["show disk usage"], ["d2Vic29ja2V0OmNoYXQtMQ.jsonl"])
+        self.assertEqual(by_text["df -h"], ["d2Vic29ja2V0OmNoYXQtMQ.jsonl"])
+        self.assertEqual(by_text["The disk is 42% full."], ["d2Vic29ja2V0OmNoYXQtMQ.jsonl"])
+        self.assertEqual(by_text["hello"], ["cli_direct.jsonl"])
+        # What only the secondary sources still hold is kept.
+        self.assertEqual(by_text["list the old logs"], ["000001.jsonl"])
+        self.assertEqual(by_text["first line\nsecond line"], ["cli_history"])
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        self.assertEqual(inv["deduplicated"], {"nanobot": 5})
 
 
 from doubleagent import vscode_state

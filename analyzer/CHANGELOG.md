@@ -37,6 +37,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pre-doctor repair backups (`*.jsonl.pre-doctor-*-repair-*.bak`) in the
   sessions directory are parsed as secondary sources; a backup keeps the
   abandoned branches a doctor repair removed ([#122]).
+- The `nanobot` parser reads the WebUI display transcript
+  (`.nanobot*/webui/<key>.jsonl` and its `.segments/NNNNNN.jsonl`) as a
+  secondary source: `user`, `assistant`, `tool_use`, `tool_result`,
+  opt-in `thinking` and `system` rows (file edits, fork markers, context
+  compactions) at the record's `created_at_ms`, which is true UTC unlike
+  the session files' local time, so they pair with session rows within
+  15 hours; a WebUI turn whose session file a `/new` emptied is now in
+  the timeline ([#122]).
+- The `nanobot` parser reads `~/.nanobot/history/cli_history`, the CLI's
+  prompt history, as a secondary source: one `user` row per prompt at
+  its own local time, with no session or project ([#122]).
 
 ### Changed
 
