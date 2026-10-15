@@ -7663,7 +7663,9 @@ def _cd_hmac(n: int) -> str:
 
 
 def claude_desktop_audit_records():
-    """Research section 8, verbatim (HMAC values are placeholders)."""
+    """Research section 8, verbatim (HMAC values are placeholders). Line 1's
+    prompt has no transcript twin; line 8's and the `init` model repeat the
+    transcript's rows (issue 122)."""
     sid = CD_CLI_SESSION
     return [
         {
@@ -7755,6 +7757,19 @@ def claude_desktop_audit_records():
             "uuid": "00000000-0000-4000-8000-0000000000a5",
             "_audit_timestamp": "2026-10-01T10:00:12.000Z",
             "_audit_hmac": _cd_hmac(7),
+        },
+        # Issue 122: a prompt the transcript also records (its last user
+        # line, "thanks" at 10:00:20), so the secondary row pairs with it.
+        {
+            "type": "user",
+            "uuid": "00000000-0000-4000-8000-0000000000a6",
+            "session_id": sid,
+            "parent_tool_use_id": None,
+            "client_platform": "desktop_app",
+            "timestamp": "2026-10-01T10:00:20.000Z",
+            "message": {"role": "user", "content": [{"type": "text", "text": "thanks"}]},
+            "_audit_timestamp": "2026-10-01T10:00:20.003Z",
+            "_audit_hmac": _cd_hmac(8),
         },
     ]
 

@@ -103,7 +103,7 @@ UUIDs).
 | `local-agent-mode-sessions/<acct>/<org>/agent/local_<uuid>.json` | same | session record when `sessionType` is `agent` | yes |
 | `local-agent-mode-sessions/<acct>/<org>/local_<uuid>/` or `.../<8 hex>/` | directory | session storage dir: `outputs/`, `uploads/`, `.claude/`, `audit.jsonl`, `.audit-key` | see below |
 | `.../<session dir>/.claude/projects/<slug>/<cliSessionId>.jsonl` | Claude Code JSONL | the Cowork transcript | yes, with the claude-code reader |
-| `.../<session dir>/audit.jsonl` | JSONL, append-only, HMAC-chained | every Agent SDK message except stream deltas, plus permission events | yes, system rows ([section 8](#8-parser-plan)) |
+| `.../<session dir>/audit.jsonl` | JSONL, append-only, HMAC-chained | every Agent SDK message except stream deltas, plus permission events | yes, every line, a secondary source of the transcript ([section 8](#8-parser-plan)) |
 | `local-agent-mode-sessions/<acct>/<org>/agent/local_ditto_<id>[_g<n>]/` | directory per dispatch agent generation | `audit.jsonl` and `.claude/projects/*/*.jsonl` | yes, same readers |
 | `claude-code-sessions/<acct>/<org>/local_<uuid>.json` | JSON object, compact, rewritten whole | Code-tab session record; the transcript is in `~/.claude/projects/` | yes, one system row |
 | `claude-code-sessions/<acct>/<org>/imported-staging/<cliSessionId>.jsonl` | Claude Code JSONL | a transcript imported from another surface | yes, claude-code reader |
@@ -496,7 +496,21 @@ per-org tree on start.
   hex digits of the UUID.
 - Audit line to transcript line: both carry the SDK `uuid` for
   `assistant` and `user` messages; whether the values are equal was not
-  determined (no audit file on disk to compare).
+  determined (no audit file on disk to compare). The parser therefore
+  pairs them as the secondary-source rule of issue 122 does
+  ([section 8](#8-parser-plan)): same `turn_type` and text, the same
+  `session_id` (the record's `cliSessionId` on both sides, the
+  transcript's file name and JSONL `sessionId`), and times at most 2
+  seconds apart. The audit time is the desktop prompt's `timestamp`
+  (set as the desktop sends it) or `_audit_timestamp` (set as the
+  query loop yields the message); the transcript time is the CLI's
+  record time. How far apart they run on a real install is not
+  measured.
+- Audit log to project: the record's `userSelectedFolders[0]`, as for
+  the transcript; with no record, the `system` `init` line's `cwd`,
+  which is the CLI's working directory and the value the transcript
+  records as its JSONL `cwd` (the guest path `/sessions/<name>` in VM
+  mode, as the fixture's `init` line and transcript both have).
 - Scheduled run to task: record `scheduledTaskId` = task `id`.
 - Worktree to session: worktree `leasedBy` = record `sessionId`.
 
@@ -659,9 +673,20 @@ session dir name or its eight-hex prefix):
 - `session_id`: keep the JSONL `sessionId` (= record `cliSessionId`), so
   rows join to the file name and to the Code-tab record.
 
-**Audit log.** The transcript already holds every `user`, `assistant`
-and tool turn, so the audit lines for those types are duplicates and are
-skipped when a transcript for the same session dir exists. Always yield:
+**Audit log.** The transcript is the primary store: the CLI writes it
+and the desktop itself reads it back to show the session (the lookup in
+[section 2](#2-transcript-files)). `audit.jsonl` is a secondary source
+of it (issue 122): the desktop writes the same SDK messages beside it,
+append-only, so its `user`, `assistant` and tool lines repeat the
+transcript's turns. Every line is read on every run, whether or not a
+transcript exists, and the timeline's deduplication drops the rows the
+transcript also yields. What the audit log survives is the loss of the
+transcript alone: a transcript never written, removed, excluded by size
+or not collected. Both live in the same session dir, so deleting the
+session dir loses both, and whether the desktop removes either one on
+its own (an archive, a session delete) is not determined from the
+bundle. The permission events, the `result` lines and the `init` line
+have no transcript twin and are always kept. Rows:
 
 | Audit line | `turn_type` | `text` | other columns |
 | --- | --- | --- | --- |
@@ -672,8 +697,7 @@ skipped when a transcript for the same session dir exists. Always yield:
 | `system` `init` | `system` | `model: <model>` the first time a session's model is seen (issues 96 and 97) | `model` the line's `model`; one tracker per session id in the file |
 | `system` `model_refusal_fallback` | `system` | `model_refusal_fallback: <compact JSON of the line less type, subtype, uuid, session_id, timestamp and the _audit_ keys>` | the subtype is in the bundle loop above, but its fields are not recorded, so the parser prints them as they are rather than a `model: <old> -> <new>` row |
 
-When no transcript exists for the session dir (deleted, never written,
-or not collected), fall back to the full audit log: `user` lines with
+The turns, from every audit log: `user` lines with
 `client_platform` `desktop_app` and no `isSynthetic` become `user` rows
 (`text_of(message.content)`), synthetic ones `system`
 (`context: notification:`), `assistant` content blocks become
@@ -686,7 +710,17 @@ differs from the session's last one is preceded by
 `timestamp_utc` is the line's `timestamp` when present, else
 `_audit_timestamp`; `model` is `message.model`. A line that does not
 parse is one `system` row and reading continues. `session_id` is the
-record's `cliSessionId`; `source_line` is the 1-based line number.
+record's `cliSessionId`, else the line's `session_id`; `project_path` is
+the record's `userSelectedFolders[0]`, else the first `init` line's
+`cwd`, else the record's `cwd` ([section 4](#4-joins-and-timestamps));
+`source_line` is the 1-based line number. The default 2-second window
+applies. Rows the window or the text cannot pair, and that the timeline
+therefore shows twice: a Bash `tool_use` whose transcript record has
+`wireToolInputs` (the command as sent, which the claude-code reader
+prefers; the audit line has only `input`), a tool output the transcript
+persisted to a file, a `user` text the transcript labels (a slash
+command, a task notification) and the audit log does not, and a prompt
+the CLI recorded more than 2 seconds after the desktop stamped it.
 
 **Session records.** One `system` row per record at `createdAt`:
 `desktop session: <sessionType> "<title>"` for Cowork,
@@ -815,11 +849,17 @@ are placeholders; a fixture need not verify):
 {"type":"system","subtype":"permission_response","uuid":"00000000-0000-4000-8000-0000000000a3","session_id":"d1d1d1d1-5555-4666-8777-888888888888","tool_name":"Bash","decision":"once","granted":true,"_audit_timestamp":"2026-10-01T10:00:05.000Z","_audit_hmac":"0000000000000000000000000000000000000000000000000000000000000005"}
 {"type":"user","uuid":"00000000-0000-4000-8000-0000000000a4","session_id":"d1d1d1d1-5555-4666-8777-888888888888","parent_tool_use_id":null,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"1 failing"}]},"_audit_timestamp":"2026-10-01T10:00:09.000Z","_audit_hmac":"0000000000000000000000000000000000000000000000000000000000000006"}
 {"type":"result","subtype":"success","duration_ms":9000,"duration_api_ms":4000,"is_error":false,"num_turns":2,"session_id":"d1d1d1d1-5555-4666-8777-888888888888","uuid":"00000000-0000-4000-8000-0000000000a5","_audit_timestamp":"2026-10-01T10:00:12.000Z","_audit_hmac":"0000000000000000000000000000000000000000000000000000000000000007"}
+{"type":"user","uuid":"00000000-0000-4000-8000-0000000000a6","session_id":"d1d1d1d1-5555-4666-8777-888888888888","parent_tool_use_id":null,"client_platform":"desktop_app","timestamp":"2026-10-01T10:00:20.000Z","message":{"role":"user","content":[{"type":"text","text":"thanks"}]},"_audit_timestamp":"2026-10-01T10:00:20.003Z","_audit_hmac":"0000000000000000000000000000000000000000000000000000000000000008"}
 ```
+
+The first prompt has no twin in the transcript beside it; the last
+prompt, `thanks`, and the `init` line's `model: claude-fable-5-1` repeat
+the transcript's last `user` record and its first `model:` row, so the
+timeline drops those two audit rows (issue 122).
 
 The `decision` values are `deny`, `once`, `always` and `scheduled`
 ([section 3](#3-record-schema)). Add a second session dir with only
-`audit.jsonl` (no `.claude/projects`) to exercise the fallback, and a
+`audit.jsonl` (no `.claude/projects`) for a session whose transcript is gone, and a
 truncated last line written with `write_bad_line`.
 
 `Library/Application Support/Claude/claude-code-sessions/aaaaaaaa-0000-4000-8000-000000000001/bbbbbbbb-0000-4000-8000-000000000002/local_e2e2e2e2-9999-4aaa-8bbb-cccccccccccc.json`:

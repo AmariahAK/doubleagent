@@ -511,10 +511,14 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # Aider's input history repeats both chat-history prompts at
 # the very times the chat rows take from it; its "delete the migrations
 # folder" has no chat line and is kept, and its LLM history pairs with nothing.
+# Claude Desktop's audit.jsonl repeats its transcript's
+# "thanks" prompt and `model: claude-fable-5-1` row; its other lines (a
+# prompt the transcript lacks, permission and result lines) are kept.
 FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
+    "claude-desktop": 2,  # audit.jsonl "thanks" and its init model row
     "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
     "gemini-cli": 1,  # "list files in src"
     "goose": 1,  # "run the tests", no timestamp

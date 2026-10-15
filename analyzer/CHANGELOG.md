@@ -63,6 +63,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   sources of `.aider.chat.history.md`: an input-history prompt the chat
   history records is dropped, since the chat row takes its time from it,
   and one the chat history lacks is kept ([#122]).
+- Claude Desktop: each Cowork session's `audit.jsonl` is read in full on
+  every run, its prompts, replies and tool calls too, not only when the
+  session dir holds no transcript, and is a secondary source of that
+  transcript; the audit rows without a session record take the `init`
+  line's `cwd` as `project_path`, as the transcript's rows take the
+  JSONL `cwd` ([#122]).
 
 ## [0.12.0] - 2026-10-15
 
