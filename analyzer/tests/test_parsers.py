@@ -1,6 +1,7 @@
 import io
 import json
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,7 +19,7 @@ from doubleagent.parsers.antigravity import (
     uri_to_path,
 )
 from doubleagent.parsers.claude_code import ClaudeCodeParser, tool_summary
-from doubleagent.parsers.codex import CodexParser
+from doubleagent.parsers.codex import CodexParser, flat_toml
 from doubleagent.parsers.crush import CrushParser, project_of
 from doubleagent.parsers.gemini_cli import GeminiCliParser, resolve_project
 from doubleagent.parsers.goose import GooseParser, unescape_history
@@ -36,6 +37,9 @@ from fixtures import (
     CLAUDE_SETTINGS_MTIME,
     CLAUDE_WORK_SESSION,
     CODEX_ACCOUNT,
+    CODEX_AUTOMATION_MTIME,
+    CODEX_AUTOMATION_REL,
+    CODEX_AUTOMATION_TOML,
     CODEX_FORK,
     CODEX_LEGACY,
     CODEX_REVERT_ROLLOUT,
@@ -900,6 +904,66 @@ class CodexTests(ParserBase):
         self.assertEqual(
             rows[0].text, "session start: codex_cli_rs 0.99.0 provider=openai cwd=/srv/proj"
         )
+
+    def test_automation(self):
+        rows = self.rows_for(CodexParser(), CODEX_AUTOMATION_REL)
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertEqual(
+            (r.turn_type, r.session_id, r.agent, r.source_line, r.timestamp_utc),
+            ("system", CODEX_SESSION, "codex-cli", 1, to_utc(CODEX_AUTOMATION_MTIME)),
+        )
+        self.assertEqual(
+            r.text,
+            "scheduled task: check-the-nightly-build name=Check the nightly build "
+            "kind=heartbeat status=ACTIVE "
+            "rrule=RRULE:FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0;BYDAY=MO,TU,WE,TH,FR "
+            "target_thread=%s created=2026-10-14T15:25:49.000Z "
+            "updated=2026-10-14T15:25:51.000Z (from %s, file mtime) "
+            'prompt: Check the nightly build and "summarise" failures'
+            % (CODEX_SESSION, CODEX_AUTOMATION_REL),
+        )
+        salt = next(a for a in self.col.artifacts if a.rel.endswith("/.run-jitter-salt"))
+        self.assertFalse(CodexParser().wants(salt))
+        # Only Codex reads automations; the Open Interpreter fork has none.
+        self.assertFalse(OpenInterpreterParser.automations)
+
+    def test_unreadable_automation(self):
+        path = self.home / CODEX_AUTOMATION_REL
+        path.write_text('id = "x"\nname = "cut mid-wri\n', encoding="utf-8")
+        rows = self.rows_for(CodexParser(), CODEX_AUTOMATION_REL)
+        self.assertEqual([r.turn_type for r in rows], ["system"])
+        self.assertTrue(rows[0].text.startswith("parser: unreadable automation.toml:"))
+
+    def test_flat_toml_matches_tomllib(self):
+        # The Python 3.10 stand-in reads what tomllib reads for these files.
+        multi = CODEX_AUTOMATION_TOML.replace(
+            'prompt = "Check the nightly build and \\"summarise\\" failures"',
+            'prompt = """\nline one\\tand \\u00e9\nline two"""\nnote = \'C:\\path\' # x',
+        )
+        expected = {
+            "version": 1,
+            "id": "check-the-nightly-build",
+            "kind": "heartbeat",
+            "name": "Check the nightly build",
+            "prompt": 'Check the nightly build and "summarise" failures',
+            "status": "ACTIVE",
+            "rrule": "RRULE:FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0;BYDAY=MO,TU,WE,TH,FR",
+            "target_thread_id": CODEX_SESSION,
+            "created_at": 1791991549000,
+            "updated_at": 1791991551000,
+        }
+        self.assertEqual(flat_toml(CODEX_AUTOMATION_TOML), expected)
+        got = flat_toml(multi)
+        self.assertEqual(got["prompt"], "line one\tand \u00e9\nline two")
+        self.assertEqual(got["note"], "C:\\path")
+        if sys.version_info >= (3, 11):
+            import tomllib
+
+            self.assertEqual(tomllib.loads(CODEX_AUTOMATION_TOML), expected)
+            self.assertEqual(tomllib.loads(multi), got)
+        with self.assertRaises(ValueError):
+            flat_toml('name = """never closed\n')
 
     def test_model_and_permission_mode_rows(self):
         rows = self.rows_for(CodexParser(), self.REL)

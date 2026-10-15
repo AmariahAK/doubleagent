@@ -114,9 +114,32 @@ Paths and the rest of the per-user state are in
   - The ChatGPT chat and the image generation left no rollout and no row
     in `state_5.sqlite` or `thread_history_1.sqlite`; their only local
     trace is in the desktop app's own `sqlite/codex-dev.db`
-    ([section 5](#5-other-files)) and `.codex-global-state.json`. Not
-    exercised: a resumed thread, a denied tool call, an "allow always"
-    grant, a model switch, subagents.
+    ([section 5](#5-other-files)) and `.codex-global-state.json`. A first
+    attempt to create a scheduled automation failed in the app and wrote
+    nothing.
+  - Later the same day (third survey 15:30Z), after the account was
+    subscribed to ChatGPT Plus, the user created a scheduled automation
+    that saved, and connected a GitHub account. The automation wrote
+    `automations/<slug>/automation.toml` and one `codex-dev.db`
+    `automations` row ([section 5](#5-other-files)), and at once created
+    its target thread: a third rollout
+    (`rollout-2026-10-15T11-25-49-<uuid>.jsonl`, 83,579 bytes, 15:25:50Z)
+    in a new default output directory `~\Documents\Codex\2026-10-15\new-chat`,
+    `thread_source` `user`, `source` `vscode`, `originator`
+    `Codex Desktop`, approval `on-request`, on model `gpt-5.6-terra`, not
+    the `gpt-6-luna` of the two earlier threads (the app chose it for the
+    automation). It held one user turn (the automation's prompt), one
+    assistant message and no tool call, `task_started` to
+    `task_complete` in 9,969 ms; the parser gave 12 rows (10 `system`, 1
+    `user`, 1 `assistant`) with the usual `session start:`, `model:` and
+    `permission mode:` rows. The automation had not fired by the survey:
+    `automation_runs` and `inbox_items` were still empty. The account
+    took a token refresh in `auth.json` and a longer `models_cache.json`
+    (9 models, 5 before); connecting GitHub wrote nothing locally (the
+    connection is held by the ChatGPT account on the server).
+  - Not exercised: a resumed thread, a denied tool call, an "allow
+    always" grant, a model switch within a thread, subagents, an
+    automation run.
 
 ## 2. Transcript files
 
@@ -145,6 +168,8 @@ Paths relative to the home; `$CODEX_HOME` replaces `.codex` when set.
 - `.codex/history.jsonl`: one line per submitted prompt, all threads
   ([section 5](#5-other-files)). **Parser reads.**
 - `.codex/session_index.jsonl`: thread renames ([section 5](#5-other-files)). Not read.
+- `.codex/automations/<slug>/automation.toml`: a scheduled automation of
+  the ChatGPT desktop app ([section 5](#5-other-files)). **Parser reads.**
 - `.codex/state_5.sqlite`, `.codex/thread_history_1.sqlite`: thread metadata
   and a projection of paginated rollouts ([section 5](#5-other-files)). Not read.
 
@@ -398,9 +423,12 @@ to the call except its position between the call and its output (local).
   `source_created_at`, `source_updated_at`, `cwd`, `source_kind`,
   `source_detail`, `model_provider`, `git_branch`, `thread_source`,
   `project_id`, `conversation_origin`, `chatgpt_async_status` and
-  bookkeeping columns): the two local Codex threads as `source_kind`
+  bookkeeping columns): the local Codex threads as `source_kind`
   `vscode` with a `cwd`, and the ChatGPT chat as `source_kind` `chatgpt`
-  with every other column but the title empty. `local_thread_catalog_hosts`
+  with every other column but the title empty. After the later actions
+  of [section 1](#1-evidence) it held five rows: three `vscode`, and two
+  `chatgpt`, one with `conversation_origin` empty and one with
+  `conversation_origin` `tpp` (what `tpp` denotes is not determined). `local_thread_catalog_hosts`
   (`host_id`, `host_kind`) held `local` and
   `chatgpt:<workspace uuid>:<user id>`. `automations` (`id`, `name`,
   `prompt`, `status`, `next_run_at`, `last_run_at`, `cwds`, `rrule`,
@@ -409,12 +437,42 @@ to the call except its position between the call and its output (local).
   and more) and `automation_runs` (`thread_id`, `automation_id`,
   `status`, `thread_title`, `source_cwd`, `inbox_title`,
   `inbox_summary`, `archived_user_message`, `archived_assistant_message`
-  and more) were empty, since the one automation the user tried failed
-  to save; `inbox_items` was empty too. `codex_schema_migrations` rows
-  carry the app version (`app_version` `26.1007.71326`, `build_flavor`
-  `prod`). The chat's text is not in it. The analyzer does not read it;
-  by its columns, an `automations` row is where a scheduled prompt would
-  be kept, but no row was observed.
+  and more) were empty after a first automation failed to save. The
+  automation saved later held one `automations` row: `status` `ACTIVE`,
+  `kind` `heartbeat`, `rrule` as in `automation.toml` below,
+  `next_run_at` and `next_run_nominal_at` set (epoch ms), `last_run_at`
+  null, `cwds` an empty JSON array, `target_thread_id` set,
+  `auto_archive` 0 and every other column null (`model`,
+  `reasoning_effort`, `target_type`, `project_id`,
+  `execution_environment`, `local_environment_config_path`,
+  `plugin_template_id`, `notification_policy`, `account_id`, `user_id`,
+  `installation_id`, `legacy_automation_id`). `automation_runs` and
+  `inbox_items` stayed empty, as the automation had not fired.
+  `codex_schema_migrations` rows carry the app version (`app_version`
+  `26.1007.71326`, `build_flavor` `prod`). The chat's text is not in it.
+  The analyzer does not read it: the automation is read from
+  `automation.toml`, and a run would be in `automation_runs`, which no
+  real install has shown filled.
+- `automations/<slug>/automation.toml`: one directory per automation of
+  the ChatGPT desktop app, named by a slug of the name the user typed
+  (observed on Windows, 2026-10-15; not in the Codex source this
+  document cites), beside `automations/.run-jitter-salt` (37 bytes,
+  base64-class text). The file is flat TOML (383 bytes observed):
+  `version` integer (1), `id` string (the slug), `kind` string
+  (`heartbeat`), `name` string, `prompt` string (what the automation
+  sends), `status` string (`ACTIVE`), `rrule` string (an iCalendar
+  recurrence rule, the scheduling syntax of RFC 5545, of the form
+  `RRULE:FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0;BYDAY=MO,TU,WE,TH,FR`),
+  `target_thread_id` string (the thread the automation runs in, whose
+  rollout appeared when the automation was created), `created_at` and
+  `updated_at` integers (epoch milliseconds). **Parser reads** (issue
+  119).
+- `ambient-suggestions/<40 hex>/ambient-suggestions.json`: the desktop
+  app's suggestions for a project (observed on Windows, 2026-10-15, 139
+  bytes): `currentSuggestionIds` (empty list), `generatedAtMs` number,
+  `projectRoot` absolute path, `suggestions` (empty list). Governed by
+  `desktop.ambient-suggestions-enabled` in `config.toml`. Not read; a
+  file holding suggestions has not been observed.
 
 Opened only from scratchpad copies, and only for table names, row counts
 and key names.
@@ -540,6 +598,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `token_usage_record`, `world_state`, `inter_agent_communication_metadata`, `retained_context`, `security_risk_score` | skipped |
 | bad line or cut zstd frame | one `system` row at the end |
 | `history.jsonl` line | `user` |
+| `automations/<slug>/automation.toml` (Codex only) | one `system` row `scheduled task: <id> name=<name> kind=<kind> status=<status> rrule=<rrule> target_thread=<target_thread_id> created=<created_at> updated=<updated_at> (from <file>, file mtime) prompt: <prompt>` at the file's modification time, `session_id` the target thread; an unreadable file is one `system` row (issue 119) |
 
 Permission state is the per-turn `turn_context` policy above. There is no
 per-call decision row: approval requests and their answers are transient

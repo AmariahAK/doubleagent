@@ -276,6 +276,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   rollout's `session_meta` names the ChatGPT account and user that
   created the thread, as Codex Desktop inside the ChatGPT desktop app
   writes them; a rollout without them keeps the old text ([#118]).
+- The `codex-cli` parser reads the ChatGPT desktop app's scheduled
+  automations, `.codex/automations/<slug>/automation.toml`, not read
+  before: one `system` row per file, `scheduled task: <id> name=<name>
+  kind=<kind> status=<status> rrule=<rrule> target_thread=<thread id>
+  created=<UTC> updated=<UTC> (from <file>, file mtime) prompt:
+  <prompt>`, at the file's modification time, with `session_id` the
+  thread the automation runs in ([#119]).
 
 ### Changed
 
@@ -805,6 +812,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#119]: https://github.com/seanthegeek/doubleagent/issues/119
 [#118]: https://github.com/seanthegeek/doubleagent/issues/118
 [#117]: https://github.com/seanthegeek/doubleagent/issues/117
 [#104]: https://github.com/seanthegeek/doubleagent/issues/104
