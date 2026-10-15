@@ -514,6 +514,8 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # Claude Desktop's audit.jsonl repeats its transcript's
 # "thanks" prompt and `model: claude-fable-5-1` row; its other lines (a
 # prompt the transcript lacks, permission and result lines) are kept.
+# The Letta transcript.jsonl turn its messages.jsonl lacks
+# ("now delete the build directory" and its reply) is kept.
 FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 1,  # "clean the logs"
@@ -522,6 +524,7 @@ FIXTURE_DEDUPLICATED = {
     "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
     "gemini-cli": 1,  # "list files in src"
     "goose": 1,  # "run the tests", no timestamp
+    "letta": 4,  # transcript.jsonl turn: prompt, tool_use, tool_result, reply
     "muse-code": 1,  # "fix the failing test", no timestamp
     "open-interpreter": 1,  # "list the files"
     "qwen-code": 1,  # "run the tests"

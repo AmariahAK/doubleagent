@@ -5352,6 +5352,27 @@ def letta_transcript_records():
     ]
 
 
+def letta_twin_transcript_records():
+    """The local-backend conversation's transcript: the turn its
+    messages.jsonl also holds, captured at the turn's end, then a turn
+    messages.jsonl no longer has (issue 122)."""
+    return [
+        *letta_transcript_records(),
+        {
+            "kind": "user",
+            "text": "now delete the build directory",
+            "captured_at": "2026-10-01T12:00:40.500Z",
+            "source_line_id": "ui-4",
+        },
+        {
+            "kind": "assistant",
+            "text": "Deleted build/",
+            "captured_at": "2026-10-01T12:00:40.500Z",
+            "source_line_id": "ui-5",
+        },
+    ]
+
+
 def letta_local_records(cwd="/srv/proj"):
     asst = {
         "id": "letta-msg-2",
@@ -5484,7 +5505,7 @@ def build_letta(home: Path) -> None:
     )
     _jsonl(
         letta / "transcripts" / LETTA_AGENT / LETTA_LOCAL_CONV / "transcript.jsonl",
-        letta_transcript_records(),
+        letta_twin_transcript_records(),
     )
     _json(
         letta / "transcripts" / LETTA_AGENT / LETTA_CONV / "state.json",
@@ -5495,6 +5516,7 @@ def build_letta(home: Path) -> None:
     _json(conv / "manifest.json", {"message_format": "pi-session-entry-jsonl", "schema_version": 2})
     _jsonl(letta / "sessions.jsonl", letta_sessions_records())
     _json(letta / "settings.json", {"env": {"LETTA_API_KEY": "sk-not-real"}})
+    _json(letta / "transcripts" / LETTA_AGENT / LETTA_LOCAL_CONV / "payload-auto-a1b2c3.json", [])
 
 
 HERMES_SESSION = "20261001_120000_a1b2c3d4"

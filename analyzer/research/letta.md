@@ -43,6 +43,25 @@ with `name`, `argsText`, `resultText`, `resultOk`. Every line has
 batch) and optional `source_line_id`, `source_message_id`. No model, no cwd,
 no tool call id: a call and its result share one line.
 
+`captured_at` is the time of the append, not of the event:
+`appendTranscriptDeltaJsonl` takes `new Date().toISOString()` once and
+stamps every line of the batch with it
+([reflection-transcript.ts:927-946](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/helpers/reflection-transcript.ts#L927-L946)).
+Its three callers append a turn's lines only after the turn ends with the
+`end_turn` stop reason: the interactive loop
+([use-conversation-loop.ts:1423-1452](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/app/use-conversation-loop.ts#L1423-L1452)),
+headless mode when the result is a success
+([headless.ts:4650-4652](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/headless.ts#L4650-L4652)) and the
+WebSocket listener's `completeSuccessfulListenerTurn`
+([turn-completion.ts:67-73](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/websocket/listener/turn-completion.ts#L67-L73)).
+So a user prompt is stamped later than its submission by the whole turn,
+tool calls and approval waits included, and a turn that ends in an error
+or an interrupt is not appended at all. `argsText` is the tool call's
+arguments string as streamed, the chunks concatenated
+([accumulator.ts:1094](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/helpers/accumulator.ts#L1094),
+[1150-1153](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/helpers/accumulator.ts#L1150-L1153)), so a
+complete call holds the arguments JSON.
+
 **Local-backend transcript** (`messages.jsonl`, `message_format`
 `pi-session-entry-jsonl`, `schema_version` 2 in `manifest.json`;
 [local-transcript.ts:24-46](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-transcript.ts#L24-L46)). Line 1 is the header
@@ -86,6 +105,25 @@ and timing only; not parsed into turns.
   `name`, `model`, `system` ([local-types.ts:18-28](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-types.ts#L18-L28)). `toolCall.id` joins
   `toolResult.toolCallId`. Entries chain by `parentId`.
 - Subagents: `conversation.json` `parent_agent_id`, `is_subagent`.
+- Transcript to local backend, for one conversation. Session id: the
+  transcript's conversation directory is the conversation id sanitised to
+  `[a-zA-Z0-9._-]`, and the `messages.jsonl` header `id` is the same
+  conversation id
+  ([local-transcript.ts:236-246](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-transcript.ts#L236-L246)).
+  Local-backend ids are `local-conv-<n>` or `local-conv-<uuid>`
+  ([local-backend.ts:209](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-backend.ts#L209),
+  [local-store.ts:3177-3181](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L3177-L3181),
+  [762](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L762)), or `default` for the
+  agent's default conversation
+  ([local-store.ts:3262-3266](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L3262-L3266)),
+  none of which the sanitisation changes, so the two `session_id`s are
+  equal. Project path: the header `cwd` against the `sessions.jsonl`
+  heuristic above; equal in the fixture, but the pairing is by session id
+  and does not depend on it. Text: the same for user and assistant text,
+  thinking and tool results; a tool call's `argsText`, parsed, gives the
+  argument the pi reader shows for the matching `toolCall`. Time: the
+  transcript line is later than its `messages.jsonl` entry by up to the
+  turn's duration, the prompt by all of it.
 
 ## 5. SQLite or binary stores
 
@@ -115,9 +153,22 @@ column `api_key` ([0.11.7 orm/provider.py:30-32](https://github.com/letta-ai/let
 
 ## 8. Parser plan
 
-Parse `transcript.jsonl` and `messages.jsonl`; when both exist for one
-conversation, prefer `messages.jsonl` (it has models, tool ids and per-message
-times). Use `sessions.jsonl` only for project attribution.
+Parse `transcript.jsonl` and `messages.jsonl` always (issue 122). In
+local-backend mode `messages.jsonl` is the store of record, the local
+backend's own message store, with models, tool ids and per-message
+times; it is primary. `transcript.jsonl` copies each completed turn of the
+same conversation and is a secondary source: its rows are dropped when a
+`messages.jsonl` row of the same conversation has the same turn type and
+text within one hour, the window a turn's end-of-turn stamp needs (see
+[section 3](#3-record-schema)); a turn longer than an hour leaves its
+earlier lines shown twice. What only the transcript keeps survives the
+rule: deleting an agent removes its local-backend conversation directories
+and leaves `~/.letta/transcripts/` alone
+([local-store.ts:481-517](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L481-L517)),
+and in the default server-backend mode the transcript is the only local
+copy of the conversation. `messages.jsonl` alone holds the turns that ended
+in an error or an interrupt. `sessions.jsonl` is primary, one `system` row
+per line, and gives the transcript's project attribution.
 
 | Column | transcript.jsonl | messages.jsonl |
 | --- | --- | --- |
@@ -128,7 +179,7 @@ times). Use `sessions.jsonl` only for project attribution.
 | turn_type | `user`, `assistant`; `reasoning` → thinking; `error` → system; `tool_call` → one tool_use and one tool_result row | role/part type; `compaction` → system |
 | model | empty | `message.model` (`responseModel` when set) |
 | tool_name, tool_use_id | `name`, empty | `toolCall.name`/`id`, `toolResult.toolName`/`toolCallId` |
-| text | `text`; `argsText`; `resultText` | text, thinking, arguments JSON, result text |
+| text | `text`; `argsText` through pi's argument summary when it parses as JSON; `resultText` | text, thinking, the argument summary, result text |
 
 **Model rows.** `messages.jsonl` goes through pi's reader, so it gets pi's
 `model: <id> provider=<provider>` row at the first assistant

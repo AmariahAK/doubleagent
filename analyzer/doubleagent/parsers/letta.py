@@ -20,13 +20,35 @@ parsed:
   backends, appended after each turn): `kind` user, assistant, reasoning
   (a `thinking` row, opt-in) or error (system) with `text`; or
   `kind: "tool_call"` with `name`, `argsText`, `resultText`, `resultOk`,
-  emitted as a tool_use and a tool_result with no tool id. Every line has
-  `captured_at` (ISO 8601 Z, shared by a turn's lines). No model and no
-  cwd: the session id is the conversation directory name and the project
-  path is the `project` of the `sessions.jsonl` line with the same
-  `agent_id` and the latest `timestamp` at or before `captured_at`, a
-  heuristic. When the same conversation's `messages.jsonl` was collected,
-  the transcript is not repeated: one system row points at it.
+  emitted as a tool_use and a tool_result with no tool id. `argsText` is
+  the streamed arguments JSON; when it parses, the tool_use text is
+  `pi.args_summary` of it (the command, path or query), as the
+  `messages.jsonl` row for the same call renders it, else the raw text.
+  Every line has `captured_at` (ISO 8601 Z, shared by a turn's lines). No
+  model and no cwd: the session id is the conversation directory name
+  (the conversation id, `local-conv-<n>` or `default`, which the directory
+  sanitisation leaves unchanged, so it equals the `messages.jsonl` header
+  `id`) and the project path is the `project` of the `sessions.jsonl` line
+  with the same `agent_id` and the latest `timestamp` at or before
+  `captured_at`, a heuristic.
+
+  A secondary source (`secondary()`, issue 122): in local-backend mode it
+  repeats the turns of the conversation's `messages.jsonl`, the store of
+  record, and it is read always, whether or not that file was collected,
+  so a conversation whose local-backend directory was deleted (deleting an
+  agent removes its conversation directories, not its transcripts) or a
+  server-backend conversation (no local store at all) is still recovered.
+  Letta stamps `captured_at` once per turn, when the turn ends
+  (`new Date()` in `appendTranscriptDeltaJsonl`, called after the turn's
+  `end_turn` stop reason), so every line of a turn is later than its
+  `messages.jsonl` twin by up to the turn's duration, the user prompt by
+  all of it. `secondary_tolerance()` is therefore `TURN_TOLERANCE_SECONDS`
+  (one hour) instead of the default 2 seconds; a turn longer than that
+  (a long unattended run, an approval left waiting) leaves its earlier
+  lines unpaired, shown twice. The pairing is confined to one
+  conversation and one text, so the wide window can only pair a line with
+  an identical event of the same conversation. Turns that end in an
+  error or an interrupt are never appended, so the transcript lacks them.
 * `~/.letta/sessions.jsonl`: per CLI session, a start line and an exit
   line with `agent_id`, `session_id`, `timestamp` (ms), `project`,
   `model`, `provider`, and on exit `message_count`, `tool_call_count`,
@@ -50,20 +72,22 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import re
 from collections.abc import Iterator
-from pathlib import Path
 
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
 from .base import Options, Parser, iter_jsonl
-from .pi import SessionFile, entry_rows, error_row, model_text, read_session
+from .pi import SessionFile, args_summary, entry_rows, error_row, model_text, read_session
 
 TRANSCRIPT_RX = re.compile(r"^\.letta/transcripts/([^/]+)/([^/]+)/transcript\.jsonl$")
 LOCAL_RX = re.compile(r"^\.letta/lc-local-backend/conversations/([^/]+)/messages\.jsonl$")
 SESSIONS_REL = ".letta/sessions.jsonl"
-CONVERSATIONS_REL = ".letta/lc-local-backend/conversations"
+# The window a transcript line may lag its messages.jsonl twin: a turn's
+# whole duration, since captured_at is stamped at the turn's end.
+TURN_TOLERANCE_SECONDS = 3600.0
 
 
 def decode_key(name: str) -> str:
@@ -81,13 +105,15 @@ def sanitize(segment: str) -> str:
     return s or "unknown"
 
 
-def _transcript_key(agent_dir: str, conv_dir: str, key: str) -> bool:
-    kind, _, ident = key.partition(":")
-    if kind == "conversation":
-        return sanitize(ident) == conv_dir
-    if kind == "default":
-        return conv_dir == "default" and sanitize(ident) == agent_dir
-    return False
+def _args_text(args) -> str:
+    """A transcript `argsText` as the pi reader renders the same call's
+    arguments: `args_summary` of the parsed JSON, else the text itself."""
+    if not isinstance(args, str):
+        return args_summary(args)
+    try:
+        return args_summary(json.loads(args))
+    except ValueError:
+        return args
 
 
 def _bare_messages(session: SessionFile) -> SessionFile:
@@ -132,6 +158,12 @@ class LettaParser(Parser):
             or bool(LOCAL_RX.match(artifact.rel))
         )
 
+    def secondary(self, artifact: Artifact) -> bool:
+        return bool(TRANSCRIPT_RX.match(artifact.rel))
+
+    def secondary_tolerance(self, artifact: Artifact) -> float:
+        return TURN_TOLERANCE_SECONDS
+
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if artifact.rel == SESSIONS_REL:
             yield from self._parse_sessions(artifact, opts)
@@ -174,18 +206,6 @@ class LettaParser(Parser):
 
     # -- reflection transcript ------------------------------------------
 
-    def _local_twin(self, artifact: Artifact, agent_dir: str, conv_dir: str) -> Path | None:
-        base = artifact.home.disk_path / CONVERSATIONS_REL
-        if base.is_symlink() or not base.is_dir():
-            return None
-        for d in sorted(base.iterdir()):
-            f = d / "messages.jsonl"
-            if d.is_symlink() or f.is_symlink() or not f.is_file():
-                continue
-            if _transcript_key(agent_dir, conv_dir, decode_key(d.name)):
-                return f
-        return None
-
     def _sessions(self, artifact: Artifact, agent_dir: str) -> list[tuple[str, str]]:
         """(timestamp, project) of the sessions.jsonl lines for this agent,
         sorted by time."""
@@ -203,17 +223,6 @@ class LettaParser(Parser):
     def _parse_transcript(
         self, artifact: Artifact, agent_dir: str, conv_dir: str, opts: Options
     ) -> Iterator[Row]:
-        twin = self._local_twin(artifact, agent_dir, conv_dir)
-        if twin is not None:
-            row = self.base_row(artifact)
-            row.session_id, row.turn_type = conv_dir, "system"
-            row.text = compact(
-                "letta transcript for agent %s not repeated: the same conversation's "
-                "local-backend messages.jsonl was collected (%s)"
-                % (agent_dir, twin.relative_to(artifact.home.disk_path).as_posix()),
-            )
-            yield row
-            return
         sessions = self._sessions(artifact, agent_dir)
         errors: list = []
         for n, rec in iter_jsonl(artifact.disk_path, errors):
@@ -255,7 +264,7 @@ class LettaParser(Parser):
                 name = str(rec.get("name") or "")
                 row = base()
                 row.turn_type, row.tool_name = "tool_use", name
-                row.text = compact(rec.get("argsText"))
+                row.text = compact(_args_text(rec.get("argsText")))
                 yield row
                 if "resultText" in rec or "resultOk" in rec:
                     result = str(rec.get("resultText") or "")

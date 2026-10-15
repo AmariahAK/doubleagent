@@ -69,6 +69,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   transcript; the audit rows without a session record take the `init`
   line's `cwd` as `project_path`, as the transcript's rows take the
   JSONL `cwd` ([#122]).
+- The `letta` parser reads `.letta/transcripts/<agent>/<conversation>/transcript.jsonl`
+  always, also when the conversation's local-backend `messages.jsonl` was
+  collected (it gave one `system` row pointing at it before), as a
+  secondary source paired with `messages.jsonl` within one hour, since
+  Letta stamps each line at the end of its turn; its `tool_use` text is
+  now the command, path or query, as the `messages.jsonl` row shows it,
+  instead of the arguments JSON ([#122]).
 
 ## [0.12.0] - 2026-10-15
 

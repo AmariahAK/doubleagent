@@ -1013,6 +1013,7 @@ drops are counted per agent on the `dropped:` line of stdout and under
 | `codex-cli` | `.codex/history.jsonl` | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
 | `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone) | `.local/share/goose/sessions/sessions.db` |
+| `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
 | `open-interpreter` | `.openinterpreter/history.jsonl` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
