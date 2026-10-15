@@ -360,7 +360,9 @@ and say in the module docstring if the shape has drifted since.
 
 1. Create `doubleagent/parsers/<agent>.py` with a class that subclasses
    `Parser` from `parsers/base.py`. Its `agent` attribute must equal the
-   catalog name. `wants()` selects by `artifact.rel` with a regex;
+   catalog name. `wants()` selects by `artifact.rel` with a regex, and
+   `secondary()` says, the same way, which of those files repeat the
+   primary store's events (step 3, past use);
    `parse()` yields rows built from `base_row()`, which fills host, user,
    agent and `source_file`. Reuse `iter_jsonl`, `text_of` and
    `compact_json` from `base.py`, `compact` from `model.py` and `to_utc`
@@ -410,6 +412,30 @@ and say in the module docstring if the shape has drifted since.
    research document names where the format records the model per
    message, per session and per switch, and a parser plan with no model
    line says the agent records none (issue 93).
+   Past use is evidence of the same kind, and the transcript store is
+   rarely its only record. A per-prompt history file, a mirror or
+   projection of the transcript (a search index, a summaries database, a
+   web interface's copy, a brain or memory directory), an archive of
+   reset or deleted sessions, a backup and a text-only prompt history
+   each outlive the transcript they repeat, and a session the user
+   deleted is often recoverable from nothing else: an Antigravity session
+   whose project directory the agent had deleted survived as a database,
+   a brain mirror, four history lines and a summaries row (issue 122).
+   Before the parser is written, the research document lists every file
+   that records use beyond the primary store, says what each holds, what
+   it survives (a deleted session, a rewind, a removed project, a
+   compaction) and how its records join the primary store's (session id,
+   project path, text and time), and its parser plan marks each source
+   primary or secondary; a plan with no such line says the agent keeps
+   none. The parser reads every one of them on every run, never as a
+   fallback when the primary store is missing, and returns True from
+   `secondary()` for the files that repeat the primary store's events, so
+   `dedup.deduplicate` shows each event once and keeps what only the
+   secondary source still holds (the rule is documented under
+   [Secondary sources in `analyzer/docs/output.md`](analyzer/docs/output.md#secondary-sources)).
+   The agent's row in the
+   [survival table of `analyzer/research/README.md`](analyzer/research/README.md#where-transcripts-live-and-what-survives)
+   is filled in the same commit.
 4. SQLite stores are opened through `sqlite_util.py` so the WAL sidecar is
    read and the evidence copy is never opened directly. Protobuf blobs are
    decoded with `protobuf.py`. A new dependency such as `zstandard` for Zed
@@ -747,7 +773,11 @@ The round, in order:
    file, a scheduled task, a resumed session, and one tool call approved
    and one denied, with an "allow always" or equivalent standing grant,
    and a model switch in the middle of a session, so the permission and
-   model records are on disk for the shape tool to show. A surface that writes
+   model records are on disk for the shape tool to show; then a session
+   deleted the way a user would (the agent's own delete or clear command,
+   or the project directory removed), with a listing diff after it, so
+   the round records which traces of past use survive and the parser
+   reads them (step 3 of "Adding a parser"). A surface that writes
    nothing locally is a finding (Claude Desktop's merged Chat/Cowork
    surface runs server-side and leaves one index file), and so is a
    feature the VM cannot run (nested virtualisation); say which it was.
