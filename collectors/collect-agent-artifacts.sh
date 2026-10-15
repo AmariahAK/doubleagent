@@ -153,6 +153,10 @@ claude-desktop|Documents/Claude
 # .gemini/antigravity/cache. The CLI keeps plugin secrets in a file store,
 # plugin-secrets.json, in a lower-case antigravity directory under the Go
 # os.UserConfigDir() root when no keychain is available (#90)
+# AppData/Local/antigravity is the Windows form of .cache/antigravity, the
+# marketplace staging directory under the Go os.UserCacheDir() root. The
+# line names one whole component, so it matches neither the installer in
+# AppData/Local/antigravity-updater nor the app in AppData/Local/Programs
 gemini-cli|.gemini
 gemini-cli|.cache/.gemini
 antigravity|.gemini/antigravity-cli
@@ -162,6 +166,7 @@ antigravity|.gemini/antigravity-backup
 antigravity|.gemini/config
 antigravity|.antigravity
 antigravity|.cache/antigravity
+antigravity|AppData/Local/antigravity
 antigravity|.config/Antigravity
 antigravity|Library/Application Support/Antigravity
 antigravity|Library/Logs/Antigravity

@@ -36,6 +36,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   accept `Antigravity` as well, since on a case-insensitive filesystem
   the file shares the desktop app's Electron user-data directory
   ([#90]).
+- `AppData/Local/antigravity` is collected as `antigravity`: the Windows
+  counterpart of `.cache/antigravity`, the plugin marketplace staging
+  directory under Go's user cache directory, which the desktop app 2.23.1
+  created (empty) on a Windows 11 install. The installer's
+  `AppData/Local/antigravity-updater` and the app's program directory
+  `AppData/Local/Programs/antigravity` are not matched ([#83]).
 
 ### Changed
 
@@ -127,6 +133,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   directories first, and `cd` printed the directory it chose, so the
   root or output directory could become a same-named directory elsewhere,
   recorded as a two-line path ([#110]).
+- The PowerShell collector records a `collected` row's `size` as the
+  number of bytes it copied, the length the `sha256` covers. It used the
+  file's length from the directory listing, which NTFS updates only when
+  a handle on the file closes, so for a file a running app holds open
+  and writes the manifest could say `0` or `32` bytes beside an archived
+  copy of 218,747 or 210,152 (Antigravity's `language_server.log` and
+  Chromium's `DIPS-wal`), and `collected_bytes` understated the archive.
+  Other statuses keep the listing's length ([#111]).
 
 ## [1.11.0] - 2026-10-12
 
@@ -673,6 +687,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#111]: https://github.com/seanthegeek/doubleagent/issues/111
 [#110]: https://github.com/seanthegeek/doubleagent/issues/110
 [#109]: https://github.com/seanthegeek/doubleagent/issues/109
 [#108]: https://github.com/seanthegeek/doubleagent/issues/108

@@ -40,9 +40,9 @@ Closed source. Evidence levels, tagged per claim:
 - **live**: names and sizes only under `~/.gemini/antigravity-cli`,
   `~/.gemini/config` and `~/.cache/antigravity` on the Linux workstation
   where the ELF binary above was read.
-- **observed**: the macOS and Ubuntu real installs below, read for file
-  names, sizes, key names, value types, counts and log-line templates with
-  ids redacted only.
+- **observed**: the macOS, Ubuntu and Windows real installs below, read
+  for file names, sizes, key names, value types, counts and log-line
+  templates with ids redacted only.
 - **docs**: [Antigravity CLI install](https://antigravity.google/docs/cli/install/),
   [Antigravity settings](https://antigravity.google/docs/settings/),
   [Antigravity CLI hands-on codelab](https://codelabs.developers.google.com/antigravity-cli-hands-on); **community**:
@@ -162,6 +162,142 @@ exclude: `.gemini/antigravity/lib`, `.gemini/config/node_modules` and
 `~/Antigravity/demo`; the app's `~/demo2` was missed (issue 91,
 [section 6](#6-where-the-workspace-path-is-recorded)).
 
+**Observed (Windows, CLI)** (issues 83, 89, 90): `agy` 1.3.5
+(`agy --version`) at `%LOCALAPPDATA%\agy\bin\agy.exe`, on `PATH`,
+184,062,616 B, sha256
+`223953a7d64ad199bbeaae3cf84d634b0ec3917979c7a60feac6ade05d50888b`,
+installed 2026-10-14T23:56:21Z in the author's Parallels lab VM, Windows
+11 ARM64 build 26300 (`ver` reports `10.0.26300.9550`; ARM64 is the
+64-bit Arm architecture), and observed the same evening (US Eastern
+daylight time; the UTC times below cross into 2026-10-15). The
+executable's version resource (`VersionInfo.ProductVersion`, the version
+Windows shows in the file's properties) is empty. The embedded
+changelog's newest heading is `## 1.3.4`, with `## 1.3.0` to `## 1.3.4`
+present, and an ASCII search over the file finds the literals
+`plugin-secrets.json`, `Using file-based secret storage`, `wincred` and
+`CredWrite` ([section 3](#3-credentials)). No WSL (Windows Subsystem for
+Linux) distribution is installed. The CLI created
+`~/.gemini/antigravity-cli/` at 00:22:29Z (`~` is `%USERPROFILE%`,
+`C:\Users\<user>`, here). The user started it from `<home>\demo2`,
+typed with a lower-case `users` (`C:\users\<user>\demo2`), and ran a
+coding task that wrote one source file per language into ten
+subdirectories and a `README.md` (00:25:07Z to 00:27:16Z). That left one
+conversation, `conversations/<uuid>.db` (983,040 B, 00:28:12Z, 38 steps,
+`trajectory_meta.source` 17, no `-wal` or `-shm` sidecar when listed).
+Against 1.3.4 on Linux, the CLI also wrote
+`cache/conversation_metadata.json` and copied the desktop app's
+conversations into its own summaries database, its `cli.log` is a hard
+link rather than a symlink ([section 2](#2-per-user-storage)), and its
+OAuth token went to the Windows Credential Manager, not a file
+([section 3](#3-credentials)).
+
+**Observed (Windows, desktop app)** (issues 83, 84, 91): version 2.23.1
+(`main.log`: `Starting app (v2.23.1) with dynamic port…`; the version
+resource of `Antigravity.exe` has `ProductVersion` `2.23.1.0` and
+`FileVersion` `2.23.1`), in the same VM, first launched
+2026-10-14T23:56:11Z. The per-user installer was left at
+`%LOCALAPPDATA%\antigravity-updater\installer.exe` (155,215,064 B, sha256
+`428ad29354a12654db8be066cbce1fb307dca538b51176a584c1009cb59c3fbc`,
+23:55:21Z) and installed the app to `%LOCALAPPDATA%\Programs\antigravity\`
+(424 files, 574,823,898 B, 23:56:09Z): `Antigravity.exe` (226,382,336 B,
+sha256 `16febcd47a2a6823fe9ec4847b60f2fc766a46c8c355643185326a2879668243`),
+`Uninstall Antigravity.exe`, `resources\app.asar` (4,486,221 B, sha256
+`b8ec3628df2a12ee9deac5dc06367f238065af146bfe6298fdad6db5f9790d9c`,
+byte-identical to the Linux 2.23.1 asar), `resources\app.asar.unpacked\`
+(Node modules, among them `chrome-devtools-mcp`),
+`resources\app-update.yml` (144 B), `resources\elevate.exe` (107,520 B),
+`resources\bin\language_server.exe` (160,643,584 B, sha256
+`32d65353f033600274203137913207c02f636c214b8233c529a2afa0ee55ecf5`),
+`resources\bin\webm_encoder.exe` (12,472,320 B, sha256
+`e78f6cd6292baeb2d322cba9a5e66f2e42aed5589cba175fe4aa5dd6daea90fd`) and
+the usual Electron and Chromium files (`locales\`, `*.pak`, `icudtl.dat`,
+`ffmpeg.dll`, `vulkan-1.dll`, `d3dcompiler_47.dll`,
+`LICENSES.chromium.html`). It also made a Start Menu shortcut,
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Antigravity.lnk`, and
+an uninstall entry under
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall` (HKCU is
+`HKEY_CURRENT_USER`, the per-user registry hive) with `DisplayName`
+`Antigravity`, `DisplayVersion` `2.23.1` and no `InstallLocation`. There
+was no `Run` key entry, no scheduled task and nothing in the Startup
+folder, so, as on macOS and Linux, the schedule runs only while the app
+runs. While the app ran, six `Antigravity.exe` processes and one
+`language_server.exe` were running: the same backend as on the other
+platforms.
+
+The user ran, in the app: a question with no file writes; a coding task
+in a project folder `<home>\demo`, which wrote six files there (a hello
+world in C, Go, JavaScript, Python and Rust, and a `README.md`, 00:01:44Z
+to 00:03:20Z); a research task that wrote a Markdown document to the
+app's `scratch/` (00:10:29Z) and started a background task; and a task
+that set up a scheduled automation (a sidecar,
+[section 2](#2-per-user-storage)) named
+`weekly-microsoft-security-bulletins` (`sidecar.json` 00:17:41Z to
+00:20:16Z). The Google Docs plugin `gdocs` 0.0.6 was installed from the
+marketplace between 00:05:45Z and 00:08:51Z, when its `token.json` was
+written. As on macOS and Linux no listing was taken between tasks, so the
+mapping from task to file is by modification time only: the four
+conversation databases under `~/.gemini/antigravity/conversations/` are
+00:03:54Z (622,592 B, 20 steps), 00:06:55Z (589,824 B, 10 steps),
+00:13:30Z (1,441,792 B, 46 steps) and 00:20:53Z (6,258,688 B, 46 steps),
+all `trajectory_meta.source` 1 and none with a `-wal` or `-shm` sidecar
+when listed; the project file `~/.gemini/config/projects/<uuid>.json` is
+23:59:53Z. The surveys were taken after everything (00:29Z) and again
+after the collection (00:45Z); the second showed no new file, only the
+size refreshes described below. The app wrote `~/.gemini/antigravity/`,
+files in `~/.gemini/config/`, the Electron user-data directory
+`%APPDATA%\Antigravity\` with its `logs\`, and an empty
+`%LOCALAPPDATA%\antigravity\staging\` (23:56:15Z, before the CLI's first
+run). It created no `~/.gemini/antigravity-ide`,
+`~/.gemini/antigravity-backup`, `~/.antigravity`, `~/.config`, `~/.cache`
+or `~/.antigravity-server` under the profile, and no
+`%APPDATA%\Antigravity IDE`.
+
+Collector 1.12.0 under Windows PowerShell 5.1 (`collection.json`
+`platform`: `Windows 10.0.26300.0 ARM64 PowerShell 5.1.26100.9549`), run
+as administrator in live mode with `-Quiet` from 2026-10-15T00:34:27Z to
+00:34:30Z, while the app and its language server were running, found 1
+user (the three service profiles were scanned and empty) and 2 projects,
+and wrote 213 `collected` rows (14,339,425 B by the manifest), 12
+`skipped_excluded`, 5 `error_copy` and no `skipped_size`,
+`skipped_secret`, `symlink` or `error_read` row; `tar.exe` wrote the
+archive (2,248,759 B). The excluded rows, with their sizes, are in
+[section 4](#4-exclude); the only `secret: true` row was the plugin's
+`token.json`. The five `error_copy` rows were files the running app
+held: the last conversation's `.gemini\antigravity\presence\<uuid>.lock`
+(`The process cannot access the file because another process has locked a portion of the file.`),
+the `LOCK` files of `Local Storage\leveldb` and `Session Storage` (the
+same message), and `Network\Cookies` (20,480 B) and
+`Network\Cookies-journal` (`... because it is being used by another process.`).
+The three lock files are empty, so only their rows were lost; the cookie
+store is the one real loss, as on a live Claude Desktop host
+([locked files in `collectors/docs/windows.md`](../docs/windows.md#locked-files-and-long-paths)).
+Collected unflagged with credential-like names were only `Trust Tokens`
+and its journal ([section 3](#3-credentials)). The manifest `size` was
+stale for files the app held open (issue 111): `logs\language_server.log`
+0 against 218,747 B staged and archived, `DIPS-wal` 32 against 210,152,
+and the two `000003.log` files of the LevelDB stores (LevelDB is the
+key-value store format Chromium uses for web storage) 30 against 49 and
+68 B. A
+`Get-ChildItem` listing before the run showed the same numbers and one
+after it the real ones: NTFS, the Windows file system, updates the length
+in a file's directory entry only when a handle on the file closes or the
+file is reopened, so the length read before the copy was stale and the
+collector's own open refreshed it. The `sha256` covered the real bytes.
+From 1.12.0 the PowerShell collector records the copied byte count for a
+`collected` row. `cli.log` and the log file it is hard-linked to were
+collected as two regular files with the same bytes, since the PowerShell
+collector has no hard-link handling. The two projects were `<home>\demo`,
+from the project file's `folderUri`, and `C:\users\<user>\demo2`, from
+`history.jsonl` `workspace`.
+
+The sh collector 1.12.0 in image mode over the archive's `fs/C` tree
+(bash 3.2 on macOS), with the empty `demo` directory recreated because
+the archive does not hold it (the project had no project-level
+artifact), recorded the real sizes (14,768,349 B for the same 213 files),
+discovered `demo` from the percent-encoded `file:///c%3A/...` URI (the
+issue 91 fix) and, as documented, not `demo2`, whose only references are
+Windows paths ([section 6](#6-where-the-workspace-path-is-recorded)).
+
 ## 2. Per-user storage
 
 Everything the CLI and the app keep per user sits under `~/.gemini/`; the
@@ -172,8 +308,23 @@ builds the same path from Node's `os.homedir()` (bundle, below).
 `os.UserConfigDir`/`os.UserCacheDir`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`,
 `APPDATA`, `LOCALAPPDATA` also appear (binary), consistent with the
 `~/.cache/antigravity/staging` dir (live, observed; empty) used as the
-plugin "marketplace cache ... staging directories" (str changelog).
-Windows CLI install dir is `%LOCALAPPDATA%\agy\bin` (docs/cli/install).
+plugin "marketplace cache ... staging directories" (str changelog). On
+Windows the same directory is `%LOCALAPPDATA%\antigravity\staging`
+(observed, Windows 11 ARM64 build 26300, 2026-10-14; empty), since Go's
+`os.UserCacheDir()` is `%LOCALAPPDATA%` there; the desktop app 2.23.1
+created it during its first launch, before the CLI's first run. From
+collector 1.12.0 `antigravity|AppData/Local/antigravity` collects it.
+Windows CLI install dir is `%LOCALAPPDATA%\agy\bin` (docs/cli/install;
+observed with CLI 1.3.5).
+
+**Windows install metadata** (observed, Windows 11 ARM64 build 26300,
+2026-10-14): the app's program directory
+`%LOCALAPPDATA%\Programs\antigravity\`, its installer in
+`%LOCALAPPDATA%\antigravity-updater\`, the Start Menu shortcut and the
+`HKCU` uninstall entry ([section 1](#1-source-and-evidence-level)) are
+binaries and install metadata, not state, and have no catalog line. The
+catalog line `AppData/Local/antigravity` names a whole path component, so
+it matches neither `antigravity-updater` nor `Programs\antigravity`.
 
 **The four data directories under `~/.gemini`.**
 
@@ -259,6 +410,41 @@ Added on Linux (observed, app 2.23.1):
   symlink and `cache/marketplaces/antigravity-plugins-official/`
   (282,624 B) as on macOS.
 
+On Windows (observed, app 2.23.1, Windows 11 ARM64 build 26300,
+2026-10-14) the layout is the same, with these differences:
+
+- `bin/` holds `agentapi.bat` (107 B), `webm_encoder.exe` (12,472,320 B)
+  and `gdocs.cmd` (128 B), a `.cmd` launcher where macOS and Linux have
+  the `bin/gdocs` symlink.
+- No `sidecar_data/` (see the sidecar bullet under `~/.gemini/config/`
+  below) and no `lib/`.
+- `conversations/<uuid>.db` x4 (589,824 to 6,258,688 B) and
+  `conversation_summaries.db` (159,744 B), none with a `-wal` or `-shm`
+  sidecar when listed.
+- In the research task's conversation,
+  `brain/<uuid>/.system_generated/messages/` holds `<uuid>.json` x2
+  (1,400 and 2,010 B), `read.json` (89 B, an object of two message UUIDs
+  to booleans) and an empty `undelivered/` directory, not seen on another
+  install; `tasks/task-7.log` (988 B) sits beside it.
+- One `transcript_full.jsonl` (163,340 B) is also split into
+  `chunks/transcript_full/00000000.jsonl` (102,400 B) and
+  `00000001.jsonl` (60,940 B), the first time a second chunk was seen:
+  the chunks are cut at 102,400 B. The four conversations'
+  `transcript.jsonl` and `transcript_full.jsonl` are 12,720 and 12,357 B,
+  17,119 and 17,053 B, 56,481 and 163,340 B, and 55,052 and 63,094 B.
+- In the automation task's conversation, `steps/26/content.md` is
+  2,682,163 B beside a 336 B `output.txt`, against the 24,820 B
+  `content.md` on Linux.
+- Other sizes: `agyhub_summaries_proto.pb` 1,417 B,
+  `annotations/<uuid>.pbtxt` x4 93 to 96 B, `antigravity_state.pbtxt`
+  812 B, `builtin/.checksum` 72 B, `installation_id` 36 B,
+  `scratch/<name>.md` 23,305 B, `plugin_data/gdocs/token.json` 1,122 B,
+  `plugin_data/gdocs/bin/` 31,200,920 B,
+  `cache/marketplaces/antigravity-plugins-official/` 207,829 B
+  (`marketplace.json` 17,664 B, `meta.json` 48 B and
+  `plugins/gdocs/0.0.6/`), and `crashes/crash_<pid>_<uuid>.log` and
+  `presence/<uuid>.lock` x4 at 0 B.
+
 Jetski and Jetbox are internal names that appear in the CLI's file names
 and keyring service; the binary does not explain them.
 
@@ -323,6 +509,51 @@ they name `~/.gemini/config/config.json`, `~/.gemini/extensions` (Gemini
 CLI's extension directory, absent on this install) and the workspace
 paths.
 
+Observed on Windows (CLI 1.3.5, Windows 11 ARM64 build 26300,
+2026-10-14), against 1.3.4 on Linux:
+
+- `cache/conversation_metadata.json` (2,671 B), new: `conversations`
+  {`<uuid>` x4: {`is_internal` (bool), `last_modified_time` (ISO 8601
+  date), `summary` {`AgentName` (empty string), `AppDataDir` (11
+  characters), `GroupID` (empty string), `ID` (UUID), `Internal` (bool),
+  `Loaded` (bool), `NumSteps` (number), `Preview` (string), `ProjectID`
+  (18 characters), `Title` (string), `UpdatedAt` (ISO 8601 date),
+  `WorkspaceURIs` (null)}}}. The four entries are the desktop app's four
+  conversations; an 11-character `AppDataDir` is `antigravity`, the
+  app's data directory.
+- `conversation_summaries.db` (40,960 B, no sidecars) holds five rows:
+  the CLI's own conversation and one for each of the app's four, with
+  `app_data_dir` `antigravity`. `cli.log` has one line from
+  `reconcile_summaries.go` and one from `project_uris_migration.go`. So
+  CLI 1.3.5 copies the app's conversation index into its own; the
+  analyzer yields a summary row per app conversation from each database
+  ([section 4 of `analyzer/research/antigravity.md`](../../analyzer/research/antigravity.md#4-summaries-database)).
+  This was not seen on macOS (CLI 1.2.16) or Linux (1.3.4); whether it is
+  new in 1.3.5 or needs the app to have run first is not determined.
+- `cli.log` (41,122 B) is an NTFS hard link to
+  `log/cli-20261014_202229.log`, not a symlink: `fsutil hardlink list`
+  (`fsutil` is the Windows file-system utility) names both paths. A
+  collection holds the bytes twice ([section 1](#1-source-and-evidence-level)).
+- `updater/update.lock` (0 B) and `updater/update_status.json` (59 B;
+  `message` string, `success` bool).
+- `plugin_data/gdocs/`, an empty directory; the plugin's `token.json` is
+  in the app's directory.
+- `history.jsonl` (230 B) has one line with `display`, `timestamp` and
+  `workspace` and no `conversationId`.
+- `settings.json` (172 B): `permissions` {`allow`, one string} and
+  `trustedWorkspaces` (one absolute Windows path).
+- Other files: `annotations/<uuid>.pbtxt` (46 B), `bin/agentapi.bat`
+  (68 B), `bin/webm_encoder.exe` (12,472,320 B),
+  `cache/default_project_id.txt` (19 B), `cache/last_conversations.json`
+  (70 B, one absolute path to a UUID), `cache/marketplaces/` (17,712 B),
+  `cache/onboarding.json` (111 B; `consumerOnboardingComplete`,
+  `enterpriseOnboardingComplete`, `onboardingComplete`, booleans),
+  `implicit/<uuid>.pb` (226 B), `installation_id` (36 B),
+  `jetbox_summaries_proto.pb` (430 B), `jetski_state.pbtxt` (503 B),
+  `last_check.timestamp` (0 B), `presence/<uuid>.lock` (0 B), an empty
+  `crashes/`, and the same `builtin/` skills. There is no
+  `antigravity-oauth-token` ([section 3](#3-credentials)).
+
 **`~/.gemini/config/`**, shared by the CLI and the app (binary changelog,
 live names, observed 232 KB on macOS): `mcp_config.json`, `hooks.json`,
 `config.json`, `projects/<uuid>.json`, `skills/<name>/SKILL.md`,
@@ -340,10 +571,16 @@ dirs (both superseded). Observed on macOS:
   (1,356 B, 22:00) it also has `sidecars` {`<name>` {`argumentValues`
   (null), `enabled` (bool), `projectId` (UUID), `resolvedPermissions`
   {`accessGrants`, an array of 2 strings}, `schemaVersion` (number)}},
-  one entry per scheduled automation.
+  one entry per scheduled automation. On Windows (3,332 B, app 2.23.1) it
+  has `plugins` as on macOS and `userSettings` {`globalPermissionGrants`
+  {`allow`, an array of 14 strings}, `remoteControlHostname`}: no
+  `sidecars` key although an automation was saved, and neither
+  `permissionGrantsV2Migrated` nor `sandboxEnabledAtV2Migration`.
 - `plugins/gdocs/`: the installed plugin, `plugin.json`, `README.md`,
   `skills/gdocs/SKILL.md`, nine reference documents and the launcher
-  scripts `skills/gdocs/scripts/gdocs` (shell) and `gdocs.cmd`.
+  scripts `skills/gdocs/scripts/gdocs` (shell) and `gdocs.cmd`. On
+  Windows: `plugin.json` 429 B, `README.md` 154 B, `SKILL.md` 41,701 B,
+  `scripts/gdocs` 2,102 B and `scripts/gdocs.cmd` 1,756 B.
 - `projects/<uuid>.json` (283 B), written by the app when a project is
   created: `id`, `isWorkspaceOnly`, `name`, `permissionGrants`,
   `projectResources` {`resources`, an array of objects whose `folderUri` is a `file://` URL},
@@ -355,7 +592,12 @@ dirs (both superseded). Observed on macOS:
   {`allow`, an array of 2 strings}, `v2Migrated`}, an empty
   `projectResources` and `settings` {`artifactReviewMode`}; by its time
   and its grants, the project the scheduled automation runs under (the
-  `config.json` `sidecars` entry has a `projectId`).
+  `config.json` `sidecars` entry has a `projectId`). On Windows (243 B,
+  app 2.23.1) the project file has `id`, `isWorkspaceOnly`, `name`,
+  `projectResources` and an empty `settings`, with no `permissionGrants`,
+  and its `folderUri` is `file:///c%3A/Users/<user>/demo`: a lower-case
+  drive letter and a percent-encoded colon. `default-cli-project.json`
+  (84 B) is as on macOS, and there is no folder-less automation project.
 - `sidecars/<name>/sidecar.json` (725 B), the automation the user
   scheduled. A sidecar is the app's name for a long-running helper
   process that its language server supervises; the app starts the server
@@ -371,9 +613,25 @@ dirs (both superseded). Observed on macOS:
   `~/.gemini/antigravity/sidecar_data/<name>/logs/sidecar.log` (observed,
   Linux); where a fired run's transcript lands was not observed: no run
   had fired on either install.
-- `mcp_config.json` and `.migrated`, both empty.
+  On Windows (app 2.23.1) `sidecars/weekly-microsoft-security-bulletins/sidecar.json`
+  (1,005 B) has the same keys, with `access_grants` an array of 3
+  strings, but 25 minutes after it was saved there was no
+  `~/.gemini/antigravity/sidecar_data/` and no `sidecars` entry in
+  `config.json`, both of which the Linux install had within a minute.
+  The language server logged it (glog lines, digits and names redacted):
+  `manager.go:NN] Migration [MIGRATION_ID_BUILTIN_SIDECARS_TO_PLUGINS] is enabled`
+  (three times), the same migration `starting`,
+  `completed successfully in NN.NNNNms` and twice
+  `already has status MIGRATION_STATUS_...`;
+  `manager.go:NN] Migration [MIGRATION_ID_SIDECAR_USER_CONFIG_BYPASS] is disabled, skipping entirely`
+  (three times); one
+  `sidecar_manager.go:NNN] Config changed for sidecar <name>, updating...`
+  and one `sidecar_sdk.go:NN] Using bundled agy-node`. Whether the
+  sidecar ever started on Windows, and where its log would go, is not
+  determined.
+- `mcp_config.json` and `.migrated`, both empty (also on Windows).
 - `node_modules/sidecar_sdk/` (observed, Linux, 5 files, 17,508 B): a copy
-  of the sidecar SDK, excluded from 1.12.0.
+  of the sidecar SDK, excluded from 1.12.0. Absent on Windows.
 
 **The desktop app's Electron user-data directory.** Electron keeps each
 app's own state, Chromium's storage included, in a per-user directory
@@ -388,8 +646,8 @@ on macOS and `%APPDATA%` on Windows
 macOS and Windows only).
 So the directory is `~/Library/Application Support/Antigravity`
 (observed), `~/.config/Antigravity` (observed on Linux, app 2.23.1) and
-`%APPDATA%\Antigravity` (Windows, bundle-derived, not observed on any
-real install). The app stores UI state there
+`%APPDATA%\Antigravity` (observed on Windows 11 ARM64 build 26300, app
+2.23.1, 2026-10-14). The app stores UI state there
 (`app.asar:dist/paths.js@4313059` `function getAppStoragePath() {` ...
 `path_1.default.join(electron_1.app.getPath('userData'), 'app_storage.json')`,
 "lightweight key-value store for UI state") and a Node wrapper for plugin
@@ -434,6 +692,34 @@ Crashpad being Chromium's crash reporter). New against macOS:
 `Dictionaries/en-US-10-1.bdic` (451,968 B), the spell-check dictionary
 Chromium downloads in its binary `.bdic` format, excluded from 1.12.0.
 
+Observed on Windows (`%APPDATA%\Antigravity\`, created 23:56:11Z, app
+2.23.1, Windows 11 ARM64 build 26300, 2026-10-14): `app_storage.json`
+(1,545 B; the macOS key set, without the two Linux additions),
+`bin\agy-node.cmd` (107 B, the Windows name the bundle predicts),
+`.updaterId` (36 B), `DevToolsActivePort` (60 B), `Preferences` (132 B;
+`electron.media.device_id_salt`, `spellcheck.dictionaries` (one string),
+`spellcheck.dictionary`), `Local State` (490 B; `os_crypt`
+{`audit_enabled` (bool), `encrypted_key` (a 380-character string)} and
+`uninstall_metrics` {`installation_date2`}, see
+[section 3](#3-credentials)), `logs\main.log` (4,751 B, 51 lines) and
+`logs\language_server.log` (218,747 B), `Network\Cookies` (20,480 B) and
+`Cookies-journal`, `Network Persistent State` (472 B),
+`NetworkDataMigrated` (0 B), `Network\Trust Tokens` (36,864 B)
+and its `-journal`, `DIPS` (4,096 B) and `DIPS-wal` (210,152 B),
+`declarative_performance_observer.db` (32,768 B) and its `-journal`,
+`Local Storage\leveldb\` (`000003.log` 49 B, `CURRENT`, `LOCK`, `LOG`
+251 B, `MANIFEST-000001`), `Session Storage\` (`000003.log` 68 B and the
+other LevelDB files), `lockfile` (0 B, the Windows form of the
+`Singleton*` symlinks, which do not exist here), and the caches
+`Cache\Cache_Data` and `Cache\No_Vary_Search` (9,368,215 B in all),
+`Code Cache` (22,862 B), `DawnGraphiteCache`, `DawnWebGPUCache` and
+`GPUCache` (557,424 B each), `Shared Dictionary` (45,128 B) and an empty
+`blob_storage\<uuid>\`. There is no `Crashpad\`, no `Dictionaries\`, no
+`CachedData` and no `User\`.
+`%APPDATA%\antigravity` (lower case) is the same directory, as expected
+on a case-insensitive filesystem, and there is no
+`%APPDATA%\Antigravity IDE`.
+
 **Logs.** Electron's logs directory is `~/Library/Logs/<name>` on macOS
 and `<userData>/logs` elsewhere
 (`app.asar:node_modules/electron-log/src/main/ElectronExternalApi.js@2216282`
@@ -446,8 +732,8 @@ backend's log goes there too (`app.asar:dist/paths.js@4313430`
 `app.asar:dist/constants.js@4136120`
 `exports.LS_LOG_FILE_NAME = 'language_server.log';`). So the logs are in
 `~/Library/Logs/Antigravity` (observed), `~/.config/Antigravity/logs`
-(observed on Linux) and `%APPDATA%\Antigravity\logs` (bundle-derived, not
-observed on any real install). Observed on macOS: `main.log` (1,696 B; lines
+(observed on Linux) and `%APPDATA%\Antigravity\logs` (observed on
+Windows 11 ARM64 build 26300, app 2.23.1, 2026-10-14). Observed on macOS: `main.log` (1,696 B; lines
 `[YYYY-MM-DD HH:MM:SS.mmm] [info]  <message>`, among them
 `Starting app (v2.23.0) with dynamic port…`,
 `Host bridge server listening on http://127.0.0.1:<port>`,
@@ -464,6 +750,20 @@ AppImage warning ([section 1](#1-source-and-evidence-level)) and
 `Shutting down language server…`; `language_server.log` names
 `~/.gemini/config/projects/outside-of-project.json` 194 times (absent)
 and `~/.gemini/antigravity-cli/conversations/<uuid>.pb` once.
+Observed on Windows: `main.log` (51 lines) has the
+`Starting app (v2.23.1) with dynamic port…` line and, beyond the
+templates above (digits and ids redacted):
+`Generated new staging user ID: <uuid>`,
+`Host bridge server listening on http://127.0.0.1:<port>`,
+`[Auto-Restart] Port changed! Reloading all windows with URL: https://127.0.0.1:<port>/`,
+`Local: https://127.0.0.1:<port>/`,
+`LS Logs: <home>\AppData\Roaming\Antigravity\logs\language_server.log`,
+`Electron Logs: <home>\AppData\Roaming\Antigravity\logs\main.log`,
+`[IDE Wizard] <home>\.gemini\antigravity not found — user was not migrated, skipping.`,
+`Update for version 2.23.1 is not available (latest version: 2.23.1, downgrade is allowed).`,
+`[AutoUpdater] Up to date (2.23.1)`, and three WSL errors (see
+**WSL** below). The sidecar lines of `language_server.log` are under
+`~/.gemini/config/` above.
 
 `~/Library/Preferences/com.google.antigravity.plist` (916 B, observed)
 holds only AppKit window and panel keys (`AppleTextDirection`,
@@ -498,7 +798,17 @@ binaries, not state, and have no catalog line.
 (`app.asar:dist/wsl.js@4411665`
 `` return `$HOME/.antigravity-server/bin/${version}`; ``; bundle-derived,
 not observed on any real install). The directory holds the server binary;
-where that server keeps conversations is not determined.
+where that server keeps conversations is not determined. The Windows
+install (app 2.23.1, Windows 11 ARM64 build 26300, 2026-10-14, no WSL
+distribution installed) shows the app listing WSL distributions at
+start-up and for a "connect" menu: `main.log` has twice
+`[error] Failed to list WSL distros: Error: wsl.exe --list --verbose failed: Command failed: C:\WINDOWS\System32\wsl.exe --list --verbose`
+with the OS text "The Windows Subsystem for Linux is not installed. You
+can install by running 'wsl.exe --install'", from `dist\wsl.js`
+(`execWsl`, `listWslDistros`), and once `[error] wsl:get-state failed: ...`
+from `dist\menu.js` (`addWslConnectMenu`, `wslConnectMenuTemplate`) and
+`dist\ipcHandlers.js`. The directory inside a distribution remains
+unobserved.
 
 Enterprise `admin_settings.json` is system-level: `/etc/antigravity/`,
 `/Library/Application Support/Antigravity/`, `...\Antigravity\` (binary).
@@ -519,6 +829,18 @@ unknown.
   Flagged by `*.gemini/antigravity-cli/antigravity-oauth-token`. The
   app's `~/.gemini/antigravity/` held no token file on the macOS install
   (observed).
+- On Windows the keyring is the Windows Credential Manager (observed, CLI
+  1.3.5, Windows 11 ARM64 build 26300, 2026-10-14). `cli.log` has
+  `auth.go:NNN] ChainedAuth: authenticated via keyring (effective: keyring)`
+  and `keyring.go:NN] keyringAuth: loaded token, expiry=<date> expired=false`,
+  and no `Using file-based secret storage` line; there is no
+  `antigravity-oauth-token` file and no `plugin-secrets.json` anywhere
+  under the profile (searched by name). The binary carries the `wincred`
+  and `CredWrite` literals, the Go keyring's Windows backend and the
+  Windows API call that writes a credential. `cmdkey /list` (the Windows
+  command that lists Credential Manager entries), run from an SSH (remote
+  shell) session, which is a different logon session, listed no entries, so the
+  entry's name is not determined.
 - `plugin_data/<plugin>/token.json` under a `.gemini` data directory:
   the Google Docs plugin's OAuth credential (observed,
   `~/.gemini/antigravity/plugin_data/gdocs/token.json`, 1,119 B, mode
@@ -526,7 +848,8 @@ unknown.
   `token` {`access_token`, `expiry`, `refresh_token`, `token_type`} and
   `updated_at`. Collector 1.11.0 collected it unflagged (issue 84); from
   1.12.0 `*.gemini/antigravity*/plugin_data/*/token.json` flags it in
-  every `.gemini/antigravity*` directory.
+  every `.gemini/antigravity*` directory. On Windows (1,122 B, app
+  2.23.1) collector 1.12.0 flagged it `secret: true`, the only such row.
 - `plugin-secrets.json`, the CLI's file store for plugin secrets when no
   OS keychain is usable (issue 90). Each CLI 1.3.4 log on Linux has two
   lines
@@ -540,7 +863,9 @@ unknown.
   Go's `os.UserConfigDir()` on Linux; the macOS and Windows paths,
   `~/Library/Application Support/antigravity/plugin-secrets.json` and
   `%APPDATA%\antigravity\plugin-secrets.json`, are inferred from
-  `os.UserConfigDir()`, not observed. On those case-insensitive
+  `os.UserConfigDir()`, not observed; the Windows install of CLI 1.3.5
+  used the Credential Manager and wrote no such file, though its binary
+  carries the literal. On those case-insensitive
   filesystems the directory is the app's Electron user-data directory
   when that exists. From 1.12.0 the three paths are catalog entries and
   `.config/[Aa]ntigravity/plugin-secrets.json`,
@@ -556,11 +881,25 @@ unknown.
 - `~/.gemini/config/mcp_config.json` can embed MCP `env` and `headers`
   (binary `McpStdioTransport.EnvEntry`, `McpHttpTransport.HeadersEntry`).
 - The Electron user-data directory's `Cookies` (SQLite, 0 rows on the
-  macOS install, 20,480 B on Linux), `Trust Tokens` (Chromium's store for
-  the Private State Tokens web API, 36,864 B on Linux) with their
+  macOS install, 20,480 B on Linux and Windows, where it is
+  `Network\Cookies`), `Trust Tokens` (Chromium's store for
+  the Private State Tokens web API, 36,864 B on Linux and Windows) with their
   `-journal` files, and `Local Storage/leveldb/` (16 KB on macOS, 628 B on
   Linux, contents not read) are collected unflagged; whether any of them
-  can hold a credential is not determined. `app_storage.json` holds the signed-in account
+  can hold a credential is not determined. On a live Windows host the
+  running app holds `Network\Cookies` and its journal, so they get
+  `error_copy` rows ([section 1](#1-source-and-evidence-level)).
+- `Local State` on Windows (490 B) has `os_crypt.encrypted_key`, a
+  380-character string: Chromium's key for the cookie store, wrapped with
+  DPAPI (the Windows Data Protection API, the per-user encryption the OS
+  provides). macOS keeps that key in the Keychain and Linux in the
+  Secret Service, so `Local State` holds key material on Windows only
+  (the Linux file is 57 B with only `uninstall_metrics`). It
+  is collected unflagged: the rest of the file is install metadata, and
+  the key is useless without the user's DPAPI context. Treat
+  `encrypted_key` as a key to redact before sharing, as
+  [section 3 of `collectors/research/claude-desktop.md`](claude-desktop.md#3-credentials)
+  treats Claude Desktop's `metadata_secret`, not as a secret glob. `app_storage.json` holds the signed-in account
   name (`jetski.onboarding.lastLoginUsername`), which identifies the user
   but is not a credential.
 - IDE `state.vscdb` holds the conversation index
@@ -577,16 +916,19 @@ install's are given where they were recorded.
   encoder and launcher binaries (app 12,699,366 B in 2 files; CLI
   12,787,712 B on macOS, 17 MB on Linux; on the Linux install of CLI
   1.3.4 and app 2.23.1, 15,872,000 B and 15,876,096 B as the manifest
-  recorded them). One line per directory rather
+  recorded them; on the Windows install of CLI 1.3.5 and app 2.23.1,
+  12,472,388 B and 12,472,555 B). One line per directory rather
   than `.gemini/antigravity*/bin`, because `*` in an exclusion crosses
   `/` and that form would also prune any `bin` directory the agent writes
   under `brain/<uuid>/`.
 - `.gemini/antigravity*/plugin_data/*/bin`: plugin binaries (the Google
-  Docs plugin's, 31,938,752 B; 36,327,424 B on Linux). The plugin's
+  Docs plugin's, 31,938,752 B; 36,327,424 B on Linux; 31,200,920 B on
+  Windows). The plugin's
   `token.json` beside it stays collected.
 - `.gemini/antigravity*/cache/marketplaces`: the plugin marketplace cache
   (16 files, 207,829 B; on Linux 282,624 B in the app's directory and
-  32,768 B in the CLI's, which has one from 1.3.x), a copy of the
+  32,768 B in the CLI's, which has one from 1.3.x; on Windows 207,829 B
+  and 17,712 B), a copy of the
   marketplace index and of each downloaded plugin; the installed copy is
   in `~/.gemini/config/plugins/`. The rest of `cache/` is collected.
 - `.gemini/antigravity*/brain/*/.system_generated/worktrees` (git
@@ -614,10 +956,16 @@ install's are given where they were recorded.
   because the PowerShell collector matches without regard to case, and
   `*/Antigravity/Cache` would also prune `.gemini/antigravity/cache`. None
   of the other patterns matches the data directories' lower-case `cache`,
-  `crashes` or `bin`.
-- `AppData/Local/agy` (CLI install) and `.antigravity/extensions`.
-  `.cache/antigravity` (the marketplace staging directory) is collected;
-  it was empty on every install checked.
+  `crashes` or `bin`. On Windows (observed, app 2.23.1) the set is
+  `Cache` 9,368,215 B, `Code Cache` 22,862 B, `DawnGraphiteCache`,
+  `DawnWebGPUCache` and `GPUCache` 557,424 B each, `Shared Dictionary`
+  45,128 B and `blob_storage` 0 B, all `skipped_excluded`; there is no
+  `Crashpad`, `Dictionaries` or `CachedData`.
+- `AppData/Local/agy` (CLI install; `bin\agy.exe` 184,062,616 B on
+  Windows) and `.antigravity/extensions`. `.cache/antigravity` (the
+  marketplace staging directory) and, from 1.12.0, its Windows form
+  `AppData/Local/antigravity` are collected; they were empty on every
+  install checked.
 - `Antigravity IDE` Electron caches (`Cache`, `CachedData`, `GPUCache`,
   `Code Cache`, by VS Code convention) are outside the collected `User`
   and `logs` subdirectories.
@@ -637,6 +985,11 @@ in favour of `cache/projects.json`). No per-project database.
 
 - `history.jsonl`: `workspace` per prompt (CLI only; the app writes no
   `history.jsonl`) ([section 2 of `analyzer/research/antigravity.md`](../../analyzer/research/antigravity.md#2-stores-relative-to-home)).
+  On Windows it is the folder as the user typed it, with a lower-case
+  `users` (`C:\users\<user>\demo2`, observed, CLI 1.3.5). The PowerShell
+  collector compares project paths without regard to case
+  (`Select-UniqueProjects`), so two spellings of one folder would not be
+  collected twice; on that install they were two folders.
 - `settings.json`: `trustedWorkspaces` array (binary json tag; docs/settings).
 - `cache/projects.json`: workspace to project map (binary changelog).
 - `history.jsonl` also carries `conversationId` from CLI 1.3.x (observed,
@@ -660,6 +1013,18 @@ in favour of `cache/projects.json`). No per-project database.
   `workspace_uri`, `project_id`, `display_name`, `cwd`.
 - `antigravity-cli/cache/last_conversations.json`: an object whose keys
   are absolute workspace paths (observed). Not read by the collectors.
+- On Windows `trustedWorkspaces`, the `history.jsonl` `workspace` and the
+  `last_conversations.json` keys are Windows paths (`C:\...`). The sh
+  collector keeps only `/`-rooted paths and `file://` URIs
+  ([which paths are used in `collectors/docs/coverage.md`](../docs/coverage.md#which-paths-are-used)),
+  so in image mode over a Windows collection it discovers a project
+  only from a `folderUri`: it found the app's `demo` and not the CLI's
+  `demo2` (observed, [section 1](#1-source-and-evidence-level)).
+- The analyzer carried the two Windows project folders under three
+  `project_path` spellings: `c:/Users/<user>/demo` (from the
+  percent-encoded `folderUri`), `C:/users/<user>/demo2` and
+  `C:\users\<user>\demo2`; folding them is
+  [doubleagent issue 112](https://github.com/seanthegeek/doubleagent/issues/112).
 - `conversation_summaries.db` (`workspace_uris` column) and the
   per-conversation `*.db`: SQLite only, read by the analyzer.
 
@@ -670,16 +1035,20 @@ app's data directory `~/.gemini/antigravity` and its contents (bundle and
 observed); the Electron user-data directory name `Antigravity` and the
 macOS logs directory (bundle and observed); the Linux Electron
 user-data directory `~/.config/Antigravity` and its `logs/` (bundle and
-observed, app 2.23.1); the roles of
+observed, app 2.23.1); the Windows Electron user-data directory
+`%APPDATA%\Antigravity` and its `logs\`, and the Windows staging
+directory `%LOCALAPPDATA%\antigravity\staging` (observed, app 2.23.1 and
+CLI 1.3.5, Windows 11 ARM64 build 26300, 2026-10-14); the Credential
+Manager as the CLI's keyring on Windows (observed log lines); the roles of
 `antigravity-ide` and `antigravity-backup` (bundle); the plugin token's
 location and keys (observed); the keyring service and file fallback;
 `~/.gemini/config` contents, including `projects/<uuid>.json` and
 `sidecars/<name>/sidecar.json` (observed); the CLI's log line naming
 `~/.config/antigravity/plugin-secrets.json` on Linux (observed). Medium:
-the Windows path of the Electron user-data directory and logs
-(bundle-derived, not observed on any real install); the macOS and
+the macOS and
 Windows paths of `plugin-secrets.json` (inferred from Go's
-`os.UserConfigDir()`, not observed) and its contents (never observed); `antigravity-ide/conversations` and
+`os.UserConfigDir()`, not observed; the Windows install used the
+Credential Manager instead) and its contents (never observed); `antigravity-ide/conversations` and
 `brain` (four community sources, no real install); the `Antigravity IDE`
 app-dir name on macOS (inferred from the Windows and Linux names);
 `knowledge/` sub-layout (one source); `.cache/antigravity` purpose.
@@ -691,4 +1060,9 @@ writes and whether it becomes a conversation (the scheduler's own log is
 fired); whether the Electron
 `Cookies` or `Local Storage/` can hold a credential; where the WSL
 language server keeps state; the `implicit/*.pb` and `presence/`
-semantics; whether `~/.antigravity` is still written by any build.
+semantics; whether `~/.antigravity` is still written by any build;
+whether the scheduled automation's sidecar ever started on Windows, and
+where its log would go there (no `sidecar_data/` appeared); the name of
+the CLI's Credential Manager entry on Windows; whether CLI 1.3.5 copies
+the app's conversation summaries on every platform, or only once the
+app has run.

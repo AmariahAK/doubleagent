@@ -843,6 +843,18 @@ $file108 = Join-Path $Work 'file108'
 Mk 'Users/alice/.claude/plugins/y/node_modules/f.js' "module.exports = 1`n"
 $cwd109 = Join-Path $Work 'cwd109'
 New-Item -ItemType Directory -Path (Join-Path $cwd109 '.claude/plugins/x/node_modules') -Force | Out-Null
+# 2026-10-14 Antigravity on Windows (#83)
+# From the Windows 11 install of the desktop app 2.23.1 and CLI 1.3.5: the
+# marketplace staging directory under AppData/Local/antigravity (the Windows
+# form of .cache/antigravity, empty on the install, given a file here so
+# it has a row), beside the installer's AppData/Local/antigravity-updater
+# and the app's program directory AppData/Local/Programs/antigravity, which
+# the catalog line must not match. Checks follow the default run below; the
+# same files are in smoke.sh.
+$l83 = 'Users/alice/AppData/Local'
+Mk "$l83/antigravity/staging/s1" "staged`n"
+Mk "$l83/antigravity-updater/installer.exe" "exe`n"
+Mk "$l83/Programs/antigravity/Antigravity.exe" "exe`n"
 $Miss = Test-Made
 Check "every main-image fixture was created ($($Miss.Count) missing$(if ($Miss.Count) { ', first ' + $Miss[0] }))" { $Miss.Count -eq 0 }
 Check '#77 deep fixture path is longer than 260 characters' { (P $Deep77).Length -gt 260 }
@@ -1228,12 +1240,21 @@ Check '#91 Antigravity drive-letter folderUri discovers project' { (StatusOf 'ag
 $r107 = Row 'Users/alice/.local/bin/.muse-update.107.exe'
 Check '#107 excluded file match gets a skipped_excluded row with its size' { $r107 -and $r107.user -eq 'alice' -and $r107.home -eq (P 'Users/alice') -and $r107.agent -eq 'muse-code' -and $r107.archive_path -eq '' -and $r107.type -eq 'file' -and $r107.size -eq 5 -and $r107.sha256 -eq '' -and $r107.secret -eq $false -and $r107.status -eq 'skipped_excluded' -and $r107.target -eq '' -and $r107.error -eq '' }
 Check '#107 excluded file match not archived' { -not ($DefaultEntries | Where-Object { $_ -like '*muse-update.107.exe' }) }
+# 2026-10-14 Antigravity on Windows (#83)
+Check '#83 Antigravity Windows staging file collected as antigravity' { Is83 "$l83/antigravity/staging/s1" $false }
+Check '#83 Antigravity installer and program directory not collected' { (NoRow83 'antigravity-updater/installer.exe') -and (NoRow83 'Programs/antigravity/Antigravity.exe') }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
 $n = Test-ArchivedHashes $x
 Check "archived file bytes match manifest hashes ($n files)" { $n -gt 10 }
+# 2026-10-14 manifest size of a collected file (#111): the size is the byte
+# count the copy wrote, so it equals the archive member's length. CI cannot
+# make NTFS report a stale length, so this guards the plumbing only.
+$r111 = Row "$g83/conversations/a1.db"
+$f111 = $null; if ($r111) { $f111 = XP (Join-Path $x ($r111.archive_path.Replace('/', $Sep))) }
+Check '#111 collected size is the length of the archived copy' { $r111 -and $r111.size -eq 6 -and (Get-Item -LiteralPath $f111 -Force).Length -eq $r111.size }
 # 2026-10-10 long paths (#77): the deep transcript, by its plain path.
 $r77 = Row $Deep77
 Check '#77 deep transcript collected as claude-code under its plain path' { $r77 -and $r77.status -eq 'collected' -and $r77.agent -eq 'claude-code' -and $r77.path -eq (P $Deep77) -and -not $r77.path.StartsWith('\\?\') -and $r77.error -eq '' }

@@ -39,6 +39,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`Library/Application Support/Antigravity`, `.config/Antigravity`,
   `AppData/Roaming/Antigravity`) and its macOS logs directory
   `Library/Logs/Antigravity` are detected as `antigravity` ([#83]).
+- The bundled catalog copy detects `AppData/Local/antigravity`, the
+  Windows staging directory of the Antigravity desktop app and CLI, as
+  `antigravity`, following collector 1.12.0 ([#83]).
 - The `antigravity` parser reads the Antigravity desktop app's
   conversations: `conversations/*.db` and `conversation_summaries.db`
   under `.gemini/antigravity` (the desktop app 2.x), and under

@@ -858,6 +858,20 @@ printf 'module.exports = 1\n' >"$H/.claude/plugins/y/node_modules/f.js"
 # image root, for the cdpath110 run below.
 mkdir -p "$WORK/cdp110/root/home"
 
+# 2026-10-14 Antigravity on Windows (#83)
+# From the Windows 11 install of the desktop app 2.23.1 and CLI 1.3.5: the
+# marketplace staging directory under AppData/Local/antigravity (the Windows
+# form of .cache/antigravity, empty on the install, given a file here so
+# it has a row), beside the installer's AppData/Local/antigravity-updater
+# and the app's program directory AppData/Local/Programs/antigravity, which
+# the catalog line must not match. Checks follow the default run below; the
+# same files are in smoke.ps1.
+L83="$H/AppData/Local"
+mkdir -p "$L83/antigravity/staging" "$L83/antigravity-updater" "$L83/Programs/antigravity"
+printf 'staged\n' >"$L83/antigravity/staging/s1"
+printf 'exe\n' >"$L83/antigravity-updater/installer.exe"
+printf 'exe\n' >"$L83/Programs/antigravity/Antigravity.exe"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1140,6 +1154,9 @@ check "#91 Antigravity drive-letter folderUri discovers project" "[ \"\$(status_
 # 2026-10-14 catalog match that is an excluded file (#107)
 check "#107 excluded file match gets a skipped_excluded row with its size" "row \"$H/.local/bin/.muse-update.107.exe\" | grep -q '^{\"user\":\"alice\",\"home\":\"$H\",\"agent\":\"muse-code\",\"path\":\"[^\"]*\",\"archive_path\":\"\",\"type\":\"file\",\"size\":5,.*\"sha256\":\"\",\"secret\":false,\"status\":\"skipped_excluded\",\"target\":\"\",\"error\":\"\"}\$'"
 check "#107 excluded file match not archived" "! tar -tzf \"\$A\" | grep -q 'muse-update.107.exe'"
+# 2026-10-14 Antigravity on Windows (#83)
+check "#83 Antigravity Windows staging file collected as antigravity" "row \"$L83/antigravity/staging/s1\" | grep -q '\"agent\":\"antigravity\".*\"status\":\"collected\"'"
+check "#83 Antigravity installer and program directory not collected" "! grep -q 'antigravity-updater/installer.exe\"' \"\$M\" && ! grep -q 'Programs/antigravity/Antigravity.exe\"' \"\$M\""
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
