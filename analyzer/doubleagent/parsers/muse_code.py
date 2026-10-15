@@ -105,8 +105,9 @@ macOS and Windows, which resolve `XDG_DATA_HOME` or the home):
   to `PARENT_SCAN_LINES` lines.
 * `.local/share/muse/tui-history.jsonl`: two lines per prompt, a JSON
   string (the text) then `{project, session}`. No timestamp. A secondary
-  source (`dedup.py`), but with no timestamp its rows never match a
-  session row, so the timeline keeps them all.
+  source (`dedup.py`): its rows have an empty `timestamp_utc`, so each
+  matches a session row of the same session and text with no time
+  constraint, and is kept only when no session row has the text.
 * `.config/muse/trust.json` (`projects.<absolute path>.decision`): one
   `system` row per project, `permission setting:
   projects.<path>.decision=<decision> (from .config/muse/trust.json, file

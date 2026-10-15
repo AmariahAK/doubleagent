@@ -470,7 +470,7 @@ def collect_rows(
     (`dedup.deduplicate`, issue 122)."""
     parsers = by_agent()
     primary: list[Row] = []
-    secondary: list[Row] = []
+    secondary: list[tuple[Row, float]] = []
     problems: list[str] = list(col.problems)
     for a in col.artifacts:
         for p in parsers_for(a, parsers):
@@ -480,13 +480,16 @@ def collect_rows(
                 continue
             if not p.wants(a):
                 continue
-            into = secondary if p.secondary(a) else primary
+            tolerance = p.secondary_tolerance(a) if p.secondary(a) else None
             try:
                 for row in p.parse(a, opts):
                     # One spelling per Windows folder, whichever parser and
                     # store the path came from (issue 112).
                     row.project_path = canonical_project_path(row.project_path)
-                    into.append(row)
+                    if tolerance is None:
+                        primary.append(row)
+                    else:
+                        secondary.append((row, tolerance))
             except OSError as e:
                 problems.append("%s: %s" % (a.original, error_reason(e)))
     rows, deduplicated = deduplicate(primary, secondary)

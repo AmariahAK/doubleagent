@@ -46,9 +46,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `logs.json` and Muse Code's `tui-history.jsonl`; one of their rows is
   dropped when a primary-store row of the same host, user and agent has
   the same `turn_type` and `text`, the same `session_id` (or, without
-  one, the same `project_path`) and a `timestamp_utc` at most 2 seconds
-  away. Secondary rows with no match are kept, so a prompt whose
-  transcript is gone is still in the timeline ([#122]).
+  one, the same `project_path`, or, without either, any session or
+  project) and, when the secondary row has a `timestamp_utc`, one at
+  most 2 seconds away (a wider window where the parser table says so);
+  a row with no timestamp, such as Muse Code's, matches on text alone.
+  Secondary rows that no primary row took are then matched among
+  themselves the same way, so copies of one event kept by several
+  backups appear once, as the first; a row pairs only with one from a
+  different file, so two identical lines in one file both stay. Secondary rows with no match are
+  kept, so a prompt whose transcript is gone is still in the timeline
+  ([#122]).
 
 ## [0.12.0] - 2026-10-15
 

@@ -504,14 +504,15 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # Antigravity CLI history's "now the tests" (the conversation database holds
 # only "clean the logs"), the Gemini logs.json "delete everything in
 # /srv/proj" (a rewind removed it from the session), the Qwen logs.json
-# model_switch entry (a `system` row whose text no session row has), and the
-# Muse tui-history.jsonl prompt (the file records no time, and an empty
-# timestamp never matches).
+# model_switch entry (a `system` row whose text no session row has). The Muse
+# tui-history.jsonl prompt records no time and matches its session's prompt
+# on text alone.
 FIXTURE_DEDUPLICATED = {
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
     "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
     "gemini-cli": 1,  # "list files in src"
+    "muse-code": 1,  # "fix the failing test", no timestamp
     "open-interpreter": 1,  # "list the files"
     "qwen-code": 1,  # "run the tests"
 }

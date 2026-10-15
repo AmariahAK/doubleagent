@@ -433,6 +433,12 @@ and say in the module docstring if the shape has drifted since.
    `dedup.deduplicate` shows each event once and keeps what only the
    secondary source still holds (the rule is documented under
    [Secondary sources in `analyzer/docs/output.md`](analyzer/docs/output.md#secondary-sources)).
+   A secondary source whose records carry no time of their own yields
+   rows with an empty `timestamp_utc`, never an inherited session time,
+   so the match is on text alone and the session's time stays on its own
+   `system` row. A source that stamps events later than the primary store
+   returns a wider window from `secondary_tolerance()` and says why in
+   its docstring.
    The agent's row in the
    [survival table of `analyzer/research/README.md`](analyzer/research/README.md#where-transcripts-live-and-what-survives)
    is filled in the same commit.

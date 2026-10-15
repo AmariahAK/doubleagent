@@ -7,6 +7,7 @@ import json
 from collections.abc import Iterator
 from dataclasses import dataclass
 
+from ..dedup import TOLERANCE_SECONDS
 from ..inputs import Artifact
 from ..model import Row
 from ..timeutil import to_utc
@@ -39,6 +40,15 @@ class Parser:
         primary store yields the same event (`dedup.deduplicate`), so a
         session whose primary store is gone is still recovered from it."""
         return False
+
+    def secondary_tolerance(self, artifact: Artifact) -> float:
+        """Seconds a secondary row's `timestamp_utc` may differ from the primary
+        row's for `dedup.deduplicate` to pair them. The default suits a history
+        line written when the prompt was submitted; a parser whose secondary
+        source stamps an event later than the primary store does (a transcript
+        captured at the end of a turn) returns a wider window and says why in
+        its docstring."""
+        return TOLERANCE_SECONDS
 
     def base_row(self, artifact: Artifact) -> Row:
         return Row(

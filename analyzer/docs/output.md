@@ -963,17 +963,40 @@ source is dropped when a row from the agent's primary store has
 - the same `host`, `user`, `agent`, `turn_type` and `text`;
 - the same `session_id`, when the secondary row has one; when it has
   none, the same `project_path` (whatever the primary row's
-  `session_id`);
-- a `timestamp_utc`, on both rows, at most 2 seconds apart, the bound
-  included. A row with an empty `timestamp_utc` on either side never
-  matches.
+  `session_id`), when it has one; when it has neither, as a text-only
+  prompt history does, any primary row of that host, user and agent;
+- when the secondary row has a `timestamp_utc`, a `timestamp_utc` on the
+  primary row too, at most the source's tolerance apart, the bound
+  included; when the secondary row has none, no time constraint, so it
+  matches on text and scope alone. A secondary row with a timestamp never
+  matches a primary row without one.
 
-Matching is one-to-one: the secondary rows are taken in timestamp order,
-and each is matched to the nearest primary row within the 2 seconds that
-no earlier secondary row took, so a transcript cut after three of five
-identical prompts keeps two of the five history lines. The primary row
-always survives, with its own `source_file` and `source_line`. A
-secondary row with no match is kept, which recovers a prompt whose
+The tolerance is per source: 2 seconds for every source in the table
+below; a parser whose source stamps an event later than the primary store
+does may widen it, and the table then says so.
+
+Matching is one-to-one. The secondary rows with a timestamp go first, in
+timestamp order, each matched to the nearest primary row within its
+tolerance that no earlier secondary row took, so a transcript cut after
+three of five identical prompts keeps two of the five history lines.
+Then the secondary rows with no timestamp go, in input order, each
+matched to the earliest-timestamped primary row still untaken (primary
+rows with no timestamp last, in input order); taking them second keeps
+an undated row from claiming the primary row a timestamped one pairs
+with. The primary row always survives, with its own `source_file` and
+`source_line`.
+
+Last, the secondary rows that no primary row took are
+matched among themselves in input order under the same rule (the
+tolerance of the row being tested), one-to-one, and a row that pairs
+with an earlier one is dropped and counted with the others, so the
+copies of one event that several backups or snapshots keep after the
+primary store is gone are shown once, as the first copy. A row pairs
+only with an earlier row from a different `source_file`, so two
+identical prompts in one history file, with a timestamp or without, are
+both kept as the two events the file records.
+
+A secondary row with no match is kept, which recovers a prompt whose
 transcript was deleted, excluded by size or truncated, and a prompt the
 transcript no longer holds (a Gemini CLI rewind). The rule runs after
 `--agent` and before `--since`, `--until` and `--match`, and the rows it
@@ -987,21 +1010,22 @@ drops are counted per agent on the `dropped:` line of stdout and under
 | `claude-code` | `.claude/history.jsonl` (and `.claude-<name>/history.jsonl`) | `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `codex-cli` | `.codex/history.jsonl` | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
-| `muse-code` | `.local/share/muse/tui-history.jsonl` | `.local/share/muse/sessions/.../session.jsonl` |
+| `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
 | `open-interpreter` | `.openinterpreter/history.jsonl` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
 
 The 2 seconds cover Codex's `history.jsonl`, which records whole seconds
 beside the rollouts' milliseconds, and Antigravity's history line, under
 a second from the database step. Muse Code's `tui-history.jsonl` records
-no time, so its rows never match and are all kept. Qwen Code's
-`logs.json` rows have no project path and match by `sessionId` only. A
+no time, so its rows match a session row of the same session on text
+alone. Qwen Code's `logs.json` rows have no project path and match by `sessionId` only. A
 known miss: a prompt the agent queued and sent later (Claude Code queues
 input typed while it works) can be minutes from its transcript record,
 and is then shown twice, the history row at the time it was typed.
-Continue's `toolUsage.jsonl` is not a secondary source: its session rows
-carry no per-message timestamp and its event rows no session or project,
-so the rule could never match them, and both are kept.
+Continue's `toolUsage.jsonl` is not a secondary source: its event rows
+carry their own time but no session or project, and the session rows
+they repeat carry only the session's creation time, so a match within 2
+seconds would be chance, and both are kept.
 
 ## sessions.jsonl
 
