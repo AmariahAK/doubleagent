@@ -44,7 +44,15 @@ Paths, credentials and the rest of the per-user state are in
     embedded changelog's newest heading is still `## 1.2.15`. Two
     conversations in `~/.gemini/antigravity-cli/conversations/`, both
     `trajectory_meta.source` 17 (`cli`) and `trajectory_type` 4, of 12 and
-    8 steps.
+    8 steps. A second look on 2026-10-15 with CLI 1.3.6 (`/Users/sean/.local/bin/agy`,
+    183,407,440 bytes, sha256 `827ba22b4aa33557614a57aac2cc13f386e17db6b802febd3932226906ac05ab`): one
+    conversation of 17 steps in a project directory the agent was then
+    told to delete, which left the conversation database, its
+    `brain/<uuid>/` mirror (16 `transcript_full.jsonl` lines), the
+    `history.jsonl` lines and the summaries row in place, so the whole
+    session parsed after the directory was gone; its four `history.jsonl`
+    lines showed which ones carry `conversationId`
+    ([section 5](#5-joins-and-gaps)).
   - **Desktop app**: `/Applications/Antigravity.app`,
     `CFBundleShortVersionString` and `CFBundleVersion` both `2.23.0`.
     `Contents/Resources/app.asar` is 4,486,221 bytes, sha256
@@ -638,9 +646,16 @@ carry only the workspace. From CLI 1.3.x a line can carry `conversationId`
 (**observed**, CLI 1.3.4 Linux, one of two lines), which is the
 conversation id above; the parser puts it in the history row's
 `session_id` (issue 89), so the prompt joins to its conversation's rows,
-and a line without it keeps `session_id` empty. Which lines get the key
-cannot be told from two lines; the one CLI 1.3.5 line on Windows
-(**observed**) had none.
+and a line without it keeps `session_id` empty. A macOS session with CLI
+1.3.6 (**observed**, 2026-10-15) shows which lines get it: of four lines
+for one conversation, the first prompt, written before the conversation
+existed, had no `conversationId`, and the three prompts typed into the
+running conversation all carried it. The two earlier observations fit
+that pattern (one of two lines on Linux; the single first-prompt line on
+Windows, CLI 1.3.5, had none), so a history row with an empty
+`session_id` is a conversation's opening prompt, attributed to the
+workspace only, and its conversation is the database whose first
+`USER_INPUT` step has the same text and a timestamp within a second.
 
 On Windows one folder can reach the parser under several spellings,
 since the parser passes a plain path through unchanged and turns a
