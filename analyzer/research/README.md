@@ -119,7 +119,7 @@ parses every source and shows each event once is
 | `qwen-code` | home `~/.qwen/projects/<cwd>/chats/` | yes | `~/.qwen/tmp/<sha256(cwd)>/logs.json`; per-session `<id>.ledger.jsonl` (fields not stated) | every record (`cwd`) | `logs.json`, checkpoints |
 | `roo-code` | `globalStorage` `tasks/<id>/` or `~/.vscode-mock` | yes | CLI `cli-history.json`: raw prompts | per task `workspace` | none |
 | `shellgpt` | the system temp directory `chat_cache/<id>` | yes, but lost to temp cleanup instead | none | none | none |
-| `tabby` | home `~/.tabby/ee/db.sqlite` | yes | none | none (`git_url` only) | `db.backup-*.sqlite`, `events/*.json` |
+| `tabby` | home `~/.tabby/ee/db.sqlite` | yes | none | none (`git_url` only) | `db.backup-*.sqlite` (pre-migration copies of threads and events); `events/*.json` (every event, `user_events` keeps only those with a user, for three months) |
 | `twinny` | the editor's `state.vscdb` | yes | none | none | optional twinny-server recordings |
 | `vscode` | user data `workspaceStorage/<hash>/chatSessions/` | yes | none | `workspace.json` per hash; `workingDirectory` | legacy `interactive.sessions` blob |
 | `zed` | data directory `threads/threads.db` | yes | none | per thread `folder_paths` | `sidebar_threads` (metadata only) |

@@ -4463,19 +4463,53 @@ class RooCodeTests(ParserBase):
 
 
 from doubleagent.parsers.tabby import TabbyParser
-from fixtures import TABBY_BACKUP_REL, TABBY_EVENTS_REL, TABBY_REL, TABBY_SECRETS
+from fixtures import (
+    TABBY_BACKUP2_REL,
+    TABBY_BACKUP_REL,
+    TABBY_EVENTS_REL,
+    TABBY_REL,
+    TABBY_SECRETS,
+)
 
 
 class TabbyTests(ParserBase):
+    def test_secondary(self):
+        # The backups and the event log are secondary sources, the live
+        # database is not (#122).
+        p = TabbyParser()
+        for rel in (TABBY_BACKUP_REL, TABBY_BACKUP2_REL, TABBY_EVENTS_REL):
+            self.assertTrue(p.secondary(self.artifact(rel)), rel)
+        self.assertFalse(p.secondary(self.artifact(TABBY_REL)))
+
     def test_rows(self):
         rows = self.rows_for(TabbyParser(), TABBY_REL)
-        self.assertEqual([r.turn_type for r in rows], ["system", "user", "assistant", "system"])
+        self.assertEqual(
+            [r.turn_type for r in rows],
+            ["system", "user", "assistant", "system", "user", "assistant", "system"],
+        )
         for r in rows:
             self.assertEqual(
                 (r.host, r.user, r.agent, r.git_branch, r.model), ("h1", "alice", "tabby", "", "")
             )
             self.assertTrue(r.source_file.endswith(TABBY_REL), r.source_file)
-        start, user, asst, select = rows
+        start, user, asst = rows[:3]
+        select = rows[-1]
+        # The user_events copy of the event log's completion line (#122).
+        app = "https://github.com/acme/app"
+        self.assertEqual(
+            [(r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows[3:6]],
+            [
+                (
+                    "cmpl-7f3a",
+                    app,
+                    "2025-10-01T10:00:00.000Z",
+                    "completion | user=alice@example.com (Alice) | language=python"
+                    " | file=app/math.py | client=tabby-agent/1.9",
+                ),
+                ("cmpl-7f3a", app, "2025-10-01T10:00:00.000Z", "def add(a, b):"),
+                ("cmpl-7f3a", app, "2025-10-01T10:00:00.000Z", "return a + b"),
+            ],
+        )
         for r in (start, user, asst):
             self.assertEqual((r.session_id, r.project_path), ("7", "https://github.com/acme/app"))
         self.assertEqual(
@@ -4515,7 +4549,11 @@ class TabbyTests(ParserBase):
     def test_backup_and_event_log(self):
         rows = self.rows_for(TabbyParser(), TABBY_BACKUP_REL)
         self.assertEqual([r.turn_type for r in rows], ["system", "system", "user", "assistant"])
-        self.assertIn("backup database", rows[0].text)
+        self.assertEqual(
+            rows[0].text,
+            "backup database db.backup-20260915.sqlite copied before a schema migration; it can "
+            "hold threads and events since deleted from the live database",
+        )
         self.assertTrue(all(r.source_file.endswith(TABBY_BACKUP_REL) for r in rows))
         self.assertEqual(
             {(r.session_id, r.project_path) for r in rows[1:]},
@@ -4559,7 +4597,9 @@ class TabbyTests(ParserBase):
             if a.agent == "tabby":
                 seen.add(a.rel)
                 self.assertEqual(
-                    p.wants(a), a.rel in (TABBY_REL, TABBY_BACKUP_REL, TABBY_EVENTS_REL), a.rel
+                    p.wants(a),
+                    a.rel in (TABBY_REL, TABBY_BACKUP_REL, TABBY_BACKUP2_REL, TABBY_EVENTS_REL),
+                    a.rel,
                 )
         self.assertIn(".tabby/config.toml", seen)
 
@@ -4583,9 +4623,61 @@ class TabbyTests(ParserBase):
         con.close()
         rows = self.rows_for(TabbyParser(), TABBY_REL)
         self.assertEqual(
-            [r.turn_type for r in rows], ["system", "user", "assistant", "system", "system"]
+            [r.turn_type for r in rows],
+            ["system", "user", "assistant", "system", "user", "assistant", "system", "system"],
         )
         self.assertIn("payload did not parse", rows[-1].text)
+
+    def test_corrupt_backup_is_reported_not_fatal(self):
+        (self.home / TABBY_BACKUP2_REL).write_bytes(b"SQLite format 3\x00" + b"\x00" * 84)
+        rows = self.rows_for(TabbyParser(), TABBY_BACKUP2_REL)
+        self.assertEqual(rows[-1].turn_type, "system")
+        self.assertTrue(rows[-1].text.startswith("parser:"), rows[-1].text)
+
+    def test_second_backup_rows(self):
+        rows = self.rows_for(TabbyParser(), TABBY_BACKUP2_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc) for r in rows],
+            [
+                ("system", "", ""),
+                ("system", "3", "2026-09-10T08:00:00.000Z"),
+                ("user", "3", "2026-09-10T08:00:00.000Z"),
+                ("assistant", "3", "2026-09-10T08:00:04.000Z"),
+                ("system", "7", "2026-10-01T10:00:00.000Z"),
+                ("user", "7", "2026-10-01T10:00:00.000Z"),
+                ("assistant", "7", "2026-10-01T10:00:02.000Z"),
+            ],
+        )
+        self.assertIn("db.backup-20261005.sqlite", rows[0].text)
+        # The same texts and projects as the first backup and the live database.
+        first = self.rows_for(TabbyParser(), TABBY_BACKUP_REL)
+        live = self.rows_for(TabbyParser(), TABBY_REL)
+        self.assertEqual(
+            [(r.text, r.project_path) for r in rows[1:4]],
+            [(r.text, r.project_path) for r in first[1:]],
+        )
+        self.assertEqual(
+            [(r.text, r.project_path) for r in rows[4:]],
+            [(r.text, r.project_path) for r in live[:3]],
+        )
+
+    def test_secondary_copies_dropped(self):
+        # Every source is parsed and the copies are dropped (#122): the event
+        # log's prompt and choice (user_events has them, within a second), the
+        # later backup's thread 7 (the live database has it) and one of the
+        # two backup copies of ephemeral thread 3. The event log's system rows
+        # name the owner by id, the database's by email, so both are kept.
+        rows, _, _, dropped = cli.collect_rows(self.col, Options(), ["tabby"])
+        self.assertEqual(dropped, {"tabby": 8})
+        texts = [(r.source_file.rsplit("/", 1)[-1], r.turn_type, r.text) for r in rows]
+        self.assertEqual(
+            [t for t in texts if t[2] in ("def add(a, b):", "return a + b")],
+            [("db.sqlite", "user", "def add(a, b):"), ("db.sqlite", "assistant", "return a + b")],
+        )
+        self.assertEqual(len([t for t in texts if t[2] == "dump the users table"]), 1)
+        self.assertEqual(len([t for t in texts if t[2].startswith("Where is the cache")]), 1)
+        self.assertIn(("2025-10-01.json", "system", "chat_completion"), texts)
+        self.assertEqual(len([t for t in texts if t[2].startswith("backup database")]), 2)
 
     def test_secret_columns_never_reach_output(self):
         for rel in (TABBY_REL, TABBY_BACKUP_REL):

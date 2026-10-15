@@ -56,6 +56,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   different file, so two identical lines in one file both stay. Secondary rows with no match are
   kept, so a prompt whose transcript is gone is still in the timeline
   ([#122]).
+- Tabby's pre-migration backups `db.backup-*.sqlite` and the event log
+  `events/YYYY-MM-DD.json` are secondary sources: a backup's thread and
+  event rows that the live database (or an earlier backup) also holds,
+  and an event log prompt or choice that `user_events` also holds, are
+  dropped. The backup's leading `system` row now names the backup file
+  ([#122]).
 
 ## [0.12.0] - 2026-10-15
 

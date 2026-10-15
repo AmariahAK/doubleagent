@@ -26,15 +26,35 @@ Files, relative to the home directory:
     pretty-printed event, same shape as an event log line's `event`).
 * `.tabby/ee/db.backup-YYYYMMDD.sqlite` and `dev-db.backup-YYYYMMDD.sqlite`:
   copies made before each schema migration. Parsed like the live database,
-  with a leading `system` row saying the file is a backup, because ephemeral
+  with a leading `system` row naming the backup file, because ephemeral
   threads untouched for 7 days are deleted from the live database and may
-  survive only here.
+  survive only here. A secondary source (issue 122): its rows are copies of
+  the live database's, with the same thread ids, texts and times, so
+  `dedup.deduplicate` drops those the live database (or an earlier backup)
+  still holds and keeps the rest; the leading row names the file and so
+  never pairs.
 * `.tabby/events/YYYY-MM-DD.json`: JSON Lines, one `LogEntry` per line:
   `user` (encoded server user id or null), `ts` (Unix milliseconds), `event`
   (externally tagged): `completion` {`completion_id`, `language`, `prompt`,
   `segments` {`git_url`, `filepath`}, `choices[]` {`index`, `text`},
   `user_agent`}; `view`, `select`, `dismiss` {`completion_id`,
   `choice_index`, `view_id`, `elapsed`, `kind`}; `chat_completion` {}.
+  A secondary source (issue 122): the server hands every event to both
+  loggers (`ComposedLogger`), and the database logger writes it to
+  `user_events` when the event names a server user, with `ts` truncated to
+  whole seconds, so a `user_events` row is the same event as a log line.
+  The database is the primary store because it is the one Tabby reads
+  back (its user-event service queries `user_events`; nothing reads the log)
+  and because the parser can only mark whole files, and the database file
+  also holds the threads. Each log row carries its own millisecond time,
+  within a second of the database's, so the default 2-second window
+  applies. The log keeps what the database lacks: events with no user,
+  events of a server run without the database, and events older than the
+  three months `user_events` retains; those rows have no twin and are kept.
+  Only the `user` and `assistant` rows pair: the `system` rows name the
+  owner as the log's encoded id there and as the account's email in the
+  database, so their texts differ and both copies are kept. The evidence
+  is in the "Second copies" part of section 4 of the research document.
 
 The database also stores plaintext secrets (`users.auth_token`,
 `users.password_encrypted`, `registration_token`, `refresh_tokens`,
@@ -187,6 +207,9 @@ class TabbyParser(Parser):
         rel = artifact.rel
         return bool(DB_RX.match(rel) or BACKUP_RX.match(rel) or EVENTS_RX.match(rel))
 
+    def secondary(self, artifact: Artifact) -> bool:
+        return bool(BACKUP_RX.match(artifact.rel) or EVENTS_RX.match(artifact.rel))
+
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if EVENTS_RX.match(artifact.rel):
             yield from self._parse_events(artifact, opts)
@@ -224,8 +247,8 @@ class TabbyParser(Parser):
                 0,
                 opts=opts,
                 text=(
-                    "backup database copied before a schema migration; it can hold threads and events "
-                    "since deleted from the live database"
+                    "backup database %s copied before a schema migration; it can hold threads and "
+                    "events since deleted from the live database" % artifact.rel.rsplit("/", 1)[-1]
                 ),
             )
         try:
