@@ -73,3 +73,74 @@ Findings that cut across agents:
 - Credentials sit inside transcript databases for OpenCode, Kilo and Amazon
   Q; those files are collected unflagged and the keys to redact are listed
   under the "Secrets" heading (the seventh) of each document.
+
+## Where transcripts live, and what survives
+
+A sweep of the documents above on 2026-10-15, prompted by an Antigravity
+session whose project directory the agent had deleted while every record
+of the session stayed under the home. The table says, per agent, where
+the transcripts are kept (a directory under the home survives deleting
+the project; a store inside the project does not), whether a per-prompt
+history file is written beside them and what each line holds, where the
+working directory is recorded, and whether a second copy of the
+transcript exists that would survive loss of the primary store. "Not
+stated" means the document does not say. The unified-timeline design that
+parses every source and shows each event once is
+[doubleagent issue 122](https://github.com/seanthegeek/doubleagent/issues/122).
+
+| Agent | Transcripts live in | Survives project deletion | Per-prompt history file | Working directory recorded | Second copy |
+| --- | --- | --- | --- | --- | --- |
+| `agent-zero` | install directory `usr/chats/<ctxid>/chat.json` | yes (projects are `usr/projects/<name>`, a separate place) | none | per chat `data.project` (a name) | none |
+| `aider` | the project (git root): `.aider.chat.history.md` | no | `<repo>/.aider.input.history`: local timestamp and text, no session id | implicit (the file's location) | `.aider.llm.history`, only with a flag |
+| `antigravity` | home `~/.gemini/antigravity{,-cli}/conversations/<uuid>.db` | yes | `~/.gemini/antigravity-cli/history.jsonl`: `display`, `timestamp` (ms), `workspace`, `conversationId` (absent on a conversation's first prompt) | per conversation (workspace URIs) | brain `transcript{,_full}.jsonl` and chunks; the summaries database |
+| `claude-code` | home `~/.claude/projects/<key>/<id>.jsonl` | yes | `~/.claude/history.jsonl`: `display`, `pastedContents`, `timestamp` (ms), `project`, `sessionId`; usually outlives its transcript, which retention deletes after 30 days | every record (`cwd`, `gitBranch`) | `jobs/<id>/parent-transcript.jsonl` (not observed) |
+| `claude-desktop` | app data `local-agent-mode-sessions/`; the Code tab uses `~/.claude/projects` | yes | none of its own | session record `cwd` and `userSelectedFolders`; JSONL `cwd` per record (a VM path in VM mode) | per-session `audit.jsonl` (every SDK message) |
+| `cline` | VS Code `globalStorage` or `~/.cline/data/` | yes | CLI `~/.cline/data/cache/user_input_history.jsonl` with `ts`; other fields not stated | per task `cwdOnTaskInitialization`, manifest `cwd` | `db/session-search.db`, a full-text copy of every transcript |
+| `codex-cli` | home `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | yes | `~/.codex/history.jsonl`: `session_id`, `ts` (s), `text`; no cwd; can outlive the rollout | `session_meta.cwd`, updated per turn | `state_5.sqlite` (first prompt), `thread_history_1.sqlite` projection |
+| `cody` | the editor's `state.vscdb` or `Cody-nodejs/` | yes | none | none (inferred from `contextFiles`) | none |
+| `continue` | `~/.continue/sessions/` | yes | CLI `input_history.json`, fields not stated | per session `workspaceDirectory` | `dev_data/*.jsonl` events; `logs/prompt.log` (JetBrains only) |
+| `crush` | the project: `<project>/.crush/crush.db` | no | none | the database's location; `~/.local/share/crush/projects.json` | none |
+| `gemini-cli` | home `~/.gemini/tmp/<slug>/chats/` | yes | `~/.gemini/tmp/<slug>/logs.json`: `sessionId`, `messageId`, `timestamp`, `type`, `message` | per project directory (`.project_root`) | `/chat save` checkpoints, tool checkpoints, shadow git |
+| `goose` | home `~/.local/share/goose/sessions/sessions.db` | yes | `~/.local/state/goose/history.txt`: text only | per session `working_dir` | `llm_request.<N>.jsonl` logs, per call |
+| `hermes` | home `~/.hermes/state.db` | yes | none | per session `cwd` (updated) | `state-snapshots/*/state.db`, `sessions/*.jsonl` fallback, `/save` |
+| `kilo-code` | home `~/.local/share/kilo/kilo.db` | yes | none | session `directory` and per message `path.cwd` | none separate (V1 and V2 tables in one database) |
+| `kiro` | home `amazon-q/data.sqlite3`, the latest conversation per working directory only | yes | `~/.aws/amazonq/.cli_bash_history`, adjacent evidence, fields not stated | the row key and per message `env_context` | `/save <path>` only |
+| `letta` | home `~/.letta/transcripts/` | yes | none (`sessions.jsonl` is per session: `agent_id`, `session_id`, `timestamp`, `project`) | header `cwd` (local backend), else a heuristic | local-backend `messages.jsonl`; chunk logs (truncated) |
+| `little-coder` | home `~/.pi/agent/sessions/` | yes | `~/.pi/agent/little-coder-prompt-history.json`: strings only | header `cwd` | none |
+| `muse-code` | home `~/.local/share/muse/sessions/` | yes | `tui-history.jsonl`: a prompt line then `{project, session}`; no timestamp | session `workspace_root` | `.msp-view-v1` journal; `session-index.db` (first prompt) |
+| `nanobot` | home `~/.nanobot/sessions/<workspace-id>/` | yes | `~/.nanobot/history/cli_history`: prompts only | a `.workspace` file per directory | WebUI transcript mirror; `memory/history.jsonl` |
+| `ollama` | app data `db.sqlite` (desktop app) | yes | `~/.ollama/history`: text only, last 100 | none | REPL `/save` into a model blob |
+| `open-interpreter` | home `~/.openinterpreter/sessions/` | yes | `~/.openinterpreter/history.jsonl`: `session_id`, `ts`, `text` | `session_meta` and per turn | the Codex-style SQLite set |
+| `openclaw` | home `~/.openclaw/agents/<id>/agent/*.sqlite` | yes | none | header `cwd` | `.reset` and `.deleted` archives, archive blobs, legacy JSONL |
+| `opencode` | home `~/.local/share/opencode/opencode.db` | yes | none | session `directory` and assistant `path.cwd` | legacy `storage/` JSON tree |
+| `openhands` | home `~/.openhands/conversations/<hex>/` | yes | `~/.openhands/projects/<sha256(cwd)>/prompt_history.json`, fields not stated | per conversation `workspace.working_dir` | not stated |
+| `pearai` | `~/.pearai/sessions/` and `globalStorage` tasks | yes | none | session `workspaceDirectory`; task `workspace` | `dev_data/chat.jsonl` (only on feedback) |
+| `pi` | home `~/.pi/agent/sessions/--<cwd>--/` (or `--session-dir` anywhere) | yes | none | header `cwd` | user exports `session-*.jsonl` and `.html`, written into project directories; forks copy entries |
+| `qwen-code` | home `~/.qwen/projects/<cwd>/chats/` | yes | `~/.qwen/tmp/<sha256(cwd)>/logs.json`; per-session `<id>.ledger.jsonl` (fields not stated) | every record (`cwd`) | `logs.json`, checkpoints |
+| `roo-code` | `globalStorage` `tasks/<id>/` or `~/.vscode-mock` | yes | CLI `cli-history.json`: raw prompts | per task `workspace` | none |
+| `shellgpt` | the system temp directory `chat_cache/<id>` | yes, but lost to temp cleanup instead | none | none | none |
+| `tabby` | home `~/.tabby/ee/db.sqlite` | yes | none | none (`git_url` only) | `db.backup-*.sqlite`, `events/*.json` |
+| `twinny` | the editor's `state.vscdb` | yes | none | none | optional twinny-server recordings |
+| `vscode` | user data `workspaceStorage/<hash>/chatSessions/` | yes | none | `workspace.json` per hash; `workingDirectory` | legacy `interactive.sessions` blob |
+| `zed` | data directory `threads/threads.db` | yes | none | per thread `folder_paths` | `sidebar_threads` (metadata only) |
+
+What the sweep shows:
+
+- Only Aider and Crush keep the transcript itself inside the project, so
+  only for those two does deleting the project delete the evidence.
+  ShellGPT's chats are lost to temp-directory cleanup instead. Pi's user
+  exports, Letta's `<project>/.letta/settings.local.json` session
+  pointers, OpenHands' `<project>/.openhands/hooks.json` and the Muse
+  and Claude Desktop worktrees are the other project-local traces, none
+  of them the primary transcript.
+- Antigravity is the one agent whose document says a history line is
+  written before its session exists: the first prompt's line has no
+  `conversationId`. Muse's `.session.jsonl.permission-init` file is the
+  nearest analogue, written before `session.jsonl`. Claude Code's and
+  Codex's history lines are said to outlive their transcripts (retention,
+  deleted or ephemeral threads), not to precede them.
+- Second copies that survive loss of the primary store exist for
+  Antigravity, Claude Desktop, Cline, Hermes, OpenClaw, Tabby, nanobot,
+  Letta, Codex and Open Interpreter; the analyzer reads only Claude
+  Desktop's `audit.jsonl` (as a fallback) today. The others are listed in
+  [doubleagent issue 122](https://github.com/seanthegeek/doubleagent/issues/122).
