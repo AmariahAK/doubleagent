@@ -40,7 +40,7 @@ file names to check only those. It exits `1` when any link fails.
 | `claude-code` | [claude-code.md](claude-code.md) | shipped bundle, docs, real install | `CLAUDE_CONFIG_DIR`; several credential files beyond `.credentials.json` |
 | `claude-desktop` | [claude-desktop.md](claude-desktop.md) | official docs, GitHub issues, real install (MSIX build, Linux deb, macOS) | encrypted token cache in `config.json`; local-agent sessions |
 | `cline` | [cline.md](cline.md) | source | `~/.cline/data` shared by VS Code, CLI and JetBrains |
-| `codex-cli` | [codex-cli.md](codex-cli.md) | source, real install (CLI; Codex Desktop inside ChatGPT on Windows) | rollouts may be zstd-compressed; the ChatGPT desktop app adds `sqlite/codex-dev.db` and `.codex-global-state.json`, which holds ChatGPT resume tokens |
+| `codex-cli` | [codex-cli.md](codex-cli.md) | source, real install (macOS CLI; Windows desktop and standalone CLI) | rollouts may be zstd-compressed; the ChatGPT desktop app adds `sqlite/codex-dev.db` and `.codex-global-state.json`, which holds ChatGPT resume tokens |
 | `cody` | [cody.md](cody.md) | source (frozen public snapshot, August 2025) | chat history and token are rows in `state.vscdb`; the nested entry claims only the symf index |
 | `continue` | [continue.md](continue.md) | source | `~/.continue` only |
 | `copilot` | [copilot.md](copilot.md) | source (vendored language server) | editor OAuth store `github-copilot/apps.json` |

@@ -109,6 +109,11 @@ times UTC):
   appeared, Windows Credential Manager (`cmdkey /list`) held no
   credential, and no other file changed: the connection is a connector
   on the ChatGPT account, server-side.
+- The standalone Codex CLI 0.162.1, installed beside the app at 15:38Z
+  with OpenAI's PowerShell installer and given one prompt: it shares the
+  app's `~\.codex` and the app's login (no new credential file), and adds
+  its own binaries under `~\.codex\packages`; see
+  [Standalone CLI on Windows](codex-cli.md#standalone-cli-on-windows).
 - Not exercised: a resumed thread, a denied tool call, an "allow always"
   grant, a model switch within a thread, remote control, an automation
   run.
