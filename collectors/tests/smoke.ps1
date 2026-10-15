@@ -1249,6 +1249,12 @@ $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Nul
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
 $n = Test-ArchivedHashes $x
 Check "archived file bytes match manifest hashes ($n files)" { $n -gt 10 }
+# 2026-10-14 manifest size of a collected file (#111): the size is the byte
+# count the copy wrote, so it equals the archive member's length. CI cannot
+# make NTFS report a stale length, so this guards the plumbing only.
+$r111 = Row "$g83/conversations/a1.db"
+$f111 = $null; if ($r111) { $f111 = XP (Join-Path $x ($r111.archive_path.Replace('/', $Sep))) }
+Check '#111 collected size is the length of the archived copy' { $r111 -and $r111.size -eq 6 -and (Get-Item -LiteralPath $f111 -Force).Length -eq $r111.size }
 # 2026-10-10 long paths (#77): the deep transcript, by its plain path.
 $r77 = Row $Deep77
 Check '#77 deep transcript collected as claude-code under its plain path' { $r77 -and $r77.status -eq 'collected' -and $r77.agent -eq 'claude-code' -and $r77.path -eq (P $Deep77) -and -not $r77.path.StartsWith('\\?\') -and $r77.error -eq '' }

@@ -2089,9 +2089,14 @@ $script:StagedDirs = New-Object 'System.Collections.Generic.HashSet[string]'
 
 # Takes the source path, the staging path and the source's pre-copy
 # Get-Item from Add-CollectedFile; creates the staging directory when
-# $script:StagedDirs does not have it yet, copies the file and returns the
-# SHA-256 of the staged copy ('' when it cannot be read back). Throws when
-# the directory or the copy fails. The source is opened with
+# $script:StagedDirs does not have it yet, copies the file and returns a
+# two-item array: the SHA-256 of the staged copy ('' when it cannot be read
+# back) and the number of bytes copied, the length of the staged copy that
+# the hash covers. That count, not the Get-Item length, is the row's size:
+# NTFS updates a directory entry's length only when a handle on the file
+# closes, so for a file a running app holds open and writes the pre-copy
+# length can be stale (#111). Throws when the directory or the copy fails.
+# The source is opened with
 # FileShare.ReadWrite|Delete so files held open by a running editor (SQLite
 # state stores, LevelDB) can still be read.
 # The hash reads the staged file back through the handle that wrote it,
@@ -2101,7 +2106,7 @@ $script:StagedDirs = New-Object 'System.Collections.Generic.HashSet[string]'
 # paths are opened in the extended form, so neither side is limited to 260
 # characters (#77).
 function Copy-FileShared([string]$source, [string]$destination, $item) {
-  $inStream = $null; $outStream = $null; $sha256 = ''
+  $inStream = $null; $outStream = $null; $sha256 = ''; $copied = [int64]0
   $source = ConvertTo-ExtendedPath $source; $destination = ConvertTo-ExtendedPath $destination
   $stageDir = [System.IO.Path]::GetDirectoryName($destination)
   if (-not $script:StagedDirs.Contains($stageDir)) {
@@ -2116,6 +2121,7 @@ function Copy-FileShared([string]$source, [string]$destination, $item) {
     $outStream = New-Object System.IO.FileStream($destination, [System.IO.FileMode]::Create,
       [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
     $inStream.CopyTo($outStream)
+    $copied = [int64]$outStream.Length
     $inStream.Dispose(); $inStream = $null
     try {
       $outStream.Flush(); $outStream.Position = 0
@@ -2131,7 +2137,7 @@ function Copy-FileShared([string]$source, [string]$destination, $item) {
     [System.IO.File]::SetLastWriteTimeUtc($destination, $item.LastWriteTimeUtc)
     [System.IO.File]::SetLastAccessTimeUtc($destination, $item.LastAccessTimeUtc)
   } catch { }
-  return $sha256
+  return @($sha256, $copied)
 }
 
 # ---------------------------------------------------------------------------
@@ -2287,7 +2293,9 @@ function Add-StagedLink($item, [string]$stagePath) {
 # recreated as a link (status symlink); a secret under -NoSecrets
 # (skipped_secret) and a file over -MaxFileSizeMB (skipped_size) get a row
 # and no copy; anything else is copied and hashed (collected, or error_copy
-# with the exception message). Under -Inventory it only feeds Add-InventoryFile.
+# with the exception message). A collected row's size is the byte count
+# Copy-FileShared copied; every other row keeps the pre-copy Get-Item
+# length (#111). Under -Inventory it only feeds Add-InventoryFile.
 # Runs once per file, so Join-PathSafe and Get-Epoch are inlined and nothing
 # here starts a pipeline or another process.
 function Add-CollectedFile([string]$user, [string]$homeDir, [string]$agent, $item) {
@@ -2326,8 +2334,10 @@ function Add-CollectedFile([string]$user, [string]$homeDir, [string]$agent, $ite
   } elseif ($script:MaxSize -gt 0 -and $size -gt $script:MaxSize) {
     $status = 'skipped_size'
   } else {
-    try { $sha256 = Copy-FileShared $extendedPath $extendedStagePath $item }
-    catch {
+    try {
+      $copy = Copy-FileShared $extendedPath $extendedStagePath $item
+      $sha256 = [string]$copy[0]; $size = [int64]$copy[1]
+    } catch {
       $status = 'error_copy'; $errorText = ConvertFrom-ExtendedText $_.Exception.Message
       Write-CollectorLog "copy failed: ${path}: $errorText"
       try {

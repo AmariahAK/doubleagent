@@ -130,12 +130,33 @@ zipping through the link.
 
 Files held open by a running editor (Cursor's `state.vscdb`, Electron
 LevelDB stores) are read with shared access so they still copy. A few
-files a running Electron app opens without sharing cannot be: on a live
-Claude Desktop host the Chromium `Cookies` and `Cookies-journal` (the
-claude.ai session cookies, flagged secret) and the LevelDB `LOCK` files
-get `error_copy` rows; close the app or collect from an image to get the
-cookie store. Reparse points (symlinks and junctions) are recorded with
-their target and never followed.
+files that a running Electron agent app opens without sharing, or with a
+byte range locked, cannot be, and get `error_copy` rows with the
+exception message: the Chromium cookie store `Network\Cookies` and its
+`Cookies-journal`, and the `LOCK` files of the `Local Storage\leveldb`
+and `Session Storage` LevelDB stores (LevelDB is the key-value store
+Chromium keeps them in). This was seen on a live Claude Desktop host,
+where the cookies are the claude.ai session cookies and flagged secret,
+and on a live Antigravity desktop app 2.23.1 on Windows 11 (October
+2026), where the 0-byte `presence\<uuid>.lock` of the open conversation
+under `.gemini\antigravity` failed the same way. The lock files are
+empty, so only the cookie store is lost; close the app or collect from
+an image to get it. Reparse points (symlinks and junctions) are recorded
+with their target and never followed.
+
+A file a running process holds open and keeps writing can have a stale
+length in its directory entry: NTFS updates the length it lists only
+when a handle on the file closes, so `Get-ChildItem` and the `Get-Item`
+the collector reads before the copy can report fewer bytes than the
+file holds. On the Antigravity host above, the app's
+`logs\language_server.log` was listed at 0 bytes while it held 218,747,
+and Chromium's `DIPS-wal` at 32 bytes while it held 210,152. The copy
+reads the real bytes, and from collector 1.12.0 a `collected` row's
+`size` is the number of bytes copied, so it matches the `sha256` and the
+archived member; earlier versions wrote the stale listed length. A
+`skipped_size` decision, and the size of a `skipped_size`,
+`skipped_secret`, `symlink`, `error_copy` or excluded row, still use the
+listed length (see the `size` field in [output.md](output.md#manifest)).
 
 Every file system call addresses its path in the extended-length form,
 `\\?\C:\...` for a drive path and `\\?\UNC\server\share\...` for a UNC
