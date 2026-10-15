@@ -6454,10 +6454,12 @@ from fixtures import (
     NANOBOT_LEGACY_REL,
     NANOBOT_REL,
     OPENCLAW_AGENT,
+    OPENCLAW_CHECKPOINT,
     OPENCLAW_COLD_SESSION,
     OPENCLAW_DELETED,
     OPENCLAW_KEY,
     OPENCLAW_LEGACY,
+    OPENCLAW_REPAIR_BAK,
     OPENCLAW_RESET_SESSION,
     OPENCLAW_SESSION,
     OPENCLAW_TOKEN,
@@ -6559,9 +6561,23 @@ class OpenClawTests(ParserBase):
             ],
         )
         self.assertIn("archive=reset", reset[0].text)
+        # A published archive is parsed in full too: the blob is the
+        # canonical copy, the .jsonl.deleted.* file the secondary one.
         published = [r for r in rows if r.session_id == OPENCLAW_DELETED]
-        self.assertEqual(len(published), 1)  # the file is parsed instead
-        self.assertIn(".jsonl.deleted.2026-10-02T08-00-00.000Z", published[0].text)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc) for r in published],
+            [
+                (
+                    "system",
+                    "session start: key=%s archive=deleted "
+                    "name=%s.jsonl.deleted.2026-10-02T08-00-00.000Z.zst version=4"
+                    % (OPENCLAW_KEY, OPENCLAW_DELETED),
+                    "2026-10-01T09:00:00.000Z",
+                ),
+                ("user", "check disk space on the server", "2026-10-01T09:00:01.000Z"),
+            ],
+        )
+        self.assertEqual({r.project_path for r in published}, {"/srv/proj"})
         cold = [r for r in rows if r.session_id == OPENCLAW_COLD_SESSION]
         self.assertEqual([r.turn_type for r in cold], ["system", "user"])
         self.assertEqual(cold[1].project_path, "/srv/proj")
@@ -6605,6 +6621,84 @@ class OpenClawTests(ParserBase):
         self.assertEqual({r.session_id for r in rows}, {OPENCLAW_DELETED})
         self.assertIn("archive=deleted.2026-10-02T08-00-00.000Z", rows[0].text)
 
+    def test_secondary(self):
+        p = OpenClawParser()
+        sessions = OPENCLAW_AGENT + "/sessions/"
+        for rel in (
+            sessions + OPENCLAW_DELETED + ".jsonl.deleted.2026-10-02T08-00-00.000Z.zst",
+            sessions + "x.jsonl.reset.2026-10-01T09-30-00Z",
+            sessions + OPENCLAW_LEGACY + OPENCLAW_CHECKPOINT,
+            sessions + OPENCLAW_LEGACY + OPENCLAW_REPAIR_BAK,
+            sessions + "x.jsonl.pre-doctor-openai-codex-repair-2026-09-20T08-10-00-000Z.bak",
+        ):
+            self.assertTrue(p.wants(rel_only(rel)), rel)
+            self.assertTrue(p.secondary(rel_only(rel)), rel)
+        for rel in (
+            self.DB,
+            self.LEGACY,
+            ".openclaw/sessions/x.jsonl",
+            sessions + "cold/" + "a" * 64 + ".jsonl.zst",
+        ):
+            self.assertFalse(p.secondary(rel_only(rel)), rel)
+
+    def test_checkpoint_and_repair_backup(self):
+        sessions = OPENCLAW_AGENT + "/sessions/"
+        legacy = self.rows_for(OpenClawParser(), self.LEGACY)
+        ckpt = self.rows_for(OpenClawParser(), sessions + OPENCLAW_LEGACY + OPENCLAW_CHECKPOINT)
+        self.assertEqual(
+            [r.turn_type for r in ckpt], ["system", "system", "tool_use", "tool_result"]
+        )
+        self.assertEqual(
+            ckpt[0].text,
+            "session start: key=%s copy=%s version=3"
+            % (OPENCLAW_KEY, OPENCLAW_CHECKPOINT.lstrip(".")),
+        )
+
+        # The entries are copies: same session, project, text and time.
+        def key(r):
+            return (r.session_id, r.project_path, r.turn_type, r.text, r.timestamp_utc)
+
+        self.assertEqual([key(r) for r in ckpt[1:]], [key(r) for r in legacy[1:4]])
+        bak = self.rows_for(OpenClawParser(), sessions + OPENCLAW_LEGACY + OPENCLAW_REPAIR_BAK)
+        self.assertIn("copy=jsonl.pre-doctor-branch-repair-", bak[0].text)
+        self.assertEqual([key(r) for r in bak[1:-1]], [key(r) for r in legacy[1:]])
+        self.assertEqual(
+            key(bak[-1]),
+            (
+                OPENCLAW_LEGACY,
+                "/srv/proj",
+                "user",
+                "abandoned branch prompt",
+                "2026-09-20T08:00:30.000Z",
+            ),
+        )
+
+    def test_copies_deduplicated(self):
+        rows, _, _, dropped = cli.collect_rows(self.col, Options(), ["openclaw"])
+        # The deleted archive file's user row and the backup's seven entry
+        # rows pair with the primary rows. The checkpoint's three entry
+        # rows lose the one-to-one primary match to the backup's copies of
+        # the same entries, and `dedup` does not pair a secondary row with
+        # one a primary row already took, so they are kept (reported in
+        # issue 122's round).
+        self.assertEqual(dropped["openclaw"], 8)
+        ckpt = "/alice/" + OPENCLAW_AGENT + "/sessions/" + OPENCLAW_LEGACY + OPENCLAW_CHECKPOINT
+        self.assertEqual(len([r for r in rows if r.source_file == ckpt]), 4)
+        users = [r for r in rows if r.turn_type == "user"]
+        # The abandoned branch survives only in the backup and is kept.
+        self.assertEqual(
+            [r.source_file for r in users if r.text == "abandoned branch prompt"],
+            ["/alice/" + OPENCLAW_AGENT + "/sessions/" + OPENCLAW_LEGACY + OPENCLAW_REPAIR_BAK],
+        )
+        # The deleted session's prompt is kept once, from the database.
+        self.assertEqual(
+            [r.source_file for r in users if r.session_id == OPENCLAW_DELETED],
+            ["/alice/" + self.DB],
+        )
+        # Each copy keeps the session-start row that names it.
+        starts = [r for r in rows if r.text.startswith("session start:")]
+        self.assertEqual(len([r for r in starts if "copy=" in r.text]), 2)
+
     def test_not_wanted(self):
         p = OpenClawParser()
         for a in self.col.artifacts:
@@ -6612,10 +6706,11 @@ class OpenClawTests(ParserBase):
                 a.agent == "openclaw"
                 and a.rel not in (self.DB, self.LEGACY)
                 and ".jsonl.deleted." not in a.rel
+                and not a.rel.endswith((OPENCLAW_CHECKPOINT, OPENCLAW_REPAIR_BAK))
             ):
                 self.assertFalse(
                     p.wants(a), a.rel
-                )  # config, credentials, sidecars, checkpoint, trajectory
+                )  # config, credentials, sidecars, trajectory, .migrated
         for rel in (
             ".openclaw-work/agents/ops/agent/openclaw-agent.sqlite",
             ".clawdbot/agents/main/sessions/x.jsonl",
@@ -6627,6 +6722,8 @@ class OpenClawTests(ParserBase):
         for rel in (
             ".openclaw/agents/main/sessions/x.jsonl.migrated",
             ".openclaw/agents/main/sessions/x.jsonl.bak",
+            ".openclaw/agents/main/sessions/x.jsonl.bak.2026-10-01T09-30-00Z",
+            ".openclaw/agents/main/sessions/x.trajectory.jsonl",
             ".openclaw/state/openclaw.sqlite",
             ".openclaw/logs/raw-stream.jsonl",
         ):
@@ -6655,6 +6752,15 @@ class OpenClawTests(ParserBase):
         self.assertEqual(len(rows), 9)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser:", rows[-1].text)
+
+    def test_truncated_copy_is_reported_not_fatal(self):
+        rel = OPENCLAW_AGENT + "/sessions/" + OPENCLAW_LEGACY + OPENCLAW_REPAIR_BAK
+        write_bad_line(self.home / rel)
+        rows = self.rows_for(OpenClawParser(), rel)
+        self.assertEqual(len(rows), 10)
+        self.assertEqual(rows[-2].text, "abandoned branch prompt")
+        self.assertEqual(rows[-1].turn_type, "system")
+        self.assertIn("parser: 1 unparseable line(s)", rows[-1].text)
 
     def test_bad_event_row_is_reported_not_fatal(self):
         con = sqlite3.connect(str(self.home / self.DB))

@@ -111,7 +111,7 @@ parses every source and shows each event once is
 | `nanobot` | home `~/.nanobot/sessions/<workspace-id>/` | yes | `~/.nanobot/history/cli_history`: prompts only | a `.workspace` file per directory | WebUI transcript mirror; `memory/history.jsonl` |
 | `ollama` | app data `db.sqlite` (desktop app) | yes | `~/.ollama/history`: text only, last 100 | none | REPL `/save` into a model blob |
 | `open-interpreter` | home `~/.openinterpreter/sessions/` | yes | `~/.openinterpreter/history.jsonl`: `session_id`, `ts`, `text` | `session_meta` and per turn | the Codex-style SQLite set |
-| `openclaw` | home `~/.openclaw/agents/<id>/agent/*.sqlite` | yes | none | header `cwd` | `.reset` and `.deleted` archives, archive blobs, legacy JSONL |
+| `openclaw` | home `~/.openclaw/agents/<id>/agent/*.sqlite` | yes | none | header `cwd` | `.reset` and `.deleted` archive files (copies of the archive blobs), compaction checkpoints and pre-doctor repair backups, all parsed as secondary sources; legacy JSONL |
 | `opencode` | home `~/.local/share/opencode/opencode.db` | yes | none | session `directory` and assistant `path.cwd` | legacy `storage/` JSON tree |
 | `openhands` | home `~/.openhands/conversations/<hex>/` | yes | `~/.openhands/projects/<sha256(cwd)>/prompt_history.json`, fields not stated | per conversation `workspace.working_dir` | not stated |
 | `pearai` | `~/.pearai/sessions/` and `globalStorage` tasks | yes | none | session `workspaceDirectory`; task `workspace` | `dev_data/chat.jsonl` (only on feedback) |

@@ -6241,6 +6241,8 @@ OPENCLAW_LEGACY = "7d0c2a8e-1111-4000-8000-0000000000aa"
 OPENCLAW_DELETED = "7d0c2a8e-1111-4000-8000-0000000000dd"
 OPENCLAW_TOKEN = "sk-ant-oat01-FIXTURE-OPENCLAW-TOKEN-0f9e8d"
 OPENCLAW_AGENT = ".openclaw/agents/main"
+OPENCLAW_CHECKPOINT = ".checkpoint.0b5e1c2d-3f4a-4b5c-8d6e-7f8091a2b3c4.jsonl"
+OPENCLAW_REPAIR_BAK = ".jsonl.pre-doctor-branch-repair-2026-09-20T08-10-00-000Z.bak"
 
 # Columns of src/state/openclaw-agent-schema.sql at 3b16db7 that the parser
 # reads (CHECK constraints and unrelated columns left out).
@@ -6459,10 +6461,18 @@ def build_openclaw(home: Path) -> None:
         "'%s.jsonl.reset.2026-10-01T09-30-00.000Z',1790847000000,NULL)"
         % (OPENCLAW_RESET_SESSION, OPENCLAW_KEY, reset.hex(), "0" * 64, OPENCLAW_RESET_SESSION)
     )
+    # Published: the same zstd bytes are the .jsonl.deleted.*.zst file below.
+    deleted = _openclaw_jsonl(openclaw_records(OPENCLAW_DELETED)[:2])
     inserts.append(
-        "INSERT INTO session_transcript_archives VALUES ('%s','g2','%s','deleted','identity',X'00','%s',"
-        "'%s.jsonl.deleted.2026-10-02T08-00-00.000Z',1790928000000,1790928000500)"
-        % (OPENCLAW_DELETED, OPENCLAW_KEY, "1" * 64, OPENCLAW_DELETED)
+        "INSERT INTO session_transcript_archives VALUES ('%s','g2','%s','deleted','zstd',X'%s','%s',"
+        "'%s.jsonl.deleted.2026-10-02T08-00-00.000Z.zst',1790928000000,1790928000500)"
+        % (
+            OPENCLAW_DELETED,
+            OPENCLAW_KEY,
+            _openclaw_zstd(deleted).hex(),
+            "1" * 64,
+            OPENCLAW_DELETED,
+        )
     )
     cold = [
         {"kind": "header", "version": 1, "sessionId": OPENCLAW_COLD_SESSION, "generation": "g0"}
@@ -6496,15 +6506,34 @@ def build_openclaw(home: Path) -> None:
         json.dumps({OPENCLAW_KEY: {"sessionId": OPENCLAW_LEGACY, "updatedAt": 1789891510000}}),
         encoding="utf-8",
     )
-    deleted = _openclaw_jsonl(openclaw_records(OPENCLAW_DELETED)[:2])
     name = OPENCLAW_DELETED + ".jsonl.deleted.2026-10-02T08-00-00.000Z"
     (sessions / (name + ".zst")).write_bytes(_openclaw_zstd(deleted))
-    # Duplicates and noise the parser must skip.
-    _jsonl(sessions / (OPENCLAW_LEGACY + ".trajectory.jsonl"), [{"type": "trace"}])
+    # Secondary copies (issue 122): a pre-compaction checkpoint holds the
+    # entries before the compaction; a pre-doctor branch-repair backup holds
+    # the whole file before the repair, with an abandoned branch the
+    # repaired file dropped.
+    _jsonl(sessions / (OPENCLAW_LEGACY + OPENCLAW_CHECKPOINT), openclaw_legacy_records()[:3])
     _jsonl(
-        sessions / (OPENCLAW_LEGACY + ".checkpoint.0b5e1c2d-3f4a-4b5c-8d6e-7f8091a2b3c4.jsonl"),
-        openclaw_legacy_records(),
+        sessions / (OPENCLAW_LEGACY + OPENCLAW_REPAIR_BAK),
+        [
+            *openclaw_legacy_records(),
+            {
+                "type": "message",
+                "id": "e9",
+                "parentId": "e1",
+                "timestamp": "2026-09-20T08:00:30.000Z",
+                "message": {
+                    "role": "user",
+                    "content": "abandoned branch prompt",
+                    "timestamp": 1789891230000,
+                },
+            },
+        ],
     )
+    # Noise the parser must skip: a trajectory (another schema) and a
+    # `.migrated` file (not confirmed as a transcript).
+    _jsonl(sessions / (OPENCLAW_LEGACY + ".trajectory.jsonl"), [{"type": "trace"}])
+    _jsonl(sessions / (OPENCLAW_LEGACY + ".jsonl.migrated"), openclaw_legacy_records())
     (agent / "agent/auth-profiles.json").write_text(
         json.dumps({"anthropic:default": {"key": OPENCLAW_TOKEN}}), encoding="utf-8"
     )

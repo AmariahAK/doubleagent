@@ -33,6 +33,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   is read as a secondary source: one `user` row per prompt, the last one
   at its `ts` and the others with no timestamp, since the CLI restamps
   every line each time it rewrites the file ([#122]).
+- OpenClaw: compaction checkpoints (`*.checkpoint.<uuid>.jsonl`) and
+  pre-doctor repair backups (`*.jsonl.pre-doctor-*-repair-*.bak`) in the
+  sessions directory are parsed as secondary sources; a backup keeps the
+  abandoned branches a doctor repair removed ([#122]).
 
 ### Changed
 
@@ -99,6 +103,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and an event log prompt or choice that `user_events` also holds, are
   dropped. The backup's leading `system` row now names the backup file
   ([#122]).
+- OpenClaw: a published reset or deleted archive blob in
+  `session_transcript_archives` is parsed in full instead of one `system`
+  row naming its file, and the `.jsonl.reset.*` / `.jsonl.deleted.*` file
+  is a secondary source; the session id of a legacy JSONL file is now its
+  header `id` ([#122]).
 
 ## [0.12.0] - 2026-10-15
 

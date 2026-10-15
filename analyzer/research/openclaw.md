@@ -39,7 +39,8 @@ legacy `.clawdbot`:
   archive unless it was incognito ([`docs/cli/sessions.md:212-217`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/sessions.md#L212-L217)).
 - Also there: `<id>.checkpoint.<uuid>.jsonl` compaction checkpoints,
   `<id>.trajectory.jsonl` runtime trajectories, `*.migrated[.N]` and
-  `*.pre-doctor-*-repair-*.bak` rollback copies ([`artifacts.ts:13-17`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L13-L17),[`96-116`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L96-L116)),
+  `*.pre-doctor-*-repair-*.bak` rollback copies (which of them are copies
+  of a transcript is in [section 8](#8-parser-plan)) ([`artifacts.ts:13-17`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L13-L17),[`96-116`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L96-L116)),
   and a legacy `sessions.json` index.
 - Not transcripts but useful: `state/openclaw.sqlite` `audit_events`
   ([`openclaw-state-schema.sql:149-171`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-state-schema.sql#L149-L171)) and `channel_ingress_events.payload_json`
@@ -152,8 +153,9 @@ are raw tool output and may contain anything the agent read, including
 
 Selection: `*/agent/openclaw-agent.sqlite` under an `openclaw` artifact
 (plus `-wal`); `*/sessions/*.jsonl`, `*.jsonl.reset.*`, `*.jsonl.deleted.*`
-(decompress `.zst`). Skip `*.trajectory.jsonl`, `*.checkpoint.*.jsonl` and
-`*.migrated*` to avoid duplicates. SQL: `SELECT e.rowid, e.session_id, e.seq,
+(decompress `.zst`), `*.checkpoint.<uuid>.jsonl` and
+`*.jsonl.pre-doctor-*-repair-*.bak`. Skip `*.trajectory.jsonl` and
+`*.migrated*` (see "Primary and secondary sources" below). SQL: `SELECT e.rowid, e.session_id, e.seq,
 e.event_json, e.event_zstd, e.created_at, w.model, w.channel, w.session_key
 FROM transcript_events e LEFT JOIN session_windows w USING (session_id) ORDER
 BY e.session_id, e.seq`. Then archive blobs.
@@ -196,6 +198,79 @@ decision; `bashExecution.cancelled` stays on the bash `tool_result` row. The
 ([`collectors/research/openclaw.md`](../../collectors/research/openclaw.md))
 hold approvals, but their columns are not recorded here, so they are not
 read.
+
+**Primary and secondary sources** (issue 122: every source is parsed on
+every run, and a row of a secondary source is dropped when a primary
+store's row records the same event; see the "Secondary sources" section of
+[`analyzer/docs/output.md`](../docs/output.md#secondary-sources)).
+
+- Primary: `openclaw-agent.sqlite`, all of it: `transcript_events`, the
+  cold archives and every `session_transcript_archives` blob, whether or
+  not its `published_at` is set (the time the blob was also written to the
+  sessions directory as a file). The schema calls that table the
+  "canonical cold-tier owner for reclaimed transcript generations", from
+  which "the derived .deleted/.reset file may be recreated"
+  ([`openclaw-agent-schema.sql:606-607`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-agent-schema.sql#L606-L607)); the file is
+  published from the blob's exact bytes, hash-checked
+  ([`session-accessor.sqlite-archive-artifact.ts:177-216`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/session-accessor.sqlite-archive-artifact.ts#L177-L216)).
+  `openclaw doctor` (the CLI's repair and migration command) "repairs
+  canonical blobs before their reconstructible files", rewriting a
+  published file from its row
+  ([`state-migrations.transcript-directives-archives.ts:327-379`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/infra/state-migrations.transcript-directives-archives.ts#L327-L379)),
+  so the table, not the file, is the store of record. The legacy plain
+  `<sessionId>.jsonl` is primary too: before doctor imports it, it is the
+  only copy.
+- Secondary, the published `.jsonl.reset.*` / `.jsonl.deleted.*` file:
+  the same entries as the blob. It survives the database being lost or
+  excluded; otherwise the blob outlives it, since retention deletes a
+  published row only once its file is gone
+  ([`session-history-archive-pruning.worker.ts:105-127`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/session-history-archive-pruning.worker.ts#L105-L127)).
+- Secondary, `<name>.checkpoint.<uuid>.jsonl`: a pre-compaction snapshot,
+  a byte copy of the session file taken before compaction
+  ([`src/gateway/session-compaction-checkpoints.ts:383-389`](https://github.com/openclaw/openclaw/blob/68145258676f1401a2e42cbaffe6564c2a6213c6/src/gateway/session-compaction-checkpoints.ts#L383-L389) at
+  `6814525`, the parent of the commit that stopped copying,
+  `c59635a`). At `3b16db7` no runtime writes new ones; the session store
+  keeps only the references
+  ([`legacy-compaction-history.ts:3-7`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/legacy-compaction-history.ts#L3-L7)), so the files exist on
+  hosts that ran an older release. A checkpoint holds the entries a
+  compaction later summarised, which survive in the legacy file or, after
+  import, in `transcript_events`; it survives a compaction of the live
+  transcript but is a copy of nothing the primary store lost unless that
+  store is gone. `<name>` is the session file's name, `<sessionId>` or,
+  for a session forked from a checkpoint, `<ts>_<sessionId>`
+  ([`session-compaction-checkpoints.ts:320-332`](https://github.com/openclaw/openclaw/blob/68145258676f1401a2e42cbaffe6564c2a6213c6/src/gateway/session-compaction-checkpoints.ts#L320-L332) at `6814525`).
+- Secondary, `<sessionId>.jsonl.pre-doctor-(branch|openai-codex)-repair-<ts>.bak`:
+  a byte copy of a legacy transcript taken before `openclaw doctor`
+  rewrote it
+  ([`src/commands/doctor-session-transcripts.ts:249-292`](https://github.com/openclaw/openclaw/blob/6559e3f3b94c54e2b1aa06d1fca712c5360455ff/src/commands/doctor-session-transcripts.ts#L249-L292) at
+  `6559e3f`, the parent of `4273ca9`, which removed the file-era
+  runtime; the name pattern is still classified at
+  [`artifacts.ts:13-14`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L13-L14)). A branch repair keeps only the active
+  branch, so the backup also holds the abandoned branches, which no other
+  store has, and its rows for them are kept.
+- Not read: `<id>.trajectory.jsonl`, the trajectory flight recorder (a
+  per-run log of runtime events: prompt submitted, tool call, model
+  completed), a different schema marked `openclaw-trajectory`
+  ([`docs/tools/trajectory.md:76-102`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/tools/trajectory.md#L76-L102)), not a transcript copy;
+  `*.migrated[.N]` ([`artifacts.ts:15`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L15)), for which no writer of a
+  session transcript was found at `3b16db7` or `6559e3f` (the suffix is
+  used there for migrated cron logs, pairing stores and audit logs); and
+  `<id>.jsonl.bak.<ts>`, the legacy compact backups
+  ([`artifacts.ts:43-50`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L43-L50)), whose content is not recorded.
+
+Joins: the copies are byte copies, so their entries carry the same `id`,
+`timestamp` and header `cwd` as the primary store's rows, and the parser
+takes the session id of every JSONL file from its header `id` (the name
+before the suffix only when there is no header), the id
+`transcript_events.session_id` and the archive table carry. An archive
+whose session id is over 96 bytes is named `session-<sha256>`
+([`session-accessor.sqlite-archive-artifact.ts:24-29`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/session-accessor.sqlite-archive-artifact.ts#L24-L29)), which the header id
+overrides. Every entry row of a copy therefore pairs with its primary
+twin at the same time (a 2-second tolerance is not needed but is the
+default). The session-start row does not: a copy's names the file
+(`archive=<reason>.<ts>` or `copy=<suffix>`) where the database's carries
+the `session_windows` and archive columns, so each copy keeps one row
+showing it exists.
 
 Fixture (JSONL form; the SQLite form stores the same strings in `event_json`):
 

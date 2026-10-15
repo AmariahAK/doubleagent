@@ -531,6 +531,11 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # is not offered to the others. The index's block-array messages keep their
 # type names and stay; the history's dated "list the open ports" has no
 # transcript.
+# OpenClaw: the deleted archive file's prompt (the blob
+# holds it) and the pre-doctor backup's seven entry rows (the legacy file
+# holds them); the backup's abandoned-branch prompt, every copy's
+# session-start row and the checkpoint's three entry rows, whose primary
+# twins the backup's copies took first, are kept.
 FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 1,  # "clean the logs"
@@ -544,6 +549,7 @@ FIXTURE_DEDUPLICATED = {
     "hermes": 11,  # snapshot copies and the divert's screenshot prompt
     "muse-code": 1,  # "fix the failing test", no timestamp
     "open-interpreter": 1,  # "list the files"
+    "openclaw": 8,  # .jsonl.deleted.* file 1, pre-doctor-branch-repair .bak 7
     "qwen-code": 1,  # "run the tests"
     "tabby": 8,  # completion prompt and choice, threads 7 and 3 in the backups
 }
