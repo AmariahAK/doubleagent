@@ -516,6 +516,11 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # prompt the transcript lacks, permission and result lines) are kept.
 # The Letta transcript.jsonl turn its messages.jsonl lacks
 # ("now delete the build directory" and its reply) is kept.
+# Hermes: the 12:00:04 state snapshot's six rows of the main
+# session pair with the live state.db's, its four rows of the pruned session
+# with the 11:00:00 snapshot's earlier copy, and the main session's divert
+# repeats the screenshot prompt; the pruned session (once), the two snapshot
+# rows and "and the hidden files?" are kept.
 FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 1,  # "clean the logs"
@@ -525,6 +530,7 @@ FIXTURE_DEDUPLICATED = {
     "gemini-cli": 1,  # "list files in src"
     "goose": 1,  # "run the tests", no timestamp
     "letta": 4,  # transcript.jsonl turn: prompt, tool_use, tool_result, reply
+    "hermes": 11,  # snapshot copies and the divert's screenshot prompt
     "muse-code": 1,  # "fix the failing test", no timestamp
     "open-interpreter": 1,  # "list the files"
     "qwen-code": 1,  # "run the tests"

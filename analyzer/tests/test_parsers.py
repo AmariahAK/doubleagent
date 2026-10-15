@@ -5445,7 +5445,12 @@ from fixtures import (
     HERMES_CHILD,
     HERMES_DIVERTED,
     HERMES_DIVERTED_REL,
+    HERMES_PRUNED,
     HERMES_SESSION,
+    HERMES_SESSION_JSONL_REL,
+    HERMES_SNAPSHOT,
+    HERMES_SNAPSHOT_OLD_REL,
+    HERMES_SNAPSHOT_REL,
     agent_zero_chat,
     agent_zero_history,
 )
@@ -5592,17 +5597,21 @@ class HermesTests(ParserBase):
             ".hermes_alt/state.db",
             "AppData/Local/hermes/state.db",
             "AppData/Local/hermes/profiles/x/sessions/abc.jsonl",
+            ".hermes/state-snapshots/1/state.db",
+            "AppData/Local/hermes/profiles/x/state-snapshots/20261001-120000/state.db",
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
         for rel in (
-            ".hermes/state-snapshots/1/state.db",
+            ".hermes/state-snapshots/1/manifest.json",
+            ".hermes/state-snapshots/1/projects.db",
+            ".hermes/state-snapshots/state.db",
             ".hermes/response_store.db",
             ".hermes/sessions/abc.json",
         ):
             self.assertFalse(p.wants(rel_only(rel)), rel)
         for a in self.col.artifacts:
             if a.agent == "hermes" and a.rel.endswith(
-                (".yaml", "auth.json", "sessions.json", "-wal", "-shm")
+                (".yaml", "auth.json", "sessions.json", "manifest.json", "-wal", "-shm")
             ):
                 self.assertFalse(p.wants(a), a.rel)
         self.assertEqual(decode_content('\x00json:{"text":"x"}'), {"text": "x"})
@@ -5636,6 +5645,123 @@ class HermesTests(ParserBase):
         rows = self.rows_for(HermesParser(), self.REL)
         self.assertEqual(
             [(r.turn_type, r.text) for r in rows], [("system", "parser: not a SQLite database")]
+        )
+
+    def test_secondary(self):
+        p = HermesParser()
+        self.assertFalse(p.secondary(rel_only(self.REL)))
+        self.assertFalse(p.secondary(rel_only(".hermes/profiles/work/state.db")))
+        for rel in (HERMES_SNAPSHOT_REL, HERMES_DIVERTED_REL, HERMES_SESSION_JSONL_REL):
+            self.assertTrue(p.secondary(rel_only(rel)), rel)
+            self.assertEqual(p.secondary_tolerance(rel_only(rel)), 2.0)
+
+    def test_snapshot_rows_copy_the_live_rows(self):
+        snap = self.rows_for(HermesParser(), HERMES_SNAPSHOT_REL)
+        self.assertEqual(
+            (snap[0].turn_type, snap[0].text, snap[0].timestamp_utc, snap[0].session_id),
+            (
+                "system",
+                "state snapshot %s: older copy of state.db" % HERMES_SNAPSHOT,
+                "2026-10-01T12:00:04.000Z",
+                "",
+            ),
+        )
+
+        def key(r):
+            return (
+                r.turn_type,
+                r.text,
+                r.session_id,
+                r.project_path,
+                r.timestamp_utc,
+                r.tool_use_id,
+            )
+
+        live = {key(r) for r in self.rows_for(HermesParser(), self.REL)}
+        main = [r for r in snap if r.session_id == HERMES_SESSION]
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in main],
+            [
+                ("system", "session start | List files | source=cli"),
+                ("system", "model: anthropic/claude-sonnet-4 provider=openrouter"),
+                ("user", "list files"),
+                ("tool_use", "ls"),
+                ("tool_result", "a.txt\nb.txt"),
+                ("assistant", "Two files: a.txt, b.txt."),
+            ],
+        )
+        for r in main:  # copies: same session, cwd and message times
+            self.assertIn(key(r), live)
+        pruned = [r for r in snap if r.session_id == HERMES_PRUNED]
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.project_path) for r in pruned],
+            [
+                (
+                    "system",
+                    "session start | Audit logs | source=cli | end=user_exit",
+                    "2026-09-20T09:00:00.000Z",
+                    "/srv/proj",
+                ),
+                (
+                    "system",
+                    "model: anthropic/claude-sonnet-4",
+                    "2026-09-20T09:00:00.000Z",
+                    "/srv/proj",
+                ),
+                ("user", "summarise the audit log", "2026-09-20T09:00:01.000Z", "/srv/proj"),
+                (
+                    "assistant",
+                    "The log shows three failed logins.",
+                    "2026-09-20T09:00:02.000Z",
+                    "/srv/proj",
+                ),
+            ],
+        )
+        self.assertEqual(len(snap), 1 + len(main) + len(pruned))
+        old = self.rows_for(HermesParser(), HERMES_SNAPSHOT_OLD_REL)
+        self.assertEqual(old[0].timestamp_utc, "2026-10-01T11:00:00.000Z")
+        self.assertEqual({r.session_id for r in old[1:]}, {HERMES_PRUNED})
+
+    def test_snapshot_id_without_time(self):
+        art = dc_replace(
+            next(a for a in self.col.artifacts if a.rel == HERMES_SNAPSHOT_REL),
+            rel=".hermes/state-snapshots/manual/state.db",
+        )
+        row = next(iter(HermesParser().parse(art, Options())))
+        self.assertEqual(
+            (row.text, row.timestamp_utc), ("state snapshot manual: older copy of state.db", "")
+        )
+
+    def test_corrupt_snapshot_is_reported(self):
+        (self.home / HERMES_SNAPSHOT_REL).write_bytes(b"\x00" * 64)
+        rows = self.rows_for(HermesParser(), HERMES_SNAPSHOT_REL)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "state snapshot %s: older copy of state.db" % HERMES_SNAPSHOT,
+                "parser: not a SQLite database",
+            ],
+        )
+
+    def test_session_divert_beside_the_live_session(self):
+        rows = self.rows_for(HermesParser(), HERMES_SESSION_JSONL_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.session_id, r.project_path, r.timestamp_utc) for r in rows],
+            [
+                (
+                    "user",
+                    "what is in this screenshot?\n[image]",
+                    HERMES_SESSION,
+                    "",
+                    "2026-10-01T12:00:06.000Z",
+                ),
+                ("user", "and the hidden files?", HERMES_SESSION, "", "2026-10-01T12:00:07.000Z"),
+            ],
+        )
+        live = [r for r in self.rows_for(HermesParser(), self.REL) if r.text == rows[0].text]
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc) for r in live],
+            [(HERMES_SESSION, "2026-10-01T12:00:06.000Z")],
         )
 
 

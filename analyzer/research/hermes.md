@@ -23,10 +23,44 @@ Globs relative to the user home:
 - `.hermes/sessions/<session_id>.jsonl`: written only when `state.db` was
   replaced under a running process; one JSON message dict per line
   ([`hermes_state.py:429-444`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state.py#L429-L444)).
+  Hermes calls this a divert: the batch of messages a live agent or the
+  gateway could not write because its database handle was replaced or
+  quarantined is appended here instead ([`agent/session_persistence.py:392-397`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/agent/session_persistence.py#L392-L397), [`gateway/session_transcript.py:153-177`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/gateway/session_transcript.py#L153-L177)). An agent's line has the
+  keys of a `messages` row in that order, `role`, `content`, `tool_name`,
+  `tool_calls` (a list), `tool_call_id`, the reasoning keys, `timestamp`
+  and others ([`agent/session_persistence.py:224-236`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/agent/session_persistence.py#L224-L236)); a gateway line is the pending transcript message as the
+  gateway queued it. No `session_id` field (it is the file name), no `cwd`,
+  no model.
+- `.hermes/state-snapshots/<id>/state.db`: quick snapshots. `/snapshot
+  [label]`, `hermes backup --quick`, `hermes update` (label `pre-update`)
+  and the profile repair (label `repair-profiles`) copy `state.db` and the
+  other critical state files ([`hermes_cli/backup.py:1057-1076`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1057-L1076)) into `state-snapshots/<id>/`
+  ([`hermes_cli/backup.py:57`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L57), [`hermes_cli/cli_commands_mixin.py:826-828`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/cli_commands_mixin.py#L826-L828), [`hermes_cli/backup.py:2190-2193`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L2190-L2193), [`hermes_cli/update_cmd_maint.py:686-691`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/update_cmd_maint.py#L686-L691), [`hermes_cli/sessions_repair_profiles.py:485`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/sessions_repair_profiles.py#L485)). `<id>` is the UTC time `%Y%m%d-%H%M%S`, then
+  `-<label>` when one was given, then `-2`, `-3` on a collision ([`hermes_cli/backup.py:1263-1270`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1263-L1270)); the
+  files are staged under `.<id>.<pid>.partial` and renamed into place
+  ([`hermes_cli/backup.py:1271`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1271), [`hermes_cli/backup.py:1420`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1420)), and a `manifest.json` records `id`, `timestamp`, `label`,
+  `file_count`, `total_size`, `files`, `failed_dbs` and
+  `oversized_skipped` ([`hermes_cli/backup.py:1393-1402`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1393-L1402)). A database is copied with SQLite's backup API,
+  so the copy is a consistent, complete database with no WAL of its own
+  ([`hermes_cli/backup_sqlite.py:31-35`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup_sqlite.py#L31-L35), [`hermes_cli/backup_sqlite.py:68`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup_sqlite.py#L68)). By default 20 snapshots are kept, older ones pruned (the `hermes update` caller passes its own count), except when a
+  database failed to copy or was skipped as too large ([`hermes_cli/backup.py:1079`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1079), [`hermes_cli/backup.py:1422-1430`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1422-L1430)); `hermes
+  update` passes a file-size cap, so a large `state.db` can be missing from
+  its snapshot ([`hermes_cli/update_cmd_maint.py:690-691`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/update_cmd_maint.py#L690-L691)). Collected only with `--full`: the catalog excludes
+  `state-snapshots`
+  ([section 4 of `collectors/research/hermes.md`](../../collectors/research/hermes.md#4-exclusions)).
+- `.hermes/backups/pre-update-*.zip` and `pre-migration-*.zip`: full zip
+  backups of the home, 5 of each ([`hermes_cli/backup.py:1120-1124`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1120-L1124)); not parsed.
 - `.hermes/sessions/<id>.json`, `session_<id>.json` (legacy snapshots) and
   `request_dump_<id>_<ts>.json` (redacted API request on error)
   ([`hermes_state_sessions.py:1573-1585`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_sessions.py#L1573-L1585),
   [`agent/agent_runtime_helpers.py:1628-1633`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/agent/agent_runtime_helpers.py#L1628-L1633)).
+  Nothing at the checked commit writes the two legacy snapshot names; the
+  only code that names them is `_remove_session_files`, which deletes them
+  with a session (an evaluation script checks that the old
+  `write_json_snapshots` setting no longer produces any,
+  [`evals/session_snapshot_removal.py:12-29`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/evals/session_snapshot_removal.py#L12-L29)),
+  so their shape cannot be read from this source and the parser does not
+  read them.
 - `.hermes/sessions/saved/hermes_conversation_<YYYYmmdd_HHMMSS>.json`
   (`{id, model, started_at, messages}`) from `/save`
   ([`hermes_cli/cli_session_mixin.py:669-689`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/cli_session_mixin.py#L669-L689)).
@@ -104,7 +138,31 @@ FTS5 tables `messages_fts` and `messages_fts_trigram`
 idle 90 days are pruned and the file may be VACUUMed
 ([`hermes_cli/config_defaults.py:2276-2285`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/config_defaults.py#L2276-L2285),
 [`hermes_state_maintenance.py:421-445`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_maintenance.py#L421-L445)); older copies live in
-`state-snapshots/*/state.db`. No compression or encryption.
+`state-snapshots/*/state.db` ([section 2](#2-transcript-files)). No
+compression or encryption.
+
+What the copies survive and how they join. A snapshot is the whole
+database at the snapshot time, so it outlives a session pruned after 90
+idle days, a session deleted with `hermes sessions delete` (which removes
+the rows and the session's files under `sessions/`), a VACUUM, and a
+`state.db` replaced, rebuilt or quarantined; it does not see anything
+written after it. Its rows join the live database's exactly: the same
+`sessions.id`, the same `cwd` and `git_repo_root`, the same
+`messages.timestamp` (the backup API copies the pages, not a re-encoding).
+Two things make a snapshot row differ from its live twin: a message rewound
+or compacted after the snapshot (live `active = 0`, so the parser's
+`[rewound]` prefix), and a session whose `end_reason`, `title` or later
+model was set after it (the session start row's text). Those rows are kept
+from both. A divert holds messages the replaced database never received, so most
+of its lines have no twin in the live database; a line does have one when
+the same messages also reached a database the parser reads (a snapshot,
+or a new `state.db` that a later flush wrote them to), and then it carries
+the same session id and, when the line has one, the same `timestamp`.
+Whether Hermes replays a divert into a new database was not determined;
+the session-row heal of
+[`agent/session_persistence.py:354-375`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/agent/session_persistence.py#L354-L375)
+replays the in-memory transcript only when a session row was deleted, a
+different failure.
 
 ## 6. Format versions
 
@@ -126,8 +184,20 @@ holds messaging user and chat identifiers.
 
 ## 8. Parser plan
 
-Inputs: `state.db` (via `sqlite_util`, so the WAL is read) under any Hermes
-home; optionally `sessions/*.jsonl`. Rows: one per message; an assistant row
+Inputs, under any Hermes home, each marked for the timeline's
+deduplication (issue 122, see
+[Secondary sources in `docs/output.md`](../docs/output.md#secondary-sources)):
+
+| Source | Kind | Why |
+| --- | --- | --- |
+| `state.db` (via `sqlite_util`, so the WAL is read) | primary | the store of record for every front end |
+| `state-snapshots/<id>/state.db` | secondary | an older copy of `state.db`; read with the same reader after one `system` row `state snapshot <id>: older copy of state.db`, timestamped from the id's UTC time when the id starts with one, else empty; rows pair with the live rows exactly, and the copies several snapshots keep of a pruned session collapse to the first |
+| `sessions/<id>.jsonl` | secondary | a divert of messages `state.db` did not take; `session_id` from the file name, no project path (the match is by session id), each line's own `timestamp` or none |
+| `sessions/<id>.json`, `session_<id>.json` | not read | no writer at the checked commit, shape unknown |
+| `backups/*.zip`, `sessions/saved/*.json`, `response_store.db` | not read | archives and exports; `response_store.db` schema not examined |
+
+Both secondary sources keep the default 2-second tolerance: their times
+are copies of the live ones, not later stamps. Rows: one per message; an assistant row
 with N `tool_calls` yields one `assistant` row (when `content` is non-empty),
 one `thinking` row (when `reasoning`/`reasoning_content` is set), and N
 `tool_use` rows. Order by `timestamp, id`. Include `active=0` rows: they are

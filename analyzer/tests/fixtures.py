@@ -5610,10 +5610,86 @@ def hermes_diverted_records():
 HERMES_DIVERTED_REL = ".hermes/sessions/%s.jsonl" % HERMES_DIVERTED
 
 
+HERMES_PRUNED = "20260920_090000_deadbeef"
+HERMES_SNAPSHOT_OLD = "20261001-110000"
+HERMES_SNAPSHOT = "20261001-120004-pre-update"
+HERMES_SNAPSHOT_REL = ".hermes/state-snapshots/%s/state.db" % HERMES_SNAPSHOT
+HERMES_SNAPSHOT_OLD_REL = ".hermes/state-snapshots/%s/state.db" % HERMES_SNAPSHOT_OLD
+HERMES_SESSION_JSONL_REL = ".hermes/sessions/%s.jsonl" % HERMES_SESSION
+
+
+def hermes_pruned_records(cwd="/srv/proj"):
+    """A session the live state.db no longer holds (pruned or deleted), as
+    the quick snapshots keep it."""
+    return [
+        "INSERT INTO sessions VALUES ('%s','cli','anthropic/claude-sonnet-4',NULL,1789894800.0,"
+        "1789894860.0,'user_exit','%s','main','%s','Audit logs')" % (HERMES_PRUNED, cwd, cwd),
+        "INSERT INTO messages (session_id,role,content,timestamp) VALUES "
+        "('%s','user','summarise the audit log',1789894801.0),"
+        "('%s','assistant','The log shows three failed logins.',1789894802.0)"
+        % (HERMES_PRUNED, HERMES_PRUNED),
+    ]
+
+
+def hermes_snapshot_records(cwd="/srv/proj"):
+    """state-snapshots/<id>/state.db (hermes_cli/backup.py:1214-1420): the
+    live database as it was at 12:00:04, the main session's first four
+    messages and its first model, plus the pruned session."""
+    live = hermes_records(cwd)
+    return [
+        live[0],
+        live[1],
+        live[3],
+        "INSERT INTO session_model_usage (session_id,model,billing_provider,task,api_call_count,"
+        "first_seen,last_seen) VALUES "
+        "('%s','anthropic/claude-sonnet-4','openrouter','',2,1790856002.5,1790856003.5)"
+        % HERMES_SESSION,
+        *hermes_pruned_records(cwd),
+    ]
+
+
+def hermes_session_jsonl_records():
+    """sessions/<main session>.jsonl: a divert of the main session, one
+    message the live state.db also holds (list content, not the NUL json
+    form) and one it lacks."""
+    return [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "what is in this screenshot?"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+            ],
+            "timestamp": 1790856006.0,
+        },
+        {"role": "user", "content": "and the hidden files?", "timestamp": 1790856007.0},
+    ]
+
+
+def _hermes_snapshot(path: Path, inserts) -> None:
+    """A snapshot copy: SQLite's backup API leaves a plain database, no WAL."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(path))
+    con.executescript(HERMES_SCHEMA)
+    for stmt in inserts:
+        con.execute(stmt)
+    con.commit()
+    con.close()
+
+
 def build_hermes(home: Path) -> None:
     hermes = home / ".hermes"
     _wal_db(hermes / "state.db", HERMES_SCHEMA, hermes_records())
     _jsonl(home / HERMES_DIVERTED_REL, hermes_diverted_records())
+    _hermes_snapshot(
+        home / HERMES_SNAPSHOT_OLD_REL,
+        ["INSERT INTO schema_version VALUES (31)", *hermes_pruned_records()],
+    )
+    _hermes_snapshot(home / HERMES_SNAPSHOT_REL, hermes_snapshot_records())
+    _json(
+        hermes / "state-snapshots" / HERMES_SNAPSHOT / "manifest.json",
+        {"id": HERMES_SNAPSHOT, "timestamp": "20261001-120004", "label": "pre-update"},
+    )
+    _jsonl(home / HERMES_SESSION_JSONL_REL, hermes_session_jsonl_records())
     (hermes / "config.yaml").write_text("model: anthropic/claude-sonnet-4\n", encoding="utf-8")
     (hermes / "auth.json").write_text(
         '{"providers": {"nous": {"access_token": "not-real"}}}', encoding="utf-8"

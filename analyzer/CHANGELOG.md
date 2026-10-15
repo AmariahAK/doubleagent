@@ -19,6 +19,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ([#122]).
 - `inventory.json` key `deduplicated`, the new last key: the dropped
   rows per agent, `{}` when none ([#122]).
+- The `hermes` parser reads the quick snapshots
+  `state-snapshots/<id>/state.db` (collected with `--full`) like
+  `state.db`, after one `system` row naming the snapshot, as a secondary
+  source, so a session pruned or deleted from the live database is
+  recovered once however many snapshots hold it ([#122]).
 
 ### Changed
 
@@ -76,6 +81,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Letta stamps each line at the end of its turn; its `tool_use` text is
   now the command, path or query, as the `messages.jsonl` row shows it,
   instead of the arguments JSON ([#122]).
+- The `hermes` parser's `sessions/<id>.jsonl` diverts are a secondary
+  source: a message the live `state.db` also holds for that session is
+  shown once ([#122]).
 
 ## [0.12.0] - 2026-10-15
 
