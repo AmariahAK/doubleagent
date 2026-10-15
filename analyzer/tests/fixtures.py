@@ -1653,6 +1653,7 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     build_antigravity(home / ".gemini/antigravity-cli")
     build_antigravity_app(home / ".gemini/antigravity")
     build_antigravity_config(home / ".gemini")
+    build_antigravity_brain(home / ".gemini")
     build_gemini_cli(home / ".gemini")
     build_zed(home)
     build_vscode(home)
@@ -1723,6 +1724,7 @@ def write_bad_line(path: Path) -> None:
 AGY_CONVERSATION = "799062d5-0000-4000-8000-000000000099"
 AGY_T0 = 1790848800  # 2026-10-01T10:00:00Z
 AGY_APP_CONVERSATION = "a1b2c3d4-0000-4000-8000-0000000000a2"
+AGY_ORPHAN = "0d1e2f3a-0000-4000-8000-0000000000b3"  # brain mirror only
 AGY_APP_PROJECT = "5e1d7c2a-0000-4000-8000-0000000000a1"
 AGY_APP_T0 = AGY_T0 + 3600  # 2026-10-01T11:00:00Z
 AGY_CONFIG_MTIME = AGY_T0 + 7200  # 2026-10-01T12:00:00Z, the standing files' mtime
@@ -2103,8 +2105,8 @@ def antigravity_app_steps() -> list[tuple[int, int, dict]]:
 def build_antigravity_app(base: Path) -> None:
     """The desktop app's data directory, ~/.gemini/antigravity: the same
     stores as the CLI's with source 1 and app_data_dir `antigravity`, no
-    history.jsonl, and noise the parser must not want (the gdocs plugin's
-    OAuth token, a brain transcript)."""
+    history.jsonl, noise the parser must not want (the gdocs plugin's
+    OAuth token), and the brain mirror's shortened transcript.jsonl alone."""
     build_antigravity(
         base,
         conversation=AGY_APP_CONVERSATION,
@@ -2122,18 +2124,165 @@ def build_antigravity_app(base: Path) -> None:
     token.write_text(
         json.dumps({"client_id": "x", "token": {"access_token": "y"}}), encoding="utf-8"
     )
+    # The brain mirror's shortened twin alone (#87, #122): read because no
+    # transcript_full.jsonl or chunk sits beside it.
     _jsonl(
         base / "brain" / AGY_APP_CONVERSATION / ".system_generated/logs/transcript.jsonl",
-        [
-            {
-                "type": "USER_INPUT",
-                "content": "which packages are outdated?",
-                "created_at": "2026-10-01T11:00:00Z",
-                "source": "USER_EXPLICIT",
-                "status": "DONE",
-                "step_index": 0,
-            }
-        ],
+        antigravity_app_brain_records(),
+    )
+
+
+def _brain_line(idx: int, kind: str, at: str, content: str = "", **extra) -> dict:
+    """One brain transcript line in the key set the real installs showed."""
+    source = {"USER_INPUT": "USER_EXPLICIT", "PLANNER_RESPONSE": "MODEL"}.get(kind, "SYSTEM")
+    return {
+        "step_index": idx,
+        "source": source,
+        "type": kind,
+        "status": "DONE",
+        "created_at": at,
+        "content": content,
+        **extra,
+    }
+
+
+def antigravity_brain_records() -> list[dict]:
+    """The CLI conversation's brain transcript_full.jsonl (#87): the lines of
+    database steps 0-3, 7 and 8, each at the step's created_at, so every row
+    pairs with the database's (the assistant, tool_use and tool_result rows
+    there carry completed_at, one to two seconds later)."""
+    return [
+        _brain_line(0, "USER_INPUT", "2026-10-01T10:00:00Z", "clean the logs"),
+        _brain_line(
+            1,
+            "PLANNER_RESPONSE",
+            "2026-10-01T10:00:01Z",
+            "I will read the README first.",
+            thinking="look before leaping",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "name": "view_file",
+                    "args": {"AbsolutePath": "/home/u/proj/README.md"},
+                }
+            ],
+            input_tokens=100,
+            output_tokens=20,
+            cache_read_tokens=0,
+        ),
+        _brain_line(2, "GENERIC", "2026-10-01T10:00:03Z", "File Path: README.md\n# proj"),
+        _brain_line(
+            3,
+            "PLANNER_RESPONSE",
+            "2026-10-01T10:00:04Z",
+            tool_calls=[
+                {
+                    "id": "call_2",
+                    "name": "run_command",
+                    "args": {"CommandLine": "rm -rf /var/log/*.log", "Cwd": "/home/u/proj"},
+                }
+            ],
+        ),
+        dict(
+            _brain_line(7, "USER_INPUT", "2026-10-01T10:00:09Z", "<injected reminder>"),
+            source="USER_IMPLICIT",
+        ),
+        _brain_line(
+            8, "PLANNER_RESPONSE", "2026-10-01T10:00:10Z", "Done. Three log files were removed."
+        ),
+    ]
+
+
+def antigravity_app_brain_records() -> list[dict]:
+    """The desktop-app conversation's shortened transcript.jsonl: the lines of
+    database steps 0-4, the tool output shortened (`truncated_fields`)."""
+    return [
+        _brain_line(0, "USER_INPUT", "2026-10-01T11:00:00Z", "which packages are outdated?"),
+        _brain_line(
+            1,
+            "PLANNER_RESPONSE",
+            "2026-10-01T11:00:01Z",
+            "I will ask Homebrew.",
+            thinking="brew knows",
+            tool_calls=[
+                {
+                    "id": "call_7",
+                    "name": "run_command",
+                    "args": {"CommandLine": "brew outdated", "Cwd": "/home/u/proj"},
+                }
+            ],
+        ),
+        _brain_line(
+            2,
+            "GENERIC",
+            "2026-10-01T11:00:02Z",
+            "node (24.1.0) <",
+            error="",
+            truncated_fields=["content"],
+        ),
+        _brain_line(3, "SYSTEM_MESSAGE", "2026-10-01T11:00:04Z", "background task finished"),
+        _brain_line(
+            4,
+            "ERROR_MESSAGE",
+            "2026-10-01T11:00:05Z",
+            "",
+            error={"short_error": "model overloaded", "full_error": "HTTP 529"},
+        ),
+    ]
+
+
+def antigravity_orphan_brain_records() -> list[dict]:
+    """A conversation whose database is gone: only its brain mirror is left."""
+    return [
+        _brain_line(0, "USER_INPUT", "2026-10-01T10:30:00Z", "summarise the deleted project"),
+        _brain_line(
+            1,
+            "PLANNER_RESPONSE",
+            "2026-10-01T10:30:01.250Z",
+            "I will list it first.",
+            thinking="it may be gone",
+            tool_calls=[
+                {
+                    "id": "call_o1",
+                    "name": "list_directory",
+                    "arguments_json": json.dumps({"DirectoryPath": "/home/u/gone"}),
+                }
+            ],
+        ),
+        dict(
+            _brain_line(2, "GENERIC", "2026-10-01T10:30:02Z", "directory not found"),
+            status="ERROR",
+        ),
+        _brain_line(3, "SYSTEM_MESSAGE", "2026-10-01T10:30:03Z", "background task finished"),
+    ]
+
+
+def build_antigravity_brain(gemini: Path) -> None:
+    """The CLI's brain mirror (#87, #122). For the fixture conversation:
+    transcript_full.jsonl (the copy read), a shortened transcript.jsonl and a
+    transcript_full chunk with different text (copies not read), and a
+    tool output file the parser must not want. For AGY_ORPHAN, whose
+    conversation database is gone: two transcript_full chunks, the second
+    line cut across the boundary, and a shortened transcript.jsonl that is
+    not read."""
+    logs = gemini / "antigravity-cli/brain" / AGY_CONVERSATION / ".system_generated/logs"
+    _jsonl(logs / "transcript_full.jsonl", antigravity_brain_records())
+    short = [dict(r, content="(not read)") for r in antigravity_brain_records()]
+    _jsonl(logs / "transcript.jsonl", short)
+    _jsonl(logs / "chunks/transcript_full/00000000.jsonl", short)
+    out = logs.parent / "steps/2/output.txt"
+    out.parent.mkdir(parents=True)
+    out.write_text("File Path: README.md\n# proj\n", encoding="utf-8")
+    orphan = gemini / "antigravity-cli/brain" / AGY_ORPHAN / ".system_generated/logs"
+    blob = "".join(json.dumps(r) + "\n" for r in antigravity_orphan_brain_records())
+    cut = blob.index("\n") + 40  # inside the second line
+    chunks = orphan / "chunks/transcript_full"
+    chunks.mkdir(parents=True)
+    (chunks / "00000000.jsonl").write_text(blob[:cut], encoding="utf-8")
+    (chunks / "00000001.jsonl").write_text(blob[cut:], encoding="utf-8")
+    _jsonl(
+        orphan / "transcript.jsonl",
+        [dict(r, content="(not read)") for r in antigravity_orphan_brain_records()],
     )
 
 

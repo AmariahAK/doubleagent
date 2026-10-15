@@ -552,9 +552,16 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # The Roo CLI cli-history.json records no time or task and
 # matches the task rows on text alone; "/new" and "summarise the open
 # issues" are kept.
+# Antigravity's brain mirror (#87): six of the CLI
+# conversation's seven transcript_full.jsonl rows pair with database rows
+# within the 600-second window; its "clean the logs" is kept, because the
+# history line without conversationId takes the database row first and the
+# two secondary rows have different scopes (session and project); five of
+# the app conversation's six transcript.jsonl rows pair, the shortened tool
+# output is kept; the orphan conversation's chunk rows have no database.
 FIXTURE_DEDUPLICATED = {
     "aider": 2,  # "rename foo to bar", "/add b.py"
-    "antigravity": 1,  # "clean the logs"
+    "antigravity": 12,  # history "clean the logs"; brain mirror 6 (CLI) + 5 (app)
     "claude-code": 2,  # .claude and .claude-work history.jsonl
     "claude-desktop": 2,  # audit.jsonl "thanks" and its init model row
     "cline": 1,  # user_input_history.jsonl "fix tests", no timestamp

@@ -299,9 +299,64 @@ lines add `error`; in `transcript.jsonl` (not `_full`) long `GENERIC` and
 2.23.1, **observed**) every `GENERIC` line also has an `error` key, which on
 macOS appeared only on `ERROR_MESSAGE` lines. The line count equals the
 conversation database's step count; the Linux app's four transcripts had
-14, 30, 38 and 43 lines and no bad line. The token counts appear nowhere the
-parser reads. The parser does not read these files; issue 87 proposes
-using them when a conversation's database is missing.
+14, 30, 38 and 43 lines and no bad line; the macOS CLI 1.3.6 conversation of
+2026-10-15 had 16 `transcript_full.jsonl` lines for 17 database steps
+([section 1](#1-binary-and-version)), so the mirror can lag the database by
+a step. The token counts appear nowhere the parser reads.
+
+The value forms come from a format description the backend embeds for its
+own agent, which is told to read past conversations from these files
+(`agy` 1.3.6 macOS arm64, the binary of [section 1](#1-binary-and-version),
+sha256 `827ba22b4aa33557614a57aac2cc13f386e17db6b802febd3932226906ac05ab`,
+read with `strings` and `grep -b`, never run):
+
+- `agy 1.3.6 darwin-arm64 @54350700` `Transcripts are in JSON Lines (JSONL)
+  format.`, one JSON object per step.
+- `@54350936` `` `source`: The source of the action (e.g., `USER_EXPLICIT`,
+  `MODEL`, `SYSTEM`). ``: the names of `exa.cortex_pb.CortexStepSource`
+  without the `CORTEX_STEP_SOURCE_` prefix. The enum also has
+  `CORTEX_STEP_SOURCE_USER_IMPLICIT` (`@52896931`), the source of a prompt
+  the backend injected rather than one the user typed, which the database
+  reader turns into a `system` row; that a mirror line spells it
+  `USER_IMPLICIT` is inferred from the other three names, not observed.
+- `@54351208` `` `status`: The status of the step (e.g., `DONE`, `ERROR`). ``:
+  `CortexStepStatus` names without their prefix, the database's
+  `STEP_STATUS` values upper-cased.
+- `@54351268` `` `created_at`: The ISO 8601 timestamp of when the step
+  occurred. ``: one time per line. The database step has `created_at` and
+  `completed_at` ([section 3](#3-conversation-database)); which of them
+  the line repeats was not compared on a real install, and the parser
+  takes it as `created_at`.
+- `@54351541` `` `tool_calls`: An array of tool calls made in this step,
+  including their arguments. ``: the element's keys are not given, and
+  no real install has recorded them; the parser reads `id`, `name` and
+  the arguments as `arguments_json`, `args` or `arguments`, the first
+  present, an object or a JSON string (fixture only).
+- `@54351847` `` `truncated_fields`: An array of field names that were
+  truncated ``, followed by the examples `["content"]`, `["thinking"]`,
+  `["tool_calls"]`, and the statement that the key is never in
+  `transcript_full.jsonl`.
+- `@53937489` `` `<appDataDir>/brain/<conversation-id>/.system_generated/logs/transcript_full.jsonl` ``:
+  `<appDataDir>` is the data directory (`antigravity-cli`, `antigravity`,
+  and so on), the same name the app passes the language server.
+
+A `GENERIC` line carries no tool name or call id: its `content` is the
+tool's output. The database's tool steps on every real install so far were
+`generic` steps whose `metadata.tool_call` names the call
+([section 5](#5-joins-and-gaps)); a planner step's calls are run as the
+steps after it.
+
+What the mirror survives: it sits under `brain/<uuid>/`, beside
+`conversations/<uuid>.db` in the same data directory, so it survives what
+the database survives (the deletion of the project directory, observed
+2026-10-15) and is lost with the data directory. It is a second copy when
+the database alone is lost, damaged or excluded: a database whose steps no
+longer decode, a `-wal` sidecar the collection missed, a database file the
+collector skipped for size, or a conversation the user deleted if the app
+removes the database before the brain directory (not observed). The
+chunked copies keep the transcript when `transcript_full.jsonl` itself was
+skipped for size. Whether a compaction or a rewind rewrites the mirror was
+not observed.
 
 `messages/<uuid>.json` (**observed**): `content` (string), `id` (UUID),
 `priority` (upper-case enum-like string), `recipient` (UUID),
@@ -709,6 +764,34 @@ Step kinds other than `user_input`, `planner_response`, `generic`,
 `system_message` and `error_message` are decoded from the descriptors but
 have not been seen in real data.
 
+The brain mirror ([section 2](#2-stores-relative-to-home)) joins the
+database by conversation id: the `<uuid>` of `brain/<uuid>/` is the
+database's `cascade_id`, and the parser puts it in `session_id` for both.
+A mirror line repeats one database step, and the timeline pairs the two
+rows on `session_id`, `turn_type` and `text` within 600 seconds (see
+[Secondary sources in `docs/output.md`](../docs/output.md#secondary-sources),
+the analyzer's rule for second copies). The mirror records no workspace,
+so its rows have no `project_path`; they need none to pair, since the
+session id scopes the match. The text joins because the parser renders a
+mirror line as the database reader renders the step of the same kind. The
+time is the weak part: the line has one `created_at`, while the database
+reader stamps an `assistant`, `tool_use` or `tool_result` row with the
+step's `completed_at`, so the mirror's row comes first by the time the
+model or the tool took, which is what the 600 seconds cover. Rows that do
+not pair, and so appear twice when both stores survive: a
+`SYSTEM_MESSAGE` whose database step has an `event_type` (the
+`task_notification` events of every real install; the database row reads
+`task_notification: <message>`, and the line records no event type), a
+queued prompt (the database row starts `[queued] `), a field shortened in
+`transcript.jsonl`, a step that ran longer than ten minutes, and a
+`GENERIC` line whose `content` differs from the database step's
+`generic.result.result`, which no install has compared. One more: a
+conversation's opening prompt is in `history.jsonl` without
+`conversationId`, in the mirror and in the database; the history line,
+matched by workspace, can take the database row first, and the mirror's
+row, matched by session, then has neither the database row nor the
+history row to pair with (the history row has no session id) and is kept.
+
 ## 6. Secrets
 
 `antigravity-oauth-token` (collector secret glob).
@@ -731,3 +814,27 @@ OS keyring, the Windows Credential Manager, and wrote no
 `Local State` file there holds key material. Both are described in
 [section 3 of `collectors/research/antigravity.md`](../../collectors/research/antigravity.md#3-credentials);
 the parser reads neither.
+
+## 7. Parser plan
+
+Every source below is read on every run; a secondary source is one whose
+rows the timeline drops when the primary store yields the same event
+([Secondary sources in `docs/output.md`](../docs/output.md#secondary-sources)).
+
+| Source | Role | Rows |
+| --- | --- | --- |
+| `<dir>/conversations/<uuid>.db` | primary: the store of record, every step with its payload, model, permissions and both times | session start, user, assistant, tool_use, tool_result, thinking, system, model and permission rows ([section 3](#3-conversation-database)) |
+| `<dir>/conversation_summaries.db` | primary: a summary per conversation, not a copy of its events | one `conversation summary` `system` row per conversation ([section 4](#4-summaries-database)) |
+| `.gemini/antigravity-cli/history.jsonl` | secondary (2 seconds): the prompts the database also records | one `user` row per line ([section 5](#5-joins-and-gaps)) |
+| `<dir>/brain/<uuid>/.system_generated/logs/transcript_full.jsonl`, else `chunks/transcript_full/*.jsonl` concatenated, else `transcript.jsonl`, else `chunks/transcript/*.jsonl` | secondary (600 seconds): one copy of the database's steps, read in that order of preference, one copy per conversation | user, assistant, tool_use, tool_result, thinking and system rows, as the database reader renders the same step kinds ([section 2](#2-stores-relative-to-home)) |
+| the standing permission files | primary: no other copy | `permission setting` rows ([section 2](#2-stores-relative-to-home)) |
+
+The four mirror files are copies of one transcript, not four sources: the
+shortened `transcript.jsonl` holds the same lines with long fields cut, and
+the chunks are the same bytes split at 102,400 bytes. Not read:
+`brain/<uuid>/.system_generated/steps/<idx>/output.txt` and `content.md`,
+`messages/<uuid>.json` and `tasks/task-<idx>.log` (outputs and messages
+the steps already carry, or not yet mapped to a step), `annotations/*.pbtxt`
+(the title, also in the summaries database),
+`cache/conversation_metadata.json`, `jetbox_summaries_proto.pb` and
+`agyhub_summaries_proto.pb` (summaries again), and the app's FTS5 table.

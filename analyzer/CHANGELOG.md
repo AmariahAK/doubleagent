@@ -57,6 +57,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Roo Code: the CLI's input history `~/.roo/cli-history.json` is read,
   one `user` row per entry with no timestamp, task or project, as a
   secondary source that matches the task rows on text alone ([#122]).
+- The `antigravity` parser reads the brain mirror of each conversation,
+  `brain/<uuid>/.system_generated/logs/transcript_full.jsonl` (else its
+  chunks, else the shortened `transcript.jsonl`, else its chunks) under
+  every data directory, as a secondary source paired with the
+  conversation database within 600 seconds, so a conversation whose
+  database is gone or unreadable is still in the timeline ([#122]).
 
 ### Changed
 

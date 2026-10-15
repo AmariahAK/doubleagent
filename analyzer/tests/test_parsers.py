@@ -2095,7 +2095,9 @@ class AntigravityAppTests(ParserBase):
         ):
             self.assertFalse(p.wants(art(rel)), rel)
 
-    def test_token_and_brain_not_wanted(self):
+    def test_token_not_wanted(self):
+        # The plugin's OAuth token is never read; the brain transcript beside
+        # it is, since issue 87 (AntigravityBrainTests).
         p = AntigravityParser()
         rels = {a.rel: a for a in self.col.artifacts}
         token = self.BASE + "plugin_data/gdocs/token.json"
@@ -2104,7 +2106,8 @@ class AntigravityAppTests(ParserBase):
         )
         for rel in (token, brain):
             self.assertEqual(rels[rel].agent, "antigravity", rel)
-            self.assertFalse(p.wants(rels[rel]), rel)
+        self.assertFalse(p.wants(rels[token]))
+        self.assertTrue(p.wants(rels[brain]))
 
     def test_bad_step_is_reported_not_fatal(self):
         import sqlite3
@@ -2123,6 +2126,257 @@ class AntigravityAppTests(ParserBase):
             (rows[-1].turn_type, rows[-1].text),
             ("system", "parser: 1 step(s) could not be decoded"),
         )
+
+
+from fixtures import AGY_ORPHAN
+
+
+class AntigravityBrainTests(ParserBase):
+    """The brain mirror, `brain/<uuid>/.system_generated/logs/` (#87): a
+    secondary source of the conversation database (#122)."""
+
+    LOGS = ".gemini/antigravity-cli/brain/%s/.system_generated/logs/"
+    FULL = LOGS % AGY_CONVERSATION + "transcript_full.jsonl"
+    SHORT = LOGS % AGY_CONVERSATION + "transcript.jsonl"
+    CHUNK = LOGS % AGY_CONVERSATION + "chunks/transcript_full/00000000.jsonl"
+    ORPHAN0 = LOGS % AGY_ORPHAN + "chunks/transcript_full/00000000.jsonl"
+    ORPHAN1 = LOGS % AGY_ORPHAN + "chunks/transcript_full/00000001.jsonl"
+    ORPHAN_SHORT = LOGS % AGY_ORPHAN + "transcript.jsonl"
+    APP = ".gemini/antigravity/brain/%s/.system_generated/logs/transcript.jsonl" % (
+        AGY_APP_CONVERSATION
+    )
+    DB = ".gemini/antigravity-cli/conversations/%s.db" % AGY_CONVERSATION
+    APP_DB = ".gemini/antigravity/conversations/%s.db" % AGY_APP_CONVERSATION
+
+    @staticmethod
+    def shape(rows):
+        return [
+            (r.source_line, r.turn_type, r.timestamp_utc, r.tool_name, r.tool_use_id, r.text)
+            for r in rows
+        ]
+
+    def test_secondary(self):
+        p = AntigravityParser()
+        for rel in (self.FULL, self.SHORT, self.CHUNK, self.ORPHAN0, self.APP):
+            self.assertTrue(p.secondary(self.artifact(rel)), rel)
+            self.assertEqual(p.secondary_tolerance(self.artifact(rel)), 600.0)
+        self.assertFalse(p.secondary(self.artifact(self.DB)))
+        history = self.artifact(".gemini/antigravity-cli/history.jsonl")
+        self.assertEqual(p.secondary_tolerance(history), 2.0)
+
+    def test_rows(self):
+        rows = self.rows_for(AntigravityParser(), self.FULL)
+        self.assertEqual(
+            self.shape(rows),
+            [
+                (1, "user", "2026-10-01T10:00:00.000Z", "", "", "clean the logs"),
+                (
+                    2,
+                    "assistant",
+                    "2026-10-01T10:00:01.000Z",
+                    "",
+                    "",
+                    "I will read the README first.",
+                ),
+                (
+                    2,
+                    "tool_use",
+                    "2026-10-01T10:00:01.000Z",
+                    "view_file",
+                    "call_1",
+                    "/home/u/proj/README.md",
+                ),
+                (
+                    3,
+                    "tool_result",
+                    "2026-10-01T10:00:03.000Z",
+                    "view_file",
+                    "call_1",
+                    "File Path: README.md\n# proj",
+                ),
+                (
+                    4,
+                    "tool_use",
+                    "2026-10-01T10:00:04.000Z",
+                    "run_command",
+                    "call_2",
+                    "rm -rf /var/log/*.log",
+                ),
+                (5, "system", "2026-10-01T10:00:09.000Z", "", "", "<injected reminder>"),
+                (
+                    6,
+                    "assistant",
+                    "2026-10-01T10:00:10.000Z",
+                    "",
+                    "",
+                    "Done. Three log files were removed.",
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.host, r.user, r.agent, r.session_id, r.project_path, r.git_branch, r.model),
+                ("h1", "alice", "antigravity", AGY_CONVERSATION, "", "", ""),
+            )
+            self.assertTrue(r.source_file.endswith(self.FULL), r.source_file)
+
+    def test_thinking_opt_in(self):
+        rows = self.rows_for(AntigravityParser(), self.FULL, include_thinking=True)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[1:3]],
+            [
+                (2, "thinking", "look before leaping"),
+                (2, "assistant", "I will read the README first."),
+            ],
+        )
+        self.assertEqual(rows[1].timestamp_utc, "2026-10-01T10:00:01.000Z")
+
+    def test_other_copies_not_read(self):
+        # transcript_full.jsonl is present, so its shortened twin and its
+        # chunk yield nothing; the orphan's full chunks are read through the
+        # first one, so the second chunk and the shortened twin yield nothing.
+        for rel in (self.SHORT, self.CHUNK, self.ORPHAN1, self.ORPHAN_SHORT):
+            self.assertEqual(self.rows_for(AntigravityParser(), rel), [], rel)
+
+    def test_fallback_order_among_copies(self):
+        logs = self.home / (self.LOGS % AGY_CONVERSATION)
+        (logs / "transcript_full.jsonl").unlink()
+        # The chunk's lines all read "(not read)", the planner line with no
+        # content of its own included, so it yields one row more.
+        rows = self.rows_for(AntigravityParser(), self.CHUNK)
+        self.assertEqual(len(rows), 8)
+        self.assertEqual(
+            {r.text for r in rows},
+            {"(not read)", "/home/u/proj/README.md", "rm -rf /var/log/*.log"},
+        )
+        self.assertEqual(self.rows_for(AntigravityParser(), self.SHORT), [])
+        (logs / "chunks/transcript_full/00000000.jsonl").unlink()
+        rows = self.rows_for(AntigravityParser(), self.SHORT)
+        self.assertEqual(len(rows), 8)
+        self.assertTrue(rows[0].source_file.endswith(self.SHORT))
+
+    def test_chunks_reassembled(self):
+        # The orphan conversation has no database: its rows come from the
+        # two transcript_full chunks, the line cut at the boundary whole.
+        rows = self.rows_for(AntigravityParser(), self.ORPHAN0, include_thinking=True)
+        self.assertEqual(
+            self.shape(rows),
+            [
+                (1, "user", "2026-10-01T10:30:00.000Z", "", "", "summarise the deleted project"),
+                (2, "thinking", "2026-10-01T10:30:01.250Z", "", "", "it may be gone"),
+                (2, "assistant", "2026-10-01T10:30:01.250Z", "", "", "I will list it first."),
+                (
+                    2,
+                    "tool_use",
+                    "2026-10-01T10:30:01.250Z",
+                    "list_directory",
+                    "call_o1",
+                    "/home/u/gone",
+                ),
+                (
+                    3,
+                    "tool_result",
+                    "2026-10-01T10:30:02.000Z",
+                    "list_directory",
+                    "call_o1",
+                    "[error] directory not found",
+                ),
+                (
+                    4,
+                    "system",
+                    "2026-10-01T10:30:03.000Z",
+                    "",
+                    "",
+                    "system_message: background task finished",
+                ),
+            ],
+        )
+        self.assertEqual({r.session_id for r in rows}, {AGY_ORPHAN})
+        self.assertTrue(rows[0].source_file.endswith(self.ORPHAN0))
+        self.assertFalse((self.home / (self.LOGS % AGY_ORPHAN) / "transcript_full.jsonl").exists())
+
+    def test_shortened_twin_alone(self):
+        # The app conversation keeps only transcript.jsonl: it is read, and
+        # a shortened field is marked.
+        rows = self.rows_for(AntigravityParser(), self.APP)
+        self.assertEqual(
+            [(r.turn_type, r.tool_use_id, r.text) for r in rows],
+            [
+                ("user", "", "which packages are outdated?"),
+                ("assistant", "", "I will ask Homebrew."),
+                ("tool_use", "call_7", "brew outdated"),
+                ("tool_result", "call_7", "node (24.1.0) < [truncated: content]"),
+                ("system", "", "system_message: background task finished"),
+                ("system", "", "error: model overloaded"),
+            ],
+        )
+        self.assertEqual({r.session_id for r in rows}, {AGY_APP_CONVERSATION})
+
+    def test_pairs_with_database(self):
+        # Rendered as the database reader renders the same steps, and within
+        # the tolerance of its rows' times, so every mirror row of the CLI
+        # conversation pairs with a database row; of the app's, all but the
+        # shortened tool output.
+        p = AntigravityParser()
+        for db, mirror, kept in (
+            (self.DB, self.FULL, []),
+            (self.APP_DB, self.APP, ["node (24.1.0) < [truncated: content]"]),
+        ):
+            for thinking in (False, True):
+                primary = self.rows_for(p, db, include_thinking=thinking)
+                secondary = [
+                    (r, p.secondary_tolerance(self.artifact(mirror)))
+                    for r in self.rows_for(p, mirror, include_thinking=thinking)
+                ]
+                rows, dropped = deduplicate(primary, secondary)
+                self.assertEqual(dropped["antigravity"], len(secondary) - len(kept))
+                self.assertEqual([r.text for r in rows[len(primary) :]], kept)
+                # The pairs are close in time: the mirror's created_at is at
+                # most two seconds before the database's completed_at here.
+                for r, _ in secondary:
+                    if r.text not in kept:
+                        twin = next(
+                            q for q in primary if (q.turn_type, q.text) == (r.turn_type, r.text)
+                        )
+                        gap = (epoch_ms(twin.timestamp_utc) or 0) - (epoch_ms(r.timestamp_utc) or 0)
+                        self.assertTrue(0 <= gap <= 2000, (r.text, gap))
+
+    def test_truncated_line(self):
+        write_bad_line(self.home / self.ORPHAN1)
+        rows = self.rows_for(AntigravityParser(), self.ORPHAN0)
+        self.assertEqual(rows[0].text, "summarise the deleted project")
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line, rows[-1].text),
+            ("system", AGY_ORPHAN, 5, "parser: 1 unparseable line(s), first at line 5"),
+        )
+        self.assertEqual(rows[-2].text, "system_message: background task finished")
+
+    def test_not_wanted(self):
+        p = AntigravityParser()
+        rels = {a.rel: a for a in self.col.artifacts}
+        output = self.LOGS % AGY_CONVERSATION
+        output = output.replace("logs/", "steps/2/output.txt")
+        self.assertFalse(p.wants(rels[output]))
+
+        def art(rel):
+            return cast(Artifact, type("A", (), {"rel": rel})())
+
+        tail = "brain/x/.system_generated/logs/"
+        for d in ("antigravity-cli", "antigravity", "antigravity-ide", "antigravity-backup"):
+            for name in (
+                "transcript_full.jsonl",
+                "transcript.jsonl",
+                "chunks/transcript/00000003.jsonl",
+            ):
+                self.assertTrue(p.wants(art(".gemini/%s/%s%s" % (d, tail, name))), (d, name))
+        for rel in (
+            ".gemini/antigravity/brain/x/.system_generated/messages/m.json",
+            ".gemini/antigravity/brain/x/.system_generated/tasks/task-7.log",
+            ".gemini/antigravity/brain/x/.system_generated/logs/chunks/other/00000000.jsonl",
+            ".gemini/antigravity/brain/x/.system_generated/logs/transcript_full.jsonl.bak",
+            ".gemini/antigravity-other/brain/x/.system_generated/logs/transcript.jsonl",
+        ):
+            self.assertFalse(p.wants(art(rel)), rel)
 
 
 from fixtures import AGY_CONFIG_MTIME, AGY_SIDECAR
