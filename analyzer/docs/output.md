@@ -36,10 +36,35 @@ in its bundled catalog copy (the `# project artifacts` section of
 `doubleagent catalog`): the most specific entry whose glob matches the
 file's path relative to the project directory, so an old and a new
 collection of the same host list the same agents. Nothing is printed about
-the re-attribution. A file several agents read, such as `AGENTS.md` or
-`.mcp.json`, or one no project catalog entry matches, keeps agent
-`project`, which is not an agent: it is counted on the project's
-`(shared)` line, and `project` never appears as an agent in either table.
+the re-attribution.
+
+Some project files belong to no single agent, because several agents read
+the same file. These are the shared files: the collector records them
+with agent `project`, and the tables count them on the project's
+`(shared)` line. They are the `project` lines of the project catalog, and
+[`collectors/research/shared.md`](../../collectors/research/shared.md)
+and the per-agent research documents cite each reader:
+
+- `AGENTS.md`, the repository instruction file read by Codex CLI, Copilot
+  CLI, Amp, OpenCode, Crush, Factory Droid, Kilo Code, Zed and pi, and
+  its variants `AGENTS.override.md` (Codex CLI, pi, Hermes) and
+  `AGENT.md` (Amp, Zed).
+- `.agents/`, the cross-tool skills directory that Codex CLI, Copilot
+  CLI, Amp and Muse Code read.
+- `.mcp.json`, the project's list of MCP (Model Context Protocol) servers,
+  read by Claude Code, Copilot CLI and Muse Code.
+- `.github/copilot-instructions.md`, `.github/git-commit-instructions.md`
+  and `.github/instructions/`, the GitHub Copilot instruction files, read
+  by the Copilot editor extensions, Copilot CLI, Crush and Zed.
+- `SOUL.md` and `USER.md`, the persona and user-profile files of an
+  OpenClaw or nanobot workspace; Hermes reads `SOUL.md` too.
+
+A project file no project catalog entry matches is counted as shared as
+well. `project` is not an agent, so it never appears as an agent in
+either table, and a shared file cannot say which agent used it: a
+repository holding only `AGENTS.md` shows that some agent was set up
+there, not which one. The per-agent lines are the evidence of a
+particular agent.
 
 The project directories are the homes the analyzer marks as projects: the
 paths in `collection.json` `projects` and, for a collection from a
@@ -57,7 +82,9 @@ project                                  users          agent                 fi
 ```
 
 Each project has one line per agent, sorted by agent, then a `(shared)`
-line when it holds shared files, with an empty `parser` column. The path
+line when it holds shared files (the files several agents read, listed
+above: `AGENTS.md`, `.mcp.json`, `.github/copilot-instructions.md`),
+with an empty `parser` column because no one agent owns them. The path
 (cut to 40 characters) and `users` (the users whose manifest rows name the
 directory, sorted and joined by `,`) are printed on the project's first
 line only.
@@ -242,17 +269,17 @@ so no single run shows both. Its keys, in order:
 | `projects` | array of objects | The second table: one per project directory the input holds (see [detect](#detect) for which they are), sorted by `path`. `[]` when there is none, always in loose mode. |
 | `projects[].path` | string | The project directory as the manifest's `home` records it, the collector's path; in image mode it still starts with the `-r` root. |
 | `projects[].users` | array of strings | The distinct users whose rows name the directory, sorted. |
-| `projects[].agents` | array of objects | One per agent that owns at least one file in the directory, sorted by `agent`. Never holds `project`; `[]` when the directory holds only shared files. |
+| `projects[].agents` | array of objects | One per agent that owns at least one file in the directory, sorted by `agent`. Never holds `project`; `[]` when the directory holds only shared files, such as a repository with an `AGENTS.md` and nothing else. |
 | `projects[].agents[].agent` | string | Catalog agent name. |
 | `projects[].agents[].files` | integer | Files of this agent in the directory, counted as for `outside_projects[].files`. |
 | `projects[].agents[].bytes` | integer | Their total manifest `size`. |
 | `projects[].agents[].parser` | boolean | `true` when the analyzer has a parser for this agent, `false` when it is detected only. |
-| `projects[].shared_files` | integer | Files in the directory with agent `project`, those no single agent owns (`AGENTS.md`, `.mcp.json`); 0 when there is none. |
-| `projects[].shared_bytes` | integer | Their total manifest `size`. |
+| `projects[].shared_files` | integer | The shared files in the directory: files several agents read, which the manifest records with agent `project` rather than an owner (`AGENTS.md`, `.agents/`, `.mcp.json`, `.github/copilot-instructions.md`, `SOUL.md`; see [detect](#detect) for the full list and their readers). 0 when there is none. |
+| `projects[].shared_bytes` | integer | The total manifest `size` of those shared files. |
 | `problems` | array of strings | The `problem:` lines without their prefix, `<path>: <reason>`: each directory or file inside the input that could not be read while it was opened, and each collected manifest row whose file is missing from `fs/` (see [Unreadable inputs](inputs.md#unreadable-inputs)). `[]` when there are none. |
-| `files` | array of objects | Only with `--files`: one per attributed file, in the order the manifest lists them (the walk order in loose mode). It mirrors the manifest file by file, so shared files appear here with agent `project`. |
+| `files` | array of objects | Only with `--files`: one per attributed file, in the order the manifest lists them (the walk order in loose mode). It mirrors the manifest file by file, so a shared file (one several agents read, such as `AGENTS.md`) appears here with agent `project`. |
 | `files[].user` | string | As `homes[].user`. |
-| `files[].agent` | string | The attributed agent: the manifest `agent`, re-attributed from the bundled project catalog for a project file of a collection before 1.12.0; `project` for a shared file. |
+| `files[].agent` | string | The attributed agent: the manifest `agent`, re-attributed from the bundled project catalog for a project file of a collection before 1.12.0; `project` for a shared file, one several agents read (`AGENTS.md`, `.mcp.json`). |
 | `files[].path` | string | The file's path on the source host, as the manifest records it. |
 
 Before analyzer 0.12.0 `outside_projects` was named `agents` and also
@@ -486,7 +513,7 @@ directory. `cursor` has project files and no parser, so no rows;
 | `projects.<path>.agents.<agent>.turn_types` | object | Keyed by `turn_type`, sorted: this agent's rows of each type in the project, after the filters, listing only the types that occur; `{}` with no rows. |
 | `projects.<path>.agents.<agent>.files` | integer | The files the collection holds for this agent in this directory, not filtered; 0 for an agent with rows and no files there, and for every agent of a `referenced` project. |
 | `projects.<path>.agents.<agent>.bytes` | integer | Their total manifest `size`, not filtered. |
-| `projects.<path>.shared_files` | integer | Files in the directory with agent `project`, those no single agent owns (`AGENTS.md`, `.mcp.json`), not filtered; 0 for a `referenced` project. |
+| `projects.<path>.shared_files` | integer | The shared files the collection holds in the directory: files several agents read, which the manifest records with agent `project` rather than an owner (`AGENTS.md`, `.agents/`, `.mcp.json`, `.github/copilot-instructions.md`, `SOUL.md`; see [detect](#detect) for the full list and their readers). Not filtered; 0 for a `referenced` project. |
 | `outside_projects` | object | The counts for the rows and sessions whose `project_path` is empty. It has no status and no file counts: files outside projects are counted per home by `detect`. |
 | `outside_projects.rows` | integer | Rows with an empty `project_path`, after the filters. |
 | `outside_projects.sessions` | integer | Sessions with an empty `project_path`, after the filters. |
