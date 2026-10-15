@@ -81,7 +81,8 @@ Files, relative to the home directory, under each of those directories
   `{display, timestamp, workspace}` per prompt, `timestamp` in epoch
   milliseconds; from CLI 1.3.x a line may also carry `conversationId`, the
   conversation's UUID, which becomes the row's `session_id` (older lines
-  have none and keep it empty).
+  have none and keep it empty). A secondary source: the timeline drops a
+  line whose event a conversation database also records (`dedup.py`).
 
 Standing permission files (issue 92), read only for the keys named here;
 every other key in them (`plugins`, `remoteControlHostname`, a project's
@@ -900,6 +901,9 @@ class AntigravityParser(Parser):
             or bool(PROJECT_RX.match(rel))
             or bool(SIDECAR_RX.match(rel))
         )
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return artifact.rel == HISTORY_REL
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if artifact.rel == HISTORY_REL:

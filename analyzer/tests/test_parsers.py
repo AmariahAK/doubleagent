@@ -108,9 +108,11 @@ class ParserBase(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
+    def artifact(self, rel):
+        return next(a for a in self.col.artifacts if a.rel == rel)
+
     def rows_for(self, parser, rel, **kw):
-        art = next(a for a in self.col.artifacts if a.rel == rel)
-        return list(parser.parse(art, Options(**kw)))
+        return list(parser.parse(self.artifact(rel), Options(**kw)))
 
 
 class ClaudeCodeTests(ParserBase):
@@ -173,6 +175,12 @@ class ClaudeCodeTests(ParserBase):
         (32, "system", "cwd changed: /srv/proj2"),
         (33, "user", "thanks"),
     ]
+
+    def test_secondary(self):
+        # The history file is a secondary source, the transcript is not (#122).
+        p = ClaudeCodeParser()
+        self.assertTrue(p.secondary(self.artifact(".claude/history.jsonl")))
+        self.assertFalse(p.secondary(self.artifact(self.REL)))
 
     def test_rows(self):
         rows = self.rows_for(ClaudeCodeParser(), self.REL)
@@ -838,6 +846,12 @@ class CodexTests(ParserBase):
         'network={"allowed_domains":["github.com"],"denied_domains":[]}'
     )
 
+    def test_secondary(self):
+        # The history file is a secondary source, the transcript is not (#122).
+        p = CodexParser()
+        self.assertTrue(p.secondary(self.artifact(".codex/history.jsonl")))
+        self.assertFalse(p.secondary(self.artifact(self.REL)))
+
     def _write(self, name: str, records) -> str:
         rel = ".codex/sessions/2026/10/02/" + name
         path = self.home / rel
@@ -1437,6 +1451,12 @@ class SqliteUtilTests(unittest.TestCase):
 class AntigravityTests(ParserBase):
     REL = ".gemini/antigravity-cli/conversations/%s.db" % AGY_CONVERSATION
 
+    def test_secondary(self):
+        # The history file is a secondary source, the transcript is not (#122).
+        p = AntigravityParser()
+        self.assertTrue(p.secondary(self.artifact(".gemini/antigravity-cli/history.jsonl")))
+        self.assertFalse(p.secondary(self.artifact(self.REL)))
+
     def test_rows(self):
         rows = self.rows_for(AntigravityParser(), self.REL)
         types = [r.turn_type for r in rows]
@@ -2016,6 +2036,12 @@ class QwenCodeTests(ParserBase):
     REL = ".qwen/projects/-srv-proj/chats/%s.jsonl" % QWEN_SESSION
     LOGS = ".qwen/tmp/%s/logs.json" % QWEN_TMP
 
+    def test_secondary(self):
+        # The history file is a secondary source, the transcript is not (#122).
+        p = QwenCodeParser()
+        self.assertTrue(p.secondary(self.artifact(self.LOGS)))
+        self.assertFalse(p.secondary(self.artifact(self.REL)))
+
     def test_rows(self):
         rows = self.rows_for(QwenCodeParser(), self.REL)
         self.assertEqual(
@@ -2380,6 +2406,12 @@ from fixtures import GEMINI_TRUST_MTIME
 class GeminiCliTests(ParserBase):
     REL = GEMINI_REL
     LEGACY = ".gemini/tmp/%s/chats/session-2026-09-30T08-00-b2c3d4e5.json" % GEMINI_HASH
+
+    def test_secondary(self):
+        # The history file is a secondary source, the transcript is not (#122).
+        p = GeminiCliParser()
+        self.assertTrue(p.secondary(self.artifact(".gemini/tmp/proj/logs.json")))
+        self.assertFalse(p.secondary(self.artifact(self.REL)))
 
     def test_rows(self):
         rows = self.rows_for(GeminiCliParser(), self.REL)
@@ -3174,7 +3206,7 @@ class AiderTests(ParserBase):
                 )
             },
         )
-        rows, _, problems = cli.collect_rows(col, Options(), [])
+        rows, _, problems, _ = cli.collect_rows(col, Options(), [])
         self.assertEqual(problems, [])
         self.assertEqual(len(rows), 8 + 2 + 2)
         self.assertEqual(
@@ -5801,6 +5833,12 @@ class CodexArchiveAndZstdTests(ParserBase):
 class OpenInterpreterTests(ParserBase):
     LEDGER = ".openinterpreter/external_agent_session_imports.json"
 
+    def test_secondary(self):
+        # The history file is a secondary source, the transcript is not (#122).
+        p = OpenInterpreterParser()
+        self.assertTrue(p.secondary(self.artifact(".openinterpreter/history.jsonl")))
+        self.assertFalse(p.secondary(self.artifact(OI_ROLLOUT)))
+
     def test_rows(self):
         rows = self.rows_for(OpenInterpreterParser(), OI_ROLLOUT)
         self.assertEqual(
@@ -6322,13 +6360,13 @@ class ReadsAgentsRoutingTests(ParserBase):
         self.assertEqual({p.agent for p in cli.parsers_for(other, parsers)}, {"codex-cli"})
 
     def test_cli_attributes_rows_to_the_extension(self):
-        rows, _counts, problems = cli.collect_rows(self.col, Options(), [])
+        rows, _counts, problems, _ = cli.collect_rows(self.col, Options(), [])
         self.assertEqual(problems, [])
         from_vscdb = {
             r.agent for r in rows if r.source_file.endswith("/User/globalStorage/state.vscdb")
         }
         self.assertEqual(from_vscdb, {"cody", "twinny"})
-        rows, _, _ = cli.collect_rows(self.col, Options(), ["twinny"])
+        rows, _, _, _ = cli.collect_rows(self.col, Options(), ["twinny"])
         self.assertEqual({r.agent for r in rows}, {"twinny"})
 
     def test_fork_state_vscdb_reaches_cody(self):
@@ -6340,7 +6378,7 @@ class ReadsAgentsRoutingTests(ParserBase):
         art = next(a for a in col.artifacts if a.rel == rel)
         self.assertEqual(art.agent, "cursor")
         self.assertIn("cody", {p.agent for p in cli.parsers_for(art, by_agent())})
-        rows, _, problems = cli.collect_rows(col, Options(), ["cody"])
+        rows, _, problems, _ = cli.collect_rows(col, Options(), ["cody"])
         self.assertEqual(problems, [])
         from_cursor = [r for r in rows if r.source_file.endswith(rel)]
         self.assertTrue(from_cursor)
@@ -6775,6 +6813,12 @@ from fixtures import (
 
 
 class MuseCodeTests(ParserBase):
+    def test_secondary(self):
+        # The history file is a secondary source, the transcript is not (#122).
+        p = MuseCodeParser()
+        self.assertTrue(p.secondary(self.artifact(MUSE_HISTORY_REL)))
+        self.assertFalse(p.secondary(self.artifact(MUSE_REL)))
+
     def append(self, rel, *records):
         with open(self.home / rel, "a", encoding="utf-8") as fh:
             for r in records:

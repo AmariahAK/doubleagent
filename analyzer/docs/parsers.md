@@ -49,8 +49,10 @@ under `doubleagent/parsers/`. Thinking and reasoning blocks are left out
 unless `--include-thinking` is passed. The `text` field carries the full
 text of each event, line breaks included, so the timeline is a complete
 transcript, one event per line. History files are parsed even when the
-matching session transcript exists, because they survive session deletion;
-filter on `source_file` to drop them.
+matching session transcript exists, because they survive session deletion,
+and a history row is dropped when the transcript records the same event
+(see [Secondary sources](output.md#secondary-sources)), so each prompt
+appears once.
 
 ## Routing files to parsers
 

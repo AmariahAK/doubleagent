@@ -32,6 +32,14 @@ class Parser:
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         raise NotImplementedError
 
+    def secondary(self, artifact: Artifact) -> bool:
+        """True when `artifact` is a secondary source of this parser: a
+        per-prompt history file, a mirror or a projection of a store the
+        parser also reads. Its rows are kept in the timeline unless the
+        primary store yields the same event (`dedup.deduplicate`), so a
+        session whose primary store is gone is still recovered from it."""
+        return False
+
     def base_row(self, artifact: Artifact) -> Row:
         return Row(
             host=artifact.home.host,

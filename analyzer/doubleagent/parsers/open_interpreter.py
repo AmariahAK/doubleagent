@@ -18,7 +18,9 @@ openinterpreter/openinterpreter at 2767e5f (see
   `model:` and `permission mode:` rows apply unchanged. The fork, like
   Codex, keeps approval requests out of the rollout
   (`rollout/src/policy.rs:140-204`), so there is no per-call decision row.
-* `.openinterpreter/history.jsonl`: `{session_id, ts, text}`.
+* `.openinterpreter/history.jsonl`: `{session_id, ts, text}`. A secondary
+  source: the timeline drops a line whose event a rollout also records
+  (`dedup.py`).
 * `.openinterpreter/external_agent_session_imports.json`: the `/import`
   ledger, `records[]` with `source_path`, `content_sha256`,
   `imported_thread_id`, `imported_at` and optional `source_modified_at`

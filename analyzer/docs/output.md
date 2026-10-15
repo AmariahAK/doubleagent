@@ -295,7 +295,18 @@ directory or file that could not be read (see
 [Unreadable inputs](inputs.md#unreadable-inputs)), and, when the timeline
 is filtered, a `window:` line with the resolved UTC bounds, a `match:`
 line with the patterns, and a `filtered:` line counting the rows dropped
-outside the window, without a timestamp, and not matching. Then come the
+outside the window, without a timestamp, and not matching. Then comes
+the `dropped:` line, always printed, which counts the rows of secondary
+sources left out because a primary store records the same event (see
+[Secondary sources](#secondary-sources)), with the agents that had any
+in parentheses, sorted by name, and no parentheses when the count is 0:
+
+```text
+dropped:   3 duplicate rows from secondary sources (antigravity 2, claude-code 1)
+dropped:   0 duplicate rows from secondary sources
+```
+
+Then come the
 `agents:` line, the row count with a breakdown by agent and `turn_type`,
 and the session count. The breakdown counts the rows written. The last
 three line groups name the three files, one each, in this order:
@@ -514,7 +525,8 @@ the test collection of the [`detect --json`](#detect---json) example:
         }
       }
     }
-  }
+  },
+  "deduplicated": {}
 }
 ```
 
@@ -527,7 +539,9 @@ project files there, because its transcripts are in alice's home, where
 `outside_projects` it has the other 7 rows and 1 session: the history
 line with no project and a session transcript that records no working
 directory. `cursor` has project files and no parser, so no rows;
-`gemini-cli` has a parser that found no rows. Its keys, in order:
+`gemini-cli` has a parser that found no rows. `deduplicated` is `{}`
+because none of the three `history.jsonl` prompts is one a transcript
+records, so every history line is kept. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -568,6 +582,8 @@ directory. `cursor` has project files and no parser, so no rows;
 | `outside_projects.agents.<agent>.rows` | integer | This agent's rows with an empty `project_path`, after the filters. |
 | `outside_projects.agents.<agent>.sessions` | integer | This agent's sessions with an empty `project_path`, after the filters. |
 | `outside_projects.agents.<agent>.turn_types` | object | Keyed by `turn_type`, sorted: this agent's rows of each type, listing only the types that occur. |
+| `deduplicated` | object | Keyed by agent name, sorted: the agents with rows of a secondary source dropped because a primary store records the same event (see [Secondary sources](#secondary-sources)), the counts of the `dropped:` line. With `--agent`, only the agents selected; not changed by `--since`, `--until` or `--match`, which apply to the rows kept. `{}` when no row was dropped. |
+| `deduplicated.<agent>` | integer | The number of this agent's secondary-source rows dropped, never 0. |
 
 A row is counted under its own `project_path` and a session under the
 session's, the first non-empty `project_path` among its rows, so a session
@@ -632,8 +648,9 @@ jq -r '.projects | to_entries[] | .key as $p | .value.agents | to_entries[] | se
 ```
 
 Before analyzer 0.12.0 there was no `inventory.json`. The keys are an
-interface like the JSONL fields: new ones are added, the existing ones
-keep their names, types and meaning.
+interface like the JSONL fields: new ones are added at the end, the
+existing ones keep their names, types and meaning. `deduplicated`, the
+last key, was added in analyzer 0.13.0.
 
 ## JSONL encoding
 
@@ -935,6 +952,56 @@ carries the task's model in the `model` column. Each folder in
 entries.<sessionId>.folders=<folder> (from <file>, file mtime)`, with
 `project_path` the folder and `session_id` empty, because the
 `<sessionId>` there is the server-side id of a remote Cowork session.
+
+### Secondary sources
+
+Some agents keep a per-prompt history file beside their transcript store,
+and the same prompt is then recorded in both. The analyzer parses every
+source on every run, and keeps each event once: a row from a secondary
+source is dropped when a row from the agent's primary store has
+
+- the same `host`, `user`, `agent`, `turn_type` and `text`;
+- the same `session_id`, when the secondary row has one; when it has
+  none, the same `project_path` (whatever the primary row's
+  `session_id`);
+- a `timestamp_utc`, on both rows, at most 2 seconds apart, the bound
+  included. A row with an empty `timestamp_utc` on either side never
+  matches.
+
+Matching is one-to-one: the secondary rows are taken in timestamp order,
+and each is matched to the nearest primary row within the 2 seconds that
+no earlier secondary row took, so a transcript cut after three of five
+identical prompts keeps two of the five history lines. The primary row
+always survives, with its own `source_file` and `source_line`. A
+secondary row with no match is kept, which recovers a prompt whose
+transcript was deleted, excluded by size or truncated, and a prompt the
+transcript no longer holds (a Gemini CLI rewind). The rule runs after
+`--agent` and before `--since`, `--until` and `--match`, and the rows it
+drops are counted per agent on the `dropped:` line of stdout and under
+`deduplicated` in [inventory.json](#inventoryjson). Before analyzer
+0.13.0 both rows were written.
+
+| Agent | Secondary source | Primary store |
+| --- | --- | --- |
+| `antigravity` | `.gemini/antigravity-cli/history.jsonl` | `.gemini/antigravity-cli/conversations/*.db` |
+| `claude-code` | `.claude/history.jsonl` (and `.claude-<name>/history.jsonl`) | `.claude/projects/<slug>/*.jsonl` and its subagent files |
+| `codex-cli` | `.codex/history.jsonl` | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
+| `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
+| `muse-code` | `.local/share/muse/tui-history.jsonl` | `.local/share/muse/sessions/.../session.jsonl` |
+| `open-interpreter` | `.openinterpreter/history.jsonl` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
+| `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
+
+The 2 seconds cover Codex's `history.jsonl`, which records whole seconds
+beside the rollouts' milliseconds, and Antigravity's history line, under
+a second from the database step. Muse Code's `tui-history.jsonl` records
+no time, so its rows never match and are all kept. Qwen Code's
+`logs.json` rows have no project path and match by `sessionId` only. A
+known miss: a prompt the agent queued and sent later (Claude Code queues
+input typed while it works) can be minutes from its transcript record,
+and is then shown twice, the history row at the time it was typed.
+Continue's `toolUsage.jsonl` is not a secondary source: its session rows
+carry no per-message timestamp and its event rows no session or project,
+so the rule could never match them, and both are kept.
 
 ## sessions.jsonl
 

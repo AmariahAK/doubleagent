@@ -109,8 +109,9 @@ evidence is in `analyzer/research/claude-code.md`. Files:
   directory name must equal it) and never through a symlink; when it is
   missing the stub is kept with a note.
 * `~/.claude/history.jsonl`: `{display, project, sessionId, timestamp}` per
-  prompt, `timestamp` in epoch milliseconds. Kept even when the session file
-  exists because it survives session deletion.
+  prompt, `timestamp` in epoch milliseconds. A secondary source: the
+  timeline drops a line whose event the session file also records
+  (`dedup.py`), and keeps the rest, since it survives session deletion.
 
 * `~/.claude/sessions/<pid>.json`: the per-process registry the CLI keeps
   while it runs (2.1.295 keys observed on Linux and macOS). Read: `pid`,
@@ -347,6 +348,9 @@ class ClaudeCodeParser(Parser):
             rx.match(rel)
             for rx in (HISTORY_RX, SESSION_RX, REGISTRY_RX, SETTINGS_RX, GLOBAL_CONFIG_RX)
         )
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return bool(HISTORY_RX.match(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if HISTORY_RX.match(artifact.rel):

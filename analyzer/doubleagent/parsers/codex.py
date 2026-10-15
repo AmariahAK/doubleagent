@@ -117,6 +117,8 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
   so the rest of a copied prefix is not separated out; it carries the
   fork's session id. Referenced forks keep the prefix in the parent's file.
 * `history.jsonl`: `{session_id, text, ts}` per prompt, `ts` epoch seconds.
+  A secondary source: the timeline drops a line whose event a rollout also
+  records (`dedup.py`).
 * Forks only, when `ledger_name` is set: an import ledger
   `{"records": [{source_path, content_sha256, imported_thread_id,
   imported_at, source_modified_at?}]}` (times epoch seconds), one `system`
@@ -650,6 +652,9 @@ class RolloutParser(Parser):
             or bool(self.ledger_rel and rel == self.ledger_rel)
             or bool(self.automations and self.automation_rx.match(rel))
         )
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return artifact.rel == self.history_rel
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if artifact.rel == self.history_rel:

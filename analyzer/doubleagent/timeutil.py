@@ -5,10 +5,11 @@ sort together."""
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 OUT_FMT = "%Y-%m-%dT%H:%M:%S.%f"
 _FRACTION_RX = re.compile(r"\.(\d+)")
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def to_utc(value: object) -> str:
@@ -54,6 +55,19 @@ def _from_epoch(n: float) -> str:
 
 def format_utc(dt: datetime) -> str:
     return dt.strftime(OUT_FMT)[:-3] + "Z"
+
+
+def epoch_ms(value: str) -> int | None:
+    """Epoch milliseconds of a timeline timestamp (`YYYY-MM-DDTHH:MM:SS.mmmZ`,
+    as `to_utc` writes it), or None for an empty or unparseable one. An
+    integer, so differences between two timestamps are exact."""
+    if not value:
+        return None
+    try:
+        dt = datetime.strptime(value, OUT_FMT + "Z")
+    except ValueError:
+        return None
+    return (dt.replace(tzinfo=timezone.utc) - _EPOCH) // timedelta(milliseconds=1)
 
 
 def first_nonempty(*values: str | None) -> str:

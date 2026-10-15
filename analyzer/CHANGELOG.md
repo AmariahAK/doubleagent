@@ -11,6 +11,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.13.0] - 2026-10-15
 
+### Added
+
+- A `dropped:` line on the `timeline` stdout, always printed before
+  `agents:`, counting the rows of secondary sources dropped because a
+  primary store records the same event, with the agents that had any
+  ([#122]).
+- `inventory.json` key `deduplicated`, the new last key: the dropped
+  rows per agent, `{}` when none ([#122]).
+
 ### Changed
 
 - Interface change: the `timeline.jsonl` and `sessions.jsonl`
@@ -30,6 +39,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   project the input does not hold is keyed by the first spelling the rows
   record. Project directories from `collection.json` are in the same
   canonical form ([#112]).
+- Interface change: `timeline.jsonl` no longer holds a history row that
+  repeats a transcript row. The secondary sources are Claude Code's
+  `history.jsonl`, Codex CLI's and Open Interpreter's `history.jsonl`,
+  Antigravity's CLI `history.jsonl`, Gemini CLI's and Qwen Code's
+  `logs.json` and Muse Code's `tui-history.jsonl`; one of their rows is
+  dropped when a primary-store row of the same host, user and agent has
+  the same `turn_type` and `text`, the same `session_id` (or, without
+  one, the same `project_path`) and a `timestamp_utc` at most 2 seconds
+  away. Secondary rows with no match are kept, so a prompt whose
+  transcript is gone is still in the timeline ([#122]).
 
 ## [0.12.0] - 2026-10-15
 
@@ -843,6 +862,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#122]: https://github.com/seanthegeek/doubleagent/issues/122
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121
 [#119]: https://github.com/seanthegeek/doubleagent/issues/119
 [#118]: https://github.com/seanthegeek/doubleagent/issues/118

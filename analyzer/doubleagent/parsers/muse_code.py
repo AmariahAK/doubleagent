@@ -104,7 +104,9 @@ macOS and Windows, which resolve `XDG_DATA_HOME` or the home):
   from the parent `session.jsonl` above its `subagent/` directory, read up
   to `PARENT_SCAN_LINES` lines.
 * `.local/share/muse/tui-history.jsonl`: two lines per prompt, a JSON
-  string (the text) then `{project, session}`. No timestamp.
+  string (the text) then `{project, session}`. No timestamp. A secondary
+  source (`dedup.py`), but with no timestamp its rows never match a
+  session row, so the timeline keeps them all.
 * `.config/muse/trust.json` (`projects.<absolute path>.decision`): one
   `system` row per project, `permission setting:
   projects.<path>.decision=<decision> (from .config/muse/trust.json, file
@@ -289,6 +291,9 @@ class MuseCodeParser(Parser):
 
     def wants(self, artifact: Artifact) -> bool:
         return artifact.rel in (HISTORY_REL, TRUST_REL) or bool(SESSION_RX.match(artifact.rel))
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return artifact.rel == HISTORY_REL
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if artifact.rel == HISTORY_REL:

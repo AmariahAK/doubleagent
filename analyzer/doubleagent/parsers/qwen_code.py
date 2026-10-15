@@ -30,6 +30,8 @@ stream, not Gemini's. Files:
   or model_switch (whose `message` is a JSON `ModelSwitchEvent {fromModel,
   toModel, reason}`). The directory is a hash, so these rows have no
   project path. A truncated array still yields the entries before the cut.
+  A secondary source: the timeline drops an entry whose event a chat file
+  also records, matched by `sessionId` (`dedup.py`).
 
 * `~/.qwen/trustedFolders.json`: a JSON object, read with comments
   stripped, whose keys are folder paths and whose values are a
@@ -150,6 +152,9 @@ class QwenCodeParser(Parser):
         if LOGS_RX.match(rel) or TRUSTED_RX.match(rel):
             return True
         return bool(SESSION_RX.match(rel)) and not rel.endswith(SIDECAR_SUFFIX)
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return bool(LOGS_RX.match(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if TRUSTED_RX.match(artifact.rel):

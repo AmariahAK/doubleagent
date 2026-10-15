@@ -13,6 +13,7 @@ from pathlib import Path
 from . import VERSION
 from . import catalog as catalog_mod
 from . import inventory as inventory_mod
+from .dedup import deduplicate
 from .filters import FORMS_HELP, RowFilter, parse_bound
 from .inputs import PROJECT_AGENT, Collection, describe_error, error_reason, open_input
 from .model import Row, SessionSummary, canonical_project_path, project_key, summarise
@@ -462,10 +463,14 @@ def parsers_for(artifact, parsers: dict[str, list]) -> list:
 
 def collect_rows(
     col: Collection, opts: Options, agents: list[str]
-) -> tuple[list[Row], Counter, list[str]]:
+) -> tuple[list[Row], Counter, list[str], Counter]:
+    """Parse every artifact into timeline rows. Returns the rows, sorted;
+    their counts per (agent, turn_type); the problems; and the rows dropped
+    per agent because a secondary source repeated a primary store's event
+    (`dedup.deduplicate`, issue 122)."""
     parsers = by_agent()
-    rows: list[Row] = []
-    counts: Counter = Counter()
+    primary: list[Row] = []
+    secondary: list[Row] = []
     problems: list[str] = list(col.problems)
     for a in col.artifacts:
         for p in parsers_for(a, parsers):
@@ -475,17 +480,19 @@ def collect_rows(
                 continue
             if not p.wants(a):
                 continue
+            into = secondary if p.secondary(a) else primary
             try:
                 for row in p.parse(a, opts):
                     # One spelling per Windows folder, whichever parser and
                     # store the path came from (issue 112).
                     row.project_path = canonical_project_path(row.project_path)
-                    rows.append(row)
-                    counts[(p.agent, row.turn_type)] += 1
+                    into.append(row)
             except OSError as e:
                 problems.append("%s: %s" % (a.original, error_reason(e)))
+    rows, deduplicated = deduplicate(primary, secondary)
+    counts: Counter = Counter((r.agent, r.turn_type) for r in rows)
     rows.sort(key=lambda r: (r.timestamp_utc == "", r.timestamp_utc, r.source_file, r.source_line))
-    return rows, counts, problems
+    return rows, counts, problems, deduplicated
 
 
 # No spaces after separators: the same layout as `jq -c`, so a grep pattern
@@ -529,6 +536,18 @@ def build_filter(args: argparse.Namespace) -> RowFilter:
         except re.error as e:
             raise ValueError("--match %r: %s" % (m, e)) from None
     return RowFilter(since, until, args.keep_undated, patterns)
+
+
+def dropped_summary(deduplicated: Counter) -> str:
+    """The text of the timeline's `dropped:` line: the secondary-source rows
+    `dedup.deduplicate` dropped, with the agents that had any, by name."""
+    total = sum(deduplicated.values())
+    text = "%d duplicate rows from secondary sources" % total
+    if total:
+        text += " (%s)" % ", ".join(
+            "%s %d" % (a, deduplicated[a]) for a in sorted(deduplicated) if deduplicated[a]
+        )
+    return text
 
 
 def agents_summary(
@@ -694,7 +713,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     opts = Options(include_thinking=args.include_thinking)
     rf: RowFilter = args.row_filter
     args.output.mkdir(parents=True, exist_ok=True)
-    rows, counts, problems = collect_rows(col, opts, args.agent)
+    rows, counts, problems, deduplicated = collect_rows(col, opts, args.agent)
     parsed_agents = sorted({a for a, _ in counts})
     if rf.active:
         rows = rf.apply(rows)
@@ -733,6 +752,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
             "filtered:  %d outside the window, %d without a timestamp, %d not matching"
             % (rf.dropped_window, rf.dropped_undated, rf.dropped_match)
         )
+    print("dropped:   " + dropped_summary(deduplicated))
     # The agents outside and inside project directories. Shared project
     # files (agent `project`) are routed to every parser, so they are never
     # "detected but not parsed" in their own right.
@@ -763,6 +783,9 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
                 "homes": detect["homes"],
                 "projects": {k: v for k, v in groups.items() if k},
                 "outside_projects": groups.get("", empty),
+                "deduplicated": {
+                    k: deduplicated[k] for k in sorted(deduplicated) if deduplicated[k]
+                },
             },
             fh,
             indent=2,

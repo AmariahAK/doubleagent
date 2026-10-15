@@ -38,9 +38,10 @@ under `~/.gemini` or the macOS sandbox base `~/.cache/.gemini`:
   in place when a resume migrates it to a sibling `.jsonl`, so both may be
   parsed and the turns appear twice; filter on `source_file`.
 * `tmp/<slug>/logs.json`: a JSON array of `{sessionId, messageId,
-  timestamp, type, message}`, user prompts only. Parsed even when the
-  session file exists, like the other history files, because it keeps
-  prompts that a rewind removed from the session.
+  timestamp, type, message}`, user prompts only. A secondary source: the
+  timeline drops an entry whose event the session file also records
+  (`dedup.py`) and keeps the rest, among them prompts that a rewind
+  removed from the session.
 * `trustedFolders.json` in the `.gemini` directory (`TrustedFoldersFile`
   in `packages/core/src/utils/trust.ts`): a JSON object, read with
   comments stripped, whose keys are folder paths and whose values are a
@@ -298,6 +299,9 @@ class GeminiCliParser(Parser):
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
         return bool(SESSION_RX.match(rel) or LOGS_RX.match(rel) or TRUSTED_RX.match(rel))
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return bool(LOGS_RX.match(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if TRUSTED_RX.match(artifact.rel):

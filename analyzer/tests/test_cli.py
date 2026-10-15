@@ -14,7 +14,7 @@ from doubleagent import catalog, cli
 from doubleagent.inputs import open_input
 from doubleagent.model import Row, canonical_project_path, project_key, summarise
 from doubleagent.parsers import ALL, Options, by_agent
-from fixtures import build_home
+from fixtures import CLAUDE_SESSION, build_home
 
 
 def run_timeline(root: Path, out: Path) -> tuple[int, str]:
@@ -389,7 +389,7 @@ class ProjectAttributionTests(unittest.TestCase):
         try:
             parsers = by_agent()
             routed = {a.rel: cli.parsers_for(a, parsers) for a in col.artifacts}
-            rows, _, problems = cli.collect_rows(col, Options(), [])
+            rows, _, problems, _ = cli.collect_rows(col, Options(), [])
         finally:
             col.cleanup()
         self.assertIs(routed["AGENTS.md"], ALL)
@@ -488,13 +488,106 @@ class TimelineProjectStatusTests(unittest.TestCase):
             % (out / "inventory.json"),
             lines,
         )
+        # A history file and no transcript: nothing to drop, still printed.
+        self.assertIn("dropped:   0 duplicate rows from secondary sources", lines)
         heads = [ln.split(":")[0] for ln in lines if not ln.startswith(" ")]
-        self.assertEqual(heads[-3:], ["rows", "sessions", "inventory"])
+        self.assertEqual(heads[-5:], ["dropped", "agents", "rows", "sessions", "inventory"])
         self.assertNotIn("detect", heads)
         self.assertEqual(
             sorted(p.name for p in out.iterdir()),
             ["inventory.json", "sessions.jsonl", "timeline.jsonl"],
         )
+
+
+# The rows build_home's secondary sources repeat from a primary store, per
+# agent (issue 122). Not dropped, because no transcript row matches: the
+# Antigravity CLI history's "now the tests" (the conversation database holds
+# only "clean the logs"), the Gemini logs.json "delete everything in
+# /srv/proj" (a rewind removed it from the session), the Qwen logs.json
+# model_switch entry (a `system` row whose text no session row has), and the
+# Muse tui-history.jsonl prompt (the file records no time, and an empty
+# timestamp never matches).
+FIXTURE_DEDUPLICATED = {
+    "antigravity": 1,  # "clean the logs"
+    "claude-code": 2,  # .claude and .claude-work history.jsonl
+    "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"
+    "gemini-cli": 1,  # "list files in src"
+    "open-interpreter": 1,  # "list the files"
+    "qwen-code": 1,  # "run the tests"
+}
+
+
+class DeduplicationTimelineTests(unittest.TestCase):
+    """`timeline` drops secondary-source rows that a primary store also
+    records, and counts them on stdout and in inventory.json (issue 122)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-dedup-cli-test-"))
+        build_home(self.tmp / "home" / "alice")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def timeline(self, *extra: str) -> tuple[str, list[dict], dict]:
+        out = self.tmp / "out"
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            rc = cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), *extra])
+        self.assertEqual(rc, 0, buf.getvalue())
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        return buf.getvalue(), read_jsonl(out / "timeline.jsonl"), inv
+
+    def test_history_line_dropped(self):
+        stdout, rows, inv = self.timeline()
+        text = "delete the logs in /var/log please"
+        same = {r["source_file"] for r in rows if r["agent"] == "claude-code" and r["text"] == text}
+        # The session's own user row survives (and the fork that copies the
+        # prompt, two seconds later); the history line is gone.
+        self.assertIn("/alice/.claude/projects/-srv-proj/%s.jsonl" % CLAUDE_SESSION, same)
+        self.assertEqual([f for f in same if f.endswith("history.jsonl")], [])
+        # The orphan history line, whose session file is gone, is kept.
+        orphan = [r for r in rows if r["text"] == "an older prompt whose session file is gone"]
+        self.assertEqual(len(orphan), 1)
+        self.assertTrue(orphan[0]["source_file"].endswith("/.claude/history.jsonl"))
+        self.assertEqual(inv["deduplicated"], FIXTURE_DEDUPLICATED)
+        self.assertEqual(list(inv)[-1], "deduplicated")
+        self.assertEqual(inv["rows"], len(rows))
+        total = sum(FIXTURE_DEDUPLICATED.values())
+        self.assertIn(
+            "dropped:   %d duplicate rows from secondary sources (%s)"
+            % (total, ", ".join("%s %d" % kv for kv in sorted(FIXTURE_DEDUPLICATED.items()))),
+            stdout.splitlines(),
+        )
+
+    def test_kept_secondary_rows(self):
+        _, rows, _ = self.timeline()
+        texts = {(r["agent"], r["text"]) for r in rows if r["turn_type"] == "user"}
+        for kept in (
+            ("antigravity", "now the tests"),
+            ("gemini-cli", "delete everything in /srv/proj"),
+            ("muse-code", "fix the failing test"),
+        ):
+            self.assertIn(kept, texts)
+
+    def test_agent_counts_only_that_agent(self):
+        stdout, _, inv = self.timeline("--agent", "claude-code")
+        self.assertEqual(inv["deduplicated"], {"claude-code": 2})
+        self.assertIn(
+            "dropped:   2 duplicate rows from secondary sources (claude-code 2)",
+            stdout.splitlines(),
+        )
+
+    def test_row_filter_after_rule(self):
+        # --match applies to the kept rows and leaves the count unchanged;
+        # the dropped: line follows the filtered: line.
+        stdout, rows, inv = self.timeline("--match", "logs")
+        self.assertEqual(inv["deduplicated"], FIXTURE_DEDUPLICATED)
+        heads = [ln.split(":")[0] for ln in stdout.splitlines() if not ln.startswith(" ")]
+        self.assertEqual(heads[heads.index("filtered") + 1 : heads.index("agents")], ["dropped"])
+        text = "delete the logs in /var/log please"
+        same = [r["source_file"] for r in rows if r["agent"] == "claude-code" and r["text"] == text]
+        self.assertTrue(same)
+        self.assertEqual([f for f in same if f.endswith("history.jsonl")], [])
 
 
 class WindowsProjectPathTests(unittest.TestCase):
@@ -859,6 +952,7 @@ class ProjectAgentsTests(unittest.TestCase):
                 "homes",
                 "projects",
                 "outside_projects",
+                "deduplicated",
             ],
         )
         for key in ("input", "kind", "host", "notes", "homes"):
@@ -912,6 +1006,7 @@ class ProjectAgentsTests(unittest.TestCase):
                 "homes",
                 "projects",
                 "outside_projects",
+                "deduplicated",
             ],
         )
         self.assertEqual(inv["problems"], [])
@@ -956,6 +1051,8 @@ class ProjectAgentsTests(unittest.TestCase):
         self.assertEqual(inv["outside_projects"], {"rows": 0, "sessions": 0, "agents": {}})
         # cursor is in no home, only in a project: still detected.
         self.assertEqual(inv["detected_not_parsed"], ["cursor"])
+        # A history file and no transcript: nothing to drop.
+        self.assertEqual(inv["deduplicated"], {})
 
     def test_outside_projects_has_no_file_counts(self):
         c = Collected(self.tmp / "col", [])
