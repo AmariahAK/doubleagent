@@ -56,6 +56,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   different file, so two identical lines in one file both stay. Secondary rows with no match are
   kept, so a prompt whose transcript is gone is still in the timeline
   ([#122]).
+- Aider's `.aider.input.history` and `.aider.llm.history` are secondary
+  sources of `.aider.chat.history.md`: an input-history prompt the chat
+  history records is dropped, since the chat row takes its time from it,
+  and one the chat history lacks is kept ([#122]).
 
 ## [0.12.0] - 2026-10-15
 

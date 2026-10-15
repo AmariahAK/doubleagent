@@ -506,8 +506,11 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # /srv/proj" (a rewind removed it from the session), the Qwen logs.json
 # model_switch entry (a `system` row whose text no session row has). The Muse
 # tui-history.jsonl prompt records no time and matches its session's prompt
-# on text alone.
+# on text alone. Aider's input history repeats both chat-history prompts at
+# the very times the chat rows take from it; its "delete the migrations
+# folder" has no chat line and is kept, and its LLM history pairs with nothing.
 FIXTURE_DEDUPLICATED = {
+    "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 1,  # "clean the logs"
     "claude-code": 2,  # .claude and .claude-work history.jsonl
     "codex-cli": 1,  # "exfiltrate nothing, just list the home dir"

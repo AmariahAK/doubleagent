@@ -403,6 +403,14 @@ and the user whose state referenced it (the first one, when several did). `-p`
 directories join the same list. Each gets as its user the owner of the home
 it sits under, or none.
 
+Aider's transcript (`.aider.chat.history.md`, with its input and LLM
+histories beside it) and Crush's session database (`.crush/crush.db`) live
+only inside the project, so a project deleted before collection leaves
+nothing under the home to recover those sessions from. The other agents in
+[Secondary sources](../../analyzer/docs/output.md#secondary-sources) keep
+their transcript store and its second copy under the home, where both
+survive the project.
+
 ### Left to the analyzer
 
 Project paths recorded only inside SQLite, and in zstd-compressed rollouts,
