@@ -51,6 +51,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `signed in: <host> as <login>` row, and takes the project path of
   database and snapshot rows that record none from
   `.copilot/sidebar-sessions-state/*.json` ([#50]).
+- The parser yields a `system` row `session.info <infoType>: <message>`
+  (with ` url=` and ` tip=` when present) for each `session.info` notice
+  in the event log, so the CLI's own report of a `/model` switch ("Model
+  changed from ... to ...") and its Auto routing line keep their rows
+  beside the `model:` row ([#133]).
 
 ### Changed
 
@@ -1048,6 +1053,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [#136]: https://github.com/seanthegeek/doubleagent/issues/136
 [#135]: https://github.com/seanthegeek/doubleagent/issues/135
 [#134]: https://github.com/seanthegeek/doubleagent/issues/134
+[#133]: https://github.com/seanthegeek/doubleagent/issues/133
 [#125]: https://github.com/seanthegeek/doubleagent/issues/125
 [#122]: https://github.com/seanthegeek/doubleagent/issues/122
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121

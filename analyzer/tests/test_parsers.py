@@ -9974,8 +9974,16 @@ class CopilotCliTests(ParserBase):
         (23, "system", "permission decision: approved source=human_response"),
         (25, "tool_result", "Modified 1 file: /srv/proj/date.test.js"),
         (28, "assistant", "The fixture year was stale; it now reads 2026."),
-        (31, "system", "session end: routine files modified: /srv/proj/date.test.js"),
-        (32, "system", bad_line_text(COPILOT_EVENT_LINES[-1])),
+        (31, "system", "model: gpt-6.1-sol -> auto source=model_picker"),
+        (
+            32,
+            "system",
+            "session.info model: Model changed from GitHub Copilot \u2022 GPT-6.1 Sol (medium)"
+            " to GitHub Copilot \u2022 Auto for this session",
+        ),
+        (33, "system", "session.info model: Auto routing profile change to Balance requested."),
+        (34, "system", "session end: routine files modified: /srv/proj/date.test.js"),
+        (35, "system", bad_line_text(COPILOT_EVENT_LINES[-1])),
     ]
     PATCH_ID = "custom_0000000000000000000000000001"
 
@@ -10004,9 +10012,19 @@ class CopilotCliTests(ParserBase):
             )
         self.assertEqual(rows[0].timestamp_utc, "2026-10-01T09:00:00.000Z")
         self.assertEqual(rows[0].model, "")
-        self.assertEqual({r.model for r in rows[1:4] + rows[5:-1]}, {"gpt-6.1-sol"})
+        self.assertEqual({r.model for r in rows[1:4] + rows[5:-5]}, {"gpt-6.1-sol"})
         # The utility call names its own model and does not change the session's.
         self.assertEqual(rows[4].model, "gpt-4o-mini")
+        # The `/model` switch to Auto, then its two notices with the new model.
+        switch = rows[-5:-2]
+        self.assertEqual({r.model for r in switch + rows[-2:-1]}, {"auto"})
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.tool_use_id) for r in switch], [("system", "", "")] * 3
+        )
+        self.assertEqual(
+            [r.timestamp_utc for r in switch],
+            ["2026-10-01T09:00:20.000Z", "2026-10-01T09:00:20.395Z", "2026-10-01T09:00:20.396Z"],
+        )
         self.assertEqual(rows[-1].timestamp_utc, "")
         by_line = {(r.source_line, r.turn_type): r for r in rows}
         for line in (14, 15, 16, 18):
@@ -10066,11 +10084,7 @@ class CopilotCliTests(ParserBase):
             ev(
                 2,
                 "session.model_change",
-                {
-                    "previousModel": "gpt-6.1-sol",
-                    "newModel": "gpt-6.1-sol",
-                    "source": "model_command",
-                },
+                {"previousModel": "auto", "newModel": "auto", "source": "model_command"},
             ),
             ev(
                 3,
@@ -10151,6 +10165,16 @@ class CopilotCliTests(ParserBase):
             ev(25, "some.future.type", {"x": 1}),
             ev(
                 26,
+                "session.info",
+                {
+                    "infoType": "tip",
+                    "message": "Try /plan.",
+                    "url": "https://docs.example.org/plan",
+                    "tip": "Press Shift+Tab",
+                },
+            ),
+            ev(
+                27,
                 "session.shutdown",
                 {
                     "shutdownType": "error",
@@ -10164,17 +10188,11 @@ class CopilotCliTests(ParserBase):
         self.assertEqual(
             got,
             [
-                ("system", "session resumed", "", "", "gpt-6.1-sol"),
+                ("system", "session resumed", "", "", "auto"),
+                ("system", "model: auto -> auto source=model_command", "", "", "auto"),
                 (
                     "system",
-                    "model: gpt-6.1-sol -> gpt-6.1-sol source=model_command",
-                    "",
-                    "",
-                    "gpt-6.1-sol",
-                ),
-                (
-                    "system",
-                    "model: gpt-6.1-sol -> claude-fable-5-1 source=model_picker",
+                    "model: auto -> claude-fable-5-1 source=model_picker",
                     "",
                     "",
                     "claude-fable-5-1",
@@ -10210,6 +10228,14 @@ class CopilotCliTests(ParserBase):
                 ("system", "session.task_complete: All done.", "", "", "gpt-6.2"),
                 ("system", "subagent.started: explore", "", "", "gpt-6.2"),
                 ("system", 'hook.start: {"other":1}', "", "", "gpt-6.2"),
+                (
+                    "system",
+                    "session.info tip: Try /plan. url=https://docs.example.org/plan"
+                    " tip=Press Shift+Tab",
+                    "",
+                    "",
+                    "gpt-6.2",
+                ),
                 ("system", "session end: error network files modified: none", "", "", "gpt-6.2"),
             ],
         )
@@ -10260,13 +10286,20 @@ class CopilotCliTests(ParserBase):
             [(r.turn_type, r.text) for r in rows if r.source_file == snap],
             [("system", "rewind snapshot: 1 files +1 -1: /srv/proj/date.test.js")],
         )
-        self.assertEqual([r for r in rows if r.source_file == "/alice/" + COPILOT_HISTORY_REL], [])
+        # The typed `/model` is in no other source: its history line stays,
+        # undated (issue 133).
+        history = "/alice/" + COPILOT_HISTORY_REL
+        kept_history = [
+            (r.turn_type, r.text, r.timestamp_utc) for r in rows if r.source_file == history
+        ]
+        self.assertEqual(kept_history, [("user", "/model", "")])
         users = [r for r in rows if r.turn_type == "user"]
         self.assertEqual(
             [(r.text, r.source_file) for r in users],
             [
                 ("fix the failing test", "/alice/" + COPILOT_EVENTS_REL),
                 ("and run lint", store),
+                ("/model", history),
             ],
         )
 
@@ -10275,13 +10308,15 @@ class CopilotCliTests(ParserBase):
         self.col = open_input(self.tmp / "home", self.cat, host="h1")
         rows, _, _, dropped = cli.collect_rows(self.col, Options(), ["copilot-cli"])
         texts = [(r.turn_type, r.text) for r in rows if r.turn_type in ("user", "assistant")]
-        # The snapshot keeps the first prompt, the database both turns.
+        # The snapshot keeps the first prompt, the database both turns, and
+        # the history the typed `/model`, undated and so last.
         self.assertEqual(
             texts,
             [
                 ("user", "fix the failing test"),
                 ("assistant", "The fixture year was stale; it now reads 2026."),
                 ("user", "and run lint"),
+                ("user", "/model"),
             ],
         )
         self.assertEqual(dropped["copilot-cli"], 4)
@@ -10423,7 +10458,8 @@ class CopilotCliTests(ParserBase):
             ],
             [
                 ("user", "and run lint", "", "", "", 1),
-                ("user", "fix the failing test", "", "", "", 2),
+                ("user", "/model", "", "", "", 2),
+                ("user", "fix the failing test", "", "", "", 3),
             ],
         )
 
@@ -10513,7 +10549,7 @@ class CopilotCliTests(ParserBase):
         rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].source_line, rows[-1].session_id, rows[-1].project_path),
-            ("system", 32, COPILOT_SESSION, "/srv/proj"),
+            ("system", 35, COPILOT_SESSION, "/srv/proj"),
         )
         self.assertEqual(
             rows[-2].text, "session end: routine files modified: /srv/proj/date.test.js"
@@ -10536,6 +10572,6 @@ class CopilotCliTests(ParserBase):
         self.write_events()
         write_bad_line(self.home / COPILOT_EVENTS_REL)
         rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)
-        self.assertEqual((rows[-1].source_line, rows[-1].text), (32, bad_line_text()))
+        self.assertEqual((rows[-1].source_line, rows[-1].text), (35, bad_line_text()))
         self.write_events()
         self.assertNotIn("parser:", self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)[-1].text)

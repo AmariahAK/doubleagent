@@ -51,7 +51,7 @@ equal.
 | [`cody`](#cody) | parsed | source; fixture only | [collector research](../collectors/research/cody.md); [analyzer research](../analyzer/research/cody.md) |
 | [`continue`](#continue) | parsed | source; fixture only | [collector research](../collectors/research/continue.md); [analyzer research](../analyzer/research/continue.md) |
 | [`copilot`](#copilot) | collected | Source (the vendored language server) | [collector research](../collectors/research/copilot.md); an OAuth token store with no transcripts; Copilot Chat is parsed as `vscode` |
-| [`copilot-cli`](#copilot-cli) | parsed | bundle and real install: macOS (October 2026) | [collector research](../collectors/research/copilot-cli.md); [analyzer research](../analyzer/research/copilot-cli.md); [issue 132](https://github.com/seanthegeek/doubleagent/issues/132); the legacy flat `session-state/<id>.jsonl` transcript is not parsed yet |
+| [`copilot-cli`](#copilot-cli) | parsed | bundle and real installs: macOS, Linux (October 2026) | [collector research](../collectors/research/copilot-cli.md); [analyzer research](../analyzer/research/copilot-cli.md); [issue 132](https://github.com/seanthegeek/doubleagent/issues/132); the legacy flat `session-state/<id>.jsonl` transcript is not parsed yet |
 | [`crewai`](#crewai) | backlog | Source, appdirs source | [collector research](../collectors/research/crewai.md); [issue 140](https://github.com/seanthegeek/doubleagent/issues/140); `latest_kickoff_task_outputs.db` holds every task's output with its messages |
 | [`crush`](#crush) | parsed | source; fixture only | [collector research](../collectors/research/crush.md); [analyzer research](../analyzer/research/crush.md) |
 | [`cursor`](#cursor) | backlog | Shipped Agent CLI bundle, docs, forum, write-ups | [collector research](../collectors/research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); blocked on format research: the `state.vscdb` key layout varies by version |
@@ -332,8 +332,10 @@ Validated against: Source at [5522c6f](https://github.com/continuedev/continue/c
 Files read: Under `.copilot` (or the pre-XDG `.local/state/.copilot` and
 `.config/.copilot`): `session-state/<id>/events.jsonl` (the event log;
 tool calls, results and the permission requests and decisions joined on
-`toolCallId`; `model:` rows from `session.model_change`; the runtime's
-utility-model calls as `utility model <id>:` rows),
+`toolCallId`; `model:` rows from `session.model_change`;
+`session.info <infoType>: <message>` rows, such as the confirmation a
+`/model` switch writes; the runtime's utility-model calls as
+`utility model <id>:` rows),
 `session-state/<id>/workspace.yaml` (session name and metadata),
 `permissions-config.json` and `settings.json` (`allowedUrls`,
 `deniedUrls`; one `permission setting: ... (from <file>, file mtime)` row
@@ -347,8 +349,8 @@ turn's prompt and changed files; one-hour window) and
 `command-history-state.json` (prompts with no time, session or cwd).
 
 Validated against: Shipped bundle 1.0.98 (darwin-arm64 event schema, CLI
-and runtime strings) and a real install on macOS, Copilot CLI 1.0.98,
-October 2026, synthetic fixture; `forge_trajectory_events`, checkpoints,
+and runtime strings) and real installs of Copilot CLI 1.0.98 on macOS
+(2026-10-15) and Ubuntu 26.04 arm64 (2026-10-16), synthetic fixture; `forge_trajectory_events`, checkpoints,
 references, denials, resumes and subagents fixture only.
 
 ### `crush`

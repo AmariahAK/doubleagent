@@ -8961,8 +8961,10 @@ def build_claude_desktop(home: Path) -> None:
 
 
 # GitHub Copilot CLI (issue 50): the sample records of
-# research/copilot-cli.md section 8, verbatim; the last line is cut
-# mid-write, as a log whose session was still running.
+# research/copilot-cli.md section 8, verbatim, plus the `/model` switch to
+# Auto of the Linux round (2026-10-16): a `model_picker` change and its two
+# `session.info` lines (issue 133). The last line is cut mid-write, as a log
+# whose session was still running.
 COPILOT_SESSION = "5e55a0a1-0000-4000-8000-000000000001"
 COPILOT_DIR = ".copilot/session-state/%s/" % COPILOT_SESSION
 COPILOT_EVENTS_REL = COPILOT_DIR + "events.jsonl"
@@ -9010,8 +9012,11 @@ COPILOT_EVENT_LINES = [
     '{"id":"e0000000-0000-4000-8000-000000000028","parentId":"e0000000-0000-4000-8000-000000000027","timestamp":"2026-10-01T09:00:15.000Z","type":"assistant.message","data":{"content":"The fixture year was stale; it now reads 2026.","messageId":"7b7b7b7b-0000-4000-8000-000000000003","interactionId":"1a1a1a1a-0000-4000-8000-000000000001","originatingMessageId":"2b2b2b2b-0000-4000-8000-000000000001","model":"gpt-6.1-sol","providerId":"copilot","turnId":"2","phase":"final_answer","apiCallId":"resp_0003","rte":false,"toolRequests":[]}}',
     '{"id":"e0000000-0000-4000-8000-000000000029","parentId":"e0000000-0000-4000-8000-000000000028","timestamp":"2026-10-01T09:00:15.100Z","type":"assistant.turn_end","data":{"turnId":"2"}}',
     '{"id":"e0000000-0000-4000-8000-000000000030","parentId":"e0000000-0000-4000-8000-000000000029","timestamp":"2026-10-01T09:00:15.200Z","type":"session.usage_record","data":{"usage":{"model":"gpt-6.1-sol","inputTokens":900,"outputTokens":40,"initiator":"agent","interactionType":"conversation-agent","apiEndpoint":"ws:/responses","transport":"websocket","isByok":false,"accounting":{"sequence":1,"sourceSessionId":"5e55a0a1-0000-4000-8000-000000000001","usageId":"u-0001"}}}}',
-    '{"id":"e0000000-0000-4000-8000-000000000031","parentId":"e0000000-0000-4000-8000-000000000030","timestamp":"2026-10-01T09:00:30.000Z","type":"session.shutdown","data":{"shutdownType":"routine","sessionStartTime":1790845199000,"totalApiDurationMs":9000,"eventsFileSizeBytes":20000,"codeChanges":{"filesModified":["/srv/proj/date.test.js"],"linesAdded":1,"linesRemoved":1},"modelMetrics":{},"currentModel":"gpt-6.1-sol"}}',
-    '{"id":"e0000000-0000-4000-8000-000000000032","parentId":"e0000000-0000-4000-8000-000000000031","timestamp":"2026-10-01T09:01:00.000Z","type":"user.message","data":{"content":"and run',
+    '{"id":"e0000000-0000-4000-8000-000000000031","parentId":"e0000000-0000-4000-8000-000000000030","timestamp":"2026-10-01T09:00:20.000Z","type":"session.model_change","data":{"previousModel":"gpt-6.1-sol","newModel":"auto","previousReasoningEffort":"medium","reasoningEffort":null,"contextTier":null,"source":"model_picker"}}',
+    '{"id":"e0000000-0000-4000-8000-000000000032","parentId":"e0000000-0000-4000-8000-000000000031","timestamp":"2026-10-01T09:00:20.395Z","type":"session.info","data":{"message":"Model changed from GitHub Copilot \u2022 GPT-6.1 Sol (medium) to GitHub Copilot \u2022 Auto for this session","infoType":"model"}}',
+    '{"id":"e0000000-0000-4000-8000-000000000033","parentId":"e0000000-0000-4000-8000-000000000032","timestamp":"2026-10-01T09:00:20.396Z","type":"session.info","data":{"message":"Auto routing profile change to Balance requested.","infoType":"model"}}',
+    '{"id":"e0000000-0000-4000-8000-000000000034","parentId":"e0000000-0000-4000-8000-000000000033","timestamp":"2026-10-01T09:00:30.000Z","type":"session.shutdown","data":{"shutdownType":"routine","sessionStartTime":1790845199000,"totalApiDurationMs":9000,"eventsFileSizeBytes":20000,"codeChanges":{"filesModified":["/srv/proj/date.test.js"],"linesAdded":1,"linesRemoved":1},"modelMetrics":{},"currentModel":"gpt-6.1-sol"}}',
+    '{"id":"e0000000-0000-4000-8000-000000000035","parentId":"e0000000-0000-4000-8000-000000000034","timestamp":"2026-10-01T09:01:00.000Z","type":"user.message","data":{"content":"and run',
 ]
 
 # session-store.db, schema version 38 as research/copilot-cli.md section 5
@@ -9116,8 +9121,10 @@ def build_copilot_cli(home: Path) -> None:
     (home / COPILOT_WORKSPACE_REL).write_text(COPILOT_WORKSPACE_YAML, encoding="utf-8")
     _json_file(home / COPILOT_SNAPSHOTS_REL, copilot_snapshot_index())
     _wal_db(home / COPILOT_STORE_REL, COPILOT_STORE_SCHEMA, COPILOT_STORE_ROWS)
+    # Newest first; `/model` was typed between the two prompts.
     _json_file(
-        home / COPILOT_HISTORY_REL, {"commandHistory": ["and run lint", "fix the failing test"]}
+        home / COPILOT_HISTORY_REL,
+        {"commandHistory": ["and run lint", "/model", "fix the failing test"]},
     )
     _json_file(
         home / COPILOT_PERMISSIONS_REL,

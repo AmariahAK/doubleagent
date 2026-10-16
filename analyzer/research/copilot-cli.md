@@ -61,7 +61,46 @@ there are no commit links. Each claim names its evidence level:
   normal shutdowns; one session whose `turns` rows were re-indexed
   ([section 5](#5-sqlite-and-other-stores)). Not exercised: a denial, a
   model switch the user typed, a resumed session, a rewind, a deleted
-  session, a subagent, a compaction. Linux and Windows not observed.
+  session, a subagent, a compaction.
+- **Observed (Linux)**: Copilot CLI 1.0.98, installed with `sudo npm
+  install -g @github/copilot` on an Ubuntu 26.04.1 arm64 Parallels VM
+  (kernel 7.0.0-38-generic, home `/home/sean`), 2026-10-16, read with
+  `analyzer/tools/shape.py` only (key names, types, enum values, counts;
+  no values). Exercised: `copilot login`, then two interactive sessions.
+  Session 1, in `~/demo` (created 21:01:19.518Z, prompts at 21:02:40Z and
+  21:05:34.923Z, shutdown 21:16:01Z, all UTC; 194 lines), called `bash` 2
+  times, `apply_patch` 2 (11 files, then 1), `view` 3, `glob` 1,
+  `web_fetch` 18, `web_search` 7 and `fetch_copilot_cli_documentation` 1,
+  with 20 permission requests (`kind` `shell` 2, `url` 17, `write` 1,
+  each carrying `permissionMode` `manual` and `agentMode` `interactive`):
+  19 `approved` and one `approved-for-location` for the write, all
+  `decisionSource` `human_response`, and one automatic model resolution.
+  Session 2, in `~/secret` (created 21:16:26.715Z, one prompt at
+  21:17:18Z, shutdown 21:19:27Z; 35 lines), had one `write` request
+  approved and a model switch the user typed: `/model`, choosing Auto, at
+  21:19:20Z, which wrote a `session.model_change` and two `session.info`
+  lines ([section 3](#event-types)). The user then removed the project
+  with `rm -r secret/`. Every action ran before the first listing, so no
+  per-action listing diff exists; the times above are the mapping. Each
+  surface wrote: the login a 105-byte process log and the token in the
+  GNOME keyring (the GNOME desktop's password store; `config.json` held
+  no token; [section 3 of
+  `collectors/research/copilot-cli.md`](../../collectors/research/copilot-cli.md#3-credentials));
+  each session its `session-state/<uuid>/` directory, a process log (16
+  KB and 15 KB), `session-store.db` rows (in a 1.37 MB WAL beside a
+  4096-byte main file), a `sidebar-sessions-state` file and its prompts in
+  `command-history-state.json`; the `write` approval for the location
+  the one `permissions-config.json` entry. No `settings.json` was
+  written. Analyzer 0.14.0 over the collection: 2 sessions, 160 rows
+  (`system` 79, `tool_use` 35, `tool_result` 35, `assistant` 7, `user`
+  4), no `parser:` row, 17 secondary rows deduplicated. The removed
+  `~/secret` session was reconstructed in full from `events.jsonl`,
+  `session-store.db`, `rewind-file-snapshots/index.json` and
+  `command-history-state.json`, which survive the project directory's
+  removal, and the inventory reports `/home/sean/secret` as
+  `referenced`. Not exercised: a denial, a resume, a rewind, a session
+  deleted with the CLI's own command, a subagent, a compaction, plan or
+  autopilot mode, a scheduled task. Windows not observed.
 
 ## 2. Transcript files
 
@@ -84,7 +123,7 @@ Installs that predate the XDG migration keep the same names under
 | `.copilot/session-store.db` (+`-wal`, `-shm`) | cross-session SQLite ("chronicle" store) | yes, secondary |
 | `.copilot/command-history-state.json` | prompt history for Ctrl+R | yes, secondary |
 | `.copilot/permissions-config.json` | standing approvals per project | yes |
-| `.copilot/settings.json` | user settings, JSON with comments | yes, `allowedUrls`/`deniedUrls` |
+| `.copilot/settings.json` | user settings, JSON with comments (written on macOS, absent on the Linux install) | yes, `allowedUrls`/`deniedUrls` |
 | `.copilot/sidebar-sessions-state/<sha256 of cwd>.json` | `{schemaVersion, cwd, sessionIds}` | yes, as a join |
 | `.copilot/logs/process-<epoch ms>-<pid>.log` | process log | yes, sign-in line only |
 | `.copilot/open-sessions-state.json` | open-session tracker (`{}` observed) | no |
@@ -100,7 +139,7 @@ database (`cli-main.js@149653`
 ### Envelope
 
 Every line is `{id, parentId, timestamp, type, data}` (observed, 284 of
-284; `schema@1133`). `id` is a UUID v4; `timestamp` is ISO 8601 UTC with
+284 on macOS and every line on Linux; `schema@1133`). `id` is a UUID v4; `timestamp` is ISO 8601 UTC with
 milliseconds and `Z`; `type` names the event; `data` is its payload. Two
 optional envelope keys are in the schema and were not observed: `agentId`,
 set on events from a subagent ("Absent for events from the root/main
@@ -129,8 +168,9 @@ unless marked):
 
 | `type` | `data` keys | Schema |
 | --- | --- | --- |
-| `session.start` | `sessionId` (= directory name), `version` (1), `producer` (`copilot-agent`), `copilotVersion`, `startTime` (session creation, not the line time), `selectedModel`, `context{cwd, gitRoot, repository, hostType, branch, headCommit}`, `alreadyInUse`, `remoteSteerable`, `contextTier` | `@801015` `StartData`; `@987057` `WorkingDirectoryContext` |
-| `session.model_change` | `previousModel`, `newModel`, `cause` (`initial_resolution` observed; `rate_limit_auto_switch` per the schema), `source` (`automatic` observed; also `model_command`, `model_picker`, `settings_command`, `config_command`, `startup`, `agent`, `plan_mode`, `managed_settings`, `repo_settings`, `sdk`, ...), `reasoningEffort`, `previousReasoningEffort`, `providerId` | `@460110` `ModelChangeData`, `@462830` `ModelChangeSource` |
+| `session.start` | `sessionId` (= directory name), `version` (1), `producer` (`copilot-agent`), `copilotVersion`, `startTime` (session creation, not the line time), `selectedModel`, `context{cwd, gitRoot, repository, hostType, branch, headCommit}` (`cwd` alone on Linux, outside a git repository), `alreadyInUse`, `remoteSteerable`, `contextTier` | `@801015` `StartData`; `@987057` `WorkingDirectoryContext` |
+| `session.model_change` | `previousModel`, `newModel`, `cause` (`initial_resolution` observed; `rate_limit_auto_switch` per the schema), `source` (`automatic` observed; `model_picker` observed on Linux for a typed `/model` choosing Auto, with `previousModel`, `newModel` `auto`, `previousReasoningEffort` `medium`, `reasoningEffort` and `contextTier` null; also `model_command`, `settings_command`, `config_command`, `startup`, `agent`, `plan_mode`, `managed_settings`, `repo_settings`, `sdk`, ...), `reasoningEffort`, `previousReasoningEffort`, `providerId` | `@460110` `ModelChangeData`, `@462830` `ModelChangeSource` |
+| `session.info` | `infoType` ("Category of informational message": `model`, `fork`, `remote`, `tip`, `warning`, `managed_plugins`, `managed_plugins_complete`, `relay_attachments_dropped`, `canvas`, `hook_progress_transient` in `cli-main.js`, offset not recorded), `message` ("Human-readable informational message for display in the timeline"), `url` and `tip` (optional). Emitted persisted (`this.emit("session.info", ...)`) and ephemeral (`emitEphemeral`) in `cli-main.js` of the 1.0.98 linux-arm64 package (offset not recorded). Observed on Linux right after the `model_picker` change: `infoType` `model`, `Model changed from GitHub Copilot • GPT-6.1 Sol (medium) to GitHub Copilot • Auto for this session` and `Auto routing profile change to Balance requested.` | `schema` `InfoEvent` / `InfoData` of the 1.0.98 linux-arm64 package, offset not recorded ("Informational message for timeline display with categorization"; `additionalProperties: false`) |
 | `system.message` | `content` (the full system prompt, 36 KB observed), `role` (`system`, `developer`), `interactionId`, `metadata.variables` (`gitCommitTrailer{clientName, coauthorEnabled, sessionId}` real install and `runtime.node@81992124`) | `@829319` |
 | `user.message` | `content` (the prompt as typed), `transformedContent` (the prompt with injected context), `messageId`, `interactionId`, `turnId`, `delivery` (`idle`, `steering`, `queued`), `agentMode` (`interactive`, `plan`, `autopilot`, `shell`), `source` (absent or `user` for typed input; `skill-<name>`, `agent-<id>`, `command-`, `schedule-`, `autopilot-` prefixes), `isAutopilotContinuation`, `attachments`, `responsesReasoning` | `@959453` |
 | `assistant.turn_start` / `assistant.turn_end` | `turnId` ("typically a stringified turn number"), `interactionId`, `model`, `parentToolCallId` | `@63598` |
@@ -161,7 +201,8 @@ readOnly}]` plus `allowMatchIdentifier` (real install and
 `runtime.node@87055448`), `commandSegments`, `possiblePaths`,
 `possibleUrls`, `hasWriteFileRedirection`, `canOfferSessionApproval`,
 `shellType` (real install and `runtime.node@87056164`)), `write` (`fileName`, `diff`,
-`newFileContents`), `read` (`path`), `url` (`url`), `mcp` (`serverName`,
+`newFileContents`, and `fileEdits` and `canOfferSessionApproval` on the Linux install), `read` (`path`), `url` (`url`, and
+`requestSandboxBypass` and `requestSandboxBypassReason` on the Linux install), `mcp` (`serverName`,
 `toolName`, `args`), `memory`, `custom-tool`, `hook`, `workflow`,
 `extension-management`, `extension-permission-access`,
 `extension-env-access` (`schema@583572`, `@594037`, `@587312`).
@@ -177,7 +218,8 @@ form, `@485843`); `approved-read-only-for-session` (`directories`);
 `denied-interactively-by-user` (`feedback`, `forceReject`);
 `denied-by-content-exclusion-policy` (`path`, `message`);
 `denied-by-permission-request-hook` (`message`, `interrupt`). Only the
-first and the location form were observed.
+first and the location form were observed; on Linux the location form
+carried `approval{kind: write}` and the project path as `locationKey`.
 
 The eight `model.*` types are the runtime's native model events, listed in
 `cli-main.js@1147861` (`captured_assignment_context:!0,...,turn_started:!0`)
@@ -249,8 +291,9 @@ is epoch milliseconds; `timestampMs` on native model events likewise.
 
 `session-store.db` runs in WAL mode (`runtime.node@80402520` `PRAGMA
 journal_mode = WAL`); on the install the data was in the 1.7 MB WAL and
-the main file was 4 KB, so the WAL must be read. `schema_version` 38
-observed. The runtime writes it as each turn ends and rebuilds it from
+the main file was 4 KB (1.37 MB and 4096 bytes on Linux), so the WAL
+must be read. `schema_version` 38 observed on macOS and 8 on Linux, both
+on 1.0.98 ([section 6](#6-format-versions)). The runtime writes it as each turn ends and rebuilds it from
 `events.jsonl` with `/chronicle reindex` ("chronicle" is the CLI's name
 for its session-history commands: `standup`, `reindex`, `skills`, `tips`;
 `runtime.node@80541016` `src/runtime/src/session/store_reindex.rs`). Column
@@ -265,20 +308,39 @@ meanings come from the runtime's own description for its SQL tool
 | `session_refs(session_id, ref_type, ref_value, turn_index, created_at)` | `@80388999` `INSERT OR IGNORE INTO session_refs` | `ref_type` `commit`, `pr` or `issue` (`@80212254`) |
 | `checkpoints(session_id, checkpoint_number, title, overview, history, work_done, technical_details, important_files, next_steps, created_at)` | `@80390542` | compaction checkpoints |
 | `search_index` (FTS5, SQLite's full-text index) | `@80390397` | `source_type` `turn`, `checkpoint_*` or `workspace_artifact`; `source_id` `<session>:turn:<n>`; `content` = prompt, newline, reply (observed) |
-| `assistant_usage_events` | `@80401153` | one row per model call: model, tokens, `total_nano_aiu`, `initiator`, `finish_reason`, `token_details_json` |
+| `assistant_usage_events` | `@80401153` | one row per model call: model, tokens, `total_nano_aiu`, `initiator`, `finish_reason`, `token_details_json`; on Linux 28 rows with `model` `gpt-6.1-sol`, `copilot_usage_model` null, `initiator` `agent` or `user`, `api_endpoint` `ws:/responses` or `/responses`, `reasoning_effort` `medium`, `finish_reason` `stop` or `tool_calls` |
 | `forge_trajectory_events(session_id, tool_call_id, turn_index, event_type, command, output, exit_code, event_key, event_value, created_at)` | `@80402086` | tool commands and outputs collected for Forge, the feature that proposes skills from repeated workflows (`/chronicle skills create`); `event_type` values not found as literals |
-| `forge_skill_proposals`, `dynamic_context_items` | | skill proposals and per-repository context; no session content |
+| `forge_skill_proposals`, `dynamic_context_items` | | skill proposals and per-repository context; no session content (both present and empty on Linux, beside `search_index` and its five FTS5 shadow tables) |
 
-Observed: `turns` 9 rows, `user_message` equal to a `user.message`
-`content` and `assistant_response` equal to an `assistant.message` `content`
-or null; `timestamp` 4 to 293 seconds after the matching `user.message`
-line, so a row is stamped at the end of its turn. On one session the
-first two prompts appear again at `turn_index` 2 and 3 after a turn whose
-response is null. The bundle explains the possible writers (the live
-writer takes `MAX(turn_index)` and a reindex derives turns from the log,
-both merging with `COALESCE`) but not which produced the repeat; the
-string `duplicate_turn` sits beside the reindex messages
-(`runtime.node@80355318`). The bundle holds no `DELETE` for `sessions`,
+Observed: `turns` 9 rows on macOS, `user_message` equal to a
+`user.message` `content` and `assistant_response` equal to an
+`assistant.message` `content` or null; `timestamp` 4 to 293 seconds after
+the matching `user.message` line. On one macOS session the first two
+prompts appear again at `turn_index` 2 and 3 after a turn whose response
+is null. The Linux round explains the repeat from the timestamps (6
+`turns` rows; prompt lengths 111 and 114 characters in session 1, 90 in
+session 2). Session 1 has `(0, p1, r1)` at 21:05:34.927Z, `(1, p2, null)`
+at 21:08:11.565Z, `(2, p1, r1)` at 21:08:12.119Z and `(3, p2, r2)` at
+21:16:01.831Z; session 2 has `(0, p1, null)` at 21:18:16.638Z and `(1, p1,
+r1)` at 21:19:27.956Z. So the complete row of a turn is written when the
+next prompt arrives (21:05:34.927Z is 4 ms after prompt 2) or at shutdown
+(21:16:01.831Z, 21:19:27.956Z), under `MAX(turn_index) + 1`; a
+prompt-only row with a null response is written mid-turn, 58 to 157
+seconds after the prompt, during a model call and aligned with no
+transcript event; and the row written on the next prompt repeats the
+previous turn under a new index when a prompt-only row sits between
+them. No delete, rewind or reindex was involved. The parser's secondary
+deduplication drops both kinds of copy (17 rows on the Linux collection).
+The string `duplicate_turn` sits beside the reindex messages
+(`runtime.node@80355318`); a reindex, which derives turns from the log and
+merges with `COALESCE`, was not run. Other Linux rows: `sessions` 2
+(`cwd` set; `repository`, `host_type` and `branch` null, since neither
+directory was a git repository; `summary` the generated session name),
+`session_files` 13 (`tool_name` `apply_patch`), `session_refs`,
+`checkpoints` and `forge_trajectory_events` 0, `search_index` 6
+(`source_type` `turn`, `source_id` `<session>:turn:<n>`, `content` the
+prompt, a newline and the reply, or the prompt alone when the reply is
+null). The bundle holds no `DELETE` for `sessions`,
 `turns`, `session_files`, `session_refs` or `checkpoints` (only for
 `search_index` rows it rewrites and `dynamic_context_items`), so these
 rows outlive a rewind and a deleted session directory.
@@ -286,7 +348,9 @@ rows outlive a rewind and a deleted session directory.
 Other stores:
 
 - `command-history-state.json` `{commandHistory: [...]}`: prompts, newest
-  first, a repeat moved to the front, at most `commandHistoryMaxSize` (50
+  first, a repeat moved to the front, slash commands included (the
+  Linux file held 4 entries, `/model` newest, then the three prompts), at
+  most `commandHistoryMaxSize` (50
   by default, 1 to 1000) (`cli-main.js@1109188`
   `this.commandHistory.unshift(t),this.commandHistory=this.commandHistory.slice(0,this.maxSize)`;
   `@1108158` `yNt=50,Dze=1e3`). No time, session or cwd. The docs name a
@@ -294,7 +358,9 @@ Other stores:
 - `workspace.yaml` (real install key order): `id`, `cwd`, `client_name`,
   `name` (the generated or `/rename` name), `user_named`, `summary_count`
   (compactions), `fork_count`, `created_at`, `updated_at`,
-  `remote_steerable`, `mc_task_id`, `mc_session_id`, `mc_last_event_id`.
+  `remote_steerable`, `mc_task_id`, `mc_session_id`, `mc_last_event_id`;
+  on Linux `client_name` was `github/cli` on both sessions, `user_named`
+  false, `summary_count` and `fork_count` 0, `remote_steerable` false.
   The struct has 19 fields (`runtime.node@82945317` `struct WorkspaceMetadata
   with 19 elements`); `repository`, `host_type`, `branch`,
   `mc_environment_id` and `chronicle_sync_dismissed` are among the rest
@@ -305,7 +371,10 @@ Other stores:
 - `rewind-file-snapshots/index.json` `{schema, snapshots[{snapshotId,
   eventId, timestamp, userMessage, fileCount, linesAdded, linesRemoved,
   backupFiles, files{<hex>: {path, linesAdded, linesRemoved, preimage,
-  postimage}}}]}` (real install; `runtime.node@82575983`
+  postimage}}}]}`, with `preimage{kind}` and `postimage{kind,
+  contentHash (sha256 hex), encodedPath{data, encoding}, resolvedPath}`
+  (real installs; the removed `~/secret` project's snapshot still names
+  its file under `/home/sean/secret`; `runtime.node@82575983`
   `rewind-file-snapshotstracking.json`). A rewind prunes the discarded
   turns' snapshots (`runtime.node@82545128` `Failed to prune a
   withdrawn turn's file snapshot`).
@@ -315,14 +384,29 @@ Other stores:
   `toolName`), `mcp-sampling`, `memory`, `custom-tool`,
   `extension-management`, `workflow`, `extension-permission-access`,
   `extension-env-access` (docs; `runtime.node@82849044`; observed two
-  locations with `write` entries).
+  locations with `write` entries on macOS, and one, `~/demo`, with one
+  `write` entry and no `allowed_directories` key on Linux).
 - `settings.json`: `allowedUrls` and `deniedUrls`, "URLs or domains allowed
   without prompting" (`runtime.node@79085397`); observed four
-  `allowedUrls`. JSON with comments (docs).
+  `allowedUrls` on macOS; not written on the Linux install. JSON with
+  comments (docs).
 - `logs/process-*.log`: `<ISO ms Z> [LEVEL] <message>`. `Signed in to
   <host> as <login>.` (`cli-main.js@7556306`) names the account; `Session
   named: "<name>"`, `Starting Copilot CLI: <version>`
-  (`cli-main.js@8163060`), `Workspace initialized: <uuid>`.
+  (`cli-main.js@8163060`), `Workspace initialized: <uuid>`. Also seen on
+  Linux (ids redacted): `Node.js version: v<n>`, `Login status unknown`,
+  `Workspace initialized: <uuid> (checkpoints: 0)`, `Registering
+  foreground session: <uuid>` and `Unregistering ...`, `Remote session
+  access enabled`, `Session indexing debug: SESSION_INDEXING=true,
+  repository=undefined`, `[rust:model_bindings::api_resolver] Using
+  default model: gpt-6.1-sol`, `[managedSettings] device MDM: no policy
+  present on this device` (MDM is mobile device management, an
+  organisation's policy push), `[managedSettings] self-fetch starting for
+  account https://github.com/<login>`, `[rust:rmcp::service] Service
+  initialized as client` for the `github-mcp-server` remote MCP server,
+  `Memory enablement check: enabled` and `Starting graceful shutdown of
+  CLI server`. The login appears twice, in the sign-in line and the
+  managed-settings line.
 
 ## 6. Format versions
 
@@ -337,8 +421,10 @@ legacy flat JSONL transcript format that is no longer supported`;
 record shape is not in this bundle. The schema allows no extra keys
 (`additionalProperties: false`), yet the install carried `shellType` and
 `allowMatchIdentifier`, so the file is a superset of the published
-schema. `session-store.db` migrates through `schema_version` (38
-observed); `rewind-file-snapshots` and `sidebar-sessions-state` carry
+schema. `session-store.db` migrates through `schema_version`: 38 on
+the macOS install and 8 on the Linux install, both 1.0.98 and both with
+the tables of [section 5](#5-sqlite-and-other-stores); neither number is
+explained; `rewind-file-snapshots` and `sidebar-sessions-state` carry
 their own `schema` and `schemaVersion` numbers.
 
 ## 7. Secrets
@@ -354,8 +440,10 @@ characters observed) is the provider's response id, and `usageId`,
 `request_id` and `service_request_id` are request ids, none a credential.
 `model_call_success.quotaSnapshots` records the account's plan
 entitlements. The log's sign-in line names the GitHub login. No token was
-seen in a session file; the token is in the OS keychain or `config.json`
-(not JSON on the install; already a secret glob). `/chronicle reindex`
+seen in a session file; the token is in the OS keychain (the GNOME
+keyring on the Linux install) or, with the plaintext fallback, in
+`config.json` (JSONC, JSON after `//` comment lines; on Linux it held only
+account keys; already a secret glob). `/chronicle reindex`
 also uploads the sessions to the account (docs: "Reindexing also syncs
 your session data to your account").
 
@@ -407,6 +495,7 @@ line's `timestamp`.
 | `session.permissions_changed` / `session.mode_changed` | `system`, `permission mode: <previousMode> -> <mode>` / `agent mode: <previousMode> -> <newMode>` |
 | `session.model_change` | `system`, `model: <newModel>` at the first, `model: <old> -> <newModel>` on a change, kept when equal; followed by ` cause=<cause> source=<source> effort=<reasoningEffort>` for the keys present |
 | `session.auto_mode_resolved` | `system`, `model: <old> -> <chosenModel> (auto, <routingMethod>)` |
+| `session.info` | `system`, `session.info <infoType>: <message>`, then ` url=<url>` and ` tip=<tip>` for the keys present, at the line's `timestamp`; `model` the tracked model, `tool_name` and `tool_use_id` empty |
 | `model.message` | `system`, `utility model <modelCall.model>: <message.content>`, `model` that model; never changes the session model |
 | other `model.*` | skip (the prompt snapshot, the ExP string and call bookkeeping) |
 | `session.compaction_complete` | `system`, `compaction summary: <summaryContent>` |
@@ -417,6 +506,12 @@ line's `timestamp`.
 
 The `model` column is `assistant.message.model` or the tool event's
 `model`, else the model tracked from `session.model_change`.
+
+A `/model` command the user types is not a `user.message`: the log keeps
+only its `session.model_change` and `session.info` lines, and the command
+itself survives only as an entry of `command-history-state.json`, which
+no other source repeats, so deduplication keeps it as an undated `user`
+row (Linux install).
 
 Other files:
 
@@ -459,7 +554,9 @@ Sample fixture
 `.copilot/session-state/5e55a0a1-0000-4000-8000-000000000001/events.jsonl`
 (synthetic; start, model, system prompt, prompt, utility call, reasoning
 and a `bash` request, a location approval, a failed run, an `apply_patch`
-request approved once, a final reply, usage, shutdown, then a cut line):
+request approved once, a final reply, usage, the Linux round's `/model`
+switch to Auto with its two `session.info` lines, shutdown, then a cut
+line):
 
 ```json
 {"id":"e0000000-0000-4000-8000-000000000001","parentId":null,"timestamp":"2026-10-01T09:00:00.000Z","type":"session.start","data":{"sessionId":"5e55a0a1-0000-4000-8000-000000000001","version":1,"producer":"copilot-agent","copilotVersion":"1.0.98","startTime":"2026-10-01T08:59:59.000Z","context":{"cwd":"/srv/proj","gitRoot":"/srv/proj","branch":"main"},"alreadyInUse":false,"remoteSteerable":false,"contextTier":null}}
@@ -492,8 +589,11 @@ request approved once, a final reply, usage, shutdown, then a cut line):
 {"id":"e0000000-0000-4000-8000-000000000028","parentId":"e0000000-0000-4000-8000-000000000027","timestamp":"2026-10-01T09:00:15.000Z","type":"assistant.message","data":{"content":"The fixture year was stale; it now reads 2026.","messageId":"7b7b7b7b-0000-4000-8000-000000000003","interactionId":"1a1a1a1a-0000-4000-8000-000000000001","originatingMessageId":"2b2b2b2b-0000-4000-8000-000000000001","model":"gpt-6.1-sol","providerId":"copilot","turnId":"2","phase":"final_answer","apiCallId":"resp_0003","rte":false,"toolRequests":[]}}
 {"id":"e0000000-0000-4000-8000-000000000029","parentId":"e0000000-0000-4000-8000-000000000028","timestamp":"2026-10-01T09:00:15.100Z","type":"assistant.turn_end","data":{"turnId":"2"}}
 {"id":"e0000000-0000-4000-8000-000000000030","parentId":"e0000000-0000-4000-8000-000000000029","timestamp":"2026-10-01T09:00:15.200Z","type":"session.usage_record","data":{"usage":{"model":"gpt-6.1-sol","inputTokens":900,"outputTokens":40,"initiator":"agent","interactionType":"conversation-agent","apiEndpoint":"ws:/responses","transport":"websocket","isByok":false,"accounting":{"sequence":1,"sourceSessionId":"5e55a0a1-0000-4000-8000-000000000001","usageId":"u-0001"}}}}
-{"id":"e0000000-0000-4000-8000-000000000031","parentId":"e0000000-0000-4000-8000-000000000030","timestamp":"2026-10-01T09:00:30.000Z","type":"session.shutdown","data":{"shutdownType":"routine","sessionStartTime":1790845199000,"totalApiDurationMs":9000,"eventsFileSizeBytes":20000,"codeChanges":{"filesModified":["/srv/proj/date.test.js"],"linesAdded":1,"linesRemoved":1},"modelMetrics":{},"currentModel":"gpt-6.1-sol"}}
-{"id":"e0000000-0000-4000-8000-000000000032","parentId":"e0000000-0000-4000-8000-000000000031","timestamp":"2026-10-01T09:01:00.000Z","type":"user.message","data":{"content":"and run
+{"id":"e0000000-0000-4000-8000-000000000031","parentId":"e0000000-0000-4000-8000-000000000030","timestamp":"2026-10-01T09:00:20.000Z","type":"session.model_change","data":{"previousModel":"gpt-6.1-sol","newModel":"auto","previousReasoningEffort":"medium","reasoningEffort":null,"contextTier":null,"source":"model_picker"}}
+{"id":"e0000000-0000-4000-8000-000000000032","parentId":"e0000000-0000-4000-8000-000000000031","timestamp":"2026-10-01T09:00:20.395Z","type":"session.info","data":{"message":"Model changed from GitHub Copilot • GPT-6.1 Sol (medium) to GitHub Copilot • Auto for this session","infoType":"model"}}
+{"id":"e0000000-0000-4000-8000-000000000033","parentId":"e0000000-0000-4000-8000-000000000032","timestamp":"2026-10-01T09:00:20.396Z","type":"session.info","data":{"message":"Auto routing profile change to Balance requested.","infoType":"model"}}
+{"id":"e0000000-0000-4000-8000-000000000034","parentId":"e0000000-0000-4000-8000-000000000033","timestamp":"2026-10-01T09:00:30.000Z","type":"session.shutdown","data":{"shutdownType":"routine","sessionStartTime":1790845199000,"totalApiDurationMs":9000,"eventsFileSizeBytes":20000,"codeChanges":{"filesModified":["/srv/proj/date.test.js"],"linesAdded":1,"linesRemoved":1},"modelMetrics":{},"currentModel":"gpt-6.1-sol"}}
+{"id":"e0000000-0000-4000-8000-000000000035","parentId":"e0000000-0000-4000-8000-000000000034","timestamp":"2026-10-01T09:01:00.000Z","type":"user.message","data":{"content":"and run
 ```
 
 `session-store.db`:
@@ -526,7 +626,7 @@ mc_last_event_id: null
 `.copilot/command-history-state.json`:
 
 ```json
-{"commandHistory":["and run lint","fix the failing test"]}
+{"commandHistory":["and run lint","/model","fix the failing test"]}
 ```
 
 `.copilot/permissions-config.json`:
@@ -586,15 +686,20 @@ location=/srv/proj approval={"commandIdentifiers":["npm test"],"kind":"commands"
 detail, then `Command exited with code 1` (line 18); `tool_use`
 `apply_patch` (line 21); the write request and `permission decision:
 approved source=human_response` (lines 22, 23); `tool_result` (line 25);
-`assistant` reply (line 28); `system` session end (line 31); the
-bad-line `system` row (line 32). Six secondary rows drop: the snapshot's
+`assistant` reply (line 28); `system` `model: gpt-6.1-sol -> auto
+source=model_picker` (line 31); `system` `session.info model: Model
+changed from GitHub Copilot • GPT-6.1 Sol (medium) to GitHub Copilot •
+Auto for this session` and `session.info model: Auto routing profile
+change to Balance requested.` (lines 32, 33, `model` `auto`); `system`
+session end (line 34); the bad-line `system` row (line 35). Six secondary rows drop: the snapshot's
 prompt pairs with line 4 (the nearest in time), and the `turns` row 0
 prompt, which loses that one-to-one match, collapses onto the snapshot's
 copy; the row 0 reply pairs with line 28; the `sessions` row's `session
 name: Fix failing test` pairs with the `workspace.yaml` row; the history's
 `fix the failing test` pairs with line 4, and its `and run lint` collapses
 onto the `turns` row 1, the only other copy of a prompt the cut log lost.
-Kept: `turns` row 1 (`and run lint`), `file changed:
+Kept: `turns` row 1 (`and run lint`), the history's `/model` (an undated
+`user` row, in no other source), `file changed:
 /srv/proj/date.test.js tool=apply_patch` and `rewind snapshot: 1 files +1
 -1: /srv/proj/date.test.js`.
 
@@ -604,7 +709,11 @@ observed event types and keys, the permission result kinds, the
 file's order, the WAL, the utility-call purposes. Medium (bundle only):
 the unobserved event types, the denial and session-approval shapes,
 subagent events in the same file, `forge_trajectory_events`, the
-snapshot's timing. Not determined: which writer produced the repeated
-`turns` rows; whether `sessions.summary` equals the generated name; the
-`config.json` format; the legacy flat transcript's shape; layouts on
-Linux and Windows (the bundle has no platform branch for these paths).
+snapshot's timing. High since the Linux round: the `turns` write
+pattern behind the repeated rows (complete row at the next prompt or at
+shutdown, prompt-only row mid-turn), the `session.info` shape, the
+`model_picker` change, and the Linux layout, which matches macOS.
+`sessions.summary` holds the generated session name (Linux install).
+Not determined: why `schema_version` is 8 on Linux and 38 on macOS on the same 1.0.98; the
+legacy flat transcript's shape; the layout on Windows (the bundle has no
+platform branch for these paths).

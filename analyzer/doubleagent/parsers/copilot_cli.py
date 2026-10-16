@@ -2,9 +2,9 @@
 
 Closed source. Validated against the shipped event schema
 (`schemas/session-events.schema.json`), the minified CLI and the Rust
-runtime addon of `@github/copilot-darwin-arm64` 1.0.98, and a real install
-on macOS (Copilot CLI 1.0.98, October 2026), with a synthetic fixture; see
-`research/copilot-cli.md`. Paths are relative to the home, under
+runtime addon of `@github/copilot-darwin-arm64` 1.0.98, and real installs
+on macOS and Linux (Copilot CLI 1.0.98, October 2026), with a synthetic
+fixture; see `research/copilot-cli.md`. Paths are relative to the home, under
 `.copilot` or, on installs that predate the XDG migration, under
 `.local/state/.copilot` and `.config/.copilot` (written `<home>` below);
 the bundle has no platform branch, so macOS, Linux and Windows share the
@@ -80,6 +80,10 @@ layout.
     the keys present. `session.auto_mode_resolved` (`chosenModel`,
     `routingMethod`) is `model: <old> -> <id> (auto, <routingMethod>)`.
     The `model` column is the event's own `model`, else the tracked one.
+  - `session.info` (`infoType`, `message`, `url`, `tip`), the CLI's
+    categorised timeline notice (the `infoType` `model` lines of a `/model`
+    switch among them): `session.info <infoType>: <message>`, followed by
+    ` url=` and ` tip=` for the keys present, with the tracked model.
   - `model.message` (`modelCall.model`, `message.content`): `utility model
     <model>: <content>` with that model in the `model` column; these are
     the runtime's calls to a utility model (the session-name generator,
@@ -120,8 +124,8 @@ layout.
     `checkpoint <n>: <title>` with each other non-null column on a line
     of its own; `forge_trajectory_events` (`tool_call_id`, `command`,
     `output`, `exit_code`, `created_at`) a `tool_use` and a `tool_result`
-    joined on the call id. `forge_trajectory_events` was empty on the
-    real install and its `event_type` values are unknown, so it is not
+    joined on the call id. `forge_trajectory_events` was empty on both
+    real installs and its `event_type` values are unknown, so it is not
     observed on any real install, bundle-derived: every column is read as
     possibly NULL and `event_type` is not used. `search_index`,
     `assistant_usage_events`, `forge_skill_proposals` and
@@ -567,6 +571,8 @@ class CopilotCliParser(Parser):
                 yield from self._permission_rows(row, etype, data, names, modes, perm, sid)
             elif etype in ("session.model_change", "session.auto_mode_resolved"):
                 yield from self._model_rows(row, etype, data, models, state, sid)
+            elif etype == "session.info":
+                yield row("system", self._info_text(data))
             elif etype == "model.message":
                 call_model = _str(_dict(data.get("modelCall")).get("model"))
                 content = _str(_dict(data.get("message")).get("content"))
@@ -716,6 +722,16 @@ class CopilotCliParser(Parser):
         state["model"] = new
         text = "model: %s -> %s" % (old, new) if old else "model: %s" % new
         yield row("system", text + suffix, model=new)
+
+    @staticmethod
+    def _info_text(data: dict) -> str:
+        """`session.info <infoType>: <message>`, then ` url=` and ` tip=`
+        for the keys present."""
+        text = "session.info %s: %s" % (_str(data.get("infoType")), _str(data.get("message")))
+        for key in ("url", "tip"):
+            if data.get(key) not in (None, ""):
+                text += " %s=%s" % (key, _str(data.get(key)))
+        return text
 
     @staticmethod
     def _shutdown_text(data: dict) -> str:
