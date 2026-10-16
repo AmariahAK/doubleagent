@@ -24,8 +24,9 @@ site with navigation and search, is the
 
 ## Collectors
 
-Two single-file scripts with the same catalog, manifest schema and archive
-layout: a POSIX `sh` collector for macOS, Linux and BSD, and a Windows
+Two single-file scripts with the same catalog (the table of agents and the
+paths under a home directory where each keeps its state), manifest schema
+and archive layout: a POSIX `sh` collector for macOS, Linux and BSD, and a Windows
 PowerShell 5.1 collector. Each depends on nothing beyond its base system, so
 it can be uploaded and run once through an EDR remote shell (CrowdStrike RTR,
 SentinelOne RemoteOps, Defender Live Response, Palo Alto Networks Cortex XDR

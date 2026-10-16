@@ -6,7 +6,9 @@ into a staging area, hash them, and produce one `tar.gz` with a JSONL manifest.
 Nothing is parsed on the host; that is the job of the analyst-side tool
 described in the [project README](../README.md).
 
-The two collectors share one catalog, manifest schema, archive layout and
+The two collectors share one catalog, the table of agents and the paths
+under a home directory where each keeps its transcripts, configuration and
+credentials (`--list` prints it), one manifest schema, archive layout and
 version:
 
 - `collect-agent-artifacts.sh` is a single POSIX `sh` script with no

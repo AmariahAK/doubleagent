@@ -3,7 +3,9 @@
 `doubleagent` is a forensic analyzer of AI agent use on a system. It takes
 an archive from the doubleagent collectors, an extracted collection, or any
 loose directory tree such as a copied home directory or a mounted disk image,
-detects which AI agents left state in it, and parses the transcripts it knows
+detects which AI agents left state in it using the catalog (the collectors'
+table of agents and the paths under a home directory where each keeps its
+state, bundled with the analyzer), and parses the transcripts it knows
 how to read into one normalised JSONL timeline. It runs on the analyst's
 workstation, never on the host under investigation, so unlike the collectors
 it may carry dependencies.

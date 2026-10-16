@@ -1,7 +1,8 @@
 # Agents
 
-Every agent in the collectors' catalog, in alphabetical order of its
-catalog name, with what DoubleAgent does with its files: whether the
+Every agent in the catalog (the table of agents and the paths under a
+home directory where each keeps its state, shared by the collectors and
+the analyzer), in alphabetical order of its catalog name, with what DoubleAgent does with its files: whether the
 analyzer parses them, what the parser or the collector was validated
 against, and where the research is. The status is one of three words:
 
