@@ -53,9 +53,9 @@ CLI, Antigravity (CLI and desktop app), Qwen Code, Amazon Q CLI (the
 OpenCode, Crush, Goose, Zed, Tabby, OpenHands, ShellGPT, pi, little-coder,
 Letta, Hermes, Agent Zero, Open Interpreter, OpenClaw, nanobot, Sourcegraph
 Cody, Twinny, PearAI, Muse Code, Ollama and Copilot CLI. Every other agent
-in the catalog (ChatGPT Desktop, the Copilot editor token store, Cursor,
-Windsurf, Amp, Factory Droid, Augment, Local Deep Research, and the agent
-frameworks and platforms) is detected and reported but not yet parsed.
+in the catalog is detected and reported but not parsed; the table of
+[agents without a parser](analyzer/docs/parsers.md#agents-without-a-parser)
+tells the parser backlog from the agents with nothing to parse.
 Parsing never happens on the host, so the analyzer is free to carry its own
 requirements. It needs Python 3.10 or later; `pip install ./analyzer`
 installs the `doubleagent` command and the packages in

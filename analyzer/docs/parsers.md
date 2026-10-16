@@ -1,7 +1,7 @@
 # Parsers
 
 Which files each parser reads and what it was validated against, how files
-are routed to parsers, and the agents that are detected but not parsed.
+are routed to parsers, and the agents without a parser.
 Back to the [analyzer README](../README.md).
 
 ## Parser table
@@ -91,35 +91,36 @@ to the fork whose `User/` directory holds it (`cursor`, `windsurf`, `pearai`,
 so that file is offered to them too and the rows come out under `cody` or
 `twinny`, and `--agent cody` selects them. `secret://` rows are never read.
 
-## Detected but not parsed
+## Agents without a parser
 
-Agents detected but not yet parsed: `chatgpt-desktop`, `copilot`,
-`cursor`, `windsurf`, `amp`, `factory-droid`, `augment`,
-`local-deep-research`, `autogen-studio`, `camel-ai`, `crewai`,
-`dify`, `flowise`, `langflow`, `metagpt`, `n8n` and `pydantic-clai`.
+These catalog agents, and the legacy Open Interpreter conversation files,
+are collected and detected, but no parser reads them. The status column tells the backlog from the agents with nothing to
+parse: `backlog` means transcripts are on disk and a parser is wanted,
+`blocked on format research` means the record format is not known well
+enough to write one, and `none needed` means the agent leaves no
+transcript under the home. The collected files come from each agent's
+collector research document, linked in the row.
 
-The ChatGPT desktop app (`chatgpt-desktop`) keeps no local transcript of
-its ChatGPT chats on the Windows and macOS installs checked (ChatGPT
-26.1007.9446.0 on Windows 11 and 26.1007.71326 on macOS 26.6.2, October
-2026): a chat leaves only an index entry with its title, so there is
-nothing to parse yet. Its local Codex threads are ordinary Codex
-rollouts under `.codex`, and its scheduled automations are
-`.codex/automations/*/automation.toml`; both are parsed as `codex-cli`; see
-[`collectors/research/chatgpt-desktop.md`](../../collectors/research/chatgpt-desktop.md).
-
-The `open-interpreter` parser reads only the current Codex-fork layout
-under `.openinterpreter`. The legacy Python tool's
-`conversations/*.json` files, which the catalog attributes to
-`open-interpreter` too, are detected but not parsed.
-
-The Cursor and Windsurf storage formats are not documented, so a parser
-needs format research first: Windsurf's Cascade history is protobuf
-(`.pb`) with no published schema, and Cursor's chats are `state.vscdb`
-rows whose key layout changes between versions, beside a CLI `store.db`
-whose blobs may be encrypted. See
-[`cursor.md`](../../collectors/research/cursor.md) and
-[`windsurf.md`](../../collectors/research/windsurf.md) in the collector
-research.
+| Agent | What is collected | Parser status |
+| --- | --- | --- |
+| `amp` | `.local/share/amp/history.jsonl` (prompt history with the working directory), per-thread logs `.cache/amp/logs/threads/<T-id>.log` and `cli.log`, the terminal tool's shell history `.cache/amp/terminal/<threadId>/history`, `.amp/claude-diagnostics/` (Claude Code session files copied when Amp drives Claude Code), settings and `secrets.json`; full threads are stored server-side by ampcode.com; see [`amp.md`](../../collectors/research/amp.md) | backlog, [issue 53](https://github.com/seanthegeek/doubleagent/issues/53) |
+| `augment` | `.augment/sessions/<conversationId>.json` (full conversations), `prompt-history.jsonl`, `session.json` (the OAuth session), `settings.json`, rules, commands, agents and plans; see [`augment.md`](../../collectors/research/augment.md) | backlog, [issue 55](https://github.com/seanthegeek/doubleagent/issues/55) |
+| `autogen-studio` | `.autogenstudio/autogen04203.db` (SQLite with the tables `team`, `message`, `session` and `run`), `files/`, `configs/`, `temp_env_vars.env` and `.env`; see [`autogen-studio.md`](../../collectors/research/autogen-studio.md) | backlog, [issue 69](https://github.com/seanthegeek/doubleagent/issues/69) |
+| `camel-ai` | `.camel/gmail_token.json` (the Gmail toolkit's Google OAuth token), `.camel/skills` and `.config/camel`; see [`camel-ai.md`](../../collectors/research/camel-ai.md) | none needed: CAMEL keeps no transcripts under the home; its `chat_history.json` and working directories are relative to the working directory |
+| `chatgpt-desktop` | Windows: the `OpenAI.Codex_*` package's Chromium profile (the directory Chromium keeps one user's state in), `Local State`, the app's logs and the package settings hive; macOS: the `Library/Application Support/Codex` profile, the `com.openai.codex` logs, preferences and URL-session stores, and the group container (a directory macOS shares between an app and its helpers) of the computer-use service, the agent mode that drives the desktop; the former package and native macOS app paths; see [`chatgpt-desktop.md`](../../collectors/research/chatgpt-desktop.md) | nothing to parse on the installs checked (ChatGPT 26.1007.9446.0 on Windows 11 and 26.1007.71326 on macOS 26.6.2, October 2026): a chat leaves only an index entry with its title. Its local Codex threads are ordinary Codex rollouts under `.codex` and its scheduled automations are `.codex/automations/*/automation.toml`; both are parsed as `codex-cli`. [Issue 49](https://github.com/seanthegeek/doubleagent/issues/49) stays open |
+| `copilot` | `.config/github-copilot` (`AppData/Local/github-copilot` on Windows): `apps.json` and the legacy `hosts.json`, the OAuth token store shared by the editor plugins that embed the Copilot language server (Neovim, JetBrains, Xcode, Vim); see [`copilot.md`](../../collectors/research/copilot.md) | none needed: a token store with no transcripts. VS Code's Copilot Chat is parsed as `vscode` and the GitHub Copilot CLI as `copilot-cli` (see the [parser table](#parser-table)) |
+| `crewai` | The run data directory, named after the project folder (`.local/share/<project>`, `Library/Application Support/<project>`, `AppData/Local/CrewAI/<project>`): `latest_kickoff_task_outputs.db` (every task's output with its messages), `flow_states.db` and `.crewai_user.json`; `.config/crewai/settings.json`, the `crewai/credentials/` key and encrypted token, and `.crewai` skills; see [`crewai.md`](../../collectors/research/crewai.md) | backlog, no issue filed |
+| `cursor` | The editor's `User/` and `logs` directories, whose `User/globalStorage/state.vscdb` holds the chats as `cursorDiskKV` rows (`composerData:<id>`, `bubbleId:<composer>:<bubble>`); the Cursor Agent CLI's `.cursor` (`projects/*/agent-transcripts/`, `chats/*/*/store.db` with `meta.json`, `acp-sessions/`, `ai-tracking/`), `.config/cursor` and `auth.json`; see [`cursor.md`](../../collectors/research/cursor.md) | blocked on format research, [issue 51](https://github.com/seanthegeek/doubleagent/issues/51): the `state.vscdb` key layout changes between versions, and whether the CLI's `store.db` blobs are encrypted is not determined |
+| `dify` | The `difyctl` CLI client's `config.yml`, `login.yml` and `tokens.yml` (`.config/difyctl`, `AppData/Roaming/difyctl`, `AppData/Local/difyctl`), and the Docker volumes `*dify_agent_local_sandbox_home` (the sandbox runtime shellctl's `shellctl.db` and job output logs) and `*dify_agent_local_sandbox_workspace`; see [`dify.md`](../../collectors/research/dify.md) | none needed: the run history is in PostgreSQL, whose raw data files the analyzer cannot read without a PostgreSQL server, and the server's bind mounts have no catalog line |
+| `factory-droid` | `.factory/sessions/<projectKey>/<sessionId>.jsonl` transcripts with their `.settings.json` sidecars, `cache/session-index/index.db`, `state/history.json` (prompt history), `missions/`, `logs/`, settings, `mcp.json` and `hooks.json`; see [`factory-droid.md`](../../collectors/research/factory-droid.md) | backlog, [issue 54](https://github.com/seanthegeek/doubleagent/issues/54) |
+| `flowise` | `.flowise/database.sqlite` (`chat_message` with `usedTools` and `agentReasoning`, `execution`, the encrypted `credential` table), `encryption.key` and the auth signing secrets, `storage` and `uploads` (the `vectorstore` indexes are excluded); see [`flowise.md`](../../collectors/research/flowise.md) | backlog, [issue 68](https://github.com/seanthegeek/doubleagent/issues/68) |
+| `langflow` | The config directory (`.cache/langflow`, `Library/Caches/langflow`, `AppData/Local/langflow/langflow/Cache`) with `secret_key` and uploaded files, `.langflow/fs_tool/fs_sandbox` (the `.langflow/knowledge_bases` stores are excluded), Langflow Desktop's `.langflow/data` (`database.db`, `.env`) and `com.LangflowDesktop` directories (from the documentation only), and the Docker volume `*langflow-data`; the open-source server's `langflow.db`, with the `message` and `transaction` tables, sits in the installed package and is not collected; see [`langflow.md`](../../collectors/research/langflow.md) | backlog, no issue filed |
+| `local-deep-research` | The data directory (`.local/share/local-deep-research`, `Library/Application Support/local-deep-research`, `AppData/Local/local-deep-research`): `ldr_auth.db` (the account list), `encrypted_databases/ldr_user_*.db` (research history and chat), its backups, the opt-in `research_outputs/` reports and logs, and the pre-1.0 unencrypted `ldr.db`; `Documents/LocalDeepResearch`; the Docker volume `*ldr_data`; see [`local-deep-research.md`](../../collectors/research/local-deep-research.md) | backlog, [issue 56](https://github.com/seanthegeek/doubleagent/issues/56); the per-user database is SQLCipher (an encrypted SQLite) keyed from the user's login password |
+| `metagpt` | `.metagpt/config2.yaml` (LLM configuration with `api_key`) and `config2.bak`; see [`metagpt.md`](../../collectors/research/metagpt.md) | none needed: MetaGPT keeps no transcripts under the home; its `workspace` and `team.json` are under the working directory or the clone |
+| `n8n` | `.n8n/database.sqlite` (`execution_entity`, `execution_data`, `chat_hub_sessions`, `chat_hub_messages` and the encrypted `credentials_entity`), `.n8n/config` (the encryption key), the event log and crash journal, `.n8n-local-gateway/log` (every computer-use tool call with its arguments; computer-use is n8n's local tool gateway for its Assistant), `.n8n-gateway/settings.json`, and the Docker volumes `*n8n_data` and `*n8n-data`; see [`n8n.md`](../../collectors/research/n8n.md) | backlog, [issue 67](https://github.com/seanthegeek/doubleagent/issues/67) |
+| `open-interpreter` (legacy `conversations/*.json`) | The legacy Python tool's base directory (`.config/open-interpreter`, `Library/Application Support/open-interpreter`, `AppData/Local/open-interpreter`, and the older `Open Interpreter*` directories): `conversations/<first words>__<date>.json`, each a JSON array holding one chat's full message list, beside `profiles/`; the `open-interpreter` parser reads only the current Codex-fork layout under `.openinterpreter`; see [`open-interpreter.md`](../../collectors/research/open-interpreter.md) | backlog, [issue 70](https://github.com/seanthegeek/doubleagent/issues/70) |
+| `pydantic-clai` | `.pydantic-ai/prompt-history.txt` (`clai` v1) and `.config/pydantic-clai2/` (CLAI 2.0): `sessions.db` (`conversations` with the messages, `workspace` and `model`), `input-history`, `config.db`, `credentials-*` and `mcp.json`; `sessions.db` can also hold Claude Code and Codex sessions imported by `/resume`; see [`pydantic-clai.md`](../../collectors/research/pydantic-clai.md) | backlog, [issue 66](https://github.com/seanthegeek/doubleagent/issues/66) |
+| `windsurf` | `.codeium/windsurf/cascade/<uuid>.pb` (the history of Cascade, Windsurf's agent, as protobuf), memories, workflows and `mcp_config.json`; `.windsurf/transcripts/*.jsonl` (the transcripts Cascade hands to hooks); the Windsurf and Devin editors' `User/` and `logs` directories; the Devin CLI's `.config/devin` and `.local/share/devin/credentials.toml`; see [`windsurf.md`](../../collectors/research/windsurf.md) | blocked on format research, [issue 52](https://github.com/seanthegeek/doubleagent/issues/52): the `.pb` files have no published schema, and the hook transcripts' fields beyond `type` and `status` are not documented |
 
 Files that are not transcripts, such as skills and configuration files,
 are detected but not parsed.
