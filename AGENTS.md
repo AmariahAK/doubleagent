@@ -568,7 +568,10 @@ find. The validation for every current entry is recorded in the index table in
    its index row. Add the agent's row to the
    [agents table](analyzer/docs/parsers.md#agents) with status `backlog`
    (parseable records on disk, with a parser issue) or `collected`
-   (nothing to parse, with the reason).
+   (nothing to parse, with the reason); a `collected` row also adds the
+   agent to `NO_TRANSCRIPTS` in `analyzer/doubleagent/parsers/__init__.py`,
+   which the analyzer reports as `collected only` and a test keeps equal
+   to the table.
 
 Every catalog entry has been validated against source, a shipped bundle, or
 official documentation. When a real-install check is wanted, run the tool in

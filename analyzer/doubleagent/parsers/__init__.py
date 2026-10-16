@@ -76,6 +76,20 @@ ALL: list[Parser] = [
 ]
 
 
+# Catalog agents whose collected files hold nothing to parse: the `collected`
+# rows of the agents table in docs/parsers.md, which a test keeps equal to
+# this set. The analyzer reports them as "collected only", not as a backlog.
+NO_TRANSCRIPTS: frozenset[str] = frozenset(
+    {
+        "camel-ai",  # an OAuth token and config; chat history is under the working directory
+        "chatgpt-desktop",  # app profile, logs and preferences; local threads parse as codex-cli
+        "copilot",  # the language server's OAuth token store; Copilot Chat parses as vscode
+        "metagpt",  # LLM configuration only; its workspace is under the working directory
+        "shared",  # cross-agent instruction and skill directories
+    }
+)
+
+
 def by_agent() -> dict[str, list[Parser]]:
     out: dict[str, list[Parser]] = {}
     for p in ALL:
@@ -83,4 +97,4 @@ def by_agent() -> dict[str, list[Parser]]:
     return out
 
 
-__all__ = ["ALL", "Options", "Parser", "by_agent"]
+__all__ = ["ALL", "NO_TRANSCRIPTS", "Options", "Parser", "by_agent"]

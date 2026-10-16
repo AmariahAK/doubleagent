@@ -330,7 +330,7 @@ otherwise; the files are written either way. Before analyzer 0.12.0
 [inventory.json](#inventoryjson)).
 
 The `agents:` line is always one line. When the input holds at least one
-agent it lists them in two or three groups; otherwise it reads
+agent it lists them in two to four groups; otherwise it reads
 `none were found`:
 
 ```text
@@ -338,13 +338,22 @@ agents:    parsed: antigravity, claude-code; detected but not parsed: amp
 agents:    parsed: claude-code; detected but not parsed: none
 agents:    parsed: none; detected but not parsed: amp
 agents:    parsed: claude-code; detected but not parsed: none; parser found no rows: antigravity
+agents:    parsed: claude-code; detected but not parsed: amp; collected only: copilot
 agents:    none were found
 ```
 
 `parsed` names the agents that produced rows before filtering. `detected
-but not parsed` names the agents in the input that have no parser (the
-agents `detect` shows without one, in either table, so an agent whose only
-files are in a project directory counts). `parser found no rows` names the agents
+but not parsed` names the agents in the input that have no parser and
+whose files hold records a parser is wanted for, the `backlog` rows of the
+[agents table](parsers.md#agents) (the agents `detect` shows without a
+parser, in either table, so an agent whose only files are in a project
+directory counts). `collected only` names the agents in the input that
+have no parser because their files hold nothing to parse, a token store or
+configuration only: the `collected` rows of that table, which the analyzer
+holds as `NO_TRANSCRIPTS` in `doubleagent/parsers/__init__.py`; the group
+follows `detected but not parsed` and appears only when it has an entry.
+Before analyzer 0.14.0 those agents were listed under `detected but not
+parsed`. `parser found no rows` names the agents
 in the input that have a parser which read their files and produced no
 rows, such as a data directory holding only an empty database; the group
 appears only when it has an entry, and with `--agent` it counts only the
@@ -528,7 +537,8 @@ the test collection of the [`detect --json`](#detect---json) example:
       }
     }
   },
-  "deduplicated": {}
+  "deduplicated": {},
+  "collected_only": []
 }
 ```
 
@@ -543,7 +553,8 @@ line with no project and a session transcript that records no working
 directory. `cursor` has project files and no parser, so no rows;
 `gemini-cli` has a parser that found no rows. `deduplicated` is `{}`
 because none of the three `history.jsonl` prompts is one a transcript
-records, so every history line is kept. Its keys, in order:
+records, so every history line is kept, and `collected_only` is `[]`
+because no agent of the input is one with nothing to parse. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -556,7 +567,7 @@ records, so every history line is kept. Its keys, in order:
 | `rows` | integer | The number of records in `timeline.jsonl`, after the filters. |
 | `sessions` | integer | The number of records in `sessions.jsonl`, after the filters. |
 | `parsed` | array of strings | The `parsed` group of the `agents:` line: the agents that produced rows before filtering, sorted. |
-| `detected_not_parsed` | array of strings | The `detected but not parsed` group: the agents in the input, outside or inside a project directory, that have no parser, sorted. |
+| `detected_not_parsed` | array of strings | The `detected but not parsed` group: the agents in the input, outside or inside a project directory, that have no parser, sorted. Since 0.14.0 it excludes the agents in `collected_only`. |
 | `no_rows` | array of strings | The `parser found no rows` group, sorted; `[]` when it is empty. |
 | `homes` | array of objects | The `homes` array of [`detect --json`](#detect---json) for the same input, element for element: one per user home and Docker volume, in the order its first collected row was met, never a project directory. Not filtered. |
 | `homes[].user` | string | As `homes[].user` in `detect --json`: the home's owner, `""` when unknown. |
@@ -587,6 +598,7 @@ records, so every history line is kept. Its keys, in order:
 | `outside_projects.agents.<agent>.turn_types` | object | Keyed by `turn_type`, sorted: this agent's rows of each type, listing only the types that occur. |
 | `deduplicated` | object | Keyed by agent name, sorted: the agents with rows of a secondary source dropped because a primary store or another secondary source records the same event (see [Secondary sources](#secondary-sources)), the counts of the `dropped:` line. With `--agent`, only the agents selected; not changed by `--since`, `--until` or `--match`, which apply to the rows kept. `{}` when no row was dropped. |
 | `deduplicated.<agent>` | integer | The number of this agent's secondary-source rows dropped, never 0. |
+| `collected_only` | array of strings | The `collected only` group of the `agents:` line: the agents in the input, outside or inside a project directory, that have no parser because their files hold nothing to parse (the `collected` rows of the [agents table](parsers.md#agents)), sorted; `[]` when it is empty. Last key since 0.14.0. |
 
 A row is counted under its own `project_path` and a session under the
 session's, the first non-empty `project_path` among its rows, so a session
@@ -652,8 +664,10 @@ jq -r '.projects | to_entries[] | .key as $p | .value.agents | to_entries[] | se
 
 Before analyzer 0.12.0 there was no `inventory.json`. The keys are an
 interface like the JSONL fields: new ones are added at the end, the
-existing ones keep their names, types and meaning. `deduplicated`, the
-last key, was added in analyzer 0.13.0. The one key added at the front is
+existing ones keep their names, types and meaning. `deduplicated` was
+added in analyzer 0.13.0 and `collected_only`, the last key, in analyzer
+0.14.0; with it, `detected_not_parsed` stopped listing the agents with
+nothing to parse, which it had held since 0.12.0. The one key added at the front is
 `doubleagent_version`, in analyzer 0.14.0: the file is one object read by
 key, not by position, and a reader needs the version before the rest.
 

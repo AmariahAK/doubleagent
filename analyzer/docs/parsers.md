@@ -25,6 +25,12 @@ gathers and Validated against the evidence level of the collector
 research. Notes links the research documents and the open parser
 issues, then gives the reason when the status needs one.
 
+The `collected` rows are the `NO_TRANSCRIPTS` set in
+`doubleagent/parsers/__init__.py`, which `timeline` reports as `collected
+only` on its `agents:` line and in the `collected_only` key of
+[`inventory.json`](output.md#inventoryjson) rather than as detected but
+not parsed; a test keeps the set and the table equal.
+
 | Agent | Status | Files | Validated against | Notes |
 | --- | --- | --- | --- | --- |
 | `agent-zero` | parsed | `usr/chats/<ctxid>/chat.json` (UI log for timestamps, each agent's history for full text and model, `messages/<n>.txt` for long tool results; history-only turns without timestamps when the log was trimmed at 1000 items) under `agent-zero`, `agent-zero/<instance>` or `Desktop/agent-zero`, also the legacy `chats/<ctxid>.json` and `tmp/chats`; project path is the container path `/a0/usr/projects/<name>` | Source at e3051fb, synthetic fixture | [collector research](../../collectors/research/agent-zero.md); [analyzer research](../research/agent-zero.md) |

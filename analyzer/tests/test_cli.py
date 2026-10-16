@@ -72,6 +72,15 @@ class AgentsSummaryTests(unittest.TestCase):
             "parsed: none; detected but not parsed: none; parser found no rows: antigravity",
         )
         self.assertEqual(summary(False, [], [], []), "none were found")
+        self.assertEqual(
+            summary(True, [], ["cursor"], [], ["copilot", "copilot", "shared"]),
+            "parsed: none; detected but not parsed: cursor; collected only: copilot, shared",
+        )
+        self.assertEqual(
+            summary(True, [], [], ["antigravity"], ["copilot"]),
+            "parsed: none; detected but not parsed: none; collected only: copilot;"
+            " parser found no rows: antigravity",
+        )
 
     def test_both_lists(self):
         self.claude_history()
@@ -81,6 +90,19 @@ class AgentsSummaryTests(unittest.TestCase):
         self.assertEqual(
             agents_line(out),
             "agents:    parsed: claude-code; detected but not parsed: cursor",
+        )
+
+    def test_collected_only(self):
+        # copilot is in NO_TRANSCRIPTS: detected, no parser, not a backlog.
+        self.claude_history()
+        self.cursor_state()
+        self.write(".config/github-copilot/apps.json", "{}")
+        rc, out = run_timeline(self.tmp / "home", self.tmp / "out")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(
+            agents_line(out),
+            "agents:    parsed: claude-code; detected but not parsed: cursor;"
+            " collected only: copilot",
         )
 
     def test_nothing_unparsed(self):
@@ -205,6 +227,13 @@ class InventoryJsonTests(unittest.TestCase):
         self.assertIn("claude-code", inv["parsed"])
         self.assertIn("cursor", inv["detected_not_parsed"])
         self.assertEqual(inv["detected_not_parsed"], sorted(inv["detected_not_parsed"]))
+        # build_home has the Copilot token store, a NO_TRANSCRIPTS agent.
+        self.assertIn("copilot", inv["collected_only"])
+        self.assertNotIn("copilot", inv["detected_not_parsed"])
+        self.assertEqual(inv["collected_only"], sorted(inv["collected_only"]))
+        line = next(x for x in out.splitlines() if x.startswith("agents:"))
+        self.assertIn("; collected only: copilot", line)
+        self.assertNotIn("copilot", line.split("detected but not parsed:")[1].split(";")[0])
         self.assertEqual(list(inv["projects"]), sorted(inv["projects"]))
 
     def test_with_and_without_project(self):
@@ -228,6 +257,7 @@ class InventoryJsonTests(unittest.TestCase):
         )
         self.assertEqual(inv["detected_not_parsed"], [])
         self.assertEqual(inv["no_rows"], [])
+        self.assertEqual(inv["collected_only"], [])
 
     def test_filtered(self):
         home = self.tmp / "home" / "alice"
@@ -620,7 +650,7 @@ class DeduplicationTimelineTests(unittest.TestCase):
         self.assertEqual(len(orphan), 1)
         self.assertTrue(orphan[0]["source_file"].endswith("/.claude/history.jsonl"))
         self.assertEqual(inv["deduplicated"], FIXTURE_DEDUPLICATED)
-        self.assertEqual(list(inv)[-1], "deduplicated")
+        self.assertEqual(list(inv)[-2:], ["deduplicated", "collected_only"])
         self.assertEqual(inv["rows"], len(rows))
         total = sum(FIXTURE_DEDUPLICATED.values())
         self.assertIn(
@@ -1025,6 +1055,7 @@ class ProjectAgentsTests(unittest.TestCase):
                 "projects",
                 "outside_projects",
                 "deduplicated",
+                "collected_only",
             ],
         )
         for key in ("input", "kind", "host", "notes", "homes"):
@@ -1080,6 +1111,7 @@ class ProjectAgentsTests(unittest.TestCase):
                 "projects",
                 "outside_projects",
                 "deduplicated",
+                "collected_only",
             ],
         )
         self.assertEqual(inv["problems"], [])

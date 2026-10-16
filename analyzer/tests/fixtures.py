@@ -1695,6 +1695,12 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     build_ollama(home)
     build_claude_desktop(home)
     build_copilot_cli(home)
+    # A NO_TRANSCRIPTS agent: the Copilot language server's token store, which
+    # is detected as `copilot`, wanted by no parser and reported collected only.
+    _json_file(
+        home / ".config/github-copilot/apps.json",
+        {"github.com:Iv1.fake": {"user": "alice", "oauth_token": "gho_FAKE_TOKEN_0000"}},
+    )
     if with_noise:
         (home / "Documents").mkdir(parents=True, exist_ok=True)
         (home / "Documents/notes.txt").write_text("not an agent file\n", encoding="utf-8")

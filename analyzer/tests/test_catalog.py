@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from doubleagent import catalog
+from doubleagent.parsers import NO_TRANSCRIPTS, by_agent
 
 REPO = Path(__file__).resolve().parents[2]
 COLLECTOR = REPO / "collectors" / "collect-agent-artifacts.sh"
@@ -64,3 +65,30 @@ class CatalogTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoTranscriptsTests(unittest.TestCase):
+    """The `collected` rows of the agents table in docs/parsers.md and the
+    NO_TRANSCRIPTS set the analyzer reports as collected only must agree."""
+
+    def collected_rows(self) -> set[str]:
+        text = (REPO / "analyzer" / "docs" / "parsers.md").read_text(encoding="utf-8")
+        table = text.split("\n## Agents\n", 1)[1].split("\n## ", 1)[0]
+        out = set()
+        for line in table.splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if line.startswith("| `") and len(cells) > 1 and cells[1] == "collected":
+                out.add(cells[0].strip("`"))
+        return out
+
+    def test_table_matches_set(self):
+        rows = self.collected_rows()
+        self.assertTrue(rows)
+        self.assertEqual(rows, set(NO_TRANSCRIPTS))
+
+    def test_members_are_catalog_agents_without_parser(self):
+        agents = set(catalog.load().agents)
+        parsers = by_agent()
+        for agent in NO_TRANSCRIPTS:
+            self.assertIn(agent, agents)
+            self.assertNotIn(agent, parsers)

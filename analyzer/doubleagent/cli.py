@@ -17,7 +17,7 @@ from .dedup import deduplicate
 from .filters import FORMS_HELP, RowFilter, parse_bound
 from .inputs import PROJECT_AGENT, Collection, describe_error, error_reason, open_input
 from .model import Row, SessionSummary, canonical_project_path, project_key, summarise
-from .parsers import ALL, Options, by_agent
+from .parsers import ALL, NO_TRANSCRIPTS, Options, by_agent
 
 PROG = "doubleagent"
 
@@ -554,13 +554,20 @@ def dropped_summary(deduplicated: Counter) -> str:
 
 
 def agents_summary(
-    detected: bool, parsed: list[str], unparsed: list[str], no_rows: list[str]
+    detected: bool,
+    parsed: list[str],
+    unparsed: list[str],
+    no_rows: list[str],
+    collected_only: list[str] | None = None,
 ) -> str:
     """The text of the timeline's `agents:` line. `detected` says whether the
     input held any agent at all; `parsed` are the agents that produced rows,
-    `unparsed` the detected agents with no parser and `no_rows` the detected
+    `unparsed` the detected agents with no parser that are a parser backlog,
+    `collected_only` the detected agents with no parser whose files hold
+    nothing to parse (`parsers.NO_TRANSCRIPTS`), and `no_rows` the detected
     agents whose parser ran and produced no rows. Each list is sorted and
-    reads `none` when empty; `no_rows` is shown only when it has an entry."""
+    reads `none` when empty; `collected_only` and `no_rows` are shown only
+    when they have an entry."""
 
     def names(agents: list[str]) -> str:
         return ", ".join(sorted(set(agents))) or "none"
@@ -568,6 +575,8 @@ def agents_summary(
     if not detected and not parsed:
         return "none were found"
     text = "parsed: %s; detected but not parsed: %s" % (names(parsed), names(unparsed))
+    if collected_only:
+        text += "; collected only: %s" % names(collected_only)
     if no_rows:
         text += "; parser found no rows: %s" % names(no_rows)
     return text
@@ -761,7 +770,12 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     # "detected but not parsed" in their own right.
     agents = [a for h in detect["homes"] for a in h["agents"] if a["agent"] != PROJECT_AGENT]
     agents += [a for p in detect["projects"] for a in p["agents"]]
-    unparsed = [r["agent"] for r in agents if not r["parser"]]
+    # Agents with no parser are a parser backlog, unless their files hold
+    # nothing to parse (NO_TRANSCRIPTS), which are collected only.
+    unparsed = [r["agent"] for r in agents if not r["parser"] and r["agent"] not in NO_TRANSCRIPTS]
+    collected_only = [
+        r["agent"] for r in agents if not r["parser"] and r["agent"] in NO_TRANSCRIPTS
+    ]
     # An agent left out by --agent was not parsed, so it did not come up empty.
     no_rows = [
         r["agent"]
@@ -790,12 +804,16 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
                 "deduplicated": {
                     k: deduplicated[k] for k in sorted(deduplicated) if deduplicated[k]
                 },
+                "collected_only": sorted(set(collected_only)),
             },
             fh,
             indent=2,
         )
     print(
-        "agents:    " + agents_summary(bool(agents), parsed_agents, unparsed, sorted(set(no_rows)))
+        "agents:    "
+        + agents_summary(
+            bool(agents), parsed_agents, unparsed, sorted(set(no_rows)), collected_only
+        )
     )
     print("rows:      %d in %s" % (len(rows), timeline))
     for (agent, tt), n in sorted(counts.items()):

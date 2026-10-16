@@ -15,6 +15,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `inventory.json` begins with a `doubleagent_version` key, the analyzer
   version that wrote it ([#138]).
+- `inventory.json` ends with a `collected_only` key and the `agents:`
+  line gains a `collected only:` group, naming the detected agents whose
+  files hold nothing to parse (`camel-ai`, `chatgpt-desktop`, `copilot`,
+  `metagpt`, `shared`). This adds a key to the `inventory.json` interface
+  ([#143]).
 - A `copilot-cli` parser for GitHub Copilot CLI. It reads each session's
   event log `.copilot/session-state/<id>/events.jsonl`: prompts, replies,
   tool calls and results joined on `toolCallId`, the system prompt, the
@@ -60,6 +65,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `camel-ai`, `chatgpt-desktop`, `copilot`, `metagpt` and `shared`, whose
+  files are a token store, configuration or app state with no transcript,
+  are no longer listed as a parser backlog under `detected but not parsed`
+  and in `detected_not_parsed`, which changes the meaning of that
+  `inventory.json` key; they are listed as `collected only` ([#143]).
 - The Claude Code and Antigravity `history.jsonl` readers report
   unparseable lines as `system` rows instead of dropping them silently;
   the valid prompts before and after are still yielded ([#134]).
@@ -1027,6 +1037,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#143]: https://github.com/seanthegeek/doubleagent/issues/143
 [#138]: https://github.com/seanthegeek/doubleagent/issues/138
 [#136]: https://github.com/seanthegeek/doubleagent/issues/136
 [#134]: https://github.com/seanthegeek/doubleagent/issues/134
