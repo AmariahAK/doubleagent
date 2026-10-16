@@ -1,4 +1,4 @@
-# doubleagent
+# DoubleAgent
 
 Forensic analysis of AI agent use on a system, for incident responders.
 It covers agents that execute tools or shell commands on a host and leave

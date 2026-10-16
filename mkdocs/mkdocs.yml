@@ -11,7 +11,7 @@
 # so there is no site_dir here: the build is always given -d with a
 # directory outside the checkout. A new document page is added to `nav:`
 # below; --strict fails the build on a document missing from it.
-site_name: doubleagent
+site_name: DoubleAgent
 site_description: >-
   Forensic analysis of AI agent use on a system, for incident responders.
 site_url: https://seanthegeek.net/doubleagent/

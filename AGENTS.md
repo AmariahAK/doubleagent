@@ -1055,6 +1055,9 @@ for a documentation-only change, only markdownlint and
 
 ## Conventions
 
+- The project's name is written DoubleAgent in prose, titles, the site
+  name and descriptions; `doubleagent` is the command, the package, the
+  repository and every path and URL, and stays lowercase in code spans.
 - Commit messages: imperative subject under 70 characters, body explaining
   why, ending with the `Co-Authored-By` line when an AI agent wrote the code.
 - Everything an AI agent writes to git or GitHub discloses that it was

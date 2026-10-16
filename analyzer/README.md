@@ -1,4 +1,4 @@
-# doubleagent
+# DoubleAgent analyzer
 
 `doubleagent` is a forensic analyzer of AI agent use on a system. It takes
 an archive from the doubleagent collectors, an extracted collection, or any

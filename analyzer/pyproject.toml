@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "doubleagent"
 dynamic = ["version"]
-description = "Forensic analyzer of AI agent use on a system: detects agent state and builds a JSONL timeline from the agents' transcripts"
+description = "DoubleAgent: forensic analyzer of AI agent use on a system: detects agent state and builds a JSONL timeline from the agents' transcripts"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
