@@ -2,6 +2,7 @@
 the input itself, and anything unreadable inside an input is a problem line,
 never a traceback and never silence (issue 37)."""
 
+import ast
 import contextlib
 import io
 import json
@@ -209,3 +210,49 @@ class PermissionTests(ErrorTestBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ErrorListsReportedTests(unittest.TestCase):
+    """Every error list a parser fills is read again, to yield its `system`
+    row, return it or pass it on (issues 125 and 134). A list created empty
+    and only handed to a reader is the silent drop those issues fixed; a
+    pre-scan that discards errors passes a literal `[]` instead, because
+    the same parser reports them when it parses the file in full."""
+
+    PARSERS = Path(__file__).resolve().parent.parent / "doubleagent" / "parsers"
+
+    def test_every_error_list_is_read_again(self):
+        silent = []
+        for path in sorted(self.PARSERS.glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
+            for func in ast.walk(tree):
+                if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for name, line in _empty_error_lists(func):
+                    loads = sum(
+                        1
+                        for node in ast.walk(func)
+                        if isinstance(node, ast.Name)
+                        and node.id == name
+                        and isinstance(node.ctx, ast.Load)
+                    )
+                    if loads < 2:
+                        silent.append("%s:%d %s()" % (path.name, line, func.name))
+        self.assertEqual(silent, [], "error lists filled but never reported")
+
+
+def _empty_error_lists(func):
+    """(name, line) of each local in `func` whose name ends in `errors` and
+    that is assigned an empty list literal, annotated or not."""
+    for node in ast.walk(func):
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets, value = [node.target], node.value
+        else:
+            continue
+        if not (isinstance(value, ast.List) and not value.elts):
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id.endswith("errors"):
+                yield target.id, node.lineno

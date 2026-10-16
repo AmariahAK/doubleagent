@@ -283,6 +283,24 @@ class ClaudeCodeTests(ParserBase):
         self.assertEqual(rows[1].project_path, "/srv/old")
         self.assertTrue(all(r.turn_type == "user" for r in rows))
 
+    def test_history_reports_truncated_line_and_keeps_valid_rows(self):
+        # A bad history line is a system row, not silence (issue 134).
+        (self.home / ".claude/history.jsonl").write_text(
+            '{"display":"keep before","sessionId":"s1"}\n'
+            '{"display":\n'
+            '{"display":"keep after","sessionId":"s2"}\n',
+            encoding="utf-8",
+        )
+        rows = self.rows_for(ClaudeCodeParser(), ".claude/history.jsonl")
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text) for r in rows],
+            [
+                ("user", 1, "keep before"),
+                ("user", 3, "keep after"),
+                ("system", 2, "parser: 1 unparseable line(s), first at line 2"),
+            ],
+        )
+
     def test_subagent_file(self):
         rows = self.rows_for(ClaudeCodeParser(), self.SUB)
         self.assertEqual(
@@ -1842,6 +1860,25 @@ class AntigravityTests(ParserBase):
         rows = self.rows_for(AntigravityParser(), ".gemini/antigravity-cli/history.jsonl")
         self.assertEqual([r.session_id for r in rows], ["", AGY_CONVERSATION])
         self.assertEqual(rows[1].text, "now the tests")
+
+    def test_history_reports_truncated_line_and_keeps_valid_rows(self):
+        # A bad history line is a system row, not silence (issue 134).
+        rel = ".gemini/antigravity-cli/history.jsonl"
+        (self.home / rel).write_text(
+            '{"display":"keep before","conversationId":"c1"}\n'
+            '{"display":\n'
+            '{"display":"keep after","conversationId":"c2"}\n',
+            encoding="utf-8",
+        )
+        rows = self.rows_for(AntigravityParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text) for r in rows],
+            [
+                ("user", 1, "keep before"),
+                ("user", 3, "keep after"),
+                ("system", 2, "parser: 1 unparseable line(s), first at line 2"),
+            ],
+        )
 
     def test_sidecars_and_token_not_wanted(self):
         p = AntigravityParser()

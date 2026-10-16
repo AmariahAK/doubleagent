@@ -1070,6 +1070,15 @@ class AntigravityParser(Parser):
             row.turn_type = "user"
             row.text = compact(rec.get("display"))
             yield row
+        if errors:
+            row = self.base_row(artifact)
+            row.turn_type = "system"
+            row.source_line = errors[0][0]
+            row.text = "parser: %d unparseable line(s), first at line %d" % (
+                len(errors),
+                errors[0][0],
+            )
+            yield row
 
     # -- brain/<uuid>/.system_generated/logs ------------------------------------
     def _parse_brain(self, artifact: Artifact, opts: Options) -> Iterator[Row]:

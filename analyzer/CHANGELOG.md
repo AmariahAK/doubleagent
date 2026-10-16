@@ -45,6 +45,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   database and snapshot rows that record none from
   `.copilot/sidebar-sessions-state/*.json` ([#50]).
 
+### Fixed
+
+- The Claude Code and Antigravity `history.jsonl` readers report
+  unparseable lines as one `system` row, `parser: N unparseable line(s),
+  first at line M`, instead of dropping them silently; the valid prompts
+  before and after are still yielded ([#134]).
+
 ## [0.13.0] - 2026-10-15
 
 ### Added
@@ -1005,6 +1012,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#134]: https://github.com/seanthegeek/doubleagent/issues/134
 [#122]: https://github.com/seanthegeek/doubleagent/issues/122
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121
 [#119]: https://github.com/seanthegeek/doubleagent/issues/119

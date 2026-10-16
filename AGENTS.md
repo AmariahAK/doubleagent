@@ -325,6 +325,15 @@ rules are different from the collectors'.
   copy is never opened directly.
   Bad lines are reported as a `system` row, never fatal: a transcript cut
   mid-write by a running agent must still yield its earlier turns.
+  That holds for every file a parser reads, not only the transcript: a
+  history file, a secondary source or an index that loses lines says so
+  in its own row. Every `errors` list a reader fills is reported,
+  returned or passed on; a pre-scan that discards errors passes a
+  literal `[]`, and only over a file the same parser also parses in full
+  and reports on. Three history readers dropped bad lines silently
+  (issues 125 and 134); `ErrorListsReportedTests` in
+  `analyzer/tests/test_errors.py` now fails on a list a parser fills and
+  never reads again.
   The parser table's "Validated against" cell names the real installs
   (platform, version, date) on which the parser's file paths and record
   shapes were seen, and says "fixture only" for a path that rests on
@@ -453,7 +462,10 @@ and say in the module docstring if the shape has drifted since.
    `write_bad_line` for the truncation case.
 6. Add a `<Agent>Tests(ParserBase)` class to `tests/test_parsers.py` with
    the same cases the existing classes have: rows, thinking opt-in, history,
-   not-wanted, truncated line.
+   not-wanted, truncated line. The truncated-line case is repeated for
+   every file the parser reads line by line, the history file and each
+   secondary source as well as the transcript, and checks that the lines
+   before and after the bad one are still yielded beside the `parser:` row.
 7. Add the row to the parser table in [`analyzer/docs/parsers.md`](analyzer/docs/parsers.md) in
    alphabetical order of the agent name, ending its "Validated against"
    cell with a Markdown link to the research document, written
