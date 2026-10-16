@@ -3,7 +3,6 @@
 Every catalog agent with its parse status, the files each parser reads and
 what it was validated against, the files collected for the agents not
 parsed, and how files are routed to parsers.
-Back to the [analyzer README](../README.md).
 
 ## Agents
 

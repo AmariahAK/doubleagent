@@ -2,7 +2,6 @@
 
 The `--since`, `--until`, `--keep-undated` and `--match` options of
 `timeline`, and the `WHEN` forms they accept.
-Back to the [analyzer README](../README.md).
 
 `timeline` can write only part of the timeline, which keeps the output of a
 busy host to the incident window:

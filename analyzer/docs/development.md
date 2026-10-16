@@ -2,7 +2,6 @@
 
 Running the analyzer's tests and lint checks, and adding a parser; for
 developers changing the analyzer.
-Back to the [analyzer README](../README.md).
 
 ## Testing
 

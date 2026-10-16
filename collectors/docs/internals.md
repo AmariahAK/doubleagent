@@ -4,8 +4,7 @@ How the two collectors are built, for a maintainer who has to audit or
 extend them: the layout both scripts share, the run flow, the sh worker
 programs, glob matching, the manifest writer, capability detection, the
 Docker volume path, project discovery, inventory mode, the naming rules and
-the table of matching sh and PowerShell functions. Back to the
-[collectors README](../README.md). The rules every change must keep are in
+the table of matching sh and PowerShell functions. The rules every change must keep are in
 [AGENTS.md](../../AGENTS.md#non-negotiable-standards), the readability
 rules in [its Readability section](../../AGENTS.md#readability).
 

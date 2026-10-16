@@ -2,7 +2,6 @@
 
 Recipes for reading and searching a large `timeline.jsonl` or
 `sessions.jsonl` with jq, grep, DuckDB, Python and PowerShell.
-Back to the [analyzer README](../README.md).
 
 A timeline from a busy host can run to gigabytes, because `text` holds full
 tool output. Each line is one complete record, so the tools below stream

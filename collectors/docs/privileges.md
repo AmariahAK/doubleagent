@@ -1,7 +1,7 @@
 # Privileges
 
 What a run without root or Administrator still collects, and how it records
-what it could not read. Back to the [collectors README](../README.md).
+what it could not read.
 
 Run as root (sh) or from an elevated PowerShell (Windows) to collect every
 user. Without that privilege, a live run still finishes and exits `0`. The

@@ -1,7 +1,7 @@
 # Deployment through an EDR
 
 Running the collectors through an EDR remote shell, for a collection or a
-fleet inventory. Back to the [collectors README](../README.md).
+fleet inventory.
 
 ## Collection
 

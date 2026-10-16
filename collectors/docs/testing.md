@@ -1,8 +1,7 @@
 # Testing
 
 The collectors' smoke tests, the catalog drift check and what CI runs; for
-developers changing the collectors. Back to the
-[collectors README](../README.md).
+developers changing the collectors.
 
 Run from the `collectors/` directory:
 

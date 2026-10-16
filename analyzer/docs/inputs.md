@@ -2,7 +2,6 @@
 
 What the analyzer accepts as input, how it attributes files to users and
 agents, and what it does with inputs it cannot read.
-Back to the [analyzer README](../README.md).
 
 ## Inputs
 

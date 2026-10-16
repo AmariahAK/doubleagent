@@ -1,7 +1,7 @@
 # Inventory mode
 
 What `--inventory` (sh) and `-Inventory` (PowerShell) walk and the JSON
-Lines they print. Back to the [collectors README](../README.md).
+Lines they print.
 
 Inventory mode answers a fleet question, which users have used which agents
 on which hosts, without collecting anything. Run the script on every host

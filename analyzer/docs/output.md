@@ -1,8 +1,7 @@
 # Output
 
 What `detect` prints, the files `timeline` writes, and the
-`inventory.json`, `timeline.jsonl` and `sessions.jsonl` schemas. Back to
-the [analyzer README](../README.md).
+`inventory.json`, `timeline.jsonl` and `sessions.jsonl` schemas.
 
 ## detect
 

@@ -2,7 +2,6 @@
 
 The `inventory` command, which merges collector `--inventory` output into
 one fleet CSV, and its columns.
-Back to the [analyzer README](../README.md).
 
 `inventory` merges the output of collector runs made with `--inventory`
 (sh) or `-Inventory` (PowerShell), described in the

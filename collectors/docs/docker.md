@@ -1,8 +1,7 @@
 # Docker volumes
 
 How the collectors find and collect agents deployed in Docker or Podman
-named volumes, and what they record for Docker Desktop. Back to the
-[collectors README](../README.md).
+named volumes, and what they record for Docker Desktop.
 
 Several agents are commonly deployed in containers with their state in a
 named volume rather than a home directory: Agent Zero's README runs it with

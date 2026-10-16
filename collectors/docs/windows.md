@@ -1,8 +1,7 @@
 # Windows
 
 How the PowerShell collector writes its archive, recreates symlinks and
-reparse points, and copies locked or long paths. Back to the
-[collectors README](../README.md).
+reparse points, and copies locked or long paths.
 
 ## Archiver: `tar.exe`, the PowerShell tar writer or `ZipFile`
 

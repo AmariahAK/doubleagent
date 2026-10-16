@@ -1,8 +1,7 @@
 # Output
 
 What a collection writes: the stdout summary, the files in the output
-directory, the archive layout, the manifest and `collection.json`. Back to
-the [collectors README](../README.md).
+directory, the archive layout, the manifest and `collection.json`.
 
 ## Stdout summary
 

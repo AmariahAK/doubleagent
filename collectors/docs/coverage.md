@@ -1,8 +1,7 @@
 # What gets collected
 
 Which files the collectors take, from which homes and projects, and which
-they exclude or flag as credentials. Back to the
-[collectors README](../README.md).
+they exclude or flag as credentials.
 
 Run `--list` for the full catalog. Every catalog entry is tried against every
 home directory, so macOS, Linux and Windows paths coexist and a Windows image
