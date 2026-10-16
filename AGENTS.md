@@ -1142,7 +1142,7 @@ for a documentation-only change, only markdownlint and
   A new document page starts with the same front matter as its siblings
   (`title`, `parent`, `grand_parent` when three levels deep, `nav_order`,
   and `has_children` on a section page), so it takes its place in the
-  navigation of the [documentation site](https://seanthegeek.github.io/doubleagent/);
+  navigation of the [documentation site](https://seanthegeek.net/doubleagent/);
   `tools/check_doc_links.py` stays the link check, and skips the front matter.
 - Every term a document takes from a vendor, a bundle or a product
   surface is explained at its first use in that document: what it stands

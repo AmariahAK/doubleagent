@@ -1,4 +1,4 @@
-# The documentation site at https://seanthegeek.github.io/doubleagent/,
+# The documentation site at https://seanthegeek.net/doubleagent/,
 # built from the Markdown documents where they are in the repository by
 # .github/workflows/pages.yml. Each document page carries front matter
 # (title, parent, grand_parent, nav_order, has_children) that places it in
@@ -6,7 +6,7 @@
 title: doubleagent
 description: >-
   Forensic analysis of AI agent use on a system, for incident responders.
-url: https://seanthegeek.github.io
+url: https://seanthegeek.net
 baseurl: /doubleagent
 theme: just-the-docs
 # Links to files that are not pages go here (_plugins/github_source_links.rb).

@@ -1,6 +1,6 @@
 # Builds the documentation site from the Markdown documents where they are
 # (see _config.yml) and publishes it to GitHub Pages at
-# https://seanthegeek.github.io/doubleagent/. An Actions build rather than
+# https://seanthegeek.net/doubleagent/. An Actions build rather than
 # GitHub's built-in Pages build, because _plugins/ must run: the built-in
 # build allows only its own plugin list.
 name: Pages
