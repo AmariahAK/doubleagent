@@ -91,6 +91,20 @@ def line_text(raw: bytes) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
+def tail_text(s: str, start: int) -> str:
+    """`s` from `start` to its end as error row text, its trailing `\n` and
+    then `\r` removed, nothing else stripped, as `line_text` treats a line:
+    the record a JSON array reader failed to decode at `start`, with
+    everything after it that was never decoded, since a broken record has
+    no boundary of its own."""
+    tail = s[start:]
+    if tail.endswith("\n"):
+        tail = tail[:-1]
+    if tail.endswith("\r"):
+        tail = tail[:-1]
+    return tail
+
+
 def error_rows(
     parser: Parser, artifact: Artifact, errors: list, session_id: str = "", project_path: str = ""
 ) -> Iterator[Row]:

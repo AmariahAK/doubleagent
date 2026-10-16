@@ -81,7 +81,7 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, error_rows, text_of, track_change
+from .base import Options, Parser, compact_json, error_rows, tail_text, text_of, track_change
 from .claude_code import tool_summary
 
 UI_FILE = "ui_messages.json"
@@ -161,7 +161,7 @@ def iter_array_at(
         try:
             value, i = dec.raw_decode(s, start)
         except ValueError as e:
-            errors.append((n, "unparseable record %d (%s)" % (n, e), _tail(s, start)))
+            errors.append((n, "unparseable record %d (%s)" % (n, e), tail_text(s, start)))
             return
         yield n, value
         i = _skip_ws(s, i)
@@ -174,17 +174,6 @@ def iter_array_at(
             return
         errors.append((n + 1, "array cut off after record %d" % n, ""))
         return
-
-
-def _tail(s: str, start: int) -> str:
-    """`s` from `start` to its end, less one trailing `\\n` and then `\\r`,
-    as `line_text` treats a line."""
-    tail = s[start:]
-    if tail.endswith("\n"):
-        tail = tail[:-1]
-    if tail.endswith("\r"):
-        tail = tail[:-1]
-    return tail
 
 
 def read_text(path: Path) -> str | None:

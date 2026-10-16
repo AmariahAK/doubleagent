@@ -4904,15 +4904,26 @@ class KiloCodeTests(ParserBase):
     def test_truncated_task_file_keeps_earlier_records(self):
         path = self.home / self.TASK
         raw = path.read_bytes()
-        path.write_bytes(raw[: raw.index(b'{"type": "reasoning"') + 10])
+        at = raw.index(b'{"type": "reasoning"')
+        cut = raw[: at + 10].decode("utf-8")
+        path.write_text(cut, encoding="utf-8")
+        start = len(raw[:at].decode("utf-8"))
+        try:
+            json.JSONDecoder().raw_decode(cut, start)
+        except ValueError as e:
+            reason = str(e)
+        else:
+            raise AssertionError("cut record parses")
         rows = self.rows_for(KiloCodeParser(), self.TASK)
         self.assertEqual(
             [r.turn_type for r in rows],
             ["system", "user", "system", "assistant", "tool_use", "tool_result", "system"],
         )
-        self.assertIn("record 4", rows[-1].text)
-        self.assertIn("3 earlier record(s) kept", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 4)
+        # The cut record is carried from its first character to the end.
+        self.assertEqual(
+            (rows[-1].source_line, rows[-1].session_id, rows[-1].text),
+            (4, KILO_TASK, "parser: unparseable record 4 (%s): %s" % (reason, cut[start:])),
+        )
 
     def test_bad_line_appended(self):
         write_bad_line(self.home / self.TASK)
@@ -4921,11 +4932,24 @@ class KiloCodeTests(ParserBase):
         self.assertIn("unexpected data after the array", rows[-1].text)
 
     def test_iter_json_array(self):
-        self.assertEqual(kilo_iter_json_array('[1, {"a": 2} ,3]'), ([1, {"a": 2}, 3], None))
-        self.assertEqual(kilo_iter_json_array("[]"), ([], None))
-        self.assertEqual(kilo_iter_json_array('[1, {"a"')[0], [1])
-        self.assertEqual(kilo_iter_json_array("[1, 2")[1], "record 3: unexpected end of file")
-        self.assertEqual(kilo_iter_json_array('{"a":1}'), ([], "not a JSON array"))
+        def run(raw: str) -> tuple[list, list]:
+            errors: list = []
+            return kilo_iter_json_array(raw, errors), errors
+
+        self.assertEqual(run('[1, {"a": 2} ,3]'), ([1, {"a": 2}, 3], []))
+        self.assertEqual(run("[]"), ([], []))
+        try:
+            json.JSONDecoder().raw_decode('[1, {"a"', 4)
+        except ValueError as e:
+            reason = str(e)
+        else:
+            raise AssertionError("cut record parses")
+        self.assertEqual(
+            run('[1, {"a"'), ([1], [(2, "unparseable record 2 (%s)" % reason, '{"a"')])
+        )
+        self.assertEqual(run("[1, 2"), ([1, 2], [(3, "array cut off after record 2", "")]))
+        self.assertEqual(run('{"a":1}'), ([], [(1, "not a JSON array", "")]))
+        self.assertEqual(run("[1] x"), ([1], [(2, "unexpected data after the array", "")]))
 
 
 from doubleagent.parsers.cline import ClineParser

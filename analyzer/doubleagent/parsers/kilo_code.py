@@ -37,7 +37,11 @@ Files, relative to the home directory:
   with `source_line` 0. No model is recorded. Records without `ts` inherit the
   task's `ts`. `source_line` is the record's 1-based position in the array
   (Roo writes the array on one line). A file cut mid-write keeps every
-  complete record before the cut and adds one `system` row. Tool calls
+  complete record before the cut and adds one `system` row (`error_rows`,
+  issue 136): `parser: unparseable record <N> (<reason>): <raw>`, carrying
+  the cut record's text from its first character to the end of the file,
+  or `parser: array cut off after record N` when the cut falls between
+  records. Tool calls
   written as XML inside text blocks, as older Roo prompts did, stay in the
   text of the `assistant` row; text blocks that are only
   `<environment_details>` are `system` rows.
@@ -53,7 +57,7 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, compact_json, text_of
+from .base import Options, compact_json, error_rows, tail_text, text_of
 from .opencode import OpenCodeParser, tool_summary
 
 TASK_RX = re.compile(
@@ -61,9 +65,14 @@ TASK_RX = re.compile(
 )
 
 
-def iter_json_array(raw: str) -> tuple[list[object], str | None]:
+def iter_json_array(raw: str, errors: list) -> list[object]:
     """Decode a JSON array element by element so a file truncated mid-write
-    still yields its complete leading elements. Returns (items, error)."""
+    still yields its complete leading elements. A record that does not
+    decode ends the walk and is appended to `errors` as (position,
+    `unparseable record <position> (<reason>)`, the text from the record's
+    first character to the end of `raw`); a file that is not an array, an
+    array cut off between records and data after the closing bracket are
+    (position, message, "")."""
     dec = json.JSONDecoder()
     items: list[object] = []
     i = 0
@@ -76,26 +85,30 @@ def iter_json_array(raw: str) -> tuple[list[object], str | None]:
 
     i = skip(i)
     if i >= n or raw[i] != "[":
-        return items, "not a JSON array"
+        errors.append((1, "not a JSON array", ""))
+        return items
     i = skip(i + 1)
     if i < n and raw[i] == "]":
-        return items, None
+        return items
     while i < n:
+        k = len(items) + 1
         try:
-            obj, i = dec.raw_decode(raw, i)
+            obj, end = dec.raw_decode(raw, i)
         except ValueError as e:
-            return items, "record %d: %s" % (len(items) + 1, e)
+            errors.append((k, "unparseable record %d (%s)" % (k, e), tail_text(raw, i)))
+            return items
         items.append(obj)
-        i = skip(i)
+        i = skip(end)
         if i < n and raw[i] == ",":
             i = skip(i + 1)
             continue
         if i < n and raw[i] == "]":
             if skip(i + 1) < n:
-                return items, "unexpected data after the array"
-            return items, None
+                errors.append((k + 1, "unexpected data after the array", ""))
+            return items
         break
-    return items, "record %d: unexpected end of file" % (len(items) + 1)
+    errors.append((len(items) + 1, "array cut off after record %d" % len(items), ""))
+    return items
 
 
 def _read_json(path: Path):
@@ -175,7 +188,8 @@ class KiloCodeParser(OpenCodeParser):
 
         with open(artifact.disk_path, "rb") as fh:
             raw = fh.read().decode("utf-8", errors="replace")
-        items, error = iter_json_array(raw)
+        errors: list = []
+        items = iter_json_array(raw, errors)
         for n, msg in enumerate(items, 1):
             if not isinstance(msg, dict):
                 continue
@@ -250,8 +264,4 @@ class KiloCodeParser(OpenCodeParser):
                     ),
                 )
             yield from out
-        if error:
-            row = base(len(items) + 1, "")
-            row.turn_type = "system"
-            row.text = "parser: %s; %d earlier record(s) kept" % (error, len(items))
-            yield row
+        yield from error_rows(self, artifact, errors, task_id, project)
