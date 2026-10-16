@@ -9,8 +9,9 @@ through the EDR console and keep what it prints: stdout is the whole result
 (see [deployment.md](deployment.md#fleet-inventory)). Nothing is created,
 copied, hashed or written, not even a log, and `-o` is ignored. When `-o` or
 `-OutputDir` is given, a `NOTE: --inventory writes nothing; -o <dir>
-ignored` line (PowerShell: `-OutputDir <dir>`) goes to stderr, unless `-q`
-is given. `-k`, `--no-secrets` and `--max-file-size` have no effect.
+ignored` line goes to stderr, unless `-q` is given (PowerShell:
+`NOTE: -Inventory writes nothing; -OutputDir <dir> ignored`). `-k`,
+`--no-secrets` and `--max-file-size` have no effect.
 
 ## What is walked
 
@@ -44,7 +45,7 @@ exit code is `0` once the walk has run, including when homes or Docker data
 roots were unreadable.
 
 ```jsonl
-{"type":"host","host":"host01","collector":"1.8.1","mode":"live","at":"2026-10-04T16:31:54Z","users_scanned":3,"users_unreadable":0,"docker_volumes":3}
+{"type":"host","host":"host01","collector":"1.13.0","mode":"live","at":"2026-10-04T16:31:54Z","users_scanned":3,"users_unreadable":0,"docker_volumes":3}
 {"type":"agent","host":"host01","user":"alice","agent":"claude-code","files":6,"bytes":318,"first":"2026-09-15T01:02:03Z","last":"2026-10-04T16:31:11Z","projects":29,"evidence":".claude,.claude.json*"}
 {"type":"agent","host":"host01","user":"docker","agent":"agent-zero","files":2,"bytes":63,"first":"2026-10-04T16:31:11Z","last":"2026-10-04T16:31:11Z","projects":0,"evidence":"*a0_usr"}
 ```

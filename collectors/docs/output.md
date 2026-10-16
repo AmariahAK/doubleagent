@@ -60,6 +60,11 @@ host_20261003T165531Z_agent-artifacts.log             the log (the archive holds
 .stage-host_20261003T165531Z_agent-artifacts/         the staging directory, only with -k
 ```
 
+The sh collector sets `umask 077`, so the files and directories it creates
+(an output directory it has to create included) are readable by the user
+who ran it only, mode `600` and `700`. The PowerShell collector sets no
+permissions of its own; its files get the output directory's defaults.
+
 ## Archiver fallbacks
 
 The sh collector writes the archive with `tar -czf`. If that fails, it pipes
@@ -182,7 +187,7 @@ rather than silently left out. How each collector names the kind in
 | --- | --- | --- |
 | sh | Every path the walk finds that is not a directory goes to the stage worker (`find ! -type d`). After the symlink test, a path that exists and is not a regular file (`test -f`) is tested with `test -S`, `-p`, then `-b` or `-c`. | `socket`, `fifo`, `device`, else `other` |
 | PowerShell on Windows | A reparse point whose `LinkType` is neither `SymbolicLink` nor `Junction`. Windows PowerShell 5.1 exposes no reparse tag, so the kind cannot be named; the case seen is the AF_UNIX (Unix domain) socket, reparse tag `IO_REPARSE_TAG_AF_UNIX` (`0x80000023`), which collector 1.12.0 recorded as a `symlink` whose target was its own path. A reparse point whose `LinkType` cannot be read is still recorded as a `symlink`. | `other` |
-| PowerShell 7 on Linux and macOS | The first character of the item's `UnixMode` property (PowerShell 7.1 and later): `s`, `p`, `b` or `c`. Without `UnixMode` the collector cannot tell a special file from a regular one and behaves as before 1.13.0: it tries the copy, which fails for a socket (an `error_copy` row) and can wait for a writer on a FIFO. | `socket`, `fifo`, `device` |
+| PowerShell 7 on Linux and macOS | The first character of the item's `UnixMode` property (PowerShell 7.1 and later): `s`, `p`, `b` or `c`. Without `UnixMode` the collector cannot tell a special file from a regular one and behaves as before 1.13.0: it tries the copy, which fails for a socket (an `error_copy` row) and can wait for a writer on a FIFO. PowerShell 7.6.6 on Linux reports a FIFO's `UnixMode` with a leading `-`, as for a regular file, so the collector copies it and the run waits until something opens the FIFO for writing (seen October 2026). | `socket`, `fifo`, `device` |
 
 Up to collector 1.12.0 the sh walk passed only regular files and symlinks
 to the stage worker, so a socket or FIFO under a matched directory had no
@@ -199,7 +204,7 @@ they recognise out of the file counts.
 | `hostname` | The host name, the only record of it in the output. sh: `hostname`, else `uname -n`. PowerShell: `COMPUTERNAME`, else the DNS host name. Always read from the machine running the collector, so in image mode (`-r`) it is the analyst workstation's name, not the imaged host's. |
 | `mode` | `live` or `image`. |
 | `root` | The `-r` root. In live mode, `/` (sh) or `\` (PowerShell). |
-| `platform` | sh: `uname -s`, `-r` and `-m`. PowerShell: `Windows <OS version> <PROCESSOR_ARCHITECTURE> PowerShell <version>`. |
+| `platform` | sh: `uname -s`, `-r` and `-m`. PowerShell: `Windows <OS version> <PROCESSOR_ARCHITECTURE> PowerShell <version>`; off Windows the prefix is still `Windows`, the version is .NET's `OSVersion` (the kernel version on Linux) and the architecture is empty when `PROCESSOR_ARCHITECTURE` is unset (`Windows 6.6.114.1  PowerShell 7.6.6` under PowerShell 7 on Linux). |
 | `run_as_uid` | sh only: the numeric uid the collector ran as, as a string. |
 | `run_as`, `run_as_admin` | PowerShell only: the account the collector ran as, and whether it was elevated. |
 | `started`, `finished` | UTC to the second, `2026-10-03T16:55:31Z`. `finished` is taken before archiving. |

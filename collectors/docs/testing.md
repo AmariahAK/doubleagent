@@ -27,11 +27,14 @@ gates" in [AGENTS.md](../../AGENTS.md#quality-gates).
 
 `tests/smoke.sh [SHELL]` runs the collector script under `SHELL` (default
 `sh`, a name on the `PATH` or a path), and passes the same shell to the
-`find -exec` workers through `COLLECTOR_SH`. Every collection run but one is
-in image mode with `--max-file-size 1`; the exception is a live run limited
-to a user that does not exist (`-u no-such-user-cac --no-docker
+`find -exec` workers through `COLLECTOR_SH`. Every collection run is in
+image mode with `--max-file-size 1` except three: a live run limited to a
+user that does not exist (`-u no-such-user-cac --no-docker
 --no-projects`), which checks that no `live/` directory or `live` row
-appears. It works in a `cac-smoke.*` directory under `TMPDIR`
+appears; a run with a relative `-r` and `CDPATH` set, which checks that the
+image in the working directory is collected; and, when not run as root, a
+run into a read-only output directory, which must exit `2` before
+collecting. A run with `-o` under a file must exit `2` the same way. It works in a `cac-smoke.*` directory under `TMPDIR`
 (default `/tmp`). The directory is removed when every check passes and kept,
 with its path printed, when one fails. The exit status is `0` or `1`.
 

@@ -76,7 +76,7 @@ docker:     4 volumes found, 1 collected, 0 unreadable
 | sh | PowerShell | Meaning |
 | --- | --- | --- |
 | `-o, --output DIR` | `-OutputDir`, `-o` | Where to write the archive, manifest, summary and log. Default: current directory. |
-| `-r, --root DIR` | `-Root`, `-r` | Alternate root such as a mounted disk image (image mode). `-r /` is live mode. |
+| `-r, --root DIR` | `-Root`, `-r` | Alternate root such as a mounted disk image (image mode). sh: `-r /` is live mode; PowerShell: any `-Root` is image mode. |
 | `-u, --users LIST` | `-Users`, `-u` | Comma-separated usernames to collect. Default: every home found. |
 | `-p, --project DIR` | `-Project`, `-p` | Extra project directory to collect project-level artifacts from. Repeatable (PowerShell: an array). |
 | `--full` | `-Full` | Disable the default size exclusions. |
