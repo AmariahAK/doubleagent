@@ -350,11 +350,15 @@ rules are different from the collectors'.
   readers dropped bad lines silently (issues 125 and 134);
   `ErrorListsReportedTests` in `analyzer/tests/test_errors.py` fails on
   a list a parser fills and never reads again.
-  The "Validated against" cell of the agent's row in the
-  [agents table](analyzer/docs/parsers.md#agents) names the real installs
-  (platform, version, date) on which the parser's file paths and record
-  shapes were seen, and says "fixture only" for a path that rests on
-  source or a bundle alone; section 1 of the research document carries
+  The agent's subsection under
+  [Parser details](analyzer/docs/parsers.md#parser-details), linked from
+  its row in the [agents table](analyzer/docs/parsers.md#agents), names
+  the real installs (platform, version, date) on which the parser's file
+  paths and record shapes were seen, and says "fixture only" for a path
+  that rests on source or a bundle alone, while the row's "Validated
+  against" cell names the evidence class and platforms in a few words
+  (`real installs: macOS, Windows (October 2026)`,
+  `source; fixture only`); section 1 of the research document carries
   one **Observed** bullet per platform (see "Real-install rounds").
 - **The outputs are interfaces.** The `timeline.jsonl` and `sessions.jsonl`
   fields, their order and their JSON types are documented in
@@ -486,11 +490,17 @@ and say in the module docstring if the shape has drifted since.
    secondary source as well as the transcript, and checks that the lines
    before and after the bad one are still yielded beside the `parser:` row.
 7. Fill the agent's row in the [agents table](analyzer/docs/parsers.md#agents):
-   set its status to `parsed`, replace its Files cell with the files the
-   parser reads and its "Validated against" cell with the evidence for the
-   parser, and keep its Notes cell's shape: the research links, now with
-   the analyzer research document, the open issue links, and a clause only
-   when something is still unparsed. Grep the documents for the agent
+   set its status to `parsed`, its "Validated against" cell to the
+   evidence class and platforms in a few words, and keep its Notes cell's
+   shape: the research links, now with the analyzer research document,
+   the open issue links, and a clause of about twelve words only when
+   something is still unparsed. Move the agent's subsection from
+   [Collected files](analyzer/docs/parsers.md#collected-files) to
+   [Parser details](analyzer/docs/parsers.md#parser-details), in
+   alphabetical order, and fill it with the files the parser reads
+   ("Files read:") and the full evidence for the parser ("Validated
+   against:", the platform, version and date of every real install).
+   Grep the documents for the agent
    name and move it out of every example that shows it under `detected
    but not parsed`, `collected only` or `parser: false`. Also update the
    parsed-agent list in [`analyzer/README.md`](analyzer/README.md) and the [top-level README](README.md),
@@ -570,7 +580,10 @@ find. The validation for every current entry is recorded in the index table in
    its index row. Add the agent's row to the
    [agents table](analyzer/docs/parsers.md#agents) with status `backlog`
    (parseable records on disk, with a parser issue) or `collected`
-   (nothing to parse, with the reason); a `collected` row also adds the
+   (nothing to parse, with the reason), its name linked to a new
+   subsection under
+   [Collected files](analyzer/docs/parsers.md#collected-files) that lists
+   what the collector gathers; a `collected` row also adds the
    agent to `NO_TRANSCRIPTS` in `analyzer/doubleagent/parsers/__init__.py`,
    which the analyzer reports as `collected only` and a test keeps equal
    to the table. A parser issue filed for the agent later is linked in

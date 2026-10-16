@@ -1,3 +1,4 @@
+import re
 import subprocess
 import unittest
 from pathlib import Path
@@ -76,9 +77,11 @@ class NoTranscriptsTests(unittest.TestCase):
         table = text.split("\n## Agents\n", 1)[1].split("\n## ", 1)[0]
         out = set()
         for line in table.splitlines():
+            # A row is | [`agent`](#agent) | status | validated | notes |.
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if line.startswith("| `") and len(cells) > 1 and cells[1] == "collected":
-                out.add(cells[0].strip("`"))
+            name = re.match(r"\[`([^`]+)`\]\(#", cells[0])
+            if name and len(cells) > 1 and cells[1] == "collected":
+                out.add(name.group(1))
         return out
 
     def test_table_matches_set(self):
