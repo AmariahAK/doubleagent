@@ -315,7 +315,7 @@ collected. In `~/.codex` the app places the computer-use app bundle,
 `computer-use/Codex Computer Use.app` (77 MB), which is excluded with
 `.codex/computer-use/*.app`.
 
-## Finding home directories
+## Home directory discovery
 
 The collectors do not copy home directories. They find them, then try
 every catalog entry against each one, and only the files the catalog
