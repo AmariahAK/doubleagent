@@ -50,17 +50,9 @@ extracted collection, or any loose directory such as a copied home or a
 mounted image, detects which agents left state in it using the collectors'
 own catalog, and parses the transcripts it understands into a normalised
 JSONL timeline of turns, tool calls and tool results, plus a per-session
-summary. Parsers exist for Claude Code, Claude Desktop, Codex CLI, Gemini
-CLI, Antigravity (CLI and desktop app), Qwen Code, Amazon Q CLI (the
-`kiro` entry), VS Code chat
-(including Copilot Chat), Cline, Roo Code, Kilo Code, Continue, Aider,
-OpenCode, Crush, Goose, Zed, Tabby, OpenHands, ShellGPT, pi, little-coder,
-Letta, Hermes, Agent Zero, Open Interpreter, OpenClaw, nanobot, Sourcegraph
-Cody, Twinny, PearAI, Muse Code, Ollama and Copilot CLI. Every other agent
-in the catalog is detected and reported but not parsed; the
-[agents page](docs/agents.md) lists every agent with its
-status, which tells the parser backlog from the agents with nothing to
-parse.
+summary. The [agents page](docs/agents.md) lists every agent in the
+catalog with its status: parsed, a parser backlog, or collected with
+nothing to parse.
 Parsing never happens on the host, so the analyzer is free to carry its own
 requirements. It needs Python 3.10 or later; `pip install ./analyzer`
 installs the `doubleagent` command and the packages in

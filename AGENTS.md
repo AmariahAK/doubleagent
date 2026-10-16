@@ -509,8 +509,7 @@ and say in the module docstring if the shape has drifted since.
    against:", the platform, version and date of every real install).
    Grep the documents for the agent
    name and move it out of every example that shows it under `detected
-   but not parsed`, `collected only` or `parser: false`. Also update the
-   parsed-agent list in [`analyzer/README.md`](analyzer/README.md) and the [top-level README](README.md),
+   but not parsed`, `collected only` or `parser: false`. Then
    bump `VERSION` in `doubleagent/__init__.py` (`pyproject.toml` reads it),
    and run `analyzer/tests/run.sh`.
 

@@ -97,18 +97,10 @@ which subcommands take it, and the full exit-code table.
 
 ## Parsers
 
-Parsers exist for Claude Code, Claude Desktop, Codex CLI, Gemini CLI,
-Antigravity (CLI and desktop app), Qwen Code, Amazon Q CLI (the `kiro`
-entry), VS Code chat
-(including Copilot Chat), Cline, Roo Code, Kilo Code, Continue, Aider,
-OpenCode, Crush, Goose, Zed, Tabby, OpenHands, ShellGPT, pi, little-coder,
-Letta, Hermes, Agent Zero, Open Interpreter, OpenClaw, nanobot, Sourcegraph
-Cody, Twinny, PearAI, Muse Code, Ollama and Copilot CLI;
-the [agents page](../docs/agents.md) lists the files each one reads and
-the evidence it was validated against. Every other catalog agent is
-detected and reported but not parsed; the [agents page](../docs/agents.md)
-lists every agent with its status, which tells the parser backlog from
-the agents with nothing to parse. Thinking and
+The [agents page](../docs/agents.md) lists every agent in the catalog
+with its status (parsed, a parser backlog, or collected with nothing to
+parse), the files each parser reads and the evidence it was validated
+against. Thinking and
 reasoning blocks are left out unless `--include-thinking` is passed.
 
 ## Documentation
