@@ -956,6 +956,36 @@ else
   printf 'note: no Unix domain socket could be created; socket checks skipped\n'
 fi
 
+# 2026-10-16 GitHub Copilot Desktop (#147)
+# From the Ubuntu 26.04 arm64 install of GitHub Copilot Desktop 1.1.29: the
+# app shares .copilot with the CLI. Its store, run files, chat and repository
+# directories and log are nested copilot-desktop entries; its sessions stay
+# copilot-cli. A session cwd under .copilot (a chat directory, a worktree) is
+# not a project. The data directory and Foundry Local's directory are its own
+# entries. Checks follow the default and --no-secrets runs below; the same
+# files are in smoke.ps1 under alice.
+D147="$ROOT/home/alice/.copilot"
+L147="$ROOT/home/alice/.local/share/com.github.githubapp"
+mkdir -p "$D147/run" "$D147/chats/2026-10-16/x-5d404e14" "$D147/repos/proj" \
+  "$D147/repos/copilot-worktrees/proj/alice-x" "$D147/logs" "$D147/session-state/s2" \
+  "$D147/session-state/s3" "$L147/localstorage" "$L147/app-skills/af" \
+  "$ROOT/home/alice/.github-copilot-cli/logs"
+printf 'sqlite\n' >"$D147/data.db"
+printf 'wal\n' >"$D147/data.db-wal"
+printf '%s\n' 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' >"$D147/run/ws.token"
+printf '12345\n' >"$D147/run/ws.port"
+: >"$D147/chats/2026-10-16/x-5d404e14/.keep"
+printf '# proj\n' >"$D147/repos/proj/README.md"
+printf '# wt\n' >"$D147/repos/copilot-worktrees/proj/alice-x/AGENTS.md"
+printf 'log\n' >"$D147/logs/github-app.1.log"
+printf 'cwd: /home/alice/.copilot/chats/2026-10-16/x-5d404e14\nclient_name: github/autopilot\n' \
+  >"$D147/session-state/s2/workspace.yaml"
+printf 'cwd: /home/alice/.copilot/repos/copilot-worktrees/proj/alice-x\nclient_name: github/autopilot\n' \
+  >"$D147/session-state/s3/workspace.yaml"
+printf 'sqlite\n' >"$L147/localstorage/tauri_localhost_0.localstorage"
+printf '# af\n' >"$L147/app-skills/af/SKILL.md"
+printf 'log\n' >"$ROOT/home/alice/.github-copilot-cli/logs/foundry.core20261016.log"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1276,6 +1306,18 @@ check "#120 summary counts skipped_special" "grep -q '\"skipped_special\": $N120
 check "#120 stdout skipped line counts special files" "grep -q '^skipped:    [0-9]* excluded, [0-9]* too large, [0-9]* secret, $N120 special\$' \"$OUT/default.stdout\""
 check "#120 no symlink row targets its own path" "! grep '\"status\":\"symlink\"' \"\$M\" | sed 's/.*\"path\":\"\([^\"]*\)\".*\"target\":\"\([^\"]*\)\".*/\1|\2/' | grep -q '^\\(.*\\)|\\1\$'"
 
+# 2026-10-16 GitHub Copilot Desktop (#147)
+check "#147 Copilot Desktop data.db collected as copilot-desktop" "row \"$D147/data.db\" | grep -q '\"agent\":\"copilot-desktop\".*\"secret\":false,\"status\":\"collected\"' && row \"$D147/data.db-wal\" | grep -q '\"agent\":\"copilot-desktop\".*\"status\":\"collected\"'"
+check "#147 Copilot Desktop github-app log collected as copilot-desktop" "row \"$D147/logs/github-app.1.log\" | grep -q '\"agent\":\"copilot-desktop\".*\"status\":\"collected\"'"
+check "#147 Copilot Desktop localstorage collected as copilot-desktop" "row \"$L147/localstorage/tauri_localhost_0.localstorage\" | grep -q '\"agent\":\"copilot-desktop\".*\"status\":\"collected\"'"
+check "#147 Foundry Local log collected as copilot-desktop" "row \"$ROOT/home/alice/.github-copilot-cli/logs/foundry.core20261016.log\" | grep -q '\"agent\":\"copilot-desktop\".*\"status\":\"collected\"'"
+check "#147 Copilot Desktop session workspace.yaml stays copilot-cli" "row \"$D147/session-state/s2/workspace.yaml\" | grep -q '\"agent\":\"copilot-cli\".*\"status\":\"collected\"'"
+check "#147 Copilot Desktop ws.token flagged secret" "row \"$D147/run/ws.token\" | grep -q '\"agent\":\"copilot-desktop\".*\"secret\":true,\"status\":\"collected\"'"
+check "#147 Copilot Desktop repos excluded" "[ \"\$(status_of \"$D147/repos\")\" = skipped_excluded ] && ! grep -q 'repos/proj/README.md\"' \"\$M\" && ! grep -q 'alice-x/AGENTS.md\"' \"\$M\""
+check "#147 Copilot Desktop app-skills excluded" "[ \"\$(status_of \"$L147/app-skills\")\" = skipped_excluded ] && ! grep -q 'app-skills/af/SKILL.md\"' \"\$M\""
+check "#147 Copilot Desktop chat directory and worktree not projects" "! grep -q 'Project .*/\.copilot/' \"$OUT\"/default/*.log && ! grep -q '\"home\":\"$D147/' \"\$M\" && ! grep -q '\.copilot/chats' \"\$S\" && ! grep -q 'copilot-worktrees' \"\$S\""
+check "#147 Copilot Desktop chat directory file collected once as copilot-desktop" "[ \"\$(grep -c 'x-5d404e14/.keep\"' \"\$M\")\" = 1 ] && row \"$D147/chats/2026-10-16/x-5d404e14/.keep\" | grep -q '\"agent\":\"copilot-desktop\"'"
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -1288,6 +1330,8 @@ check "#84 Antigravity plugin token skipped without secrets" "[ \"\$(status_of \
 check "#90 Antigravity CLI plugin-secrets.json skipped without secrets" "[ \"\$(status_of \"$H/.config/antigravity/plugin-secrets.json\")\" = skipped_secret ]"
 # 2026-10-15 ChatGPT desktop as the OpenAI.Codex package (#113)
 check "#115 Codex desktop global state skipped without secrets" "[ \"\$(status_of \"$B/.codex/.codex-global-state.json\")\" = skipped_secret ]"
+# 2026-10-16 GitHub Copilot Desktop (#147)
+check "#147 Copilot Desktop ws.token skipped without secrets" "[ \"\$(status_of \"$D147/run/ws.token\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"

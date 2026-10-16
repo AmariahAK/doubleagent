@@ -4,6 +4,14 @@ Catalog agent: `copilot-cli` (GitHub Copilot CLI). How the transcripts are
 encoded and how a parser reads them is in
 [`analyzer/research/copilot-cli.md`](../../analyzer/research/copilot-cli.md).
 
+The GitHub Copilot Desktop app runs its sessions through a bundled
+Copilot CLI and writes them into the same `~/.copilot/session-state/`
+directory, in this format, with `workspace.yaml` `client_name`
+`github/autopilot` where the CLI writes `github/cli`; those sessions stay
+`copilot-cli`, and the app's own files are the `copilot-desktop` agent's
+([`copilot-desktop.md`](copilot-desktop.md) and
+[`analyzer/research/copilot-desktop.md`](../../analyzer/research/copilot-desktop.md)).
+
 ## 1. Source and evidence level
 
 Closed source (`github/copilot-cli` repo is issues only). Evidence is the **shipped bundle**: `npm pack @github/copilot` 1.0.91 (5 KB loader, `buildMetadata.gitCommit 216810c5`) → `npm pack @github/copilot-linux-x64@1.0.91`, a 178 MB Node single-executable (`copilot`). Its SEA blob (magic 0x143da20 at 0x67a01b8) holds `sea-loader.js` (122 KB, `scratchpad/npm/cp-sea-loader.js`) and one asset `copilot.tgz` (69.7 MB, `scratchpad/npm/cp-asset-copilot.tgz`), extracted to `scratchpad/npm/cp-pkg/package/`: `app.js` (7.6 MB JS), `prebuilds/linux-x64/cli-native.node` (8 MB) and `runtime.node` (122 MB, Rust). Citations: "app.js" with the surrounding identifiers, "sea-loader" (same code appears in cc-loader), "native"/"runtime" for byte-string hits. **Docs**: [Copilot CLI configuration directory reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference). **Local**: names-only listing of `~/.copilot` and `~/.cache/copilot`.

@@ -29,6 +29,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `collection.json` `counts.skipped_special`, between `skipped_secret`
   and `error_copy` in both collectors ([#120]).
 
+- GitHub Copilot Desktop (the Tauri app, dpkg package `github`, 1.1.29
+  on a real Linux install) is a new catalog agent, `copilot-desktop`. The
+  app runs its sessions through a bundled Copilot CLI that writes them to
+  `.copilot/session-state` in the CLI's format, so those stay
+  `copilot-cli`; nested entries inside `.copilot` claim the app's own
+  files: `data.db*`, `repo-metadata-cache.db*`, `chats`, `repos`, `run`,
+  `media-cache`, `canvas-catalog-probe` and `logs/github-app.*.log`. The
+  app's data directory (`.local/share/com.github.githubapp`,
+  `Library/Application Support/com.github.githubapp`,
+  `AppData/Roaming/com.github.githubapp`) and Foundry Local's
+  `.github-copilot-cli` are collected as `copilot-desktop` too ([#147]).
+- Exclusions for Copilot Desktop: `.copilot/repos` (the repositories the
+  app clones and their worktrees; which ones were added is recorded in
+  `data.db`), the bundled skills under `app-skills`, and on Linux the web view
+  caches `WebKitCache` and `CacheStorage` of the app's data directory
+  ([#147]).
+- Secret glob `.copilot/run/*.token`: the app's local WebSocket auth
+  tokens `ws.token` and `ws.release.token` ([#147]).
+
 ### Changed
 
 - The stdout `skipped:` line ends with the number of special files:
@@ -43,6 +62,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   every reparse point was a `symlink`, so an AF_UNIX socket under `.codex`
   got a `symlink` row whose `target` was its own path and was recreated
   in the archive as a link to itself ([#120]).
+- Project discovery skips a Copilot CLI session `cwd` (from
+  `.copilot/session-state/*/workspace.yaml`) that lies under the same
+  home's `.copilot` directory: Copilot Desktop's per-chat directories
+  under `.copilot/chats` and its worktrees under `.copilot/repos` were
+  listed as projects ([#147]).
 
 ## [1.12.0] - 2026-10-15
 
@@ -792,6 +816,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121
 [#120]: https://github.com/seanthegeek/doubleagent/issues/120
 [#116]: https://github.com/seanthegeek/doubleagent/issues/116

@@ -909,6 +909,32 @@ Mk "$g121/IPC/computeruse.sock.lock" ''
 Mk "$u121/Codex Computer Use.app/Contents/Info.plist" "plist`n"
 Mk "$u121/config.json" "{}`n"
 
+# 2026-10-16 GitHub Copilot Desktop (#147)
+# From the Ubuntu 26.04 arm64 install of GitHub Copilot Desktop 1.1.29: the
+# app shares .copilot with the CLI. Its store, run files, chat and repository
+# directories and log are nested copilot-desktop entries; its sessions stay
+# copilot-cli. A session cwd under .copilot (a chat directory, a worktree) is
+# not a project. The data directory and Foundry Local's directory are its own
+# entries. Checks follow the default and -NoSecrets runs below; the same
+# files are in smoke.sh under alice.
+$d147 = 'Users/alice/.copilot'
+$l147 = 'Users/alice/.local/share/com.github.githubapp'
+Mk "$d147/data.db" "sqlite`n"
+Mk "$d147/data.db-wal" "wal`n"
+Mk "$d147/run/ws.token" ('A' * 49 + "`n")
+Mk "$d147/run/ws.port" "12345`n"
+Mk "$d147/chats/2026-10-16/x-5d404e14/.keep" ''
+Mk "$d147/repos/proj/README.md" "# proj`n"
+Mk "$d147/repos/copilot-worktrees/proj/alice-x/AGENTS.md" "# wt`n"
+Mk "$d147/logs/github-app.1.log" "log`n"
+$cwd147 = 'C:\Users\alice\.copilot\chats\2026-10-16\x-5d404e14'
+Mk "$d147/session-state/s2/workspace.yaml" "cwd: $cwd147`nclient_name: github/autopilot`n"
+$wt147 = 'C:\Users\alice\.copilot\repos\copilot-worktrees\proj\alice-x'
+Mk "$d147/session-state/s3/workspace.yaml" "cwd: $wt147`nclient_name: github/autopilot`n"
+Mk "$l147/localstorage/tauri_localhost_0.localstorage" "sqlite`n"
+Mk "$l147/app-skills/af/SKILL.md" "# af`n"
+Mk 'Users/alice/.github-copilot-cli/logs/foundry.core20261016.log' "log`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1386,6 +1412,20 @@ Check '#120 summary counts skipped_special' { $sum.counts.skipped_special -eq $n
 Check '#120 stdout skipped line counts special files' { $script:stdout -match "(?m)^skipped:    \d+ excluded, \d+ too large, \d+ secret, $n120 special\s*$" }
 Check '#120 no symlink row targets its own path' { -not ($script:Rows | Where-Object { $_.status -eq 'symlink' -and ($_.target -replace '^\\\\\?\\', '' -replace '[\\/]+', '/') -eq ($_.path -replace '[\\/]+', '/') }) }
 
+# 2026-10-16 GitHub Copilot Desktop (#147)
+Check '#147 Copilot Desktop data.db collected as copilot-desktop' { (Is113 "$d147/data.db" 'copilot-desktop' $false) -and (Is113 "$d147/data.db-wal" 'copilot-desktop' $false) }
+Check '#147 Copilot Desktop github-app log collected as copilot-desktop' { Is113 "$d147/logs/github-app.1.log" 'copilot-desktop' $false }
+Check '#147 Copilot Desktop localstorage collected as copilot-desktop' { Is113 "$l147/localstorage/tauri_localhost_0.localstorage" 'copilot-desktop' $false }
+Check '#147 Foundry Local log collected as copilot-desktop' { Is113 'Users/alice/.github-copilot-cli/logs/foundry.core20261016.log' 'copilot-desktop' $false }
+Check '#147 Copilot Desktop session workspace.yaml stays copilot-cli' { Is113 "$d147/session-state/s2/workspace.yaml" 'copilot-cli' $false }
+Check '#147 Copilot Desktop ws.token flagged secret' { Is113 "$d147/run/ws.token" 'copilot-desktop' $true }
+Check '#147 Copilot Desktop repos excluded' { (StatusOf "$d147/repos") -eq 'skipped_excluded' -and $null -eq (Row 'repos/proj/README.md') -and $null -eq (Row 'alice-x/AGENTS.md') }
+Check '#147 Copilot Desktop app-skills excluded' { (StatusOf "$l147/app-skills") -eq 'skipped_excluded' -and $null -eq (Row 'app-skills/af/SKILL.md') }
+$log147 = Get-Content -LiteralPath (Get-ChildItem -LiteralPath (Join-Path $Out 'default') -Filter '*.log' | Select-Object -First 1).FullName -Raw
+$home147 = (P $d147) + $Sep
+Check '#147 Copilot Desktop chat directory and worktree not projects' { $log147 -notmatch 'Project .*[\\/]\.copilot[\\/]' -and -not ($script:Rows | Where-Object { $_.home.StartsWith($home147) }) -and -not (@($sum.projects) | Where-Object { $_ -match '\.copilot[\\/](chats|repos)' }) }
+Check '#147 Copilot Desktop chat directory file collected once as copilot-desktop' { @($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like '*/x-5d404e14/.keep' }).Count -eq 1 -and (Row "$d147/chats/2026-10-16/x-5d404e14/.keep").agent -eq 'copilot-desktop' }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -1577,6 +1617,8 @@ Check '#84 Antigravity plugin token skipped without secrets' { (StatusOf "$g83/p
 Check '#90 Antigravity CLI plugin-secrets.json skipped without secrets' { (StatusOf "$w83/plugin-secrets.json") -eq 'skipped_secret' }
 # 2026-10-15 ChatGPT desktop as the OpenAI.Codex package (#113)
 Check '#115 Codex desktop global state skipped without secrets' { (StatusOf 'Users/alice/.codex/.codex-global-state.json') -eq 'skipped_secret' }
+# 2026-10-16 GitHub Copilot Desktop (#147)
+Check '#147 Copilot Desktop ws.token skipped without secrets' { (StatusOf "$d147/run/ws.token") -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }

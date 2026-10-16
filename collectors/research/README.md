@@ -45,6 +45,7 @@ file names to check only those. It exits `1` when any link fails.
 | `continue` | [continue.md](continue.md) | source | `~/.continue` only |
 | `copilot` | [copilot.md](copilot.md) | source (vendored language server) | editor OAuth store `github-copilot/apps.json` |
 | `copilot-cli` | [copilot-cli.md](copilot-cli.md) | shipped bundle, docs, real install | migrates XDG state and config dirs into `~/.copilot` |
+| `copilot-desktop` | [copilot-desktop.md](copilot-desktop.md) | shipped binary strings, dirs crate, real install (Linux) | Tauri app that shares `~/.copilot` with Copilot CLI; nested entries claim its own store, chat, repository and run files; local WebSocket tokens in `.copilot/run` |
 | `crewai` | [crewai.md](crewai.md) | source, appdirs source | run database in a data dir named after the project folder, collected by file name; opt-in memory stores beside it are not |
 | `crush` | [crush.md](crush.md) | source | sessions only in each project's `.crush/crush.db` |
 | `cursor` | [cursor.md](cursor.md) | shipped Agent CLI bundle, docs, forum, write-ups | no secret globs today; `auth.json` and `mcp-auth.json` exist |

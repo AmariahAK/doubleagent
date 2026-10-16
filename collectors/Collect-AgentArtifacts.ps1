@@ -275,6 +275,21 @@ copilot-cli|Library/Caches/copilot
 copilot-cli|AppData/Local/copilot
 copilot|.config/github-copilot
 copilot|AppData/Local/github-copilot
+# GitHub Copilot Desktop (Tauri app, package "github"): runs its sessions through a bundled
+# Copilot CLI inside ~/.copilot (session-state stays copilot-cli); these nested entries claim
+# the store, chat and repository directories, run files and log of the app itself
+copilot-desktop|.copilot/data.db*
+copilot-desktop|.copilot/repo-metadata-cache.db*
+copilot-desktop|.copilot/chats
+copilot-desktop|.copilot/repos
+copilot-desktop|.copilot/run
+copilot-desktop|.copilot/media-cache
+copilot-desktop|.copilot/canvas-catalog-probe
+copilot-desktop|.copilot/logs/github-app.*.log
+copilot-desktop|.local/share/com.github.githubapp
+copilot-desktop|Library/Application Support/com.github.githubapp
+copilot-desktop|AppData/Roaming/com.github.githubapp
+copilot-desktop|.github-copilot-cli
 # Cursor
 cursor|.cursor
 cursor|.config/cursor
@@ -844,6 +859,12 @@ Library/Application Support/Codex/executor-plugins/*/server.mjs
 .cache/copilot/pkg
 Library/Caches/copilot/pkg
 AppData/Local/copilot/pkg
+.copilot/repos
+.local/share/com.github.githubapp/app-skills
+.local/share/com.github.githubapp/WebKitCache
+.local/share/com.github.githubapp/CacheStorage
+Library/Application Support/com.github.githubapp/app-skills
+AppData/Roaming/com.github.githubapp/app-skills
 .cursor/extensions
 .cursor/worktrees
 .cursor/plugins/marketplaces
@@ -1312,6 +1333,7 @@ AppData/Local/github-copilot/*.json
 .copilot/config.json
 .copilot/mcp-oauth-config*
 .copilot/mcp-config.json
+.copilot/run/*.token
 .cursor/auth.json
 .config/cursor/auth.json
 AppData/Roaming/Cursor/auth.json
@@ -3261,7 +3283,11 @@ function Find-AgentSessionProjects([string]$homeDir) {
     Join-PathSafe $homeDir 'Library/Application Support/Goose/recent-dirs.json'
     Join-PathSafe $homeDir 'AppData/Roaming/Goose/recent-dirs.json'
   )
-  Get-YamlValues 'cwd' @(Expand-Glob $homeDir '.copilot/session-state/*/workspace.yaml')
+  # A cwd under this home's .copilot (Copilot Desktop chats and worktrees) is not a project.
+  $copilotDir = (Join-PathSafe $homeDir '.copilot') + $script:Sep
+  $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
+  Get-YamlValues 'cwd' @(Expand-Glob $homeDir '.copilot/session-state/*/workspace.yaml') |
+    Where-Object { -not ([string](ConvertTo-LocalPath $_)).StartsWith($copilotDir, $ignoreCase) }
   Get-JsonValues 'workdir' @(
     Expand-Glob $homeDir '.hermes/checkpoints/store/projects/*.json'
     Expand-Glob $homeDir '.hermes/profiles/*/checkpoints/store/projects/*.json'

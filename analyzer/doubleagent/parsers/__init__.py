@@ -13,6 +13,7 @@ from .codex import CodexParser
 from .cody import CodyParser
 from .continue_dev import ContinueParser
 from .copilot_cli import CopilotCliParser
+from .copilot_desktop import CopilotDesktopParser
 from .crush import CrushParser
 from .gemini_cli import GeminiCliParser
 from .goose import GooseParser
@@ -73,6 +74,7 @@ ALL: list[Parser] = [
     MuseCodeParser(),
     OllamaParser(),
     CopilotCliParser(),
+    CopilotDesktopParser(),
 ]
 
 

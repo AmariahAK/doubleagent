@@ -66,6 +66,8 @@ class LooseDetectTests(unittest.TestCase):
             "pearai",
             "muse-code",
             "ollama",
+            "copilot-cli",
+            "copilot-desktop",
         }
         self.assertLessEqual(expected_alice, by_user["alice"])
         self.assertEqual(by_user["carol"], {"codex-cli"})
@@ -91,6 +93,80 @@ class LooseDetectTests(unittest.TestCase):
             "cline",
         )
         self.assertEqual(by_rel[".config/Code/User/globalStorage/state.vscdb"], "vscode")
+
+    def test_copilot_desktop_nested_in_copilot_cli(self):
+        # Issue 147: the app's store is a nested file entry inside the CLI's
+        # .copilot; the app's sessions stay with the CLI.
+        home = self.tmp / "home" / "alice"
+        events = ".copilot/session-state/5d404e14-0000-4000-8000-000000000001/events.jsonl"
+        files = {
+            ".copilot/data.db": "copilot-desktop",
+            ".copilot/data.db-wal": "copilot-desktop",
+            ".copilot/run/ws.token": "copilot-desktop",
+            ".copilot/chats/2026-10-16/x-5d404e14/.keep": "copilot-desktop",
+            ".copilot/logs/github-app.1.log": "copilot-desktop",
+            ".local/share/com.github.githubapp/localstorage/tauri_localhost_0.localstorage": (
+                "copilot-desktop"
+            ),
+            ".github-copilot-cli/logs/foundry.core20261016.log": "copilot-desktop",
+            events: "copilot-cli",
+            ".copilot/logs/process-1-2.log": "copilot-cli",
+            ".copilot/session-store.db": "copilot-cli",
+        }
+        for rel in files:
+            p = home / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("x", encoding="utf-8")
+        for root in (self.tmp / "home", home / ".copilot"):
+            col = open_input(root, self.cat)
+            by_rel = {a.rel: a.agent for a in col.artifacts}
+            for rel, agent in files.items():
+                if root == home / ".copilot" and not rel.startswith(".copilot/"):
+                    continue
+                self.assertEqual(by_rel.get(rel), agent, (root, rel))
+            self.assertEqual(sum(1 for a in col.artifacts if a.rel == ".copilot/data.db"), 1)
+
+    def test_copilot_desktop_manifest_agent_kept(self):
+        # With a manifest the collector's attribution stands: a 1.13.0
+        # collection made before the copilot-desktop entry attributed the
+        # store to copilot-cli, and the analyzer does not re-attribute it.
+        col_dir = self.tmp / "col"
+        rows = []
+        for rel, agent in (
+            (".copilot/data.db", "copilot-desktop"),
+            (".copilot/session-state/s1/events.jsonl", "copilot-cli"),
+        ):
+            path = "/home/alice/" + rel
+            disk = col_dir / ("fs" + path)
+            disk.parent.mkdir(parents=True, exist_ok=True)
+            disk.write_text("x", encoding="utf-8")
+            rows.append(
+                {
+                    "path": path,
+                    "home": "/home/alice",
+                    "user": "alice",
+                    "agent": agent,
+                    "type": "file",
+                    "status": "collected",
+                    "size": 1,
+                    "archive_path": "fs" + path,
+                }
+            )
+        (col_dir / "collection.json").write_text('{"hostname": "h1"}', encoding="utf-8")
+
+        def detect(store_agent):
+            rows[0]["agent"] = store_agent
+            with open(col_dir / "manifest.jsonl", "w", encoding="utf-8") as fh:
+                for r in rows:
+                    fh.write(json.dumps(r) + "\n")
+            col = open_input(col_dir, self.cat)
+            self.assertEqual(col.kind, "collected")
+            return {a.rel: a.agent for a in col.artifacts}
+
+        for store_agent in ("copilot-desktop", "copilot-cli"):
+            by_rel = detect(store_agent)
+            self.assertEqual(by_rel[".copilot/data.db"], store_agent)
+            self.assertEqual(by_rel[".copilot/session-state/s1/events.jsonl"], "copilot-cli")
 
     def test_framework_agents_detected(self):
         # Collector 1.10.0 (#64): CrewAI's run database sits in a data

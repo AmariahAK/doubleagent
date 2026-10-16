@@ -10227,7 +10227,8 @@ class CopilotCliTests(ParserBase):
                 ("system", "abort: user_initiated", "", "", "gpt-6.2"),
                 ("system", "session.task_complete: All done.", "", "", "gpt-6.2"),
                 ("system", "subagent.started: explore", "", "", "gpt-6.2"),
-                ("system", 'hook.start: {"other":1}', "", "", "gpt-6.2"),
+                # No hookType and no input: the placeholders, never data.
+                ("system", "hook - start: {}", "", "", "gpt-6.2"),
                 (
                     "system",
                     "session.info tip: Try /plan. url=https://docs.example.org/plan"
@@ -10412,7 +10413,7 @@ class CopilotCliTests(ParserBase):
                 ),
                 (
                     "system",
-                    "session metadata: user_named=false forks=0 compactions=0",
+                    "session metadata: user_named=false forks=0 compactions=0 client=copilot-cli",
                     "2026-10-01T09:00:00.000Z",
                     COPILOT_SESSION,
                     "/srv/proj",
@@ -10433,6 +10434,126 @@ class CopilotCliTests(ParserBase):
         )
         self.assertEqual(
             {(r.session_id, r.project_path) for r in rows}, {(COPILOT_SESSION, "/srv/proj")}
+        )
+
+    def test_workspace_client(self):
+        # The desktop app's sessions say `github/autopilot` (issue 147); a
+        # file without the key gives an empty value.
+        path = self.home / COPILOT_WORKSPACE_REL
+        yaml = path.read_text(encoding="utf-8")
+        for value, line in (
+            ("github/autopilot", "client_name: github/autopilot\n"),
+            ("", ""),
+        ):
+            path.write_text(yaml.replace("client_name: copilot-cli\n", line), encoding="utf-8")
+            rows = self.rows_for(CopilotCliParser(), COPILOT_WORKSPACE_REL)
+            self.assertEqual(
+                rows[-1].text,
+                "session metadata: user_named=false forks=0 compactions=0 client=" + value,
+            )
+
+    def test_desktop_app_events(self):
+        # The Copilot Desktop app's bundled CLI (issue 147): the allowAll*
+        # form of session.permissions_changed and hook.start/hook.end pairs.
+        def ev(n, etype, data):
+            return {
+                "id": "d%03d" % n,
+                "timestamp": "2026-10-01T11:00:%02d.000Z" % n,
+                "type": etype,
+                "data": data,
+            }
+
+        prompt = {"cwd": "/srv/proj", "prompt": "list the files\n  please", "sessionId": "s"}
+        self.write_events(
+            ev(
+                1,
+                "session.permissions_changed",
+                {
+                    "previousAllowAllPermissions": False,
+                    "allowAllPermissions": True,
+                    "previousAllowAllPermissionMode": "off",
+                    "allowAllPermissionMode": "on",
+                },
+            ),
+            ev(
+                2,
+                "hook.start",
+                {"hookInvocationId": "h1", "hookType": "userPromptSubmitted", "input": prompt},
+            ),
+            ev(
+                3,
+                "hook.end",
+                {
+                    "hookInvocationId": "h1",
+                    "hookType": "userPromptSubmitted",
+                    "success": True,
+                    "output": {},
+                },
+            ),
+            ev(
+                4,
+                "hook.start",
+                {
+                    "hookInvocationId": "h2",
+                    "hookType": "preToolUse",
+                    "input": {"toolName": "bash", "toolArgs": {"command": "ls"}},
+                    "parentToolCallId": "call_d1",
+                },
+            ),
+            ev(
+                5,
+                "hook.end",
+                {
+                    "hookInvocationId": "h2",
+                    "hookType": "preToolUse",
+                    "success": False,
+                    "error": {"message": "hook timed out"},
+                    "parentToolCallId": "call_d1",
+                },
+            ),
+            # No permissionMode: the tracked allow-all mode is not repeated.
+            ev(
+                6,
+                "permission.requested",
+                {
+                    "permissionRequest": {
+                        "kind": "shell",
+                        "toolCallId": "call_d1",
+                        "fullCommandText": "ls",
+                    }
+                },
+            ),
+            ev(7, "session.permissions_changed", {"allowAllPermissions": False}),
+        )
+        rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)[len(self.EXPECTED) - 1 :]
+        self.assertEqual(
+            [(r.turn_type, r.text, r.tool_name, r.tool_use_id) for r in rows],
+            [
+                ("system", "permission mode: allow-all off -> on", "", ""),
+                (
+                    "system",
+                    "hook userPromptSubmitted start: "
+                    '{"cwd":"/srv/proj","prompt":"list the files\\n  please","sessionId":"s"}',
+                    "",
+                    "",
+                ),
+                ("system", "hook userPromptSubmitted end: success=true output={}", "", ""),
+                (
+                    "system",
+                    'hook preToolUse start: {"toolArgs":{"command":"ls"},"toolName":"bash"}',
+                    "",
+                    "call_d1",
+                ),
+                (
+                    "system",
+                    "hook preToolUse end: success=false output={}"
+                    ' error={"message":"hook timed out"}',
+                    "",
+                    "call_d1",
+                ),
+                ("system", "permission request: shell ls", "", "call_d1"),
+                ("system", "permission mode: allow-all - -> -", "", ""),
+            ],
         )
 
     def test_sidebar_fills_project(self):
@@ -10575,3 +10696,234 @@ class CopilotCliTests(ParserBase):
         self.assertEqual((rows[-1].source_line, rows[-1].text), (35, bad_line_text()))
         self.write_events()
         self.assertNotIn("parser:", self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)[-1].text)
+
+
+from doubleagent.parsers.copilot_desktop import CopilotDesktopParser
+from fixtures import COPILOT_DESKTOP_CHAT, COPILOT_DESKTOP_DB_REL, COPILOT_DESKTOP_WORKTREE
+
+
+class CopilotDesktopTests(ParserBase):
+    # (timestamp_utc, session_id, project_path, text) for every row of the
+    # fixture data.db (research/copilot-desktop.md section 8).
+    EXPECTED: ClassVar[list[tuple[str, str, str, str]]] = [
+        (
+            "2026-10-01T08:50:00.000Z",
+            "",
+            "",
+            "account: octo-user host=github.com kind=github default=1 token_present=false",
+        ),
+        (
+            "2026-10-01T10:30:00.000Z",
+            "",
+            "",
+            "desktop settings: storage_location=/home/alice/.copilot/repos instructions=-"
+            " github_token_present=false github_token_type=- (from .copilot/data.db, file mtime)",
+        ),
+        ("2026-10-01T08:50:01.000Z", "", "", "model provider: GitHub Copilot type=github_copilot"),
+        (
+            "2026-10-01T08:55:00.000Z",
+            "",
+            "/srv/proj",
+            "project added: proj kind=repository path=/srv/proj github=octo-user/proj"
+            " default_branch=main",
+        ),
+        (
+            "2026-10-01T08:56:00.000Z",
+            "",
+            "/srv/proj",
+            "worktree: %s branch=octo-user-happy-otter base=main" % COPILOT_DESKTOP_WORKTREE,
+        ),
+        (
+            "2026-10-01T08:56:01.000Z",
+            "",
+            "/srv/proj",
+            "workspace: happy-otter type=worktree branch=octo-user-happy-otter"
+            " source_pr=octo-user/proj#12",
+        ),
+        (
+            "2026-10-01T08:51:00.000Z",
+            COPILOT_DESKTOP_CHAT,
+            "",
+            "desktop session: Say hello type=general_chat model=claude-sonnet-5.5 auto_approve=1"
+            " permission_mode=- remote_control=0 archived=true",
+        ),
+        (
+            "2026-10-01T09:00:00.000Z",
+            COPILOT_SESSION,
+            "/srv/proj",
+            "desktop session: Fix failing test type=project model=gpt-6.1-sol auto_approve=1"
+            " permission_mode=on remote_control=0 archived=false",
+        ),
+        (
+            "2026-10-01T09:00:00.000Z",
+            COPILOT_SESSION,
+            "/srv/proj",
+            "forked from session 9f9f9f9f-0000-4000-8000-000000000001",
+        ),
+        (
+            "2026-10-01T08:51:05.000Z",
+            COPILOT_DESKTOP_CHAT,
+            "",
+            "activity agent_idle: Hello! How can I help?",
+        ),
+        (
+            "2026-10-01T08:56:02.000Z",
+            "",
+            "",
+            "activity workspace_ready: Workspace happy-otter is ready",
+        ),
+        (
+            "2026-10-01T09:00:15.500Z",
+            COPILOT_SESSION,
+            "",
+            "activity agent_idle: The fixture year was stale",
+        ),
+        (
+            "2026-10-01T09:00:01.200Z",
+            COPILOT_SESSION,
+            "",
+            "checkpoint commit 0123456789abcdef0123456789abcdef01234567",
+        ),
+        (
+            "2026-10-01T09:10:00.000Z",
+            "",
+            "",
+            "scheduled task: Nightly lint enabled=1 mode=background agent=general-purpose"
+            " prompt: run the linter",
+        ),
+        (
+            "2026-10-01T09:10:01.000Z",
+            "",
+            "",
+            "scheduled task trigger: task=t1 kind=cron enabled=1"
+            ' next_run_at=2026-10-02T02:00:00.000Z config: {"cron":"0 2 * * *"}',
+        ),
+        (
+            "2026-10-02T02:00:01.000Z",
+            COPILOT_DESKTOP_CHAT,
+            "",
+            "scheduled task run: Nightly lint status=completed source=schedule"
+            " scheduled_for=2026-10-02T02:00:00.000Z prompt: run the linter",
+        ),
+        (
+            "2026-10-01T09:20:00.000Z",
+            COPILOT_SESSION,
+            "",
+            "session automation: CI check interval=daily every_minutes=-"
+            " next_run_at=2026-10-02T09:00:00.000Z prompt: check CI",
+        ),
+        ("2026-10-01T10:05:00.000Z", COPILOT_DESKTOP_CHAT, "", "session deletion requested"),
+    ]
+
+    def test_rows(self):
+        # The fixture's rows live only in the -wal sidecar.
+        rows = self.rows_for(CopilotDesktopParser(), COPILOT_DESKTOP_DB_REL)
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.project_path, r.text) for r in rows],
+            self.EXPECTED,
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.host, r.user, r.agent, r.turn_type, r.source_line, r.tool_use_id),
+                ("h1", "alice", "copilot-desktop", "system", 0, ""),
+            )
+            self.assertEqual(r.source_file, "/alice/" + COPILOT_DESKTOP_DB_REL)
+        self.assertEqual(
+            [r.model for r in rows if r.text.startswith(("desktop session", "forked"))],
+            ["claude-sonnet-5.5", "gpt-6.1-sol", "gpt-6.1-sol"],
+        )
+        self.assertEqual({r.model for r in rows[:6] + rows[9:]}, {""})
+
+    def test_thinking_opt_in(self):
+        # The store holds no reasoning: the option changes nothing.
+        rows = self.rows_for(CopilotDesktopParser(), COPILOT_DESKTOP_DB_REL, include_thinking=True)
+        self.assertEqual(len(rows), len(self.EXPECTED))
+        self.assertFalse(any(r.turn_type == "thinking" for r in rows))
+
+    def test_nulls_and_missing_tables(self):
+        # Every column may be NULL and a missing table gives no rows.
+        db = self.home / COPILOT_DESKTOP_DB_REL
+        for side in ("-wal", "-shm"):
+            Path(str(db) + side).unlink(missing_ok=True)
+        db.unlink()
+        con = sqlite3.connect(str(db))
+        con.executescript(
+            "CREATE TABLE accounts (login TEXT, host TEXT, kind TEXT, is_default INTEGER,"
+            " access_token TEXT, created_at TEXT);"
+            "INSERT INTO accounts VALUES (NULL, NULL, NULL, NULL, 'gho_x', NULL);"
+            "CREATE TABLE projects (id TEXT, name TEXT, container_kind TEXT,"
+            " main_repo_path TEXT, default_branch TEXT, github_owner TEXT, github_repo TEXT,"
+            " created_at TEXT);"
+            "INSERT INTO projects VALUES ('p', 'local', 'folder', '/srv/local', 'main', NULL,"
+            " NULL, '2026-10-01T08:00:00.000Z');"
+            "CREATE TABLE sessions (id TEXT, created_at TEXT);"
+            "INSERT INTO sessions VALUES ('s1', NULL);"
+        )
+        con.commit()
+        con.close()
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(CopilotDesktopParser(), COPILOT_DESKTOP_DB_REL)
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.text) for r in rows],
+            [
+                ("", "", "account:  host= kind= default= token_present=true"),
+                (
+                    "2026-10-01T08:00:00.000Z",
+                    "",
+                    "project added: local kind=folder path=/srv/local default_branch=main",
+                ),
+                (
+                    "",
+                    "s1",
+                    "desktop session: - type= model=- auto_approve= permission_mode=-"
+                    " remote_control= archived=false",
+                ),
+            ],
+        )
+
+    def test_secondary_none(self):
+        art = self.artifact(COPILOT_DESKTOP_DB_REL)
+        self.assertFalse(CopilotDesktopParser().secondary(art))
+        rows, _, problems, dropped = cli.collect_rows(self.col, Options(), ["copilot-desktop"])
+        self.assertEqual(len([r for r in rows if r.agent == "copilot-desktop"]), len(self.EXPECTED))
+        self.assertEqual(dropped["copilot-desktop"], 0)
+        self.assertEqual(problems, [])
+
+    def test_not_wanted(self):
+        p = CopilotDesktopParser()
+        for rel in (
+            ".copilot/data.db-wal",
+            ".copilot/data.db-shm",
+            ".copilot/run/ws.token",
+            ".local/share/com.github.githubapp/localstorage/tauri_localhost_0.localstorage",
+        ):
+            art = self.artifact(rel)
+            self.assertEqual(art.agent, "copilot-desktop", rel)
+            self.assertFalse(p.wants(art), rel)
+        for rel in (
+            ".copilot/repo-metadata-cache.db",
+            ".copilot/logs/github-app.4242.log",
+            "proj/.copilot/data.db",
+            ".copilot/session-store.db",
+            ".copilot/session-state/%s/session.db" % COPILOT_SESSION,
+        ):
+            self.assertFalse(p.wants(rel_only(rel)), rel)
+        self.assertTrue(p.wants(rel_only(COPILOT_DESKTOP_DB_REL)))
+        # The CLI parser does not read the app's store either.
+        self.assertFalse(CopilotCliParser().wants(self.artifact(COPILOT_DESKTOP_DB_REL)))
+
+    def test_unreadable_database(self):
+        db = self.home / COPILOT_DESKTOP_DB_REL
+        for side in ("-wal", "-shm"):
+            Path(str(db) + side).unlink(missing_ok=True)
+        db.write_text("not sqlite", encoding="utf-8")
+        rows = self.rows_for(CopilotDesktopParser(), COPILOT_DESKTOP_DB_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.agent) for r in rows],
+            [("system", "parser: not a SQLite database", "copilot-desktop")],
+        )
+        # A SQLite header over a corrupt body is one SQLite error row.
+        db.write_bytes(b"SQLite format 3\x00" + b"\xff" * 200)
+        rows = self.rows_for(CopilotDesktopParser(), COPILOT_DESKTOP_DB_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: SQLite error: "), rows[0].text)

@@ -9,6 +9,14 @@ history file. Paths, credentials and exclusions are in
 It shares no format with the VS Code Copilot Chat extension
 ([`vscode.md`](vscode.md)) or the `copilot` catalog agent.
 
+The GitHub Copilot Desktop app runs its sessions through a bundled
+Copilot CLI and writes them into the same `~/.copilot/session-state/`
+directory, in this format, with `workspace.yaml` `client_name`
+`github/autopilot` where the CLI writes `github/cli`; this parser reads
+them. The app's own store is in
+[`copilot-desktop.md`](copilot-desktop.md), and its paths in
+[`collectors/research/copilot-desktop.md`](../../collectors/research/copilot-desktop.md).
+
 ## 1. Evidence
 
 Closed source: `github/copilot-cli` holds issues and a changelog only, so
@@ -492,7 +500,7 @@ line's `timestamp`.
 | `permission.requested` | `system`, `permission request: <permissionRequest.kind> <fullCommandText, url, fileName, path or serverName/toolName> intention=<intention>`, `tool_use_id` `permissionRequest.toolCallId`; first `permissionMode` and `agentMode` give `permission mode: <permissionMode> agent=<agentMode>`, a change gives `permission mode: <old> -> <new>` |
 | `permission.completed` | `system`, `permission decision: <result.kind> source=<decisionSource or ->`, then ` location=<locationKey>`, ` approval=<compact JSON of approval>`, ` directories=...`, ` feedback=<feedback>`, ` rules=<compact JSON>`, ` reason=<reason>`, ` path=<path>`, ` message=<message>` when present; `tool_use_id` `toolCallId` |
 | `permission.carriedForward` | `system`, `permission decision: carried-forward source=<decisionSource>` |
-| `session.permissions_changed` / `session.mode_changed` | `system`, `permission mode: <previousMode> -> <mode>` / `agent mode: <previousMode> -> <newMode>` |
+| `session.permissions_changed` / `session.mode_changed` | `system`, `permission mode: <previousMode> -> <mode>` / `agent mode: <previousMode> -> <newMode>`; the Copilot Desktop app's form (`previousAllowAllPermissions`, `allowAllPermissions`, `previousAllowAllPermissionMode`, `allowAllPermissionMode`, no `mode` and no `previousMode`; real install, Linux, bundled CLI 1.0.95-3) is `permission mode: allow-all <previousAllowAllPermissionMode or -> -> <allowAllPermissionMode or ->`, and the tracked mode becomes `allow-all <allowAllPermissionMode>` |
 | `session.model_change` | `system`, `model: <newModel>` at the first, `model: <old> -> <newModel>` on a change, kept when equal; followed by ` cause=<cause> source=<source> effort=<reasoningEffort>` for the keys present |
 | `session.auto_mode_resolved` | `system`, `model: <old> -> <chosenModel> (auto, <routingMethod>)` |
 | `session.info` | `system`, `session.info <infoType>: <message>`, then ` url=<url>` and ` tip=<tip>` for the keys present, at the line's `timestamp`; `model` the tracked model, `tool_name` and `tool_use_id` empty |
@@ -500,7 +508,8 @@ line's `timestamp`.
 | other `model.*` | skip (the prompt snapshot, the ExP string and call bookkeeping) |
 | `session.compaction_complete` | `system`, `compaction summary: <summaryContent>` |
 | `abort`, `session.error`, `session.warning` | `system`, `<type>: <reason or message>` |
-| `session.task_complete`, `system.notification`, `session.schedule_created`, `skill.invoked`, `subagent.*`, `hook.*`, `session.handoff` | `system`, `<type>: ` and the main text field, else compact JSON |
+| `session.task_complete`, `system.notification`, `session.schedule_created`, `skill.invoked`, `subagent.*`, `session.handoff` | `system`, `<type>: ` and the main text field, else compact JSON |
+| `hook.start` / `hook.end` | `system`, `hook <hookType> start: <compact JSON of input, or {}>` / `hook <hookType> end: success=<true or false> output=<compact JSON of output, or {}>`, then ` error=<compact JSON>` when `error` is present; `-` for a missing `hookType` or a non-boolean `success`; `tool_use_id` `parentToolCallId` when present, `tool_name` empty; never shortened |
 | `session.shutdown` | `system`, `session end: <shutdownType> <errorReason> files modified: <codeChanges.filesModified>` |
 | `assistant.turn_*`, `session.usage_record`, `session.usage_checkpoint`, unknown types | skip |
 
@@ -525,7 +534,7 @@ Other files:
 | `search_index`, `assistant_usage_events`, `forge_skill_proposals`, `dynamic_context_items` | none: concatenated copies, accounting, or no session |
 | `command-history-state.json` | `user` per entry, empty `timestamp_utc`, `session_id` and `project_path`; `source_line` the 1-based index (newest first) |
 | `rewind-file-snapshots/index.json` | `user` from `userMessage` at `timestamp`; and `system`, `rewind snapshot: <fileCount> files +<linesAdded> -<linesRemoved>: <path>, ...` |
-| `workspace.yaml` | `system`, `session name: <name>` and `session metadata: user_named=<user_named> forks=<fork_count> compactions=<summary_count>` at `created_at`; `cwd` is the session's project fallback |
+| `workspace.yaml` | `system`, `session name: <name>` and `session metadata: user_named=<user_named> forks=<fork_count> compactions=<summary_count> client=<client_name>` at `created_at` (`client=` empty when the key is absent; `github/cli` for the CLI, `github/autopilot` for the Copilot Desktop app); `cwd` is the session's project fallback |
 | `permissions-config.json` | one `system` row per `tool_approvals` and `allowed_directories` entry: `permission setting: locations.<path>.tool_approvals=<compact JSON> (from .copilot/permissions-config.json, file mtime)`, `project_path` the location, timestamp the file's mtime, empty `session_id` |
 | `settings.json` | one `system` row per `allowedUrls` and `deniedUrls` entry, `permission setting: allowedUrls=<url> (from .copilot/settings.json, file mtime)`; strip comments before parsing |
 | `sidebar-sessions-state/*.json` | none; `cwd` per `sessionIds[]` fills `project_path` of database and snapshot rows that lack one |

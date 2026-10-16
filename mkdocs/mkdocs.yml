@@ -128,6 +128,7 @@ nav:
           - collectors/research/cody.md
           - collectors/research/continue.md
           - collectors/research/copilot-cli.md
+          - collectors/research/copilot-desktop.md
           - collectors/research/copilot.md
           - collectors/research/crewai.md
           - collectors/research/crush.md
@@ -188,6 +189,7 @@ nav:
           - analyzer/research/cody.md
           - analyzer/research/continue.md
           - analyzer/research/copilot-cli.md
+          - analyzer/research/copilot-desktop.md
           - analyzer/research/crush.md
           - analyzer/research/gemini-cli.md
           - analyzer/research/goose.md

@@ -22,6 +22,10 @@ inside them goes to the extension's agent.
   their globalStorage is claimed by nested catalog entries, so those files
   are attributed to the extension's agent rather than to the editor,
   whichever editor they sit in.
+- **GitHub Copilot Desktop** shares `~/.copilot` with Copilot CLI: its
+  sessions, written there by a bundled Copilot CLI, are collected as
+  `copilot-cli`, and nested catalog entries attribute the app's own store,
+  chat, repository and run files and its log to `copilot-desktop`.
 - **Skills and configuration files** that several agents read are
   collected too, with agent `shared` in the manifest.
 - **`.env` files:** an agent's own `.env` inside its state directory, such
@@ -354,6 +358,7 @@ agent state that can be read with grep, and from every `-p` directory.
 | Codex | Session rollouts. |
 | Continue | Sessions. |
 | Copilot CLI | Session workspaces. |
+| Copilot Desktop | None of its own: its sessions are Copilot CLI session workspaces, and a `cwd` under the home's `.copilot/` (the app's chat directories and worktrees) is skipped there; the repositories it manages are in `data.db`, left to the analyzer. |
 | Crush | Project list. |
 | Cursor CLI | Chat and ACP session metadata. |
 | Factory Droid | Sessions. |
@@ -429,6 +434,9 @@ are not discovered; they are left to the analyst-side parser:
 - Hermes `state.db` and `projects.db`
 - OpenClaw `openclaw.sqlite`
 - Tabby `ee/db.sqlite`
+- Copilot Desktop `data.db` (`projects.main_repo_path`, `worktrees.path`
+  and `workspace_checkout_bindings`: the repositories the app cloned under
+  `.copilot/repos`, which the collector excludes)
 - the PearAI Roo fork in `state.vscdb`
 - Codex and Open Interpreter rollouts compressed with zstd
 - CLAI 2.0 `sessions.db` (`conversations.metadata` key `workspace`), whose

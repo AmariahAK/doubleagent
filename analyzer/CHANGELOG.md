@@ -56,8 +56,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in the event log, so the CLI's own report of a `/model` switch ("Model
   changed from ... to ...") and its Auto routing line keep their rows
   beside the `model:` row ([#133]).
+- The bundled catalog copy follows collector 1.13.0: GitHub Copilot
+  Desktop is detected as `copilot-desktop` from its own files inside
+  `.copilot` (`data.db`, `repo-metadata-cache.db`, `chats`, `repos`,
+  `run`, `media-cache`, `canvas-catalog-probe`,
+  `logs/github-app.*.log`), its data directory `com.github.githubapp`
+  and Foundry Local's `.github-copilot-cli`; its sessions under
+  `.copilot/session-state` stay `copilot-cli` ([#147]).
+- A `copilot-desktop` parser for the GitHub Copilot Desktop app. It reads
+  the app's store `.copilot/data.db` (SQLite with WAL sidecars), one
+  `system` row per record: the signed-in account (`account:`, with
+  whether a token is stored, never the token), the app settings at the
+  file's modification time, the model provider, each repository added
+  (`project added:`), worktree and workspace, each session (`desktop
+  session:` with its type, model, `auto_approve` and `permission_mode`,
+  and `forked from session` when forked), activity items, checkpoint
+  commits, scheduled tasks with their triggers and runs, session
+  automations and session deletion requests. The app's session logs stay
+  with the `copilot-cli` parser ([#147]).
+- The `copilot-cli` parser yields `hook <hookType> start: <input>` and
+  `hook <hookType> end: success=<b> output=<output>` (with ` error=` when
+  present) rows for the `hook.start` and `hook.end` events the desktop
+  app's sessions record, joined to the tool call on `parentToolCallId`;
+  they were `hook.start: <compact JSON>` rows before ([#147]).
 
 ### Changed
+
+- The `copilot-cli` parser's `session metadata:` row ends with
+  ` client=<client_name>` from `workspace.yaml`, `github/cli` for a CLI
+  session and `github/autopilot` for one the desktop app ran ([#147]).
+- The `copilot-cli` parser writes the desktop app's
+  `session.permissions_changed` form, which carries
+  `allowAllPermissionMode` and no `mode`, as `permission mode: allow-all
+  <old> -> <new>` instead of `permission mode: - -> -` ([#147]).
 
 - The package metadata (`pyproject.toml` `[project.urls]`) links the
   documentation site, the repository, the issue tracker and this changelog.
@@ -1048,6 +1079,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#143]: https://github.com/seanthegeek/doubleagent/issues/143
 [#138]: https://github.com/seanthegeek/doubleagent/issues/138
 [#136]: https://github.com/seanthegeek/doubleagent/issues/136

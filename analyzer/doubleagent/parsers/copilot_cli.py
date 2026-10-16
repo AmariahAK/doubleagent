@@ -72,7 +72,15 @@ layout.
     (`previousMode`, `mode`) is `permission mode: <old> -> <new>` and
     `session.mode_changed` (`previousMode`, `newMode`) `agent mode: <old>
     -> <new>`; both update the tracked mode, so the next request does not
-    repeat the change.
+    repeat the change. The Copilot Desktop app's bundled CLI (1.0.95-3,
+    real install, Linux, October 2026; issue 147) writes
+    `session.permissions_changed` with `previousAllowAllPermissions`,
+    `allowAllPermissions`, `previousAllowAllPermissionMode` and
+    `allowAllPermissionMode` instead, which the 1.0.98 schema does not
+    name: with no `mode` and no `previousMode` the row is `permission mode:
+    allow-all <previousAllowAllPermissionMode or -> ->
+    <allowAllPermissionMode or ->` and the tracked mode becomes
+    `allow-all <allowAllPermissionMode>`.
   - Model (`session.model_change`: `newModel`, `previousModel`, `cause`,
     `source`, `reasoningEffort`): `model: <id>` at the first and
     `model: <old> -> <new>` after, kept when the two are equal (a change
@@ -93,20 +101,35 @@ layout.
     <text>`. `abort`, `session.error`, `session.warning` (`reason`,
     `message`): `<type>: <text>`. `session.task_complete`,
     `system.notification`, `session.schedule_created`, `skill.invoked`,
-    `subagent.*`, `hook.*`, `session.handoff`: `<type>: <main text>`,
+    `subagent.*`, `session.handoff`: `<type>: <main text>`,
     else compact JSON of `data`. `session.shutdown` (`shutdownType`,
     `errorReason`, `codeChanges.filesModified`): `session end: <type>
     <reason> files modified: <files>`.
+  - `hook.start` (`hookInvocationId`, `hookType`, `input`,
+    `parentToolCallId`) and `hook.end` (`hookInvocationId`, `hookType`,
+    `output`, `success`, `error`, `parentToolCallId`), the schema's
+    `HookStartData` and `HookEndData`, observed in the Copilot Desktop
+    app's sessions (issue 147): `hook <hookType> start: <compact JSON of
+    input, or {} when absent>` and `hook <hookType> end:
+    success=<true|false> output=<compact JSON of output, or {}>`, then
+    ` error=<compact JSON>` when `error` is present; `-` for a missing
+    `hookType` or a `success` that is not a boolean. `tool_use_id` is
+    `parentToolCallId` when present, `tool_name` empty; the payload is
+    never shortened.
   - `assistant.turn_*`, `session.usage_*`, the other `model.*` events and
     unknown types are skipped. Each bad line is its own `system` row at
     the end, carrying the line in full (issue 136, `error_rows` in
     `base.py`), and the other lines are still read.
 * `<home>/session-state/<id>/workspace.yaml` (`id`, `cwd`, `name`,
-  `user_named`, `fork_count`, `summary_count`, `created_at`), read with a
-  flat `key: value` reader since only top-level scalars are used:
-  `session name: <name>` and `session metadata: user_named=<b> forks=<n>
-  compactions=<n>` at `created_at`. Its `cwd` is the project path of the
-  log's rows before a `session.start` and of the snapshot rows.
+  `user_named`, `fork_count`, `summary_count`, `created_at`,
+  `client_name`), read with a flat `key: value` reader since only
+  top-level scalars are used: `session name: <name>` and `session
+  metadata: user_named=<b> forks=<n> compactions=<n> client=<client_name>`
+  at `created_at` (`client=` with an empty value when the key is absent).
+  `client_name` is `github/cli` for a CLI session and `github/autopilot`
+  for one the Copilot Desktop app ran through its bundled CLI (issue
+  147). Its `cwd` is the project path of the log's rows before a
+  `session.start` and of the snapshot rows.
 * Secondary sources, which repeat the log's events and are read always,
   so a session whose log was rewound, cut or deleted is still recovered
   (`dedup.py`):
@@ -217,7 +240,14 @@ NOTE_TYPES = (
     "skill.invoked",
     "session.handoff",
 )
-NOTE_PREFIXES = ("subagent.", "hook.")
+NOTE_PREFIXES = ("subagent.",)
+# The Copilot Desktop app's form of `session.permissions_changed` (issue 147).
+ALLOW_ALL_KEYS = (
+    "previousAllowAllPermissions",
+    "allowAllPermissions",
+    "previousAllowAllPermissionMode",
+    "allowAllPermissionMode",
+)
 NOTE_KEYS = ("summary", "content", "prompt", "message", "reason", "name", "agentName")
 # `permission.completed` result keys appended to the decision row, in order.
 DECISION_KEYS = (
@@ -584,6 +614,12 @@ class CopilotCliParser(Parser):
             elif etype in ("abort", "session.error", "session.warning"):
                 text = _str(data.get("reason")) or _str(data.get("message")) or compact_json(data)
                 yield row("system", "%s: %s" % (etype, text))
+            elif etype in ("hook.start", "hook.end"):
+                yield row(
+                    "system",
+                    self._hook_text(etype, data),
+                    tool_use_id=_str(data.get("parentToolCallId")),
+                )
             elif etype in NOTE_TYPES or etype.startswith(NOTE_PREFIXES):
                 main = next((_str(data[k]) for k in NOTE_KEYS if data.get(k) not in (None, "")), "")
                 yield row("system", "%s: %s" % (etype, main or compact_json(data)))
@@ -685,9 +721,20 @@ class CopilotCliParser(Parser):
                 cid,
             )
         elif etype == "session.permissions_changed":
-            old, new = _str(data.get("previousMode")) or "-", _str(data.get("mode")) or "-"
-            yield row("system", "permission mode: %s -> %s" % (old, new))
-            perm["mode"] = _str(data.get("mode"))
+            allow_all = (
+                "mode" not in data
+                and "previousMode" not in data
+                and any(k in data for k in ALLOW_ALL_KEYS)
+            )
+            if allow_all:
+                old = _str(data.get("previousAllowAllPermissionMode")) or "-"
+                new = _str(data.get("allowAllPermissionMode"))
+                yield row("system", "permission mode: allow-all %s -> %s" % (old, new or "-"))
+                perm["mode"] = "allow-all %s" % new if new else perm["mode"]
+            else:
+                old, new = _str(data.get("previousMode")) or "-", _str(data.get("mode")) or "-"
+                yield row("system", "permission mode: %s -> %s" % (old, new))
+                perm["mode"] = _str(data.get("mode"))
             if perm["mode"]:
                 modes[sid] = perm["mode"] + (" agent=%s" % perm["agent"] if perm["agent"] else "")
         elif etype == "session.mode_changed":
@@ -722,6 +769,26 @@ class CopilotCliParser(Parser):
         state["model"] = new
         text = "model: %s -> %s" % (old, new) if old else "model: %s" % new
         yield row("system", text + suffix, model=new)
+
+    @staticmethod
+    def _hook_text(etype: str, data: dict) -> str:
+        """`hook <hookType> start: <input>` or `hook <hookType> end:
+        success=<b> output=<output>` and ` error=<error>` when present; each
+        payload as compact JSON in full, `{}` when absent."""
+        hook = _str(data.get("hookType")) or "-"
+        if etype == "hook.start":
+            payload = data.get("input")
+            return "hook %s start: %s" % (hook, "{}" if payload is None else compact_json(payload))
+        success = data.get("success")
+        output = data.get("output")
+        text = "hook %s end: success=%s output=%s" % (
+            hook,
+            setting_value(success) if isinstance(success, bool) else "-",
+            "{}" if output is None else compact_json(output),
+        )
+        if data.get("error") is not None:
+            text += " error=%s" % compact_json(data.get("error"))
+        return text
 
     @staticmethod
     def _info_text(data: dict) -> str:
@@ -762,11 +829,12 @@ class CopilotCliParser(Parser):
             artifact,
             1,
             "system",
-            "session metadata: user_named=%s forks=%s compactions=%s"
+            "session metadata: user_named=%s forks=%s compactions=%s client=%s"
             % (
                 meta.get("user_named") or "-",
                 meta.get("fork_count") or "-",
                 meta.get("summary_count") or "-",
+                meta.get("client_name") or "",
             ),
             **cols,
         )
