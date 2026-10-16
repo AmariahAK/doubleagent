@@ -12,6 +12,7 @@ on:
       - "**/*.md"
       - _config.yml
       - "_plugins/**"
+      - "_sass/**"
       - "Gemfile*"
       - .github/workflows/pages.yml
   workflow_dispatch:
