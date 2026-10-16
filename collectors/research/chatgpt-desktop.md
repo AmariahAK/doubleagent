@@ -1,3 +1,9 @@
+---
+title: "chatgpt-desktop"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 8
+---
 # chatgpt-desktop
 
 OpenAI's ChatGPT desktop app. On Windows and macOS it now bundles Codex,

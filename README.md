@@ -1,3 +1,8 @@
+---
+title: "Overview"
+nav_order: 1
+permalink: "/"
+---
 # doubleagent
 
 Forensic analysis of AI agent use on a system, for incident responders.
@@ -11,6 +16,10 @@ automation platforms such as n8n, Flowise, Langflow and Dify; Ollama; and
 others. It has two
 parts, kept in separate directories because they run in different places and
 have different dependency rules, and a Docker lab for developers.
+
+The rendered documentation, every document in this repository as one
+site with navigation and search, is the
+[doubleagent documentation site](https://seanthegeek.github.io/doubleagent/).
 
 | Part | Directory | Runs on |
 | --- | --- | --- |

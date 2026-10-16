@@ -1,3 +1,9 @@
+---
+title: "Hermes Agent transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 14
+---
 # Hermes Agent transcript schema
 
 Catalog agent: `hermes`. Hermes stores every conversation (CLI, TUI,

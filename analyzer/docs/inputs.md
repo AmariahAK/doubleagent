@@ -1,3 +1,8 @@
+---
+title: "Inputs and detection"
+parent: "Analyzer"
+nav_order: 1
+---
 # Inputs and detection
 
 What the analyzer accepts as input, how it attributes files to users and

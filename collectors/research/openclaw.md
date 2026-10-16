@@ -1,3 +1,9 @@
+---
+title: "OpenClaw: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 39
+---
 # OpenClaw: on-disk paths
 
 ## 1. Source and evidence level

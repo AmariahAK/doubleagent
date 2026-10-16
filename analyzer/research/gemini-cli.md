@@ -1,3 +1,9 @@
+---
+title: "Gemini CLI transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 12
+---
 # Gemini CLI transcript schema
 
 Catalog agent: `gemini-cli`. Researched together with Qwen Code, which forked

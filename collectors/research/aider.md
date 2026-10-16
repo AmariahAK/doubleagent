@@ -1,3 +1,9 @@
+---
+title: "Aider: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 2
+---
 # Aider: on-disk paths
 
 ## 1. Source and evidence level

@@ -1,3 +1,9 @@
+---
+title: "letta: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 30
+---
 # letta: on-disk paths
 
 ## 1. Source and evidence level

@@ -1,3 +1,9 @@
+---
+title: "windsurf: Windsurf / Devin Desktop IDE, Codeium plugins and the Devin CLI"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 52
+---
 # windsurf: Windsurf / Devin Desktop IDE, Codeium plugins and the Devin CLI
 
 ## 1. Source and evidence level

@@ -1,3 +1,9 @@
+---
+title: "Kiro CLI and Amazon Q Developer CLI transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 16
+---
 # Kiro CLI and Amazon Q Developer CLI transcript schema
 
 Catalog agent: `kiro`, which covers the Kiro CLI, its open-source

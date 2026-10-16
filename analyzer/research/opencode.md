@@ -1,3 +1,9 @@
+---
+title: "OpenCode transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 24
+---
 # OpenCode transcript schema
 
 Catalog agent: `opencode`. Researched together with Crush, which began as

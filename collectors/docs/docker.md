@@ -1,3 +1,8 @@
+---
+title: "Docker volumes"
+parent: "Collectors"
+nav_order: 4
+---
 # Docker volumes
 
 How the collectors find and collect agents deployed in Docker or Podman

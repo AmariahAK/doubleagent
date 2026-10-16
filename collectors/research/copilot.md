@@ -1,3 +1,9 @@
+---
+title: "copilot (GitHub Copilot OAuth token store shared by editor plugins)"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 16
+---
 # copilot (GitHub Copilot OAuth token store shared by editor plugins)
 
 ## 1. Source and evidence level

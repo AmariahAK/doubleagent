@@ -1,3 +1,9 @@
+---
+title: "Cline transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 6
+---
 # Cline transcript schema
 
 Catalog agent: `cline`. Researched together with Roo Code and Kilo Code; Roo

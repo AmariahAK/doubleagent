@@ -1,3 +1,9 @@
+---
+title: "pi transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 27
+---
 # pi transcript schema
 
 Catalog agent: `pi`. pi writes one append-only JSONL file per session, a

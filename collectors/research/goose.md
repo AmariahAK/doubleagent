@@ -1,3 +1,9 @@
+---
+title: "Goose: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 25
+---
 # Goose: on-disk paths
 
 ## 1. Source and evidence level

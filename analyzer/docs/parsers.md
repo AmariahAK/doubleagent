@@ -1,3 +1,8 @@
+---
+title: "Parsers"
+parent: "Analyzer"
+nav_order: 2
+---
 # Parsers
 
 Every catalog agent with its parse status, the files each parser reads and

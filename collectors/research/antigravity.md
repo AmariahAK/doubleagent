@@ -1,3 +1,9 @@
+---
+title: "antigravity: on-disk paths (CLI agy, the desktop app and the IDE)"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 4
+---
 # antigravity: on-disk paths (CLI `agy`, the desktop app and the IDE)
 
 How the transcripts are encoded and how the parser reads them is in

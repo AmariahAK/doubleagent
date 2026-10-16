@@ -1,3 +1,9 @@
+---
+title: "amp (Sourcegraph Amp CLI)"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 3
+---
 # amp (Sourcegraph Amp CLI)
 
 ## 1. Source and evidence level

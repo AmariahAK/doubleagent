@@ -1,0 +1,93 @@
+# The documentation site at https://seanthegeek.github.io/doubleagent/,
+# built from the Markdown documents where they are in the repository by
+# .github/workflows/pages.yml. Each document page carries front matter
+# (title, parent, grand_parent, nav_order, has_children) that places it in
+# the navigation; see the documentation rule in AGENTS.md.
+title: doubleagent
+description: >-
+  Forensic analysis of AI agent use on a system, for incident responders.
+url: https://seanthegeek.github.io
+baseurl: /doubleagent
+theme: just-the-docs
+# Links to files that are not pages go here (_plugins/github_source_links.rb).
+source_url: https://github.com/seanthegeek/doubleagent
+markdown: kramdown
+# Text as GitHub shows it: no curly quotes, and "--", "---" and "..." left
+# as typed, since the documents quote options (--json) outside code spans.
+kramdown:
+  smart_quotes: ["apos", "apos", "quot", "quot"]
+  typographic_symbols:
+    hellip: "..."
+    mdash: "---"
+    ndash: "--"
+    laquo: "<<"
+    raquo: ">>"
+    laquo_space: "<< "
+    raquo_space: " >>"
+
+plugins:
+  - jekyll-relative-links
+# Rewrites links to .md files into the page URLs, so the documents'
+# relative links work on the site as they do on GitHub.
+relative_links:
+  enabled: true
+  collections: false
+
+# The documents are Markdown, never Liquid templates; some quote {{ ... }}.
+# Scoped to *.md so the theme's Liquid stylesheets still render. Every
+# document page uses the theme's default layout.
+defaults:
+  - scope:
+      path: "*.md"
+    values:
+      layout: default
+      render_with_liquid: false
+  - scope:
+      path: "**/*.md"
+    values:
+      layout: default
+      render_with_liquid: false
+
+# Everything that is not a document page.
+exclude:
+  - analyzer/doubleagent
+  - analyzer/tests
+  - analyzer/tools
+  - analyzer/pyproject.toml
+  - analyzer/requirements.txt
+  - analyzer/build
+  - analyzer/dist
+  - collectors/*.sh
+  - collectors/*.ps1
+  - collectors/*.psd1
+  - collectors/tests
+  - tools
+  - lab/.env.example
+  - lab/.gitignore
+  - lab/Dockerfile
+  - lab/compose.yaml
+  - lab/compose.gpu.yaml
+  - lab/lab.sh
+  - .github
+  - .githooks
+  - CLAUDE.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+  - node_modules
+  - ruff.toml
+  - pyrightconfig.json
+  - .markdownlint-cli2.jsonc
+  - .shellcheckrc
+  - LICENSE
+
+# just-the-docs
+search_enabled: true
+heading_anchors: true
+nav_sort: case_insensitive
+back_to_top: true
+back_to_top_text: Back to top
+aux_links:
+  doubleagent on GitHub:
+    - https://github.com/seanthegeek/doubleagent
+aux_links_new_tab: false

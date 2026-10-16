@@ -1,3 +1,9 @@
+---
+title: "Claude Desktop transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 5
+---
 # Claude Desktop transcript schema
 
 Catalog agent: `claude-desktop`. Claude Desktop is Anthropic's closed-source

@@ -1,3 +1,9 @@
+---
+title: "Roo Code transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 29
+---
 # Roo Code transcript schema
 
 Catalog agent: `roo-code`. Roo Code forked Cline and keeps Cline's task

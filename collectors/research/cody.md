@@ -1,3 +1,9 @@
+---
+title: "Sourcegraph Cody: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 13
+---
 # Sourcegraph Cody: on-disk paths
 
 Catalog agent: `cody`. Cody is Sourcegraph's coding assistant, shipped as

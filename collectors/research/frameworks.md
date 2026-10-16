@@ -1,3 +1,9 @@
+---
+title: "Agent frameworks and self-hosted platforms: default-path sweep"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 23
+---
 # Agent frameworks and self-hosted platforms: default-path sweep
 
 The sweep asked for in issue #64: sixteen agent frameworks, framework

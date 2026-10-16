@@ -1,3 +1,8 @@
+---
+title: "Output"
+parent: "Analyzer"
+nav_order: 3
+---
 # Output
 
 What `detect` prints, the files `timeline` writes, and the

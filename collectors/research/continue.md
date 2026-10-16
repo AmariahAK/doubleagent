@@ -1,3 +1,9 @@
+---
+title: "Continue: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 14
+---
 # Continue: on-disk paths
 
 ## 1. Source and evidence level

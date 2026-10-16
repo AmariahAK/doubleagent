@@ -1,3 +1,9 @@
+---
+title: "Agent Zero: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 1
+---
 # Agent Zero: on-disk paths
 
 Catalog agent: `agent-zero`. Transcript schema is in

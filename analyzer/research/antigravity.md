@@ -1,3 +1,9 @@
+---
+title: "Antigravity CLI and desktop app transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 3
+---
 # Antigravity CLI and desktop app transcript schema
 
 Catalog agent: `antigravity`. Google Antigravity ships two surfaces that

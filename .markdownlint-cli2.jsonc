@@ -18,10 +18,17 @@
     // defined at the bottom of the file. Without this option markdownlint
     // skips shortcut references, so a missing definition would render as
     // literal brackets unnoticed.
-    "MD052": { "shortcut_syntax": true }
+    "MD052": { "shortcut_syntax": true },
+    // Every document page starts with front matter for the documentation
+    // site (_config.yml), whose `title:` is the navigation label, not the
+    // document's heading. An empty front_matter_title stops MD025 and
+    // MD041 from reading it as one, so the body's own `# Title` stays the
+    // required, single top-level heading.
+    "MD025": { "front_matter_title": "" },
+    "MD041": { "front_matter_title": "" }
   },
   // Skip everything git ignores (build output, caches) as well as
   // dependency trees that npx or a virtualenv might leave behind.
   "gitignore": true,
-  "ignores": ["**/node_modules/**", ".ruff_cache/**", "**/.venv/**"]
+  "ignores": ["**/node_modules/**", ".ruff_cache/**", "**/.venv/**", "vendor/**", "_site/**"]
 }

@@ -1,3 +1,9 @@
+---
+title: "Hermes Agent: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 26
+---
 # Hermes Agent: on-disk paths
 
 Catalog agent: `hermes`. Transcript schema is in

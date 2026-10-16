@@ -1,3 +1,9 @@
+---
+title: "Tabby transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 31
+---
 # Tabby transcript schema
 
 Catalog agent: `tabby`. A self-hosted completion and chat server; transcripts

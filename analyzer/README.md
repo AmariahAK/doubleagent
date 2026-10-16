@@ -1,3 +1,8 @@
+---
+title: "Analyzer"
+nav_order: 3
+has_children: true
+---
 # doubleagent
 
 `doubleagent` is a forensic analyzer of AI agent use on a system. It takes

@@ -1,3 +1,8 @@
+---
+title: "Collectors"
+nav_order: 2
+has_children: true
+---
 # Collectors
 
 The on-host half of doubleagent: two single-file scripts that walk

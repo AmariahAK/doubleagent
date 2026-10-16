@@ -1,3 +1,9 @@
+---
+title: "MetaGPT: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 33
+---
 # MetaGPT: on-disk paths
 
 This document came out of the agent framework sweep for issue #64; see

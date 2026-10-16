@@ -1,3 +1,9 @@
+---
+title: "VS Code chat session schema (Copilot Chat)"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 33
+---
 # VS Code chat session schema (Copilot Chat)
 
 Catalog agent: `vscode`. VS Code's built-in chat store is used by GitHub

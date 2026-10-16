@@ -12,3 +12,9 @@ analyzer/dist/
 .venv/
 venv/
 .claude/
+
+# Documentation site build (Gemfile, _config.yml)
+_site/
+vendor/
+.jekyll-cache/
+.bundle/

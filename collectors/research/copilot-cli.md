@@ -1,3 +1,9 @@
+---
+title: "copilot-cli"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 15
+---
 # copilot-cli
 
 Catalog agent: `copilot-cli` (GitHub Copilot CLI). How the transcripts are

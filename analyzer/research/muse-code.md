@@ -1,3 +1,9 @@
+---
+title: "Muse Code transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 19
+---
 # Muse Code transcript schema
 
 Catalog agent: `muse-code`. Muse Code is Meta's closed-source coding agent

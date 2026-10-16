@@ -1,3 +1,9 @@
+---
+title: "Letta transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 17
+---
 # Letta transcript schema
 
 Catalog agent: `letta`. Letta Code (the current `letta` CLI) keeps

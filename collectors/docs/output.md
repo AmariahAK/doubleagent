@@ -1,3 +1,8 @@
+---
+title: "Output"
+parent: "Collectors"
+nav_order: 2
+---
 # Output
 
 What a collection writes: the stdout summary, the files in the output

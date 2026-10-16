@@ -1,3 +1,9 @@
+---
+title: "ShellGPT: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 48
+---
 # ShellGPT: on-disk paths
 
 Catalog agent: `shellgpt`. ShellGPT (`sgpt`) is a Python command-line client

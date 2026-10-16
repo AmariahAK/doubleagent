@@ -21,7 +21,9 @@ every tracked Markdown file and every untracked one git does not ignore:
   host path as its text, since an external source is one link whose text
   names it and whose target is the full URL.
 
-Fenced code blocks and inline code spans are ignored before matching.
+A YAML front matter block at the top of a file (the site's navigation, see
+`_config.yml`), fenced code blocks and inline code spans are ignored before
+matching.
 
 Usage: tools/check_doc_links.py [FILE...]
 
@@ -62,8 +64,23 @@ AUTOLINK = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>")
 LINK_IN_HEADING = re.compile(r"!?\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\([^)]*\)")
 
 
+def strip_front_matter(text: str) -> str:
+    """Blank a leading `---` YAML front matter block, keeping line numbers.
+
+    Without this the closing `---` would make the last key a setext heading.
+    """
+    lines = text.split("\n")
+    if not lines or lines[0].rstrip() != "---":
+        return text
+    for end in range(1, len(lines)):
+        if lines[end].rstrip() == "---":
+            return "\n" * end + "\n".join(lines[end:]).replace("---", "", 1)
+    return text
+
+
 def strip_fences(text: str) -> str:
-    """Blank every line of a fenced code block, keeping line numbers."""
+    """Blank front matter and every line of a fenced code block, keeping line numbers."""
+    text = strip_front_matter(text)
     out = []
     fence = ""
     for line in text.split("\n"):

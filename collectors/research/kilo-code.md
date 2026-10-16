@@ -1,3 +1,9 @@
+---
+title: "Kilo Code: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 27
+---
 # Kilo Code: on-disk paths
 
 ## 1. Source and evidence level

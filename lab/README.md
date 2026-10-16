@@ -1,3 +1,7 @@
+---
+title: "Agent lab"
+nav_order: 4
+---
 # Agent lab
 
 A disposable Docker sandbox for running CLI coding agents and local models

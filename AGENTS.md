@@ -1,3 +1,7 @@
+---
+title: "Contributing"
+nav_order: 5
+---
 # AGENTS.md
 
 Guidance for AI coding agents and humans working in this repository.
@@ -81,6 +85,11 @@ tools/check_research_links.py  verifies every citation link in the research docu
 tools/check_doc_links.py       verifies every relative link and heading fragment in the
                                Markdown documents and that section and external
                                references are links
+_config.yml                    the documentation site: Jekyll with the just-the-docs
+                               theme, built from the documents where they are
+_plugins/                      site build plugins: GitHub heading ids, code spans kramdown
+                               reads differently, links to non-page files
+Gemfile, Gemfile.lock          the site's Ruby dependencies
 README.md                      project overview; points at the per-part READMEs
 AGENTS.md                      this file
 CLAUDE.md                      imports this file for Claude Code
@@ -88,7 +97,8 @@ LICENSE                        Apache 2.0
 ruff.toml, pyrightconfig.json, .markdownlint-cli2.jsonc, .shellcheckrc
                                linter configuration; see "Quality gates"
 .githooks/pre-commit           the catalog drift check
-.github/                       CI workflow and Dependabot configuration
+.github/                       CI workflow, the Pages workflow (workflows/pages.yml,
+                               publishes the site) and Dependabot configuration
 ```
 
 Nothing in `collectors/` may depend on `analyzer/`. Paths in this file are
@@ -1129,6 +1139,11 @@ for a documentation-only change, only markdownlint and
   for the examples or the table to be brought up to date.
   Behaviour changes without a README update are incomplete. The [top-level
   README](README.md) is an overview only.
+  A new document page starts with the same front matter as its siblings
+  (`title`, `parent`, `grand_parent` when three levels deep, `nav_order`,
+  and `has_children` on a section page), so it takes its place in the
+  navigation of the [documentation site](https://seanthegeek.github.io/doubleagent/);
+  `tools/check_doc_links.py` stays the link check, and skips the front matter.
 - Every term a document takes from a vendor, a bundle or a product
   surface is explained at its first use in that document: what it stands
   for, what it denotes here, and where the name comes from. This covers

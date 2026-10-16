@@ -1,3 +1,8 @@
+---
+title: "Testing"
+parent: "Collectors"
+nav_order: 9
+---
 # Testing
 
 The collectors' smoke tests, the catalog drift check and what CI runs; for

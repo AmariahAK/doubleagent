@@ -1,3 +1,9 @@
+---
+title: "muse-code (Meta Muse Code CLI)"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 34
+---
 # muse-code (Meta Muse Code CLI)
 
 How the transcripts are encoded and how the parser reads them is in

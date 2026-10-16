@@ -1,0 +1,54 @@
+# Builds the documentation site from the Markdown documents where they are
+# (see _config.yml) and publishes it to GitHub Pages at
+# https://seanthegeek.github.io/doubleagent/. An Actions build rather than
+# GitHub's built-in Pages build, because _plugins/ must run: the built-in
+# build allows only its own plugin list.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.md"
+      - _config.yml
+      - "_plugins/**"
+      - "Gemfile*"
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push waits for the running one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - id: pages
+        uses: actions/configure-pages@v6
+      - name: Build
+        run: bundle exec jekyll build --baseurl "${{ steps.pages.outputs.base_path }}"
+        env:
+          JEKYLL_ENV: production
+      - uses: actions/upload-pages-artifact@v5
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

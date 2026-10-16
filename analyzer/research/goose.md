@@ -1,3 +1,9 @@
+---
+title: "Goose transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 13
+---
 # Goose transcript schema
 
 Catalog agent: `goose`. Researched together with Zed ([zed.md](zed.md)); the

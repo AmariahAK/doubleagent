@@ -1,3 +1,9 @@
+---
+title: "Shared cross-agent directories"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 47
+---
 # Shared cross-agent directories
 
 Catalog agent: `shared`. Files and directories read by several agents at

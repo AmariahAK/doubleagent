@@ -1,3 +1,9 @@
+---
+title: "nanobot transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 20
+---
 # nanobot transcript schema
 
 Catalog agent: `nanobot`. nanobot stores each conversation as a JSONL file of

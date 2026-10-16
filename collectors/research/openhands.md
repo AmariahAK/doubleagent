@@ -1,3 +1,9 @@
+---
+title: "OpenHands: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 41
+---
 # OpenHands: on-disk paths
 
 ## 1. Source and evidence level

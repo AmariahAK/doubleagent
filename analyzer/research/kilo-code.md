@@ -1,3 +1,9 @@
+---
+title: "Kilo Code transcript schema"
+parent: "Analyzer research"
+grand_parent: "Analyzer"
+nav_order: 15
+---
 # Kilo Code transcript schema
 
 Catalog agent: `kilo-code`. Kilo Code began as a Roo Code fork but its

@@ -1,3 +1,9 @@
+---
+title: "Tabby: on-disk paths"
+parent: "Collector research"
+grand_parent: "Collectors"
+nav_order: 49
+---
 # Tabby: on-disk paths
 
 ## 1. Source and evidence level
