@@ -704,9 +704,18 @@ without content kinds, a block that is wholly a harness wrapper such as
 `<environment_context>`. These `system` rows start with a lowercase label
 naming the source, such as `subagent task:`, `task notification:`,
 `slash command:`, `command output:` or `context: <kind>:`, followed by the
-full text. A line a parser cannot decode, such as a
-transcript's last line cut off mid-write, is reported as a `system` row,
-and the rest of the file is still read.
+full text. Each line a parser cannot decode, such as a transcript's last
+line cut off mid-write, is reported as its own `system` row whose
+`source_line` is that line's number and whose `text` is
+`parser: unparseable line (<reason>): <line>`: `<reason>` is the
+decoder's message and `<line>` is the whole line as read (decoded as
+UTF-8 with undecodable bytes replaced, less its line terminator), with
+nothing repaired, extracted or shortened. The rest of the file is still
+read. An error that concerns the whole file rather than one line (the
+file cannot be read, is not a JSON array, or ends inside an array) is
+one `system` row `parser: <message>`, such as
+`parser: unterminated JSON array`, with the line number when the error
+has one and `0` otherwise.
 
 Antigravity's permission state is also typed `system`. A grant recorded on
 a step is `permission grant: action=<action> target=<target>

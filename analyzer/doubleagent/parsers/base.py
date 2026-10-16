@@ -60,21 +60,65 @@ class Parser:
 
 
 def iter_jsonl(path, errors: list) -> Iterator[tuple[int, dict]]:
-    """Yield (line_number, record) for each JSON object line. Bad lines are
-    counted in `errors` as (line_number, message) and skipped: a transcript
-    truncated mid-write by a running agent must not lose its earlier turns."""
+    """Yield (line_number, record) for each JSON object line. A bad line is
+    appended to `errors` as (line_number, message, raw_text) and skipped: a
+    transcript truncated mid-write by a running agent must not lose its
+    earlier turns. `raw_text` is the line as read, decoded UTF-8 with
+    `errors="replace"`, less only its trailing line terminator, for
+    `error_rows` to report in full (issue 136)."""
     with open(path, "rb") as fh:
         for n, raw in enumerate(fh, 1):
-            raw = raw.strip()
-            if not raw:
+            stripped = raw.strip()
+            if not stripped:
                 continue
             try:
-                rec = json.loads(raw.decode("utf-8", errors="replace"))
+                rec = json.loads(stripped.decode("utf-8", errors="replace"))
             except ValueError as e:
-                errors.append((n, str(e)))
+                errors.append((n, str(e), line_text(raw)))
                 continue
             if isinstance(rec, dict):
                 yield n, rec
+
+
+def line_text(raw: bytes) -> str:
+    """A line read in binary mode as error row text: decoded UTF-8 with
+    `errors="replace"`, its trailing `\\n` and then `\\r` removed, nothing
+    else stripped."""
+    if raw.endswith(b"\n"):
+        raw = raw[:-1]
+    if raw.endswith(b"\r"):
+        raw = raw[:-1]
+    return raw.decode("utf-8", errors="replace")
+
+
+def error_rows(
+    parser: Parser, artifact: Artifact, errors: list, session_id: str = "", project_path: str = ""
+) -> Iterator[Row]:
+    """One `system` row per entry of `errors` (issue 136), in list order,
+    with the given `session_id` and `project_path` and `source_line` set to
+    the entry's line number (0 when the error has none).
+
+    An entry is (line, message, raw), or the older (line, message) pair,
+    read as raw `""`. When raw is not empty the row text is
+    `parser: unparseable line (<message>): <raw>`, carrying the line exactly
+    as the reader stored it: no field is pulled out of the broken record,
+    nothing is repaired or shortened, and the text is not passed through
+    `compact()`. When raw is empty the error concerns the whole file (it
+    could not be read, it is not a JSON array, it was cut off after record
+    N) and the row text is `parser: <message>`."""
+    for entry in errors:
+        line, message = entry[0], entry[1]
+        raw = entry[2] if len(entry) > 2 else ""
+        row = parser.base_row(artifact)
+        row.session_id = session_id
+        row.project_path = project_path
+        row.turn_type = "system"
+        row.source_line = line if isinstance(line, int) else 0
+        if raw:
+            row.text = "parser: unparseable line (%s): %s" % (message, raw)
+        else:
+            row.text = "parser: %s" % message
+        yield row
 
 
 def text_of(content) -> str:

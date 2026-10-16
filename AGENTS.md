@@ -323,11 +323,11 @@ rules are different from the collectors'.
   Decode protobuf with `doubleagent/protobuf.py` and open SQLite through
   `doubleagent/sqlite_util.py` so WAL sidecars are read and the evidence
   copy is never opened directly.
-  Bad lines are reported as a `system` row, never fatal: a transcript cut
+  Bad lines are reported as `system` rows, never fatal: a transcript cut
   mid-write by a running agent must still yield its earlier turns.
   That holds for every file a parser reads, not only the transcript: a
   history file, a secondary source or an index that loses lines says so
-  in its own row. Every `errors` list a reader fills is reported,
+  in its own rows. Every `errors` list a reader fills is reported,
   returned or passed on; a pre-scan that discards errors passes a
   literal `[]`, and only over a file the same parser also parses in full
   and reports on. Three history readers dropped bad lines silently
@@ -388,9 +388,11 @@ and say in the module docstring if the shape has drifted since.
 3. Row semantics the existing parsers share: `tool_use` rows carry
    `tool_name` and `tool_use_id`; `tool_result` rows join on
    `tool_use_id`; `thinking` rows are yielded only when
-   `opts.include_thinking` is set; a bad line or a truncated file becomes
-   one `system` row and the earlier turns are still yielded; `session_id`
-   and `project_path` propagate from the session header to every row;
+   `opts.include_thinking` is set; each bad line becomes its own `system`
+   row carrying the line in full (`error_rows` in `base.py`), a
+   whole-file error one `parser:` row, and the other turns are still
+   yielded; `session_id` and `project_path` propagate from the session
+   header to every row;
    `git_branch` stays empty when the format does not record it. Formats
    without per-message timestamps (Continue, Zed, Cline's legacy history)
    inherit the session timestamp; say so in the docstring.
