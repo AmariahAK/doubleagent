@@ -254,7 +254,7 @@ def records(path, errors: list) -> Iterator[tuple[int, dict]]:
                     inner = json.loads(child or "")
                 except (TypeError, ValueError) as e:
                     raw = child if isinstance(child, str) else ""
-                    errors.append((n, "retained_frame child: %s" % e, raw))
+                    errors.append((n, "unparseable line (retained_frame child: %s)" % e, raw))
                     continue
                 if isinstance(inner, dict):
                     yield n, inner
@@ -716,7 +716,7 @@ class MuseCodeParser(Parser):
                 try:
                     rec = json.loads(stripped.decode("utf-8", errors="replace"))
                 except ValueError as e:
-                    errors.append((n, str(e), line_text(raw)))
+                    errors.append((n, "unparseable line (%s)" % e, line_text(raw)))
                     continue
                 if isinstance(rec, str):
                     if pending is not None:

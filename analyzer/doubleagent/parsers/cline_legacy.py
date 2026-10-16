@@ -61,11 +61,12 @@ they are `system`. `source_line` is the record's 1-based position in the
 JSON array. No git branch is recorded by either agent.
 
 Errors (issue 136): a record that does not decode stops the array walk and
-becomes one `system` row through `error_rows` in `base.py`, carrying the
-decoder's message and the file's text from that record's first character to
-the end of the file (less a trailing line terminator): the record cut off
-mid-write, plus whatever the walk could not read after it, so nothing is
-dropped. Its `source_line` is the record's position. A file that cannot be
+becomes one `system` row through `error_rows` in `base.py`,
+`parser: unparseable record <N> (<reason>): <raw>`, carrying the file's text
+from that record's first character to the end of the file (less a trailing
+line terminator): the record cut off mid-write, plus whatever the walk could
+not read after it, so nothing is dropped. Its `source_line` is the record's
+position N. A file that cannot be
 read, is not a JSON array, stops after a record without a closing bracket,
 or has data after the array gets a `parser: <message>` row with no text.
 """
@@ -137,7 +138,8 @@ def iter_array_at(
 ) -> Iterator[tuple[int, object]]:
     """Yield (1-based position, element) from the JSON array starting at
     `s[i]`. A truncated or corrupt element stops the walk and is recorded in
-    `errors` as (position, decoder message, the text from the element's
+    `errors` as (position, `unparseable record <position> (<reason>)`, the
+    text from the element's
     first character to the end of `s`, less a trailing line terminator);
     the elements before it are kept. A structural error (not an array, no
     closing bracket) is (position, message, ""). When `end` is given, the
@@ -159,11 +161,7 @@ def iter_array_at(
         try:
             value, i = dec.raw_decode(s, start)
         except ValueError as e:
-            raw = _tail(s, start)
-            if raw:
-                errors.append((n, str(e), raw))
-            else:
-                errors.append((n, "record %d unparseable (%s)" % (n, e), ""))
+            errors.append((n, "unparseable record %d (%s)" % (n, e), _tail(s, start)))
             return
         yield n, value
         i = _skip_ws(s, i)

@@ -74,7 +74,7 @@ def iter_jsonl(path, errors: list) -> Iterator[tuple[int, dict]]:
             try:
                 rec = json.loads(stripped.decode("utf-8", errors="replace"))
             except ValueError as e:
-                errors.append((n, str(e), line_text(raw)))
+                errors.append((n, "unparseable line (%s)" % e, line_text(raw)))
                 continue
             if isinstance(rec, dict):
                 yield n, rec
@@ -99,13 +99,17 @@ def error_rows(
     the entry's line number (0 when the error has none).
 
     An entry is (line, message, raw), or the older (line, message) pair,
-    read as raw `""`. When raw is not empty the row text is
-    `parser: unparseable line (<message>): <raw>`, carrying the line exactly
-    as the reader stored it: no field is pulled out of the broken record,
-    nothing is repaired or shortened, and the text is not passed through
-    `compact()`. When raw is empty the error concerns the whole file (it
-    could not be read, it is not a JSON array, it was cut off after record
-    N) and the row text is `parser: <message>`."""
+    read as raw `""`. The message carries the whole label: a JSONL reader
+    writes `unparseable line (<reason>)`, a JSON array reader
+    `unparseable record <N> (<reason>)`, and a line that decodes but cannot
+    be applied names what failed (`mutation not applied (<reason>)`). When
+    raw is not empty the row text is `parser: <message>: <raw>`, carrying
+    the line or record exactly as the reader stored it: no field is pulled
+    out of the broken record, nothing is repaired or shortened, and the
+    text is not passed through `compact()`. When raw is empty the error
+    concerns the whole file (it could not be read, it is not a JSON array,
+    it was cut off after record N) or a record with no text left, and the
+    row text is `parser: <message>`."""
     for entry in errors:
         line, message = entry[0], entry[1]
         raw = entry[2] if len(entry) > 2 else ""
@@ -115,7 +119,7 @@ def error_rows(
         row.turn_type = "system"
         row.source_line = line if isinstance(line, int) else 0
         if raw:
-            row.text = "parser: unparseable line (%s): %s" % (message, raw)
+            row.text = "parser: %s: %s" % (message, raw)
         else:
             row.text = "parser: %s" % message
         yield row

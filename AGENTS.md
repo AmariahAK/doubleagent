@@ -329,7 +329,8 @@ rules are different from the collectors'.
   line that does not decode becomes its own `system` row carrying the
   line in full: `parser: unparseable line (<reason>): <line>`, the line
   as read with only its terminator removed, nothing repaired, extracted
-  or shortened (issue 136). An error about the whole file (unreadable,
+  or shortened (issue 136); a JSON array reader says `unparseable record
+  <N> (<reason>)` instead. An error about the whole file (unreadable,
   not a JSON array, cut inside an array) is one row `parser: <message>`.
   The row carries the `session_id` and `project_path` the reader knows
   for that file, an empty `timestamp_utc` (the line has none of its

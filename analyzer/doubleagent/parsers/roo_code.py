@@ -35,8 +35,8 @@ the fields. Roots: the extension's
   index; non-string and blank entries are skipped as the CLI's own
   `loadHistory` skips them. A file cut mid-write yields the entries before
   the cut and one `system` row for the cut (issue 136): the entry that
-  does not decode, with the text from its first character to the end of
-  the file, or `parser: array cut off after record N` when the cut falls
+  does not decode, `parser: unparseable record <N> (<reason>): <raw>` with
+  the text from its first character to the end of the file, or `parser: array cut off after record N` when the cut falls
   between entries; a file with no `entries` array is one `system` row. The file records no time, no task id
   and no workspace, so the rows have an empty `timestamp_utc`,
   `session_id` and `project_path`. A secondary source (`dedup.py`): each

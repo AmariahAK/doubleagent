@@ -69,9 +69,9 @@ the request time). Contiguous markdown and inline references become one
 
 Errors (issue 136), after the session's other rows, each a `system` row
 through `error_rows` in `base.py`: a `.jsonl` line that does not decode, or
-that decodes but whose mutation cannot be applied (reason `mutation not
-applied: <why>`), carries the line in full as `parser: unparseable line
-(<reason>): <line>` with its line number; a `.json` file that does not
+that decodes but whose mutation cannot be applied, carries the line in full
+with its line number, as `parser: unparseable line (<reason>): <line>` or
+`parser: mutation not applied (<why>): <line>`; a `.json` file that does not
 decode is `parser: file is not valid JSON (<reason>)`.
 """
 
@@ -377,14 +377,14 @@ class VsCodeParser(Parser):
                 try:
                     rec = json.loads(stripped.decode("utf-8", errors="replace"))
                 except ValueError as e:
-                    errors.append((n, str(e), line_text(raw)))
+                    errors.append((n, "unparseable line (%s)" % e, line_text(raw)))
                     continue
                 if not isinstance(rec, dict):
                     continue
                 try:
                     state = apply_mutation(state, rec)
                 except MutationError as e:
-                    errors.append((n, "mutation not applied: %s" % e, line_text(raw)))
+                    errors.append((n, "mutation not applied (%s)" % e, line_text(raw)))
                     continue
                 self._track(rec, state, n, req_lines)
         return state

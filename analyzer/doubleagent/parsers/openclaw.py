@@ -121,8 +121,8 @@ git branch is recorded.
 A line that does not decode is its own `system` row (issue 136, `error_rows`
 in `base.py`), carrying the line in full after `parser: unparseable line
 (<reason>): `, with the session's id and `cwd`. For a line inside an archive
-blob the reason is prefixed `archive <name> line <n>: ` (or `cold archive`)
-and `source_line` is the archive row's rowid, as for the blob's other rows.
+blob the text is `parser: archive <name> line <n>: unparseable line
+(<reason>): <line>` (or `cold archive`) and `source_line` is the archive row's rowid, as for the blob's other rows.
 """
 
 from __future__ import annotations
@@ -198,7 +198,7 @@ def _iter_lines(data: bytes, errors: list) -> Iterator[tuple[int, dict]]:
         try:
             rec = json.loads(stripped.decode("utf-8", errors="replace"))
         except ValueError as e:
-            errors.append((n, str(e), line_text(raw)))
+            errors.append((n, "unparseable line (%s)" % e, line_text(raw)))
             continue
         if isinstance(rec, dict):
             yield n, rec
@@ -534,7 +534,9 @@ class OpenClawParser(Parser):
         self, artifact: Artifact, s: _Session, rowid: int, label: str, errors: list
     ) -> Iterator[Row]:
         """`error_rows` for the bad lines of an archive blob: `source_line` the
-        archive row's rowid, the reason prefixed with `label` and the line."""
+        archive row's rowid and the message prefixed with `label` and the
+        line's number in the blob (`archive <name> line 3: unparseable line
+        (<reason>)`)."""
         located = [(rowid, "%s line %d: %s" % (label, n, msg), raw) for n, msg, raw in errors]
         yield from error_rows(self, artifact, located, s.session_id, s.cwd)
 

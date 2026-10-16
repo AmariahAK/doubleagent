@@ -338,7 +338,7 @@ class QwenCodeParser(Parser):
             try:
                 value, pos = dec.raw_decode(data, pos)
             except ValueError as e:
-                errors.append((idx, str(e), _rest(data, pos)))
+                errors.append((idx, "unparseable record %d (%s)" % (idx, e), _rest(data, pos)))
                 return
             if isinstance(value, dict):
                 yield idx, value

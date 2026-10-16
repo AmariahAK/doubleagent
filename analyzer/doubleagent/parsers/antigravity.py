@@ -1092,7 +1092,7 @@ class AntigravityParser(Parser):
             try:
                 rec = json.loads(stripped.decode("utf-8", errors="replace"))
             except ValueError as e:
-                errors.append((n, str(e), line_text(raw)))
+                errors.append((n, "unparseable line (%s)" % e, line_text(raw)))
                 continue
             if isinstance(rec, dict):
                 yield from self._brain_rows(artifact, n, rec, session_id, calls, opts)

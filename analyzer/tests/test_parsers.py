@@ -2904,7 +2904,7 @@ class QwenCodeTests(ParserBase):
             [(r.source_line, r.turn_type, r.text) for r in rows],
             [
                 (1, "user", "run the tests"),
-                (2, "system", "parser: unparseable line (%s): %s" % (reason, cut[start:])),
+                (2, "system", "parser: unparseable record 2 (%s): %s" % (reason, cut[start:])),
             ],
         )
 
@@ -4466,8 +4466,7 @@ class VsCodeTests(ParserBase):
                 (
                     "system",
                     3,
-                    "parser: unparseable line (mutation not applied: path ['nowhere']"
-                    " not found): " + stray,
+                    "parser: mutation not applied (path ['nowhere'] not found): " + stray,
                 ),
             ],
         )
@@ -5367,7 +5366,9 @@ class ClineTests(ParserBase):
             reason = str(e)
         else:
             raise AssertionError("cut record parses")
-        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, cut[start:]))
+        self.assertEqual(
+            rows[-1].text, "parser: unparseable record 7 (%s): %s" % (reason, cut[start:])
+        )
         sdk = self.home / (self.SDK + ".messages.json")
         data = sdk.read_text(encoding="utf-8")
         sdk.write_text(data[: data.index('"id": "m3"') - 2], encoding="utf-8")
@@ -5552,7 +5553,7 @@ class RooCodeTests(ParserBase):
             [(r.turn_type, r.source_line, r.text) for r in rows],
             [
                 ("user", 1, "rename the helper"),
-                ("system", 2, 'parser: unparseable line (%s): "ye' % reason),
+                ("system", 2, 'parser: unparseable record 2 (%s): "ye' % reason),
             ],
         )
         path.write_text('{"version": 1}', encoding="utf-8")
@@ -6385,6 +6386,7 @@ class LittleCoderTests(ParserBase):
         # The cut record is carried from its first character to the end.
         cut = '"now run li'
         self.assertEqual(rows[-1].source_line, 2)
+        self.assertTrue(rows[-1].text.startswith("parser: unparseable record 2 ("), rows[-1].text)
         self.assertTrue(rows[-1].text.endswith("): " + cut), rows[-1].text)
 
 
@@ -7842,7 +7844,7 @@ class OpenClawTests(ParserBase):
             (rows[-1].source_line, rows[-1].text),
             (
                 rowid,
-                "parser: unparseable line (archive %s line %d: %s): %s"
+                "parser: archive %s line %d: unparseable line (%s): %s"
                 % (name, line, reason, self.BAD_LINE),
             ),
         )

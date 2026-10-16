@@ -123,7 +123,7 @@ def read_input_history(path: Path, errors: list | None = None) -> list[tuple[int
                 out.append([n, "", []])
             out[-1][2].append(line[1:])
         elif line.strip() and errors is not None:
-            errors.append((n, "not a FileHistory line", line))
+            errors.append((n, "unparseable line (not a FileHistory line)", line))
     return [(e[0], e[1], "\n".join(e[2])) for e in out]
 
 
@@ -325,7 +325,13 @@ class AiderParser(Parser):
             elif block is not None:
                 block["lines"].append(line)
             elif line.strip():
-                errors.append((n, "text before the first TO LLM / LLM RESPONSE marker", line))
+                errors.append(
+                    (
+                        n,
+                        "unparseable line (text before the first TO LLM / LLM RESPONSE marker)",
+                        line,
+                    )
+                )
         yield from emit(block)
         yield from error_rows(self, artifact, errors)
 

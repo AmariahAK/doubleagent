@@ -711,11 +711,14 @@ line cut off mid-write, is reported as its own `system` row whose
 decoder's message and `<line>` is the whole line as read (decoded as
 UTF-8 with undecodable bytes replaced, less its line terminator), with
 nothing repaired, extracted or shortened. The rest of the file is still
-read. An error that concerns the whole file rather than one line (the
-file cannot be read, is not a JSON array, or ends inside an array) is
-one `system` row `parser: <message>`, such as
-`parser: unterminated JSON array`, with the line number when the error
-has one and `0` otherwise.
+read. Readers of JSON arrays say `unparseable record <N> (<reason>)`, with
+the record's text from its first character to the end of the file, and a
+line that decodes but cannot be applied names what failed, as VS Code's
+`parser: mutation not applied (<reason>): <line>` does. An error that
+concerns the whole file rather than one line (the file cannot be read, is
+not a JSON array, or ends inside an array) is one `system` row
+`parser: <message>`, such as `parser: unterminated JSON array`, with the
+line number when the error has one and `0` otherwise.
 
 Antigravity's permission state is also typed `system`. A grant recorded on
 a step is `permission grant: action=<action> target=<target>

@@ -224,7 +224,7 @@ def _decode_line(n: int, raw: bytes, errors: list) -> dict | None:
     try:
         rec = json.loads(stripped.decode("utf-8", errors="replace"))
     except ValueError as e:
-        errors.append((n, str(e), line_text(raw)))
+        errors.append((n, "unparseable line (%s)" % e, line_text(raw)))
         return None
     return rec if isinstance(rec, dict) else None
 
