@@ -9,10 +9,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-15
+
+### Added
+
+- A `copilot-cli` parser for GitHub Copilot CLI. It reads each session's
+  event log `.copilot/session-state/<id>/events.jsonl`: prompts, replies,
+  tool calls and results joined on `toolCallId`, the system prompt, the
+  runtime's utility-model calls, `model:` rows from `session.model_change`,
+  and `permission request:`, `permission decision:` and `permission mode:`
+  rows beside the call they govern ([#50]).
+- The parser reads `.copilot/session-state/<id>/workspace.yaml`: a
+  `session name:` row and a `session metadata:` row (user-named, forks,
+  compactions) at the session's creation time; its `cwd` is the project
+  path of rows that record none ([#50]).
+- The parser reads `.copilot/session-store.db` (SQLite with WAL sidecars)
+  as a secondary source with a one-hour window, since a turn is stamped
+  when it ends: the prompt and final reply of each turn, the session name,
+  and `file changed:`, `reference:` and `checkpoint` rows, so turns a
+  `/rewind` removed from the log, or a deleted session's, are kept ([#50]).
+- The parser reads each session's
+  `rewind-file-snapshots/index.json` as a secondary source: the prompt of
+  each snapshot and a `rewind snapshot:` row naming the files it saved
+  ([#50]).
+- The parser reads the prompt history `.copilot/command-history-state.json`
+  as a secondary source: one `user` row per prompt with no timestamp,
+  session or project, matched on text alone ([#50]).
+- The parser reads the standing approvals in
+  `.copilot/permissions-config.json` (`tool_approvals` and
+  `allowed_directories` per location) and the `allowedUrls` and
+  `deniedUrls` of `.copilot/settings.json`: one `permission setting:` row
+  per entry at the file's modification time ([#50]).
+- The parser reads the sign-in line of `.copilot/logs/process-*.log` as a
+  `signed in: <host> as <login>` row, and takes the project path of
+  database and snapshot rows that record none from
+  `.copilot/sidebar-sessions-state/*.json` ([#50]).
+
 ### Fixed
 
-- Codex and Open Interpreter history files now report malformed JSONL rows
-  in a `system` row while preserving valid prompts ([#125]).
+- The Codex and Open Interpreter `history.jsonl` readers report unparseable
+  lines as one `system` row, `parser: N unparseable line(s), first at line M`,
+  and still yield the valid prompts before and after them ([#125]).
 
 ## [0.13.0] - 2026-10-15
 
@@ -956,7 +993,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--summary-length` (default 400), `--include-thinking` and `--agent`;
   `detect --json` and `--files`; `catalog --agents`.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.13.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.14.0...HEAD
+[0.14.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.13.0...analyzer-v0.14.0
 [0.13.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.12.0...analyzer-v0.13.0
 [0.12.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.11.0...analyzer-v0.12.0
 [0.11.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.10.0...analyzer-v0.11.0
@@ -973,8 +1011,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
-[#122]: https://github.com/seanthegeek/doubleagent/issues/122
 [#125]: https://github.com/seanthegeek/doubleagent/issues/125
+[#122]: https://github.com/seanthegeek/doubleagent/issues/122
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121
 [#119]: https://github.com/seanthegeek/doubleagent/issues/119
 [#118]: https://github.com/seanthegeek/doubleagent/issues/118
@@ -999,6 +1037,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [#75]: https://github.com/seanthegeek/doubleagent/issues/75
 [#73]: https://github.com/seanthegeek/doubleagent/issues/73
 [#64]: https://github.com/seanthegeek/doubleagent/issues/64
+[#50]: https://github.com/seanthegeek/doubleagent/issues/50
 [#48]: https://github.com/seanthegeek/doubleagent/issues/48
 [#47]: https://github.com/seanthegeek/doubleagent/issues/47
 [#45]: https://github.com/seanthegeek/doubleagent/issues/45

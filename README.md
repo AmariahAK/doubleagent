@@ -52,8 +52,8 @@ CLI, Antigravity (CLI and desktop app), Qwen Code, Amazon Q CLI (the
 (including Copilot Chat), Cline, Roo Code, Kilo Code, Continue, Aider,
 OpenCode, Crush, Goose, Zed, Tabby, OpenHands, ShellGPT, pi, little-coder,
 Letta, Hermes, Agent Zero, Open Interpreter, OpenClaw, nanobot, Sourcegraph
-Cody, Twinny, PearAI, Muse Code and Ollama. Every other agent in the catalog
-(ChatGPT Desktop, Copilot CLI and the Copilot editor token store, Cursor,
+Cody, Twinny, PearAI, Muse Code, Ollama and Copilot CLI. Every other agent
+in the catalog (ChatGPT Desktop, the Copilot editor token store, Cursor,
 Windsurf, Amp, Factory Droid, Augment, Local Deep Research, and the agent
 frameworks and platforms) is detected and reported but not yet parsed.
 Parsing never happens on the host, so the analyzer is free to carry its own

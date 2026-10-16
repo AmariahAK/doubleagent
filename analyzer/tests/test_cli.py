@@ -50,14 +50,14 @@ class AgentsSummaryTests(unittest.TestCase):
             + "\n",
         )
 
-    def copilot_state(self) -> None:
-        self.write(".copilot/config.json", "{}")
+    def cursor_state(self) -> None:
+        self.write(".cursor/mcp.json", "{}")
 
     def test_text(self):
         summary = cli.agents_summary
         self.assertEqual(
-            summary(True, ["claude-code", "antigravity"], ["copilot-cli", "copilot-cli"], []),
-            "parsed: antigravity, claude-code; detected but not parsed: copilot-cli",
+            summary(True, ["claude-code", "antigravity"], ["cursor", "cursor"], []),
+            "parsed: antigravity, claude-code; detected but not parsed: cursor",
         )
         self.assertEqual(
             summary(True, ["claude-code"], [], []),
@@ -75,12 +75,12 @@ class AgentsSummaryTests(unittest.TestCase):
 
     def test_both_lists(self):
         self.claude_history()
-        self.copilot_state()
+        self.cursor_state()
         rc, out = run_timeline(self.tmp / "home", self.tmp / "out")
         self.assertEqual(rc, 0, out)
         self.assertEqual(
             agents_line(out),
-            "agents:    parsed: claude-code; detected but not parsed: copilot-cli",
+            "agents:    parsed: claude-code; detected but not parsed: cursor",
         )
 
     def test_nothing_unparsed(self):
@@ -94,12 +94,12 @@ class AgentsSummaryTests(unittest.TestCase):
         self.assertNotIn("only none", out)
 
     def test_nothing_parsed(self):
-        self.copilot_state()
+        self.cursor_state()
         rc, out = run_timeline(self.tmp / "home", self.tmp / "out")
         self.assertEqual(rc, 1, out)  # no rows
         self.assertEqual(
             agents_line(out),
-            "agents:    parsed: none; detected but not parsed: copilot-cli",
+            "agents:    parsed: none; detected but not parsed: cursor",
         )
 
     def test_parser_found_no_rows(self):
@@ -107,12 +107,12 @@ class AgentsSummaryTests(unittest.TestCase):
         # an empty summaries database and an empty conversations directory.
         self.write(".gemini/antigravity-cli/conversation_summaries.db", "")
         (self.home / ".gemini/antigravity-cli/conversations").mkdir()
-        self.copilot_state()
+        self.cursor_state()
         rc, out = run_timeline(self.tmp / "home", self.tmp / "out")
         self.assertEqual(rc, 1, out)  # no rows
         self.assertEqual(
             agents_line(out),
-            "agents:    parsed: none; detected but not parsed: copilot-cli;"
+            "agents:    parsed: none; detected but not parsed: cursor;"
             " parser found no rows: antigravity",
         )
         self.assertNotIn("none were found", out)
@@ -192,15 +192,15 @@ class InventoryJsonTests(unittest.TestCase):
     def test_full_fixture(self):
         home = self.tmp / "home" / "alice"
         build_home(home)
-        (home / ".copilot").mkdir(exist_ok=True)
-        (home / ".copilot/config.json").write_text("{}", encoding="utf-8")
+        (home / ".cursor").mkdir(exist_ok=True)
+        (home / ".cursor/mcp.json").write_text("{}", encoding="utf-8")
         rc, out, path = self.timeline(self.tmp / "home")
         self.assertEqual(rc, 0, out)
         inv = self.check_totals(path)
         self.assertIn("/srv/proj", inv["projects"])
         self.assertIn("claude-code", inv["projects"]["/srv/proj"]["agents"])
         self.assertIn("claude-code", inv["parsed"])
-        self.assertIn("copilot-cli", inv["detected_not_parsed"])
+        self.assertIn("cursor", inv["detected_not_parsed"])
         self.assertEqual(inv["detected_not_parsed"], sorted(inv["detected_not_parsed"]))
         self.assertEqual(list(inv["projects"]), sorted(inv["projects"]))
 
@@ -552,6 +552,13 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # session-start row are kept.
 # The Roo CLI cli-history.json records no time or task and matches the task
 # rows on text alone; "/new" and "summarise the open issues" are kept.
+# Copilot CLI: the rewind snapshot's prompt pairs with the log's (the
+# nearer time) and the session-store.db turn's prompt collapses onto that
+# copy; the turn's reply pairs with the log's within the one-hour window;
+# the sessions row's "session name:" with workspace.yaml's; the history's
+# "fix the failing test" with the log's prompt and its "and run lint" with
+# the database turn, the only other copy of the prompt the cut log lost.
+# The turn "and run lint", "file changed:" and "rewind snapshot:" are kept.
 # Tabby: the event log's completion prompt and choice (user_events copies
 # them), the later backup's thread 7 (the live database has it) and the
 # second backup copy of ephemeral thread 3.
@@ -562,6 +569,7 @@ FIXTURE_DEDUPLICATED = {
     "claude-desktop": 3,  # audit.jsonl "thanks" and model row, record initialMessage
     "cline": 2,  # session-search.db and user_input_history.jsonl "fix tests"
     "codex-cli": 11,  # history.jsonl 1, thread_history_1.sqlite 8, state_5.sqlite 2
+    "copilot-cli": 6,  # session-store.db 3, rewind snapshot 1, command history 2
     "gemini-cli": 1,  # "list files in src"
     "goose": 1,  # "run the tests", no timestamp
     "hermes": 11,  # snapshot copies and the divert's screenshot prompt
@@ -625,6 +633,7 @@ class DeduplicationTimelineTests(unittest.TestCase):
             ("antigravity", "now the tests"),
             ("gemini-cli", "delete everything in /srv/proj"),
             ("muse-code", "fix the failing test"),
+            ("copilot-cli", "and run lint"),
         ):
             self.assertIn(kept, texts)
 

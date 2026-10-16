@@ -12,6 +12,7 @@ from .cline import ClineParser
 from .codex import CodexParser
 from .cody import CodyParser
 from .continue_dev import ContinueParser
+from .copilot_cli import CopilotCliParser
 from .crush import CrushParser
 from .gemini_cli import GeminiCliParser
 from .goose import GooseParser
@@ -71,6 +72,7 @@ ALL: list[Parser] = [
     PearAiParser(),
     MuseCodeParser(),
     OllamaParser(),
+    CopilotCliParser(),
 ]
 
 
