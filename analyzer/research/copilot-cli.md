@@ -383,8 +383,9 @@ of the turn (4 to 293 seconds after the prompt observed, and a turn with
 many tools can run longer), and the snapshot time was not measured against
 the prompt's, so both get the one-hour window `letta` uses.
 
-`events.jsonl` is read with `iter_jsonl`; a bad line is one `system` row
-and reading continues. Rows follow the log order, timestamped by the
+`events.jsonl` is read with `iter_jsonl`; each bad line is its own
+`system` row, `parser: unparseable line (<reason>): <line>` with the line
+in full (issue 136), and reading continues. Rows follow the log order, timestamped by the
 line's `timestamp`.
 
 | Record | `turn_type` and text |

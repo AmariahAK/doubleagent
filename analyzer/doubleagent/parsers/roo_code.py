@@ -34,8 +34,10 @@ the fields. Roots: the extension's
   row per string entry in file order, `source_line` the 1-based entry
   index; non-string and blank entries are skipped as the CLI's own
   `loadHistory` skips them. A file cut mid-write yields the entries before
-  the cut and one `system` row; a file with no `entries` array is one
-  `system` row. The file records no time, no task id
+  the cut and one `system` row for the cut (issue 136): the entry that
+  does not decode, with the text from its first character to the end of
+  the file, or `parser: array cut off after record N` when the cut falls
+  between entries; a file with no `entries` array is one `system` row. The file records no time, no task id
   and no workspace, so the rows have an empty `timestamp_utc`,
   `session_id` and `project_path`. A secondary source (`dedup.py`): each
   row matches a task's `user` row (the prompt's `say: "text"` or a
@@ -54,8 +56,8 @@ from pathlib import Path
 
 from ..inputs import Artifact
 from ..model import Row
-from .base import Options
-from .cline_legacy import LegacyTaskParser, error_row, iter_array_at, load_json, read_text
+from .base import Options, error_rows
+from .cline_legacy import LegacyTaskParser, iter_array_at, load_json, read_text
 
 ROOT = r"(?:(?:.*/)?User/globalStorage/rooveterinaryinc\.roo-cline|\.vscode-mock/global-storage)"
 ITEM_RX = re.compile(r"^%s/tasks/[^/]+/history_item\.json$" % ROOT, re.I)
@@ -102,10 +104,10 @@ class RooCodeParser(LegacyTaskParser):
             if isinstance(item, dict):
                 yield self.history_row(artifact, item, 1, opts)
             else:
-                yield error_row(
+                yield from error_rows(
                     self,
                     artifact,
-                    [(0, "history_item.json is not a JSON object")],
+                    [(0, "history_item.json is not a JSON object", "")],
                     artifact.disk_path.parent.name,
                 )
         elif INDEX_RX.match(artifact.rel):
@@ -126,7 +128,7 @@ class RooCodeParser(LegacyTaskParser):
             if m and s is not None:
                 entries = iter_array_at(s, m.end(), errors)
             else:
-                errors.append((0, "cli-history.json has no entries array"))
+                errors.append((0, "cli-history.json has no entries array", ""))
                 entries = iter(())
         for n, entry in entries:
             if not isinstance(entry, str) or not entry.strip():
@@ -137,14 +139,13 @@ class RooCodeParser(LegacyTaskParser):
             row.text = entry
             yield row
         if data is None and not errors:
-            errors.append((0, "cli-history.json unparseable after its entries array"))
-        if errors:
-            yield error_row(self, artifact, errors)
+            errors.append((0, "cli-history.json unparseable after its entries array", ""))
+        yield from error_rows(self, artifact, errors)
 
     def _parse_index(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         index = load_json(artifact.disk_path)
         if not isinstance(index, dict) or not isinstance(index.get("entries"), list):
-            yield error_row(self, artifact, [(0, "_index.json has no entries array")])
+            yield from error_rows(self, artifact, [(0, "_index.json has no entries array", "")])
             return
         tasks = artifact.disk_path.parent
         for n, e in enumerate(index["entries"], 1):
