@@ -45,6 +45,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   database and snapshot rows that record none from
   `.copilot/sidebar-sessions-state/*.json` ([#50]).
 
+### Changed
+
+- Each line a parser cannot decode is now its own `system` row carrying
+  the line in full, `parser: unparseable line (<reason>): <line>`, in
+  place of the one row per file `parser: N unparseable line(s), first at
+  line M`; a JSON array record that does not decode is likewise
+  `parser: unparseable record N (<reason>): <text>`, with the record's
+  text to the end of the file, and a whole-file error is one row
+  `parser: <message>`. This changes the timeline row text interface
+  ([#136]).
+
 ### Fixed
 
 - The Claude Code and Antigravity `history.jsonl` readers report
@@ -1012,6 +1023,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#136]: https://github.com/seanthegeek/doubleagent/issues/136
 [#134]: https://github.com/seanthegeek/doubleagent/issues/134
 [#122]: https://github.com/seanthegeek/doubleagent/issues/122
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121
