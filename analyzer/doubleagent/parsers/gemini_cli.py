@@ -89,6 +89,7 @@ from .base import (
     Options,
     Parser,
     compact_json,
+    error_rows,
     file_mtime,
     iter_jsonl,
     setting_value,
@@ -479,16 +480,7 @@ class GeminiCliParser(Parser):
             )
         for line, ts, sid, text in events:
             yield self._system(artifact, line, ts, sid, project, text, opts)
-        if errors:
-            yield self._system(
-                artifact,
-                errors[0][0],
-                "",
-                session_id,
-                project,
-                "parser: %d unparseable line(s), first at line %d" % (len(errors), errors[0][0]),
-                opts,
-            )
+        yield from error_rows(self, artifact, errors, session_id, project)
 
     @staticmethod
     def _apply_patch(messages: OrderedDict[str, list], patch: dict) -> None:
@@ -524,9 +516,9 @@ class GeminiCliParser(Parser):
             with open(artifact.disk_path, "rb") as fh:
                 rec = json.loads(fh.read().decode("utf-8", errors="replace"))
         except ValueError as e:
-            return [], [(1, str(e))]
+            return [], [(1, "unparseable session file: %s" % e, "")]
         if not isinstance(rec, dict) or not isinstance(rec.get("sessionId"), str):
-            return [], [(1, "not a ConversationRecord")]
+            return [], [(1, "not a ConversationRecord", "")]
         return [(1, rec)], []
 
     def _message_rows(

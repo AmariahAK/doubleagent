@@ -709,7 +709,9 @@ differs from the session's last one is preceded by
 `model: <old> -> <new>` with `model` the new id.
 `timestamp_utc` is the line's `timestamp` when present, else
 `_audit_timestamp`; `model` is `message.model`. A line that does not
-parse is one `system` row and reading continues. `session_id` is the
+parse becomes its own `system` row after the file's other rows, carrying
+the line in full (`parser: unparseable line (<decoder message>): <line>`,
+issue 136), and reading continues. `session_id` is the
 record's `cliSessionId`, else the line's `session_id`; `project_path` is
 the record's `userSelectedFolders[0]`, else the first `init` line's
 `cwd`, else the record's `cwd` ([section 4](#4-joins-and-timestamps));

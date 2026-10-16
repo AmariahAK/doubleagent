@@ -180,7 +180,16 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, file_mtime, iter_jsonl, setting_value, text_of
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    error_rows,
+    file_mtime,
+    iter_jsonl,
+    setting_value,
+    text_of,
+)
 
 SESSION_RX = re.compile(r"^\.claude(?:-[^/]+)?/projects/[^/]+/.*\.jsonl$")
 SUBAGENT_RX = re.compile(r"/subagents/(?:[^/]+/)*agent-([^/]+)\.jsonl$")
@@ -375,15 +384,7 @@ class ClaudeCodeParser(Parser):
             row.turn_type = "user"
             row.text = compact(rec.get("display"))
             yield row
-        if errors:
-            row = self.base_row(artifact)
-            row.turn_type = "system"
-            row.source_line = errors[0][0]
-            row.text = "parser: %d unparseable line(s), first at line %d" % (
-                len(errors),
-                errors[0][0],
-            )
-            yield row
+        yield from error_rows(self, artifact, errors)
 
     def _parse_registry(self, artifact: Artifact) -> Iterator[Row]:
         row = self.base_row(artifact)
@@ -631,16 +632,7 @@ class ClaudeCodeParser(Parser):
                     yield state_row("prompt queued: delivered at line %d" % at)
                     continue
                 yield state_row("queue %s: %s" % (rec.get("operation"), content))
-        if errors:
-            row = self.base_row(artifact)
-            row.session_id = session_id
-            row.turn_type = "system"
-            row.source_line = errors[0][0]
-            row.text = "parser: %d unparseable line(s), first at line %d" % (
-                len(errors),
-                errors[0][0],
-            )
-            yield row
+        yield from error_rows(self, artifact, errors, session_id)
 
     @staticmethod
     def _model_row(rec, base, models: dict, session_id: str) -> Row | None:

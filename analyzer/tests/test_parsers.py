@@ -123,6 +123,23 @@ class ClaudeCodeTests(ParserBase):
     REL = ".claude/projects/-srv-proj/%s.jsonl" % CLAUDE_SESSION
     SUB = ".claude/projects/-srv-proj/%s/subagents/agent-abc.jsonl" % CLAUDE_SESSION
     FORK = ".claude/projects/-srv-proj/%s/subagents/agent-fork1.jsonl" % CLAUDE_SESSION
+    # A user line written after the bad line (issue 136).
+    AFTER_CUT: ClassVar[dict] = {
+        "type": "user",
+        "sessionId": CLAUDE_SESSION,
+        "timestamp": "2026-10-01T10:30:00.000Z",
+        "message": {"role": "user", "content": "after the cut"},
+    }
+
+    @staticmethod
+    def unparseable(line: str = '{"type": "user", "truncated": tr') -> str:
+        """The row text a bad line yields (issue 136); the reason is what
+        json.loads says on the running Python."""
+        try:
+            json.loads(line)
+        except ValueError as e:
+            return "parser: unparseable line (%s): %s" % (e, line)
+        raise AssertionError("the bad line parsed")
 
     # (source_line, turn_type, text) for every row of the fixture session;
     # an empty text is checked in its own test.
@@ -297,7 +314,7 @@ class ClaudeCodeTests(ParserBase):
             [
                 ("user", 1, "keep before"),
                 ("user", 3, "keep after"),
-                ("system", 2, "parser: 1 unparseable line(s), first at line 2"),
+                ("system", 2, self.unparseable('{"display":')),
             ],
         )
 
@@ -382,11 +399,22 @@ class ClaudeCodeTests(ParserBase):
         self.assertEqual(tool_summary("Unknown", "raw"), '"raw"')
 
     def test_truncated_last_line_is_reported_not_fatal(self):
+        # Issue 136: the bad line is its own row, in full; the rows before
+        # it and a line written after it survive.
         write_bad_line(self.home / self.REL)
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(self.AFTER_CUT) + "\n")
         rows = self.rows_for(ClaudeCodeParser(), self.REL)
-        self.assertEqual(len(rows), len(self.EXPECTED) + 1)
-        self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 35)
+        self.assertEqual(len(rows), len(self.EXPECTED) + 2)
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows[: len(self.EXPECTED)]],
+            [(n, t) for n, t, _ in self.EXPECTED],
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[len(self.EXPECTED) :]],
+            [(36, "user", "after the cut"), (35, "system", self.unparseable())],
+        )
+        self.assertEqual(rows[-1].session_id, CLAUDE_SESSION)
 
 
 class ClaudeCode295Tests(ParserBase):
@@ -603,10 +631,21 @@ class ClaudeCode295Tests(ParserBase):
             )
 
     def test_truncated_line_is_reported_not_fatal(self):
+        # Issue 136: the bad line is its own row, in full; the rows before
+        # it and a line written after it survive.
         write_bad_line(self.home / self.REL)
+        after = dict(ClaudeCodeTests.AFTER_CUT, sessionId=CLAUDE_295_SESSION)
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(ClaudeCodeParser(), self.REL)
-        self.assertEqual(len(rows), len(self.EXPECTED) + 1)
-        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 11")
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[: len(self.EXPECTED)]],
+            self.EXPECTED,
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[len(self.EXPECTED) :]],
+            [(12, "user", "after the cut"), (11, "system", ClaudeCodeTests.unparseable())],
+        )
 
 
 class ClaudeCode296Tests(ParserBase):
@@ -705,10 +744,21 @@ class ClaudeCode296Tests(ParserBase):
         self.assertEqual(len(rows), len(self.EXPECTED))
 
     def test_truncated_line_is_reported_not_fatal(self):
+        # Issue 136: the bad line is its own row, in full; the rows before
+        # it and a line written after it survive.
         write_bad_line(self.home / self.REL)
+        after = dict(ClaudeCodeTests.AFTER_CUT, sessionId=CLAUDE_296_SESSION)
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(ClaudeCodeParser(), self.REL)
-        self.assertEqual(len(rows), len(self.EXPECTED) + 1)
-        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 11")
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[: len(self.EXPECTED)]],
+            self.EXPECTED,
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[len(self.EXPECTED) :]],
+            [(12, "user", "after the cut"), (11, "system", ClaudeCodeTests.unparseable())],
+        )
 
     def test_user_settings_rows(self):
         rows = self.rows_for(ClaudeCodeParser(), ".claude/settings.json")
@@ -1876,7 +1926,7 @@ class AntigravityTests(ParserBase):
             [
                 ("user", 1, "keep before"),
                 ("user", 3, "keep after"),
-                ("system", 2, "parser: 1 unparseable line(s), first at line 2"),
+                ("system", 2, ClaudeCodeTests.unparseable('{"display":')),
             ],
         )
 
@@ -2382,14 +2432,34 @@ class AntigravityBrainTests(ParserBase):
                     self.assertTrue(0 <= gap <= 2000, (r.text, gap))
 
     def test_truncated_line(self):
+        # Issue 136: the bad line is its own row, in full; the rows before
+        # it and a line written after it survive.
+        before = self.rows_for(AntigravityParser(), self.ORPHAN0)
         write_bad_line(self.home / self.ORPHAN1)
+        after = {
+            "step_index": 4,
+            "source": "SYSTEM",
+            "type": "SYSTEM_MESSAGE",
+            "status": "DONE",
+            "created_at": "2026-10-01T10:30:04Z",
+            "content": "after the cut",
+        }
+        with open(self.home / self.ORPHAN1, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(AntigravityParser(), self.ORPHAN0)
         self.assertEqual(rows[0].text, "summarise the deleted project")
         self.assertEqual(
-            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line, rows[-1].text),
-            ("system", AGY_ORPHAN, 5, "parser: 1 unparseable line(s), first at line 5"),
+            [(r.source_line, r.turn_type, r.text) for r in rows[: len(before)]],
+            [(r.source_line, r.turn_type, r.text) for r in before],
         )
-        self.assertEqual(rows[-2].text, "system_message: background task finished")
+        self.assertEqual(before[-1].text, "system_message: background task finished")
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.source_line, r.text) for r in rows[len(before) :]],
+            [
+                ("system", AGY_ORPHAN, 6, "system_message: after the cut"),
+                ("system", AGY_ORPHAN, 5, ClaudeCodeTests.unparseable()),
+            ],
+        )
 
     def test_not_wanted(self):
         p = AntigravityParser()
@@ -2724,21 +2794,65 @@ class QwenCodeTests(ParserBase):
         )
 
     def test_truncated_last_line_is_reported_not_fatal(self):
+        # Issue 136: the bad line is its own row, in full; the rows before
+        # it and a line written after it survive.
+        from fixtures import qwen_session_records
+
+        before = self.rows_for(QwenCodeParser(), self.REL)
+        self.assertEqual(len(before), 13)
         write_bad_line(self.home / self.REL)
+        after: dict = dict(
+            qwen_session_records()[1],
+            uuid="q9",
+            message={"role": "user", "parts": [{"text": "after the cut"}]},
+            systemPayload={"displayText": "after the cut"},
+        )
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(QwenCodeParser(), self.REL)
-        self.assertEqual(len(rows), 14)
-        self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual((rows[-1].source_line, rows[-1].session_id), (10, QWEN_SESSION))
+        self.assertEqual(len(rows), 15)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[:13]],
+            [(r.source_line, r.turn_type, r.text) for r in before],
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.session_id, r.text) for r in rows[13:]],
+            [
+                (11, "user", QWEN_SESSION, "after the cut"),
+                (10, "system", QWEN_SESSION, ClaudeCodeTests.unparseable()),
+            ],
+        )
 
     def test_truncated_logs_keep_earlier_entries(self):
+        # Issue 136: the broken element is carried from where its decode
+        # started to the end of the file; the entries before it survive.
         path = self.home / self.LOGS
         data = path.read_text(encoding="utf-8")
-        path.write_text(data[: data.index('"model_switch"')], encoding="utf-8")
+        cut = data[: data.index('"model_switch"')]
+        path.write_text(cut, encoding="utf-8")
+        start = cut.rindex("{")
+        try:
+            json.JSONDecoder().raw_decode(cut, start)
+        except ValueError as e:
+            reason = str(e)
+        else:
+            self.fail("the cut element parsed")
         rows = self.rows_for(QwenCodeParser(), self.LOGS)
-        self.assertEqual([r.turn_type for r in rows], ["user", "system"])
-        self.assertEqual(rows[0].text, "run the tests")
-        self.assertIn("1 unparseable entry", rows[1].text)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (1, "user", "run the tests"),
+                (2, "system", "parser: unparseable line (%s): %s" % (reason, cut[start:])),
+            ],
+        )
+
+    def test_logs_not_an_array(self):
+        (self.home / self.LOGS).write_text('{"type": "user"}', encoding="utf-8")
+        rows = self.rows_for(QwenCodeParser(), self.LOGS)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [(0, "system", "parser: not a JSON array")],
+        )
 
     def test_args_summary(self):
         self.assertEqual(args_summary({"command": "ls"}), "ls")
@@ -3167,15 +3281,57 @@ class GeminiCliTests(ParserBase):
             self.assertFalse(p.wants(art), rel)
 
     def test_truncated_last_line_is_reported_not_fatal(self):
+        # Issue 136: the bad line is its own row, in full, with the session
+        # and project; the rows before it and a line written after it survive.
+        before = self.rows_for(GeminiCliParser(), self.REL)
+        self.assertEqual(len(before), 18)
         write_bad_line(self.home / self.REL)
+        after = {
+            "id": "msg-u9",
+            "timestamp": "2026-10-01T09:30:00.000Z",
+            "type": "user",
+            "content": [{"text": "after the cut"}],
+        }
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(GeminiCliParser(), self.REL)
-        self.assertEqual(len(rows), 19)
-        self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 16)
-        (self.home / self.LEGACY).write_text('{"sessionId": "x", "messages": [', encoding="utf-8")
+        self.assertEqual(len(rows), 20)
+        added = [r for r in rows if r.source_line == 17]
+        self.assertEqual([(r.turn_type, r.text) for r in added], [("user", "after the cut")])
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[:-1] if r.source_line != 17],
+            [(r.source_line, r.turn_type, r.text) for r in before],
+        )
+        self.assertEqual(
+            (
+                rows[-1].source_line,
+                rows[-1].turn_type,
+                rows[-1].session_id,
+                rows[-1].project_path,
+                rows[-1].text,
+            ),
+            (
+                16,
+                "system",
+                GEMINI_RESUMED,  # the session id in force at the end of the file
+                before[-1].project_path,
+                ClaudeCodeTests.unparseable(),
+            ),
+        )
+        # A legacy whole-file JSON that does not parse has no line to carry.
+        bad = '{"sessionId": "x", "messages": ['
+        (self.home / self.LEGACY).write_text(bad, encoding="utf-8")
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
+        else:
+            self.fail("the legacy file parsed")
         rows = self.rows_for(GeminiCliParser(), self.LEGACY)
-        self.assertEqual(len(rows), 1)
-        self.assertIn("unparseable", rows[0].text)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [(1, "system", "parser: unparseable session file: %s" % reason)],
+        )
 
 
 class CrushTests(ParserBase):
@@ -9394,20 +9550,50 @@ class ClaudeDesktopTests(ParserBase):
         )
 
     def test_truncated_line_is_reported_not_fatal(self):
+        # Issue 136: each bad line is its own row, in full, with the
+        # session and project; the rows before it and a line after survive.
+        before = self.rows_for(ClaudeDesktopParser(), CD_AUDIT_REL)
+        self.assertEqual(len(before), 9)
         write_bad_line(self.home / CD_AUDIT_REL)
+        after = {
+            "type": "user",
+            "session_id": CD_CLI_SESSION,
+            "parent_tool_use_id": None,
+            "client_platform": "desktop_app",
+            "timestamp": "2026-10-01T10:30:00.000Z",
+            "message": {"role": "user", "content": [{"type": "text", "text": "after the cut"}]},
+            "_audit_timestamp": "2026-10-01T10:30:00.003Z",
+        }
+        with open(self.home / CD_AUDIT_REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(ClaudeDesktopParser(), CD_AUDIT_REL)
-        self.assertEqual(len(rows), 10)
-        self.assertEqual(rows[-2].text, "thanks")
+        self.assertEqual(len(rows), 11)
         self.assertEqual(
-            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
-            ("system", CD_CLI_SESSION, 9),
+            [(r.source_line, r.turn_type, r.text) for r in rows[:9]],
+            [(r.source_line, r.turn_type, r.text) for r in before],
         )
-        self.assertIn("1 unparseable line", rows[-1].text)
+        self.assertEqual((rows[9].source_line, rows[9].text), (10, "after the cut"))
+        self.assertEqual(
+            (
+                rows[-1].turn_type,
+                rows[-1].session_id,
+                rows[-1].project_path,
+                rows[-1].source_line,
+                rows[-1].text,
+            ),
+            ("system", CD_CLI_SESSION, before[-1].project_path, 9, ClaudeCodeTests.unparseable()),
+        )
         write_bad_line(self.home / CD_TRANSCRIPT_REL)
         rows = self.rows_for(ClaudeDesktopParser(), CD_TRANSCRIPT_REL)
         self.assertEqual(len(rows), len(ClaudeCodeTests.EXPECTED) + 1)
-        self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 35)
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows[:-1]],
+            [(n, t) for n, t, _ in ClaudeCodeTests.EXPECTED],
+        )
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            ("system", 35, ClaudeCodeTests.unparseable()),
+        )
 
 
 from doubleagent.parsers.copilot_cli import CopilotCliParser, request_target, strip_jsonc
