@@ -38,9 +38,9 @@ The collectors must work in three situations:
 
 The collectors run on the host, with sh and PowerShell 5.1 collectors. The
 analyzer, under `analyzer/`, runs on the analyst's workstation and can be
-installed and used without the collectors; the parser table in
-[`analyzer/docs/parsers.md`](analyzer/docs/parsers.md) lists which agents are parsed, the rest of the
-catalog is detected but not yet parsed. Parsing never happens on the host.
+installed and used without the collectors; the
+[agents table](analyzer/docs/parsers.md#agents) lists every catalog agent
+with its parse status. Parsing never happens on the host.
 
 ## Repository layout
 
@@ -66,7 +66,7 @@ analyzer/
   doubleagent/catalog.txt      verbatim copy of collect-agent-artifacts.sh --list
   research/<agent>.md          how each agent records transcripts; one per agent
   README.md                    analyzer user documentation: quick start, commands, options
-  docs/<topic>.md              detailed analyzer documentation: inputs, parser table,
+  docs/<topic>.md              detailed analyzer documentation: inputs, agents table,
                                output and JSONL schema, filtering, searching, inventory,
                                options, development
   CHANGELOG.md                 analyzer release history, one entry per VERSION
@@ -350,7 +350,8 @@ rules are different from the collectors'.
   readers dropped bad lines silently (issues 125 and 134);
   `ErrorListsReportedTests` in `analyzer/tests/test_errors.py` fails on
   a list a parser fills and never reads again.
-  The parser table's "Validated against" cell names the real installs
+  The "Validated against" cell of the agent's row in the
+  [agents table](analyzer/docs/parsers.md#agents) names the real installs
   (platform, version, date) on which the parser's file paths and record
   shapes were seen, and says "fixture only" for a path that rests on
   source or a bundle alone; section 1 of the research document carries
@@ -484,13 +485,12 @@ and say in the module docstring if the shape has drifted since.
    every file the parser reads line by line, the history file and each
    secondary source as well as the transcript, and checks that the lines
    before and after the bad one are still yielded beside the `parser:` row.
-7. Add the row to the parser table in [`analyzer/docs/parsers.md`](analyzer/docs/parsers.md) in
-   alphabetical order of the agent name, ending its "Validated against"
-   cell with a Markdown link to the research document, written
-   ``see [`research/<agent>.md`](../research/<agent>.md)``; remove the
-   agent's row from the [agents-without-a-parser table](analyzer/docs/parsers.md#agents-without-a-parser)
-   there (a row whose status names an issue; a `none needed` row stays
-   until a real install shows a transcript), also update the
+7. Fill the agent's row in the [agents table](analyzer/docs/parsers.md#agents):
+   set its status to `parsed`, replace its Files cell with the files the
+   parser reads and its "Validated against" cell with the evidence for the
+   parser, and keep its Notes cell's shape: the research links, now with
+   the analyzer research document, the open issue links, and a clause only
+   when something is still unparsed. Also update the
    parsed-agent list in [`analyzer/README.md`](analyzer/README.md) and the [top-level README](README.md),
    bump `VERSION` in `doubleagent/__init__.py` (`pyproject.toml` reads it),
    and run `analyzer/tests/run.sh`.
@@ -565,7 +565,10 @@ find. The validation for every current entry is recorded in the index table in
    tool in [`collectors/docs/coverage.md`](collectors/docs/coverage.md) if it needs
    a note there, and close the matching GitHub issue. If the tool keeps
    transcripts worth parsing, also write `analyzer/research/<agent>.md` and
-   its index row.
+   its index row. Add the agent's row to the
+   [agents table](analyzer/docs/parsers.md#agents) with status `backlog`
+   (parseable records on disk, with a parser issue) or `collected`
+   (nothing to parse, with the reason).
 
 Every catalog entry has been validated against source, a shipped bundle, or
 official documentation. When a real-install check is wanted, run the tool in

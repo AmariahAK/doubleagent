@@ -53,9 +53,10 @@ CLI, Antigravity (CLI and desktop app), Qwen Code, Amazon Q CLI (the
 OpenCode, Crush, Goose, Zed, Tabby, OpenHands, ShellGPT, pi, little-coder,
 Letta, Hermes, Agent Zero, Open Interpreter, OpenClaw, nanobot, Sourcegraph
 Cody, Twinny, PearAI, Muse Code, Ollama and Copilot CLI. Every other agent
-in the catalog is detected and reported but not parsed; the table of
-[agents without a parser](analyzer/docs/parsers.md#agents-without-a-parser)
-tells the parser backlog from the agents with nothing to parse.
+in the catalog is detected and reported but not parsed; the
+[agents table](analyzer/docs/parsers.md#agents) lists every agent with its
+status, which tells the parser backlog from the agents with nothing to
+parse.
 Parsing never happens on the host, so the analyzer is free to carry its own
 requirements. It needs Python 3.10 or later; `pip install ./analyzer`
 installs the `doubleagent` command and the packages in
@@ -65,7 +66,7 @@ OpenClaw's compressed transcript rows.
 
 Usage and options are in [analyzer/README.md](analyzer/README.md); accepted
 inputs, the JSONL schema, recipes for searching large timelines and the
-parser table are in the pages under [analyzer/docs/](analyzer/docs/).
+agents table are in the pages under [analyzer/docs/](analyzer/docs/).
 
 ## License
 

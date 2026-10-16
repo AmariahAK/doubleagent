@@ -735,7 +735,7 @@ it governed. A standing grant from a settings file is
 `timestamp_utc` is the file's modification time, not the time of the
 grant, which no file records, and its `session_id` is empty, so it
 appears in `timeline.jsonl` but in no `sessions.jsonl` record. The
-[`antigravity` row of the parser table](parsers.md#parser-table) lists the
+[`antigravity` row of the agents table](parsers.md#agents) lists the
 files.
 
 Permission state and the model in use are `system` rows too. The

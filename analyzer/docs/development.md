@@ -97,7 +97,7 @@ that tokens, UUIDs, paths, URLs and prompt text do not reach the output.
 
 ## Adding a parser
 
-The full checklist, including the fixture, test class, parser table row,
+The full checklist, including the fixture, test class, agents table row,
 version bump and the lists to update, is "Adding a parser" in
 [AGENTS.md](../../AGENTS.md#adding-a-parser). In short:
 
