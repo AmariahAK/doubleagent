@@ -313,11 +313,14 @@ collected. In `~/.codex` the app places the computer-use app bundle,
 `computer-use/Codex Computer Use.app` (77 MB), which is excluded with
 `.codex/computer-use/*.app`.
 
-## Home directories
+## Finding home directories
 
-Home directories are gathered from several sources, merged, and
-de-duplicated by path. Service accounts with real homes are included,
-because agents run as them too, for example the `ollama` system user.
+The collectors do not copy home directories. They find them, then try
+every catalog entry against each one, and only the files the catalog
+names are collected. The list of homes is gathered from several sources,
+merged, and de-duplicated by path. Service accounts with real homes are
+included, because agents run as them too, for example the `ollama`
+system user.
 
 | | sh collector | PowerShell collector |
 | --- | --- | --- |
