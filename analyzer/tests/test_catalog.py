@@ -69,12 +69,13 @@ if __name__ == "__main__":
 
 
 class NoTranscriptsTests(unittest.TestCase):
-    """The `collected` rows of the agents table in docs/parsers.md and the
+    """The `collected` rows of the table in docs/agents.md and the
     NO_TRANSCRIPTS set the analyzer reports as collected only must agree."""
 
     def collected_rows(self) -> set[str]:
-        text = (REPO / "analyzer" / "docs" / "parsers.md").read_text(encoding="utf-8")
-        table = text.split("\n## Agents\n", 1)[1].split("\n## ", 1)[0]
+        text = (REPO / "docs" / "agents.md").read_text(encoding="utf-8")
+        # The table sits under the page's intro, before its first section.
+        table = text.split("\n## ", 1)[0]
         out = set()
         for line in table.splitlines():
             # A row is | [`agent`](#agent) | status | validated | notes |.

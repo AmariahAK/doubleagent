@@ -58,7 +58,7 @@ OpenCode, Crush, Goose, Zed, Tabby, OpenHands, ShellGPT, pi, little-coder,
 Letta, Hermes, Agent Zero, Open Interpreter, OpenClaw, nanobot, Sourcegraph
 Cody, Twinny, PearAI, Muse Code, Ollama and Copilot CLI. Every other agent
 in the catalog is detected and reported but not parsed; the
-[agents table](analyzer/docs/parsers.md#agents) lists every agent with its
+[agents page](docs/agents.md) lists every agent with its
 status, which tells the parser backlog from the agents with nothing to
 parse.
 Parsing never happens on the host, so the analyzer is free to carry its own
@@ -69,8 +69,8 @@ for Zed threads, zstd-compressed Codex and Open Interpreter rollouts, and
 OpenClaw's compressed transcript rows.
 
 Usage and options are in [analyzer/README.md](analyzer/README.md); accepted
-inputs, the JSONL schema, recipes for searching large timelines and the
-agents table are in the pages under [analyzer/docs/](analyzer/docs/).
+inputs, the JSONL schema, and recipes for searching large timelines are in the pages under
+[analyzer/docs/](analyzer/docs/).
 
 ## License
 

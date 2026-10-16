@@ -111,6 +111,6 @@ version bump and the lists to update, is "Adding a parser" in
    read a file the catalog attributes to another agent sets `reads_agents`.
 4. Add fixture records to `tests/fixtures.py` and a test class to
    `tests/test_parsers.py`. Then change the agent's row in the
-   [agents table of parsers.md](parsers.md#agents) to `parsed`, and move
-   its subsection to [Parser details](parsers.md#parser-details) with the
+   [agents page](../../docs/agents.md) to `parsed`, and move
+   its subsection to [Parser details](../../docs/agents.md#parser-details) with the
    files the parser reads and the evidence it was validated against.

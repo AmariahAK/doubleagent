@@ -1,4 +1,4 @@
-"""Parser registry. Add a parser module here and fill its row in the agents table in docs/parsers.md."""
+"""Parser registry. Add a parser module here and fill its row in the table in docs/agents.md."""
 
 from __future__ import annotations
 
@@ -77,8 +77,9 @@ ALL: list[Parser] = [
 
 
 # Catalog agents whose collected files hold nothing to parse: the `collected`
-# rows of the agents table in docs/parsers.md, which a test keeps equal to
-# this set. The analyzer reports them as "collected only", not as a backlog.
+# rows of the table in docs/agents.md at the repository root, which a test
+# keeps equal to this set. The analyzer reports them as "collected only", not
+# as a backlog.
 NO_TRANSCRIPTS: frozenset[str] = frozenset(
     {
         "camel-ai",  # an OAuth token and config; chat history is under the working directory

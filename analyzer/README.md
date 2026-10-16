@@ -104,9 +104,9 @@ entry), VS Code chat
 OpenCode, Crush, Goose, Zed, Tabby, OpenHands, ShellGPT, pi, little-coder,
 Letta, Hermes, Agent Zero, Open Interpreter, OpenClaw, nanobot, Sourcegraph
 Cody, Twinny, PearAI, Muse Code, Ollama and Copilot CLI;
-[docs/parsers.md](docs/parsers.md) lists the files each one reads and the
-evidence it was validated against. Every other catalog agent is detected
-and reported but not parsed; the [agents table](docs/parsers.md#agents)
+the [agents page](../docs/agents.md) lists the files each one reads and
+the evidence it was validated against. Every other catalog agent is
+detected and reported but not parsed; the [agents page](../docs/agents.md)
 lists every agent with its status, which tells the parser backlog from
 the agents with nothing to parse. Thinking and
 reasoning blocks are left out unless `--include-thinking` is passed.
@@ -116,7 +116,7 @@ reasoning blocks are left out unless `--include-thinking` is passed.
 | Page | Covers |
 | --- | --- |
 | [docs/inputs.md](docs/inputs.md) | Accepted inputs, loose mode, unreadable inputs and `problem:` lines, detection from the bundled catalog |
-| [docs/parsers.md](docs/parsers.md) | Every agent with its status, the files each parser reads, how files are routed to parsers, protobuf and SQLite handling |
+| [docs/parsers.md](docs/parsers.md) | What a parser puts in a row, how files are routed to parsers, protobuf and SQLite handling; every agent's status, the files each parser reads and what it was validated against are on the [agents page](../docs/agents.md) |
 | [docs/output.md](docs/output.md) | `detect` output and `--json` keys, `timeline` files and stdout, the `inventory.json`, `timeline.jsonl` and `sessions.jsonl` schemas |
 | [docs/filtering.md](docs/filtering.md) | `--since`, `--until`, `--keep-undated` and `--match`, the `WHEN` forms and periods |
 | [docs/searching.md](docs/searching.md) | Reading and searching large output with jq, grep, DuckDB, Python and PowerShell |

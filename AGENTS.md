@@ -39,8 +39,8 @@ The collectors must work in three situations:
 The collectors run on the host, with sh and PowerShell 5.1 collectors. The
 analyzer, under `analyzer/`, runs on the analyst's workstation and can be
 installed and used without the collectors; the
-[agents table](analyzer/docs/parsers.md#agents) lists every catalog agent
-with its parse status. Parsing never happens on the host.
+[agents page](docs/agents.md) lists every catalog agent with its parse
+status. Parsing never happens on the host.
 
 ## Repository layout
 
@@ -66,7 +66,7 @@ analyzer/
   doubleagent/catalog.txt      verbatim copy of collect-agent-artifacts.sh --list
   research/<agent>.md          how each agent records transcripts; one per agent
   README.md                    analyzer user documentation: quick start, commands, options
-  docs/<topic>.md              detailed analyzer documentation: inputs, agents table,
+  docs/<topic>.md              detailed analyzer documentation: inputs, parsers,
                                output and JSONL schema, filtering, searching, inventory,
                                options, development
   CHANGELOG.md                 analyzer release history, one entry per VERSION
@@ -76,6 +76,7 @@ analyzer/
                                zstandard, for compressed transcripts)
 lab/                           Docker sandbox for running CLI agents against a scratch
                                home and exporting it for the collector; see lab/README.md
+docs/agents.md                 every catalog agent with its parse status, files and evidence
 tools/check_research_links.py  verifies every citation link in the research documents
                                resolves to its file and line range at the cited commit
 tools/check_doc_links.py       verifies every relative link and heading fragment in the
@@ -357,8 +358,8 @@ rules are different from the collectors'.
   `ErrorListsReportedTests` in `analyzer/tests/test_errors.py` fails on
   a list a parser fills and never reads again.
   The agent's subsection under
-  [Parser details](analyzer/docs/parsers.md#parser-details), linked from
-  its row in the [agents table](analyzer/docs/parsers.md#agents), names
+  [Parser details](docs/agents.md#parser-details), linked from
+  its row in the table of the [agents page](docs/agents.md), names
   the real installs (platform, version, date) on which the parser's file
   paths and record shapes were seen, and says "fixture only" for a path
   that rests on source or a bundle alone, while the row's "Validated
@@ -495,14 +496,14 @@ and say in the module docstring if the shape has drifted since.
    every file the parser reads line by line, the history file and each
    secondary source as well as the transcript, and checks that the lines
    before and after the bad one are still yielded beside the `parser:` row.
-7. Fill the agent's row in the [agents table](analyzer/docs/parsers.md#agents):
+7. Fill the agent's row in the table of the [agents page](docs/agents.md):
    set its status to `parsed`, its "Validated against" cell to the
    evidence class and platforms in a few words, and keep its Notes cell's
    shape: the research links, now with the analyzer research document,
    the open issue links, and a clause of about twelve words only when
    something is still unparsed. Move the agent's subsection from
-   [Collected files](analyzer/docs/parsers.md#collected-files) to
-   [Parser details](analyzer/docs/parsers.md#parser-details), in
+   [Collected files](docs/agents.md#collected-files) to
+   [Parser details](docs/agents.md#parser-details), in
    alphabetical order, and fill it with the files the parser reads
    ("Files read:") and the full evidence for the parser ("Validated
    against:", the platform, version and date of every real install).
@@ -584,11 +585,11 @@ find. The validation for every current entry is recorded in the index table in
    a note there, and close the matching GitHub issue. If the tool keeps
    transcripts worth parsing, also write `analyzer/research/<agent>.md` and
    its index row. Add the agent's row to the
-   [agents table](analyzer/docs/parsers.md#agents) with status `backlog`
+   table of the [agents page](docs/agents.md) with status `backlog`
    (parseable records on disk, with a parser issue) or `collected`
    (nothing to parse, with the reason), its name linked to a new
    subsection under
-   [Collected files](analyzer/docs/parsers.md#collected-files) that lists
+   [Collected files](docs/agents.md#collected-files) that lists
    what the collector gathers; a `collected` row also adds the
    agent to `NO_TRANSCRIPTS` in `analyzer/doubleagent/parsers/__init__.py`,
    which the analyzer reports as `collected only` and a test keeps equal
@@ -1130,7 +1131,7 @@ for a documentation-only change, only markdownlint and
   edited by hand. Adding a parser or a catalog agent is such a change:
   an example that shows the agent under `detected but not parsed`,
   `collected only` or `parser: false` changes with it, and so does the
-  agent's row in the [agents table](analyzer/docs/parsers.md#agents),
+  agent's row in the table of the [agents page](docs/agents.md),
   which also gains a row for every new catalog agent and a link for
   every parser issue filed or closed, in the commit that adds the agent
   or acts on the issue. Grep the documents for the agent name, the key,
@@ -1139,7 +1140,9 @@ for a documentation-only change, only markdownlint and
   Behaviour changes without a README update are incomplete. The [top-level
   README](README.md) is an overview only.
   A new document page is added to the `nav:` tree in `mkdocs/mkdocs.yml`
-  beside its siblings, so it takes its place in the navigation of the
+  beside its siblings (a page that belongs to neither part, such as
+  [`docs/agents.md`](docs/agents.md), goes under `docs/` at the
+  repository root and at the top level of the tree), so it takes its place in the navigation of the
   [documentation site](https://seanthegeek.net/doubleagent/); the site's
   build (`mkdocs build --strict`) fails on a document missing from it.
   Documents carry no front matter: a page's title is its `# Title`.

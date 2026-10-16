@@ -98,6 +98,7 @@ markdown_extensions:
 
 nav:
   - Overview: README.md
+  - Agents: docs/agents.md
   - Collectors:
       - collectors/README.md
       - collectors/docs/options.md

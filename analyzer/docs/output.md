@@ -345,7 +345,7 @@ agents:    none were found
 `parsed` names the agents that produced rows before filtering. `detected
 but not parsed` names the agents in the input that have no parser and
 whose files hold records a parser is wanted for, the `backlog` rows of the
-[agents table](parsers.md#agents) (the agents `detect` shows without a
+[agents page](../../docs/agents.md) (the agents `detect` shows without a
 parser, in either table, so an agent whose only files are in a project
 directory counts). `collected only` names the agents in the input that
 have no parser because their files hold nothing to parse, a token store or
@@ -598,7 +598,7 @@ because no agent of the input is one with nothing to parse. Its keys, in order:
 | `outside_projects.agents.<agent>.turn_types` | object | Keyed by `turn_type`, sorted: this agent's rows of each type, listing only the types that occur. |
 | `deduplicated` | object | Keyed by agent name, sorted: the agents with rows of a secondary source dropped because a primary store or another secondary source records the same event (see [Secondary sources](#secondary-sources)), the counts of the `dropped:` line. With `--agent`, only the agents selected; not changed by `--since`, `--until` or `--match`, which apply to the rows kept. `{}` when no row was dropped. |
 | `deduplicated.<agent>` | integer | The number of this agent's secondary-source rows dropped, never 0. |
-| `collected_only` | array of strings | The `collected only` group of the `agents:` line: the agents in the input, outside or inside a project directory, that have no parser because their files hold nothing to parse (the `collected` rows of the [agents table](parsers.md#agents)), sorted; `[]` when it is empty. Last key since 0.14.0. |
+| `collected_only` | array of strings | The `collected only` group of the `agents:` line: the agents in the input, outside or inside a project directory, that have no parser because their files hold nothing to parse (the `collected` rows of the [agents page](../../docs/agents.md)), sorted; `[]` when it is empty. Last key since 0.14.0. |
 
 A row is counted under its own `project_path` and a session under the
 session's, the first non-empty `project_path` among its rows, so a session
@@ -749,7 +749,7 @@ it governed. A standing grant from a settings file is
 `timestamp_utc` is the file's modification time, not the time of the
 grant, which no file records, and its `session_id` is empty, so it
 appears in `timeline.jsonl` but in no `sessions.jsonl` record. The
-[`antigravity` row of the agents table](parsers.md#agents) lists the
+[`antigravity` subsection of the agents page](../../docs/agents.md#antigravity) lists the
 files.
 
 Permission state and the model in use are `system` rows too. The
