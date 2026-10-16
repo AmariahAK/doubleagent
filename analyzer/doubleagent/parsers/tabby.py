@@ -87,7 +87,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl
+from .base import Options, Parser, compact_json, error_rows, iter_jsonl
 
 DB_RX = re.compile(r"^\.tabby/ee/(?:dev-)?db\.sqlite$")
 BACKUP_RX = re.compile(r"^\.tabby/ee/(?:dev-)?db\.backup-[^/]+\.sqlite$")
@@ -369,13 +369,7 @@ class TabbyParser(Parser):
                 )
                 continue
             yield from self._event_rows(artifact, n, to_utc(rec.get("ts")), owner, event, opts)
-        if errors:
-            yield self._row(
-                artifact,
-                errors[0][0],
-                text="parser: %d unparseable line(s), first at line %d"
-                % (len(errors), errors[0][0]),
-            )
+        yield from error_rows(self, artifact, errors)
 
     # -- one Event, from either store -----------------------------------------------------
     def _event_rows(

@@ -121,7 +121,15 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
 from .aider import read_input_history
-from .base import Options, Parser, compact_json, iter_jsonl, text_of, track_change
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    error_rows,
+    iter_jsonl,
+    text_of,
+    track_change,
+)
 from .openclaw import tool_args_text
 
 STATE = r"\.nanobot(?:-[^/]+)?"
@@ -301,12 +309,7 @@ class NanobotParser(Parser):
                 )
             else:
                 yield row(n, "system", "%s: %s" % (role or "message", text))
-        if errors:
-            yield row(
-                errors[0][0],
-                "system",
-                "parser: %d unparseable line(s), first at line %d" % (len(errors), errors[0][0]),
-            )
+        yield from error_rows(self, artifact, errors, session_id, project)
 
     def _parse_history(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         m = ORIGINAL_MEMORY_RX.match(artifact.original or "")
@@ -323,16 +326,7 @@ class NanobotParser(Parser):
                 "memory history #%s: %s" % (rec.get("cursor", ""), rec.get("content") or ""),
             )
             yield r
-        if errors:
-            r = self.base_row(artifact)
-            r.source_line = errors[0][0]
-            r.project_path = project
-            r.turn_type = "system"
-            r.text = "parser: %d unparseable line(s), first at line %d" % (
-                len(errors),
-                errors[0][0],
-            )
-            yield r
+        yield from error_rows(self, artifact, errors, "", project)
 
     @staticmethod
     def _webui_workspace(artifact: Artifact, session_id: str) -> str:
@@ -384,9 +378,9 @@ class NanobotParser(Parser):
             for event in self._webui_events(rec, opts):
                 yield row(n, sid, rec.get("created_at_ms"), event)
         if errors:
-            n = errors[0][0]
-            text = "parser: %d unparseable line(s), first at line %d" % (len(errors), n)
-            yield row(n, sid, None, ("system", text, "", ""))
+            if sid not in projects:
+                projects[sid] = self._webui_workspace(artifact, sid)
+            yield from error_rows(self, artifact, errors, sid, projects[sid])
 
     @staticmethod
     def _webui_events(rec: dict, opts: Options) -> Iterator[tuple[str, str, str, str]]:
@@ -456,15 +450,7 @@ class NanobotParser(Parser):
             r.turn_type = "user"
             r.text = compact(text)
             yield r
-        if errors:
-            r = self.base_row(artifact)
-            r.source_line = errors[0][0]
-            r.turn_type = "system"
-            r.text = "parser: %d unparseable line(s), first at line %d" % (
-                len(errors),
-                errors[0][0],
-            )
-            yield r
+        yield from error_rows(self, artifact, errors)
 
 
 __all__ = ["NanobotParser", "decode_stem"]

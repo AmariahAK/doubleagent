@@ -3436,9 +3436,24 @@ class GooseTests(ParserBase):
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / GOOSE_LEGACY_REL)
+        with open(self.home / GOOSE_LEGACY_REL, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n" + '{"id": "m9", "role": "user", "created": 1772355700, '
+                '"content": [{"type": "text", "text": "after the cut"}]}' + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(GooseParser(), GOOSE_LEGACY_REL)
-        self.assertEqual([r.turn_type for r in rows], ["system", "user", "system"])
-        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 3")
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows],
+            [(1, "system"), (2, "user"), (4, "user"), (3, "system")],
+        )
+        self.assertEqual((rows[1].text, rows[2].text), ("hello", "after the cut"))
+        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, bad))
         self.assertEqual(rows[-1].session_id, "20260301_090000")
 
     def test_bad_content_json_is_reported_not_fatal(self):
@@ -3629,10 +3644,24 @@ class ContinueTests(ParserBase):
     def test_truncated_dev_data_line(self):
         rel = ".continue/dev_data/0.2.0/chatInteraction.jsonl"
         write_bad_line(self.home / rel)
+        with open(self.home / rel, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n" + '{"sessionId": "0f1e", "timestamp": "2026-10-02T10:00:09.000Z", '
+                '"prompt": "after the cut"}' + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(ContinueParser(), rel)
-        self.assertEqual([r.turn_type for r in rows], ["user", "assistant", "system"])
-        self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 2)
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows],
+            [(1, "user"), (1, "assistant"), (3, "user"), (2, "system")],
+        )
+        self.assertEqual((rows[0].text, rows[2].text), ("rename foo", "after the cut"))
+        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, bad))
 
     def test_load_session_trailing_data(self):
         obj, problem = load_session('{"sessionId": "x", "history": []}\n{"junk"')
@@ -3740,11 +3769,20 @@ class AiderTests(ParserBase):
         self.assertFalse(AiderParser().wants(art))
 
     def test_truncated_line(self):
-        write_bad_line(self.home / ".aider.input.history")
+        path = self.home / ".aider.input.history"
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n# 2026-10-02 13:06:00.000000\n+after the cut\n")
         rows = self.rows_for(AiderParser(), ".aider.input.history")
-        self.assertEqual([r.turn_type for r in rows], ["user", "user", "user", "system"])
-        self.assertIn("1 unparseable line", rows[-1].text)
+        self.assertEqual([r.turn_type for r in rows], ["user", "user", "user", "user", "system"])
+        self.assertEqual(
+            (rows[2].text, rows[3].text), ("delete the migrations folder", "after the cut")
+        )
         self.assertEqual(rows[-1].source_line, 10)
+        self.assertEqual(
+            rows[-1].text,
+            'parser: unparseable line (not a FileHistory line): {"type": "user", "truncated": tr',
+        )
 
     def test_project_artifacts_from_manifest(self):
         """The collector attributes repository files to agent `project` with
@@ -5384,11 +5422,24 @@ class TabbyTests(ParserBase):
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / TABBY_EVENTS_REL)
+        with open(self.home / TABBY_EVENTS_REL, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n"
+                + '{"user": null, "ts": 1759312803000, "event": {"chat_completion": {}}}'
+                + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(TabbyParser(), TABBY_EVENTS_REL)
-        self.assertEqual(len(rows), 6)
+        self.assertEqual(len(rows), 7)
+        self.assertEqual([r.source_line for r in rows[:-1]], [1, 1, 1, 2, 3, 5])
         self.assertEqual(
-            (rows[-1].turn_type, rows[-1].text),
-            ("system", "parser: 1 unparseable line(s), first at line 4"),
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            ("system", 4, "parser: unparseable line (%s): %s" % (reason, bad)),
         )
 
     def test_bad_payload_is_reported_not_fatal(self):
@@ -6427,9 +6478,25 @@ class HermesTests(ParserBase):
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / HERMES_DIVERTED_REL)
+        with open(self.home / HERMES_DIVERTED_REL, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n"
+                + '{"role": "user", "content": "after the cut", "timestamp": 1790859603.0}'
+                + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(HermesParser(), HERMES_DIVERTED_REL)
-        self.assertEqual([r.turn_type for r in rows], ["user", "tool_use", "tool_result", "system"])
-        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 4")
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows],
+            [(1, "user"), (2, "tool_use"), (3, "tool_result"), (5, "user"), (4, "system")],
+        )
+        self.assertEqual(rows[3].text, "after the cut")
+        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, bad))
         self.assertEqual(rows[-1].session_id, HERMES_DIVERTED)
 
     def test_not_sqlite_is_reported(self):
@@ -7541,10 +7608,28 @@ class NanobotTests(ParserBase):
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / NANOBOT_REL)
+        with open(self.home / NANOBOT_REL, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n" + '{"role": "user", "content": "after the cut", '
+                '"timestamp": "2026-10-01T10:16:00.000000"}' + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(NanobotParser(), NANOBOT_REL)
-        self.assertEqual(len(rows), 7)
-        self.assertEqual((rows[-1].turn_type, rows[-1].session_id), ("system", NANOBOT_KEY))
-        self.assertIn("parser:", rows[-1].text)
+        self.assertEqual(len(rows), 8)
+        self.assertEqual(
+            (rows[-2].source_line, rows[-2].turn_type, rows[-2].text), (9, "user", "after the cut")
+        )
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
+            ("system", NANOBOT_KEY, 8),
+        )
+        self.assertEqual(rows[-1].project_path, rows[0].project_path)
+        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, bad))
 
     def test_secondary(self):
         p = NanobotParser()
@@ -7621,13 +7706,28 @@ class NanobotTests(ParserBase):
 
     def test_webui_truncated_line(self):
         write_bad_line(self.home / NANOBOT_WEBUI_REL)
+        with open(self.home / NANOBOT_WEBUI_REL, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n" + '{"event": "user", "chat_id": "chat-1", "text": "after the cut", '
+                '"created_at_ms": 1790924407000}' + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(NanobotParser(), NANOBOT_WEBUI_REL)
-        self.assertEqual(len(rows), 6)
+        self.assertEqual(len(rows), 7)
+        self.assertEqual(
+            (rows[-2].source_line, rows[-2].turn_type, rows[-2].text), (11, "user", "after the cut")
+        )
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
             ("system", NANOBOT_WEBUI_KEY, 10),
         )
-        self.assertIn("parser: 1 unparseable line(s)", rows[-1].text)
+        self.assertEqual(rows[-1].project_path, rows[-2].project_path)
+        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, bad))
 
     def test_cli_history(self):
         rows = self.rows_for(NanobotParser(), NANOBOT_CLI_HISTORY_REL)
@@ -7642,10 +7742,14 @@ class NanobotTests(ParserBase):
 
     def test_cli_history_bad_line(self):
         with open(self.home / NANOBOT_CLI_HISTORY_REL, "a", encoding="utf-8") as fh:
-            fh.write("not a history line\n")
+            fh.write("not a history line\n\n# 2026-09-01 08:10:00.000000\n+after the cut\n")
         rows = self.rows_for(NanobotParser(), NANOBOT_CLI_HISTORY_REL)
-        self.assertEqual([r.turn_type for r in rows], ["user", "user", "system"])
-        self.assertIn("parser: 1 unparseable line(s), first at line 8", rows[-1].text)
+        self.assertEqual([r.turn_type for r in rows], ["user", "user", "user", "system"])
+        self.assertEqual((rows[1].text, rows[2].text), ("first line\nsecond line", "after the cut"))
+        self.assertEqual(rows[-1].source_line, 8)
+        self.assertEqual(
+            rows[-1].text, "parser: unparseable line (not a FileHistory line): not a history line"
+        )
 
     def test_timeline_pairs_secondary_rows(self):
         import contextlib
