@@ -1717,9 +1717,30 @@ def build_image(root: Path) -> Path:
     return root
 
 
+# A JSON object cut off mid-write, as a running agent leaves a transcript's
+# last line.
+BAD_LINE = '{"type": "user", "truncated": tr'
+
+
 def write_bad_line(path: Path) -> None:
+    """Append `BAD_LINE` to `path`, with no line terminator before or after
+    it: after a file that ends in a newline it is a last line cut off
+    mid-write, after one that does not it joins the last line. The row
+    `error_rows` yields for it is `bad_line_text()`."""
     with open(path, "a", encoding="utf-8") as fh:
-        fh.write('{"type": "user", "truncated": tr')
+        fh.write(BAD_LINE)
+
+
+def bad_line_text(line: str = BAD_LINE) -> str:
+    """The `text` of the `system` row `error_rows` yields for the JSONL line
+    `line` (issue 136): `parser: unparseable line (<reason>): <line>`, with
+    the reason the running Python's json module gives, since its wording
+    differs between versions."""
+    try:
+        json.loads(line)
+    except ValueError as e:
+        return "parser: unparseable line (%s): %s" % (e, line)
+    raise AssertionError("line parses: %r" % line)
 
 
 AGY_CONVERSATION = "799062d5-0000-4000-8000-000000000099"
