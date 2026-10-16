@@ -111,16 +111,16 @@ the `files` key appears only with `--files`:
       "inferred": false,
       "agents": [
         {
-          "agent": "claude-code",
-          "files": 3,
-          "bytes": 4343,
-          "parser": true
-        },
-        {
           "agent": "amp",
           "files": 1,
           "bytes": 2,
           "parser": false
+        },
+        {
+          "agent": "claude-code",
+          "files": 3,
+          "bytes": 4343,
+          "parser": true
         }
       ]
     },
@@ -239,7 +239,8 @@ the `files` key appears only with `--files`:
 so no single run shows both. `homes` holds the counts of the first table
 of `detect`, which prints one line per user, home and agent in the order
 each one's first file was met, while `homes` groups them by home and
-sorts each home's agents. Its keys, in order:
+sorts each home's agents: here alice's `amp` comes before `claude-code`,
+which the first table prints first. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -416,16 +417,16 @@ the test collection of the [`detect --json`](#detect---json) example:
       "inferred": false,
       "agents": [
         {
-          "agent": "claude-code",
-          "files": 3,
-          "bytes": 4343,
-          "parser": true
-        },
-        {
           "agent": "amp",
           "files": 1,
           "bytes": 2,
           "parser": false
+        },
+        {
+          "agent": "claude-code",
+          "files": 3,
+          "bytes": 4343,
+          "parser": true
         }
       ]
     },
