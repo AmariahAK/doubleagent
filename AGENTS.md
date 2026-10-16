@@ -323,17 +323,30 @@ rules are different from the collectors'.
   Decode protobuf with `doubleagent/protobuf.py` and open SQLite through
   `doubleagent/sqlite_util.py` so WAL sidecars are read and the evidence
   copy is never opened directly.
-  Bad lines are reported as `system` rows, never fatal: a transcript cut
-  mid-write by a running agent must still yield its earlier turns.
-  That holds for every file a parser reads, not only the transcript: a
-  history file, a secondary source or an index that loses lines says so
-  in its own rows. Every `errors` list a reader fills is reported,
-  returned or passed on; a pre-scan that discards errors passes a
-  literal `[]`, and only over a file the same parser also parses in full
-  and reports on. Three history readers dropped bad lines silently
-  (issues 125 and 134); `ErrorListsReportedTests` in
-  `analyzer/tests/test_errors.py` now fails on a list a parser fills and
-  never reads again.
+  Bad lines are evidence, never fatal and never summarised away. A
+  transcript cut mid-write by a running agent, a crash or a partial
+  recovery still yields every turn before and after the cut, and each
+  line that does not decode becomes its own `system` row carrying the
+  line in full: `parser: unparseable line (<reason>): <line>`, the line
+  as read with only its terminator removed, nothing repaired, extracted
+  or shortened (issue 136). An error about the whole file (unreadable,
+  not a JSON array, cut inside an array) is one row `parser: <message>`.
+  The row carries the `session_id` and `project_path` the reader knows
+  for that file, an empty `timestamp_utc` (the line has none of its
+  own) and `source_line` set to the line. This holds for every file a
+  parser reads, not only the transcript: a history file, a secondary
+  source or an index that loses lines says so in its own rows.
+  Mechanically: a reader appends `(line, message, raw)` to an `errors`
+  list (`iter_jsonl` and `line_text` in `parsers/base.py` do this for
+  JSONL), the parser ends the file with
+  `yield from error_rows(self, artifact, errors, session_id, project_path)`
+  from `base.py`, and no parser formats an error row of its own. Every
+  `errors` list a reader fills is reported, returned or passed on; a
+  pre-scan that discards errors passes a literal `[]`, and only over a
+  file the same parser also parses in full and reports on. Three history
+  readers dropped bad lines silently (issues 125 and 134);
+  `ErrorListsReportedTests` in `analyzer/tests/test_errors.py` fails on
+  a list a parser fills and never reads again.
   The parser table's "Validated against" cell names the real installs
   (platform, version, date) on which the parser's file paths and record
   shapes were seen, and says "fixture only" for a path that rests on
