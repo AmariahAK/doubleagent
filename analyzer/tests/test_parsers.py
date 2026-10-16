@@ -9371,3 +9371,620 @@ class ClaudeDesktopTests(ParserBase):
         self.assertEqual(len(rows), len(ClaudeCodeTests.EXPECTED) + 1)
         self.assertIn("1 unparseable line", rows[-1].text)
         self.assertEqual(rows[-1].source_line, 35)
+
+
+from doubleagent.parsers.copilot_cli import CopilotCliParser, request_target, strip_jsonc
+from doubleagent.parsers.copilot_cli import result_text as copilot_result_text
+from fixtures import (
+    COPILOT_DIR,
+    COPILOT_EVENT_LINES,
+    COPILOT_EVENTS_REL,
+    COPILOT_HISTORY_REL,
+    COPILOT_LOG_REL,
+    COPILOT_PERMISSIONS_REL,
+    COPILOT_SESSION,
+    COPILOT_SETTINGS_REL,
+    COPILOT_SIDEBAR_REL,
+    COPILOT_SNAPSHOTS_REL,
+    COPILOT_STORE_REL,
+    COPILOT_WORKSPACE_REL,
+)
+
+
+class CopilotCliTests(ParserBase):
+    # (source_line, turn_type, text) for every row of the fixture log
+    # without thinking (research/copilot-cli.md section 8, expected rows).
+    EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
+        (1, "system", "session start: copilot 1.0.98 producer=copilot-agent cwd=/srv/proj"),
+        (
+            2,
+            "system",
+            "model: gpt-6.1-sol cause=initial_resolution source=automatic effort=medium",
+        ),
+        (
+            3,
+            "system",
+            "system prompt: You are the GitHub Copilot CLI.\nFollow the user's instructions.",
+        ),
+        (4, "user", "fix the failing test"),
+        (10, "system", "utility model gpt-4o-mini: Fix failing test"),
+        (14, "tool_use", "npm test"),
+        (15, "system", "permission request: shell npm test intention=Run the test suite"),
+        (15, "system", "permission mode: manual agent=interactive"),
+        (
+            16,
+            "system",
+            "permission decision: approved-for-location source=human_response"
+            ' location=/srv/proj approval={"commandIdentifiers":["npm test"],"kind":"commands"}',
+        ),
+        (
+            18,
+            "tool_result",
+            "[exit 1] 1 failing\n  date.test.js: expected 2026\nCommand exited with code 1",
+        ),
+        (
+            21,
+            "tool_use",
+            "*** Begin Patch\n*** Update File: /srv/proj/date.test.js\n-2025\n+2026\n*** End Patch",
+        ),
+        (
+            22,
+            "system",
+            "permission request: write /srv/proj/date.test.js intention=Update the fixture year",
+        ),
+        (23, "system", "permission decision: approved source=human_response"),
+        (25, "tool_result", "Modified 1 file: /srv/proj/date.test.js"),
+        (28, "assistant", "The fixture year was stale; it now reads 2026."),
+        (31, "system", "session end: routine files modified: /srv/proj/date.test.js"),
+        (32, "system", "parser: 1 unparseable line(s), first at line 32"),
+    ]
+    PATCH_ID = "custom_0000000000000000000000000001"
+
+    def write_events(self, *records):
+        """The fixture log without its cut line, then `records`, one per line."""
+        lines = [*COPILOT_EVENT_LINES[:-1], *(json.dumps(r) for r in records)]
+        (self.home / COPILOT_EVENTS_REL).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def test_secondary(self):
+        p = CopilotCliParser()
+        for rel in (COPILOT_STORE_REL, COPILOT_SNAPSHOTS_REL):
+            self.assertTrue(p.secondary(self.artifact(rel)), rel)
+            self.assertEqual(p.secondary_tolerance(self.artifact(rel)), 3600.0)
+        self.assertTrue(p.secondary(self.artifact(COPILOT_HISTORY_REL)))
+        self.assertEqual(p.secondary_tolerance(self.artifact(COPILOT_HISTORY_REL)), 2.0)
+        for rel in (COPILOT_EVENTS_REL, COPILOT_WORKSPACE_REL, COPILOT_PERMISSIONS_REL):
+            self.assertFalse(p.secondary(self.artifact(rel)), rel)
+
+    def test_rows(self):
+        rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)
+        self.assertEqual([(r.source_line, r.turn_type, r.text) for r in rows], self.EXPECTED)
+        for r in rows:
+            self.assertEqual(
+                (r.host, r.user, r.agent, r.session_id, r.project_path, r.git_branch),
+                ("h1", "alice", "copilot-cli", COPILOT_SESSION, "/srv/proj", "main"),
+            )
+        self.assertEqual(rows[0].timestamp_utc, "2026-10-01T09:00:00.000Z")
+        self.assertEqual(rows[0].model, "")
+        self.assertEqual({r.model for r in rows[1:4] + rows[5:-1]}, {"gpt-6.1-sol"})
+        # The utility call names its own model and does not change the session's.
+        self.assertEqual(rows[4].model, "gpt-4o-mini")
+        self.assertEqual(rows[-1].timestamp_utc, "")
+        by_line = {(r.source_line, r.turn_type): r for r in rows}
+        for line in (14, 15, 16, 18):
+            r = next(r for r in rows if r.source_line == line)
+            self.assertEqual((r.tool_name, r.tool_use_id), ("bash", "call_01"), line)
+        for line in (21, 22, 23, 25):
+            r = next(r for r in rows if r.source_line == line)
+            self.assertEqual((r.tool_name, r.tool_use_id), ("apply_patch", self.PATCH_ID), line)
+        self.assertEqual(by_line[(16, "system")].timestamp_utc, "2026-10-01T09:00:06.000Z")
+
+    def test_thinking_opt_in(self):
+        rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL, include_thinking=True)
+        thinking = [(r.source_line, r.text, r.model) for r in rows if r.turn_type == "thinking"]
+        self.assertEqual(thinking, [(14, "Run the tests first.", "gpt-6.1-sol")])
+        self.assertEqual(len(rows), len(self.EXPECTED) + 1)
+        # Without reasoningText the block summaries are used.
+        self.write_events(
+            {
+                "id": "e1",
+                "timestamp": "2026-10-01T09:02:00.000Z",
+                "type": "assistant.message",
+                "data": {
+                    "content": "ok",
+                    "model": "gpt-6.1-sol",
+                    "reasoningBlocks": {
+                        "blocks": [{"summary": [{"text": "One."}, {"text": "Two."}]}]
+                    },
+                },
+            },
+            {
+                "id": "e2",
+                "timestamp": "2026-10-01T09:02:01.000Z",
+                "type": "assistant.reasoning",
+                "data": {"reasoningId": "r1", "content": "Three."},
+            },
+        )
+        rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL, include_thinking=True)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows[-3:]],
+            [("assistant", "ok"), ("thinking", "One.\n\nTwo."), ("thinking", "Three.")],
+        )
+        rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)
+        self.assertEqual([r.turn_type for r in rows].count("thinking"), 0)
+
+    def test_other_events(self):
+        def ev(n, etype, data, **extra):
+            return {
+                "id": "f%03d" % n,
+                "timestamp": "2026-10-01T10:00:%02d.000Z" % n,
+                "type": etype,
+                "data": data,
+                **extra,
+            }
+
+        self.write_events(
+            ev(1, "session.resume", {"context": {"cwd": "/srv/other", "branch": "dev"}}),
+            ev(
+                2,
+                "session.model_change",
+                {
+                    "previousModel": "gpt-6.1-sol",
+                    "newModel": "gpt-6.1-sol",
+                    "source": "model_command",
+                },
+            ),
+            ev(
+                3,
+                "session.model_change",
+                {"newModel": "claude-fable-5-1", "source": "model_picker"},
+            ),
+            ev(
+                4,
+                "session.auto_mode_resolved",
+                {"chosenModel": "gpt-6.2", "routingMethod": "router"},
+            ),
+            ev(5, "session.permissions_changed", {"previousMode": "manual", "mode": "allow-all"}),
+            ev(6, "session.mode_changed", {"previousMode": "interactive", "newMode": "plan"}),
+            ev(7, "user.message", {"content": "keep going", "isAutopilotContinuation": True}),
+            ev(8, "user.message", {"content": "inspect the logs"}, agentId="agent-1"),
+            ev(9, "user.message", {"content": "run the review", "source": "skill-review"}),
+            ev(
+                10,
+                "tool.user_requested",
+                {"toolCallId": "call_u1", "toolName": "bash", "arguments": {"command": "ls"}},
+            ),
+            ev(
+                11,
+                "tool.execution_start",
+                {"toolCallId": "call_u1", "toolName": "bash", "arguments": {"command": "ls"}},
+            ),
+            ev(
+                12,
+                "tool.execution_start",
+                {
+                    "toolCallId": "call_s1",
+                    "toolName": "view",
+                    "arguments": {"path": "/srv/other/a.txt"},
+                    "model": "gpt-6.2",
+                },
+            ),
+            ev(
+                13,
+                "permission.requested",
+                {
+                    "permissionRequest": {
+                        "kind": "mcp",
+                        "toolCallId": "call_s1",
+                        "serverName": "web",
+                        "toolName": "fetch",
+                    },
+                    "permissionMode": "allow-all",
+                    "agentMode": "plan",
+                },
+            ),
+            ev(
+                14,
+                "permission.completed",
+                {
+                    "toolCallId": "call_s1",
+                    "decisionSource": "human_response",
+                    "result": {"kind": "denied-interactively-by-user", "feedback": "not now"},
+                },
+            ),
+            ev(
+                15,
+                "permission.carriedForward",
+                {"toolCallId": "call_s1", "decisionSource": "authorization_carry_forward"},
+            ),
+            ev(
+                16,
+                "tool.execution_complete",
+                {"toolCallId": "call_s1", "success": False, "error": {"message": "denied"}},
+            ),
+            ev(17, "session.context_changed", {"cwd": "/srv/third", "branch": "feature"}),
+            ev(18, "session.compaction_complete", {"summaryContent": "Summary of the work."}),
+            ev(19, "abort", {"reason": "user_initiated"}),
+            ev(20, "session.task_complete", {"summary": "All done."}),
+            ev(21, "subagent.started", {"toolCallId": "call_x", "agentName": "explore"}),
+            ev(22, "hook.start", {"other": 1}),
+            ev(23, "assistant.turn_start", {"turnId": "9"}),
+            ev(24, "model.turn_started", {"model": "gpt-4o-mini"}),
+            ev(25, "some.future.type", {"x": 1}),
+            ev(
+                26,
+                "session.shutdown",
+                {
+                    "shutdownType": "error",
+                    "errorReason": "network",
+                    "codeChanges": {"filesModified": []},
+                },
+            ),
+        )
+        rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)[len(self.EXPECTED) - 1 :]
+        got = [(r.turn_type, r.text, r.tool_name, r.tool_use_id, r.model) for r in rows]
+        self.assertEqual(
+            got,
+            [
+                ("system", "session resumed", "", "", "gpt-6.1-sol"),
+                (
+                    "system",
+                    "model: gpt-6.1-sol -> gpt-6.1-sol source=model_command",
+                    "",
+                    "",
+                    "gpt-6.1-sol",
+                ),
+                (
+                    "system",
+                    "model: gpt-6.1-sol -> claude-fable-5-1 source=model_picker",
+                    "",
+                    "",
+                    "claude-fable-5-1",
+                ),
+                ("system", "model: claude-fable-5-1 -> gpt-6.2 (auto, router)", "", "", "gpt-6.2"),
+                ("system", "permission mode: manual -> allow-all", "", "", "gpt-6.2"),
+                ("system", "agent mode: interactive -> plan", "", "", "gpt-6.2"),
+                ("system", "auto-continuation: keep going", "", "", "gpt-6.2"),
+                ("system", "subagent task: inspect the logs", "", "", "gpt-6.2"),
+                ("system", "skill-review: run the review", "", "", "gpt-6.2"),
+                ("tool_use", "user requested: ls", "bash", "call_u1", "gpt-6.2"),
+                ("tool_use", "/srv/other/a.txt", "view", "call_s1", "gpt-6.2"),
+                # The two change events updated the tracked mode: no repeat.
+                ("system", "permission request: mcp web/fetch", "view", "call_s1", "gpt-6.2"),
+                (
+                    "system",
+                    "permission decision: denied-interactively-by-user source=human_response"
+                    " feedback=not now",
+                    "view",
+                    "call_s1",
+                    "gpt-6.2",
+                ),
+                (
+                    "system",
+                    "permission decision: carried-forward source=authorization_carry_forward",
+                    "view",
+                    "call_s1",
+                    "gpt-6.2",
+                ),
+                ("tool_result", "denied", "view", "call_s1", "gpt-6.2"),
+                ("system", "compaction summary: Summary of the work.", "", "", "gpt-6.2"),
+                ("system", "abort: user_initiated", "", "", "gpt-6.2"),
+                ("system", "session.task_complete: All done.", "", "", "gpt-6.2"),
+                ("system", "subagent.started: explore", "", "", "gpt-6.2"),
+                ("system", 'hook.start: {"other":1}', "", "", "gpt-6.2"),
+                ("system", "session end: error network files modified: none", "", "", "gpt-6.2"),
+            ],
+        )
+        self.assertEqual((rows[0].project_path, rows[0].git_branch), ("/srv/other", "dev"))
+        self.assertEqual((rows[-1].project_path, rows[-1].git_branch), ("/srv/third", "feature"))
+
+    def test_result_text(self):
+        # detailedContent is the complete text, unless content is longer (a
+        # skill invocation puts the concise text in detailedContent).
+        self.assertEqual(
+            copilot_result_text({"result": {"content": "a", "detailedContent": "a b c"}}), "a b c"
+        )
+        self.assertEqual(
+            copilot_result_text({"result": {"content": "x" * 50, "detailedContent": "short"}}),
+            "x" * 50,
+        )
+        self.assertEqual(
+            copilot_result_text({"result": {"content": "ok"}, "shellExecution": {"exitCode": 0}}),
+            "ok",
+        )
+        self.assertEqual(request_target({"serverName": "web", "toolName": "fetch"}), "web/fetch")
+        self.assertEqual(request_target({"kind": "memory"}), "")
+        self.assertEqual(
+            json.loads(strip_jsonc('{"a": "http://x", /* c */ "b": [1,], // d\n}')),
+            {"a": "http://x", "b": [1]},
+        )
+
+    def test_secondary_sources_deduplicated(self):
+        rows, _, _, dropped = cli.collect_rows(self.col, Options(), ["copilot-cli"])
+        # The snapshot's prompt takes the log's prompt (the nearer time);
+        # the database turn's prompt then collapses onto the snapshot's copy;
+        # the turn's reply pairs with the log's reply 0.2 s earlier; the
+        # sessions row's name with workspace.yaml's; both history lines go,
+        # "fix the failing test" onto the log's prompt and "and run lint" onto
+        # the database turn that is its only other copy.
+        self.assertEqual(dropped["copilot-cli"], 6)
+        store = "/alice/" + COPILOT_STORE_REL
+        kept = [(r.turn_type, r.text) for r in rows if r.source_file == store]
+        self.assertEqual(
+            kept,
+            [
+                ("system", "file changed: /srv/proj/date.test.js tool=apply_patch"),
+                ("user", "and run lint"),
+            ],
+        )
+        snap = "/alice/" + COPILOT_SNAPSHOTS_REL
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows if r.source_file == snap],
+            [("system", "rewind snapshot: 1 files +1 -1: /srv/proj/date.test.js")],
+        )
+        self.assertEqual([r for r in rows if r.source_file == "/alice/" + COPILOT_HISTORY_REL], [])
+        users = [r for r in rows if r.turn_type == "user"]
+        self.assertEqual(
+            [(r.text, r.source_file) for r in users],
+            [
+                ("fix the failing test", "/alice/" + COPILOT_EVENTS_REL),
+                ("and run lint", store),
+            ],
+        )
+
+    def test_log_deleted_store_recovers(self):
+        (self.home / COPILOT_EVENTS_REL).unlink()
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows, _, _, dropped = cli.collect_rows(self.col, Options(), ["copilot-cli"])
+        texts = [(r.turn_type, r.text) for r in rows if r.turn_type in ("user", "assistant")]
+        # The snapshot keeps the first prompt, the database both turns.
+        self.assertEqual(
+            texts,
+            [
+                ("user", "fix the failing test"),
+                ("assistant", "The fixture year was stale; it now reads 2026."),
+                ("user", "and run lint"),
+            ],
+        )
+        self.assertEqual(dropped["copilot-cli"], 4)
+
+    def test_store_rows(self):
+        rows = self.rows_for(CopilotCliParser(), COPILOT_STORE_REL)
+        self.assertEqual(
+            [(r.source_line, r.timestamp_utc, r.turn_type, r.text) for r in rows],
+            [
+                (1, "2026-10-01T09:00:00.000Z", "system", "session name: Fix failing test"),
+                (1, "2026-10-01T09:00:15.200Z", "user", "fix the failing test"),
+                (
+                    1,
+                    "2026-10-01T09:00:15.200Z",
+                    "assistant",
+                    "The fixture year was stale; it now reads 2026.",
+                ),
+                (2, "2026-10-01T09:01:05.000Z", "user", "and run lint"),
+                (
+                    1,
+                    "2026-10-01T09:00:12.500Z",
+                    "system",
+                    "file changed: /srv/proj/date.test.js tool=apply_patch",
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.session_id, r.project_path, r.model), (COPILOT_SESSION, "/srv/proj", "")
+            )
+
+    def test_store_other_tables(self):
+        # Checkpoints, references and Forge events: empty on the real
+        # install, so their shapes are bundle-derived.
+        con = sqlite3.connect(str(self.home / COPILOT_STORE_REL))
+        s = COPILOT_SESSION
+        con.execute(
+            "insert into checkpoints values (?, 1, 'Fix the test', 'The overview', NULL,"
+            " 'Edited a file', NULL, NULL, 'Run lint', '2026-10-01T09:05:00.000Z')",
+            (s,),
+        )
+        con.execute(
+            "insert into session_refs values (?, 'pr', '#12', 0, '2026-10-01T09:06:00.000Z')", (s,)
+        )
+        con.execute(
+            "insert into forge_trajectory_events values (?, 'call_01', 0, NULL, 'npm test',"
+            " '1 failing', 1, NULL, NULL, '2026-10-01T09:00:08.000Z')",
+            (s,),
+        )
+        con.execute(
+            "insert into forge_trajectory_events values (NULL, NULL, NULL, NULL, NULL, NULL,"
+            " NULL, NULL, NULL, NULL)"
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(CopilotCliParser(), COPILOT_STORE_REL)[5:]
+        self.assertEqual(
+            [(r.turn_type, r.text, r.tool_use_id) for r in rows],
+            [
+                ("system", "reference: pr #12", ""),
+                (
+                    "system",
+                    "checkpoint 1: Fix the test\noverview: The overview\nwork_done: Edited a file"
+                    "\nnext_steps: Run lint",
+                    "",
+                ),
+                ("tool_use", "npm test", "call_01"),
+                ("tool_result", "[exit 1] 1 failing", "call_01"),
+            ],
+        )
+        # The forge pair joins the log's call on its id and drops.
+        _, _, _, dropped = cli.collect_rows(self.col, Options(), ["copilot-cli"])
+        self.assertEqual(dropped["copilot-cli"], 8)
+
+    def test_bad_store(self):
+        (self.home / COPILOT_STORE_REL).write_text("not sqlite", encoding="utf-8")
+        rows = self.rows_for(CopilotCliParser(), COPILOT_STORE_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows], [("system", "parser: not a SQLite database")]
+        )
+
+    def test_workspace_and_snapshot(self):
+        rows = self.rows_for(CopilotCliParser(), COPILOT_WORKSPACE_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.session_id, r.project_path) for r in rows],
+            [
+                (
+                    "system",
+                    "session name: Fix failing test",
+                    "2026-10-01T09:00:00.000Z",
+                    COPILOT_SESSION,
+                    "/srv/proj",
+                ),
+                (
+                    "system",
+                    "session metadata: user_named=false forks=0 compactions=0",
+                    "2026-10-01T09:00:00.000Z",
+                    COPILOT_SESSION,
+                    "/srv/proj",
+                ),
+            ],
+        )
+        rows = self.rows_for(CopilotCliParser(), COPILOT_SNAPSHOTS_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc) for r in rows],
+            [
+                ("user", "fix the failing test", "2026-10-01T09:00:01.150Z"),
+                (
+                    "system",
+                    "rewind snapshot: 1 files +1 -1: /srv/proj/date.test.js",
+                    "2026-10-01T09:00:01.150Z",
+                ),
+            ],
+        )
+        self.assertEqual(
+            {(r.session_id, r.project_path) for r in rows}, {(COPILOT_SESSION, "/srv/proj")}
+        )
+
+    def test_sidebar_fills_project(self):
+        # Without workspace.yaml the snapshot takes its project from the
+        # sidebar file; without a sessions.cwd the database does too.
+        (self.home / COPILOT_WORKSPACE_REL).unlink()
+        con = sqlite3.connect(str(self.home / COPILOT_STORE_REL))
+        con.execute("update sessions set cwd = NULL")
+        con.commit()
+        con.close()
+        self.assertFalse(CopilotCliParser().wants(rel_only(COPILOT_SIDEBAR_REL[:-5] + ".txt")))
+        self.assertEqual(self.rows_for(CopilotCliParser(), COPILOT_SIDEBAR_REL), [])
+        for rel in (COPILOT_SNAPSHOTS_REL, COPILOT_STORE_REL):
+            rows = self.rows_for(CopilotCliParser(), rel)
+            self.assertEqual({r.project_path for r in rows}, {"/srv/proj"}, rel)
+
+    def test_history(self):
+        rows = self.rows_for(CopilotCliParser(), COPILOT_HISTORY_REL)
+        self.assertEqual(
+            [
+                (r.turn_type, r.text, r.timestamp_utc, r.session_id, r.project_path, r.source_line)
+                for r in rows
+            ],
+            [
+                ("user", "and run lint", "", "", "", 1),
+                ("user", "fix the failing test", "", "", "", 2),
+            ],
+        )
+
+    def test_standing_grants(self):
+        art = self.artifact(COPILOT_PERMISSIONS_REL)
+        rows = list(CopilotCliParser().parse(art, Options()))
+        mtime = file_mtime(art)
+        self.assertEqual(mtime, "2026-10-01T12:00:00.000Z")
+        self.assertEqual(
+            [(r.turn_type, r.text, r.project_path) for r in rows],
+            [
+                (
+                    "system",
+                    'permission setting: locations./srv/proj.tool_approvals={"kind":"write"}'
+                    " (from .copilot/permissions-config.json, file mtime)",
+                    "/srv/proj",
+                ),
+                (
+                    "system",
+                    "permission setting: locations./srv/proj.tool_approvals="
+                    '{"commandIdentifiers":["npm test"],"kind":"commands"}'
+                    " (from .copilot/permissions-config.json, file mtime)",
+                    "/srv/proj",
+                ),
+            ],
+        )
+        rows += self.rows_for(CopilotCliParser(), COPILOT_SETTINGS_REL)
+        self.assertEqual(
+            rows[-1].text,
+            "permission setting: allowedUrls=https://registry.example.org"
+            " (from .copilot/settings.json, file mtime)",
+        )
+        for r in rows:
+            self.assertEqual((r.timestamp_utc, r.session_id, r.source_line), (mtime, "", 1))
+
+    def test_unreadable_settings(self):
+        (self.home / COPILOT_SETTINGS_REL).write_text("{ // cut", encoding="utf-8")
+        rows = self.rows_for(CopilotCliParser(), COPILOT_SETTINGS_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("system", "parser: settings.json is not a JSON object")],
+        )
+        self.assertTrue(rows[0].timestamp_utc)
+
+    def test_log(self):
+        rows = self.rows_for(CopilotCliParser(), COPILOT_LOG_REL)
+        self.assertEqual(
+            [(r.source_line, r.timestamp_utc, r.turn_type, r.text, r.session_id) for r in rows],
+            [
+                (
+                    2,
+                    "2026-10-01T08:59:59.400Z",
+                    "system",
+                    "signed in: https://github.com as octo-user",
+                    COPILOT_SESSION,
+                )
+            ],
+        )
+
+    def test_not_wanted(self):
+        p = CopilotCliParser()
+        for rel in (
+            ".copilot/config.json",
+            ".copilot/open-sessions-state.json",
+            ".copilot/session-store.db-wal",
+            COPILOT_DIR + "rewind-file-snapshots/tracking.json",
+            COPILOT_DIR + "checkpoints/index.md",
+        ):
+            art = self.artifact(rel)
+            self.assertEqual(art.agent, "copilot-cli")
+            self.assertFalse(p.wants(art), rel)
+        # The XDG-era homes, and nothing outside a Copilot home.
+        for rel in (
+            ".local/state/.copilot/session-state/%s/events.jsonl" % COPILOT_SESSION,
+            ".config/.copilot/permissions-config.json",
+            ".local/state/.copilot/session-store.db",
+        ):
+            self.assertTrue(p.wants(rel_only(rel)), rel)
+        for rel in (
+            "proj/.copilot/settings.json",
+            ".copilot/session-state/not-a-session/events.jsonl",
+            ".copilot/logs/session-1.log",
+        ):
+            self.assertFalse(p.wants(rel_only(rel)), rel)
+
+    def test_truncated_line_is_reported_not_fatal(self):
+        rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].session_id, rows[-1].project_path),
+            ("system", 32, COPILOT_SESSION, "/srv/proj"),
+        )
+        self.assertEqual(
+            rows[-2].text, "session end: routine files modified: /srv/proj/date.test.js"
+        )
+        write_bad_line(self.home / COPILOT_EVENTS_REL)
+        rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)
+        self.assertEqual(len(rows), len(self.EXPECTED))
+        self.write_events()
+        write_bad_line(self.home / COPILOT_EVENTS_REL)
+        rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)
+        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 32")
+        self.write_events()
+        self.assertNotIn("parser:", self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)[-1].text)

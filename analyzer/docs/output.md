@@ -117,7 +117,7 @@ the `files` key appears only with `--files`:
           "parser": true
         },
         {
-          "agent": "copilot-cli",
+          "agent": "amp",
           "files": 1,
           "bytes": 2,
           "parser": false
@@ -203,8 +203,8 @@ the `files` key appears only with `--files`:
     },
     {
       "user": "alice",
-      "agent": "copilot-cli",
-      "path": "/home/alice/.copilot/config.json"
+      "agent": "amp",
+      "path": "/home/alice/.config/amp/settings.json"
     },
     {
       "user": "bob",
@@ -334,9 +334,9 @@ agent it lists them in two or three groups; otherwise it reads
 `none were found`:
 
 ```text
-agents:    parsed: antigravity, claude-code; detected but not parsed: copilot-cli
+agents:    parsed: antigravity, claude-code; detected but not parsed: amp
 agents:    parsed: claude-code; detected but not parsed: none
-agents:    parsed: none; detected but not parsed: copilot-cli
+agents:    parsed: none; detected but not parsed: amp
 agents:    parsed: claude-code; detected but not parsed: none; parser found no rows: antigravity
 agents:    none were found
 ```
@@ -393,7 +393,7 @@ the test collection of the [`detect --json`](#detect---json) example:
     "ollama"
   ],
   "detected_not_parsed": [
-    "copilot-cli",
+    "amp",
     "cursor"
   ],
   "no_rows": [
@@ -412,7 +412,7 @@ the test collection of the [`detect --json`](#detect---json) example:
           "parser": true
         },
         {
-          "agent": "copilot-cli",
+          "agent": "amp",
           "files": 1,
           "bytes": 2,
           "parser": false
@@ -1037,6 +1037,7 @@ drops are counted per agent on the `dropped:` line of stdout and under
 | `claude-desktop` | each Cowork session's `local-agent-mode-sessions/<acct>/<org>/[agent/]<session dir>/audit.jsonl` under the app-data directory; the session records `local_<uuid>.json` beside the session dirs and under `claude-code-sessions/` (a Cowork record's first prompt has no timestamp: matches on text within the session) | the session dir's `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `cline` | `.cline/data/db/session-search.db` (no timestamp per message: matches on text and session; a message of content blocks keeps their type names and tool ids, so only plain-string prompts match); `.cline/data/cache/user_input_history.jsonl` (only the last line timestamped: the others match on text alone) | `.cline/data/sessions/<id>/<id>.messages.json` |
 | `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite` | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
+| `copilot-cli` | `.copilot/session-store.db` (`turns`, the prompt and the final reply of each turn, stamped when the turn ends: a one-hour window; its `sessions` name pairs with the `workspace.yaml` row; `session_files`, `session_refs`, `checkpoints` and `forge_trajectory_events` rows the log has no copy of are always kept); `.copilot/session-state/<id>/rewind-file-snapshots/index.json` (each turn's prompt, a one-hour window); `.copilot/command-history-state.json` (no timestamp, session or project: matches on text alone); each also under the pre-XDG `.local/state/.copilot` | `.copilot/session-state/<id>/events.jsonl` and `workspace.yaml` |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
 | `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone) | `.local/share/goose/sessions/sessions.db` |
 | `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full`) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session), also under `.hermes_<suffix>`, `AppData/Local/hermes` and `profiles/<name>/` | `.hermes/state.db` |
