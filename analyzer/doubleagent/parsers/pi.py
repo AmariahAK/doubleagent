@@ -83,6 +83,7 @@ from .base import (
     Options,
     Parser,
     compact_json,
+    error_rows,
     file_mtime,
     iter_jsonl,
     setting_value,
@@ -342,18 +343,6 @@ def _message_rows(
         yield emit(base(), "system", _label(role, str(msg.get("summary") or "")))
 
 
-def error_row(
-    parser: Parser, artifact: Artifact, errors: list, session_id: str = "", project_path: str = ""
-) -> Row:
-    row = parser.base_row(artifact)
-    row.session_id = session_id
-    row.project_path = project_path
-    row.turn_type = "system"
-    row.source_line = errors[0][0]
-    row.text = "parser: %d unparseable line(s), first at line %d" % (len(errors), errors[0][0])
-    return row
-
-
 def home_file(artifact: Artifact, original: str, marker: str) -> Path | None:
     """The collected copy of `original` (a path on the source host) inside
     the artifact's home, or None. Tried relative to the home's original path,
@@ -407,8 +396,8 @@ class PiParser(Parser):
         session = read_session(artifact.disk_path)
         h = session.header
         if not h:
-            if session.errors and not session.entries:
-                yield error_row(self, artifact, session.errors)
+            if not session.entries:
+                yield from error_rows(self, artifact, session.errors)
             return
         sid = str(h.get("id") or "")
         cwd = str(h.get("cwd") or "")
@@ -461,8 +450,7 @@ class PiParser(Parser):
                 "session driven by little-coder (pi launcher): %s" % "; ".join(why),
             )
             yield row
-        if session.errors:
-            yield error_row(self, artifact, session.errors, sid, cwd)
+        yield from error_rows(self, artifact, session.errors, sid, cwd)
 
     def _parse_trust(self, artifact: Artifact) -> Iterator[Row]:
         """`trust.json`: one standing row per project path, `true` or

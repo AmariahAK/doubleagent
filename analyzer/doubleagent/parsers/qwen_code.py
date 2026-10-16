@@ -67,7 +67,7 @@ from collections.abc import Iterator
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl, track_change
+from .base import Options, Parser, compact_json, error_rows, iter_jsonl, track_change
 from .gemini_cli import trusted_folder_rows
 
 SESSION_RX = re.compile(r"^\.qwen/projects/[^/]+/chats/(?:archive/)?[^/]+\.jsonl$")
@@ -267,8 +267,7 @@ class QwenCodeParser(Parser):
                 row = base("system", text)
                 row.model = model
                 yield row
-        if errors:
-            yield self._error_row(artifact, session_id, errors)
+        yield from error_rows(self, artifact, errors, session_id)
 
     def _parse_logs(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
@@ -304,14 +303,17 @@ class QwenCodeParser(Parser):
                     )
             row.text = compact(text)
             yield row
-        if errors:
-            yield self._error_row(artifact, "", errors, "entry")
+        yield from error_rows(self, artifact, errors)
 
     @staticmethod
     def _iter_array(path, errors: list):
         """Yield (1-based index, entry) from a JSON array, decoding element by
         element so a file cut mid-write still yields the entries before the
-        cut. A parse failure is recorded in `errors` as (index, message)."""
+        cut. A parse failure is recorded in `errors` as (index, message, raw)
+        and ends the walk; raw is the text from the element the failed decode
+        started at to the end of the file, less a trailing line terminator,
+        since a broken element has no boundary of its own and nothing after
+        it is decoded (issue 136). A whole-file error has raw `""`."""
         with open(path, "rb") as fh:
             data = fh.read().decode("utf-8", errors="replace")
         dec = json.JSONDecoder()
@@ -327,7 +329,7 @@ class QwenCodeParser(Parser):
         if pos >= n:
             return
         if data[pos] != "[":
-            errors.append((0, "not a JSON array"))
+            errors.append((0, "not a JSON array", ""))
             return
         pos = skip(pos + 1)
         idx = 0
@@ -336,7 +338,7 @@ class QwenCodeParser(Parser):
             try:
                 value, pos = dec.raw_decode(data, pos)
             except ValueError as e:
-                errors.append((idx, str(e)))
+                errors.append((idx, str(e), _rest(data, pos)))
                 return
             if isinstance(value, dict):
                 yield idx, value
@@ -344,19 +346,16 @@ class QwenCodeParser(Parser):
             if pos < n and data[pos] == ",":
                 pos = skip(pos + 1)
         if pos >= n:
-            errors.append((idx + 1, "unterminated JSON array"))
+            errors.append((idx + 1, "unterminated JSON array", ""))
 
-    def _error_row(
-        self, artifact: Artifact, session_id: str, errors: list, unit: str = "line"
-    ) -> Row:
-        row = self.base_row(artifact)
-        row.session_id = session_id
-        row.turn_type = "system"
-        row.source_line = errors[0][0]
-        row.text = "parser: %d unparseable %s(s), first at %s %d" % (
-            len(errors),
-            unit,
-            unit,
-            errors[0][0],
-        )
-        return row
+
+def _rest(data: str, pos: int) -> str:
+    """The text of `data` from `pos` to the end, less a trailing `\\n` and
+    then `\\r`, nothing else stripped: the element a failed decode started
+    at, with everything after it that was never decoded."""
+    rest = data[pos:]
+    if rest.endswith("\n"):
+        rest = rest[:-1]
+    if rest.endswith("\r"):
+        rest = rest[:-1]
+    return rest

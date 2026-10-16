@@ -151,7 +151,15 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, compact_json, file_mtime, iter_jsonl, text_of, track_change
+from .base import (
+    Options,
+    compact_json,
+    error_rows,
+    file_mtime,
+    iter_jsonl,
+    text_of,
+    track_change,
+)
 from .claude_code import ClaudeCodeParser, result_text, tool_summary
 
 BASE = (
@@ -482,15 +490,7 @@ class ClaudeDesktopParser(ClaudeCodeParser):
                     r.model = model
                     yield r
                 yield from self._audit_assistant(line, row, opts)
-        if errors:
-            r = self._system(
-                artifact,
-                "parser: %d unparseable line(s), first at line %d" % (len(errors), errors[0][0]),
-                errors[0][0],
-            )
-            r.session_id = last_sid
-            r.project_path = project
-            yield r
+        yield from error_rows(self, artifact, errors, last_sid, project)
 
     @staticmethod
     def _audit_user(line: dict, row) -> Iterator[Row]:

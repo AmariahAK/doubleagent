@@ -70,6 +70,7 @@ from .base import (
     Options,
     Parser,
     compact_json,
+    error_rows,
     iter_jsonl,
     setting_value,
     text_of,
@@ -423,7 +424,7 @@ class ContinueParser(Parser):
                 if turn == "assistant":
                     row.model = str(rec.get("modelTitle") or rec.get("modelName") or "")
                 yield self._fill(row, text if isinstance(text, str) else compact_json(text), opts)
-        yield from self._errors(artifact, errors)
+        yield from error_rows(self, artifact, errors)
 
     def _parse_tool_usage(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
@@ -470,18 +471,7 @@ class ContinueParser(Parser):
                 row.tool_use_id = call_id
                 row.text = "permission decision: accepted=%s" % setting_value(rec["accepted"])
                 yield row
-        yield from self._errors(artifact, errors)
-
-    def _errors(self, artifact: Artifact, errors: list) -> Iterator[Row]:
-        if errors:
-            row = self.base_row(artifact)
-            row.turn_type = "system"
-            row.source_line = errors[0][0]
-            row.text = "parser: %d unparseable line(s), first at line %d" % (
-                len(errors),
-                errors[0][0],
-            )
-            yield row
+        yield from error_rows(self, artifact, errors)
 
     @staticmethod
     def _fill(row: Row, text, opts: Options) -> Row:

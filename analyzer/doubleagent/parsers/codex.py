@@ -166,8 +166,10 @@ from .base import (
     Options,
     Parser,
     compact_json,
+    error_rows,
     file_mtime,
     iter_jsonl,
+    line_text,
     setting_value,
     text_of,
     track_change,
@@ -216,13 +218,13 @@ def call_name(payload: dict) -> str:
 
 
 def _decode_line(n: int, raw: bytes, errors: list) -> dict | None:
-    raw = raw.strip()
-    if not raw:
+    stripped = raw.strip()
+    if not stripped:
         return None
     try:
-        rec = json.loads(raw.decode("utf-8", errors="replace"))
+        rec = json.loads(stripped.decode("utf-8", errors="replace"))
     except ValueError as e:
-        errors.append((n, str(e)))
+        errors.append((n, str(e), line_text(raw)))
         return None
     return rec if isinstance(rec, dict) else None
 
@@ -275,7 +277,7 @@ def iter_zst_jsonl(path, errors: list) -> Iterator[tuple[int, dict]]:
                     if rec is not None:
                         yield n, rec
         except (zstandard.ZstdError, TruncatedFrame) as e:
-            errors.append((n + 1, "zstd: %s" % e))
+            errors.append((n + 1, "zstd: %s" % e, ""))
     if buf.strip():
         n += 1
         rec = _decode_line(n, buf, errors)
@@ -755,6 +757,7 @@ class RolloutParser(Parser):
             row.turn_type = "user"
             row.text = compact(rec.get("text"))
             yield row
+        yield from error_rows(self, artifact, errors)
 
     def _parse_rollout(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
@@ -981,13 +984,7 @@ class RolloutParser(Parser):
                     if payload.get("text"):
                         text += " " + str(payload["text"])
                     yield self._fill(base(), text, opts)
-        if errors:
-            yield self._system(
-                artifact,
-                "parser: %d unparseable line(s), first at line %d" % (len(errors), errors[0][0]),
-                session_id,
-                errors[0][0],
-            )
+        yield from error_rows(self, artifact, errors, session_id)
 
     @staticmethod
     def _fill(row: Row, text: str, opts: Options) -> Row:

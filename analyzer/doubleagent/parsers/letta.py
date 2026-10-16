@@ -79,8 +79,8 @@ from collections.abc import Iterator
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, iter_jsonl
-from .pi import SessionFile, args_summary, entry_rows, error_row, model_text, read_session
+from .base import Options, Parser, error_rows, iter_jsonl
+from .pi import SessionFile, args_summary, entry_rows, model_text, read_session
 
 TRANSCRIPT_RX = re.compile(r"^\.letta/transcripts/([^/]+)/([^/]+)/transcript\.jsonl$")
 LOCAL_RX = re.compile(r"^\.letta/lc-local-backend/conversations/([^/]+)/messages\.jsonl$")
@@ -201,8 +201,7 @@ class LettaParser(Parser):
             )
             yield row
         yield from entry_rows(self, artifact, session, opts, sid, cwd)
-        if session.errors:
-            yield error_row(self, artifact, session.errors, sid, cwd)
+        yield from error_rows(self, artifact, session.errors, sid, cwd)
 
     # -- reflection transcript ------------------------------------------
 
@@ -274,8 +273,7 @@ class LettaParser(Parser):
                     row.turn_type, row.tool_name = "tool_result", name
                     row.text = compact(result)
                     yield row
-        if errors:
-            yield error_row(self, artifact, errors, conv_dir)
+        yield from error_rows(self, artifact, errors, conv_dir)
 
     # -- sessions.jsonl --------------------------------------------------
 
@@ -321,5 +319,4 @@ class LettaParser(Parser):
                 mrow.project_path, mrow.model = row.project_path, row.model
                 mrow.text = compact(mtext)
                 yield mrow
-        if errors:
-            yield error_row(self, artifact, errors)
+        yield from error_rows(self, artifact, errors)

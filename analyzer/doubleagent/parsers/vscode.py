@@ -66,6 +66,13 @@ the request time). Contiguous markdown and inline references become one
 `tool_result` row sharing `toolCallId`. There is no git branch.
 `source_line` is the log line that created the request (`.jsonl`) or 0
 (`.json`).
+
+Errors (issue 136), after the session's other rows, each a `system` row
+through `error_rows` in `base.py`: a `.jsonl` line that does not decode, or
+that decodes but whose mutation cannot be applied (reason `mutation not
+applied: <why>`), carries the line in full as `parser: unparseable line
+(<reason>): <line>` with its line number; a `.json` file that does not
+decode is `parser: file is not valid JSON (<reason>)`.
 """
 
 from __future__ import annotations
@@ -79,7 +86,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
 from .antigravity import uri_to_path
-from .base import Options, Parser, compact_json, iter_jsonl, setting_value, track_change
+from .base import Options, Parser, compact_json, error_rows, line_text, setting_value, track_change
 
 USER_DIR = (
     r"^(?:(?:\.config|Library/Application Support|AppData/Roaming)/(?:Code[^/]*|VSCodium[^/]*|Positron|Trae[^/]*)"
@@ -298,30 +305,16 @@ class VsCodeParser(Parser):
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         req_lines: dict[int, int] = {}
-        problems: list[str] = []
-        first_bad = 0
+        errors: list = []
         if artifact.rel.endswith(".jsonl"):
-            errors: list = []
-            state = None
-            for n, rec in iter_jsonl(artifact.disk_path, errors):
-                try:
-                    state = apply_mutation(state, rec)
-                except MutationError as e:
-                    errors.append((n, str(e)))
-                    continue
-                self._track(rec, state, n, req_lines)
-            if errors:
-                first_bad = min(e[0] for e in errors)
-                problems.append(
-                    "parser: %d unparseable line(s), first at line %d" % (len(errors), first_bad)
-                )
+            state = self._replay(artifact, req_lines, errors)
         else:
             try:
                 with open(artifact.disk_path, "rb") as fh:
                     state = json.loads(fh.read().decode("utf-8", errors="replace"))
             except ValueError as e:
                 state = None
-                problems.append("parser: file is not valid JSON (%s)" % e)
+                errors.append((0, "file is not valid JSON (%s)" % e, ""))
         if not isinstance(state, dict):
             state = {}
         session_id = str(state.get("sessionId") or Path(artifact.rel).name.rsplit(".", 1)[0])
@@ -367,8 +360,34 @@ class VsCodeParser(Parser):
         for i, req in enumerate(requests):
             if isinstance(req, dict):
                 yield from self._request_rows(req, req_lines.get(i, 0), base, opts, seen)
-        for p in problems:
-            yield base("system", p, None, first_bad)
+        yield from error_rows(self, artifact, errors, session_id, project)
+
+    def _replay(self, artifact: Artifact, req_lines: dict[int, int], errors: list):
+        """Replay a `.jsonl` mutation log and return the session state. A
+        line that does not decode, or whose mutation does not apply, is
+        appended to `errors` as (line, reason, line text) and skipped;
+        `iter_jsonl` is not used because a mutation error needs the line's
+        text too."""
+        state = None
+        with open(artifact.disk_path, "rb") as fh:
+            for n, raw in enumerate(fh, 1):
+                stripped = raw.strip()
+                if not stripped:
+                    continue
+                try:
+                    rec = json.loads(stripped.decode("utf-8", errors="replace"))
+                except ValueError as e:
+                    errors.append((n, str(e), line_text(raw)))
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+                try:
+                    state = apply_mutation(state, rec)
+                except MutationError as e:
+                    errors.append((n, "mutation not applied: %s" % e, line_text(raw)))
+                    continue
+                self._track(rec, state, n, req_lines)
+        return state
 
     @staticmethod
     def _track(rec: dict, state, n: int, req_lines: dict[int, int]) -> None:

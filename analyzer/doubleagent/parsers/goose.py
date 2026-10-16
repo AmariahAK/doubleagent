@@ -95,7 +95,15 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl, text_of, track_change
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    error_rows,
+    iter_jsonl,
+    text_of,
+    track_change,
+)
 
 DATA = r"(?:\.local/share/goose|AppData/Roaming/Block/goose/data)"
 STATE = r"(?:\.local/state/goose|AppData/Roaming/Block/goose/data)"
@@ -446,19 +454,7 @@ class GooseParser(Parser):
                 tool_names,
                 opts,
             )
-        yield from self._errors(artifact, errors, session_id, project_path)
-
-    def _errors(
-        self, artifact: Artifact, errors: list, session_id: str = "", project_path: str = ""
-    ) -> Iterator[Row]:
-        if errors:
-            row = self._row(artifact, errors[0][0], session_id, project_path)
-            row.turn_type = "system"
-            row.text = "parser: %d unparseable line(s), first at line %d" % (
-                len(errors),
-                errors[0][0],
-            )
-            yield row
+        yield from error_rows(self, artifact, errors, session_id, project_path)
 
     # -- logs/llm_request.*.jsonl ---------------------------------------------------------
     def _parse_llm_log(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
@@ -526,7 +522,7 @@ class GooseParser(Parser):
         if request is not None:
             yield request
         yield from pending
-        yield from self._errors(artifact, errors)
+        yield from error_rows(self, artifact, errors)
 
     # -- history.txt ------------------------------------------------------------------------
     def _parse_history(self, artifact: Artifact, opts: Options) -> Iterator[Row]:

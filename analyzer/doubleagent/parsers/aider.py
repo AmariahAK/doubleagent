@@ -40,7 +40,9 @@ the next). Input and LLM history rows are assigned to the last session
 header at or before their own time when the chat history sits beside them.
 No model, git branch or tool call id is recorded. Each `TO LLM` request
 becomes one `system` row naming the message count and the last user
-message; the full prompt is at `source_file:source_line`.
+message; the full prompt is at `source_file:source_line`. A non-blank
+input or LLM history line that fits neither format is its own `system`
+row carrying the line in full (`error_rows`, issue 136).
 
 The chat history is the primary store; the input and LLM histories are
 secondary sources (`secondary()`, issue 122), read on every run beside it.
@@ -71,7 +73,7 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser
+from .base import Options, Parser, error_rows, line_text
 
 CHAT = ".aider.chat.history.md"
 INPUT = ".aider.input.history"
@@ -86,7 +88,7 @@ ROLE_TURN = {"USER": "user", "ASSISTANT": "assistant", "SYSTEM": "system"}
 def _lines(path: Path) -> Iterator[tuple[int, str]]:
     with open(path, "rb") as fh:
         for n, raw in enumerate(fh, 1):
-            yield n, raw.decode("utf-8", errors="replace").rstrip("\r\n")
+            yield n, line_text(raw)
 
 
 def _norm(s: str) -> str:
@@ -108,7 +110,9 @@ def project_dir(original: str) -> str:
 
 
 def read_input_history(path: Path, errors: list | None = None) -> list[tuple[int, str, str]]:
-    """(line, local timestamp, text) per prompt_toolkit FileHistory entry."""
+    """(line, local timestamp, text) per prompt_toolkit FileHistory entry.
+    A non-blank line that is neither a timestamp nor a `+` entry line is
+    appended to `errors` as (line, message, the line less its terminator)."""
     out: list[list] = []
     for n, line in _lines(path):
         m = INPUT_TS_RX.match(line)
@@ -119,7 +123,7 @@ def read_input_history(path: Path, errors: list | None = None) -> list[tuple[int
                 out.append([n, "", []])
             out[-1][2].append(line[1:])
         elif line.strip() and errors is not None:
-            errors.append((n, "not a FileHistory line"))
+            errors.append((n, "not a FileHistory line", line))
     return [(e[0], e[1], "\n".join(e[2])) for e in out]
 
 
@@ -266,7 +270,7 @@ class AiderParser(Parser):
             row.turn_type = "user"
             row.text = compact(text)
             yield row
-        yield from self._errors(artifact, errors)
+        yield from error_rows(self, artifact, errors)
 
     # ---- .aider.llm.history ----------------------------------------------------
 
@@ -321,20 +325,9 @@ class AiderParser(Parser):
             elif block is not None:
                 block["lines"].append(line)
             elif line.strip():
-                errors.append((n, "text before the first TO LLM / LLM RESPONSE marker"))
+                errors.append((n, "text before the first TO LLM / LLM RESPONSE marker", line))
         yield from emit(block)
-        yield from self._errors(artifact, errors)
-
-    def _errors(self, artifact: Artifact, errors: list) -> Iterator[Row]:
-        if errors:
-            row = self.base_row(artifact)
-            row.turn_type = "system"
-            row.source_line = errors[0][0]
-            row.text = "parser: %d unparseable line(s), first at line %d" % (
-                len(errors),
-                errors[0][0],
-            )
-            yield row
+        yield from error_rows(self, artifact, errors)
 
 
 def _strip_role(line: str, role: str) -> str:

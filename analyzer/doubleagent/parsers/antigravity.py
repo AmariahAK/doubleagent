@@ -130,8 +130,8 @@ Files, relative to the home directory, under each of those directories
   `cascade_id`), `source_line` the line number (in the concatenated chunks
   for a chunked copy, whose `source_file` is the first chunk), and empty
   `project_path`, `git_branch` and `model`, which the mirror does not
-  record; no model or permission rows, for the same reason. A bad line is
-  one `system` row after the others.
+  record; no model or permission rows, for the same reason. Each bad line
+  is its own `system` row carrying the line in full, after the others.
   A secondary source of the conversation database: the timeline drops a
   row the database also yields. Its time rule: the mirror records only a
   step's `created_at`, while the database reader stamps `assistant`,
@@ -231,8 +231,10 @@ from .base import (
     Options,
     Parser,
     compact_json,
+    error_rows,
     file_mtime,
     iter_jsonl,
+    line_text,
     setting_value,
     text_of,
     track_change,
@@ -1070,15 +1072,7 @@ class AntigravityParser(Parser):
             row.turn_type = "user"
             row.text = compact(rec.get("display"))
             yield row
-        if errors:
-            row = self.base_row(artifact)
-            row.turn_type = "system"
-            row.source_line = errors[0][0]
-            row.text = "parser: %d unparseable line(s), first at line %d" % (
-                len(errors),
-                errors[0][0],
-            )
-            yield row
+        yield from error_rows(self, artifact, errors)
 
     # -- brain/<uuid>/.system_generated/logs ------------------------------------
     def _parse_brain(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
@@ -1089,29 +1083,20 @@ class AntigravityParser(Parser):
         if blob is None:
             return
         session_id = m.group(2)
-        errors: list[int] = []
+        errors: list = []
         calls: list[dict] = []
         for n, raw in enumerate(blob.split(b"\n"), 1):
-            raw = raw.strip()
-            if not raw:
+            stripped = raw.strip()
+            if not stripped:
                 continue
             try:
-                rec = json.loads(raw.decode("utf-8", errors="replace"))
-            except ValueError:
-                errors.append(n)
+                rec = json.loads(stripped.decode("utf-8", errors="replace"))
+            except ValueError as e:
+                errors.append((n, str(e), line_text(raw)))
                 continue
             if isinstance(rec, dict):
                 yield from self._brain_rows(artifact, n, rec, session_id, calls, opts)
-        if errors:
-            row = self.base_row(artifact)
-            row.session_id = session_id
-            row.source_line = errors[0]
-            row.turn_type = "system"
-            row.text = "parser: %d unparseable line(s), first at line %d" % (
-                len(errors),
-                errors[0],
-            )
-            yield row
+        yield from error_rows(self, artifact, errors, session_id)
 
     def _brain_rows(
         self,

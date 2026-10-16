@@ -94,8 +94,9 @@ layout.
     `errorReason`, `codeChanges.filesModified`): `session end: <type>
     <reason> files modified: <files>`.
   - `assistant.turn_*`, `session.usage_*`, the other `model.*` events and
-    unknown types are skipped. A bad line is one `system` row at the end
-    and the other lines are still read.
+    unknown types are skipped. Each bad line is its own `system` row at
+    the end, carrying the line in full (issue 136, `error_rows` in
+    `base.py`), and the other lines are still read.
 * `<home>/session-state/<id>/workspace.yaml` (`id`, `cwd`, `name`,
   `user_named`, `fork_count`, `summary_count`, `created_at`), read with a
   flat `key: value` reader since only top-level scalars are used:
@@ -175,8 +176,16 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, file_mtime, iter_jsonl, setting_value, track_change
-from .pi import error_row
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    error_rows,
+    file_mtime,
+    iter_jsonl,
+    setting_value,
+    track_change,
+)
 
 HOME = r"(?:\.copilot|\.local/state/\.copilot|\.config/\.copilot)"
 SESSION_DIR = HOME + r"/session-state/([0-9a-f-]{36})/"
@@ -577,8 +586,7 @@ class CopilotCliParser(Parser):
             # assistant.turn_*, session.usage_*, the other model.* events and
             # unknown types are bookkeeping: no row.
 
-        if errors:
-            r = error_row(self, artifact, errors, sid, state["project"])
+        for r in error_rows(self, artifact, errors, sid, state["project"]):
             r.git_branch = state["branch"]
             yield r
 

@@ -59,6 +59,15 @@ the message `ts` as `tool_use_id`; `command_output`, `mcp_server_response`,
 `resume_task`, ...) is `system`. Records with no text are skipped unless
 they are `system`. `source_line` is the record's 1-based position in the
 JSON array. No git branch is recorded by either agent.
+
+Errors (issue 136): a record that does not decode stops the array walk and
+becomes one `system` row through `error_rows` in `base.py`, carrying the
+decoder's message and the file's text from that record's first character to
+the end of the file (less a trailing line terminator): the record cut off
+mid-write, plus whatever the walk could not read after it, so nothing is
+dropped. Its `source_line` is the record's position. A file that cannot be
+read, is not a JSON array, stops after a record without a closing bracket,
+or has data after the array gets a `parser: <message>` row with no text.
 """
 
 from __future__ import annotations
@@ -71,7 +80,7 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, text_of, track_change
+from .base import Options, Parser, compact_json, error_rows, text_of, track_change
 from .claude_code import tool_summary
 
 UI_FILE = "ui_messages.json"
@@ -128,12 +137,15 @@ def iter_array_at(
 ) -> Iterator[tuple[int, object]]:
     """Yield (1-based position, element) from the JSON array starting at
     `s[i]`. A truncated or corrupt element stops the walk and is recorded in
-    `errors` as (position, message); the elements before it are kept. When
-    `end` is given, the index after the closing bracket is appended to it."""
+    `errors` as (position, decoder message, the text from the element's
+    first character to the end of `s`, less a trailing line terminator);
+    the elements before it are kept. A structural error (not an array, no
+    closing bracket) is (position, message, ""). When `end` is given, the
+    index after the closing bracket is appended to it."""
     dec = json.JSONDecoder()
     i = _skip_ws(s, i)
     if i >= len(s) or s[i] != "[":
-        errors.append((1, "not a JSON array"))
+        errors.append((1, "not a JSON array", ""))
         return
     i = _skip_ws(s, i + 1)
     if i < len(s) and s[i] == "]":
@@ -143,10 +155,15 @@ def iter_array_at(
     n = 0
     while True:
         n += 1
+        start = _skip_ws(s, i)
         try:
-            value, i = dec.raw_decode(s, _skip_ws(s, i))
+            value, i = dec.raw_decode(s, start)
         except ValueError as e:
-            errors.append((n, "record %d unparseable (%s)" % (n, e)))
+            raw = _tail(s, start)
+            if raw:
+                errors.append((n, str(e), raw))
+            else:
+                errors.append((n, "record %d unparseable (%s)" % (n, e), ""))
             return
         yield n, value
         i = _skip_ws(s, i)
@@ -157,8 +174,19 @@ def iter_array_at(
             if end is not None:
                 end.append(i + 1)
             return
-        errors.append((n + 1, "array cut off after record %d" % n))
+        errors.append((n + 1, "array cut off after record %d" % n, ""))
         return
+
+
+def _tail(s: str, start: int) -> str:
+    """`s` from `start` to its end, less one trailing `\\n` and then `\\r`,
+    as `line_text` treats a line."""
+    tail = s[start:]
+    if tail.endswith("\n"):
+        tail = tail[:-1]
+    if tail.endswith("\r"):
+        tail = tail[:-1]
+    return tail
 
 
 def read_text(path: Path) -> str | None:
@@ -179,7 +207,7 @@ def iter_json_array(path: Path, errors: list) -> Iterator[tuple[int, object]]:
     of data appended after the array, both reported through `errors`."""
     s = read_text(path)
     if s is None:
-        errors.append((0, "unreadable"))
+        errors.append((0, "unreadable", ""))
         return
     end: list = []
     count = 0
@@ -187,7 +215,7 @@ def iter_json_array(path: Path, errors: list) -> Iterator[tuple[int, object]]:
         count = n
         yield n, v
     if end and s[end[0] :].strip(_WS):
-        errors.append((count + 1, "unparseable data after the JSON array"))
+        errors.append((count + 1, "unparseable data after the JSON array", ""))
 
 
 def load_json(path: Path):
@@ -208,18 +236,6 @@ def loads_or_none(s) -> dict | None:
     except ValueError:
         return None
     return v if isinstance(v, dict) else None
-
-
-def error_row(
-    parser: Parser, artifact: Artifact, errors: list, session_id: str = "", project_path: str = ""
-) -> Row:
-    row = parser.base_row(artifact)
-    row.session_id = session_id
-    row.project_path = project_path
-    row.turn_type = "system"
-    row.source_line = errors[0][0]
-    row.text = "parser: %s" % errors[0][1]
-    return row
 
 
 def _join(*parts) -> str:
@@ -392,8 +408,7 @@ class LegacyTaskParser(Parser):
                 text = text + " [partial]" if text else "[partial]"
             row.text = compact(text)
             yield row
-        if errors:
-            yield error_row(self, artifact, errors, ctx.task_id, ctx.project_path)
+        yield from error_rows(self, artifact, errors, ctx.task_id, ctx.project_path)
 
     # -- api_conversation_history.json
 
@@ -445,18 +460,17 @@ class LegacyTaskParser(Parser):
                 row.tool_use_id = tid
                 row.text = compact(text)
                 yield row
-        if errors:
-            yield error_row(self, artifact, errors, ctx.task_id, ctx.project_path)
+        yield from error_rows(self, artifact, errors, ctx.task_id, ctx.project_path)
 
     # -- task_metadata.json
 
     def _parse_metadata(self, artifact: Artifact, ctx: TaskContext, opts: Options) -> Iterator[Row]:
         data = load_json(artifact.disk_path)
         if not isinstance(data, dict):
-            yield error_row(
+            yield from error_rows(
                 self,
                 artifact,
-                [(0, "task_metadata.json is not a JSON object")],
+                [(0, "task_metadata.json is not a JSON object", "")],
                 ctx.task_id,
                 ctx.project_path,
             )

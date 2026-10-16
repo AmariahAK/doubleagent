@@ -117,6 +117,12 @@ in the research. Timestamps are the entry `timestamp`,
 else the message's ms timestamp, else the row's `created_at`. `source_line`
 is the `transcript_events` (or archive table) rowid, or the JSONL line. No
 git branch is recorded.
+
+A line that does not decode is its own `system` row (issue 136, `error_rows`
+in `base.py`), carrying the line in full after `parser: unparseable line
+(<reason>): `, with the session's id and `cwd`. For a line inside an archive
+blob the reason is prefixed `archive <name> line <n>: ` (or `cold archive`)
+and `source_line` is the archive row's rowid, as for the blob's other rows.
 """
 
 from __future__ import annotations
@@ -129,7 +135,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, text_of
+from .base import Options, Parser, compact_json, error_rows, line_text, text_of
 from .pi import model_text, switch_text
 from .zed import decompress
 
@@ -183,14 +189,16 @@ def _maybe_zstd(blob: bytes) -> tuple[bytes | None, str]:
 
 
 def _iter_lines(data: bytes, errors: list) -> Iterator[tuple[int, dict]]:
+    """(line number, record) for each JSON object line of `data`; a line that
+    does not decode is appended to `errors` as (line, message, line text)."""
     for n, raw in enumerate(data.split(b"\n"), 1):
-        raw = raw.strip()
-        if not raw:
+        stripped = raw.strip()
+        if not stripped:
             continue
         try:
-            rec = json.loads(raw.decode("utf-8", errors="replace"))
+            rec = json.loads(stripped.decode("utf-8", errors="replace"))
         except ValueError as e:
-            errors.append((n, str(e)))
+            errors.append((n, str(e), line_text(raw)))
             continue
         if isinstance(rec, dict):
             yield n, rec
@@ -522,6 +530,14 @@ class OpenClawParser(Parser):
     ) -> Row:
         return self._row(artifact, s, line, ts, "system", "parser: " + text, opts)
 
+    def _blob_errors(
+        self, artifact: Artifact, s: _Session, rowid: int, label: str, errors: list
+    ) -> Iterator[Row]:
+        """`error_rows` for the bad lines of an archive blob: `source_line` the
+        archive row's rowid, the reason prefixed with `label` and the line."""
+        located = [(rowid, "%s line %d: %s" % (label, n, msg), raw) for n, msg, raw in errors]
+        yield from error_rows(self, artifact, located, s.session_id, s.cwd)
+
     def _records(
         self, artifact: Artifact, s: _Session, records, opts: Options, fixed_line: int = 0
     ) -> Iterator[Row]:
@@ -574,14 +590,7 @@ class OpenClawParser(Parser):
             return
         errors: list = []
         yield from self._records(artifact, s, _iter_lines(data, errors), opts)
-        if errors:
-            yield self._bad(
-                artifact,
-                s,
-                errors[0][0],
-                "%d unparseable line(s), first at line %d" % (len(errors), errors[0][0]),
-                opts,
-            )
+        yield from error_rows(self, artifact, errors, s.session_id, s.cwd)
 
     @staticmethod
     def _legacy_key(artifact: Artifact, session_id: str) -> str:
@@ -730,15 +739,8 @@ class OpenClawParser(Parser):
                 continue
             errors: list = []
             yield from self._records(artifact, s, _iter_lines(data, errors), opts, fixed_line=line)
-            if errors:
-                yield self._bad(
-                    artifact,
-                    s,
-                    line,
-                    "archive %s: %d unparseable line(s)"
-                    % (r.get("archive_name") or sid, len(errors)),
-                    opts,
-                )
+            label = "archive %s" % (r.get("archive_name") or sid)
+            yield from self._blob_errors(artifact, s, line, label, errors)
 
     def _db_cold(
         self, artifact: Artifact, con, windows: dict[str, dict], opts: Options
@@ -767,15 +769,8 @@ class OpenClawParser(Parser):
                 continue
             errors: list = []
             yield from self._records(artifact, s, _iter_lines(data, errors), opts, fixed_line=line)
-            if errors:
-                yield self._bad(
-                    artifact,
-                    s,
-                    line,
-                    "cold archive %s: %d unparseable line(s)"
-                    % (r.get("archive_name") or sid, len(errors)),
-                    opts,
-                )
+            label = "cold archive %s" % (r.get("archive_name") or sid)
+            yield from self._blob_errors(artifact, s, line, label, errors)
 
 
 __all__ = ["OpenClawParser", "tool_args_text"]

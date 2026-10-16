@@ -97,7 +97,15 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, iter_jsonl, text_of, track_change
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    error_rows,
+    iter_jsonl,
+    text_of,
+    track_change,
+)
 
 HOME = r"(?:\.hermes(?:_[^/]+)?|AppData/Local/hermes(?:_[^/]+)?)(?:/profiles/[^/]+)?"
 DB_RX = re.compile(r"^%s/state\.db$" % HOME)
@@ -354,10 +362,10 @@ class HermesParser(Parser):
         tool_names: dict[str, str] = {}
         for n, rec in iter_jsonl(artifact.disk_path, errors):
             yield from self._message_rows(artifact, rec, session, n, tool_names, opts)
-        if errors:
-            yield self._system(
-                artifact,
-                errors[0][0],
-                session,
-                "parser: %d unparseable line(s), first at line %d" % (len(errors), errors[0][0]),
-            )
+        yield from error_rows(
+            self,
+            artifact,
+            errors,
+            str(session.get("id") or ""),
+            str(session.get("cwd") or session.get("git_repo_root") or ""),
+        )

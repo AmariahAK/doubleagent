@@ -384,8 +384,12 @@ Not wanted: `approval-review/*.jsonl`, `tool-outputs/**`, `cli-*.log`,
 Treat a file whose first parseable record has neither `retained_frame`
 nor `stream`/`payload_type` as not Muse.
 
-Read every line with `iter_jsonl`; a bad line (a log cut mid-write) is one
-`system` row and reading continues. For each line:
+Read every line with `iter_jsonl`; each bad line (a log cut mid-write) is
+its own `system` row at the end of the log's rows,
+`parser: unparseable line (<decoder reason>): <the line in full>`, and
+reading continues. A `retained_frame` child whose `record_json` does not
+decode gets the same row with the reason prefixed `retained_frame child: `
+and the child's `record_json` text as the line. For each line:
 
 1. `retained_marker`: skip (no content, no time).
 2. `retained_frame`: decode each `children[].record_json` with

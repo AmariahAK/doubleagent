@@ -123,6 +123,23 @@ class ClaudeCodeTests(ParserBase):
     REL = ".claude/projects/-srv-proj/%s.jsonl" % CLAUDE_SESSION
     SUB = ".claude/projects/-srv-proj/%s/subagents/agent-abc.jsonl" % CLAUDE_SESSION
     FORK = ".claude/projects/-srv-proj/%s/subagents/agent-fork1.jsonl" % CLAUDE_SESSION
+    # A user line written after the bad line (issue 136).
+    AFTER_CUT: ClassVar[dict] = {
+        "type": "user",
+        "sessionId": CLAUDE_SESSION,
+        "timestamp": "2026-10-01T10:30:00.000Z",
+        "message": {"role": "user", "content": "after the cut"},
+    }
+
+    @staticmethod
+    def unparseable(line: str = '{"type": "user", "truncated": tr') -> str:
+        """The row text a bad line yields (issue 136); the reason is what
+        json.loads says on the running Python."""
+        try:
+            json.loads(line)
+        except ValueError as e:
+            return "parser: unparseable line (%s): %s" % (e, line)
+        raise AssertionError("the bad line parsed")
 
     # (source_line, turn_type, text) for every row of the fixture session;
     # an empty text is checked in its own test.
@@ -297,7 +314,7 @@ class ClaudeCodeTests(ParserBase):
             [
                 ("user", 1, "keep before"),
                 ("user", 3, "keep after"),
-                ("system", 2, "parser: 1 unparseable line(s), first at line 2"),
+                ("system", 2, self.unparseable('{"display":')),
             ],
         )
 
@@ -382,11 +399,22 @@ class ClaudeCodeTests(ParserBase):
         self.assertEqual(tool_summary("Unknown", "raw"), '"raw"')
 
     def test_truncated_last_line_is_reported_not_fatal(self):
+        # Issue 136: the bad line is its own row, in full; the rows before
+        # it and a line written after it survive.
         write_bad_line(self.home / self.REL)
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(self.AFTER_CUT) + "\n")
         rows = self.rows_for(ClaudeCodeParser(), self.REL)
-        self.assertEqual(len(rows), len(self.EXPECTED) + 1)
-        self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 35)
+        self.assertEqual(len(rows), len(self.EXPECTED) + 2)
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows[: len(self.EXPECTED)]],
+            [(n, t) for n, t, _ in self.EXPECTED],
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[len(self.EXPECTED) :]],
+            [(36, "user", "after the cut"), (35, "system", self.unparseable())],
+        )
+        self.assertEqual(rows[-1].session_id, CLAUDE_SESSION)
 
 
 class ClaudeCode295Tests(ParserBase):
@@ -603,10 +631,21 @@ class ClaudeCode295Tests(ParserBase):
             )
 
     def test_truncated_line_is_reported_not_fatal(self):
+        # Issue 136: the bad line is its own row, in full; the rows before
+        # it and a line written after it survive.
         write_bad_line(self.home / self.REL)
+        after = dict(ClaudeCodeTests.AFTER_CUT, sessionId=CLAUDE_295_SESSION)
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(ClaudeCodeParser(), self.REL)
-        self.assertEqual(len(rows), len(self.EXPECTED) + 1)
-        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 11")
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[: len(self.EXPECTED)]],
+            self.EXPECTED,
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[len(self.EXPECTED) :]],
+            [(12, "user", "after the cut"), (11, "system", ClaudeCodeTests.unparseable())],
+        )
 
 
 class ClaudeCode296Tests(ParserBase):
@@ -705,10 +744,21 @@ class ClaudeCode296Tests(ParserBase):
         self.assertEqual(len(rows), len(self.EXPECTED))
 
     def test_truncated_line_is_reported_not_fatal(self):
+        # Issue 136: the bad line is its own row, in full; the rows before
+        # it and a line written after it survive.
         write_bad_line(self.home / self.REL)
+        after = dict(ClaudeCodeTests.AFTER_CUT, sessionId=CLAUDE_296_SESSION)
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(ClaudeCodeParser(), self.REL)
-        self.assertEqual(len(rows), len(self.EXPECTED) + 1)
-        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 11")
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[: len(self.EXPECTED)]],
+            self.EXPECTED,
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[len(self.EXPECTED) :]],
+            [(12, "user", "after the cut"), (11, "system", ClaudeCodeTests.unparseable())],
+        )
 
     def test_user_settings_rows(self):
         rows = self.rows_for(ClaudeCodeParser(), ".claude/settings.json")
@@ -1070,13 +1120,75 @@ class CodexTests(ParserBase):
         art = next(a for a in self.col.artifacts if a.rel == ".codex/config.toml")
         self.assertFalse(CodexParser().wants(art))
 
+    # The line `write_bad_line` appends; the row `error_rows` writes for it
+    # carries it in full after the decoder's reason (issue 136).
+    BAD_LINE = '{"type": "user", "truncated": tr'
+
+    @classmethod
+    def bad_text(cls) -> str:
+        """The row text for `BAD_LINE`, with the reason this Python's json
+        module gives, since the wording differs between versions."""
+        try:
+            json.loads(cls.BAD_LINE)
+        except ValueError as e:
+            return "parser: unparseable line (%s): %s" % (e, cls.BAD_LINE)
+        raise AssertionError("the bad line parsed")
+
+    @staticmethod
+    def check_bad_line(case: ParserBase, parser_cls, rel: str, after: int):
+        """Put `BAD_LINE` after line `after` of `rel` and check that every
+        row the clean file gave still comes out, the later ones one line
+        down, followed by one row for the bad line carrying it in full.
+        Returns that row for the caller's session and project checks."""
+        clean = case.rows_for(parser_cls(), rel)
+        path = case.home / rel
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        lines.insert(after, CodexTests.BAD_LINE + "\n")
+        path.write_text("".join(lines), encoding="utf-8")
+        rows = case.rows_for(parser_cls(), rel)
+        case.assertEqual(
+            [(r.turn_type, r.text) for r in rows[:-1]], [(r.turn_type, r.text) for r in clean]
+        )
+        case.assertEqual(
+            [r.source_line for r in rows[:-1]],
+            [r.source_line + 1 if r.source_line > after else r.source_line for r in clean],
+        )
+        case.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            ("system", after + 1, CodexTests.bad_text()),
+        )
+        return rows[-1]
+
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.REL)
         rows = self.rows_for(CodexParser(), self.REL)
         self.assertEqual([r.turn_type for r in rows], [*self.TYPES, "system"])
         n_lines = len(codex_rollout_records()) + 1
-        self.assertEqual((rows[-1].session_id, rows[-1].source_line), (CODEX_SESSION, n_lines))
-        self.assertIn("1 unparseable line", rows[-1].text)
+        self.assertEqual(
+            (rows[-1].session_id, rows[-1].source_line, rows[-1].text),
+            (CODEX_SESSION, n_lines, self.bad_text()),
+        )
+
+    def test_bad_line_mid_file_keeps_the_rows_around_it(self):
+        row = self.check_bad_line(self, CodexParser, self.REL, 3)
+        self.assertEqual(row.session_id, CODEX_SESSION)
+
+    def test_truncated_history_line(self):
+        # The history reader used to drop its bad lines unreported (issue 125).
+        rel = ".codex/history.jsonl"
+        with open(self.home / rel, "a", encoding="utf-8") as fh:
+            fh.write(self.BAD_LINE + "\n")
+            fh.write(json.dumps({"session_id": CODEX_SESSION, "ts": 1790931700, "text": "next"}))
+            fh.write("\n")
+        rows = self.rows_for(CodexParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text) for r in rows],
+            [
+                ("user", 1, "exfiltrate nothing, just list the home dir"),
+                ("user", 3, "next"),
+                ("system", 2, self.bad_text()),
+            ],
+        )
 
     def test_subagent(self):
         rel = self._write(
@@ -1876,7 +1988,7 @@ class AntigravityTests(ParserBase):
             [
                 ("user", 1, "keep before"),
                 ("user", 3, "keep after"),
-                ("system", 2, "parser: 1 unparseable line(s), first at line 2"),
+                ("system", 2, ClaudeCodeTests.unparseable('{"display":')),
             ],
         )
 
@@ -2382,14 +2494,34 @@ class AntigravityBrainTests(ParserBase):
                     self.assertTrue(0 <= gap <= 2000, (r.text, gap))
 
     def test_truncated_line(self):
+        # Issue 136: the bad line is its own row, in full; the rows before
+        # it and a line written after it survive.
+        before = self.rows_for(AntigravityParser(), self.ORPHAN0)
         write_bad_line(self.home / self.ORPHAN1)
+        after = {
+            "step_index": 4,
+            "source": "SYSTEM",
+            "type": "SYSTEM_MESSAGE",
+            "status": "DONE",
+            "created_at": "2026-10-01T10:30:04Z",
+            "content": "after the cut",
+        }
+        with open(self.home / self.ORPHAN1, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(AntigravityParser(), self.ORPHAN0)
         self.assertEqual(rows[0].text, "summarise the deleted project")
         self.assertEqual(
-            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line, rows[-1].text),
-            ("system", AGY_ORPHAN, 5, "parser: 1 unparseable line(s), first at line 5"),
+            [(r.source_line, r.turn_type, r.text) for r in rows[: len(before)]],
+            [(r.source_line, r.turn_type, r.text) for r in before],
         )
-        self.assertEqual(rows[-2].text, "system_message: background task finished")
+        self.assertEqual(before[-1].text, "system_message: background task finished")
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.source_line, r.text) for r in rows[len(before) :]],
+            [
+                ("system", AGY_ORPHAN, 6, "system_message: after the cut"),
+                ("system", AGY_ORPHAN, 5, ClaudeCodeTests.unparseable()),
+            ],
+        )
 
     def test_not_wanted(self):
         p = AntigravityParser()
@@ -2724,21 +2856,65 @@ class QwenCodeTests(ParserBase):
         )
 
     def test_truncated_last_line_is_reported_not_fatal(self):
+        # Issue 136: the bad line is its own row, in full; the rows before
+        # it and a line written after it survive.
+        from fixtures import qwen_session_records
+
+        before = self.rows_for(QwenCodeParser(), self.REL)
+        self.assertEqual(len(before), 13)
         write_bad_line(self.home / self.REL)
+        after: dict = dict(
+            qwen_session_records()[1],
+            uuid="q9",
+            message={"role": "user", "parts": [{"text": "after the cut"}]},
+            systemPayload={"displayText": "after the cut"},
+        )
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(QwenCodeParser(), self.REL)
-        self.assertEqual(len(rows), 14)
-        self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual((rows[-1].source_line, rows[-1].session_id), (10, QWEN_SESSION))
+        self.assertEqual(len(rows), 15)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[:13]],
+            [(r.source_line, r.turn_type, r.text) for r in before],
+        )
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.session_id, r.text) for r in rows[13:]],
+            [
+                (11, "user", QWEN_SESSION, "after the cut"),
+                (10, "system", QWEN_SESSION, ClaudeCodeTests.unparseable()),
+            ],
+        )
 
     def test_truncated_logs_keep_earlier_entries(self):
+        # Issue 136: the broken element is carried from where its decode
+        # started to the end of the file; the entries before it survive.
         path = self.home / self.LOGS
         data = path.read_text(encoding="utf-8")
-        path.write_text(data[: data.index('"model_switch"')], encoding="utf-8")
+        cut = data[: data.index('"model_switch"')]
+        path.write_text(cut, encoding="utf-8")
+        start = cut.rindex("{")
+        try:
+            json.JSONDecoder().raw_decode(cut, start)
+        except ValueError as e:
+            reason = str(e)
+        else:
+            self.fail("the cut element parsed")
         rows = self.rows_for(QwenCodeParser(), self.LOGS)
-        self.assertEqual([r.turn_type for r in rows], ["user", "system"])
-        self.assertEqual(rows[0].text, "run the tests")
-        self.assertIn("1 unparseable entry", rows[1].text)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (1, "user", "run the tests"),
+                (2, "system", "parser: unparseable line (%s): %s" % (reason, cut[start:])),
+            ],
+        )
+
+    def test_logs_not_an_array(self):
+        (self.home / self.LOGS).write_text('{"type": "user"}', encoding="utf-8")
+        rows = self.rows_for(QwenCodeParser(), self.LOGS)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [(0, "system", "parser: not a JSON array")],
+        )
 
     def test_args_summary(self):
         self.assertEqual(args_summary({"command": "ls"}), "ls")
@@ -3167,15 +3343,57 @@ class GeminiCliTests(ParserBase):
             self.assertFalse(p.wants(art), rel)
 
     def test_truncated_last_line_is_reported_not_fatal(self):
+        # Issue 136: the bad line is its own row, in full, with the session
+        # and project; the rows before it and a line written after it survive.
+        before = self.rows_for(GeminiCliParser(), self.REL)
+        self.assertEqual(len(before), 18)
         write_bad_line(self.home / self.REL)
+        after = {
+            "id": "msg-u9",
+            "timestamp": "2026-10-01T09:30:00.000Z",
+            "type": "user",
+            "content": [{"text": "after the cut"}],
+        }
+        with open(self.home / self.REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(GeminiCliParser(), self.REL)
-        self.assertEqual(len(rows), 19)
-        self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 16)
-        (self.home / self.LEGACY).write_text('{"sessionId": "x", "messages": [', encoding="utf-8")
+        self.assertEqual(len(rows), 20)
+        added = [r for r in rows if r.source_line == 17]
+        self.assertEqual([(r.turn_type, r.text) for r in added], [("user", "after the cut")])
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[:-1] if r.source_line != 17],
+            [(r.source_line, r.turn_type, r.text) for r in before],
+        )
+        self.assertEqual(
+            (
+                rows[-1].source_line,
+                rows[-1].turn_type,
+                rows[-1].session_id,
+                rows[-1].project_path,
+                rows[-1].text,
+            ),
+            (
+                16,
+                "system",
+                GEMINI_RESUMED,  # the session id in force at the end of the file
+                before[-1].project_path,
+                ClaudeCodeTests.unparseable(),
+            ),
+        )
+        # A legacy whole-file JSON that does not parse has no line to carry.
+        bad = '{"sessionId": "x", "messages": ['
+        (self.home / self.LEGACY).write_text(bad, encoding="utf-8")
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
+        else:
+            self.fail("the legacy file parsed")
         rows = self.rows_for(GeminiCliParser(), self.LEGACY)
-        self.assertEqual(len(rows), 1)
-        self.assertIn("unparseable", rows[0].text)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [(1, "system", "parser: unparseable session file: %s" % reason)],
+        )
 
 
 class CrushTests(ParserBase):
@@ -3436,9 +3654,24 @@ class GooseTests(ParserBase):
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / GOOSE_LEGACY_REL)
+        with open(self.home / GOOSE_LEGACY_REL, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n" + '{"id": "m9", "role": "user", "created": 1772355700, '
+                '"content": [{"type": "text", "text": "after the cut"}]}' + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(GooseParser(), GOOSE_LEGACY_REL)
-        self.assertEqual([r.turn_type for r in rows], ["system", "user", "system"])
-        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 3")
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows],
+            [(1, "system"), (2, "user"), (4, "user"), (3, "system")],
+        )
+        self.assertEqual((rows[1].text, rows[2].text), ("hello", "after the cut"))
+        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, bad))
         self.assertEqual(rows[-1].session_id, "20260301_090000")
 
     def test_bad_content_json_is_reported_not_fatal(self):
@@ -3629,10 +3862,24 @@ class ContinueTests(ParserBase):
     def test_truncated_dev_data_line(self):
         rel = ".continue/dev_data/0.2.0/chatInteraction.jsonl"
         write_bad_line(self.home / rel)
+        with open(self.home / rel, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n" + '{"sessionId": "0f1e", "timestamp": "2026-10-02T10:00:09.000Z", '
+                '"prompt": "after the cut"}' + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(ContinueParser(), rel)
-        self.assertEqual([r.turn_type for r in rows], ["user", "assistant", "system"])
-        self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 2)
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows],
+            [(1, "user"), (1, "assistant"), (3, "user"), (2, "system")],
+        )
+        self.assertEqual((rows[0].text, rows[2].text), ("rename foo", "after the cut"))
+        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, bad))
 
     def test_load_session_trailing_data(self):
         obj, problem = load_session('{"sessionId": "x", "history": []}\n{"junk"')
@@ -3740,11 +3987,20 @@ class AiderTests(ParserBase):
         self.assertFalse(AiderParser().wants(art))
 
     def test_truncated_line(self):
-        write_bad_line(self.home / ".aider.input.history")
+        path = self.home / ".aider.input.history"
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n# 2026-10-02 13:06:00.000000\n+after the cut\n")
         rows = self.rows_for(AiderParser(), ".aider.input.history")
-        self.assertEqual([r.turn_type for r in rows], ["user", "user", "user", "system"])
-        self.assertIn("1 unparseable line", rows[-1].text)
+        self.assertEqual([r.turn_type for r in rows], ["user", "user", "user", "user", "system"])
+        self.assertEqual(
+            (rows[2].text, rows[3].text), ("delete the migrations folder", "after the cut")
+        )
         self.assertEqual(rows[-1].source_line, 10)
+        self.assertEqual(
+            rows[-1].text,
+            'parser: unparseable line (not a FileHistory line): {"type": "user", "truncated": tr',
+        )
 
     def test_project_artifacts_from_manifest(self):
         """The collector attributes repository files to agent `project` with
@@ -4011,6 +4267,18 @@ class VsCodeTests(ParserBase):
         % VSCODE_LEGACY_SESSION
     )
 
+    BAD_LINE = '{"type": "user", "truncated": tr'  # what write_bad_line appends
+
+    @staticmethod
+    def bad_line_text(line: str) -> str:
+        """The row text for an unparseable `line` (issue 136), with the
+        running Python's own decoder message."""
+        try:
+            json.loads(line)
+        except ValueError as e:
+            return "parser: unparseable line (%s): %s" % (e, line)
+        raise AssertionError("line parses: %r" % line)
+
     def test_rows(self):
         rows = self.rows_for(VsCodeParser(), self.REL)
         self.assertEqual(
@@ -4171,12 +4439,38 @@ class VsCodeTests(ParserBase):
             self.assertFalse(VsCodeParser().wants(rel_only(rel)), rel)
 
     def test_truncated_line_is_reported_not_fatal(self):
+        clean = [(r.turn_type, r.text) for r in self.rows_for(VsCodeParser(), self.REL)]
         write_bad_line(self.home / self.REL)
         rows = self.rows_for(VsCodeParser(), self.REL)
-        self.assertEqual(len(rows), 17)
-        self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 7)
+        self.assertEqual([(r.turn_type, r.text) for r in rows[:-1]], clean)
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].session_id, rows[-1].text),
+            ("system", 7, VSCODE_SESSION, self.bad_line_text(self.BAD_LINE)),
+        )
+
+    def test_bad_lines_mid_log_are_reported_in_full(self):
+        # A line that does not decode and one whose mutation cannot apply,
+        # between valid lines: each is its own row, the rest still replay.
+        clean = [(r.turn_type, r.text) for r in self.rows_for(VsCodeParser(), self.REL)]
+        path = self.home / self.REL
+        lines = path.read_bytes().split(b"\n")
+        stray = '{"kind": 1, "k": ["nowhere", "x"], "v": 1}'
+        lines[1:1] = [self.BAD_LINE.encode(), stray.encode() + b"\r"]
+        path.write_bytes(b"\n".join(lines))
+        rows = self.rows_for(VsCodeParser(), self.REL)
+        self.assertEqual([(r.turn_type, r.text) for r in rows[:-2]], clean)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text) for r in rows[-2:]],
+            [
+                ("system", 2, self.bad_line_text(self.BAD_LINE)),
+                (
+                    "system",
+                    3,
+                    "parser: unparseable line (mutation not applied: path ['nowhere']"
+                    " not found): " + stray,
+                ),
+            ],
+        )
 
     def test_mutation_log(self):
         s = apply_mutation(None, {"kind": 0, "v": {"a": [1, 2, 3], "b": {"c": 1}}})
@@ -4656,6 +4950,18 @@ class ClineTests(ParserBase):
     UI = CLINE_GS + "tasks/%s/ui_messages.json" % CLINE_TASK
     SDK = ".cline/data/sessions/%s/%s" % (CLINE_SESSION, CLINE_SESSION)
 
+    BAD_LINE = '{"type": "user", "truncated": tr'  # what write_bad_line appends
+
+    @staticmethod
+    def bad_line_text(line: str) -> str:
+        """The row text for an unparseable `line` (issue 136), with the
+        running Python's own decoder message."""
+        try:
+            json.loads(line)
+        except ValueError as e:
+            return "parser: unparseable line (%s): %s" % (e, line)
+        raise AssertionError("line parses: %r" % line)
+
     def test_rows(self):
         rows = self.rows_for(ClineParser(), self.UI)
         self.assertEqual(
@@ -4890,15 +5196,20 @@ class ClineTests(ParserBase):
         )
 
     def test_input_history_truncated_line(self):
-        write_bad_line(self.home / self.INPUT_HISTORY)
+        path = self.home / self.INPUT_HISTORY
+        first, rest = path.read_bytes().split(b"\n", 1)
+        path.write_bytes(first + b"\n" + self.BAD_LINE.encode() + b"\r\n" + rest)
+        write_bad_line(path)
         rows = self.rows_for(ClineParser(), self.INPUT_HISTORY)
         self.assertEqual(
-            [(r.turn_type, r.timestamp_utc, r.text) for r in rows[:2]],
-            [("user", "", "fix tests"), ("user", "", "list the open ports")],
+            [(r.source_line, r.turn_type, r.timestamp_utc, r.text) for r in rows],
+            [
+                (1, "user", "", "fix tests"),
+                (3, "user", "", "list the open ports"),
+                (2, "system", "", self.bad_line_text(self.BAD_LINE)),
+                (4, "system", "", self.bad_line_text(self.BAD_LINE)),
+            ],
         )
-        self.assertEqual(len(rows), 3)
-        self.assertEqual((rows[2].turn_type, rows[2].source_line), ("system", 3))
-        self.assertIn("parser: line 3 unparseable", rows[2].text)
 
     def test_secondary(self):
         p = ClineParser()
@@ -5040,14 +5351,23 @@ class ClineTests(ParserBase):
     def test_array_cut_mid_write_keeps_earlier_records(self):
         path = self.home / self.UI
         data = path.read_text(encoding="utf-8")
-        path.write_text(data[: data.index('"say": "command_output"') - 30], encoding="utf-8")
+        cut = data[: data.index('"say": "command_output"') - 30]
+        path.write_text(cut, encoding="utf-8")
         rows = self.rows_for(ClineParser(), self.UI)
         self.assertEqual(
             [r.turn_type for r in rows],
             ["user", "system", "tool_use", "assistant", "tool_use", "system"],
         )
         self.assertEqual(rows[-1].source_line, 7)
-        self.assertIn("record 7", rows[-1].text)
+        # The cut record is carried from its first character to the end.
+        start = cut.rindex('{"ts"')
+        try:
+            json.JSONDecoder().raw_decode(cut, start)
+        except ValueError as e:
+            reason = str(e)
+        else:
+            raise AssertionError("cut record parses")
+        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, cut[start:]))
         sdk = self.home / (self.SDK + ".messages.json")
         data = sdk.read_text(encoding="utf-8")
         sdk.write_text(data[: data.index('"id": "m3"') - 2], encoding="utf-8")
@@ -5219,13 +5539,22 @@ class RooCodeTests(ParserBase):
 
     def test_cli_history_malformed(self):
         path = self.home / self.CLI_HISTORY
-        path.write_text('{"version": 1, "entries": ["rename the helper", "ye', encoding="utf-8")
+        text = '{"version": 1, "entries": ["rename the helper", "ye'
+        path.write_text(text, encoding="utf-8")
+        try:
+            json.JSONDecoder().raw_decode(text, text.rindex('"ye'))
+        except ValueError as e:
+            reason = str(e)
+        else:
+            raise AssertionError("cut entry parses")
         rows = self.rows_for(RooCodeParser(), self.CLI_HISTORY)
         self.assertEqual(
-            [(r.turn_type, r.text) for r in rows],
-            [("user", "rename the helper"), ("system", rows[1].text)],
+            [(r.turn_type, r.source_line, r.text) for r in rows],
+            [
+                ("user", 1, "rename the helper"),
+                ("system", 2, 'parser: unparseable line (%s): "ye' % reason),
+            ],
         )
-        self.assertTrue(rows[1].text.startswith("parser: record 2 unparseable"), rows[1].text)
         path.write_text('{"version": 1}', encoding="utf-8")
         rows = self.rows_for(RooCodeParser(), self.CLI_HISTORY)
         self.assertEqual(
@@ -5384,11 +5713,24 @@ class TabbyTests(ParserBase):
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / TABBY_EVENTS_REL)
+        with open(self.home / TABBY_EVENTS_REL, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n"
+                + '{"user": null, "ts": 1759312803000, "event": {"chat_completion": {}}}'
+                + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(TabbyParser(), TABBY_EVENTS_REL)
-        self.assertEqual(len(rows), 6)
+        self.assertEqual(len(rows), 7)
+        self.assertEqual([r.source_line for r in rows[:-1]], [1, 1, 1, 2, 3, 5])
         self.assertEqual(
-            (rows[-1].turn_type, rows[-1].text),
-            ("system", "parser: 1 unparseable line(s), first at line 4"),
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            ("system", 4, "parser: unparseable line (%s): %s" % (reason, bad)),
         )
 
     def test_bad_payload_is_reported_not_fatal(self):
@@ -5947,10 +6289,26 @@ class PiTests(ParserBase):
         write_bad_line(self.home / self.REL)
         rows = self.rows_for(PiParser(), self.REL)
         self.assertEqual(len(rows), 10)
-        self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("parser:", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 10)
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            ("system", 10, CodexTests.bad_text()),
+        )
         self.assertIn("model: claude-sonnet-4-5 -> gpt-5 provider=openai", [r.text for r in rows])
+
+    def test_bad_line_mid_file_keeps_the_rows_around_it(self):
+        row = CodexTests.check_bad_line(self, PiParser, self.REL, 2)
+        self.assertEqual(row.project_path, "/srv/proj")
+        self.assertTrue(row.session_id)
+
+    def test_headerless_file_gives_one_row_per_bad_line(self):
+        (self.home / self.REL).write_text(
+            CodexTests.BAD_LINE + "\n" + CodexTests.BAD_LINE + "\n", encoding="utf-8"
+        )
+        rows = self.rows_for(PiParser(), self.REL)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text, r.session_id) for r in rows],
+            [("system", n, CodexTests.bad_text(), "") for n in (1, 2)],
+        )
 
 
 class LittleCoderTests(ParserBase):
@@ -6024,7 +6382,10 @@ class LittleCoderTests(ParserBase):
         )
         rows = self.rows_for(LittleCoderParser(), self.HISTORY)
         self.assertEqual([r.turn_type for r in rows], ["user", "system"])
-        self.assertIn("parser:", rows[-1].text)
+        # The cut record is carried from its first character to the end.
+        cut = '"now run li'
+        self.assertEqual(rows[-1].source_line, 2)
+        self.assertTrue(rows[-1].text.endswith("): " + cut), rows[-1].text)
 
 
 class LettaTests(ParserBase):
@@ -6222,8 +6583,16 @@ class LettaTests(ParserBase):
             write_bad_line(self.home / rel)
             rows = self.rows_for(LettaParser(), rel)
             self.assertEqual(len(rows), n + 1, rel)
-            self.assertEqual(rows[-1].turn_type, "system")
-            self.assertIn("parser:", rows[-1].text)
+            self.assertEqual(
+                (rows[-1].turn_type, rows[-1].text), ("system", CodexTests.bad_text()), rel
+            )
+
+    def test_bad_line_mid_file_keeps_the_rows_around_it(self):
+        for rel in (self.TRANSCRIPT, self.TWIN, self.LOCAL):
+            with self.subTest(rel=rel):
+                CodexTests.check_bad_line(self, LettaParser, rel, 2)
+        row = CodexTests.check_bad_line(self, LettaParser, self.LOCAL, 3)
+        self.assertEqual((row.session_id, row.project_path), (LETTA_LOCAL_CONV, "/srv/proj"))
 
 
 from dataclasses import replace as dc_replace
@@ -6427,9 +6796,25 @@ class HermesTests(ParserBase):
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / HERMES_DIVERTED_REL)
+        with open(self.home / HERMES_DIVERTED_REL, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n"
+                + '{"role": "user", "content": "after the cut", "timestamp": 1790859603.0}'
+                + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(HermesParser(), HERMES_DIVERTED_REL)
-        self.assertEqual([r.turn_type for r in rows], ["user", "tool_use", "tool_result", "system"])
-        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 4")
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows],
+            [(1, "user"), (2, "tool_use"), (3, "tool_result"), (5, "user"), (4, "system")],
+        )
+        self.assertEqual(rows[3].text, "after the cut")
+        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, bad))
         self.assertEqual(rows[-1].session_id, HERMES_DIVERTED)
 
     def test_not_sqlite_is_reported(self):
@@ -6851,7 +7236,8 @@ class CodexArchiveAndZstdTests(ParserBase):
         self.assertGreater(len(rows), 3)
         self.assertTrue(rows[0].text.startswith("session start:"), rows[0].text)
         self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("parser:", rows[-1].text)
+        # The cut frame is a whole-file error: no line to carry.
+        self.assertTrue(rows[-1].text.startswith("parser: zstd: "), rows[-1].text)
         self.assertEqual({r.session_id for r in rows}, {CODEX_SESSION})
 
     def test_two_frames_are_read_across(self):
@@ -6868,8 +7254,8 @@ class CodexArchiveAndZstdTests(ParserBase):
         rel = self.ARCHIVED + ".zst"
         self._add(rel, b"not a zstd frame at all")
         rows = self.rows_for(CodexParser(), rel)
-        self.assertEqual([r.turn_type for r in rows], ["system"])
-        self.assertIn("parser:", rows[0].text)
+        self.assertEqual([(r.turn_type, r.source_line) for r in rows], [("system", 1)])
+        self.assertTrue(rows[0].text.startswith("parser: zstd: "), rows[0].text)
 
 
 class OpenInterpreterTests(ParserBase):
@@ -7059,10 +7445,29 @@ class OpenInterpreterTests(ParserBase):
         rows = self.rows_for(OpenInterpreterParser(), OI_ROLLOUT)
         self.assertEqual(len(rows), 11)
         self.assertEqual(
-            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
-            ("system", OI_SESSION, 10),
+            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line, rows[-1].text),
+            ("system", OI_SESSION, 10, CodexTests.bad_text()),
         )
-        self.assertIn("1 unparseable line", rows[-1].text)
+
+    def test_bad_line_mid_file_keeps_the_rows_around_it(self):
+        row = CodexTests.check_bad_line(self, OpenInterpreterParser, OI_ROLLOUT, 3)
+        self.assertEqual(row.session_id, OI_SESSION)
+
+    def test_truncated_history_line(self):
+        rel = ".openinterpreter/history.jsonl"
+        with open(self.home / rel, "a", encoding="utf-8") as fh:
+            fh.write(CodexTests.BAD_LINE + "\n")
+            fh.write(json.dumps({"session_id": OI_SESSION, "ts": 1790848900, "text": "next"}))
+            fh.write("\n")
+        rows = self.rows_for(OpenInterpreterParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text) for r in rows],
+            [
+                ("user", 1, "list the files"),
+                ("user", 3, "next"),
+                ("system", 2, CodexTests.bad_text()),
+            ],
+        )
 
     def test_zst_rollout(self):
         rel = OI_ROLLOUT + ".zst"
@@ -7100,6 +7505,18 @@ from fixtures import (
 class OpenClawTests(ParserBase):
     DB = OPENCLAW_AGENT + "/agent/openclaw-agent.sqlite"
     LEGACY = OPENCLAW_AGENT + "/sessions/%s.jsonl" % OPENCLAW_LEGACY
+
+    BAD_LINE = '{"type": "user", "truncated": tr'  # what write_bad_line appends
+
+    @staticmethod
+    def bad_line_text(line: str) -> str:
+        """The row text for an unparseable `line` (issue 136), with the
+        running Python's own decoder message."""
+        try:
+            json.loads(line)
+        except ValueError as e:
+            return "parser: unparseable line (%s): %s" % (e, line)
+        raise AssertionError("line parses: %r" % line)
 
     def test_rows(self):
         rows = [
@@ -7378,11 +7795,57 @@ class OpenClawTests(ParserBase):
                 )
 
     def test_truncated_line_is_reported_not_fatal(self):
-        write_bad_line(self.home / self.LEGACY)
+        clean = [(r.turn_type, r.text) for r in self.rows_for(OpenClawParser(), self.LEGACY)]
+        path = self.home / self.LEGACY
+        lines = path.read_bytes().split(b"\n")
+        lines.insert(2, self.BAD_LINE.encode() + b"\r")
+        path.write_bytes(b"\n".join(lines))
+        write_bad_line(path)
         rows = self.rows_for(OpenClawParser(), self.LEGACY)
-        self.assertEqual(len(rows), 9)
-        self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("parser:", rows[-1].text)
+        self.assertEqual([(r.turn_type, r.text) for r in rows[:-2]], clean)
+        bad = self.bad_line_text(self.BAD_LINE)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.session_id, r.text) for r in rows[-2:]],
+            [
+                ("system", 3, OPENCLAW_LEGACY, bad),
+                ("system", len(lines), OPENCLAW_LEGACY, bad),
+            ],
+        )
+
+    def test_bad_line_in_archive_blob(self):
+        con = sqlite3.connect(str(self.home / self.DB))
+        rowid, name, blob = con.execute(
+            "SELECT rowid, archive_name, archive_blob FROM session_transcript_archives"
+            " WHERE encoding = 'identity'"
+        ).fetchone()
+        con.execute(
+            "UPDATE session_transcript_archives SET archive_blob = ? WHERE rowid = ?",
+            (bytes(blob).rstrip(b"\n") + b"\n" + self.BAD_LINE.encode(), rowid),
+        )
+        con.commit()
+        con.close()
+        line = bytes(blob).rstrip(b"\n").count(b"\n") + 2
+        rows = [
+            r
+            for r in self.rows_for(OpenClawParser(), self.DB)
+            if r.session_id == OPENCLAW_RESET_SESSION
+        ]
+        self.assertEqual([r.turn_type for r in rows], ["system", "user", "system", "system"])
+        self.assertEqual(rows[1].text, "check disk space on the server")
+        try:
+            json.loads(self.BAD_LINE)
+        except ValueError as e:
+            reason = str(e)
+        else:
+            raise AssertionError("bad line parses")
+        self.assertEqual(
+            (rows[-1].source_line, rows[-1].text),
+            (
+                rowid,
+                "parser: unparseable line (archive %s line %d: %s): %s"
+                % (name, line, reason, self.BAD_LINE),
+            ),
+        )
 
     def test_truncated_copy_is_reported_not_fatal(self):
         rel = OPENCLAW_AGENT + "/sessions/" + OPENCLAW_LEGACY + OPENCLAW_REPAIR_BAK
@@ -7390,8 +7853,9 @@ class OpenClawTests(ParserBase):
         rows = self.rows_for(OpenClawParser(), rel)
         self.assertEqual(len(rows), 10)
         self.assertEqual(rows[-2].text, "abandoned branch prompt")
-        self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("parser: 1 unparseable line(s)", rows[-1].text)
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].text), ("system", self.bad_line_text(self.BAD_LINE))
+        )
 
     def test_bad_event_row_is_reported_not_fatal(self):
         con = sqlite3.connect(str(self.home / self.DB))
@@ -7541,10 +8005,28 @@ class NanobotTests(ParserBase):
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / NANOBOT_REL)
+        with open(self.home / NANOBOT_REL, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n" + '{"role": "user", "content": "after the cut", '
+                '"timestamp": "2026-10-01T10:16:00.000000"}' + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(NanobotParser(), NANOBOT_REL)
-        self.assertEqual(len(rows), 7)
-        self.assertEqual((rows[-1].turn_type, rows[-1].session_id), ("system", NANOBOT_KEY))
-        self.assertIn("parser:", rows[-1].text)
+        self.assertEqual(len(rows), 8)
+        self.assertEqual(
+            (rows[-2].source_line, rows[-2].turn_type, rows[-2].text), (9, "user", "after the cut")
+        )
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
+            ("system", NANOBOT_KEY, 8),
+        )
+        self.assertEqual(rows[-1].project_path, rows[0].project_path)
+        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, bad))
 
     def test_secondary(self):
         p = NanobotParser()
@@ -7621,13 +8103,28 @@ class NanobotTests(ParserBase):
 
     def test_webui_truncated_line(self):
         write_bad_line(self.home / NANOBOT_WEBUI_REL)
+        with open(self.home / NANOBOT_WEBUI_REL, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n" + '{"event": "user", "chat_id": "chat-1", "text": "after the cut", '
+                '"created_at_ms": 1790924407000}' + "\n"
+            )
+        bad = '{"type": "user", "truncated": tr'
+        reason = ""
+        try:
+            json.loads(bad)
+        except ValueError as e:
+            reason = str(e)
         rows = self.rows_for(NanobotParser(), NANOBOT_WEBUI_REL)
-        self.assertEqual(len(rows), 6)
+        self.assertEqual(len(rows), 7)
+        self.assertEqual(
+            (rows[-2].source_line, rows[-2].turn_type, rows[-2].text), (11, "user", "after the cut")
+        )
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
             ("system", NANOBOT_WEBUI_KEY, 10),
         )
-        self.assertIn("parser: 1 unparseable line(s)", rows[-1].text)
+        self.assertEqual(rows[-1].project_path, rows[-2].project_path)
+        self.assertEqual(rows[-1].text, "parser: unparseable line (%s): %s" % (reason, bad))
 
     def test_cli_history(self):
         rows = self.rows_for(NanobotParser(), NANOBOT_CLI_HISTORY_REL)
@@ -7642,10 +8139,14 @@ class NanobotTests(ParserBase):
 
     def test_cli_history_bad_line(self):
         with open(self.home / NANOBOT_CLI_HISTORY_REL, "a", encoding="utf-8") as fh:
-            fh.write("not a history line\n")
+            fh.write("not a history line\n\n# 2026-09-01 08:10:00.000000\n+after the cut\n")
         rows = self.rows_for(NanobotParser(), NANOBOT_CLI_HISTORY_REL)
-        self.assertEqual([r.turn_type for r in rows], ["user", "user", "system"])
-        self.assertIn("parser: 1 unparseable line(s), first at line 8", rows[-1].text)
+        self.assertEqual([r.turn_type for r in rows], ["user", "user", "user", "system"])
+        self.assertEqual((rows[1].text, rows[2].text), ("first line\nsecond line", "after the cut"))
+        self.assertEqual(rows[-1].source_line, 8)
+        self.assertEqual(
+            rows[-1].text, "parser: unparseable line (not a FileHistory line): not a history line"
+        )
 
     def test_timeline_pairs_secondary_rows(self):
         import contextlib
@@ -8412,9 +8913,54 @@ class MuseCodeTests(ParserBase):
         write_bad_line(self.home / MUSE_REL)
         rows = self.rows_for(MuseCodeParser(), MUSE_REL)
         self.assertEqual(len(rows), 13)
-        self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("parser:", rows[-1].text)
-        self.assertEqual((rows[-1].source_line, rows[-1].session_id), (26, MUSE_SESSION))
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].text, rows[-1].source_line, rows[-1].session_id),
+            ("system", CodexTests.bad_text(), 26, MUSE_SESSION),
+        )
+
+    def test_bad_line_mid_file_keeps_the_rows_around_it(self):
+        row = CodexTests.check_bad_line(self, MuseCodeParser, MUSE_REL, 2)
+        self.assertEqual(row.session_id, MUSE_SESSION)
+
+    def test_truncated_history_line(self):
+        n = len((self.home / MUSE_HISTORY_REL).read_text(encoding="utf-8").splitlines())
+        with open(self.home / MUSE_HISTORY_REL, "a", encoding="utf-8") as fh:
+            fh.write(CodexTests.BAD_LINE + "\n" + json.dumps("next") + "\n")
+        rows = self.rows_for(MuseCodeParser(), MUSE_HISTORY_REL)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text) for r in rows],
+            [
+                ("user", 1, "fix the failing test"),
+                ("user", n + 2, "next"),
+                ("system", n + 1, CodexTests.bad_text()),
+            ],
+        )
+
+    def test_bad_retained_frame_child_carries_the_child_text(self):
+        child = '{"cut": tr'
+        try:
+            json.loads(child)
+        except ValueError as e:
+            reason = str(e)
+        else:
+            raise AssertionError("the child parsed")
+        n = len((self.home / MUSE_REL).read_text(encoding="utf-8").splitlines()) + 1
+        self.append(
+            MUSE_REL,
+            {
+                "retained_frame": "session_permission_transaction",
+                "children": [{"child_index": 0, "record_json": child}],
+            },
+        )
+        rows = self.rows_for(MuseCodeParser(), MUSE_REL)
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            (
+                "system",
+                n,
+                "parser: unparseable line (retained_frame child: %s): %s" % (reason, child),
+            ),
+        )
 
     def test_reconfigure_without_earlier_model_uses_previous(self):
         rel = (
@@ -9394,20 +9940,50 @@ class ClaudeDesktopTests(ParserBase):
         )
 
     def test_truncated_line_is_reported_not_fatal(self):
+        # Issue 136: each bad line is its own row, in full, with the
+        # session and project; the rows before it and a line after survive.
+        before = self.rows_for(ClaudeDesktopParser(), CD_AUDIT_REL)
+        self.assertEqual(len(before), 9)
         write_bad_line(self.home / CD_AUDIT_REL)
+        after = {
+            "type": "user",
+            "session_id": CD_CLI_SESSION,
+            "parent_tool_use_id": None,
+            "client_platform": "desktop_app",
+            "timestamp": "2026-10-01T10:30:00.000Z",
+            "message": {"role": "user", "content": [{"type": "text", "text": "after the cut"}]},
+            "_audit_timestamp": "2026-10-01T10:30:00.003Z",
+        }
+        with open(self.home / CD_AUDIT_REL, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(ClaudeDesktopParser(), CD_AUDIT_REL)
-        self.assertEqual(len(rows), 10)
-        self.assertEqual(rows[-2].text, "thanks")
+        self.assertEqual(len(rows), 11)
         self.assertEqual(
-            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
-            ("system", CD_CLI_SESSION, 9),
+            [(r.source_line, r.turn_type, r.text) for r in rows[:9]],
+            [(r.source_line, r.turn_type, r.text) for r in before],
         )
-        self.assertIn("1 unparseable line", rows[-1].text)
+        self.assertEqual((rows[9].source_line, rows[9].text), (10, "after the cut"))
+        self.assertEqual(
+            (
+                rows[-1].turn_type,
+                rows[-1].session_id,
+                rows[-1].project_path,
+                rows[-1].source_line,
+                rows[-1].text,
+            ),
+            ("system", CD_CLI_SESSION, before[-1].project_path, 9, ClaudeCodeTests.unparseable()),
+        )
         write_bad_line(self.home / CD_TRANSCRIPT_REL)
         rows = self.rows_for(ClaudeDesktopParser(), CD_TRANSCRIPT_REL)
         self.assertEqual(len(rows), len(ClaudeCodeTests.EXPECTED) + 1)
-        self.assertIn("1 unparseable line", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 35)
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows[:-1]],
+            [(n, t) for n, t, _ in ClaudeCodeTests.EXPECTED],
+        )
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            ("system", 35, ClaudeCodeTests.unparseable()),
+        )
 
 
 from doubleagent.parsers.copilot_cli import CopilotCliParser, request_target, strip_jsonc
@@ -9429,6 +10005,18 @@ from fixtures import (
 
 
 class CopilotCliTests(ParserBase):
+    BAD_LINE = '{"type": "user", "truncated": tr'  # what write_bad_line appends
+
+    @staticmethod
+    def bad_line_text(line: str) -> str:
+        """The row text for an unparseable `line` (issue 136), with the
+        running Python's own decoder message."""
+        try:
+            json.loads(line)
+        except ValueError as e:
+            return "parser: unparseable line (%s): %s" % (e, line)
+        raise AssertionError("line parses: %r" % line)
+
     # (source_line, turn_type, text) for every row of the fixture log
     # without thinking (research/copilot-cli.md section 8, expected rows).
     EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
@@ -9473,7 +10061,7 @@ class CopilotCliTests(ParserBase):
         (25, "tool_result", "Modified 1 file: /srv/proj/date.test.js"),
         (28, "assistant", "The fixture year was stale; it now reads 2026."),
         (31, "system", "session end: routine files modified: /srv/proj/date.test.js"),
-        (32, "system", "parser: 1 unparseable line(s), first at line 32"),
+        (32, "system", bad_line_text(COPILOT_EVENT_LINES[-1])),
     ]
     PATCH_ID = "custom_0000000000000000000000000001"
 
@@ -10016,12 +10604,28 @@ class CopilotCliTests(ParserBase):
         self.assertEqual(
             rows[-2].text, "session end: routine files modified: /srv/proj/date.test.js"
         )
+        self.assertEqual(rows[-1].git_branch, "main")
         write_bad_line(self.home / COPILOT_EVENTS_REL)
         rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)
         self.assertEqual(len(rows), len(self.EXPECTED))
+        self.assertEqual(rows[-1].text, self.bad_line_text(COPILOT_EVENT_LINES[-1] + self.BAD_LINE))
+        # A bad line between good ones: its own row, every other row kept.
+        lines = [*COPILOT_EVENT_LINES[:-1]]
+        lines.insert(10, self.BAD_LINE)
+        (self.home / COPILOT_EVENTS_REL).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows[:-1]],
+            [(turn, text) for _, turn, text in self.EXPECTED[:-1]],
+        )
+        self.assertEqual(
+            (rows[-1].source_line, rows[-1].text), (11, self.bad_line_text(self.BAD_LINE))
+        )
         self.write_events()
         write_bad_line(self.home / COPILOT_EVENTS_REL)
         rows = self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)
-        self.assertEqual(rows[-1].text, "parser: 1 unparseable line(s), first at line 32")
+        self.assertEqual(
+            (rows[-1].source_line, rows[-1].text), (32, self.bad_line_text(self.BAD_LINE))
+        )
         self.write_events()
         self.assertNotIn("parser:", self.rows_for(CopilotCliParser(), COPILOT_EVENTS_REL)[-1].text)

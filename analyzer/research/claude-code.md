@@ -505,9 +505,10 @@ settings files. A project's `.claude/settings.json` and
 (the collector's project catalog has `project|.claude`), with the
 project directory as their home.
 
-Lines are read with `iter_jsonl`; bad lines are counted and reported in
-one `system` row at the end with the first bad line's number; earlier
-rows are kept. Each session file is read twice: a first pass collects the
+Lines are read with `iter_jsonl`; each bad line becomes its own `system`
+row at the end of the file's rows, `source_line` its line number and
+text `parser: unparseable line (<decoder message>): <the line in full>`
+(issue 136); the rows before and after it are kept. Each session file is read twice: a first pass collects the
 prompts that `queued_command` attachments and `user` records deliver
 and the lines that deliver them,
 whether the file holds a `<fork-boilerplate>` block, and the first `cwd`

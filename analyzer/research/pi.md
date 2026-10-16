@@ -233,7 +233,11 @@ Fixture `.pi/agent/sessions/--home-alice-proj--/2026-10-01T09-00-00-000Z_0199a1b
 this line is cut mid-wri
 ```
 
-The last line exercises the bad-line `system` row.
+The last line exercises the bad-line `system` row: each line that does not
+decode is its own `system` row at the end of the session's rows,
+`parser: unparseable line (<decoder reason>): <the line in full>`, with the
+session's id and `cwd`; a file with no header line gives those rows alone,
+with an empty session id.
 
 Confidence. High: file naming, header, entry types, roles, field names and
 timestamp units (source). Medium: `system`-role persistence on versions

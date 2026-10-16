@@ -97,7 +97,8 @@ SDK session layout, `~/.cline/data/sessions/<sessionId>/`:
   line; the last line has its `ts`, the others an empty `timestamp_utc`,
   and every line is undated when the file has a bad line, since the last
   parsed line may then not be the newest. Undated rows match a
-  transcript row of any Cline session on text alone.
+  transcript row of any Cline session on text alone. Each bad line is its
+  own `system` row carrying the line in full (issue 136).
 
 Not read: `<sessionId>.compaction.json`, `sessions/sessions.index.json`,
 `teams/teams.db` and `logs/hooks.jsonl`.
@@ -116,11 +117,10 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, iter_jsonl, track_change
+from .base import Options, error_rows, iter_jsonl, track_change
 from .cline_legacy import (
     LegacyTaskParser,
     content_rows,
-    error_row,
     iter_array_at,
     iter_json_array,
     load_json,
@@ -189,8 +189,7 @@ class ClineParser(LegacyTaskParser):
         for n, item in iter_json_array(artifact.disk_path, errors):
             if isinstance(item, dict):
                 yield self.history_row(artifact, item, n, opts)
-        if errors:
-            yield error_row(self, artifact, errors)
+        yield from error_rows(self, artifact, errors)
 
     # -- SDK sessions
 
@@ -237,10 +236,10 @@ class ClineParser(LegacyTaskParser):
     def _parse_manifest(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         m = load_json(artifact.disk_path)
         if not isinstance(m, dict):
-            yield error_row(
+            yield from error_rows(
                 self,
                 artifact,
-                [(0, "session manifest is not a JSON object")],
+                [(0, "session manifest is not a JSON object", "")],
                 artifact.disk_path.parent.name,
             )
             return
@@ -268,7 +267,7 @@ class ClineParser(LegacyTaskParser):
         errors: list = []
         payload = None
         if s is None:
-            errors.append((0, "unreadable"))
+            errors.append((0, "unreadable", ""))
         else:
             try:
                 payload = json.loads(s)
@@ -283,7 +282,7 @@ class ClineParser(LegacyTaskParser):
             if m:
                 messages = iter_array_at(s, m.end(), errors)
             else:
-                errors.append((0, "messages file is not a JSON object"))
+                errors.append((0, "messages file is not a JSON object", ""))
                 messages = iter(())
             fallback = to_utc(manifest.get("started_at"))
         else:
@@ -332,12 +331,11 @@ class ClineParser(LegacyTaskParser):
                 row.tool_use_id = tid
                 row.text = compact(text)
                 yield row
-        if errors:
-            yield error_row(self, artifact, errors, session_id, project)
+        yield from error_rows(self, artifact, errors, session_id, project)
 
     def _parse_sessions_db(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if not is_sqlite(artifact.disk_path):
-            yield error_row(self, artifact, [(0, "sessions.db is not a SQLite database")])
+            yield from error_rows(self, artifact, [(0, "sessions.db is not a SQLite database", "")])
             return
         sessions_dir = artifact.disk_path.parent.parent / "sessions"
         try:
@@ -346,7 +344,7 @@ class ClineParser(LegacyTaskParser):
                     return
                 rows = [dict(r) for r in con.execute("select rowid as _rowid, * from sessions")]
         except Exception as e:  # noqa: BLE001 - a damaged database must not stop the timeline
-            yield error_row(self, artifact, [(0, "sessions.db unreadable (%s)" % e)])
+            yield from error_rows(self, artifact, [(0, "sessions.db unreadable (%s)" % e, "")])
             return
         for r in rows:
             sid = str(r.get("session_id") or "")
@@ -387,15 +385,15 @@ class ClineParser(LegacyTaskParser):
                 row.timestamp_utc = to_utc(ts)
             row.text = compact(prompt)
             yield row
-        if errors:
-            n, e = errors[0]
-            yield error_row(self, artifact, [(n, "line %d unparseable (%s)" % (n, e))])
+        yield from error_rows(self, artifact, errors)
 
     # -- session-search.db
 
     def _parse_search_db(self, artifact: Artifact) -> Iterator[Row]:
         if not is_sqlite(artifact.disk_path):
-            yield error_row(self, artifact, [(0, "session-search.db is not a SQLite database")])
+            yield from error_rows(
+                self, artifact, [(0, "session-search.db is not a SQLite database", "")]
+            )
             return
         problem = ""
         try:
@@ -419,10 +417,12 @@ class ClineParser(LegacyTaskParser):
                     except sqlite3.OperationalError as e:
                         problem = "session_search unreadable (%s), indexed_sessions read alone" % e
         except Exception as e:  # noqa: BLE001 - a damaged database must not stop the timeline
-            yield error_row(self, artifact, [(0, "session-search.db unreadable (%s)" % e)])
+            yield from error_rows(
+                self, artifact, [(0, "session-search.db unreadable (%s)" % e, "")]
+            )
             return
         if problem:
-            yield error_row(self, artifact, [(0, problem)])
+            yield from error_rows(self, artifact, [(0, problem, "")])
         by_session: dict[str, list[dict]] = {}
         for s in indexed:
             by_session.setdefault(str(s.get("session_id") or ""), [])
