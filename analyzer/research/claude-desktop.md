@@ -154,9 +154,9 @@ Evidence for the layout (all bundle):
   and `app.asar:.vite/build/index.chunk-Dx-yqN_-.js@4422`
   `r.default.join(e,"audit.jsonl")`, `var l=".audit-key"`.
 - Dispatch agent generations:
-  `index.chunk-Cyt2WTko.js` `function gJt(e,t){let n=`${mJt}ditto_${e}`;return t>0?`${n}_g${t}`:n}`,
+  `index.chunk-Cyt2WTko.js` `` function gJt(e,t){let n=`${mJt}ditto_${e}`;return t>0?`${n}_g${t}`:n} ``,
   and the reader in `index.chunk-Dx-yqN_-.js@7384` that lists, per
-  generation dir under `agent/`, ```${e.path}/audit.jsonl` `` and every
+  generation dir under `agent/`, `` `${e.path}/audit.jsonl` `` and every
   `.jsonl` under ``${e.path}/.claude/projects``.
 - Code-tab tree: `index.chunk-Cyt2WTko.js@1984690`
   `var lb="claude-code-sessions",ub="local_",APt="unknown:lessee",jPt="archived-sessions.idx",MPt="imported-staging"`.
