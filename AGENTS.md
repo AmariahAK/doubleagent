@@ -341,7 +341,9 @@ rules are different from the collectors'.
   list (`iter_jsonl` and `line_text` in `parsers/base.py` do this for
   JSONL), the parser ends the file with
   `yield from error_rows(self, artifact, errors, session_id, project_path)`
-  from `base.py`, and no parser formats an error row of its own. Every
+  from `base.py`, and no parser formats a bad-line row of its own; only
+  a whole-file row (an unreadable database, a document that is not
+  JSON) is written in place. Every
   `errors` list a reader fills is reported, returned or passed on; a
   pre-scan that discards errors passes a literal `[]`, and only over a
   file the same parser also parses in full and reports on. Three history

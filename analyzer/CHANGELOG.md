@@ -59,12 +59,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - The Claude Code and Antigravity `history.jsonl` readers report
-  unparseable lines as one `system` row, `parser: N unparseable line(s),
-  first at line M`, instead of dropping them silently; the valid prompts
-  before and after are still yielded ([#134]).
-- The Codex and Open Interpreter `history.jsonl` readers report unparseable
-  lines as one `system` row, `parser: N unparseable line(s), first at line M`,
-  and still yield the valid prompts before and after them ([#125]).
+  unparseable lines as `system` rows instead of dropping them silently;
+  the valid prompts before and after are still yielded ([#134]).
+- The Codex and Open Interpreter `history.jsonl` readers report
+  unparseable lines as `system` rows instead of dropping them silently;
+  the valid prompts before and after are still yielded ([#125]).
 
 ## [0.13.0] - 2026-10-15
 
