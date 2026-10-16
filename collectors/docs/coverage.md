@@ -317,12 +317,12 @@ collected. In `~/.codex` the app places the computer-use app bundle,
 
 ## Home directory discovery
 
-The collectors do not copy home directories. They find them, then try
-every catalog entry against each one, and only the files the catalog
-names are collected. The list of homes is gathered from several sources,
-merged, and de-duplicated by path. Service accounts with real homes are
-included, because agents run as them too, for example the `ollama`
-system user.
+The collectors discover home directories rather than copy them: each
+home found is a base against which every catalog entry is tried, and only
+the files the catalog names under it are collected. Discovery draws on
+several sources, merges them, and de-duplicates by path. Service accounts
+with real homes are included, because agents run as them too, for example
+the `ollama` system user.
 
 | | sh collector | PowerShell collector |
 | --- | --- | --- |
