@@ -795,7 +795,8 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `realtime_item` `transcript_segment` | `user` or `assistant` by `role` |
 | `realtime_item` other types | `system` `realtime: <type> <JSON>` |
 | `token_usage_record`, `world_state`, `inter_agent_communication_metadata`, `retained_context`, `security_risk_score` | skipped |
-| bad line or cut zstd frame | one `system` row at the end |
+| bad line, in a rollout or in `history.jsonl` | one `system` row per bad line at the end of the file's rows, `parser: unparseable line (<decoder reason>): <the line in full>`, `source_line` the bad line, `session_id` the rollout's session (empty for `history.jsonl`) |
+| cut or corrupt zstd frame | one `system` row `parser: zstd: <message>` at the end, `source_line` the line after the last one decoded |
 | `history.jsonl` line | `user` |
 | `state_5.sqlite` `threads` row (secondary) | `system` `thread record: <id> title=<title> rollout=<rollout_path>`, then ` name=`, ` branch=`, ` model=` (the last turn's) and ` archived` when set, at `created_at_ms` (else `created_at`); then `first_user_message` as `user` with no timestamp, `system` `subagent task: ...` in a subagent's thread |
 | `thread_history_1.sqlite` `thread_turns` row (secondary) | `system` `task_started turn=<id>` at `started_at`; `task_complete turn=<id> duration_ms=<n>` at `completed_at` for a completed or failed turn; an interrupted turn has no closing row (its reason is only in the rollout) |
@@ -882,7 +883,7 @@ Expected rows from the sample below: `system` session start, `system`
 code), `thinking` "one test fails" with `--include-thinking`, `assistant`,
 `system` `task_complete`, `system`
 `agent message /root -> /root/tester: rerun only the failing test`, and
-one `system` row for the cut last line. The `UserMessage` item and the
+a `system` row carrying the cut last line in full. The `UserMessage` item and the
 `token_usage_record` give no row.
 
 Sample rollout, paginated shape

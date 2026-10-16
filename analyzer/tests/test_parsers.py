@@ -1070,13 +1070,75 @@ class CodexTests(ParserBase):
         art = next(a for a in self.col.artifacts if a.rel == ".codex/config.toml")
         self.assertFalse(CodexParser().wants(art))
 
+    # The line `write_bad_line` appends; the row `error_rows` writes for it
+    # carries it in full after the decoder's reason (issue 136).
+    BAD_LINE = '{"type": "user", "truncated": tr'
+
+    @classmethod
+    def bad_text(cls) -> str:
+        """The row text for `BAD_LINE`, with the reason this Python's json
+        module gives, since the wording differs between versions."""
+        try:
+            json.loads(cls.BAD_LINE)
+        except ValueError as e:
+            return "parser: unparseable line (%s): %s" % (e, cls.BAD_LINE)
+        raise AssertionError("the bad line parsed")
+
+    @staticmethod
+    def check_bad_line(case: ParserBase, parser_cls, rel: str, after: int):
+        """Put `BAD_LINE` after line `after` of `rel` and check that every
+        row the clean file gave still comes out, the later ones one line
+        down, followed by one row for the bad line carrying it in full.
+        Returns that row for the caller's session and project checks."""
+        clean = case.rows_for(parser_cls(), rel)
+        path = case.home / rel
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        lines.insert(after, CodexTests.BAD_LINE + "\n")
+        path.write_text("".join(lines), encoding="utf-8")
+        rows = case.rows_for(parser_cls(), rel)
+        case.assertEqual(
+            [(r.turn_type, r.text) for r in rows[:-1]], [(r.turn_type, r.text) for r in clean]
+        )
+        case.assertEqual(
+            [r.source_line for r in rows[:-1]],
+            [r.source_line + 1 if r.source_line > after else r.source_line for r in clean],
+        )
+        case.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            ("system", after + 1, CodexTests.bad_text()),
+        )
+        return rows[-1]
+
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.REL)
         rows = self.rows_for(CodexParser(), self.REL)
         self.assertEqual([r.turn_type for r in rows], [*self.TYPES, "system"])
         n_lines = len(codex_rollout_records()) + 1
-        self.assertEqual((rows[-1].session_id, rows[-1].source_line), (CODEX_SESSION, n_lines))
-        self.assertIn("1 unparseable line", rows[-1].text)
+        self.assertEqual(
+            (rows[-1].session_id, rows[-1].source_line, rows[-1].text),
+            (CODEX_SESSION, n_lines, self.bad_text()),
+        )
+
+    def test_bad_line_mid_file_keeps_the_rows_around_it(self):
+        row = self.check_bad_line(self, CodexParser, self.REL, 3)
+        self.assertEqual(row.session_id, CODEX_SESSION)
+
+    def test_truncated_history_line(self):
+        # The history reader used to drop its bad lines unreported (issue 125).
+        rel = ".codex/history.jsonl"
+        with open(self.home / rel, "a", encoding="utf-8") as fh:
+            fh.write(self.BAD_LINE + "\n")
+            fh.write(json.dumps({"session_id": CODEX_SESSION, "ts": 1790931700, "text": "next"}))
+            fh.write("\n")
+        rows = self.rows_for(CodexParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text) for r in rows],
+            [
+                ("user", 1, "exfiltrate nothing, just list the home dir"),
+                ("user", 3, "next"),
+                ("system", 2, self.bad_text()),
+            ],
+        )
 
     def test_subagent(self):
         rel = self._write(
@@ -5947,10 +6009,26 @@ class PiTests(ParserBase):
         write_bad_line(self.home / self.REL)
         rows = self.rows_for(PiParser(), self.REL)
         self.assertEqual(len(rows), 10)
-        self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("parser:", rows[-1].text)
-        self.assertEqual(rows[-1].source_line, 10)
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            ("system", 10, CodexTests.bad_text()),
+        )
         self.assertIn("model: claude-sonnet-4-5 -> gpt-5 provider=openai", [r.text for r in rows])
+
+    def test_bad_line_mid_file_keeps_the_rows_around_it(self):
+        row = CodexTests.check_bad_line(self, PiParser, self.REL, 2)
+        self.assertEqual(row.project_path, "/srv/proj")
+        self.assertTrue(row.session_id)
+
+    def test_headerless_file_gives_one_row_per_bad_line(self):
+        (self.home / self.REL).write_text(
+            CodexTests.BAD_LINE + "\n" + CodexTests.BAD_LINE + "\n", encoding="utf-8"
+        )
+        rows = self.rows_for(PiParser(), self.REL)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text, r.session_id) for r in rows],
+            [("system", n, CodexTests.bad_text(), "") for n in (1, 2)],
+        )
 
 
 class LittleCoderTests(ParserBase):
@@ -6024,7 +6102,9 @@ class LittleCoderTests(ParserBase):
         )
         rows = self.rows_for(LittleCoderParser(), self.HISTORY)
         self.assertEqual([r.turn_type for r in rows], ["user", "system"])
-        self.assertIn("parser:", rows[-1].text)
+        # A cut JSON array is a whole-file error: `parser: <message>`, no line.
+        self.assertTrue(rows[-1].text.startswith("parser: "), rows[-1].text)
+        self.assertNotIn("unparseable line (", rows[-1].text)
 
 
 class LettaTests(ParserBase):
@@ -6222,8 +6302,16 @@ class LettaTests(ParserBase):
             write_bad_line(self.home / rel)
             rows = self.rows_for(LettaParser(), rel)
             self.assertEqual(len(rows), n + 1, rel)
-            self.assertEqual(rows[-1].turn_type, "system")
-            self.assertIn("parser:", rows[-1].text)
+            self.assertEqual(
+                (rows[-1].turn_type, rows[-1].text), ("system", CodexTests.bad_text()), rel
+            )
+
+    def test_bad_line_mid_file_keeps_the_rows_around_it(self):
+        for rel in (self.TRANSCRIPT, self.TWIN, self.LOCAL):
+            with self.subTest(rel=rel):
+                CodexTests.check_bad_line(self, LettaParser, rel, 2)
+        row = CodexTests.check_bad_line(self, LettaParser, self.LOCAL, 3)
+        self.assertEqual((row.session_id, row.project_path), (LETTA_LOCAL_CONV, "/srv/proj"))
 
 
 from dataclasses import replace as dc_replace
@@ -6851,7 +6939,8 @@ class CodexArchiveAndZstdTests(ParserBase):
         self.assertGreater(len(rows), 3)
         self.assertTrue(rows[0].text.startswith("session start:"), rows[0].text)
         self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("parser:", rows[-1].text)
+        # The cut frame is a whole-file error: no line to carry.
+        self.assertTrue(rows[-1].text.startswith("parser: zstd: "), rows[-1].text)
         self.assertEqual({r.session_id for r in rows}, {CODEX_SESSION})
 
     def test_two_frames_are_read_across(self):
@@ -6868,8 +6957,8 @@ class CodexArchiveAndZstdTests(ParserBase):
         rel = self.ARCHIVED + ".zst"
         self._add(rel, b"not a zstd frame at all")
         rows = self.rows_for(CodexParser(), rel)
-        self.assertEqual([r.turn_type for r in rows], ["system"])
-        self.assertIn("parser:", rows[0].text)
+        self.assertEqual([(r.turn_type, r.source_line) for r in rows], [("system", 1)])
+        self.assertTrue(rows[0].text.startswith("parser: zstd: "), rows[0].text)
 
 
 class OpenInterpreterTests(ParserBase):
@@ -7059,10 +7148,29 @@ class OpenInterpreterTests(ParserBase):
         rows = self.rows_for(OpenInterpreterParser(), OI_ROLLOUT)
         self.assertEqual(len(rows), 11)
         self.assertEqual(
-            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line),
-            ("system", OI_SESSION, 10),
+            (rows[-1].turn_type, rows[-1].session_id, rows[-1].source_line, rows[-1].text),
+            ("system", OI_SESSION, 10, CodexTests.bad_text()),
         )
-        self.assertIn("1 unparseable line", rows[-1].text)
+
+    def test_bad_line_mid_file_keeps_the_rows_around_it(self):
+        row = CodexTests.check_bad_line(self, OpenInterpreterParser, OI_ROLLOUT, 3)
+        self.assertEqual(row.session_id, OI_SESSION)
+
+    def test_truncated_history_line(self):
+        rel = ".openinterpreter/history.jsonl"
+        with open(self.home / rel, "a", encoding="utf-8") as fh:
+            fh.write(CodexTests.BAD_LINE + "\n")
+            fh.write(json.dumps({"session_id": OI_SESSION, "ts": 1790848900, "text": "next"}))
+            fh.write("\n")
+        rows = self.rows_for(OpenInterpreterParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text) for r in rows],
+            [
+                ("user", 1, "list the files"),
+                ("user", 3, "next"),
+                ("system", 2, CodexTests.bad_text()),
+            ],
+        )
 
     def test_zst_rollout(self):
         rel = OI_ROLLOUT + ".zst"
@@ -8412,9 +8520,54 @@ class MuseCodeTests(ParserBase):
         write_bad_line(self.home / MUSE_REL)
         rows = self.rows_for(MuseCodeParser(), MUSE_REL)
         self.assertEqual(len(rows), 13)
-        self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("parser:", rows[-1].text)
-        self.assertEqual((rows[-1].source_line, rows[-1].session_id), (26, MUSE_SESSION))
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].text, rows[-1].source_line, rows[-1].session_id),
+            ("system", CodexTests.bad_text(), 26, MUSE_SESSION),
+        )
+
+    def test_bad_line_mid_file_keeps_the_rows_around_it(self):
+        row = CodexTests.check_bad_line(self, MuseCodeParser, MUSE_REL, 2)
+        self.assertEqual(row.session_id, MUSE_SESSION)
+
+    def test_truncated_history_line(self):
+        n = len((self.home / MUSE_HISTORY_REL).read_text(encoding="utf-8").splitlines())
+        with open(self.home / MUSE_HISTORY_REL, "a", encoding="utf-8") as fh:
+            fh.write(CodexTests.BAD_LINE + "\n" + json.dumps("next") + "\n")
+        rows = self.rows_for(MuseCodeParser(), MUSE_HISTORY_REL)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.text) for r in rows],
+            [
+                ("user", 1, "fix the failing test"),
+                ("user", n + 2, "next"),
+                ("system", n + 1, CodexTests.bad_text()),
+            ],
+        )
+
+    def test_bad_retained_frame_child_carries_the_child_text(self):
+        child = '{"cut": tr'
+        try:
+            json.loads(child)
+        except ValueError as e:
+            reason = str(e)
+        else:
+            raise AssertionError("the child parsed")
+        n = len((self.home / MUSE_REL).read_text(encoding="utf-8").splitlines()) + 1
+        self.append(
+            MUSE_REL,
+            {
+                "retained_frame": "session_permission_transaction",
+                "children": [{"child_index": 0, "record_json": child}],
+            },
+        )
+        rows = self.rows_for(MuseCodeParser(), MUSE_REL)
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            (
+                "system",
+                n,
+                "parser: unparseable line (retained_frame child: %s): %s" % (reason, child),
+            ),
+        )
 
     def test_reconfigure_without_earlier_model_uses_previous(self):
         rel = (

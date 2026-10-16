@@ -34,7 +34,7 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser
+from .base import Options, Parser, error_rows
 from .cline_legacy import iter_json_array
 from .pi import read_session
 
@@ -86,12 +86,7 @@ class LittleCoderParser(Parser):
             row.turn_type = "user"
             row.text = compact(v)
             yield row
-        if errors:
-            row = self.base_row(artifact)
-            row.turn_type = "system"
-            row.source_line = errors[0][0]
-            row.text = "parser: %s" % errors[0][1]
-            yield row
+        yield from error_rows(self, artifact, errors)
 
     def _parse_checkpoints(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         m = CHECKPOINT_RX.match(artifact.rel)

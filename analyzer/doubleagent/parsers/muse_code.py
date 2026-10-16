@@ -136,12 +136,13 @@ from .base import (
     Options,
     Parser,
     compact_json,
+    error_rows,
     file_mtime,
     iter_jsonl,
+    line_text,
     setting_value,
     track_change,
 )
-from .pi import error_row
 
 SESSION_RX = re.compile(
     r"^\.local/share/muse/sessions/\d{4}/\d{2}/\d{2}/[^/]+/(?:subagent/[^/]+/)*session\.jsonl$"
@@ -248,10 +249,12 @@ def records(path, errors: list) -> Iterator[tuple[int, dict]]:
             children = [c for c in rec.get("children") or [] if isinstance(c, dict)]
             children.sort(key=lambda c: c.get("child_index") or 0)
             for c in children:
+                child = c.get("record_json")
                 try:
-                    inner = json.loads(c.get("record_json") or "")
+                    inner = json.loads(child or "")
                 except (TypeError, ValueError) as e:
-                    errors.append((n, "retained_frame child: %s" % e))
+                    raw = child if isinstance(child, str) else ""
+                    errors.append((n, "retained_frame child: %s" % e, raw))
                     continue
                 if isinstance(inner, dict):
                     yield n, inner
@@ -326,8 +329,7 @@ class MuseCodeParser(Parser):
         errors: list = []
         recs = list(records(artifact.disk_path, errors))
         if not recs:
-            if errors:
-                yield error_row(self, artifact, errors)
+            yield from error_rows(self, artifact, errors)
             return
         is_subagent = "/subagent/" in artifact.rel
 
@@ -567,8 +569,7 @@ class MuseCodeParser(Parser):
             # Task and effect records, telemetry, permission records and
             # unknown payload types are bookkeeping: no row.
 
-        if errors:
-            r = error_row(self, artifact, errors, session_id, project)
+        for r in error_rows(self, artifact, errors, session_id, project):
             r.git_branch = branch
             yield r
 
@@ -709,13 +710,13 @@ class MuseCodeParser(Parser):
 
         with open(artifact.disk_path, "rb") as fh:
             for n, raw in enumerate(fh, 1):
-                raw = raw.strip()
-                if not raw:
+                stripped = raw.strip()
+                if not stripped:
                     continue
                 try:
-                    rec = json.loads(raw.decode("utf-8", errors="replace"))
+                    rec = json.loads(stripped.decode("utf-8", errors="replace"))
                 except ValueError as e:
-                    errors.append((n, str(e)))
+                    errors.append((n, str(e), line_text(raw)))
                     continue
                 if isinstance(rec, str):
                     if pending is not None:
@@ -726,5 +727,4 @@ class MuseCodeParser(Parser):
                     pending = None
         if pending is not None:
             yield emit(pending[0], pending[1], {})
-        if errors:
-            yield error_row(self, artifact, errors)
+        yield from error_rows(self, artifact, errors)
