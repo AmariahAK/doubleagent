@@ -170,7 +170,6 @@ nav:
   - Analyzer:
       - analyzer/README.md
       - analyzer/docs/inputs.md
-      - analyzer/docs/parsers.md
       - analyzer/docs/output.md
       - analyzer/docs/filtering.md
       - analyzer/docs/searching.md

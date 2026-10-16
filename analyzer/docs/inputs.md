@@ -1,7 +1,8 @@
 # Inputs and detection
 
 What the analyzer accepts as input, how it attributes files to users and
-agents, and what it does with inputs it cannot read.
+agents and routes them to parsers, and what it does with inputs it cannot
+read.
 
 ## Inputs
 
@@ -86,3 +87,30 @@ attributed to `antigravity`, not to the enclosing `gemini-cli` entry, in both
 loose mode and the collectors' manifests.
 `doubleagent catalog --agents` lists the agents and which
 have parsers.
+
+### Routing files to parsers
+
+Every file goes to the parsers of the agent the manifest (or, for loose
+input, the catalog) attributes it to, plus any parser that names that agent
+in its `reads_agents` attribute. `secret://` rows are never read.
+
+Files the collector finds inside a project directory through its project
+catalog have the project directory as their manifest `home`, which the
+analyzer marks as a project base (see [Inputs](#inputs)). From collector
+1.12.0 they carry the agent the project catalog names for them, a
+repository's `.aider.chat.history.md` `aider` and its `.crush/crush.db`
+`crush`, and go to that agent's parsers like any other file, so
+`--agent aider` and `--agent crush` include them; the rows of older
+collectors are re-attributed as [Inputs](#inputs) describes. A file the
+catalog leaves to agent `project`, because several agents read it
+(`AGENTS.md`), is offered to every parser, and the rows of any parser that
+accepts it are kept under that parser's agent. A parser that scopes a row
+to the project, such as `claude-code` for a project's
+`.claude/settings.json`, reads the project base marker, not the agent.
+
+Cody and Twinny keep their chats as rows of the editor's own `state.vscdb`,
+which the catalog attributes to `vscode` or to the fork whose `User/`
+directory holds it (`cursor`, `windsurf`, `pearai`, `kiro`, `antigravity`);
+both parsers list all six editors in `reads_agents`, so that file is offered
+to them too and the rows come out under `cody` or `twinny`, and
+`--agent cody` selects them.

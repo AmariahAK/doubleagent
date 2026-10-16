@@ -1,6 +1,7 @@
 # Development
 
-Running the analyzer's tests and lint checks, and adding a parser; for
+Running the analyzer's tests and lint checks, reading a real install, how
+the parsers read protobuf and SQLite stores, and adding a parser; for
 developers changing the analyzer.
 
 ## Testing
@@ -93,6 +94,17 @@ counts.
 The exit status is 0; an unreadable file prints `unreadable (<ErrorClass>)`
 and the walk continues. `tests/test_tools_shape.py` checks on synthetic files
 that tokens, UUIDs, paths, URLs and prompt text do not reach the output.
+
+## Protobuf and SQLite
+
+Protobuf stores are decoded by `doubleagent/protobuf.py`, a small
+schema-driven wire decoder, from field tables written into each parser. For
+a closed-source agent the field names come from the descriptors embedded in
+its binary. `tools/proto_descriptors.py extract BINARY OUT.json` extracts
+them, and `show OUT.json MESSAGE...` and `find OUT.json TEXT` query them. SQLite
+stores are copied together with their `-wal` and `-shm` sidecars into a
+scratch directory before being opened, so the evidence copy is never touched
+and rows still in the write-ahead log are not lost.
 
 ## Adding a parser
 

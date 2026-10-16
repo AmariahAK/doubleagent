@@ -705,9 +705,13 @@ alike. [searching.md](searching.md) has recipes.
 | `model` | string | Model that produced the turn, where recorded. |
 | `tool_name` | string | For `tool_use` rows: the tool. Codex shell calls are `shell`. |
 | `tool_use_id` | string | Links a `tool_use` row to its `tool_result`. |
-| `text` | string | The event's full text, with leading and trailing whitespace removed and inner line breaks and indentation kept: the prompt, the response, the tool output, or for a tool call its most identifying argument (the Bash command, the edited file, the search pattern, the fetched URL), else the arguments as JSON. |
+| `text` | string | The event's full text, with leading and trailing whitespace removed and inner line breaks and indentation kept: the prompt, the response, the tool output, or for a tool call its most identifying argument (the Bash command, the edited file, the search pattern, the fetched URL), else the arguments as JSON. It is never truncated, so the timeline is a complete transcript, one event per line. |
 | `source_file` | string | Path of the record on the source host, as in the manifest. In loose mode it is the path relative to the input root with a leading `/`, or relative to the home when the input root is the home or an agent directory. |
 | `source_line` | integer | Where the record is in that file, so the full record can be read. For line-oriented files (JSONL, Markdown, text) the 1-based line number. For SQLite stores it is the record's `rowid` (Tabby events: the event id), and for JSON documents an array index or `1`. Each parser's module docstring says which. `0` when no position applies. |
+
+The field names each parser relies on are listed in its module docstring
+under `doubleagent/parsers/`. Thinking and reasoning blocks are left out
+unless `--include-thinking` is passed.
 
 ### Row order and system rows
 
@@ -990,9 +994,10 @@ Many agents keep a second copy of some of their events beside their
 transcript store: a per-prompt history file, a mirror or projection of
 the transcript, a full-text index, a backup or snapshot of the store, a
 copy kept by a reset, a compaction or a repair. The table below names
-them for each agent. The analyzer parses every source on every run, and
-keeps each event once: a row from a secondary
-source is dropped when a row from the agent's primary store has
+them for each agent. The analyzer parses every source on every run,
+even when the matching transcript exists, because a copy can survive
+the transcript's deletion, and keeps each event once: a row from a
+secondary source is dropped when a row from the agent's primary store has
 
 - the same `host`, `user`, `agent`, `turn_type` and `text`; two
   `tool_use` or two `tool_result` rows that both carry a `tool_use_id`
@@ -1147,6 +1152,15 @@ is not a secondary source either: its event rows carry their own time
 but no session or project, and the session rows they repeat carry only
 the session's creation time, so a match within 2 seconds would be
 chance, and both are kept.
+
+One fallback remains: Cline's
+`api_conversation_history.json` is read only when the task's
+`ui_messages.json` is absent, because the two record different texts
+for the same turn (the API history wraps the first prompt in `<task>`
+tags, and its tool calls are content blocks where the UI messages have
+one JSON record per tool), so the rule could not pair them and the
+task's turns would be shown twice; see
+[section 8 of `research/cline.md`](../research/cline.md#8-parser-plan).
 
 ## sessions.jsonl
 

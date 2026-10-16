@@ -66,7 +66,7 @@ analyzer/
   doubleagent/catalog.txt      verbatim copy of collect-agent-artifacts.sh --list
   research/<agent>.md          how each agent records transcripts; one per agent
   README.md                    analyzer user documentation: quick start, commands, options
-  docs/<topic>.md              detailed analyzer documentation: inputs, parsers,
+  docs/<topic>.md              detailed analyzer documentation: inputs and detection,
                                output and JSONL schema, filtering, searching, inventory,
                                options, development
   CHANGELOG.md                 analyzer release history, one entry per VERSION

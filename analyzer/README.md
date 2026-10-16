@@ -115,14 +115,13 @@ reasoning blocks are left out unless `--include-thinking` is passed.
 
 | Page | Covers |
 | --- | --- |
-| [docs/inputs.md](docs/inputs.md) | Accepted inputs, loose mode, unreadable inputs and `problem:` lines, detection from the bundled catalog |
-| [docs/parsers.md](docs/parsers.md) | What a parser puts in a row, how files are routed to parsers, protobuf and SQLite handling; every agent's status, the files each parser reads and what it was validated against are on the [agents page](../docs/agents.md) |
+| [docs/inputs.md](docs/inputs.md) | Accepted inputs, loose mode, unreadable inputs and `problem:` lines, detection from the bundled catalog, routing files to parsers |
 | [docs/output.md](docs/output.md) | `detect` output and `--json` keys, `timeline` files and stdout, the `inventory.json`, `timeline.jsonl` and `sessions.jsonl` schemas |
 | [docs/filtering.md](docs/filtering.md) | `--since`, `--until`, `--keep-undated` and `--match`, the `WHEN` forms and periods |
 | [docs/searching.md](docs/searching.md) | Reading and searching large output with jq, grep, DuckDB, Python and PowerShell |
 | [docs/inventory.md](docs/inventory.md) | The `inventory` command, its CSV columns and rollup |
 | [docs/options.md](docs/options.md) | Every option with its subcommands, and the exit codes |
-| [docs/development.md](docs/development.md) | Running the tests and lint checks, adding a parser |
+| [docs/development.md](docs/development.md) | Running the tests and lint checks, reading a real install, protobuf and SQLite stores, adding a parser |
 
 ## License
 
