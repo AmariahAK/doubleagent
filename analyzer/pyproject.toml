@@ -11,6 +11,13 @@ license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = ["zstandard", "python-dateutil"]
 
+[project.urls]
+Homepage = "https://seanthegeek.net/doubleagent/"
+Documentation = "https://seanthegeek.net/doubleagent/analyzer/README.html"
+Repository = "https://github.com/seanthegeek/doubleagent"
+Issues = "https://github.com/seanthegeek/doubleagent/issues"
+Changelog = "https://seanthegeek.net/doubleagent/analyzer/CHANGELOG.html"
+
 [project.scripts]
 doubleagent = "doubleagent.cli:main"
 

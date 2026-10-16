@@ -59,6 +59,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The package metadata (`pyproject.toml` `[project.urls]`) links the
+  documentation site, the repository, the issue tracker and this changelog.
 - Each line a parser cannot decode is now its own `system` row carrying
   the line in full, `parser: unparseable line (<reason>): <line>`, in
   place of the one row per file `parser: N unparseable line(s), first at
