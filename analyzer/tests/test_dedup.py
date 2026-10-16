@@ -1,11 +1,25 @@
 """dedup.deduplicate: secondary-source rows dropped when a primary store
 yields the same event (issue 122)."""
 
+import json
+import shutil
+import tempfile
 import unittest
 from collections import Counter
+from pathlib import Path
 
+from doubleagent import catalog, cli
 from doubleagent.dedup import TOLERANCE_SECONDS, deduplicate
+from doubleagent.inputs import open_input
 from doubleagent.model import Row
+from doubleagent.parsers import Options
+from fixtures import (
+    CODEX_SESSION,
+    bad_line_text,
+    codex_history_records,
+    codex_rollout_records,
+    write_bad_line,
+)
 
 SID = "11111111-2222-4333-8444-555555555555"
 BACKUP_A = "/home/alice/.app/backups/1/history.jsonl"
@@ -375,3 +389,50 @@ class DeduplicateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ParserRowTests(unittest.TestCase):
+    """A `parser:` row describes its own `source_file`, so it is never
+    dropped as a secondary copy and never takes one (issue 135)."""
+
+    def test_parser_rows_never_paired_unit(self):
+        text = "parser: unreadable (Permission denied)"
+        p = row(ts="", turn_type="system", text=text)
+        h = hist(ts="", turn_type="system", text=text)
+        h2 = hist(ts="", turn_type="system", text=text, source_file=BACKUP_A)
+        kept, dropped = dedup([p, row()], [h, h2, hist()])
+        self.assertEqual(kept, [p, row(), h, h2])
+        self.assertEqual(dropped, Counter({"claude-code": 1}))
+
+    def test_rollout_and_history_with_same_bad_line(self):
+        tmp = Path(tempfile.mkdtemp(prefix="cac-analyzer-test-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        home = tmp / "home" / "alice"
+        rollout = (
+            home
+            / ".codex/sessions/2026/10/02"
+            / ("rollout-2026-10-02T09-00-00-%s.jsonl" % CODEX_SESSION)
+        )
+        history = home / ".codex/history.jsonl"
+        # The source_file of a loose input is the path under its root.
+        rollout_src = "/" + str(rollout.relative_to(tmp / "home"))
+        history_src = "/" + str(history.relative_to(tmp / "home"))
+        for path, records in (
+            (rollout, codex_rollout_records()),
+            (history, codex_history_records()),
+        ):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+            write_bad_line(path)
+        col = open_input(tmp / "home", catalog.load(), host="h1")
+        rows, _, problems, dropped = cli.collect_rows(col, Options(), ["codex-cli"])
+        self.assertEqual(problems, [])
+        bad = [r for r in rows if r.text == bad_line_text()]
+        self.assertEqual(sorted(r.source_file for r in bad), sorted([history_src, rollout_src]))
+        # The history's one prompt repeats the rollout's and is still dropped.
+        self.assertEqual(dropped, Counter({"codex-cli": 1}))
+        prompt = codex_history_records()[0]["text"]
+        self.assertEqual(
+            [r.source_file for r in rows if r.turn_type == "user" and r.text == prompt],
+            [rollout_src],
+        )

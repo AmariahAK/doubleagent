@@ -1051,6 +1051,11 @@ snapshots, archives or mirrors keep are thus shown once, also after the
 primary store is gone. A row matches only a row from a different
 `source_file`, so two identical prompts in one history file, with a
 timestamp or without, are both kept as the two events the file records.
+A `system` row whose text starts with `parser:` is never dropped and
+never takes a copy, since it describes its own `source_file` (unreadable,
+cut off, or holding an unparseable line), so a history file and a
+transcript that fail with the same message are two problems, not one
+event.
 
 A secondary row with no match is kept, which recovers a prompt whose
 transcript was deleted, excluded by size or truncated, and a prompt the

@@ -73,6 +73,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The Claude Code and Antigravity `history.jsonl` readers report
   unparseable lines as `system` rows instead of dropping them silently;
   the valid prompts before and after are still yielded ([#134]).
+- A `parser:` row from a secondary source (a history file that could not
+  be read, or held an unparseable line) is no longer dropped as a
+  duplicate of the same row from the primary store: each describes its
+  own file, so both are kept ([#135]).
 - The Codex and Open Interpreter `history.jsonl` readers report
   unparseable lines as `system` rows instead of dropping them silently;
   the valid prompts before and after are still yielded ([#125]).
@@ -1040,6 +1044,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [#143]: https://github.com/seanthegeek/doubleagent/issues/143
 [#138]: https://github.com/seanthegeek/doubleagent/issues/138
 [#136]: https://github.com/seanthegeek/doubleagent/issues/136
+[#135]: https://github.com/seanthegeek/doubleagent/issues/135
 [#134]: https://github.com/seanthegeek/doubleagent/issues/134
 [#125]: https://github.com/seanthegeek/doubleagent/issues/125
 [#122]: https://github.com/seanthegeek/doubleagent/issues/122

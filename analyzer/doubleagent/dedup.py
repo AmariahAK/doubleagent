@@ -65,6 +65,12 @@ later (Claude Code queues input typed while it works) can be minutes from
 its transcript record, and is then shown twice, the history line's time
 being when it was typed.
 
+A `system` row whose `text` starts with `parser:` (`error_rows`) is never
+dropped and never a candidate (issue 135): it describes its own
+`source_file` (that file was unreadable, not a JSON array, cut off, or held
+an unparseable line), so two such rows are never the same event, even when
+a history file and a rollout fail with the same message.
+
 Two cases the fixed window does not fit. A text-only prompt history with no
 time of its own (Muse Code's `tui-history.jsonl`) yields rows with an empty
 `timestamp_utc`, and those match on text and scope alone. A mirror that
@@ -112,6 +118,12 @@ def _by_text(r: Row) -> tuple[str, ...]:
 
 def _by_id(r: Row) -> tuple[str, ...]:
     return (r.host, r.user, r.agent, r.turn_type, "id", r.tool_use_id)
+
+
+def _is_parser_row(r: Row) -> bool:
+    """Whether `r` is a `parser:` row about its own `source_file`, which
+    neither pairs nor is paired with (issue 135)."""
+    return r.turn_type == "system" and r.text.startswith("parser:")
 
 
 def _scope_rank(r: Row) -> int:
@@ -201,10 +213,13 @@ def _pair(bucket: _Bucket | None, r: Row, tolerance: float, used: Container[int]
 def _processing_order(secondary: list[tuple[Row, float]], by_scope: bool) -> list[int]:
     """The secondary row indices in the order the rule tests them: the
     timestamped rows in time order, then the undated rows in input order,
-    with `by_scope` grouped session-scoped, project-scoped, unscoped."""
+    with `by_scope` grouped session-scoped, project-scoped, unscoped.
+    `parser:` rows are left out, so they are never dropped."""
     stamped = []
     undated = []
     for j, (r, _) in enumerate(secondary):
+        if _is_parser_row(r):
+            continue
         ms = epoch_ms(r.timestamp_utc)
         if ms is None:
             undated.append(j)
@@ -269,7 +284,8 @@ def _against_primary(primary: list[Row], secondary: list[tuple[Row, float]]) -> 
     each looking only under its own scope."""
     buckets: dict[tuple, _Bucket] = {}
     for i, r in enumerate(primary):
-        _add(buckets, r, i, epoch_ms(r.timestamp_utc))
+        if not _is_parser_row(r):
+            _add(buckets, r, i, epoch_ms(r.timestamp_utc))
     used: set[int] = set()
     matched: list[int] = []
     for j in _processing_order(secondary, by_scope=True):
