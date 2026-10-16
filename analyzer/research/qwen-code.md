@@ -1,9 +1,3 @@
----
-title: "Qwen Code transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 28
----
 # Qwen Code transcript schema
 
 Catalog agent: `qwen-code`. Qwen Code forked Gemini CLI, but its transcript

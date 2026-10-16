@@ -1,7 +1,0 @@
-// Site-specific styles layered over just-the-docs. The theme sets `code` to
-// 0.75em of the surrounding text (base.scss), which makes the inline paths,
-// keys and status values the documents are full of hard to read; GitHub
-// renders code at 85 %. Applies to inline code and code blocks alike.
-code {
-  font-size: 0.875em;
-}

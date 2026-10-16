@@ -1,9 +1,3 @@
----
-title: "little-coder transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 18
----
 # little-coder transcript schema
 
 Catalog agent: `little-coder`. little-coder is a launcher and extension set

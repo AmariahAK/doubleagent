@@ -1,9 +1,3 @@
----
-title: "cursor: Cursor IDE and Cursor Agent CLI"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 19
----
 # cursor: Cursor IDE and Cursor Agent CLI
 
 ## 1. Source and evidence level

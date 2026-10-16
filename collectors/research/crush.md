@@ -1,9 +1,3 @@
----
-title: "Crush: on-disk paths"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 18
----
 # Crush: on-disk paths
 
 ## 1. Source and evidence level

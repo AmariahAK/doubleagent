@@ -1,9 +1,3 @@
----
-title: "Sourcegraph Cody transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 8
----
 # Sourcegraph Cody transcript schema
 
 Catalog agent: `cody`. Cody keeps all chats of all accounts in one JSON

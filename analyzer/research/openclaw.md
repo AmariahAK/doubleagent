@@ -1,9 +1,3 @@
----
-title: "OpenClaw transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 23
----
 # OpenClaw transcript schema
 
 Catalog agent: `openclaw`. OpenClaw's transcript record shape (`type:

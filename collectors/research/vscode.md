@@ -1,9 +1,3 @@
----
-title: "vscode: VS Code, Insiders, VSCodium and the fork family as hosts for AI extensions"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 51
----
 # vscode: VS Code, Insiders, VSCodium and the fork family as hosts for AI extensions
 
 How the transcripts are encoded and how the parser reads them is in

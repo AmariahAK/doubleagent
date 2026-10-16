@@ -1,8 +1,3 @@
----
-title: "Collector changelog"
-parent: "Collectors"
-nav_order: 12
----
 # Changelog
 
 All notable changes to the collectors are recorded here. The sh and

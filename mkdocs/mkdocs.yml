@@ -1,0 +1,217 @@
+# The documentation site at https://seanthegeek.net/doubleagent/, built with
+# MkDocs and the Material theme from the Markdown documents where they are in
+# the repository, by .github/workflows/pages.yml:
+#
+#   pip install -r requirements-docs.txt
+#   mkdocs build --strict -f mkdocs/mkdocs.yml -d <directory outside the checkout>
+#
+# The documents are the whole repository, so docs_dir is the repository root.
+# MkDocs refuses a docs_dir that is the parent of the config file, so this
+# file sits in its own directory, and it refuses a site_dir inside docs_dir,
+# so there is no site_dir here: the build is always given -d with a
+# directory outside the checkout. A new document page is added to `nav:`
+# below; --strict fails the build on a document missing from it.
+site_name: doubleagent
+site_description: >-
+  Forensic analysis of AI agent use on a system, for incident responders.
+site_url: https://seanthegeek.net/doubleagent/
+repo_url: https://github.com/seanthegeek/doubleagent
+repo_name: seanthegeek/doubleagent
+edit_uri: ""
+docs_dir: ..
+# foo.md becomes foo.html, the URLs the site has always had (and that
+# analyzer/pyproject.toml links to); hooks.py keeps README.md as README.html.
+use_directory_urls: false
+
+# Only the Markdown documents are pages; nothing else in the repository is
+# published. Every file is excluded, the Markdown files are taken back, and
+# then the ones that are not documents are excluded again. The theme's own
+# files (assets/) are matched by these patterns too, so they are taken back.
+# The patterns are gitignore patterns; a re-excluded path names the files
+# (dir/**), not the directory, since a file-level `!*.md` outranks a
+# directory-level match.
+exclude_docs: |
+  *
+  !*.md
+  !/assets/**
+  **/.*/**
+  /CLAUDE.md
+  /mkdocs/**
+  /analyzer/doubleagent/**
+  /analyzer/tests/**
+  /analyzer/tools/**
+  /analyzer/build/**
+  /analyzer/dist/**
+  /collectors/tests/**
+  /tools/**
+  /lab/out/**
+  **/node_modules/**
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    # A link to a page or file that does not exist fails the build. A link
+    # to a directory, or to a file that is not a page (CLAUDE.md, LICENSE,
+    # the scripts), is pointed at GitHub by hooks.py.
+    not_found: warn
+    absolute_links: warn
+    unrecognized_links: info
+    anchors: warn
+
+hooks:
+  - hooks.py
+
+theme:
+  name: material
+  features:
+    - navigation.indexes
+  palette:
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+# Plain GitHub Markdown: no smart quotes, no admonitions. Heading ids are
+# GitHub's (lower case, digits kept, hyphens not collapsed); hooks.py gives
+# repeated headings GitHub's -1, -2 suffixes.
+markdown_extensions:
+  - tables
+  - attr_list
+  - md_in_html
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+
+nav:
+  - Overview: README.md
+  - Collectors:
+      - collectors/README.md
+      - collectors/docs/options.md
+      - collectors/docs/output.md
+      - collectors/docs/coverage.md
+      - collectors/docs/docker.md
+      - collectors/docs/privileges.md
+      - collectors/docs/inventory.md
+      - collectors/docs/windows.md
+      - collectors/docs/deployment.md
+      - collectors/docs/testing.md
+      - collectors/docs/internals.md
+      - Collector research:
+          - collectors/research/README.md
+          - collectors/research/agent-zero.md
+          - collectors/research/aider.md
+          - collectors/research/amp.md
+          - collectors/research/antigravity.md
+          - collectors/research/augment.md
+          - collectors/research/autogen-studio.md
+          - collectors/research/camel-ai.md
+          - collectors/research/chatgpt-desktop.md
+          - collectors/research/claude-code.md
+          - collectors/research/claude-desktop.md
+          - collectors/research/cline.md
+          - collectors/research/codex-cli.md
+          - collectors/research/cody.md
+          - collectors/research/continue.md
+          - collectors/research/copilot-cli.md
+          - collectors/research/copilot.md
+          - collectors/research/crewai.md
+          - collectors/research/crush.md
+          - collectors/research/cursor.md
+          - collectors/research/dify.md
+          - collectors/research/factory-droid.md
+          - collectors/research/flowise.md
+          - collectors/research/frameworks.md
+          - collectors/research/gemini-cli.md
+          - collectors/research/goose.md
+          - collectors/research/hermes.md
+          - collectors/research/kilo-code.md
+          - collectors/research/kiro.md
+          - collectors/research/langflow.md
+          - collectors/research/letta.md
+          - collectors/research/little-coder.md
+          - collectors/research/local-deep-research.md
+          - collectors/research/metagpt.md
+          - collectors/research/muse-code.md
+          - collectors/research/n8n.md
+          - collectors/research/nanobot.md
+          - collectors/research/ollama.md
+          - collectors/research/open-interpreter.md
+          - collectors/research/openclaw.md
+          - collectors/research/opencode.md
+          - collectors/research/openhands.md
+          - collectors/research/pearai.md
+          - collectors/research/pi.md
+          - collectors/research/pydantic-clai.md
+          - collectors/research/qwen-code.md
+          - collectors/research/roo-code.md
+          - collectors/research/shared.md
+          - collectors/research/shellgpt.md
+          - collectors/research/tabby.md
+          - collectors/research/twinny.md
+          - collectors/research/vscode.md
+          - collectors/research/windsurf.md
+          - collectors/research/zed.md
+      - Collector changelog: collectors/CHANGELOG.md
+  - Analyzer:
+      - analyzer/README.md
+      - analyzer/docs/inputs.md
+      - analyzer/docs/parsers.md
+      - analyzer/docs/output.md
+      - analyzer/docs/filtering.md
+      - analyzer/docs/searching.md
+      - analyzer/docs/inventory.md
+      - analyzer/docs/options.md
+      - analyzer/docs/development.md
+      - Analyzer research:
+          - analyzer/research/README.md
+          - analyzer/research/agent-zero.md
+          - analyzer/research/aider.md
+          - analyzer/research/antigravity.md
+          - analyzer/research/claude-code.md
+          - analyzer/research/claude-desktop.md
+          - analyzer/research/cline.md
+          - analyzer/research/codex-cli.md
+          - analyzer/research/cody.md
+          - analyzer/research/continue.md
+          - analyzer/research/copilot-cli.md
+          - analyzer/research/crush.md
+          - analyzer/research/gemini-cli.md
+          - analyzer/research/goose.md
+          - analyzer/research/hermes.md
+          - analyzer/research/kilo-code.md
+          - analyzer/research/kiro.md
+          - analyzer/research/letta.md
+          - analyzer/research/little-coder.md
+          - analyzer/research/muse-code.md
+          - analyzer/research/nanobot.md
+          - analyzer/research/ollama.md
+          - analyzer/research/open-interpreter.md
+          - analyzer/research/openclaw.md
+          - analyzer/research/opencode.md
+          - analyzer/research/openhands.md
+          - analyzer/research/pearai.md
+          - analyzer/research/pi.md
+          - analyzer/research/qwen-code.md
+          - analyzer/research/roo-code.md
+          - analyzer/research/shellgpt.md
+          - analyzer/research/tabby.md
+          - analyzer/research/twinny.md
+          - analyzer/research/vscode.md
+          - analyzer/research/zed.md
+      - Analyzer changelog: analyzer/CHANGELOG.md
+  - Agent lab: lab/README.md
+  - Contributing: AGENTS.md

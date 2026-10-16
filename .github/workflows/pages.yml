@@ -1,8 +1,6 @@
 # Builds the documentation site from the Markdown documents where they are
-# (see _config.yml) and publishes it to GitHub Pages at
-# https://seanthegeek.net/doubleagent/. An Actions build rather than
-# GitHub's built-in Pages build, because _plugins/ must run: the built-in
-# build allows only its own plugin list.
+# (see mkdocs/mkdocs.yml) with MkDocs and the Material theme, and publishes
+# it to GitHub Pages at https://seanthegeek.net/doubleagent/.
 name: Pages
 
 on:
@@ -10,10 +8,10 @@ on:
     branches: [main]
     paths:
       - "**/*.md"
-      - _config.yml
-      - "_plugins/**"
-      - "_sass/**"
-      - "Gemfile*"
+      - "mkdocs/**"
+      - requirements-docs.txt
+      # mkdocs/hooks.py takes the heading anchors from the link check.
+      - tools/check_doc_links.py
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -32,17 +30,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ruby/setup-ruby@v1
+      - uses: actions/setup-python@v7
         with:
-          ruby-version: "3.4"
-          bundler-cache: true
-      - id: pages
-        uses: actions/configure-pages@v6
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+      - run: pip install -r requirements-docs.txt
+      - uses: actions/configure-pages@v6
+      # MkDocs refuses a site directory inside the documents, which are the
+      # whole checkout, so the site is built in the runner's temp directory.
       - name: Build
-        run: bundle exec jekyll build --baseurl "${{ steps.pages.outputs.base_path }}"
-        env:
-          JEKYLL_ENV: production
+        run: mkdocs build --strict -f mkdocs/mkdocs.yml -d "$RUNNER_TEMP/site"
       - uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ runner.temp }}/site
 
   deploy:
     needs: build

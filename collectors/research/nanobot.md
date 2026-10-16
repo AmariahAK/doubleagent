@@ -1,9 +1,3 @@
----
-title: "nanobot: on-disk paths"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 36
----
 # nanobot: on-disk paths
 
 ## 1. Source and evidence level

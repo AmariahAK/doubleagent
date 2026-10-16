@@ -1,9 +1,3 @@
----
-title: "Ollama transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 21
----
 # Ollama transcript schema
 
 Catalog agent: `ollama`. Ollama is a local model server, a terminal REPL

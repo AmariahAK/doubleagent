@@ -1,9 +1,3 @@
----
-title: "Agent Zero transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 1
----
 # Agent Zero transcript schema
 
 Catalog agent: `agent-zero`. One JSON file per chat holds two parallel

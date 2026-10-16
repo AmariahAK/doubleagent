@@ -1,9 +1,3 @@
----
-title: "Collector research"
-parent: "Collectors"
-nav_order: 11
-has_children: true
----
 # Catalog evidence
 
 One document per catalog agent, named after the agent as it appears in

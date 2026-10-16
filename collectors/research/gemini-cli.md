@@ -1,9 +1,3 @@
----
-title: "gemini-cli: on-disk paths"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 24
----
 # gemini-cli: on-disk paths
 
 How the transcripts are encoded and how the parser reads them is in

@@ -1,8 +1,3 @@
----
-title: "Deployment through an EDR"
-parent: "Collectors"
-nav_order: 8
----
 # Deployment through an EDR
 
 Running the collectors through an EDR remote shell, for a collection or a

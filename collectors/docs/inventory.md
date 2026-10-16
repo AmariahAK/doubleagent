@@ -1,8 +1,3 @@
----
-title: "Inventory mode"
-parent: "Collectors"
-nav_order: 6
----
 # Inventory mode
 
 What `--inventory` (sh) and `-Inventory` (PowerShell) walk and the JSON

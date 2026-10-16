@@ -1,9 +1,3 @@
----
-title: "OpenCode: on-disk paths"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 40
----
 # OpenCode: on-disk paths
 
 ## 1. Source and evidence level

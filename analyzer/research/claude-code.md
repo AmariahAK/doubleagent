@@ -1,9 +1,3 @@
----
-title: "Claude Code transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 4
----
 # Claude Code transcript schema
 
 Catalog agent: `claude-code`. Claude Code is Anthropic's closed-source

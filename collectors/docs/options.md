@@ -1,8 +1,3 @@
----
-title: "Options"
-parent: "Collectors"
-nav_order: 1
----
 # Options
 
 Every option of both collectors in full, the exit codes, and the environment

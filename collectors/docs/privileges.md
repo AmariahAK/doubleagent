@@ -1,8 +1,3 @@
----
-title: "Privileges"
-parent: "Collectors"
-nav_order: 5
----
 # Privileges
 
 What a run without root or Administrator still collects, and how it records

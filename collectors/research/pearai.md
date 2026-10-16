@@ -1,9 +1,3 @@
----
-title: "PearAI: on-disk paths"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 42
----
 # PearAI: on-disk paths
 
 Catalog agent: `pearai`. PearAI is a VS Code fork that ships two AI

@@ -1,9 +1,3 @@
----
-title: "Roo Code: on-disk paths"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 46
----
 # Roo Code: on-disk paths
 
 ## 1. Source and evidence level

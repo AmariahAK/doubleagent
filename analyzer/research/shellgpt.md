@@ -1,9 +1,3 @@
----
-title: "ShellGPT transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 30
----
 # ShellGPT transcript schema
 
 Catalog agent: `shellgpt`. ShellGPT stores a named chat or REPL session as

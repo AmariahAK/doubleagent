@@ -1,8 +1,3 @@
----
-title: "Reading and searching the output"
-parent: "Analyzer"
-nav_order: 5
----
 # Reading and searching the output
 
 Recipes for reading and searching a large `timeline.jsonl` or

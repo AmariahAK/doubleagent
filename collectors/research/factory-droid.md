@@ -1,9 +1,3 @@
----
-title: "factory-droid (Factory Droid CLI)"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 21
----
 # factory-droid (Factory Droid CLI)
 
 ## 1. Source and evidence level

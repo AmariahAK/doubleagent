@@ -21,9 +21,9 @@ every tracked Markdown file and every untracked one git does not ignore:
   host path as its text, since an external source is one link whose text
   names it and whose target is the full URL.
 
-A YAML front matter block at the top of a file (the site's navigation, see
-`_config.yml`), fenced code blocks and inline code spans are ignored before
-matching.
+Fenced code blocks and inline code spans are ignored before matching. The
+documentation site (mkdocs/hooks.py) gives every heading the anchor
+`heading_anchors()` returns, so a link this check accepts also works there.
 
 Usage: tools/check_doc_links.py [FILE...]
 
@@ -64,23 +64,8 @@ AUTOLINK = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>")
 LINK_IN_HEADING = re.compile(r"!?\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\([^)]*\)")
 
 
-def strip_front_matter(text: str) -> str:
-    """Blank a leading `---` YAML front matter block, keeping line numbers.
-
-    Without this the closing `---` would make the last key a setext heading.
-    """
-    lines = text.split("\n")
-    if not lines or lines[0].rstrip() != "---":
-        return text
-    for end in range(1, len(lines)):
-        if lines[end].rstrip() == "---":
-            return "\n" * end + "\n".join(lines[end:]).replace("---", "", 1)
-    return text
-
-
 def strip_fences(text: str) -> str:
-    """Blank front matter and every line of a fenced code block, keeping line numbers."""
-    text = strip_front_matter(text)
+    """Blank every line of a fenced code block, keeping line numbers."""
     out = []
     fence = ""
     for line in text.split("\n"):
@@ -120,13 +105,11 @@ def anchor(heading: str) -> str:
     return h.replace(" ", "-")
 
 
-def anchors_of(path: pathlib.Path, cache: dict[pathlib.Path, set[str]]) -> set[str]:
-    if path in cache:
-        return cache[path]
-    text = strip_fences(path.read_text(encoding="utf-8"))
-    lines = text.split("\n")
+def heading_anchors(text: str) -> list[str]:
+    """Return the GitHub anchor of every heading in a Markdown text, in order."""
+    lines = strip_fences(text).split("\n")
     seen: dict[str, int] = {}
-    found: set[str] = set()
+    found: list[str] = []
     for i, line in enumerate(lines):
         m = ATX.match(line)
         heading = None
@@ -147,8 +130,16 @@ def anchors_of(path: pathlib.Path, cache: dict[pathlib.Path, set[str]]) -> set[s
         a = anchor(heading)
         n = seen.get(a, 0)
         seen[a] = n + 1
-        found.add(a if n == 0 else "%s-%d" % (a, n))
-    found.update(HTML_ID.findall(text))
+        found.append(a if n == 0 else "%s-%d" % (a, n))
+    return found
+
+
+def anchors_of(path: pathlib.Path, cache: dict[pathlib.Path, set[str]]) -> set[str]:
+    if path in cache:
+        return cache[path]
+    text = path.read_text(encoding="utf-8")
+    found = set(heading_anchors(text))
+    found.update(HTML_ID.findall(strip_fences(text)))
     cache[path] = found
     return found
 

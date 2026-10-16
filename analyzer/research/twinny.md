@@ -1,9 +1,3 @@
----
-title: "Twinny transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 32
----
 # Twinny transcript schema
 
 Catalog agent: `twinny`. A VS Code extension; its chats live inside the

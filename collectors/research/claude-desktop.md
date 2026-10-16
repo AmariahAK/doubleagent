@@ -1,9 +1,3 @@
----
-title: "claude-desktop"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 10
----
 # claude-desktop
 
 Catalog agent: `claude-desktop`. Transcript schema is in

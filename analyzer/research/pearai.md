@@ -1,9 +1,3 @@
----
-title: "PearAI transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 26
----
 # PearAI transcript schema
 
 Catalog agent: `pearai`. PearAI writes two independent transcript stores,

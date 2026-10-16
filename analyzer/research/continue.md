@@ -1,9 +1,3 @@
----
-title: "Continue transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 9
----
 # Continue transcript schema
 
 Catalog agent: `continue`. Covers the IDE extensions and the `cn` CLI, which

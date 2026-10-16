@@ -1,9 +1,3 @@
----
-title: "kiro: Kiro CLI (ex Amazon Q Developer CLI) and Kiro IDE"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 28
----
 # kiro: Kiro CLI (ex Amazon Q Developer CLI) and Kiro IDE
 
 How the transcripts are encoded and how the parser reads them is in

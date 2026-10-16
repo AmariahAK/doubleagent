@@ -1,8 +1,3 @@
----
-title: "Internals"
-parent: "Collectors"
-nav_order: 10
----
 # Internals
 
 How the two collectors are built, for a maintainer who has to audit or

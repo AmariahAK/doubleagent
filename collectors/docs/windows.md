@@ -1,8 +1,3 @@
----
-title: "Windows"
-parent: "Collectors"
-nav_order: 7
----
 # Windows
 
 How the PowerShell collector writes its archive, recreates symlinks and

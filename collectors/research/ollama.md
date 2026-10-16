@@ -1,9 +1,3 @@
----
-title: "ollama"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 37
----
 # ollama
 
 Catalog agent: `ollama`. Transcript schema is in

@@ -1,9 +1,3 @@
----
-title: "Open Interpreter transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 22
----
 # Open Interpreter transcript schema
 
 Catalog agent: `open-interpreter`. The current Open Interpreter is a Rust

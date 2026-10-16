@@ -1,9 +1,3 @@
----
-title: "Codex CLI transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 7
----
 # Codex CLI transcript schema
 
 Catalog agent: `codex-cli`. OpenAI Codex CLI (the Rust `codex-rs`

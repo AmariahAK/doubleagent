@@ -1,8 +1,3 @@
----
-title: "What gets collected"
-parent: "Collectors"
-nav_order: 3
----
 # What gets collected
 
 Which files the collectors take, from which homes and projects, and which

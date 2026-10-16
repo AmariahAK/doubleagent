@@ -1,9 +1,3 @@
----
-title: "Crush transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 11
----
 # Crush transcript schema
 
 Catalog agent: `crush`. Crush began as an OpenCode fork

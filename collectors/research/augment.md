@@ -1,9 +1,3 @@
----
-title: "Augment (auggie CLI): on-disk paths"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 5
----
 # Augment (auggie CLI): on-disk paths
 
 ## 1. Source and evidence level

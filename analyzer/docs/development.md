@@ -1,8 +1,3 @@
----
-title: "Development"
-parent: "Analyzer"
-nav_order: 8
----
 # Development
 
 Running the analyzer's tests and lint checks, and adding a parser; for

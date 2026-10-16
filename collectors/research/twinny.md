@@ -1,9 +1,3 @@
----
-title: "Twinny: on-disk paths"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 50
----
 # Twinny: on-disk paths
 
 ## 1. Source and evidence level

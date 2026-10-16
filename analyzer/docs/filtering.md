@@ -1,8 +1,3 @@
----
-title: "Filtering the timeline"
-parent: "Analyzer"
-nav_order: 4
----
 # Filtering the timeline
 
 The `--since`, `--until`, `--keep-undated` and `--match` options of

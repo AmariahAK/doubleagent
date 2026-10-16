@@ -1,9 +1,3 @@
----
-title: "Aider transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 2
----
 # Aider transcript schema
 
 Catalog agent: `aider`. Aider writes plain-text history files into the

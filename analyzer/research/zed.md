@@ -1,9 +1,3 @@
----
-title: "Zed agent thread schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 34
----
 # Zed agent thread schema
 
 Catalog agent: `zed`. Covers Zed's built-in agent panel threads. Researched

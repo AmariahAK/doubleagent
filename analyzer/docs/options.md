@@ -1,8 +1,3 @@
----
-title: "Options"
-parent: "Analyzer"
-nav_order: 7
----
 # Options
 
 Every subcommand and option in full, and the exit codes. The short table is

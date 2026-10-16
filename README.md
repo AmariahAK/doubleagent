@@ -1,8 +1,3 @@
----
-title: "Overview"
-nav_order: 1
-permalink: "/"
----
 # doubleagent
 
 Forensic analysis of AI agent use on a system, for incident responders.

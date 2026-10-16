@@ -1,9 +1,3 @@
----
-title: "GitHub Copilot CLI transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 10
----
 # GitHub Copilot CLI transcript schema
 
 Catalog agent: `copilot-cli`. GitHub Copilot CLI (`copilot`) is GitHub's

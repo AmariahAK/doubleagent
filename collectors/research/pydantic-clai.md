@@ -1,9 +1,3 @@
----
-title: "Pydantic AI CLIs (clai and CLAI 2.0): on-disk paths"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 44
----
 # Pydantic AI CLIs (clai and CLAI 2.0): on-disk paths
 
 This document came out of the agent framework sweep for issue #64; the

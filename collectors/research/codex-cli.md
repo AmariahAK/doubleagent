@@ -1,9 +1,3 @@
----
-title: "codex-cli"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 12
----
 # codex-cli
 
 How the transcripts are encoded and how the parser reads them is in

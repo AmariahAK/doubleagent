@@ -1,8 +1,3 @@
----
-title: "Inventory"
-parent: "Analyzer"
-nav_order: 6
----
 # Inventory
 
 The `inventory` command, which merges collector `--inventory` output into

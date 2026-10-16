@@ -1,9 +1,3 @@
----
-title: "OpenHands transcript schema"
-parent: "Analyzer research"
-grand_parent: "Analyzer"
-nav_order: 25
----
 # OpenHands transcript schema
 
 Catalog agent: `openhands`. Current OpenHands (Agent Canvas and the

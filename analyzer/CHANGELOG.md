@@ -1,8 +1,3 @@
----
-title: "Analyzer changelog"
-parent: "Analyzer"
-nav_order: 10
----
 # Changelog
 
 All notable changes to the analyzer are recorded here. The version is

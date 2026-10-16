@@ -1,9 +1,3 @@
----
-title: "little-coder: on-disk paths"
-parent: "Collector research"
-grand_parent: "Collectors"
-nav_order: 31
----
 # little-coder: on-disk paths
 
 ## 1. Source and evidence level

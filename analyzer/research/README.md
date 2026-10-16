@@ -1,9 +1,3 @@
----
-title: "Analyzer research"
-parent: "Analyzer"
-nav_order: 9
-has_children: true
----
 # Record schema research
 
 One document per catalog agent, named after the agent as it appears in
