@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from doubleagent import catalog, cli
+from doubleagent import VERSION, catalog, cli
 from doubleagent.inputs import open_input
 from doubleagent.model import Row, canonical_project_path, project_key, summarise
 from doubleagent.parsers import ALL, Options, by_agent
@@ -170,6 +170,9 @@ class InventoryJsonTests(unittest.TestCase):
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
         rows = read_jsonl(out / "timeline.jsonl")
         sessions = read_jsonl(out / "sessions.jsonl")
+        # The version is the first key, so a reader sees it before the counts (#138).
+        self.assertEqual(next(iter(inv)), "doubleagent_version")
+        self.assertEqual(inv["doubleagent_version"], VERSION)
         self.assertEqual(inv["rows"], len(rows))
         self.assertEqual(inv["sessions"], len(sessions))
         groups = dict(inv["projects"])
@@ -1007,6 +1010,7 @@ class ProjectAgentsTests(unittest.TestCase):
         self.assertEqual(
             list(inv),
             [
+                "doubleagent_version",
                 "input",
                 "kind",
                 "host",
@@ -1061,6 +1065,7 @@ class ProjectAgentsTests(unittest.TestCase):
         self.assertEqual(
             list(inv),
             [
+                "doubleagent_version",
                 "input",
                 "kind",
                 "host",

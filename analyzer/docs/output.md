@@ -376,6 +376,7 @@ the test collection of the [`detect --json`](#detect---json) example:
 
 ```json
 {
+  "doubleagent_version": "0.14.0",
   "input": "/cases/ws01/ws01",
   "kind": "collected",
   "host": "ws01",
@@ -546,6 +547,7 @@ records, so every history line is kept. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
+| `doubleagent_version` | string | The analyzer version that wrote the file, as `doubleagent --version` prints it, so the parser set and row conventions behind the counts can be looked up in the changelog. First key since 0.14.0. |
 | `input` | string | The input path, as on the `input:` line. |
 | `kind` | string | As in [`detect --json`](#detect---json): `archive`, `collected` or `loose`. |
 | `host` | string | The host name, `""` when unknown. |
@@ -651,7 +653,9 @@ jq -r '.projects | to_entries[] | .key as $p | .value.agents | to_entries[] | se
 Before analyzer 0.12.0 there was no `inventory.json`. The keys are an
 interface like the JSONL fields: new ones are added at the end, the
 existing ones keep their names, types and meaning. `deduplicated`, the
-last key, was added in analyzer 0.13.0.
+last key, was added in analyzer 0.13.0. The one key added at the front is
+`doubleagent_version`, in analyzer 0.14.0: the file is one object read by
+key, not by position, and a reader needs the version before the rest.
 
 ## JSONL encoding
 

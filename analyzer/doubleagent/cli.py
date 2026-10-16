@@ -776,6 +776,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     with open(inventory_path, "w", encoding="utf-8") as fh:
         json.dump(
             {
+                "doubleagent_version": VERSION,
                 **{k: detect[k] for k in ("input", "kind", "host", "notes")},
                 "problems": problems,
                 "rows": len(rows),

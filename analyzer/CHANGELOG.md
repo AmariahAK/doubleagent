@@ -13,6 +13,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `inventory.json` begins with a `doubleagent_version` key, the analyzer
+  version that wrote it ([#138]).
 - A `copilot-cli` parser for GitHub Copilot CLI. It reads each session's
   event log `.copilot/session-state/<id>/events.jsonl`: prompts, replies,
   tool calls and results joined on `toolCallId`, the system prompt, the
@@ -1025,6 +1027,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#138]: https://github.com/seanthegeek/doubleagent/issues/138
 [#136]: https://github.com/seanthegeek/doubleagent/issues/136
 [#134]: https://github.com/seanthegeek/doubleagent/issues/134
 [#125]: https://github.com/seanthegeek/doubleagent/issues/125
