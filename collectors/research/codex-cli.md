@@ -39,7 +39,7 @@ All of these sit under `.codex` and are collected by the `codex-cli|.codex` line
 
 ### Codex Desktop inside the ChatGPT app
 
-Observed on the Windows install above, not in the source at 3e23877 unless a citation says otherwise. Names, types and counts only; no value from the install is recorded.
+Observed on the Windows install above, not in the source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524) unless a citation says otherwise. Names, types and counts only; no value from the install is recorded.
 
 - `.desktop-created` (0 B, written at first launch) and `.codex-provisioning-<16 hex>.guard` (0 B): markers that the desktop app created and provisioned this home.
 - `installation_id` (36 B), `.sandbox_migration` (3 B), `.sqlite-maintenance.lock` (0 B, byte-range locked while the app runs).

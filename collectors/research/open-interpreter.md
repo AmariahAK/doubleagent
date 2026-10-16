@@ -150,7 +150,7 @@ commands through a subprocess, with `auto_run=False` by default
 ([shell.py:8-20](https://github.com/openinterpreter/openinterpreter/blob/13061d2ce0ac35344f04c5285e795415cccf259d/interpreter/core/computer/terminal/languages/shell.py#L8-L20),
 [core.py:46](https://github.com/openinterpreter/openinterpreter/blob/13061d2ce0ac35344f04c5285e795415cccf259d/interpreter/core/core.py#L46)).
 The unreleased `development` branch (1.0.0, commit
-`fa06bfda18b70546baa85b9d314873e048f70c99`) uses
+[`fa06bfda18b70546baa85b9d314873e048f70c99`](https://github.com/openinterpreter/openinterpreter/commit/fa06bfda18b70546baa85b9d314873e048f70c99)) uses
 `~/.openinterpreter/default_profile.py`
 ([profiles.py:29-30](https://github.com/openinterpreter/openinterpreter/blob/fa06bfda18b70546baa85b9d314873e048f70c99/interpreter/profiles.py#L29-L30)),
 inside the current catalog entry; its `api_key` field

@@ -1187,11 +1187,19 @@ for a documentation-only change, only markdownlint and
   the link text, in parentheses after it, and a second page on the same
   site is a second full link, never `and /settings`. Citations to a
   file at a commit keep their existing form (see "Validating catalog
-  entries from source").
+  entries from source"). A commit hash named in prose, a table cell or
+  a code span is always a link to that commit,
+  `[<short hash>](https://github.com/<owner>/<repo>/commit/<full sha>)`
+  (the code span, when there is one, kept inside the link text), never
+  bare text, with the repository and full sha taken from the citation
+  links of the agent's research document; a build hash of a
+  closed-source binary, which no public repository holds, stays as
+  written.
   `tools/check_doc_links.py`, run by the CI lint job, fails on a relative
   link whose file or heading does not exist, on a `section <n>` that is
-  not link text, and on a URL or scheme-less host path (`github.com/...`)
-  outside a link target; run it before pushing a documentation change.
+  not link text, on a URL or scheme-less host path (`github.com/...`)
+  outside a link target, and on a bare commit hash after `at `,
+  `commit ` or `@`; run it before pushing a documentation change.
 - Bump `VERSION` in the script for any change to output format or options.
   For the analyzer, bump `VERSION` in `doubleagent/__init__.py`;
   `pyproject.toml` reads the version from it. Bump once per release: if

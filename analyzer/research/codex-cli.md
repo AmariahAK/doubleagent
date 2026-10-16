@@ -63,7 +63,7 @@ Paths and the rest of the per-user state are in
     characters) and `creator_account_id` (36 characters, a UUID). Every
     top-level key is in the source list in
     [section 3](#3-record-envelope-and-types); `base_instructions.provenance`
-    is observed, not checked against source at 3e23877. No `git` block
+    is observed, not checked against source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524). No `git` block
     (neither directory was a repository). `source` is `vscode` for these
     desktop threads, so `originator` is the key that names the desktop
     app.
@@ -78,7 +78,7 @@ Paths and the rest of the per-user state are in
     `reasoning_effort` `medium` and `developer_instructions`), `effort`
     `medium`, `summary` `detailed`, `personality` `friendly`. Observed
     and not among the fields [section 3](#3-record-envelope-and-types)
-    lists from source at 3e23877 (whether that commit's struct already
+    lists from source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524) (whether that commit's struct already
     has them was not rechecked): `disabled_plugin_ids`,
     `approvals_reviewer` `user`, `active_permission_profile` (`id`
     `:workspace`), `file_system_sandbox_policy` (`kind` `restricted`, 13
@@ -927,7 +927,7 @@ parser lists it but `ResponseItem` has no such variant at this commit; it
 is harmless); how often the harness emits `agent_message` response items
 versus `inter_agent_communication` lines. The `state_5.sqlite` and
 `thread_history_1.sqlite` columns and `item_json` shapes are from the
-migrations and structs at 3e23877 (high); the table and column names agree
+migrations and structs at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524) (high); the table and column names agree
 with the Windows install of [section 1](#1-evidence), whose values were not
 read, so the rows rest on a synthetic fixture (medium for the times'
 pairing with the rollout, which no real install has shown).

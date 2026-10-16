@@ -207,7 +207,7 @@ Paths, credentials and the rest of the per-user state are in
     listed. No `sidecar_data/` directory appeared for the automation
     ([section 2](#2-stores-relative-to-home)). The descriptors of the 1.3.5
     and 2.23.1 Windows binaries were not extracted in this round.
-  - **Analyzer 0.12.0** (at `main` commit `4607cca`) over the collector
+  - **Analyzer 0.12.0** (at `main` commit [`4607cca`](https://github.com/seanthegeek/doubleagent/commit/4607ccaac18f9bcfcb1a01cefc9402939430b09d)) over the collector
     1.12.0 archive of this VM (PowerShell collector, 213 `collected`
     files): `detect` verified the archive's sha256 and listed the one user
     with `antigravity`, 213 files and 14,339,425 B, and its `detect.json`

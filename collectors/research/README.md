@@ -82,7 +82,7 @@ file names to check only those. It exits `1` when any link fails.
 | `windsurf` | [windsurf.md](windsurf.md) | official docs, community write-ups | rebrand to Devin in progress; new `.windsurf/transcripts` |
 | `zed` | [zed.md](zed.md) | source, crate sources | Flatpak install paths not covered |
 
-Collector version 1.3.0 (issue 24, commit 88678a0) applied the catalog
+Collector version 1.3.0 (issue 24, commit [88678a0](https://github.com/seanthegeek/doubleagent/commit/88678a02e7e8deb988c7763b98384cd014d0fff4)) applied the catalog
 lines these documents proposed. Each document originally ended with a review
 of the catalog lines current at the time and the lines to add; those
 sections described a catalog that has since moved on and were removed, so

@@ -100,7 +100,7 @@ using the legacy `functions` API: the call was stored as
 `{"role":"assistant","content":"","function_call":{"name","arguments"}}` and
 the result as `{"role":"function","content":str,"name":str}`, with no call
 id ([`handler.py:65-71`](https://github.com/TheR1D/shell_gpt/blob/6bd0bdebe1f321e397099e430e8ecd93beb965b6/sgpt/handlers/handler.py#L65-L71), [`83`](https://github.com/TheR1D/shell_gpt/blob/6bd0bdebe1f321e397099e430e8ecd93beb965b6/sgpt/handlers/handler.py#L83) at
-`6bd0bde`, the parent of the change below). 1.5.0 switched to `tool_calls` and `tool` messages
+[`6bd0bde`](https://github.com/TheR1D/shell_gpt/commit/6bd0bdebe1f321e397099e430e8ecd93beb965b6), the parent of the change below). 1.5.0 switched to `tool_calls` and `tool` messages
 ([`4ea2f83`](https://github.com/TheR1D/shell_gpt/commit/4ea2f834cff5dc020dabb25bb02030c630cd2062),
 "Migrate to OpenAI v2"). A parser must accept both: pair a `function`
 message with the immediately preceding `function_call` by position. Before
@@ -148,5 +148,5 @@ truncation (source), and the leading `"\n"` before the marker, which is
 always emitted because the check runs right after the assistant message is
 appended
 ([`handler.py:86-87`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L86-L87)). Medium: the
-pre-1.5.0 shape, read from the parent of `4ea2f83` in history rather than a
+pre-1.5.0 shape, read from the parent of [`4ea2f83`](https://github.com/TheR1D/shell_gpt/commit/4ea2f834cff5dc020dabb25bb02030c630cd2062) in history rather than a
 released package.

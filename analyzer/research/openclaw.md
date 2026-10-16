@@ -228,8 +228,8 @@ store's row records the same event; see the "Secondary sources" section of
 - Secondary, `<name>.checkpoint.<uuid>.jsonl`: a pre-compaction snapshot,
   a byte copy of the session file taken before compaction
   ([`src/gateway/session-compaction-checkpoints.ts:383-389`](https://github.com/openclaw/openclaw/blob/68145258676f1401a2e42cbaffe6564c2a6213c6/src/gateway/session-compaction-checkpoints.ts#L383-L389) at
-  `6814525`, the parent of the commit that stopped copying,
-  `c59635a`). At `3b16db7` no runtime writes new ones; the session store
+  [`6814525`](https://github.com/openclaw/openclaw/commit/68145258676f1401a2e42cbaffe6564c2a6213c6), the parent of the commit that stopped copying,
+  [`c59635a`](https://github.com/openclaw/openclaw/commit/c59635ae970cb70171c72fa422b15dc38319414f)). At [`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9) no runtime writes new ones; the session store
   keeps only the references
   ([`legacy-compaction-history.ts:3-7`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/legacy-compaction-history.ts#L3-L7)), so the files exist on
   hosts that ran an older release. A checkpoint holds the entries a
@@ -238,12 +238,12 @@ store's row records the same event; see the "Secondary sources" section of
   transcript but is a copy of nothing the primary store lost unless that
   store is gone. `<name>` is the session file's name, `<sessionId>` or,
   for a session forked from a checkpoint, `<ts>_<sessionId>`
-  ([`session-compaction-checkpoints.ts:320-332`](https://github.com/openclaw/openclaw/blob/68145258676f1401a2e42cbaffe6564c2a6213c6/src/gateway/session-compaction-checkpoints.ts#L320-L332) at `6814525`).
+  ([`session-compaction-checkpoints.ts:320-332`](https://github.com/openclaw/openclaw/blob/68145258676f1401a2e42cbaffe6564c2a6213c6/src/gateway/session-compaction-checkpoints.ts#L320-L332) at [`6814525`](https://github.com/openclaw/openclaw/commit/68145258676f1401a2e42cbaffe6564c2a6213c6)).
 - Secondary, `<sessionId>.jsonl.pre-doctor-(branch|openai-codex)-repair-<ts>.bak`:
   a byte copy of a legacy transcript taken before `openclaw doctor`
   rewrote it
   ([`src/commands/doctor-session-transcripts.ts:249-292`](https://github.com/openclaw/openclaw/blob/6559e3f3b94c54e2b1aa06d1fca712c5360455ff/src/commands/doctor-session-transcripts.ts#L249-L292) at
-  `6559e3f`, the parent of `4273ca9`, which removed the file-era
+  [`6559e3f`](https://github.com/openclaw/openclaw/commit/6559e3f3b94c54e2b1aa06d1fca712c5360455ff), the parent of [`4273ca9`](https://github.com/openclaw/openclaw/commit/4273ca9dbd9b3e3172f34a7231d41bcd8b5d200c), which removed the file-era
   runtime; the name pattern is still classified at
   [`artifacts.ts:13-14`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L13-L14)). A branch repair keeps only the active
   branch, so the backup also holds the abandoned branches, which no other
@@ -253,7 +253,7 @@ store's row records the same event; see the "Secondary sources" section of
   completed), a different schema marked `openclaw-trajectory`
   ([`docs/tools/trajectory.md:76-102`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/tools/trajectory.md#L76-L102)), not a transcript copy;
   `*.migrated[.N]` ([`artifacts.ts:15`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L15)), for which no writer of a
-  session transcript was found at `3b16db7` or `6559e3f` (the suffix is
+  session transcript was found at [`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9) or [`6559e3f`](https://github.com/openclaw/openclaw/commit/6559e3f3b94c54e2b1aa06d1fca712c5360455ff) (the suffix is
   used there for migrated cron logs, pairing stores and audit logs); and
   `<id>.jsonl.bak.<ts>`, the legacy compact backups
   ([`artifacts.ts:43-50`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L43-L50)), whose content is not recorded.

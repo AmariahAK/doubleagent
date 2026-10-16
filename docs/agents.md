@@ -109,7 +109,7 @@ results; history-only turns without timestamps when the log was trimmed at
 `Desktop/agent-zero`, also the legacy `chats/<ctxid>.json` and
 `tmp/chats`; project path is the container path `/a0/usr/projects/<name>`.
 
-Validated against: Source at e3051fb, synthetic fixture.
+Validated against: Source at [e3051fb](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec), synthetic fixture.
 
 ### `aider`
 
@@ -118,7 +118,7 @@ Files read: `.aider.chat.history.md`, `.aider.input.history`,
 collector gathered); the input and LLM histories are secondary sources of
 the chat history; times are host local time, emitted as if UTC.
 
-Validated against: Source at 5dc9490, synthetic fixture.
+Validated against: Source at [5dc9490](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c), synthetic fixture.
 
 ### `antigravity`
 
@@ -281,7 +281,7 @@ one row per message with no timestamp); the CLI's
 `user` row per prompt, no session or project, only the last line
 timestamped, since every rewrite stamps every line with its own time).
 
-Validated against: Source at 39ff2359, synthetic fixture.
+Validated against: Source at [39ff2359](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c), synthetic fixture.
 
 ### `codex-cli`
 
@@ -298,10 +298,10 @@ Validated against: Real install, Codex CLI, October 2026; Codex Desktop
 2026; Codex Desktop 0.162.0-alpha.17.2 inside ChatGPT 26.1007.71326 and
 Codex CLI 0.162.1 on macOS 26.6.2, October 2026; Codex CLI 0.162.1
 (standalone installer) on Ubuntu 26.04.1, October 2026; archived and
-`.zst` rollouts, subagent and fork records from source at 3e23877,
+`.zst` rollouts, subagent and fork records from source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524),
 synthetic fixture; the `state_5.sqlite` and `thread_history_1.sqlite`
 table and column names seen on the Windows 11 install, their row shapes
-from source at 3e23877, synthetic fixture. User-role context (environment,
+from source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524), synthetic fixture. User-role context (environment,
 AGENTS.md, skills) is `system` by its content kind; a subagent row links
 each spawned thread to its parent; each automation of the ChatGPT desktop
 app is a `scheduled task:` row; turn items that no response item carries
@@ -316,7 +316,7 @@ and the JetBrains file
 Every row of a chat carries the chat's creation time (its id); no project
 path is recorded.
 
-Validated against: Source at 8e20ac6c, synthetic fixture.
+Validated against: Source at [8e20ac6c](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda), synthetic fixture.
 
 ### `continue`
 
@@ -325,7 +325,7 @@ Files read: `.continue/sessions/<sessionId>.json` (timestamped from
 own), `.continue/dev_data/<schema>/chatInteraction.jsonl` and
 `toolUsage.jsonl`.
 
-Validated against: Source at 5522c6f, synthetic fixture.
+Validated against: Source at [5522c6f](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470), synthetic fixture.
 
 ### `copilot-cli`
 
@@ -357,7 +357,7 @@ Files read: `<project>/.crush/crush.db` (SQLite with WAL sidecars; reached
 as a project artifact, or under a home when Crush ran in `~`),
 `.local/share/crush/projects.json`, `AppData/Local/crush/projects.json`.
 
-Validated against: Source at ca6ae26, synthetic fixture.
+Validated against: Source at [ca6ae26](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f), synthetic fixture.
 
 ### `gemini-cli`
 
@@ -372,7 +372,7 @@ first and `model: <old> -> <new>` on each change; a tool call with status
 `cancelled` or `awaiting_approval` is followed by `permission decision:
 <status>`.
 
-Validated against: Source at fb972b2, synthetic fixture.
+Validated against: Source at [fb972b2](https://github.com/google-gemini/gemini-cli/commit/fb972b2f87fe7d5b06d37eac711490162d98de2c), synthetic fixture.
 
 ### `goose`
 
@@ -382,7 +382,7 @@ sidecars), legacy `sessions/*.jsonl`,
 source, no timestamp: matches on text alone), and the
 `AppData/Roaming/Block/goose/data` equivalents.
 
-Validated against: Source at 591edd4, synthetic fixture.
+Validated against: Source at [591edd4](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d), synthetic fixture.
 
 ### `hermes`
 
@@ -395,7 +395,7 @@ snapshot <id>` row; collected only with `--full`) and the
 running process, under `.hermes`, `.hermes_<suffix>`,
 `AppData/Local/hermes` and their `profiles/<name>/` homes.
 
-Validated against: Source at 8b66a51, synthetic fixture.
+Validated against: Source at [8b66a51](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683), synthetic fixture.
 
 ### `kilo-code`
 
@@ -404,7 +404,7 @@ JSON trees under `.local/share/kilo` (OpenCode parser, Kilo paths), and
 pre-migration VS Code tasks
 `<globalStorage>/kilocode.kilo-code/tasks/<id>/api_conversation_history.json`.
 
-Validated against: Source at 76bcfd4, synthetic fixture.
+Validated against: Source at [76bcfd4](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462), synthetic fixture.
 
 ### `kiro`
 
@@ -414,7 +414,7 @@ Files read: Amazon Q CLI `data.sqlite3` (`conversations` and legacy
 with `conversation_id` and `history`). Kiro CLI `.kiro/sessions/` files
 are not parsed until their format is confirmed.
 
-Validated against: Source at 15cc8f3, synthetic fixture.
+Validated against: Source at [15cc8f3](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a), synthetic fixture.
 
 ### `letta`
 
@@ -426,7 +426,7 @@ source, read beside the conversation's `messages.jsonl` with a one-hour
 window because each line is stamped at the end of its turn),
 `.letta/sessions.jsonl`.
 
-Validated against: Source at 77faf36, synthetic fixture.
+Validated against: Source at [77faf36](https://github.com/letta-ai/letta-code/commit/77faf36e34378946c8e69c0bfaa5595a7be4c326), synthetic fixture.
 
 ### `little-coder`
 
@@ -435,7 +435,7 @@ timestamps or sessions) and `.little-coder/checkpoints/<session file>/`
 (one `system` row per session's pre-edit copies); its transcripts are pi
 sessions, parsed as `pi`.
 
-Validated against: Source at 89d4fa0, synthetic fixture.
+Validated against: Source at [89d4fa0](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df), synthetic fixture.
 
 ### `muse-code`
 
@@ -463,7 +463,7 @@ time, emitted as if UTC. Secondary sources: the WebUI transcript
 `created_at_ms`, 15-hour window) and `.nanobot/history/cli_history` (local
 time, prompts only).
 
-Validated against: Source at acdae3d, synthetic fixture.
+Validated against: Source at [acdae3d](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f), synthetic fixture.
 
 ### `ollama`
 
@@ -480,7 +480,7 @@ pasted multi-line prompt becomes several rows; slash commands are `system`
 rows). No project path is recorded. Model manifests, `config.json`,
 `backup/`, `launch/` and `logs/` are not read.
 
-Validated against: Source at v0.35.1 (b0c1ca4), synthetic fixture; no real
+Validated against: Source at v0.35.1 ([b0c1ca4](https://github.com/ollama/ollama/commit/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce)), synthetic fixture; no real
 `db.sqlite`, since the desktop app does not exist on Linux.
 
 ### `open-interpreter`
@@ -494,7 +494,7 @@ Codex), and `external_agent_session_imports.json` (one `system` row per
 `/import`ed thread, naming the Claude Code or Cursor source file; that
 thread's record times are import time).
 
-Validated against: Source at 2767e5f, synthetic fixture.
+Validated against: Source at [2767e5f](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245), synthetic fixture.
 
 ### `openclaw`
 
@@ -511,8 +511,8 @@ sources, the published reset and deleted archive files `*.jsonl.reset.*` /
 and sender) is in each session's start row; `auth_profile_store` is never
 read; `*.trajectory.jsonl` and `*.migrated*` are not read.
 
-Validated against: Source at 3b16db7 (the checkpoint and backup writers,
-since removed, at 6814525 and 6559e3f), synthetic fixture.
+Validated against: Source at [3b16db7](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9) (the checkpoint and backup writers,
+since removed, at [6814525](https://github.com/openclaw/openclaw/commit/68145258676f1401a2e42cbaffe6564c2a6213c6) and [6559e3f](https://github.com/openclaw/openclaw/commit/6559e3f3b94c54e2b1aa06d1fca712c5360455ff)), synthetic fixture.
 
 ### `opencode`
 
@@ -522,7 +522,7 @@ sessions without V1 rows), legacy JSON `storage/session/*/*.json` and
 `storage/message/*/*.json` with their `part/` files, and the older
 `project/<slug>/storage/session/` tree.
 
-Validated against: Source at 907b3bc, synthetic fixture.
+Validated against: Source at [907b3bc](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c), synthetic fixture.
 
 ### `openhands`
 
@@ -535,7 +535,7 @@ the offset `meta.json` `created_at` implies, else emitted as if UTC.
 Legacy 0.x `sessions/<sid>/events/<n>.json` is reported as one `system`
 row per session, not parsed.
 
-Validated against: Source at b347047 (SDK), synthetic fixture.
+Validated against: Source at [b347047](https://github.com/OpenHands/software-agent-sdk/commit/b347047e2dcdd8f4b2be810aa8bc6632bc756d41) (SDK), synthetic fixture.
 
 ### `pearai`
 
@@ -546,7 +546,7 @@ Code 3.15 fork through the Cline task mapping; XML tool calls in
 `api_conversation_history.json`; project from `taskHistory` in the sibling
 `state.vscdb`).
 
-Validated against: Source at 51eceef6 and 0b6df736, synthetic fixture.
+Validated against: Source at [51eceef6](https://github.com/trypear/pearai-submodule/commit/51eceef62a90c29f712b3a9607ea70a9dca657e9) and [0b6df736](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda), synthetic fixture.
 
 ### `pi`
 
@@ -558,7 +558,7 @@ a `system` row saying so),
 `session.sqlite` beside it is not parsed), `.pi/agent/trust.json` (project
 trust decisions, one `permission setting:` row per project).
 
-Validated against: Source at 2003871, synthetic fixture.
+Validated against: Source at [2003871](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c), synthetic fixture.
 
 ### `qwen-code`
 
@@ -573,7 +573,7 @@ the file's modification time with `project_path` the folder;
 <from> -> <to> reason=<reason>`; a tool result with status `cancelled` or
 `awaiting_approval` is followed by `permission decision: <status>`.
 
-Validated against: Source at 2c591ec, synthetic fixture.
+Validated against: Source at [2c591ec](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb), synthetic fixture.
 
 ### `roo-code`
 
@@ -582,7 +582,7 @@ Files read: `<editor>/User/globalStorage/rooveterinaryinc.roo-cline/` and
 `tasks/<id>/history_item.json` and `tasks/_index.json`; the CLI's input
 history `.roo/cli-history.json` (a secondary source, text only).
 
-Validated against: Source at b867ec91, synthetic fixture.
+Validated against: Source at [b867ec91](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16), synthetic fixture.
 
 ### `shellgpt`
 
@@ -593,7 +593,7 @@ temp directory given as loose input. One JSON array of OpenAI messages per
 chat, `tool_calls` and the pre-1.5.0 `function_call` shape; no timestamp,
 model or working directory is recorded, so those columns stay empty.
 
-Validated against: Source at a082bd5, synthetic fixture.
+Validated against: Source at [a082bd5](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6), synthetic fixture.
 
 ### `tabby`
 
@@ -605,7 +605,7 @@ secondary), and the completion event log `.tabby/events/YYYY-MM-DD.json`
 (full prompt and generated text; secondary, pairs with `user_events`).
 Project is the attached repository URL; no local path is recorded.
 
-Validated against: Source at 21b2904, synthetic fixture.
+Validated against: Source at [21b2904](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f), synthetic fixture.
 
 ### `twinny`
 
@@ -614,7 +614,7 @@ Files read: The `rjmacarthy.twinny` row of a VS Code or fork
 no time of their own: every row carries the conversation's `updatedAt`.
 Provider `apiKey`s in the same value are never emitted.
 
-Validated against: Source at 9339bd10, synthetic fixture.
+Validated against: Source at [9339bd10](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6), synthetic fixture.
 
 ### `vscode`
 
@@ -626,7 +626,7 @@ Insiders, VSCodium, Positron, Trae and the `.vscode-server*/data` remote
 layout. Covers Copilot Chat; its model and participant ids are opaque
 strings.
 
-Validated against: Source at d7622a5, synthetic fixture.
+Validated against: Source at [d7622a5](https://github.com/microsoft/vscode/commit/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e), synthetic fixture.
 
 ### `zed`
 
@@ -636,7 +636,7 @@ Files read: `threads/threads.db` (zstd-compressed JSON threads; needs
 `Library/Application Support/Zed`, `AppData/Local/Zed` or the Flatpak data
 dir. No per-message timestamps: messages carry the thread's `updated_at`.
 
-Validated against: Source at a846890, synthetic fixture.
+Validated against: Source at [a846890](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a), synthetic fixture.
 
 ## Collected files
 

@@ -19,7 +19,14 @@ every tracked Markdown file and every untracked one git does not ignore:
   ignored, no `http://` or `https://` URL and no scheme-less host path such as
   `github.com/owner/repo` is left in the text, and no inline link has a URL or
   host path as its text, since an external source is one link whose text
-  names it and whose target is the full URL.
+  names it and whose target is the full URL;
+- with the same parts ignored, no bare commit hash is left in the text: a
+  lowercase hexadecimal word of 7 to 40 characters preceded by `at `,
+  `commit ` or `@`, since a commit hash named in a document is a link to the
+  commit, `[<short hash>](https://github.com/<owner>/<repo>/commit/<sha>)`.
+  A purely decimal word is not taken for a hash, so the bundle citation form
+  `<tool> <version> <platform> @<byte offset>` passes, and a 64-character
+  sha256 of an artifact is longer than any match.
 
 Fenced code blocks and inline code spans are ignored before matching. The
 documentation site (mkdocs/hooks.py) gives every heading the anchor
@@ -60,6 +67,10 @@ URL = re.compile(r"\bhttps?://[^\s<>()\[\]]+", re.I)
 HOST_PATH = re.compile(
     r"(?<![\w/@.-])(?:[a-z0-9-]+\.)+(?:com|io|org|net|dev|ai|co|google)/[^\s)\],;]+"
 )
+# A commit hash left as text: 7 to 40 lowercase hex characters after "at ",
+# "commit " or "@", not part of a longer word (so a 64-character sha256 never
+# matches). Purely decimal words are byte offsets, rejected in main().
+BARE_COMMIT = re.compile(r"(?:\bat |\bcommit |@)([0-9a-f]{7,40})(?![0-9A-Za-z_])")
 AUTOLINK = re.compile(r"<[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]*>")
 LINK_IN_HEADING = re.compile(r"!?\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\([^)]*\)")
 
@@ -226,6 +237,11 @@ def main() -> int:
                     % (rel, line_of(prose, m.start()), what, m.group(0))
                 )
                 bad += 1
+        for m in BARE_COMMIT.finditer(prose):
+            if m.group(1).isdigit():
+                continue
+            print("%s:%d: bare commit hash %s" % (rel, line_of(prose, m.start(1)), m.group(1)))
+            bad += 1
         for offset, target in sorted(targets):
             links += 1
             msg = check_target(f, target, cache)
