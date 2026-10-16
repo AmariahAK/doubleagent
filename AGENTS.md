@@ -487,8 +487,10 @@ and say in the module docstring if the shape has drifted since.
 7. Add the row to the parser table in [`analyzer/docs/parsers.md`](analyzer/docs/parsers.md) in
    alphabetical order of the agent name, ending its "Validated against"
    cell with a Markdown link to the research document, written
-   ``see [`research/<agent>.md`](../research/<agent>.md)``; remove the agent
-   from the "detected but not yet parsed" list there, also update the
+   ``see [`research/<agent>.md`](../research/<agent>.md)``; remove the
+   agent's row from the [agents-without-a-parser table](analyzer/docs/parsers.md#agents-without-a-parser)
+   there (a row whose status names an issue; a `none needed` row stays
+   until a real install shows a transcript), also update the
    parsed-agent list in [`analyzer/README.md`](analyzer/README.md) and the [top-level README](README.md),
    bump `VERSION` in `doubleagent/__init__.py` (`pyproject.toml` reads it),
    and run `analyzer/tests/run.sh`.
