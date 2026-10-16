@@ -82,6 +82,7 @@ exclude:
   - LICENSE
 
 # just-the-docs
+color_scheme: dark
 search_enabled: true
 heading_anchors: true
 nav_sort: case_insensitive
