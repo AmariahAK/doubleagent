@@ -52,6 +52,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   archive ([#147]).
 - Secret glob `.copilot/run/*.token`: the app's local WebSocket auth
   tokens `ws.token` and `ws.release.token` ([#147]).
+- Copilot Desktop on Windows (1.1.30 on a real install): the WebView2 user
+  data folder `AppData/Local/com.github.githubapp`, where the Windows
+  build keeps the web view's Local Storage (the composer draft and tab
+  lists), is collected as `copilot-desktop` ([#147]).
+- Exclusions for that folder's Chromium caches and downloaded components,
+  under `AppData/Local/com.github.githubapp/EBWebView/`:
+  `Default/Cache`, `Default/Code Cache`, `Default/GPUCache`,
+  `Default/DawnGraphiteCache`, `Default/DawnWebGPUCache`,
+  `Default/blob_storage`, `Default/Shared Dictionary`, `GrShaderCache`,
+  `ShaderCache`, `GPUPersistentCache`, `component_crx_cache`,
+  `extensions_crx_cache`, `WidevineCdm`, `Subresource Filter`,
+  `hyphen-data`, `PKIMetadata`, `CertificateRevocation` and
+  `BrowserMetrics-spare.pma`; at least 71.4 MB of the folder's 72.6 MB on the
+  install ([#147]).
+- Secret globs for that folder's `Local State` (Chromium's profile key,
+  wrapped with DPAPI), `Default/Network/Cookies*` and `Default/Login Data*`,
+  as for ChatGPT Desktop's Chromium profile ([#147]).
+- Exclusion `.copilot/chats/*/node_modules`: the dependency tree of a
+  project the agent builds in a Copilot Desktop chat's working directory
+  (3,411 files and 14.7 MB on the Windows install); the files the agent
+  wrote there stay collected ([#147]).
+- Exclusions `.cache/copilot/marketplaces`,
+  `Library/Caches/copilot/marketplaces` and
+  `AppData/Local/copilot/marketplaces`: the Copilot CLI's git clones of
+  plugin marketplaces (263 MB and 4,560 files on the Windows install).
+  The `skipped_excluded` row keeps the size; which marketplaces were
+  cloned is inside and is not collected without `--full` ([#131]).
 
 ### Changed
 
@@ -72,6 +99,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   home's `.copilot` directory: Copilot Desktop's per-chat directories
   under `.copilot/chats` and its worktrees under `.copilot/repos` were
   listed as projects ([#147]).
+- Project discovery reads a Copilot CLI session's `workspace.yaml` `cwd`
+  only when the session directory has an `events.jsonl`. Copilot Desktop
+  pre-creates pool and probe sessions that are never prompted and have
+  none; on Windows their `cwd` is the app's install directory,
+  `AppData/Local/Programs/GitHub Copilot`, which was listed as a project
+  ([#147]).
 
 ## [1.12.0] - 2026-10-15
 
@@ -822,6 +855,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
+[#131]: https://github.com/seanthegeek/doubleagent/issues/131
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121
 [#120]: https://github.com/seanthegeek/doubleagent/issues/120
 [#116]: https://github.com/seanthegeek/doubleagent/issues/116

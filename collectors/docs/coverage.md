@@ -25,7 +25,20 @@ inside them goes to the extension's agent.
 - **GitHub Copilot Desktop** shares `~/.copilot` with Copilot CLI: its
   sessions, written there by a bundled Copilot CLI, are collected as
   `copilot-cli`, and nested catalog entries attribute the app's own store,
-  chat, repository and run files and its log to `copilot-desktop`.
+  chat, repository and run files and its log to `copilot-desktop`. A chat
+  directory is collected less any `node_modules` under it
+  (`.copilot/chats/*/node_modules`), the dependency tree of a project the
+  agent built there. On Windows the app's web view is WebView2 (Microsoft
+  Edge's embeddable Chromium), whose user data folder
+  `AppData/Local/com.github.githubapp` holds the app's Local Storage (the
+  composer draft and tab lists) and is collected as `copilot-desktop` from
+  collector 1.13.0, less its Chromium caches and downloaded components
+  (`EBWebView/Default/Cache`, `Code Cache`, `GPUCache`, `blob_storage`,
+  `component_crx_cache`, `WidevineCdm`, `Subresource Filter` and the
+  others listed in `EXCLUDES`). The Copilot CLI's plugin marketplace clone,
+  `marketplaces/` in its cache directory (`.cache/copilot`,
+  `Library/Caches/copilot`, `AppData/Local/copilot`), is excluded from
+  1.13.0; 263 MB on the Windows install observed in October 2026.
 - **Skills and configuration files** that several agents read are
   collected too, with agent `shared` in the manifest.
 - **`.env` files:** an agent's own `.env` inside its state directory, such
@@ -357,8 +370,8 @@ agent state that can be read with grep, and from every `-p` directory.
 | Cline | Sessions and task history. |
 | Codex | Session rollouts. |
 | Continue | Sessions. |
-| Copilot CLI | Session workspaces. |
-| Copilot Desktop | None of its own: its sessions are Copilot CLI session workspaces, and a `cwd` under the home's `.copilot/` (the app's chat directories and worktrees) is skipped there; the repositories it manages are in `data.db`, left to the analyzer. |
+| Copilot CLI | Session workspaces (`workspace.yaml` `cwd`) of sessions that have an `events.jsonl`. |
+| Copilot Desktop | None of its own: its sessions are Copilot CLI session workspaces, and a `cwd` under the home's `.copilot/` (the app's chat directories and worktrees) is skipped there, as is the `cwd` of a session directory with no `events.jsonl` (a pool or probe session the app pre-created and never prompted, whose `cwd` on Windows is the app's install directory; from collector 1.13.0); the repositories it manages are in `data.db`, left to the analyzer. |
 | Crush | Project list. |
 | Cursor CLI | Chat and ACP session metadata. |
 | Factory Droid | Sessions. |

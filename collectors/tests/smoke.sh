@@ -996,6 +996,36 @@ printf 'sqlite\n' >"$L147/localstorage/tauri_localhost_0.localstorage"
 printf '# af\n' >"$L147/app-skills/af/SKILL.md"
 printf 'log\n' >"$ROOT/home/alice/.github-copilot-cli/logs/foundry.core20261016.log"
 
+# 2026-10-17 Copilot Desktop Windows round (#147)
+# From the Windows 11 arm64 install of GitHub Copilot Desktop 1.1.30: the
+# WebView2 user data folder (AppData/Local/com.github.githubapp) is a
+# copilot-desktop entry less its Chromium caches; a project the agent built in
+# a chat directory keeps its files but not its node_modules; the Copilot CLI's
+# marketplace clone is excluded (#131). A session directory with no
+# events.jsonl is a pool or probe session the app never prompted, and its cwd
+# (the install directory on Windows) is not a project; s1, s2 and s3 get an
+# events.jsonl so the discovery and .copilot rules above stay tested. Checks
+# follow the default run below; the same files are in smoke.ps1 under alice.
+W147="$ROOT/home/alice/AppData/Local/com.github.githubapp/EBWebView"
+P147="$D147/chats/2026-10-17/x-90825c78/proj"
+K147="$ROOT/home/alice/AppData/Local/copilot/marketplaces"
+mkdir -p "$W147/Default/Local Storage/leveldb" "$W147/Default/Cache/Cache_Data" "$W147/Default/Network" \
+  "$W147/component_crx_cache" "$P147/node_modules/m" "$K147/m/.git" \
+  "$D147/session-state/s4" "$ROOT/srv/coppool"
+printf 'leveldb\n' >"$W147/Default/Local Storage/leveldb/000003.log"
+printf 'cookies\n' >"$W147/Default/Network/Cookies"
+printf '{"os_crypt":{}}\n' >"$W147/Local State"
+printf 'cache\n' >"$W147/Default/Cache/Cache_Data/x"
+printf 'crx\n' >"$W147/component_crx_cache/x"
+printf '{"name":"proj"}\n' >"$P147/package.json"
+printf 'module\n' >"$P147/node_modules/m/index.js"
+printf 'ref: refs/heads/main\n' >"$K147/m/.git/HEAD"
+for _s147 in s1 s2 s3; do
+  printf '{"type":"session.start"}\n' >"$D147/session-state/$_s147/events.jsonl"
+done
+printf 'cwd: /srv/coppool\nclient_name: github/autopilot\n' >"$D147/session-state/s4/workspace.yaml"
+printf '# pool\n' >"$ROOT/srv/coppool/AGENTS.md"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1287,7 +1317,7 @@ check "#113 ChatGPT Local State flagged secret" "row \"$C113/Local State\" | gre
 check "#113 ChatGPT profile and partition cookies flagged secret" "row \"$C113/Default/Network/Cookies\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$X113/Network/Cookies\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
 check "#113 ChatGPT Login Data flagged secret" "row \"$C113/Default/Login Data\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
 check "#113 ChatGPT profile and partition Cache excluded" "[ \"\$(status_of \"$C113/Default/Cache\")\" = skipped_excluded ] && [ \"\$(status_of \"$X113/Cache\")\" = skipped_excluded ] && ! grep -q 'Cache/data_0\"' \"\$M\""
-check "#113 ChatGPT component cache beside the profile not in the manifest" "! grep -q 'component_crx_cache' \"\$M\""
+check "#113 ChatGPT component cache beside the profile not in the manifest" "! grep -q 'web/Codex/component_crx_cache' \"\$M\""
 check "#113 ChatGPT app log collected as chatgpt-desktop" "row \"$P113/LocalCache/Local/Codex/Logs/2026/10/15/codex-desktop-x.log\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"status\":\"collected\"'"
 check "#113 ChatGPT MSIX settings hive collected" "row \"$P113/Settings/settings.dat\" | grep -q '\"agent\":\"chatgpt-desktop\".*\"status\":\"collected\"'"
 check "#116 Codex plugin app-server binaries excluded" "[ \"\$(status_of \"$B/.codex/plugins/.plugin-appserver\")\" = skipped_excluded ] && ! grep -q '.plugin-appserver/codex.exe\"' \"\$M\""
@@ -1328,6 +1358,13 @@ check "#147 Copilot Desktop repos working tree, worktrees, objects and index exc
 check "#147 Copilot Desktop app-skills excluded" "[ \"\$(status_of \"$L147/app-skills\")\" = skipped_excluded ] && ! grep -q 'app-skills/af/SKILL.md\"' \"\$M\""
 check "#147 Copilot Desktop chat directory and worktree not projects" "! grep -q 'Project .*/\.copilot/' \"$OUT\"/default/*.log && ! grep -q '\"home\":\"$D147/' \"\$M\" && ! grep -q '\.copilot/chats' \"\$S\" && ! grep -q 'copilot-worktrees' \"\$S\""
 check "#147 Copilot Desktop chat directory file collected once as copilot-desktop" "[ \"\$(grep -c 'x-5d404e14/.keep\"' \"\$M\")\" = 1 ] && row \"$D147/chats/2026-10-16/x-5d404e14/.keep\" | grep -q '\"agent\":\"copilot-desktop\"'"
+# 2026-10-17 Copilot Desktop Windows round (#147)
+check "#147 WebView2 Local Storage collected as copilot-desktop" "row \"$W147/Default/Local Storage/leveldb/000003.log\" | grep -q '\"agent\":\"copilot-desktop\".*\"status\":\"collected\"'"
+check "#147 WebView2 cookies and Local State flagged secret" "row \"$W147/Default/Network/Cookies\" | grep -q '\"agent\":\"copilot-desktop\".*\"secret\":true,\"status\":\"collected\"' && row \"$W147/Local State\" | grep -q '\"agent\":\"copilot-desktop\".*\"secret\":true,\"status\":\"collected\"'"
+check "#147 WebView2 Cache and component_crx_cache excluded" "[ \"\$(status_of \"$W147/Default/Cache\")\" = skipped_excluded ] && [ \"\$(status_of \"$W147/component_crx_cache\")\" = skipped_excluded ] && ! grep -q 'Cache_Data/x\"' \"\$M\" && ! grep -q 'component_crx_cache/x\"' \"\$M\""
+check "#147 Copilot Desktop chat project collected less node_modules" "row \"$P147/package.json\" | grep -q '\"agent\":\"copilot-desktop\".*\"status\":\"collected\"' && [ \"\$(status_of \"$P147/node_modules\")\" = skipped_excluded ] && ! grep -q 'node_modules/m/index.js\"' \"\$M\""
+check "#131 Copilot CLI marketplaces excluded" "[ \"\$(status_of \"$K147\")\" = skipped_excluded ] && ! grep -q 'marketplaces/m/.git/HEAD\"' \"\$M\""
+check "#147 Copilot pool session cwd not a project" "[ -z \"\$(status_of \"$ROOT/srv/coppool/AGENTS.md\")\" ] && ! grep -q 'coppool' \"\$S\""
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

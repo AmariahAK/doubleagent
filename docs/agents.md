@@ -51,8 +51,8 @@ equal.
 | [`cody`](#cody) | parsed | source; fixture only | [collector research](../collectors/research/cody.md); [analyzer research](../analyzer/research/cody.md) |
 | [`continue`](#continue) | parsed | source; fixture only | [collector research](../collectors/research/continue.md); [analyzer research](../analyzer/research/continue.md) |
 | [`copilot`](#copilot) | collected | Source (the vendored language server) | [collector research](../collectors/research/copilot.md); an OAuth token store with no transcripts; Copilot Chat is parsed as `vscode` |
-| [`copilot-cli`](#copilot-cli) | parsed | bundle and real installs: macOS, Linux (October 2026) | [collector research](../collectors/research/copilot-cli.md); [analyzer research](../analyzer/research/copilot-cli.md); [issue 132](https://github.com/seanthegeek/doubleagent/issues/132); the legacy flat `session-state/<id>.jsonl` transcript is not parsed yet |
-| [`copilot-desktop`](#copilot-desktop) | parsed | shipped app and real install: Linux (October 2026) | [collector research](../collectors/research/copilot-desktop.md); [analyzer research](../analyzer/research/copilot-desktop.md); [issue 147](https://github.com/seanthegeek/doubleagent/issues/147); [issue 149](https://github.com/seanthegeek/doubleagent/issues/149): the inventory lists the app's own directories as projects |
+| [`copilot-cli`](#copilot-cli) | parsed | bundle and real installs: macOS, Linux, Windows through Copilot Desktop (October 2026) | [collector research](../collectors/research/copilot-cli.md); [analyzer research](../analyzer/research/copilot-cli.md); [issue 132](https://github.com/seanthegeek/doubleagent/issues/132); the legacy flat `session-state/<id>.jsonl` transcript is not parsed yet |
+| [`copilot-desktop`](#copilot-desktop) | parsed | shipped app and real installs: Linux, Windows (October 2026) | [collector research](../collectors/research/copilot-desktop.md); [analyzer research](../analyzer/research/copilot-desktop.md); [issue 147](https://github.com/seanthegeek/doubleagent/issues/147); [issue 149](https://github.com/seanthegeek/doubleagent/issues/149): the inventory lists the app's own directories as projects |
 | [`crewai`](#crewai) | backlog | Source, appdirs source | [collector research](../collectors/research/crewai.md); [issue 140](https://github.com/seanthegeek/doubleagent/issues/140); `latest_kickoff_task_outputs.db` holds every task's output with its messages |
 | [`crush`](#crush) | parsed | source; fixture only | [collector research](../collectors/research/crush.md); [analyzer research](../analyzer/research/crush.md) |
 | [`cursor`](#cursor) | backlog | Shipped Agent CLI bundle, docs, forum, write-ups | [collector research](../collectors/research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); blocked on format research: the `state.vscdb` key layout varies by version |
@@ -353,7 +353,9 @@ turn's prompt and changed files; one-hour window) and
 
 Validated against: Shipped bundle 1.0.98 (darwin-arm64 event schema, CLI
 and runtime strings) and real installs of Copilot CLI 1.0.98 on macOS
-(2026-10-15) and Ubuntu 26.04 arm64 (2026-10-16), synthetic fixture; `forge_trajectory_events`, checkpoints,
+(2026-10-15) and Ubuntu 26.04 arm64 (2026-10-16), and on Windows 11 ARM64
+(2026-10-17) the CLI 1.0.99-2 that GitHub Copilot Desktop 1.1.30 bundles,
+not an npm install, synthetic fixture; `forge_trajectory_events`, checkpoints,
 references, denials, resumes and subagents fixture only. The GitHub
 Copilot Desktop app's sessions, which its bundled Copilot CLI writes into
 `.copilot/session-state/`, are read by this parser and marked by
@@ -390,7 +392,13 @@ activity and checkpoint rows, seen there, synthetic fixture; scheduled
 tasks, triggers, runs, session automations, deletion intents, forks and
 pull request links fixture only (empty on the install). The checkpoint
 refs were seen on the same install after both sessions were deleted
-from the app (2026-10-16).
+from the app (2026-10-16). A real install of GitHub Copilot Desktop
+1.1.30 on Windows 11 ARM64 (2026-10-17), with the bundled CLI
+1.0.99-2, showed the same parsed tables (104 tables in all, `PRAGMA
+user_version` 194) and gave the same kinds of row, a checkpoint ref
+included;
+after a general chat was deleted from the app its activity rows
+survived, and quitting the app checkpointed the WAL into `data.db`.
 
 ### `crush`
 

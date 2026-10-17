@@ -1,7 +1,8 @@
 # copilot-desktop
 
 Catalog agent: `copilot-desktop` (GitHub Copilot Desktop, the desktop app
-GitHub ships as the dpkg package `github`). How its store is encoded and
+GitHub ships as the dpkg package `github` on Linux and as the per-user
+installer `GitHub-Copilot-windows-<arch>-setup.exe` on Windows). How its store is encoded and
 how a parser reads it is in
 [`analyzer/research/copilot-desktop.md`](../../analyzer/research/copilot-desktop.md).
 
@@ -19,8 +20,10 @@ Closed source. GitHub Copilot Desktop is a Tauri app: Tauri is a desktop
 framework that draws the user interface in the operating system's web
 engine (on Linux WebKitGTK, the GTK port of the WebKit browser engine;
 the package depends on `libwebkit2gtk-4.1-0`) and runs the backend as a
-native Rust program. The app identifier is `com.github.githubapp`. Each
-claim names its evidence level:
+native Rust program; on Windows the web engine is WebView2, Microsoft
+Edge's Chromium engine packaged for embedding in other applications. The
+app identifier is `com.github.githubapp`. Each claim names its evidence
+level:
 
 - **Shipped binary**: `GitHub-Copilot-linux-arm64.deb` (464 MB), dpkg
   package `github` 1.1.29, maintainer "you", description "Tauri Copilot
@@ -47,9 +50,30 @@ claim names its evidence level:
   `index.crates.io-1949cf8c6b5b557f/dirs-6.0.0`, with `dirs-5.0.1` and
   `dirs-4.0.0` beside it), whose data directory is
   `~/.local/share` on Linux, `~/Library/Application Support` on macOS and
-  `%APPDATA%` (`AppData/Roaming`) on Windows. The macOS and Windows paths
-  in this document are derived from that behaviour and the app
+  `%APPDATA%` (`AppData/Roaming`) on Windows, and whose cache directory is
+  `~/.cache` on Linux and `%LOCALAPPDATA%` (`AppData/Local`) on Windows.
+  The Windows install confirmed both Windows directories (the data
+  directory held only `app-skills/`, and the three tool downloads went to
+  `AppData/Local`); the Windows binary carries no `dirs-<version>` string,
+  so the crate is inferred there from the paths, not read. The macOS paths
+  in this document are derived from the crate's behaviour and the app
   identifier, not observed.
+- **Shipped binary (Windows)**: `GitHub-Copilot-windows-arm64-setup.exe`
+  (297,454,576 bytes, sha256
+  `d63b70c36d61a090a4a455dc8b67c538374328304846035e44b2740781e2a4dd`,
+  version resource 1.1.30, product name "GitHub Copilot"), an NSIS
+  installer (Nullsoft Scriptable Install System, an installer framework;
+  the install directory holds its `uninstall.exe` and the icons directory
+  its `nsis-header.bmp` and `nsis-sidebar.bmp`). It installs per user
+  into `AppData/Local/Programs/GitHub Copilot/` (312 files, 520 MB):
+  `github.exe` (442,207,520 bytes, sha256
+  `8e9b4162ee7c0d7c7212c3b34b05c7bd8809af24494ab4560f2fc2d4536288e5`,
+  FileVersion 1.1.30, CompanyName "GitHub Inc.") and
+  `git-credential-copilot.exe` (289,568 bytes, sha256
+  `d538676354421560ede7e3490f0661c24ef8698fbbcd62f6b9ea15ea533d3af6`),
+  read on the VM with a string search only. Citations are written
+  `github 1.1.30 windows-arm64 github.exe` with the literal snippet; no
+  byte offsets were recorded.
 - **Docs**: none fetched.
 - **Observed (Linux)**: GitHub Copilot Desktop 1.1.29, the arm64 `.deb`
   installed at 21:59Z on 2026-10-16 on an Ubuntu 26.04.1 arm64 Parallels
@@ -108,8 +132,67 @@ claim names its evidence level:
   `cwd` belongs to one of them), and the app created an empty general
   chat, `4e347d3e…` (`chats/2026-10-16/symmetrical-telegram-4e347d3e/`),
   at the restart. None of the three was exercised.
+- **Observed (Windows)**: GitHub Copilot Desktop 1.1.30, the arm64 NSIS
+  installer above, installed per user at 19:48Z on 2026-10-17 on a
+  Windows 11 ARM64 Parallels VM (build 10.0.26300.9550, Windows
+  PowerShell 5.1.26100.9549, user `sean`, home `C:\Users\sean`),
+  surveyed over SSH for names, sizes, modification times, key names and
+  types only; all times are UTC. Exercised: first start at 19:53:23Z;
+  sign-in by device-code flow at 19:54:27Z; three MCP servers (Model
+  Context Protocol servers, programs that offer the agent extra tools)
+  added from the app's settings at 19:56Z, two of which could not start
+  because their commands were not installed; a general chat (created
+  19:59:11Z, three prompts at 20:00:04Z, 20:02:02Z and 20:02:49Z) in
+  which the agent built and tested a small Node.js MCP server in the
+  chat's working directory, running `npm install` there; the GitHub
+  repository `seanthegeek/doubleagent` added at 20:04:45Z, cloned and
+  checked out into a worktree, and one prompt in a project session
+  (20:05:27Z, one `powershell` call, one checkpoint at 20:05:40Z). The
+  user had installed Node.js 24.22.0 and the Visual Studio Build Tools
+  beside the app for the MCP work; `AppData/Local/npm-cache` is theirs.
+  What each surface wrote: the app's own files inside `.copilot` and
+  outside it ([section 2](#2-per-user-storage)), the WebView2 user data
+  folder `AppData/Local/com.github.githubapp/EBWebView/`, three tool
+  downloads under `AppData/Local`, and, through the bundled Copilot CLI
+  1.0.99-2, the session directories, `session-store.db`, `mcp-config.json`
+  and the CLI cache `AppData/Local/copilot`
+  ([section 1 of `copilot-cli.md`](copilot-cli.md#1-source-and-evidence-level)).
+  The app also pre-created seven pool and probe sessions that were never
+  prompted (no `events.jsonl`). Every action ran before the first
+  listing, so no per-action listing diff exists for them; the times above
+  and the files' modification times are the only mapping from action to
+  file, as on Linux. Not exercised: a scheduled task, a session
+  automation, a denied tool call (allow-all stayed on), a model switch, a
+  resumed session, a fork, a side chat, a remote session. Collector 1.13.0
+  as first written, run as the user in an administrator SSH session while
+  the app ran: 8,111 files collected (283,808,459 bytes), 6
+  `skipped_excluded`, 1 `error_copy` (`.copilot/run/single-instance.lock`,
+  "The process cannot access the file because another process has locked
+  a portion of the file"), 0 `error_read`; `copilot-cli` 4,641 files and
+  265,398,349 bytes (4,560 files and 263,616,505 bytes of them the
+  marketplace clone in `AppData/Local/copilot/marketplaces`),
+  `copilot-desktop` 3,470 files and 18,410,110 bytes (3,415 files and
+  14,781,620 bytes of them `.copilot/chats`, nearly all the chat project's
+  `node_modules`); 3 min 29 s, 2 min 6 s of it in
+  `AppData/Local/copilot`. Secret rows, all collected:
+  `.copilot/config.json`, `.copilot/mcp-config.json`, `.copilot/run/ws.token`,
+  `.copilot/run/ws.release.token`. The WebView2 folder was not collected
+  (no catalog entry), and project discovery reported the app's install
+  directory as a project ([section 6](#6-where-the-project-path-is-recorded)).
+  Both led to catalog changes in the same version ([section 4](#4-exclusions)).
+- **Observed (Windows), deletion and quit**: the same VM and app. At
+  20:31Z the user deleted the general chat with the app's own delete
+  action and a listing diff was taken; at 20:35Z the user quit the app from
+  the system tray (no `github.exe` or `copilot.exe` process was left) and
+  a second listing was taken. The deletion removed the chat's
+  `session-state/<uuid>/` directory entire and its working directory under
+  `chats/`, including the project the agent had built there and its
+  `node_modules`; what survived is in
+  [section 2](#after-a-session-is-deleted). Quitting checkpointed
+  `data.db`: its `-wal` went to 0 bytes and the main file grew from
+  1,347,584 to 1,433,600 bytes.
 
-macOS and Windows were not observed.
+macOS was not observed.
 
 ## 2. Per-user storage
 
@@ -133,6 +216,36 @@ Copilot.desktop` (`Exec=github %u`, `StartupWMClass=github`, URL schemes
 `github-app`, `ghapp` and `gh`) and, written by the app at first start,
 `~/.local/share/applications/com.github.githubapp.desktop` (138 bytes;
 not collected, outside every entry).
+
+Package files (shipped binary, real install (Windows)): the per-user
+install directory `AppData/Local/Programs/GitHub Copilot/` holds
+`github.exe`, `git-credential-copilot.exe`,
+`Microsoft.AI.Foundry.Local.Core.dll` (24 MB), `onnxruntime.dll`,
+`onnxruntime-genai.dll`, `onnxruntime_providers_shared.dll`,
+`uninstall.exe`, and the directories `app-extensions/` (`catalog.json`,
+`README.md`, `azure-devops/`), `copilot-extension-host/preloads/`,
+`copilot-sdk/` (TypeScript declarations, `index.js`, `extension.js`;
+`cliVersion.d.ts` sets `COPILOT_CLI_VERSION = "1.0.99-2"` and
+`COPILOT_CLI_USE_NPM_PACKAGE = false`, `sdkProtocolVersion.d.ts` sets
+`SDK_PROTOCOL_VERSION = 3`), `icons/`, `plugins/`, `sounds/` and
+`terminal-integration/` (the Linux scripts plus `shellIntegration.ps1`).
+Unlike the Linux package's empty `plugins/`, the Windows one holds three
+built-in plugins: `computer-use/` (`computer-use-mcp.exe`,
+`CopilotComputerUse.exe`, `mcp.json`, `plugin.json`,
+`github-app-integrity.json`), and `excel-agent/` and `word-agent/` (each
+`plugin.json`, `github-app-integrity.json`, two skills under `skills/`
+and `com.github.copilot/extensions/`). The install directory is outside
+every catalog entry. The installer registers, under HKCU
+(`HKEY_CURRENT_USER`, the registry hive of the signed-in user), the
+uninstall key
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\GitHub Copilot`
+(DisplayName "GitHub Copilot", DisplayVersion 1.1.30, Publisher "GitHub
+Inc.", InstallLocation the directory above, EstimatedSize 508107 KB) and
+the URL protocol handlers `HKCU\Software\Classes\github-app`, `ghapp` and
+`gh` (each `shell\open\command` runs `github.exe "%1"`), with no Run
+(autostart) entry, and the shortcuts `AppData/Roaming/Microsoft/Windows/Start
+Menu/Programs/GitHub Copilot.lnk` and `Desktop/GitHub Copilot.lnk`. The
+registry is outside the collector's scope.
 
 ### Inside `~/.copilot`
 
@@ -167,6 +280,44 @@ in server mode (stdio)", `Created session: <uuid>`, "Installed N native
 extension(s) for session", `Cleaning up session <uuid>: Session deleted via sessions.delete`). `~/.cache/copilot/` gained `tgrep-serve.lock`, and
 `copilot-user-cache.json` grew to 6.5 KB.
 
+On Windows (real install, CLI 1.0.99-2) `.copilot` sits at the top of the
+profile (`C:\Users\sean\.copilot`, the `COPILOT_HOME` default under
+`USERPROFILE`; `github.exe` and the CLI's `copilot.exe` both carry the
+strings `COPILOT_HOME`, and `copilot.exe` also `USERPROFILE`) with the
+same layout. The bundled CLI wrote `config.json`, `session-store.db`, 17
+process logs, `session-state/`, `extensions/` (empty) and
+`installed-plugins/` (empty). Adding MCP servers from the app's settings
+(app log message kind `add_mcp_config_server`) wrote the CLI's
+`mcp-config.json` (725 bytes; shape
+`mcpServers{<name>{type: "local", command, args[], tools[], env{}}}`; one
+server's `env` held a GitHub personal access token in plain text,
+[section 3](#3-credentials)), `.mcp-writer.binding` (157 bytes JSON,
+`lock{file_index, platform: "windows", volume}` and `root{...}`) and
+`.mcp-writer.lock` (0 bytes), all collected as `copilot-cli`; the CLI's
+cache gained `mcp-tools/<sha256>.json`, the cached tool list of each MCP
+server that connected
+([section 2 of `copilot-cli.md`](copilot-cli.md#2-per-user-storage)).
+`session-state/` held 18 `.session-operation-locks/<uuid>.lock` files but
+only 9 session directories: the CLI logs say `Created session` 18 times
+and `Session deleted via sessions.delete` 9 times, so the app creates and
+deletes sessions of its own. Seven of the nine were pool and probe
+sessions the app pre-created and never prompted (app log tasks
+`ws_session_warmup_loop`, `session_warmup_prepare`, `warm_cli_acquire`,
+`warm_canvas_catalogs`): each held only `workspace.yaml`,
+`.workspace-fork.lock`, `checkpoints/index.md` and empty `files/` and
+`research/`, with no `events.jsonl` and no `session.db`, and
+`workspace.yaml` `client_name` `github/autopilot`, `user_named` false.
+Their `cwd` was the app's install directory
+`C:\Users\sean\AppData\Local\Programs\GitHub Copilot` (four sessions),
+`.copilot/canvas-catalog-probe` (two) or the clone
+`.copilot/repos/doubleagent` (one, created after the project session,
+with `git_root`, `repository`, `host_type` and `branch`). The two
+exercised sessions had `events.jsonl`, `session.db` and, while running,
+`inuse.<pid>.hold` and `.lock`, and their `workspace.yaml` the extra keys
+`name`, `user_named: true`, `remote_steerable` and the `mc_` keys. No
+`pending-session:*` directory, `rewind-file-snapshots/`, `attachments` or
+`crash-reports` appeared.
+
 App-only, all created at 22:00:30Z unless said (real install (Linux)):
 
 | Path | Size | What it holds |
@@ -175,12 +326,12 @@ App-only, all created at 22:00:30Z unless said (real install (Linux)):
 | `data.db-wal`, `data.db-shm` | 1.67 MB, small | its WAL and shared-memory index; the WAL is larger than the main file, so both must be collected with it |
 | `data.db.open-lock`, `data.db.startup-lock` | 0 bytes | lock files (binary: `db.open-lockdb.startup-lock`) |
 | `repo-metadata-cache.db` (+`-wal`, `-shm`) | 4,096 (`-wal` 98,912) | GitHub metadata cache (binary: `repo-metadata-cache.db`); tables in [section 5 of the analyzer document](../../analyzer/research/copilot-desktop.md#5-sqlite-and-other-stores), all empty but one lifecycle row |
-| `chats/<date>/<slug>-<first 8 of the session id>/` | empty | one working directory per general chat, the chat session's `cwd` (`chats/2026-10-16/automatic-barnacle-5d404e14`) |
+| `chats/<date>/<slug>-<first 8 of the session id>/` | empty | one working directory per general chat, the chat session's `cwd` (`chats/2026-10-16/automatic-barnacle-5d404e14`); on Windows the agent built a Node.js project in one (`chats/2026-10-17/refactored-barnacle-90825c78/weather-mcp/` with `package.json`, `package-lock.json`, `test-client.js`, `src/index.js` and `node_modules/`, 3,415 files and 14.8 MB in all, 4 files and 45,644 bytes without `node_modules`) |
 | `repos/<name>/` | 20 MB | the clone of each added repository (remote `https://github.com/<login>/<name>.git`; its `.git/config` held no credential helper, and there was no `~/.gitconfig`); its `.git/refs/copilot/checkpoints/` holds the session checkpoint refs ([below](#after-a-session-is-deleted)) |
 | `repos/copilot-worktrees/<name>/<branch>/` | in the 262 files above | the git worktree a project session runs in, on a new branch named `<login>-<adjective>-<noun>`; after the deletion round, the pool's pre-created worktree `copilot-prewarm-<adjective>-<noun>` instead |
 | `run/single-instance.lock`, `run/single-instance.owner` | 0 and 5 bytes | the single-instance lock and the owning pid (binary: `single-instance.locksingle-instance.ownersingle-instance-pr.locksingle-instance-pr.owner`) |
-| `run/ws.port`, `run/ws.release.port` | 11 bytes each | the port of the app's local WebSocket server |
-| `run/ws.token`, `run/ws.release.token` | 49 bytes each | the WebSocket auth token ([section 3](#3-credentials)) |
+| `run/ws.port`, `run/ws.release.port` | 11 bytes each (10 on Windows) | the port of the app's local WebSocket server |
+| `run/ws.token`, `run/ws.release.token` | 49 bytes each (48 on Windows) | the WebSocket auth token ([section 3](#3-credentials)) |
 | `media-cache/` | empty | media cache (binary: `"$HOME/.copilot/media-cache/**",`) |
 | `canvas-catalog-probe/` | empty | canvas catalog probe (binary: `canvas-catalog-probe`) |
 | `logs/github-app.<pid>.log` | 109 KB | the Tauri backend's tracing log: WebSocket server, session warm-up, the device-code sign-in, "wrote run file", "wrote WebSocket auth token", "Scheduler starting for workflows, session automations, and Scheduled tasks", git version detection, canvas catalog warm-up (each a literal in the binary) |
@@ -188,16 +339,36 @@ App-only, all created at 22:00:30Z unless said (real install (Linux)):
 Named in the binary, not observed: `$HOME/.copilot/attachments/**` and
 `$HOME/.copilot/workspaces/*/attachments/**` (binary: `"$HOME/.copilot/attachments/**",`,
 `"$HOME/.copilot/workspaces/*/attachments/**",`), and `crash-reports`
-(binary, in the string run above). They get no catalog line until an
-install shows them: `attachments` under `~/.copilot` is collected with
-`copilot-cli` meanwhile.
+(binary, in the string run above; also in
+`github 1.1.30 windows-arm64 github.exe`: `attachments`,
+`crash-reports`). They get no catalog line until an install shows them,
+and the Windows install did not: `attachments` under `~/.copilot` is
+collected with `copilot-cli` meanwhile.
+
+On Windows the same app-only set was written, with these differences:
+`data.db` 1,347,584 bytes (`-wal` 1,796,352 at 20:08Z, 1,907,592 at
+20:32Z); the `run/` files rewritten when the app restarted its WebSocket
+server (`ws.port` and `ws.token` at 20:02:41Z and 20:31:33Z), all six
+still on disk after the app quit; the collector's copy of
+`run/single-instance.lock` failed while the app ran, because the app
+holds a byte-range lock on it (`error_copy`); `repos/<name>/.git/` held
+`refs/copilot/checkpoints/<session id>/<seq>/<event id>` for the project
+session's one checkpoint and `worktrees/<branch>/` for the session's
+worktree and the pool's `copilot-prewarm-<adjective>-<noun>` worktree;
+the app log `logs/github-app.5688.log` (193,758 bytes after quit) has the
+start line `GitHub Copilot app started pid=N version=N.N.N commit=<hex>
+platform=windows arch=aarch64 ...`, `opening database
+db_path="C:\\Users\\sean\\.copilot\\data.db"`, `embedded git installed
+path=<path>`, `Prepared executable built-in plugin plugin_name=...`
+(three times) and `Executable built-in plugin is not bundled for this
+platform` (once).
 
 ### Outside `~/.copilot`
 
 | Path | Size | What it holds |
 | --- | --- | --- |
-| `~/.local/share/com.github.githubapp/` (Linux, observed); `~/Library/Application Support/com.github.githubapp` (macOS) and `AppData/Roaming/com.github.githubapp` (Windows), dirs crate | 4.6 MB | the Tauri data directory |
-| `.../app-skills/` | 3.3 MB | skills bundled with the app, copied at first start (`af`, `agent-merge`, `agentfinder`, `connector-finder`, `create-canvas`, `factory-creator`, `impeccable` with hundreds of `.mjs` scripts, `latex`, `orchestrate`, `pr-stack`, each with `SKILL.md`), markers `.app-skills-bundled` and `.app-skills-version` (binary: `app-skillsapp-skills.new.app-skills-version`) |
+| `~/.local/share/com.github.githubapp/` (Linux, observed); `AppData/Roaming/com.github.githubapp` (Windows, observed); `~/Library/Application Support/com.github.githubapp` (macOS, dirs crate, not observed) | 4.6 MB (Linux), 3.0 MB (Windows) | the Tauri data directory; on Windows it held only `app-skills/`, the web view's storage being in the WebView2 folder below |
+| `.../app-skills/` | 3.3 MB (Linux), 3.0 MB and 145 files (Windows) | skills bundled with the app, copied at first start (`af`, `agent-merge`, `agentfinder`, `connector-finder`, `create-canvas`, `factory-creator`, `impeccable` with hundreds of `.mjs` scripts, `latex`, `orchestrate`, `pr-stack`, each with `SKILL.md`; 1.1.30 on Windows adds `automation-group-creator`), markers `.app-skills-bundled` and `.app-skills-version` (binary: `app-skillsapp-skills.new.app-skills-version`) |
 | `.../localstorage/tauri_localhost_0.localstorage` (+`-wal`, `-shm`) | 4,096 (`-wal` 939,392) | the web view's local storage, SQLite `ItemTable(key, value BLOB)`; keys include `home-composer-draft:main` (192 bytes, the unsent composer draft), `inbox-cache` (2.5 KB) and tab lists ([section 2 of the analyzer document](../../analyzer/research/copilot-desktop.md#2-transcript-files)) |
 | `.../WebKitCache/Version 17/` | 280 KB | WebKit's HTTP cache (`Blobs`, `Records`, `salt`) |
 | `.../CacheStorage/salt`, `.../storage/salt`, `.../mediakeys/v1/salt` | 8 bytes each | WebKit's per-origin salts |
@@ -215,6 +386,58 @@ install shows them: `attachments` under `~/.copilot` is collected with
 No `~/.config` entry was written. The layout of `~/.copilot` is the same
 on every OS, as Copilot CLI's is; the Tauri data directory moves with
 the dirs crate.
+
+On Windows (real install, 1.1.30) these were written outside `.copilot`:
+
+| Path | Size | What it holds |
+| --- | --- | --- |
+| `AppData/Local/com.github.githubapp/EBWebView/` | 611 files, 72,614,047 bytes | the WebView2 user data folder (binary: `EBWebView`; `Last Version` says runtime 155.0.4283.62), a Chromium profile; collected as `copilot-desktop` from collector 1.13.0, less its caches ([section 4](#4-exclusions)); itemised below |
+| `AppData/Local/github-copilot-sdk/cli/1.0.99-2/copilot.exe` | 158,577,952 bytes, sha256 `b7bc340acf1c82228de2e3504444847f8e18beec1f07f72f260f1bbeb4c3a9b2` | the Copilot CLI that runs the app's sessions, with `.copilot-cli.ok` (9 bytes), downloaded 19:53:31Z to 19:53:51Z; not collected |
+| `AppData/Local/github-copilot-git-2.53.0-4/` | 517 files, 114 MB | the embedded git in the MinGW layout (Minimalist GNU for Windows, the GNU toolchain port Git for Windows is built with): `clangarm64/`, `cmd/git.exe`, `etc/`, `usr/`, `LICENSE.txt` and an `.integrity-<sha256>` marker; not collected |
+| `AppData/Local/copilot-desktop-gh-2.102.0/gh.exe` | 39,351,608 bytes | GitHub's `gh` CLI; not collected |
+| `.github-copilot-cli/` | | Foundry Local's directory, as on Linux: `cache/models/foundry.modelinfo.json` (72,935 bytes, 44 models), empty `ep/`, `logs/foundry.core20261017.log` (3,887 bytes; its cache line names `C:\Users\sean/.github-copilot-cli/cache/models` with mixed separators, and it says "Model ... is not supported on Arm64 currently"); no device id file beside it |
+| `AppData/Roaming/Microsoft/Credentials/<32 hex>` | 666 bytes | a file of Credential Manager, the per-user credential vault of Windows, written at the sign-in minute ([section 3](#3-credentials)); outside the catalog |
+
+The three downloads under `AppData/Local` have the names Linux keeps
+under `~/.cache`. No `AppData/Local/Microsoft/DeveloperTools/`,
+`~/Microsoft/`, `~/.cache/`, `.onnxruntime` directory or file named
+`deviceid` was in the profile to depth 6; the Microsoft developer-tools
+device id of [issue 148](https://github.com/seanthegeek/doubleagent/issues/148)
+is the registry value `HKCU\SOFTWARE\Microsoft\DeveloperTools\deviceid`
+(a string value, type `REG_SZ`, of 36 characters) on Windows, with a
+`HardwareCache` subkey.
+
+The WebView2 folder, per directory (files, bytes), with what collector
+1.13.0 excludes marked:
+
+| Path under `EBWebView/` | Files, bytes | What it holds |
+| --- | --- | --- |
+| `Local State` | 1, 10,079 | Chromium's browser-wide state, JSON: `os_crypt{encrypted_key}` (the profile key, wrapped with DPAPI, the Windows Data Protection API, [section 3](#3-credentials)), `profile`, `user_experience_metrics{client_id2, machine_id, ...}`, `variations_*`, `updateclientdata` |
+| `Default/Local Storage/leveldb/` | `000003.log`, `CURRENT`, `LOCK`, `LOG`, `MANIFEST-000001` | the web view's local storage, a leveldb database (Google's key-value store library, which Chromium uses for DOM storage): for the origin `http://tauri.localhost` the same keys as the Linux WebKit `localstorage` table (`home-composer-draft:main`, `inbox-cache`, `agent-tabs`, `general-chat-tabs`, `side-chat-tabs`, `workspace-tabs`, `chat-agent-tabs-partition-v1`, `chat-agent-tabs-source-v1`, `detail-cache`, `backend-instance-id`, `copilot.first-paint-theme.v1`). `000003.log` was 30 bytes while the app ran, because Chromium writes DOM storage lazily, and 6,174 bytes after the deletion |
+| `Default/Session Storage/` | `000003.log` 30, then 234 | session storage, leveldb |
+| `Default/Network/` | `Cookies` 20,480 and `Cookies-journal`, `TransportSecurity` 189, `Network Persistent State`, `Reporting and NEL`, `Trust Tokens`, `Device Bound Sessions`, `Sdch Dictionaries`, `SCT Auditing Pending Reports`, `NetworkDataMigrated` | the network stores; `Cookies` had 0 rows after the app quit (it cannot be opened while any `github.exe` runs, Windows error 32, a sharing violation) |
+| `Default/History` | 249,856 | browsing history, SQLite: 7 `urls` rows, all `http://tauri.localhost` (the app's own pages), 16 `visits` |
+| `Default/Login Data`, `Login Data For Account` | 43,008 each | saved passwords; 0 `logins` rows |
+| `Default/Web Data` | 227,328 | autofill: 1 `autofill` row, 13 `autofill_edge_field_values`, 0 `token_service` |
+| `Default/Vpn Tokens` | 28,672 | 0 `vpn_token_config` rows |
+| `Default/Preferences`, `Default/Secure Preferences` | 8,516 and 9,856 | profile preferences (`profile{name, edge_profile_id, created_by_version, ...}`, `extensions`, `password_manager`, `edge`, `autofill`) and their integrity checks (`protection{macs, super_mac}`, message authentication codes over the settings) |
+| `Default/` others | small | `Favicons`, `Top Sites`, `settings_diagnostic.log` (38 KB), `favorites_diagnostic.log`, `DashTrackerDatabase`, `DIPS`, `ServerCertificate`, `shared_proto_db/`, `Extension Rules`, `Extension Scripts`, `Extension State`, `Site Characteristics Database`, `Sync Data/LevelDB`, `EdgeSessions/SessionRestoreLog`, `Sessions/` (empty), `README` |
+| `Crashpad/` | 4, 308 | crash reporter state (`metadata`, `settings.dat`, `throttle_store.dat`, `watson_metadata`; empty `attachments/` and `reports/`) |
+| `TrustTokenKeyCommitments/`, `OriginTrials/`, `AutoLaunchProtocolsComponent/` | 4, 7,093; 1, 43; 2, 3,807 | downloaded component data |
+| `Default/Cache` (excluded) | 30, 7,061,265 | HTTP cache |
+| `Default/Code Cache` (excluded) | 322, 92,526 | compiled JavaScript and WebAssembly |
+| `Default/GPUCache` (excluded) | 5, 5,837,168 | GPU shader cache |
+| `Default/DawnGraphiteCache`, `Default/DawnWebGPUCache` (excluded) | 5 and 557,424 each | WebGPU caches |
+| `Default/blob_storage`, `Default/Shared Dictionary` (excluded) | not recorded | blob store and shared compression dictionaries |
+| `GrShaderCache`, `ShaderCache`, `GPUPersistentCache` (excluded) | 5, 557,424; 5, 557,424; 3, 0 | shader caches |
+| `component_crx_cache`, `extensions_crx_cache` (excluded) | 9, 20,720,619; 1, 13 | downloaded component and extension packages |
+| `WidevineCdm` (excluded) | 6, 20,278,481 | the Widevine module (Google's digital-rights-management component for protected media) |
+| `Subresource Filter` (excluded) | 15, 11,814,930 | the ad-filter list |
+| `hyphen-data`, `PKIMetadata`, `CertificateRevocation` (excluded) | 54, 1,769,902; 4, 266,347; 2, 23,236 | hyphenation dictionaries, certificate metadata and revocation lists |
+| `BrowserMetrics-spare.pma` (excluded) | 1,310,720 | metrics scratch file |
+
+Top-level `Last Version`, `lockfile`, `Variations*` and the empty
+`MEIPreload/` and `Trust Protection Lists/` are collected too.
 
 ### After a session is deleted
 
@@ -246,6 +469,34 @@ every `workspaces`, `worktrees`, `workspace_session_aliases` and
 | the file the agent created | still on the user's desktop, outside every catalog entry |
 | `.local/share/com.github.githubapp/localstorage/tauri_localhost_0.localstorage` | the `side-chat-tabs` value still keys its `openSessionIdsByWorkspace` object by both deleted ids (empty lists) and the pending-session id; `home-composer-draft:main` is `{state: {promptText, selectedProjectId, projectExplicitlySelected}, version}`, empty here; neither session id occurs anywhere else in it, WAL included |
 
+On Windows (real install, 1.1.30, the deletion and quit round of
+[section 1](#1-source-and-evidence-level)) the app's delete of the general
+chat removed its `session-state/<uuid>/` directory entire (`events.jsonl`,
+`workspace.yaml`, `session.db`, `checkpoints/`, `files/`, `research/`,
+`.workspace-fork.lock`, the `inuse.*` files) and `chats/2026-10-17/`
+entire, with the project the agent had built there (`weather-mcp/`, its
+`node_modules` included): files an agent writes in a chat's working
+directory are deleted with the chat. In `data.db` the chat's `sessions`
+row went. The project session's `inuse.<pid>.hold` and `.lock` went too,
+its CLI process having ended at its 20:15Z shutdown. The chat had no
+checkpoint, so no `.git` ref of it existed; the project session's ref
+stayed. These survived, and differ from Linux as noted:
+
+| Path | What survived |
+| --- | --- |
+| `data.db` | the chat's 3 `activity_items` rows (`agent_idle`, with reply previews); `session_deletion_intents` still empty; six `app_state` keys rewritten at deletion time (`sidebar-project-groups`, `right-panel`, `cleared-background-tasks`, `session-groups`, `main-content-tabs`, `inbox-sections`) |
+| `data.db-wal`, then `data.db` | before the quit the WAL (1,907,592 bytes) held 220 occurrences of the chat's id and the main file none. Quitting the app checkpointed the WAL: `data.db-wal` went to 0 bytes, `data.db` grew from 1,347,584 to 1,433,600 bytes, and the id then occurred 23 times in the main file (the surviving `activity_items` rows and freed pages). So the Linux finding that a deleted session's pages stay in `data.db-wal` holds only until the app next quits cleanly; after that the main file keeps the activity rows and whatever freed pages a later write has not reused |
+| `session-store.db` (`copilot-cli`) | the chat's `sessions` row, all 3 `turns` with prompt and reply, 3 `session_files` rows naming the files the agent created, 3 `search_index` rows and 8 `assistant_usage_events`; its `-wal` (704,552 bytes, 220 mentions of the id) was not checkpointed at the quit |
+| `session-state/.session-operation-locks/<uuid>.lock` (`copilot-cli`) | 0 bytes, as on Linux |
+| `logs/github-app.5688.log` | 41 lines naming the id, among them `github_app::session::manager::lifecycle: session not found in memory during delete (already evicted) session_id=<uuid>` and `github_app::session::manager::process_teardown: terminated agent processes owned by ending sessions scope="session_end" session_count=1 runtime_outcome="not_live" ...` under message kind `delete_session` |
+| `logs/process-<epoch ms>-<pid>.log` (`copilot-cli`) | one `Cleaning up session <uuid>: Session deleted via sessions.delete` line |
+| `run/ws.port`, `run/ws.token` | rewritten at 20:31:33Z; all six `run/` files stay on disk after the quit |
+| `AppData/Local/com.github.githubapp/EBWebView/Default/Local Storage/leveldb/` | the tab-list keys rewritten, as the Linux `side-chat-tabs` was |
+
+After the quit the seven pool session directories, the 18 operation
+locks, the app log and `repo-metadata-cache.db-wal` (98,912 bytes) were
+still on disk.
+
 ## 3. Credentials
 
 - GitHub token: the OS keyring. The binary links `keyring_core` and
@@ -257,10 +508,26 @@ every `workspaces`, `worktrees`, `workspace_session_aliases` and
   install `~/.local/share/keyrings/login.keyring` was modified at
   22:01:14Z, during the sign-in, and no token was found in any file the
   survey read. The keyring is outside the catalog, as it is for Copilot
-  CLI. The store on macOS and Windows is not determined.
+  CLI. On Windows the token goes to Credential Manager (the per-user
+  credential vault of Windows, whose entries are files under
+  `AppData/Roaming/Microsoft/Credentials/` encrypted with DPAPI, the Data
+  Protection API that ties a key to the user's logon): `github.exe` links
+  the same crate with the Windows store (`github 1.1.30 windows-arm64
+  github.exe`: `keyring-core-1.0.0`, `keyring-store-1.1.0`,
+  `windows-native-keyring-store`, and the imports `CredWriteW`,
+  `CredReadW`, `CredDeleteW`, `CredEnumerateW`), and the one credential
+  file written that day, `AppData/Roaming/Microsoft/Credentials/<32 hex>`
+  (666 bytes), has the sign-in minute, 19:54:27Z (`data.db`
+  `accounts.created_at` 19:54:27.147Z, app log task
+  `auth_device_code_flow`). The credential's target name is not
+  determined: `CredEnumerateW` from the SSH session failed with error 1312
+  (no logon session; a key-based SSH logon has no credential vault), and
+  `cmdkey /list` printed nothing there. The Credentials directory is
+  outside the catalog. The binary has no `storeTokenPlaintext` string. The
+  store on macOS is not determined.
 - `data.db` has two token columns, `accounts.access_token` and
   `settings.github_access_token` (with `github_token_type`, `github_scope`
-  and `github_token_updated_at`); both were NULL on the install, the token
+  and `github_token_updated_at`); both were NULL on the Linux and Windows installs, the token
   being in the keyring. The binary also carries an older table's
   migration, `ALTER TABLE github_accounts ADD COLUMN access_token TEXT;`,
   and queries on `github_access_token IS NOT NULL`, so a file fallback
@@ -270,11 +537,13 @@ every `workspaces`, `worktrees`, `workspace_session_aliases` and
   holds a credential identity hash, which the schema comment says is
   "Hex SHA-256 of the credential identity in use. Comparison material
   only; ... never a token, and never enough to reconstruct one" (binary).
-- `run/ws.token` and `run/ws.release.token` (49 bytes each, characters of
-  the URL-safe base64 alphabet): the token the app's web view presents to
+- `run/ws.token` and `run/ws.release.token` (49 bytes each on Linux, 48
+  on Windows, characters of the URL-safe base64 alphabet): the token the app's web view presents to
   the local WebSocket server (binary and app log: "wrote WebSocket auth
   token"). It is a live local credential while the app runs, so
   `.copilot/run/*.token` is a secret glob. `run/ws.port` is not a secret.
+  On Windows both were rewritten while the app ran and stayed on disk
+  after it quit.
 - The storage crate sets mode 0600 on a token file (binary:
   `crates/storage/src/permissions.rs` "Failed to set 0600 on token file");
   the two run tokens were mode 0600 on the install (`-rw-------`), the
@@ -291,6 +560,35 @@ every `workspaces`, `worktrees`, `workspace_session_aliases` and
   per-origin storage names; they are not credentials and stay unflagged.
 - `~/.copilot/config.json` stays the Copilot CLI secret glob; the app did
   not change its role.
+- `~/.copilot/mcp-config.json`, written by the bundled CLI when MCP
+  servers are added from the app, held a GitHub personal access token in
+  plain text on Windows (the `github` server's `env`
+  `GITHUB_PERSONAL_ACCESS_TOKEN`, 33 characters); it is the Copilot CLI
+  secret glob `.copilot/mcp-config.json`, and the Windows run flagged it.
+- The WebView2 `Local State` `os_crypt.encrypted_key` (396 characters) is
+  the key Chromium encrypts cookie values and saved passwords with,
+  wrapped with DPAPI so only the user's logon can unwrap it. It is not a
+  credential by itself, and the stores it protects were empty on the
+  install (`Network/Cookies` 0 rows after the quit, since the device-code
+  sign-in runs in the system browser and leaves no github.com cookie in
+  the app's web view; `Login Data` 0 `logins` rows; `Web Data`
+  `token_service` 0 rows; `Vpn Tokens` 0 rows). They are flagged
+  `secret: true` all the same, by the globs
+  `AppData/Local/com.github.githubapp/EBWebView/Local State`,
+  `.../Default/Network/Cookies*` and `.../Default/Login Data*`, as the
+  same Chromium stores of ChatGPT Desktop are, because a cookie store, a
+  saved-password store and the key that encrypts them hold credentials
+  whenever the web view signs in. `user_experience_metrics.client_id2` in `Local State` and
+  `profile.edge_profile_id` in `Preferences` are identifiers, not
+  credentials. The run's check of unflagged file names that look like
+  credentials found only the WebView2 files `Vpn Tokens`, `Trust Tokens`,
+  `Cookies` (now flagged) and `TrustTokenKeyCommitments/keys.json` (the last holds the
+  public key commitments of Chromium's Trust Tokens component), none a
+  credential.
+- `git-credential-copilot.exe` on Windows carries none of the keyring
+  strings; `github.exe` has the named pipe prefix `\\.\pipe\copilot-ssh-`
+  (a Windows named pipe, a local inter-process channel); what uses it,
+  and how the helper reaches the app on Windows, are not determined.
 
 ## 4. Exclusions
 
@@ -324,11 +622,51 @@ every `workspaces`, `worktrees`, `workspace_session_aliases` and
   prunes user-added skills there.
 - `.local/share/com.github.githubapp/WebKitCache` and
   `.local/share/com.github.githubapp/CacheStorage`: WebKit's caches.
+- The WebView2 user data folder `AppData/Local/com.github.githubapp`
+  (Windows), a catalog entry from collector 1.13.0 because it holds the
+  web view's Local Storage (the composer draft and tab lists that Linux
+  keeps in the WebKit `localstorage` table), less its Chromium caches and
+  downloaded components, each with one `skipped_excluded` row:
+  `EBWebView/Default/Cache` (7.1 MB on the install), `Default/Code Cache`
+  (93 KB), `Default/GPUCache` (5.8 MB), `Default/DawnGraphiteCache` and
+  `Default/DawnWebGPUCache` (557 KB each), `Default/blob_storage` and
+  `Default/Shared Dictionary` (sizes not recorded), `GrShaderCache` and
+  `ShaderCache` (557 KB each), `GPUPersistentCache` (empty),
+  `component_crx_cache` (20.7 MB), `extensions_crx_cache` (13 bytes),
+  `WidevineCdm` (20.3 MB), `Subresource Filter` (11.8 MB), `hyphen-data`
+  (1.8 MB), `PKIMetadata` (266 KB), `CertificateRevocation` (23 KB) and
+  `BrowserMetrics-spare.pma` (1.3 MB), all under
+  `AppData/Local/com.github.githubapp/EBWebView/`. Of the folder's 611
+  files and 72.6 MB, that leaves about 140 files and at most 1.2 MB
+  collected, by the survey's per-directory sizes: `Local State`,
+  `Preferences`, `Secure Preferences`, Local and Session Storage, the
+  `Network/` stores, `History`, `Favicons`, `Top Sites`, `Login Data`,
+  `Web Data`, the diagnostic logs, `Crashpad` and the leveldb bookkeeping
+  files. None of the globs differs from another only by case, which the
+  PowerShell collector's case-insensitive match would merge.
+- `.copilot/chats/*/node_modules`: the dependency tree of a project the
+  agent builds in a chat's working directory (exclusion globs cross `/`,
+  so it reaches `chats/<date>/<slug>/<project>/node_modules`). On the
+  Windows install it was 3,411 of the chat directory's 3,415 files and
+  14.7 of its 14.8 MB; the four files the agent wrote stay collected.
+- The Copilot CLI's marketplace clone under its cache directory,
+  `AppData/Local/copilot/marketplaces` (4,560 files, 263,616,505 bytes on
+  the Windows install, a shallow git clone of the awesome-copilot
+  marketplace, cloned 19:55:19Z to 19:55:34Z, two minutes after the app's
+  first start), with `.cache/copilot/marketplaces` and
+  `Library/Caches/copilot/marketplaces` beside it; see
+  [section 4 of `copilot-cli.md`](copilot-cli.md#4-exclusions) and
+  [issue 131](https://github.com/seanthegeek/doubleagent/issues/131).
 - Not collected, outside every entry: `~/.cache/github-copilot-sdk`
   (the 180 MB CLI binary), `~/.cache/github-copilot-git-<version>` (53 MB
   of git binaries) and `~/.cache/copilot-desktop-gh-<version>` (38 MB, the
   `gh` binary). Their version suffixes record which tool versions the app
   used, and a listing of `~/.cache` shows them without collecting them.
+  On Windows the same three are `AppData/Local/github-copilot-sdk`
+  (158.6 MB), `AppData/Local/github-copilot-git-<version>` (114 MB) and
+  `AppData/Local/copilot-desktop-gh-<version>` (39.4 MB), also outside
+  every entry, as is the install directory
+  `AppData/Local/Programs/GitHub Copilot` (520 MB).
 - Foundry Local model weights would land under
   `.github-copilot-cli/cache/models/`; none were downloaded on the
   install, so no exclusion was added. A host where a local model was
@@ -362,6 +700,18 @@ an app file.
   home's `.copilot/` directory, in both collectors; the repository the
   user added is identified by `data.db` `projects` and by the project
   session's `workspace.yaml` `repository` key instead.
+- On Windows the app pre-created seven pool and probe sessions that were
+  never prompted ([section 2](#inside-copilot)); four had the app's install
+  directory `C:\Users\sean\AppData\Local\Programs\GitHub Copilot` as
+  their `cwd`, and collector 1.13.0 as first written reported that
+  directory as a project (no project file was collected there; the other
+  three `cwd`s were under `.copilot/` and already skipped). Project
+  discovery now also skips the `cwd` of a session directory that has no
+  `events.jsonl`, in both collectors: every prompted session on the Linux
+  and Windows installs had one, and none of the pool or probe sessions
+  did. Whether a standalone Copilot CLI session that exits before its
+  first prompt writes `events.jsonl` is not determined; if it does not,
+  its `cwd` is no longer discovered either.
 - `events.jsonl` `session.start` `data.context` carries `cwd`, and for a
   project session `branch`, `gitRoot`, `headCommit`, `hostType`
   (`github`), `repository` and `repositoryHost` (`github.com`).
@@ -378,17 +728,24 @@ an app file.
 ## 7. Confidence
 
 High: the app-only file set inside `~/.copilot`, its sizes and creation
-times, the Tauri data directory on Linux, `~/.github-copilot-cli`, the
-three `~/.cache` tool directories, the shared `session-state` format and
-the `client_name` value (real install (Linux), with the path names
-confirmed in the binary); the token in the keyring with NULL token
-columns in `data.db` (real install (Linux) and binary); the run tokens
-as live local credentials (binary and app log); what a session deleted
-from the app removes and leaves, and the checkpoint refs' layout (real
-install (Linux)). Medium: the macOS and
-Windows data directories (dirs crate, not observed); the macOS and
-Windows token store. Not determined: when `data.db`'s token columns are
+times, the Tauri data directory on Linux and Windows, `~/.github-copilot-cli`, the
+three tool download directories (`~/.cache` on Linux, `AppData/Local` on
+Windows), the shared `session-state` format and
+the `client_name` value (real installs (Linux, Windows), with the path names
+confirmed in the binary); the WebView2 user data folder and its contents
+(real install (Windows) and binary); the pool and probe sessions without
+`events.jsonl` (real installs (Linux, Windows) and app log); the token in
+the keyring with NULL token columns in `data.db` (real install (Linux) and
+binary); the run tokens as live local credentials (binary and app log);
+what a session deleted from the app removes and leaves, the checkpoint
+refs' layout and the WAL checkpoint at quit (real installs (Linux,
+Windows)). Medium: the token in Windows Credential Manager (binary
+imports and the credential file's modification time, target name not
+read); the macOS data directory (dirs crate, not observed); the macOS
+token store. Not determined: when `data.db`'s token columns are
 filled; how git reaches `git-credential-copilot`; what `ep/` holds; where
 `attachments`, `workspaces/*/attachments` and `crash-reports` appear and
 what they hold; whether Foundry Local model weights are downloaded
-without the user asking.
+without the user asking; whether a CLI session that is never prompted
+writes `events.jsonl`; the sizes of the WebView2 `blob_storage` and
+`Shared Dictionary` directories.

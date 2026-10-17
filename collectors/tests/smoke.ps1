@@ -943,6 +943,33 @@ Mk "$l147/localstorage/tauri_localhost_0.localstorage" "sqlite`n"
 Mk "$l147/app-skills/af/SKILL.md" "# af`n"
 Mk 'Users/alice/.github-copilot-cli/logs/foundry.core20261016.log' "log`n"
 
+# 2026-10-17 Copilot Desktop Windows round (#147)
+# From the Windows 11 arm64 install of GitHub Copilot Desktop 1.1.30: the
+# WebView2 user data folder (AppData/Local/com.github.githubapp) is a
+# copilot-desktop entry less its Chromium caches; a project the agent built in
+# a chat directory keeps its files but not its node_modules; the Copilot CLI's
+# marketplace clone is excluded (#131). A session directory with no
+# events.jsonl is a pool or probe session the app never prompted, and its cwd
+# (the install directory on Windows) is not a project; s1, s2 and s3 get an
+# events.jsonl so the discovery and .copilot rules above stay tested. Checks
+# follow the default run below; the same files are in smoke.sh under alice.
+$w147 = 'Users/alice/AppData/Local/com.github.githubapp/EBWebView'
+$p147 = "$d147/chats/2026-10-17/x-90825c78/proj"
+$k147 = 'Users/alice/AppData/Local/copilot/marketplaces'
+Mk "$w147/Default/Local Storage/leveldb/000003.log" "leveldb`n"
+Mk "$w147/Default/Network/Cookies" "cookies`n"
+Mk "$w147/Local State" "{`"os_crypt`":{}}`n"
+Mk "$w147/Default/Cache/Cache_Data/x" "cache`n"
+Mk "$w147/component_crx_cache/x" "crx`n"
+Mk "$p147/package.json" "{`"name`":`"proj`"}`n"
+Mk "$p147/node_modules/m/index.js" "module`n"
+Mk "$k147/m/.git/HEAD" "ref: refs/heads/main`n"
+foreach ($s147 in @('s1', 's2', 's3')) {
+  Mk "$d147/session-state/$s147/events.jsonl" "{`"type`":`"session.start`"}`n"
+}
+Mk "$d147/session-state/s4/workspace.yaml" "cwd: C:\\coppool`nclient_name: github/autopilot`n"
+Mk 'coppool/AGENTS.md' '# pool'
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1389,7 +1416,7 @@ Check '#113 ChatGPT Local State flagged secret' { Is113 "$c113/Local State" 'cha
 Check '#113 ChatGPT profile and partition cookies flagged secret' { (Is113 "$c113/Default/Network/Cookies" 'chatgpt-desktop' $true) -and (Is113 "$x113/Network/Cookies" 'chatgpt-desktop' $true) }
 Check '#113 ChatGPT Login Data flagged secret' { Is113 "$c113/Default/Login Data" 'chatgpt-desktop' $true }
 Check '#113 ChatGPT profile and partition Cache excluded' { (StatusOf "$c113/Default/Cache") -eq 'skipped_excluded' -and (StatusOf "$x113/Cache") -eq 'skipped_excluded' -and (NoRow83 'Cache/data_0') }
-Check '#113 ChatGPT component cache beside the profile not in the manifest' { -not ($script:Rows | Where-Object { $_.path -like '*component_crx_cache*' }) }
+Check '#113 ChatGPT component cache beside the profile not in the manifest' { -not ($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like '*/web/Codex/component_crx_cache*' }) }
 Check '#113 ChatGPT app log collected as chatgpt-desktop' { Is113 "$p113/LocalCache/Local/Codex/Logs/2026/10/15/codex-desktop-x.log" 'chatgpt-desktop' $false }
 Check '#113 ChatGPT MSIX settings hive collected' { Is113 "$p113/Settings/settings.dat" 'chatgpt-desktop' $false }
 Check '#116 Codex plugin app-server binaries excluded' { (StatusOf 'Users/alice/.codex/plugins/.plugin-appserver') -eq 'skipped_excluded' -and (NoRow83 '.plugin-appserver/codex.exe') }
@@ -1434,6 +1461,13 @@ $log147 = Get-Content -LiteralPath (Get-ChildItem -LiteralPath (Join-Path $Out '
 $home147 = (P $d147) + $Sep
 Check '#147 Copilot Desktop chat directory and worktree not projects' { $log147 -notmatch 'Project .*[\\/]\.copilot[\\/]' -and -not ($script:Rows | Where-Object { $_.home.StartsWith($home147) }) -and -not (@($sum.projects) | Where-Object { $_ -match '\.copilot[\\/](chats|repos)' }) }
 Check '#147 Copilot Desktop chat directory file collected once as copilot-desktop' { @($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like '*/x-5d404e14/.keep' }).Count -eq 1 -and (Row "$d147/chats/2026-10-16/x-5d404e14/.keep").agent -eq 'copilot-desktop' }
+# 2026-10-17 Copilot Desktop Windows round (#147)
+Check '#147 WebView2 Local Storage collected as copilot-desktop' { Is113 "$w147/Default/Local Storage/leveldb/000003.log" 'copilot-desktop' $false }
+Check '#147 WebView2 cookies and Local State flagged secret' { (Is113 "$w147/Default/Network/Cookies" 'copilot-desktop' $true) -and (Is113 "$w147/Local State" 'copilot-desktop' $true) }
+Check '#147 WebView2 Cache and component_crx_cache excluded' { (StatusOf "$w147/Default/Cache") -eq 'skipped_excluded' -and (StatusOf "$w147/component_crx_cache") -eq 'skipped_excluded' -and $null -eq (Row 'Cache_Data/x') -and $null -eq (Row 'component_crx_cache/x') }
+Check '#147 Copilot Desktop chat project collected less node_modules' { (Is113 "$p147/package.json" 'copilot-desktop' $false) -and (StatusOf "$p147/node_modules") -eq 'skipped_excluded' -and $null -eq (Row 'node_modules/m/index.js') }
+Check '#131 Copilot CLI marketplaces excluded' { (StatusOf $k147) -eq 'skipped_excluded' -and $null -eq (Row 'marketplaces/m/.git/HEAD') }
+Check '#147 Copilot pool session cwd not a project' { (StatusOf 'coppool/AGENTS.md') -eq '' -and -not (@($sum.projects) | Where-Object { $_ -match 'coppool' }) }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

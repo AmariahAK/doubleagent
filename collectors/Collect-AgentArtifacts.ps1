@@ -290,6 +290,7 @@ copilot-desktop|.copilot/logs/github-app.*.log
 copilot-desktop|.local/share/com.github.githubapp
 copilot-desktop|Library/Application Support/com.github.githubapp
 copilot-desktop|AppData/Roaming/com.github.githubapp
+copilot-desktop|AppData/Local/com.github.githubapp
 copilot-desktop|.github-copilot-cli
 # Cursor
 cursor|.cursor
@@ -860,14 +861,36 @@ Library/Application Support/Codex/executor-plugins/*/server.mjs
 .cache/copilot/pkg
 Library/Caches/copilot/pkg
 AppData/Local/copilot/pkg
+.cache/copilot/marketplaces
+Library/Caches/copilot/marketplaces
+AppData/Local/copilot/marketplaces
 .copilot/repos
 .copilot/repos/*/.git/objects
 .copilot/repos/*/.git/index
+.copilot/chats/*/node_modules
 .local/share/com.github.githubapp/app-skills
 .local/share/com.github.githubapp/WebKitCache
 .local/share/com.github.githubapp/CacheStorage
 Library/Application Support/com.github.githubapp/app-skills
 AppData/Roaming/com.github.githubapp/app-skills
+AppData/Local/com.github.githubapp/EBWebView/Default/Cache
+AppData/Local/com.github.githubapp/EBWebView/Default/Code Cache
+AppData/Local/com.github.githubapp/EBWebView/Default/GPUCache
+AppData/Local/com.github.githubapp/EBWebView/Default/DawnGraphiteCache
+AppData/Local/com.github.githubapp/EBWebView/Default/DawnWebGPUCache
+AppData/Local/com.github.githubapp/EBWebView/Default/blob_storage
+AppData/Local/com.github.githubapp/EBWebView/Default/Shared Dictionary
+AppData/Local/com.github.githubapp/EBWebView/GrShaderCache
+AppData/Local/com.github.githubapp/EBWebView/ShaderCache
+AppData/Local/com.github.githubapp/EBWebView/GPUPersistentCache
+AppData/Local/com.github.githubapp/EBWebView/component_crx_cache
+AppData/Local/com.github.githubapp/EBWebView/extensions_crx_cache
+AppData/Local/com.github.githubapp/EBWebView/WidevineCdm
+AppData/Local/com.github.githubapp/EBWebView/Subresource Filter
+AppData/Local/com.github.githubapp/EBWebView/hyphen-data
+AppData/Local/com.github.githubapp/EBWebView/PKIMetadata
+AppData/Local/com.github.githubapp/EBWebView/CertificateRevocation
+AppData/Local/com.github.githubapp/EBWebView/BrowserMetrics-spare.pma
 .cursor/extensions
 .cursor/worktrees
 .cursor/plugins/marketplaces
@@ -1337,6 +1360,9 @@ AppData/Local/github-copilot/*.json
 .copilot/mcp-oauth-config*
 .copilot/mcp-config.json
 .copilot/run/*.token
+AppData/Local/com.github.githubapp/EBWebView/Default/Network/Cookies*
+AppData/Local/com.github.githubapp/EBWebView/Default/Login Data*
+AppData/Local/com.github.githubapp/EBWebView/Local State
 .cursor/auth.json
 .config/cursor/auth.json
 AppData/Roaming/Cursor/auth.json
@@ -3286,10 +3312,14 @@ function Find-AgentSessionProjects([string]$homeDir) {
     Join-PathSafe $homeDir 'Library/Application Support/Goose/recent-dirs.json'
     Join-PathSafe $homeDir 'AppData/Roaming/Goose/recent-dirs.json'
   )
-  # A cwd under this home's .copilot (Copilot Desktop chats and worktrees) is not a project.
+  # A cwd under this home's .copilot (Copilot Desktop chats and worktrees) is not a project,
+  # nor is the cwd of a session with no events.jsonl: a pool or probe session Copilot Desktop
+  # pre-created and never prompted (on Windows its cwd is the app's install directory).
   $copilotDir = (Join-PathSafe $homeDir '.copilot') + $script:Sep
   $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
-  Get-YamlValues 'cwd' @(Expand-Glob $homeDir '.copilot/session-state/*/workspace.yaml') |
+  $promptedSessions = @(Expand-Glob $homeDir '.copilot/session-state/*/events.jsonl' |
+    ForEach-Object { Join-PathSafe ([System.IO.Path]::GetDirectoryName($_)) 'workspace.yaml' })
+  Get-YamlValues 'cwd' $promptedSessions |
     Where-Object { -not ([string](ConvertTo-LocalPath $_)).StartsWith($copilotDir, $ignoreCase) }
   Get-JsonValues 'workdir' @(
     Expand-Glob $homeDir '.hermes/checkpoints/store/projects/*.json'

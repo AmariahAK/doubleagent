@@ -108,7 +108,68 @@ there are no commit links. Each claim names its evidence level:
   removal, and the inventory reports `/home/sean/secret` as
   `referenced`. Not exercised: a denial, a resume, a rewind, a session
   deleted with the CLI's own command, a subagent, a compaction, plan or
-  autopilot mode, a scheduled task. Windows not observed.
+  autopilot mode, a scheduled task.
+- **Observed (Windows, through Copilot Desktop)**: Copilot CLI 1.0.99-2
+  as the bundled CLI of GitHub Copilot Desktop 1.1.30, which downloads it
+  to `AppData\Local\github-copilot-sdk\cli\1.0.99-2\copilot.exe`
+  (158,577,952 bytes, sha256
+  `b7bc340acf1c82228de2e3504444847f8e18beec1f07f72f260f1bbeb4c3a9b2`),
+  on a Windows 11 ARM64 Parallels VM (build 10.0.26300.9550, home
+  `C:\Users\sean`), 2026-10-17, all times UTC, names, key names, types,
+  enum values and counts only; the exercise is in
+  [section 1 of `copilot-desktop.md`](copilot-desktop.md#1-evidence).
+  The CLI wrote the Linux layout under `%USERPROFILE%\.copilot\` (the
+  executable carries `COPILOT_HOME` and `USERPROFILE`). The general chat's
+  `events.jsonl` (115 lines): `session.start` (`producer`
+  `copilot-agent`, `copilotVersion` `1.0.99-2`),
+  `session.permissions_changed` with the same `allowAll*` keys as the
+  Linux app sessions, `session.model_change` (`source` `startup`) at the
+  first prompt, 3 `user.message`, 8 `assistant.message`, 9
+  `tool.execution_start` and `tool.execution_complete` pairs with tool
+  names `powershell` and `create`, 27 `hook.start` and `hook.end` pairs
+  with `hookType` `sessionStart`, `userPromptSubmitted`,
+  `userPromptTransformed`, `preToolUse`, `postToolUse`,
+  `postToolUseFailure` (not seen on Linux), `agentStop` and
+  `sessionEnd`, 1 `system.message`, 8 `session.usage_record`, 3
+  `session.usage_checkpoint` and 1 `session.shutdown`, written at
+  20:13:47, ten minutes after the last reply (the Linux app sessions
+  wrote none). The project session's (30 lines): one prompt, one
+  `powershell` call, 7 hook pairs and a `session.shutdown`. Three
+  `create` calls failed ("Parent directory does not exist") and the
+  first `powershell` call exited 1 because Windows PowerShell's
+  execution policy refused `npm.ps1`; both are ordinary failed tool
+  results, and no `permission.requested` or `permission.completed` was
+  written (allow-all stayed on). `session-store.db`: 17 tables,
+  `schema_version` 8, `sessions` 2, `turns` 4 (3 for the chat, each with
+  its reply, so no null-response duplicate row this time, and 1 for the
+  project session), `session_files` 3 (`tool_name` `create`),
+  `search_index` 4 (`source_type` `turn`), `assistant_usage_events` 10
+  (`model` `claude-sonnet-5.5`, `initiator` `user` and `agent`,
+  `api_endpoint` `/v1/messages`, `reasoning_effort` `medium`,
+  `finish_reason` `stop` and `tool_calls`), and `checkpoints`,
+  `dynamic_context_items`, `forge_skill_proposals`,
+  `forge_trajectory_events` and `session_refs` empty. The app also
+  created seven sessions that were never prompted, each a directory with
+  only `workspace.yaml` (`client_name` `github/autopilot`, `user_named`
+  false), `.workspace-fork.lock`, an empty `checkpoints/index.md` table
+  and empty `files/` and `research/`, and no `events.jsonl` or
+  `session.db`. MCP: the three servers the user added from the app went
+  into `mcp-config.json`, two of them never spawned (the CLI log's `MCP
+  server connection failed {"server_name":"<name>","raw_error":"failed
+  to spawn MCP server process: program not found"}`, six and five
+  times), and the one that connected left one tool cache per session in
+  `AppData\Local\copilot\mcp-tools\` ([section 2](#2-transcript-files)).
+  Analyzer 0.14.0 over the collection: `copilot-cli` rows `assistant` 7,
+  `system` 92, `tool_result` 10, `tool_use` 10, `user` 4, 10 duplicate
+  secondary rows dropped, no `parser:` row; among them `session start:
+  copilot 1.0.99-2 producer=copilot-agent cwd=...`, `permission mode:
+  allow-all off -> on`, `model: claude-sonnet-5.5 source=startup`, the
+  `hook <hookType> start:` and `end:` rows, `file changed: <path>
+  tool=create` and `session end: routine files modified: <paths>`, and
+  one `session metadata: user_named=false ... client=github/autopilot`
+  row for each of the seven unprompted sessions. The npm-installed CLI
+  on Windows is still not observed
+  ([issue 133](https://github.com/seanthegeek/doubleagent/issues/133)).
 
 ## 2. Transcript files
 
@@ -135,6 +196,9 @@ Installs that predate the XDG migration keep the same names under
 | `.copilot/sidebar-sessions-state/<sha256 of cwd>.json` | `{schemaVersion, cwd, sessionIds}` | yes, as a join |
 | `.copilot/logs/process-<epoch ms>-<pid>.log` | process log | yes, sign-in line only |
 | `.copilot/open-sessions-state.json` | open-session tracker (`{}` observed) | no |
+| `.copilot/mcp-config.json` | MCP server configuration, `mcpServers{<name>{type, command, args[], tools[], env{}}}`; `env` can hold a token in plain text (a GitHub personal access token on the Windows install) | no ([section 8](#8-parser-plan)) |
+| `.copilot/.mcp-writer.binding`, `.copilot/.mcp-writer.lock` | the lock of the writer of `mcp-config.json`: `lock{file_index, platform, volume}`, `root{...}` (Windows install) | no |
+| `AppData/Local/copilot/mcp-tools/<sha256>.json` | the cached tool list of a connected MCP server, `{schemaVersion, serverName, tools[{name, description, annotations{destructiveHint, openWorldHint, readOnlyHint, title}, inputSchema}], updatedAt}`, one per session that connected (Windows install; not observed on macOS or Linux) | no ([section 8](#8-parser-plan)) |
 
 `session-state/<uuid>/` is created at session start (`runtime.node@83194924`
 `Workspace initialized`); `files/` is "Persistent storage for session
@@ -301,7 +365,8 @@ is epoch milliseconds; `timestampMs` on native model events likewise.
 journal_mode = WAL`); on the install the data was in the 1.7 MB WAL and
 the main file was 4 KB (1.37 MB and 4096 bytes on Linux), so the WAL
 must be read. `schema_version` 38 observed on macOS and 8 on Linux, both
-on 1.0.98 ([section 6](#6-format-versions)). The runtime writes it as each turn ends and rebuilds it from
+on 1.0.98, and 8 on Windows with the Copilot Desktop app's bundled
+1.0.99-2 ([section 6](#6-format-versions)). The runtime writes it as each turn ends and rebuilds it from
 `events.jsonl` with `/chronicle reindex` ("chronicle" is the CLI's name
 for its session-history commands: `standup`, `reindex`, `skills`, `tips`;
 `runtime.node@80541016` `src/runtime/src/session/store_reindex.rs`). Column
@@ -339,6 +404,9 @@ transcript event; and the row written on the next prompt repeats the
 previous turn under a new index when a prompt-only row sits between
 them. No delete, rewind or reindex was involved. The parser's secondary
 deduplication drops both kinds of copy (17 rows on the Linux collection).
+The Windows install (bundled 1.0.99-2) wrote no prompt-only row: one
+complete row per prompt, 3 for the general chat and 1 for the project
+session, the chat's last stamped at its shutdown.
 The string `duplicate_turn` sits beside the reindex messages
 (`runtime.node@80355318`); a reindex, which derives turns from the log and
 merges with `COALESCE`, was not run. Other Linux rows: `sessions` 2
@@ -356,7 +424,11 @@ from the GitHub Copilot Desktop app is a `sessions.delete` call to the
 CLI the app bundles, which removes the session directory and leaves these
 rows: observed on the Linux install of 2026-10-16, where two deleted app
 sessions kept their `sessions`, `turns`, `session_files`,
-`assistant_usage_events` and `search_index` rows
+`assistant_usage_events` and `search_index` rows, and on the Windows
+install of 2026-10-17, where the deleted general chat kept its
+`sessions` row, 3 `turns`, 3 `session_files`, 3 `search_index` and 8
+`assistant_usage_events` rows, and the WAL holding them was not
+checkpointed when the app quit
 ([What a deleted session leaves in `copilot-desktop.md`](copilot-desktop.md#what-a-deleted-session-leaves)).
 
 Other stores:
@@ -438,7 +510,8 @@ record shape is not in this bundle. The schema allows no extra keys
 schema. `session-store.db` migrates through `schema_version`: 38 on
 the macOS install and 8 on the Linux install, both 1.0.98 and both with
 the tables of [section 5](#5-sqlite-and-other-stores); neither number is
-explained; `rewind-file-snapshots` and `sidebar-sessions-state` carry
+explained (the Windows install's bundled 1.0.99-2 also had 8);
+`rewind-file-snapshots` and `sidebar-sessions-state` carry
 their own `schema` and `schemaVersion` numbers.
 
 ## 7. Secrets
@@ -457,7 +530,10 @@ entitlements. The log's sign-in line names the GitHub login. No token was
 seen in a session file; the token is in the OS keychain (the GNOME
 keyring on the Linux install) or, with the plaintext fallback, in
 `config.json` (JSONC, JSON after `//` comment lines; on Linux it held only
-account keys; already a secret glob). `/chronicle reindex`
+account keys; already a secret glob). `mcp-config.json` can hold a
+token in plain text in a server's `env`: on the Windows install the
+`github` server's `env` held a GitHub personal access token; the file is
+not parsed and the collector flags it `secret: true`. `/chronicle reindex`
 also uploads the sessions to the account (docs: "Reindexing also syncs
 your session data to your account").
 
@@ -506,7 +582,7 @@ line's `timestamp`.
 | `permission.requested` | `system`, `permission request: <permissionRequest.kind> <fullCommandText, url, fileName, path or serverName/toolName> intention=<intention>`, `tool_use_id` `permissionRequest.toolCallId`; first `permissionMode` and `agentMode` give `permission mode: <permissionMode> agent=<agentMode>`, a change gives `permission mode: <old> -> <new>` |
 | `permission.completed` | `system`, `permission decision: <result.kind> source=<decisionSource or ->`, then ` location=<locationKey>`, ` approval=<compact JSON of approval>`, ` directories=...`, ` feedback=<feedback>`, ` rules=<compact JSON>`, ` reason=<reason>`, ` path=<path>`, ` message=<message>` when present; `tool_use_id` `toolCallId` |
 | `permission.carriedForward` | `system`, `permission decision: carried-forward source=<decisionSource>` |
-| `session.permissions_changed` / `session.mode_changed` | `system`, `permission mode: <previousMode> -> <mode>` / `agent mode: <previousMode> -> <newMode>`; the Copilot Desktop app's form (`previousAllowAllPermissions`, `allowAllPermissions`, `previousAllowAllPermissionMode`, `allowAllPermissionMode`, no `mode` and no `previousMode`; real install, Linux, bundled CLI 1.0.95-3) is `permission mode: allow-all <previousAllowAllPermissionMode or -> -> <allowAllPermissionMode or ->`, and the tracked mode becomes `allow-all <allowAllPermissionMode>` |
+| `session.permissions_changed` / `session.mode_changed` | `system`, `permission mode: <previousMode> -> <mode>` / `agent mode: <previousMode> -> <newMode>`; the Copilot Desktop app's form (`previousAllowAllPermissions`, `allowAllPermissions`, `previousAllowAllPermissionMode`, `allowAllPermissionMode`, no `mode` and no `previousMode`; real installs, Linux, bundled CLI 1.0.95-3, and Windows, 1.0.99-2) is `permission mode: allow-all <previousAllowAllPermissionMode or -> -> <allowAllPermissionMode or ->`, and the tracked mode becomes `allow-all <allowAllPermissionMode>` |
 | `session.model_change` | `system`, `model: <newModel>` at the first, `model: <old> -> <newModel>` on a change, kept when equal; followed by ` cause=<cause> source=<source> effort=<reasoningEffort>` for the keys present |
 | `session.auto_mode_resolved` | `system`, `model: <old> -> <chosenModel> (auto, <routingMethod>)` |
 | `session.info` | `system`, `session.info <infoType>: <message>`, then ` url=<url>` and ` tip=<tip>` for the keys present, at the line's `timestamp`; `model` the tracked model, `tool_name` and `tool_use_id` empty |
@@ -545,6 +621,11 @@ Other files:
 | `settings.json` | one `system` row per `allowedUrls` and `deniedUrls` entry, `permission setting: allowedUrls=<url> (from .copilot/settings.json, file mtime)`; strip comments before parsing |
 | `sidebar-sessions-state/*.json` | none; `cwd` per `sessionIds[]` fills `project_path` of database and snapshot rows that lack one |
 | `logs/process-*.log` | `system`, `signed in: <host> as <login>` at the line's time; `session_id` from `Workspace initialized: <uuid>` when the file names exactly one |
+
+MCP: the configured servers (`mcp-config.json`), their failed spawns
+(the process log's `MCP server connection failed` lines) and the cached
+tool lists (`AppData/Local/copilot/mcp-tools/<sha256>.json`) are recorded
+on disk (Windows install) and not yet in the timeline ([issue 150](https://github.com/seanthegeek/doubleagent/issues/150)).
 
 The `sessions` row and the `workspace.yaml` row share the `session name:`
 form so the database copy drops when the two agree; the metadata is a row
@@ -730,5 +811,7 @@ shutdown, prompt-only row mid-turn), the `session.info` shape, the
 `model_picker` change, and the Linux layout, which matches macOS.
 `sessions.summary` holds the generated session name (Linux install).
 Not determined: why `schema_version` is 8 on Linux and 38 on macOS on the same 1.0.98; the
-legacy flat transcript's shape; the layout on Windows (the bundle has no
-platform branch for these paths).
+legacy flat transcript's shape. The Windows layout was observed only
+through the Copilot Desktop app's bundled 1.0.99-2, where it matched
+Linux under `%USERPROFILE%`; the npm-installed CLI on Windows is not
+observed ([issue 133](https://github.com/seanthegeek/doubleagent/issues/133)).
