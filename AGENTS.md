@@ -899,7 +899,13 @@ The round, in order:
    main session has confirmed that every listing, the collection and the
    probes are taken. A revert before that loses the round: the first
    Copilot CLI round on Windows was reverted before it was surveyed and
-   had to be redone.
+   had to be redone. So the main session says, in plain words and as
+   its own line, when the VM may be reverted or the `lab/` container
+   brought down, and says so only after the last listing is taken, the
+   archive and the probe output are on the analyst machine, and the
+   outputs it left in the VM are deleted; until then it says the VM is
+   still needed, and it never leaves the person to infer it from a
+   finished write-up or a passing test.
 
 Subagents do the integration from a brief that carries the evidence; they
 never run the collector live against the VM or read its user's data
