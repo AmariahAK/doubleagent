@@ -121,7 +121,7 @@ OpenBSD sh, posh (the pdksh lineage), and `zsh --emulate sh`. Concretely:
   `-print0 | read -d ''`, no process substitution.
 - No GNU-only flags: no `sed -i`, `date -d`, `cp --parents`, `find -false`,
   `stat -c` without a BSD fallback, `xargs -0` without a fallback.
-- Platform differences (`stat`, hashing, `ps`, user enumeration) go behind a
+- Platform differences (`stat`, hashing, user enumeration) go behind a
   small wrapper function with capability detection done once at startup.
 - Shell functions cannot be inherited by `find -exec sh -c`, so shared helpers
   live in the `COMMON` string, which is `eval`'d in the main script and
