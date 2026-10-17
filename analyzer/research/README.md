@@ -7,15 +7,13 @@ a shallow clone of the tool's source at the commit it names, with file and
 line citations, or for a closed-source tool from the evidence named in its
 first section (for Antigravity, the protobuf descriptors embedded in its
 binary). Each ends with a parser plan mapped to the timeline columns and
-synthetic sample records meant to become test fixtures. Treat them as the
-evidence behind each parser; the field names a parser actually depends on
-are repeated in its module docstring under `doubleagent/parsers/`.
+synthetic sample records meant to become test fixtures. They are the
+evidence behind each parser; the field names a parser depends on are
+repeated in its module docstring under `doubleagent/parsers/`.
 
-The research itself may be done in groups (forks of one codebase are best
-studied together, because the differences are what matter), but the
-findings are split per agent before they land here. Where two agents share
-a lineage, each document says so and links to the other instead of repeating
-it.
+Forks of one codebase were often studied together, because the differences
+are what matter, but each agent has its own document. Where two agents
+share a lineage, each document says so and links to the other.
 
 | Agent | Document | Store | Parser |
 | --- | --- | --- | --- |
@@ -80,14 +78,10 @@ Findings that cut across agents:
 
 A sweep of the documents above on 2026-10-15, prompted by an Antigravity
 session whose project directory the agent had deleted while every record
-of the session stayed under the home. The table says, per agent, where
-the transcripts are kept (a directory under the home survives deleting
-the project; a store inside the project does not), whether a per-prompt
-history file is written beside them and what each line holds, where the
-working directory is recorded, and whether a second copy of the
-transcript exists that would survive loss of the primary store, and,
-since analyzer 0.13.0, which of the history files and copies the
-analyzer parses as secondary sources (see
+of the session stayed under the home. A transcript directory under the
+home survives deleting the project; a store inside the project does not.
+The history and second-copy cells also say which files the analyzer parses
+as secondary sources, since analyzer 0.13.0 (see
 [Secondary sources](../docs/output.md#secondary-sources)). "Not stated"
 means the document does not say. The unified-timeline design that
 parses every source and shows each event once is
@@ -148,6 +142,6 @@ What the sweep shows:
   deleted or ephemeral threads), not to precede them.
 - Second copies that survive loss of the primary store exist for
   Antigravity, Claude Desktop, Cline, Hermes, OpenClaw, Tabby, nanobot,
-  Letta, Codex and Open Interpreter; the analyzer reads only Claude
-  Desktop's `audit.jsonl` (as a fallback) today. The others are listed in
+  Letta, Codex and Open Interpreter; the table says which of them the
+  analyzer parses as secondary sources. The design is
   [doubleagent issue 122](https://github.com/seanthegeek/doubleagent/issues/122).

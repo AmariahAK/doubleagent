@@ -27,17 +27,15 @@ Windows PowerShell 5.1 as well; see
 
 The collector writes its progress as it goes: one line per user, catalog
 match and project, to stderr unless `-q` is given and always to the log
-file under `-o`, one line at a time (the sh collector appends each line
-with its own `printf`, the PowerShell collector's log writer flushes after
-every line). In a local terminal that progress is live.
+file under `-o`, one line at a time. In a local terminal that progress is
+live.
 
-The EDR consoles are what hold it back. Running the collector through RTR
-`runscript`, no output appeared until the script had finished (observed in
-October 2026, recorded in
-[issue 100](https://github.com/seanthegeek/doubleagent/issues/100)), and
-the consoles run a script as one command whose result comes back when it
-ends. A long collection therefore shows nothing until the summary; that is
-the console's behaviour, not a hang. `-q` changes nothing here: it removes
+The EDR consoles hold it back: they run a script as one command whose
+result comes back when it ends. Through RTR `runscript`, no output
+appeared until the script had finished (observed in October 2026,
+[issue 100](https://github.com/seanthegeek/doubleagent/issues/100)). A
+long collection therefore shows nothing until the summary; that is the
+console's behaviour, not a hang. `-q` changes nothing here: it removes
 the progress lines from stderr, but the console holds stdout and stderr
 alike until the end.
 

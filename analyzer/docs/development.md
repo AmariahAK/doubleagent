@@ -36,9 +36,8 @@ collector on the fake image and analyses the resulting archive end to end.
 with console junk lines and one with a `host` line only, and checks the
 columns, the default file name, `-o`, the rollup and the empty-host row;
 with `sh` available it also runs the collector's `--inventory` on the fake
-image and reads that.
-Tests that need the collector script, `sh` and `tar`, or
-permission to create symlinks are skipped, with the reason, when it is
+image and reads that. Tests that need the collector script, `sh` and `tar`,
+or permission to create symlinks are skipped, with the reason, when it is
 missing. CI runs the suite on Python 3.10, 3.11, 3.12, 3.13 and 3.14 with
 `requirements.txt` installed.
 
@@ -52,11 +51,11 @@ uvx --from pyright==1.1.414 --with zstandard --with python-dateutil pyright
 
 ## Reading a real install
 
-`tools/shape.py` is the required way to look at the files an agent wrote on
-a real install, a lab VM or the author's own machine. It prints the shape of
-the files and never a value, so its output can go into a research document
-or a report. It uses the standard library only and imports nothing from
-`doubleagent`, so the single file can be copied to a VM and run there.
+`tools/shape.py` shows the files an agent wrote on a real install, a lab VM or
+the author's own machine. It prints the shape of the files and never a value,
+so its output can go into a research document or a report. It uses the
+standard library only and imports nothing from `doubleagent`, so the single
+file can be copied to a VM and run there.
 
 ```sh
 python3 -I tools/shape.py ~/.config/Agent
@@ -124,5 +123,5 @@ version bump and the lists to update, is "Adding a parser" in
 4. Add fixture records to `tests/fixtures.py` and a test class to
    `tests/test_parsers.py`. Then change the agent's row in the
    [agents page](../../docs/agents.md) to `parsed`, and move
-   its subsection to [Parser details](../../docs/agents.md#parser-details) with the
+   its subsection to [Parsed agents](../../docs/agents.md#parsed-agents) with the
    files the parser reads and the evidence it was validated against.

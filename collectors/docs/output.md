@@ -176,11 +176,10 @@ is `skipped_secret` under `--no-secrets` whatever its size.
 
 ### Special files
 
-A socket, FIFO (named pipe) or device is never opened, because reading one can block
-the collector (a FIFO waits for a writer) or read something that is not a
-file's contents; it gets one `skipped_special` row, so it is recorded
-rather than silently left out. How each collector names the kind in
-`type`:
+A socket, FIFO (named pipe) or device is never opened, because reading
+one can block the collector (a FIFO waits for a writer) or read something
+that is not a file's contents; it gets one `skipped_special` row. How each
+collector names the kind in `type`:
 
 | Collector | How the kind is found | `type` values |
 | --- | --- | --- |

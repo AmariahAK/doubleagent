@@ -20,7 +20,8 @@ repo_name: seanthegeek/doubleagent
 edit_uri: ""
 docs_dir: ..
 # foo.md becomes foo.html, the URLs the site has always had (and that
-# analyzer/pyproject.toml links to); hooks.py keeps README.md as README.html.
+# analyzer/pyproject.toml links to); hooks.py keeps README.md as README.html
+# and makes docs/index.md the home page, index.html at the root.
 use_directory_urls: false
 
 # Only the Markdown documents are pages; nothing else in the repository is
@@ -29,12 +30,14 @@ use_directory_urls: false
 # files (assets/) are matched by these patterns too, so they are taken back.
 # The patterns are gitignore patterns; a re-excluded path names the files
 # (dir/**), not the directory, since a file-level `!*.md` outranks a
-# directory-level match.
+# directory-level match. The root README.md is the GitHub overview and
+# stays off the site, whose home page is docs/index.md.
 exclude_docs: |
   *
   !*.md
   !/assets/**
   **/.*/**
+  /README.md
   /CLAUDE.md
   /mkdocs/**
   /analyzer/doubleagent/**
@@ -97,7 +100,7 @@ markdown_extensions:
           case: lower
 
 nav:
-  - Overview: README.md
+  - Home: docs/index.md
   - Agents: docs/agents.md
   - Collectors:
       - collectors/README.md

@@ -1,10 +1,7 @@
 # Internals
 
 How the two collectors are built, for a maintainer who has to audit or
-extend them: the layout both scripts share, the run flow, the sh worker
-programs, glob matching, the manifest writer, capability detection, the
-Docker volume path, project discovery, inventory mode, the naming rules and
-the table of matching sh and PowerShell functions. The rules every change must keep are in
+extend them. The project's standards for the collectors are in
 [AGENTS.md](../../AGENTS.md#non-negotiable-standards), the readability
 rules in [its Readability section](../../AGENTS.md#readability).
 
@@ -68,11 +65,10 @@ The steps in the main program, in run order:
 | Archive | `write_archive` (writes `collection.json` and stages it with the manifest and log; exit 2 when no archive was written) | `Write-Archive`; exit 2 when no archive was written |
 | Finish | `hash_archive`, `print_result`, exit 0; the `EXIT` trap runs `cleanup` | `Write-ArchiveHash`, `Clear-Staging` unless `-KeepStaging`, `Write-Result`, exit 0 |
 
-The order of the inventory walk differs between the sides and is kept as
-it is: the sh collector walks the homes in `write_inventory`, after project
-discovery, and the PowerShell collector in `Add-UserHomes`, before it. An
-`INT` or `TERM` signal makes the sh collector log `interrupted`, run
-`cleanup` and exit 130.
+The order of the inventory walk differs between the sides: the sh collector
+walks the homes in `write_inventory`, after project discovery, and the
+PowerShell collector in `Add-UserHomes`, before it. An `INT` or `TERM` signal
+makes the sh collector log `interrupted`, run `cleanup` and exit 130.
 
 ## Worker programs (sh)
 
@@ -299,10 +295,10 @@ and records the result in the log and in `collection.json`'s
 The main program puts `/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin` ahead
 of the inherited `PATH`, sets `LC_ALL=C` and unsets `CDPATH`, which `cd`
 would otherwise search for the relative `-r` and `-o` that `resolve_root`
-and `check_prerequisites` resolve with `cd` and `pwd`. Two smoke-test checks build a
-patched copy of the script with `sed`: one rewrites the line that starts
-`PATH="/usr/bin:`, the other the text `command -v sha256sum ` (with its
-trailing space). Both strings must stay byte-identical.
+and `check_prerequisites` resolve with `cd` and `pwd`. Two smoke-test
+checks build a patched copy of the script with `sed`: one rewrites the line
+that starts `PATH="/usr/bin:`, the other the text `command -v sha256sum `
+(with its trailing space), so a change to either string breaks them.
 
 The sh archiver chain is fixed, in `write_archive`: `tar -czf`, then
 `tar_gzip` (`tar -cf - | gzip`, with `tar`'s exit status passed through
@@ -409,8 +405,7 @@ the sh readers drop the files `test_inventory_secret` rejects (the
 its caller's `"$@"`), and the PowerShell readers go through
 `Read-DiscoverySource`, which asks `Test-InventorySecret`.
 
-To add a source, add it to the group it belongs to on both sides, at the
-same position.
+A new source goes into its group on both sides, at the same position.
 
 ## Inventory mode
 
@@ -471,9 +466,8 @@ lines, and variables that fill a manifest field are named like the field.
 
 ## Function pairs
 
-One name per job: a sh function and a PowerShell function that do the same
-step have matching names and one row here. A rename on either side updates
-this table in the same commit. Worker programs are listed beside the
+A sh function and a PowerShell function that do the same step have
+matching names and one row here. Worker programs are listed beside the
 PowerShell functions that do their job.
 
 | Step | sh | PowerShell |

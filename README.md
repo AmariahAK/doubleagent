@@ -12,9 +12,8 @@ others. It has two
 parts, kept in separate directories because they run in different places and
 have different dependency rules, and a Docker lab for developers.
 
-The rendered documentation, every document in this repository as one
-site with navigation and search, is the
-[doubleagent documentation site](https://seanthegeek.net/doubleagent/).
+More details can be found at the
+[documentation website](https://seanthegeek.net/doubleagent/).
 
 | Part | Directory | Runs on |
 | --- | --- | --- |

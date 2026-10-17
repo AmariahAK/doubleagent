@@ -81,9 +81,7 @@ project                                  users          agent                 fi
 ```
 
 Each project has one line per agent, sorted by agent, then a `(shared)`
-line when it holds shared files (the files several agents read, listed
-above: `AGENTS.md`, `.mcp.json`, `.github/copilot-instructions.md`),
-with an empty `parser` column because no one agent owns them. The path
+line when it holds shared files, with an empty `parser` column. The path
 (cut to 40 characters) and `users` (the users whose manifest rows name the
 directory, sorted and joined by `,`) are printed on the project's first
 line only.
@@ -267,9 +265,9 @@ which the first table prints first. Its keys, in order:
 | `projects[].shared_files` | integer | The shared files in the directory: files several agents read, which the manifest records with agent `project` rather than an owner (`AGENTS.md`, `.agents/`, `.mcp.json`, `.github/copilot-instructions.md`, `SOUL.md`; see [detect](#detect) for the full list and their readers). 0 when there is none. |
 | `projects[].shared_bytes` | integer | The total manifest `size` of those shared files. |
 | `problems` | array of strings | The `problem:` lines without their prefix, `<path>: <reason>`: each directory or file inside the input that could not be read while it was opened, and each collected manifest row whose file is missing from `fs/` (see [Unreadable inputs](inputs.md#unreadable-inputs)). `[]` when there are none. |
-| `files` | array of objects | Only with `--files`: one per attributed file, in the order the manifest lists them (the walk order in loose mode). It mirrors the manifest file by file, so a shared file (one several agents read, such as `AGENTS.md`) appears here with agent `project`. |
+| `files` | array of objects | Only with `--files`: one per attributed file, in the order the manifest lists them (the walk order in loose mode). It mirrors the manifest file by file, so a shared file such as `AGENTS.md` appears here with agent `project`. |
 | `files[].user` | string | As `homes[].user`. |
-| `files[].agent` | string | The attributed agent: the manifest `agent`, re-attributed from the bundled project catalog for a project file of a collection before 1.12.0; `project` for a shared file, one several agents read (`AGENTS.md`, `.mcp.json`). |
+| `files[].agent` | string | The attributed agent: the manifest `agent`, re-attributed from the bundled project catalog for a project file of a collection before 1.12.0; `project` for a shared file (`AGENTS.md`, `.mcp.json`). |
 | `files[].path` | string | The file's path on the source host, as the manifest records it. |
 
 Before analyzer 0.12.0 the per-home counts were a flat array `agents`,
@@ -307,10 +305,9 @@ dropped:   3 duplicate rows from secondary sources (antigravity 2, claude-code 1
 dropped:   0 duplicate rows from secondary sources
 ```
 
-Then come the
-`agents:` line, the row count with a breakdown by agent and `turn_type`,
-and the session count. The breakdown counts the rows written. The last
-three line groups name the three files, one each, in this order:
+Then come the `agents:` line, the row count with a breakdown by agent and
+`turn_type`, and the session count. The breakdown counts the rows written. The
+last three line groups name the three files, one each, in this order:
 
 ```text
 rows:      214 in out/timeline.jsonl
@@ -346,29 +343,25 @@ agents:    parsed: claude-code; detected but not parsed: amp; collected only: co
 agents:    none were found
 ```
 
-`parsed` names the agents that produced rows before filtering. `detected
-but not parsed` names the agents in the input that have no parser and
-whose files hold records a parser is wanted for, the `backlog` rows of the
-[agents page](../../docs/agents.md) (the agents `detect` shows without a
-parser, in either table, so an agent whose only files are in a project
-directory counts). `collected only` names the agents in the input that
-have no parser because their files hold nothing to parse, a token store or
-configuration only: the `collected` rows of that table, which the analyzer
-holds as `NO_TRANSCRIPTS` in `doubleagent/parsers/__init__.py`; the group
-follows `detected but not parsed` and appears only when it has an entry.
-Before analyzer 0.14.0 those agents were listed under `detected but not
-parsed`. `parser found no rows` names the agents
-in the input that have a parser which read their files and produced no
+`parsed` names the agents that produced rows before filtering. `detected but
+not parsed` names the agents in the input that have no parser and whose files
+hold records a parser is wanted for, the `backlog` rows of the [agents
+page](../../docs/agents.md) (the agents `detect` shows without a parser, in
+either table, so an agent whose only files are in a project directory counts).
+`collected only` names the agents in the input that have no parser because
+their files hold nothing to parse, a token store or configuration only: the
+`collected` rows of that table. The group follows `detected but not parsed`
+and appears only when it has an entry. Before analyzer 0.14.0 those agents
+were listed under `detected but not parsed`. `parser found no rows` names the
+agents in the input that have a parser which read their files and produced no
 rows, such as a data directory holding only an empty database; the group
 appears only when it has an entry, and with `--agent` it counts only the
-agents selected. Files with agent `project` (a project file several agents
-read, see [detect](#detect)), which every parser is offered, are never
-listed in any group. Each list is sorted and
-comma-separated, and `parsed` or `detected but not parsed` reads `none`
-when it is empty. `none were found` means the input holds no agent data,
-where `detect` prints `no agent artifacts found`. Before analyzer 0.12.0
-the line read `parsed <list>; detected only <list>`, with `none` for an
-empty list.
+agents selected. Shared files (agent `project`, see [detect](#detect)), which
+every parser is offered, are never listed in any group. Each list is sorted
+and comma-separated, and `parsed` or `detected but not parsed` reads `none`
+when it is empty. `none were found` means the input holds no agent data, where
+`detect` prints `no agent artifacts found`. Before analyzer 0.12.0 the line
+read `parsed <list>; detected only <list>`, with `none` for an empty list.
 
 ## inventory.json
 
@@ -555,8 +548,8 @@ the test collection of the [`detect --json`](#detect---json) example:
 rows and 1 session: one `history.jsonl` line and the six rows of a
 session transcript whose working directory is `/srv/proj`; it has no
 project files there, because its transcripts are in alice's home, where
-`homes` counts its 3 files. Under
-`/srv/gone`, a `referenced` project, it has one history line. Under
+`homes` counts its 3 files. Under `/srv/gone`, a `referenced` project, it
+has one history line. Under
 `outside_projects` it has the other 7 rows and 1 session: the history
 line with no project and a session transcript that records no working
 directory. `cursor` has project files and no parser, so no rows;
@@ -677,13 +670,14 @@ jq -r '.projects | to_entries[] | .key as $p | .value.agents | to_entries[] | se
 
 Before analyzer 0.12.0 there was no `inventory.json`. The keys are an
 interface like the JSONL fields: new ones are added at the end, the
-existing ones keep their names, types and meaning. `deduplicated` was
-added in analyzer 0.13.0, and `collected_only` and then
-`synced_sessions`, the last key, in analyzer 0.14.0, which also added
-`synced_sessions` as the last key of each `homes[].agents[]` object; with it, `detected_not_parsed` stopped listing the agents with
-nothing to parse, which it had held since 0.12.0. The one key added at the front is
-`doubleagent_version`, in analyzer 0.14.0: the file is one object read by
-key, not by position, and a reader needs the version before the rest.
+existing ones keep their names, types and meaning. Analyzer 0.13.0 added
+`deduplicated`. Analyzer 0.14.0 added `collected_only` and then
+`synced_sessions`, the last key, and `synced_sessions` as the last key of
+each `homes[].agents[]` object; from that version `detected_not_parsed`
+no longer lists the agents with nothing to parse, which it had held since
+0.12.0. The one key added at the front is `doubleagent_version`, in
+analyzer 0.14.0, because a reader needs the version before the rest; the
+file is one object read by key, not by position.
 
 ## JSONL encoding
 
@@ -979,7 +973,7 @@ carrying the call's `tool_name` and `tool_use_id`; and one
 `project_path` the project, the file's modification time and an empty
 `session_id`.
 
-From issues 96 and 97, the `claude-code` decision row also ends with
+The `claude-code` decision row also ends with
 ` toolDenialKind=<value> userFeedback=<text>` when the same line records
 either key, each printed as recorded and `userFeedback` last because it
 is free text; a line with either key and no `permissionDecision` yields
@@ -1030,9 +1024,9 @@ secondary source is dropped when a row from the agent's primary store has
   matches on text and scope alone. A secondary row with a timestamp never
   matches a primary row without one.
 
-The tolerance is per source: 2 seconds for every source in the table
-below; a parser whose source stamps an event later than the primary store
-does may widen it, and the table then says so.
+The tolerance is per source: 2 seconds, except for the sources that
+stamp an event later than the primary store does, whose wider window the
+table below gives.
 
 Matching is one-to-one. The secondary rows with a timestamp go first, in
 timestamp order, each matched to the nearest primary row within its
@@ -1065,7 +1059,7 @@ line (a session, no project) of the same prompt meet; under a broader
 scope a candidate whose `session_id` or `project_path` differs from one
 the row records is never taken, so the same prompt typed in two sessions
 stays two events. The copies of one event that several backups,
-snapshots, archives or mirrors keep are thus shown once, also after the
+snapshots, archives or mirrors keep are thus shown once, even after the
 primary store is gone. A row matches only a row from a different
 `source_file`, so two identical prompts in one history file, with a
 timestamp or without, are both kept as the two events the file records.
@@ -1115,13 +1109,16 @@ snapshots (`state-snapshots/`) are excluded by the collector unless it
 runs with `--full`, so they appear only in a full collection or loose
 input.
 
-Three sources have a wider window, because they stamp an event later
+Four sources have a wider window, because they stamp an event later
 than the primary store does. Antigravity's brain mirror records only
 when a step started, while the database rows of a response or a tool
 result carry its completion, so its rows match within 600 seconds.
 Letta's `transcript.jsonl` stamps every line of a turn when the turn
 ends, so its window is one hour; a turn longer than that leaves its
-earlier lines shown twice. nanobot's WebUI transcript stamps events in
+earlier lines shown twice. Copilot CLI's session store writes a turn
+when it ends, so its `turns` rows and its rewind snapshots match within
+one hour, and only against an identical event of the same session.
+nanobot's WebUI transcript stamps events in
 true UTC while its session files record host local time, emitted as if
 UTC, so its window is 15 hours (the largest UTC offset, 14 hours, plus
 an hour of turn); a WebUI row kept because no session row matched
@@ -1161,20 +1158,19 @@ its `db.sqlite` holds the desktop app's chats, a different surface, so
 both are parsed as primary records. little-coder's prompt history rows
 carry agent `little-coder`, while its transcripts are pi sessions under
 agent `pi`; the rule pairs rows of one agent only, so it cannot pair
-them, and both stay. Continue's `toolUsage.jsonl`
-is not a secondary source either: its event rows carry their own time
+them, and both stay. Continue's `toolUsage.jsonl` is not a secondary
+source either: its event rows carry their own time
 but no session or project, and the session rows they repeat carry only
 the session's creation time, so a match within 2 seconds would be
 chance, and both are kept.
 
-One fallback remains: Cline's
-`api_conversation_history.json` is read only when the task's
-`ui_messages.json` is absent, because the two record different texts
-for the same turn (the API history wraps the first prompt in `<task>`
-tags, and its tool calls are content blocks where the UI messages have
-one JSON record per tool), so the rule could not pair them and the
-task's turns would be shown twice; see
-[section 8 of `research/cline.md`](../research/cline.md#8-parser-plan).
+One fallback remains: Cline's `api_conversation_history.json` is read only
+when the task's `ui_messages.json` is absent, because the two record different
+texts for the same turn (the API history wraps the first prompt in `<task>`
+tags, and its tool calls are content blocks where the UI messages have one
+JSON record per tool), so the rule could not pair them and the task's turns
+would be shown twice; see [section 8 of
+`research/cline.md`](../research/cline.md#8-parser-plan).
 
 ## sessions.jsonl
 

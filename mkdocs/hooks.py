@@ -3,9 +3,11 @@
 The site is built from the Markdown documents where they are in the
 repository (mkdocs.yml), and the documents are written for GitHub, so:
 
-- README.md keeps its own URL (analyzer/README.html), as foo.md becomes
-  foo.html, instead of MkDocs' index.html; the root README.md stays the
-  site's index.html. `on_files` sets it.
+- docs/index.md is the site's home page, index.html at the root, and a
+  README.md keeps its own URL (analyzer/README.html), as foo.md becomes
+  foo.html, instead of MkDocs' index.html. The root README.md is the
+  GitHub overview and is not a page (mkdocs.yml excludes it). `on_files`
+  sets both.
 - Every heading gets the id GitHub gives it. The documents link to sections
   by GitHub's anchors and tools/check_doc_links.py checks the links against
   them; Python-Markdown's toc differs for repeated headings (`added_1` where
@@ -38,6 +40,7 @@ from typing import Any
 log = logging.getLogger("mkdocs.hooks.doubleagent")
 
 SOURCE_URL = "https://github.com/seanthegeek/doubleagent"
+HOME_PAGE = "docs/index.md"
 HEADING = re.compile(r'<h([1-6])([^>]*?)\sid="([^"]*)"([^>]*)>(.*?)</h\1>', re.S)
 HREF = re.compile(r'(<a\s[^>]*?href=")([^"#]*)((?:#[^"]*)?")')
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
@@ -69,8 +72,12 @@ def on_files(files: Any, config: Any) -> Any:
     _published.clear()
     _excluded_src.clear()
     for f in files:
-        if f.src_uri.endswith("/README.md"):
+        dest = None
+        if f.src_uri == HOME_PAGE:
+            dest = "index.html"
+        elif f.src_uri.endswith("/README.md"):
             dest = f.src_uri[: -len(".md")] + ".html"
+        if dest is not None:
             f.dest_uri = dest
             f.url = dest
             f.__dict__.pop("abs_dest_path", None)

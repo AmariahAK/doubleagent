@@ -3,12 +3,12 @@
 `doubleagent` is a forensic analyzer of AI agent use on a system. It takes
 an archive from the doubleagent collectors, an extracted collection, or any
 loose directory tree such as a copied home directory or a mounted disk image,
-detects which AI agents left state in it using the catalog (the collectors'
-table of agents and the paths under a home directory where each keeps its
-state, bundled with the analyzer), and parses the transcripts it knows
-how to read into one normalised JSONL timeline. It runs on the analyst's
-workstation, never on the host under investigation, so unlike the collectors
-it may carry dependencies.
+detects which AI agents left state in it, and parses the transcripts it
+knows how to read into one normalised JSONL timeline. Detection uses the
+catalog, the collectors' table of agents and the paths under a home
+directory where each keeps its state, bundled with the analyzer. It runs
+on the analyst's workstation, never on the host under investigation, so
+unlike the collectors it may carry dependencies.
 
 It needs Python 3.10 or later. `pip install .` in this directory installs
 the `doubleagent` package and the `doubleagent` command with their two
@@ -102,8 +102,8 @@ which subcommands take it, and the full exit-code table.
 The [agents page](../docs/agents.md) lists every agent in the catalog
 with its status (parsed, a parser backlog, or collected with nothing to
 parse), the files each parser reads and the evidence it was validated
-against. Thinking and
-reasoning blocks are left out unless `--include-thinking` is passed.
+against. Thinking and reasoning blocks are left out unless
+`--include-thinking` is passed.
 
 ## Documentation
 

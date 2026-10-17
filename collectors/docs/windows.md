@@ -18,7 +18,8 @@ Some builds of the built-in `tar.exe` exit `0xC0000005`, an access
 violation, when the staging tree holds a name outside the ANSI code page,
 such as a CJK or Cyrillic one. This was seen with bsdtar 3.8.8 (`tar.exe`
 10.0.26100) on Windows 11, where no option or format makes it store such
-names; the `tar.exe` on the GitHub `windows-latest` runner stores them. When `tar.exe` fails, the log has a line
+names; the `tar.exe` on the GitHub `windows-latest` runner stores them.
+When `tar.exe` fails, the log has a line
 `tar.exe failed: exit code 0xC0000005` (hex for a negative exit code,
 decimal otherwise), its partial archive is removed, and `collection.json`
 `notes` gets `tar.exe failed (exit code 0xC0000005); fell back to PowerShell
@@ -159,10 +160,8 @@ profile and partitions, and also held its package's settings hive
 `Settings\settings.dat` and its `.LOG1` and `.LOG2` logs, and the
 bundled Codex's `.codex\.sqlite-maintenance.lock` and
 `.codex\thread-writer-locks\<uuid>.lock` files. The lock files are
-empty, so only the cookie store and the settings hive are lost; close the app or collect from
-an image to get it. Symlinks and junctions are recorded
-with their target and never followed; other reparse points, such as
-AF_UNIX sockets, get a `skipped_special` row.
+empty, so only the cookie store and the settings hive are lost; close the
+app or collect from an image to get them.
 
 A file a running process holds open and keeps writing can have a stale
 length in its directory entry: NTFS updates the length it lists only

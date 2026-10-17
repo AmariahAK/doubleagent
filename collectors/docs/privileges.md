@@ -20,8 +20,8 @@ and:
   `error_read` row under the agent being walked, and a `read failed:` log
   line. sh: every directory `find` reaches is tested with `test -r` and
   `test -x` in the worker, and `error` is the first line `ls` printed for
-  the same access, so the decision never depends on `find`'s localised
-  message; `find` still logs its own `find:` line for the directory. The
+  the same access; `find` still logs its own `find:` line for the
+  directory. The
   PowerShell collector writes the row when `Get-ChildItem` fails on the
   directory, with the exception message as `error`. On Linux and macOS a
   directory that can be listed but not entered fails that call only when

@@ -76,6 +76,8 @@ analyzer/
                                zstandard, for compressed transcripts)
 lab/                           Docker sandbox for running CLI agents against a scratch
                                home and exporting it for the collector; see lab/README.md
+docs/index.md                  the documentation site's home page; the root README.md is
+                               the GitHub overview and is not a site page
 docs/agents.md                 every catalog agent with its parse status, files and evidence
 tools/check_research_links.py  verifies every citation link in the research documents
                                resolves to its file and line range at the cited commit
@@ -358,7 +360,7 @@ rules are different from the collectors'.
   `ErrorListsReportedTests` in `analyzer/tests/test_errors.py` fails on
   a list a parser fills and never reads again.
   The agent's subsection under
-  [Parser details](docs/agents.md#parser-details), linked from
+  [Parsed agents](docs/agents.md#parsed-agents), linked from
   its row in the table of the [agents page](docs/agents.md), names
   the real installs (platform, version, date) on which the parser's file
   paths and record shapes were seen, and says "fixture only" for a path
@@ -512,8 +514,8 @@ and say in the module docstring if the shape has drifted since.
    shape: the research links, now with the analyzer research document,
    the open issue links, and a clause of about twelve words only when
    something is still unparsed. Move the agent's subsection from
-   [Collected files](docs/agents.md#collected-files) to
-   [Parser details](docs/agents.md#parser-details), in
+   [Collected agents](docs/agents.md#collected-agents) to
+   [Parsed agents](docs/agents.md#parsed-agents), in
    alphabetical order, and fill it with the files the parser reads
    ("Files read:") and the full evidence for the parser ("Validated
    against:", the platform, version and date of every real install).
@@ -598,7 +600,7 @@ find. The validation for every current entry is recorded in the index table in
    (parseable records on disk, with a parser issue) or `collected`
    (nothing to parse, with the reason), its name linked to a new
    subsection under
-   [Collected files](docs/agents.md#collected-files) that lists
+   [Collected agents](docs/agents.md#collected-agents) that lists
    what the collector gathers; a `collected` row also adds the
    agent to `NO_TRANSCRIPTS` in `analyzer/doubleagent/parsers/__init__.py`,
    which the analyzer reports as `collected only` and a test keeps equal
@@ -1188,7 +1190,9 @@ for a documentation-only change, only markdownlint and
   the label or the heading before committing; nobody should have to ask
   for the examples or the table to be brought up to date.
   Behaviour changes without a README update are incomplete. The [top-level
-  README](README.md) is an overview only.
+  README](README.md) is an overview only, and so is the site's home page
+  [`docs/index.md`](docs/index.md), which lists the pages of each part;
+  a new page is added to its list as well as to the site's `nav:`.
   A new document page is added to the `nav:` tree in `mkdocs/mkdocs.yml`
   beside its siblings (a page that belongs to neither part, such as
   [`docs/agents.md`](docs/agents.md), goes under `docs/` at the

@@ -11,7 +11,7 @@ these files: Excel stops at 1,048,576 rows and 32,767 characters per cell.
 Export a filtered, shortened subset to CSV instead, as shown at the end of
 the jq examples.
 
-**jq** (<https://jqlang.org>) reads one record at a time. Never pass `-s`
+**[jq](https://jqlang.org)** reads one record at a time. Never pass `-s`
 (slurp) on a large file, which loads the whole file into memory.
 
 ```sh
@@ -65,7 +65,7 @@ done
 gzip -k timeline.jsonl && zcat timeline.jsonl.gz | jq -c 'select(.agent == "codex-cli")'
 ```
 
-**DuckDB** (<https://duckdb.org>) runs SQL over the file without an import
+**[DuckDB](https://duckdb.org)** runs SQL over the file without an import
 step, and keeps `session_id` a string even when it looks like a number.
 `COPY` writes a filtered subset as CSV or Parquet.
 

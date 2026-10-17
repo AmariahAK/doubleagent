@@ -133,11 +133,11 @@ collected as `claude-code` from these locations, none flagged
 | `.cache/claude-cli-nodejs` | Linux, when `XDG_CACHE_HOME` is unset (from the CLI binary, not observed) |
 | `AppData/Local/claude-cli-nodejs/Cache/*` | Windows (from the CLI binary, not observed) |
 
-The Windows line names each project-slug directory under `Cache/` rather
-than `claude-cli-nodejs` itself: the PowerShell collector's exclusion
-match ignores case, so the Claude Desktop exclusion `*/Claude*/Cache`
-would match `AppData/Local/claude-cli-nodejs/Cache` and prune the whole
-directory. The slug directories are not named `Cache`, so both collectors
+On Windows the catalog names each project-slug directory under `Cache/`
+rather than the directory itself, because the PowerShell collector matches
+exclusions without regard to case and the Claude Desktop exclusion
+`*/Claude*/Cache` would prune `AppData/Local/claude-cli-nodejs/Cache`
+whole; the slug directories are not named `Cache`, so both collectors
 collect them. A relocated `XDG_CACHE_HOME` on Linux is not found.
 
 ## Claude Desktop data directories
@@ -246,13 +246,11 @@ and the Electron caches `Cache`, `Code Cache`, `GPUCache`,
 `DawnGraphiteCache`, `DawnWebGPUCache`, `blob_storage`,
 `Shared Dictionary`, `CachedData` and `Crashpad` and the spell-check
 `Dictionaries` in the user-data directory. The rest of
-`.gemini/antigravity/cache/` is collected. The user-data directory's
+`.gemini/antigravity/cache/` is collected: the user-data directory's
 `Cache` exclusion names its three locations
 (`Library/Application Support/Antigravity/Cache`,
-`.config/Antigravity/Cache`, `AppData/Roaming/Antigravity/Cache`)
-instead of `*/Antigravity/Cache`, because the PowerShell collector's
-exclusion match ignores case and that pattern would also prune
-`.gemini/antigravity/cache`.
+`.config/Antigravity/Cache`, `AppData/Roaming/Antigravity/Cache`), so the
+PowerShell collector's case-insensitive match does not prune it.
 
 The CLI's file token `antigravity-oauth-token`, each plugin's OAuth
 credential, `plugin_data/<plugin>/token.json` in any `.gemini/antigravity*`
@@ -274,8 +272,8 @@ directory is `AppData/Local/Packages/<package family name>`). By October
 2026 the package was named `OpenAI.Codex` (ChatGPT 26.1007.9446.0,
 observed on Windows 11 ARM64): the app is a Chromium build with OpenAI's
 Codex agent bundled, and the bundled Codex keeps its state in `~/.codex`,
-collected as `codex-cli`. The catalog lines for the older
-`OpenAI.ChatGPT-Desktop` package are kept. Collected as
+collected as `codex-cli`. The older `OpenAI.ChatGPT-Desktop` package is
+still collected where it exists. Collected as
 `chatgpt-desktop`, with `<pkg>` for `AppData/Local/Packages/OpenAI.Codex_*`:
 
 | Location | What it holds |
@@ -312,8 +310,8 @@ evidence is in
 On macOS the app is the same Electron build (ChatGPT 26.1007.71326,
 observed on macOS 26.6.2, October 2026), with the bundle identifier
 `com.openai.codex`; the paths of the former native app
-(`com.openai.chat`) no longer appear, and its catalog line is kept for
-hosts that still have it. Collected as `chatgpt-desktop`:
+(`com.openai.chat`) no longer appear, but they are still collected on
+hosts that have them. Collected as `chatgpt-desktop`:
 
 | Location | What it holds |
 | --- | --- |

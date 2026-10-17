@@ -1,23 +1,21 @@
 # Catalog evidence
 
 One document per catalog agent, named after the agent as it appears in
-`collect-agent-artifacts.sh --list`, recording where that agent stores state
-on each OS, which files are credentials, which subtrees are large or
-worthless, which files it writes inside projects, and where it records the
-project path, ending with the confidence in each finding. These documents
+`collect-agent-artifacts.sh --list`. Each records where that agent stores
+state on each OS, which files are credentials, which subtrees are large or
+worthless, which files it writes inside projects and where it records the
+project path, and ends with the confidence in each finding. These documents
 are the evidence behind the `CATALOG`, `PROJECT_CATALOG`, `EXCLUDES`,
-`SECRET_GLOBS` and `DOCKER_VOLUMES` tables; the index table below summarises the evidence
-level. How transcripts are encoded is the analyzer's concern and lives in
-`analyzer/research/`.
+`SECRET_GLOBS` and `DOCKER_VOLUMES` tables. How transcripts are encoded is
+the analyzer's concern and lives in `analyzer/research/`.
 
-Evidence levels, best first: source code at a named commit with file and
-line, where each citation links to that line at that commit so the link
-stays correct after the file changes upstream; the shipped package or binary (`npm pack`, extracted bundles, binary
-strings); official documentation; vendor forums and issue trackers; published
-write-ups. Each document says which level each claim rests on. Where a
-document mentions `scratchpad/...`, that is the research session's working
-directory, kept only for the duration of the research; the cited sources are
-the repositories, package versions and URLs named beside it.
+Evidence levels, best first: source code at a named commit, each citation
+linked to the line at that commit; the shipped package or binary (`npm pack`,
+extracted bundles, binary strings); official documentation; vendor forums and
+issue trackers; published write-ups. Each document says which level each claim
+rests on. Where a document mentions `scratchpad/...`, that is the research
+session's working directory, kept only for the duration of the research; the
+cited sources are the repositories, package versions and URLs named beside it.
 
 `tools/check_research_links.py` (at the repository root) checks every
 GitHub citation in these documents and in `analyzer/research/`. For each
@@ -84,30 +82,25 @@ file names to check only those. It exits `1` when any link fails.
 | `zed` | [zed.md](zed.md) | source, crate sources | Flatpak install paths not covered |
 
 Collector version 1.3.0 (issue 24, commit [88678a0](https://github.com/seanthegeek/doubleagent/commit/88678a02e7e8deb988c7763b98384cd014d0fff4)) applied the catalog
-lines these documents proposed. Each document originally ended with a review
-of the catalog lines current at the time and the lines to add; those
-sections described a catalog that has since moved on and were removed, so
-the tables in the scripts are the record of what was adopted and that
-commit's history is the record of what was considered.
+lines these documents proposed, and the proposals were then removed from
+the documents: the tables in the scripts record what was adopted, and that
+commit's history what was considered.
 
 Collector version 1.4.0 added fifteen agents from the October 2026 backlog
 (`agent-zero` to `twinny` above, among them agents that are not coding
 agents, such as `hermes`, `openclaw`, `nanobot` and `local-deep-research`)
-in the same way: each document ended with a catalog proposal, which was
-applied and then removed.
+the same way.
 
-Collector version 1.10.0 (issue #64) swept sixteen agent frameworks,
-framework studios and self-hosted agent platforms for default per-user
-paths. The sweep itself, with the evidence for every framework that got no
-catalog line (the AutoGen libraries, Microsoft Agent Framework, Semantic
-Kernel, TaskWeaver, LangGraph, the Pydantic AI library, Logfire, Atomic
-Agents and IntentKit), is one document,
-[frameworks.md](frameworks.md), which is not an agent document and so has
-no row in the table. Each framework that got a catalog agent
-(`autogen-studio`, `camel-ai`, `crewai`, `dify`, `flowise`, `langflow`,
-`metagpt`, `n8n`, `pydantic-clai`) has its own document like any other
-agent, and the legacy Open Interpreter paths were added to
-[open-interpreter.md](open-interpreter.md).
+Collector version 1.10.0 (issue #64) swept sixteen agent frameworks, framework
+studios and self-hosted agent platforms for default per-user paths. The sweep
+itself, with the evidence for every framework that got no catalog line (the
+AutoGen libraries, Microsoft Agent Framework, Semantic Kernel, TaskWeaver,
+LangGraph, the Pydantic AI library, Logfire, Atomic Agents and IntentKit), is
+one document, [frameworks.md](frameworks.md), with no row in the table. Each
+framework that got a catalog agent (`autogen-studio`, `camel-ai`, `crewai`,
+`dify`, `flowise`, `langflow`, `metagpt`, `n8n`, `pydantic-clai`) has its own
+document like any other agent, and the legacy Open Interpreter paths were
+added to [open-interpreter.md](open-interpreter.md).
 
 Findings that cut across agents, from the October 2026 round:
 

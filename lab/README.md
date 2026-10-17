@@ -4,7 +4,7 @@ A disposable Docker sandbox for running CLI coding agents and local models
 without installing them on the workstation. Its main use in this repository
 is producing real-install fixtures: an agent runs against a scratch home
 inside the container, the home is exported as a fake disk image, and the
-collector reads it in image mode exactly as it would a mounted volume.
+collector reads it in image mode as it would a mounted volume.
 
 Nothing from the host is mounted into the container. The agent's home is a
 named volume (`agent-home`, mounted at `/home/agent`). The container runs as
@@ -71,7 +71,7 @@ Read the manifest for `secret: true` and `skipped_excluded` rows, compare
 what the agent wrote against `collectors/research/<agent>.md`, and lift
 record shapes from the exported home into analyzer fixtures. The export holds
 whatever credentials the agents wrote, so `lab/out` is gitignored. Delete it
-when finished, and never copy a real token into a committed fixture.
+when finished, and replace any real token in a record lifted into a fixture.
 
 ## Choosing agents
 
@@ -87,9 +87,9 @@ Both variables can also live in `lab/.env`. Copy `.env.example` to `.env` and
 fill in the keys you need; the file is gitignored and every variable in it
 is passed into the sandbox. Keys already exported in your shell
 (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
-`GH_TOKEN`, `OPENROUTER_API_KEY`) pass through as well. Use throwaway keys. OAuth device-code logins work from the
-container; browser-redirect logins generally need a published port and are
-not worth the trouble.
+`GH_TOKEN`, `OPENROUTER_API_KEY`) pass through as well. Use throwaway keys.
+OAuth device-code logins work from the container; browser-redirect logins
+generally need a published port.
 
 Electron tools such as Cursor, Windsurf, Antigravity and VS Code need a
 display and are out of scope here. Validate those from source.
@@ -109,10 +109,10 @@ the collector's model-blob exclusions against real weights.
 
 ## What this does not test
 
-A container home is not a host account. Live-mode user enumeration, the
-system snapshot and the `ps` wrappers are not exercised; use a throwaway WSL
-distro or VM for those. The layout is Linux only, so macOS `Library` and
-Windows `AppData` paths still need validation from source.
+A container home is not a host account. Live-mode user enumeration is not
+exercised; use a throwaway WSL distro or VM for that. The layout is Linux
+only, so macOS `Library` and Windows `AppData` paths still need validation
+from source.
 
 Docker on WSL2 shares the kernel with the distro. The sandbox is a good guard
 against clutter and accidental damage and a reasonable one against a hostile

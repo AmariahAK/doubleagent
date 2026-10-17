@@ -58,7 +58,7 @@ When it is unset or empty the workers run under `dash` if `dash` is on the
 under `sh` otherwise; dash runs the workers nearly twice as fast as bash,
 which is macOS's `sh`. `CAC_NO_BATCH=1` is a test hook that makes the
 workers stat, copy and hash one file at a time instead of in batches; the
-manifest is the same either way. It sets `LC_ALL=C`, puts
+manifest is the same either way. The sh collector sets `LC_ALL=C`, puts
 `/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin` ahead of the inherited
 `PATH`, and unsets `CDPATH`, so a relative `-r` or `-o` is always resolved
 against the current directory.

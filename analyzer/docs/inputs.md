@@ -72,9 +72,7 @@ checked: <path>: <reason>`.
 ## Detection
 
 Detection uses the collectors' own catalog. `doubleagent/catalog.txt` is a
-verbatim copy of `collect-agent-artifacts.sh --list`; the catalog drift test
-in `collectors/tests/catalog-sync.sh` and the analyzer's own test suite both
-fail when it is stale. Regenerate it with:
+verbatim copy of `collect-agent-artifacts.sh --list`, made with:
 
 ```sh
 collectors/collect-agent-artifacts.sh --list > analyzer/doubleagent/catalog.txt
@@ -84,9 +82,8 @@ Every agent the collectors know is therefore detected, whether or not a
 parser exists for it. When two entries match the same file, the more specific
 one wins, so Antigravity CLI state under `.gemini/antigravity-cli` is
 attributed to `antigravity`, not to the enclosing `gemini-cli` entry, in both
-loose mode and the collectors' manifests.
-`doubleagent catalog --agents` lists the agents and which
-have parsers.
+loose mode and the collectors' manifests. `doubleagent catalog --agents`
+lists the agents and which have parsers.
 
 ### Routing files to parsers
 

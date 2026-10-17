@@ -3,8 +3,8 @@
 The on-host half of DoubleAgent: two single-file scripts that walk
 every user's home directory, copy the on-disk artifacts of AI agents
 into a staging area, hash them, and produce one `tar.gz` with a JSONL manifest.
-Nothing is parsed on the host; that is the job of the analyst-side tool
-described in the [project README](../README.md).
+Nothing is parsed on the host; that is the job of the
+[analyzer](../analyzer/README.md).
 
 The two collectors share one catalog, the table of agents and the paths
 under a home directory where each keeps its transcripts, configuration and

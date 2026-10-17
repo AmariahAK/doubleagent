@@ -2,37 +2,28 @@
 
 Every agent in the catalog (the table of agents and the paths under a
 home directory where each keeps its state, shared by the collectors and
-the analyzer), in alphabetical order of its catalog name, with what DoubleAgent does with its files: whether the
-analyzer parses them, what the parser or the collector was validated
-against, and where the research is. The status is one of three words:
+the analyzer), in alphabetical order of its catalog name, with what
+DoubleAgent does with its files. The status is one of three words:
 
-- `parsed`: a parser reads the agent's files. Validated against gives
-  the evidence class in a few words (source, bundle or real installs,
-  with the platforms) and the agent's subsection under
-  [Parser details](#parser-details) lists the files it reads and the full
-  evidence its paths and record shapes were checked against, with the
-  real installs (platform, version, date) on which they were seen.
-- `backlog`: transcripts or other parseable records are collected and a
-  parser is wanted. Cursor and Windsurf are blocked on format research:
-  their record formats are not known well enough to write one.
-- `collected`: the files are collected and detected, but hold nothing to
+- `parsed`: the analyzer reads the agent's transcripts. "Validated
+  against" names the evidence the parser was checked against: source, a
+  shipped bundle, or real installs, with their platforms. The agent's
+  subsection under [Parsed agents](#parsed-agents) lists the files the
+  parser reads and the installs on which they were seen.
+- `backlog`: the collector gathers transcripts or other parseable records,
+  and a parser is wanted; the row links the issue. Cursor and Windsurf are
+  blocked on format research: their record formats are not known well
+  enough to write one.
+- `collected`: the files are collected and detected but hold nothing to
   parse: a token store, configuration only, or a surface that left no
-  local transcript on the installs checked.
+  local transcript on the installs checked. The analyzer's `timeline`
+  command reports these agents as `collected only`.
 
-For a `backlog` or `collected` row, Validated against gives the
+For a `backlog` or `collected` agent, "Validated against" gives the
 evidence level of the collector research, and the agent's subsection
-under [Collected files](#collected-files) lists what the collector
-gathers. Notes links the research documents and the open parser
-issues, then gives the reason when the status needs one in a short
-clause; where that clause was shortened, the subsection repeats it in
-full. The agent name in each row links to its subsection.
-
-The `collected` rows are the `NO_TRANSCRIPTS` set in
-`analyzer/doubleagent/parsers/__init__.py`, which `timeline` reports as
-`collected only` on its `agents:` line and in the `collected_only` key
-of [`inventory.json`](../analyzer/docs/output.md#inventoryjson) rather
-than as detected but not parsed; a test keeps the set and the table
-equal.
+under [Collected agents](#collected-agents) lists what the collector
+gathers. Notes links the research documents and the open issues. The
+agent name in each row links to its subsection.
 
 | Agent | Status | Validated against | Notes |
 | --- | --- | --- | --- |
@@ -93,13 +84,23 @@ equal.
 Files that are not transcripts, such as skills and configuration files,
 are detected but not parsed.
 
-## Parser details
+## Parsed agents
 
-One subsection per `parsed` agent, in alphabetical order: the files
-the parser reads, and the evidence its paths and record shapes were
-checked against, with the real installs (platform, version, date) on
-which they were seen and "fixture only" for what rests on source or
-a bundle alone.
+For each of these agents the analyzer reads the transcripts the collector
+gathered and writes their events to the timeline: every prompt the user
+typed and every reply, each tool call with its arguments and the result
+that came back, thinking blocks when `--include-thinking` is passed, and
+the records that say what the user authorised: permission decisions and
+standing grants, the model in use and every switch, and which sessions
+were synced to the vendor's account. Each row carries the host, user,
+agent, session, project path and source file it came from, in the same
+fields for every agent, so one query works across them all; the fields are
+in [`analyzer/docs/output.md`](../analyzer/docs/output.md#timelinejsonl).
+Where an agent keeps a second record of its use beside the transcript, a
+prompt history, a search index or a mirror, the parser reads that too and
+shows each event once, so a session the user deleted is still recovered
+from what remains. Each subsection names the files the parser reads and
+the installs on which they were seen.
 
 ### `agent-zero`
 
@@ -700,11 +701,15 @@ dir. No per-message timestamps: messages carry the thread's `updated_at`.
 
 Validated against: Source at [a846890](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a), synthetic fixture.
 
-## Collected files
+## Collected agents
 
-One subsection per `backlog` or `collected` agent, in alphabetical
-order: the files the collector gathers, and the evidence level of
-the collector research.
+The collector gathers these agents' files, but no parser reads them, so
+nothing from them enters the timeline. `doubleagent detect` still shows
+them, and `timeline` names them on its `agents:` line as detected but not
+parsed (a `backlog` agent, whose records await a parser) or as collected
+only (a `collected` agent, whose files hold nothing to parse). Each
+subsection lists what the collector gathers and the evidence the research
+rests on.
 
 ### `amp`
 
