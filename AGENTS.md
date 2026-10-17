@@ -472,6 +472,16 @@ and say in the module docstring if the shape has drifted since.
    `dedup.deduplicate` shows each event once and keeps what only the
    secondary source still holds (the rule is documented under
    [Secondary sources in `analyzer/docs/output.md`](analyzer/docs/output.md#secondary-sources)).
+   Sync state is evidence of the same kind: which sessions were uploaded
+   to the vendor's account, when, under what remote id, and whether a
+   deletion removed the remote copy, because the remote copy is what a
+   responder can still request after the local files are gone. The
+   research document names every file and key that marks a synced
+   session and the command or setting that syncs or unsyncs it, and the
+   parser yields a `system` row for the marker (`session synced: remote
+   session <id> last event <id>`, or the agent's own terms) at the
+   file's modification time, saying so; a parser plan with no sync line
+   says the agent records none (issue 151 is the Copilot CLI row).
    A secondary source whose records carry no time of their own yields
    rows with an empty `timestamp_utc`, never an inherited session time,
    so the match is on text alone and the session's time stays on its own
@@ -825,9 +835,16 @@ nothing locally.
 
 The round, in order:
 
-1. **Survey names first.** List the agent's directories with names,
-   sizes and mtimes only, before and after each action, and diff the
-   listings. The diff is the evidence of what an action wrote.
+1. **Survey names first, one step at a time.** The person at the VM
+   performs one step and says so; the main session takes a listing of
+   the agent's directories (names, sizes and mtimes only, a PowerShell or
+   sh script kept in the VM's lab directory and run over SSH) and diffs
+   it against the previous one before the next step begins. The diff is
+   the evidence of what that step wrote, and the sequence of diffs is the
+   Observed bullet. The Copilot CLI round on Windows (2026-10-17) was the
+   first to do this for every step; the rounds before it ran every
+   action before the first listing and could map actions to files only
+   by modification time.
 2. **Read shapes, never values.** `analyzer/tools/shape.py` prints key
    names, value types and JSONL line types with UUIDs, hex ids and long
    tokens redacted, and never a value; copy it to the VM alone and run it
@@ -841,11 +858,21 @@ The round, in order:
    file, a scheduled task, a resumed session, and one tool call approved
    and one denied, with an "allow always" or equivalent standing grant,
    and a model switch in the middle of a session, so the permission and
-   model records are on disk for the shape tool to show; then a session
+   model records are on disk for the shape tool to show; a session
+   synced to the vendor's account where the agent offers it (a resume, a
+   sign-in or a setting may do it without asking), with a listing diff
+   that shows which files mark the synced session; then a session
    deleted the way a user would (the agent's own delete or clear command,
    or the project directory removed), with a listing diff after it, so
    the round records which traces of past use survive and the parser
-   reads them (step 3 of "Adding a parser"). A surface that writes
+   reads them (step 3 of "Adding a parser"), and, when the delete offers
+   to remove the synced copy as well, the round takes it and records
+   whether any local file still says the session was synced. Copilot
+   CLI 1.0.98 on Windows (2026-10-17) marked a synced session with four
+   keys in its `workspace.yaml` (`remote_steerable`, `mc_task_id`,
+   `mc_session_id`, `mc_last_event_id`), asked at `/session delete`
+   whether to delete the synced copy, and left no local mark of the sync
+   once the directory was gone. A surface that writes
    nothing locally is a finding (Claude Desktop's merged Chat/Cowork
    surface runs server-side and leaves one index file), and so is a
    feature the VM cannot run (nested virtualisation); say which it was.
@@ -866,13 +893,31 @@ The round, in order:
    surfaces change between releases and training-era knowledge of the UI
    is stale. Catalog, exclusion, secret-glob and parser changes follow
    the usual checklists, under the pending version.
-6. **Clean up.** Delete the collections pulled to the analyst machine and
-   every output left in the VM; revert the VM to its clean snapshot
-   before the next agent.
+6. **Clean up, after the main session says so.** Delete the collections
+   pulled to the analyst machine and every output left in the VM; revert
+   the VM to its clean snapshot before the next agent, but only once the
+   main session has confirmed that every listing, the collection and the
+   probes are taken. A revert before that loses the round: the first
+   Copilot CLI round on Windows was reverted before it was surveyed and
+   had to be redone.
 
 Subagents do the integration from a brief that carries the evidence; they
 never run the collector live against the VM or read its user's data
 directories, and the main session posts anything that goes to GitHub.
+The brief is one file that holds every number the documents will cite
+(sizes, times, counts, key names, enum values, log lines with ids
+redacted), the install facts, the collector and analyzer runs, and the
+assignments; two subagents run in parallel on disjoint file sets, one for
+the collector side (catalog, exclusions, secret globs, discovery, smoke
+fixtures, collector documents, changelog) and one for the analyzer
+documents and the agents page, each reporting every check it ran with
+the result line. The main session then re-runs the checks itself (the
+catalog drift check, the analyzer suite, markdownlint, the link check,
+the sh smoke test under `/bin/sh` and the PowerShell smoke test under
+Windows PowerShell 5.1 on the VM), reviews the diffs against the brief,
+and commits. A round of a new agent and a round of an agent already in
+the catalog follow the same path; the second usually ends in documents
+and a few catalog lines, the first in a parser as well.
 
 A round covers every surface the agent ships, on every platform it ships
 it for. An agent with a CLI and a desktop app (Antigravity, Claude), an
