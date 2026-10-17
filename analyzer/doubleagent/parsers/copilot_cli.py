@@ -122,14 +122,25 @@ layout.
     `base.py`), and the other lines are still read.
 * `<home>/session-state/<id>/workspace.yaml` (`id`, `cwd`, `name`,
   `user_named`, `fork_count`, `summary_count`, `created_at`,
-  `client_name`), read with a flat `key: value` reader since only
+  `client_name`, `mc_session_id`, `mc_task_id`, `mc_last_event_id`,
+  `remote_steerable`), read with a flat `key: value` reader since only
   top-level scalars are used: `session name: <name>` and `session
   metadata: user_named=<b> forks=<n> compactions=<n> client=<client_name>`
   at `created_at` (`client=` with an empty value when the key is absent).
   `client_name` is `github/cli` for a CLI session and `github/autopilot`
   for one the Copilot Desktop app ran through its bundled CLI (issue
   147). Its `cwd` is the project path of the log's rows before a
-  `session.start` and of the snapshot rows.
+  `session.start` and of the snapshot rows. When the file has a
+  non-empty `mc_session_id`, the session is synced to the user's GitHub
+  account (issue 151); the keys can be present as `null` on a session
+  that is not, as in the research document's sample. One more row then, `session synced: remote session
+  <mc_session_id> task <mc_task_id> last event <mc_last_event_id>
+  remote_steerable=<remote_steerable> (from workspace.yaml, file mtime)`,
+  at the file's modification time, `-` for a key absent or empty. The
+  four keys were seen on Windows 1.0.98 (standalone, added at a resume)
+  and in every Copilot Desktop session (Linux 1.1.29, Windows 1.1.30);
+  the CLI deletes the file with the session, so the row is the only
+  local trace of the sync while the session exists.
 * Secondary sources, which repeat the log's events and are read always,
   so a session whose log was rewound, cut or deleted is still recovered
   (`dedup.py`):
@@ -406,6 +417,7 @@ def _read_json(path: Path):
 class CopilotCliParser(Parser):
     agent = "copilot-cli"
     name = "copilot-cli"
+    records_sync = True
 
     def __init__(self) -> None:
         self._sidebar_cache: dict[Path, dict[str, str]] = {}
@@ -838,6 +850,19 @@ class CopilotCliParser(Parser):
             ),
             **cols,
         )
+        if meta.get("mc_session_id"):
+            yield self._row(
+                artifact,
+                1,
+                "system",
+                "session synced: remote session %s task %s last event %s remote_steerable=%s"
+                " (from workspace.yaml, file mtime)"
+                % tuple(
+                    meta.get(k) or "-"
+                    for k in ("mc_session_id", "mc_task_id", "mc_last_event_id", "remote_steerable")
+                ),
+                **{**cols, "timestamp_utc": file_mtime(artifact)},
+            )
 
     # -- rewind-file-snapshots/index.json -----------------------------------
 

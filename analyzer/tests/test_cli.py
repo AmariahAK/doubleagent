@@ -14,7 +14,7 @@ from doubleagent import VERSION, catalog, cli
 from doubleagent.inputs import open_input
 from doubleagent.model import Row, canonical_project_path, project_key, summarise
 from doubleagent.parsers import ALL, Options, by_agent
-from fixtures import CLAUDE_SESSION, build_home
+from fixtures import CLAUDE_SESSION, COPILOT_SESSION, COPILOT_WORKSPACE_YAML, build_home
 
 
 def run_timeline(root: Path, out: Path) -> tuple[int, str]:
@@ -617,6 +617,62 @@ FIXTURE_DEDUPLICATED = {
 }
 
 
+class SyncedSessionTests(unittest.TestCase):
+    """`sessions.jsonl` `synced`, the inventory's `synced_sessions` keys and
+    the `sessions:` line (issue 151)."""
+
+    UNSYNCED = "5e55a0a1-0000-4000-8000-000000000002"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-synced-test-"))
+        home = build_home(self.tmp / "home" / "alice")
+        # A second Copilot CLI session whose `mc_` keys are null: not synced.
+        unsynced = home / ".copilot/session-state" / self.UNSYNCED / "workspace.yaml"
+        unsynced.parent.mkdir(parents=True)
+        text = COPILOT_WORKSPACE_YAML.replace(COPILOT_SESSION, self.UNSYNCED)
+        lines = [
+            k + ": null" if k.startswith("mc_") else k + ":" + v
+            for k, _, v in (line.partition(":") for line in text.splitlines())
+        ]
+        unsynced.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_synced(self):
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(self.tmp / "home", out)
+        self.assertEqual(rc, 0, stdout)
+        sessions = read_jsonl(out / "sessions.jsonl")
+        for s in sessions:
+            self.assertEqual(list(s)[-1], "synced", s)
+        by_id = {(s["agent"], s["session_id"]): s["synced"] for s in sessions}
+        self.assertEqual(by_id[("copilot-cli", COPILOT_SESSION)], "yes")
+        self.assertEqual(by_id[("copilot-cli", self.UNSYNCED)], "no")
+        self.assertEqual(by_id[("claude-code", CLAUDE_SESSION)], "")
+        self.assertEqual({v for (agent, _), v in by_id.items() if agent != "copilot-cli"}, {""})
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        self.assertEqual(list(inv)[-1], "synced_sessions")
+        self.assertEqual(inv["synced_sessions"], 1)
+        for h in inv["homes"]:
+            for a in h["agents"]:
+                self.assertEqual(list(a)[-1], "synced_sessions", a)
+        agents = {a["agent"]: a for h in inv["homes"] for a in h["agents"]}
+        self.assertEqual(agents["copilot-cli"]["synced_sessions"], 1)
+        self.assertEqual(agents["claude-code"]["synced_sessions"], 0)
+        line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
+        self.assertTrue(line.endswith("sessions.jsonl (1 synced)"), line)
+
+    def test_summarise_values(self):
+        rows = [
+            Row(host="h", user="u", agent="claude-code", session_id="s", turn_type="user"),
+            Row(host="h", user="u", agent="copilot-cli", session_id="c", turn_type="user"),
+        ]
+        got = {s.agent: s.synced for s in summarise(rows, frozenset({"copilot-cli"}))}
+        self.assertEqual(got, {"claude-code": "", "copilot-cli": "no"})
+        self.assertEqual({s.synced for s in summarise(rows)}, {""})
+
+
 class DeduplicationTimelineTests(unittest.TestCase):
     """`timeline` drops secondary-source rows that a primary store also
     records, and counts them on stdout and in inventory.json (issue 122)."""
@@ -650,7 +706,7 @@ class DeduplicationTimelineTests(unittest.TestCase):
         self.assertEqual(len(orphan), 1)
         self.assertTrue(orphan[0]["source_file"].endswith("/.claude/history.jsonl"))
         self.assertEqual(inv["deduplicated"], FIXTURE_DEDUPLICATED)
-        self.assertEqual(list(inv)[-2:], ["deduplicated", "collected_only"])
+        self.assertEqual(list(inv)[-3:], ["deduplicated", "collected_only", "synced_sessions"])
         self.assertEqual(inv["rows"], len(rows))
         total = sum(FIXTURE_DEDUPLICATED.values())
         self.assertIn(
@@ -1056,10 +1112,16 @@ class ProjectAgentsTests(unittest.TestCase):
                 "outside_projects",
                 "deduplicated",
                 "collected_only",
+                "synced_sessions",
             ],
         )
-        for key in ("input", "kind", "host", "notes", "homes"):
+        for key in ("input", "kind", "host", "notes"):
             self.assertEqual(inv[key], doc[key], key)
+        # inventory.json's homes are detect's plus `synced_sessions` (issue 151).
+        for h in inv["homes"]:
+            for a in h["agents"]:
+                self.assertEqual(a.pop("synced_sessions"), 0)
+        self.assertEqual(inv["homes"], doc["homes"])
         self.assertEqual(inv["kind"], "collected")
         self.assertEqual(
             doc["problems"], ["/home/alice/.claude/gone.json: missing from the collection"]
@@ -1112,6 +1174,7 @@ class ProjectAgentsTests(unittest.TestCase):
                 "outside_projects",
                 "deduplicated",
                 "collected_only",
+                "synced_sessions",
             ],
         )
         self.assertEqual(inv["problems"], [])

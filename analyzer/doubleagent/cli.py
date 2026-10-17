@@ -721,6 +721,22 @@ def strip_image_root(path: str, summary: dict) -> str:
     return path
 
 
+def synced_homes(homes: list[dict], sessions: list[SessionSummary]) -> list[dict]:
+    """The `homes` array of inventory.json: `homes` (`home_agents`) with a
+    last key `synced_sessions` in each agent object, the number of the
+    sessions of that user and agent whose `synced` is "yes" (issue 151)."""
+    counts = Counter((s.user, s.agent) for s in sessions if s.synced == "yes")
+    return [
+        {
+            **h,
+            "agents": [
+                {**a, "synced_sessions": counts[(h["user"], a["agent"])]} for a in h["agents"]
+            ],
+        }
+        for h in homes
+    ]
+
+
 def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     opts = Options(include_thinking=args.include_thinking)
     rf: RowFilter = args.row_filter
@@ -730,7 +746,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     if rf.active:
         rows = rf.apply(rows)
         counts = Counter((r.agent, r.turn_type) for r in rows)
-    sessions = summarise(rows)
+    sessions = summarise(rows, frozenset(p.agent for p in ALL if p.records_sync))
     timeline = args.output / "timeline.jsonl"
     sess = args.output / "sessions.jsonl"
     write_jsonl(timeline, rows)
@@ -785,6 +801,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
         and (not args.agent or r["agent"] in args.agent)
     ]
     groups = project_inventory(rows, sessions, collected_projects(col), project_files(col))
+    synced = sum(1 for s in sessions if s.synced == "yes")
     empty = {"rows": 0, "sessions": 0, "agents": {}}
     inventory_path = args.output / "inventory.json"
     with open(inventory_path, "w", encoding="utf-8") as fh:
@@ -798,13 +815,14 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
                 "parsed": parsed_agents,
                 "detected_not_parsed": sorted(set(unparsed)),
                 "no_rows": sorted(set(no_rows)),
-                "homes": detect["homes"],
+                "homes": synced_homes(detect["homes"], sessions),
                 "projects": {k: v for k, v in groups.items() if k},
                 "outside_projects": groups.get("", empty),
                 "deduplicated": {
                     k: deduplicated[k] for k in sorted(deduplicated) if deduplicated[k]
                 },
                 "collected_only": sorted(set(collected_only)),
+                "synced_sessions": synced,
             },
             fh,
             indent=2,
@@ -818,6 +836,8 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     print("rows:      %d in %s" % (len(rows), timeline))
     for (agent, tt), n in sorted(counts.items()):
         print("           %-14s %-12s %d" % (agent, tt, n))
-    print("sessions:  %d in %s" % (len(sessions), sess))
+    print(
+        "sessions:  %d in %s%s" % (len(sessions), sess, " (%d synced)" % synced if synced else "")
+    )
     print("inventory: %s (homes, projects, counts per agent, problems)" % inventory_path)
     return 0 if rows else 1

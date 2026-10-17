@@ -39,7 +39,12 @@ SESSION_COLUMNS = [
     "assistant_turns",
     "tool_calls",
     "source_file",
+    "synced",
 ]
+
+# The text that starts a parser's row for a session synced to a remote
+# account (`Parser.records_sync`, issue 151).
+SYNCED_PREFIX = "session synced:"
 
 
 @dataclass
@@ -80,6 +85,10 @@ class SessionSummary:
     assistant_turns: int = 0
     tool_calls: int = 0
     source_file: str = ""
+    # "yes" when a row of the session carries the sync marker, "no" when the
+    # agent's parser records sync state and none does, "" when it records
+    # none (set by `summarise`).
+    synced: str = ""
     _sources: dict[str, int] = field(default_factory=dict)
 
     def add(self, row: Row) -> None:
@@ -103,6 +112,8 @@ class SessionSummary:
             self.assistant_turns += 1
         elif row.turn_type == "tool_use":
             self.tool_calls += 1
+        elif row.turn_type == "system" and row.text.startswith(SYNCED_PREFIX):
+            self.synced = "yes"
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -118,10 +129,15 @@ class SessionSummary:
             "assistant_turns": self.assistant_turns,
             "tool_calls": self.tool_calls,
             "source_file": self.source_file,
+            "synced": self.synced,
         }
 
 
-def summarise(rows: list[Row]) -> list[SessionSummary]:
+def summarise(rows: list[Row], sync_agents: frozenset[str] = frozenset()) -> list[SessionSummary]:
+    """One summary per (host, user, agent, session id) of `rows`, sorted by
+    first timestamp, agent and session id. `sync_agents` names the agents
+    whose parser records sync state (`Parser.records_sync`); their sessions
+    without the marker get `synced` "no", the others keep ""."""
     out: dict[tuple, SessionSummary] = {}
     for r in rows:
         if not r.session_id:
@@ -132,6 +148,9 @@ def summarise(rows: list[Row]) -> list[SessionSummary]:
             s = SessionSummary(r.host, r.user, r.agent, r.session_id)
             out[key] = s
         s.add(r)
+    for s in out.values():
+        if not s.synced and s.agent in sync_agents:
+            s.synced = "no"
     return sorted(out.values(), key=lambda s: (s.first_timestamp_utc, s.agent, s.session_id))
 
 

@@ -9054,6 +9054,13 @@ COPILOT_STORE_ROWS = [
     " 0, '2026-10-01T09:00:12.500Z')",
 ]
 
+# The research document's sample, with the three `mc_` keys set as a
+# resumed session synced to the account wrote them on Windows 1.0.98 (issue
+# 151); the values are synthetic UUIDs. The file's mtime is the resume.
+COPILOT_MC_TASK = "1c1c1c1c-0000-4000-8000-000000000001"
+COPILOT_MC_SESSION = "2d2d2d2d-0000-4000-8000-000000000001"
+COPILOT_MC_LAST_EVENT = "3e3e3e3e-0000-4000-8000-000000000001"
+COPILOT_WORKSPACE_MTIME = 1790845290  # 2026-10-01T09:01:30Z
 COPILOT_WORKSPACE_YAML = """\
 id: 5e55a0a1-0000-4000-8000-000000000001
 cwd: /srv/proj
@@ -9065,10 +9072,10 @@ fork_count: 0
 created_at: 2026-10-01T09:00:00.000Z
 updated_at: 2026-10-01T09:00:30.000Z
 remote_steerable: false
-mc_task_id: null
-mc_session_id: null
-mc_last_event_id: null
-"""
+mc_task_id: %s
+mc_session_id: %s
+mc_last_event_id: %s
+""" % (COPILOT_MC_TASK, COPILOT_MC_SESSION, COPILOT_MC_LAST_EVENT)
 
 COPILOT_SETTINGS = """\
 {
@@ -9120,6 +9127,7 @@ def build_copilot_cli(home: Path) -> None:
     events.parent.mkdir(parents=True, exist_ok=True)
     events.write_text("\n".join(COPILOT_EVENT_LINES), encoding="utf-8")
     (home / COPILOT_WORKSPACE_REL).write_text(COPILOT_WORKSPACE_YAML, encoding="utf-8")
+    os.utime(home / COPILOT_WORKSPACE_REL, (COPILOT_WORKSPACE_MTIME, COPILOT_WORKSPACE_MTIME))
     _json_file(home / COPILOT_SNAPSHOTS_REL, copilot_snapshot_index())
     _wal_db(home / COPILOT_STORE_REL, COPILOT_STORE_SCHEMA, COPILOT_STORE_ROWS)
     # Newest first; `/model` was typed between the two prompts.

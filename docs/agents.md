@@ -51,7 +51,7 @@ equal.
 | [`cody`](#cody) | parsed | source; fixture only | [collector research](../collectors/research/cody.md); [analyzer research](../analyzer/research/cody.md) |
 | [`continue`](#continue) | parsed | source; fixture only | [collector research](../collectors/research/continue.md); [analyzer research](../analyzer/research/continue.md) |
 | [`copilot`](#copilot) | collected | Source (the vendored language server) | [collector research](../collectors/research/copilot.md); an OAuth token store with no transcripts; Copilot Chat is parsed as `vscode` |
-| [`copilot-cli`](#copilot-cli) | parsed | bundle and real installs: macOS, Linux, Windows through Copilot Desktop (October 2026) | [collector research](../collectors/research/copilot-cli.md); [analyzer research](../analyzer/research/copilot-cli.md); [issue 132](https://github.com/seanthegeek/doubleagent/issues/132); the legacy flat `session-state/<id>.jsonl` transcript is not parsed yet |
+| [`copilot-cli`](#copilot-cli) | parsed | bundle and real installs: macOS, Linux, Windows (winget 1.0.98 and Copilot Desktop's bundled 1.0.99-2) (October 2026) | [collector research](../collectors/research/copilot-cli.md); [analyzer research](../analyzer/research/copilot-cli.md); [issue 132](https://github.com/seanthegeek/doubleagent/issues/132); the legacy flat `session-state/<id>.jsonl` transcript is not parsed yet |
 | [`copilot-desktop`](#copilot-desktop) | parsed | shipped app and real installs: Linux, Windows (October 2026) | [collector research](../collectors/research/copilot-desktop.md); [analyzer research](../analyzer/research/copilot-desktop.md); [issue 147](https://github.com/seanthegeek/doubleagent/issues/147); [issue 149](https://github.com/seanthegeek/doubleagent/issues/149): the inventory lists the app's own directories as projects |
 | [`crewai`](#crewai) | backlog | Source, appdirs source | [collector research](../collectors/research/crewai.md); [issue 140](https://github.com/seanthegeek/doubleagent/issues/140); `latest_kickoff_task_outputs.db` holds every task's output with its messages |
 | [`crush`](#crush) | parsed | source; fixture only | [collector research](../collectors/research/crush.md); [analyzer research](../analyzer/research/crush.md) |
@@ -354,12 +354,25 @@ turn's prompt and changed files; one-hour window) and
 Validated against: Shipped bundle 1.0.98 (darwin-arm64 event schema, CLI
 and runtime strings) and real installs of Copilot CLI 1.0.98 on macOS
 (2026-10-15) and Ubuntu 26.04 arm64 (2026-10-16), and on Windows 11 ARM64
-(2026-10-17) the CLI 1.0.99-2 that GitHub Copilot Desktop 1.1.30 bundles,
-not an npm install, synthetic fixture; `forge_trajectory_events`, checkpoints,
-references, denials, resumes and subagents fixture only. The GitHub
+(2026-10-17) the standalone CLI 1.0.98 installed with winget and the CLI
+1.0.99-2 that GitHub Copilot Desktop 1.1.30 bundles, not an npm install,
+synthetic fixture; `forge_trajectory_events`, checkpoints, references,
+denials, resumes and subagents fixture only (the Windows winget round
+exercised a denial, a resume and subagents, but its session was deleted
+before collection, so only the shapes were seen). The GitHub
 Copilot Desktop app's sessions, which its bundled Copilot CLI writes into
 `.copilot/session-state/`, are read by this parser and marked by
-`client=github/autopilot` on the `session metadata:` row.
+`client=github/autopilot` on the `session metadata:` row. The
+`workspace.yaml` keys `remote_steerable`, `mc_task_id`, `mc_session_id`
+and `mc_last_event_id` mark a session synced to the account (added at a
+resume on the Windows winget install, present in every Copilot Desktop
+session); since analyzer 0.14.0 the parser yields a `session synced:
+remote session <id> task <id> last event <id> remote_steerable=<value>
+(from workspace.yaml, file mtime)` row for them, `sessions.jsonl` ends
+each record with a `synced` field (`yes`, `no`, or empty when the agent's
+parser records no sync state) and `inventory.json` counts them in
+`synced_sessions`
+([issue 151](https://github.com/seanthegeek/doubleagent/issues/151)).
 
 ### `copilot-desktop`
 

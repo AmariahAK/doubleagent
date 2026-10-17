@@ -26,6 +26,11 @@ class Parser:
     # the catalog attributes to `vscode` or to a fork such as `cursor`, lists
     # those editors here (`vscode_state.EDITOR_AGENTS`).
     reads_agents: tuple[str, ...] = ()
+    # True when the agent's format records whether a session is synced to a
+    # remote account, and the parser yields a `system` row starting
+    # `session synced:` for a synced one (issue 151). `sessions.jsonl` then
+    # says `synced` "no" for a session without that row rather than "".
+    records_sync: bool = False
 
     def wants(self, artifact: Artifact) -> bool:
         raise NotImplementedError

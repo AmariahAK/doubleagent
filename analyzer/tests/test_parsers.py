@@ -9920,6 +9920,9 @@ from fixtures import (
     COPILOT_EVENTS_REL,
     COPILOT_HISTORY_REL,
     COPILOT_LOG_REL,
+    COPILOT_MC_LAST_EVENT,
+    COPILOT_MC_SESSION,
+    COPILOT_MC_TASK,
     COPILOT_PERMISSIONS_REL,
     COPILOT_SESSION,
     COPILOT_SETTINGS_REL,
@@ -10418,6 +10421,13 @@ class CopilotCliTests(ParserBase):
                     COPILOT_SESSION,
                     "/srv/proj",
                 ),
+                (
+                    "system",
+                    self.SYNCED,
+                    "2026-10-01T09:01:30.000Z",
+                    COPILOT_SESSION,
+                    "/srv/proj",
+                ),
             ],
         )
         rows = self.rows_for(CopilotCliParser(), COPILOT_SNAPSHOTS_REL)
@@ -10436,6 +10446,41 @@ class CopilotCliTests(ParserBase):
             {(r.session_id, r.project_path) for r in rows}, {(COPILOT_SESSION, "/srv/proj")}
         )
 
+    SYNCED = (
+        "session synced: remote session %s task %s last event %s remote_steerable=false"
+        " (from workspace.yaml, file mtime)"
+        % (COPILOT_MC_SESSION, COPILOT_MC_TASK, COPILOT_MC_LAST_EVENT)
+    )
+
+    def test_workspace_synced(self):
+        # The `mc_` keys a resumed, synced session carries (issue 151): one
+        # row at the file's mtime; an empty key prints `-`, and a null or
+        # absent `mc_session_id` (a session that is not synced) gives none.
+        path = self.home / COPILOT_WORKSPACE_REL
+        yaml = path.read_text(encoding="utf-8")
+        rows = self.rows_for(CopilotCliParser(), COPILOT_WORKSPACE_REL)
+        self.assertEqual(
+            [(r.text, r.timestamp_utc) for r in rows if r.text.startswith("session synced:")],
+            [(self.SYNCED, "2026-10-01T09:01:30.000Z")],
+        )
+        cases = (
+            (
+                yaml.replace("mc_task_id: " + COPILOT_MC_TASK, "mc_task_id:").replace(
+                    "remote_steerable: false\n", ""
+                ),
+                "session synced: remote session %s task - last event %s remote_steerable=-"
+                " (from workspace.yaml, file mtime)" % (COPILOT_MC_SESSION, COPILOT_MC_LAST_EVENT),
+            ),
+            (yaml.replace("mc_session_id: " + COPILOT_MC_SESSION, "mc_session_id: null"), None),
+            (yaml.replace("mc_session_id: " + COPILOT_MC_SESSION + "\n", ""), None),
+        )
+        for text, want in cases:
+            path.write_text(text, encoding="utf-8")
+            rows = self.rows_for(CopilotCliParser(), COPILOT_WORKSPACE_REL)
+            synced = [r.text for r in rows if r.text.startswith("session synced:")]
+            self.assertEqual(synced, [want] if want else [], text)
+            self.assertEqual(len(rows), 3 if want else 2)
+
     def test_workspace_client(self):
         # The desktop app's sessions say `github/autopilot` (issue 147); a
         # file without the key gives an empty value.
@@ -10448,7 +10493,7 @@ class CopilotCliTests(ParserBase):
             path.write_text(yaml.replace("client_name: copilot-cli\n", line), encoding="utf-8")
             rows = self.rows_for(CopilotCliParser(), COPILOT_WORKSPACE_REL)
             self.assertEqual(
-                rows[-1].text,
+                rows[1].text,
                 "session metadata: user_named=false forks=0 compactions=0 client=" + value,
             )
 

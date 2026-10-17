@@ -322,6 +322,10 @@ inventory: out/inventory.json (homes, projects, counts per agent, problems)
 
 `rows:` is followed by one indented line per agent and `turn_type` with
 its count, sorted by agent and type, and nothing when there are no rows.
+When at least one record of `sessions.jsonl` has `synced` `yes`, the
+`sessions:` line ends with their count in parentheses after the path,
+`sessions:  6 in out/sessions.jsonl (1 synced)`; with none it ends at the
+path, as above (analyzer 0.14.0).
 The paths are `-o` joined with the file name, as given on the command
 line. The exit code is `0` when at least one row was written and `1`
 otherwise; the files are written either way. Before analyzer 0.12.0
@@ -419,13 +423,15 @@ the test collection of the [`detect --json`](#detect---json) example:
           "agent": "amp",
           "files": 1,
           "bytes": 2,
-          "parser": false
+          "parser": false,
+          "synced_sessions": 0
         },
         {
           "agent": "claude-code",
           "files": 3,
           "bytes": 4343,
-          "parser": true
+          "parser": true,
+          "synced_sessions": 0
         }
       ]
     },
@@ -438,13 +444,15 @@ the test collection of the [`detect --json`](#detect---json) example:
           "agent": "gemini-cli",
           "files": 1,
           "bytes": 2,
-          "parser": true
+          "parser": true,
+          "synced_sessions": 0
         },
         {
           "agent": "ollama",
           "files": 1,
           "bytes": 25,
-          "parser": true
+          "parser": true,
+          "synced_sessions": 0
         }
       ]
     }
@@ -538,7 +546,8 @@ the test collection of the [`detect --json`](#detect---json) example:
     }
   },
   "deduplicated": {},
-  "collected_only": []
+  "collected_only": [],
+  "synced_sessions": 0
 }
 ```
 
@@ -553,8 +562,10 @@ line with no project and a session transcript that records no working
 directory. `cursor` has project files and no parser, so no rows;
 `gemini-cli` has a parser that found no rows. `deduplicated` is `{}`
 because none of the three `history.jsonl` prompts is one a transcript
-records, so every history line is kept, and `collected_only` is `[]`
-because no agent of the input is one with nothing to parse. Its keys, in order:
+records, so every history line is kept, `collected_only` is `[]`
+because no agent of the input is one with nothing to parse, and every
+`synced_sessions` is 0 because none of these agents' parsers records
+sync state. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -569,7 +580,7 @@ because no agent of the input is one with nothing to parse. Its keys, in order:
 | `parsed` | array of strings | The `parsed` group of the `agents:` line: the agents that produced rows before filtering, sorted. |
 | `detected_not_parsed` | array of strings | The `detected but not parsed` group: the agents in the input, outside or inside a project directory, that have no parser, sorted. Since 0.14.0 it excludes the agents in `collected_only`. |
 | `no_rows` | array of strings | The `parser found no rows` group, sorted; `[]` when it is empty. |
-| `homes` | array of objects | The `homes` array of [`detect --json`](#detect---json) for the same input, element for element: one per user home and Docker volume, in the order its first collected row was met, never a project directory. Not filtered. |
+| `homes` | array of objects | The `homes` array of [`detect --json`](#detect---json) for the same input, element for element, with `synced_sessions` added as the last key of each agent object: one per user home and Docker volume, in the order its first collected row was met, never a project directory. Not filtered. |
 | `homes[].user` | string | As `homes[].user` in `detect --json`: the home's owner, `""` when unknown. |
 | `homes[].home` | string | As `homes[].home` in `detect --json`: the manifest `home`, or in loose mode the path relative to the input root with a leading `/`. |
 | `homes[].inferred` | boolean | `true` in loose mode, where user and home come from the path; `false` when they come from a manifest. |
@@ -578,6 +589,7 @@ because no agent of the input is one with nothing to parse. Its keys, in order:
 | `homes[].agents[].files` | integer | Files of this agent in this home, counted as in `detect --json`; not filtered. |
 | `homes[].agents[].bytes` | integer | Their total size, the manifest `size` or the size on disk in loose mode; not filtered. |
 | `homes[].agents[].parser` | boolean | `true` when the analyzer has a parser for this agent, `false` when it is detected only. |
+| `homes[].agents[].synced_sessions` | integer | This user's sessions of this agent whose `synced` in `sessions.jsonl` is `yes`, after the filters; 0 when there is none, and always 0 for an agent whose parser records no sync state. Sessions are matched to the home by `user`. Last key of the object since 0.14.0. |
 | `projects` | object | Keyed by project path, sorted: every distinct non-empty `project_path` of the rows, and every project directory the input holds, as the collector's path with the image root removed and Windows paths in the canonical form of [`timeline.jsonl`](#timelinejsonl) `project_path` (see below). Windows paths that differ only in case are one project, keyed by the collected directory's spelling when the project is one, else by the first spelling the rows record. `{}` when there is neither. |
 | `projects.<path>.status` | string | `collected` when the path is a project directory the input holds, so its project files are in the collection; `referenced` when only rows name it, because the directory was deleted, was out of the collector's reach, was skipped with `--no-projects`, or is recorded in another form (see below). |
 | `projects.<path>.rows` | integer | Rows with this `project_path`, or for a Windows path any spelling of it that differs only in case, after the filters. |
@@ -598,7 +610,8 @@ because no agent of the input is one with nothing to parse. Its keys, in order:
 | `outside_projects.agents.<agent>.turn_types` | object | Keyed by `turn_type`, sorted: this agent's rows of each type, listing only the types that occur. |
 | `deduplicated` | object | Keyed by agent name, sorted: the agents with rows of a secondary source dropped because a primary store or another secondary source records the same event (see [Secondary sources](#secondary-sources)), the counts of the `dropped:` line. With `--agent`, only the agents selected; not changed by `--since`, `--until` or `--match`, which apply to the rows kept. `{}` when no row was dropped. |
 | `deduplicated.<agent>` | integer | The number of this agent's secondary-source rows dropped, never 0. |
-| `collected_only` | array of strings | The `collected only` group of the `agents:` line: the agents in the input, outside or inside a project directory, that have no parser because their files hold nothing to parse (the `collected` rows of the [agents page](../../docs/agents.md)), sorted; `[]` when it is empty. Last key since 0.14.0. |
+| `collected_only` | array of strings | The `collected only` group of the `agents:` line: the agents in the input, outside or inside a project directory, that have no parser because their files hold nothing to parse (the `collected` rows of the [agents page](../../docs/agents.md)), sorted; `[]` when it is empty. Since 0.14.0. |
+| `synced_sessions` | integer | The number of records in `sessions.jsonl` whose `synced` is `yes`, after the filters, as for `sessions`; 0 when there is none. Last key since 0.14.0. |
 
 A row is counted under its own `project_path` and a session under the
 session's, the first non-empty `project_path` among its rows, so a session
@@ -665,8 +678,9 @@ jq -r '.projects | to_entries[] | .key as $p | .value.agents | to_entries[] | se
 Before analyzer 0.12.0 there was no `inventory.json`. The keys are an
 interface like the JSONL fields: new ones are added at the end, the
 existing ones keep their names, types and meaning. `deduplicated` was
-added in analyzer 0.13.0 and `collected_only`, the last key, in analyzer
-0.14.0; with it, `detected_not_parsed` stopped listing the agents with
+added in analyzer 0.13.0, and `collected_only` and then
+`synced_sessions`, the last key, in analyzer 0.14.0, which also added
+`synced_sessions` as the last key of each `homes[].agents[]` object; with it, `detected_not_parsed` stopped listing the agents with
 nothing to parse, which it had held since 0.12.0. The one key added at the front is
 `doubleagent_version`, in analyzer 0.14.0: the file is one object read by
 key, not by position, and a reader needs the version before the rest.
@@ -1185,6 +1199,7 @@ no timestamp come first. Its fields, in order:
 | `assistant_turns` | integer | The number with `turn_type` `assistant`. |
 | `tool_calls` | integer | The number with `turn_type` `tool_use`. |
 | `source_file` | string | The `source_file` that contributed the most of the session's records, the first met on a tie, so a transcript wins over a one-line-per-prompt history file; `""` when no record names one. |
+| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (today the Copilot CLI and Copilot Desktop `workspace.yaml` marker, which the `copilot-cli` parser reads); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
 
 ## Compatibility
 

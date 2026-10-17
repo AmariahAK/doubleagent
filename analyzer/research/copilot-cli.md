@@ -167,8 +167,112 @@ there are no commit links. Each claim names its evidence level:
   `hook <hookType> start:` and `end:` rows, `file changed: <path>
   tool=create` and `session end: routine files modified: <paths>`, and
   one `session metadata: user_named=false ... client=github/autopilot`
-  row for each of the seven unprompted sessions. The npm-installed CLI
-  on Windows is still not observed
+  row for each of the seven unprompted sessions. The standalone CLI on
+  Windows is the next bullet.
+- **Observed (Windows, winget)**: the standalone Copilot CLI 1.0.98
+  installed with `winget install GitHub.Copilot` (winget is the Windows
+  Package Manager) on the same Windows 11 ARM64 Parallels VM (build
+  10.0.26300.9550, home `C:\Users\sean`), reverted to a clean snapshot
+  that had never run Copilot Desktop, 2026-10-17, all times UTC, names,
+  key names, types, enum values and counts only. The first round with a
+  names-only listing after every action; the per-action writes are in
+  [section 1 of
+  `collectors/research/copilot-cli.md`](../../collectors/research/copilot-cli.md#1-source-and-evidence-level).
+  Exercised in `C:\Users\sean\demo`: a first start with `/login` from
+  inside the session (21:46:48 to 21:48:02), a session that read web pages
+  from its first prompt at 21:50:55, one tool call denied and one approved
+  with "allow always" (a `write` grant for `demo`), a `/model` switch to
+  Auto, a quit at 22:08:31, a resume from the resume picker at 22:08:50,
+  and a delete with the CLI's own command from a new session started at
+  22:11:04. The session's `events.jsonl` at the quit (1,973,737 bytes)
+  held `assistant.message` 55, `assistant.turn_start` 55,
+  `assistant.turn_end` 55, `session.usage_record` 55,
+  `tool.execution_start` and `tool.execution_complete` 109 each,
+  `permission.requested` and `permission.completed` 79 each,
+  `user.message` 6, `session.model_change` 4, `session.usage_checkpoint`
+  4, `session.info` 3, `system.message` 3, `session.start` 1,
+  `session.shutdown` 1, 12 each of the eight `model.*` types
+  (`captured_assignment_context`, `message`, `messages_snapshot`,
+  `model_call_started`, `model_call_success`, `response`, `turn_ended`,
+  `turn_started`), and 2 each of `subagent.configured`,
+  `subagent.selected`, `subagent.started` and `subagent.completed`, which
+  came from the session's web-reading task and were seen on no other
+  install. `session.start` `data` keys: `sessionId`, `version`,
+  `producer`, `copilotVersion`, `startTime`, `contextTier`,
+  `context{cwd}`, `alreadyInUse`, `remoteSteerable`. `system.message`:
+  `role`, `content`, `metadata{variables{gitCommitTrailer, sessionId,
+  clientName, coauthorEnabled}}`, `interactionId`. `permission.requested`
+  `permissionRequest` key sets: 72 of the `url` form (`kind`,
+  `toolCallId`, `intention`, `url`, `requestSandboxBypass`,
+  `requestSandboxBypassReason`, then `promptRequest`; the web fetches), 2
+  of the shell form (`fullCommandText`, `shellType`, `intention`,
+  `commands`, with `identifier` and `readOnly`, ...), 2 of the write form
+  (`fileName`, `diff`, `newFileContents`, `canOfferSessionApproval`,
+  `fileEdits`) and 3 with a key beginning `redirecte` (the rest of its
+  name was cut in the listing; not determined). `permission.completed`
+  was listed as `{requestId, toolCallId, result{kind, decisionSource},
+  agentId}`, `agentId` on some records only: `decisionSource` inside
+  `result`, where the Linux records and the parser have it beside
+  `result` ([section 3](#event-types)); not determined whether this is
+  the shape or the listing's nesting, and no row of it reached the
+  analyzer, since the session was deleted before the collection. The
+  `result.kind` of the denial was not recorded. `model.model_call_success`
+  carried `turn`, `callId`, `modelCallDurationMs`, `ttftMs`,
+  `outputTtftMs`, `interTokenLatencyMs` and `modelCall{model, api_id,
+  api_endpoint, request_id, client_request_id, service...}`. The resume
+  rewrote `workspace.yaml` with `updated_at` unchanged, adding
+  `remote_steerable` (false), `mc_task_id`, `mc_session_id` and
+  `mc_last_event_id` (UUIDs), the keys every Copilot Desktop session
+  carries; the resumed process logged `Remote session access enabled`
+  and `Using default model: gpt-6.1-sol`, and the sync itself is logged
+  nowhere. The delete, `/session delete <id> --yes --remote` after four
+  other forms (`/session`, `/session delete-all`, `/session delete <id>`,
+  `/session delete copilot <id>`), asked whether to delete the synced
+  copy too ("has been synced to your account. Would you also like to
+  delete the synced session data"); the user said yes. It removed the
+  session directory whole (`events.jsonl`, `workspace.yaml` with the
+  `mc_` keys, both `rewind-file-snapshots` files, `checkpoints/`,
+  `files/`, `research/`) and the id from the sidebar file, and left: in
+  `session-store.db` (the WAL unchanged since 22:06) the `sessions` row
+  (`cwd` set, `repository` null, a 32-character `summary`), 3 `turns`
+  (prompts of 63, 18 and 42 characters, replies of 4,346, 1,704 and 30,
+  stamped 22:03:42, 22:04:58 and 22:05:54), 1 `session_files` row
+  (`apply_patch`), 3 `search_index` rows and 55
+  `assistant_usage_events` (`model` `claude-sonnet-5`, `api_endpoint`
+  `/v1/messages`; the new session's `gpt-6.1-sol` rows use
+  `ws:/responses`), with `session_refs`, `checkpoints` and
+  `forge_trajectory_events` empty; the session's 0-byte operation lock;
+  the seven slash commands among the ten entries of
+  `command-history-state.json`; the five process logs, which record
+  nothing about the delete (no `sessions.delete` line, unlike the desktop
+  app's bundled CLI); `permissions-config.json`; and the file the approved
+  call wrote. The `events.jsonl` held 6 `user.message` and the store kept
+  3 `turns`, the last three; why is not determined. With the remote copy
+  deleted too, no local file says the session was ever synced: the `mc_`
+  keys lived only in the deleted `workspace.yaml`. Analyzer 0.14.0 over
+  the collection (collector 1.13.0, 34 files): 24 rows (`assistant` 3,
+  `system` 11, `user` 10), 2 sessions, 3 duplicate secondary rows
+  dropped, no `parser:` row, `problems: []`, `demo` the one project. The
+  deleted session was rebuilt from `session-store.db` alone: `session
+  name:` at 21:46:48 (`created_at`), the three `turns` as `user` and
+  `assistant` pairs (the last reply, 30 characters, the agent reporting
+  the denied write) and `file changed: <path> tool=apply_patch` at
+  22:06:06. The other rows: `signed in: https://github.com as <login>`
+  once per process log (21:48:02, 22:08:50, 22:08:51, 22:11:05),
+  `permission setting: locations.<cwd>.tool_approvals={"kind":"write"}
+  (from .copilot/permissions-config.json, file mtime)` at 22:06:06, the
+  new session's `session metadata: user_named=false forks=0
+  compactions=0 client=github/cli`, `session start: copilot 1.0.98
+  producer=copilot-agent cwd=<demo>`, `model: gpt-6.1-sol
+  cause=initial_resolution source=automatic effort=medium` and `session
+  end: routine files modified: none`, and the seven slash commands as
+  undated `user` rows from the command history, the three `/session
+  delete` forms among them. The deletion lost from the timeline the
+  session's 109 tool calls and their permission decisions, the denial,
+  the `/model` switch's `session.info` output, the resume, and every
+  event of its first three prompts. A first `/login` left pending also
+  wrote about 280,000 process-log lines (45 MB in five files) on this
+  install; the sign-in line the parser reads is among them; the npm-installed CLI on Windows is still not observed
   ([issue 133](https://github.com/seanthegeek/doubleagent/issues/133)).
 
 ## 2. Transcript files
@@ -258,7 +362,8 @@ unless marked):
 | `model.messages_snapshot` | `kind`, `messages[{role, content}]` (the utility prompt) | not in the schema |
 | `model.captured_assignment_context` | `kind`, `assignmentContext` (string) | not in the schema |
 | `model.message`, `model.response` | `callId`, `kind`, `message{role, content, apiCallId, outputTokens, refusal}` / `response{...}`, `modelCall{model, api_endpoint, initiator, transport, request_id, ...}`, `turn` | not in the schema |
-| `model.model_call_success` | `callId`, `modelCall`, `copilotUsage{token_details, total_nano_aiu}`, `quotaSnapshots`, `provider`, `modelCallDurationMs` | not in the schema |
+| `model.model_call_success` | `callId`, `modelCall`, `copilotUsage{token_details, total_nano_aiu}`, `quotaSnapshots`, `provider`, `modelCallDurationMs`; on the Windows winget install (1.0.98) also `turn`, `ttftMs`, `outputTtftMs`, `interTokenLatencyMs` and `modelCall{model, api_id, api_endpoint, request_id, client_request_id, service...}` | not in the schema |
+| `subagent.configured`, `subagent.selected`, `subagent.started`, `subagent.completed` | keys not recorded; 2 of each on the Windows winget install (1.0.98), from a session's web-reading task, seen on no other install | `subagent.started` and `.completed` are in the schema (list below); the other two not checked |
 
 Glosses: CAPI is the Copilot API, the GitHub endpoint that serves the
 models; `interactionId` is its id for one prompt's run. `rte` is the
@@ -326,8 +431,9 @@ Schema types a parser should handle although none was observed:
 (`content`, `kind`), `assistant.reasoning` (`reasoningId`, `content`),
 `tool.user_requested` (`toolCallId`, `toolName`, `arguments`; a tool the
 user ran), `permission.carriedForward`, `human_response.recorded`,
-`subagent.started` / `.completed` / `.failed` (`toolCallId`, `agentName`,
-`model`), `skill.invoked` (`name`, `path`), `hook.start` / `hook.end`.
+`subagent.failed` (`toolCallId`, `agentName`, `model`, the keys the schema
+gives `.started` and `.completed` too, which were observed on Windows),
+`skill.invoked` (`name`, `path`), `hook.start` / `hook.end`.
 
 ## 4. Joins and timestamps
 
@@ -355,6 +461,11 @@ user ran), `permission.carriedForward`, `human_response.recorded`,
   `session.context_changed` and `session.resume`; `workspace.yaml` `cwd`;
   `sessions.cwd`; `sidebar-sessions-state` `cwd`, whose file name is the
   sha256 of the cwd (real install, verified).
+
+On the Windows winget install (1.0.98) one session held 12 of each
+`model.*` type beside its 55 `assistant.message`, so that session made 12
+utility calls, not the three per session seen on macOS; what each was for
+was not determined.
 
 Every timestamp in the log is UTC with `Z`. `session.shutdown.sessionStartTime`
 is epoch milliseconds; `timestampMs` on native model events likewise.
@@ -430,6 +541,17 @@ install of 2026-10-17, where the deleted general chat kept its
 `assistant_usage_events` rows, and the WAL holding them was not
 checkpointed when the app quit
 ([What a deleted session leaves in `copilot-desktop.md`](copilot-desktop.md#what-a-deleted-session-leaves)).
+A session deleted with the standalone CLI's own command, `/session delete
+<id> --yes --remote`, locally and from the account (Windows winget
+install, 1.0.98, 2026-10-17), likewise kept its `sessions` row, 3
+`turns`, 1 `session_files` row, 3 `search_index` rows and 55
+`assistant_usage_events` rows (`model` `claude-sonnet-5`, `api_endpoint`
+`/v1/messages`); the WAL's size and time were unchanged since 22:06,
+before the delete. Its `events.jsonl` had held 6 `user.message` lines,
+and the store kept only 3 turns, the last three (stamped 22:03:42,
+22:04:58 and 22:05:54); why the first three are missing is not
+determined. The analyzer rebuilt the deleted session from these rows
+alone ([section 1](#1-evidence)).
 
 Other stores:
 
@@ -446,7 +568,12 @@ Other stores:
   (compactions), `fork_count`, `created_at`, `updated_at`,
   `remote_steerable`, `mc_task_id`, `mc_session_id`, `mc_last_event_id`;
   on Linux `client_name` was `github/cli` on both sessions, `user_named`
-  false, `summary_count` and `fork_count` 0, `remote_steerable` false.
+  false, `summary_count` and `fork_count` 0, `remote_steerable` false. On
+  the Windows winget install (1.0.98) the file was written at session
+  start without `name` and the last four keys (212 bytes), gained `name`
+  at the first prompt and `remote_steerable` and the `mc_` keys at a
+  resume, with `updated_at` unchanged; the `mc_` keys are the sync marker
+  of [section 8](#8-parser-plan).
   The struct has 19 fields (`runtime.node@82945317` `struct WorkspaceMetadata
   with 19 elements`); `repository`, `host_type`, `branch`,
   `mc_environment_id` and `chronicle_sync_dismissed` are among the rest
@@ -492,7 +619,21 @@ Other stores:
   initialized as client` for the `github-mcp-server` remote MCP server,
   `Memory enablement check: enabled` and `Starting graceful shutdown of
   CLI server`. The login appears twice, in the sign-in line and the
-  managed-settings line.
+  managed-settings line. On the Windows winget install (1.0.98) also
+  `Remote session access disabled` (before the login) and `enabled` (a
+  resumed process), `Unregistering foreground session: <uuid>`, `Closing
+  session <uuid>`, `Closed interrupted sub-agent records on resume
+  {"closed":0,"dangling":0}`, `Destroying 0 active sessions` and
+  `[rust:rmcp::service] Service initialized as client` with no MCP server
+  configured; no line records a session deleted with `/session delete`.
+  A log rotates at 10 MB to `process-<epoch ms>-<pid>.<n>.log` (`.1` to
+  `.4` observed there, while a pending login looped; [section 1 of
+  `collectors/research/copilot-cli.md`](../../collectors/research/copilot-cli.md#1-source-and-evidence-level)).
+  The parser's pattern (`process-\d+-\d+\.log`, [section 8](#8-parser-plan))
+  does not select the rotated files, so a sign-in line that rotated out
+  would not be read ([issue 152](https://github.com/seanthegeek/doubleagent/issues/152));
+  on that install the four `signed in:` rows came from the unrotated
+  logs.
 
 ## 6. Format versions
 
@@ -621,6 +762,26 @@ Other files:
 | `settings.json` | one `system` row per `allowedUrls` and `deniedUrls` entry, `permission setting: allowedUrls=<url> (from .copilot/settings.json, file mtime)`; strip comments before parsing |
 | `sidebar-sessions-state/*.json` | none; `cwd` per `sessionIds[]` fills `project_path` of database and snapshot rows that lack one |
 | `logs/process-*.log` | `system`, `signed in: <host> as <login>` at the line's time; `session_id` from `Workspace initialized: <uuid>` when the file names exactly one |
+
+Sync: `workspace.yaml` `remote_steerable` and the three `mc_` keys
+(`mc_task_id`, `mc_session_id`, `mc_last_event_id`) mark a session
+synced to the account through Mission Control: added at a resume on the
+Windows winget install (1.0.98) and present in every Copilot Desktop
+session (Linux 1.1.29, Windows 1.1.30). The parser does not yield a row
+for them yet ([issue 151](https://github.com/seanthegeek/doubleagent/issues/151)).
+The planned form is one `system` row after the `session metadata:` row,
+`session synced: remote session <mc_session_id> task <mc_task_id or ->
+last event <mc_last_event_id or -> remote_steerable=<remote_steerable or
+-> (from workspace.yaml, file mtime)`, timestamped by the file's
+modification time, a key present with an empty value printed `-`; a
+`synced` field last in each `sessions.jsonl` record, a string with three
+values: `yes` when the session has that row, `no` when the agent's parser
+records sync state (`copilot-cli`, whose rows include the Copilot Desktop
+sessions) and the session has none, and empty when the agent's parser
+records no sync state, so nothing is known; and a `synced_sessions`
+count in `inventory.json`, at the top level and in each
+`homes[].agents[]` entry. A session deleted locally and remotely leaves
+no marker anywhere on disk: the keys live only in its `workspace.yaml`.
 
 MCP: the configured servers (`mcp-config.json`), their failed spawns
 (the process log's `MCP server connection failed` lines) and the cached
@@ -811,7 +972,13 @@ shutdown, prompt-only row mid-turn), the `session.info` shape, the
 `model_picker` change, and the Linux layout, which matches macOS.
 `sessions.summary` holds the generated session name (Linux install).
 Not determined: why `schema_version` is 8 on Linux and 38 on macOS on the same 1.0.98; the
-legacy flat transcript's shape. The Windows layout was observed only
-through the Copilot Desktop app's bundled 1.0.99-2, where it matched
-Linux under `%USERPROFILE%`; the npm-installed CLI on Windows is not
-observed ([issue 133](https://github.com/seanthegeek/doubleagent/issues/133)).
+legacy flat transcript's shape. The Windows layout was observed through
+the Copilot Desktop app's bundled 1.0.99-2 and the winget install of
+1.0.98 (2026-10-17), and matched Linux under `%USERPROFILE%` in both;
+the winget round also exercised a denial, a resume, a session deleted
+with the CLI's own command and subagent events, seen as listings and key
+shapes only, since the delete took the session's `events.jsonl` before
+the analyzer ran. Not determined: why the store kept 3 of 6 turns;
+whether `permission.completed` nests `decisionSource` in `result` on
+Windows. The npm-installed CLI on Windows is not observed
+([issue 133](https://github.com/seanthegeek/doubleagent/issues/133)).

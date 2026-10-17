@@ -86,6 +86,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   present) rows for the `hook.start` and `hook.end` events the desktop
   app's sessions record, joined to the tool call on `parentToolCallId`;
   they were `hook.start: <compact JSON>` rows before ([#147]).
+- `sessions.jsonl` gains a last field `synced`, a new field of the
+  `sessions.jsonl` interface: `yes` when the session carries a
+  `session synced:` row, `no` when the agent's parser records sync state
+  (today `copilot-cli`, which also covers Copilot Desktop's sessions) and
+  the session has none, `""` when the parser records no sync state
+  ([#151]).
+- `inventory.json` gains two `synced_sessions` keys, new keys of that
+  interface: the last top-level key, the number of sessions whose
+  `synced` is `yes`, and the last key of each `homes[].agents[]` object,
+  the same count for that user and agent. The `sessions:` line ends with
+  `(<N> synced)` when N is greater than 0 ([#151]).
+- The `copilot-cli` parser yields a `session synced: remote session <id>
+  task <id> last event <id> remote_steerable=<value> (from workspace.yaml,
+  file mtime)` row when a session's `workspace.yaml` has a non-empty
+  `mc_session_id`, the marker of a session synced to the GitHub account,
+  at the file's modification time ([#151]).
 
 ### Changed
 
@@ -1086,6 +1102,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#151]: https://github.com/seanthegeek/doubleagent/issues/151
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#143]: https://github.com/seanthegeek/doubleagent/issues/143
 [#138]: https://github.com/seanthegeek/doubleagent/issues/138
