@@ -40,11 +40,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Library/Application Support/com.github.githubapp`,
   `AppData/Roaming/com.github.githubapp`) and Foundry Local's
   `.github-copilot-cli` are collected as `copilot-desktop` too ([#147]).
-- Exclusions for Copilot Desktop: `.copilot/repos` (the repositories the
-  app clones and their worktrees; which ones were added is recorded in
-  `data.db`), the bundled skills under `app-skills`, and on Linux the web view
-  caches `WebKitCache` and `CacheStorage` of the app's data directory
-  ([#147]).
+- Exclusions for Copilot Desktop: `.copilot/repos` (the working trees of
+  the repositories the app clones and their worktrees; which ones were added
+  is recorded in `data.db`), the bundled skills under `app-skills`, and on
+  Linux the web view caches `WebKitCache` and `CacheStorage` of the app's
+  data directory. Each clone's `.git` directory is its own entry,
+  `.copilot/repos/*/.git`, collected as `copilot-desktop` less its object
+  store and index (`.copilot/repos/*/.git/objects`, `.copilot/repos/*/.git/index`),
+  so the checkpoint refs under `refs/copilot/checkpoints`, `packed-refs`,
+  `logs`, `HEAD`, `config` and `worktrees` survive a deleted session in the
+  archive ([#147]).
 - Secret glob `.copilot/run/*.token`: the app's local WebSocket auth
   tokens `ws.token` and `ws.release.token` ([#147]).
 

@@ -351,7 +351,13 @@ prompt, a newline and the reply, or the prompt alone when the reply is
 null). The bundle holds no `DELETE` for `sessions`,
 `turns`, `session_files`, `session_refs` or `checkpoints` (only for
 `search_index` rows it rewrites and `dynamic_context_items`), so these
-rows outlive a rewind and a deleted session directory.
+rows outlive a rewind and a deleted session directory. A session deleted
+from the GitHub Copilot Desktop app is a `sessions.delete` call to the
+CLI the app bundles, which removes the session directory and leaves these
+rows: observed on the Linux install of 2026-10-16, where two deleted app
+sessions kept their `sessions`, `turns`, `session_files`,
+`assistant_usage_events` and `search_index` rows
+([What a deleted session leaves in `copilot-desktop.md`](copilot-desktop.md#what-a-deleted-session-leaves)).
 
 Other stores:
 

@@ -9172,6 +9172,18 @@ COPILOT_DESKTOP_CHAT = "5d404e14-0000-4000-8000-000000000001"
 COPILOT_DESKTOP_FORK = "9f9f9f9f-0000-4000-8000-000000000001"
 COPILOT_DESKTOP_WORKTREE = "/home/alice/.copilot/repos/copilot-worktrees/proj/octo-user-happy-otter"
 COPILOT_DESKTOP_MTIME = 1790850600  # 2026-10-01T10:30:00Z
+# Checkpoint refs in the app's clone of the project (issue 147): one well
+# formed, at the project session's checkpoint, and one malformed.
+COPILOT_DESKTOP_REF_DIR = ".copilot/repos/proj/.git/refs/copilot/checkpoints/" + COPILOT_SESSION
+COPILOT_DESKTOP_REF_REL = (
+    COPILOT_DESKTOP_REF_DIR + "/00000000000000000001/e0000000-0000-4000-8000-000000000004"
+)
+COPILOT_DESKTOP_REF_MTIME = 1790845201  # 2026-10-01T09:00:01Z
+COPILOT_DESKTOP_BAD_REF_REL = (
+    COPILOT_DESKTOP_REF_DIR + "/00000000000000000002/e0000000-0000-4000-8000-000000000020"
+)
+COPILOT_DESKTOP_BAD_REF_MTIME = 1790845230  # 2026-10-01T09:00:30Z
+COPILOT_DESKTOP_HEAD_REF_REL = ".copilot/repos/proj/.git/refs/heads/main"
 
 COPILOT_DESKTOP_SCHEMA = """
 CREATE TABLE "accounts" (id TEXT PRIMARY KEY NOT NULL, login TEXT NOT NULL, name TEXT,
@@ -9318,3 +9330,18 @@ def build_copilot_desktop(home: Path) -> None:
     store = home / ".local/share/com.github.githubapp/localstorage/tauri_localhost_0.localstorage"
     store.parent.mkdir(parents=True, exist_ok=True)
     store.write_bytes(b"SQLite format 3\x00not a real store")
+    # The checkpoint refs the parser reads, and a branch ref it must not want.
+    for rel, content, mtime in (
+        (
+            COPILOT_DESKTOP_REF_REL,
+            "0123456789abcdef0123456789abcdef01234567\n",
+            COPILOT_DESKTOP_REF_MTIME,
+        ),
+        (COPILOT_DESKTOP_BAD_REF_REL, "not-a-hash\n", COPILOT_DESKTOP_BAD_REF_MTIME),
+        (COPILOT_DESKTOP_HEAD_REF_REL, "fedcba9876543210fedcba9876543210fedcba98\n", None),
+    ):
+        ref = home / rel
+        ref.parent.mkdir(parents=True, exist_ok=True)
+        ref.write_text(content, encoding="utf-8")
+        if mtime:
+            os.utime(ref, (mtime, mtime))

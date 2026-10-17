@@ -915,6 +915,8 @@ Mk "$u121/config.json" "{}`n"
 # directories and log are nested copilot-desktop entries; its sessions stay
 # copilot-cli. A session cwd under .copilot (a chat directory, a worktree) is
 # not a project. The data directory and Foundry Local's directory are its own
+# entries. A clone's .git is collected (its checkpoint refs), less objects and
+# index; the clones' working trees and the worktrees stay excluded with repos.
 # entries. Checks follow the default and -NoSecrets runs below; the same
 # files are in smoke.sh under alice.
 $d147 = 'Users/alice/.copilot'
@@ -925,6 +927,12 @@ Mk "$d147/run/ws.token" ('A' * 49 + "`n")
 Mk "$d147/run/ws.port" "12345`n"
 Mk "$d147/chats/2026-10-16/x-5d404e14/.keep" ''
 Mk "$d147/repos/proj/README.md" "# proj`n"
+$r147 = "$d147/repos/proj/.git"
+$c147 = "$r147/refs/copilot/checkpoints/5e55a0a1-0000-4000-8000-000000000001/00000000000000000001"
+Mk "$r147/HEAD" "ref: refs/heads/main`n"
+Mk "$c147/e0000000-0000-4000-8000-000000000020" "0123456789abcdef0123456789abcdef01234567`n"
+Mk "$r147/objects/ab/cdef0123" "object`n"
+Mk "$r147/index" "index`n"
 Mk "$d147/repos/copilot-worktrees/proj/alice-x/AGENTS.md" "# wt`n"
 Mk "$d147/logs/github-app.1.log" "log`n"
 $cwd147 = 'C:\Users\alice\.copilot\chats\2026-10-16\x-5d404e14'
@@ -1419,7 +1427,8 @@ Check '#147 Copilot Desktop localstorage collected as copilot-desktop' { Is113 "
 Check '#147 Foundry Local log collected as copilot-desktop' { Is113 'Users/alice/.github-copilot-cli/logs/foundry.core20261016.log' 'copilot-desktop' $false }
 Check '#147 Copilot Desktop session workspace.yaml stays copilot-cli' { Is113 "$d147/session-state/s2/workspace.yaml" 'copilot-cli' $false }
 Check '#147 Copilot Desktop ws.token flagged secret' { Is113 "$d147/run/ws.token" 'copilot-desktop' $true }
-Check '#147 Copilot Desktop repos excluded' { (StatusOf "$d147/repos") -eq 'skipped_excluded' -and $null -eq (Row 'repos/proj/README.md') -and $null -eq (Row 'alice-x/AGENTS.md') }
+Check '#147 Copilot Desktop checkpoint ref and HEAD collected as copilot-desktop' { (Is113 "$c147/e0000000-0000-4000-8000-000000000020" 'copilot-desktop' $false) -and (Is113 "$r147/HEAD" 'copilot-desktop' $false) }
+Check '#147 Copilot Desktop repos working tree, worktrees, objects and index excluded' { (StatusOf "$d147/repos") -eq 'skipped_excluded' -and (StatusOf "$r147/objects") -eq 'skipped_excluded' -and (StatusOf "$r147/index") -eq 'skipped_excluded' -and $null -eq (Row 'repos/proj/README.md') -and $null -eq (Row 'alice-x/AGENTS.md') -and $null -eq (Row 'ab/cdef0123') }
 Check '#147 Copilot Desktop app-skills excluded' { (StatusOf "$l147/app-skills") -eq 'skipped_excluded' -and $null -eq (Row 'app-skills/af/SKILL.md') }
 $log147 = Get-Content -LiteralPath (Get-ChildItem -LiteralPath (Join-Path $Out 'default') -Filter '*.log' | Select-Object -First 1).FullName -Raw
 $home147 = (P $d147) + $Sep

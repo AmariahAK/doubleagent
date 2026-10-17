@@ -282,6 +282,7 @@ copilot-desktop|.copilot/data.db*
 copilot-desktop|.copilot/repo-metadata-cache.db*
 copilot-desktop|.copilot/chats
 copilot-desktop|.copilot/repos
+copilot-desktop|.copilot/repos/*/.git
 copilot-desktop|.copilot/run
 copilot-desktop|.copilot/media-cache
 copilot-desktop|.copilot/canvas-catalog-probe
@@ -860,6 +861,8 @@ Library/Application Support/Codex/executor-plugins/*/server.mjs
 Library/Caches/copilot/pkg
 AppData/Local/copilot/pkg
 .copilot/repos
+.copilot/repos/*/.git/objects
+.copilot/repos/*/.git/index
 .local/share/com.github.githubapp/app-skills
 .local/share/com.github.githubapp/WebKitCache
 .local/share/com.github.githubapp/CacheStorage

@@ -962,6 +962,8 @@ fi
 # directories and log are nested copilot-desktop entries; its sessions stay
 # copilot-cli. A session cwd under .copilot (a chat directory, a worktree) is
 # not a project. The data directory and Foundry Local's directory are its own
+# entries. A clone's .git is collected (its checkpoint refs), less objects and
+# index; the clones' working trees and the worktrees stay excluded with repos.
 # entries. Checks follow the default and --no-secrets runs below; the same
 # files are in smoke.ps1 under alice.
 D147="$ROOT/home/alice/.copilot"
@@ -976,6 +978,14 @@ printf '%s\n' 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' >"$D147/run/ws
 printf '12345\n' >"$D147/run/ws.port"
 : >"$D147/chats/2026-10-16/x-5d404e14/.keep"
 printf '# proj\n' >"$D147/repos/proj/README.md"
+R147="$D147/repos/proj/.git"
+C147="$R147/refs/copilot/checkpoints/5e55a0a1-0000-4000-8000-000000000001/00000000000000000001"
+mkdir -p "$C147" "$R147/objects/ab"
+printf 'ref: refs/heads/main\n' >"$R147/HEAD"
+printf '0123456789abcdef0123456789abcdef01234567\n' \
+  >"$C147/e0000000-0000-4000-8000-000000000020"
+printf 'object\n' >"$R147/objects/ab/cdef0123"
+printf 'index\n' >"$R147/index"
 printf '# wt\n' >"$D147/repos/copilot-worktrees/proj/alice-x/AGENTS.md"
 printf 'log\n' >"$D147/logs/github-app.1.log"
 printf 'cwd: /home/alice/.copilot/chats/2026-10-16/x-5d404e14\nclient_name: github/autopilot\n' \
@@ -1313,7 +1323,8 @@ check "#147 Copilot Desktop localstorage collected as copilot-desktop" "row \"$L
 check "#147 Foundry Local log collected as copilot-desktop" "row \"$ROOT/home/alice/.github-copilot-cli/logs/foundry.core20261016.log\" | grep -q '\"agent\":\"copilot-desktop\".*\"status\":\"collected\"'"
 check "#147 Copilot Desktop session workspace.yaml stays copilot-cli" "row \"$D147/session-state/s2/workspace.yaml\" | grep -q '\"agent\":\"copilot-cli\".*\"status\":\"collected\"'"
 check "#147 Copilot Desktop ws.token flagged secret" "row \"$D147/run/ws.token\" | grep -q '\"agent\":\"copilot-desktop\".*\"secret\":true,\"status\":\"collected\"'"
-check "#147 Copilot Desktop repos excluded" "[ \"\$(status_of \"$D147/repos\")\" = skipped_excluded ] && ! grep -q 'repos/proj/README.md\"' \"\$M\" && ! grep -q 'alice-x/AGENTS.md\"' \"\$M\""
+check "#147 Copilot Desktop checkpoint ref and HEAD collected as copilot-desktop" "row \"$C147/e0000000-0000-4000-8000-000000000020\" | grep -q '\"agent\":\"copilot-desktop\".*\"status\":\"collected\"' && row \"$R147/HEAD\" | grep -q '\"agent\":\"copilot-desktop\".*\"status\":\"collected\"'"
+check "#147 Copilot Desktop repos working tree, worktrees, objects and index excluded" "[ \"\$(status_of \"$D147/repos\")\" = skipped_excluded ] && [ \"\$(status_of \"$R147/objects\")\" = skipped_excluded ] && [ \"\$(status_of \"$R147/index\")\" = skipped_excluded ] && ! grep -q 'repos/proj/README.md\"' \"\$M\" && ! grep -q 'alice-x/AGENTS.md\"' \"\$M\" && ! grep -q 'cdef0123\"' \"\$M\""
 check "#147 Copilot Desktop app-skills excluded" "[ \"\$(status_of \"$L147/app-skills\")\" = skipped_excluded ] && ! grep -q 'app-skills/af/SKILL.md\"' \"\$M\""
 check "#147 Copilot Desktop chat directory and worktree not projects" "! grep -q 'Project .*/\.copilot/' \"$OUT\"/default/*.log && ! grep -q '\"home\":\"$D147/' \"\$M\" && ! grep -q '\.copilot/chats' \"\$S\" && ! grep -q 'copilot-worktrees' \"\$S\""
 check "#147 Copilot Desktop chat directory file collected once as copilot-desktop" "[ \"\$(grep -c 'x-5d404e14/.keep\"' \"\$M\")\" = 1 ] && row \"$D147/chats/2026-10-16/x-5d404e14/.keep\" | grep -q '\"agent\":\"copilot-desktop\"'"

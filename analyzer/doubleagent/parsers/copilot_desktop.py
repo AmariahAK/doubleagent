@@ -11,8 +11,8 @@ belong to the catalog's `copilot-cli` entry and are read by the
 marks them). This parser reads the app's own store only.
 
 * `.copilot/data.db`, SQLite in WAL mode (opened through `sqlite_util`,
-  which copies the `-wal` and `-shm` sidecars with it), the primary and
-  only source: no `secondary()` file, since it repeats no event of the
+  which copies the `-wal` and `-shm` sidecars with it), the primary
+  source: no `secondary()` file, since it repeats no event of the
   session logs. Every timestamp column is ISO 8601 UTC with milliseconds
   (`strftime('%Y-%m-%dT%H:%M:%fZ','now')`); every column is read as
   possibly NULL, and a table that is missing gives no rows. All rows are
@@ -77,6 +77,21 @@ marks them). This parser reads the app's own store only.
   The four scheduling tables and `session_deletion_intents` were empty on
   the install, so their rows are fixture only (columns from the schema).
   A file that is not SQLite, or a SQLite error, is one `parser:` row.
+* `.copilot/repos/<repo>/.git/refs/copilot/checkpoints/<session id>/<seq>/<event id>`,
+  the loose git refs (one file per ref, holding a commit hash) that the
+  app writes into its clone of a project for every checkpoint; the commit
+  is a snapshot of the session's worktree, and the refs outlive a
+  session the app deleted (observed 2026-10-16). Fields: the three path
+  groups (the session id and the event id, each 36 characters of
+  lowercase hex and hyphens, and the decimal sequence number) and the
+  file content. One `system` row per file, at the file's modification
+  time (`file_mtime`), `source_line` 0, `project_path` empty:
+  `checkpoint ref <seq as an integer>: commit <content, stripped> event
+  <event id> (file mtime)`, `session_id` the session id. The content is
+  written as read, stripped, nothing repaired, so an empty or malformed
+  ref still gives its row; an unreadable file is one `parser: unreadable
+  <path>` row. Not a secondary source: the refs repeat no transcript
+  event.
 
 Model: `sessions.model` per session, on the `desktop session:` row and in
 its `model` column; `data.db` keeps no per-switch history (the logs'
@@ -99,6 +114,10 @@ from ..timeutil import to_utc
 from .base import Options, Parser, compact_json, file_mtime
 
 DB_RX = re.compile(r"^\.copilot/data\.db$")
+REF_RX = re.compile(
+    r"^\.copilot/repos/[^/]+/\.git/refs/copilot/checkpoints/"
+    r"([0-9a-f-]{36})/(\d+)/([0-9a-f-]{36})$"
+)
 
 
 def _str(v) -> str:
@@ -120,9 +139,13 @@ class CopilotDesktopParser(Parser):
     name = "copilot-desktop"
 
     def wants(self, artifact: Artifact) -> bool:
-        return bool(DB_RX.match(artifact.rel))
+        return bool(DB_RX.match(artifact.rel) or REF_RX.match(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        ref = REF_RX.match(artifact.rel)
+        if ref:
+            yield self._ref_row(artifact, ref)
+            return
         if not is_sqlite(artifact.disk_path):
             yield self._row(artifact, "parser: not a SQLite database")
             return
@@ -133,6 +156,22 @@ class CopilotDesktopParser(Parser):
             yield self._row(artifact, "parser: SQLite error: %s" % e)
             return
         yield from rows
+
+    def _ref_row(self, artifact: Artifact, ref: re.Match) -> Row:
+        session_id, seq, event_id = ref.groups()
+        try:
+            content = artifact.disk_path.read_bytes().decode("utf-8", "replace")
+        except OSError:
+            return self._row(
+                artifact, "parser: unreadable %s" % artifact.rel, session_id=session_id
+            )
+        return self._row(
+            artifact,
+            "checkpoint ref %d: commit %s event %s (file mtime)"
+            % (int(seq), content.strip(), event_id),
+            file_mtime(artifact),
+            session_id=session_id,
+        )
 
     def _row(self, artifact: Artifact, text: str, ts=None, **cols) -> Row:
         r = self.base_row(artifact)

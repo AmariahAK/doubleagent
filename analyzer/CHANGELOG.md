@@ -74,6 +74,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   commits, scheduled tasks with their triggers and runs, session
   automations and session deletion requests. The app's session logs stay
   with the `copilot-cli` parser ([#147]).
+- The `copilot-desktop` parser also reads the checkpoint refs the app
+  writes into its clone of a project,
+  `.copilot/repos/<repo>/.git/refs/copilot/checkpoints/<session>/<seq>/<event>`:
+  one `system` row per ref, `checkpoint ref <seq>: commit <hash> event
+  <event id> (file mtime)`, at the file's modification time, with the
+  session id from the path. The refs outlive a session the app deleted,
+  and their commits are snapshots of the session's worktree ([#147]).
 - The `copilot-cli` parser yields `hook <hookType> start: <input>` and
   `hook <hookType> end: success=<b> output=<output>` (with ` error=` when
   present) rows for the `hook.start` and `hook.end` events the desktop

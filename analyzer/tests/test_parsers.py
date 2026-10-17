@@ -10699,7 +10699,14 @@ class CopilotCliTests(ParserBase):
 
 
 from doubleagent.parsers.copilot_desktop import CopilotDesktopParser
-from fixtures import COPILOT_DESKTOP_CHAT, COPILOT_DESKTOP_DB_REL, COPILOT_DESKTOP_WORKTREE
+from fixtures import (
+    COPILOT_DESKTOP_BAD_REF_REL,
+    COPILOT_DESKTOP_CHAT,
+    COPILOT_DESKTOP_DB_REL,
+    COPILOT_DESKTOP_HEAD_REF_REL,
+    COPILOT_DESKTOP_REF_REL,
+    COPILOT_DESKTOP_WORKTREE,
+)
 
 
 class CopilotDesktopTests(ParserBase):
@@ -10885,7 +10892,11 @@ class CopilotDesktopTests(ParserBase):
         art = self.artifact(COPILOT_DESKTOP_DB_REL)
         self.assertFalse(CopilotDesktopParser().secondary(art))
         rows, _, problems, dropped = cli.collect_rows(self.col, Options(), ["copilot-desktop"])
-        self.assertEqual(len([r for r in rows if r.agent == "copilot-desktop"]), len(self.EXPECTED))
+        self.assertEqual(
+            len([r for r in rows if r.agent == "copilot-desktop"]), len(self.EXPECTED) + 2
+        )
+        for rel in (COPILOT_DESKTOP_REF_REL, COPILOT_DESKTOP_BAD_REF_REL):
+            self.assertFalse(CopilotDesktopParser().secondary(self.artifact(rel)), rel)
         self.assertEqual(dropped["copilot-desktop"], 0)
         self.assertEqual(problems, [])
 
@@ -10911,6 +10922,66 @@ class CopilotDesktopTests(ParserBase):
         self.assertTrue(p.wants(rel_only(COPILOT_DESKTOP_DB_REL)))
         # The CLI parser does not read the app's store either.
         self.assertFalse(CopilotCliParser().wants(self.artifact(COPILOT_DESKTOP_DB_REL)))
+
+    def test_checkpoint_refs(self):
+        # One row per loose checkpoint ref, at the file's mtime (issue 147).
+        p = CopilotDesktopParser()
+        rows = self.rows_for(p, COPILOT_DESKTOP_REF_REL) + self.rows_for(
+            p, COPILOT_DESKTOP_BAD_REF_REL
+        )
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.project_path, r.text) for r in rows],
+            [
+                (
+                    "2026-10-01T09:00:01.000Z",
+                    COPILOT_SESSION,
+                    "",
+                    "checkpoint ref 1: commit 0123456789abcdef0123456789abcdef01234567"
+                    " event e0000000-0000-4000-8000-000000000004 (file mtime)",
+                ),
+                # A malformed ref keeps its content as read, nothing repaired.
+                (
+                    "2026-10-01T09:00:30.000Z",
+                    COPILOT_SESSION,
+                    "",
+                    "checkpoint ref 2: commit not-a-hash"
+                    " event e0000000-0000-4000-8000-000000000020 (file mtime)",
+                ),
+            ],
+        )
+        for r, rel in zip(
+            rows, (COPILOT_DESKTOP_REF_REL, COPILOT_DESKTOP_BAD_REF_REL), strict=True
+        ):
+            self.assertEqual(
+                (r.host, r.user, r.agent, r.turn_type, r.source_line, r.model, r.tool_use_id),
+                ("h1", "alice", "copilot-desktop", "system", 0, "", ""),
+            )
+            self.assertEqual(r.source_file, "/alice/" + rel)
+        # An empty ref file still gives its row.
+        (self.home / COPILOT_DESKTOP_BAD_REF_REL).write_text("", encoding="utf-8")
+        rows = self.rows_for(p, COPILOT_DESKTOP_BAD_REF_REL)
+        self.assertEqual(
+            [r.text for r in rows],
+            ["checkpoint ref 2: commit  event e0000000-0000-4000-8000-000000000020 (file mtime)"],
+        )
+
+    def test_checkpoint_refs_not_wanted(self):
+        p = CopilotDesktopParser()
+        art = self.artifact(COPILOT_DESKTOP_HEAD_REF_REL)
+        self.assertEqual(art.agent, "copilot-desktop")
+        self.assertFalse(p.wants(art))
+        ref = COPILOT_DESKTOP_REF_REL
+        for rel in (
+            ref.replace("/refs/copilot/checkpoints/", "/refs/heads/"),
+            ref.replace(".copilot/repos/proj/", ".copilot/repos/"),
+            ref.replace("/00000000000000000001/", "/1a/"),
+            ref + ".lock",
+            ref.rsplit("/", 1)[0],
+            "proj/" + ref,
+        ):
+            self.assertFalse(p.wants(rel_only(rel)), rel)
+        self.assertTrue(p.wants(rel_only(ref)))
+        self.assertTrue(p.wants(self.artifact(ref)))
 
     def test_unreadable_database(self):
         db = self.home / COPILOT_DESKTOP_DB_REL

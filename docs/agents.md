@@ -52,7 +52,7 @@ equal.
 | [`continue`](#continue) | parsed | source; fixture only | [collector research](../collectors/research/continue.md); [analyzer research](../analyzer/research/continue.md) |
 | [`copilot`](#copilot) | collected | Source (the vendored language server) | [collector research](../collectors/research/copilot.md); an OAuth token store with no transcripts; Copilot Chat is parsed as `vscode` |
 | [`copilot-cli`](#copilot-cli) | parsed | bundle and real installs: macOS, Linux (October 2026) | [collector research](../collectors/research/copilot-cli.md); [analyzer research](../analyzer/research/copilot-cli.md); [issue 132](https://github.com/seanthegeek/doubleagent/issues/132); the legacy flat `session-state/<id>.jsonl` transcript is not parsed yet |
-| [`copilot-desktop`](#copilot-desktop) | parsed | shipped app and real install: Linux (October 2026) | [collector research](../collectors/research/copilot-desktop.md); [analyzer research](../analyzer/research/copilot-desktop.md); [issue 147](https://github.com/seanthegeek/doubleagent/issues/147) |
+| [`copilot-desktop`](#copilot-desktop) | parsed | shipped app and real install: Linux (October 2026) | [collector research](../collectors/research/copilot-desktop.md); [analyzer research](../analyzer/research/copilot-desktop.md); [issue 147](https://github.com/seanthegeek/doubleagent/issues/147); [issue 149](https://github.com/seanthegeek/doubleagent/issues/149): the inventory lists the app's own directories as projects |
 | [`crewai`](#crewai) | backlog | Source, appdirs source | [collector research](../collectors/research/crewai.md); [issue 140](https://github.com/seanthegeek/doubleagent/issues/140); `latest_kickoff_task_outputs.db` holds every task's output with its messages |
 | [`crush`](#crush) | parsed | source; fixture only | [collector research](../collectors/research/crush.md); [analyzer research](../analyzer/research/crush.md) |
 | [`cursor`](#cursor) | backlog | Shipped Agent CLI bundle, docs, forum, write-ups | [collector research](../collectors/research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); blocked on format research: the `state.vscdb` key layout varies by version |
@@ -374,7 +374,11 @@ row for a fork), `activity_items`, `session_checkpoints`, the scheduled
 tasks with their triggers and runs (`my_copilot_scheduled_tasks`,
 `my_copilot_scheduled_task_triggers`,
 `my_copilot_scheduled_task_invocations`), `session_automations` and
-`session_deletion_intents`. The app's session logs under
+`session_deletion_intents`. The checkpoint refs
+`.copilot/repos/<name>/.git/refs/copilot/checkpoints/<session id>/<seq>/<event id>`,
+one `checkpoint ref <seq>: commit <hash> event <event id> (file mtime)`
+row per ref file, at its modification time; they outlive a session
+deleted from the app. The app's session logs under
 `.copilot/session-state/` are read by the `copilot-cli` parser and share
 `session_id` with these rows.
 
@@ -384,7 +388,9 @@ Ubuntu 26.04 arm64 (2026-10-16): the `data.db` tables and columns, and
 the account, settings, provider, project, worktree, workspace, session,
 activity and checkpoint rows, seen there, synthetic fixture; scheduled
 tasks, triggers, runs, session automations, deletion intents, forks and
-pull request links fixture only (empty on the install).
+pull request links fixture only (empty on the install). The checkpoint
+refs were seen on the same install after both sessions were deleted
+from the app (2026-10-16).
 
 ### `crush`
 
