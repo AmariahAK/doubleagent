@@ -1683,9 +1683,12 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     build_little_coder(home)
     build_letta(home)
     build_hermes(home)
+    build_hermes_pastes(home)
     build_agent_zero(home)
+    build_agent_zero_relayed(home)
     build_open_interpreter(home)
     build_openclaw(home)
+    build_openclaw_state(home)
     build_nanobot(home)
     build_nanobot_webui(home)
     build_cody(home)
@@ -3389,6 +3392,25 @@ def goose_records(cwd="/srv/proj"):
         """('msg_20260301_1_a4','20260301_1','assistant','[{"type":"thinking","thinking":"all green","signature":"sig"},{"type":"text","text":"All 3 tests pass."}]',1772355605, '{"userVisible":true,"agentVisible":true,"inference":{"provider":"openai","requestedModel":"gpt-4.1","resolvedModel":"gpt-4.1-2025-04-14"}}')""",
         "INSERT INTO usage_ledger(session_id,created_timestamp,model,input_tokens,output_tokens,total_tokens) "
         "VALUES ('20260301_1',1772355605,'claude-sonnet-4-5',120,30,150)",
+    ]
+
+
+# Session sync (issue 153): a gateway session, created when a Telegram user
+# pairs (crates/goose/src/gateway/handler.rs:304-326 at aaif-goose/goose
+# bfcc6ee): name `<platform>/<display name or user id>`, working_dir
+# `<config>/gateway/<platform>/<user_id>`. Kept out of build_home so the
+# shared session's row order stays as the other tests expect.
+GOOSE_GATEWAY_SESSION = "20261017_4"
+
+
+def goose_gateway_records(display="alice"):
+    return [
+        "INSERT INTO sessions(id,name,session_type,working_dir,created_at,updated_at) VALUES "
+        "('%s','telegram/%s','gateway','/home/alice/.config/goose/gateway/telegram/123456789',"
+        "'2026-10-17 08:00:00','2026-10-17 08:05:00')" % (GOOSE_GATEWAY_SESSION, display),
+        "INSERT INTO messages(message_id,session_id,role,content_json,created_timestamp,metadata_json)"
+        " VALUES ('msg_gw_1','%s','user','[{\"type\":\"text\",\"text\":\"disk usage?\"}]',"
+        "1792224060,'{\"userVisible\":true}')" % GOOSE_GATEWAY_SESSION,
     ]
 
 
@@ -6280,6 +6302,25 @@ def _a0_message(mid, ai, content, metadata=None):
     }
 
 
+# Session sync (issue 153): pastes/pending.json, the paste.rs links of
+# `hermes debug share` uploads (hermes_cli/debug.py:38-39 at hermes-agent
+# 8b66a51, research/hermes.md section 2): expire_at is upload + 21600 s.
+HERMES_PASTES_REL = ".hermes/pastes/pending.json"
+
+
+def hermes_pastes_records():
+    return [
+        {"url": "https://paste.rs/AbCdE", "expire_at": 1790875200.5},
+        {"url": "https://paste.rs/FgHiJ", "expire_at": 1790875260.0},
+    ]
+
+
+def build_hermes_pastes(home: Path) -> None:
+    path = home / HERMES_PASTES_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(hermes_pastes_records()), encoding="utf-8")
+
+
 def agent_zero_history():
     """Agent 0's history from research/agent-zero.md section 8, with the
     assistant message carrying the id of the `agent` log item that streamed
@@ -6474,6 +6515,83 @@ def build_agent_zero(home: Path) -> None:
     (chat / "messages/1.txt").write_text(AGENT_ZERO_LONG + " (from file)", encoding="utf-8")
     (usr / "settings.json").write_text('{"chat_model_provider": "openrouter"}', encoding="utf-8")
     (usr / "secrets.env").write_text("API_KEY_OPENROUTER=not-real\n", encoding="utf-8")
+
+
+# Session sync (issue 153): a Telegram chat whose main agent chained a turn
+# on a provider-stored response, and a subordinate agent in local mode
+# (ids recorded, nothing stored). Keys from research/agent-zero.md section 3
+# (agent.py:1062-1082, plugins/_telegram_integration/helpers/constants.py:5-15
+# at agent-zero e3051fb).
+AGENT_ZERO_TG_CHAT = "TgChat01"
+AGENT_ZERO_TG_REL = "agent-zero/usr/chats/%s/chat.json" % AGENT_ZERO_TG_CHAT
+AGENT_ZERO_BOT_TOKEN = "123456:AA-FIXTURE-TELEGRAM-BOT-TOKEN"
+
+
+def agent_zero_relayed_chat():
+    chat = agent_zero_chat(
+        logs=[
+            {
+                "no": 0,
+                "id": "u1",
+                "type": "user",
+                "heading": "",
+                "content": "status of the backups?",
+                "kvps": {},
+                "timestamp": 1790863200.0,
+                "agentno": 0,
+            },
+            {
+                "no": 1,
+                "id": "r1",
+                "type": "response",
+                "heading": "",
+                "content": "All backups ran.",
+                "kvps": {},
+                "timestamp": 1790863205.0,
+                "agentno": 0,
+            },
+        ],
+        history={"_cls": "History", "bulks": [], "topics": [], "current": {"messages": []}},
+    )
+    chat["id"] = AGENT_ZERO_TG_CHAT
+    chat["name"] = "Telegram: @alice_ops"
+    chat["data"] = {
+        "project": "demo",
+        "telegram_bot": "opsbot",
+        "telegram_chat_id": 987654321,
+        "telegram_chat_type": "private",
+        "telegram_user_id": 123456789,
+        "telegram_username": "alice_ops",
+        "telegram_bot_cfg": {"name": "opsbot", "token": AGENT_ZERO_BOT_TOKEN},
+    }
+    chat["agents"][0]["data"] = {
+        "responses_state": {
+            "response_id": "resp_02",
+            "previous_response_id": "resp_01",
+            "provider_model_key": "openai/gpt-5",
+            "history_counter": 4,
+            "response_ids": ["resp_01", "resp_02"],
+        }
+    }
+    sub = dict(chat["agents"][0])
+    sub["number"] = 1
+    sub["data"] = {
+        "responses_state": {
+            "response_id": "resp_l1",
+            "previous_response_id": "",
+            "provider_model_key": "codex/gpt-5-codex",
+            "history_counter": 1,
+            "response_ids": ["resp_l1"],
+        }
+    }
+    chat["agents"].append(sub)
+    return chat
+
+
+def build_agent_zero_relayed(home: Path) -> None:
+    path = home / AGENT_ZERO_TG_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(agent_zero_relayed_chat()), encoding="utf-8")
 
 
 OI_SESSION = "0199a1b2-0000-7000-8000-000000000001"
@@ -6889,6 +7007,114 @@ def openclaw_legacy_records(session_id=OPENCLAW_LEGACY):
     ]
 
 
+# Session sync (issue 153): session_nodes (src/state/openclaw-agent-schema.sql:16-49
+# at 3b16db7, the columns the parser reads) with a `publicShare` grant
+# (src/config/sessions/types.ts:627-628) on the live session and none on the
+# reset one, and state/openclaw.sqlite backup_runs
+# (src/state/openclaw-state-schema.sql:1843-1849) with manifests shaped by
+# src/state/backup-run-records.contract.ts:98-124.
+OPENCLAW_SHARE_ID = "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6071"
+OPENCLAW_STATE_DB = ".openclaw/state/openclaw.sqlite"
+OPENCLAW_BACKUP_KEY = "backups/main/2026-10-01T10-20-00Z-0a1b2c3d.tar.gz"
+OPENCLAW_BACKUP_COMMIT = "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432"
+OPENCLAW_NODES_SCHEMA = """
+CREATE TABLE session_nodes (session_key TEXT NOT NULL PRIMARY KEY, current_session_id TEXT NOT NULL,
+  entry_json TEXT NOT NULL, updated_at INTEGER NOT NULL, created_via TEXT, label TEXT);
+"""
+OPENCLAW_STATE_SCHEMA = """
+CREATE TABLE backup_runs (id TEXT NOT NULL PRIMARY KEY, created_at INTEGER NOT NULL,
+  archive_path TEXT NOT NULL, status TEXT NOT NULL, manifest_json TEXT NOT NULL) STRICT;
+"""
+
+
+def openclaw_node_inserts():
+    """A published live session and an unpublished reset session."""
+    shared = {
+        "sessionId": OPENCLAW_SESSION,
+        "updatedAt": 1790845260000,
+        "publicShare": {
+            "id": OPENCLAW_SHARE_ID,
+            "sessionId": OPENCLAW_SESSION,
+            "createdAt": 1790845320000,
+        },
+    }
+    plain = {"sessionId": OPENCLAW_RESET_SESSION, "updatedAt": 1790847000000}
+    return [
+        "INSERT INTO session_nodes VALUES ('%s','%s','%s',1790845320000,'channel',NULL)"
+        % (OPENCLAW_KEY, OPENCLAW_SESSION, json.dumps(shared)),
+        "INSERT INTO session_nodes VALUES ('agent:main:main','%s','%s',1790847000000,'operator',NULL)"
+        % (OPENCLAW_RESET_SESSION, json.dumps(plain)),
+    ]
+
+
+def openclaw_backup_runs():
+    """(id, created_at, archive_path, status, manifest): an offsite archive
+    upload and a pushed Git backup, which yield rows, and a Git backup whose
+    push failed, a local archive and a failed upload, which do not."""
+    location = {
+        "name": "r2-offsite",
+        "provider": "cloudflare-r2",
+        "locationId": "loc-01",
+        "key": OPENCLAW_BACKUP_KEY,
+        "namespace": "main",
+        "plaintextBytes": 81920,
+        "storedBytes": 40960,
+    }
+    return [
+        (
+            "run-01",
+            1790850000000,
+            "/home/alice/.openclaw/backups/2026-10-01T10-20-00Z.tar.gz",
+            "ok",
+            {
+                "kind": "archive",
+                "target": "r2-offsite",
+                "namespace": "main",
+                "bytes": 81920,
+                "location": location,
+                "retention": {"kept": 1, "deleted": 0},
+            },
+        ),
+        (
+            "run-02",
+            1790852400000,
+            "/home/alice/openclaw-backup.git",
+            "ok",
+            {"kind": "git", "target": OPENCLAW_BACKUP_COMMIT, "namespace": "main"},
+        ),
+        (
+            "run-03",
+            1790856000000,
+            "/home/alice/openclaw-backup.git",
+            "ok",
+            {"kind": "git", "target": "1" * 40, "namespace": "main", "pushFailed": True},
+        ),
+        (
+            "run-04",
+            1790859600000,
+            "/home/alice/.openclaw/backups/local.tar.gz",
+            "ok",
+            {"kind": "archive", "namespace": "main"},
+        ),
+        (
+            "run-05",
+            1790863200000,
+            "/home/alice/.openclaw/backups/failed.tar.gz",
+            "failed",
+            {"kind": "archive", "target": "r2-offsite", "error": "upload refused"},
+        ),
+    ]
+
+
+def build_openclaw_state(home: Path) -> None:
+    inserts = [
+        "INSERT INTO backup_runs VALUES ('%s',%d,'%s','%s','%s')"
+        % (rid, created, path, status, json.dumps(manifest))
+        for rid, created, path, status, manifest in openclaw_backup_runs()
+    ]
+    _wal_db(home / OPENCLAW_STATE_DB, OPENCLAW_STATE_SCHEMA, inserts)
+
+
 def _openclaw_zstd(raw: bytes) -> bytes:
     """zstd-compressed bytes, as OpenClaw writes them."""
     return zstandard.ZstdCompressor(level=1, write_checksum=True).compress(raw)
@@ -6978,7 +7204,11 @@ def build_openclaw(home: Path) -> None:
             cold_blob.hex(),
         )
     )
-    _wal_db(agent / "agent/openclaw-agent.sqlite", OPENCLAW_SCHEMA, inserts)
+    _wal_db(
+        agent / "agent/openclaw-agent.sqlite",
+        OPENCLAW_SCHEMA + OPENCLAW_NODES_SCHEMA,
+        inserts + openclaw_node_inserts(),
+    )
     sessions = agent / "sessions"
     _jsonl(sessions / (OPENCLAW_LEGACY + ".jsonl"), openclaw_legacy_records())
     (sessions / "sessions.json").write_text(

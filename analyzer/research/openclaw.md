@@ -337,11 +337,14 @@ first two leave a local record ([section 5](#5-sqlite-and-compression)).
 - Public link: `session_nodes.entry_json` `publicShare` marks a session
   whose user messages and final answers anyone with the URL can read,
   served by the Gateway (opt-in per session, off by default,
-  [`docs/concepts/multi-user.md:21-36`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/concepts/multi-user.md#L21-L36)). Proposed row, one `system`
-  row after the session-start row: `session synced: public share
-  <publicShare.id> generation <publicShare.sessionId> (from
+  [`docs/concepts/multi-user.md:21-36`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/concepts/multi-user.md#L21-L36)). The parser yields one `system`
+  row after the generation's session-start row: `session synced: public
+  share <publicShare.id> generation <publicShare.sessionId> (from
   openclaw-agent.sqlite session_nodes.entry_json, publicShare.createdAt)`,
-  timestamped by `createdAt`. Turning access off removes the key, and
+  timestamped by `createdAt`, with `session_id` the generation, and sets
+  `records_sync`; a grant whose generation has no transcript rows in the
+  database still yields its row. Fixture only: no real install has shown
+  the key. Turning access off removes the key, and
   deleting the session deletes its `session_nodes` row
   ([`src/config/sessions/session-accessor.sqlite-entry-store.ts:271-274`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/session-accessor.sqlite-entry-store.ts#L271-L274));
   the `.jsonl.deleted.*` archive and its `session_transcript_archives`
@@ -358,12 +361,18 @@ first two leave a local record ([section 5](#5-sqlite-and-compression)).
   [`docs/cli/backup.md:318-321`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L318-L321), [`docs/cli/backup.md:364`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L364)).
   The marker is host-wide, not per session: each `backup_runs` row says
   every session in the uploaded databases at `created_at` left the host.
-  Proposed row, one `system` row per `backup_runs` row with `status` `ok`
-  and a `location` or a pushed Git `target`, empty `session_id`:
-  `session synced: backup <kind> to <location.name or archive_path> key
-  <location.key or target> namespace <namespace or -> (from
+  The parser yields one `system` row per `backup_runs` row with `status`
+  `ok` and either a `location` or a Git `target` without `pushFailed`,
+  with an empty `session_id`, in the agent's own term rather than
+  `session synced:` because it marks no one session: `backup uploaded:
+  <kind> to <location.name or archive_path> key <location.key or target>
+  namespace <location.namespace or namespace or -> (from
   state/openclaw.sqlite backup_runs, created_at)`, timestamped by
-  `created_at`. Deleting a session does not touch `backup_runs`, and the
+  `created_at`. A Git backup run without `--push` records the same
+  manifest as a pushed one, `target` the commit and no `pushFailed`
+  ([`src/commands/backup-git.ts:140-151`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/commands/backup-git.ts#L140-L151)),
+  so a Git row says a commit was made and may have been pushed. Fixture
+  only. Deleting a session does not touch `backup_runs`, and the
   uploaded archives keep the session; retention prunes the table
   ([`docs/cli/backup.md:486-499`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L486-L499)).
 - Remote execution: a session placed on a paired device or a Crabbox cloud

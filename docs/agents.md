@@ -110,6 +110,11 @@ results; history-only turns without timestamps when the log was trimmed at
 1000 items) under `agent-zero`, `agent-zero/<instance>` or
 `Desktop/agent-zero`, also the legacy `chats/<ctxid>.json` and
 `tmp/chats`; project path is the container path `/a0/usr/projects/<name>`.
+From the same file, each agent's `data.responses_state` (a turn chained
+on a provider-stored response marks the chat synced) and the chat's
+Telegram, WhatsApp and email `data` keys (a relayed chat); the bot
+configuration in `data.telegram_bot_cfg`, which holds its token, is
+never read into a row.
 
 Validated against: Source at [e3051fb](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec), synthetic fixture.
 
@@ -443,7 +448,9 @@ Files read: `.local/share/goose/sessions/sessions.db` (SQLite with WAL
 sidecars), legacy `sessions/*.jsonl`,
 `.local/state/goose/logs/llm_request.*.jsonl`, `history.txt` (a secondary
 source, no timestamp: matches on text alone), and the
-`AppData/Roaming/Block/goose/data` equivalents.
+`AppData/Roaming/Block/goose/data` equivalents. A `sessions.db` session
+whose `session_type` is `gateway` was relayed through the gateway's
+Telegram bot; `config.yaml` `gateway_pairings` is not read.
 
 Validated against: Source at [591edd4](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d), synthetic fixture.
 
@@ -456,7 +463,9 @@ with a `[rewound]` prefix) and two secondary sources, the quick snapshots
 snapshot <id>` row; collected only with `--full`) and the
 `sessions/<id>.jsonl` diverts written when `state.db` was replaced under a
 running process, under `.hermes`, `.hermes_<suffix>`,
-`AppData/Local/hermes` and their `profiles/<name>/` homes.
+`AppData/Local/hermes` and their `profiles/<name>/` homes. Also
+`pastes/pending.json`, the paste.rs links of recent `hermes debug share`
+uploads.
 
 Validated against: Source at [8b66a51](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683), synthetic fixture.
 
@@ -572,7 +581,10 @@ sources, the published reset and deleted archive files `*.jsonl.reset.*` /
 `*.jsonl.pre-doctor-*-repair-*.bak`, under `.openclaw`,
 `.openclaw-<profile>`, `.clawdbot` or `.moltbot`. The session key (channel
 and sender) is in each session's start row; `auth_profile_store` is never
-read; `*.trajectory.jsonl` and `*.migrated*` are not read.
+read; `*.trajectory.jsonl` and `*.migrated*` are not read. The agent
+database's `session_nodes.entry_json` gives each published session's
+`publicShare` grant, and `state/openclaw.sqlite` table `backup_runs` the
+`openclaw backup` uploads.
 
 Validated against: Source at [3b16db7](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9) (the checkpoint and backup writers,
 since removed, at [6814525](https://github.com/openclaw/openclaw/commit/68145258676f1401a2e42cbaffe6564c2a6213c6) and [6559e3f](https://github.com/openclaw/openclaw/commit/6559e3f3b94c54e2b1aa06d1fca712c5360455ff)), synthetic fixture.

@@ -650,10 +650,15 @@ class SyncedSessionTests(unittest.TestCase):
         self.assertEqual(by_id[("copilot-cli", COPILOT_SESSION)], "yes")
         self.assertEqual(by_id[("copilot-cli", self.UNSYNCED)], "no")
         self.assertEqual(by_id[("claude-code", CLAUDE_SESSION)], "")
-        self.assertEqual({v for (agent, _), v in by_id.items() if agent != "copilot-cli"}, {""})
+        sync_agents = {p.agent for p in ALL if p.records_sync}
+        self.assertEqual({v for (agent, _), v in by_id.items() if agent not in sync_agents}, {""})
+        self.assertEqual(
+            {v for (agent, _), v in by_id.items() if agent in sync_agents}, {"yes", "no"}
+        )
+        synced = sum(1 for v in by_id.values() if v == "yes")
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
         self.assertEqual(list(inv)[-1], "synced_sessions")
-        self.assertEqual(inv["synced_sessions"], 1)
+        self.assertEqual(inv["synced_sessions"], synced)
         for h in inv["homes"]:
             for a in h["agents"]:
                 self.assertEqual(list(a)[-1], "synced_sessions", a)
@@ -661,7 +666,7 @@ class SyncedSessionTests(unittest.TestCase):
         self.assertEqual(agents["copilot-cli"]["synced_sessions"], 1)
         self.assertEqual(agents["claude-code"]["synced_sessions"], 0)
         line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
-        self.assertTrue(line.endswith("sessions.jsonl (1 synced)"), line)
+        self.assertTrue(line.endswith("sessions.jsonl (%d synced)" % synced), line)
 
     def test_summarise_values(self):
         rows = [
@@ -671,6 +676,47 @@ class SyncedSessionTests(unittest.TestCase):
         got = {s.agent: s.synced for s in summarise(rows, frozenset({"copilot-cli"}))}
         self.assertEqual(got, {"claude-code": "", "copilot-cli": "no"})
         self.assertEqual({s.synced for s in summarise(rows)}, {""})
+
+
+class SyncedSessionOpenClawAgentZeroTests(unittest.TestCase):
+    """`synced` for the OpenClaw public share and the Agent Zero stored
+    responses, and none from the Hermes and Goose upload rows (issue 153)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-synced-153-test-"))
+        build_home(self.tmp / "home" / "alice")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_synced(self):
+        from fixtures import (
+            AGENT_ZERO_CHAT,
+            AGENT_ZERO_TG_CHAT,
+            HERMES_SESSION,
+            OPENCLAW_RESET_SESSION,
+            OPENCLAW_SESSION,
+        )
+
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(self.tmp / "home", out)
+        self.assertEqual(rc, 0, stdout)
+        by_id = {
+            (s["agent"], s["session_id"]): s["synced"] for s in read_jsonl(out / "sessions.jsonl")
+        }
+        self.assertEqual(by_id[("openclaw", OPENCLAW_SESSION)], "yes")
+        self.assertEqual(by_id[("openclaw", OPENCLAW_RESET_SESSION)], "no")
+        self.assertEqual(by_id[("agent-zero", AGENT_ZERO_TG_CHAT)], "yes")
+        self.assertEqual(by_id[("agent-zero", AGENT_ZERO_CHAT)], "no")
+        self.assertEqual(by_id[("hermes", HERMES_SESSION)], "")
+        self.assertEqual(
+            {v for (agent, _), v in by_id.items() if agent in ("hermes", "goose")}, {""}
+        )
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        agents = {a["agent"]: a for h in inv["homes"] for a in h["agents"]}
+        self.assertEqual(agents["openclaw"]["synced_sessions"], 1)
+        self.assertEqual(agents["agent-zero"]["synced_sessions"], 1)
+        self.assertEqual(agents["hermes"]["synced_sessions"], 0)
 
 
 class DeduplicationTimelineTests(unittest.TestCase):

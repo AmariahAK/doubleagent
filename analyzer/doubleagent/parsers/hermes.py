@@ -33,6 +33,18 @@ optionally followed by `profiles/<name>` (named profiles are complete homes):
   replaced under a running process; one message dict per line with the same
   keys as a `messages` row (`tool_calls` may be a list rather than a string,
   `timestamp` may be absent). It records no working directory or model.
+* `<hermes>/pastes/pending.json`: a JSON list of `{url, expire_at}`
+  (`expire_at` epoch seconds, a float: the upload time plus 21600 s), the
+  paste.rs links of `hermes debug share`, the gateway's `/debug` and the
+  dashboard's debug share, whose logs hold verbatim recent messages; an
+  entry is dropped after `hermes debug delete` or once it is a day past
+  its expiry. One `system` row per entry, `debug report uploaded: <url>
+  (from pastes/pending.json, expire_at minus 6 hours)`, at `expire_at`
+  minus 21600 seconds, with an empty `session_id`: the upload is host-wide
+  and marks no session, so `records_sync` stays False. A file that is not
+  a JSON list is one `parser:` row; an entry that is not an object with a
+  `url` is its own `parser: unparseable record <n>` row carrying the
+  entry. Fixture only: no real install has shown the file.
 
 Secondary sources (issue 122, `secondary`): the snapshots and the
 `sessions/<id>.jsonl` diverts. `state.db` is the store of record; a
@@ -112,6 +124,9 @@ DB_RX = re.compile(r"^%s/state\.db$" % HOME)
 JSONL_RX = re.compile(r"^%s/sessions/[^/]+\.jsonl$" % HOME)
 SNAP_RX = re.compile(r"^%s/state-snapshots/([^/]+)/state\.db$" % HOME)
 SNAP_TIME_RX = re.compile(r"^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-|$)")
+PASTES_RX = re.compile(r"^%s/pastes/pending\.json$" % HOME)
+# A paste.rs upload's `expire_at` is its upload time plus this (hermes_cli/debug.py).
+PASTE_LIFETIME = 21600
 
 JSON_PREFIX = "\x00json:"
 ROLE_TYPES = {"user": "user", "assistant": "assistant", "tool": "tool_result", "system": "system"}
@@ -171,7 +186,9 @@ class HermesParser(Parser):
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
-        return bool(DB_RX.match(rel) or SNAP_RX.match(rel) or JSONL_RX.match(rel))
+        return bool(
+            DB_RX.match(rel) or SNAP_RX.match(rel) or JSONL_RX.match(rel) or PASTES_RX.match(rel)
+        )
 
     def secondary(self, artifact: Artifact) -> bool:
         return bool(SNAP_RX.match(artifact.rel) or JSONL_RX.match(artifact.rel))
@@ -183,6 +200,8 @@ class HermesParser(Parser):
             yield from self._parse_db(artifact, opts)
         elif DB_RX.match(artifact.rel):
             yield from self._parse_db(artifact, opts)
+        elif PASTES_RX.match(artifact.rel):
+            yield from self._parse_pastes(artifact)
         else:
             yield from self._parse_jsonl(artifact, opts)
 
@@ -369,3 +388,41 @@ class HermesParser(Parser):
             str(session.get("id") or ""),
             str(session.get("cwd") or session.get("git_repo_root") or ""),
         )
+
+    # -- pastes/pending.json -------------------------------------------------------------
+    def _parse_pastes(self, artifact: Artifact) -> Iterator[Row]:
+        """One `debug report uploaded:` row per entry, at `expire_at` minus
+        the 6-hour paste lifetime; a file that is not a JSON list is one
+        `parser:` row and an entry that is not an object with a `url` is
+        its own row carrying the entry."""
+        try:
+            doc = json.loads(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
+        except (OSError, ValueError) as e:
+            yield from error_rows(
+                self, artifact, [(0, "pastes/pending.json did not parse (%s)" % e, "")]
+            )
+            return
+        if not isinstance(doc, list):
+            yield from error_rows(
+                self, artifact, [(0, "pastes/pending.json is not a JSON list", "")]
+            )
+            return
+        errors: list = []
+        for n, entry in enumerate(doc, 1):
+            if not isinstance(entry, dict) or not entry.get("url"):
+                errors.append(
+                    (n, "unparseable record %d (not an object with a url)" % n, compact_json(entry))
+                )
+                continue
+            row = self._system(
+                artifact,
+                n,
+                {},
+                "debug report uploaded: %s (from pastes/pending.json, expire_at minus 6 hours)"
+                % entry["url"],
+            )
+            expire = entry.get("expire_at")
+            if isinstance(expire, (int, float)) and not isinstance(expire, bool):
+                row.timestamp_utc = to_utc(expire - PASTE_LIFETIME)
+            yield row
+        yield from error_rows(self, artifact, errors)

@@ -330,11 +330,14 @@ session:
 A gateway session's messages also live on the messaging platform, which
 is the channel the user typed in, not a sync; `sessions.chat_id`,
 `origin_json` and `messages.platform_message_id` name them there
-([section 3](#3-record-schema)). Proposed: no `session synced:` row. A
-`system` row per `pastes/pending.json` entry, `debug report uploaded:
-<url> (from pastes/pending.json, expire_at minus 6 hours)`, timestamped
-`expire_at` minus 21600 seconds with an empty `session_id`, would show
-that logs left the host in the last day; it marks no session.
+([section 3](#3-record-schema)). The parser yields no `session synced:`
+row and leaves `records_sync` off. It reads `pastes/pending.json` and
+yields one `system` row per entry, `debug report uploaded: <url> (from
+pastes/pending.json, expire_at minus 6 hours)`, timestamped `expire_at`
+minus 21600 seconds with an empty `session_id`, which shows that logs
+left the host in the last day and marks no session; a file that is not a
+JSON list is one `parser:` row. Fixture only: no real install has shown
+the file.
 
 Fixture:
 

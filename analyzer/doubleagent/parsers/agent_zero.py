@@ -63,6 +63,28 @@ parse yields one `system` row plus whatever complete log items can be
 recovered from it, without the history (and so without model rows). The
 research names no permission or approval record in `chat.json`, so no
 permission rows are written.
+
+Remote copies (issue 153), each a `system` row after the chat-start row
+at the file's modification time (`file_mtime`), `-` for a key absent or
+empty, fixture only (no real install has shown the keys):
+
+* `agents[].data.responses_state` (`response_id`, `previous_response_id`,
+  `provider_model_key`, `response_ids`): when `previous_response_id` is
+  non-empty, a turn was chained on a response the provider stored
+  (`store: true`), so the chat has a copy at the provider: `session
+  synced: provider response <response_id> previous <previous_response_id>
+  model <provider_model_key> (<n> response ids) agent=<number> (from
+  chat.json agents[].data.responses_state, file mtime)`, one per agent
+  (`records_sync`). The `local` mode records the same ids with `store:
+  false` and no previous id, and yields no row.
+* `data` keys of a chat carried by a messaging plugin, which keeps a copy
+  on that service: `session relayed: telegram bot <telegram_bot> chat
+  <telegram_chat_id> user <telegram_user_id> @<telegram_username> (from
+  chat.json data, file mtime)`, `session relayed: whatsapp chat
+  <wa_chat_id> number <wa_sender_number> (...)` and `session relayed:
+  email thread <email_thread_id> from <email_sender> (...)`.
+  `data.telegram_bot_cfg` holds the bot token and is never read into a
+  row.
 """
 
 from __future__ import annotations
@@ -74,7 +96,7 @@ from collections.abc import Iterator
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, text_of, track_change
+from .base import Options, Parser, compact_json, file_mtime, text_of, track_change
 
 A0 = r"(?:Desktop/)?agent-zero/(?:[^/]+/)?(?:usr|tmp)/chats"
 CHAT_RX = re.compile(r"^%s/[^/]+/chat\.json$" % A0)
@@ -85,6 +107,8 @@ TOOL_TYPES = ("tool", "mcp", "code_exe", "browser", "subagent")
 ARG_KEYS = ("code", "command", "url", "query", "path")
 ICON_RX = re.compile(r"icon://\S+\s*")
 LOGS_RX = re.compile(r'"logs"\s*:\s*\[')
+# The `data` keys of a Telegram chat, in row order (`telegram_bot_cfg` is never read).
+TELEGRAM_KEYS = ("telegram_bot", "telegram_chat_id", "telegram_user_id", "telegram_username")
 
 
 def walk_history(node, summaries: bool) -> Iterator[tuple[str, dict]]:
@@ -178,9 +202,56 @@ def recover_logs(raw: str) -> list[dict]:
         out.append(item)
 
 
+def _key(d: dict, key: str) -> str:
+    """`d[key]` as row text, `-` when absent or empty."""
+    v = d.get(key)
+    return "-" if v in (None, "") else str(v)
+
+
+def remote_copy_texts(chat: dict, data: dict) -> list[str]:
+    """The `session synced:` (stored provider responses) and `session
+    relayed:` (Telegram, WhatsApp, email) texts of a chat. Never reads
+    `telegram_bot_cfg`, which holds the bot token."""
+    out = []
+    for i, ag in enumerate(chat.get("agents") or []):
+        agent_data = ag.get("data") if isinstance(ag, dict) else None
+        state = agent_data.get("responses_state") if isinstance(agent_data, dict) else None
+        if not isinstance(state, dict) or state.get("previous_response_id") in (None, ""):
+            continue
+        ids = state.get("response_ids")
+        out.append(
+            "session synced: provider response %s previous %s model %s (%d response ids)"
+            " agent=%s (from chat.json agents[].data.responses_state, file mtime)"
+            % (
+                _key(state, "response_id"),
+                _key(state, "previous_response_id"),
+                _key(state, "provider_model_key"),
+                len(ids) if isinstance(ids, list) else 0,
+                ag.get("number", i),
+            )
+        )
+    if any(data.get(k) not in (None, "") for k in TELEGRAM_KEYS):
+        out.append(
+            "session relayed: telegram bot %s chat %s user %s @%s (from chat.json data, file mtime)"
+            % tuple(_key(data, k) for k in TELEGRAM_KEYS)
+        )
+    if data.get("wa_chat_id") not in (None, ""):
+        out.append(
+            "session relayed: whatsapp chat %s number %s (from chat.json data, file mtime)"
+            % (_key(data, "wa_chat_id"), _key(data, "wa_sender_number"))
+        )
+    if any(data.get(k) not in (None, "") for k in ("email_thread_id", "email_sender")):
+        out.append(
+            "session relayed: email thread %s from %s (from chat.json data, file mtime)"
+            % (_key(data, "email_thread_id"), _key(data, "email_sender"))
+        )
+    return out
+
+
 class AgentZeroParser(Parser):
     agent = "agent-zero"
     name = "agent-zero"
+    records_sync = True
 
     def wants(self, artifact: Artifact) -> bool:
         return bool(CHAT_RX.match(artifact.rel) or LEGACY_RX.match(artifact.rel))
@@ -230,6 +301,8 @@ class AgentZeroParser(Parser):
         )
         start.timestamp_utc = to_utc(chat.get("created_at"))
         yield start
+        for text in remote_copy_texts(chat, data):
+            yield self._row(base, "system", text, opts, ts=file_mtime(artifact))
 
         log = chat.get("log")
         if not isinstance(log, dict):

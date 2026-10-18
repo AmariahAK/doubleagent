@@ -31,8 +31,44 @@ was checked. The state directory is `.openclaw`, a profile's
     (`src/config/sessions/session-cold-storage-codec.ts:48-100`, not in the
     research document). `storage` `file` means
     `agents/<id>/sessions/cold/<sha256>.jsonl.zst`, parsed as a file.
+  - `session_nodes(rowid, session_key, current_session_id, entry_json)`:
+    the session-metadata entry of each session key. Its `publicShare`
+    `{id, sessionId, createdAt}` (a 48-hex grant id, the transcript
+    generation it publishes, epoch ms; absent on a session never
+    published, removed when access is turned off) marks a session whose
+    user messages and final answers anyone with the public URL can read,
+    served by the Gateway: one `session synced: public share <id>
+    generation <sessionId> (from openclaw-agent.sqlite
+    session_nodes.entry_json, publicShare.createdAt)` row after that
+    generation's session-start row, at `createdAt`, `session_id` the
+    generation (`records_sync`). A grant whose generation has no
+    transcript rows in the database still yields its row, after the
+    others. An `entry_json` that does not decode is its own `parser:` row
+    carrying the column in full. The share URL's token is not stored.
+    Fixture only: no real install has shown the key.
   - `auth_profile_store`, `auth_profile_state` and `session_suggestions`
     hold credentials and are never read.
+* `state/openclaw.sqlite` (WAL, opened through `sqlite_util`), the
+  Gateway's state database, table `backup_runs(id, created_at,
+  archive_path, status, manifest_json)`, one row per `openclaw backup`
+  attempt (`src/state/openclaw-state-schema.sql:1843-1849`), with
+  `manifest_json` `{kind, target, namespace, pushFailed, bytes, location
+  {name, provider, locationId, key, namespace, ...}}`
+  (`src/state/backup-run-records.contract.ts:98-124`). A backup uploads
+  the whole state directory, every agent database included, so the row is
+  host-wide, not per session: one `system` row with an empty `session_id`
+  per run with `status` `ok` and either a `location` (an upload to a
+  storage location) or a Git `target` (the commit sha) without
+  `pushFailed`, at `created_at`: `backup uploaded: <kind> to
+  <location.name or archive_path> key <location.key or target> namespace
+  <location.namespace or namespace or -> (from state/openclaw.sqlite
+  backup_runs, created_at)`. A Git backup run without `--push` records
+  the same manifest as a pushed one (`src/commands/backup-git.ts:140-151`),
+  so a Git row says a commit was made and, unless the push failed, may
+  have been pushed. A `manifest_json` that does not decode is its own
+  `parser:` row carrying the column in full; a file that is not SQLite or
+  does not open is one `parser:` row. The database's other tables are not
+  read. Fixture only.
 * `agents/<agentId>/sessions/<sessionId>.jsonl` (and `sessions/` at the
   state root, the older single-agent layout): legacy transcripts not yet
   imported by `openclaw doctor`. The sibling legacy `sessions.json`,
@@ -129,6 +165,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from collections.abc import Iterator
 
 from ..inputs import Artifact
@@ -141,6 +178,7 @@ from .zed import decompress
 
 STATE = r"(?:\.openclaw(?:-[^/]+)?|\.clawdbot|\.moltbot)"
 DB_RX = re.compile(r"^" + STATE + r"/agents/[^/]+/agent/openclaw-agent\.sqlite$")
+STATE_DB_RX = re.compile(r"^" + STATE + r"/state/openclaw\.sqlite$")
 SESSIONS = r"^" + STATE + r"/(?:agents/[^/]+/)?sessions/"
 ARCHIVE_SUFFIX = r"\.jsonl\.(reset|deleted)\.\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d(?:\.\d{3})?Z(?:\.[0-9a-f]{32})?(?:\.zst)?"
 # A pre-compaction checkpoint and a pre-doctor repair backup (`artifacts.ts:13-17`).
@@ -224,15 +262,19 @@ class _Session:
         self.header_id = False  # True: the header `id` replaces session_id
         self.started = False
         self.seen: dict = {}  # the model in use, for the `model:` rows
+        # The database's `publicShare` grants, {generation: (rowid, grant)};
+        # the session-start row pops its own and yields its row.
+        self.shares: dict[str, tuple[int, dict]] = {}
 
 
 class OpenClawParser(Parser):
     agent = "openclaw"
     name = "openclaw"
+    records_sync = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
-        if DB_RX.match(rel) or COLD_RX.match(rel):
+        if DB_RX.match(rel) or COLD_RX.match(rel) or STATE_DB_RX.match(rel):
             return True
         m = JSONL_RX.match(rel)
         return bool(m) and not SKIP_NAME_RX.search(m.group("name"))
@@ -247,6 +289,8 @@ class OpenClawParser(Parser):
         if DB_RX.match(artifact.rel):
             if is_sqlite(artifact.disk_path):
                 yield from self._parse_db(artifact, opts)
+        elif STATE_DB_RX.match(artifact.rel):
+            yield from self._parse_state_db(artifact)
         else:
             yield from self._parse_file(artifact, opts)
 
@@ -310,6 +354,20 @@ class OpenClawParser(Parser):
         mtext = model_text(s.seen, s.session_id, s.model, s.provider)
         if mtext:
             yield self._row(artifact, s, line, ts, "system", mtext, opts, s.model)
+        share = s.shares.pop(s.session_id, None)
+        if share is not None:
+            yield self._share_row(artifact, s, *share)
+
+    def _share_row(self, artifact: Artifact, s: _Session, rowid: int, grant: dict) -> Row:
+        """The `session synced: public share` row of a `publicShare` grant,
+        `source_line` the `session_nodes` rowid."""
+        text = (
+            "session synced: public share %s generation %s (from openclaw-agent.sqlite"
+            " session_nodes.entry_json, publicShare.createdAt)"
+            % (grant.get("id") or "-", grant.get("sessionId") or "-")
+        )
+        ts = to_utc(grant.get("createdAt"))
+        return self._row(artifact, s, rowid, ts, "system", text, Options())
 
     def _entry_rows(
         self, artifact: Artifact, s: _Session, line: int, rec: dict, created_at, opts: Options
@@ -619,16 +677,111 @@ class OpenClawParser(Parser):
                 for w in con.execute("select * from session_windows"):
                     w = dict(w)
                     windows[str(w.get("session_id"))] = w
+            errors: list = []
+            shares = self._db_shares(con, errors) if "session_nodes" in tables else {}
             if "transcript_events" in tables:
-                yield from self._db_events(artifact, con, windows, opts)
+                yield from self._db_events(artifact, con, windows, shares, opts)
             if "session_transcript_archives" in tables:
-                yield from self._db_archives(artifact, con, windows, opts)
+                yield from self._db_archives(artifact, con, windows, shares, opts)
             if "session_transcript_cold_archives" in tables:
-                yield from self._db_cold(artifact, con, windows, opts)
+                yield from self._db_cold(artifact, con, windows, shares, opts)
+        # Grants whose generation has no transcript rows in the database.
+        for sid, share in list(shares.items()):
+            yield self._share_row(artifact, _Session(sid), *share)
+        yield from error_rows(self, artifact, errors)
+
+    @staticmethod
+    def _db_shares(con, errors: list) -> dict[str, tuple[int, dict]]:
+        """{generation: (rowid, publicShare)} from `session_nodes.entry_json`;
+        an `entry_json` that does not decode is appended to `errors`."""
+        shares: dict[str, tuple[int, dict]] = {}
+        for r in con.execute(
+            "select rowid as _rowid, current_session_id, entry_json from session_nodes"
+            " order by rowid"
+        ):
+            raw = r["entry_json"] if isinstance(r["entry_json"], str) else ""
+            try:
+                entry = json.loads(raw)
+            except ValueError as e:
+                errors.append((r["_rowid"], "session_nodes entry_json unparseable (%s)" % e, raw))
+                continue
+            grant = entry.get("publicShare") if isinstance(entry, dict) else None
+            if isinstance(grant, dict) and grant.get("id"):
+                sid = str(grant.get("sessionId") or r["current_session_id"] or "")
+                shares.setdefault(sid, (r["_rowid"], grant))
+        return shares
+
+    def _parse_state_db(self, artifact: Artifact) -> Iterator[Row]:
+        """`backup uploaded:` rows from `state/openclaw.sqlite` `backup_runs`."""
+        if not is_sqlite(artifact.disk_path):
+            yield from error_rows(
+                self, artifact, [(0, "state/openclaw.sqlite is not a SQLite database", "")]
+            )
+            return
+        try:
+            with open_copy(artifact.disk_path) as con:
+                if "backup_runs" not in table_names(con):
+                    return
+                runs = [
+                    dict(r)
+                    for r in con.execute(
+                        "select rowid as _rowid, id, created_at, archive_path, status,"
+                        " manifest_json from backup_runs order by created_at, id"
+                    )
+                ]
+        except sqlite3.DatabaseError as e:
+            yield from error_rows(
+                self, artifact, [(0, "state/openclaw.sqlite unreadable (%s)" % e, "")]
+            )
+            return
+        errors: list = []
+        for r in runs:
+            raw = r["manifest_json"] if isinstance(r.get("manifest_json"), str) else ""
+            try:
+                manifest = json.loads(raw)
+            except ValueError as e:
+                errors.append((r["_rowid"], "backup_runs manifest_json unparseable (%s)" % e, raw))
+                continue
+            text = self._backup_text(r, manifest if isinstance(manifest, dict) else {})
+            if text:
+                row = self.base_row(artifact)
+                row.source_line = r["_rowid"]
+                row.timestamp_utc = to_utc(r.get("created_at"))
+                row.turn_type = "system"
+                row.text = text
+                yield row
+        yield from error_rows(self, artifact, errors)
+
+    @staticmethod
+    def _backup_text(run: dict, manifest: dict) -> str:
+        """The `backup uploaded:` text of a successful upload or Git backup;
+        `""` for a failed run, a local archive or a Git push that failed."""
+        if run.get("status") != "ok":
+            return ""
+        location = manifest.get("location")
+        location = location if isinstance(location, dict) else {}
+        target = manifest.get("target")
+        pushed = manifest.get("kind") == "git" and target and manifest.get("pushFailed") is not True
+        if not location and not pushed:
+            return ""
+        return (
+            "backup uploaded: %s to %s key %s namespace %s"
+            " (from state/openclaw.sqlite backup_runs, created_at)"
+            % (
+                manifest.get("kind") or "-",
+                location.get("name") or run.get("archive_path") or "-",
+                location.get("key") or target or "-",
+                location.get("namespace") or manifest.get("namespace") or "-",
+            )
+        )
 
     @staticmethod
     def _window_session(
-        session_id: str, windows: dict[str, dict], key: str = "", extra: str = ""
+        session_id: str,
+        windows: dict[str, dict],
+        shares: dict[str, tuple[int, dict]],
+        key: str = "",
+        extra: str = "",
     ) -> _Session:
         w = windows.get(session_id) or {}
         parts: list[str] = []
@@ -648,16 +801,18 @@ class OpenClawParser(Parser):
             parts.append(extra)
         if w.get("model_provider"):
             parts.append("model_provider=%s" % w["model_provider"])
-        return _Session(
+        s = _Session(
             session_id,
             key or str(w.get("session_key") or ""),
             " ".join(parts),
             str(w.get("model") or ""),
             str(w.get("model_provider") or ""),
         )
+        s.shares = shares
+        return s
 
     def _db_events(
-        self, artifact: Artifact, con, windows: dict[str, dict], opts: Options
+        self, artifact: Artifact, con, windows: dict[str, dict], shares: dict, opts: Options
     ) -> Iterator[Row]:
         s: _Session | None = None
         for r in con.execute(
@@ -667,7 +822,7 @@ class OpenClawParser(Parser):
             r = dict(r)
             sid = str(r.get("session_id") or "")
             if s is None or s.session_id != sid:
-                s = self._window_session(sid, windows)
+                s = self._window_session(sid, windows, shares)
             line = r["_rowid"]
             raw = r.get("event_json")
             if raw is None and r.get("event_zstd") is not None:
@@ -715,7 +870,7 @@ class OpenClawParser(Parser):
             yield from self._entry_rows(artifact, s, line, rec, r.get("created_at"), opts)
 
     def _db_archives(
-        self, artifact: Artifact, con, windows: dict[str, dict], opts: Options
+        self, artifact: Artifact, con, windows: dict[str, dict], shares: dict, opts: Options
     ) -> Iterator[Row]:
         for r in con.execute(
             "select rowid as _rowid, session_id, session_key, reason, encoding, archive_name, "
@@ -725,7 +880,7 @@ class OpenClawParser(Parser):
             r = dict(r)
             sid = str(r.get("session_id") or "")
             extra = "archive=%s name=%s" % (r.get("reason") or "", r.get("archive_name") or "")
-            s = self._window_session(sid, windows, str(r.get("session_key") or ""), extra)
+            s = self._window_session(sid, windows, shares, str(r.get("session_key") or ""), extra)
             line = r["_rowid"]
             data, err = _maybe_zstd(r.get("archive_blob") or b"")
             if data is None:
@@ -745,7 +900,7 @@ class OpenClawParser(Parser):
             yield from self._blob_errors(artifact, s, line, label, errors)
 
     def _db_cold(
-        self, artifact: Artifact, con, windows: dict[str, dict], opts: Options
+        self, artifact: Artifact, con, windows: dict[str, dict], shares: dict, opts: Options
     ) -> Iterator[Row]:
         for r in con.execute(
             "select rowid as _rowid, session_id, archive_name, archived_at, archive_blob "
@@ -754,7 +909,7 @@ class OpenClawParser(Parser):
             r = dict(r)
             sid = str(r.get("session_id") or "")
             s = self._window_session(
-                sid, windows, extra="cold_archive=%s" % (r.get("archive_name") or "")
+                sid, windows, shares, extra="cold_archive=%s" % (r.get("archive_name") or "")
             )
             line = r["_rowid"]
             data, err = _maybe_zstd(r.get("archive_blob") or b"")
