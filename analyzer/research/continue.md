@@ -50,6 +50,17 @@ Apache-2.0 ([`LICENSE`](https://github.com/continuedev/continue/blob/5522c6f44ca
   at level `info`, rotated at 10 MB with five files kept
   ([`extensions/cli/src/util/logger.ts:16-31`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/logger.ts#L16-L31),
   [`102-115`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/logger.ts#L102-L115)).
+  The CLI depends on winston `^3.17.0`
+  ([`extensions/cli/package.json:134`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/package.json#L134)),
+  whose `File` transport, without the `tailable` option the CLI does not
+  set, writes each rotation to `cn<N>.log` with `N` counting up from 1
+  in the same directory and deletes the oldest past `maxFiles`
+  (winston 3.17.0 npm tarball, sha256
+  `6dc0d9098a6e90ff760e00c54df25d090c7e090e424d935113ef878eb1b2cb84`,
+  `lib/winston/transports/file.js:651-663` `_getFile`, the snippet
+  `` `${basename}${isRotation}${ext}` ``, and `:674-687`
+  `_checkMaxFilesIncrementing`); so the files are `cn.log`, `cn1.log`,
+  `cn2.log` and so on.
   Each line is `YYYY-MM-DD HH:mm:ss.SSS [<8 hex>] [<level>]: <message>`
   followed by the call's extra fields as one JSON object
   ([`:74-95`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/logger.ts#L74-L95)).
@@ -161,7 +172,8 @@ glob.
 
 Globs: `.continue/sessions/*.json` (skip `sessions.json` itself, but read it
 for `dateCreated`), `.continue/dev_data/*/chatInteraction.jsonl`,
-`.continue/dev_data/*/toolUsage.jsonl`.
+`.continue/dev_data/*/toolUsage.jsonl`, and `.continue/logs/cn.log` with
+its rotated `cn<N>.log` files (the `Sync:` paragraph below).
 
 Rows: one per `history[]` item (user, assistant, thinking, tool), plus one
 `tool_use` per `toolCalls[]`.
@@ -230,14 +242,24 @@ session file and `sessions.json` record no agent id: the `isRemote` and
 always `false` and absent for local sessions, and remote sessions are a
 stub returning none ("Hub integration removed",
 [`extensions/cli/src/session.ts:21-26`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/session.ts#L21-L26),
-[`441-446`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/session.ts#L441-L446)). Planned form: one `system`
-row per `[metadata] POST` line, `session synced: agent <agentId> metadata
-posted (<metadataKeys>) <status from the following Success, Failed or
-Error line> (from logs/cn.log, log line time)`, timestamped by the line's
-own time read as host-local, with `session_id` empty since the log names
-no session; a `Storage sync requested` warning line yields `session
-synced: storage upload requested, skipped (from logs/cn.log, log line
-time)`. The parser does not read `cn.log` today. Deleting a session
+[`441-446`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/session.ts#L441-L446)). The parser reads
+`logs/cn.log` and its rotated `cn<N>.log` files
+([section 2](#2-transcript-files)) and yields one `system` row per
+`[metadata] POST` line, `agent metadata posted: agent <agentId> keys
+<metadataKeys joined by ,> <status> (from logs/cn.log, log line time,
+host-local)`, where `<status>` is `Success`, `Unexpected response`,
+`Auth required`, `Failed` or `Error` from the first later `[metadata]`
+result line of the same process (the eight hex digits) for the same
+URL, and `-` when there is none; and for a `Storage sync requested but
+no Continue API key` line `storage upload requested, skipped (from
+logs/cn.log, log line time, host-local)`, with the rotated file's name in
+place of `cn.log`. Both rows have an empty `session_id`, since the log
+names no session, and the line's own time read as if it were UTC, as the
+aider parser reads its host-local headers. The `[metadata] Request body`
+line is never put in a row. Neither row starts `session synced:`: the
+posts are an agent's metadata, not a session's transcript, and name no
+local session, so the parser does not set `records_sync`. Fixture only:
+no real install has shown either line. Deleting a session
 (`history/delete`) removes the session file and its `sessions.json` entry
 only ([`core/util/history.ts:60-75`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L60-L75)); `cn.log`, the
 `dev_data` lines carrying its `sessionId` and any `/share` export

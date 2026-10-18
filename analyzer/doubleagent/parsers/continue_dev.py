@@ -55,6 +55,39 @@ row (which keeps its own `accepted=` text), with the record's time,
 is `canceled` yields `permission decision: canceled` with the call's
 `tool_use_id` and `tool_name`, after the state's `tool_result` row when
 there is one, at the session time.
+
+Agent metadata posts: `.continue/logs/cn.log` and the files winston (the
+`cn` CLI's logging library) rotates it to at 10 MB, `cn1.log`, `cn2.log`
+and so on, five kept (`extensions/cli/src/util/logger.ts:102-115`; the
+names from winston 3.17.0's `File` transport, `_getFile`). Each line is
+`YYYY-MM-DD HH:mm:ss.SSS [<8 hex>] [<level>]: <message>`, then the call's
+extra fields as one JSON object (`logger.ts:74-95`); the eight hex digits
+are a random id per process, not a session id. Only two kinds of line are
+events, both written when the hidden `cn serve --id <agentId>` mode talks
+to Continue's agent API (`extensions/cli/src/util/metadata.ts:125-181`,
+`extensions/cli/src/services/StorageSyncService.ts:85-90`); every other
+line is the CLI's diagnostics, not an event, and no line of the file can
+be a bad line:
+
+* `[metadata] POST <url> {"agentId":"<id>","metadataKeys":[...]}` yields
+  `agent metadata posted: agent <agentId> keys <metadataKeys joined by ,>
+  <status> (from logs/<file>, log line time, host-local)`, where
+  `<status>` is `Success`, `Unexpected response`, `Auth required`,
+  `Failed` or `Error` from the first later `[metadata]` result line of the
+  same process for the same URL, and `-` when there is none. The
+  `[metadata] Request body` line between them carries the posted fields
+  (the last reply's text among them) and is never put in a row.
+* A line containing `Storage sync requested but no Continue API key`
+  yields `storage upload requested, skipped (from logs/<file>, log line
+  time, host-local)`: `cn serve` asked for snapshot uploads and the CLI
+  skipped them.
+
+Both are `system` rows with an empty `session_id`, since the log names no
+session, and `source_line` the line number. The log time is host-local
+with no zone, and the collection does not record the host's zone, so it
+is emitted as if it were UTC, as the aider parser does; correct it by the
+host's offset. Neither row is a session sync, so `records_sync` stays
+False. Fixture only: no real install has shown either line.
 """
 
 from __future__ import annotations
@@ -72,6 +105,7 @@ from .base import (
     compact_json,
     error_rows,
     iter_jsonl,
+    line_text,
     setting_value,
     text_of,
     track_change,
@@ -82,6 +116,20 @@ DEV_DATA_RX = re.compile(
     r"^(?:.*/)?\.continue/dev_data/(?:[^/]+/)?(chatInteraction|toolUsage)\.jsonl$"
 )
 INDEX_NAME = "sessions.json"
+CN_LOG_RX = re.compile(r"^\.continue/logs/cn[0-9]*\.log$")
+LOG_LINE_RX = re.compile(
+    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[([0-9a-fA-F]{8})\] \[[A-Za-z]+\]: (.*)$"
+)
+METADATA_POST_RX = re.compile(r"^\[metadata\] POST (\S+)(?: (\{.*\}))?$")
+# `[metadata]` result lines (extensions/cli/src/util/metadata.ts:144-180):
+# the status word, then the URL, which ends `/metadata`, followed on a
+# `Failed` line by the response as JSON.
+METADATA_RESULT_RX = re.compile(
+    r"^\[metadata\] (Success|Unexpected response|Auth required|Failed|Error)\b.* "
+    r"(\S+/metadata)(?: \{.*\})?$"
+)
+AGENT_URL_RX = re.compile(r"/agents/([^/]+)/metadata$")
+STORAGE_SKIPPED = "Storage sync requested but no Continue API key"
 HEADER_KEYS = ("sessionId", "title", "workspaceDirectory", "mode", "chatModelTitle")
 
 
@@ -177,9 +225,12 @@ class ContinueParser(Parser):
         m = SESSION_RX.match(artifact.rel)
         if m:
             return m.group(1) + ".json" != INDEX_NAME
-        return bool(DEV_DATA_RX.match(artifact.rel))
+        return bool(DEV_DATA_RX.match(artifact.rel) or CN_LOG_RX.match(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        if CN_LOG_RX.match(artifact.rel):
+            yield from self._parse_cn_log(artifact)
+            return
         m = DEV_DATA_RX.match(artifact.rel)
         if m and m.group(1) == "chatInteraction":
             yield from self._parse_chat_interaction(artifact, opts)
@@ -472,6 +523,82 @@ class ContinueParser(Parser):
                 row.text = "permission decision: accepted=%s" % setting_value(rec["accepted"])
                 yield row
         yield from error_rows(self, artifact, errors)
+
+    # ---- logs/cn.log ---------------------------------------------------------
+
+    def _parse_cn_log(self, artifact: Artifact) -> Iterator[Row]:
+        """`agent metadata posted:` and `storage upload requested, skipped`
+        rows of a `cn` CLI log, in line order."""
+        source = "logs/" + artifact.disk_path.name
+        # Each post as [process id, url, fields JSON, status, row]; a post
+        # waits in `pending` for the result line of its process and URL.
+        posts: list[list] = []
+        pending: list[list] = []
+        rows: list[Row] = []
+        try:
+            with open(artifact.disk_path, "rb") as fh:
+                for n, raw in enumerate(fh, 1):
+                    m = LOG_LINE_RX.match(line_text(raw))
+                    if not m:
+                        continue
+                    when, pid, message = m.groups()
+                    if STORAGE_SKIPPED in message:
+                        text = "storage upload requested, skipped (from %s, log line time, %s)"
+                        rows.append(self._log_row(artifact, n, when, text % (source, "host-local")))
+                        continue
+                    post = METADATA_POST_RX.match(message)
+                    if post:
+                        row = self._log_row(artifact, n, when, "")
+                        posts.append([pid, post.group(1), post.group(2), "-", row])
+                        pending.append(posts[-1])
+                        rows.append(row)
+                        continue
+                    result = METADATA_RESULT_RX.match(message)
+                    if result:
+                        self._settle(pending, pid, result.group(2), result.group(1))
+        except OSError as e:
+            yield from error_rows(self, artifact, [(0, "unreadable (%s)" % error_reason(e), "")])
+            return
+        for _pid, url, fields, status, row in posts:
+            row.text = self._post_text(url, fields, status, source)
+        yield from rows
+
+    @staticmethod
+    def _settle(pending: list[list], pid: str, url: str, status: str) -> None:
+        """Give the oldest pending post of process `pid` to `url` its status."""
+        for entry in pending:
+            if entry[0] == pid and entry[1] == url:
+                entry[3] = status
+                pending.remove(entry)
+                return
+
+    def _log_row(self, artifact: Artifact, n: int, when: str, text: str) -> Row:
+        row = self.base_row(artifact)
+        row.source_line = n
+        row.timestamp_utc = to_utc(when)
+        row.turn_type = "system"
+        row.text = text
+        return row
+
+    @staticmethod
+    def _post_text(url: str, fields: str | None, status: str, source: str) -> str:
+        try:
+            doc = json.loads(fields) if fields else {}
+        except ValueError:
+            doc = {}
+        doc = doc if isinstance(doc, dict) else {}
+        agent = doc.get("agentId")
+        if not isinstance(agent, str) or not agent:
+            m = AGENT_URL_RX.search(url)
+            agent = m.group(1) if m else "-"
+        keys = doc.get("metadataKeys")
+        keys = ",".join(str(k) for k in keys) if isinstance(keys, list) and keys else "-"
+        return "agent metadata posted: agent %s keys %s %s (from %s, log line time, host-local)" % (
+            agent,
+            keys,
+            status,
+            source,
+        )
 
     @staticmethod
     def _fill(row: Row, text, opts: Options) -> Row:

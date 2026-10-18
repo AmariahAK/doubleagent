@@ -634,7 +634,11 @@ to the call except its position between the call and its output (local).
   `codex_core`, `codex_tui`, `codex_rmcp_client` and
   `codex_realtime_webrtc`
   ([tui/src/startup_orchestration.rs:817-820](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/startup_orchestration.rs#L817-L820)).
-  Not seen on a real install; the parser does not read this database.
+  The parser reads this row and no other of the database
+  ([section 8](#8-parser-plan-the-existing-parser)); a body field may
+  come in any order, and the first logs migration named the body column
+  `message`. Not seen on a real install: the row is read from a
+  synthetic fixture only.
 - `state_5.sqlite` `remote_control_enrollments`: one row per remote
   control enrollment, the link that lets a ChatGPT client drive this
   host's app server (`codex remote-control`; `websocket_url`,
@@ -931,12 +935,17 @@ does leave the host, beyond the model API call:
   [core/src/config/mod.rs:4498-4502](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L4498-L4502),
   [feedback_processor.rs:62-66](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server/src/request_processors/feedback_processor.rs#L62-L66)).
   The marker is the `logs_2.sqlite` row of [section 5](#5-other-files).
-  Proposed row: one `system` row per such log row, `session uploaded:
-  feedback report to Sentry, thread <thread_id> attachments
-  <uploaded_attachments> failed <attachments_failed> (from
-  logs_2.sqlite logs, log time)`, at `ts` plus `ts_nanos`, `session_id`
-  the `thread_id` column (empty for a `no-active-thread-` id); a report
-  with 0 attachments sent no rollout. The row survives the rollout's
+  The parser yields one `system` row per such log row (`target`
+  `codex_feedback` and the message `feedback event uploaded to Sentry`;
+  the other `codex_feedback` rows report attachment failures and are not
+  uploads), `session synced: feedback report uploaded to Sentry,
+  attachments <uploaded_attachments> failed <attachments_failed> (from
+  logs_2.sqlite logs, ts)`, `-` for a field the body lacks, at `ts` plus
+  `ts_nanos`, with `session_id` the body's `thread_id` (empty for a
+  `no-active-thread-` id) and the project and branch of that thread's
+  `threads` row; the parser sets `records_sync`, so a thread without the
+  row is `synced` `no` in `sessions.jsonl`. A report with 0 attachments
+  sent no rollout. Fixture only: no real install has shown the row. The row survives the rollout's
   loss outside Codex for up to 10 days; Codex's own thread delete
   removes it with the thread, Codex offers no delete of the Sentry
   copy, and nothing local records one.

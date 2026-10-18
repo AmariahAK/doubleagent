@@ -51,6 +51,25 @@ SDK session layout, `~/.cline/data/sessions/<sessionId>/`:
   prompt, parent_session_id, is_subagent`): a `system` row, followed by
   `model: <model> provider=<provider>`, only for a session whose manifest
   is not on disk, so deleted sessions still show.
+* Sync: the manifest's `metadata` key `enterprise.blobUpload` (one key with
+  a dot in its name; the same object in the `sessions.db` column
+  `metadata_json`), `{version, storage: {adapterType, bucket, region?,
+  endpoint?, accountId?}, userDistinctId?}`, written at session start when
+  an enterprise organisation's remote config turns on prompt uploading;
+  every rewrite of `<sessionId>.messages.json` is then PUT to the object
+  `sessions/<userDistinctId or unknown>/<sessionId>/messages.json` of that
+  S3, R2 or Azure bucket (`sdk/packages/shared/src/remote-config/
+  blob-storage.ts:56-57`, `129-160`, `367-414` at 39ff2359). One `system`
+  row after the session start (or `model:`) row, at the manifest's
+  `started_at`: `session synced: enterprise prompt upload to <adapterType>
+  bucket <bucket> object sessions/<userDistinctId or
+  unknown>/<session_id>/messages.json endpoint=<endpoint or -> region=<region
+  or -> account=<accountId or -> (from <session_id>.json metadata
+  enterprise.blobUpload, started_at)`; from the `sessions.db` row of a
+  session whose manifest is gone, the same text ending `(from sessions.db
+  sessions.metadata_json enterprise.blobUpload, started_at)`. A key that is
+  not an object yields no row. Fixture only: no real install has shown the
+  key. The legacy task layout records no sync.
 * `~/.cline/data/db/session-search.db`, a secondary source (issue 122):
   the full-text index the SDK hub server keeps of each session's lead
   transcript, tables `indexed_sessions (session_id, source_revision,
@@ -100,6 +119,23 @@ SDK session layout, `~/.cline/data/sessions/<sessionId>/`:
   transcript row of any Cline session on text alone. Each bad line is its
   own `system` row carrying the line in full (issue 136).
 
+* Sync, second source: the VS Code extension's enterprise prompt upload
+  queue `<editor>/User/globalStorage/saoudrizwan.claude-dev/cache/sync-queue.json`
+  (`apps/vscode/src/shared/services/worker/sync.ts:27-29` at 39ff2359),
+  `{items: {<taskId>/<key>: {id, taskId, key, data, timestamp, status,
+  retryCount, lastError}}}`, `timestamp` epoch ms of the enqueue and
+  `status` `pending`, `synced` or `failed` (`queue.ts:9-31`, `157-170`);
+  `data` is the task file's content and is never read into a row, nor is
+  `lastError`. One `system` row per item, `source_line` its position in
+  `items`, `session_id` the `taskId`, `project_path` the task's
+  `cwdOnTaskInitialization` from the `state/taskHistory.json` beside it
+  when there is one, at the item's `timestamp`: `session synced:
+  enterprise prompt upload <status> key <key> retries <retryCount> (from
+  saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)`, `-` for
+  a value absent or empty. A file that is not a JSON object, or has no
+  `items` object, is one `parser:` row, and so is an item that is not an
+  object. Fixture only: no real install has shown the file.
+
 Not read: `<sessionId>.compaction.json`, `sessions/sessions.index.json`,
 `teams/teams.db` and `logs/hooks.jsonl`.
 """
@@ -132,17 +168,23 @@ STATE_RX = re.compile(r"^%s/state/taskHistory\.json$" % ROOT, re.I)
 MANIFEST_RX = re.compile(r"^\.cline/data/sessions/([^/]+)/\1\.json$")
 MESSAGES_RX = re.compile(r"^\.cline/data/sessions/[^/]+/[^/]+\.messages\.json$")
 SESSIONS_DB_REL = ".cline/data/db/sessions.db"
+SYNC_QUEUE_RX = re.compile(
+    r"^(?:.*/)?User/globalStorage/saoudrizwan\.claude-dev/cache/sync-queue\.json$", re.I
+)
 SEARCH_DB_REL = ".cline/data/db/session-search.db"
 INPUT_HISTORY_REL = ".cline/data/cache/user_input_history.jsonl"
 SEARCH_COLUMNS = (
     "session_id, document_id, ordinal, role, started_at, workspace_root, title, content"
 )
+BLOB_UPLOAD_KEY = "enterprise.blobUpload"
 SEARCH_KEYS = ("title", "workspace_root", "prompt", "document_count", "indexed_at")
 MESSAGES_KEY_RX = re.compile(r'"messages"\s*:\s*(?=\[)')
 
 
 class ClineParser(LegacyTaskParser):
     agent = "cline"
+    # `enterprise.blobUpload` in a session's metadata marks an uploaded transcript.
+    records_sync = True
     name = "cline"
     ROOT = ROOT
     PROJECT_KEY = "cwdOnTaskInitialization"
@@ -154,6 +196,7 @@ class ClineParser(LegacyTaskParser):
             or STATE_RX.match(rel)
             or MANIFEST_RX.match(rel)
             or MESSAGES_RX.match(rel)
+            or SYNC_QUEUE_RX.match(rel)
         ) or rel in (SESSIONS_DB_REL, SEARCH_DB_REL, INPUT_HISTORY_REL)
 
     def secondary(self, artifact: Artifact) -> bool:
@@ -183,6 +226,46 @@ class ClineParser(LegacyTaskParser):
             yield from self._parse_search_db(artifact)
         elif rel == INPUT_HISTORY_REL:
             yield from self._parse_input_history(artifact)
+        elif SYNC_QUEUE_RX.match(rel):
+            yield from self._parse_sync_queue(artifact)
+
+    # -- cache/sync-queue.json (VS Code extension)
+
+    def _parse_sync_queue(self, artifact: Artifact) -> Iterator[Row]:
+        """One `session synced: enterprise prompt upload <status>` row per
+        queued task file; `data` and `lastError` are never read into a row."""
+        doc = load_json(artifact.disk_path)
+        items = doc.get("items") if isinstance(doc, dict) else None
+        if not isinstance(items, dict):
+            message = "sync-queue.json is not a JSON object with an items object"
+            yield from error_rows(self, artifact, [(0, message, "")])
+            return
+        root = artifact.disk_path.parent.parent
+        errors: list = []
+        for n, (key, item) in enumerate(items.items(), 1):
+            if not isinstance(item, dict):
+                errors.append((n, "sync-queue item %s is not a JSON object" % key, ""))
+                continue
+
+            def value(k: str, item: dict = item) -> str:
+                v = item.get(k)
+                return str(v) if v not in (None, "") else "-"
+
+            task_id = str(item.get("taskId") or "")
+            history = self.history_item(root, root, task_id) if task_id else None
+            row = self.base_row(artifact)
+            row.source_line = n
+            row.turn_type = "system"
+            row.session_id = task_id
+            row.project_path = str((history or {}).get(self.PROJECT_KEY) or "")
+            row.timestamp_utc = to_utc(item.get("timestamp"))
+            row.text = (
+                "session synced: enterprise prompt upload %s key %s retries %s"
+                " (from saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)"
+                % (value("status"), value("key"), value("retryCount"))
+            )
+            yield row
+        yield from error_rows(self, artifact, errors)
 
     def _parse_task_history(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
@@ -220,6 +303,39 @@ class ClineParser(LegacyTaskParser):
             text=compact("model: %s%s" % (model, " provider=%s" % provider if provider else "")),
         )
 
+    def _blob_upload(self, start: Row, meta, source: str) -> Iterator[Row]:
+        """The `session synced:` row of an `enterprise.blobUpload` metadata
+        key, with the start row's time, session and project; nothing when
+        `meta` has no such object."""
+        blob = meta.get(BLOB_UPLOAD_KEY) if isinstance(meta, dict) else None
+        if not isinstance(blob, dict):
+            return
+        storage = blob.get("storage")
+        storage = storage if isinstance(storage, dict) else {}
+
+        def value(key: str, default: str = "-") -> str:
+            v = storage.get(key)
+            return str(v) if v not in (None, "") else default
+
+        user = blob.get("userDistinctId")
+        text = (
+            "session synced: enterprise prompt upload to %s bucket %s object"
+            " sessions/%s/%s/messages.json endpoint=%s region=%s account=%s"
+            " (from %s %s, started_at)"
+            % (
+                value("adapterType"),
+                value("bucket"),
+                user if user not in (None, "") else "unknown",
+                start.session_id,
+                value("endpoint"),
+                value("region"),
+                value("accountId"),
+                source,
+                BLOB_UPLOAD_KEY,
+            )
+        )
+        yield replace(start, text=text)
+
     START_KEYS = (
         "source",
         "provider",
@@ -253,6 +369,7 @@ class ClineParser(LegacyTaskParser):
         )
         yield start
         yield from self._model_start(start, m)
+        yield from self._blob_upload(start, meta, artifact.disk_path.name + " metadata")
         if m.get("ended_at"):
             yield self._session_start(
                 m, artifact, 0, opts, "ended_at", "session end", self.END_KEYS
@@ -350,10 +467,9 @@ class ClineParser(LegacyTaskParser):
             sid = str(r.get("session_id") or "")
             if sid and (sessions_dir / sid / (sid + ".json")).is_file():
                 continue
-            if r.get("metadata_json"):
-                meta = load_json_text(r["metadata_json"])
-                if isinstance(meta, dict) and meta.get("title"):
-                    r["title"] = meta["title"]
+            meta = load_json_text(r["metadata_json"]) if r.get("metadata_json") else None
+            if isinstance(meta, dict) and meta.get("title"):
+                r["title"] = meta["title"]
             start = self._session_start(
                 r,
                 artifact,
@@ -365,6 +481,7 @@ class ClineParser(LegacyTaskParser):
             )
             yield start
             yield from self._model_start(start, r)
+            yield from self._blob_upload(start, meta, "sessions.db sessions.metadata_json")
 
     # -- cache/user_input_history.jsonl
 

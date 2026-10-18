@@ -14,7 +14,23 @@ from doubleagent import VERSION, catalog, cli
 from doubleagent.inputs import open_input
 from doubleagent.model import Row, canonical_project_path, project_key, summarise
 from doubleagent.parsers import ALL, Options, by_agent
-from fixtures import CLAUDE_SESSION, COPILOT_SESSION, COPILOT_WORKSPACE_YAML, build_home
+from fixtures import (
+    CLAUDE_SESSION,
+    CLINE_BLOB_DELETED,
+    CLINE_BLOB_SESSION,
+    CLINE_SESSION,
+    CLINE_TASK,
+    CODEX_ORPHAN,
+    CODEX_SESSION,
+    CONTINUE_SESSION,
+    COPILOT_SESSION,
+    COPILOT_WORKSPACE_YAML,
+    OI_SESSION,
+    QWEN_SESSION,
+    build_cline_blob_upload,
+    build_cline_sync_queue,
+    build_home,
+)
 
 
 def run_timeline(root: Path, out: Path) -> tuple[int, str]:
@@ -650,10 +666,19 @@ class SyncedSessionTests(unittest.TestCase):
         self.assertEqual(by_id[("copilot-cli", COPILOT_SESSION)], "yes")
         self.assertEqual(by_id[("copilot-cli", self.UNSYNCED)], "no")
         self.assertEqual(by_id[("claude-code", CLAUDE_SESSION)], "")
-        self.assertEqual({v for (agent, _), v in by_id.items() if agent != "copilot-cli"}, {""})
+        # `synced` is "" for every agent whose parser records no sync state,
+        # and "yes" or "no" for the others (#153).
+        sync_agents = {p.agent for p in ALL if p.records_sync}
+        self.assertEqual({v for (agent, _), v in by_id.items() if agent not in sync_agents}, {""})
+        self.assertEqual(
+            {v for (agent, _), v in by_id.items() if agent in sync_agents}, {"yes", "no"}
+        )
+        self.assertEqual(by_id[("codex-cli", CODEX_SESSION)], "yes")
+        self.assertEqual(by_id[("open-interpreter", OI_SESSION)], "yes")
+        synced = sum(v == "yes" for v in by_id.values())
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
         self.assertEqual(list(inv)[-1], "synced_sessions")
-        self.assertEqual(inv["synced_sessions"], 1)
+        self.assertEqual(inv["synced_sessions"], synced)
         for h in inv["homes"]:
             for a in h["agents"]:
                 self.assertEqual(list(a)[-1], "synced_sessions", a)
@@ -661,7 +686,32 @@ class SyncedSessionTests(unittest.TestCase):
         self.assertEqual(agents["copilot-cli"]["synced_sessions"], 1)
         self.assertEqual(agents["claude-code"]["synced_sessions"], 0)
         line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
-        self.assertTrue(line.endswith("sessions.jsonl (1 synced)"), line)
+        self.assertTrue(line.endswith("sessions.jsonl (%d synced)" % synced), line)
+
+    def test_synced_codex_and_cline(self):
+        # A `/feedback` report marks a Codex or Open Interpreter thread, and
+        # `enterprise.blobUpload` or the upload queue a Cline session, as
+        # synced (#153).
+        build_cline_blob_upload(self.tmp / "home" / "alice")
+        build_cline_sync_queue(self.tmp / "home" / "alice")
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(self.tmp / "home", out)
+        self.assertEqual(rc, 0, stdout)
+        by_id = {
+            (s["agent"], s["session_id"]): s["synced"] for s in read_jsonl(out / "sessions.jsonl")
+        }
+        for key, synced in (
+            (("codex-cli", CODEX_SESSION), "yes"),
+            (("codex-cli", CODEX_ORPHAN), "no"),
+            (("open-interpreter", OI_SESSION), "yes"),
+            (("cline", CLINE_BLOB_SESSION), "yes"),
+            (("cline", CLINE_BLOB_DELETED), "yes"),
+            (("cline", CLINE_SESSION), "no"),
+            (("cline", CLINE_TASK), "yes"),
+            (("continue", CONTINUE_SESSION), ""),
+            (("qwen-code", QWEN_SESSION), ""),
+        ):
+            self.assertEqual(by_id[key], synced, key)
 
     def test_summarise_values(self):
         rows = [

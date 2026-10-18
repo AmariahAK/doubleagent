@@ -9,6 +9,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- The `codex-cli` and `open-interpreter` parsers read `logs_<N>.sqlite`,
+  the tracing log under the agent's home: each `/feedback` report sent to
+  Sentry is a `session synced: feedback report uploaded to Sentry, ...`
+  row with the reported thread as its session, and both parsers now set
+  `synced` in `sessions.jsonl` (`no` for a thread without the row)
+  ([#153]).
+- The `cline` parser yields a `session synced: enterprise prompt upload
+  to ...` row for an SDK session whose manifest or `sessions.db`
+  metadata has `enterprise.blobUpload`, naming the organisation's bucket
+  and object, and sets `synced` in `sessions.jsonl` ([#153]).
+- The `cline` parser reads the VS Code extension's upload queue
+  `cache/sync-queue.json`: each queued task file is a `session synced:
+  enterprise prompt upload <status> ...` row for its task, without the
+  file content the queue holds ([#153]).
+- The `continue` parser reads `.continue/logs/cn.log` and its rotated
+  `cn<N>.log` files: each `cn serve` metadata post to Continue's agent
+  API is an `agent metadata posted:` row with its result, and a skipped
+  snapshot upload a `storage upload requested, skipped` row ([#153]).
+- The `qwen-code` parser reads the channel routes files
+  `.qwen/channels/sessions.json` and
+  `.qwen/channels/daemon/<hash>/routes.json`: each session driven from a
+  messaging platform is a `session relayed: channel ...` row ([#153]).
+
 ## [0.14.0] - 2026-10-17
 
 ### Added
@@ -1102,6 +1127,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#151]: https://github.com/seanthegeek/doubleagent/issues/151
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#143]: https://github.com/seanthegeek/doubleagent/issues/143

@@ -57,6 +57,22 @@ session id, working directory or model is recorded. Malformed lines are
 skipped when the CLI reads it ([`:11-30`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L11-L30)) and dropped at the
 next rewrite.
 
+The VS Code extension keeps its enterprise prompt upload queue, the task
+files waiting for or done with an upload to the organisation's bucket, in
+`<GS>/saoudrizwan.claude-dev/cache/sync-queue.json`
+([`apps/vscode/src/shared/services/worker/sync.ts:27-29`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/sync.ts#L27-L29)):
+`{items: {<taskId>/<key>: {id, taskId, key, data, timestamp, status,
+retryCount, lastError}}}`, where `key` is the task file's name (such as
+`api_conversation_history.json`), `data` the file's whole content,
+`timestamp` the enqueue time in epoch ms and `status` `pending`, `synced`
+or `failed` ([`queue.ts:9-31`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L9-L31),
+[`157-170`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L157-L170)). An upload marks its item `synced`
+([`212-220`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L212-L220)); a synced item older than seven days
+and a failed one past its retries or seven days old are removed
+([`302-315`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L302-L315), [`325-338`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L325-L338);
+[`worker.ts:201-204`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/worker.ts#L201-L204)), so the file holds the
+recent uploads only. Not seen on a real install.
+
 ## 3. Record schema
 
 `api_conversation_history.json` is `Anthropic.MessageParam[]` ([`disk.ts:155`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L155)):
@@ -301,7 +317,7 @@ Globs (home-relative; `<GS>` is each VS Code `User/globalStorage`):
 `.cline/data/`, `.cline/data/sessions/*/*.json`,
 `.cline/data/sessions/*/*.messages.json`, `.cline/data/db/sessions.db`,
 `.cline/data/db/session-search.db`, `.cline/data/cache/user_input_history.jsonl`,
-`.cline/data/logs/hooks.jsonl`.
+`.cline/data/logs/hooks.jsonl`, `<GS>/saoudrizwan.claude-dev/cache/sync-queue.json`.
 
 Sources, primary or secondary (the analyzer drops a row of a secondary
 source that a primary store records too, issue 122):
@@ -401,13 +417,28 @@ Azure bucket under an enterprise remote config. It is written once, at session
 start, and the upload repeats on every rewrite of the messages file, so the
 remote copy is the transcript as last written; the organisation's remote
 config turns it on, not a local setting.
-The proposed row is one `system` row after the session start row, `session
+The parser yields one `system` row after the session start row (and its
+`model:` row), `session
 synced: enterprise prompt upload to <adapterType> bucket <bucket> object
 sessions/<userDistinctId or unknown>/<session_id>/messages.json
 endpoint=<endpoint or -> region=<region or -> account=<accountId or -> (from
 <session_id>.json metadata enterprise.blobUpload, started_at)`, timestamped by
-the manifest's `started_at` (or the `sessions.db` row's), since the key is
-written at the start of the session; no legacy task file records sync. A
+the manifest's `started_at`, since the key is written at the start of the
+session. For a session whose manifest is gone, the `sessions.db` row
+yields the same text ending `(from sessions.db sessions.metadata_json
+enterprise.blobUpload, started_at)` at that row's `started_at`. The
+parser sets `records_sync`, so an SDK session without the key is `synced`
+`no`. Fixture only: no real install has shown the key. For the VS Code
+extension's legacy tasks the marker is the upload queue
+`cache/sync-queue.json` ([section 2](#2-transcript-files)): the parser
+yields one `system` row per item, with `session_id` the `taskId` and
+`project_path` the task's `cwdOnTaskInitialization` from
+`state/taskHistory.json`, at the item's `timestamp`, `session synced:
+enterprise prompt upload <status> key <key> retries <retryCount> (from
+saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)`, `-` for a
+value absent or empty; it never prints `data` (the file's content) or
+`lastError`. A file that is not a JSON object with an `items` object is
+one `parser:` row. Fixture only: no real install has shown the file. A
 delete through the hub removes the manifest, the messages file and the
 `sessions.db` row
 ([`session/services/persistence-service.ts:586-630`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/persistence-service.ts#L586-L630)),

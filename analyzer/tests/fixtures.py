@@ -1233,12 +1233,71 @@ def write_thread_history(path: Path, turns, items, lifecycle: bool = True) -> No
 
 
 def build_codex_stores(home: Path) -> None:
-    """`.codex/state_5.sqlite` and `.codex/thread_history_1.sqlite`, plus
-    `logs_2.sqlite`, which the parser must not want."""
+    """`.codex/state_5.sqlite`, `.codex/thread_history_1.sqlite` and
+    `.codex/logs_2.sqlite` (#153)."""
     write_codex_state(home / ".codex/state_5.sqlite", codex_thread_rows())
     write_thread_history(home / ".codex/thread_history_1.sqlite", *codex_thread_history())
-    con = sqlite3.connect(str(home / ".codex/logs_2.sqlite"))
-    con.execute("create table logs (id integer primary key, message text)")
+    write_codex_logs(home / ".codex/logs_2.sqlite", codex_log_rows(CODEX_SESSION))
+
+
+# `logs_2.sqlite` `logs` (codex state/logs_migrations/0002 at 3e23877), #153.
+CODEX_LOGS_SCHEMA = """
+CREATE TABLE logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, ts_nanos INTEGER NOT NULL,
+    level TEXT NOT NULL, target TEXT NOT NULL, feedback_log_body TEXT, module_path TEXT,
+    file TEXT, line INTEGER, thread_id TEXT, process_uuid TEXT,
+    estimated_bytes INTEGER NOT NULL DEFAULT 0
+);
+"""
+CODEX_FEEDBACK_TS = 1791367200  # 2026-10-07T10:00:00Z
+CODEX_NO_THREAD = "no-active-thread-0199b0c0-0000-7000-8000-00000000000f"
+
+
+def codex_log_rows(thread_id: str):
+    """(ts, ts_nanos, level, target, feedback_log_body, thread_id) rows: a
+    diagnostics line, an attachment failure under `codex_feedback` (not an
+    upload), a sent report for `thread_id` with its fields in tracing's
+    order and one with no thread open, its fields reordered."""
+    return [
+        (CODEX_FEEDBACK_TS - 5, 0, "INFO", "codex_core::codex", "turn started", thread_id),
+        (
+            CODEX_FEEDBACK_TS - 1,
+            0,
+            "ERROR",
+            "codex_feedback",
+            "feedback attachment upload failed; continuing status=500",
+            thread_id,
+        ),
+        (
+            CODEX_FEEDBACK_TS,
+            250_000_000,
+            "INFO",
+            "codex_feedback",
+            "feedback event uploaded to Sentry thread_id=%s uploaded_attachments=2 "
+            "attachments_failed=false elapsed_ms=812" % thread_id,
+            thread_id,
+        ),
+        (
+            CODEX_FEEDBACK_TS + 60,
+            0,
+            "INFO",
+            "codex_feedback",
+            "feedback event uploaded to Sentry elapsed_ms=90 attachments_failed=false "
+            "uploaded_attachments=0 thread_id=%s" % CODEX_NO_THREAD,
+            None,
+        ),
+    ]
+
+
+def write_codex_logs(path: Path, rows) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(path))
+    con.executescript(CODEX_LOGS_SCHEMA)
+    con.executemany(
+        "INSERT INTO logs (ts, ts_nanos, level, target, feedback_log_body, thread_id)"
+        " VALUES (?,?,?,?,?,?)",
+        rows,
+    )
     con.commit()
     con.close()
 
@@ -1665,10 +1724,12 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     (gs / "saoudrizwan.claude-dev/state/taskHistory.json").write_text("[]", encoding="utf-8")
     build_roo_cli_history(home)
     build_qwen(home)
+    build_qwen_channels(home)
     build_kiro(home)
     build_crush(home)
     build_goose(home)
     build_continue(home)
+    build_continue_log(home)
     build_aider(home)
     build_opencode(home)
     build_kilo(home)
@@ -2733,6 +2794,52 @@ def build_qwen(home: Path) -> None:
     os.utime(trust, (QWEN_TRUST_MTIME, QWEN_TRUST_MTIME))
 
 
+# Channel routes (#153), the `PersistedEntry` shape of
+# packages/channels/base/src/SessionRouter.ts:25-36 at 2c591ecc:
+# QWEN_SESSION was driven from a Telegram chat; QWEN_DAEMON_SESSION by the
+# daemon from a GitHub thread, with no `startedAt`.
+QWEN_DAEMON_SESSION = "e5f6a7b8-4444-4000-8000-000000000033"
+QWEN_DAEMON_HASH = "9c1d" + "0" * 12
+QWEN_ROUTES_MTIME = 1791367200  # 2026-10-07T10:00:00Z
+
+
+def build_qwen_channels(home: Path) -> None:
+    channels = home / ".qwen/channels"
+    _json_file(
+        channels / "sessions.json",
+        {
+            "telegram:-1001234": {
+                "sessionId": QWEN_SESSION,
+                "target": {"channelName": "telegram", "senderId": "42", "chatId": "-1001234"},
+                "cwd": "/srv/proj",
+                "turns": 3,
+                "startedAt": 1790848800000,
+            }
+        },
+    )
+    routes = channels / "daemon" / QWEN_DAEMON_HASH / "routes.json"
+    _json_file(
+        routes,
+        {
+            "github:octo/proj#7": {
+                "sessionId": QWEN_DAEMON_SESSION,
+                "target": {
+                    "channelName": "github",
+                    "messageRoute": "issue_comment",
+                    "senderId": "octocat",
+                    "chatId": "octo/proj#7",
+                    "threadId": "c-991",
+                    "isGroup": True,
+                },
+                "cwd": "/srv/proj",
+            }
+        },
+    )
+    os.utime(routes, (QWEN_ROUTES_MTIME, QWEN_ROUTES_MTIME))
+    # A half-written temporary file of the router, which the parser must not want.
+    (channels / "1791367200000-4242-ab12.tmp").write_text("{", encoding="utf-8")
+
+
 KIRO_SESSION = "3f2b8c1e-9d7a-4e6b-b1c2-0a9f8e7d6c5b"
 KIRO_EXPORT_SESSION = "7c1d2e3f-4a5b-4c6d-8e7f-901234567890"
 KIRO_SHELL_SESSION = "fig-shell-1"
@@ -3614,6 +3721,58 @@ def build_continue(home: Path) -> None:
     _jsonl(home / ".continue/dev_data/0.2.0/chatInteraction.jsonl", chat)
     _jsonl(home / ".continue/dev_data/0.2.0/toolUsage.jsonl", tool)
     (home / ".continue/config.yaml").write_text("name: Local\nmodels: []\n", encoding="utf-8")
+
+
+# The `cn` CLI's winston log in `cn serve --id` mode (#153), in the line
+# format of extensions/cli/src/util/logger.ts:74-95 and the `[metadata]`
+# lines of extensions/cli/src/util/metadata.ts:125-181 at 5522c6f. Two
+# processes (a1b2c3d4, 0e0f1a2b) post for the same agent; the second's
+# result comes after the first's second post, which never gets one.
+CONTINUE_AGENT = "agt_7f3e"
+CONTINUE_METADATA_URL = "https://api.continue.dev/agents/%s/metadata" % CONTINUE_AGENT
+CONTINUE_CN_LOG = (
+    "\n".join(
+        [
+            "2026-10-07 10:00:00.001 [a1b2c3d4] [info]: Starting server on port 8000",
+            "2026-10-07 10:00:00.010 [a1b2c3d4] [warn]: Storage sync requested but no Continue API"
+            " key is available; skipping uploads.",
+            "2026-10-07 10:00:05.100 [a1b2c3d4] [info]: [metadata] POST %s"
+            ' {"agentId":"%s","metadataKeys":["summary","isComplete"]}'
+            % (CONTINUE_METADATA_URL, CONTINUE_AGENT),
+            '2026-10-07 10:00:05.101 [a1b2c3d4] [info]: [metadata] Request body {"metadata":'
+            '{"summary":"Renamed foo to bar","isComplete":false}}',
+            "2026-10-07 10:00:05.200 [0e0f1a2b] [info]: [metadata] POST %s"
+            ' {"agentId":"%s","metadataKeys":["additions"]}'
+            % (CONTINUE_METADATA_URL, CONTINUE_AGENT),
+            "2026-10-07 10:00:05.350 [a1b2c3d4] [info]: [metadata] Success: 200 (250ms) %s"
+            % CONTINUE_METADATA_URL,
+            "2026-10-07 10:00:06.000 [a1b2c3d4] [info]: [metadata] POST %s"
+            ' {"agentId":"%s","metadataKeys":["isComplete"]}'
+            % (CONTINUE_METADATA_URL, CONTINUE_AGENT),
+            "2026-10-07 10:00:06.400 [0e0f1a2b] [warn]: [metadata] Failed: 502 Bad Gateway (1200ms) %s"
+            ' {"response":"upstream"}' % CONTINUE_METADATA_URL,
+            "2026-10-07 10:00:07.000 [a1b2c3d4] [error]: Unhandled error",
+            "Error: boom",
+            "    at main (index.js:1:1)",
+        ]
+    )
+    + "\n"
+)
+CONTINUE_CN1_LOG = (
+    "2026-10-06 09:00:00.000 [99aa88bb] [info]: [metadata] POST %s"
+    ' {"agentId":"%s","metadataKeys":["summary"]}\n'
+    "2026-10-06 09:00:00.500 [99aa88bb] [info]: [metadata] Auth required (skipping) (5ms) %s\n"
+    % (CONTINUE_METADATA_URL, CONTINUE_AGENT, CONTINUE_METADATA_URL)
+)
+
+
+def build_continue_log(home: Path) -> None:
+    logs = home / ".continue/logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    (logs / "cn.log").write_text(CONTINUE_CN_LOG, encoding="utf-8")
+    (logs / "cn1.log").write_text(CONTINUE_CN1_LOG, encoding="utf-8")
+    # The extension's prompt log, which the parser does not read.
+    (logs / "prompt.log").write_text("==========================\nprompt\n", encoding="utf-8")
 
 
 # Written the way aider/io.py writes them: user and blockquote lines end in
@@ -4990,6 +5149,93 @@ def build_cline_input_history(home: Path) -> None:
         "".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8"
     )
     _json(cache / "openrouter_models.json", {"anthropic/claude-sonnet-4-5": {}})
+
+
+# Enterprise prompt upload (#153): `metadata["enterprise.blobUpload"]`
+# (sdk/packages/shared/src/remote-config/blob-storage.ts:56-57, 129-160 at
+# 39ff2359). CLINE_BLOB_SESSION's manifest has the VS Code host's form, with
+# `userDistinctId`; CLINE_BLOB_DELETED survives only as a sessions.db row
+# with the CLI's form, without it. Not part of `build_home`: the tests that
+# need them add them, so the session counts of the other Cline tests stay.
+CLINE_BLOB_SESSION = "1791022000000_b10b5"
+CLINE_BLOB_DELETED = "1791021900000_d31e7"
+
+
+def cline_blob_upload(user: str = "usr_0f9e8d7c"):
+    blob: dict = {
+        "version": 1,
+        "storage": {"adapterType": "s3", "bucket": "acme-cline-prompts", "region": "us-east-1"},
+    }
+    if user:
+        blob["userDistinctId"] = user
+    return blob
+
+
+def build_cline_blob_upload(home: Path) -> None:
+    data = home / ".cline/data"
+    manifest = dict(
+        cline_sdk_manifest(),
+        session_id=CLINE_BLOB_SESSION,
+        started_at="2026-10-03T10:06:40.000Z",
+        ended_at=None,
+        prompt="summarise the diff",
+        metadata={"title": "summarise the diff", "enterprise.blobUpload": cline_blob_upload()},
+    )
+    _json(data / "sessions" / CLINE_BLOB_SESSION / (CLINE_BLOB_SESSION + ".json"), manifest)
+    blob = dict(
+        cline_blob_upload(""),
+        storage={
+            "adapterType": "r2",
+            "bucket": "acme-r2",
+            "endpoint": "https://acct.r2.cloudflarestorage.com",
+            "accountId": "acct",
+        },
+    )
+    con = sqlite3.connect(str(data / "db/sessions.db"))
+    con.execute(
+        "INSERT INTO sessions (session_id, source, started_at, status, provider, model, cwd,"
+        " workspace_root, prompt, metadata_json) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            CLINE_BLOB_DELETED,
+            "cli",
+            "2026-10-03T10:05:00.000Z",
+            "completed",
+            "anthropic",
+            "claude-sonnet-4-5",
+            "/srv/proj",
+            "/srv/proj",
+            "a deleted uploaded session",
+            json.dumps({"title": "uploaded", "enterprise.blobUpload": blob}),
+        ),
+    )
+    con.commit()
+    con.close()
+
+
+# The VS Code extension's enterprise prompt upload queue (#153), the
+# `SyncQueueItem` shape of apps/vscode/src/shared/services/worker/queue.ts:9-31
+# at 39ff2359: CLINE_TASK's transcript uploaded, its UI messages failing.
+CLINE_SYNC_QUEUE = ".config/Code/User/globalStorage/saoudrizwan.claude-dev/cache/sync-queue.json"
+CLINE_SYNC_SECRET = "FULL TASK FILE CONTENT"
+
+
+def build_cline_sync_queue(home: Path) -> None:
+    items = {}
+    for key, status, retries, ts, error in (
+        ("api_conversation_history.json", "synced", 0, CLINE_T0 + 5000, None),
+        ("ui_messages.json", "failed", 3, CLINE_T0 + 6000, "403 Forbidden"),
+    ):
+        items[CLINE_TASK + "/" + key] = {
+            "id": CLINE_TASK + "/" + key,
+            "taskId": CLINE_TASK,
+            "key": key,
+            "data": CLINE_SYNC_SECRET,
+            "timestamp": ts,
+            "status": status,
+            "retryCount": retries,
+            "lastError": error,
+        }
+    _json(home / CLINE_SYNC_QUEUE, {"items": items})
 
 
 def roo_ui_records(t0=CLINE_T0 + 200000):
@@ -6709,6 +6955,8 @@ def build_open_interpreter_stores(home: Path) -> None:
         ],
         lifecycle=False,
     )
+    # The fork's tracing log with a sent `/feedback` report for OI_SESSION (#153).
+    write_codex_logs(oi / "logs_2.sqlite", codex_log_rows(OI_SESSION))
 
 
 # -- OpenClaw (openclaw/openclaw at 3b16db7) ---------------------------------------

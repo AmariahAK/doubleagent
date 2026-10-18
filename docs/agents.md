@@ -282,6 +282,12 @@ one row per message with no timestamp); the CLI's
 `.cline/data/cache/user_input_history.jsonl` (a secondary source: one
 `user` row per prompt, no session or project, only the last line
 timestamped, since every rewrite stamps every line with its own time).
+An SDK session's `enterprise.blobUpload` metadata key, in the manifest or
+in `sessions.db` `metadata_json`, gives a `session synced:` row naming the
+organisation's bucket and object (fixture only), and each item of the
+VS Code extension's upload queue
+`<editor>/User/globalStorage/saoudrizwan.claude-dev/cache/sync-queue.json`
+one with its status, task file and retries (fixture only).
 
 Validated against: Source at [39ff2359](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c), synthetic fixture.
 
@@ -292,7 +298,9 @@ also as `.jsonl.zst` (needs `zstandard`), `.codex/history.jsonl`,
 `.codex/automations/*/automation.toml`, and the rollouts' SQLite
 projections `.codex/state_5.sqlite` (`threads`: a thread record and the
 first prompt) and `.codex/thread_history_1.sqlite` (`thread_turns`,
-`thread_items`), secondary sources.
+`thread_items`), secondary sources; `.codex/logs_<N>.sqlite` (`logs`),
+whose `/feedback` rows give one `session synced:` row per report sent to
+Sentry (fixture only).
 
 Validated against: Real install, Codex CLI, October 2026; Codex Desktop
 0.162.0-alpha.17.2 inside the ChatGPT desktop app, Windows 11, October
@@ -325,7 +333,10 @@ Validated against: Source at [8e20ac6c](https://github.com/sourcegraph/cody-publ
 Files read: `.continue/sessions/<sessionId>.json` (timestamped from
 `sessions/sessions.json` `dateCreated`; messages have no time of their
 own), `.continue/dev_data/<schema>/chatInteraction.jsonl` and
-`toolUsage.jsonl`.
+`toolUsage.jsonl`; `.continue/logs/cn.log` and its rotated `cn<N>.log`
+files, whose `cn serve` metadata posts and skipped storage uploads are
+`agent metadata posted:` and `storage upload requested, skipped` rows,
+timestamped in host-local time (fixture only).
 
 Validated against: Source at [5522c6f](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470), synthetic fixture.
 
@@ -555,7 +566,8 @@ also as `.jsonl.zst`, `.openinterpreter/history.jsonl`,
 `.openinterpreter/thread_history_1.sqlite` (secondary sources, read as for
 Codex), and `external_agent_session_imports.json` (one `system` row per
 `/import`ed thread, naming the Claude Code or Cursor source file; that
-thread's record times are import time).
+thread's record times are import time), and `.openinterpreter/logs_2.sqlite`
+(`/feedback` reports, as for Codex; fixture only).
 
 Validated against: Source at [2767e5f](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245), synthetic fixture.
 
@@ -634,7 +646,10 @@ the file's modification time with `project_path` the folder;
 `model` as `model: <id>` when no earlier record named one and `model:
 <old> -> <new>` on each change, the `logs.json` `model_switch` as `model:
 <from> -> <to> reason=<reason>`; a tool result with status `cancelled` or
-`awaiting_approval` is followed by `permission decision: <status>`.
+`awaiting_approval` is followed by `permission decision: <status>`;
+`.qwen/channels/sessions.json` and `.qwen/channels/daemon/<hash>/routes.json`,
+one `session relayed:` row per session driven from a messaging platform
+(fixture only).
 
 Validated against: Source at [2c591ec](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb), synthetic fixture.
 
