@@ -5136,6 +5136,8 @@ from fixtures import (
     CLINE_BLOB_SESSION,
     CLINE_CLI_TASK,
     CLINE_OLD_SESSION,
+    CLINE_QUEUE_FAILED,
+    CLINE_QUEUE_PENDING,
     CLINE_SESSION,
     CLINE_SYNC_QUEUE,
     CLINE_SYNC_SECRET,
@@ -5681,7 +5683,7 @@ class ClineTests(ParserBase):
         self.assertFalse([r for r in rows if r.text.startswith("session synced:")])
 
     QUEUED = (
-        "session synced: enterprise prompt upload %s key %s retries %s"
+        "enterprise prompt upload %s key %s retries %s"
         " (from saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)"
     )
 
@@ -5703,18 +5705,32 @@ class ClineTests(ParserBase):
                     CLINE_TASK,
                     "/srv/proj",
                     1,
-                    self.QUEUED % ("synced", "api_conversation_history.json", "0"),
+                    "session synced: "
+                    + self.QUEUED % ("synced", "api_conversation_history.json", "0"),
+                ),
+                # Not uploaded yet: no `session synced:` prefix, no project
+                # (the task is known only from the queue).
+                (
+                    "2026-10-03T10:00:05.500Z",
+                    CLINE_QUEUE_PENDING,
+                    "",
+                    2,
+                    self.QUEUED % ("pending", "ui_messages.json", "0"),
                 ),
                 (
                     "2026-10-03T10:00:06.000Z",
-                    CLINE_TASK,
-                    "/srv/proj",
-                    2,
+                    CLINE_QUEUE_FAILED,
+                    "",
+                    3,
                     self.QUEUED % ("failed", "ui_messages.json", "3"),
                 ),
             ],
         )
         self.assertFalse([r for r in rows if CLINE_SYNC_SECRET in r.text or "403" in r.text])
+        synced = {s.session_id: s.synced for s in summarise(rows, frozenset({"cline"}))}
+        self.assertEqual(
+            synced, {CLINE_TASK: "yes", CLINE_QUEUE_PENDING: "no", CLINE_QUEUE_FAILED: "no"}
+        )
 
     def test_sync_queue_not_an_object(self):
         build_cline_sync_queue(self.home)

@@ -433,10 +433,14 @@ extension's legacy tasks the marker is the upload queue
 `cache/sync-queue.json` ([section 2](#2-transcript-files)): the parser
 yields one `system` row per item, with `session_id` the `taskId` and
 `project_path` the task's `cwdOnTaskInitialization` from
-`state/taskHistory.json`, at the item's `timestamp`, `session synced:
-enterprise prompt upload <status> key <key> retries <retryCount> (from
-saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)`, `-` for a
-value absent or empty; it never prints `data` (the file's content) or
+`state/taskHistory.json`, at the item's `timestamp`: for a `synced`
+item `session synced: enterprise prompt upload synced key <key> retries
+<retryCount> (from saoudrizwan.claude-dev/cache/sync-queue.json, item
+timestamp)`, and for a `pending` or `failed` one the same text without
+the `session synced: ` prefix (`enterprise prompt upload <status> key
+...`), since that file has not reached the bucket, so a task with only
+such items is `synced` `no`; `-` for a value absent or empty. It never
+prints `data` (the file's content) or
 `lastError`. A file that is not a JSON object with an `items` object is
 one `parser:` row. Fixture only: no real install has shown the file. A
 delete through the hub removes the manifest, the messages file and the

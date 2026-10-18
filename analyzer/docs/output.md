@@ -911,10 +911,12 @@ endpoint=<endpoint> region=<region> account=<accountId> (from
 or the same row ending `(from sessions.db sessions.metadata_json
 enterprise.blobUpload, started_at)` for a session known only from
 `sessions.db`; each item of the VS Code extension's upload queue
-`cache/sync-queue.json` is `session synced: enterprise prompt upload
-<status> key <key> retries <retryCount> (from
-saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)` with the
-item's `taskId` as `session_id`, at the item's time. Continue's `.continue/logs/cn.log`, and the `cn<N>.log`
+`cache/sync-queue.json` is `enterprise prompt upload <status> key
+<key> retries <retryCount> (from
+saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)`, prefixed
+`session synced: ` only when `<status>` is `synced` (a `pending` or
+`failed` item has not reached the bucket), with the item's `taskId` as
+`session_id`, at the item's time. Continue's `.continue/logs/cn.log`, and the `cn<N>.log`
 files it is rotated to, give `agent metadata posted: agent <agentId>
 keys <metadataKeys> <status> (from logs/cn.log, log line time,
 host-local)` for each metadata post of `cn serve --id`, `<status>`

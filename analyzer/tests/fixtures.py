@@ -5214,20 +5214,25 @@ def build_cline_blob_upload(home: Path) -> None:
 
 # The VS Code extension's enterprise prompt upload queue (#153), the
 # `SyncQueueItem` shape of apps/vscode/src/shared/services/worker/queue.ts:9-31
-# at 39ff2359: CLINE_TASK's transcript uploaded, its UI messages failing.
+# at 39ff2359, one item of each status: CLINE_TASK's transcript uploaded,
+# CLINE_QUEUE_PENDING's waiting and CLINE_QUEUE_FAILED's failing. The two
+# queued-only tasks have no task directory.
+CLINE_QUEUE_PENDING = "1791021700001"
+CLINE_QUEUE_FAILED = "1791021700002"
 CLINE_SYNC_QUEUE = ".config/Code/User/globalStorage/saoudrizwan.claude-dev/cache/sync-queue.json"
 CLINE_SYNC_SECRET = "FULL TASK FILE CONTENT"
 
 
 def build_cline_sync_queue(home: Path) -> None:
     items = {}
-    for key, status, retries, ts, error in (
-        ("api_conversation_history.json", "synced", 0, CLINE_T0 + 5000, None),
-        ("ui_messages.json", "failed", 3, CLINE_T0 + 6000, "403 Forbidden"),
+    for task, key, status, retries, ts, error in (
+        (CLINE_TASK, "api_conversation_history.json", "synced", 0, CLINE_T0 + 5000, None),
+        (CLINE_QUEUE_PENDING, "ui_messages.json", "pending", 0, CLINE_T0 + 5500, None),
+        (CLINE_QUEUE_FAILED, "ui_messages.json", "failed", 3, CLINE_T0 + 6000, "403 Forbidden"),
     ):
-        items[CLINE_TASK + "/" + key] = {
-            "id": CLINE_TASK + "/" + key,
-            "taskId": CLINE_TASK,
+        items[task + "/" + key] = {
+            "id": task + "/" + key,
+            "taskId": task,
             "key": key,
             "data": CLINE_SYNC_SECRET,
             "timestamp": ts,

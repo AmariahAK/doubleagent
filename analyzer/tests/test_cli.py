@@ -18,6 +18,8 @@ from fixtures import (
     CLAUDE_SESSION,
     CLINE_BLOB_DELETED,
     CLINE_BLOB_SESSION,
+    CLINE_QUEUE_FAILED,
+    CLINE_QUEUE_PENDING,
     CLINE_SESSION,
     CLINE_TASK,
     CODEX_ORPHAN,
@@ -708,6 +710,8 @@ class SyncedSessionTests(unittest.TestCase):
             (("cline", CLINE_BLOB_DELETED), "yes"),
             (("cline", CLINE_SESSION), "no"),
             (("cline", CLINE_TASK), "yes"),
+            (("cline", CLINE_QUEUE_PENDING), "no"),
+            (("cline", CLINE_QUEUE_FAILED), "no"),
             (("continue", CONTINUE_SESSION), ""),
             (("qwen-code", QWEN_SESSION), ""),
         ):

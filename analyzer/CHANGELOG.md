@@ -22,9 +22,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   metadata has `enterprise.blobUpload`, naming the organisation's bucket
   and object, and sets `synced` in `sessions.jsonl` ([#153]).
 - The `cline` parser reads the VS Code extension's upload queue
-  `cache/sync-queue.json`: each queued task file is a `session synced:
-  enterprise prompt upload <status> ...` row for its task, without the
-  file content the queue holds ([#153]).
+  `cache/sync-queue.json`: each queued task file is an `enterprise
+  prompt upload <status> ...` row for its task, prefixed `session
+  synced: ` when the file was uploaded, without the file content the
+  queue holds ([#153]).
 - The `continue` parser reads `.continue/logs/cn.log` and its rotated
   `cn<N>.log` files: each `cn serve` metadata post to Continue's agent
   API is an `agent metadata posted:` row with its result, and a skipped

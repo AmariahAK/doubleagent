@@ -129,9 +129,12 @@ SDK session layout, `~/.cline/data/sessions/<sessionId>/`:
   `lastError`. One `system` row per item, `source_line` its position in
   `items`, `session_id` the `taskId`, `project_path` the task's
   `cwdOnTaskInitialization` from the `state/taskHistory.json` beside it
-  when there is one, at the item's `timestamp`: `session synced:
-  enterprise prompt upload <status> key <key> retries <retryCount> (from
-  saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)`, `-` for
+  when there is one, at the item's `timestamp`: for a `synced` item
+  `session synced: enterprise prompt upload synced key <key> retries
+  <retryCount> (from saoudrizwan.claude-dev/cache/sync-queue.json, item
+  timestamp)`, and for any other status (`pending`, `failed`) the same
+  text without the `session synced: ` prefix, `enterprise prompt upload
+  <status> key ...`, since that file has not reached the bucket; `-` for
   a value absent or empty. A file that is not a JSON object, or has no
   `items` object, is one `parser:` row, and so is an item that is not an
   object. Fixture only: no real install has shown the file.
@@ -232,8 +235,9 @@ class ClineParser(LegacyTaskParser):
     # -- cache/sync-queue.json (VS Code extension)
 
     def _parse_sync_queue(self, artifact: Artifact) -> Iterator[Row]:
-        """One `session synced: enterprise prompt upload <status>` row per
-        queued task file; `data` and `lastError` are never read into a row."""
+        """One `enterprise prompt upload <status>` row per queued task file,
+        prefixed `session synced: ` only when the item's status is `synced`;
+        `data` and `lastError` are never read into a row."""
         doc = load_json(artifact.disk_path)
         items = doc.get("items") if isinstance(doc, dict) else None
         if not isinstance(items, dict):
@@ -260,10 +264,12 @@ class ClineParser(LegacyTaskParser):
             row.project_path = str((history or {}).get(self.PROJECT_KEY) or "")
             row.timestamp_utc = to_utc(item.get("timestamp"))
             row.text = (
-                "session synced: enterprise prompt upload %s key %s retries %s"
+                "enterprise prompt upload %s key %s retries %s"
                 " (from saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)"
                 % (value("status"), value("key"), value("retryCount"))
             )
+            if item.get("status") == "synced":
+                row.text = "session synced: " + row.text
             yield row
         yield from error_rows(self, artifact, errors)
 
