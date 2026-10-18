@@ -9,6 +9,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- The `opencode` and `kilo-code` parsers write a `session synced: share`
+  row for each session published to OpenCode's share service, from the
+  database's `session_share` table, and, for a session shared and then
+  unshared, `session synced: share url` and `session unshared` rows from
+  its `session.updated.1` events; `sessions.jsonl` `synced` is now `yes`
+  or `no` for their sessions ([#153]).
+- The `kilo-code` parser reads Kilo's cloud session marker,
+  `.local/share/kilo/storage/session_share/<sessionID>.json`, as a
+  `session synced: kilo session` row ([#153]).
+- The `pi` parser writes a `session synced: bug report` row for a `/bug`
+  report uploaded to radius.pi.dev and a `bug report exported:` row for
+  one written to a zip, from the session's `pi.bug-report` entry;
+  `sessions.jsonl` `synced` is now `yes` or `no` for pi sessions ([#153]).
+- The `letta` parser writes a `session synced: server conversation` row
+  for each transcript of a server-side agent and reads
+  `.letta/settings.json` and a project's `.letta/settings.local.json` for
+  a `session synced: last session on` row per server; `sessions.jsonl`
+  `synced` is now `yes` or `no` for Letta sessions ([#153]).
+- The `vscode` parser reads Copilot Chat's
+  `User/globalStorage/github.copilot-chat/cloudSessions.json`, a
+  `session synced: remote session` row per chat session uploaded to the
+  user's GitHub account, and the cloud agent tasks in the extension's
+  `state.vscdb` global state, a `remote session: cloud agent task` row
+  each; `sessions.jsonl` `synced` is now `yes` or `no` for VS Code
+  sessions ([#153]).
+
 ## [0.14.0] - 2026-10-17
 
 ### Added
@@ -1102,6 +1130,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#151]: https://github.com/seanthegeek/doubleagent/issues/151
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#143]: https://github.com/seanthegeek/doubleagent/issues/143

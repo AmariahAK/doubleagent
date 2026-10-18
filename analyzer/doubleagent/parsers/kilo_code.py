@@ -45,6 +45,18 @@ Files, relative to the home directory:
   written as XML inside text blocks, as older Roo prompts did, stay in the
   text of the `assistant` row; text blocks that are only
   `<environment_details>` are `system` rows.
+* `.local/share/kilo/storage/session_share/<sessionID>.json`: Kilo's cloud
+  session marker, `{id, ingestPath, url?}`, written when Kilo's session
+  ingest service registers the session (at creation, for a user signed in
+  to Kilo); `url`, the public link, is added by `/share` and removed by
+  `/unshare`, which keeps the file. One `system` row at the file's
+  modification time (issue 153), `session_id` from the file name,
+  `session synced: kilo session <id> ingest <ingestPath> share <url>
+  (from storage/session_share/<sessionID>.json, file mtime)`, `-` for an
+  absent value. A file that is not a JSON object is one `parser:` row.
+  The upstream `session_share` table, which Kilo leaves empty, and the
+  `session.updated.1` event rows are read by the OpenCode reader, so a
+  public URL recorded there gives the OpenCode sync rows too.
 """
 
 from __future__ import annotations
@@ -57,7 +69,7 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, compact_json, error_rows, tail_text, text_of
+from .base import Options, compact_json, error_rows, file_mtime, tail_text, text_of
 from .opencode import OpenCodeParser, tool_summary
 
 TASK_RX = re.compile(
@@ -125,14 +137,50 @@ class KiloCodeParser(OpenCodeParser):
     data_dir = ".local/share/kilo"
     db_prefixes = ("kilo", "opencode")
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.share_rx = re.compile(
+            r"^%s/storage/session_share/([^/]+)\.json$" % re.escape(self.data_dir)
+        )
+
     def wants(self, artifact: Artifact) -> bool:
-        return bool(TASK_RX.search(artifact.rel)) or super().wants(artifact)
+        return bool(
+            TASK_RX.search(artifact.rel) or self.share_rx.match(artifact.rel)
+        ) or super().wants(artifact)
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        m = self.share_rx.match(artifact.rel)
         if TASK_RX.search(artifact.rel):
             yield from self._parse_task(artifact, opts)
+        elif m:
+            yield from self._parse_share(artifact, m.group(1))
         else:
             yield from super().parse(artifact, opts)
+
+    # -- cloud session marker -------------------------------------------------------
+    def _parse_share(self, artifact: Artifact, session_id: str) -> Iterator[Row]:
+        """`storage/session_share/<sessionID>.json`: one sync row at the
+        file's modification time, or one `parser:` row when the file is not
+        a JSON object."""
+        doc = _read_json(artifact.disk_path)
+        row = self.base_row(artifact)
+        row.session_id, row.source_line, row.turn_type = session_id, 1, "system"
+        row.timestamp_utc = file_mtime(artifact)
+        rel = "storage/session_share/%s.json" % session_id
+        if not isinstance(doc, dict):
+            row.text = "parser: %s is not a JSON object" % rel
+            yield row
+            return
+
+        def val(key: str) -> str:
+            v = doc.get(key)
+            return str(v) if v not in (None, "") else "-"
+
+        row.text = compact(
+            "session synced: kilo session %s ingest %s share %s (from %s, file mtime)"
+            % (val("id"), val("ingestPath"), val("url"), rel)
+        )
+        yield row
 
     # -- legacy Roo-style tasks -----------------------------------------------------
     @staticmethod

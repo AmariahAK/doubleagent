@@ -3988,6 +3988,46 @@ def build_vscode(home: Path) -> None:
     (legacy / (VSCODE_LEGACY_SESSION + ".json")).write_text(
         json.dumps(vscode_legacy_session(), indent=2), encoding="utf-8"
     )
+    build_vscode_sync(home)
+
+
+# Session sync (issue 153): Copilot Chat's cloudSessions.json, naming the
+# fixture session and one uploaded from another machine, and the
+# extension's global state with its cloud agent tasks, in an Insiders data
+# directory (research/vscode.md section 5).
+VSCODE_CLOUD_SESSIONS_REL = ".config/Code/User/globalStorage/github.copilot-chat/cloudSessions.json"
+VSCODE_CLOUD_SESSIONS_MTIME = 1759400100  # 2025-10-02T10:15:00Z
+VSCODE_OTHER_MACHINE_SESSION = "9ab0c1d2-0000-4000-8000-00000000a1b2"
+VSCODE_STATE_REL = ".config/Code - Insiders/User/globalStorage/state.vscdb"
+VSCODE_CLOUD_TASK = "1234567"
+VSCODE_OLD_TASK = "1234000"
+
+
+def build_vscode_sync(home: Path) -> None:
+    _json(
+        home / VSCODE_CLOUD_SESSIONS_REL,
+        {
+            VSCODE_SESSION: {"cloudSessionId": "cs-0001", "cloudTaskId": "ct-0001"},
+            VSCODE_OTHER_MACHINE_SESSION: {"cloudSessionId": "cs-0002"},
+        },
+    )
+    os.utime(
+        home / VSCODE_CLOUD_SESSIONS_REL,
+        (VSCODE_CLOUD_SESSIONS_MTIME, VSCODE_CLOUD_SESSIONS_MTIME),
+    )
+    _vscdb(
+        home / VSCODE_STATE_REL,
+        {
+            "GitHub.copilot-chat": {
+                "github.copilot.cloudAgent.ownedTasks": {
+                    VSCODE_CLOUD_TASK: {"recordedAt": 1759400200000, "application": "vscode"},
+                    VSCODE_OLD_TASK: 1759300000000,
+                },
+                "github.copilot.someOtherKey": "not read",
+            },
+            'secret://{"extensionId":"github.copilot-chat","key":"token"}': "gho_not_real",
+        },
+    )
 
 
 # ---- OpenCode and Kilo Code ---------------------------------------------------------
@@ -4357,6 +4397,85 @@ def build_opencode(home: Path) -> None:
     _json_file(
         home / ".config/opencode/opencode.json", {"$schema": "https://opencode.ai/config.json"}
     )
+    build_opencode_share_db(data / OPENCODE_SHARE_DB_NAME)
+
+
+# Session sync (issue 153): a channel database with the share records of
+# research/opencode.md section 5, the `session_share` table and the
+# `session.updated.1` events. One session is shared now, one was shared
+# and then unshared (its share row is gone, its events stay), one never.
+OPENCODE_SHARE_DB_NAME = "opencode-beta.db"
+OPENCODE_SHARED = "ses_05SHARE"
+OPENCODE_UNSHARED = "ses_06UNSHARE"
+OPENCODE_PRIVATE = "ses_07PRIVATE"
+OPENCODE_SHARE_SECRET = "fixture-share-secret-not-real"
+OPENCODE_SHARE_T0 = OPENCODE_T0 + 3600000  # 2026-10-03T10:00:00Z
+OPENCODE_SHARE_SCHEMA = """
+CREATE TABLE session_share (session_id text PRIMARY KEY, id text NOT NULL, secret text NOT NULL,
+  url text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL);
+CREATE TABLE event_sequence (aggregate_id text PRIMARY KEY, seq integer NOT NULL, owner_id text);
+CREATE TABLE event (id text PRIMARY KEY, aggregate_id text NOT NULL, seq integer NOT NULL,
+  type text NOT NULL, data text NOT NULL);
+"""
+
+
+def opencode_session_event(sid: str, seq: int, updated: int, share_url: str = "") -> tuple:
+    """An `event` row of type `session.updated.1`: `data` is `{sessionID,
+    info}`, the session's info with `share.url` while it is shared."""
+    info: dict = {
+        "id": sid,
+        "slug": "s",
+        "projectID": "proj_a1",
+        "directory": "/srv/proj",
+        "title": "Share test",
+        "version": "1.2.0",
+        "time": {"created": OPENCODE_SHARE_T0, "updated": updated},
+    }
+    if share_url:
+        info["share"] = {"url": share_url}
+    data = json.dumps({"sessionID": sid, "info": info})
+    return ("evt_%s_%d" % (sid, seq), sid, seq, "session.updated.1", data)
+
+
+def build_opencode_share_db(db: Path, t0: int = OPENCODE_SHARE_T0) -> None:
+    db.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(db))
+    con.executescript(OPENCODE_SCHEMA + OPENCODE_SHARE_SCHEMA)
+    con.execute(
+        "INSERT INTO project (id, worktree, vcs, time_created, time_updated, sandboxes) VALUES (?,?,?,?,?,?)",
+        ("proj_a1", "/srv/proj", "git", t0, t0, "[]"),
+    )
+    _oc_session(con, OPENCODE_SHARED, "proj_a1", "/srv/proj", "Shared", t0)
+    _oc_session(con, OPENCODE_UNSHARED, "proj_a1", "/srv/proj", "Unshared", t0 + 10000)
+    _oc_session(con, OPENCODE_PRIVATE, "proj_a1", "/srv/proj", "Private", t0 + 20000)
+    con.execute(
+        "INSERT INTO session_share VALUES (?,?,?,?,?,?)",
+        (
+            OPENCODE_SHARED,
+            "SHARE05",
+            OPENCODE_SHARE_SECRET,
+            "https://opncd.ai/share/SHARE05",
+            t0 + 2000,
+            t0 + 2000,
+        ),
+    )
+    events = [
+        # The shared session's own event: its share row already says so.
+        opencode_session_event(OPENCODE_SHARED, 1, t0 + 2000, "https://opncd.ai/share/SHARE05"),
+        opencode_session_event(OPENCODE_UNSHARED, 1, t0 + 11000),
+        opencode_session_event(OPENCODE_UNSHARED, 2, t0 + 12000, "https://opncd.ai/share/UNSHAR06"),
+        opencode_session_event(OPENCODE_UNSHARED, 3, t0 + 13000, "https://opncd.ai/share/UNSHAR06"),
+        opencode_session_event(OPENCODE_UNSHARED, 4, t0 + 14000),
+        opencode_session_event(OPENCODE_UNSHARED, 5, t0 + 15000),
+        opencode_session_event(OPENCODE_PRIVATE, 1, t0 + 21000),
+    ]
+    con.executemany("INSERT INTO event VALUES (?,?,?,?,?)", events)
+    con.executemany(
+        "INSERT INTO event_sequence VALUES (?,?,NULL)",
+        [(OPENCODE_SHARED, 1), (OPENCODE_UNSHARED, 5), (OPENCODE_PRIVATE, 1)],
+    )
+    con.commit()
+    con.close()
 
 
 def kilo_task_records(t0: int = KILO_T0 - 86400000):
@@ -4558,6 +4677,25 @@ def build_kilo(home: Path) -> None:
             ],
         },
     )
+    build_kilo_share(home)
+
+
+# Session sync (issue 153): Kilo's cloud session marker,
+# storage/session_share/<sessionID>.json (research/kilo-code.md section 2).
+KILO_SHARE_REL = ".local/share/kilo/storage/session_share/%s.json" % KILO_SESSION
+KILO_SHARE_MTIME = 1791022000  # 2026-10-03T10:06:40Z
+
+
+def build_kilo_share(home: Path) -> None:
+    _json_file(
+        home / KILO_SHARE_REL,
+        {
+            "id": "ks_01JAX",
+            "ingestPath": "/api/session/ks_01JAX/ingest",
+            "url": "https://app.kilo.ai/s/share01",
+        },
+    )
+    os.utime(home / KILO_SHARE_REL, (KILO_SHARE_MTIME, KILO_SHARE_MTIME))
 
 
 # ---- Cline and Roo Code (research/cline.md, research/roo-code.md) ----------------
@@ -5872,6 +6010,79 @@ def build_pi(home: Path) -> None:
     _json(home / ".pi/agent/settings.json", {"defaultProvider": "anthropic"})
     _json(home / PI_TRUST, {"/srv/proj": True, "/srv/untrusted": False})
     os.utime(home / PI_TRUST, (PI_TRUST_MTIME, PI_TRUST_MTIME))
+    _jsonl(home / PI_DIR / PI_BUG_FILE, pi_bug_report_records())
+
+
+# Session sync (issue 153): a session reported with `/bug` twice, once
+# uploaded and once exported to a zip (research/pi.md section 3).
+PI_BUG_SESSION = "0199a1b2-7c3d-7e4f-8a5b-6c7d8e9f0b3d"
+PI_BUG_FILE = "2026-10-01T13-00-00-000Z_%s.jsonl" % PI_BUG_SESSION
+PI_BUG_REPORT = "0199a1b2-9999-7000-8000-00000000b001"
+PI_BUG_ZIP = "0199a1b2-9999-7000-8000-00000000b002"
+
+
+def pi_bug_report_records(cwd="/srv/proj"):
+    def report(entry_id, parent, ts, data):
+        return {
+            "type": "custom",
+            "id": entry_id,
+            "parentId": parent,
+            "timestamp": ts,
+            "customType": "pi.bug-report",
+            "data": data,
+        }
+
+    return [
+        {
+            "type": "session",
+            "version": 3,
+            "id": PI_BUG_SESSION,
+            "timestamp": "2026-10-01T13:00:00.000Z",
+            "cwd": cwd,
+        },
+        {
+            "type": "message",
+            "id": "b1000001",
+            "parentId": None,
+            "timestamp": "2026-10-01T13:00:01.000Z",
+            "message": {"role": "user", "content": "the build hangs", "timestamp": 1790859601000},
+        },
+        report(
+            "b1000002",
+            "b1000001",
+            "2026-10-01T13:00:30.000Z",
+            {
+                "id": PI_BUG_REPORT,
+                "createdAt": "2026-10-01T13:00:29.000Z",
+                "hint": "build hangs on step 3",
+                "sessionIncluded": True,
+                "summaryIncluded": False,
+                "delivery": "upload",
+            },
+        ),
+        report(
+            "b1000003",
+            "b1000002",
+            "2026-10-01T13:01:00.000Z",
+            {
+                "id": PI_BUG_ZIP,
+                "createdAt": "2026-10-01T13:00:59.000Z",
+                "hint": None,
+                "sessionIncluded": False,
+                "summaryIncluded": False,
+                "delivery": "zip",
+                "path": "/srv/proj/pi-bug-report-%s.zip" % PI_BUG_ZIP,
+            },
+        ),
+        {
+            "type": "custom",
+            "id": "b1000004",
+            "parentId": "b1000003",
+            "timestamp": "2026-10-01T13:01:30.000Z",
+            "customType": "some-extension",
+            "data": {"state": 1},
+        },
+    ]
 
 
 def build_little_coder(home: Path) -> None:
@@ -6082,6 +6293,58 @@ def build_letta(home: Path) -> None:
     _jsonl(letta / "sessions.jsonl", letta_sessions_records())
     _json(letta / "settings.json", {"env": {"LETTA_API_KEY": "sk-not-real"}})
     _json(letta / "transcripts" / LETTA_AGENT / LETTA_LOCAL_CONV / "payload-auto-a1b2c3.json", [])
+    build_letta_sync(home)
+
+
+# Session sync (issue 153): the server-side session markers of
+# research/letta.md section 2. settings.json is rewritten with
+# `sessionsByServer` and `agents[]` beside the credential the parser must
+# never print, and a local-backend agent's transcript, which is not
+# server state. A project's settings.local.json is built by its test.
+LETTA_SETTINGS_MTIME = 1790856120  # 2026-10-01T12:02:00Z
+LETTA_LOCAL_SETTINGS_MTIME = 1790856180  # 2026-10-01T12:03:00Z
+LETTA_LOCAL_AGENT = "agent-local-77"
+LETTA_LOCAL_AGENT_CONV = "local-conv-2"
+
+
+def build_letta_sync(home: Path) -> None:
+    letta = home / ".letta"
+    _json(
+        letta / "settings.json",
+        {
+            "env": {"LETTA_API_KEY": "sk-not-real"},
+            "agents": [
+                {"agentId": LETTA_AGENT},
+                {"agentId": "agent-selfhost", "baseUrl": "http://localhost:8283"},
+            ],
+            "sessionsByServer": {
+                "api.letta.com": {"agentId": LETTA_AGENT, "conversationId": LETTA_CONV},
+                "local:/home/alice/.letta/lc-local-backend": {
+                    "agentId": LETTA_LOCAL_AGENT,
+                    "conversationId": LETTA_LOCAL_AGENT_CONV,
+                },
+            },
+        },
+    )
+    os.utime(letta / "settings.json", (LETTA_SETTINGS_MTIME, LETTA_SETTINGS_MTIME))
+    _jsonl(
+        letta / "transcripts" / LETTA_LOCAL_AGENT / LETTA_LOCAL_AGENT_CONV / "transcript.jsonl",
+        [
+            {"kind": "user", "text": "hello", "captured_at": "2026-10-01T12:05:00.000Z"},
+            {"kind": "assistant", "text": "hi", "captured_at": "2026-10-01T12:05:00.000Z"},
+        ],
+    )
+
+
+def letta_project_settings():
+    """A project's `.letta/settings.local.json`, which a test places in a
+    discovered project directory."""
+    return {
+        "permissions": {"allow": ["Bash(ls)"]},
+        "sessionsByServer": {
+            "localhost:8283": {"agentId": "agent-selfhost", "conversationId": "conv-sh1"}
+        },
+    }
 
 
 HERMES_SESSION = "20261001_120000_a1b2c3d4"

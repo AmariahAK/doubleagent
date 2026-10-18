@@ -4436,6 +4436,120 @@ class VsCodeTests(ParserBase):
             apply_mutation(s, {"kind": 1, "k": ["missing", "x"], "v": 1})
 
 
+from fixtures import (
+    VSCODE_CLOUD_SESSIONS_MTIME,
+    VSCODE_CLOUD_SESSIONS_REL,
+    VSCODE_CLOUD_TASK,
+    VSCODE_OLD_TASK,
+    VSCODE_OTHER_MACHINE_SESSION,
+    VSCODE_STATE_REL,
+)
+
+
+class VsCodeSyncTests(ParserBase):
+    """Copilot Chat's session sync and cloud agent records (issue 153)."""
+
+    SRC = "(from User/globalStorage/github.copilot-chat/cloudSessions.json, file mtime)"
+    TASKS = (
+        "(from state.vscdb GitHub.copilot-chat github.copilot.cloudAgent.ownedTasks, recordedAt)"
+    )
+
+    def test_cloud_sessions_rows(self):
+        self.assertTrue(VsCodeParser.records_sync)
+        rows = self.rows_for(VsCodeParser(), VSCODE_CLOUD_SESSIONS_REL)
+        ts = to_utc(VSCODE_CLOUD_SESSIONS_MTIME)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    VSCODE_SESSION,
+                    ts,
+                    "session synced: remote session cs-0001 task ct-0001 " + self.SRC,
+                ),
+                (
+                    "system",
+                    VSCODE_OTHER_MACHINE_SESSION,
+                    ts,
+                    "session synced: remote session cs-0002 task - " + self.SRC,
+                ),
+            ],
+        )
+
+    def test_cloud_sessions_not_a_json_object(self):
+        for raw in ("[]", '{"a": '):
+            (self.home / VSCODE_CLOUD_SESSIONS_REL).write_text(raw, encoding="utf-8")
+            rows = self.rows_for(VsCodeParser(), VSCODE_CLOUD_SESSIONS_REL)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual((rows[0].turn_type, rows[0].session_id), ("system", ""))
+            self.assertTrue(
+                rows[0].text.startswith("parser: cloudSessions.json is not a JSON object"),
+                rows[0].text,
+            )
+
+    def test_owned_tasks_rows(self):
+        rows = self.rows_for(VsCodeParser(), VSCODE_STATE_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "copilot-cloud-agent:/task/" + VSCODE_CLOUD_TASK,
+                    "2025-10-02T10:16:40.000Z",
+                    "remote session: cloud agent task %s application=vscode %s"
+                    % (VSCODE_CLOUD_TASK, self.TASKS),
+                ),
+                (
+                    "system",
+                    "copilot-cloud-agent:/task/" + VSCODE_OLD_TASK,
+                    "2025-10-01T06:26:40.000Z",
+                    "remote session: cloud agent task %s application=- %s"
+                    % (VSCODE_OLD_TASK, self.TASKS),
+                ),
+            ],
+        )
+        self.assertEqual([r for r in rows if "gho_not_real" in r.text], [])
+
+    def test_state_without_copilot_key_yields_nothing(self):
+        # Cody's and Twinny's databases, and the plain-text placeholder.
+        for rel in (
+            ".config/VSCodium/User/globalStorage/state.vscdb",
+            ".vscode-server/data/User/globalStorage/state.vscdb",
+            ".config/Code/User/globalStorage/state.vscdb",
+        ):
+            self.assertTrue(VsCodeParser().wants(self.artifact(rel)), rel)
+            self.assertEqual(self.rows_for(VsCodeParser(), rel), [], rel)
+
+    def test_damaged_state_is_one_row(self):
+        path = self.home / VSCODE_STATE_REL
+        path.write_bytes(b"SQLite format 3\x00" + b"\x00" * 200)
+        rows = self.rows_for(VsCodeParser(), VSCODE_STATE_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: state.vscdb unreadable"), rows[0].text)
+
+    def test_session_without_entry_has_no_sync_row(self):
+        for rel in (
+            VSCODE_WS + "/chatSessions/" + VSCODE_SESSION + ".jsonl",
+            ".vscode-server/data/User/globalStorage/emptyWindowChatSessions/"
+            + VSCODE_LEGACY_SESSION
+            + ".json",
+        ):
+            rows = self.rows_for(VsCodeParser(), rel)
+            self.assertEqual([r for r in rows if r.text.startswith("session synced:")], [], rel)
+
+    def test_sessions_synced(self):
+        import contextlib
+
+        out = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--agent", "vscode"])
+        synced = {r["session_id"]: r["synced"] for r in read_jsonl(out / "sessions.jsonl")}
+        self.assertEqual(synced[VSCODE_SESSION], "yes")
+        self.assertEqual(synced[VSCODE_OTHER_MACHINE_SESSION], "yes")
+        self.assertEqual(synced[VSCODE_LEGACY_SESSION], "no")
+        self.assertEqual(synced["copilot-cloud-agent:/task/" + VSCODE_CLOUD_TASK], "no")
+
+
 from doubleagent.parsers.kilo_code import KiloCodeParser
 from doubleagent.parsers.kilo_code import iter_json_array as kilo_iter_json_array
 from doubleagent.parsers.opencode import OpenCodeParser
@@ -4651,6 +4765,7 @@ class OpenCodeTests(ParserBase):
         self.assertEqual(
             wanted,
             [
+                ".local/share/opencode/opencode-beta.db",
                 self.DB,
                 self.STORAGE + "message/%s/msg_a.json" % OPENCODE_LEGACY_SESSION,
                 self.STORAGE + "message/%s/msg_b.json" % OPENCODE_LEGACY_SESSION,
@@ -4736,6 +4851,9 @@ class OpenCodeTests(ParserBase):
                 OPENCODE_SESSION,
                 OPENCODE_V2_SESSION,
                 OPENCODE_LEGACY_SESSION,
+                "ses_05SHARE",
+                "ses_06UNSHARE",
+                "ses_07PRIVATE",
                 KILO_SESSION,
                 KILO_TASK,
             },
@@ -4853,7 +4971,9 @@ class KiloCodeTests(ParserBase):
     def test_credentials_and_ui_messages_not_wanted(self):
         p = KiloCodeParser()
         wanted = sorted(a.rel for a in self.col.artifacts if a.agent == "kilo-code" and p.wants(a))
-        self.assertEqual(wanted, [self.TASK, self.DB])
+        self.assertEqual(
+            wanted, [self.TASK, self.DB, ".local/share/kilo/storage/session_share/ses_01JAX.json"]
+        )
 
     def test_truncated_task_file_keeps_earlier_records(self):
         path = self.home / self.TASK
@@ -4904,6 +5024,163 @@ class KiloCodeTests(ParserBase):
         self.assertEqual(run("[1, 2"), ([1, 2], [(3, "array cut off after record 2", "")]))
         self.assertEqual(run('{"a":1}'), ([], [(1, "not a JSON array", "")]))
         self.assertEqual(run("[1] x"), ([1], [(2, "unexpected data after the array", "")]))
+
+
+from fixtures import (
+    KILO_SHARE_MTIME,
+    KILO_SHARE_REL,
+    OPENCODE_PRIVATE,
+    OPENCODE_SHARE_DB_NAME,
+    OPENCODE_SHARE_SECRET,
+    OPENCODE_SHARED,
+    OPENCODE_UNSHARED,
+)
+
+
+class OpenCodeSyncTests(ParserBase):
+    """The share records of an OpenCode database (issue 153)."""
+
+    DB = ".local/share/opencode/" + OPENCODE_SHARE_DB_NAME
+
+    @staticmethod
+    def sync_rows(rows):
+        return [
+            (r.session_id, r.text, r.timestamp_utc, r.source_line, r.project_path)
+            for r in rows
+            if r.text.startswith(("session synced:", "session unshared"))
+        ]
+
+    def test_rows(self):
+        self.assertTrue(OpenCodeParser.records_sync)
+        rows = self.rows_for(OpenCodeParser(), self.DB)
+        src = "(from %s event session.updated.1, info.time.updated)" % OPENCODE_SHARE_DB_NAME
+        self.assertEqual(
+            self.sync_rows(rows),
+            [
+                (
+                    OPENCODE_SHARED,
+                    "session synced: share SHARE05 url https://opncd.ai/share/SHARE05 "
+                    "(from %s session_share, time_created)" % OPENCODE_SHARE_DB_NAME,
+                    "2026-10-03T10:00:02.000Z",
+                    1,
+                    "/srv/proj",
+                ),
+                (
+                    OPENCODE_UNSHARED,
+                    "session synced: share url https://opncd.ai/share/UNSHAR06 " + src,
+                    "2026-10-03T10:00:12.000Z",
+                    3,
+                    "/srv/proj",
+                ),
+                (
+                    OPENCODE_UNSHARED,
+                    "session unshared " + src,
+                    "2026-10-03T10:00:14.000Z",
+                    5,
+                    "/srv/proj",
+                ),
+            ],
+        )
+        # The sync rows follow the session-start rows and are `system`.
+        self.assertEqual([r.turn_type for r in rows], ["system"] * 6)
+        self.assertTrue(all(r.text.startswith("session start:") for r in rows[:3]))
+
+    def test_session_without_share_has_no_sync_row(self):
+        rows = self.rows_for(OpenCodeParser(), self.DB)
+        self.assertEqual(
+            [r.text[:14] for r in rows if r.session_id == OPENCODE_PRIVATE], ["session start:"]
+        )
+        # The database the other OpenCode tests read has no share tables.
+        rows = self.rows_for(OpenCodeParser(), ".local/share/opencode/opencode.db")
+        self.assertEqual(self.sync_rows(rows), [])
+
+    def test_secret_never_printed(self):
+        rows = self.rows_for(OpenCodeParser(), self.DB)
+        self.assertEqual([r for r in rows if OPENCODE_SHARE_SECRET in r.text], [])
+
+    def test_bad_event_data_is_reported_not_fatal(self):
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.DB))
+        con.execute(
+            "INSERT INTO event VALUES ('evt_bad', ?, 9, 'session.updated.1', '{\"info\":')",
+            (OPENCODE_PRIVATE,),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenCodeParser(), self.DB)
+        self.assertEqual(len(self.sync_rows(rows)), 3)
+        self.assertEqual(rows[-1].text, "parser: 1 record(s) with undecodable data")
+
+    def test_unreadable_database_is_one_row(self):
+        path = self.home / self.DB
+        path.write_bytes(b"SQLite format 3\x00" + b"\x00" * 200)
+        rows = self.rows_for(OpenCodeParser(), self.DB)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: database could not be read"), rows[0])
+
+    def test_sessions_synced(self):
+        import contextlib
+
+        out = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--agent", "opencode"])
+        synced = {r["session_id"]: r["synced"] for r in read_jsonl(out / "sessions.jsonl")}
+        self.assertEqual(synced[OPENCODE_SHARED], "yes")
+        self.assertEqual(synced[OPENCODE_UNSHARED], "yes")
+        self.assertEqual(synced[OPENCODE_PRIVATE], "no")
+        self.assertEqual(synced[OPENCODE_SESSION], "no")
+
+
+class KiloCodeSyncTests(ParserBase):
+    """Kilo's cloud session marker (issue 153)."""
+
+    def test_rows(self):
+        self.assertTrue(KiloCodeParser.records_sync)
+        rows = self.rows_for(KiloCodeParser(), KILO_SHARE_REL)
+        self.assertEqual(
+            [(r.session_id, r.turn_type, r.timestamp_utc, r.source_line, r.text) for r in rows],
+            [
+                (
+                    KILO_SESSION,
+                    "system",
+                    to_utc(KILO_SHARE_MTIME),
+                    1,
+                    "session synced: kilo session ks_01JAX ingest /api/session/ks_01JAX/ingest "
+                    "share https://app.kilo.ai/s/share01 (from storage/session_share/%s.json, "
+                    "file mtime)" % KILO_SESSION,
+                )
+            ],
+        )
+
+    def test_unshared_marker_prints_dash(self):
+        path = self.home / KILO_SHARE_REL
+        path.write_text('{"id": "ks_01JAX", "ingestPath": "/api/x"}', encoding="utf-8")
+        rows = self.rows_for(KiloCodeParser(), KILO_SHARE_REL)
+        self.assertIn(" share - (from", rows[0].text)
+
+    def test_session_without_marker_has_no_sync_row(self):
+        rows = self.rows_for(KiloCodeParser(), ".local/share/kilo/kilo.db")
+        self.assertEqual([r for r in rows if r.text.startswith("session synced:")], [])
+
+    def test_not_a_json_object(self):
+        for raw in ("[1, 2]", '{"id": "ks_01'):
+            (self.home / KILO_SHARE_REL).write_text(raw, encoding="utf-8")
+            rows = self.rows_for(KiloCodeParser(), KILO_SHARE_REL)
+            self.assertEqual(
+                [(r.session_id, r.turn_type, r.text) for r in rows],
+                [
+                    (
+                        KILO_SESSION,
+                        "system",
+                        "parser: storage/session_share/%s.json is not a JSON object" % KILO_SESSION,
+                    )
+                ],
+            )
+
+    def test_opencode_does_not_want_the_marker(self):
+        self.assertFalse(OpenCodeParser().wants(self.artifact(KILO_SHARE_REL)))
+        self.assertTrue(KiloCodeParser().wants(self.artifact(KILO_SHARE_REL)))
 
 
 from doubleagent.parsers.cline import ClineParser
@@ -6404,9 +6681,11 @@ class LettaTests(ParserBase):
 
     def test_reflection_transcript(self):
         rows = self.rows_for(LettaParser(), self.TRANSCRIPT)
+        # The first row is the server-conversation sync row (LettaSyncTests).
         self.assertEqual(
-            [r.turn_type for r in rows], ["user", "tool_use", "tool_result", "assistant"]
+            [r.turn_type for r in rows], ["system", "user", "tool_use", "tool_result", "assistant"]
         )
+        rows = rows[1:]
         for r in rows:
             self.assertEqual(
                 (r.session_id, r.project_path, r.model, r.timestamp_utc),
@@ -6429,6 +6708,10 @@ class LettaTests(ParserBase):
     def test_transcript_read_beside_local_backend(self):
         # Read always, not only when messages.jsonl is missing (issue 122).
         rows = self.rows_for(LettaParser(), self.TWIN)
+        # The fixture's agent id has no `agent-local-` prefix, so the twin
+        # also gets the server-conversation sync row (LettaSyncTests).
+        self.assertTrue(rows[0].text.startswith("session synced: server conversation"))
+        rows = rows[1:]
         self.assertEqual(
             [(r.turn_type, r.text, r.timestamp_utc) for r in rows],
             [
@@ -6458,10 +6741,10 @@ class LettaTests(ParserBase):
         # Every line of the first turn pairs, the user prompt 4.12 s after
         # its messages.jsonl twin; the turn messages.jsonl lacks survives.
         self.assertEqual(dropped["letta"], 4)
-        self.assertEqual(
-            [r.text for r in kept[len(primary) :]],
-            ["now delete the build directory", "Deleted build/"],
-        )
+        # The sync row has no twin and is kept, before the turn.
+        texts = [r.text for r in kept[len(primary) :]]
+        self.assertTrue(texts[0].startswith("session synced: server conversation"), texts)
+        self.assertEqual(texts[1:], ["now delete the build directory", "Deleted build/"])
         # The default window pairs the assistant line only.
         _, dropped = deduplicate(primary, [(r, 2.0) for r in twin])
         self.assertEqual(dropped["letta"], 1)
@@ -6530,7 +6813,6 @@ class LettaTests(ParserBase):
 
     def test_config_not_wanted(self):
         for rel in (
-            ".letta/settings.json",
             ".letta/transcripts/%s/%s/state.json" % (LETTA_AGENT, LETTA_CONV),
             ".letta/lc-local-backend/conversations/%s/manifest.json" % LETTA_LOCAL_DIR,
             ".letta/transcripts/%s/%s/payload-auto-a1b2c3.json" % (LETTA_AGENT, LETTA_LOCAL_CONV),
@@ -6539,7 +6821,7 @@ class LettaTests(ParserBase):
             self.assertFalse(LettaParser().wants(art), rel)
 
     def test_truncated_line_is_reported_not_fatal(self):
-        for rel, n in ((self.TRANSCRIPT, 4), (self.TWIN, 6), (self.LOCAL, 7)):
+        for rel, n in ((self.TRANSCRIPT, 5), (self.TWIN, 7), (self.LOCAL, 7)):
             write_bad_line(self.home / rel)
             rows = self.rows_for(LettaParser(), rel)
             self.assertEqual(len(rows), n + 1, rel)
@@ -6551,6 +6833,208 @@ class LettaTests(ParserBase):
                 CodexTests.check_bad_line(self, LettaParser, rel, 2)
         row = CodexTests.check_bad_line(self, LettaParser, self.LOCAL, 3)
         self.assertEqual((row.session_id, row.project_path), (LETTA_LOCAL_CONV, "/srv/proj"))
+
+
+import os
+
+from fixtures import (
+    LETTA_LOCAL_AGENT,
+    LETTA_LOCAL_AGENT_CONV,
+    LETTA_LOCAL_SETTINGS_MTIME,
+    LETTA_SETTINGS_MTIME,
+    PI_BUG_FILE,
+    PI_BUG_REPORT,
+    PI_BUG_SESSION,
+    PI_BUG_ZIP,
+    letta_project_settings,
+)
+
+
+class PiSyncTests(ParserBase):
+    """The `pi.bug-report` entry `/bug` appends (issue 153)."""
+
+    REL = PI_DIR + PI_BUG_FILE
+    SRC = "(from session entry pi.bug-report, entry timestamp)"
+
+    def test_rows(self):
+        self.assertTrue(PiParser.records_sync)
+        rows = self.rows_for(PiParser(), self.REL)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.source_line) for r in rows],
+            [
+                (
+                    "system",
+                    "session start: version=3 cwd=/srv/proj",
+                    "2026-10-01T13:00:00.000Z",
+                    1,
+                ),
+                ("user", "the build hangs", "2026-10-01T13:00:01.000Z", 2),
+                (
+                    "system",
+                    "session synced: bug report %s uploaded to radius.pi.dev "
+                    "transcript=true summary=false %s" % (PI_BUG_REPORT, self.SRC),
+                    "2026-10-01T13:00:30.000Z",
+                    3,
+                ),
+                (
+                    "system",
+                    "bug report exported: %s path=/srv/proj/pi-bug-report-%s.zip %s"
+                    % (PI_BUG_ZIP, PI_BUG_ZIP, self.SRC),
+                    "2026-10-01T13:01:00.000Z",
+                    4,
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual((r.session_id, r.project_path), (PI_BUG_SESSION, "/srv/proj"))
+        # The user's description is not printed.
+        self.assertEqual([r for r in rows if "step 3" in r.text], [])
+
+    def test_session_without_report_has_no_sync_row(self):
+        rows = self.rows_for(PiParser(), PI_DIR + PI_FILE)
+        self.assertEqual([r for r in rows if "bug report" in r.text], [])
+
+    def test_missing_values_print_dash(self):
+        path = self.home / self.REL
+        records = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
+        records[2]["data"] = {"delivery": "upload"}
+        records[3]["data"] = {"delivery": "zip"}
+        _jsonl(path, records)
+        texts = [r.text for r in self.rows_for(PiParser(), self.REL)]
+        self.assertIn(
+            "session synced: bug report - uploaded to radius.pi.dev transcript=- summary=- "
+            + self.SRC,
+            texts,
+        )
+        self.assertIn("bug report exported: - path=- " + self.SRC, texts)
+
+    def test_truncated_line_is_reported_not_fatal(self):
+        row = CodexTests.check_bad_line(self, PiParser, self.REL, 3)
+        self.assertEqual((row.session_id, row.project_path), (PI_BUG_SESSION, "/srv/proj"))
+
+    def test_sessions_synced(self):
+        import contextlib
+
+        out = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--agent", "pi"])
+        synced = {r["session_id"]: r["synced"] for r in read_jsonl(out / "sessions.jsonl")}
+        self.assertEqual((synced[PI_BUG_SESSION], synced[PI_SESSION]), ("yes", "no"))
+
+
+class LettaSyncTests(ParserBase):
+    """The server-side session markers of Letta Code (issue 153)."""
+
+    TRANSCRIPT = ".letta/transcripts/%s/%s/transcript.jsonl" % (LETTA_AGENT, LETTA_CONV)
+    LOCAL_TRANSCRIPT = ".letta/transcripts/%s/%s/transcript.jsonl" % (
+        LETTA_LOCAL_AGENT,
+        LETTA_LOCAL_AGENT_CONV,
+    )
+    SETTINGS = ".letta/settings.json"
+
+    def test_transcript_row(self):
+        self.assertTrue(LettaParser.records_sync)
+        rows = self.rows_for(LettaParser(), self.TRANSCRIPT)
+        first = rows[0]
+        self.assertEqual(
+            (first.turn_type, first.text, first.timestamp_utc, first.source_line),
+            (
+                "system",
+                "session synced: server conversation %s agent %s server api.letta.com "
+                "(from .letta/transcripts path, first captured_at)" % (LETTA_CONV, LETTA_AGENT),
+                "2026-10-01T12:00:05.120Z",
+                1,
+            ),
+        )
+        self.assertEqual((first.session_id, first.project_path), (LETTA_CONV, "/srv/proj"))
+        self.assertEqual([r for r in rows[1:] if r.text.startswith("session synced:")], [])
+
+    def test_transcript_server_from_settings(self):
+        path = self.home / self.SETTINGS
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc["agents"][0]["baseUrl"] = "http://localhost:8283"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        self.assertIn(
+            " server http://localhost:8283 (from",
+            self.rows_for(LettaParser(), self.TRANSCRIPT)[0].text,
+        )
+        doc["agents"] = []
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        self.assertIn(" server - (from", self.rows_for(LettaParser(), self.TRANSCRIPT)[0].text)
+        path.unlink()
+        self.assertIn(" server - (from", self.rows_for(LettaParser(), self.TRANSCRIPT)[0].text)
+
+    def test_local_agent_transcript_has_no_sync_row(self):
+        rows = self.rows_for(LettaParser(), self.LOCAL_TRANSCRIPT)
+        self.assertEqual([r.turn_type for r in rows], ["user", "assistant"])
+
+    def test_settings_rows(self):
+        rows = self.rows_for(LettaParser(), self.SETTINGS)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    LETTA_CONV,
+                    "",
+                    to_utc(LETTA_SETTINGS_MTIME),
+                    "session synced: last session on api.letta.com agent %s conversation %s "
+                    "(from .letta/settings.json, file mtime)" % (LETTA_AGENT, LETTA_CONV),
+                )
+            ],
+        )
+        # The credential beside it is never printed.
+        self.assertEqual([r for r in rows if "sk-not-real" in r.text], [])
+
+    def test_project_settings_rows(self):
+        proj = self.tmp / "srv" / "proj"
+        rel = ".letta/settings.local.json"
+        path = proj / rel
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(letta_project_settings()), encoding="utf-8")
+        os.utime(path, (LETTA_LOCAL_SETTINGS_MTIME, LETTA_LOCAL_SETTINGS_MTIME))
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
+        art = Artifact(path, "/srv/proj/" + rel, rel, "letta", home)
+        self.assertTrue(LettaParser().wants(art))
+        rows = list(LettaParser().parse(art, Options()))
+        self.assertEqual(
+            [(r.session_id, r.project_path, r.timestamp_utc, r.source_file, r.text) for r in rows],
+            [
+                (
+                    "conv-sh1",
+                    "/srv/proj",
+                    to_utc(LETTA_LOCAL_SETTINGS_MTIME),
+                    "/srv/proj/" + rel,
+                    "session synced: last session on localhost:8283 agent agent-selfhost "
+                    "conversation conv-sh1 (from .letta/settings.local.json, file mtime)",
+                )
+            ],
+        )
+
+    def test_settings_not_a_json_object(self):
+        for raw in ("[]", '{"sessionsByServer": '):
+            (self.home / self.SETTINGS).write_text(raw, encoding="utf-8")
+            rows = self.rows_for(LettaParser(), self.SETTINGS)
+            self.assertEqual(
+                [(r.turn_type, r.text) for r in rows],
+                [("system", "parser: .letta/settings.json is not a JSON object")],
+            )
+
+    def test_truncated_transcript_keeps_the_sync_row(self):
+        write_bad_line(self.home / self.TRANSCRIPT)
+        rows = self.rows_for(LettaParser(), self.TRANSCRIPT)
+        self.assertTrue(rows[0].text.startswith("session synced: server conversation"))
+        self.assertEqual((rows[-1].turn_type, rows[-1].text), ("system", bad_line_text()))
+
+    def test_sessions_synced(self):
+        import contextlib
+
+        out = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--agent", "letta"])
+        synced = {r["session_id"]: r["synced"] for r in read_jsonl(out / "sessions.jsonl")}
+        self.assertEqual(synced[LETTA_CONV], "yes")
+        self.assertEqual(synced[LETTA_LOCAL_AGENT_CONV], "no")
 
 
 from dataclasses import replace as dc_replace
@@ -8136,7 +8620,11 @@ class ReadsAgentsRoutingTests(ParserBase):
         offered = cli.parsers_for(art, parsers)
         self.assertEqual({p.agent for p in offered}, {"vscode", "cody", "twinny"})
         self.assertEqual(len(offered), len(set(map(id, offered))))
-        self.assertFalse(any(p.wants(art) for p in offered if p.agent == "vscode"))
+        # The VS Code parser reads the Copilot Chat row of the same database
+        # (issue 153), which Cody's has none of.
+        vscode = [p for p in offered if p.agent == "vscode"]
+        self.assertTrue(all(p.wants(art) for p in vscode))
+        self.assertEqual([r for p in vscode for r in p.parse(art, Options())], [])
         other = next(a for a in self.col.artifacts if a.agent == "codex-cli")
         self.assertEqual({p.agent for p in cli.parsers_for(other, parsers)}, {"codex-cli"})
 
@@ -8146,7 +8634,8 @@ class ReadsAgentsRoutingTests(ParserBase):
         from_vscdb = {
             r.agent for r in rows if r.source_file.endswith("/User/globalStorage/state.vscdb")
         }
-        self.assertEqual(from_vscdb, {"cody", "twinny"})
+        # `vscode` rows come from the Copilot Chat cloud agent tasks (issue 153).
+        self.assertEqual(from_vscdb, {"cody", "twinny", "vscode"})
         rows, _, _, _ = cli.collect_rows(self.col, Options(), ["twinny"])
         self.assertEqual({r.agent for r in rows}, {"twinny"})
 

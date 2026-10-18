@@ -849,6 +849,20 @@ message's timestamp and `source_line` and precede its other rows. The
 <old> -> <new> provider=<provider>` the same way, from each message's
 `model` and `provider`; it writes no permission rows, because Crush
 records no permission state the research names.
+The `opencode` and `kilo-code` parsers write, after a database's
+session-start rows, `session synced: share <id> url <url> (from
+<database> session_share, time_created)` for each session published to
+the share service, at the share's creation time; for a session with no
+`session_share` row whose `session.updated.1` events record a share URL
+(one shared and then unshared), `session synced: share url <url> (from
+<database> event session.updated.1, info.time.updated)` at the first
+event that names it and `session unshared (from <database> event
+session.updated.1, info.time.updated)` at the first later event without
+it, `<database>` being the file name (`opencode.db`, `kilo.db`). The
+`kilo-code` parser also writes `session synced: kilo session <id> ingest
+<ingestPath> share <url> (from storage/session_share/<sessionID>.json,
+file mtime)` for each Kilo cloud session marker, at the file's
+modification time, `-` for an absent value.
 
 The pi session reader (the `pi` parser, the little-coder sessions in
 pi's directory, which stay agent `pi`, and Letta's local-backend
@@ -868,6 +882,23 @@ later line of the session names another model. The `pi` parser reads
 share, as one `permission setting: <path>=<true|false> (from
 .pi/agent/trust.json, file mtime)` row per project, with `project_path`
 the project, the file's modification time and an empty `session_id`.
+For a `/bug` report recorded in a session, the `pi` parser writes
+`session synced: bug report <id> uploaded to radius.pi.dev
+transcript=<true|false> summary=<true|false> (from session entry
+pi.bug-report, entry timestamp)` when it was uploaded and `bug report
+exported: <id> path=<path> (from session entry pi.bug-report, entry
+timestamp)` when it was written to a zip, at the entry's time.
+The `letta` parser writes `session synced: server conversation
+<conversation id> agent <agent id> server <server> (from
+.letta/transcripts path, first captured_at)` before the first row of
+each transcript whose agent id does not start `agent-local-`, at that
+line's time, `<server>` the agent's `baseUrl` in `.letta/settings.json`,
+`api.letta.com` when it has none and `-` when the file has no entry
+for the agent; and `session synced: last session on <server> agent
+<agentId> conversation <conversationId> (from <file>, file mtime)` for
+each `sessionsByServer` entry of `.letta/settings.json` and of a
+project's `.letta/settings.local.json` that is not the local backend's,
+at the file's modification time, with the conversation as `session_id`.
 
 The `cline`, `continue` and `pearai` parsers write the same `model:`
 rows, with the `model` column the new model. Cline's SDK sessions write
@@ -918,6 +949,17 @@ Skip, or skipped, are `permission decision: waiting` and `permission
 decision: skipped`, each with ` approval=<command|change>` when the
 step records what was asked, after the step's `tool_result` row with
 its `tool_use_id`.
+The `vscode` parser writes `session synced: remote session
+<cloudSessionId> task <cloudTaskId> (from
+User/globalStorage/github.copilot-chat/cloudSessions.json, file mtime)`
+for each chat session Copilot Chat's session sync uploaded to the
+user's GitHub account, with the chat session id as `session_id` and the
+file's modification time, and `remote session: cloud agent task
+<taskId> application=<application> (from state.vscdb
+GitHub.copilot-chat github.copilot.cloudAgent.ownedTasks, recordedAt)`
+for each cloud agent task started from the editor, with `session_id`
+`copilot-cloud-agent:/task/<taskId>`, at the time it was recorded; `-`
+stands for an absent value.
 
 The `zed`, `goose`, `kiro`, `hermes` and `ollama` parsers write model rows
 in the same form. `zed` writes `model: <model> provider=<provider>` once
@@ -1195,7 +1237,7 @@ no timestamp come first. Its fields, in order:
 | `assistant_turns` | integer | The number with `turn_type` `assistant`. |
 | `tool_calls` | integer | The number with `turn_type` `tool_use`. |
 | `source_file` | string | The `source_file` that contributed the most of the session's records, the first met on a tie, so a transcript wins over a one-line-per-prompt history file; `""` when no record names one. |
-| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (today the Copilot CLI and Copilot Desktop `workspace.yaml` marker, which the `copilot-cli` parser reads); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
+| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (written by the parsers of `copilot-cli`, from the Copilot CLI and Copilot Desktop `workspace.yaml` marker, `opencode`, `kilo-code`, `pi`, `letta` and `vscode`); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
 
 ## Compatibility
 

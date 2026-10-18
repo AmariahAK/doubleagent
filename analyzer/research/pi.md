@@ -258,13 +258,16 @@ session out, and only one leaves a mark.
   the report carried crashes
   ([modes/interactive/bug-report.ts:226](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/bug-report.ts#L226),
   [crash-log.ts:21-23](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/crash-log.ts#L21-L23)).
-  Proposed row, the one `custom` entry not skipped, for `delivery`
-  `upload` only: one `system` row
+  The parser reads it, the one `custom` entry not skipped, and for
+  `delivery` `upload` yields one `system` row
   `session synced: bug report <id> uploaded to radius.pi.dev
   transcript=<sessionIncluded> summary=<summaryIncluded> (from session
   entry pi.bug-report, entry timestamp)`, at the entry's `timestamp`,
   with the session's id and `cwd`; a `zip` entry yields `bug report
-  exported: <id> path=<path>` instead, since nothing left the host.
+  exported: <id> path=<path> (from session entry pi.bug-report, entry
+  timestamp)` instead, since nothing left the host, and an absent value
+  prints `-`. `hint` is not printed. Both rows are fixture only: no real
+  install has shown a `pi.bug-report` entry.
   The server answers with its own `bug_report.id`, which pi shows and
   does not store
   ([modes/interactive/bug-report.ts:186-189](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/bug-report.ts#L186-L189)).

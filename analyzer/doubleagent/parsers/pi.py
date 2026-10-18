@@ -17,7 +17,8 @@ synthetic fixture; see `research/pi.md`. Files:
     `custom_message` (`customType`, `content`), `context_edit`
     (`targetId`, `replacement.content`), `session_info` (`name`) become
     system rows; `custom`, `label` and `usage` are extension or UI state
-    and are skipped, as are unknown types.
+    and are skipped, as are unknown types, except the `custom` entry
+    with `customType` `pi.bug-report` below.
   - `message.role`, each with `timestamp` in Unix ms (the fallback when
     the entry has none): `user` (`content` string or text/image parts);
     `assistant` (`content[]` of `text`, `thinking` (`thinking`,
@@ -41,6 +42,17 @@ synthetic fixture; see `research/pi.md`. Files:
   provider=<provider>`; an assistant message that repeats it yields
   nothing. The `model` column is `responseModel`, else `model`. No entry type
   records a per-call permission decision.
+* Sync rows (issue 153), so `records_sync` is set: `/bug` (not at
+  v0.83.0) appends `{type: "custom", customType: "pi.bug-report", data:
+  {id, createdAt, hint, sessionIncluded, summaryIncluded, delivery,
+  path?}}` once a report is uploaded or exported. `delivery` `upload`
+  gives `session synced: bug report <id> uploaded to radius.pi.dev
+  transcript=<sessionIncluded> summary=<summaryIncluded> (from session
+  entry pi.bug-report, entry timestamp)`, and `zip` gives `bug report
+  exported: <id> path=<path> (from session entry pi.bug-report, entry
+  timestamp)`, both at the entry's `timestamp` with the session's id;
+  an absent value prints `-`. `/share` leaves no local record. `hint`,
+  the user's description, is not printed.
 * Forks: pi copies every parent entry into the child file verbatim, ids
   and timestamps included. When the header's `parentSession` resolves to a
   file present in the same collected home, child entries whose `id` and
@@ -97,6 +109,7 @@ META_RX = re.compile(r"^\.pi/agent/experimental/sessions/([^/]+)/meta\.json$")
 
 ARG_KEYS = ("command", "path", "file_path", "pattern", "code", "url", "query")
 SKIPPED_ENTRIES = ("custom", "label", "usage")
+BUG_REPORT = "pi.bug-report"
 
 
 class SessionFile:
@@ -254,7 +267,39 @@ def entry_rows(
             )
         elif etype == "session_info":
             yield emit(base(), "system", "session_info: name=%s" % (rec.get("name") or ""))
-        # custom, label, usage and unknown types carry no conversation content.
+        elif etype == "custom" and rec.get("customType") == BUG_REPORT:
+            text = bug_report_text(rec.get("data"))
+            if text:
+                yield emit(base(), "system", text)
+        # Other custom entries, label, usage and unknown types carry no
+        # conversation content.
+
+
+def bug_report_text(data) -> str:
+    """The row text for a `pi.bug-report` entry's `data`: `session synced:`
+    for an upload, `bug report exported:` for a zip, empty for any other
+    `delivery`. `hint` is not printed."""
+    if not isinstance(data, dict):
+        return ""
+
+    def val(key: str) -> str:
+        v = data.get(key)
+        return "-" if v in (None, "") else setting_value(v)
+
+    src = "(from session entry %s, entry timestamp)" % BUG_REPORT
+    if data.get("delivery") == "upload":
+        return (
+            "session synced: bug report %s uploaded to radius.pi.dev transcript=%s summary=%s %s"
+            % (
+                val("id"),
+                val("sessionIncluded"),
+                val("summaryIncluded"),
+                src,
+            )
+        )
+    if data.get("delivery") == "zip":
+        return "bug report exported: %s path=%s %s" % (val("id"), val("path"), src)
+    return ""
 
 
 def _message_rows(
@@ -376,6 +421,7 @@ def home_file(artifact: Artifact, original: str, marker: str) -> Path | None:
 class PiParser(Parser):
     agent = "pi"
     name = "pi"
+    records_sync = True
 
     def __init__(self) -> None:
         self._parent_cache: dict[Path, set[tuple[str, str]]] = {}

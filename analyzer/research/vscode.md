@@ -333,7 +333,7 @@ events (`session.start`, `user.message`, `assistant.message`,
 the `github.copilot.chronicle.reindex` command also upload past sessions
 that have no entry yet
 ([`sessionReindexer.ts:349-376`](https://github.com/microsoft/vscode/blob/661e013024de5052af476650250dabbebb4c1165/extensions/copilot/src/extension/chronicle/node/sessionReindexer.ts#L349-L376)).
-The planned row is one `system` row per `cloudSessions.json` entry,
+The parser yields one `system` row per `cloudSessions.json` entry,
 `session synced: remote session <cloudSessionId> task <cloudTaskId>
 (from User/globalStorage/github.copilot-chat/cloudSessions.json, file
 mtime)`, with the entry's key as `session_id`, timestamped by the file's
@@ -342,9 +342,11 @@ it names a session deleted here or uploaded from another machine. The
 `ownedTasks` list of cloud agent tasks ([section 5](#5-sqlite-stores)) is
 the other remote record: one `system` row per entry, `remote session:
 cloud agent task <taskId> application=<application or -> (from
-state.vscdb GitHub.copilot-chat github.copilot.cloudAgent.ownedTasks)`
-at `recordedAt`, with `session_id`
-`copilot-cloud-agent:/task/<taskId>` to match the index entry. A delete
+state.vscdb GitHub.copilot-chat github.copilot.cloudAgent.ownedTasks,
+recordedAt)` at `recordedAt`, with `session_id`
+`copilot-cloud-agent:/task/<taskId>` to match the index entry; the older
+bare-number form is read as `recordedAt` with no `application`. Both
+rows are fixture only: no real install has shown either file. A delete
 removes the marker. The sidebar's delete of a local session calls
 `github.copilot.sessionSync.deleteSessionFromCloud`, which deletes the
 session's `session-store.db` rows and its `cloudSessions.json` entry,

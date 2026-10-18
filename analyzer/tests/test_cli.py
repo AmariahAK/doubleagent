@@ -14,7 +14,22 @@ from doubleagent import VERSION, catalog, cli
 from doubleagent.inputs import open_input
 from doubleagent.model import Row, canonical_project_path, project_key, summarise
 from doubleagent.parsers import ALL, Options, by_agent
-from fixtures import CLAUDE_SESSION, COPILOT_SESSION, COPILOT_WORKSPACE_YAML, build_home
+from fixtures import (
+    CLAUDE_SESSION,
+    COPILOT_SESSION,
+    COPILOT_WORKSPACE_YAML,
+    KILO_SESSION,
+    KILO_TASK,
+    LETTA_CONV,
+    LETTA_LOCAL_AGENT_CONV,
+    OPENCODE_PRIVATE,
+    OPENCODE_SHARED,
+    PI_BUG_SESSION,
+    PI_SESSION,
+    VSCODE_LEGACY_SESSION,
+    VSCODE_SESSION,
+    build_home,
+)
 
 
 def run_timeline(root: Path, out: Path) -> tuple[int, str]:
@@ -650,10 +665,13 @@ class SyncedSessionTests(unittest.TestCase):
         self.assertEqual(by_id[("copilot-cli", COPILOT_SESSION)], "yes")
         self.assertEqual(by_id[("copilot-cli", self.UNSYNCED)], "no")
         self.assertEqual(by_id[("claude-code", CLAUDE_SESSION)], "")
-        self.assertEqual({v for (agent, _), v in by_id.items() if agent != "copilot-cli"}, {""})
+        # Only the agents whose parser records sync state say "yes" or "no".
+        recording = {p.agent for p in ALL if p.records_sync}
+        self.assertEqual({v for (agent, _), v in by_id.items() if agent not in recording}, {""})
+        total = sum(1 for v in by_id.values() if v == "yes")
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
         self.assertEqual(list(inv)[-1], "synced_sessions")
-        self.assertEqual(inv["synced_sessions"], 1)
+        self.assertEqual(inv["synced_sessions"], total)
         for h in inv["homes"]:
             for a in h["agents"]:
                 self.assertEqual(list(a)[-1], "synced_sessions", a)
@@ -661,7 +679,7 @@ class SyncedSessionTests(unittest.TestCase):
         self.assertEqual(agents["copilot-cli"]["synced_sessions"], 1)
         self.assertEqual(agents["claude-code"]["synced_sessions"], 0)
         line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
-        self.assertTrue(line.endswith("sessions.jsonl (1 synced)"), line)
+        self.assertTrue(line.endswith("sessions.jsonl (%d synced)" % total), line)
 
     def test_summarise_values(self):
         rows = [
@@ -671,6 +689,42 @@ class SyncedSessionTests(unittest.TestCase):
         got = {s.agent: s.synced for s in summarise(rows, frozenset({"copilot-cli"}))}
         self.assertEqual(got, {"claude-code": "", "copilot-cli": "no"})
         self.assertEqual({s.synced for s in summarise(rows)}, {""})
+
+
+class SyncedSessionB3Tests(unittest.TestCase):
+    """`sessions.jsonl` `synced` for the OpenCode, Kilo Code, pi, Letta and
+    VS Code sync rows (issue 153): one fixture session of each says "yes",
+    one without the marker "no"."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-synced-b3-test-"))
+        build_home(self.tmp / "home" / "alice")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_synced(self):
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(self.tmp / "home", out)
+        self.assertEqual(rc, 0, stdout)
+        by_id = {
+            (s["agent"], s["session_id"]): s["synced"] for s in read_jsonl(out / "sessions.jsonl")
+        }
+        for key, want in (
+            (("opencode", OPENCODE_SHARED), "yes"),
+            (("opencode", OPENCODE_PRIVATE), "no"),
+            (("kilo-code", KILO_SESSION), "yes"),
+            (("kilo-code", KILO_TASK), "no"),
+            (("pi", PI_BUG_SESSION), "yes"),
+            (("pi", PI_SESSION), "no"),
+            (("letta", LETTA_CONV), "yes"),
+            (("letta", LETTA_LOCAL_AGENT_CONV), "no"),
+            (("vscode", VSCODE_SESSION), "yes"),
+            (("vscode", VSCODE_LEGACY_SESSION), "no"),
+        ):
+            self.assertEqual(by_id[key], want, key)
+        agents = {a.agent for a in ALL if a.records_sync}
+        self.assertLessEqual({"opencode", "kilo-code", "pi", "letta", "vscode"}, agents)
 
 
 class DeduplicationTimelineTests(unittest.TestCase):
