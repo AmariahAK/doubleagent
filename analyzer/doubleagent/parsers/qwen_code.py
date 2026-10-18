@@ -42,6 +42,28 @@ stream, not Gemini's. Files:
   `project_path` the folder, `timestamp_utc` the file's modification time
   and no session id.
 
+* `~/.qwen/channels/sessions.json`, written by `qwen channel start` (which
+  drives sessions from a messaging platform such as Telegram, WeChat,
+  DingTalk, Feishu, GitHub or email, so the conversation also sits on that
+  platform's servers), and its daemon form
+  `~/.qwen/channels/daemon/<workspace hash>/routes.json`: one JSON object
+  keyed by routing key, each value `{sessionId, target: {channelName,
+  messageRoute?, senderId, chatId, threadId?, isGroup?}, cwd, turns?,
+  startedAt?}` with `startedAt` epoch milliseconds
+  (`packages/channels/base/src/SessionRouter.ts:25-36`, `1559-1593`). One
+  `system` row per entry, `source_line` its position in the object,
+  `session_id` its `sessionId` and `project_path` its `cwd`:
+  `session relayed: channel <channelName> chat <chatId> sender <senderId>
+  thread <threadId> (from channels/sessions.json, startedAt)`, `-` for a
+  key absent or empty, at `startedAt`, or at the file's modification time
+  with the text ending `file mtime)` when the entry has none; the daemon
+  form names `channels/daemon/<hash>/routes.json`. The relay is a copy on
+  the platform, not a sync to a Qwen account, so `records_sync` stays
+  False. `sessions.json` is deleted on a clean shutdown, so its rows show
+  only a running or crashed service. A file that is not a JSON object is
+  one `parser:` row, and so is an entry that is not one. Fixture only: no
+  real install has shown either file.
+
 Model and permission rows. A `session_model` record is the row
 `model: <modelId> auth=<authType>` (`model: <old> -> <new> auth=<authType>`
 when it names a model other than the one in force); an assistant
@@ -72,6 +94,7 @@ from .base import (
     Parser,
     compact_json,
     error_rows,
+    file_mtime,
     iter_jsonl,
     tail_text,
     track_change,
@@ -81,6 +104,7 @@ from .gemini_cli import trusted_folder_rows
 SESSION_RX = re.compile(r"^\.qwen/projects/[^/]+/chats/(?:archive/)?[^/]+\.jsonl$")
 LOGS_RX = re.compile(r"^\.qwen/tmp/[^/]+/logs\.json$")
 TRUSTED_RX = re.compile(r"^\.qwen/trustedFolders\.json$")
+CHANNELS_RX = re.compile(r"^\.qwen/(channels/(?:sessions\.json|daemon/[^/]+/routes\.json))$")
 DECISION_STATUSES = ("cancelled", "awaiting_approval")
 SIDECAR_SUFFIX = ".ledger.jsonl"
 
@@ -157,7 +181,7 @@ class QwenCodeParser(Parser):
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
-        if LOGS_RX.match(rel) or TRUSTED_RX.match(rel):
+        if LOGS_RX.match(rel) or TRUSTED_RX.match(rel) or CHANNELS_RX.match(rel):
             return True
         return bool(SESSION_RX.match(rel)) and not rel.endswith(SIDECAR_SUFFIX)
 
@@ -165,12 +189,58 @@ class QwenCodeParser(Parser):
         return bool(LOGS_RX.match(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        channels = CHANNELS_RX.match(artifact.rel)
         if TRUSTED_RX.match(artifact.rel):
             yield from trusted_folder_rows(self, artifact)
+        elif channels:
+            yield from self._parse_channel_routes(artifact, channels.group(1))
         elif LOGS_RX.match(artifact.rel):
             yield from self._parse_logs(artifact, opts)
         else:
             yield from self._parse_session(artifact, opts)
+
+    def _parse_channel_routes(self, artifact: Artifact, name: str) -> Iterator[Row]:
+        """One `session relayed:` row per entry of a channel routes file."""
+        try:
+            doc = json.loads(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
+        except (OSError, ValueError):
+            doc = None
+        if not isinstance(doc, dict):
+            yield from error_rows(self, artifact, [(0, "%s is not a JSON object" % name, "")])
+            return
+        mtime = ""
+        errors: list = []
+        for n, (key, entry) in enumerate(doc.items(), 1):
+            if not isinstance(entry, dict):
+                errors.append((n, "entry %s is not a JSON object" % key, ""))
+                continue
+            target = entry.get("target")
+            target = target if isinstance(target, dict) else {}
+
+            def value(k: str, target: dict = target) -> str:
+                v = target.get(k)
+                return str(v) if v not in (None, "") else "-"
+
+            row = self.base_row(artifact)
+            row.source_line = n
+            row.turn_type = "system"
+            row.session_id = str(entry.get("sessionId") or "")
+            row.project_path = str(entry.get("cwd") or "")
+            row.timestamp_utc = to_utc(entry.get("startedAt"))
+            when = "startedAt"
+            if not row.timestamp_utc:
+                mtime = mtime or file_mtime(artifact)
+                row.timestamp_utc, when = mtime, "file mtime"
+            row.text = "session relayed: channel %s chat %s sender %s thread %s (from %s, %s)" % (
+                value("channelName"),
+                value("chatId"),
+                value("senderId"),
+                value("threadId"),
+                name,
+                when,
+            )
+            yield row
+        yield from error_rows(self, artifact, errors)
 
     def _parse_session(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []

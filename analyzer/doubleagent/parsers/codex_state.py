@@ -97,11 +97,39 @@ the three pairs with the rollout's prompt and `dedup.deduplicate`
 collapses the other two onto it (`research/codex-cli.md` section 8). A
 corrupt `item_json` is counted in one `system` row and the
 other items are still read.
+
+* `logs_<N>.sqlite` (`logs_2.sqlite` at 3e23877, `state/src/sqlite.rs:34`),
+  Codex's own tracing log, is not a projection and not a secondary
+  source: it holds the one local record that a thread left the host. Table
+  `logs` (`state/logs_migrations/0002_logs_feedback_log_body.sql:3-16`):
+  `ts` and `ts_nanos` (epoch seconds and nanoseconds), `level`, `target`,
+  `feedback_log_body` (the event's message and then its fields as
+  `key=value` pairs, `state/src/log_db.rs:436-474`; the first migration
+  called the column `message`, read when `feedback_log_body` is absent)
+  and `thread_id`. Only the row a `/feedback` report writes once it is sent
+  to Sentry (an error-reporting service OpenAI runs for Codex feedback) is
+  read: `target` `codex_feedback` and the message `feedback event uploaded
+  to Sentry`, with the fields `thread_id`, `uploaded_attachments`,
+  `attachments_failed` and `elapsed_ms` in any order
+  (`feedback/src/lib.rs:749-755`). The other `codex_feedback` rows (an
+  attachment that failed or was skipped) are not uploads and every other
+  target is Codex's diagnostics; neither is an event. One `system` row
+  `session synced: feedback report uploaded to Sentry, attachments
+  <uploaded_attachments> failed <attachments_failed> (from logs_<N>.sqlite
+  logs, ts)`, `-` for a field the body lacks, at `ts` plus `ts_nanos`, with
+  `source_line` the row id, `session_id` the body's `thread_id` (else the
+  column's), empty when it starts `no-active-thread-` (a report sent with
+  no thread open), and `project_path` and `git_branch` from the thread's
+  `threads` row in the `state_5.sqlite` beside it when there is one.
+  `uploaded_attachments` 0 means the user declined to upload logs, so no
+  rollout went with the report. Fixture only: no real install has shown
+  the row.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
@@ -175,6 +203,8 @@ TURN_ITEM_KEYS = {
     "agentThreadId": "agent_thread_id",
 }
 SKIPPED_ITEMS = ("hookPrompt", "contextCompaction")
+# `key=value` in a tracing body: a bare value or a quoted string.
+LOG_FIELD_RX = re.compile(r'(?:^|\s)([A-Za-z_][A-Za-z0-9_.]*)=("(?:[^"\\]|\\.)*"|\S+)')
 
 
 def _select(con: sqlite3.Connection, table: str, wanted: tuple[str, ...]) -> list[dict]:
@@ -427,5 +457,85 @@ def parse_thread_history(parser: RolloutParser, artifact: Artifact, opts: Option
         row.text = "parser: %d thread_items row(s) with unreadable item_json, first at rowid %d" % (
             len(bad),
             bad[0],
+        )
+        yield row
+
+
+LOGS_TARGET = "codex_feedback"
+LOGS_MESSAGE = "feedback event uploaded to Sentry"
+NO_THREAD_PREFIX = "no-active-thread-"
+
+
+def _log_fields(body: str) -> dict[str, str]:
+    """The `key=value` fields of a `feedback_log_body`, quotes removed from a
+    value tracing recorded as a quoted string."""
+    out: dict[str, str] = {}
+    for m in LOG_FIELD_RX.finditer(body):
+        value = m.group(2)
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+        out[m.group(1)] = value
+    return out
+
+
+def _feedback_rows(con: sqlite3.Connection) -> list[dict]:
+    """The `logs` rows of sent `/feedback` reports, in id order; [] without
+    the table."""
+    if "logs" not in table_names(con):
+        return []
+    have = {r[1] for r in con.execute("pragma table_info(logs)")}
+    body = "feedback_log_body" if "feedback_log_body" in have else "message"
+    if body not in have or "target" not in have:
+        return []
+    cols = ", ".join(
+        "%s as %s" % (c if c in have else "null", c) for c in ("ts", "ts_nanos", "thread_id")
+    )
+    sql = (
+        "select rowid as _rowid, %s, %s as body from logs where target = ? and instr(%s, ?) > 0"
+        " order by rowid" % (cols, body, body)
+    )
+    return [dict(r) for r in con.execute(sql, (LOGS_TARGET, LOGS_MESSAGE))]
+
+
+def _log_time(rec: dict) -> str:
+    ts = rec.get("ts")
+    if not isinstance(ts, (int, float)) or isinstance(ts, bool):
+        return ""
+    nanos = rec.get("ts_nanos")
+    if isinstance(nanos, int) and not isinstance(nanos, bool) and 0 <= nanos < 1_000_000_000:
+        return to_utc(ts + nanos / 1e9)
+    return to_utc(ts)
+
+
+def parse_logs(parser: RolloutParser, artifact: Artifact) -> Iterator[Row]:
+    """Rows of `logs_<N>.sqlite`: one `session synced:` row per sent
+    `/feedback` report."""
+    if not is_sqlite(artifact.disk_path):
+        yield _problem(parser, artifact, "parser: not a SQLite database")
+        return
+    try:
+        with open_copy(artifact.disk_path) as con:
+            reports = _feedback_rows(con)
+    except sqlite3.DatabaseError as e:
+        yield _problem(parser, artifact, "parser: SQLite error: %s" % e)
+        return
+    threads = _sibling_threads(artifact) if reports else {}
+    for rec in reports:
+        fields = _log_fields(str(rec.get("body") or ""))
+        sid = fields.get("thread_id") or str(rec.get("thread_id") or "")
+        if sid.startswith(NO_THREAD_PREFIX):
+            sid = ""
+        row = _stamp(parser, artifact, threads.get(sid) if sid else None, sid)
+        row.source_line = int(rec["_rowid"])
+        row.turn_type = "system"
+        row.timestamp_utc = _log_time(rec)
+        row.text = (
+            "session synced: feedback report uploaded to Sentry, attachments %s failed %s"
+            " (from %s logs, ts)"
+            % (
+                fields.get("uploaded_attachments") or "-",
+                fields.get("attachments_failed") or "-",
+                artifact.disk_path.name,
+            )
         )
         yield row

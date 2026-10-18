@@ -169,7 +169,9 @@ and logs `feedback event uploaded to Sentry` with the thread id
 ([`feedback/src/lib.rs:682-688`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/feedback/src/lib.rs#L682-L688))
 into `.openinterpreter/logs_2.sqlite`
 ([`state/src/sqlite.rs:29`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/src/sqlite.rs#L29)), the
-marker and the proposed `session uploaded:` row Codex has, removed by
+marker and the `session synced: feedback report uploaded to Sentry,
+...` row Codex has, which the shared reader yields for the fork too
+(fixture only), removed by
 the fork's thread delete as in Codex
 ([`state/src/runtime/threads.rs:1153`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/src/runtime/threads.rs#L1153)).
 `codex cloud` (here "Browse remote tasks";

@@ -27,6 +27,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The `goose` parser writes a `session relayed: gateway <platform> user
   <user_id>` row for a session the gateway relayed through its Telegram
   bot ([#153]).
+- The `codex-cli` and `open-interpreter` parsers read `logs_<N>.sqlite`,
+  the tracing log under the agent's home: each `/feedback` report sent to
+  Sentry is a `session synced: feedback report uploaded to Sentry, ...`
+  row with the reported thread as its session, and both parsers now set
+  `synced` in `sessions.jsonl` (`no` for a thread without the row)
+  ([#153]).
+- The `cline` parser yields a `session synced: enterprise prompt upload
+  to ...` row for an SDK session whose manifest or `sessions.db`
+  metadata has `enterprise.blobUpload`, naming the organisation's bucket
+  and object, and sets `synced` in `sessions.jsonl` ([#153]).
+- The `cline` parser reads the VS Code extension's upload queue
+  `cache/sync-queue.json`: each queued task file is an `enterprise
+  prompt upload <status> ...` row for its task, prefixed `session
+  synced: ` when the file was uploaded, without the file content the
+  queue holds ([#153]).
+- The `continue` parser reads `.continue/logs/cn.log` and its rotated
+  `cn<N>.log` files: each `cn serve` metadata post to Continue's agent
+  API is an `agent metadata posted:` row with its result, and a skipped
+  snapshot upload a `storage upload requested, skipped` row ([#153]).
+- The `qwen-code` parser reads the channel routes files
+  `.qwen/channels/sessions.json` and
+  `.qwen/channels/daemon/<hash>/routes.json`: each session driven from a
+  messaging platform is a `session relayed: channel ...` row ([#153]).
 
 ### Changed
 

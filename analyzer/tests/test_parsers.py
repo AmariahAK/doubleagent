@@ -883,6 +883,9 @@ class ClaudeCode296Tests(ParserBase):
             self.assertFalse(ClaudeCodeParser().wants(art), rel)
 
 
+from fixtures import CODEX_FEEDBACK_TS, codex_log_rows, write_codex_logs
+
+
 class CodexTests(ParserBase):
     REL = ".codex/sessions/2026/10/02/rollout-2026-10-02T09-00-00-%s.jsonl" % CODEX_SESSION
     TYPES: ClassVar[list[str]] = [
@@ -907,6 +910,7 @@ class CodexTests(ParserBase):
     MODE_1 = 'approval=on-request sandbox={"type":"workspace-write"} profile=- network=-'
     STATE_REL = ".codex/state_5.sqlite"
     THREAD_HISTORY_REL = ".codex/thread_history_1.sqlite"
+    LOGS_REL = ".codex/logs_2.sqlite"
     MODE_2 = (
         'approval=never sandbox={"type":"danger-full-access"} profile={"type":"disabled"} '
         'network={"allowed_domains":["github.com"],"denied_domains":[]}'
@@ -918,11 +922,13 @@ class CodexTests(ParserBase):
         self.assertTrue(p.secondary(self.artifact(".codex/history.jsonl")))
         self.assertFalse(p.secondary(self.artifact(self.REL)))
         # The SQLite projections of the rollouts are read always, as
-        # secondary sources; the log database is not read.
+        # secondary sources; the log database is read for its `/feedback`
+        # rows, which repeat nothing (#153).
         for rel in (self.STATE_REL, self.THREAD_HISTORY_REL):
             self.assertTrue(p.wants(self.artifact(rel)), rel)
             self.assertTrue(p.secondary(self.artifact(rel)), rel)
-        self.assertFalse(p.wants(self.artifact(".codex/logs_2.sqlite")))
+        self.assertTrue(p.wants(self.artifact(self.LOGS_REL)))
+        self.assertFalse(p.secondary(self.artifact(self.LOGS_REL)))
 
     def _write(self, name: str, records) -> str:
         rel = ".codex/sessions/2026/10/02/" + name
@@ -1470,6 +1476,82 @@ class CodexTests(ParserBase):
             (self.home / rel).write_text("not a database", encoding="utf-8")
             rows = self.rows_for(CodexParser(), rel)
             self.assertEqual([r.text for r in rows], ["parser: not a SQLite database"], rel)
+
+    FEEDBACK = (
+        "session synced: feedback report uploaded to Sentry, attachments %s failed %s"
+        " (from logs_2.sqlite logs, ts)"
+    )
+
+    def test_feedback_report_rows(self):
+        # A sent `/feedback` report is the one record that a thread left the
+        # host (#153); the attachment failure and the diagnostics line are not.
+        rows = self.rows_for(CodexParser(), self.LOGS_REL)
+        self.assertEqual(
+            [
+                (r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.source_line, r.text)
+                for r in rows
+            ],
+            [
+                (
+                    "system",
+                    "2026-10-07T10:00:00.250Z",
+                    CODEX_SESSION,
+                    "/srv/proj",
+                    3,
+                    self.FEEDBACK % ("2", "false"),
+                ),
+                # No thread open: no session; fields in another order.
+                ("system", "2026-10-07T10:01:00.000Z", "", "", 4, self.FEEDBACK % ("0", "false")),
+            ],
+        )
+        self.assertTrue(CodexParser().records_sync)
+
+    def test_feedback_fields_missing_and_old_column(self):
+        # The first logs migration named the body column `message`; a field
+        # the body lacks prints `-`.
+        path = self.home / self.LOGS_REL
+        path.unlink()
+        con = sqlite3.connect(str(path))
+        con.execute(
+            "create table logs (id integer primary key, ts integer, ts_nanos integer,"
+            " level text, target text, message text, thread_id text)"
+        )
+        con.execute(
+            "insert into logs (ts, ts_nanos, level, target, message, thread_id)"
+            " values (?,?,?,?,?,?)",
+            (
+                CODEX_FEEDBACK_TS,
+                0,
+                "INFO",
+                "codex_feedback",
+                "feedback event uploaded to Sentry",
+                CODEX_SESSION,
+            ),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(CodexParser(), self.LOGS_REL)
+        self.assertEqual(
+            [(r.session_id, r.text) for r in rows], [(CODEX_SESSION, self.FEEDBACK % ("-", "-"))]
+        )
+
+    def test_logs_without_report_have_no_rows(self):
+        path = self.home / self.LOGS_REL
+        path.unlink()
+        write_codex_logs(path, codex_log_rows(CODEX_SESSION)[:2])
+        self.assertEqual(self.rows_for(CodexParser(), self.LOGS_REL), [])
+        sessions = summarise(self.rows_for(CodexParser(), self.REL), frozenset({"codex-cli"}))
+        self.assertEqual({s.synced for s in sessions}, {"no"})
+
+    def test_corrupt_logs_is_one_row(self):
+        path = self.home / self.LOGS_REL
+        path.write_bytes(b"SQLite format 3\x00" + b"\xff" * 200)
+        rows = self.rows_for(CodexParser(), self.LOGS_REL)
+        self.assertEqual([r.turn_type for r in rows], ["system"])
+        self.assertTrue(rows[0].text.startswith("parser: SQLite error: "), rows[0].text)
+        path.write_text("not a database", encoding="utf-8")
+        rows = self.rows_for(CodexParser(), self.LOGS_REL)
+        self.assertEqual([r.text for r in rows], ["parser: not a SQLite database"])
 
 
 class TimelineTests(ParserBase):
@@ -2649,7 +2731,14 @@ class AntigravityPermissionSettingsTests(ParserBase):
 
 
 from doubleagent.parsers.qwen_code import QwenCodeParser, args_summary
-from fixtures import QWEN_ARCHIVED, QWEN_SESSION, QWEN_TMP, QWEN_TRUST_MTIME
+from fixtures import (
+    QWEN_ARCHIVED,
+    QWEN_DAEMON_HASH,
+    QWEN_DAEMON_SESSION,
+    QWEN_SESSION,
+    QWEN_TMP,
+    QWEN_TRUST_MTIME,
+)
 
 
 class QwenCodeTests(ParserBase):
@@ -2830,6 +2919,8 @@ class QwenCodeTests(ParserBase):
                 self.LOGS,
                 ".qwen/projects/-srv-proj/chats/archive/%s.jsonl" % QWEN_ARCHIVED,
                 ".qwen/trustedFolders.json",
+                self.CHANNELS,
+                self.ROUTES,
             },
         )
 
@@ -2898,6 +2989,71 @@ class QwenCodeTests(ParserBase):
         self.assertEqual(args_summary({"command": "ls"}), "ls")
         self.assertEqual(args_summary({"other": 1}), '{"other":1}')
         self.assertEqual(args_summary(None), "")
+
+    CHANNELS = ".qwen/channels/sessions.json"
+    ROUTES = ".qwen/channels/daemon/%s/routes.json" % QWEN_DAEMON_HASH
+
+    def test_channel_routes(self):
+        # A session driven from a messaging platform is relayed there (#153).
+        p = QwenCodeParser()
+        rows = self.rows_for(p, self.CHANNELS) + self.rows_for(p, self.ROUTES)
+        self.assertEqual(
+            [
+                (r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.source_line, r.text)
+                for r in rows
+            ],
+            [
+                (
+                    "system",
+                    "2026-10-01T10:00:00.000Z",
+                    QWEN_SESSION,
+                    "/srv/proj",
+                    1,
+                    "session relayed: channel telegram chat -1001234 sender 42 thread -"
+                    " (from channels/sessions.json, startedAt)",
+                ),
+                (
+                    "system",
+                    "2026-10-07T10:00:00.000Z",
+                    QWEN_DAEMON_SESSION,
+                    "/srv/proj",
+                    1,
+                    "session relayed: channel github chat octo/proj#7 sender octocat thread c-991"
+                    " (from channels/daemon/%s/routes.json, file mtime)" % QWEN_DAEMON_HASH,
+                ),
+            ],
+        )
+        self.assertFalse(p.records_sync)
+        self.assertFalse(p.secondary(self.artifact(self.CHANNELS)))
+        self.assertFalse(p.wants(self.artifact(".qwen/channels/1791367200000-4242-ab12.tmp")))
+
+    def test_session_without_route_has_no_relay_row(self):
+        rel = ".qwen/projects/-srv-proj/chats/archive/%s.jsonl" % QWEN_ARCHIVED
+        rows = self.rows_for(QwenCodeParser(), rel)
+        self.assertFalse([r for r in rows if r.text.startswith("session relayed:")])
+
+    def test_channel_routes_not_an_object(self):
+        path = self.home / self.CHANNELS
+        path.write_text('{"telegram:1": {"sessionId": "s', encoding="utf-8")
+        self.assertEqual(
+            [(r.source_line, r.text) for r in self.rows_for(QwenCodeParser(), self.CHANNELS)],
+            [(0, "parser: channels/sessions.json is not a JSON object")],
+        )
+        path.write_text(
+            json.dumps({"a": [], "b": {"sessionId": "s1", "target": {"channelName": "qq"}}}),
+            encoding="utf-8",
+        )
+        self.assertEqual(
+            [(r.source_line, r.text) for r in self.rows_for(QwenCodeParser(), self.CHANNELS)],
+            [
+                (
+                    2,
+                    "session relayed: channel qq chat - sender - thread - (from"
+                    " channels/sessions.json, file mtime)",
+                ),
+                (1, "parser: entry a is not a JSON object"),
+            ],
+        )
 
 
 from doubleagent.parsers.kiro import KiroParser, salvage
@@ -3896,6 +4052,72 @@ class ContinueTests(ParserBase):
         obj, problem = load_session('{"sessionId": "x", "history": []}\n{"junk"')
         self.assertEqual(obj["sessionId"], "x")
         self.assertIn("trailing data", problem)
+
+    POSTED = (
+        "agent metadata posted: agent agt_7f3e keys %s %s (from logs/%s, log line time, host-local)"
+    )
+
+    def test_cn_log_rows(self):
+        # `cn serve --id` posts and the skipped storage upload (#153); a
+        # result line settles the oldest post of its process and URL, and the
+        # request body and diagnostics are not events.
+        rows = self.rows_for(ContinueParser(), ".continue/logs/cn.log")
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.source_line, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "2026-10-07T10:00:00.010Z",
+                    "",
+                    2,
+                    "storage upload requested, skipped (from logs/cn.log, log line time,"
+                    " host-local)",
+                ),
+                (
+                    "system",
+                    "2026-10-07T10:00:05.100Z",
+                    "",
+                    3,
+                    self.POSTED % ("summary,isComplete", "Success", "cn.log"),
+                ),
+                (
+                    "system",
+                    "2026-10-07T10:00:05.200Z",
+                    "",
+                    5,
+                    self.POSTED % ("additions", "Failed", "cn.log"),
+                ),
+                (
+                    "system",
+                    "2026-10-07T10:00:06.000Z",
+                    "",
+                    7,
+                    self.POSTED % ("isComplete", "-", "cn.log"),
+                ),
+            ],
+        )
+        self.assertFalse([r for r in rows if "Renamed foo" in r.text])
+        self.assertFalse(ContinueParser().records_sync)
+
+    def test_rotated_cn_log(self):
+        rows = self.rows_for(ContinueParser(), ".continue/logs/cn1.log")
+        self.assertEqual(
+            [(r.timestamp_utc, r.text) for r in rows],
+            [("2026-10-06T09:00:00.000Z", self.POSTED % ("summary", "Auth required", "cn1.log"))],
+        )
+        p = ContinueParser()
+        self.assertFalse(p.wants(self.artifact(".continue/logs/prompt.log")))
+        self.assertFalse(p.secondary(self.artifact(".continue/logs/cn.log")))
+
+    def test_cn_log_without_posts_has_no_rows(self):
+        # A log of an ordinary `cn` session, cut mid-line: no event, no error.
+        path = self.home / ".continue/logs/cn.log"
+        path.write_text(
+            "2026-10-07 10:00:00.001 [a1b2c3d4] [info]: Starting server on port 8000\n"
+            "2026-10-07 10:00:00.002 [a1b2c3d4] [info]: [metadata] Succ",
+            encoding="utf-8",
+        )
+        self.assertEqual(self.rows_for(ContinueParser(), ".continue/logs/cn.log"), [])
 
 
 class AiderTests(ParserBase):
@@ -4955,13 +5177,21 @@ from doubleagent.parsers.cline import ClineParser
 from doubleagent.parsers.cline_legacy import iter_json_array
 from doubleagent.parsers.roo_code import RooCodeParser
 from fixtures import (
+    CLINE_BLOB_DELETED,
+    CLINE_BLOB_SESSION,
     CLINE_CLI_TASK,
     CLINE_OLD_SESSION,
+    CLINE_QUEUE_FAILED,
+    CLINE_QUEUE_PENDING,
     CLINE_SESSION,
+    CLINE_SYNC_QUEUE,
+    CLINE_SYNC_SECRET,
     CLINE_TASK,
     ROO_CLI_TASK,
     ROO_GONE_TASK,
     ROO_TASK,
+    build_cline_blob_upload,
+    build_cline_sync_queue,
 )
 
 CLINE_GS = ".config/Code/User/globalStorage/saoudrizwan.claude-dev/"
@@ -5428,6 +5658,141 @@ class ClineTests(ParserBase):
             errors = []
             self.assertEqual([v for _, v in iter_json_array(p, errors)], items, text)
             self.assertEqual(len(errors), nerr, text)
+
+    BLOB_REL = ".cline/data/sessions/%s/%s.json" % (CLINE_BLOB_SESSION, CLINE_BLOB_SESSION)
+
+    def _with_blob_upload(self) -> None:
+        build_cline_blob_upload(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_enterprise_blob_upload_from_manifest(self):
+        self._with_blob_upload()
+        # `enterprise.blobUpload` marks a transcript uploaded to the
+        # organisation's bucket (#153): one row after the model row.
+        rows = self.rows_for(ClineParser(), self.BLOB_REL)
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.project_path, r.text) for r in rows[2:]],
+            [
+                (
+                    "2026-10-03T10:06:40.000Z",
+                    CLINE_BLOB_SESSION,
+                    "/srv/proj",
+                    "session synced: enterprise prompt upload to s3 bucket acme-cline-prompts"
+                    " object sessions/usr_0f9e8d7c/%s/messages.json endpoint=- region=us-east-1"
+                    " account=- (from %s.json metadata enterprise.blobUpload, started_at)"
+                    % (CLINE_BLOB_SESSION, CLINE_BLOB_SESSION),
+                )
+            ],
+        )
+        self.assertEqual(rows[1].text, "model: claude-sonnet-4-5 provider=anthropic")
+        self.assertTrue(ClineParser().records_sync)
+
+    def test_enterprise_blob_upload_from_sessions_db(self):
+        self._with_blob_upload()
+        # A session whose manifest is gone keeps the key in `metadata_json`;
+        # the CLI's form has no `userDistinctId`, so the object is `unknown`.
+        rows = self.rows_for(ClineParser(), ".cline/data/db/sessions.db")
+        synced = [r for r in rows if r.text.startswith("session synced:")]
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.source_line, r.text) for r in synced],
+            [
+                (
+                    "2026-10-03T10:05:00.000Z",
+                    CLINE_BLOB_DELETED,
+                    3,
+                    "session synced: enterprise prompt upload to r2 bucket acme-r2 object"
+                    " sessions/unknown/%s/messages.json"
+                    " endpoint=https://acct.r2.cloudflarestorage.com region=- account=acct"
+                    " (from sessions.db sessions.metadata_json enterprise.blobUpload, started_at)"
+                    % CLINE_BLOB_DELETED,
+                )
+            ],
+        )
+        # The sessions.db row of a session whose manifest is on disk adds
+        # nothing, whatever its metadata holds.
+        self.assertNotIn(CLINE_BLOB_SESSION, {r.session_id for r in rows})
+
+    def test_no_blob_upload_no_row(self):
+        self._with_blob_upload()
+        rel = ".cline/data/sessions/%s/%s.json" % (CLINE_SESSION, CLINE_SESSION)
+        rows = self.rows_for(ClineParser(), rel)
+        self.assertFalse([r for r in rows if r.text.startswith("session synced:")])
+        sessions = summarise(rows, frozenset({"cline"}))
+        self.assertEqual([(s.session_id, s.synced) for s in sessions], [(CLINE_SESSION, "no")])
+        # A key that is not an object yields no row either.
+        path = self.home / self.BLOB_REL
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc["metadata"]["enterprise.blobUpload"] = "s3"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        rows = self.rows_for(ClineParser(), self.BLOB_REL)
+        self.assertFalse([r for r in rows if r.text.startswith("session synced:")])
+
+    QUEUED = (
+        "enterprise prompt upload %s key %s retries %s"
+        " (from saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)"
+    )
+
+    def test_sync_queue(self):
+        # The extension's upload queue names each task file it uploaded or
+        # failed to (#153); the file content in `data` is never printed.
+        self.assertFalse([a for a in self.col.artifacts if a.rel == CLINE_SYNC_QUEUE])
+        build_cline_sync_queue(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        p = ClineParser()
+        self.assertTrue(p.wants(self.artifact(CLINE_SYNC_QUEUE)))
+        self.assertFalse(p.secondary(self.artifact(CLINE_SYNC_QUEUE)))
+        rows = self.rows_for(p, CLINE_SYNC_QUEUE)
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.project_path, r.source_line, r.text) for r in rows],
+            [
+                (
+                    "2026-10-03T10:00:05.000Z",
+                    CLINE_TASK,
+                    "/srv/proj",
+                    1,
+                    "session synced: "
+                    + self.QUEUED % ("synced", "api_conversation_history.json", "0"),
+                ),
+                # Not uploaded yet: no `session synced:` prefix, no project
+                # (the task is known only from the queue).
+                (
+                    "2026-10-03T10:00:05.500Z",
+                    CLINE_QUEUE_PENDING,
+                    "",
+                    2,
+                    self.QUEUED % ("pending", "ui_messages.json", "0"),
+                ),
+                (
+                    "2026-10-03T10:00:06.000Z",
+                    CLINE_QUEUE_FAILED,
+                    "",
+                    3,
+                    self.QUEUED % ("failed", "ui_messages.json", "3"),
+                ),
+            ],
+        )
+        self.assertFalse([r for r in rows if CLINE_SYNC_SECRET in r.text or "403" in r.text])
+        synced = {s.session_id: s.synced for s in summarise(rows, frozenset({"cline"}))}
+        self.assertEqual(
+            synced, {CLINE_TASK: "yes", CLINE_QUEUE_PENDING: "no", CLINE_QUEUE_FAILED: "no"}
+        )
+
+    def test_sync_queue_not_an_object(self):
+        build_cline_sync_queue(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        path = self.home / CLINE_SYNC_QUEUE
+        for text in ('{"items": {"a": ', "[]", '{"items": []}'):
+            path.write_text(text, encoding="utf-8")
+            self.assertEqual(
+                [(r.source_line, r.text) for r in self.rows_for(ClineParser(), CLINE_SYNC_QUEUE)],
+                [(0, "parser: sync-queue.json is not a JSON object with an items object")],
+                text,
+            )
+        path.write_text(json.dumps({"items": {"x": "pending"}}), encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(ClineParser(), CLINE_SYNC_QUEUE)],
+            ["parser: sync-queue item x is not a JSON object"],
+        )
 
 
 class RooCodeTests(ParserBase):

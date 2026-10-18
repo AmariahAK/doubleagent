@@ -28,6 +28,12 @@ openinterpreter/openinterpreter at 2767e5f (see
   0006, without the item lifecycle times of Codex's 0007. Read by the
   shared reader in `codex_state.py` as secondary sources; every item row
   then takes `created_at_ms`.
+* `.openinterpreter/logs_2.sqlite`: Codex's tracing log, kept by the fork
+  with the same `logs` table and the same `/feedback` row
+  (`feedback/src/lib.rs:682-688`), which still reports to OpenAI's Sentry
+  project. Read by the shared reader in `codex_state.py`: one `session
+  synced: feedback report uploaded to Sentry, ...` row per sent report,
+  so `records_sync` is inherited and set.
 * `.openinterpreter/external_agent_session_imports.json`: the `/import`
   ledger, `records[]` with `source_path`, `content_sha256`,
   `imported_thread_id`, `imported_at` and optional `source_modified_at`

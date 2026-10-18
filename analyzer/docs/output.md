@@ -803,7 +803,12 @@ reads `sandbox={"type":"workspace-write"}`. Both rows take the
 `turn_context` line's timestamp and precede that turn's rows, and the
 `model` column of both is the turn's model. Codex records no per-call
 approval in its rollouts, so these parsers write no `permission
-decision:` row.
+decision:` row. Each `/feedback` report recorded in `logs_<N>.sqlite`
+is one row `session synced: feedback report uploaded to Sentry,
+attachments <uploaded_attachments> failed <attachments_failed> (from
+logs_<N>.sqlite logs, ts)` at the log row's time, with `-` for a field
+the log line lacks and `session_id` the reported thread, empty when no
+thread was open.
 
 The `gemini-cli` and `qwen-code` parsers write `model: <id>` at a
 session's first record that names a model and `model: <old> -> <new>`
@@ -820,7 +825,14 @@ or `.qwen/trustedFolders.json` is one row
 `permission setting: trustedFolders.<path>=<value> (from <file>, file mtime)`,
 where `<value>` is the recorded trust level (`TRUST_FOLDER`,
 `TRUST_PARENT` or `DO_NOT_TRUST`), with `project_path` the folder, the
-file's modification time and an empty `session_id`.
+file's modification time and an empty `session_id`. Each entry of Qwen
+Code's `.qwen/channels/sessions.json` or
+`.qwen/channels/daemon/<hash>/routes.json` is one row `session relayed:
+channel <channelName> chat <chatId> sender <senderId> thread <threadId>
+(from channels/sessions.json, startedAt)`, with `-` for an absent value,
+the entry's `sessionId` as `session_id` and its `cwd` as
+`project_path`, at `startedAt`, or at the file's modification time with
+the text ending `file mtime)`; the daemon form names its `routes.json`.
 
 The `antigravity` parser writes `model: <id>` before the rows of a
 conversation's first step that the `gen_metadata` table names a model for
@@ -899,7 +911,30 @@ also writes per-call decisions with the call's `tool_use_id` and
 `dev_data` `toolUsage.jsonl` record's `tool_result` row, at the record's
 time and with an empty `session_id` (the record names none), and
 `permission decision: canceled` after a session tool call whose
-`toolCallStates[]` status is `canceled`, at the session time. `roo-code`,
+`toolCallStates[]` status is `canceled`, at the session time. A Cline
+SDK session whose metadata has the `enterprise.blobUpload` key gets
+`session synced: enterprise prompt upload to <adapterType> bucket
+<bucket> object sessions/<userDistinctId or unknown>/<session_id>/messages.json
+endpoint=<endpoint> region=<region> account=<accountId> (from
+<session_id>.json metadata enterprise.blobUpload, started_at)` after its
+`model:` row, at the session's start and with `-` for an absent value,
+or the same row ending `(from sessions.db sessions.metadata_json
+enterprise.blobUpload, started_at)` for a session known only from
+`sessions.db`; each item of the VS Code extension's upload queue
+`cache/sync-queue.json` is `enterprise prompt upload <status> key
+<key> retries <retryCount> (from
+saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)`, prefixed
+`session synced: ` only when `<status>` is `synced` (a `pending` or
+`failed` item has not reached the bucket), with the item's `taskId` as
+`session_id`, at the item's time. Continue's `.continue/logs/cn.log`, and the `cn<N>.log`
+files it is rotated to, give `agent metadata posted: agent <agentId>
+keys <metadataKeys> <status> (from logs/cn.log, log line time,
+host-local)` for each metadata post of `cn serve --id`, `<status>`
+being `Success`, `Unexpected response`, `Auth required`, `Failed`,
+`Error` or `-` when no result line follows, and `storage upload
+requested, skipped (from logs/cn.log, log line time, host-local)`, both
+with an empty `session_id` and the log's host-local time written as if
+it were UTC. `roo-code`,
 `aider`, `shellgpt` and `tabby` record no model and write no such row.
 
 The `vscode`, `cody` and `twinny` parsers write the same `model: <id>`
@@ -1222,7 +1257,7 @@ no timestamp come first. Its fields, in order:
 | `assistant_turns` | integer | The number with `turn_type` `assistant`. |
 | `tool_calls` | integer | The number with `turn_type` `tool_use`. |
 | `source_file` | string | The `source_file` that contributed the most of the session's records, the first met on a tie, so a transcript wins over a one-line-per-prompt history file; `""` when no record names one. |
-| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (the parsers that record sync state: `copilot-cli`, from the Copilot CLI and Copilot Desktop `workspace.yaml` marker; `openclaw`, from a session's public share grant; `agent-zero`, from a turn chained on a response the provider stored); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
+| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (written by the `cline`, `codex-cli`, `copilot-cli` and `open-interpreter` parsers); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
 
 ## Compatibility
 

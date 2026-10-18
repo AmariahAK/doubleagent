@@ -123,6 +123,13 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
   `thread_history_1.sqlite` (`thread_turns` and `thread_items`, the
   projection of the rollout's turn events and turn items): secondary
   sources, read by `codex_state.py`, whose docstring lists the fields.
+* `logs_<N>.sqlite` (`logs_2.sqlite` today), Codex's tracing log: one
+  `session synced: feedback report uploaded to Sentry, attachments <n>
+  failed <bool> (from logs_<N>.sqlite logs, ts)` row per `/feedback`
+  report sent with the thread as its `session_id`, read by
+  `codex_state.py`, whose docstring lists the fields. The only local
+  record that a thread's rollout left the host, so `records_sync` is set
+  and a thread without the row is `synced` `no`.
 * Forks only, when `ledger_name` is set: an import ledger
   `{"records": [{source_path, content_sha256, imported_thread_id,
   imported_at, source_modified_at?}]}` (times epoch seconds), one `system`
@@ -177,6 +184,7 @@ from .base import (
 
 ROLLOUT_TMPL = r"^%s/(?:archived_)?sessions/(?:.*/)?rollout-[^/]*\.jsonl(?:\.zst)?$"
 AUTOMATION_TMPL = r"^%s/automations/[^/]+/automation\.toml$"
+LOGS_TMPL = r"^%s/logs_[0-9]+\.sqlite$"
 ROLLOUT_RX = re.compile(ROLLOUT_TMPL % re.escape(".codex"))
 HISTORY_REL = ".codex/history.jsonl"
 UUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -642,10 +650,13 @@ class RolloutParser(Parser):
     home_prefix = ".codex"
     ledger_name = ""  # import ledger file under home_prefix; empty when the agent has none
     automations = False  # read `automations/<slug>/automation.toml` (the ChatGPT desktop app)
+    # A `/feedback` report in `logs_<N>.sqlite` marks a thread sent to Sentry.
+    records_sync = True
 
     def __init__(self) -> None:
         self.rollout_rx = re.compile(ROLLOUT_TMPL % re.escape(self.home_prefix))
         self.automation_rx = re.compile(AUTOMATION_TMPL % re.escape(self.home_prefix))
+        self.logs_rx = re.compile(LOGS_TMPL % re.escape(self.home_prefix))
         self.history_rel = self.home_prefix + "/history.jsonl"
         self.state_rel = self.home_prefix + "/state_5.sqlite"
         self.thread_history_rel = self.home_prefix + "/thread_history_1.sqlite"
@@ -658,6 +669,7 @@ class RolloutParser(Parser):
             or bool(self.rollout_rx.match(rel))
             or bool(self.ledger_rel and rel == self.ledger_rel)
             or bool(self.automations and self.automation_rx.match(rel))
+            or bool(self.logs_rx.match(rel))
         )
 
     def secondary(self, artifact: Artifact) -> bool:
@@ -665,7 +677,7 @@ class RolloutParser(Parser):
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         # codex_state imports item_rows from this module, so it is imported here.
-        from .codex_state import parse_state, parse_thread_history
+        from .codex_state import parse_logs, parse_state, parse_thread_history
 
         if artifact.rel == self.history_rel:
             yield from self._parse_history(artifact, opts)
@@ -675,6 +687,8 @@ class RolloutParser(Parser):
             yield from parse_thread_history(self, artifact, opts)
         elif self.automations and self.automation_rx.match(artifact.rel):
             yield from self._parse_automation(artifact)
+        elif self.logs_rx.match(artifact.rel):
+            yield from parse_logs(self, artifact)
         elif self.ledger_rel and artifact.rel == self.ledger_rel:
             yield from self._parse_ledger(artifact, opts)
         else:

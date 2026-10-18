@@ -232,13 +232,19 @@ changed them as follows, at the commit in [section 1](#1-source).
   marker is the channel routes file in
   [section 2](#2-transcript-files): an entry names the `sessionId`
   and the platform's `channelName`, `chatId`, `senderId` and
-  `threadId`. Proposed row, one per entry, after the session's first
-  row when the transcript is present and on its own otherwise:
-  `session synced: channel <channelName> chat <chatId> sender
-  <senderId> thread <threadId or -> (from channels/sessions.json, file
-  mtime)`, with `startedAt` as the time when present and the file's
-  modification time otherwise, and `routes.json` named in place of
-  `sessions.json` for the daemon form. A clean shutdown deletes
+  `threadId`. The parser yields one `system` row per entry, with
+  `session_id` the entry's `sessionId` and `project_path` its `cwd`:
+  `session relayed: channel <channelName> chat <chatId or -> sender
+  <senderId or -> thread <threadId or -> (from channels/sessions.json,
+  startedAt)`, at `startedAt` when present and otherwise at the file's
+  modification time with the text ending `file mtime)`, and
+  `channels/daemon/<hash>/routes.json` named in place of
+  `channels/sessions.json` for the daemon form. The row is `session
+  relayed:`, not `session synced:`: the copy is on the messaging
+  platform, not in a Qwen account, so the parser does not set
+  `records_sync`. A file or an entry that is not a JSON object is one
+  `parser:` row. Fixture only: no real install has shown either file.
+  A clean shutdown deletes
   `sessions.json`, so a session whose entry is gone may still have
   been a channel session; the bot tokens are in the `channels` key of
   `settings.json` or in environment variables it names
