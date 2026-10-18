@@ -82,6 +82,22 @@ Model and permission rows from `sessions.db` (issues 96 and 97), all
 
 The legacy JSONL sessions record no model, and the request log has no
 session id, so neither yields model rows.
+
+Relayed sessions (issue 153): a `sessions` row whose `session_type` is
+`gateway` was carried through the gateway's chat bot (Telegram, the one
+platform implemented), so the chat keeps a copy on the platform. Its
+`name` is `<platform>/<display name or user id>` and its `working_dir`
+`.config/goose/gateway/<platform>/<user_id>`
+(`crates/goose/src/gateway/handler.rs:304-326` at aaif-goose/goose
+bfcc6ee). One `system` row after the session's start row, at
+`created_at`: `session relayed: gateway <platform> user <user_id> display
+<display> (from sessions.db session_type gateway, created_at)`, platform
+and user id from `working_dir` (the platform from `name` when the path
+does not match), display from `name`, `-` when it is absent or is the user
+id. It is not vendor sync, so `records_sync` stays False. `config.yaml`
+`gateway_pairings` repeats the platform and user id and adds `paired_at`,
+but it is nested YAML (no YAML dependency) and a secret glob, so it is
+not read. Fixture only: no real install has shown a gateway session.
 """
 
 from __future__ import annotations
@@ -111,6 +127,8 @@ DB_RX = re.compile(r"^%s/sessions/sessions\.db$" % DATA)
 LEGACY_RX = re.compile(r"^%s/sessions/[^/]+\.jsonl$" % DATA)
 LLM_RX = re.compile(r"^%s/logs/llm_request\.[^/]+\.jsonl$" % STATE)
 HISTORY_RX = re.compile(r"^(?:%s|\.config/goose)/history\.txt$" % STATE)
+# A gateway session's working directory, `<config>/gateway/<platform>/<user_id>`.
+GATEWAY_DIR_RX = re.compile(r"[/\\]gateway[/\\]([^/\\]+)[/\\]([^/\\]+)[/\\]?$")
 
 
 def epoch(value) -> str:
@@ -134,6 +152,27 @@ def _json(value, default):
 
 def _join(*parts: str) -> str:
     return " | ".join(x for x in parts if x)
+
+
+def gateway_text(session: dict) -> str:
+    """The `session relayed:` text of a `gateway` session, `""` for any
+    other: platform and user id from `working_dir`
+    (`<config>/gateway/<platform>/<user_id>`), else the platform from
+    `name`; the display name from `name` (`<platform>/<display name or user
+    id>`), `-` when it is the user id or absent."""
+    if session.get("session_type") != "gateway":
+        return ""
+    m = GATEWAY_DIR_RX.search(str(session.get("working_dir") or ""))
+    platform, user_id = m.groups() if m else ("", "")
+    name_platform, _, display = str(session.get("name") or "").partition("/")
+    platform = platform or name_platform
+    if display == user_id:
+        display = ""
+    return (
+        "session relayed: gateway %s user %s display %s"
+        " (from sessions.db session_type gateway, created_at)"
+        % (platform or "-", user_id or "-", display or "-")
+    )
 
 
 def _model(provider: str, name: str) -> str:
@@ -356,6 +395,9 @@ class GooseParser(Parser):
                             ),
                         )
                         yield row
+                        text = gateway_text(s)
+                        if text:
+                            yield self._system_copy(row, text)
                         text = track_change("model", seen_model, sid, model_name)
                         if text:
                             if s.get("provider_name"):

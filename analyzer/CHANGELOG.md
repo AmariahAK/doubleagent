@@ -9,6 +9,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- The `openclaw` parser records sync state: a session published through
+  the Gateway's public link gets a `session synced: public share <id>
+  generation <sessionId>` row from `session_nodes.entry_json`, so
+  `sessions.jsonl` says `synced` `yes` or `no` for OpenClaw sessions, and
+  it reads `state/openclaw.sqlite` for one `backup uploaded:` row per
+  successful `openclaw backup` upload or Git backup ([#153]).
+- The `agent-zero` parser records sync state: a `session synced:
+  provider response` row for each agent that chained a turn on a
+  response the provider stored, and a `session relayed:` row for a chat
+  carried by the Telegram, WhatsApp or email plugin ([#153]).
+- The `hermes` parser reads `pastes/pending.json`: one `debug report
+  uploaded: <url>` row per paste.rs link of a recent `hermes debug share`
+  upload ([#153]).
+- The `goose` parser writes a `session relayed: gateway <platform> user
+  <user_id>` row for a session the gateway relayed through its Telegram
+  bot ([#153]).
+
 ## [0.14.0] - 2026-10-17
 
 ### Added
@@ -1102,6 +1121,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#151]: https://github.com/seanthegeek/doubleagent/issues/151
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#143]: https://github.com/seanthegeek/doubleagent/issues/143

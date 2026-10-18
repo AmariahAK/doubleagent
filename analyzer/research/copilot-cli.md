@@ -767,21 +767,21 @@ Sync: `workspace.yaml` `remote_steerable` and the three `mc_` keys
 (`mc_task_id`, `mc_session_id`, `mc_last_event_id`) mark a session
 synced to the account through Mission Control: added at a resume on the
 Windows winget install (1.0.98) and present in every Copilot Desktop
-session (Linux 1.1.29, Windows 1.1.30). The parser does not yield a row
-for them yet ([issue 151](https://github.com/seanthegeek/doubleagent/issues/151)).
-The planned form is one `system` row after the `session metadata:` row,
-`session synced: remote session <mc_session_id> task <mc_task_id or ->
-last event <mc_last_event_id or -> remote_steerable=<remote_steerable or
--> (from workspace.yaml, file mtime)`, timestamped by the file's
-modification time, a key present with an empty value printed `-`; a
-`synced` field last in each `sessions.jsonl` record, a string with three
-values: `yes` when the session has that row, `no` when the agent's parser
-records sync state (`copilot-cli`, whose rows include the Copilot Desktop
-sessions) and the session has none, and empty when the agent's parser
-records no sync state, so nothing is known; and a `synced_sessions`
-count in `inventory.json`, at the top level and in each
-`homes[].agents[]` entry. A session deleted locally and remotely leaves
-no marker anywhere on disk: the keys live only in its `workspace.yaml`.
+session (Linux 1.1.29, Windows 1.1.30). When `mc_session_id` is
+non-empty the parser yields one `system` row after the `session
+metadata:` row, `session synced: remote session <mc_session_id> task
+<mc_task_id or -> last event <mc_last_event_id or ->
+remote_steerable=<remote_steerable or -> (from workspace.yaml, file
+mtime)`, timestamped by the file's modification time, a key absent or
+empty printed `-`; the keys can be present as `null` on a session that
+is not synced, and then no row is yielded. The parser sets
+`records_sync`, so the session's `sessions.jsonl` record says `synced`
+`yes` when it has that row and `no` when it has none (Copilot Desktop
+sessions included, since they are `copilot-cli` rows), and
+`inventory.json` counts the synced sessions in `synced_sessions`, at the
+top level and in each `homes[].agents[]` entry. A session deleted
+locally and remotely leaves no marker anywhere on disk: the keys live
+only in its `workspace.yaml`.
 
 MCP: the configured servers (`mcp-config.json`), their failed spawns
 (the process log's `MCP server connection failed` lines) and the cached

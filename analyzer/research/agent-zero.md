@@ -238,14 +238,15 @@ third party's server, and `chat.json` records each
 - Stored responses. With a model set to `a0_api_mode: responses` and no
   `responses_state` (or `provider`), each reply is stored at the
   provider; `agents[].data.responses_state` and
-  `metadata.responses.response_id` hold the ids. Proposed row, once per
-  agent that has the key: `session synced: provider response
-  <response_id or -> previous <previous_response_id or -> model
-  <provider_model_key> (<n> response ids) agent=<number> (from chat.json
-  agents[].data.responses_state, file mtime)`, timestamped by the file's
-  modification time. Because `local` mode records the same ids with
-  `store: false`, the row says "provider response" only when
-  `previous_response_id` is non-empty and "response ids" otherwise. On
+  `metadata.responses.response_id` hold the ids. The parser yields one
+  row per agent whose `previous_response_id` is non-empty: `session
+  synced: provider response <response_id or -> previous
+  <previous_response_id> model <provider_model_key or -> (<n> response
+  ids) agent=<number> (from chat.json agents[].data.responses_state, file
+  mtime)`, timestamped by the file's modification time, and sets
+  `records_sync`. Because `local` mode records the same ids with
+  `store: false`, an agent whose `previous_response_id` is empty yields
+  no row. Fixture only: no real install has shown the key. On
   chat delete, Agent Zero collects every response id in `chat.json` and
   calls litellm's `delete_responses` for each unless
   `responses_delete_on_chat_delete` is `false` in the model's kwargs or
@@ -255,14 +256,16 @@ third party's server, and `chat.json` records each
   ([`helpers/litellm_transport.py:1481-1490`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/litellm_transport.py#L1481-L1490)), so nothing local says
   whether the remote copy went.
 - Messaging channels. A Telegram, WhatsApp or email chat is carried by
-  that service, which keeps the messages. Proposed row, one per chat
-  with the keys: `session relayed: telegram bot <telegram_bot> chat
-  <telegram_chat_id> user <telegram_user_id> @<telegram_username> (from
-  chat.json data, file mtime)`, and the same with `whatsapp chat
-  <wa_chat_id> number <wa_sender_number>` or `email thread
-  <email_thread_id> from <email_sender>`, timestamped by the file's
-  modification time; never print `telegram_bot_cfg` (it holds the bot
-  token, [section 7](#7-secrets)). Deleting the chat removes the folder,
+  that service, which keeps the messages. The parser yields one row per
+  chat and channel with the keys: `session relayed: telegram bot
+  <telegram_bot> chat <telegram_chat_id> user <telegram_user_id>
+  @<telegram_username or -> (from chat.json data, file mtime)`,
+  `session relayed: whatsapp chat <wa_chat_id> number <wa_sender_number
+  or -> (from chat.json data, file mtime)` or `session relayed: email
+  thread <email_thread_id or -> from <email_sender or -> (from chat.json
+  data, file mtime)`, timestamped by the file's modification time, and
+  never prints `telegram_bot_cfg` (it holds the bot token,
+  [section 7](#7-secrets)). Fixture only. Deleting the chat removes the folder,
   but Telegram's `state.json` still maps the user and chat to the old
   `ctxid` until that user writes again
   ([`plugins/_telegram_integration/helpers/handler.py:376-387`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L376-L387)), so a

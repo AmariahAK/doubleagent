@@ -306,17 +306,23 @@ the `gateway_pairings` entry in `.config/goose/config.yaml`
 (`AppData/Roaming/Block/goose/config/config.yaml` on Windows), written once
 when the chat user pairs and removed on unpair or gateway removal, plus
 the session's own `session_type` `gateway`, which survives the unpair
-([section 4](#4-joins)). The planned form is one `system` row per
-`paired` entry, joined to the session by `state.session_id`,
-`session synced: gateway <platform> user <user_id> display
-<display_name or -> (from config.yaml gateway_pairings, paired_at)`,
-timestamped by `paired_at` (epoch seconds); `unpaired` and
-`pending_code` entries name no session and yield nothing. A `gateway`
-session with no pairing entry (unpaired, or collected with
-`--no-secrets`) is still marked by its `session_type`, which the session's
-start row already carries. A session deleted with `goose session remove`
-leaves its pairing entry naming a missing session id, and the row is
-still yielded with that id. Nothing else at
+([section 4](#4-joins)). A relayed chat is a copy on the messaging
+platform, not a vendor sync, so the parser leaves `records_sync` off and
+reads `sessions.db` rather than the pairing: one `system` row after each
+`gateway` session's start row, at the session's `created_at`,
+`session relayed: gateway <platform> user <user_id> display <display or
+-> (from sessions.db session_type gateway, created_at)`, the platform
+and user id taken from `working_dir`
+(`.config/goose/gateway/<platform>/<user_id>`), the display from `name`
+(`<platform>/<display name or user id>`, `-` when it is the user id).
+The `gateway_pairings` entry repeats the platform and user id and adds
+`paired_at`, but it is nested YAML, which the analyzer has no dependency
+to read, inside `config.yaml`, which is a secret glob, so it is not read;
+the session row survives an unpair, which deletes the entry, and is
+present with `--no-secrets`. A session deleted with `goose session
+remove` leaves only its pairing entry, naming a missing session id, and
+so yields no row. Fixture only: no real install has shown a gateway
+session. Nothing else at
 [`bfcc6ee`](https://github.com/aaif-goose/goose/commit/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc)
 uploads a session to a Goose or Block account; what was read:
 

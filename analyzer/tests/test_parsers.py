@@ -3705,6 +3705,51 @@ class GooseTests(ParserBase):
                 [r for r in self.rows_for(GooseParser(), rel) if model_or_permission_row(r)]
             )
 
+    # -- relayed gateway sessions (issue 153) -----------------------------------
+
+    def _gateway_rows(self, display="alice"):
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.REL))
+        for sql in goose_gateway_records(display):
+            con.execute(sql)
+        con.commit()
+        con.close()
+        return [
+            r
+            for r in self.rows_for(GooseParser(), self.REL)
+            if r.session_id == GOOSE_GATEWAY_SESSION
+        ]
+
+    def test_gateway_session_row(self):
+        self.assertFalse(GooseParser.records_sync)
+        rows = self._gateway_rows()
+        self.assertEqual(rows[0].text, "session start | telegram/alice | type=gateway")
+        relayed = rows[1]
+        self.assertEqual(
+            (relayed.turn_type, relayed.timestamp_utc, relayed.project_path, relayed.text),
+            (
+                "system",
+                "2026-10-17T08:00:00.000Z",
+                "/home/alice/.config/goose/gateway/telegram/123456789",
+                "session relayed: gateway telegram user 123456789 display alice"
+                " (from sessions.db session_type gateway, created_at)",
+            ),
+        )
+        self.assertEqual(rows[-1].text, "disk usage?")
+
+    def test_gateway_session_without_display_name(self):
+        rows = self._gateway_rows(display="123456789")
+        self.assertEqual(
+            rows[1].text,
+            "session relayed: gateway telegram user 123456789 display -"
+            " (from sessions.db session_type gateway, created_at)",
+        )
+
+    def test_user_session_has_no_relayed_row(self):
+        rows = self.rows_for(GooseParser(), self.REL)
+        self.assertFalse([r for r in rows if r.text.startswith("session relayed:")])
+
 
 from doubleagent.parsers.aider import AiderParser
 from doubleagent.parsers.continue_dev import ContinueParser, load_session
@@ -6893,6 +6938,64 @@ class HermesTests(ParserBase):
             [(HERMES_SESSION, "2026-10-01T12:00:06.000Z")],
         )
 
+    # -- debug report uploads (issue 153) ---------------------------------------
+
+    PASTE_TEXT = "debug report uploaded: %s (from pastes/pending.json, expire_at minus 6 hours)"
+
+    def test_debug_report_rows(self):
+        p = HermesParser()
+        self.assertFalse(p.records_sync)
+        self.assertTrue(p.wants(rel_only("AppData/Local/hermes/profiles/x/pastes/pending.json")))
+        self.assertFalse(p.secondary(self.artifact(HERMES_PASTES_REL)))
+        rows = self.rows_for(p, HERMES_PASTES_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.source_line, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    1,
+                    "2026-10-01T11:20:00.500Z",
+                    self.PASTE_TEXT % "https://paste.rs/AbCdE",
+                ),
+                (
+                    "system",
+                    "",
+                    2,
+                    "2026-10-01T11:21:00.000Z",
+                    self.PASTE_TEXT % "https://paste.rs/FgHiJ",
+                ),
+            ],
+        )
+        self.assertFalse([r for r in rows if r.text.startswith("session synced:")])
+
+    def test_empty_pastes_file_has_no_rows(self):
+        (self.home / HERMES_PASTES_REL).write_text("[]", encoding="utf-8")
+        self.assertEqual(self.rows_for(HermesParser(), HERMES_PASTES_REL), [])
+
+    def test_pastes_file_not_a_list_is_one_row(self):
+        path = self.home / HERMES_PASTES_REL
+        path.write_text('{"url": "https://paste.rs/x"}', encoding="utf-8")
+        rows = self.rows_for(HermesParser(), HERMES_PASTES_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("system", "parser: pastes/pending.json is not a JSON list")],
+        )
+        path.write_text('[{"url": "https://paste.rs/x", "expire', encoding="utf-8")
+        rows = self.rows_for(HermesParser(), HERMES_PASTES_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: pastes/pending.json did not parse ("))
+
+    def test_bad_paste_entry_is_reported_not_fatal(self):
+        recs = [*hermes_pastes_records(), {"expire_at": 1}]
+        (self.home / HERMES_PASTES_REL).write_text(json.dumps(recs), encoding="utf-8")
+        rows = self.rows_for(HermesParser(), HERMES_PASTES_REL)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(
+            (rows[-1].source_line, rows[-1].text),
+            (3, 'parser: unparseable record 3 (not an object with a url): {"expire_at":1}'),
+        )
+
 
 class AgentZeroTests(ParserBase):
     REL = AGENT_ZERO_REL
@@ -7091,7 +7194,7 @@ class AgentZeroTests(ParserBase):
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
         for a in self.col.artifacts:
-            if a.agent == "agent-zero" and a.rel != self.REL:
+            if a.agent == "agent-zero" and a.rel not in (self.REL, AGENT_ZERO_TG_REL):
                 self.assertFalse(p.wants(a), a.rel)
         self.assertTrue(any(a.rel.endswith("messages/1.txt") for a in self.col.artifacts))
 
@@ -7109,14 +7212,95 @@ class AgentZeroTests(ParserBase):
         self.assertEqual(rows[4].text, "a.txt")
         self.assertEqual(recover_logs('{"logs": [{"no": 0}, {"no": 1'), [{"no": 0}])
 
+    # -- remote copies (issue 153) ---------------------------------------------
+
+    def _relayed_rows(self, chat=None):
+        path = self.home / AGENT_ZERO_TG_REL
+        if chat is not None:
+            path.write_text(json.dumps(chat), encoding="utf-8")
+        os.utime(path, (1790863300, 1790863300))
+        return self.rows_for(AgentZeroParser(), AGENT_ZERO_TG_REL)
+
+    def test_stored_response_and_telegram_rows(self):
+        self.assertTrue(AgentZeroParser.records_sync)
+        rows = self._relayed_rows()
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows[1:3]],
+            [
+                (
+                    "system",
+                    AGENT_ZERO_TG_CHAT,
+                    "2026-10-01T14:01:40.000Z",
+                    "session synced: provider response resp_02 previous resp_01 model"
+                    " openai/gpt-5 (2 response ids) agent=0 (from chat.json"
+                    " agents[].data.responses_state, file mtime)",
+                ),
+                (
+                    "system",
+                    AGENT_ZERO_TG_CHAT,
+                    "2026-10-01T14:01:40.000Z",
+                    "session relayed: telegram bot opsbot chat 987654321 user 123456789"
+                    " @alice_ops (from chat.json data, file mtime)",
+                ),
+            ],
+        )
+        self.assertTrue(rows[0].text.startswith("chat start"))
+        self.assertEqual([r.turn_type for r in rows[3:]], ["user", "assistant"])
+        # The local-mode subordinate agent recorded ids but stored nothing.
+        self.assertEqual(len([r for r in rows if r.text.startswith("session synced:")]), 1)
+
+    def test_bot_token_never_emitted(self):
+        rows = self._relayed_rows()
+        self.assertFalse(
+            [r for r in rows if AGENT_ZERO_BOT_TOKEN in "|".join(map(str, r.as_dict().values()))]
+        )
+
+    def test_chat_without_remote_copy_has_no_rows(self):
+        rows = self.rows_for(AgentZeroParser(), self.REL)
+        self.assertFalse(
+            [r for r in rows if r.text.startswith(("session synced:", "session relayed:"))]
+        )
+
+    def test_whatsapp_and_email_rows(self):
+        chat = agent_zero_relayed_chat()
+        for ag in chat["agents"]:
+            ag["data"] = {}
+        chat["data"] = {
+            "wa_chat_id": "15551234567@s.whatsapp.net",
+            "wa_sender_number": "+15551234567",
+            "email_thread_id": "<thread-01@example.com>",
+            "email_sender": "",
+        }
+        rows = self._relayed_rows(chat)
+        self.assertEqual(
+            [r.text for r in rows[1:3]],
+            [
+                "session relayed: whatsapp chat 15551234567@s.whatsapp.net number +15551234567"
+                " (from chat.json data, file mtime)",
+                "session relayed: email thread <thread-01@example.com> from -"
+                " (from chat.json data, file mtime)",
+            ],
+        )
+        self.assertFalse([r for r in rows if r.text.startswith("session synced:")])
+
+
+import os
 
 from doubleagent.parsers.open_interpreter import OpenInterpreterParser
 from fixtures import (
+    AGENT_ZERO_BOT_TOKEN,
+    AGENT_ZERO_TG_CHAT,
+    AGENT_ZERO_TG_REL,
+    GOOSE_GATEWAY_SESSION,
+    HERMES_PASTES_REL,
     OI_ARCHIVED,
     OI_IMPORTED,
     OI_ORPHAN,
     OI_ROLLOUT,
     OI_SESSION,
+    agent_zero_relayed_chat,
+    goose_gateway_records,
+    hermes_pastes_records,
     open_interpreter_rollout_records,
 )
 
@@ -7459,8 +7643,11 @@ class OpenClawTests(ParserBase):
     LEGACY = OPENCLAW_AGENT + "/sessions/%s.jsonl" % OPENCLAW_LEGACY
 
     def test_rows(self):
+        # The public share row is checked in test_public_share_row.
         rows = [
-            r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
+            r
+            for r in self.rows_for(OpenClawParser(), self.DB)
+            if r.session_id == OPENCLAW_SESSION and not r.text.startswith("session synced:")
         ]
         self.assertEqual(
             [r.turn_type for r in rows],
@@ -7692,7 +7879,7 @@ class OpenClawTests(ParserBase):
         for a in self.col.artifacts:
             if (
                 a.agent == "openclaw"
-                and a.rel not in (self.DB, self.LEGACY)
+                and a.rel not in (self.DB, self.LEGACY, OPENCLAW_STATE_DB)
                 and ".jsonl.deleted." not in a.rel
                 and not a.rel.endswith((OPENCLAW_CHECKPOINT, OPENCLAW_REPAIR_BAK))
             ):
@@ -7705,6 +7892,8 @@ class OpenClawTests(ParserBase):
             ".openclaw/sessions/x.jsonl",
             ".openclaw/agents/main/sessions/x.jsonl.reset.2026-10-01T09-30-00Z",
             ".openclaw/agents/main/sessions/cold/" + "a" * 64 + ".jsonl.zst",
+            ".openclaw/state/openclaw.sqlite",
+            ".openclaw-work/state/openclaw.sqlite",
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
         for rel in (
@@ -7712,7 +7901,7 @@ class OpenClawTests(ParserBase):
             ".openclaw/agents/main/sessions/x.jsonl.bak",
             ".openclaw/agents/main/sessions/x.jsonl.bak.2026-10-01T09-30-00Z",
             ".openclaw/agents/main/sessions/x.trajectory.jsonl",
-            ".openclaw/state/openclaw.sqlite",
+            ".openclaw/state/openclaw.sqlite-wal",
             ".openclaw/logs/raw-stream.jsonl",
         ):
             self.assertFalse(p.wants(rel_only(rel)), rel)
@@ -7806,7 +7995,7 @@ class OpenClawTests(ParserBase):
         rows = [
             r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
         ]
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), 9)
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].timestamp_utc), ("system", "2026-10-01T09:01:40.000Z")
         )
@@ -7826,9 +8015,139 @@ class OpenClawTests(ParserBase):
         rows = [
             r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
         ]
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), 9)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("event seq 9 unreadable: not a JSON object", rows[-1].text)
+
+    # -- session sync (issue 153) ---------------------------------------------
+
+    SHARE_TEXT = (
+        "session synced: public share %s generation %s (from openclaw-agent.sqlite"
+        " session_nodes.entry_json, publicShare.createdAt)"
+    )
+
+    def test_public_share_row(self):
+        self.assertTrue(OpenClawParser.records_sync)
+        rows = [
+            r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
+        ]
+        # After the session-start and starting-model rows.
+        share = rows[2]
+        self.assertEqual(
+            (share.turn_type, share.text, share.timestamp_utc, share.project_path),
+            (
+                "system",
+                self.SHARE_TEXT % (OPENCLAW_SHARE_ID, OPENCLAW_SESSION),
+                "2026-10-01T09:02:00.000Z",
+                "/srv/proj",
+            ),
+        )
+        self.assertEqual(share.source_line, 1)  # session_nodes rowid
+        self.assertEqual(
+            [r.text for r in rows if r.text.startswith("session synced:")], [share.text]
+        )
+
+    def test_unpublished_session_has_no_share_row(self):
+        rows = self.rows_for(OpenClawParser(), self.DB)
+        synced = {r.session_id for r in rows if r.text.startswith("session synced:")}
+        self.assertEqual(synced, {OPENCLAW_SESSION})
+
+    def test_share_without_transcript_rows(self):
+        con = sqlite3.connect(str(self.home / self.DB))
+        entry = {
+            "sessionId": "gone",
+            "publicShare": {"id": "f" * 48, "sessionId": "gone", "createdAt": 1790900000000},
+        }
+        con.execute(
+            "INSERT INTO session_nodes VALUES ('agent:main:x','gone',?,0,NULL,NULL)",
+            (json.dumps(entry),),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenClawParser(), self.DB)
+        self.assertEqual(
+            (rows[-1].session_id, rows[-1].text, rows[-1].timestamp_utc),
+            ("gone", self.SHARE_TEXT % ("f" * 48, "gone"), "2026-10-02T00:13:20.000Z"),
+        )
+
+    def test_bad_entry_json_is_reported_not_fatal(self):
+        con = sqlite3.connect(str(self.home / self.DB))
+        con.execute(
+            "INSERT INTO session_nodes VALUES ('agent:main:y','y',?,0,NULL,NULL)",
+            (BAD_LINE,),
+        )
+        rowid = con.execute("SELECT rowid FROM session_nodes WHERE session_key = 'agent:main:y'")
+        rowid = rowid.fetchone()[0]
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenClawParser(), self.DB)
+        self.assertIn(
+            self.SHARE_TEXT % (OPENCLAW_SHARE_ID, OPENCLAW_SESSION), [r.text for r in rows]
+        )
+        reason = bad_line_text().split("(", 1)[1].split("): ", 1)[0]
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            (
+                "system",
+                rowid,
+                "parser: session_nodes entry_json unparseable (%s): %s" % (reason, BAD_LINE),
+            ),
+        )
+
+    BACKUP_TEXT = (
+        "backup uploaded: %s to %s key %s namespace %s"
+        " (from state/openclaw.sqlite backup_runs, created_at)"
+    )
+
+    def test_backup_rows(self):
+        rows = self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    "2026-10-01T10:20:00.000Z",
+                    self.BACKUP_TEXT % ("archive", "r2-offsite", OPENCLAW_BACKUP_KEY, "main"),
+                ),
+                (
+                    "system",
+                    "",
+                    "2026-10-01T11:00:00.000Z",
+                    self.BACKUP_TEXT
+                    % ("git", "/home/alice/openclaw-backup.git", OPENCLAW_BACKUP_COMMIT, "main"),
+                ),
+            ],
+        )  # the failed push, the local archive and the failed run yield none
+        self.assertEqual([r.source_line for r in rows], [1, 2])
+        self.assertFalse([r for r in rows if r.text.startswith("session synced:")])
+
+    def test_bad_manifest_json_is_reported_not_fatal(self):
+        path = self.home / OPENCLAW_STATE_DB
+        con = sqlite3.connect(str(path))
+        con.execute(
+            "INSERT INTO backup_runs VALUES ('run-99',1790870000000,'/x','ok',?)", (BAD_LINE,)
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(rows[1].text.startswith("backup uploaded: git"))
+        self.assertTrue(
+            rows[-1].text.startswith("parser: backup_runs manifest_json unparseable ("), rows[-1]
+        )
+        self.assertTrue(rows[-1].text.endswith("): " + BAD_LINE))
+
+    def test_state_db_not_sqlite_is_one_row(self):
+        path = self.home / OPENCLAW_STATE_DB
+        for side in ("-wal", "-shm"):
+            Path(str(path) + side).unlink(missing_ok=True)
+        path.write_bytes(b"not a database")
+        rows = self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("system", "parser: state/openclaw.sqlite is not a SQLite database")],
+        )
 
 
 from fixtures import (
@@ -7837,6 +8156,10 @@ from fixtures import (
     NANOBOT_WEBUI_REL,
     NANOBOT_WEBUI_SEGMENT_REL,
     NANOBOT_WEBUI_SESSION_REL,
+    OPENCLAW_BACKUP_COMMIT,
+    OPENCLAW_BACKUP_KEY,
+    OPENCLAW_SHARE_ID,
+    OPENCLAW_STATE_DB,
 )
 
 

@@ -861,7 +861,17 @@ for); a `model_change` entry is one of those entries, and one that
 names the model already in force, being the user's own switch, still
 gets the plain `model: <id> provider=<provider>` row; for `openclaw`
 the `session_windows` `model` and `model_provider` start the session at
-its start time. The `letta` parser adds the same row after the first
+its start time. `openclaw` writes `session synced: public share <id>
+generation <sessionId> (from openclaw-agent.sqlite
+session_nodes.entry_json, publicShare.createdAt)` after the start row of
+a session published through the Gateway's public link, at the time
+access was turned on, and one `backup uploaded: <kind> to <location or
+archive path> key <object key or commit> namespace <namespace> (from
+state/openclaw.sqlite backup_runs, created_at)` row, with an empty
+`session_id`, per successful `openclaw backup` run that uploaded the
+state directory to a storage location or committed it to a Git backup
+repository whose push did not fail. The `letta` parser adds the same row
+after the first
 `.letta/sessions.jsonl` line of each CLI session and a change row when a
 later line of the session names another model. The `pi` parser reads
 `.pi/agent/trust.json`, the project trust decisions pi and little-coder
@@ -934,14 +944,22 @@ conversation-level field stood in. `hermes` writes them from the
 ` provider=<billing_provider>`, or one `model: <id>` from the session row
 at its start. `ollama` writes them before the assistant message whose
 `model_name` names the model. `goose` also writes
-`permission mode: <goose_mode>` after each session's start row. `zed`
+`permission mode: <goose_mode>` after each session's start row, and,
+for a session the gateway relayed through its Telegram bot, `session
+relayed: gateway <platform> user <user_id> display <display name> (from
+sessions.db session_type gateway, created_at)`. `zed`
 writes one `permission setting: <key>=<value> (thread blob, as of
 updated_at)` row per grant the user gave for the rest of a thread
 (`profile`, each `sandbox_grants.write_paths` and `network_hosts` entry,
 and each `sandbox_grants` escape flag that is `true`): unlike the
 settings-file rows these live in the thread blob, so their `session_id` is
 the thread id and their `timestamp_utc` is the thread's `updated_at`, the
-blob's last write rather than the time of the grant.
+blob's last write rather than the time of the grant. `hermes` also
+writes one `debug report uploaded: <url> (from pastes/pending.json,
+expire_at minus 6 hours)` row per paste.rs link that `hermes debug
+share` uploaded and that is still due for deletion, at the upload time,
+with an empty `session_id`: the uploaded logs hold recent messages but
+name no session.
 
 OpenHands, Agent Zero, nanobot and Muse Code write the same kinds of row.
 `openhands` writes `model: <id>` after each conversation's header row, at
@@ -952,7 +970,16 @@ and `tool_use_id`, and an action's `tool_use` text ends with
 ` security_risk=<value>` when the event has one. `agent-zero` writes
 `model: <id>` before an agent's first reply and `model: <old> -> <new>`
 on a change, tracked per chat and agent number, with ` agent=<n>` for a
-subordinate agent. `nanobot` writes `model: <preset> (preset)` after
+subordinate agent. After the chat start row, at the file's modification
+time, it also writes `session synced: provider response <response_id>
+previous <previous_response_id> model <provider_model_key> (<n> response
+ids) agent=<n> (from chat.json agents[].data.responses_state, file
+mtime)` for each agent that chained a turn on a response the provider
+stored, and for a chat carried by a messaging plugin `session relayed:
+telegram bot <bot> chat <chat id> user <user id> @<username>`,
+`session relayed: whatsapp chat <chat id> number <number>` or `session
+relayed: email thread <thread id> from <sender>`, each ending `(from
+chat.json data, file mtime)`. `nanobot` writes `model: <preset> (preset)` after
 the session start row: the value is a model preset of nanobot's
 configuration, not a model id. `muse-code` writes, per session log,
 `permission mode: approval=<approval> reviewer=<reviewer>
@@ -1195,7 +1222,7 @@ no timestamp come first. Its fields, in order:
 | `assistant_turns` | integer | The number with `turn_type` `assistant`. |
 | `tool_calls` | integer | The number with `turn_type` `tool_use`. |
 | `source_file` | string | The `source_file` that contributed the most of the session's records, the first met on a tie, so a transcript wins over a one-line-per-prompt history file; `""` when no record names one. |
-| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (today the Copilot CLI and Copilot Desktop `workspace.yaml` marker, which the `copilot-cli` parser reads); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
+| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (the parsers that record sync state: `copilot-cli`, from the Copilot CLI and Copilot Desktop `workspace.yaml` marker; `openclaw`, from a session's public share grant; `agent-zero`, from a turn chained on a response the provider stored); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
 
 ## Compatibility
 
