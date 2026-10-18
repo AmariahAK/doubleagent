@@ -9,6 +9,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-17
+
 ### Added
 
 - The `openclaw` parser records sync state: a session published through
@@ -78,6 +80,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `sessions.jsonl` `synced` now reads `yes` or `no`, where it read `""`,
+  for the sessions of `agent-zero`, `cline`, `codex-cli`, `kilo-code`,
+  `letta`, `open-interpreter`, `openclaw`, `opencode`, `pi` and `vscode`,
+  whose parsers now record sync state, and `inventory.json`
+  `synced_sessions` and the `sessions:` line count their synced sessions.
+  This changes the values of a `sessions.jsonl` field ([#153]).
+- `timeline.jsonl` gains `system` row forms: `session synced:` from the
+  parsers above, `session relayed:` (`agent-zero`, `goose`, `qwen-code`),
+  `backup uploaded:` (`openclaw`), `debug report uploaded:` (`hermes`),
+  `agent metadata posted:` and `storage upload requested, skipped`
+  (`continue`), `bug report exported:` (`pi`), `remote session:`
+  (`vscode`), `session unshared` (`opencode`, `kilo-code`) and `cline`'s
+  `enterprise prompt upload <status>` for a queued upload that has not
+  gone yet ([#153]).
 - The bundled catalog copy follows collector 1.14.0: its credential
   section gains the secret globs of the session sync round and replaces
   Qwen Code's `.qwen/channels/*.json`, and its exclusion section drops
@@ -1159,7 +1175,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--summary-length` (default 400), `--include-thinking` and `--agent`;
   `detect --json` and `--files`; `catalog --agents`.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.14.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.15.0...HEAD
+[0.15.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.14.0...analyzer-v0.15.0
 [0.14.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.13.0...analyzer-v0.14.0
 [0.13.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.12.0...analyzer-v0.13.0
 [0.12.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.11.0...analyzer-v0.12.0

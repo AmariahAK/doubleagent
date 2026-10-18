@@ -8133,8 +8133,6 @@ class AgentZeroTests(ParserBase):
         self.assertFalse([r for r in rows if r.text.startswith("session synced:")])
 
 
-import os
-
 from doubleagent.parsers.open_interpreter import OpenInterpreterParser
 from fixtures import (
     AGENT_ZERO_BOT_TOKEN,
