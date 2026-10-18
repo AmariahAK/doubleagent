@@ -59,6 +59,23 @@ is no producer name or pi version in the header.
 | `label` | `targetId`, `label` (undefined clears) |
 | `session_info` | `name` (user-set session title) |
 
+**Bug-report entry.** `/bug` (HEAD only; absent at v0.83.0) appends a
+`custom` entry with `customType:"pi.bug-report"` to the session file
+once a report is uploaded or exported
+([modes/interactive/bug-report.ts:213-227](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/bug-report.ts#L213-L227),
+[core/bug-report.ts:17](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/bug-report.ts#L17)). Its `data` is
+`id` (the report id, a UUIDv7 made locally,
+[core/bug-report.ts:159-160](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/bug-report.ts#L159-L160)),
+`createdAt` (ISO), `hint` (the user's description or null),
+`sessionIncluded` and `summaryIncluded` (booleans), `delivery`
+(`upload` or `zip`) and, for `zip`, `path`, the archive
+`pi-bug-report-<id>.zip` in the working directory
+([core/bug-report.ts:235-243](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/bug-report.ts#L235-L243),
+[278-280](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/bug-report.ts#L278-L280)). The entry's own
+`timestamp` is the append time
+([session-manager.ts:1290-1301](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-manager.ts#L1290-L1301)).
+A session never reported has no such entry.
+
 **Message roles** (`message.message.role`), every one with `timestamp`
 in Unix milliseconds:
 
@@ -195,6 +212,82 @@ One `system` row per key, `permission setting: <path>=<value> (from
 `session_id` empty, `source_line` 1 and `timestamp_utc` the file's
 modification time. A file that is not a JSON object is one `system` row
 `parser: .pi/agent/trust.json is not a JSON object`.
+
+Sync: pi keeps no session in a vendor account, but two commands send a
+session out, and only one leaves a mark.
+
+- `/share` uploads the current branch on request
+  ([slash-commands.ts:27](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/slash-commands.ts#L27),
+  [interactive-mode.ts:3190-3194](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L3190-L3194)).
+  With Radius credentials (Radius is Earendil Works' hosted model gateway
+  for pi, signed in with `/login radius`,
+  [docs/providers.md:104-112](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/docs/providers.md#L104-L112))
+  it posts the branch as JSONL, plus a trailing `pi.share` entry with the
+  system prompt and tool schemas, to `https://radius.pi.dev/v1/artifacts`
+  with `visibility=organization`
+  ([session-share.ts:24-47](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/session-share.ts#L24-L47),
+  [98-131](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/session-share.ts#L98-L131),
+  [radius-config.ts:4](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/ai/src/providers/radius-config.ts#L4)); without
+  them it renders HTML and runs `gh gist create --public=false`, a secret
+  gist in the user's GitHub account viewed at
+  `https://pi.dev/session/#<gist id>`
+  ([session-share.ts:71-88](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/session-share.ts#L71-L88),
+  [159-203](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/session-share.ts#L159-L203),
+  [config.ts:553-559](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/config.ts#L553-L559)).
+  Both write only to a temporary directory that is removed afterwards,
+  and the share URL is only shown on screen
+  ([session-share.ts:58-60](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/session-share.ts#L58-L60),
+  [89-95](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/session-share.ts#L89-L95),
+  [146](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/session-share.ts#L146));
+  the `pi.share` entry goes into the uploaded copy, never the session
+  file ([session-export.ts:9-29](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-export.ts#L9-L29)).
+  v0.83.0, which little-coder pins, has the gist path only, the same way
+  ([0.83.0 interactive-mode.ts:5523-5608](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L5523-L5608)).
+  So a shared session leaves no local marker; the gist is found from the
+  GitHub account, the Radius artifact from the organization.
+- `/bug` (HEAD only) asks whether to include the transcript, then
+  uploads `report.json`, `diagnostics.json` and, when chosen,
+  `session.jsonl` and a model-written `summary.md` to
+  `https://radius.pi.dev/v1/bug-reports`, with no login needed, or writes
+  them to a zip
+  ([modes/interactive/bug-report.ts:113-120](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/bug-report.ts#L113-L120),
+  [core/bug-report.ts:252-272](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/bug-report.ts#L252-L272),
+  [bug-report-upload.ts:12-37](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/bug-report-upload.ts#L12-L37)).
+  Either way it appends the `pi.bug-report` entry of
+  [section 3](#3-record-schema) and empties `.pi/agent/crashes.json` when
+  the report carried crashes
+  ([modes/interactive/bug-report.ts:226](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/bug-report.ts#L226),
+  [crash-log.ts:21-23](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/crash-log.ts#L21-L23)).
+  Proposed row, the one `custom` entry not skipped, for `delivery`
+  `upload` only: one `system` row
+  `session synced: bug report <id> uploaded to radius.pi.dev
+  transcript=<sessionIncluded> summary=<summaryIncluded> (from session
+  entry pi.bug-report, entry timestamp)`, at the entry's `timestamp`,
+  with the session's id and `cwd`; a `zip` entry yields `bug report
+  exported: <id> path=<path>` instead, since nothing left the host.
+  The server answers with its own `bug_report.id`, which pi shows and
+  does not store
+  ([modes/interactive/bug-report.ts:186-189](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/bug-report.ts#L186-L189)).
+
+The session picker's delete runs the `trash` command and falls back to
+unlinking the file
+([session-selector.ts:650-680](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/components/session-selector.ts#L650-L680)),
+so the `pi.bug-report` entry goes with the session file, or sits in the
+user's trash; no index or log repeats it, and pi offers no way to delete
+the remote copy. The experimental server (`PI_EXPERIMENTAL=1`, HEAD only,
+[experimental.ts:2](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/experimental.ts#L2)) also
+opens a live relay through Radius,
+`/v1/session-relays/<server id>/connect`, when Radius credentials exist
+([server.ts:609-615](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/experimental/server.ts#L609-L615),
+[radius-relay.ts:619-623](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/experimental/radius-relay.ts#L619-L623),
+[radius-auth.ts:31-55](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/experimental/radius-auth.ts#L31-L55));
+it carries traffic to remote clients rather than storing a copy, and its
+only file is the server id, `.pi/server/default-server-id`
+([server.ts:54-56](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/experimental/server.ts#L54-L56),
+[76-112](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/experimental/server.ts#L76-L112)), which says
+the host could be reached that way, not that a session was. No telemetry
+leaves pi: the telemetry package has no exporter
+([telemetry/README.md:11](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/telemetry/README.md#L11)).
 
 When a file's `parentSession` parent is also in the collection, drop
 child entries whose `id` and `timestamp` match a parent entry, so a fork

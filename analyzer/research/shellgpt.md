@@ -133,6 +133,37 @@ content parses as a JSON array of objects with `role`.
 ShellGPT records no model in the chat cache, so the parser yields no
 `model:` rows.
 
+Sync: ShellGPT records no sync state, because it has no feature that
+uploads a session. Its only network client is the chat completion call:
+the OpenAI client pointed at `API_BASE_URL`, or `litellm.completion` when
+`USE_LITELLM=true` (LiteLLM is a third-party library that routes one call
+format to many model providers)
+([`handler.py:15-33`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L15-L33)),
+which sends the session's messages with each prompt and nothing else
+([`handler.py:123-130`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L123-L130)).
+The runtime dependencies are `openai`, `typer`, `click`, `rich`,
+`distro`, `pyreadline3` and `prompt_toolkit`, with `litellm` optional
+([`pyproject.toml:26-39`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/pyproject.toml#L26-L39));
+no HTTP library, telemetry or crash reporter. The command-line options
+for sessions are `--chat`, `--repl`, `--show-chat` and `--list-chats`,
+all local
+([`app.py:98-119`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/app.py#L98-L119)),
+and the session store reads, writes, lists and deletes files in
+`CHAT_CACHE_PATH` only
+([`chat_handler.py:65-95`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/chat_handler.py#L65-L95)).
+No setting in `DEFAULT_CONFIG` names a sync, share or account
+([`config.py:18-46`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L18-L46)).
+The terms `sync`, `share`, `upload`, `cloud`, `remote`, `publish`,
+`telemetry`, `analytics`, `export`, `backup`, `team`, `account`, `login`,
+`requests`, `httpx`, `urllib`, `socket` and `sentry` match nothing in
+`sgpt/`, and the only URLs in `sgpt/` and `pyproject.toml` are the
+project's own GitHub links. Two paths are outside this source: what
+LiteLLM itself sends when it is enabled (ShellGPT sets only
+`suppress_debug_info` on it) and what a user-installed function under
+`~/.config/shell_gpt/functions/` does, since each is arbitrary Python
+imported at start
+([`function.py:31-36`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/function.py#L31-L36)).
+
 Fixture (`chat_cache/deploy-check`, shown wrapped; the real file is one line):
 
 ```json

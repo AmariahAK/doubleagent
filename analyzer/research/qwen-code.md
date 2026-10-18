@@ -40,6 +40,33 @@ Base directory `~/.qwen`, overridable by `$QWEN_HOME`
   [`paths.ts:368-373`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/utils/paths.ts#L368-L373)).
 - Managed-engine sessions: same `.jsonl` location plus
   `~/.qwen/resources/<sessionId>/` ([`utils/sessionStorageUtils.ts:806-816`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/utils/sessionStorageUtils.ts#L806-L816)).
+- Channel routes: `~/.qwen/channels/sessions.json`, written by
+  `qwen channel start`, which drives sessions from a messaging platform
+  (Telegram, WeChat, QQ, DingTalk, WeCom, Feishu, GitHub, GitLab or
+  email; the conversation then also lives on that platform's servers)
+  ([`cli/src/commands/channel/runtime.ts:43-45`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/commands/channel/runtime.ts#L43-L45)).
+  It is one JSON object keyed by routing key (`<channelName>:<chatId>`
+  and similar forms by scope), each value
+  `{sessionId, target: {channelName, messageRoute?, senderId, chatId,
+  threadId?, isGroup?}, cwd, turns?, startedAt?, isolation?,
+  workspaceCwd?}`, `startedAt` epoch milliseconds
+  ([`channels/base/src/SessionRouter.ts:25-36`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/channels/base/src/SessionRouter.ts#L25-L36),
+  [1559-1593](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/channels/base/src/SessionRouter.ts#L1559-L1593);
+  [`channels/base/src/types.ts:180-187`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/channels/base/src/types.ts#L180-L187)).
+  It is rewritten on every routing change and deleted on a clean
+  shutdown (`clearAll`,
+  [SessionRouter.ts:1461-1469](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/channels/base/src/SessionRouter.ts#L1461-L1469);
+  [`cli/src/commands/channel/start.ts:158`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/commands/channel/start.ts#L158)),
+  so it survives only a running service or a crash. The daemon-managed
+  form writes the same shape to
+  `~/.qwen/channels/daemon/<workspace hash>/routes.json`
+  ([runtime.ts:47-62](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/commands/channel/runtime.ts#L47-L62);
+  [`cli/src/commands/channel/daemon-worker.ts:656-662`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/commands/channel/daemon-worker.ts#L656-L662))
+  and only disposes the router on shutdown
+  ([877](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/commands/channel/daemon-worker.ts#L877),
+  [892](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/commands/channel/daemon-worker.ts#L892)),
+  so that file stays. The session transcripts themselves are ordinary
+  `chats/<sessionId>.jsonl` files.
 
 ## 3. Record schema
 
@@ -164,6 +191,74 @@ Model and permission rows (issues 96 and 97):
   [60-61](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/trustedFolders.ts#L60-L61)). The value is printed as recorded. A
   file that is not a JSON object is one
   `parser: <file> is not a JSON object` row.
+
+Sync: the inherited Gemini CLI features are covered under `Sync:` in
+[section 8 of `gemini-cli.md`](gemini-cli.md#8-parser-plan); Qwen Code
+changed them as follows, at the commit in [section 1](#1-source).
+
+- The Clearcut logger and Conseca are gone (neither name occurs in
+  `packages/core/src` or `packages/cli/src`). Usage statistics go
+  instead to Alibaba Cloud RUM (Real User Monitoring) at
+  `gb4w8c3ygj-default-sea.rum.aliyuncs.com`, on by default under
+  `privacy.usageStatisticsEnabled`
+  ([`core/src/telemetry/qwen-logger/qwen-logger.ts:80`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/telemetry/qwen-logger/qwen-logger.ts#L80),
+  [215-217](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/telemetry/qwen-logger/qwen-logger.ts#L215-L217);
+  [`cli/src/config/settingsSchema.ts:1461-1466`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/settingsSchema.ts#L1461-L1466)).
+  The prompt event carries its id and length, not its text
+  ([qwen-logger.ts:549-556](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/telemetry/qwen-logger/qwen-logger.ts#L549-L556)),
+  user feedback a rating
+  ([1044-1053](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/telemetry/qwen-logger/qwen-logger.ts#L1044-L1053)),
+  and error text is replaced by `***REDACTED***` before an event is
+  queued ([146-147](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/telemetry/qwen-logger/qwen-logger.ts#L146-L147),
+  [247-262](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/telemetry/qwen-logger/qwen-logger.ts#L247-L262)).
+  OpenTelemetry export is as in Gemini CLI: off by default, prompt text
+  in the record when `telemetry.logPrompts` is on
+  ([`core/src/config/config.ts:3398-3405`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/config/config.ts#L3398-L3405);
+  [`core/src/telemetry/loggers.ts:282-283`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/telemetry/loggers.ts#L282-L283)).
+- There is no Code Assist backend and no `/privacy` opt-in;
+  `chat.qwen.ai` is used for OAuth only
+  ([`core/src/qwen/qwenOAuth2.ts:28-31`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/qwen/qwenOAuth2.ts#L28-L31)).
+- `/export [md|html|json|jsonl] [path]` writes
+  `qwen-code-export-<ISO time>.<ext>` to the working directory or the
+  path given; it sends nothing
+  ([`cli/src/ui/commands/exportCommand.ts:78-100`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/ui/commands/exportCommand.ts#L78-L100),
+  [492-500](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/ui/commands/exportCommand.ts#L492-L500);
+  [`cli/src/ui/utils/export/utils.ts:10-13`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/ui/utils/export/utils.ts#L10-L13)).
+  `/bug` opens a GitHub issue URL and writes no history file
+  ([`cli/src/ui/commands/bugCommand.ts:33-47`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/ui/commands/bugCommand.ts#L33-L47)).
+- New: channels. A session driven by `qwen channel start` is
+  conducted on a messaging platform, so its prompts and replies sit on
+  that platform's servers as well as in the local transcript. The
+  marker is the channel routes file in
+  [section 2](#2-transcript-files): an entry names the `sessionId`
+  and the platform's `channelName`, `chatId`, `senderId` and
+  `threadId`. Proposed row, one per entry, after the session's first
+  row when the transcript is present and on its own otherwise:
+  `session synced: channel <channelName> chat <chatId> sender
+  <senderId> thread <threadId or -> (from channels/sessions.json, file
+  mtime)`, with `startedAt` as the time when present and the file's
+  modification time otherwise, and `routes.json` named in place of
+  `sessions.json` for the daemon form. A clean shutdown deletes
+  `sessions.json`, so a session whose entry is gone may still have
+  been a channel session; the bot tokens are in the `channels` key of
+  `settings.json` or in environment variables it names
+  ([`docs/users/features/channels/overview.md:28-36`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/docs/users/features/channels/overview.md#L28-L36),
+  [254-258](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/docs/users/features/channels/overview.md#L254-L258)). The sessions that
+  remain on the platform are deleted, if at all, on the platform, and
+  no local file records that.
+- New: the Mem0 external-context extension
+  (`integrations/external-context-mem0`, Mem0 being a memory service
+  an administrator configures) sends the submitted prompt as a search
+  query when its Auto Recall hook is installed, and an opt-in
+  `context_remember` tool writes content to that service; both are
+  off unless an administrator installs and configures them, and a
+  write appears in the transcript only as that tool call. No other
+  local marker records it.
+- Qwen Live (`packages/qwen-live`, a voice daemon that drives coding
+  sessions) keeps its own logs and memory under `~/.qwen-live`
+  ([`qwen-live/src/config.ts:867-869`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/qwen-live/src/config.ts#L867-L869));
+  it streams audio to the DashScope realtime model (Alibaba Cloud's
+  model API), which is the model API, not sync.
 
 Fixture:
 

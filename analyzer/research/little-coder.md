@@ -13,6 +13,11 @@ Apache-2.0. It depends on `@earendil-works/pi-coding-agent` `^0.83.0`
 ([package.json:41](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/package.json#L41)), read at [earendil-works/pi](https://github.com/earendil-works/pi) `v0.83.0`,
 [`845d6ff1f6643aba440341cce877ce1c43ebbc39`](https://github.com/earendil-works/pi/commit/845d6ff1f6643aba440341cce877ce1c43ebbc39).
 
+The retired v0.0.x Python implementation, which kept its own state in
+`~/.little-coder` and had a Gist sync command, was read at tag `v0.0.5`,
+[`424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03`](https://github.com/itayinbarr/little-coder/commit/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03),
+for sync only (2026-10-17).
+
 ## 2. Transcript files
 
 - `.pi/agent/sessions/--<encoded cwd>--/<ISO timestamp with - for : and .>_<uuid>.jsonl`,
@@ -90,6 +95,12 @@ Session files store tool inputs and outputs verbatim; `thinkingSignature`
 and `thoughtSignature` are opaque provider blobs ([types.ts:344-366](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L344-L366)).
 Credentials are in `auth.json`, not in sessions.
 
+The v0.0.x Python releases kept a GitHub personal access token with the
+`gist` scope as `gist_token` in `~/.little-coder/config.json`
+([cloudsave.py:9-12](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/cloudsave.py#L9-L12),
+[little_coder.py:1371-1384](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1371-L1384),
+[config.py:6-7](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/config.py#L6-L7)).
+
 ## 8. Parser plan
 
 Use the pi parser for `.pi/agent/sessions/*/*.jsonl` and label a session
@@ -108,6 +119,41 @@ session.
 | model | assistant `provider`/`model`; a `model: <id> provider=<provider>` `system` row at the first assistant message that names a model and `model: <old> -> <new> provider=<provider>` on each change, from pi's reader ([section 8 of `pi.md`](pi.md#8-parser-plan)) |
 | tool_name, tool_use_id | `toolCall.name`/`id`; `toolResult.toolName`/`toolCallId` |
 | text | text parts; tool_use: `arguments.command` or `path`, else JSON; tool_result: text parts |
+
+Sync: on the pi it pins (0.83.x) little-coder inherits pi's `/share`,
+which uploads a session as a secret GitHub gist through `gh` and leaves
+no local marker; pi's `/bug` upload and its `pi.bug-report` entry
+arrived after 0.83.0
+([0.83.0 interactive-mode.ts:5523-5608](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L5523-L5608);
+[the `Sync:` paragraph in section 8 of `pi.md`](pi.md#8-parser-plan)).
+little-coder's own extensions add no upload: a search of `bin/` and
+`.pi/extensions/` for `gist`, `upload`, `share`, `telemetry` and
+`fetch(` finds only the npm update check
+([bin/update-check.mjs:106](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/update-check.mjs#L106))
+and the research and browser tools. The v0.0.x Python releases had
+`/cloudsave`, opt-in: `/cloudsave setup <token>` stores the token,
+`/cloudsave` or `/cloudsave push [desc]` uploads the conversation as a
+private gist described `[little-coder] <desc or time>` holding
+`little-coder_session_<time>.json`, and `/cloudsave auto on` uploads at
+`/exit` ([cloudsave.py:73-101](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/cloudsave.py#L73-L101),
+[little_coder.py:1386-1400](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1386-L1400),
+[1443-1459](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1443-L1459),
+[1471-1486](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1471-L1486)). Each upload records only
+the newest gist id, `cloudsave_last_gist_id` in
+`~/.little-coder/config.json`, and later pushes update that same gist in
+place, so the key names one gist for every upload since the first
+([little_coder.py:1451-1457](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1451-L1457)); the
+uploaded `session_id` is a fresh random 8-hex value that matches no
+local session file
+([little_coder.py:1331-1336](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1331-L1336)). The
+automatic path passes `existing_gist_id=`, a keyword
+`upload_session` does not take, so it fails with a `TypeError` before
+any upload ([little_coder.py:1477-1480](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1477-L1480),
+[cloudsave.py:73-78](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/cloudsave.py#L73-L78)). The current parser does
+not read the v0.0.x layout; when it does, the row is one `system` row
+`session synced: gist <cloudsave_last_gist_id> (from
+.little-coder/config.json, file mtime)`, at the file's modification time,
+with an empty session id.
 
 Fixture:
 

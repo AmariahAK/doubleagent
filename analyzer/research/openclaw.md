@@ -14,6 +14,12 @@ sources and archives. Path research is in
 (2026-10-04, version `2026.9.8`, agent schema version 24 per
 [`package.json:5-9`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/package.json#L5-L9)), MIT, open source.
 
+Session sharing, backup upload and remote execution were checked at the same
+commit on 2026-10-17. OpenClaw has no vendor account: the Gateway (the
+long-running `openclaw gateway` server process that owns every session) is
+self-hosted, and the Control UI (its web front end), the TUI and the mobile
+and desktop apps are clients of that Gateway, not copies of its store.
+
 ## 2. Transcript stores
 
 Home-relative, with `.openclaw` replaceable by `.openclaw-<profile>` or the
@@ -130,6 +136,48 @@ The parser needs `zstandard`. Cold storage moves old generations into
 when `storage='file'`, [`:633-648`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-agent-schema.sql#L633-L648)); `archive_blob` in both archive tables
 is JSONL, zstd when `encoding='zstd'`.
 
+Sharing and upload state, all in SQLite:
+
+- `session_nodes.entry_json` key `publicShare`, an object
+  `{id, sessionId, createdAt}`: `id` 48 lower-case hex characters,
+  `sessionId` the transcript generation it publishes, `createdAt` epoch ms
+  ([`src/config/sessions/types.ts:627-628`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/types.ts#L627-L628),
+  [`src/config/sessions/session-public-share.ts:7-24`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/session-public-share.ts#L7-L24);
+  `entry_json` is the session-metadata column,
+  [`src/state/openclaw-agent-schema.sql:16-19`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-agent-schema.sql#L16-L19)). It is written when the
+  session's creator or a Gateway admin turns on **Public access** in the
+  Control UI (the `session.publicShare.set` Gateway method, a fresh random
+  `id` and `Date.now()`), and removed when it is turned off
+  ([`src/gateway/server-methods/sessions-sharing.ts:351-373`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/gateway/server-methods/sessions-sharing.ts#L351-L373)). The key
+  is absent on a session never published, and is dropped when the entry
+  moves to a new `sessionId` (a reset or fork) or is incognito
+  ([`src/config/sessions/session-accessor.sqlite-entry-store.ts:518-533`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/session-accessor.sqlite-entry-store.ts#L518-L533)).
+  The public URL is `<control UI base>/share/session?token=<opaque>`, served
+  by the Gateway itself; the token is an encrypted form of the grant and is
+  not stored ([`docs/web/urls.md:223-268`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/web/urls.md#L223-L268)).
+- `state/openclaw.sqlite` `backup_runs` (`id`, `created_at` epoch ms,
+  `archive_path`, `status` `ok|failed`, `manifest_json`)
+  ([`src/state/openclaw-state-schema.sql:1843-1849`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-state-schema.sql#L1843-L1849)): one row per
+  `openclaw backup` attempt. `manifest_json` holds `kind`
+  (`archive|sqlite-snapshot|git|external`), `target` (the storage location
+  name for an offsite archive, the commit sha for a Git backup), `namespace`,
+  `error`, `pushFailed`, `bytes`, and for an upload `location {name,
+  provider, locationId, key, namespace, plaintextBytes, storedBytes}` and
+  `retention {kept, deleted}`
+  ([`src/state/backup-run-records.contract.ts:98-124`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/backup-run-records.contract.ts#L98-L124);
+  writers [`src/commands/backup.ts:57-70`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/commands/backup.ts#L57-L70),
+  [`src/commands/backup-git.ts:140-151`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/commands/backup-git.ts#L140-L151)). The table is pruned to the
+  newest 200 rows plus the newest attempt and newest success per target
+  ([`src/state/backup-run-records.kernel.ts:22-48`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/backup-run-records.kernel.ts#L22-L48)).
+- `state/openclaw.sqlite` `worker_session_placements`, one row per session
+  whose turns run on a paired device or a cloud worker: `session_id`,
+  `session_key`, `execution_mode` (`worker-turn|remote-exec`), `state`
+  (`local` to `failed`), `environment_id`, `remote_workspace_dir`,
+  `last_transcript_ack_cursor`, `created_at_ms`, `updated_at_ms`
+  ([`src/state/openclaw-state-schema.sql:2142-2170`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-state-schema.sql#L2142-L2170)). The row is
+  deleted when the placement is retired
+  ([`src/gateway/worker-environments/placement-store.ts:261-279`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/gateway/worker-environments/placement-store.ts#L261-L279)).
+
 ## 6. Format versions
 
 Header `version`: current 4, minimum readable 3; versions 1-2 need doctor
@@ -148,6 +196,16 @@ In the same database as the transcripts: `auth_profile_store.store_json`,
 `image.data` is base64 media; `toolResult.content` and `bashExecution.output`
 are raw tool output and may contain anything the agent read, including
 `.env` files.
+
+The key that encrypts public share tokens is derived from the Gateway's
+device identity, the `device_identities` row of `state/openclaw.sqlite`
+([`src/gateway/control-ui-public-session-token.ts:196-217`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/gateway/control-ui-public-session-token.ts#L196-L217)); whoever
+holds that database can mint working share URLs for every `publicShare`
+grant. Offsite backup credentials (`accessKeyId`, `secretAccessKey`) and the
+encryption passphrase are configured under `storage.locations` in the config
+file as SecretRefs (references to a value held in the environment or a
+secret store, not the value itself)
+([`docs/concepts/storage-locations.md:79-91`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/concepts/storage-locations.md#L79-L91)).
 
 ## 8. Parser plan
 
@@ -271,6 +329,59 @@ default). The session-start row does not: a copy's names the file
 (`archive=<reason>.<ts>` or `copy=<suffix>`) where the database's carries
 the `session_windows` and archive columns, so each copy keeps one row
 showing it exists.
+
+Sync: OpenClaw keeps no copy of a session on a vendor service. Session
+content leaves the Gateway host in three ways, all operator actions; the
+first two leave a local record ([section 5](#5-sqlite-and-compression)).
+
+- Public link: `session_nodes.entry_json` `publicShare` marks a session
+  whose user messages and final answers anyone with the URL can read,
+  served by the Gateway (opt-in per session, off by default,
+  [`docs/concepts/multi-user.md:21-36`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/concepts/multi-user.md#L21-L36)). Proposed row, one `system`
+  row after the session-start row: `session synced: public share
+  <publicShare.id> generation <publicShare.sessionId> (from
+  openclaw-agent.sqlite session_nodes.entry_json, publicShare.createdAt)`,
+  timestamped by `createdAt`. Turning access off removes the key, and
+  deleting the session deletes its `session_nodes` row
+  ([`src/config/sessions/session-accessor.sqlite-entry-store.ts:271-274`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/session-accessor.sqlite-entry-store.ts#L271-L274));
+  the `.jsonl.deleted.*` archive and its `session_transcript_archives`
+  blob keep the transcript but have no column for the grant
+  ([`src/state/openclaw-agent-schema.sql:608-624`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-agent-schema.sql#L608-L624)), so no local
+  file says a deleted or unpublished session was ever public.
+- Backup upload: `openclaw backup create --to <location>` uploads the whole
+  state directory, every agent database included, to a configured storage
+  location (a mounted disk, or Cloudflare R2, the Cloudflare object store,
+  through a plugin) under `backups/<namespace>/<UTC ts>-<8 hex>.tar.gz`,
+  and `openclaw backup git create --push` pushes per-table JSONL dumps to a
+  Git remote; both are opt-in and can be scheduled with `openclaw backup
+  enable` ([`docs/cli/backup.md:86-96`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L86-L96),
+  [`docs/cli/backup.md:318-321`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L318-L321), [`docs/cli/backup.md:364`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L364)).
+  The marker is host-wide, not per session: each `backup_runs` row says
+  every session in the uploaded databases at `created_at` left the host.
+  Proposed row, one `system` row per `backup_runs` row with `status` `ok`
+  and a `location` or a pushed Git `target`, empty `session_id`:
+  `session synced: backup <kind> to <location.name or archive_path> key
+  <location.key or target> namespace <namespace or -> (from
+  state/openclaw.sqlite backup_runs, created_at)`, timestamped by
+  `created_at`. Deleting a session does not touch `backup_runs`, and the
+  uploaded archives keep the session; retention prunes the table
+  ([`docs/cli/backup.md:486-499`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L486-L499)).
+- Remote execution: a session placed on a paired device or a Crabbox cloud
+  worker (a machine OpenClaw rents from AWS, Hetzner or another backend
+  for the session) sends its workspace and turn context to that machine
+  while the Gateway keeps the canonical transcript
+  ([`docs/gateway/cloud-sessions.md:10-20`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/gateway/cloud-sessions.md#L10-L20)). This is execution, not
+  a copy kept elsewhere, and no row is proposed; `worker_session_placements`
+  names the environment while the placement lives.
+
+Not sync: the daily update check and the opt-in anonymous statistics carry
+no prompt or reply text, only a session-creation count
+([`docs/gateway/telemetry.md:11-24`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/gateway/telemetry.md#L11-L24)); OpenTelemetry export sends
+message text only when `diagnostics.otel.captureContent` is `true`, to the
+operator's own collector
+([`docs/gateway/opentelemetry/privacy-and-trace-context.md:47-56`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/gateway/opentelemetry/privacy-and-trace-context.md#L47-L56)).
+Searched `share`, `publicShare`, `sync`, `upload`, `cloud`, `remote`,
+`backup`, `telemetry`, `export` and `publish` in `src/` and `docs/`.
 
 Fixture (JSONL form; the SQLite form stores the same strings in `event_json`):
 

@@ -15,6 +15,15 @@ Paths, credentials and the rest of the per-user state are in
 source. The schema has moved out of `packages/opencode` into
 `packages/core` (tables) and `packages/schema` (JSON shapes).
 
+Session sharing was checked at this commit on 2026-10-17. On the default
+branch at [`797d2af`](https://github.com/sst/opencode/commit/797d2afdbf8f0b4f189748373ff1a69bde9e0ff7)
+the `share/` modules are gone and the share and unshare keybindings read
+"Deprecated: session sharing was removed"
+([`packages/tui/src/config/v1/keybind.ts:101-102`](https://github.com/sst/opencode/blob/797d2afdbf8f0b4f189748373ff1a69bde9e0ff7/packages/tui/src/config/v1/keybind.ts#L101-L102));
+no migration in that tree drops `session_share`, so a database created by an
+earlier release can still hold the share rows in
+[section 5](#5-sqlite-specifics).
+
 ## 2. Transcript stores
 
 One SQLite file for all projects: `~/.local/share/opencode/opencode.db`
@@ -108,6 +117,47 @@ row; assistant → user through `data.parentID`. `session_message` joins on
 written since the last checkpoint live only in `opencode.db-wal`, so a copy
 without the sidecar loses recent messages. No encryption or compression.
 
+Share records. A session published to OpenCode's web share service (the
+`/share` command, [section 8](#8-parser-plan)) has one `session_share` row
+([`packages/core/src/share/sql.ts:5-13`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/share/sql.ts#L5-L13); CREATE in
+[`...ursula.ts:89-97`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/migration/20260127222353_familiar_lady_ursula.ts#L89-L97)):
+`session_id` (primary key, references `session.id` with `ON DELETE
+CASCADE`), `id` (the share id; the hosted service makes it the last eight
+characters of the session id,
+[`packages/enterprise/src/core/share.ts:117-122`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/enterprise/src/core/share.ts#L117-L122)),
+`secret` (a random UUID the service returns and the client sends back with
+every sync and delete, so a credential for the public copy), `url` (the
+public page) and `time_created`, `time_updated` (epoch ms,
+[`database/schema.sql.ts:3-10`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/schema.sql.ts#L3-L10)).
+`ShareNext.create` writes it once the service has answered the create
+request, as an upsert when the session is shared again
+([`packages/opencode/src/share/share-next.ts:310-336`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L310-L336)), and
+`ShareNext.remove` deletes it after the service accepts the delete
+([`:338-359`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L338-L359)).
+The same URL goes into `session.share_url`
+([`packages/opencode/src/share/session.ts:26-32`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/session.ts#L26-L32),
+[`packages/opencode/src/session/session.ts:810-812`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/session/session.ts#L810-L812),
+[`core/src/session/projector.ts:56`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/session/projector.ts#L56)),
+which `/unshare` sets back to NULL
+([`share/session.ts:34-37`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/session.ts#L34-L37)).
+Each of these changes is also a durable `session.updated.1` event
+([`schema/src/v1/session.ts:502-506`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/v1/session.ts#L502-L506),
+[`:580-587`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/v1/session.ts#L580-L587);
+[`core/src/event.ts:336-347`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/event.ts#L336-L347))
+whose `data.info.share.url` holds the URL and `data.info.time.updated` the
+time of the change
+([`session/session.ts:734-746`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/session/session.ts#L734-L746)),
+so the `event` table still holds the URL after an unshare. A session never
+shared has no `session_share` row, a NULL `share_url` and no `share` key in
+its events. Deleting a session removes its `session` row, its
+`session_share` row with it, and its `event` rows
+([`session/session.ts:606-623`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/session/session.ts#L606-L623),
+[`projector.ts:257-259`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/session/projector.ts#L257-L259),
+[`event.ts:514-521`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/event.ts#L514-L521)); the upgrade
+migration
+[`20260622170816_reset_v2_session_state.ts:11`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/migration/20260622170816_reset_v2_session_state.ts#L11)
+emptied `event` once.
+
 ## 6. Format versions
 
 Legacy JSON under `~/.local/share/opencode/storage/`, one file per key:
@@ -129,7 +179,9 @@ JSON records carry `id`, `sessionID` and `messageID` inline (the database
 
 `credential.value` JSON (`{type:"oauth", access, refresh}` or `{type:"key",
 key}`, [`schema/src/credential.ts:16-34`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/credential.ts#L16-L34)), `account.access_token` and
-`refresh_token`, `control_account.*`, `session_share.secret`, plus the legacy
+`refresh_token`, `control_account.*`, `session_share.secret` (the share
+service's per-share secret that authorises sync to and deletion of the
+public copy, [section 5](#5-sqlite-specifics)), plus the legacy
 files `~/.local/share/opencode/auth.json` ([`auth/index.ts:10`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/auth/index.ts#L10),[`14-35`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/auth/index.ts#L14-L35)) and
 `mcp-auth.json`. Tool `input` and `output` text can contain pasted tokens.
 
@@ -167,6 +219,70 @@ message's timestamp. The session's `permission` JSON and the project's
 shape, so the parser does not read them (issue 98); the research records
 no per-call approval or denial, and whether a denied call shows as a tool
 `state.status` of `error` is not researched.
+
+Sync: OpenCode uploads a session only when it is shared. Sharing starts
+from `/share` in the TUI, which asks once and remembers the answer as
+`share_consent` in `~/.local/state/opencode/kv.json`
+([`packages/tui/src/routes/session/index.tsx:465-497`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/tui/src/routes/session/index.tsx#L465-L497),
+[`packages/tui/src/context/kv.tsx:15`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/tui/src/context/kv.tsx#L15)),
+from `opencode run --share`
+([`packages/opencode/src/cli/cmd/run.ts:161-164`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/cli/cmd/run.ts#L161-L164),
+[`:535-547`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/cli/cmd/run.ts#L535-L547)), or
+for every new top-level session when the config sets `share: "auto"` (or
+the deprecated `autoshare: true`) or `OPENCODE_AUTO_SHARE` is set
+([`packages/core/src/v1/config/config.ts:57-63`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/v1/config/config.ts#L57-L63),
+[`config/config.ts:589-591`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/config/config.ts#L589-L591),
+[`effect/runtime-flags.ts:17`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/effect/runtime-flags.ts#L17),
+[`share/session.ts:39-46`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/session.ts#L39-L46)).
+With `share` unset sharing is manual; `share: "disabled"` or
+`OPENCODE_DISABLE_SHARE` blocks it
+([`share/session.ts:28`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/session.ts#L28),
+[`share-next.ts:23`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L23)).
+Once shared, a full copy and then every session, message, part, diff and
+model update is posted with the share secret to `<base>/api/share/<id>/sync`
+([`share-next.ts:179-199`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L179-L199),
+[`:247-299`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L247-L299)),
+where the base is `https://opncd.ai` or the config's `enterprise.url`, or,
+for a user signed in to an OpenCode console account with an active
+organisation (the `account` table), the account's URL under `/api/shares`
+with its bearer token and an `x-org-id` header
+([`:206-222`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L206-L222)).
+OpenCode Zen, OpenCode's hosted model gateway, is a model provider, so its
+calls are model API calls and not sync; trace and log export over OTLP
+(OpenTelemetry's wire protocol) goes only to an endpoint the user sets in
+`OTEL_EXPORTER_OTLP_ENDPOINT`
+([`core/src/flag/flag.ts:16-17`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/flag/flag.ts#L16-L17)).
+The planned form is one `system` row per `session_share` row,
+`session synced: share <id> url <url> (from opencode.db session_share,
+time_created)`, timestamped by `time_created`, never with `secret`; for a
+session with no `session_share` row whose `session.updated.1` events carry
+`info.share.url`, `session synced: share url <url> (from opencode.db event
+session.updated.1, info.time.updated)` at that event's `info.time.updated`,
+and `session unshared (from opencode.db event session.updated.1,
+info.time.updated)` at the first later event without `share`. Deleting a
+session through OpenCode removes the `session`, `session_share` and `event`
+rows ([section 5](#5-sqlite-specifics)), and ShareNext's `session.deleted`
+subscriber asks the service to delete the public copy
+([`share-next.ts:200`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L200));
+whether that request still finds the share row before the cascade removes
+it is not determined from source, and no local file records that the remote
+copy was deleted. What survives is the log: `creating share` and `removing
+share` lines with the `sessionID` go to
+`~/.local/share/opencode/log/opencode.log` at the default INFO level
+([`share-next.ts:312`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L312),
+[`:340`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L340);
+[`core/src/observability/logging.ts:49-52`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/observability/logging.ts#L49-L52),
+[`:59-65`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/observability/logging.ts#L59-L65);
+[`core/src/global.ts:23`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/global.ts#L23)).
+Separately, a session can be moved to a workspace (the control plane's
+`workspace` table) served by another OpenCode instance
+(`Workspace.sessionWarp`,
+[`control-plane/workspace.ts:559`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/control-plane/workspace.ts#L559)),
+recorded as `session.workspace_id` and a `workspace` row
+([`core/src/control-plane/workspace.sql.ts:6-18`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/control-plane/workspace.sql.ts#L6-L18));
+the one built-in adapter targets a local worktree
+([`control-plane/adapters/worktree.ts:92`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/control-plane/adapters/worktree.ts#L92)),
+so a remote target comes from a plugin, and none was researched.
 
 Fixture rows:
 

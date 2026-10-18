@@ -31,6 +31,22 @@ marker `storage/migration` ([`packages/opencode/src/storage/storage.ts:65`](http
 The VS Code globalStorage `kilocode.kilo-code/tasks/<id>/` holds only
 pre-migration Roo-style files.
 
+Cloud session marker: `<data>/storage/session_share/<sessionID>.json`, a
+storage key written as a JSON file
+([`storage.ts:64-66`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/storage/storage.ts#L64-L66)),
+holds `{id, ingestPath, url?}`
+([`packages/opencode/src/kilo-sessions/kilo-sessions.ts:1549-1558`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1549-L1558)). `id` and `ingestPath`
+(the path on Kilo's session ingest service that receives the session's
+events) are written when the ingest service registers the session, at
+session creation for a user signed in to Kilo
+([`:1432-1466`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1432-L1466)); `url`,
+`https://app.kilo.ai/s/<share_token>`, is added by a share
+([`:1468-1511`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1468-L1511)) and removed by
+an unshare, which keeps the file
+([`:1513-1547`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1513-L1547)). A session
+created while signed out, or with `KILO_DISABLE_SESSION_INGEST` set, has no
+file. The file carries no time of its own.
+
 ## 3. Record schema
 
 V1 `message.data` and `part.data` ([`packages/schema/src/v1/session.ts`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/schema/src/v1/session.ts)):
@@ -98,7 +114,9 @@ source and is legacy only.
 
 `auth.json` ([`packages/opencode/src/auth/index.ts:11`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/auth/index.ts#L11)), `credential.value`,
 `account.access_token`/`refresh_token`, `control_account`, and
-`session.share_url`. The database is collected unflagged like Cursor's
+`session.share_url`. The `storage/session_share/*.json` files hold no
+credential: the ingest service authenticates with the Kilo token from
+`auth.json` ([section 8](#8-parser-plan)). The database is collected unflagged like Cursor's
 `state.vscdb`; the tables above are the redaction targets (issue 23).
 
 ## 8. Parser plan
@@ -136,6 +154,62 @@ message's timestamp. Kilo writes V1 and V2 for every event ([section 5](#5-sqlit
 shape, so the parser does not read them (issue 98), nor are the `.kilo/` and `.kilocode/` permission configuration files that [`collectors/research/kilo-code.md`](../../collectors/research/kilo-code.md) names; the research records
 no per-call approval or denial, and whether a denied call shows as a tool
 `state.status` of `error` is not researched.
+
+Sync: the share code is OpenCode's
+([opencode.md section 8](opencode.md#8-parser-plan)), and Kilo changed what
+it calls. Kilo replaced OpenCode's share service with its own cloud
+sessions: for a user signed in to Kilo (a `kilo` entry in `auth.json`, or
+`KILO_API_KEY`, [`packages/opencode/src/kilo-sessions/kilo-sessions.ts:199-210`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L199-L210)),
+every new session is registered with `POST /api/session` on
+`https://ingest.kilosessions.ai` (`KILO_SESSION_INGEST_URL` overrides) at
+creation ([`:245-272`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L245-L272),
+[`:676-681`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L676-L681)), and from then
+on every message, part, model and diff is posted to its `ingestPath`
+([`:771-779`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L771-L779);
+[`ingest-queue.ts:281-295`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/ingest-queue.ts#L281-L295)).
+This is on by default once signed in; only `KILO_DISABLE_SESSION_INGEST`
+turns it off, and `KILO_DISABLE_SHARE` blocks only the public link
+([`:275-278`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L275-L278)). `/share` and
+`/unshare` reach Kilo's service instead of OpenCode's
+([`packages/opencode/src/share/session.ts:25-36`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/share/session.ts#L25-L36)),
+whose `ShareNext` initialisation Kilo commented out
+([`packages/opencode/src/project/bootstrap.ts:9-11`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/project/bootstrap.ts#L9-L11)),
+so the upstream `session_share` table stays empty; `session.share_url` and
+the `session.updated.1` events still record the public URL as upstream
+([`packages/opencode/src/session/session.ts:1014-1016`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/session/session.ts#L1014-L1016)).
+The marker is the `storage/session_share/<sessionID>.json` file
+([section 2](#2-transcript-files)). The planned form is one `system` row per
+file, `session synced: kilo session <id> ingest <ingestPath> share <url or
+-> (from storage/session_share/<sessionID>.json, file mtime)`, timestamped
+by the file's modification time, plus the `share_url` and event rows
+planned for OpenCode. Deleting a session asks the service to delete the
+remote copy (`DELETE /api/session/<id>`) and removes the file only when the
+service accepts; signed out, or on a network error or an error status, the
+file stays, with a `share remove failed` log line in the second and third
+cases ([`session/session.ts:728-733`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/session/session.ts#L728-L733),
+[`packages/opencode/src/kilocode/session/index.ts:281-284`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/session/index.ts#L281-L284),
+[`kilo-sessions.ts:1687-1718`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1687-L1718)).
+The service's `creating session`, `sharing`, `unsharing` and `removing
+share` lines go to `<data>/log/<ISO time>.log`
+([`kilo-sessions.ts:1444`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1444),
+[`:1487`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1487), [`:1527`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1527),
+[`:1691`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1691);
+[`packages/core/src/util/log.ts:84-85`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/util/log.ts#L84-L85)).
+A second uploader, session export to
+`https://supermassive-black-hole.kiloapps.io/v1/session-export/batch` for
+personal accounts on free Kilo gateway models, is compiled in but switched
+off (`enabled = false`) at this commit
+([`kilocode/session-export/session-export.ts:35`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/session-export/session-export.ts#L35),
+[`worker/endpoint.ts:1`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/session-export/worker/endpoint.ts#L1),
+[`eligibility.ts:16-22`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/session-export/eligibility.ts#L16-L22));
+its `session-export.db` and `session-export-workspace.json` sit in `<data>`
+([`kilocode/bootstrap.ts:71-89`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/bootstrap.ts#L71-L89)).
+Telemetry goes to PostHog, a product analytics service
+([`packages/kilo-telemetry/src/client.ts:9`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-telemetry/src/client.ts#L9),
+level set by `KILO_TELEMETRY_LEVEL`,
+[`telemetry.ts:89-91`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-telemetry/src/telemetry.ts#L89-L91));
+a search of its event definitions for `prompt`, `text`, `content` and
+`message` found counts and ids, not prompt text.
 
 Fixtures:
 

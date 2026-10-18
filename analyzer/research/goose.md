@@ -12,6 +12,15 @@ Paths, credentials and the rest of the per-user state are in
 source. Rust; sqlx 0.9.0, rmcp 3.4.1, etcetera 0.11.0, rustyline 18.0.1
 ([`Cargo.lock`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/Cargo.lock)). Third-party crate sources were read to verify serialisation.
 
+The repository has since moved to
+[aaif-goose/goose](https://github.com/aaif-goose/goose) (GitHub redirects
+the old name). Sync was checked at
+[`bfcc6ee`](https://github.com/aaif-goose/goose/commit/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc)
+on 2026-10-17, where the `sessions` schema is at version 17
+([`session_manager.rs:32`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/session/session_manager.rs#L32));
+every other citation in this document remains at the earlier commit
+unless it names the later one.
+
 ## 2. Transcript stores
 
 Directories come from etcetera `choose_app_strategy`
@@ -139,6 +148,60 @@ not added
 ([`rustyline-18.0.1/src/config.rs:248-251`](https://github.com/kkawakam/rustyline/blob/cc1aab036d62aff3dbdc681b08949076ec275030/src/config.rs#L248-L251);
 [`history.rs:264-277`](https://github.com/kkawakam/rustyline/blob/cc1aab036d62aff3dbdc681b08949076ec275030/src/history.rs#L264-L277)).
 
+Gateway pairings to `sessions.db`, on session id (at
+[`bfcc6ee`](https://github.com/aaif-goose/goose/commit/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc)).
+The gateway is Goose's chat-platform front end: `goose gateway start`
+runs a bot (Telegram is the one platform implemented, through
+`https://api.telegram.org`) that relays each message from a paired chat
+user into a Goose session and sends the reply back to the chat
+([`gateway/telegram.rs:13`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/telegram.rs#L13);
+[`gateway/handler.rs:451-458`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/handler.rs#L451-L458)).
+Pairing a chat user creates one session with `session_type` `gateway`,
+`name` `<platform>/<display name or user id>` and `working_dir`
+`.config/goose/gateway/<platform>/<user_id>`
+([`handler.rs:304-326`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/handler.rs#L304-L326),
+[`826-830`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/handler.rs#L826-L830);
+[`session_manager.rs:50-61`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/session/session_manager.rs#L50-L61)),
+then records the pairing under the `gateway_pairings` key of
+`.config/goose/config.yaml`
+([`handler.rs:355-363`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/handler.rs#L355-L363);
+[`gateway/pairing.rs:11`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/pairing.rs#L11),
+[`104-120`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/pairing.rs#L104-L120)).
+Each list item is `{platform, user_id, display_name, state}` (strings,
+`display_name` may be null), and `state` is internally tagged on its own
+`state` key: `{state: unpaired}`, `{state: pending_code, code,
+expires_at}` or `{state: paired, session_id, paired_at}`, with
+`paired_at` in epoch seconds
+([`pairing.rs:15-21`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/pairing.rs#L15-L21);
+[`gateway/mod.rs:59-65`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/mod.rs#L59-L65);
+[`handler.rs:355`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/handler.rs#L355)).
+`state.session_id` equals `sessions.id`. A sample, with the platform id
+and name invented:
+
+```yaml
+gateway_pairings:
+- platform: telegram
+  user_id: '123456789'
+  display_name: alice
+  state:
+    state: paired
+    session_id: 20261017_4
+    paired_at: 1792224000
+```
+
+What the pairing survives: unpairing a user and removing a gateway
+delete its entries from `gateway_pairings`
+([`gateway/manager.rs:175-190`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/manager.rs#L175-L190),
+[`331-343`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/manager.rs#L331-L343))
+and leave the `gateway` session row, its name and its working directory;
+`goose session remove` deletes the rows
+([`session_manager.rs:2471-2498`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/session/session_manager.rs#L2471-L2498))
+and leaves the `gateway_pairings` entry, which then names a session that
+no longer exists. The working directory under `.config/goose/gateway/` is
+never removed by either. No gateway code deletes chat messages on the
+platform (no `deleteMessage` call in `crates/goose/src/gateway/`), so the
+chat copy on Telegram outlives every local delete.
+
 ## 5. SQLite specifics
 
 Opened with `journal_mode=WAL`, `busy_timeout` 30 s, directory mode 0700
@@ -169,6 +232,17 @@ headers and keys are not logged (`ModelConfig.request_headers` is
 `#[serde(skip)]`, [`model.rs:58-59`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-provider-types/src/model.rs#L58-L59)). Credentials live in the keyring or
 `.config/goose/secrets.yaml` ([`config/base.rs:89-91`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L89-L91),[`394`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L394)). `recipe_json` and
 `user_recipe_values_json` can carry user-entered parameters.
+
+The gateway keeps its platform configuration, the Telegram bot token
+included, as the secret `gateway_platform_config_<type>` (keyring or
+`secrets.yaml`) and only `{gateway_type, max_sessions, allowed_user_ids}`
+under `gateway_configs` in `config.yaml`
+([`gateway/manager.rs:15-28`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/gateway/manager.rs#L15-L28)).
+The `gateway_pairings` sync marker ([section 4](#4-joins)) also lives in
+`config.yaml`, which the collector flags as a secret, so a `--no-secrets`
+collection loses it. The Langfuse keys (`LANGFUSE_PUBLIC_KEY`,
+`LANGFUSE_SECRET_KEY`) are read from the environment only
+([`tracing/langfuse_layer.rs:154-172`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/tracing/langfuse_layer.rs#L154-L172)).
 
 ## 8. Parser plan
 
@@ -224,6 +298,94 @@ Model and permission rows (issues 96 and 97), all `system`, from
   no recorded shape and are not read.
 - The legacy JSONL sessions record no model and the request log has no
   session id, so neither yields model rows.
+
+Sync: the one session that leaves the host with a local marker is a
+gateway session, whose whole conversation is relayed through the
+Telegram bot and stays in that chat on Telegram's servers. The marker is
+the `gateway_pairings` entry in `.config/goose/config.yaml`
+(`AppData/Roaming/Block/goose/config/config.yaml` on Windows), written once
+when the chat user pairs and removed on unpair or gateway removal, plus
+the session's own `session_type` `gateway`, which survives the unpair
+([section 4](#4-joins)). The planned form is one `system` row per
+`paired` entry, joined to the session by `state.session_id`,
+`session synced: gateway <platform> user <user_id> display
+<display_name or -> (from config.yaml gateway_pairings, paired_at)`,
+timestamped by `paired_at` (epoch seconds); `unpaired` and
+`pending_code` entries name no session and yield nothing. A `gateway`
+session with no pairing entry (unpaired, or collected with
+`--no-secrets`) is still marked by its `session_type`, which the session's
+start row already carries. A session deleted with `goose session remove`
+leaves its pairing entry naming a missing session id, and the row is
+still yielded with that id. Nothing else at
+[`bfcc6ee`](https://github.com/aaif-goose/goose/commit/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc)
+uploads a session to a Goose or Block account; what was read:
+
+- `goose session export` writes Markdown, JSON, YAML or HTML to a local
+  file or stdout and records nothing
+  ([`goose-cli/src/cli.rs:558-578`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose-cli/src/cli.rs#L558-L578);
+  [`commands/session.rs:293-334`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose-cli/src/commands/session.rs#L293-L334)).
+  No share, sync, cloud, upload or publish command exists in the CLI's
+  command list, and the desktop app's former share feature is gone (no
+  `shareUrl`, `share_url` or `BASE_URL_SHARE` in `crates/` or `ui/`).
+- The `sessions` table at schema version 17 has no remote, share or sync
+  column; its columns beyond those in [section 3](#3-record-schema) are
+  local (`thread_id`, `system_prompt_override`, `system_prompt_extras_json`, and
+  `container_id`, a local Docker container for extensions)
+  ([`session_manager.rs:1140-1174`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/session/session_manager.rs#L1140-L1174),
+  [`1560-1575`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/session/session_manager.rs#L1560-L1575),
+  [`1728-1749`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/session/session_manager.rs#L1728-L1749)).
+- Telemetry goes to PostHog (a product-analytics service) only after the
+  user opts in (`GOOSE_TELEMETRY_ENABLED: true` in `config.yaml`;
+  `GOOSE_TELEMETRY_OFF` forces it off) and carries counts, versions,
+  provider, model, extension names and a pattern-redacted error message,
+  never prompt or reply text
+  ([`posthog.rs:16-52`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/posthog.rs#L16-L52),
+  [`389-450`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/posthog.rs#L389-L450),
+  [`530-536`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/posthog.rs#L530-L536));
+  its only local file is `telemetry_installation.json` (an installation
+  id, first-seen time and session count) in the state directory
+  ([`posthog.rs:97-114`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/posthog.rs#L97-L114)).
+  The desktop app's own analytics send nothing at this commit
+  ([`ui/desktop/src/utils/analytics.ts:1-18`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/ui/desktop/src/utils/analytics.ts#L1-L18)),
+  and its bug-report button opens a GitHub issue form with system details
+  only
+  ([`Diagnostics.tsx:185-191`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/ui/desktop/src/components/ui/Diagnostics.tsx#L185-L191)).
+- Tracing uploads content with no local marker. Langfuse (an LLM tracing
+  service, self-hosted or cloud) is enabled by `LANGFUSE_PUBLIC_KEY` and
+  `LANGFUSE_SECRET_KEY` in the environment, default URL
+  `http://localhost:3000`
+  ([`langfuse_layer.rs:13`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/tracing/langfuse_layer.rs#L13),
+  [`154-172`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/tracing/langfuse_layer.rs#L154-L172));
+  OTLP (the OpenTelemetry protocol) export by `OTEL_EXPORTER_OTLP_ENDPOINT`
+  or `otel_exporter_otlp_endpoint` in `config.yaml`, with the host and user
+  name as resource attributes
+  ([`otel/otlp.rs:224-283`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/otel/otlp.rs#L224-L283)).
+  Both are off by default, and prompt, reply and message text enter the
+  spans only when `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` is
+  `true`
+  ([`agents/gen_ai_telemetry.rs:9-14`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/agents/gen_ai_telemetry.rs#L9-L14);
+  [`agents/agent.rs:988-994`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/agents/agent.rs#L988-L994);
+  [`agents/reply_parts.rs:272-277`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/agents/reply_parts.rs#L272-L277)).
+  An endpoint in `config.yaml` is the only trace on disk; the environment
+  variables leave none. No row is proposed.
+- Roaming (`goose roam`) is peer-to-peer remote control, not an upload:
+  `roam share` serves this host's agent over ACP (the Agent Client
+  Protocol) through iroh relays (a peer-to-peer QUIC library) to peers
+  whose keys were accepted, and the sessions they drive stay in this
+  host's `sessions.db`; `roam connect`, `delegate` and `bridge` drive a
+  peer's agent, whose sessions stay on the peer
+  ([`goose-roaming/src/lib.rs:1-24`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose-roaming/src/lib.rs#L1-L24);
+  [`commands/roam.rs:157-197`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose-cli/src/commands/roam.rs#L157-L197)).
+  The local record is `roaming_directory.json` in the state directory,
+  one entry per peer with `endpoint_id`, `label`, `direction` (`inbound`
+  or `outbound`), `agent_id`, `first_seen_ms`, `last_seen_ms` and
+  `connected`, beside `roaming_peers.json` and `roaming_trust.json` in the
+  config directory
+  ([`roam.rs:36-46`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose-cli/src/commands/roam.rs#L36-L46);
+  [`goose-roaming/src/directory.rs:17-44`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose-roaming/src/directory.rs#L17-L44)).
+  It names no session id, so it is not a sync marker; a session hosted
+  for a peer has `session_type` `acp` unless the client names itself
+  ([`acp/server/new_session.rs:275-285`](https://github.com/aaif-goose/goose/blob/bfcc6ee6f1ee18d0c4c852a65c49b25f87ee40dc/crates/goose/src/acp/server/new_session.rs#L275-L285)).
 
 Fixture:
 

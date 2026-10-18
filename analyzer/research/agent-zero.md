@@ -85,6 +85,61 @@ are merged into `kvps` ([`log.py:336-340`](https://github.com/agent0ai/agent-zer
   is later set to the result ([`helpers/tool.py:56-59`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/tool.py#L56-L59),[`68`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/tool.py#L68)).
 - `response` items: the final answer to the user.
 
+Keys in `data` and `agents[].data` that record a remote copy. Context
+and agent data are saved without the keys that start with `_`
+([`helpers/persist_chat.py:194-195`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/persist_chat.py#L194-L195),[`223`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/persist_chat.py#L223)), so these survive:
+
+- `agents[].data.responses_state`, written after each model reply that
+  carries a provider response id ([`agent.py:1062-1082`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/agent.py#L1062-L1082)):
+  `{response_id, previous_response_id, provider_model_key, history_counter,
+  response_ids: [...]}`, all strings but `history_counter` (the history
+  `sequence` of the reply) and `response_ids` (every id the chat has had
+  for that model). The Responses API is OpenAI's generation endpoint, which
+  can keep each response on the provider's side (`store: true`) so the
+  next turn sends only `previous_response_id` and the new input. Agent
+  Zero calls providers through the litellm library, and its transport
+  sets `store: true` when the model's `responses_state` is `provider`,
+  which is the value when none is set, and `store: false` for `local` and
+  `off` ([`helpers/litellm_transport.py:889-904`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/litellm_transport.py#L889-L904),[`1554-1556`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/litellm_transport.py#L1554-L1556)).
+  It applies only to a model whose `a0_api_mode` is `responses`; every
+  stock provider in [`conf/model_providers.yaml`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/conf/model_providers.yaml#L176-L182)
+  is `chat`, which sets the state to `off`
+  ([`105-112`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/litellm_transport.py#L105-L112)), and the bundled Codex
+  (ChatGPT account) provider is `responses` with `responses_state: local`
+  ([`plugins/_oauth/conf/model_providers.yaml:9-10`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_oauth/conf/model_providers.yaml#L9-L10)). So a key present
+  means the provider returned response ids, not that it stored them; a
+  non-empty `previous_response_id` means a turn was chained on a stored
+  response. History compression and manual compaction drop `response_id`
+  and `previous_response_id` but keep `response_ids`
+  ([`helpers/history.py:736-755`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/history.py#L736-L755), [`extensions/python/message_loop_end/_10_organize_history.py:12`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/extensions/python/message_loop_end/_10_organize_history.py#L12),
+  [`plugins/_chat_compaction/helpers/compactor.py:149`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_chat_compaction/helpers/compactor.py#L149)); a branched chat
+  drops the whole key ([`plugins/_chat_branching/api/branch_chat.py:142-144`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_chat_branching/api/branch_chat.py#L142-L144)).
+  The same id is also in each assistant message's `metadata.responses`
+  ([section 3](#3-record-schema), above).
+- Telegram chats (the bundled `_telegram_integration` plugin, a bot the
+  user runs with a token from Telegram): `data.telegram_bot` (bot name),
+  `telegram_chat_id`, `telegram_chat_type`, `telegram_user_id`,
+  `telegram_username` and `telegram_bot_cfg`, the bot's whole configuration entry
+  ([`plugins/_telegram_integration/helpers/constants.py:5-15`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/constants.py#L5-L15),
+  [`plugins/_telegram_integration/helpers/handler.py:380-400`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L380-L400)); the chat
+  is named `Telegram: @<username>` or `Telegram: <user id>`
+  ([`391-392`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L391-L392)).
+- WhatsApp chats (`_whatsapp_integration`): `data.wa_chat_id`,
+  `wa_sender_name`, `wa_sender_number`, `wa_is_group`, `wa_active`,
+  `wa_last_body`, `wa_last_msg_id`
+  ([`plugins/_whatsapp_integration/helpers/handler.py:33-39`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_whatsapp_integration/helpers/handler.py#L33-L39),[`153-159`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_whatsapp_integration/helpers/handler.py#L153-L159)).
+- Email chats (`_email_integration`, IMAP in and SMTP out):
+  `data.email_handler`, `email_sender`, `email_thread_id`,
+  `email_subject`, `email_message_id`, `email_references`,
+  `email_last_body`
+  ([`plugins/_email_integration/helpers/dispatcher.py:14-21`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_email_integration/helpers/dispatcher.py#L14-L21),[`269-270`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_email_integration/helpers/handler.py#L269-L270)).
+
+Telegram also keeps `usr/plugins/_telegram_integration/state.json`,
+`{"chats": {"<bot>:<user id>:<chat id>": "<ctxid>"}}`, written when a
+Telegram user's first message creates a chat
+([`plugins/_telegram_integration/helpers/constants.py:3`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/constants.py#L3),
+[`plugins/_telegram_integration/helpers/handler.py:57-64`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L57-L64),[`405-410`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L405-L410)).
+
 ## 4. Joins
 
 - Chat to project: `data.project` is a project name; path
@@ -119,6 +174,15 @@ storage ([`extensions/python/hist_add_before/_10_mask_content.py:20-28`](https:/
 user pastes or a tool prints stays in clear text. `user_message` and tool
 `kvps` are the places to look.
 
+A Telegram chat's `data.telegram_bot_cfg` is the bot's configuration
+entry as the bot loop holds it, so it carries the bot `token` and, in
+webhook mode, `webhook_secret`, in clear text in `chat.json`
+([`plugins/_telegram_integration/extensions/python/job_loop/_10_telegram_bot.py:57-59`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/extensions/python/job_loop/_10_telegram_bot.py#L57-L59),[`82-89`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/extensions/python/job_loop/_10_telegram_bot.py#L82-L89),
+[`plugins/_telegram_integration/default_config.yaml:2-9`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/default_config.yaml#L2-L9)). The same
+values are in the plugin's configuration file,
+`usr/plugins/<plugin>/config.json` (or under a project's `.a0proj/` or an
+agent profile's directory, [`helpers/plugins.py:838-851`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/plugins.py#L838-L851)).
+
 ## 8. Parser plan
 
 Rows from `log.logs` (timestamped); when `len(log.logs) == 1000`, also emit
@@ -147,6 +211,62 @@ items), with ` agent=<n>` after it for a subordinate agent. The research
 names no permission or approval record in `chat.json`, so the parser
 writes no permission rows; whether Agent Zero keeps permission state is
 not researched.
+
+Sync: Agent Zero records no sync state. It has no account, cloud
+copy, share link or history sync: the web UI is served by the instance
+itself, and the features that move chats are local. Backup builds a zip
+of `usr/` and sends it to the browser as a download
+([`helpers/backup.py:338-432`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/backup.py#L338-L432), [`api/backup_create.py:35-51`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/api/backup_create.py#L35-L51)); chat
+export returns the `chat.json` text to the browser
+([`api/chat_export.py:5-17`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/api/chat_export.py#L5-L17), [`helpers/persist_chat.py:155-159`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/persist_chat.py#L155-L159)); the
+Remote Control tunnels (Serveo, Cloudflare, Microsoft, Tailscale) expose
+the web UI and persist nothing
+([`helpers/tunnel_manager.py:15-31`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/tunnel_manager.py#L15-L31)); the only call to the vendor's
+own service is the update check, which posts the version and a hashed
+install id, no chat content, and is on by default
+(`update_check_enabled` in `usr/settings.json`,
+[`helpers/update_check.py:5-19`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/update_check.py#L5-L19), [`helpers/settings.py:627`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/settings.py#L627),
+[`extensions/python/user_message_ui/_10_update_check.py:66`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/extensions/python/user_message_ui/_10_update_check.py#L66)); and the
+host-side A0 CLI connector talks to the user's instance and to GitHub for
+its own updates ([`a0-connector self_update.py:20-25`](https://github.com/agent0ai/a0-connector/blob/76e834f20e50f6e47954c89ee39dd4c5b50d81b7/src/agent_zero_cli/self_update.py#L20-L25)).
+Searched `sync`, `share`, `upload`, `cloud`, `publish`, `remote_id`,
+`telemetry`, `analytics`, `agent-zero.ai` and every `https://` host
+across both repositories. Two features leave a copy of a chat on a
+third party's server, and `chat.json` records each
+([section 3](#3-record-schema)):
+
+- Stored responses. With a model set to `a0_api_mode: responses` and no
+  `responses_state` (or `provider`), each reply is stored at the
+  provider; `agents[].data.responses_state` and
+  `metadata.responses.response_id` hold the ids. Proposed row, once per
+  agent that has the key: `session synced: provider response
+  <response_id or -> previous <previous_response_id or -> model
+  <provider_model_key> (<n> response ids) agent=<number> (from chat.json
+  agents[].data.responses_state, file mtime)`, timestamped by the file's
+  modification time. Because `local` mode records the same ids with
+  `store: false`, the row says "provider response" only when
+  `previous_response_id` is non-empty and "response ids" otherwise. On
+  chat delete, Agent Zero collects every response id in `chat.json` and
+  calls litellm's `delete_responses` for each unless
+  `responses_delete_on_chat_delete` is `false` in the model's kwargs or
+  the chat data, then deletes the folder
+  ([`helpers/persist_chat.py:162-168`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/persist_chat.py#L162-L168),[`390-450`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/persist_chat.py#L390-L450), [`agent.py:941-942`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/agent.py#L941-L942));
+  the call passes no provider or key and its error list is discarded
+  ([`helpers/litellm_transport.py:1481-1490`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/litellm_transport.py#L1481-L1490)), so nothing local says
+  whether the remote copy went.
+- Messaging channels. A Telegram, WhatsApp or email chat is carried by
+  that service, which keeps the messages. Proposed row, one per chat
+  with the keys: `session relayed: telegram bot <telegram_bot> chat
+  <telegram_chat_id> user <telegram_user_id> @<telegram_username> (from
+  chat.json data, file mtime)`, and the same with `whatsapp chat
+  <wa_chat_id> number <wa_sender_number>` or `email thread
+  <email_thread_id> from <email_sender>`, timestamped by the file's
+  modification time; never print `telegram_bot_cfg` (it holds the bot
+  token, [section 7](#7-secrets)). Deleting the chat removes the folder,
+  but Telegram's `state.json` still maps the user and chat to the old
+  `ctxid` until that user writes again
+  ([`plugins/_telegram_integration/helpers/handler.py:376-387`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L376-L387)), so a
+  `state.json` entry with no `chat.json` is a deleted Telegram chat.
 
 Fixture `usr/chats/AbCd1234/chat.json`:
 

@@ -143,6 +143,38 @@ deleted by a background job ([threads.rs:393-430](https://github.com/TabbyML/tab
 the event log can hold chats and completions the live database no longer
 has. Migrations are sqlx (`_sqlx_migrations`).
 
+**Shared threads.** Sharing a thread does not upload it anywhere: the
+thread stays in this server's database and the share turns it from
+ephemeral into persisted. Every thread is created with `is_ephemeral`
+true ([ee/tabby-webserver/src/service/thread.rs:120-127](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/thread.rs#L120-L127)),
+and the only writer that clears it is the `setThreadPersisted` GraphQL
+mutation ([ee/tabby-schema/src/schema/mod.rs:1542-1555](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-schema/src/schema/mod.rs#L1542-L1555);
+[thread.rs:138-143](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/thread.rs#L138-L143)), which runs
+`UPDATE threads SET is_ephemeral = ?, updated_at = DATETIME('now')`
+([ee/tabby-db/src/threads.rs:125-131](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/threads.rs#L125-L131)). The web UI calls it
+from the Share button of the answer-engine page and of the chat panel
+(the page the IDE extensions embed), then copies a link of the form
+`<server>/search/<title slug>-<thread id>` to the clipboard
+([ee/tabby-ui/app/search/components/search.tsx:1098-1137](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-ui/app/search/components/search.tsx#L1098-L1137);
+[:266-275](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-ui/app/search/components/search.tsx#L266-L275);
+[ee/tabby-ui/components/chat/chat-panel.tsx:115-134](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-ui/components/chat/chat-panel.tsx#L115-L134)).
+So `is_ephemeral = 0` means the owner shared the thread. A persisted
+thread is readable by every user of the server, not only its owner
+([ee/tabby-schema/src/policy.rs:31-45](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-schema/src/policy.rs#L31-L45)), is listed in the home
+page's all-threads feed
+([ee/tabby-ui/app/(home)/components/thread-feeds/all-threads.tsx:35-42](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-ui/app/%28home%29/components/thread-feeds/all-threads.tsx#L35-L42)),
+and is exempt from the 7-day cleanup above. No column records the
+share time or who opened the link: `updated_at` is set at the share and
+again whenever `relevant_questions` is rewritten
+([threads.rs:108-120](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/threads.rs#L108-L120)), so the share happened at or
+before it. Nothing unshares a thread: no caller sets `is_ephemeral`
+back to true ([thread.rs:140](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/thread.rs#L140) is the only call of
+`update_thread_ephemeral`). Deleting the thread (`deleteThread`,
+[mod.rs:1529-1540](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-schema/src/schema/mod.rs#L1529-L1540)) removes the row
+([threads.rs:385-391](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/threads.rs#L385-L391)) and its messages by cascade
+([ee/tabby-db/schema/schema.sql:189](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L189)); a pre-migration backup
+taken before the delete keeps the row and its flag.
+
 ## 6. Format versions
 
 Migrations under `ee/tabby-db/migrations/`; `thread_messages` arrived in
@@ -190,6 +222,56 @@ Sources, primary or secondary (see [Second copies](#second-copies)):
 
 Add the thread owner's `users.email` to `text` or a note, since one
 server serves many people.
+
+Sync: Tabby records no sync state, because it uploads no session to the
+vendor; the server is the only store and the share feature stays on it.
+A shared thread is marked by `threads.is_ephemeral = 0` (see
+[Shared threads](#5-sqlite-specifics)), which the `thread start` row
+already carries by omission (it says `ephemeral` only for an unshared
+thread); a row of the form `thread shared: visible to all users of this
+server (from db.sqlite, threads.updated_at upper bound)` would make it
+explicit, timestamped by nothing of its own, so empty, with the upper
+bound in the text. What leaves the host besides model API calls is
+usage telemetry, which carries no prompt, reply or thread text:
+
+- The server posts a `ServeHealth` event every 3000 seconds to
+  `https://app.tabbyml.com/api/usage`, with the anonymous UUID from
+  `.tabby/usage_anonymous_id` as `distinct_id` and the `HealthState`
+  (model names, device, CPU, version, webserver flag) as properties; on
+  by default, off when `TABBY_DISABLE_USAGE_COLLECTION` is set
+  ([crates/tabby-common/src/usage.rs:13-82](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/usage.rs#L13-L82);
+  [crates/tabby/src/serve.rs:362-377](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby/src/serve.rs#L362-L377);
+  [crates/tabby/src/services/health.rs:12-33](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby/src/services/health.rs#L12-L33)).
+- `tabby-agent`, the editor clients' language server, posts
+  `AgentInitialized`, `AgentConnected` and `AgentStats` (completion
+  counts and latency percentiles) to the same `/usage` endpoint with the
+  `anonymousId` from `.tabby-client/agent/data.json`
+  ([clients/tabby-agent/src/telemetry.ts:40-121](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/tabby-agent/src/telemetry.ts#L40-L121);
+  [clients/tabby-agent/src/codeCompletion/statistics.ts:59-84](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/tabby-agent/src/codeCompletion/statistics.ts#L59-L84)).
+  On by default (`anonymousUsageTracking.disable` false,
+  [clients/tabby-agent/src/config/default.ts:125-127](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/tabby-agent/src/config/default.ts#L125-L127)), off through
+  `[anonymousUsageTracking] disable = true` in the client `config.toml`,
+  the editor setting, or the server's security setting
+  `disable_client_side_telemetry`
+  ([clients/tabby-agent/src/config/index.ts:57-63](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/tabby-agent/src/config/index.ts#L57-L63)), stored in
+  `server_setting.security_disable_client_side_telemetry`
+  ([schema.sql:64](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L64)). The client logs each send only at
+  trace level, and the log level defaults to `silent`
+  ([default.ts:119-121](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/tabby-agent/src/config/default.ts#L119-L121)).
+
+No client keeps a server thread id on disk. The VS Code chat webview
+keeps the panel's `SessionState` (`threadId`, `qaPairs`, input, context)
+in an in-memory `Map` keyed by server endpoint
+([clients/vscode/src/chat/webview.ts:91-92](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/chat/webview.ts#L91-L92);
+[:529-553](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/chat/webview.ts#L529-L553);
+[ee/tabby-ui/lib/types/chat.ts:228-234](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-ui/lib/types/chat.ts#L228-L234)), and the web UI's
+persisted `tabby-chat-storage` local-storage entry holds the selected
+model and repository but excludes `activeChatId`
+([ee/tabby-ui/lib/stores/chat-store.ts:8-48](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-ui/lib/stores/chat-store.ts#L8-L48)). The IntelliJ
+plugin does not implement the session-state calls. Searched `share`,
+`sync`, `upload`, `cloud`, `export`, `telemetry`, `usage`, `threadId`,
+`localStorage`, `globalState` and `https://` in `crates/`, `ee/` and
+`clients/`.
 
 Fixtures:
 

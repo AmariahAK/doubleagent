@@ -179,6 +179,104 @@ Model and permission rows (issues 96 and 97):
   document or in
   [`collectors/research/gemini-cli.md`](../../collectors/research/gemini-cli.md).
 
+Sync: Gemini CLI records no sync state. No command uploads a session,
+and nothing under `~/.gemini` holds a remote id, share URL or synced
+flag. What was searched, at the commit in [section 1](#1-source):
+
+- `/chat share` (also `/resume share`) writes the conversation to a
+  local `.md` or `.json` file, by default
+  `gemini-conversation-<epoch ms>.json` in the working directory
+  ([`cli/src/ui/commands/chatCommand.ts:282-331`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/ui/commands/chatCommand.ts#L282-L331);
+  [`cli/src/ui/utils/historyExportUtils.ts:61-81`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/ui/utils/historyExportUtils.ts#L61-L81)),
+  and `/export-session <path>` writes the session record as JSON to the
+  path given
+  ([`cli/src/ui/commands/exportSessionCommand.ts:18-76`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/ui/commands/exportSessionCommand.ts#L18-L76)).
+  Neither sends anything over the network.
+- `/bug` opens a GitHub new-issue URL carrying the CLI version and the
+  session id, and, when the history is longer than the initial context,
+  writes the history to `~/.gemini/tmp/<slug>/bug-report-history-<epoch
+  ms>.json` and asks the user to attach it by hand
+  ([`cli/src/ui/commands/bugCommand.ts:63-125`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/ui/commands/bugCommand.ts#L63-L125)).
+  That file is a copy of the conversation in the
+  `exportHistoryToFile` JSON form and outlives a deleted session; it
+  says nothing about whether it was uploaded. `/bug-memory` writes a V8
+  heap snapshot, `bug-memory-<epoch ms>.heapsnapshot`, to the same
+  directory
+  ([`cli/src/ui/commands/bugMemoryCommand.ts:26-41`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/ui/commands/bugMemoryCommand.ts#L26-L41)).
+- Code Assist (Google's `cloudcode-pa.googleapis.com` backend, used
+  when the user signs in with a Google account,
+  [`core/src/code_assist/server.ts:73-74`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/code_assist/server.ts#L73-L74))
+  receives the local `sessionId` as `session_id` in every model request
+  ([`core/src/code_assist/converter.ts:163-177`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/code_assist/converter.ts#L163-L177)),
+  so the transcript's `sessionId` is also the key of the server's
+  request records; that is the model API call, not sync. Its metrics
+  calls, `recordConversationOffered` and
+  `recordConversationInteraction`, carry a trace id, counts, latencies
+  and an accept or reject status, no text
+  ([`core/src/code_assist/types.ts:311-336`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/code_assist/types.ts#L311-L336);
+  [`server.ts:376-412`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/code_assist/server.ts#L376-L412)).
+  The free-tier "allow Google to use my data" choice in `/privacy` is a
+  server-side user setting, `freeTierDataCollectionOptin`, read and
+  written through the API and not stored locally
+  ([`cli/src/ui/hooks/usePrivacySettings.ts:153-193`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/ui/hooks/usePrivacySettings.ts#L153-L193)).
+  The server's `traceId` becomes the in-memory `responseId`
+  ([`converter.ts:145-150`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/code_assist/converter.ts#L145-L150))
+  and is not written to the session file: `responseId`, `traceId`,
+  `remote`, `cloud` and `upload` do not occur in
+  `core/src/services/chatRecordingService.ts` or
+  `chatRecordingTypes.ts`.
+- Clearcut, Google's event-logging endpoint
+  `play.googleapis.com/log`, receives usage statistics when
+  `privacy.usageStatisticsEnabled` in `settings.json` is on, which is
+  the default
+  ([`core/src/telemetry/clearcut-logger/clearcut-logger.ts:244`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/telemetry/clearcut-logger/clearcut-logger.ts#L244),
+  [340-342](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/telemetry/clearcut-logger/clearcut-logger.ts#L340-L342);
+  [`cli/src/config/settingsSchema.ts:970-976`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/config/settingsSchema.ts#L970-L976)).
+  Each event carries the session id and the signed-in Google account's
+  email, or the `installation_id` when there is none
+  ([clearcut-logger.ts:496-501](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/telemetry/clearcut-logger/clearcut-logger.ts#L496-L501),
+  [1157-1162](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/telemetry/clearcut-logger/clearcut-logger.ts#L1157-L1162)).
+  The prompt event sends the prompt's length, not its text
+  ([743-751](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/telemetry/clearcut-logger/clearcut-logger.ts#L743-L751)).
+  The one exception is Conseca, the context-aware security checker
+  that has a model write a tool policy from the prompt
+  (`security.enableConseca`, off by default,
+  [`settingsSchema.ts:2007-2014`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/config/settingsSchema.ts#L2007-L2014)):
+  with it on, its Clearcut events carry the user prompt, the trusted
+  content, the generated policy and the verdict rationale whenever
+  `telemetry.logPrompts` is on, which is its default
+  ([`core/src/telemetry/conseca-logger.ts:33-46`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/telemetry/conseca-logger.ts#L33-L46),
+  [85-98](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/telemetry/conseca-logger.ts#L85-L98);
+  [`core/src/config/config.ts:2913-2915`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/config/config.ts#L2913-L2915)).
+  Prompt text then leaves the host with no local record that it did.
+- OpenTelemetry export (`telemetry.enabled`, off by default; target
+  `local` by default or `gcp`, the user's own Google Cloud project,
+  [`config.ts:1094-1100`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/config/config.ts#L1094-L1100);
+  [`core/src/telemetry/index.ts:7-12`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/telemetry/index.ts#L7-L12))
+  puts the prompt text in the `user_prompt` log record when
+  `telemetry.logPrompts` is on
+  ([`core/src/telemetry/types.ts:222-224`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/telemetry/types.ts#L222-L224)).
+  It goes to a collector the user configures, not to a vendor account;
+  a `telemetry.outfile` path in `settings.json` is a local copy of
+  those records wherever the user put it.
+- Remote subagents over A2A (the Agent2Agent protocol, a remote agent
+  the user configures by URL) keep the remote `contextId` and `taskId`
+  in a static in-memory map only
+  ([`core/src/agents/remote-session-invocation.ts:43-57`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/agents/remote-session-invocation.ts#L43-L57),
+  [242-247](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/agents/remote-session-invocation.ts#L242-L247)).
+  The `a2a-server` package, a server the user deploys and not part of
+  the CLI, stores tasks in a Google Cloud Storage bucket when
+  `GCS_BUCKET_NAME` is set
+  ([`a2a-server/src/http/app.ts:250-256`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/a2a-server/src/http/app.ts#L250-L256)).
+- A session deleted through the CLI loses its chat file, its activity
+  log and its tool outputs
+  ([`core/src/utils/sessionOperations.ts:59-83`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/utils/sessionOperations.ts#L59-L83));
+  there is no remote copy to offer to delete, and the requests already
+  sent to Code Assist and Clearcut under its `sessionId` are server-side
+  records a responder can only ask Google for.
+
+No row is proposed.
+
 Fixture (one JSON object per line):
 
 ```json

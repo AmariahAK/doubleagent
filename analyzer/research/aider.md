@@ -149,6 +149,72 @@ rows. Its confirmation prompts are written as `> ` blockquote lines
 rest of the blockquote run as `tool_result` rows; no separate `permission
 decision:` row is derived from them.
 
+Sync: Aider records no sync state, because it uploads no session: no
+command or setting sends a chat history, input history, LLM history or
+conversation title anywhere beyond the prompt sent to the model provider
+through litellm (the library Aider calls for every model API). The
+commands are all local
+([`commands.py`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L87-L1638)); `/save` writes `/add`
+and `/read-only` lines to a local file
+([`commands.py:1497-1522`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L1497-L1522)), `/copy`
+uses the clipboard, and `/clear` empties the in-memory message lists
+without touching the history files
+([`commands.py:435-437`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L435-L437)). What does
+leave the host:
+
+- Analytics, through PostHog (a hosted product-analytics service) at
+  `https://us.i.posthog.com`; the client for Mixpanel, another such service, is
+  commented out
+  ([`analytics.py:55-57`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/analytics.py#L55-L57),
+  [`analytics.py:101-108`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/analytics.py#L101-L108)). Opt-in: a
+  random 10% of users are asked once, `--analytics` asks anyone, and
+  analytics stay off unless the user said yes
+  ([`analytics.py:119-135`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/analytics.py#L119-L135),
+  [`main.py:642-662`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/main.py#L642-L662)). Events carry event
+  names, a model name (redacted to `<provider>/REDACTED` when it is not a
+  known model), token counts, costs, edit format and system information
+  ([`analytics.py:186-240`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/analytics.py#L186-L240),
+  [`base_coder.py:2113-2122`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L2113-L2122)),
+  never prompt or reply text; the exceptions are the
+  `message_send_exception` event's `str(err)`
+  ([`base_coder.py:1511`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L1511)) and
+  PostHog's own exception autocapture
+  ([`analytics.py:106`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/analytics.py#L106)), which can carry
+  whatever a provider error message quoted. The opt-in state is
+  `~/.aider/analytics.json`, keys `uuid` (string), `permanently_disable`
+  (boolean or `null`) and `asked_opt_in` (boolean)
+  ([`analytics.py:137-184`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/analytics.py#L137-L184)), collected by
+  the `.aider` catalog line; it says analytics may have been on, not what
+  any session sent. `--analytics-log <file>` appends each event as a JSON
+  line with `event`, `properties`, `user_id` and `time` (epoch seconds)
+  to a path the user chooses
+  ([`args.py:574-578`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L574-L578),
+  [`analytics.py:242-253`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/analytics.py#L242-L253)); no catalog
+  line can name that path, but an `analytics-log:` key in a collected
+  `.aider.conf.yml` does. `--analytics-posthog-host` and
+  `--analytics-posthog-project-api-key` redirect the events to another
+  PostHog ([`args.py:585-594`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L585-L594)).
+- Crash and `/report` text, which goes nowhere by itself: Aider builds a
+  prefilled GitHub new-issue URL (version, platform, the traceback with
+  file paths reduced to base names, or the startup announcements) and
+  opens it in the browser for the user to submit
+  ([`report.py:37-90`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/report.py#L37-L90),
+  [`report.py:94-151`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/report.py#L94-L151),
+  [`commands.py:1555-1567`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L1555-L1567)).
+
+The OpenRouter OAuth flow writes `~/.aider/oauth-keys.env` (see
+[`collectors/research/aider.md`](../../collectors/research/aider.md#3-credentials))
+and carries no session. Searched for `sync`, `share`, `upload`,
+`publish`, `cloud`, `remote`, `gist`, `paste`, `export`, `backup`,
+`account`, `team`, `session_id`, `conversation_id`, `remote_id` and
+outbound `requests`/`httpx` calls in `aider/` (the website tree aside);
+the only hosts contacted are the model providers, PostHog, OpenRouter's
+auth and model-list endpoints, GitHub's Copilot token endpoint when a
+`github_copilot/` model is used with `GITHUB_COPILOT_TOKEN`
+([`models.py:950-983`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/models.py#L950-L983)), litellm's price
+table and pages fetched by `/web`. No other agent's directory is read or
+written for this. The parser yields no `session synced:` row.
+
 Fixture `.aider.chat.history.md`:
 
 ```markdown

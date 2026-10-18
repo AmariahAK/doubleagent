@@ -66,6 +66,37 @@ Globs relative to the user home:
   ([`hermes_cli/cli_session_mixin.py:669-689`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/cli_session_mixin.py#L669-L689)).
 - `.hermes/response_store.db`: API-server response store
   ([`gateway/platforms/api_server.py:732`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/gateway/platforms/api_server.py#L732)); schema not examined.
+- `.hermes/pastes/pending.json`: the paste.rs links (paste.rs is a
+  public, anonymous paste service) that `hermes debug share`, the gateway's
+  `/debug` and the dashboard's debug-share endpoint uploaded and that are
+  still due for deletion
+  ([`hermes_cli/debug.py:38-39`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/debug.py#L38-L39)).
+  A JSON list of `{"url": <string>, "expire_at": <epoch seconds, float>}`,
+  `expire_at` the upload time plus 21600 seconds (6 hours), merged by URL
+  keeping the later time
+  ([`hermes_cli/debug.py:156-166`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/debug.py#L156-L166),
+  [`hermes_cli/debug.py:31`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/debug.py#L31)).
+  An entry is dropped once its paste is deleted, or 24 hours after
+  `expire_at` when the delete keeps failing
+  ([`hermes_cli/debug.py:59-89`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/debug.py#L59-L89));
+  the gateway sweeps it hourly and every `hermes debug` call sweeps it
+  first ([`gateway/run.py:4666-4670`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/gateway/run.py#L4666-L4670),
+  [`hermes_cli/debug.py:639-641`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/debug.py#L639-L641)).
+  The file is missing or `[]` when nothing was shared in the last 6 to 30
+  hours. Links to dpaste.com (the fallback paste service) are never
+  written, since dpaste.com has no anonymous delete
+  ([`hermes_cli/debug.py:158-160`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/debug.py#L158-L160)).
+- `.hermes/retaindb_queue.db`: the write-behind queue of the RetainDB
+  memory provider (a paid cloud memory service), present only when
+  `memory.provider` is `retaindb`
+  ([`plugins/memory/retaindb/__init__.py:343-345`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/plugins/memory/retaindb/__init__.py#L343-L345)).
+  Table `pending` (`id`, `user_id`, `session_id`, `messages_json` holding
+  the turn's user and assistant text, `created_at` ISO 8601 UTC,
+  `last_error`); a row is deleted as soon as its upload succeeds, so the
+  table holds only turns not yet uploaded
+  ([`plugins/memory/retaindb/__init__.py:194-198`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/plugins/memory/retaindb/__init__.py#L194-L198),
+  [`plugins/memory/retaindb/__init__.py:226-241`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/plugins/memory/retaindb/__init__.py#L226-L241)).
+  Not read by the parser.
 
 Session ids are `<YYYYmmdd_HHMMSS>_<hex>` from local time
 ([`hermes_state_ids.py:56-60`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_ids.py#L56-L60)).
@@ -229,6 +260,81 @@ other rows stays `sessions.model`.
 Permission: the pairing stores named in
 [section 3 of `collectors/research/hermes.md`](../../collectors/research/hermes.md#3-credentials)
 have no recorded shape and are not read, so there are no permission rows.
+
+Sync: Hermes records no sync state for a session. Nothing uploads a
+session, a transcript or a title to the Nous account: the Nous Portal
+(Nous Research's account and billing site, `portal.nousresearch.com`)
+is used for sign-in, inference and the tool gateway
+([`hermes_cli/portal_cli.py:10-20`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/portal_cli.py#L10-L20)),
+and a grep of the tree for session upload, sync, share and cloud-session
+names found nothing beyond the paths below. `hermes sessions delete`
+removes the rows and the session's files and calls nothing remote
+([`hermes_state_sessions.py:1606-1650`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_sessions.py#L1606-L1650)).
+Content does leave the host on these opt-in paths, none of which marks a
+session:
+
+- `hermes debug share` (CLI), `/debug` (gateway) and the dashboard's
+  `POST /api/ops/debug-share` upload a report and the logs, whose own
+  notice says they hold "Verbatim content of your recent messages", to
+  paste.rs, falling back to dpaste.com
+  ([`hermes_cli/debug.py:96-113`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/debug.py#L96-L113),
+  [`hermes_cli/debug.py:442-479`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/debug.py#L442-L479),
+  [`gateway/slash_commands.py:1213-1243`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/gateway/slash_commands.py#L1213-L1243),
+  [`hermes_cli/web_routers/status.py:792-803`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/web_routers/status.py#L792-L803)).
+  The CLI asks first unless `--yes` is given. The paste.rs links stay in
+  `pastes/pending.json` for 6 to 30 hours
+  ([section 2](#2-transcript-files)), and with redaction on (the default)
+  `agent.log` gets the line `hermes debug share: applied force-mode
+  redaction to log snapshots before upload`
+  ([`hermes_cli/debug.py:451-453`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/debug.py#L451-L453)).
+  `hermes debug share --nous` sends the same bundle to Nous's private
+  diagnostics storage (an S3 bucket behind `portal.nousresearch.com`,
+  kept 14 days) and only prints the view URL; its local trace is the log
+  line `hermes debug share --nous: applied force-mode redaction before
+  upload`
+  ([`hermes_cli/diagnostics_upload.py:1-13`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/diagnostics_upload.py#L1-L13),
+  [`hermes_cli/debug.py:578-605`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/debug.py#L578-L605)).
+  `hermes debug delete <url>` deletes a paste.rs paste and does not
+  touch `pending.json`
+  ([`hermes_cli/debug.py:616-636`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/debug.py#L616-L636)).
+- An external memory provider, set in `config.yaml` `memory.provider`
+  (empty by default;
+  [`hermes_cli/config_defaults.py:1325-1328`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/config_defaults.py#L1325-L1328)),
+  receives every completed turn's user and assistant text with the
+  session id
+  ([`agent/memory_manager.py:535-557`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/agent/memory_manager.py#L535-L557)):
+  Mem0 (a hosted memory service, or self-hosted) at
+  [`plugins/memory/mem0/__init__.py:302-313`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/plugins/memory/mem0/__init__.py#L302-L313),
+  RetainDB through `retaindb_queue.db`
+  ([`plugins/memory/retaindb/__init__.py:405-412`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/plugins/memory/retaindb/__init__.py#L405-L412),
+  [section 2](#2-transcript-files)), ByteRover and OpenViking (local
+  servers with an optional cloud), and the catalog-installed Honcho,
+  Hindsight and Supermemory, whose code is not in this repository. The
+  local traces are the provider name in `config.yaml`, its settings
+  (`mem0.json`, `honcho.json`) and its key in `.env`; no file records
+  which turns were sent, and deleting a session does not delete the
+  provider's copy.
+- The Langfuse plugin (Langfuse is an LLM tracing service, hosted or
+  self-hosted), off unless enabled in `plugins.enabled` with keys in
+  `.env`, exports prompts, replies and tool payloads, redacted and
+  truncated by default, and writes no local file
+  ([`plugins/observability/langfuse/__init__.py:1-7`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/plugins/observability/langfuse/__init__.py#L1-L7)).
+- Shared metrics (`config.yaml` `telemetry.shared_metrics.enabled` and
+  `.send`, both off by default) are counters only, "Never prompts,
+  files, paths", kept in `telemetry/shared_metrics/` and sent daily to
+  `telemetry.nousresearch.com` when `send` is on
+  ([`hermes_cli/config_defaults.py:2337-2349`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/config_defaults.py#L2337-L2349),
+  [`hermes_cli/observability/shared_metrics_consent.py:29-36`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/observability/shared_metrics_consent.py#L29-L36),
+  [`hermes_cli/observability/shared_metrics.py:191-193`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/observability/shared_metrics.py#L191-L193)).
+
+A gateway session's messages also live on the messaging platform, which
+is the channel the user typed in, not a sync; `sessions.chat_id`,
+`origin_json` and `messages.platform_message_id` name them there
+([section 3](#3-record-schema)). Proposed: no `session synced:` row. A
+`system` row per `pastes/pending.json` entry, `debug report uploaded:
+<url> (from pastes/pending.json, expire_at minus 6 hours)`, timestamped
+`expire_at` minus 21600 seconds with an empty `session_id`, would show
+that logs left the host in the last day; it marks no session.
 
 Fixture:
 

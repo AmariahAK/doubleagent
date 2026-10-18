@@ -14,6 +14,11 @@ crates GPL-3.0-or-later ([`crates/agent/Cargo.toml:6`](https://github.com/zed-in
 [`crates/agent_ui/Cargo.toml:6`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/Cargo.toml#L6)). Rust; sqlez (Zed's own SQLite wrapper),
 zstd crate, agent-client-protocol-schema 1.9.1.
 
+Sync was checked at [`56934ec`](https://github.com/zed-industries/zed/commit/56934ec0560bce8929025497411de7f5322fb6ca)
+on 2026-10-17; the citations in the Sync paragraph of
+[section 8](#8-parser-plan) and the clipboard sentence in
+[section 6](#6-format-versions) are to that commit.
+
 ## 2. Transcript stores
 
 `data_dir` is `Library/Application Support/Zed` (macOS), `.local/share/zed`
@@ -147,6 +152,17 @@ profile}` ([`legacy_thread.rs:23-164`](https://github.com/zed-industries/zed/blo
 ([`thread_metadata_store.rs:1373-1465`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_metadata_store.rs#L1373-L1465)); cross-channel import copies rows
 between `0-<channel>` databases ([`thread_import.rs`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_import.rs)).
 
+`SharedThread` is used only by the agent panel's two debugging actions,
+`CopyThreadToClipboard` (the thread as base64 JSON on the clipboard) and
+`LoadThreadFromClipboard` ([`agent_ui.rs:332-335`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/agent_ui.rs#L332-L335);
+[`agent_panel.rs:3792-3826`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/agent_panel.rs#L3792-L3826),
+[`3852-3929`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/agent_panel.rs#L3852-L3929)); nothing is sent over
+the network. A thread loaded that way is saved to `threads.db` under a new
+UUID session id ([`agent_panel.rs:3894`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/agent_panel.rs#L3894)), its title
+prefixed `🔗 ` and with no `initial_project_snapshot`, `profile` or
+`sandbox_grants` ([`db.rs:153-172`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/db.rs#L153-L172)), so the prefix marks a
+thread pasted in from elsewhere rather than run on this host.
+
 ## 7. Secrets
 
 Blob fields `sandbox_grants.write_paths`/`network_hosts`, `draft_prompt`,
@@ -190,6 +206,66 @@ thread-start row and before the first message:
   The grants live in the thread blob, so `session_id` is the thread id and
   `timestamp_utc` the thread's `updated_at` (the blob's last write; the
   moment of the grant is not recorded).
+
+Sync: Zed records no sync state; no thread is synced to the account,
+shared by link or kept on a server as a copy of `threads.db`. Thread text
+does leave the host in one place beyond the model call: rating a thread.
+A thumbs-up or thumbs-down on a native Zed Agent thread (the buttons, or
+the `/helpful` and `/not-helpful` commands in the message box,
+[`completion_provider.rs:205-210`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/completion_provider.rs#L205-L210)) posts the whole
+thread, the `DbThread` that `threads.db` stores, serialised as JSON, with
+the session id, parent session id, rating and organisation id to
+`/client/feedback/agent_thread`; the comment box that follows a
+thumbs-down posts the thread again with the comment to
+`/client/feedback/agent_thread_comments` ([`thread_view.rs:69-123`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L69-L123),
+[`125-165`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L125-L165); [`cloud_api_client.rs:272-297`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_api_client/src/cloud_api_client.rs#L272-L297);
+[`cloud_api_types.rs:107-123`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_api_types/src/cloud_api_types.rs#L107-L123); the payload is
+[`agent.rs:3552-3567`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/agent.rs#L3552-L3567)). The tooltip says
+so: "Rating the thread sends all of your current conversation to the Zed
+team" ([`thread_view.rs:7560`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L7560)). It needs a signed-in Zed account
+([`cloud_api_client.rs:182-194`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_api_client/src/cloud_api_client.rs#L182-L194)), happens only on a click, and is
+offered while the `agent.enable_feedback` setting is `true`, its default
+([`agent.rs:352-355`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/settings_content/src/agent.rs#L352-L355); [`default.json:1294-1295`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/assets/settings/default.json#L1294-L1295)),
+unless the organisation's configuration sets
+`is_agent_thread_feedback_enabled` false ([`thread_view.rs:7650-7663`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L7650-L7663)).
+External ACP agents' threads cannot be rated: only the native connection
+implements the `AgentTelemetry` hook that supplies the thread
+([`agent.rs:3450-3452`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/agent.rs#L3450-L3452)). Nothing on disk records that a thread was
+rated: the rating is held in the view's memory
+([`thread_view.rs:63-66`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L63-L66)), `DbThread` has no field for it
+([`db.rs:53-89`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/db.rs#L53-L89)), and the request bypasses the telemetry queue, so
+it is not in `telemetry.log`. So this is an upload with no local marker,
+and no row is proposed. Telemetry (`telemetry.metrics`, default `true`,
+[`settings_content.rs:610-633`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/settings_content/src/settings_content.rs#L610-L633)) sends events to
+`/telemetry/events` and appends each one to `telemetry.log` in the logs
+directory (`Library/Logs/Zed` or `<data>/logs`, recreated empty at every
+launch, [`telemetry.rs:214-223`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/client/src/telemetry.rs#L214-L223),
+[`284-286`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/client/src/telemetry.rs#L284-L286), [`637-680`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/client/src/telemetry.rs#L637-L680)). The agent panel's
+events carry ids, model, status and token counts, not text, for example
+`Agent Thread Completion` ([`thread.rs:3039-3049`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/thread.rs#L3039-L3049)); the
+inline assistant's `Inline Assistant Rated` event, sent on its thumbs
+buttons, carries the prompt, the completion and the selected text
+([`inline_prompt_editor.rs:640-651`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/inline_prompt_editor.rs#L640-L651)), so a `telemetry.log` from the
+current launch can hold inline-assistant text, never panel-thread text.
+`telemetry.diagnostics` (default `true`) uploads crash minidumps (a
+process memory snapshot, `*.dmp` beside a `*.json` metadata file in the
+logs directory) to Sentry, the crash service, and deletes both once the
+upload succeeds ([`reliability.rs:51-54`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/zed/src/reliability.rs#L51-L54),
+[`259-295`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/zed/src/reliability.rs#L259-L295)); no thread file is attached, though
+the memory image may hold whatever the panel had loaded. The Zed-hosted
+model provider receives the thread id with each request
+([`thread.rs:4124`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/thread.rs#L4124); [`cloud_llm_client.rs:220-228`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_llm_client/src/cloud_llm_client.rs#L220-L228)),
+which is the model call, not sync. The collaboration server has a
+`SharedThreadId` type that nothing uses
+([`ids.rs:96-106`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/collab/src/db/ids.rs#L96-L106)), the collaboration protocol has
+no thread message (`crates/proto/proto/ai.proto` carries only agent and
+context-server commands), and the `remote_connection` column of
+`sidebar_threads` is the SSH, WSL or Docker remote-development target
+([`remote_client.rs:1361-1367`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/remote/src/remote_client.rs#L1361-L1367)), not a cloud id. Deleting a
+thread removes its `threads` row ([`db.rs:703-754`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/db.rs#L703-L754)) and its
+`sidebar_threads` row
+([`thread_metadata_store.rs:1577`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/thread_metadata_store.rs#L1577)); a copy
+already sent with a rating stays with Zed, and nothing local says so.
 
 Fixtures. `threads.db` (`data` is the zstd of the JSON below,
 `data_type='zstd'`):

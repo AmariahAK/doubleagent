@@ -160,6 +160,55 @@ Neither this document nor
 [`collectors/research/cody.md`](../../collectors/research/cody.md) names
 a standing permission file for Cody, so none is read.
 
+Sync: Cody records no sync state. The frozen snapshot has no chat
+history sync, no share link and no server copy of a chat: history is
+kept only in the local `cody-local-chatHistory-v2` value and deleted
+there
+([`LocalStorageProvider.ts:190-240`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L190-L240),
+[`270-272`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L270-L272)),
+the history commands are clear, delete, rename and export
+([`ChatsController.ts:227-233`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/ChatsController.ts#L227-L233)),
+and export writes a JSON file to a path the user picks in a save dialog
+([`ChatsController.ts:401-420`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/ChatsController.ts#L401-L420);
+the webview's download button,
+[`vscode/webviews/chat/downloadChatHistory.ts:11-30`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/webviews/chat/downloadChatHistory.ts#L11-L30)).
+The GraphQL queries the client sends name no chat or history operation
+([`lib/shared/src/sourcegraph-api/graphql/queries.ts`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/sourcegraph-api/graphql/queries.ts)),
+and Cody Web, the chat embedded in the Sourcegraph web app, keeps its
+history in the browser's IndexedDB rather than on the server
+([`web/lib/agent/agent.worker.ts:25`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/web/lib/agent/agent.worker.ts#L25),
+[`web/lib/agent/index-db-storage.ts:9`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/web/lib/agent/index-db-storage.ts#L9)).
+Searched `share`, `sync`, `upload`, `export`, `cloud`, `remote`,
+`teleport`, `remoteId` and `chatHistory` in `vscode/src`,
+`vscode/webviews`, `lib/shared/src`, `agent/src`, `web/lib` and the
+JetBrains plugin's `history/` package. Prompt and reply text does leave
+the host outside the model call, with no local marker: the telemetry
+events `cody.chat-question/submitted` and `cody.chat-question/executed`
+carry the prompt (truncated to the 7,000-token chat input budget,
+[`lib/shared/src/token/constants.ts:4`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/token/constants.ts#L4))
+and the chat id (`ChatBuilder.sessionID`, the same `toUTCString()`
+value,
+[`ChatBuilder.ts:97`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/ChatBuilder.ts#L97))
+as `sessionID` in their `privateMetadata`, the event part that
+sourcegraph.com exports and private instances drop unless allowlisted
+([`vscode/src/services/telemetry-v2.ts:118-121`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/telemetry-v2.ts#L118-L121)),
+and `cody.chatResponse` carries the reply, but only when the account's
+endpoint is sourcegraph.com (`isDotCom`) or, for the executed event,
+Sourcegraph's internal instance sourcegraph.sourcegraph.com (`isS2`)
+([`lib/shared/src/telemetry-v2/events/chat-question.ts:45-75`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/telemetry-v2/events/chat-question.ts#L45-L75),
+[`107-148`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/telemetry-v2/events/chat-question.ts#L107-L148);
+[`ChatController.ts:1570-1586`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/ChatController.ts#L1570-L1586);
+[`lib/shared/src/sourcegraph-api/environments.ts:7-35`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/sourcegraph-api/environments.ts#L7-L35)).
+The events go to the connected instance's GraphQL API
+([`GraphQLTelemetryExporter.ts:33-45`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/sourcegraph-api/telemetry/GraphQLTelemetryExporter.ts#L33-L45)),
+on by default; the hidden setting `cody.telemetry.level` (`all` or
+`off`, default `all`) is read
+([`vscode/src/configuration.ts:95`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/configuration.ts#L95)),
+but this document does not trace whether `off` stops these events. A
+responder with a sourcegraph.com account in the history key can ask
+Sourcegraph for the events by the chat id; nothing local says they were
+sent, so the parser yields no sync row.
+
 Fixture (`JetBrains-globalState/cody-local-chatHistory-v2`):
 
 ```json

@@ -154,6 +154,40 @@ The rollouts are the primary store; `history.jsonl`, `state_5.sqlite` and
 | tool_name, tool_use_id | `name`, `call_id` |
 | text | message text, `arguments`/`input`/`action.command`, `output` |
 
+Sync: as for Codex (the `Sync:` paragraph of
+[section 8 of `codex-cli.md`](codex-cli.md#8-parser-plan-the-existing-parser)),
+the fork records no session sync and has the same exits, unchanged:
+`/feedback` ("send logs to maintainers";
+[`tui/src/slash_command.rs:93`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/tui/src/slash_command.rs#L93))
+still reports to OpenAI's Sentry project, not to an Open Interpreter
+one ([`feedback/src/lib.rs:56-57`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/feedback/src/lib.rs#L56-L57)),
+attaches the thread's rollouts when the user agrees to upload logs
+([`app-server/src/request_processors/feedback_processor.rs:200-215`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/app-server/src/request_processors/feedback_processor.rs#L200-L215)),
+is on by default
+([`core/src/config/mod.rs:4403-4407`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/core/src/config/mod.rs#L4403-L4407))
+and logs `feedback event uploaded to Sentry` with the thread id
+([`feedback/src/lib.rs:682-688`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/feedback/src/lib.rs#L682-L688))
+into `.openinterpreter/logs_2.sqlite`
+([`state/src/sqlite.rs:29`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/src/sqlite.rs#L29)), the
+marker and the proposed `session uploaded:` row Codex has, removed by
+the fork's thread delete as in Codex
+([`state/src/runtime/threads.rs:1153`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/src/runtime/threads.rs#L1153)).
+`codex cloud` (here "Browse remote tasks";
+[`cli/src/main.rs:239-241`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/cli/src/main.rs#L239-L241)) still
+targets `https://chatgpt.com/backend-api/` by default
+([`core/src/config/mod.rs:4341-4343`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/core/src/config/mod.rs#L4341-L4343))
+and writes the same `error.log` line in its working directory
+([`cloud-tasks-client/src/http.rs:377`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/cloud-tasks-client/src/http.rs#L377),
+[`916`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/cloud-tasks-client/src/http.rs#L916)); remote control
+keeps the `remote_control_enrollments` table
+([`state/migrations/0024_remote_control_enrollments.sql:1-10`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/migrations/0024_remote_control_enrollments.sql#L1-L10));
+the thread store is local only
+([`core/src/config/mod.rs:597-603`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/core/src/config/mod.rs#L597-L603)).
+The fork adds no share, sync or upload feature of its own (searched
+`sync`, `share`, `upload`, `cloud`, `remote` in the crates absent
+upstream: `acp-server`, `chat-wire-compat`, `external-agent-sessions`,
+`product-info`, `mcp-server`, `execpolicy-legacy`).
+
 There is no per-call decision row: the fork, like Codex, lists the
 approval request events among the transient events the rollout never
 stores ([`rollout/src/policy.rs:140-204`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/rollout/src/policy.rs#L140-L204)).

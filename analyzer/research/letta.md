@@ -32,6 +32,58 @@ base64url of `conversation:<id>`, or `default:<agent id>` for an agent's
 default conversation ([local-store.ts:283-285](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L283-L285), [3262-3266](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L3262-L3266)), next to
 `conversation.json`, `manifest.json` and `system-prompt.json`.
 
+**Server-side session markers.** In the default backend, `api` (Letta
+Cloud at `https://api.letta.com`, or a self-hosted Letta server named by
+`LETTA_BASE_URL`), the agent and its conversations are server objects
+and the local files name them by id
+([settings-manager.ts:75](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L75),
+[195](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L195),
+[273-281](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L273-L281);
+[cli/subcommands/backend.ts:38](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/subcommands/backend.ts#L38)).
+A local-backend agent id starts `agent-local-`; any other agent id is a
+server id ([agent/agent-id.ts:3-9](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent/agent-id.ts#L3-L9)).
+
+- `.letta/transcripts/<agent id>/<conversation id>/`: the two directory
+  names are the server's ids, sanitised as above.
+- `.letta/sessions.jsonl` `agent_id`: the server agent id; its
+  `session_id` is the CLI's own telemetry session id, not a conversation
+  ([cli/app/AppCoordinator.tsx:3841-3844](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/app/AppCoordinator.tsx#L3841-L3844)).
+- `.letta/settings.json` `sessionsByServer`: an object keyed by the
+  server's host and port (`api.letta.com`, `localhost:8283`, or
+  `local:<store path>` for the local backend) whose values are
+  `{agentId, conversationId}`, the last session used on that server;
+  `lastSession` and `lastAgent` repeat it for server agents
+  ([settings-manager.ts:53-56](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L53-L56),
+  [94](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L94),
+  [215-225](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L215-L225),
+  [1231-1274](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L1231-L1274)). The project's
+  `.letta/settings.local.json` has the same keys for that directory
+  ([157](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L157),
+  [995-996](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L995-L996),
+  [1365-1405](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L1365-L1405)). Both are rewritten on
+  every start, resume and conversation switch through `persistSession`
+  ([1447-1455](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L1447-L1455);
+  [index.ts:2356](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/index.ts#L2356)), so they hold one session per
+  server, never a list.
+- `.letta/settings.json` `agents[]`: per-agent settings with `agentId`
+  and `baseUrl`, absent for Letta Cloud, and `memfs` when the memory
+  filesystem is on ([agent-settings.ts:7-19](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent-settings.ts#L7-L19)).
+  `deviceId` identifies the install to the server
+  ([settings-manager.ts:100](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L100)).
+- `.letta/agents/<agent id>/memory/.git/config`: the memory filesystem
+  ("memfs", the agent's memory blocks kept as files in a git repository)
+  has remote `origin` at `<server>/v1/git/<agent id>/state.git` and is
+  pushed there
+  ([agent/memory-git.ts:1-3](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent/memory-git.ts#L1-L3),
+  [89-96](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent/memory-git.ts#L89-L96),
+  [228-233](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent/memory-git.ts#L228-L233)).
+- `.letta/settings.local.json` `listenerEnvName`: the name under which
+  `letta server` or `/listen` registered this machine as a remote
+  environment with Letta Cloud (`/v1/environments/register`), so the
+  web app can drive local sessions
+  ([settings-manager.ts:158](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L158);
+  [websocket/listen-register.ts:110-128](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/websocket/listen-register.ts#L110-L128)).
+
 ## 3. Record schema
 
 **Reflection transcript** (`transcript.jsonl`). Appended after each completed
@@ -196,6 +248,62 @@ line of the same `session_id` with another `model` gets a `model: <old> ->
 `.letta/settings.local.json` holds its permissions
 ([`collectors/research/letta.md`](../../collectors/research/letta.md)), but
 their shape is not recorded here, so the file is not read.
+
+Sync: in the default `api` backend the conversation is server state by
+design, not an upload: Letta Code creates, reads and deletes the agent
+and its conversations through the server's API
+([backend/backend.ts:376](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/backend.ts#L376),
+[481-524](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/backend.ts#L481-L524)), the server keeps every
+message, and the Letta Chat web app opens the same conversation at
+`https://chat.letta.com/chat/<agent id>?conversation=<conversation id>`
+([cli/helpers/app-urls.ts:14-37](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/helpers/app-urls.ts#L14-L37)).
+It is on unless the user ran `letta backend local`, which sets
+`preferredBackendMode` to `local` in `.letta/settings.json`
+([cli/subcommands/backend.ts:38](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/subcommands/backend.ts#L38),
+[65](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/subcommands/backend.ts#L65)). The local markers are the ids
+listed under "Server-side session markers" in
+[section 2](#2-transcript-files). Proposed rows:
+
+- per `transcripts/<agent id>/<conversation id>/` whose agent id does
+  not start `agent-local-`, one `system` row `session synced:
+  server conversation <conversation id> agent <agent id> server <server>
+  (from .letta/transcripts path, first captured_at)`, at the first
+  `captured_at` of its `transcript.jsonl`, with `<server>` the
+  matching `agents[]` entry's `baseUrl`, `api.letta.com` when that
+  entry has none, and `-` when there is no entry;
+- per `sessionsByServer` entry whose key does not start `local:`, in
+  `.letta/settings.json` and in each project's
+  `.letta/settings.local.json`, one `system` row `session synced: last
+  session on <key> agent <agentId> conversation <conversationId> (from
+  <file>, file mtime)`, at the file's modification time, with
+  `session_id` the conversation id and, for the project file,
+  `project_path` the project.
+
+Deleting an agent from the `/agents` selector deletes it on its server
+and touches no local file
+([cli/components/AgentSelector.tsx:486-514](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/components/AgentSelector.tsx#L486-L514)),
+so the transcript directories, `sessions.jsonl` lines and settings
+entries that name it survive, and nothing local records that the server
+copy is gone. The only callers of `deleteConversation` remove internal
+fork and ephemeral conversations
+([agent/subagents/fork-conversation.ts:100](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent/subagents/fork-conversation.ts#L100),
+[websocket/app-server-openai.ts:326](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/websocket/app-server-openai.ts#L326)).
+Memfs pushes the agent's memory to the server's git endpoint (see
+[section 2](#2-transcript-files)); a commit there is memory, not a
+transcript, and is not a row. Telemetry is on unless `LETTA_CODE_TELEM`
+is `0` or `false` or `DO_NOT_TRACK` is `1`, goes to
+`/v1/metadata/telemetry`, and carries counts, tool names and lengths,
+not prompt text; error events, sent for Letta Cloud users only, add
+`recent_chunks` and `debug_log_tail`, which can hold fragments of
+streamed output; the queue is in memory and leaves no file
+([telemetry/index.ts:37-112](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/telemetry/index.ts#L37-L112),
+[392-405](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/telemetry/index.ts#L392-L405),
+[776-800](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/telemetry/index.ts#L776-L800),
+[478-480](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/telemetry/index.ts#L478-L480);
+[backend/api/metadata.ts:100](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/api/metadata.ts#L100)).
+`/feedback` sends the user's message with the agent id, telemetry
+session id and last run id, and no transcript
+([cli/app/use-feedback-handler.ts:78-94](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/app/use-feedback-handler.ts#L78-L94)).
 
 Fixture `.letta/transcripts/agent-1a2b/conv-9f/transcript.jsonl`:
 

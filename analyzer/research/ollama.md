@@ -460,6 +460,82 @@ whose `model_name` differs, with the message's time and `source_line`.
 `config.json` `last_model` is not read for rows. The research records no
 permission state for the app, so there are no permission rows.
 
+Sync: Ollama records no sync state, because it has no session sync. No
+release keeps a server copy of a chat: the desktop app's chat routes
+(list, get, post, delete, create, rename) are served from `db.sqlite`
+by the app's own local handler
+([`app/ui/ui.go:286-291`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L286-L291)), and a chat
+turn goes to the local server through `inferenceClient`
+([`ui.go:431-433`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L431-L433),[`827`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L827),[`1001`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1001)).
+What leaves the host is the model call. A cloud model is one whose name
+ends in `:cloud` or `-cloud`
+([`internal/modelref/modelref.go:98-115`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/modelref/modelref.go#L98-L115));
+for it the local server forwards the whole request, every message of the
+conversation, to `https://ollama.com:443` signed with the device key
+`.ollama/id_ed25519`
+([`server/routes.go:2656-2664`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L2656-L2664);
+[`server/cloud_proxy.go:29`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/cloud_proxy.go#L29),[`180-220`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/cloud_proxy.go#L180-L220),[`372-386`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/cloud_proxy.go#L372-L386)),
+the same for the REPL, `ollama launch` agents and the desktop app.
+"Ollama Turbo" is the earlier name of that cloud service; its trace is
+the `settings.turbo_enabled` column
+([`app/store/database.go:375-380`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L375-L380)),
+which the app now reads only to move a Turbo user's selected model to its
+cloud name and then sets to false
+([`app/ui/app/src/hooks/useSelectedModel.ts:63-74`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/app/src/hooks/useSelectedModel.ts#L63-L74),[`119-122`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/app/src/hooks/useSelectedModel.ts#L119-L122)).
+Ollama's documentation says cloud prompts and responses are processed and
+not stored or logged
+([`docs/faq.mdx:161`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/faq.mdx#L161),
+[`docs/cloud.mdx:90`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/cloud.mdx#L90));
+the server side is not in the repository, so that is the vendor's
+statement, not a source finding. The local evidence of cloud use is the
+model name: `messages.model_name` with the `:cloud` or `-cloud` suffix,
+which the `model:` rows already carry; the `model_cloud` column is
+deprecated and never written
+([`database.go:115`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L115),[`1044-1047`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1044-L1047)).
+The desktop app's web search and web fetch tools send the query or URL to
+`ollama.com/api/web_search` and `/api/web_fetch`
+([`app/tools/web_search.go:110`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/tools/web_search.go#L110),
+[`app/tools/web_fetch.go:96`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/tools/web_fetch.go#L96));
+the `tool_use` rows show them. Cloud use is turned off by
+`OLLAMA_NO_CLOUD` or `disable_ollama_cloud: true` in
+`.ollama/server.json`, the desktop app's cloud toggle
+([`envconfig/config.go:237-238`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L237-L238);
+[`app/store/cloud_config.go:15-42`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/cloud_config.go#L15-L42)),
+on by default.
+
+Sign-in (`ollama signin`, or the app's connect page) binds the device's
+public key to the ollama.com account in the browser and writes no token
+([`cmd/cmd.go:1012-1030`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/cmd.go#L1012-L1030);
+[`server/routes.go:248-257`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L248-L257)).
+The desktop app caches the account at each start in the `users` row
+(`name`, `email`, `plan`, `cached_at`)
+([`app/cmd/app/app.go:345`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/cmd/app/app.go#L345);
+[`ui.go:464-492`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L464-L492)), and nothing outside
+tests calls `ClearUser`
+([`app/store/store.go:584-590`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L584-L590)), so the
+row survives a sign-out
+([`routes.go:2407-2438`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L2407-L2438)). That is
+account state, not sync state; the parser does not read it
+([section 3](#3-record-schema)). The anonymous-usage `settings.survey`
+flag is stored but read by nothing
+([`store.go:132-135`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L132-L135)), and there is no
+telemetry or crash-report client in `app/`, `cmd/`, `server/` or
+`internal/` (searched `telemetry`, `analytics`, `sentry`, `posthog`,
+`crash`, `upload`).
+
+One path does upload a transcript, with no local marker: a REPL session
+saved with `/save <model>` becomes a model whose
+`application/vnd.ollama.image.messages` layer holds the conversation
+([section 2](#2-transcript-stores)), and `ollama push` of that model
+uploads every layer, the messages layer included, to the registry
+([`server/images.go:960-1024`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/images.go#L960-L1024)). Push writes
+nothing locally; only the server log's `[GIN]` line for `POST
+"/api/push"` records it, without the model name. A chat deleted in the
+desktop app is deleted only locally, with a WAL checkpoint after it
+([`ui.go:1415-1439`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1415-L1439);
+[`database.go:823-832`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L823-L832)). No
+`session synced:` row is proposed.
+
 An assistant message with empty `content`, no thinking and no tool calls
 (the placeholder written while the model is being pulled,
 [`ui.go:832-841`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L832-L841)) yields no row. A chat with

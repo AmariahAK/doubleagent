@@ -107,6 +107,39 @@ and `model` always empty.
 Roo Code records no model in any of these files (`apiConfigName` is a
 profile name, not a model id), so the parser yields no `model:` rows.
 
+Sync: Roo Code records no sync state. Cline's enterprise prompt upload and its
+manifest marker ([section 8 of `cline.md`](cline.md#8-parser-plan)) live in
+Cline's later SDK, which Roo Code never took: its tasks keep the forked legacy
+layout, and its `HistoryItem` has no share, sync or remote field
+([`packages/types/src/history.ts:7-29`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/types/src/history.ts#L7-L29)).
+At this commit (extension version 3.53.0,
+[`src/package.json:6`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L6))
+neither the extension nor the CLI holds a client for Roo Code Cloud, the
+vendor's hosted service that earlier releases used for task sync and share
+links: there is no cloud package under `packages/`; `CloudService`,
+`@roo-code/cloud`, `shareTask`, `shareUrl`, `posthog` and `TelemetryService`
+have no code match in `src/`, `packages/`, `apps/` or `webview-ui/`, and
+`cloud` matches only provider names and the documentation site, which
+redirects its removed Cloud pages, `task-sync` and `task-sharing` among them
+([`apps/docs/docusaurus.config.ts:278-290`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/docs/docusaurus.config.ts#L278-L290)).
+What is left is a `// Cloud Sync Tracking` comment above the task's initial
+status
+([`src/core/task/Task.ts:407-409`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L407-L409)),
+`shareTaskSuccess` in a comment listing unhandled webview message types
+([`src/core/webview/webviewMessageHandler.ts:3221`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/webviewMessageHandler.ts#L3221)),
+and a CLI client for the vendor's tRPC (a TypeScript remote procedure call
+library) API that defines only `auth.me` and has no caller
+([`apps/cli/src/lib/sdk/client.ts:11-30`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/sdk/client.ts#L11-L30)).
+`PRIVACY.md` still describes PostHog (a product-analytics service) usage
+telemetry that excludes code and prompts
+([`PRIVACY.md:13`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/PRIVACY.md#L13)),
+but no telemetry code is in the tree. The releases that shipped Roo Code Cloud
+(the changelog's Cloud Team entries,
+[`CHANGELOG.md:312`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/CHANGELOG.md#L312),
+[`486`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/CHANGELOG.md#L486))
+were not reviewed, so an install of one of them may hold sync state this
+document does not describe.
+
 Fixture:
 
 ```json

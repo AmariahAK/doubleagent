@@ -601,6 +601,50 @@ to the call except its position between the call and its output (local).
   taken from the `threads` row of the same thread. What it survives is
   what `state_5.sqlite` survives; it never holds a legacy rollout's
   thread.
+- `logs_2.sqlite` `logs`: Codex's own tracing log, one row per log
+  event of the app server and the TUI (`ts` and `ts_nanos` epoch seconds
+  and nanoseconds, `level`, `target`, `feedback_log_body` the formatted
+  message and fields, `thread_id`, `process_uuid`;
+  [state/logs_migrations/0002_logs_feedback_log_body.sql:3-16](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/logs_migrations/0002_logs_feedback_log_body.sql#L3-L16),
+  file name at
+  [state/src/sqlite.rs:34](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/sqlite.rs#L34)).
+  Every target is kept at trace level unless listed
+  ([state/src/log_db.rs:61-63](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/log_db.rs#L61-L63)),
+  and an event's `thread_id` field fills the `thread_id` column
+  ([log_db.rs:572-579](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/log_db.rs#L572-L579)).
+  Rows older than 10 days, or past a 64 MiB budget, are pruned
+  ([state/src/runtime/logs_maintenance.rs:10-11](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/runtime/logs_maintenance.rs#L10-L11)),
+  and Codex's thread delete removes a thread's rows
+  ([state/src/runtime/threads.rs:1170-1173](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/runtime/threads.rs#L1170-L1173),
+  called from
+  [thread-store/src/local/delete_thread.rs:139-152](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/local/delete_thread.rs#L139-L152)).
+  The one row that marks an upload of a thread: a `/feedback` report
+  sent to Sentry (an error-reporting service OpenAI uses for Codex
+  feedback) logs `feedback event uploaded to Sentry` at `INFO` with the
+  fields `thread_id` (the reported thread's id, or
+  `no-active-thread-<uuid>` when none was open), `uploaded_attachments`
+  (a count), `attachments_failed` (a boolean) and `elapsed_ms`
+  ([feedback/src/lib.rs:749-755](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/feedback/src/lib.rs#L749-L755),
+  [298-300](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/feedback/src/lib.rs#L298-L300)),
+  under the target `codex_feedback` (the `codex-feedback` crate). It is
+  written after the report event is accepted and its attachments are
+  sent, whether or not the user agreed to upload logs, so
+  `uploaded_attachments` is what tells the two apart. The TUI's
+  `log/codex-tui.log` does not carry it: its default filter keeps only
+  `codex_core`, `codex_tui`, `codex_rmcp_client` and
+  `codex_realtime_webrtc`
+  ([tui/src/startup_orchestration.rs:817-820](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/startup_orchestration.rs#L817-L820)).
+  Not seen on a real install; the parser does not read this database.
+- `state_5.sqlite` `remote_control_enrollments`: one row per remote
+  control enrollment, the link that lets a ChatGPT client drive this
+  host's app server (`codex remote-control`; `websocket_url`,
+  `account_id`, `app_server_client_name`, `server_id`, `environment_id`,
+  `server_name`, `updated_at`, and `remote_control_enabled` from
+  migration 0037;
+  [state/migrations/0024_remote_control_enrollments.sql:1-10](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0024_remote_control_enrollments.sql#L1-L10),
+  [0037_remote_control_enrollments_enabled.sql:1-2](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0037_remote_control_enrollments_enabled.sql#L1-L2)).
+  It names the host's enrollment, not a thread. Empty on the Windows
+  install of [section 1](#1-evidence). Not read.
 - `sqlite/codex-dev.db`: written only by the ChatGPT desktop app (observed
   on Windows, ChatGPT 26.1007.9446.0, 2026-10-15; not in the Codex
   source this document cites). It is the app's own thread catalog and
@@ -634,6 +678,9 @@ to the call except its position between the call and its output (local).
   `plugin_template_id`, `notification_policy`, `account_id`, `user_id`,
   `installation_id`, `legacy_automation_id`). `automation_runs` and
   `inbox_items` stayed empty, as the automation had not fired.
+  Neither `conversation_origin` nor `chatgpt_async_status` appears in the
+  Codex source (the app's code is not in the repository; see the `Sync:`
+  paragraph of [section 8](#8-parser-plan-the-existing-parser)).
   `codex_schema_migrations` rows carry the app version (`app_version`
   `26.1007.71326`, `build_flavor` `prod`). The chat's text is not in it.
   The analyzer does not read it: the automation is read from
@@ -846,6 +893,122 @@ events that the rollout never stores
 rollout shows what the policy allowed, not what the user approved. The
 model is recorded only per turn, in `turn_context.model`; there is no
 per-message model, so the model rows follow the turns.
+
+Sync: Codex has no session sync. The thread store is local only: the
+two backends are `Local` (rollouts and SQLite) and `InMemory`
+([core/src/config/mod.rs:599-607](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L599-L607)),
+and the old `experimental_thread_store_endpoint` for a remote store is
+now refused at load
+([3251-3254](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L3251-L3254)).
+The thread metadata sync of [section 6](#6-timestamps-ids-project-branch-model-subagents)
+copies rollout facts into `state_5.sqlite` and calls no server
+([thread-store/src/thread_metadata_sync.rs:34-38](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/thread_metadata_sync.rs#L34-L38)).
+`codex resume` reopens a local rollout
+([cli/src/main.rs:206-207](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L206-L207)), and the
+app server's `thread/*` methods have no share or upload method. What
+does leave the host, beyond the model API call:
+
+- **`/feedback`** ("send logs to maintainers";
+  [tui/src/slash_command.rs:73](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/slash_command.rs#L73),
+  [93](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/slash_command.rs#L93)) sends a report to OpenAI's
+  Sentry project
+  ([feedback/src/lib.rs:60-61](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/feedback/src/lib.rs#L60-L61)). The
+  TUI asks "Upload logs?" and lists the files
+  ([tui/src/bottom_pane/feedback_view.rs:252](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/bottom_pane/feedback_view.rs#L252),
+  [282-285](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/bottom_pane/feedback_view.rs#L282-L285)); on yes
+  the open thread's rollout
+  ([tui/src/app/background_requests.rs:623-627](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/app/background_requests.rs#L623-L627))
+  and the rollouts of its subagent threads are attached
+  ([app-server/src/request_processors/feedback_processor.rs:179-196](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server/src/request_processors/feedback_processor.rs#L179-L196)),
+  packed into `rollouts.tar.gz` in a system temporary directory
+  ([feedback/src/lib.rs:840-853](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/feedback/src/lib.rs#L840-L853)).
+  On no, the report carries the category, the note and tags only, and
+  the TUI says "Feedback recorded (no logs)"
+  ([feedback_view.rs:54-58](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/bottom_pane/feedback_view.rs#L54-L58)).
+  Opt-in per report; the whole flow is on by default and turned off by
+  `[feedback] enabled = false` in `config.toml`
+  ([config/src/types.rs:233-236](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L233-L236),
+  [core/src/config/mod.rs:4498-4502](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L4498-L4502),
+  [feedback_processor.rs:62-66](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server/src/request_processors/feedback_processor.rs#L62-L66)).
+  The marker is the `logs_2.sqlite` row of [section 5](#5-other-files).
+  Proposed row: one `system` row per such log row, `session uploaded:
+  feedback report to Sentry, thread <thread_id> attachments
+  <uploaded_attachments> failed <attachments_failed> (from
+  logs_2.sqlite logs, log time)`, at `ts` plus `ts_nanos`, `session_id`
+  the `thread_id` column (empty for a `no-active-thread-` id); a report
+  with 0 attachments sent no rollout. The row survives the rollout's
+  loss outside Codex for up to 10 days; Codex's own thread delete
+  removes it with the thread, Codex offers no delete of the Sentry
+  copy, and nothing local records one.
+- **`codex cloud`** (experimental;
+  [cli/src/main.rs:227-229](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L227-L229)) creates a
+  Codex Cloud task, a run on OpenAI's servers against a GitHub branch:
+  the typed prompt, the environment id and the branch, plus a local
+  diff only when `CODEX_STARTING_DIFF` is set
+  ([cloud-tasks-client/src/http.rs:332-372](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks-client/src/http.rs#L332-L372)).
+  It sends no local thread; the task's transcript is server-side, and
+  `codex apply` fetches a task's diff back
+  ([chatgpt/src/get_task.rs:37-38](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/chatgpt/src/get_task.rs#L37-L38)).
+  Its only local trace is an `error.log` that it appends to in the
+  directory it was started from, not under `~/.codex`
+  ([cloud-tasks/src/util.rs:18-28](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks/src/util.rs#L18-L28),
+  [cloud-tasks-client/src/http.rs:911-920](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks-client/src/http.rs#L911-L920)),
+  with lines `[<RFC 3339 time>] new_task: created id=<task id> env=<env
+  id> prompt_chars=<n>`
+  ([http.rs:374-381](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks-client/src/http.rs#L374-L381)),
+  the GitHub origins it matched
+  ([cloud-tasks/src/env_detect.rs:51](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks/src/env_detect.rs#L51))
+  and the `account_id` it authenticated as
+  ([cloud-tasks/src/lib.rs:103](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks/src/lib.rs#L103)). No
+  catalog line collects that file; no row is proposed until it is.
+- **`codex remote-control`** (experimental;
+  [cli/src/main.rs:176-177](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L176-L177),
+  [cli/src/remote_control_cmd.rs:53-62](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/remote_control_cmd.rs#L53-L62))
+  enrolls the host's app server with the ChatGPT backend
+  (`wham/remote/control/environments`;
+  [app-server-transport/src/transport/remote_control/clients.rs:268-270](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-transport/src/transport/remote_control/clients.rs#L268-L270))
+  so a ChatGPT client can drive it over a websocket. Threads stay in
+  the local store and the remote client reads them live; the only
+  record is the host-level `remote_control_enrollments` row of
+  [section 5](#5-other-files), with no per-thread mark, so no row is
+  proposed.
+- **`--remote <ADDR>`** points the TUI at an app server the user
+  runs elsewhere
+  ([cli/src/main.rs:962-974](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L962-L974)). The
+  rollout is written on that server's host, but the TUI still appends
+  each prompt to the local `history.jsonl`
+  ([tui/src/app/thread_routing.rs:557-566](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/app/thread_routing.rs#L557-L566)),
+  so a `history.jsonl` session with no local rollout may be such a
+  thread. Not a vendor upload.
+- **Analytics** go to `<chatgpt base URL>/codex/analytics-events/events`
+  ([analytics/src/client.rs:154](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/analytics/src/client.rs#L154)) as
+  events keyed by thread id
+  ([analytics/src/events.rs:257](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/analytics/src/events.rs#L257));
+  no prompt or reply text field was found (searched `prompt`, `text`,
+  `user_message` in `analytics/src`). Turned off by `[analytics]
+  enabled = false`
+  ([config/src/types.rs:223-228](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L223-L228)).
+  OpenTelemetry export, which can carry prompts and replies, is off by
+  default and goes only to an exporter the user configures
+  ([config/src/types.rs:597-611](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L597-L611),
+  [647-657](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L647-L657)). Image attachments are
+  kept inline in the rollout; the one attachment store uploads nothing
+  ([attachment-store/src/lib.rs:160-170](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/attachment-store/src/lib.rs#L160-L170)).
+
+The ChatGPT desktop app's own sync state is outside this source: its
+client code is not in the repository (searched
+`chatgpt-conversation-resume-tokens`, `resume-tokens`,
+`conversation_origin`, `chatgpt_async_status`, `codex-dev.db`,
+`local_thread_catalog` and `electron-persisted-atom-state` across the
+clone; the only matches are unrelated token-usage replay code). The
+`chatgpt` rows of `codex-dev.db` `local_thread_catalog` and the
+resume tokens in `.codex-global-state.json` (collector document,
+[section 3](../../collectors/research/codex-cli.md#3-credentials)) are
+the app's index of ChatGPT conversations that live on the server; what
+`chatgpt_async_status` and `conversation_origin` `tpp` mean, and
+whether a local Codex thread is ever uploaded as a ChatGPT
+conversation, is not determined. Settling it needs a real-install round
+that resumes a ChatGPT conversation in the app and diffs the listing.
 
 Rollouts without content kinds are classified per content block by the
 wrappers Codex itself recognises as injected user-role context

@@ -14,6 +14,11 @@ Paths, credentials and the rest of the per-user state are in
 Functional Source License 1.1 with MIT future license ([`LICENSE.md`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/LICENSE.md)). Open
 source.
 
+Sync was checked at
+[`12f96b4`](https://github.com/charmbracelet/crush/commit/12f96b4acd8f36312befbbf6fe7459da9ca07a72)
+on 2026-10-17; the `Sync:` paragraph in
+[section 8](#8-parser-plan) cites that commit.
+
 ## 2. Transcript stores
 
 Per project: `<project>/.crush/crush.db` ([`internal/config/config.go:25`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/config/config.go#L25)
@@ -118,6 +123,61 @@ of the session whose model or provider differs, with the message's
 research records no permission state for Crush (no approval, denial or
 standing grant is named in [section 3](#3-record-schema)), so the parser
 emits no permission rows.
+
+Sync: Crush records no sync state. No command shares, exports, publishes
+or uploads a session: the subcommands are `run`, `dirs`, `projects`,
+`update-providers`, `logs`, `logout`, `schema`, `login`, `stats` and
+`session` ([`internal/cmd/root.go:67-78`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/cmd/root.go#L67-L78)), plus `server` and `models`
+registered in their own files, and `session` has only `list`, `show`,
+`last`, `delete` and `rename` ([`internal/cmd/session.go:34-97`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/cmd/session.go#L34-L97)). No
+migration adds a remote id, share URL, synced flag or sync time to any
+table (the twelve files under
+`internal/db/migrations/`; the newest
+`sessions` column, `channel`, is
+[`20260921000000_add_channel_to_sessions.sql:2`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/db/migrations/20260921000000_add_channel_to_sessions.sql#L2)).
+Searched `share`, `publish`, `upload`, `cloud`, `sync`, `teleport`,
+`backup`, `export`, `remote_id`, `share_url`, `synced` and `gist` over the
+Go and SQL sources. What does leave the host, besides the model calls:
+
+- Usage telemetry to PostHog (a hosted product-analytics service) at
+  `https://data.charm.land` ([`internal/event/event.go:17`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/event/event.go#L17)), on by
+  default and off when `CRUSH_DISABLE_METRICS` or `DO_NOT_TRACK` is true or
+  `options.disable_metrics` is set in `crush.json`
+  ([`internal/cmd/root.go:905-916`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/cmd/root.go#L905-L916),
+  [`internal/config/config.go:475`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/config/config.go#L475)). The events are named actions
+  (`session created`, `session deleted`, `prompt sent` and others,
+  [`internal/event/all.go:24-83`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/event/all.go#L24-L83)); the prompt and token events carry
+  the session id, provider, model, reasoning effort, thinking mode, yolo
+  mode (the setting that skips permission prompts), token counts and cost,
+  never prompt or reply text ([`internal/agent/event.go:26-50`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/agent/event.go#L26-L50)). The
+  sender id is a hashed machine id recomputed at each start, not stored
+  ([`internal/event/identifier.go:20-28`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/event/identifier.go#L20-L28)), and a Hyper login aliases
+  it to the Hyper account's user id
+  ([`internal/oauth/hyper/device.go:104-105`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/oauth/hyper/device.go#L104-L105)); a TUI crash or panic
+  sends the error type and message ([`internal/event/event.go:100`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/event/event.go#L100),
+  [`internal/log/log.go:68`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/log/log.go#L68)). Nothing on disk records what was sent.
+- Hyper (Charm's hosted model gateway, `https://hyper.charm.land`,
+  [`internal/agent/hyper/provider.go:45`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/agent/hyper/provider.go#L45)) is a model provider; its
+  calls are model API calls, not a server copy of the session.
+- Client-server mode (`crush server`, the TUI attached with `--host`)
+  keeps the database with the server process, on a Unix socket or named
+  pipe by default and TCP when asked ([`internal/server/server.go:72-86`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/server/server.go#L72-L86),
+  [`internal/cmd/server.go:23`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/cmd/server.go#L23)); it is self-hosted, with no vendor
+  service.
+- MCP channels ([`internal/agent/tools/mcp/channel.go:20-36`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/agent/tools/mcp/channel.go#L20-L36)) push
+  messages from an MCP server into a session; `sessions.channel` names that
+  server. The flow is inbound, so it marks no upload.
+
+A session deleted with `crush session delete` or from the TUI is removed
+with its messages and file snapshots
+([`internal/db/sql/sessions.sql:79-81`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/db/sql/sessions.sql#L79-L81),
+[`20250424200609_initial.sql:32`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/db/migrations/20250424200609_initial.sql#L32),
+[`20250424200609_initial.sql:56`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/db/migrations/20250424200609_initial.sql#L56)),
+`secure_delete` zeroes the freed pages ([`internal/db/connect.go:25`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/db/connect.go#L25)),
+and the only other trace is the `session deleted` telemetry event, which
+carries no session id ([`internal/session/session.go:173`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/session/session.go#L173),
+[`internal/event/all.go:28-30`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/event/all.go#L28-L30)). The parser plan proposes no sync
+row.
 
 Fixture rows:
 

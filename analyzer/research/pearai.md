@@ -151,6 +151,53 @@ different value between items. Agent tasks record no model (the Roo fork
 writes no `modelInfo` and no `model_usage`). Permission state was not
 researched for either surface, and the parser reads none.
 
+Sync: neither surface records sync state, and neither uploads a session,
+a transcript or a prompt history beyond the model call. The chat fork
+keeps upstream Continue's local-only paths, described under `Sync:` in
+[section 8 of `continue.md`](continue.md#8-parser-plan), with these
+differences. `/share` is a default slash command
+([`core/config/default.ts:64`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/config/default.ts#L64)) that writes the same
+`<YYYYMMDDTHHMMSS>_session.md` Markdown export to `~/.pearai` or the
+given `outputDir`, never to a server
+([`core/commands/slash/share.ts:38-98`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/commands/slash/share.ts#L38-L98)). `dev_data` tables are
+appended locally with no remote destination
+([`core/util/devdata.ts:4-8`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/util/devdata.ts#L4-L8)). The fork has no `cn` CLI and so
+no `serve --id` upload. What does leave for PearAI's server
+(`https://server.trypear.ai/pearai-server-api2`,
+[`core/util/parameters.ts:38`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/util/parameters.ts#L38)) carries no message text: before
+every chat request a `GET /anonymousTelemetry` whose headers are the
+model, the provider and the event name `streamChat`
+([`core/pearaiServer/util.ts:5-28`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/pearaiServer/util.ts#L5-L28);
+[`core/llm/index.ts:535-546`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/llm/index.ts#L535-L546)), on by default and turned off by
+`allowAnonymousTelemetry: false` in `~/.pearai/config.json`
+([`core/config/load.ts:121-122`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/config/load.ts#L121-L122);
+[`core/config/profile/doLoadConfig.ts:47-52`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/config/profile/doLoadConfig.ts#L47-L52); the code comment
+names the key `sendAnonymousTelemetry`, which nothing reads); and, for
+PearAI's hosted models, a `POST /log_tokens` with token counts
+([`core/llm/llms/PearAIServer.ts:320-339`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/llm/llms/PearAIServer.ts#L320-L339)). The PostHog product
+analytics client is commented out
+([`core/util/posthog.ts:36-64`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/util/posthog.ts#L36-L64)), and team analytics
+(`TeamAnalytics`, upstream's PostHog, Logstash (Elastic's log pipeline) or Continue-proxy sink
+chosen by an `analytics` block in the config) start only when that block
+is present and send event names and counts
+([`core/control-plane/TeamAnalytics.ts:8-54`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/control-plane/TeamAnalytics.ts#L8-L54);
+[`core/config/profile/doLoadConfig.ts:54-59`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/config/profile/doLoadConfig.ts#L54-L59);
+[`core/llm/index.ts:262-293`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/llm/index.ts#L262-L293)). Deleting a chat session removes its
+file and its `sessions.json` entry only
+([`core/util/history.ts:41-66`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/util/history.ts#L41-L66)). The agent fork has no cloud or
+share feature (the Roo Code Cloud service of later upstream releases is
+absent from `src/services`); its PostHog client is forced on
+([`src/services/telemetry/PostHogClient.ts:53`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/services/telemetry/PostHogClient.ts#L53),
+[`86-104`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/services/telemetry/PostHogClient.ts#L86-L104)) and sends
+task events keyed by the local task id (`taskId`, the task directory
+name) with `source: "user"` or `"assistant"` and no message text
+([`src/services/telemetry/TelemetryService.ts:87-101`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/services/telemetry/TelemetryService.ts#L87-L101);
+[`src/core/Cline.ts:1697`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/core/Cline.ts#L1697)), so PearAI's analytics may hold the ids
+of tasks deleted locally, but nothing on disk says so. Searched `share`,
+`sync`, `upload`, `remote`, `telemetry`, `posthog`, `SERVER_URL` and
+`trypear.ai` in both clones' `core/`, `gui/src`, `extensions/vscode/src`,
+`src/` and `webview-ui/src`.
+
 Fixture `.pearai/sessions/9b1c2d3e-0000-4000-8000-000000000001.json`:
 
 ```json

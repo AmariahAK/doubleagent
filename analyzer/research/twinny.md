@@ -8,7 +8,9 @@ editor's own SQLite state database, not in a file of its own. Paths are in
 
 [twinnydotdev/twinny](https://github.com/twinnydotdev/twinny) at [`9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6`](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6),
 MIT, open source. VS Code storage behaviour from [microsoft/vscode](https://github.com/microsoft/vscode) at the
-commit cited in [vscode.md](vscode.md).
+commit cited in [vscode.md](vscode.md). Sync was checked at
+[`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)
+(version 4.3.15, [package.json:5](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/package.json#L5)) on 2026-10-17.
 
 ## 2. Transcript stores
 
@@ -148,6 +150,52 @@ Model and permission rows, all `system` (issues 96 and 97):
 - `node/trusted-peers.json`, the `twinny-node` trusted-peer list named in
   [`collectors/research/twinny.md`](../../collectors/research/twinny.md),
   is not read: its shape is not recorded.
+
+Sync: Twinny records no sync state. Conversations are written and
+deleted only in the extension's `globalState`
+([conversation-history.ts:100-110](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/conversation-history.ts#L100-L110),
+[158-178](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/conversation-history.ts#L158-L178)),
+and the extension never calls `setKeysForSync`, the call that would let
+VS Code's Settings Sync (the editor's own upload of settings and
+extension state to the user's Microsoft or GitHub account) carry a
+`globalState` key to other devices
+([vscode.d.ts:8445-8457](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vscode-dts/vscode.d.ts#L8445-L8457);
+[extHostMemento.ts:113-114](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/workbench/api/common/extHostMemento.ts#L113-L114));
+the P2P host says so in its own words, "global state is not synced"
+([src/extension/p2p/host.ts:5-8](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/p2p/host.ts#L5-L8)).
+The features whose names suggest sharing move compute, not chats:
+team share and P2P (peer-to-peer) hosting lend this machine's local
+model server to a team gateway or to paired devices
+([src/extension/team/share.ts:1-9](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/team/share.ts#L1-L9);
+[src/extension/team/sharer.ts:1-9](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/team/sharer.ts#L1-L9);
+[host.ts:1-3](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/p2p/host.ts#L1-L3)), and their state
+keys `twinny.teamShare`, `twinny.teamPluginsSeen` and `twinny.teamNudge`
+hold the share switch and server, the plugin ids already announced and a
+first-run notice flag
+([src/common/constants/storage.ts:18-23](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/constants/storage.ts#L18-L23)).
+The OpenAI Responses adapters, including the ChatGPT plan sign-in,
+send `store: false`, so the provider keeps no server-side conversation
+([src/extension/inference/adapters/openai-responses.ts:54](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/inference/adapters/openai-responses.ts#L54);
+[src/extension/inference/adapters/chatgpt-plan.ts:192](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/inference/adapters/chatgpt-plan.ts#L192)).
+Searched `sync`, `upload`, `share`, `publish`, `export`, `telemetry`,
+`analytics`, `sentry`, `posthog`, `record` and `CONVERSATION_STORAGE_KEY`
+in `src/extension`, `src/common` and `src/webview`; no telemetry client
+was found. The one server copy is the team's own: when chat runs
+through a `twinny-server` gateway, the request is the model call, and
+the gateway keeps it only if its administrator turns on recording
+(`recording.chat`, default `false`, and only with the licence's
+`recording` feature,
+[src/gateway/config.ts:147-148](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/gateway/config.ts#L147-L148),
+[216-223](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/gateway/config.ts#L216-L223)), grouped by a `thread`
+id the gateway derives from the key name and the first user message,
+not one the extension sends
+([src/gateway/recording/store.ts:125-135](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/gateway/recording/store.ts#L125-L135)).
+The extension sends only the workspace name in `X-Twinny-Workspace`
+([src/protocol/client.ts:83](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/protocol/client.ts#L83),
+[252](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/protocol/client.ts#L252)), and nothing on the developer's
+machine says a request was recorded, so the parser yields no sync row;
+the gateway host's `recordings/` directory is the place to look
+([section 5](#5-sqlite-and-other-stores)).
 
 Fixture, the `value` of the `rjmacarthy.twinny` row:
 

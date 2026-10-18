@@ -100,6 +100,48 @@ shared/src/session/records.ts:1-15), interactive, provider, model, cwd,
 workspace_root, team_name?, enable_tools, enable_spawn, enable_teams,
 prompt?, metadata?{title,...}, messages_path?`.
 
+The manifest's `metadata` object, also stored as the `sessions.db` column
+`metadata_json`
+([`session-manifest.ts:25`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/models/session-manifest.ts#L25),
+[`session/services/session-service.ts:167-170`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/session-service.ts#L167-L170)),
+carries the enterprise prompt-upload marker. Remote config is the organisation
+settings document the Cline account API serves to a signed-in member of an
+enterprise organisation, at `/api/v1/users/me/remote-config`
+([`sdk/packages/core/src/account/cline-account-service.ts:98-102`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/account/cline-account-service.ts#L98-L102)).
+When its `enterpriseTelemetry.promptUploading` block is enabled with access
+keys for an S3 (Amazon's object store), R2 (Cloudflare's S3-compatible store)
+or Azure Blob bucket
+([`sdk/packages/shared/src/remote-config/schema.ts:148-174`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/schema.ts#L148-L174),
+[`remote-config/blob-storage.ts:91-127`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/blob-storage.ts#L91-L127)),
+the session's metadata gets the key `enterprise.blobUpload`
+([`:56-57`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/blob-storage.ts#L56-L57)):
+`{version: 1, storage: {adapterType: "s3"|"r2"|"azure", bucket, region?,
+endpoint?, accountId?}, userDistinctId?}`, the target with the access keys
+stripped
+([`:79-89`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/blob-storage.ts#L79-L89),
+[`:129-160`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/blob-storage.ts#L129-L160)).
+The CLI writes it with `updateSession` right after the session starts
+([`apps/cli/src/connectors/session-runtime.ts:248-258`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/connectors/session-runtime.ts#L248-L258),
+[`apps/cli/src/runtime/run-zen.ts:110-119`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/runtime/run-zen.ts#L110-L119),
+[`apps/cli/src/utils/enterprise.ts:167-186`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/enterprise.ts#L167-L186)),
+without `userDistinctId`; the VS Code host adds it, with `userDistinctId` set
+to the remote-config token's subject, to the start input
+([`apps/vscode/src/sdk/vscode-session-host.ts:150-153`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/sdk/vscode-session-host.ts#L150-L153),
+[`sdk/packages/core/src/remote-config/integration.ts:74-108`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/remote-config/integration.ts#L74-L108)),
+which the runtime merges into the manifest at start
+([`local-runtime-host.ts:630-634`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/runtime/host/local-runtime-host.ts#L630-L634)).
+A session started without such a remote config has no `enterprise.blobUpload`
+key. The CLI hands its session store an uploader
+([`apps/cli/src/session/session.ts:66`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/session/session.ts#L66)),
+and every time that store rewrites `<sessionId>.messages.json` it PUTs the
+same bytes to the object `sessions/<userDistinctId or
+unknown>/<sessionId>/messages.json` in that bucket
+([`session/stores/session-manifest-store.ts:238-248`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/stores/session-manifest-store.ts#L238-L248),
+[`blob-storage.ts:367-414`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/blob-storage.ts#L367-L414));
+a failed upload is logged at debug level only and leaves the key in place.
+`keyPrefix` is read back from the stored metadata but not used in the object
+name.
+
 SDK `<id>.messages.json` ([`services/session-data.ts:334-359`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/session-data.ts#L334-L359),[`281-294`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/session-data.ts#L281-L294)):
 `{version:1, updated_at (ISO), agent:"lead"|"subagent"|"teammate",
 sessionId, taskType?, origin{source, mode, sessionId, parentThreadId?,
@@ -234,6 +276,23 @@ mcpOAuthSecrets, openai-codex-oauth-credentials, ocaRefreshToken`. Also
 `session-search.db` content, `images[]` base64, and file contents and command
 output in every transcript.
 
+Two files that the upload features use hold credentials and are collected
+without the secret flag. The VS Code extension caches each organisation's
+remote config, `promptUploading` access keys (`accessKeyId`,
+`secretAccessKey`) included, as
+`<GS>/saoudrizwan.claude-dev/cache/remote_config_<organizationId>.json`
+([`apps/vscode/src/core/storage/disk.ts:35`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L35),
+[`:186-188`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L186-L188),
+[`:248-252`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L248-L252),
+[`core/storage/remote-config/sdk-control-plane.ts:198`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/remote-config/sdk-control-plane.ts#L198));
+the CLI fetches it on each session start and keeps no copy
+([`apps/cli/src/utils/enterprise.ts:37-73`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/enterprise.ts#L37-L73)).
+The LG CNS webhook integration (named for LG CNS, the LG group's IT services
+company, in the source directory `lg-cns-integration`) writes
+`~/Documents/Cline/webhook_config.json` with `webhook_url`, `webhook_token` (a
+bearer token) and `created_at`
+([`apps/vscode/src/services/lg-cns-integration/webhook-hooks.ts:11-30`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/services/lg-cns-integration/webhook-hooks.ts#L11-L30)).
+
 ## 8. Parser plan
 
 Globs (home-relative; `<GS>` is each VS Code `User/globalStorage`):
@@ -334,6 +393,66 @@ Permission decisions: whether the answer to an `ask` (approve or reject)
 is stored, and where the auto-approval settings live, are not in this
 research, so the parser yields no `permission decision:` or `permission
 setting:` row.
+
+Sync: the SDK manifest `metadata` key `enterprise.blobUpload` (and the same
+object in `sessions.db` `metadata_json`, [section 3](#3-record-schema)) marks
+a session whose transcript is uploaded to the organisation's own S3, R2 or
+Azure bucket under an enterprise remote config. It is written once, at session
+start, and the upload repeats on every rewrite of the messages file, so the
+remote copy is the transcript as last written; the organisation's remote
+config turns it on, not a local setting.
+The proposed row is one `system` row after the session start row, `session
+synced: enterprise prompt upload to <adapterType> bucket <bucket> object
+sessions/<userDistinctId or unknown>/<session_id>/messages.json
+endpoint=<endpoint or -> region=<region or -> account=<accountId or -> (from
+<session_id>.json metadata enterprise.blobUpload, started_at)`, timestamped by
+the manifest's `started_at` (or the `sessions.db` row's), since the key is
+written at the start of the session; no legacy task file records sync. A
+delete through the hub removes the manifest, the messages file and the
+`sessions.db` row
+([`session/services/persistence-service.ts:586-630`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/persistence-service.ts#L586-L630)),
+so no marker survives on disk, and nothing deletes the uploaded object: the
+bucket adapter has only `write`
+([`blob-storage.ts:28-30`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/blob-storage.ts#L28-L30)).
+The CLI also reports each upload as a telemetry event
+`enterprise.prompt_upload_succeeded` or `enterprise.prompt_upload_failed` with
+the session id and bucket
+([`apps/cli/src/utils/enterprise.ts:75-115`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/enterprise.ts#L75-L115)),
+which leaves the host and is not written locally.
+
+Other paths by which session content leaves the host record nothing the parser
+can read. The LG CNS webhook is installed by opening a `vscode://` link to the
+extension's `/lg-task` path with `prompt-file`, `webhook-url` and
+`webhook-token`
+([`apps/vscode/src/services/uri/SharedUriHandler.ts:98-121`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/services/uri/SharedUriHandler.ts#L98-L121));
+it writes `webhook_config.json` ([section 7](#7-secrets)) and three hook
+scripts, `TaskStart`, `PostToolUse` and `TaskComplete` (`.ps1` on Windows),
+into `~/Documents/Cline/Hooks/`
+([`:32-59`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/services/lg-cns-integration/webhook-hooks.ts#L32-L59),
+[`apps/vscode/src/core/storage/disk.ts:88-97`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L88-L97)),
+which POST every task start, tool call (tool name and parameters) and task
+completion to the webhook
+([`:230-322`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/services/lg-cns-integration/webhook-hooks.ts#L230-L322)).
+Those files are configuration, not per-task markers; the hooks are already in
+the collected `Documents/Cline` tree. Cloud handoff, the SDK's move of a local
+session into a Cline cloud sandbox with its transcript as the seed, defines a
+`metadata.handoff` object (`toCloudSessionId`, `handedOffAt`, `status`,
+`innerSessionId`, `dashboardUrl`, `fingerprint`)
+([`sdk/packages/core/src/services/cloud-handoff/types.ts:13-20`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/cloud-handoff/types.ts#L13-L20),
+[`cloud-handoff/metadata.ts:98-132`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/cloud-handoff/metadata.ts#L98-L132)),
+but no host in the repository starts a handoff or writes that object: the only
+caller of the cloud session controller is the example desktop app
+([`apps/examples/desktop-app/sidecar/cloud-sessions.ts:31-53`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/examples/desktop-app/sidecar/cloud-sessions.ts#L31-L53)),
+whose cloud sessions run and are stored server-side. Model-call tracing to
+Langfuse (an LLM tracing service) is configured from the environment only:
+direct `LANGFUSE_*` credentials, or a host OpenTelemetry relay whose spans carry
+prompt and reply text only with `CLINE_TRACE_RECORD_CONTENT` set
+([`sdk/packages/llms/src/services/langfuse-telemetry.ts:146-163`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/llms/src/services/langfuse-telemetry.ts#L146-L163),
+[`:198-268`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/llms/src/services/langfuse-telemetry.ts#L198-L268)).
+The task history (`HistoryItem`) has no share, sync or remote field
+([`apps/vscode/src/shared/HistoryItem.ts:1-26`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/HistoryItem.ts#L1-L26)),
+and no share-task feature or `shareUrl` exists at this commit (searched
+`share`, `shareUrl`, `shareTask` in `apps/` and `sdk/`).
 
 Fixtures (invented content, real field names):
 

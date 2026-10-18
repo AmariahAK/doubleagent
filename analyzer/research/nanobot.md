@@ -205,6 +205,26 @@ compatibility ([`session/manager.py:1215-1218`](https://github.com/HKUDS/nanobot
 holds raw tool output. `tool_calls[].function.arguments` can contain whatever
 the agent passed to a shell. Credentials themselves are not in session files.
 
+Remote WebUI pairing, nanobot's SSH-based link from a local WebUI to a
+nanobot gateway on another host the user runs (no vendor relay,
+[`webui/remote_pairing.py:1-5`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_pairing.py#L1-L5)),
+keeps its material under the instance's `webui/` directory
+([`webui/ws_http.py:392-394`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/ws_http.py#L392-L394)):
+`remote-pairing/<uuid>/identity` (an unencrypted OpenSSH private key),
+`exchange` (a raw X25519 private key), `request`, `receipt` and
+`ssh_route`
+([`:208-210`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_pairing.py#L208-L210),[`249-251`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_pairing.py#L249-L251),[`290-299`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_pairing.py#L290-L299)).
+`remote-instances.json` lists the saved remote servers by UUID with
+`name`, `host` (`user@host`), `port`, `ssh_config`, `identity_file`,
+`config_path`, `runtime_user`, `local_port` and `pair_id`
+([`webui/remote_instances.py:28-34`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_instances.py#L28-L34),[`52-53`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_instances.py#L52-L53),[`98-103`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_instances.py#L98-L103);
+[`webui/remote_ssh.py:32-41`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_ssh.py#L32-L41)),
+beside `remote-origin-ports.json` and per-server pinned host keys in
+`remote-hosts/<uuid>`
+([`remote_instances.py:70-71`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_instances.py#L70-L71),[`105-125`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_instances.py#L105-L125)).
+The catalog collects all of them under `.nanobot*`, and no secret glob
+matches the two private keys.
+
 ## 8. Parser plan
 
 Globs (home-relative): `.nanobot*/sessions/*/*.jsonl`,
@@ -240,6 +260,61 @@ permission state is read: `pairing.json`, the chat senders the operator
 approved
 ([`collectors/research/nanobot.md`](../../collectors/research/nanobot.md)),
 is named in the research without its shape, so the file is not read.
+
+Sync: nanobot records no sync state, because it uploads no session to a
+vendor or share service. The session, the WebUI transcript, the memory
+journal and the CLI history are written only under the home and the
+workspace ([section 2](#2-transcript-files)), and the project's own
+privacy notes say chat history is stored locally and that the model
+provider sees the prompts
+([`SECURITY.md:208-212`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/SECURITY.md#L208-L212)).
+A channel (Telegram, Slack and the other chat services nanobot answers
+through) keeps its own copy of the messages it carried, on the channel's
+servers, as the model provider sees the prompts; neither is sync. Searched
+at the [section 1](#1-source) commit: `sync`, `share`, `upload`, `cloud`,
+`telemetry`, `analytics`, `backup`, `export`, `remote`, every
+`https://` host outside the provider and channel modules, and the WebUI
+and TUI front ends for analytics libraries (none). The paths found and
+read, none of which carries session content to a vendor:
+
+- Langfuse tracing, an LLM-observability service, is opt-in: with the
+  `langfuse` extra installed (`nanobot plugins enable langfuse`) and
+  `LANGFUSE_SECRET_KEY` set in the environment, the OpenAI-compatible
+  provider's client is swapped for Langfuse's wrapper, which sends each
+  model call's prompt and reply to `LANGFUSE_BASE_URL` (default
+  `https://cloud.langfuse.com`)
+  ([`providers/openai_compat_provider.py:624-632`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/providers/openai_compat_provider.py#L624-L632);
+  [`webui/settings_capabilities.py:197-205`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/settings_capabilities.py#L197-L205);
+  [`pyproject.toml:85-86`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/pyproject.toml#L85-L86);
+  [`docs/provider-cookbook.md:529-557`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/docs/provider-cookbook.md#L529-L557)).
+  The setting lives only in the process environment, not in
+  `config.json`, and the gateway's systemd unit sets no such variable
+  ([`gateway/service.py:268-273`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/gateway/service.py#L268-L273)),
+  so nothing collected says a session was traced; a responder who finds
+  the `langfuse` package in nanobot's Python environment asks the
+  Langfuse project for the traces.
+- Remote WebUI pairing connects the local WebUI over SSH to a nanobot
+  gateway on another host the user runs; that host's sessions stay on it,
+  in its own `.nanobot`, and the local side keeps only the server list
+  and the pairing keys ([section 7](#7-secrets)). "Forget" removes a
+  pairing's files
+  ([`webui/remote_pairing.py:330-339`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_pairing.py#L330-L339))
+  and leaves the append-only `remote-origin-ports.json` ledger
+  ([`webui/remote_instances.py:105-125`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_instances.py#L105-L125)).
+  The parser does not read these files; they point the responder at the
+  other host to collect.
+- The update check is a GET of the PyPI release record on request
+  ([`webui/version_check.py:1-3`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/version_check.py#L1-L3),[`19`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/version_check.py#L19)),
+  the GitHub star invitation is local state only
+  ([`webui/star_prompt.py:1`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/star_prompt.py#L1)),
+  and the skills marketplace runs `npx skills add` with
+  `DISABLE_TELEMETRY=1`
+  ([`webui/skills_marketplace.py:382-388`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/skills_marketplace.py#L382-L388)).
+- A WebUI Temporary Chat runs on a non-persistent session and writes no
+  session file or WebUI transcript
+  ([`webui/temporary_chats.py:40-44`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/temporary_chats.py#L40-L44),[`84-98`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/temporary_chats.py#L84-L98);
+  [`session/manager.py:1634-1642`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L1634-L1642)),
+  so such a chat leaves no transcript on disk at all.
 
 Sources, primary or secondary (issue 122; every one read on every run):
 

@@ -15,6 +15,12 @@ and the legacy app at [OpenHands/OpenHands](https://github.com/OpenHands/OpenHan
 ([`11ca68ab2e15dcd85c21e4d7d3409e7a259369ac`](https://github.com/OpenHands/OpenHands/commit/11ca68ab2e15dcd85c21e4d7d3409e7a259369ac))
 and `0.62.0` ([`7fbb48c40679afd674970966b96185657d92a487`](https://github.com/OpenHands/OpenHands/commit/7fbb48c40679afd674970966b96185657d92a487)). MIT, open source.
 
+Sync and upload were checked on 2026-10-17 at
+[`fd26808`](https://github.com/OpenHands/software-agent-sdk/commit/fd268089e257bee4ad704ce4fdc6466bc756c71c)
+(SDK) and
+[`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
+(CLI), newer than the commits above.
+
 ## 2. Transcript files
 
 One directory per conversation, named by the conversation UUID as 32 hex
@@ -156,6 +162,12 @@ redacted as `**********` ([`conversation/state.py:435-447`](https://github.com/O
 `responses_reasoning_item.encrypted_content` are opaque blobs. Terminal
 output in observations and bash events can contain pasted tokens.
 
+`.openhands/cloud/api_key.txt` holds the OpenHands Cloud account key in
+plain text (mode 0600), written by `openhands login` and read by
+`openhands cloud` and `openhands acp --cloud`
+([`openhands_cli/auth/token_storage.py:19-37`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/auth/token_storage.py#L19-L37));
+the collector flags it through the `.openhands/cloud/*` secret glob.
+
 ## 8. Parser plan
 
 Globs: `.openhands/agent-canvas/dev_conversations/*/events/event-*.json`,
@@ -191,6 +203,109 @@ Model and permission rows (issues 96 and 97):
   `rejection_reason`.
 - ` security_risk=<value>` at the end of an `ActionEvent`'s `tool_use`
   text, from `security_risk`.
+
+Sync: OpenHands records no sync state on disk. Two features send work
+to OpenHands Cloud (the vendor's hosted service at `app.all-hands.dev`,
+which runs each conversation in a sandbox of its own), and neither
+writes a local file that names the remote conversation:
+
+- `openhands cloud -t <task>` (or `-f <file>`) posts the task text and
+  the GitHub or GitLab `owner/repo` and branch of the working directory's
+  `origin` remote to `/api/v1/app-conversations`, then prints the remote
+  conversation id and its browser URL
+  ([`openhands_cli/cloud/conversation.py:54-133`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/cloud/conversation.py#L54-L133);
+  [`auth/api_client.py:109-112`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/auth/api_client.py#L109-L112);
+  [`argparsers/cloud_parser.py:16-45`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/argparsers/cloud_parser.py#L16-L45)).
+  The id goes to stdout only; the CLI's only file writes are the API
+  key, `cli_config.json`, the prompt history and the SDK's local
+  conversation store, which this command does not open
+  ([`auth/token_storage.py:27-37`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/auth/token_storage.py#L27-L37);
+  [`stores/cli_settings.py:56-62`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/stores/cli_settings.py#L56-L62);
+  [`stores/prompt_history.py:92-93`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/stores/prompt_history.py#L92-L93)).
+  A cloud-backed conversation store is a stub that raises
+  `NotImplementedError`
+  ([`conversations/store/cloud.py:10-50`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/conversations/store/cloud.py#L10-L50)).
+- `openhands acp --cloud` (ACP, the Agent Client Protocol an editor such
+  as Zed uses to drive the CLI as its agent) runs every session as an SDK
+  `RemoteConversation` in an OpenHands Cloud workspace: the events are
+  kept by the agent server inside the cloud sandbox, and the call that
+  builds the conversation passes no `persistence_dir`, unlike the local
+  agent, so nothing is written under `.openhands/conversations/`
+  ([`acp_impl/agent/remote_agent.py:186-258`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/acp_impl/agent/remote_agent.py#L186-L258);
+  [`acp_impl/agent/local_agent.py:188`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/acp_impl/agent/local_agent.py#L188);
+  [`argparsers/acp_parser.py:32-46`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/argparsers/acp_parser.py#L32-L46)).
+  The only local file a remote conversation can leave is an LLM
+  completion log, and only when `log_completions` is set on the agent's
+  LLM
+  ([`sdk/conversation/impl/remote_conversation.py:1251-1282`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-sdk/openhands/sdk/conversation/impl/remote_conversation.py#L1251-L1282)).
+  The session id the editor holds is the remote conversation id; the
+  editor's own state is outside this catalog entry.
+
+Both need `openhands login`, which stores the account key in
+`.openhands/cloud/api_key.txt` ([section 7](#7-secrets)) and pulls the
+account's settings down rather than pushing anything up
+([`auth/login_command.py:31`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/auth/login_command.py#L31);
+[`auth/api_client.py:307-347`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/auth/api_client.py#L307-L347)).
+Neither has a local delete: the CLI has no conversation delete command,
+and the remote copy is managed in the web app, whose code is not in
+these repositories.
+
+Other traffic that leaves the host beyond the model call, none of which
+carries a session marker:
+
+- The critic (an OpenHands model that scores whether the agent's run
+  succeeded) is on by default (`critic.enable_critic` in
+  `.openhands/cli_config.json`) for models served through the OpenHands
+  provider, and sends the conversation's messages and tools to the
+  vendor's LLM proxy at `llm-proxy.app.all-hands.dev/vllm`
+  ([`stores/cli_settings.py:23-26`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/stores/cli_settings.py#L23-L26);
+  [`stores/agent_store.py:91-130`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/stores/agent_store.py#L91-L130);
+  [`sdk/critic/impl/api/critic.py:58-105`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-sdk/openhands/sdk/critic/impl/api/critic.py#L58-L105)).
+  Each critic result is also sent to PostHog (a product analytics
+  service) as a `critic_inference` event, and each feedback button
+  press other than dismiss as `critic_feedback`, with the raw local
+  conversation id as the PostHog identity, the score, the agent model and
+  the critic's `event_ids`, but no message text, with no consent check
+  ([`tui/utils/critic/feedback.py:29-79`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/tui/utils/critic/feedback.py#L29-L79),
+  [`228-270`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/tui/utils/critic/feedback.py#L228-L270);
+  [`tui/widgets/richlog_visualizer.py:332-345`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/tui/widgets/richlog_visualizer.py#L332-L345)).
+  The `posthog` package arrives through `browser-use`, so it is present
+  in a source install
+  ([`uv.lock:263-290`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/uv.lock#L263-L290)).
+- The Agent Server's product telemetry is off by default (consent
+  `unset` is not consent, the exporter defaults to `none`), allowlists
+  scalar fields so no prompt or reply text can be sent, and pseudonymises
+  conversation ids; the consent is kept in
+  `.openhands/settings.json` `misc_settings.telemetry.consent`
+  (`granted`, `denied` or `unset`)
+  ([`agent_server/telemetry/policy.py:160-216`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-agent-server/openhands/agent_server/telemetry/policy.py#L160-L216);
+  [`agent_server/config.py:151-172`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-agent-server/openhands/agent_server/config.py#L151-L172);
+  [`agent_server/telemetry/models.py:1-16`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-agent-server/openhands/agent_server/telemetry/models.py#L1-L16);
+  [`agent_server/telemetry/factory.py:112-124`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-agent-server/openhands/agent_server/telemetry/factory.py#L112-L124);
+  [`agent_server/persistence/store.py:821-829`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-agent-server/openhands/agent_server/persistence/store.py#L821-L829)).
+- Agent Server webhooks post events and conversation info to a
+  configured URL; the list is empty by default and is set by whoever
+  launches the server, not stored per conversation
+  ([`agent_server/config.py:91-105`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-agent-server/openhands/agent_server/config.py#L91-L105),
+  [`322-325`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-agent-server/openhands/agent_server/config.py#L322-L325)).
+
+The trajectory export (`GET /download-trajectory/<id>`, Agent Canvas's
+download) is a download to the user, not an upload: it zips the
+conversation directory with credential fields redacted into a temporary
+`<hex>.zip` beside it and deletes the zip once the response is sent
+([`agent_server/file_router.py:179-216`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-agent-server/openhands/agent_server/file_router.py#L179-L216),
+[`937-960`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-agent-server/openhands/agent_server/file_router.py#L937-L960)).
+A conversation deleted through the Agent Server loses its whole
+directory; a child or fork keeps its `parent_conversation_id` or
+`forked_from_conversation_id` pointing at it
+([`agent_server/conversation_service.py:1774-1838`](https://github.com/OpenHands/software-agent-sdk/blob/fd268089e257bee4ad704ce4fdc6466bc756c71c/openhands-agent-server/openhands/agent_server/conversation_service.py#L1774-L1838)).
+No `session synced:` row is proposed. Searched: `cloud`, `share`,
+`upload`, `sync`, `export`, `trajectory`, `feedback`, `posthog`,
+`telemetry`, `webhook`, `remote`, `app_conversation_id`, `sandbox_id`,
+`all-hands.dev` in `openhands_cli/`, `openhands-sdk/`,
+`openhands-agent-server/` and `openhands-workspace/`. The Agent Canvas
+front end and the OpenHands Cloud server are not in these repositories,
+so a share or sync feature of theirs is not covered here.
 
 Fixture (`.openhands/conversations/0f0e0d0c111140008000000000000001/`):
 
