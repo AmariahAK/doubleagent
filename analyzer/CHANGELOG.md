@@ -9,6 +9,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- The bundled catalog copy follows collector 1.14.0: its credential
+  section gains the secret globs of the session sync round and replaces
+  Qwen Code's `.qwen/channels/*.json`, and its exclusion section drops
+  Cline's VS Code `cache` directory and Kilo Code's `log` directory.
+  Detection reads neither section, so it is unchanged ([#153]).
+
 ## [0.14.0] - 2026-10-17
 
 ### Added
@@ -1102,6 +1110,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#151]: https://github.com/seanthegeek/doubleagent/issues/151
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#143]: https://github.com/seanthegeek/doubleagent/issues/143

@@ -84,8 +84,28 @@ repository exists in this fork (`gitService.ts` absent).
   Credentials` ([`core/src/extension/extension-git-credentials.ts:19-22`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/extension/extension-git-credentials.ts#L19-L22),[`66-67`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/extension/extension-git-credentials.ts#L66-L67),[`152`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/extension/extension-git-credentials.ts#L152)).
 - `settings.json` `modelProviders[].apiKey` and `envKey`
   ([`core/src/models/modelsConfig.ts:725`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/models/modelsConfig.ts#L725),[`926`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/models/modelsConfig.ts#L926)); `.env` in `~/.qwen/.env`
-  or `~/.env` ([`environment.ts:192-195`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/environment.ts#L192-L195),[`224-239`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/environment.ts#L224-L239)). `channels/*.json` hold
-  messaging-platform tokens (docs `~/.qwen/channels/dingtalk-groups.json`).
+  or `~/.env` ([`environment.ts:192-195`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/environment.ts#L192-L195),[`224-239`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/environment.ts#L224-L239)). Channel
+  credentials under `channels/`: the QQ bot adapter writes `appId` and
+  `appSecret` to `channels/<channel name>-credentials.json`
+  ([`channels/qqbot/src/accounts.ts:13-15`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/channels/qqbot/src/accounts.ts#L13-L15),[`44-52`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/channels/qqbot/src/accounts.ts#L44-L52)),
+  and the WeChat adapter keeps its `token` in
+  `channels/weixin/account.json` (or under `WEIXIN_STATE_DIR`,
+  [`channels/weixin/src/accounts.ts:21-40`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/channels/weixin/src/accounts.ts#L21-L40));
+  secret globs `.qwen/channels/*-credentials.json` and
+  `.qwen/channels/weixin/account.json` from collector 1.14.0. They
+  replace `.qwen/channels/*.json`, which, since `*` crosses `/` in a
+  secret glob, also flagged every routing, cursor, pairing and history
+  file under `channels/`: `sessions.json` and `daemon/<hash>/routes.json`
+  (the routing tables a parser reads, [`cli/src/commands/channel/runtime.ts:43-60`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/commands/channel/runtime.ts#L43-L60)),
+  `cron.json`, the email adapter's per-workspace `state.json` (IMAP
+  positions and reply routes, no password,
+  [`channels/email/src/state.ts:29-36`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/channels/email/src/state.ts#L29-L36))
+  and the polling adapters' `<name>-<hash>-poll-cursor.json`
+  ([`channels/base/src/PollingChannelBase.ts:128-135`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/channels/base/src/PollingChannelBase.ts#L128-L135)).
+  The `~/.qwen/channels/dingtalk-groups.json` named in a design document
+  is a proposed store of group conversation ids, not a credential, and no
+  writer exists at this commit. Platform bot tokens set in `settings.json`
+  are covered by that file's glob.
 
 ## 4. Exclude
 

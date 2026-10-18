@@ -92,6 +92,16 @@ no home-relative binary dir. Hub daemon runs as `cline --cline-hub-daemon`
   credentials, [`paths.ts:248-258`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L248-L258)).
 - `settings/cline_mcp_settings.json` and `settings/composio/*.json` can embed
   `headers`/`env` and connected-account ids ([`apps/vscode/src/services/mcp/schemas.ts:42-143`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/services/mcp/schemas.ts#L42-L143)).
+- `<globalStorage>/saoudrizwan.claude-dev/cache/remote_config_<organization id>.json`,
+  the cached organisation remote config, holds the prompt upload bucket's
+  `accessKeyId` and `secretAccessKey`, and the LG CNS webhook integration
+  (LG CNS is the LG group's IT services company) writes
+  `~/Documents/Cline/webhook_config.json` with a bearer `webhook_token`;
+  secret globs
+  `*/User/globalStorage/saoudrizwan.claude-dev/cache/remote_config_*.json`
+  and `Documents/Cline/webhook_config.json` from collector 1.14.0.
+  Evidence in
+  [section 7 of `analyzer/research/cline.md`](../../analyzer/research/cline.md#7-secrets).
 - VS Code extension: secrets migrated out of `context.secrets` into
   `secrets.json` ([`vscode-to-file-migration.ts:4-15`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts#L4-L15)). No keychain use.
 
@@ -99,8 +109,22 @@ no home-relative binary dir. Hub daemon runs as `cline --cline-hub-daemon`
 
 `.cline/data/checkpoint-scratch`, `.cline/worktrees`, `.cline/data/workspaces/chat`
 (agent working tree), `.cline/data/agent-plugins`, `.cline/plugins`,
-`*/User/globalStorage/saoudrizwan.claude-dev/checkpoints`, `.../cache`. Keep
+`*/User/globalStorage/saoudrizwan.claude-dev/checkpoints`. Keep
 `.cline/data/db/session-search.db*`: a searchable copy of every transcript, not a cache.
+
+The extension's `cache/` directory was excluded before collector 1.14.0
+and is collected from it. At the commit in [section 1](#1-source-and-evidence-level) it holds
+only `remote_config_<organization id>.json`, a credential (see
+[section 3](#3-credentials)), and `sync-queue.json`, the queue of task files
+waiting for, or done with, upload to the organisation's Amazon S3 or Cloudflare R2 bucket
+(`items{<id>: {taskId, key, data, timestamp, status, retryCount, lastError}}`,
+`status` `pending|synced|failed`;
+[`shared/services/worker/sync.ts:27-29`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/sync.ts#L27-L29),
+[`shared/services/worker/queue.ts:9-31`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L9-L31),
+[`core/storage/disk.ts:186-188`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L186-L188)),
+which is evidence of what was uploaded; neither is a cache in size or
+kind. `cline_recommended_models.json` is still named in `GlobalFileNames`
+but nothing at this commit writes it.
 
 ## 5. Project-local
 

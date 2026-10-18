@@ -64,6 +64,11 @@ install, not the home ([little-coder.mjs:163](https://github.com/itayinbarr/litt
 - `~/.config/little-coder/models.json`: `providers.<name>.apiKey` is meant
   to name an environment variable, but a value that names none is used as a
   literal key ([config.ts:4-14](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/llama-cpp-provider/config.ts#L4-L14), [294-300](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/llama-cpp-provider/config.ts#L294-L300)). Flag it.
+- `~/.little-coder/config.json` of the v0.0.x Python releases holds
+  `gist_token`, a GitHub personal access token with the `gist` scope;
+  secret glob `.little-coder/config.json` from collector 1.14.0. Evidence
+  in
+  [section 7 of `analyzer/research/little-coder.md`](../../analyzer/research/little-coder.md#7-secrets).
 - No keychain use.
 
 ## 4. Exclusions

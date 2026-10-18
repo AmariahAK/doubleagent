@@ -471,6 +471,9 @@ their state must be copied by hand.
   copied by hand. The Windows locations under `AppData/Local/Temp` are
   collected.
 - **Muse Code** keeps its launcher state beside the launcher; see below.
+- **OpenClaw, Codex CLI, Continue and Gemini CLI** write backups,
+  exports or a log to a directory the user chooses or works in; see
+  [Files written where the user chooses](#files-written-where-the-user-chooses).
 
 ### Muse Code
 
@@ -488,6 +491,25 @@ copied by hand:
   read as `/Library/Application Support/muse/` on macOS; the Linux location
   is not known.
 - On Windows, the elevated shell-sandbox setup root under `%ProgramData%`.
+
+### Files written where the user chooses
+
+Some agents write a copy of their state, or a record of an upload, to a
+directory the user names or the one the agent was started from. No catalog
+entry can reach these, so copy them by hand when they exist:
+
+| Agent | File | Where to look |
+| --- | --- | --- |
+| OpenClaw | `openclaw backup create` archives (`.tar.gz` archives of OpenClaw's state and configuration and, unless `--no-include-workspace` was passed, the workspace), `openclaw backup sqlite create` snapshot repositories and `openclaw backup git` repositories, local copies of what may also have been uploaded offsite or pushed to a Git remote. | The `archive_path` column of the `backup_runs` table in the collected `state/openclaw.sqlite`, one row per backup attempt. An archive made without `--output` goes to the working directory it was run from (the home when that directory is inside the state tree); a repository is wherever `--repository` pointed. |
+| Codex CLI | `error.log`, appended to by `codex cloud` (which starts a task on OpenAI's servers), with one `new_task: created id=<task id>` line per task it created. | The directory `codex cloud` was started from; nothing under `~/.codex` records it. |
+| Continue | `<YYYYMMDDTHHMMSS>_session.md`, a Markdown copy of a chat written by `/share` or the history page's share button. | `~/.continue` (collected) unless the user picked a folder or set `outputDir`. |
+| Gemini CLI | `gemini-conversation-<epoch ms>.json` or `.md` from `/chat share`, and the JSON file `/export-session <path>` writes. | The working directory of the session for `/chat share`; the path given for `/export-session`. |
+
+Details and sources are in
+[section 5 of `analyzer/research/openclaw.md`](../../analyzer/research/openclaw.md#5-sqlite-and-compression),
+[section 8 of `analyzer/research/codex-cli.md`](../../analyzer/research/codex-cli.md#8-parser-plan-the-existing-parser),
+[section 2 of `analyzer/research/continue.md`](../../analyzer/research/continue.md#2-transcript-files) and
+[section 8 of `analyzer/research/gemini-cli.md`](../../analyzer/research/gemini-cli.md#8-parser-plan).
 
 ## Agent frameworks and self-hosted platforms
 
@@ -581,6 +603,9 @@ the full pattern list.
 Cursor and Windsurf keep their auth tokens inside the same `state.vscdb`
 that holds the chat history, so that file is collected unflagged; the keys
 to redact are `cursorAuth/*` and `windsurfAuthStatus`.
+Agent Zero copies a Telegram bot's configuration into each Telegram
+chat's `chat.json`, which is collected unflagged; the keys to redact are
+`data.telegram_bot_cfg.token` and `data.telegram_bot_cfg.webhook_secret`.
 
 ## Pattern matching
 

@@ -76,7 +76,7 @@ param(
 
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Continue'
-$ToolVersion = '1.13.0'
+$ToolVersion = '1.14.0'
 $TOOL = 'collect-agent-artifacts'
 
 # ===========================================================================
@@ -905,7 +905,6 @@ AppData/Local/com.github.githubapp/EBWebView/BrowserMetrics-spare.pma
 .devin/extensions
 AppData/Local/devin/bin
 */User/globalStorage/saoudrizwan.claude-dev/checkpoints
-*/User/globalStorage/saoudrizwan.claude-dev/cache
 */User/globalStorage/rooveterinaryinc.roo-cline/checkpoints
 */User/globalStorage/rooveterinaryinc.roo-cline/tasks/*/checkpoints
 */User/globalStorage/rooveterinaryinc.roo-cline/cache
@@ -939,7 +938,6 @@ AppData/Roaming/Roo-Code/MCP
 .local/share/kilo/snapshot
 .local/share/kilo/repos
 .local/share/kilo/tool-output
-.local/share/kilo/log
 .local/share/kilo/worktree
 .local/state/kilo/indexing
 .local/share/kilo/state/indexing
@@ -1322,6 +1320,7 @@ AppData/Local/Packages/AnthropicPBC.Claude_*/LocalCache/Roaming/Claude*/ccd-sess
 *.gemini/a2a-oauth-tokens.json
 *.gemini/.env
 *.gemini/extensions/*/.env
+*.gemini/tmp/*/bug-memory-*.heapsnapshot
 *.gemini/antigravity-cli/antigravity-oauth-token
 *.gemini/antigravity*/plugin_data/*/token.json
 .config/[Aa]ntigravity/plugin-secrets.json
@@ -1333,7 +1332,8 @@ AppData/Roaming/[Aa]ntigravity/plugin-secrets.json
 .qwen/.env
 .qwen/settings.json
 .qwen/extensions/*/.qwen-extension-git-credentials.json
-.qwen/channels/*.json
+.qwen/channels/*-credentials.json
+.qwen/channels/weixin/account.json
 .codex/auth.json
 .codex/.credentials.json
 .codex/secrets/*
@@ -1384,6 +1384,8 @@ AppData/Roaming/devin/credentials.toml
 .cline/data/secrets.json
 .cline/data/connectors/settings.json
 .cline/data/db/connectors.db*
+*/User/globalStorage/saoudrizwan.claude-dev/cache/remote_config_*.json
+Documents/Cline/webhook_config.json
 .vscode-mock/global-storage/secrets.json
 .local/share/kilo/auth.json
 .local/share/kilo/mcp-auth.json
@@ -1527,6 +1529,7 @@ AppData/Local/Open Interpreter*/Open Interpreter*/config.yaml
 .pi/agent/mcp.json
 .pi/mcp.json
 .config/little-coder/models.json
+.little-coder/config.json
 .letta/settings.json
 .letta/pg_uri
 .letta/credentials
@@ -1616,6 +1619,8 @@ AppData/Local/hermes*/home/*
 .nanobot*/auth/*
 .nanobot*/whatsapp-auth/*
 .nanobot*/matrix-store/*
+.nanobot*/webui/remote-pairing/*/identity
+.nanobot*/webui/remote-pairing/*/exchange
 agent-zero*/usr/.env
 Desktop/agent-zero*/usr/.env
 agent-zero*/usr/secrets.env
@@ -1634,6 +1639,8 @@ agent-zero*/usr/plugins/_desktop/profiles/*/.ssh/*
 Desktop/agent-zero*/usr/plugins/_desktop/profiles/*/.ssh/*
 agent-zero*/usr/plugins/_desktop/profiles/*/.gnupg/*
 Desktop/agent-zero*/usr/plugins/_desktop/profiles/*/.gnupg/*
+agent-zero*/usr/plugins/*/config.json
+Desktop/agent-zero*/usr/plugins/*/config.json
 .agent-zero/.env
 .agent-zero/session_cookies.json
 */Agent Zero Launcher/docker_manager/state.json
@@ -1672,12 +1679,14 @@ settings.json
 projects/*/.a0proj/secrets.env
 plugins/_desktop/profiles/*/.ssh/*
 plugins/_desktop/profiles/*/.gnupg/*
+plugins/*/config.json
 usr/.env
 usr/secrets.env
 usr/settings.json
 usr/projects/*/.a0proj/secrets.env
 usr/plugins/_desktop/profiles/*/.ssh/*
 usr/plugins/_desktop/profiles/*/.gnupg/*
+usr/plugins/*/config.json
 tmp/secrets.env
 tmp/settings.json
 config.toml

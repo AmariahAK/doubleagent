@@ -970,6 +970,38 @@ foreach ($s147 in @('s1', 's2', 's3')) {
 Mk "$d147/session-state/s4/workspace.yaml" "cwd: C:\\coppool`nclient_name: github/autopilot`n"
 Mk 'coppool/AGENTS.md' '# pool'
 
+# 2026-10-17 session sync round (#153)
+# Credential files the session sync research found unflagged: nanobot's
+# remote WebUI pairing keys, Agent Zero's plugin configuration (home, native
+# and a0_usr volume forms), Cline's cached remote config and webhook config,
+# Gemini CLI's /bug-memory heap snapshot, little-coder's legacy config with
+# its gist token, and Qwen Code's channel credential files, whose routing
+# files (sessions.json, routes.json) stay unflagged. Cline's globalStorage
+# cache is collected (its sync queue is evidence), and so is Kilo's log
+# directory. Checks follow the default and -NoSecrets runs below; the same
+# files are in smoke.sh under alice.
+$n153 = 'Users/alice/.nanobot/webui/remote-pairing/11111111-1111-4111-8111-111111111111'
+$g153 = 'Users/alice/.vscode-server/data/User/globalStorage/saoudrizwan.claude-dev/cache'
+$t153 = 'plugins/_telegram_integration/config.json'
+$v153 = 'var/lib/docker/volumes/a0_usr/_data'
+Mk "$n153/identity" "key`n"
+Mk "$n153/exchange" "key`n"
+Mk "$n153/request" "{}`n"
+Mk "Users/alice/agent-zero/main/usr/$t153" '{"token":"x"}'
+Mk "Users/alice/Desktop/agent-zero/usr/$t153" '{"token":"x"}'
+Mk "$v153/$t153" '{"token":"x"}'
+Mk "$v153/usr/$t153" '{"token":"x"}'
+Mk "$g153/remote_config_org1.json" "{`"promptUploading`":{}}`n"
+Mk "$g153/sync-queue.json" "{`"items`":{}}`n"
+Mk 'Users/alice/Documents/Cline/webhook_config.json' "{`"webhook_token`":`"x`"}`n"
+Mk 'Users/alice/.gemini/tmp/gem/bug-memory-1792000000000.heapsnapshot' "heap`n"
+Mk 'Users/alice/.little-coder/config.json' "{`"gist_token`":`"x`"}`n"
+Mk 'Users/alice/.qwen/channels/qqbot-credentials.json' "{`"appId`":`"x`",`"appSecret`":`"x`"}`n"
+Mk 'Users/alice/.qwen/channels/weixin/account.json' "{`"token`":`"x`"}`n"
+Mk 'Users/alice/.qwen/channels/sessions.json' "{}`n"
+Mk 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json' "{}`n"
+Mk 'Users/alice/.local/share/kilo/log/2026-10-17T120000.log' "INFO creating session`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1468,6 +1500,18 @@ Check '#147 WebView2 Cache and component_crx_cache excluded' { (StatusOf "$w147/
 Check '#147 Copilot Desktop chat project collected less node_modules' { (Is113 "$p147/package.json" 'copilot-desktop' $false) -and (StatusOf "$p147/node_modules") -eq 'skipped_excluded' -and $null -eq (Row 'node_modules/m/index.js') }
 Check '#131 Copilot CLI marketplaces excluded' { (StatusOf $k147) -eq 'skipped_excluded' -and $null -eq (Row 'marketplaces/m/.git/HEAD') }
 Check '#147 Copilot pool session cwd not a project' { (StatusOf 'coppool/AGENTS.md') -eq '' -and -not (@($sum.projects) | Where-Object { $_ -match 'coppool' }) }
+# 2026-10-17 session sync round (#153)
+Check '#153 nanobot remote pairing identity and exchange keys flagged secret' { (Is113 "$n153/identity" 'nanobot' $true) -and (Is113 "$n153/exchange" 'nanobot' $true) -and (Is113 "$n153/request" 'nanobot' $false) }
+Check '#153 Agent Zero plugin config.json flagged secret' { (Is113 "Users/alice/agent-zero/main/usr/$t153" 'agent-zero' $true) -and (Is113 "Users/alice/Desktop/agent-zero/usr/$t153" 'agent-zero' $true) }
+Check '#153 Agent Zero volume plugin config.json flagged secret' { (Is113 "$v153/$t153" 'agent-zero' $true) -and (Row "$v153/$t153").user -eq 'docker' -and (Is113 "$v153/usr/$t153" 'agent-zero' $true) }
+Check '#153 Cline cached remote config flagged secret' { Is113 "$g153/remote_config_org1.json" 'cline' $true }
+Check '#153 Cline globalStorage cache collected' { (Is113 "$g153/sync-queue.json" 'cline' $false) -and (StatusOf $g153) -eq '' }
+Check '#153 Cline webhook_config.json flagged secret' { Is113 'Users/alice/Documents/Cline/webhook_config.json' 'cline' $true }
+Check '#153 Gemini CLI bug-memory heap snapshot flagged secret' { Is113 'Users/alice/.gemini/tmp/gem/bug-memory-1792000000000.heapsnapshot' 'gemini-cli' $true }
+Check '#153 little-coder legacy config.json flagged secret' { Is113 'Users/alice/.little-coder/config.json' 'little-coder' $true }
+Check '#153 Qwen Code channel credentials flagged secret' { (Is113 'Users/alice/.qwen/channels/qqbot-credentials.json' 'qwen-code' $true) -and (Is113 'Users/alice/.qwen/channels/weixin/account.json' 'qwen-code' $true) }
+Check '#153 Qwen Code channel routing files not flagged' { (Is113 'Users/alice/.qwen/channels/sessions.json' 'qwen-code' $false) -and (Is113 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json' 'qwen-code' $false) }
+Check '#153 Kilo log directory collected' { Is113 'Users/alice/.local/share/kilo/log/2026-10-17T120000.log' 'kilo-code' $false }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
@@ -1662,6 +1706,16 @@ Check '#90 Antigravity CLI plugin-secrets.json skipped without secrets' { (Statu
 Check '#115 Codex desktop global state skipped without secrets' { (StatusOf 'Users/alice/.codex/.codex-global-state.json') -eq 'skipped_secret' }
 # 2026-10-16 GitHub Copilot Desktop (#147)
 Check '#147 Copilot Desktop ws.token skipped without secrets' { (StatusOf "$d147/run/ws.token") -eq 'skipped_secret' }
+# 2026-10-17 session sync round (#153)
+Check '#153 nanobot remote pairing keys skipped without secrets' { (StatusOf "$n153/identity") -eq 'skipped_secret' -and (StatusOf "$n153/exchange") -eq 'skipped_secret' }
+Check '#153 Agent Zero plugin config.json skipped without secrets' { (StatusOf "Users/alice/agent-zero/main/usr/$t153") -eq 'skipped_secret' -and (StatusOf "Users/alice/Desktop/agent-zero/usr/$t153") -eq 'skipped_secret' }
+Check '#153 Agent Zero volume plugin config.json skipped without secrets' { (StatusOf "$v153/$t153") -eq 'skipped_secret' -and (StatusOf "$v153/usr/$t153") -eq 'skipped_secret' }
+Check '#153 Cline cached remote config skipped without secrets' { (StatusOf "$g153/remote_config_org1.json") -eq 'skipped_secret' }
+Check '#153 Cline webhook_config.json skipped without secrets' { (StatusOf 'Users/alice/Documents/Cline/webhook_config.json') -eq 'skipped_secret' }
+Check '#153 Gemini CLI bug-memory heap snapshot skipped without secrets' { (StatusOf 'Users/alice/.gemini/tmp/gem/bug-memory-1792000000000.heapsnapshot') -eq 'skipped_secret' }
+Check '#153 little-coder legacy config.json skipped without secrets' { (StatusOf 'Users/alice/.little-coder/config.json') -eq 'skipped_secret' }
+Check '#153 Qwen Code channel credentials skipped without secrets' { (StatusOf 'Users/alice/.qwen/channels/qqbot-credentials.json') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.qwen/channels/weixin/account.json') -eq 'skipped_secret' }
+Check '#153 Qwen Code channel routing files kept without secrets' { (StatusOf 'Users/alice/.qwen/channels/sessions.json') -eq 'collected' -and (StatusOf 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json') -eq 'collected' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }
@@ -1792,7 +1846,7 @@ $files107 = -1
 $r = InvAgent 'alice' 'muse-code'
 if ($r) { $files107 = $r.files }
 $r = InvAgent 'docker' 'agent-zero'
-Check 'Inventory docker volume line' { $r -and $r.files -eq 2 -and $r.bytes -eq 61 -and $r.projects -eq 0 -and $r.evidence -eq '*a0_usr' }
+Check 'Inventory docker volume line' { $r -and $r.files -eq 4 -and $r.bytes -eq 87 -and $r.projects -eq 0 -and $r.evidence -eq '*a0_usr' }
 $r = InvAgent 'docker' 'tabby'
 Check 'Inventory rootless docker volume line' { $r -and $r.files -eq 1 -and $r.bytes -eq 22 -and $r.evidence -eq '*tabby*' }
 Check 'Inventory shared not inventoried' { -not ($script:inv | Where-Object { $_.type -eq 'agent' } | Where-Object { @('shared', 'project', 'live') -contains $_.agent }) }

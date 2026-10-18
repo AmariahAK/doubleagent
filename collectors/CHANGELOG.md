@@ -10,6 +10,50 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-10-17
+
+### Added
+
+- Secret globs for credential files the session sync research found
+  collected without the flag ([#153]); each is flagged `secret: true` and
+  skipped with `--no-secrets` (`-NoSecrets`), and `--list` (`-List`)
+  prints them:
+  - nanobot's remote WebUI pairing keys,
+    `.nanobot*/webui/remote-pairing/*/identity` (an unencrypted OpenSSH
+    private key) and `.nanobot*/webui/remote-pairing/*/exchange` (an
+    X25519 private key).
+  - Agent Zero's plugin configuration, which holds the Telegram bot token:
+    `agent-zero*/usr/plugins/*/config.json`,
+    `Desktop/agent-zero*/usr/plugins/*/config.json` and, in a Docker
+    volume, `plugins/*/config.json` and `usr/plugins/*/config.json`.
+  - Cline's cached organisation remote config, which holds the prompt
+    upload bucket's access keys,
+    `*/User/globalStorage/saoudrizwan.claude-dev/cache/remote_config_*.json`,
+    and its webhook configuration, `Documents/Cline/webhook_config.json`.
+  - Gemini CLI's `/bug-memory` heap snapshot of the CLI process,
+    `*.gemini/tmp/*/bug-memory-*.heapsnapshot`.
+  - little-coder's legacy `.little-coder/config.json`, which holds a
+    GitHub token.
+  - Qwen Code's channel credentials, `.qwen/channels/*-credentials.json`
+    and `.qwen/channels/weixin/account.json`.
+
+### Changed
+
+- Qwen Code's secret glob `.qwen/channels/*.json` is replaced by the two
+  credential globs above. It flagged every file under `channels/`,
+  including the `sessions.json` and `daemon/<hash>/routes.json` routing
+  tables, which `--no-secrets` then left out; those are now collected
+  unflagged in both modes ([#153]).
+- Cline's VS Code extension `cache/` directory
+  (`*/User/globalStorage/saoudrizwan.claude-dev/cache`) is no longer
+  excluded. It holds the cached remote config and `sync-queue.json`, the
+  queue of task files uploaded or waiting to be uploaded to the
+  organisation's storage bucket, and nothing large ([#153]).
+- Kilo Code's log directory `.local/share/kilo/log` is no longer
+  excluded: its session service lines (`creating session`, `sharing`,
+  `unsharing`, `removing share`) are the only local record of a deletion
+  whose remote delete failed ([#153]).
+
 ## [1.13.0] - 2026-10-17
 
 ### Added
@@ -834,7 +878,8 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
   overridden by `--full`; credential files collected and flagged
   `secret: true` by default.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.13.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.14.0...HEAD
+[1.14.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.13.0...collector-v1.14.0
 [1.13.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.12.0...collector-v1.13.0
 [1.12.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.11.0...collector-v1.12.0
 [1.11.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.10.3...collector-v1.11.0
@@ -854,6 +899,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#131]: https://github.com/seanthegeek/doubleagent/issues/131
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121

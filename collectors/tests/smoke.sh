@@ -1026,6 +1026,41 @@ done
 printf 'cwd: /srv/coppool\nclient_name: github/autopilot\n' >"$D147/session-state/s4/workspace.yaml"
 printf '# pool\n' >"$ROOT/srv/coppool/AGENTS.md"
 
+# 2026-10-17 session sync round (#153)
+# Credential files the session sync research found unflagged: nanobot's
+# remote WebUI pairing keys, Agent Zero's plugin configuration (home, native
+# and a0_usr volume forms), Cline's cached remote config and webhook config,
+# Gemini CLI's /bug-memory heap snapshot, little-coder's legacy config with
+# its gist token, and Qwen Code's channel credential files, whose routing
+# files (sessions.json, routes.json) stay unflagged. Cline's globalStorage
+# cache is collected (its sync queue is evidence), and so is Kilo's log
+# directory. Checks follow the default and --no-secrets runs below; the same
+# files are in smoke.ps1 under alice.
+N153="$H/.nanobot/webui/remote-pairing/11111111-1111-4111-8111-111111111111"
+G153="$H/.vscode-server/data/User/globalStorage/saoudrizwan.claude-dev/cache"
+T153=plugins/_telegram_integration/config.json
+mkdir -p "$N153" "$G153" "$H/agent-zero/main/usr/${T153%/*}" "$H/Desktop/agent-zero/usr/${T153%/*}" \
+  "$DV/a0_usr/_data/${T153%/*}" "$DV/a0_usr/_data/usr/${T153%/*}" "$H/Documents/Cline" \
+  "$H/.little-coder" "$H/.qwen/channels/weixin" "$H/.qwen/channels/daemon/0123abcd" \
+  "$H/.local/share/kilo/log"
+printf 'key\n' >"$N153/identity"
+printf 'key\n' >"$N153/exchange"
+printf '{}\n' >"$N153/request"
+printf '{"token":"x"}\n' >"$H/agent-zero/main/usr/$T153"
+printf '{"token":"x"}\n' >"$H/Desktop/agent-zero/usr/$T153"
+printf '{"token":"x"}\n' >"$DV/a0_usr/_data/$T153"
+printf '{"token":"x"}\n' >"$DV/a0_usr/_data/usr/$T153"
+printf '{"promptUploading":{}}\n' >"$G153/remote_config_org1.json"
+printf '{"items":{}}\n' >"$G153/sync-queue.json"
+printf '{"webhook_token":"x"}\n' >"$H/Documents/Cline/webhook_config.json"
+printf 'heap\n' >"$H/.gemini/tmp/gem/bug-memory-1792000000000.heapsnapshot"
+printf '{"gist_token":"x"}\n' >"$H/.little-coder/config.json"
+printf '{"appId":"x","appSecret":"x"}\n' >"$H/.qwen/channels/qqbot-credentials.json"
+printf '{"token":"x"}\n' >"$H/.qwen/channels/weixin/account.json"
+printf '{}\n' >"$H/.qwen/channels/sessions.json"
+printf '{}\n' >"$H/.qwen/channels/daemon/0123abcd/routes.json"
+printf 'INFO creating session\n' >"$H/.local/share/kilo/log/2026-10-17T120000.log"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1366,6 +1401,20 @@ check "#147 Copilot Desktop chat project collected less node_modules" "row \"$P1
 check "#131 Copilot CLI marketplaces excluded" "[ \"\$(status_of \"$K147\")\" = skipped_excluded ] && ! grep -q 'marketplaces/m/.git/HEAD\"' \"\$M\""
 check "#147 Copilot pool session cwd not a project" "[ -z \"\$(status_of \"$ROOT/srv/coppool/AGENTS.md\")\" ] && ! grep -q 'coppool' \"\$S\""
 
+# 2026-10-17 session sync round (#153)
+SEC153='"secret":true,"status":"collected"'
+check "#153 nanobot remote pairing identity and exchange keys flagged secret" "row \"$N153/identity\" | grep -q '\"agent\":\"nanobot\".*$SEC153' && row \"$N153/exchange\" | grep -q '$SEC153' && row \"$N153/request\" | grep -q '\"secret\":false,\"status\":\"collected\"'"
+check "#153 Agent Zero plugin config.json flagged secret" "row \"$H/agent-zero/main/usr/$T153\" | grep -q '\"agent\":\"agent-zero\".*$SEC153' && row \"$H/Desktop/agent-zero/usr/$T153\" | grep -q '$SEC153'"
+check "#153 Agent Zero volume plugin config.json flagged secret" "row \"$DV/a0_usr/_data/$T153\" | grep -q '\"user\":\"docker\".*$SEC153' && row \"$DV/a0_usr/_data/usr/$T153\" | grep -q '$SEC153'"
+check "#153 Cline cached remote config flagged secret" "row \"$G153/remote_config_org1.json\" | grep -q '\"agent\":\"cline\".*$SEC153'"
+check "#153 Cline globalStorage cache collected" "row \"$G153/sync-queue.json\" | grep -q '\"agent\":\"cline\".*\"secret\":false,\"status\":\"collected\"' && [ -z \"\$(status_of \"$G153\")\" ]"
+check "#153 Cline webhook_config.json flagged secret" "row \"$H/Documents/Cline/webhook_config.json\" | grep -q '\"agent\":\"cline\".*$SEC153'"
+check "#153 Gemini CLI bug-memory heap snapshot flagged secret" "row \"$H/.gemini/tmp/gem/bug-memory-1792000000000.heapsnapshot\" | grep -q '\"agent\":\"gemini-cli\".*$SEC153'"
+check "#153 little-coder legacy config.json flagged secret" "row \"$H/.little-coder/config.json\" | grep -q '\"agent\":\"little-coder\".*$SEC153'"
+check "#153 Qwen Code channel credentials flagged secret" "row \"$H/.qwen/channels/qqbot-credentials.json\" | grep -q '\"agent\":\"qwen-code\".*$SEC153' && row \"$H/.qwen/channels/weixin/account.json\" | grep -q '$SEC153'"
+check "#153 Qwen Code channel routing files not flagged" "row \"$H/.qwen/channels/sessions.json\" | grep -q '\"secret\":false,\"status\":\"collected\"' && row \"$H/.qwen/channels/daemon/0123abcd/routes.json\" | grep -q '\"secret\":false,\"status\":\"collected\"'"
+check "#153 Kilo log directory collected" "row \"$H/.local/share/kilo/log/2026-10-17T120000.log\" | grep -q '\"agent\":\"kilo-code\".*\"status\":\"collected\"'"
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -1380,6 +1429,16 @@ check "#90 Antigravity CLI plugin-secrets.json skipped without secrets" "[ \"\$(
 check "#115 Codex desktop global state skipped without secrets" "[ \"\$(status_of \"$B/.codex/.codex-global-state.json\")\" = skipped_secret ]"
 # 2026-10-16 GitHub Copilot Desktop (#147)
 check "#147 Copilot Desktop ws.token skipped without secrets" "[ \"\$(status_of \"$D147/run/ws.token\")\" = skipped_secret ]"
+# 2026-10-17 session sync round (#153)
+check "#153 nanobot remote pairing keys skipped without secrets" "[ \"\$(status_of \"$N153/identity\")\" = skipped_secret ] && [ \"\$(status_of \"$N153/exchange\")\" = skipped_secret ]"
+check "#153 Agent Zero plugin config.json skipped without secrets" "[ \"\$(status_of \"$H/agent-zero/main/usr/$T153\")\" = skipped_secret ] && [ \"\$(status_of \"$H/Desktop/agent-zero/usr/$T153\")\" = skipped_secret ]"
+check "#153 Agent Zero volume plugin config.json skipped without secrets" "[ \"\$(status_of \"$DV/a0_usr/_data/$T153\")\" = skipped_secret ] && [ \"\$(status_of \"$DV/a0_usr/_data/usr/$T153\")\" = skipped_secret ]"
+check "#153 Cline cached remote config skipped without secrets" "[ \"\$(status_of \"$G153/remote_config_org1.json\")\" = skipped_secret ]"
+check "#153 Cline webhook_config.json skipped without secrets" "[ \"\$(status_of \"$H/Documents/Cline/webhook_config.json\")\" = skipped_secret ]"
+check "#153 Gemini CLI bug-memory heap snapshot skipped without secrets" "[ \"\$(status_of \"$H/.gemini/tmp/gem/bug-memory-1792000000000.heapsnapshot\")\" = skipped_secret ]"
+check "#153 little-coder legacy config.json skipped without secrets" "[ \"\$(status_of \"$H/.little-coder/config.json\")\" = skipped_secret ]"
+check "#153 Qwen Code channel credentials skipped without secrets" "[ \"\$(status_of \"$H/.qwen/channels/qqbot-credentials.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.qwen/channels/weixin/account.json\")\" = skipped_secret ]"
+check "#153 Qwen Code channel routing files kept without secrets" "[ \"\$(status_of \"$H/.qwen/channels/sessions.json\")\" = collected ] && [ \"\$(status_of \"$H/.qwen/channels/daemon/0123abcd/routes.json\")\" = collected ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"
@@ -1500,7 +1559,7 @@ check "inventory nested entry claimed from the enclosing agent" "agent_line inve
 check "inventory: matched directory with no files of its own gives no line" "[ -z \"\$(agent_line inventory bob gemini-cli)\" ] && agent_line inventory bob antigravity | grep -q '\"files\":1,\"bytes\":3,.*\"evidence\":\".gemini/antigravity-cli\"}\$'"
 check "inventory: no agent line has zero files" "! grep -q '\"files\":0,' \"$OUT/inventory.stdout\""
 check "inventory projects counted per user" "agent_line inventory alice claude-code | grep -q '\"projects\":[1-9]'"
-check "inventory docker volume line" "agent_line inventory docker agent-zero | grep -q '\"files\":2,\"bytes\":63,.*\"projects\":0,\"evidence\":\"\\*a0_usr\"}\$'"
+check "inventory docker volume line" "agent_line inventory docker agent-zero | grep -q '\"files\":4,\"bytes\":91,.*\"projects\":0,\"evidence\":\"\\*a0_usr\"}\$'"
 check "inventory rootless docker volume line" "agent_line inventory docker tabby | grep -q '\"files\":1,\"bytes\":23,.*\"evidence\":\"\\*tabby\\*\"}\$'"
 check "inventory shared not inventoried" "! grep -q '\"agent\":\"\\(shared\\|project\\|live\\)\"' \"$OUT/inventory.stdout\""
 check "inventory prints no path below a home" "! grep -q '$ROOT' \"$OUT/inventory.stdout\""

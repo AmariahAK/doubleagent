@@ -79,6 +79,15 @@ or `~/Library/LaunchAgents/ai.nanobot.gateway.plist` ([`gateway/service.py:25`](
   (MCP OAuth, [`agent/tools/mcp_oauth.py:102`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/tools/mcp_oauth.py#L102)).
 - `whatsapp-auth/neonize.db` is a linked-device WhatsApp session; `matrix-store/`
   holds Matrix session and encryption state.
+- `webui/remote-pairing/<uuid>/identity` (an unencrypted OpenSSH private
+  key) and `exchange` (a raw X25519 private key), the material of the
+  remote WebUI pairing link; secret globs
+  `.nanobot*/webui/remote-pairing/*/identity` and
+  `.nanobot*/webui/remote-pairing/*/exchange` from collector 1.14.0. The
+  `request`, `receipt` and `ssh_route` files beside them and
+  `webui/remote-instances.json` stay unflagged.
+  Evidence in
+  [section 7 of `analyzer/research/nanobot.md`](../../analyzer/research/nanobot.md#7-secrets).
 - No keychain use found.
 
 ## 4. Exclude

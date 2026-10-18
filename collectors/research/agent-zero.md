@@ -108,6 +108,21 @@ image of an un-upgraded install may hold them in the old places.
 - The desktop plugin keeps a profile with `.ssh/` and `.gnupg/` under
   `usr/plugins/_desktop/profiles/agent-zero-desktop/` (paths from a grep of
   string literals; writer not traced).
+- `usr/plugins/<plugin>/config.json` holds a plugin's settings, which
+  for the Telegram integration are the bot `token` and, in webhook mode,
+  `webhook_secret`, and probably the email integration's credentials
+  ([`helpers/plugins.py:838-851`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/plugins.py#L838-L851));
+  secret globs `agent-zero*/usr/plugins/*/config.json`,
+  `Desktop/agent-zero*/usr/plugins/*/config.json` and the volume-relative
+  `plugins/*/config.json` (the `a0_usr` volume's base is `usr` itself)
+  and `usr/plugins/*/config.json` from collector 1.14.0. No other
+  `DOCKER_VOLUMES` layout has a `plugins/<name>/config.json`. A
+  per-project copy under `.a0proj/` or an agent profile's directory is
+  not flagged. The same Telegram values sit in clear text in each
+  Telegram chat's `chat.json`, under `data.telegram_bot_cfg` (keys
+  `token` and `webhook_secret`); the transcript cannot be flagged, so
+  those are the keys to redact before sharing a `chat.json`. Evidence in
+  [section 7 of `analyzer/research/agent-zero.md`](../../analyzer/research/agent-zero.md#7-secrets).
 - Host side: `~/.agent-zero/session_cookies.json` (login cookies per host,
   [`config.py:123-146`](https://github.com/agent0ai/a0-connector/blob/76e834f20e50f6e47954c89ee39dd4c5b50d81b7/src/agent_zero_cli/config.py#L123-L146)); the launcher's `state.json` stores instance
   passwords encrypted with Electron `safeStorage`, i.e. the OS keychain

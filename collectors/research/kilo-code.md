@@ -83,10 +83,22 @@ installs leave `tasks/`, `checkpoints/`, `cache/` there.
 
 ## 4. Exclude
 
-`.local/share/kilo/snapshot`, `/worktree`, `/repos`, `/tool-output`, `/log`,
+`.local/share/kilo/snapshot`, `/worktree`, `/repos`, `/tool-output`,
 `.local/state/kilo/indexing`, `.local/share/kilo/state/indexing`,
 `.cache/kilo` (binaries, package clones), `.kilo/bin`, project
 `.kilo/worktrees`. Keep `plans/`, `retention/`, `session-export*`.
+
+`.local/share/kilo/log` was excluded before collector 1.14.0 and is
+collected from it. Its `<ISO time>.log` files hold the session service's
+`creating session`, `sharing`, `unsharing` and `removing share` lines,
+the only local record of a session deletion whose remote delete failed
+(see [section 8 of `analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md#8-parser-plan)).
+The directory is bounded: the ten newest `????-??-??T??????.log` files
+are kept and each rotates at 50 MB
+([`packages/core/src/util/log.ts:24`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/util/log.ts#L24),
+[`70-96`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/util/log.ts#L70-L96),
+[`127-141`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/util/log.ts#L127-L141)). OpenCode's log
+directory is collected as well.
 
 ## 5. Project-local
 
