@@ -137,6 +137,7 @@ def read_headers(path: Path) -> list[str]:
 class AiderParser(Parser):
     agent = "aider"
     name = "aider"
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
         return bool(FILE_RX.match(artifact.rel))

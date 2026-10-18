@@ -189,6 +189,7 @@ class ClineParser(LegacyTaskParser):
     # `enterprise.blobUpload` in a session's metadata marks an uploaded transcript.
     records_sync = True
     name = "cline"
+    has_secondary = True
     ROOT = ROOT
     PROJECT_KEY = "cwdOnTaskInitialization"
 

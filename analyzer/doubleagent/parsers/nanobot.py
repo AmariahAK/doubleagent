@@ -177,6 +177,7 @@ def _read_marker(path: Path) -> str:
 class NanobotParser(Parser):
     agent = "nanobot"
     name = "nanobot"
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
         return bool(

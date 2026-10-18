@@ -82,7 +82,8 @@ empty, fixture only (no real install has shown the keys):
   <telegram_chat_id> user <telegram_user_id> @<telegram_username> (from
   chat.json data, file mtime)`, `session relayed: whatsapp chat
   <wa_chat_id> number <wa_sender_number> (...)` and `session relayed:
-  email thread <email_thread_id> from <email_sender> (...)`.
+  email thread <email_thread_id> from <email_sender> (...)`
+  (`records_relay`, so a chat without one is `relayed` `no`).
   `data.telegram_bot_cfg` holds the bot token and is never read into a
   row.
 """
@@ -252,6 +253,7 @@ class AgentZeroParser(Parser):
     agent = "agent-zero"
     name = "agent-zero"
     records_sync = True
+    records_relay = True
 
     def wants(self, artifact: Artifact) -> bool:
         return bool(CHAT_RX.match(artifact.rel) or LEGACY_RX.match(artifact.rel))

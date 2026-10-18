@@ -20,6 +20,26 @@ from .model import Row, SessionSummary, canonical_project_path, project_key, sum
 from .parsers import ALL, NO_TRANSCRIPTS, Options, by_agent
 
 PROG = "doubleagent"
+# The agents whose parser reads at least one secondary source
+# (`Parser.has_secondary`), and the `recovered` values of a session that
+# secondary sources kept rows of.
+SECONDARY_AGENTS = frozenset(p.agent for p in ALL if p.has_secondary)
+RECOVERED = ("yes", "partial")
+# The agents whose parser records sync, relay and origin state
+# (`Parser.records_sync`, `records_relay`, `records_origin`).
+SYNC_AGENTS = frozenset(p.agent for p in ALL if p.records_sync)
+RELAY_AGENTS = frozenset(p.agent for p in ALL if p.records_relay)
+ORIGIN_AGENTS = frozenset(p.agent for p in ALL if p.records_origin)
+# The session marks summarised per project, in key order: the key, which
+# is also the `SessionSummary` attribute, the value every session must have
+# for the full label, the values a session counts with, the full, some and
+# none labels, and the agents whose parser records the mark.
+PROJECT_MARKS = (
+    ("synced", "yes", ("yes",), ("yes", "partial", "no"), SYNC_AGENTS),
+    ("relayed", "yes", ("yes",), ("yes", "partial", "no"), RELAY_AGENTS),
+    ("origin", "remote", ("remote",), ("remote", "mixed", "local"), ORIGIN_AGENTS),
+    ("recovered", "yes", RECOVERED, ("yes", "partial", "no"), SECONDARY_AGENTS),
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -601,7 +621,9 @@ def project_inventory(
     sorted by that key.
 
     Each non-empty key is a project entry with the keys `status`, `rows`,
-    `sessions`, `agents` and `shared_files`, in that order. `status` is
+    `sessions`, `agents`, `shared_files`, then the four marks of
+    `PROJECT_MARKS` (`synced`, `relayed`, `origin`, `recovered`), in that
+    order. `status` is
     `collected` when the group matches one of `collected` (the project
     directories the input holds), else `referenced` (named only by rows); a
     collected project no row names is listed with zero counts. `files` maps
@@ -610,8 +632,10 @@ def project_inventory(
     of a project entry gets `files` and `bytes` after `turn_types` from it
     (0 when absent), an agent with files and no rows is listed with zero
     counts, and `shared_files` is the project's files with agent `project`.
-    The empty path's entry keeps `rows`, `sessions` and `agents` only, with
-    no file counts."""
+    Each mark is `project_mark` of the project's sessions. The empty path's
+    entry (`outside_projects`) has no `status`, no `shared_files` and no
+    file counts: `rows`, `sessions`, `agents`, then the same marks over its
+    sessions."""
     groups: dict[str, dict] = {}
     names: dict[str, str] = {}
 
@@ -619,6 +643,8 @@ def project_inventory(
         key = project_key(path)
         names.setdefault(key, path)
         return groups.setdefault(key, {"rows": 0, "sessions": 0, "agents": {}})
+
+    marks: dict[str, list[SessionSummary]] = {}
 
     def agent_of(path: str, agent: str) -> tuple[dict, dict]:
         g = group(path)
@@ -647,6 +673,7 @@ def project_inventory(
         g, a = agent_of(s.project_path, s.agent)
         g["sessions"] += 1
         a["sessions"] += 1
+        marks.setdefault(project_key(s.project_path), []).append(s)
     for path, f in (files or {}).items():
         if path:
             for agent in f["agents"]:
@@ -666,15 +693,35 @@ def project_inventory(
             agents[name] = a
         if on_disk is None:
             out[path] = {"rows": g["rows"], "sessions": g["sessions"], "agents": agents}
-            continue
-        out[path] = {
-            "status": "collected" if key in collected_keys else "referenced",
-            "rows": g["rows"],
-            "sessions": g["sessions"],
-            "agents": agents,
-            "shared_files": on_disk["shared_files"],
-        }
+        else:
+            out[path] = {
+                "status": "collected" if key in collected_keys else "referenced",
+                "rows": g["rows"],
+                "sessions": g["sessions"],
+                "agents": agents,
+                "shared_files": on_disk["shared_files"],
+            }
+        for m in PROJECT_MARKS:
+            out[path][m[0]] = project_mark(marks.get(key, []), m, set(agents))
     return out
+
+
+def project_mark(sessions: list[SessionSummary], mark: tuple, agents: set[str]) -> str:
+    """A project's mark (`PROJECT_MARKS` row `mark`) from its `sessions`:
+    the full label ("yes", or "remote" for origin) when every session has
+    the full value, the some label ("partial", "mixed") when some have a
+    counted value, the none label ("no", "local") when none has and one of
+    the project's `agents` records the mark, "" otherwise and for a project
+    with no session."""
+    attr, full, hits, labels, mark_agents = mark
+    values = [getattr(s, attr) for s in sessions]
+    if not values:
+        return ""
+    if all(v == full for v in values):
+        return labels[0]
+    if any(v in hits for v in values):
+        return labels[1]
+    return labels[2] if mark_agents & agents else ""
 
 
 def collected_projects(col: Collection) -> list[str]:
@@ -722,15 +769,28 @@ def strip_image_root(path: str, summary: dict) -> str:
 
 
 def synced_homes(homes: list[dict], sessions: list[SessionSummary]) -> list[dict]:
-    """The `homes` array of inventory.json: `homes` (`home_agents`) with a
-    last key `synced_sessions` in each agent object, the number of the
-    sessions of that user and agent whose `synced` is "yes" (issue 151)."""
-    counts = Counter((s.user, s.agent) for s in sessions if s.synced == "yes")
+    """The `homes` array of inventory.json: `homes` (`home_agents`) with four
+    last keys in each agent object, `synced_sessions`, `relayed_sessions`,
+    `remote_sessions` and `recovered_sessions`, the number of the sessions
+    of that user and agent whose `synced` (issue 151) or `relayed` (issue
+    153) is "yes", whose `origin` is "remote" (issue 153), or whose
+    `recovered` is "yes" or "partial"."""
+    synced = Counter((s.user, s.agent) for s in sessions if s.synced == "yes")
+    relayed = Counter((s.user, s.agent) for s in sessions if s.relayed == "yes")
+    remote = Counter((s.user, s.agent) for s in sessions if s.origin == "remote")
+    recovered = Counter((s.user, s.agent) for s in sessions if s.recovered in RECOVERED)
     return [
         {
             **h,
             "agents": [
-                {**a, "synced_sessions": counts[(h["user"], a["agent"])]} for a in h["agents"]
+                {
+                    **a,
+                    "synced_sessions": synced[(h["user"], a["agent"])],
+                    "relayed_sessions": relayed[(h["user"], a["agent"])],
+                    "remote_sessions": remote[(h["user"], a["agent"])],
+                    "recovered_sessions": recovered[(h["user"], a["agent"])],
+                }
+                for a in h["agents"]
             ],
         }
         for h in homes
@@ -746,7 +806,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     if rf.active:
         rows = rf.apply(rows)
         counts = Counter((r.agent, r.turn_type) for r in rows)
-    sessions = summarise(rows, frozenset(p.agent for p in ALL if p.records_sync))
+    sessions = summarise(rows, SYNC_AGENTS, RELAY_AGENTS, ORIGIN_AGENTS, SECONDARY_AGENTS)
     timeline = args.output / "timeline.jsonl"
     sess = args.output / "sessions.jsonl"
     write_jsonl(timeline, rows)
@@ -802,7 +862,11 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     ]
     groups = project_inventory(rows, sessions, collected_projects(col), project_files(col))
     synced = sum(1 for s in sessions if s.synced == "yes")
-    empty = {"rows": 0, "sessions": 0, "agents": {}}
+    relayed = sum(1 for s in sessions if s.relayed == "yes")
+    remote = sum(1 for s in sessions if s.origin == "remote")
+    recovered = sum(1 for s in sessions if s.recovered in RECOVERED)
+    empty: dict = {"rows": 0, "sessions": 0, "agents": {}}
+    empty.update({m[0]: "" for m in PROJECT_MARKS})
     inventory_path = args.output / "inventory.json"
     with open(inventory_path, "w", encoding="utf-8") as fh:
         json.dump(
@@ -823,6 +887,9 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
                 },
                 "collected_only": sorted(set(collected_only)),
                 "synced_sessions": synced,
+                "relayed_sessions": relayed,
+                "remote_sessions": remote,
+                "recovered_sessions": recovered,
             },
             fh,
             indent=2,
@@ -836,8 +903,12 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     print("rows:      %d in %s" % (len(rows), timeline))
     for (agent, tt), n in sorted(counts.items()):
         print("           %-14s %-12s %d" % (agent, tt, n))
+    marks = ["%d synced" % synced] if synced else []
+    marks += ["%d relayed" % relayed] if relayed else []
+    marks += ["%d remote" % remote] if remote else []
+    marks += ["%d recovered" % recovered] if recovered else []
     print(
-        "sessions:  %d in %s%s" % (len(sessions), sess, " (%d synced)" % synced if synced else "")
+        "sessions:  %d in %s%s" % (len(sessions), sess, " (%s)" % ", ".join(marks) if marks else "")
     )
     print("inventory: %s (homes, projects, counts per agent, problems)" % inventory_path)
     return 0 if rows else 1

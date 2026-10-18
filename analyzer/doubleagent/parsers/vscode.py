@@ -85,12 +85,18 @@ written by the Copilot Chat extension:
   {recordedAt (ms), application?}}` or, in the older form, `{<taskId>:
   <recordedAt>}`, the cloud agent tasks this install started on GitHub's
   servers. One `system` row per task at `recordedAt`, `session_id`
-  `copilot-cloud-agent:/task/<taskId>`: `remote session: cloud agent
+  `copilot-cloud-agent:/task/<taskId>`: `session synced: cloud agent
   task <taskId> application=<application> (from state.vscdb
   GitHub.copilot-chat github.copilot.cloudAgent.ownedTasks, recordedAt)`.
-  It does not start `session synced:`: the task ran on GitHub's servers
-  rather than being uploaded from here. A damaged database or a value
-  that is not JSON is one `parser:` row; no other key is read.
+  The task began on GitHub's servers rather than being uploaded from
+  here, but GitHub holds its copy all the same, so it is a sync row and
+  the task's session reads `synced` `yes`. Its origin is a second row at
+  the same time and session: `session origin: remote GitHub cloud agent
+  (from state.vscdb GitHub.copilot-chat
+  github.copilot.cloudAgent.ownedTasks, recordedAt)`, so `records_origin`
+  is set and the task's session reads `origin` `remote`, every other VS
+  Code session `local`. A damaged database or a value that is not JSON is
+  one `parser:` row; no other key is read.
 
 An absent value prints `-` in both.
 
@@ -344,6 +350,7 @@ class VsCodeParser(Parser):
     agent = "vscode"
     name = "vscode"
     records_sync = True
+    records_origin = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
@@ -452,9 +459,10 @@ class VsCodeParser(Parser):
             yield row
 
     def _parse_owned_tasks(self, artifact: Artifact) -> Iterator[Row]:
-        """`state.vscdb`: one `remote session:` row per cloud agent task in
-        the Copilot Chat global state's `ownedTasks`, at `recordedAt`, then
-        a `parser:` row per problem reading the database or the value."""
+        """`state.vscdb`: a `session synced:` and a `session origin: remote`
+        row per cloud agent task in the Copilot Chat global state's
+        `ownedTasks`, at `recordedAt`, then a `parser:` row per problem
+        reading the database or the value."""
         state, problems = read_item(artifact.disk_path, COPILOT_STATE_KEY)
         tasks = state.get(OWNED_TASKS_KEY) if isinstance(state, dict) else None
         for task_id, entry in tasks.items() if isinstance(tasks, dict) else ():
@@ -462,12 +470,17 @@ class VsCodeParser(Parser):
                 recorded, application = entry.get("recordedAt"), entry.get("application")
             else:
                 recorded, application = entry, None
+            session_id, ts = "copilot-cloud-agent:/task/%s" % task_id, to_utc(recorded)
+            source = "(from state.vscdb %s %s, recordedAt)" % (COPILOT_STATE_KEY, OWNED_TASKS_KEY)
             yield self._system_row(
                 artifact,
-                "copilot-cloud-agent:/task/%s" % task_id,
-                to_utc(recorded),
-                "remote session: cloud agent task %s application=%s (from state.vscdb %s %s, "
-                "recordedAt)" % (task_id, application or "-", COPILOT_STATE_KEY, OWNED_TASKS_KEY),
+                session_id,
+                ts,
+                "session synced: cloud agent task %s application=%s %s"
+                % (task_id, application or "-", source),
+            )
+            yield self._system_row(
+                artifact, session_id, ts, "session origin: remote GitHub cloud agent " + source
             )
         for problem in problems:
             yield self._system_row(artifact, "", "", "parser: " + problem)

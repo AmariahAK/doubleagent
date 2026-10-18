@@ -26,6 +26,10 @@ dropped when a primary row has
 Matching is one-to-one, the primary row always survives, and a secondary
 row with no match is kept, so a session whose transcript was deleted,
 excluded by size or truncated is still recovered from its history lines.
+Each secondary row kept is marked `recovered` "yes" (`Row.recovered`),
+except its `system` rows (an index header, a thread record, a snapshot,
+a `parser:` problem), which describe the source rather than an event the
+primary store lost, and `sessions.jsonl` sums the marks per session.
 The timestamped secondary rows go first, in time order, each to the
 nearest unused primary row within its tolerance; then the rows with no
 timestamp, the session-scoped ones first, then those with only a project,
@@ -326,9 +330,15 @@ def deduplicate(
     """The rows to keep (every primary row, then the secondary rows with no
     primary match and no copy kept before them, in the order given) and
     the dropped rows per agent. Each secondary row comes with its
-    tolerance in seconds."""
+    tolerance in seconds. Every secondary row kept gets `recovered` "yes",
+    since no primary row holds its event, except a `system` row, which
+    describes the source itself (a header, a record, a `parser:` problem)
+    rather than a lost event; this is where the field is set."""
     matched = set(_against_primary(primary, secondary))
     dropped = matched | set(_among_secondary(secondary, matched))
     counts: Counter[str] = Counter(secondary[j][0].agent for j in dropped)
-    kept = list(primary) + [r for j, (r, _) in enumerate(secondary) if j not in dropped]
-    return kept, counts
+    survivors = [r for j, (r, _) in enumerate(secondary) if j not in dropped]
+    for r in survivors:
+        if r.turn_type != "system":
+            r.recovered = "yes"
+    return list(primary) + survivors, counts

@@ -1022,6 +1022,7 @@ def describe_payload(kind: str, p: dict) -> str:
 class AntigravityParser(Parser):
     agent = "antigravity"
     name = "antigravity"
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
         return (

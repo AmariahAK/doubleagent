@@ -74,9 +74,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `User/globalStorage/github.copilot-chat/cloudSessions.json`, a
   `session synced: remote session` row per chat session uploaded to the
   user's GitHub account, and the cloud agent tasks in the extension's
-  `state.vscdb` global state, a `remote session: cloud agent task` row
-  each; `sessions.jsonl` `synced` is now `yes` or `no` for VS Code
-  sessions ([#153]).
+  `state.vscdb` global state, a `session synced: cloud agent task <id>`
+  row each, since GitHub holds those sessions too, and a `session
+  origin: remote GitHub cloud agent` row beside it; `sessions.jsonl`
+  `synced` is now `yes` or `no` for VS Code sessions, `yes` for each
+  cloud agent task ([#153]).
+- `sessions.jsonl` gains a last field `relayed`, after `synced`, a new
+  field of that interface: `yes` when the session has a `session
+  relayed:` row, `no` for a session of an agent whose parser records
+  relay state (`agent-zero`, `goose`, `qwen-code`) without one, `""` for
+  every other agent. `inventory.json` gains two `relayed_sessions` keys,
+  new keys of that interface: the last top-level key, after
+  `synced_sessions`, counting the sessions whose `relayed` is `yes`, and
+  the last key of each `homes[].agents[]` object, after
+  `synced_sessions`, counting them per home and agent ([#153]).
+- `sessions.jsonl` gains a last field `origin`, after `relayed`, a new
+  field of that interface: `remote` when the session has a `session
+  origin: remote` row, `local` for a session of an agent whose parser
+  records origin (`vscode`) without one, `""` for every other agent.
+  `inventory.json` gains two `remote_sessions` keys, new keys of that
+  interface: the last top-level key, after `relayed_sessions`, counting
+  the sessions whose `origin` is `remote`, and the last key of each
+  `homes[].agents[]` object, after `relayed_sessions`, counting them per
+  home and agent ([#153]).
+- `timeline.jsonl` gains a last field `recovered`, after `source_line`,
+  a new field of that interface: `yes` on an event row (any `turn_type`
+  but `system`) of a secondary source that survived deduplication, so
+  the primary store does not hold the event, `""` on every other row.
+  `sessions.jsonl` gains a last field `recovered`, after `origin`, a new
+  field of that interface, decided by the session's event rows: `yes`
+  when every one is recovered (the primary transcript is gone),
+  `partial` when some are, `no` when none is and the agent's parser
+  reads a secondary source, `""` for the others.
+  `inventory.json` gains `recovered_sessions`, new keys of that
+  interface, counting the `yes` and `partial` sessions: the last
+  top-level key, after `remote_sessions`; the last key of each
+  `homes[].agents[]` object, after `remote_sessions`. Each
+  `projects.<path>` entry and `outside_projects` end with `synced` and
+  `relayed` (`yes`, `partial`, `no` or `""`), `origin` (`remote`,
+  `mixed`, `local` or `""`) and `recovered` (`yes`, `partial`, `no` or
+  `""`), summarising their sessions: new keys of that interface, in last
+  position.
 
 ### Changed
 
@@ -85,13 +123,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `letta`, `open-interpreter`, `openclaw`, `opencode`, `pi` and `vscode`,
   whose parsers now record sync state, and `inventory.json`
   `synced_sessions` and the `sessions:` line count their synced sessions.
+  The `sessions:` line also counts the relayed sessions, the sessions
+  of remote origin and the recovered sessions, ending `(<N> synced, <M>
+  relayed, <K> remote, <R> recovered)`, each part shown only when its
+  count is greater than 0.
   This changes the values of a `sessions.jsonl` field ([#153]).
 - `timeline.jsonl` gains `system` row forms: `session synced:` from the
   parsers above, `session relayed:` (`agent-zero`, `goose`, `qwen-code`),
+  `session origin: remote` (`vscode`),
   `backup uploaded:` (`openclaw`), `debug report uploaded:` (`hermes`),
   `agent metadata posted:` and `storage upload requested, skipped`
-  (`continue`), `bug report exported:` (`pi`), `remote session:`
-  (`vscode`), `session unshared` (`opencode`, `kilo-code`) and `cline`'s
+  (`continue`), `bug report exported:` (`pi`), `session unshared` (`opencode`, `kilo-code`) and `cline`'s
   `enterprise prompt upload <status>` for a queued upload that has not
   gone yet ([#153]).
 - The bundled catalog copy follows collector 1.14.0: its credential

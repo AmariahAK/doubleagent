@@ -31,6 +31,23 @@ class Parser:
     # `session synced:` for a synced one (issue 151). `sessions.jsonl` then
     # says `synced` "no" for a session without that row rather than "".
     records_sync: bool = False
+    # True when the agent's format records whether a session was carried
+    # through a messaging platform (Telegram, WhatsApp, email), and the
+    # parser yields a `system` row starting `session relayed:` for such a
+    # session (issue 153). `sessions.jsonl` then says `relayed` "no" for a
+    # session without that row rather than "".
+    records_relay: bool = False
+    # True when the agent's format records whether a session began on the
+    # vendor's servers and is only listed locally, and the parser yields a
+    # `system` row starting `session origin: remote` for such a session
+    # (issue 153). `sessions.jsonl` then says `origin` "local" for a session
+    # without that row rather than "".
+    records_origin: bool = False
+    # True when `secondary()` can return True for some artifact, so the agent
+    # reads at least one secondary source; `sessions.jsonl` then says
+    # `recovered` "no" for a session with no recovered row rather than "".
+    # `secondary()` needs an artifact to answer, so this says it per class.
+    has_secondary: bool = False
 
     def wants(self, artifact: Artifact) -> bool:
         raise NotImplementedError

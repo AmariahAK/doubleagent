@@ -5,18 +5,28 @@ import contextlib
 import io
 import json
 import shutil
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from doubleagent import VERSION, catalog, cli
+from doubleagent.dedup import deduplicate
 from doubleagent.inputs import open_input
-from doubleagent.model import Row, canonical_project_path, project_key, summarise
+from doubleagent.model import (
+    Row,
+    SessionSummary,
+    canonical_project_path,
+    project_key,
+    summarise,
+)
 from doubleagent.parsers import ALL, Options, by_agent
 from fixtures import (
     AGENT_ZERO_CHAT,
     AGENT_ZERO_TG_CHAT,
+    AGY_APP_CONVERSATION,
+    AGY_ORPHAN,
     CLAUDE_SESSION,
     CLINE_BLOB_DELETED,
     CLINE_BLOB_SESSION,
@@ -29,6 +39,8 @@ from fixtures import (
     CONTINUE_SESSION,
     COPILOT_SESSION,
     COPILOT_WORKSPACE_YAML,
+    GOOSE_GATEWAY_SESSION,
+    GOOSE_SESSION,
     HERMES_SESSION,
     KILO_SESSION,
     KILO_TASK,
@@ -41,13 +53,36 @@ from fixtures import (
     OPENCODE_SHARED,
     PI_BUG_SESSION,
     PI_SESSION,
+    QWEN_ARCHIVED,
+    QWEN_DAEMON_SESSION,
     QWEN_SESSION,
+    VSCODE_CLOUD_TASK,
     VSCODE_LEGACY_SESSION,
+    VSCODE_OLD_TASK,
     VSCODE_SESSION,
     build_cline_blob_upload,
     build_cline_sync_queue,
     build_home,
+    goose_gateway_records,
 )
+
+# `outside_projects` with no row and no session outside a project.
+EMPTY_OUTSIDE = {
+    "rows": 0,
+    "sessions": 0,
+    "agents": {},
+    "synced": "",
+    "relayed": "",
+    "origin": "",
+    "recovered": "",
+}
+# The trailing keys of a `projects.<path>` entry and of `outside_projects`.
+PROJECT_KEYS = [
+    "synced",
+    "relayed",
+    "origin",
+    "recovered",
+]
 
 
 def run_timeline(root: Path, out: Path) -> tuple[int, str]:
@@ -300,7 +335,7 @@ class InventoryJsonTests(unittest.TestCase):
         inv = self.check_totals(path)
         self.assertEqual(inv["rows"], 0)
         self.assertEqual(inv["projects"], {})
-        self.assertEqual(inv["outside_projects"], {"rows": 0, "sessions": 0, "agents": {}})
+        self.assertEqual(inv["outside_projects"], EMPTY_OUTSIDE)
         # `parsed` names the agents with rows before filtering, as stdout does.
         self.assertIn("claude-code", inv["parsed"])
 
@@ -511,15 +546,36 @@ class TimelineProjectStatusTests(unittest.TestCase):
         # first and the shared files last (issue 104).
         self.assertEqual(
             projects["/srv/empty"],
-            {"status": "collected", "rows": 0, "sessions": 0, "agents": {}, "shared_files": 1},
+            {
+                "status": "collected",
+                "rows": 0,
+                "sessions": 0,
+                "agents": {},
+                "shared_files": 1,
+                "synced": "",
+                "relayed": "",
+                "origin": "",
+                "recovered": "",
+            },
         )
         self.assertEqual(projects["/srv/proj"]["rows"], 1)
         self.assertEqual(projects["/srv/gone"]["rows"], 1)
         self.assertEqual(
             list(projects["/srv/proj"]),
-            ["status", "rows", "sessions", "agents", "shared_files"],
+            [
+                "status",
+                "rows",
+                "sessions",
+                "agents",
+                "shared_files",
+                "synced",
+                "relayed",
+                "origin",
+                "recovered",
+            ],
         )
         self.assertNotIn("status", inv["outside_projects"])
+        self.assertEqual(list(inv["outside_projects"])[-4:], PROJECT_KEYS)
         self.assertEqual(inv["outside_projects"]["rows"], 1)
         self.assertEqual(inv["rows"], 3)
         # The home's files are under `homes`, never under outside_projects.
@@ -651,8 +707,9 @@ FIXTURE_DEDUPLICATED = {
 
 
 class SyncedSessionTests(unittest.TestCase):
-    """`sessions.jsonl` `synced`, the inventory's `synced_sessions` keys and
-    the `sessions:` line (issue 151)."""
+    """`sessions.jsonl` `synced` and `relayed`, the inventory's
+    `synced_sessions` and `relayed_sessions` keys and the `sessions:` line
+    (issues 151 and 153)."""
 
     UNSYNCED = "5e55a0a1-0000-4000-8000-000000000002"
 
@@ -668,6 +725,12 @@ class SyncedSessionTests(unittest.TestCase):
             for k, _, v in (line.partition(":") for line in text.splitlines())
         ]
         unsynced.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # A Goose gateway session, relayed through Telegram (#153).
+        con = sqlite3.connect(str(home / ".local/share/goose/sessions/sessions.db"))
+        for sql in goose_gateway_records():
+            con.execute(sql)
+        con.commit()
+        con.close()
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -678,7 +741,7 @@ class SyncedSessionTests(unittest.TestCase):
         self.assertEqual(rc, 0, stdout)
         sessions = read_jsonl(out / "sessions.jsonl")
         for s in sessions:
-            self.assertEqual(list(s)[-1], "synced", s)
+            self.assertEqual(list(s)[-4:], ["synced", "relayed", "origin", "recovered"], s)
         by_id = {(s["agent"], s["session_id"]): s["synced"] for s in sessions}
         self.assertEqual(by_id[("copilot-cli", COPILOT_SESSION)], "yes")
         self.assertEqual(by_id[("copilot-cli", self.UNSYNCED)], "no")
@@ -691,17 +754,245 @@ class SyncedSessionTests(unittest.TestCase):
             {v for (agent, _), v in by_id.items() if agent in sync_agents}, {"yes", "no"}
         )
         synced = sum(1 for v in by_id.values() if v == "yes")
+        relayed = sum(1 for s in sessions if s["relayed"] == "yes")
+        remote = sum(1 for s in sessions if s["origin"] == "remote")
+        recovered = sum(1 for s in sessions if s["recovered"] in ("yes", "partial"))
+        keys = ["synced_sessions", "relayed_sessions", "remote_sessions", "recovered_sessions"]
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
-        self.assertEqual(list(inv)[-1], "synced_sessions")
+        self.assertEqual(list(inv)[-4:], keys)
         self.assertEqual(inv["synced_sessions"], synced)
+        self.assertEqual(inv["relayed_sessions"], relayed)
+        self.assertEqual(inv["remote_sessions"], remote)
+        self.assertEqual(inv["recovered_sessions"], recovered)
         for h in inv["homes"]:
             for a in h["agents"]:
-                self.assertEqual(list(a)[-1], "synced_sessions", a)
+                self.assertEqual(list(a)[-4:], keys, a)
         agents = {a["agent"]: a for h in inv["homes"] for a in h["agents"]}
         self.assertEqual(agents["copilot-cli"]["synced_sessions"], 1)
         self.assertEqual(agents["claude-code"]["synced_sessions"], 0)
         line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
-        self.assertTrue(line.endswith("sessions.jsonl (%d synced)" % synced), line)
+        self.assertTrue(
+            line.endswith(
+                "sessions.jsonl (%d synced, %d relayed, %d remote, %d recovered)"
+                % (synced, relayed, remote, recovered)
+            ),
+            line,
+        )
+
+    def test_origin(self):
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(self.tmp / "home", out)
+        self.assertEqual(rc, 0, stdout)
+        by_id = {
+            (s["agent"], s["session_id"]): s["origin"] for s in read_jsonl(out / "sessions.jsonl")
+        }
+        # The two Copilot cloud agent tasks began on GitHub's servers.
+        for key, want in (
+            (("vscode", "copilot-cloud-agent:/task/" + VSCODE_CLOUD_TASK), "remote"),
+            (("vscode", "copilot-cloud-agent:/task/" + VSCODE_OLD_TASK), "remote"),
+            (("vscode", VSCODE_SESSION), "local"),
+            (("copilot-cli", COPILOT_SESSION), ""),
+            (("claude-code", CLAUDE_SESSION), ""),
+        ):
+            self.assertEqual(by_id[key], want, key)
+        origin_agents = {p.agent for p in ALL if p.records_origin}
+        self.assertEqual(origin_agents, {"vscode"})
+        self.assertEqual({v for (agent, _), v in by_id.items() if agent != "vscode"}, {""})
+        self.assertEqual(
+            {v for (agent, _), v in by_id.items() if agent == "vscode"}, {"remote", "local"}
+        )
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        self.assertEqual(inv["remote_sessions"], 2)
+        agents = {a["agent"]: a for h in inv["homes"] for a in h["agents"]}
+        self.assertEqual(agents["vscode"]["remote_sessions"], 2)
+        self.assertEqual(agents["copilot-cli"]["remote_sessions"], 0)
+        line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
+        self.assertIn(", 2 remote", line)
+
+    def test_recovered(self):
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(self.tmp / "home", out)
+        self.assertEqual(rc, 0, stdout)
+        sessions = read_jsonl(out / "sessions.jsonl")
+        by_id = {(s["agent"], s["session_id"]): s["recovered"] for s in sessions}
+        # CODEX_ORPHAN's rollout and AGY_ORPHAN's database are gone, so only
+        # secondary sources hold them; COPILOT_SESSION's store keeps turns
+        # its events.jsonl lost; AGY_APP_CONVERSATION's primary holds all.
+        for key, want in (
+            (("codex-cli", CODEX_ORPHAN), "yes"),
+            (("antigravity", AGY_ORPHAN), "yes"),
+            (("copilot-cli", COPILOT_SESSION), "partial"),
+            (("antigravity", AGY_APP_CONVERSATION), "no"),
+            # Only `system` rows of a secondary source (a Codex thread record,
+            # a Qwen logs.json model row) beside a complete transcript: "no".
+            (("codex-cli", CODEX_SESSION), "no"),
+            (("open-interpreter", OI_SESSION), "no"),
+            (("qwen-code", QWEN_SESSION), "no"),
+            (("vscode", VSCODE_SESSION), ""),
+            (("agent-zero", AGENT_ZERO_CHAT), ""),
+        ):
+            self.assertEqual(by_id[key], want, key)
+        secondary_agents = {p.agent for p in ALL if p.has_secondary}
+        self.assertEqual(
+            {v for (agent, _), v in by_id.items() if agent not in secondary_agents}, {""}
+        )
+        self.assertEqual(
+            {v for (agent, _), v in by_id.items() if agent in secondary_agents},
+            {"yes", "partial", "no"},
+        )
+        # Row level: a surviving secondary row is marked, a primary row not.
+        rows = read_jsonl(out / "timeline.jsonl")
+        for r in rows:
+            self.assertEqual(list(r)[-1], "recovered", r)
+        orphan = [r for r in rows if r["session_id"] == CODEX_ORPHAN]
+        self.assertTrue(orphan)
+        # Its events are marked; its `system` rows (the thread record) are not.
+        events = [r for r in orphan if r["turn_type"] != "system"]
+        self.assertTrue(events)
+        self.assertEqual({r["recovered"] for r in events}, {"yes"})
+        self.assertEqual({r["recovered"] for r in orphan if r["turn_type"] == "system"}, {""})
+        primary = [r for r in rows if r["session_id"] == AGY_APP_CONVERSATION]
+        self.assertTrue(primary)
+        self.assertEqual({r["recovered"] for r in primary}, {""})
+        # Counts: `yes` and `partial` together.
+        recovered = sum(1 for v in by_id.values() if v in ("yes", "partial"))
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        self.assertEqual(inv["recovered_sessions"], recovered)
+        agents = {a["agent"]: a for h in inv["homes"] for a in h["agents"]}
+        self.assertEqual(agents["antigravity"]["recovered_sessions"], 2)
+        self.assertEqual(agents["vscode"]["recovered_sessions"], 0)
+        line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
+        self.assertTrue(line.endswith(", %d recovered)" % recovered), line)
+        # Projects: all, some, none of a secondary-reading agent's sessions,
+        # and "" for no sessions or no agent with a secondary source.
+        projects = inv["projects"]
+        for path, entry in projects.items():
+            self.assertEqual(list(entry)[-4:], PROJECT_KEYS, path)
+            for name, a in entry["agents"].items():
+                self.assertNotIn("recovered_sessions", a, (path, name))
+        agy = projects["/home/u/proj"]
+        self.assertEqual(agy["recovered"], "partial")
+        self.assertEqual(projects["/sessions/quiet-river-1234"]["recovered"], "yes")
+        self.assertEqual(projects["/alice/.nanobot/workspace"]["recovered"], "no")
+        self.assertEqual(projects["/a0/usr/projects/demo"]["recovered"], "")
+        self.assertEqual(projects["/srv/proj2"]["recovered"], "")
+        # The recovered sessions with no project: AGY_ORPHAN is one.
+        outside = inv["outside_projects"]
+        self.assertEqual(list(outside)[-4:], PROJECT_KEYS)
+        self.assertEqual(outside["recovered"], "partial")
+        self.assertNotIn("recovered_sessions", outside)
+        self.assertNotIn("recovered_sessions", outside["agents"]["antigravity"])
+
+    def test_project_marks(self):
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(self.tmp / "home", out)
+        self.assertEqual(rc, 0, stdout)
+        projects = json.loads((out / "inventory.json").read_text(encoding="utf-8"))["projects"]
+
+        def marks(path):
+            return [projects[path][k] for k in PROJECT_KEYS]
+
+        # Agent Zero: the Telegram chat is synced and relayed, the other chat
+        # neither; agent-zero records no origin and reads no secondary source.
+        self.assertEqual(marks("/a0/usr/projects/demo"), ["partial", "partial", "", ""])
+        self.assertNotIn("synced_sessions", projects["/a0/usr/projects/demo"])
+        # /srv/proj holds VS Code sessions, none of remote origin.
+        self.assertEqual(marks("/srv/proj"), ["partial", "partial", "local", "partial"])
+        # Letta records sync and Goose relay, neither marks the /srv/old session.
+        self.assertEqual(marks("/srv/old")[:2], ["no", "no"])
+        # No session, and agents that record none of the marks.
+        self.assertEqual(marks("/srv/proj2"), ["", "", "", ""])
+        # The two Copilot cloud agent tasks have no project path, so they are
+        # summarised outside projects, beside local VS Code sessions without
+        # one and synced ones: origin "mixed", synced "partial" by the rules.
+        outside = json.loads((out / "inventory.json").read_text(encoding="utf-8"))[
+            "outside_projects"
+        ]
+        self.assertEqual([outside[k] for k in PROJECT_KEYS], ["partial", "no", "mixed", "partial"])
+        self.assertNotIn("remote_sessions", outside)
+        self.assertNotIn("remote_sessions", outside["agents"]["vscode"])
+
+    def test_project_mark_values(self):
+        def session(origin):
+            s = SessionSummary("h", "u", "vscode", origin)
+            s.origin = origin
+            return s
+
+        mark = next(m for m in cli.PROJECT_MARKS if m[0] == "origin")
+        remote, local = session("remote"), session("local")
+        self.assertEqual(cli.project_mark([remote, remote], mark, {"vscode"}), "remote")
+        self.assertEqual(cli.project_mark([remote, local], mark, {"vscode"}), "mixed")
+        self.assertEqual(cli.project_mark([local], mark, {"vscode"}), "local")
+        self.assertEqual(cli.project_mark([session("")], mark, {"claude-code"}), "")
+        self.assertEqual(cli.project_mark([], mark, {"vscode"}), "")
+
+    def test_recovered_ignores_parser_rows(self):
+        # A secondary file with a bad line beside a complete primary session:
+        # its `parser:` row survives deduplication but is no lost event.
+        def row(source, turn_type, text):
+            return Row(
+                host="h",
+                user="u",
+                agent="claude-code",
+                session_id="s",
+                turn_type=turn_type,
+                text=text,
+                timestamp_utc="2026-10-01T10:00:00.000Z",
+                source_file=source,
+            )
+
+        primary = [row("/t.jsonl", "user", "run the tests")]
+        bad = row("/history.jsonl", "system", "parser: unparseable line (bad JSON): {")
+        secondary = [(row("/history.jsonl", "user", "run the tests"), 2.0), (bad, 2.0)]
+        kept, dropped = deduplicate(primary, secondary)
+        self.assertEqual(dropped, {"claude-code": 1})
+        self.assertIn(bad, kept)
+        self.assertEqual([r.recovered for r in kept], ["", ""])
+        agents = frozenset({"claude-code"})
+        got = summarise(kept, frozenset(), frozenset(), frozenset(), agents)
+        self.assertEqual([s.recovered for s in got], ["no"])
+        # A session whose only rows are `parser:` rows is never "yes".
+        bad.recovered = "yes"
+        only = summarise([bad], frozenset(), frozenset(), frozenset(), agents)
+        self.assertEqual([s.recovered for s in only], ["no"])
+        self.assertEqual([s.recovered for s in summarise([bad])], [""])
+
+    def test_relayed(self):
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(self.tmp / "home", out)
+        self.assertEqual(rc, 0, stdout)
+        sessions = read_jsonl(out / "sessions.jsonl")
+        by_id = {(s["agent"], s["session_id"]): s["relayed"] for s in sessions}
+        # The Agent Zero Telegram chat, the Goose gateway session and the two
+        # Qwen Code channel routes are relayed; the other sessions of those
+        # agents are not.
+        for key, want in (
+            (("agent-zero", AGENT_ZERO_TG_CHAT), "yes"),
+            (("agent-zero", AGENT_ZERO_CHAT), "no"),
+            (("goose", GOOSE_GATEWAY_SESSION), "yes"),
+            (("goose", GOOSE_SESSION), "no"),
+            (("qwen-code", QWEN_SESSION), "yes"),
+            (("qwen-code", QWEN_DAEMON_SESSION), "yes"),
+            (("qwen-code", QWEN_ARCHIVED), "no"),
+            (("copilot-cli", COPILOT_SESSION), ""),
+            (("claude-code", CLAUDE_SESSION), ""),
+        ):
+            self.assertEqual(by_id[key], want, key)
+        relay_agents = {p.agent for p in ALL if p.records_relay}
+        self.assertEqual(relay_agents, {"agent-zero", "goose", "qwen-code"})
+        self.assertEqual({v for (agent, _), v in by_id.items() if agent not in relay_agents}, {""})
+        self.assertEqual(
+            {v for (agent, _), v in by_id.items() if agent in relay_agents}, {"yes", "no"}
+        )
+        inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+        self.assertEqual(inv["relayed_sessions"], 4)
+        agents = {a["agent"]: a for h in inv["homes"] for a in h["agents"]}
+        self.assertEqual(agents["agent-zero"]["relayed_sessions"], 1)
+        self.assertEqual(agents["goose"]["relayed_sessions"], 1)
+        self.assertEqual(agents["qwen-code"]["relayed_sessions"], 2)
+        self.assertEqual(agents["copilot-cli"]["relayed_sessions"], 0)
+        line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
+        self.assertIn(", 4 relayed", line)
 
     def test_synced_codex_and_cline(self):
         # A `/feedback` report marks a Codex or Open Interpreter thread, and
@@ -738,6 +1029,38 @@ class SyncedSessionTests(unittest.TestCase):
         got = {s.agent: s.synced for s in summarise(rows, frozenset({"copilot-cli"}))}
         self.assertEqual(got, {"claude-code": "", "copilot-cli": "no"})
         self.assertEqual({s.synced for s in summarise(rows)}, {""})
+        got = {
+            s.agent: (s.synced, s.relayed)
+            for s in summarise(rows, frozenset(), frozenset({"copilot-cli"}))
+        }
+        self.assertEqual(got, {"claude-code": ("", ""), "copilot-cli": ("", "no")})
+        self.assertEqual({s.relayed for s in summarise(rows)}, {""})
+        got = {
+            s.agent: s.origin
+            for s in summarise(rows, frozenset(), frozenset(), frozenset({"copilot-cli"}))
+        }
+        self.assertEqual(got, {"claude-code": "", "copilot-cli": "local"})
+        self.assertEqual({s.origin for s in summarise(rows)}, {""})
+        remote = Row(
+            host="h",
+            user="u",
+            agent="copilot-cli",
+            session_id="c",
+            turn_type="system",
+            text="session origin: remote GitHub cloud agent",
+        )
+        got = {s.agent: s.origin for s in summarise([*rows, remote])}
+        self.assertEqual(got, {"claude-code": "", "copilot-cli": "remote"})
+        relayed = Row(
+            host="h",
+            user="u",
+            agent="copilot-cli",
+            session_id="c",
+            turn_type="system",
+            text="session relayed: channel telegram",
+        )
+        got = {s.agent: s.relayed for s in summarise([*rows, relayed])}
+        self.assertEqual(got, {"claude-code": "", "copilot-cli": "yes"})
 
 
 class SyncedSessionOpenClawAgentZeroTests(unittest.TestCase):
@@ -771,6 +1094,19 @@ class SyncedSessionOpenClawAgentZeroTests(unittest.TestCase):
         self.assertEqual(agents["openclaw"]["synced_sessions"], 1)
         self.assertEqual(agents["agent-zero"]["synced_sessions"], 1)
         self.assertEqual(agents["hermes"]["synced_sessions"], 0)
+        # The Telegram chat is relayed as well as synced (#153); the build_home
+        # fixture has no Goose gateway session, so Goose counts none.
+        relayed = {
+            (s["agent"], s["session_id"]): s["relayed"] for s in read_jsonl(out / "sessions.jsonl")
+        }
+        self.assertEqual(relayed[("agent-zero", AGENT_ZERO_TG_CHAT)], "yes")
+        self.assertEqual(relayed[("agent-zero", AGENT_ZERO_CHAT)], "no")
+        self.assertEqual(relayed[("hermes", HERMES_SESSION)], "")
+        self.assertEqual(agents["agent-zero"]["relayed_sessions"], 1)
+        self.assertEqual(agents["goose"]["relayed_sessions"], 0)
+        self.assertEqual(agents["qwen-code"]["relayed_sessions"], 2)
+        self.assertEqual(agents["openclaw"]["relayed_sessions"], 0)
+        self.assertEqual(inv["relayed_sessions"], 3)
 
 
 class SyncedSessionB3Tests(unittest.TestCase):
@@ -803,6 +1139,8 @@ class SyncedSessionB3Tests(unittest.TestCase):
             (("letta", LETTA_LOCAL_AGENT_CONV), "no"),
             (("vscode", VSCODE_SESSION), "yes"),
             (("vscode", VSCODE_LEGACY_SESSION), "no"),
+            (("vscode", "copilot-cloud-agent:/task/" + VSCODE_CLOUD_TASK), "yes"),
+            (("vscode", "copilot-cloud-agent:/task/" + VSCODE_OLD_TASK), "yes"),
         ):
             self.assertEqual(by_id[key], want, key)
         agents = {a.agent for a in ALL if a.records_sync}
@@ -842,7 +1180,17 @@ class DeduplicationTimelineTests(unittest.TestCase):
         self.assertEqual(len(orphan), 1)
         self.assertTrue(orphan[0]["source_file"].endswith("/.claude/history.jsonl"))
         self.assertEqual(inv["deduplicated"], FIXTURE_DEDUPLICATED)
-        self.assertEqual(list(inv)[-3:], ["deduplicated", "collected_only", "synced_sessions"])
+        self.assertEqual(
+            list(inv)[-6:],
+            [
+                "deduplicated",
+                "collected_only",
+                "synced_sessions",
+                "relayed_sessions",
+                "remote_sessions",
+                "recovered_sessions",
+            ],
+        )
         self.assertEqual(inv["rows"], len(rows))
         total = sum(FIXTURE_DEDUPLICATED.values())
         self.assertIn(
@@ -1249,13 +1597,20 @@ class ProjectAgentsTests(unittest.TestCase):
                 "deduplicated",
                 "collected_only",
                 "synced_sessions",
+                "relayed_sessions",
+                "remote_sessions",
+                "recovered_sessions",
             ],
         )
         for key in ("input", "kind", "host", "notes"):
             self.assertEqual(inv[key], doc[key], key)
-        # inventory.json's homes are detect's plus `synced_sessions` (issue 151).
+        # inventory.json's homes are detect's plus `synced_sessions` (issue 151)
+        # and `relayed_sessions`, `remote_sessions` and `recovered_sessions`.
         for h in inv["homes"]:
             for a in h["agents"]:
+                a.pop("recovered_sessions")
+                self.assertEqual(a.pop("remote_sessions"), 0)
+                self.assertEqual(a.pop("relayed_sessions"), 0)
                 self.assertEqual(a.pop("synced_sessions"), 0)
         self.assertEqual(inv["homes"], doc["homes"])
         self.assertEqual(inv["kind"], "collected")
@@ -1311,23 +1666,50 @@ class ProjectAgentsTests(unittest.TestCase):
                 "deduplicated",
                 "collected_only",
                 "synced_sessions",
+                "relayed_sessions",
+                "remote_sessions",
+                "recovered_sessions",
             ],
         )
         self.assertEqual(inv["problems"], [])
         projects = inv["projects"]
         for path, entry in projects.items():
             self.assertEqual(
-                list(entry), ["status", "rows", "sessions", "agents", "shared_files"], path
+                list(entry),
+                [
+                    "status",
+                    "rows",
+                    "sessions",
+                    "agents",
+                    "shared_files",
+                    "synced",
+                    "relayed",
+                    "origin",
+                    "recovered",
+                ],
+                path,
             )
         proj = projects["/srv/proj"]
         # Rows and no files; files and no rows.
         self.assertEqual(
             proj["agents"]["claude-code"],
-            {"rows": 1, "sessions": 0, "turn_types": {"user": 1}, "files": 0, "bytes": 0},
+            {
+                "rows": 1,
+                "sessions": 0,
+                "turn_types": {"user": 1},
+                "files": 0,
+                "bytes": 0,
+            },
         )
         self.assertEqual(
             proj["agents"]["cursor"],
-            {"rows": 0, "sessions": 0, "turn_types": {}, "files": 1, "bytes": 2},
+            {
+                "rows": 0,
+                "sessions": 0,
+                "turn_types": {},
+                "files": 1,
+                "bytes": 2,
+            },
         )
         self.assertEqual(proj["shared_files"], 1)
         self.assertEqual(
@@ -1346,13 +1728,27 @@ class ProjectAgentsTests(unittest.TestCase):
                     }
                 },
                 "shared_files": 0,
+                "synced": "",
+                "relayed": "",
+                "origin": "",
+                "recovered": "",
             },
         )
         self.assertEqual(
             projects["/srv/shared"],
-            {"status": "collected", "rows": 0, "sessions": 0, "agents": {}, "shared_files": 1},
+            {
+                "status": "collected",
+                "rows": 0,
+                "sessions": 0,
+                "agents": {},
+                "shared_files": 1,
+                "synced": "",
+                "relayed": "",
+                "origin": "",
+                "recovered": "",
+            },
         )
-        self.assertEqual(inv["outside_projects"], {"rows": 0, "sessions": 0, "agents": {}})
+        self.assertEqual(inv["outside_projects"], EMPTY_OUTSIDE)
         # cursor is in no home, only in a project: still detected.
         self.assertEqual(inv["detected_not_parsed"], ["cursor"])
         # A history file and no transcript: nothing to drop.
@@ -1372,8 +1768,15 @@ class ProjectAgentsTests(unittest.TestCase):
         self.assertEqual(inv["projects"], {})
         self.assertEqual(
             inv["outside_projects"]["agents"]["claude-code"],
-            {"rows": 1, "sessions": 0, "turn_types": {"user": 1}},
+            {
+                "rows": 1,
+                "sessions": 0,
+                "turn_types": {"user": 1},
+            },
         )
+        # The history line has no session, so every mark reads "".
+        outside = inv["outside_projects"]
+        self.assertEqual([outside[k] for k in PROJECT_KEYS], ["", "", "", ""])
 
     def test_inventory_image_root(self):
         c = Collected(self.tmp / "col", ["/mnt/image/srv/proj"])
@@ -1389,7 +1792,13 @@ class ProjectAgentsTests(unittest.TestCase):
         self.assertEqual(list(inv["projects"]), ["/srv/proj"])
         self.assertEqual(
             inv["projects"]["/srv/proj"]["agents"]["cursor"],
-            {"rows": 0, "sessions": 0, "turn_types": {}, "files": 1, "bytes": 2},
+            {
+                "rows": 0,
+                "sessions": 0,
+                "turn_types": {},
+                "files": 1,
+                "bytes": 2,
+            },
         )
 
     def test_loose_has_none(self):

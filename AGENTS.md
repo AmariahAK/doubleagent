@@ -474,6 +474,10 @@ and say in the module docstring if the shape has drifted since.
    `dedup.deduplicate` shows each event once and keeps what only the
    secondary source still holds (the rule is documented under
    [Secondary sources in `analyzer/docs/output.md`](analyzer/docs/output.md#secondary-sources)).
+   The analyzer marks the rows and sessions it recovered from secondary
+   sources (`recovered` in `timeline.jsonl`, `sessions.jsonl` and the
+   inventory), which needs `has_secondary` set on every parser whose
+   `secondary()` can return True.
    Sync state is evidence of the same kind: which sessions were uploaded
    to the vendor's account, when, under what remote id, and whether a
    deletion removed the remote copy, because the remote copy is what a
@@ -484,6 +488,15 @@ and say in the module docstring if the shape has drifted since.
    session <id> last event <id>`, or the agent's own terms) at the
    file's modification time, saying so; a parser plan with no sync line
    says the agent records none (issue 151 is the Copilot CLI row).
+   A session carried through a messaging platform (Telegram, WhatsApp,
+   email) is a relay, not a sync: the copy is on the platform, and the
+   parser yields a `session relayed:` row for it instead. Such a parser
+   sets `records_relay`, as a syncing one sets `records_sync`, so
+   `sessions.jsonl` `relayed` reads `yes` or `no` for its sessions.
+   A session that originated on the vendor's servers and is only listed
+   locally (a Copilot cloud agent task) is synced, since the vendor holds
+   its copy, and also gets a `session origin: remote <service>` row; the
+   parser sets `records_origin`, so `origin` reads `remote` or `local`.
    A secondary source whose records carry no time of their own yields
    rows with an empty `timestamp_utc`, never an inherited session time,
    so the match is on text alone and the session's time stays on its own

@@ -289,6 +289,7 @@ def workspace(recs: Iterable[tuple[int, dict]], limit: int = 0) -> tuple[str, st
 class MuseCodeParser(Parser):
     agent = "muse-code"
     name = "muse-code"
+    has_secondary = True
 
     def __init__(self) -> None:
         self._parent_cache: dict[Path, tuple[str, str]] = {}

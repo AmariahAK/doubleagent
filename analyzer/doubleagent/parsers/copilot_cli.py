@@ -417,6 +417,7 @@ def _read_json(path: Path):
 class CopilotCliParser(Parser):
     agent = "copilot-cli"
     name = "copilot-cli"
+    has_secondary = True
     records_sync = True
 
     def __init__(self) -> None:

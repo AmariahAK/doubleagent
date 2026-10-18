@@ -296,6 +296,7 @@ def trusted_folder_rows(parser: Parser, artifact: Artifact) -> Iterator[Row]:
 class GeminiCliParser(Parser):
     agent = "gemini-cli"
     name = "gemini-cli"
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel

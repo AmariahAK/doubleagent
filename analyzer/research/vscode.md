@@ -229,6 +229,10 @@ global storage directory `User/globalStorage/github.copilot-chat/`
   `application` is `vscode` for a task created here, else the task's
   `event_type` or `github/autopilot`
   ([`copilotCloudSessionsProvider.ts:2766-2772`](https://github.com/microsoft/vscode/blob/661e013024de5052af476650250dabbebb4c1165/extensions/copilot/src/extension/chatSessions/vscode-node/copilotCloudSessionsProvider.ts#L2766-L2772)).
+  Each task is a session held on GitHub's servers that this install
+  started or messaged, so it marks a synced session in the sense of the
+  parser plan ([section 8](#8-parser-plan)), and one whose origin is
+  remote: it began on the vendor's side and is only listed here.
 
 ## 6. Format versions
 
@@ -340,12 +344,21 @@ mtime)`, with the entry's key as `session_id`, timestamped by the file's
 modification time; an entry with no local session is still a row, since
 it names a session deleted here or uploaded from another machine. The
 `ownedTasks` list of cloud agent tasks ([section 5](#5-sqlite-stores)) is
-the other remote record: one `system` row per entry, `remote session:
+the other remote record: one `system` row per entry, `session synced:
 cloud agent task <taskId> application=<application or -> (from
 state.vscdb GitHub.copilot-chat github.copilot.cloudAgent.ownedTasks,
-recordedAt)` at `recordedAt`, with `session_id`
-`copilot-cloud-agent:/task/<taskId>` to match the index entry; the older
-bare-number form is read as `recordedAt` with no `application`. Both
+recordedAt)` at `recordedAt`,
+with `session_id` `copilot-cloud-agent:/task/<taskId>` to match the
+index entry; the older bare-number form is read as `recordedAt` with no
+`application`. A task is a `session synced:` row although nothing was
+uploaded from the host: it began on GitHub's servers, and GitHub holds
+its copy as it holds an uploaded session's, so for a responder it is a
+session the vendor can still produce. Its session reads `synced` `yes`.
+Only the origin differs, and it is a second row at the same time and
+session: `session origin: remote GitHub cloud agent (from state.vscdb
+GitHub.copilot-chat github.copilot.cloudAgent.ownedTasks, recordedAt)`.
+The parser sets `records_origin`, so a task's session reads `origin`
+`remote` and every other VS Code session `local`. Both
 rows are fixture only: no real install has shown either file. A delete
 removes the marker. The sidebar's delete of a local session calls
 `github.copilot.sessionSync.deleteSessionFromCloud`, which deletes the

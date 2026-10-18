@@ -329,6 +329,7 @@ def _folder(rec: dict | None) -> str:
 class ClaudeDesktopParser(ClaudeCodeParser):
     agent = "claude-desktop"
     name = "claude-desktop"
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel

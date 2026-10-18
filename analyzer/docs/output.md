@@ -319,10 +319,17 @@ inventory: out/inventory.json (homes, projects, counts per agent, problems)
 
 `rows:` is followed by one indented line per agent and `turn_type` with
 its count, sorted by agent and type, and nothing when there are no rows.
-When at least one record of `sessions.jsonl` has `synced` `yes`, the
-`sessions:` line ends with their count in parentheses after the path,
-`sessions:  6 in out/sessions.jsonl (1 synced)`; with none it ends at the
-path, as above (analyzer 0.14.0).
+When at least one record of `sessions.jsonl` has `synced` `yes`,
+`relayed` `yes`, `origin` `remote` or `recovered` `yes` or `partial`,
+the `sessions:` line ends with those counts in parentheses after the
+path, in that order, each part present only when its count is greater
+than 0 and the parts joined by a comma:
+`sessions:  6 in out/sessions.jsonl (1 synced)`,
+`sessions:  6 in out/sessions.jsonl (2 relayed)` or
+`sessions:  6 in out/sessions.jsonl (1 synced, 2 relayed, 1 remote, 3 recovered)`.
+With none it ends at the path, as above. The `synced` part is there
+since analyzer 0.14.0, the `relayed`, `remote` and `recovered` parts
+since 0.15.0.
 The paths are `-o` joined with the file name, as given on the command
 line. The exit code is `0` when at least one row was written and `1`
 otherwise; the files are written either way. Before analyzer 0.12.0
@@ -417,14 +424,20 @@ the test collection of the [`detect --json`](#detect---json) example:
           "files": 1,
           "bytes": 2,
           "parser": false,
-          "synced_sessions": 0
+          "synced_sessions": 0,
+          "relayed_sessions": 0,
+          "remote_sessions": 0,
+          "recovered_sessions": 0
         },
         {
           "agent": "claude-code",
           "files": 3,
           "bytes": 4343,
           "parser": true,
-          "synced_sessions": 0
+          "synced_sessions": 0,
+          "relayed_sessions": 0,
+          "remote_sessions": 0,
+          "recovered_sessions": 0
         }
       ]
     },
@@ -438,14 +451,20 @@ the test collection of the [`detect --json`](#detect---json) example:
           "files": 1,
           "bytes": 2,
           "parser": true,
-          "synced_sessions": 0
+          "synced_sessions": 0,
+          "relayed_sessions": 0,
+          "remote_sessions": 0,
+          "recovered_sessions": 0
         },
         {
           "agent": "ollama",
           "files": 1,
           "bytes": 25,
           "parser": true,
-          "synced_sessions": 0
+          "synced_sessions": 0,
+          "relayed_sessions": 0,
+          "remote_sessions": 0,
+          "recovered_sessions": 0
         }
       ]
     }
@@ -466,7 +485,11 @@ the test collection of the [`detect --json`](#detect---json) example:
           "bytes": 0
         }
       },
-      "shared_files": 0
+      "shared_files": 0,
+      "synced": "",
+      "relayed": "",
+      "origin": "",
+      "recovered": ""
     },
     "/srv/proj": {
       "status": "collected",
@@ -503,14 +526,22 @@ the test collection of the [`detect --json`](#detect---json) example:
           "bytes": 9
         }
       },
-      "shared_files": 1
+      "shared_files": 1,
+      "synced": "",
+      "relayed": "",
+      "origin": "",
+      "recovered": "no"
     },
     "/srv/shared": {
       "status": "collected",
       "rows": 0,
       "sessions": 0,
       "agents": {},
-      "shared_files": 1
+      "shared_files": 1,
+      "synced": "",
+      "relayed": "",
+      "origin": "",
+      "recovered": ""
     }
   },
   "outside_projects": {
@@ -536,11 +567,18 @@ the test collection of the [`detect --json`](#detect---json) example:
           "user": 1
         }
       }
-    }
+    },
+    "synced": "",
+    "relayed": "",
+    "origin": "",
+    "recovered": "no"
   },
   "deduplicated": {},
   "collected_only": [],
-  "synced_sessions": 0
+  "synced_sessions": 0,
+  "relayed_sessions": 0,
+  "remote_sessions": 0,
+  "recovered_sessions": 0
 }
 ```
 
@@ -557,8 +595,19 @@ directory. `cursor` has project files and no parser, so no rows;
 because none of the three `history.jsonl` prompts is one a transcript
 records, so every history line is kept, `collected_only` is `[]`
 because no agent of the input is one with nothing to parse, and every
-`synced_sessions` is 0 because none of these agents' parsers records
-sync state. Its keys, in order:
+`synced_sessions`, `relayed_sessions` and `remote_sessions` is 0
+because none of these agents' parsers records sync, relay or origin
+state, so every project's `synced`, `relayed` and `origin` is `""`.
+Every `recovered_sessions` is 0 because the session under `/srv/proj`
+and the one outside projects come from their transcripts alone (the
+history lines that survive carry no session), so the `recovered` of
+`/srv/proj` and of `outside_projects` is `no`, while `/srv/gone` and
+`/srv/shared` have no session and read `""`. The run was made with
+analyzer 0.14.0, before `relayed_sessions`, `remote_sessions`,
+`recovered_sessions` and the project and `outside_projects` marks
+existed; those keys are filled in by applying the 0.15.0 rules to the
+agents and sessions the run shows, not by a run. Its keys, in
+order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -573,7 +622,7 @@ sync state. Its keys, in order:
 | `parsed` | array of strings | The `parsed` group of the `agents:` line: the agents that produced rows before filtering, sorted. |
 | `detected_not_parsed` | array of strings | The `detected but not parsed` group: the agents in the input, outside or inside a project directory, that have no parser, sorted. Since 0.14.0 it excludes the agents in `collected_only`. |
 | `no_rows` | array of strings | The `parser found no rows` group, sorted; `[]` when it is empty. |
-| `homes` | array of objects | The `homes` array of [`detect --json`](#detect---json) for the same input, element for element, with `synced_sessions` added as the last key of each agent object: one per user home and Docker volume, in the order its first collected row was met, never a project directory. Not filtered. |
+| `homes` | array of objects | The `homes` array of [`detect --json`](#detect---json) for the same input, element for element, with `synced_sessions`, `relayed_sessions`, `remote_sessions` and `recovered_sessions` added as the last four keys of each agent object: one per user home and Docker volume, in the order its first collected row was met, never a project directory. Not filtered. |
 | `homes[].user` | string | As `homes[].user` in `detect --json`: the home's owner, `""` when unknown. |
 | `homes[].home` | string | As `homes[].home` in `detect --json`: the manifest `home`, or in loose mode the path relative to the input root with a leading `/`. |
 | `homes[].inferred` | boolean | `true` in loose mode, where user and home come from the path; `false` when they come from a manifest. |
@@ -582,7 +631,10 @@ sync state. Its keys, in order:
 | `homes[].agents[].files` | integer | Files of this agent in this home, counted as in `detect --json`; not filtered. |
 | `homes[].agents[].bytes` | integer | Their total size, the manifest `size` or the size on disk in loose mode; not filtered. |
 | `homes[].agents[].parser` | boolean | `true` when the analyzer has a parser for this agent, `false` when it is detected only. |
-| `homes[].agents[].synced_sessions` | integer | This user's sessions of this agent whose `synced` in `sessions.jsonl` is `yes`, after the filters; 0 when there is none, and always 0 for an agent whose parser records no sync state. Sessions are matched to the home by `user`. Last key of the object since 0.14.0. |
+| `homes[].agents[].synced_sessions` | integer | This user's sessions of this agent whose `synced` in `sessions.jsonl` is `yes`, after the filters; 0 when there is none, and always 0 for an agent whose parser records no sync state. Sessions are matched to the home by `user`. Last key of the object in 0.14.0. |
+| `homes[].agents[].relayed_sessions` | integer | This user's sessions of this agent whose `relayed` in `sessions.jsonl` is `yes`, after the filters; 0 when there is none, and always 0 for an agent whose parser records no relay state. Sessions are matched to the home by `user`, as for `synced_sessions`. Added in 0.15.0. |
+| `homes[].agents[].remote_sessions` | integer | This user's sessions of this agent whose `origin` in `sessions.jsonl` is `remote`, after the filters; 0 when there is none, and always 0 for an agent whose parser records no origin. Sessions are matched to the home by `user`, as for `synced_sessions`. Added in 0.15.0. |
+| `homes[].agents[].recovered_sessions` | integer | This user's sessions of this agent whose `recovered` in `sessions.jsonl` is `yes` or `partial`, after the filters; 0 when there is none, and always 0 for an agent whose parser reads no secondary source. Sessions are matched to the home by `user`, as for `synced_sessions`. Last key of the object since 0.15.0. |
 | `projects` | object | Keyed by project path, sorted: every distinct non-empty `project_path` of the rows, and every project directory the input holds, as the collector's path with the image root removed and Windows paths in the canonical form of [`timeline.jsonl`](#timelinejsonl) `project_path` (see below). Windows paths that differ only in case are one project, keyed by the collected directory's spelling when the project is one, else by the first spelling the rows record. `{}` when there is neither. |
 | `projects.<path>.status` | string | `collected` when the path is a project directory the input holds, so its project files are in the collection; `referenced` when only rows name it, because the directory was deleted, was out of the collector's reach, was skipped with `--no-projects`, or is recorded in another form (see below). |
 | `projects.<path>.rows` | integer | Rows with this `project_path`, or for a Windows path any spelling of it that differs only in case, after the filters. |
@@ -594,6 +646,10 @@ sync state. Its keys, in order:
 | `projects.<path>.agents.<agent>.files` | integer | The files the collection holds for this agent in this directory, not filtered; 0 for an agent with rows and no files there, and for every agent of a `referenced` project. |
 | `projects.<path>.agents.<agent>.bytes` | integer | Their total manifest `size`, not filtered. |
 | `projects.<path>.shared_files` | integer | The shared files the collection holds in the directory: files several agents read, which the manifest records with agent `project` rather than an owner (`AGENTS.md`, `.agents/`, `.mcp.json`, `.github/copilot-instructions.md`, `SOUL.md`; see [detect](#detect) for the full list and their readers). Not filtered; 0 for a `referenced` project. |
+| `projects.<path>.synced` | string | `yes` when every session counted under the project has `synced` `yes`; `partial` when some do; `no` when none does and at least one agent of the project records sync state; `""` otherwise, and for a project with no session. Since 0.15.0. |
+| `projects.<path>.relayed` | string | The same four values from `relayed`, with `no` when at least one agent of the project records relay state. Since 0.15.0. |
+| `projects.<path>.origin` | string | `remote` when every session counted under the project has `origin` `remote`; `mixed` when some do; `local` when none does and at least one agent of the project records origin; `""` otherwise, and for a project with no session. Since 0.15.0. |
+| `projects.<path>.recovered` | string | `yes` when every session counted under the project has `recovered` `yes`, so the project's primary transcripts are gone and only secondary sources remain; `partial` when some of its sessions are `yes` or `partial`; `no` when none is and at least one agent of the project reads a secondary source; `""` otherwise, and for a project with no session. A `referenced` project whose `recovered` is `yes` is one whose directory and whose agents' primary stores are both gone: what is left of it is the secondary sources. Last keys of the entry since 0.15.0: `synced`, `relayed`, `origin` and `recovered`, in that order. Counts of these sessions are kept only at the top level and per home agent. |
 | `outside_projects` | object | The counts for the rows and sessions whose `project_path` is empty. It has no status and no file counts: files outside projects are counted per home under `homes`. |
 | `outside_projects.rows` | integer | Rows with an empty `project_path`, after the filters. |
 | `outside_projects.sessions` | integer | Sessions with an empty `project_path`, after the filters. |
@@ -601,10 +657,14 @@ sync state. Its keys, in order:
 | `outside_projects.agents.<agent>.rows` | integer | This agent's rows with an empty `project_path`, after the filters. |
 | `outside_projects.agents.<agent>.sessions` | integer | This agent's sessions with an empty `project_path`, after the filters. |
 | `outside_projects.agents.<agent>.turn_types` | object | Keyed by `turn_type`, sorted: this agent's rows of each type, listing only the types that occur. |
+| `outside_projects.synced`, `relayed`, `origin`, `recovered` | string | As for a project, by the same rules and in the same order, over the sessions with an empty `project_path` and the agents with such rows or sessions; a Copilot cloud agent task, which records no project, is counted here. Last keys since 0.15.0. |
 | `deduplicated` | object | Keyed by agent name, sorted: the agents with rows of a secondary source dropped because a primary store or another secondary source records the same event (see [Secondary sources](#secondary-sources)), the counts of the `dropped:` line. With `--agent`, only the agents selected; not changed by `--since`, `--until` or `--match`, which apply to the rows kept. `{}` when no row was dropped. |
 | `deduplicated.<agent>` | integer | The number of this agent's secondary-source rows dropped, never 0. |
 | `collected_only` | array of strings | The `collected only` group of the `agents:` line: the agents in the input, outside or inside a project directory, that have no parser because their files hold nothing to parse (the `collected` rows of the [agents page](../../docs/agents.md)), sorted; `[]` when it is empty. Since 0.14.0. |
-| `synced_sessions` | integer | The number of records in `sessions.jsonl` whose `synced` is `yes`, after the filters, as for `sessions`; 0 when there is none. Last key since 0.14.0. |
+| `synced_sessions` | integer | The number of records in `sessions.jsonl` whose `synced` is `yes`, after the filters, as for `sessions`; 0 when there is none. Last key in 0.14.0. |
+| `relayed_sessions` | integer | The number of records in `sessions.jsonl` whose `relayed` is `yes`, after the filters, as for `sessions`; 0 when there is none. Added in 0.15.0. |
+| `remote_sessions` | integer | The number of records in `sessions.jsonl` whose `origin` is `remote`, after the filters, as for `sessions`; 0 when there is none. Added in 0.15.0. |
+| `recovered_sessions` | integer | The number of records in `sessions.jsonl` whose `recovered` is `yes` or `partial`, after the filters, as for `sessions`; 0 when there is none. Last key since 0.15.0. |
 
 A row is counted under its own `project_path` and a session under the
 session's, the first non-empty `project_path` among its rows, so a session
@@ -675,7 +735,11 @@ existing ones keep their names, types and meaning. Analyzer 0.13.0 added
 `synced_sessions`, the last key, and `synced_sessions` as the last key of
 each `homes[].agents[]` object; from that version `detected_not_parsed`
 no longer lists the agents with nothing to parse, which it had held since
-0.12.0. The one key added at the front is `doubleagent_version`, in
+0.12.0. Analyzer 0.15.0 added `relayed_sessions`, `remote_sessions`
+and `recovered_sessions` after `synced_sessions`, in that order, as the
+last keys of the file and of each `homes[].agents[]` object, and
+`synced`, `relayed`, `origin` and `recovered` as the last keys of each
+`projects.<path>` entry and of `outside_projects`. The one key added at the front is `doubleagent_version`, in
 analyzer 0.14.0, because a reader needs the version before the rest; the
 file is one object read by key, not by position.
 
@@ -716,6 +780,7 @@ alike. [searching.md](searching.md) has recipes.
 | `text` | string | The event's full text, with leading and trailing whitespace removed and inner line breaks and indentation kept: the prompt, the response, the tool output, or for a tool call its most identifying argument (the Bash command, the edited file, the search pattern, the fetched URL), else the arguments as JSON. It is never truncated, so the timeline is a complete transcript, one event per line. |
 | `source_file` | string | Path of the record on the source host, as in the manifest. In loose mode it is the path relative to the input root with a leading `/`, or relative to the home when the input root is the home or an agent directory. |
 | `source_line` | integer | Where the record is in that file, so the full record can be read. For line-oriented files (JSONL, Markdown, text) the 1-based line number. For SQLite stores it is the record's `rowid` (Tabby events: the event id), and for JSON documents an array index or `1`. Each parser's module docstring says which. `0` when no position applies. |
+| `recovered` | string | `yes` when the row is an event (any `turn_type` but `system`) from a secondary source of its agent (see [Secondary sources](#secondary-sources)) that survived deduplication, so the agent's primary store does not hold the event. `""` for every other row, including every `system` row of a secondary source (an index header, a thread record, a snapshot, a session-start or permission row, a `parser:` problem), which describes the source or the session rather than a turn the primary store lost. Since analyzer 0.15.0. |
 
 The field names each parser relies on are listed in its module docstring
 under `doubleagent/parsers/`. Thinking and reasoning blocks are left out
@@ -999,12 +1064,18 @@ The `vscode` parser writes `session synced: remote session
 User/globalStorage/github.copilot-chat/cloudSessions.json, file mtime)`
 for each chat session Copilot Chat's session sync uploaded to the
 user's GitHub account, with the chat session id as `session_id` and the
-file's modification time, and `remote session: cloud agent task
+file's modification time, and `session synced: cloud agent task
 <taskId> application=<application> (from state.vscdb
 GitHub.copilot-chat github.copilot.cloudAgent.ownedTasks, recordedAt)`
 for each cloud agent task started from the editor, with `session_id`
 `copilot-cloud-agent:/task/<taskId>`, at the time it was recorded; `-`
-stands for an absent value.
+stands for an absent value. The task ran on GitHub's servers from the
+start, but GitHub holds its copy as it does an uploaded session's, so
+its session's `synced` in `sessions.jsonl` is `yes`. A second row at
+the same time and session, `session origin: remote GitHub cloud agent
+(from state.vscdb GitHub.copilot-chat
+github.copilot.cloudAgent.ownedTasks, recordedAt)`, records where it
+began, so its `origin` is `remote`.
 
 The `zed`, `goose`, `kiro`, `hermes` and `ollama` parsers write model rows
 in the same form. `zed` writes `model: <model> provider=<provider>` once
@@ -1179,7 +1250,23 @@ transcript no longer holds (a Gemini CLI rewind). The rule runs after
 `--agent` and before `--since`, `--until` and `--match`, and the rows it
 drops are counted per agent on the `dropped:` line of stdout and under
 `deduplicated` in [inventory.json](#inventoryjson). Before analyzer
-0.13.0 both rows were written.
+0.13.0 both rows were written. Since analyzer 0.15.0 every secondary
+event row kept is marked `recovered` `yes` in `timeline.jsonl`; a
+`system` row of a secondary source is not, since it describes the
+source or the session rather than a lost turn. [`sessions.jsonl`](#sessionsjsonl)
+`recovered` says whether a session was rebuilt from such rows alone
+(`yes`) or in part (`partial`):
+`jq -c 'select(.recovered == "yes")' out/sessions.jsonl` lists the
+sessions whose primary transcript is gone. Two cases read `partial` or
+`yes` without anything lost. Deduplication matches on text, so a
+secondary source that records an event in another form than the primary
+store (an index that compresses a tool call into one line) keeps that
+row, and its session reads `partial`: `partial` marks a session to
+compare against its secondary sources, not proof that the transcript
+was cut. And Letta's server backend keeps the store of record on the
+server, so the local transcript is its mirror, a secondary source, and
+a server-backend Letta session reads `yes` or `partial` by design,
+beside its `session synced: server conversation` row.
 
 | Agent | Secondary source | Primary store |
 | --- | --- | --- |
@@ -1300,6 +1387,9 @@ no timestamp come first. Its fields, in order:
 | `tool_calls` | integer | The number with `turn_type` `tool_use`. |
 | `source_file` | string | The `source_file` that contributed the most of the session's records, the first met on a tie, so a transcript wins over a one-line-per-prompt history file; `""` when no record names one. |
 | `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (written by the `agent-zero`, `cline`, `codex-cli`, `copilot-cli`, `kilo-code`, `letta`, `open-interpreter`, `openclaw`, `opencode`, `pi` and `vscode` parsers); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
+| `relayed` | string | Whether the session was carried through a messaging platform (Telegram, WhatsApp, email, a GitHub thread), which keeps its own copy of the conversation, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session relayed:` (written by the `agent-zero`, `goose` and `qwen-code` parsers); `no` when the agent's parser records relay state and no record carries that row; `""` when the agent's parser records no relay state, so nothing is known. A relay is not a sync: the copy is on the platform, not in the agent vendor's account, so a session can read `yes` in both fields (an Agent Zero Telegram chat chained on a stored provider response). Since analyzer 0.15.0. |
+| `origin` | string | Where the session began, from the agent's own record of it: `remote` when one of the session's records is a `system` row whose `text` starts with `session origin: remote` (written by the `vscode` parser, for a Copilot cloud agent task that ran on GitHub's servers and is only listed in the editor); `local` when the agent's parser records origin and no record carries that row; `""` when the agent's parser records no origin, so nothing is known. A remote session is also `synced` `yes`, since the vendor holds its copy. Since analyzer 0.15.0. |
+| `recovered` | string | Whether the session was rebuilt from secondary sources (see [Secondary sources](#secondary-sources)): `yes` when every one of its records in `timeline.jsonl` has `recovered` `yes`, so its primary transcript is gone and only secondary sources hold it; `partial` when some do, so the primary was cut or rewound and a secondary source kept turns it lost; `no` when none does and the agent's parser reads at least one secondary source; `""` when the agent's parser reads no secondary source, so nothing is known. Computed after the filters, over the session's event records only (`system` rows left out), so a secondary source's header, record or `parser:` row never makes a complete session `partial`, and a session with no event record reads `no` or `""`. Because deduplication matches on text, `partial` also results when a secondary source records an event in another form than the primary store does (an index that compresses a tool call into one line), so it marks a session to compare against its secondary sources, not proof of a cut; and a Letta session on the server backend, whose local transcript mirrors the server's store of record, reads `yes` or `partial` by design. Since analyzer 0.15.0. |
 
 ## Compatibility
 

@@ -183,6 +183,7 @@ def _join(*parts: str) -> str:
 class HermesParser(Parser):
     agent = "hermes"
     name = "hermes"
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel

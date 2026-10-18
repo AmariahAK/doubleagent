@@ -647,6 +647,7 @@ class RolloutParser(Parser):
     """Codex rollouts and prompt history under `home_prefix`. Codex forks
     that keep the format subclass this with their own agent and home."""
 
+    has_secondary = True
     home_prefix = ".codex"
     ledger_name = ""  # import ledger file under home_prefix; empty when the agent has none
     automations = False  # read `automations/<slug>/automation.toml` (the ChatGPT desktop app)

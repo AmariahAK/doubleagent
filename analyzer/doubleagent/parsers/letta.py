@@ -191,6 +191,7 @@ def _last_snapshots(session: SessionFile) -> SessionFile:
 class LettaParser(Parser):
     agent = "letta"
     name = "letta"
+    has_secondary = True
     records_sync = True
 
     def wants(self, artifact: Artifact) -> bool:

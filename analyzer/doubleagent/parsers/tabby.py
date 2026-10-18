@@ -202,6 +202,7 @@ def first_git_url(att: dict) -> str:
 class TabbyParser(Parser):
     agent = "tabby"
     name = "tabby"
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel

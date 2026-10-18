@@ -94,7 +94,8 @@ bfcc6ee). One `system` row after the session's start row, at
 <display> (from sessions.db session_type gateway, created_at)`, platform
 and user id from `working_dir` (the platform from `name` when the path
 does not match), display from `name`, `-` when it is absent or is the user
-id. It is not vendor sync, so `records_sync` stays False. `config.yaml`
+id. It is not vendor sync, so `records_sync` stays False; `records_relay`
+is set, so a session without the row is `relayed` `no`. `config.yaml`
 `gateway_pairings` repeats the platform and user id and adds `paired_at`,
 but it is nested YAML (no YAML dependency) and a secret glob, so it is
 not read. Fixture only: no real install has shown a gateway session.
@@ -214,6 +215,8 @@ def unescape_history(line: str) -> str:
 class GooseParser(Parser):
     agent = "goose"
     name = "goose"
+    has_secondary = True
+    records_relay = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel

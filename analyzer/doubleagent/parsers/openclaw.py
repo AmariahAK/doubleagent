@@ -270,6 +270,7 @@ class _Session:
 class OpenClawParser(Parser):
     agent = "openclaw"
     name = "openclaw"
+    has_secondary = True
     records_sync = True
 
     def wants(self, artifact: Artifact) -> bool:

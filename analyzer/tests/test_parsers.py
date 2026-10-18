@@ -4763,15 +4763,27 @@ class VsCodeSyncTests(ParserBase):
                     "system",
                     "copilot-cloud-agent:/task/" + VSCODE_CLOUD_TASK,
                     "2025-10-02T10:16:40.000Z",
-                    "remote session: cloud agent task %s application=vscode %s"
+                    "session synced: cloud agent task %s application=vscode %s"
                     % (VSCODE_CLOUD_TASK, self.TASKS),
+                ),
+                (
+                    "system",
+                    "copilot-cloud-agent:/task/" + VSCODE_CLOUD_TASK,
+                    "2025-10-02T10:16:40.000Z",
+                    "session origin: remote GitHub cloud agent " + self.TASKS,
                 ),
                 (
                     "system",
                     "copilot-cloud-agent:/task/" + VSCODE_OLD_TASK,
                     "2025-10-01T06:26:40.000Z",
-                    "remote session: cloud agent task %s application=- %s"
+                    "session synced: cloud agent task %s application=- %s"
                     % (VSCODE_OLD_TASK, self.TASKS),
+                ),
+                (
+                    "system",
+                    "copilot-cloud-agent:/task/" + VSCODE_OLD_TASK,
+                    "2025-10-01T06:26:40.000Z",
+                    "session origin: remote GitHub cloud agent " + self.TASKS,
                 ),
             ],
         )
@@ -4814,7 +4826,15 @@ class VsCodeSyncTests(ParserBase):
         self.assertEqual(synced[VSCODE_SESSION], "yes")
         self.assertEqual(synced[VSCODE_OTHER_MACHINE_SESSION], "yes")
         self.assertEqual(synced[VSCODE_LEGACY_SESSION], "no")
-        self.assertEqual(synced["copilot-cloud-agent:/task/" + VSCODE_CLOUD_TASK], "no")
+        # A task that began on GitHub's servers is synced too: GitHub holds it.
+        self.assertEqual(synced["copilot-cloud-agent:/task/" + VSCODE_CLOUD_TASK], "yes")
+        self.assertEqual(synced["copilot-cloud-agent:/task/" + VSCODE_OLD_TASK], "yes")
+        origin = {r["session_id"]: r["origin"] for r in read_jsonl(out / "sessions.jsonl")}
+        self.assertEqual(origin["copilot-cloud-agent:/task/" + VSCODE_CLOUD_TASK], "remote")
+        self.assertEqual(origin["copilot-cloud-agent:/task/" + VSCODE_OLD_TASK], "remote")
+        self.assertEqual(origin[VSCODE_SESSION], "local")
+        self.assertEqual(origin[VSCODE_LEGACY_SESSION], "local")
+        self.assertTrue(VsCodeParser.records_origin)
 
 
 from doubleagent.parsers.kilo_code import KiloCodeParser
@@ -12218,3 +12238,24 @@ class CopilotDesktopTests(ParserBase):
         rows = self.rows_for(CopilotDesktopParser(), COPILOT_DESKTOP_DB_REL)
         self.assertEqual(len(rows), 1)
         self.assertTrue(rows[0].text.startswith("parser: SQLite error: "), rows[0].text)
+
+
+class HasSecondaryTests(ParserBase):
+    """`Parser.has_secondary` agrees with `secondary()` over the fixture:
+    `sessions.jsonl` `recovered` reads "no" rather than "" only for the
+    agents it names, so a parser whose `secondary()` can return True needs
+    it set, and one whose never does must not set it."""
+
+    def test_has_secondary_matches_fixture(self):
+        from doubleagent.parsers import ALL
+
+        parsers = by_agent()
+        seen = set()
+        for a in self.col.artifacts:
+            for p in cli.parsers_for(a, parsers):
+                if p.wants(a) and p.secondary(a):
+                    seen.add(type(p).__name__)
+        declared = {type(p).__name__ for p in ALL if p.has_secondary}
+        self.assertEqual(declared - seen, set(), "has_secondary set, no secondary fixture file")
+        self.assertEqual(seen - declared, set(), "secondary() True, has_secondary not set")
+        self.assertIn("CodexParser", declared)

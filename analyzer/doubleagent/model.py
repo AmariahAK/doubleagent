@@ -22,6 +22,7 @@ TIMELINE_COLUMNS = [
     "text",
     "source_file",
     "source_line",
+    "recovered",
 ]
 
 TURN_TYPES = ("user", "assistant", "tool_use", "tool_result", "system", "thinking")
@@ -40,11 +41,20 @@ SESSION_COLUMNS = [
     "tool_calls",
     "source_file",
     "synced",
+    "relayed",
+    "origin",
+    "recovered",
 ]
 
 # The text that starts a parser's row for a session synced to a remote
 # account (`Parser.records_sync`, issue 151).
 SYNCED_PREFIX = "session synced:"
+# The text that starts a parser's row for a session carried through a
+# messaging platform (`Parser.records_relay`, issue 153).
+RELAYED_PREFIX = "session relayed:"
+# The text that starts a parser's row for a session that began on the
+# vendor's servers (`Parser.records_origin`, issue 153).
+ORIGIN_PREFIX = "session origin: remote"
 
 
 @dataclass
@@ -63,6 +73,9 @@ class Row:
     text: str = ""
     source_file: str = ""
     source_line: int = 0
+    # "yes" for a row of a secondary source that survived deduplication, so
+    # the primary store does not hold the event (set by `dedup.deduplicate`).
+    recovered: str = ""
 
     def as_dict(self) -> dict[str, object]:
         return {c: getattr(self, c) for c in TIMELINE_COLUMNS}
@@ -89,9 +102,27 @@ class SessionSummary:
     # agent's parser records sync state and none does, "" when it records
     # none (set by `summarise`).
     synced: str = ""
+    # The same for the relay marker: "yes", "no" when the agent's parser
+    # records relay state and no row carries the marker, "" otherwise.
+    relayed: str = ""
+    # "remote" when a row carries the origin marker, "local" when the
+    # agent's parser records origin and no row does, "" otherwise.
+    origin: str = ""
+    # "yes" when every row of the session is `recovered`, "partial" when
+    # some are, "no" when none are and the agent's parser reads a secondary
+    # source, "" otherwise (set by `summarise`).
+    recovered: str = ""
     _sources: dict[str, int] = field(default_factory=dict)
+    _rows: int = 0
+    _recovered_rows: int = 0
 
     def add(self, row: Row) -> None:
+        # Only event rows decide `recovered`: a `system` row describes its
+        # source or the session, not a turn the primary store could lose.
+        if row.turn_type != "system":
+            self._rows += 1
+            if row.recovered == "yes":
+                self._recovered_rows += 1
         # The session's source is the file that contributed most rows, so a
         # transcript wins over the one-line-per-prompt history file.
         if row.source_file:
@@ -114,6 +145,10 @@ class SessionSummary:
             self.tool_calls += 1
         elif row.turn_type == "system" and row.text.startswith(SYNCED_PREFIX):
             self.synced = "yes"
+        elif row.turn_type == "system" and row.text.startswith(RELAYED_PREFIX):
+            self.relayed = "yes"
+        elif row.turn_type == "system" and row.text.startswith(ORIGIN_PREFIX):
+            self.origin = "remote"
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -130,14 +165,29 @@ class SessionSummary:
             "tool_calls": self.tool_calls,
             "source_file": self.source_file,
             "synced": self.synced,
+            "relayed": self.relayed,
+            "origin": self.origin,
+            "recovered": self.recovered,
         }
 
 
-def summarise(rows: list[Row], sync_agents: frozenset[str] = frozenset()) -> list[SessionSummary]:
+def summarise(
+    rows: list[Row],
+    sync_agents: frozenset[str] = frozenset(),
+    relay_agents: frozenset[str] = frozenset(),
+    origin_agents: frozenset[str] = frozenset(),
+    secondary_agents: frozenset[str] = frozenset(),
+) -> list[SessionSummary]:
     """One summary per (host, user, agent, session id) of `rows`, sorted by
     first timestamp, agent and session id. `sync_agents` names the agents
     whose parser records sync state (`Parser.records_sync`); their sessions
-    without the marker get `synced` "no", the others keep ""."""
+    without the marker get `synced` "no", the others keep "". `relay_agents`
+    does the same for `relayed` (`Parser.records_relay`), and
+    `origin_agents` sets `origin` "local" (`Parser.records_origin`).
+    `recovered` is "yes" when every row of the session is recovered,
+    "partial" when some are, else "no" for an agent of `secondary_agents`
+    (`Parser.has_secondary`) and "" for the others; `system` rows are left
+    out of the count, so a session of only such rows is never "yes"."""
     out: dict[tuple, SessionSummary] = {}
     for r in rows:
         if not r.session_id:
@@ -151,6 +201,14 @@ def summarise(rows: list[Row], sync_agents: frozenset[str] = frozenset()) -> lis
     for s in out.values():
         if not s.synced and s.agent in sync_agents:
             s.synced = "no"
+        if not s.relayed and s.agent in relay_agents:
+            s.relayed = "no"
+        if not s.origin and s.agent in origin_agents:
+            s.origin = "local"
+        if s._recovered_rows:
+            s.recovered = "yes" if s._recovered_rows == s._rows else "partial"
+        elif s.agent in secondary_agents:
+            s.recovered = "no"
     return sorted(out.values(), key=lambda s: (s.first_timestamp_utc, s.agent, s.session_id))
 
 

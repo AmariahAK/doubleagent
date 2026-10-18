@@ -70,6 +70,7 @@ ITEM_FILE = "history_item.json"
 class RooCodeParser(LegacyTaskParser):
     agent = "roo-code"
     name = "roo-code"
+    has_secondary = True
     ROOT = ROOT
     PROJECT_KEY = "workspace"
 

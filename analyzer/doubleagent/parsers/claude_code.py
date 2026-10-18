@@ -350,6 +350,7 @@ def persisted_text(artifact: Artifact, stub: str) -> str:
 class ClaudeCodeParser(Parser):
     agent = "claude-code"
     name = "claude-code"
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel

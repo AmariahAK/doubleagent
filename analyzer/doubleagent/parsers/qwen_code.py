@@ -59,7 +59,8 @@ stream, not Gemini's. Files:
   with the text ending `file mtime)` when the entry has none; the daemon
   form names `channels/daemon/<hash>/routes.json`. The relay is a copy on
   the platform, not a sync to a Qwen account, so `records_sync` stays
-  False. `sessions.json` is deleted on a clean shutdown, so its rows show
+  False and `records_relay` is set: a session without a route is
+  `relayed` `no`. `sessions.json` is deleted on a clean shutdown, so its rows show
   only a running or crashed service. A file that is not a JSON object is
   one `parser:` row, and so is an entry that is not one. Fixture only: no
   real install has shown either file.
@@ -178,6 +179,8 @@ def system_text(subtype: str, payload) -> str:
 class QwenCodeParser(Parser):
     agent = "qwen-code"
     name = "qwen-code"
+    has_secondary = True
+    records_relay = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel

@@ -91,8 +91,9 @@ gathered and writes their events to the timeline: every prompt the user
 typed and every reply, each tool call with its arguments and the result
 that came back, thinking blocks when `--include-thinking` is passed, and
 the records that say what the user authorised: permission decisions and
-standing grants, the model in use and every switch, and which sessions
-were synced to the vendor's account. Each row carries the host, user,
+standing grants, the model in use and every switch, which sessions
+were synced to the vendor's account, and which were relayed through a
+messaging platform. Each row carries the host, user,
 agent, session, project path and source file it came from, in the same
 fields for every agent, so one query works across them all; the fields are
 in [`analyzer/docs/output.md`](../analyzer/docs/output.md#timelinejsonl).
@@ -112,9 +113,10 @@ results; history-only turns without timestamps when the log was trimmed at
 `tmp/chats`; project path is the container path `/a0/usr/projects/<name>`.
 From the same file, each agent's `data.responses_state` (a turn chained
 on a provider-stored response marks the chat synced) and the chat's
-Telegram, WhatsApp and email `data` keys (a relayed chat); the bot
-configuration in `data.telegram_bot_cfg`, which holds its token, is
-never read into a row.
+Telegram, WhatsApp and email `data` keys (a relayed chat, so the parser
+records relay state and `sessions.jsonl` `relayed` reads `yes` or `no`);
+the bot configuration in `data.telegram_bot_cfg`, which holds its token,
+is never read into a row.
 
 Validated against: Source at [e3051fb](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec), synthetic fixture.
 
@@ -461,7 +463,9 @@ sidecars), legacy `sessions/*.jsonl`,
 source, no timestamp: matches on text alone), and the
 `AppData/Roaming/Block/goose/data` equivalents. A `sessions.db` session
 whose `session_type` is `gateway` was relayed through the gateway's
-Telegram bot; `config.yaml` `gateway_pairings` is not read.
+Telegram bot, so the parser records relay state and `sessions.jsonl`
+`relayed` reads `yes` or `no`; `config.yaml` `gateway_pairings` is not
+read.
 
 Validated against: Source at [591edd4](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d), synthetic fixture.
 
@@ -514,7 +518,11 @@ server-side agent's transcript also gives a `session synced:` row),
 `.letta/sessions.jsonl`, and the `sessionsByServer` entries of
 `.letta/settings.json` and a project's `.letta/settings.local.json`
 (one `session synced:` row per server; `agents[]` `baseUrl` names a
-transcript's server; no other key is read).
+transcript's server; no other key is read). On the server backend the
+store of record is on the server and the local transcript is its
+mirror, so such a session reads `sessions.jsonl` `recovered` `yes` or
+`partial` by design, beside its `session synced: server conversation`
+row.
 
 Validated against: Source at [77faf36](https://github.com/letta-ai/letta-code/commit/77faf36e34378946c8e69c0bfaa5595a7be4c326), synthetic fixture.
 
@@ -672,7 +680,8 @@ the file's modification time with `project_path` the folder;
 `awaiting_approval` is followed by `permission decision: <status>`;
 `.qwen/channels/sessions.json` and `.qwen/channels/daemon/<hash>/routes.json`,
 one `session relayed:` row per session driven from a messaging platform
-(fixture only).
+(fixture only), so the parser records relay state and `sessions.jsonl`
+`relayed` reads `yes` or `no`.
 
 Validated against: Source at [2c591ec](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb), synthetic fixture.
 
@@ -729,8 +738,10 @@ strings. Copilot Chat's session sync record
 `User/globalStorage/github.copilot-chat/cloudSessions.json` (one
 `session synced:` row per uploaded session) and the
 `github.copilot.cloudAgent.ownedTasks` key of the `GitHub.copilot-chat`
-row in `User/globalStorage/state.vscdb` (one `remote session:` row per
-cloud agent task).
+row in `User/globalStorage/state.vscdb` (one `session synced:` row and
+one `session origin: remote GitHub cloud agent` row per cloud agent
+task, which began on GitHub's servers, so the parser records origin and
+`sessions.jsonl` `origin` reads `remote` or `local`).
 
 Validated against: Source at [d7622a5](https://github.com/microsoft/vscode/commit/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e), synthetic fixture.
 
