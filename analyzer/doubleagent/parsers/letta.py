@@ -57,12 +57,38 @@ parsed:
   `session_id` that names a model and `model: <old> -> <new>
   provider=<provider>` when a later line of it names another.
 
+* `~/.letta/settings.json` and a project's `.letta/settings.local.json`
+  (an artifact whose `home.project` is set; `project_path` is the
+  project): only `sessionsByServer`, an object keyed by the server's host
+  and port (`api.letta.com`, `localhost:8283`) or `local:<store path>`
+  for the local backend, each value `{agentId, conversationId}`, the last
+  session used on that server; and, in `settings.json`, `agents[]`
+  (`agentId`, `baseUrl`, absent for Letta Cloud) for the transcript rows
+  below. No other key is read: `env` and the token keys hold
+  credentials. A file that is not a JSON object is one `parser:` row.
+
+Sync rows (issue 153), so `records_sync` is set. In the default `api`
+backend a conversation is server state, so a transcript directory whose
+agent id does not start `agent-local-` (the local backend's prefix) gets
+one `system` row before its first line's rows, at that line's
+`captured_at`: `session synced: server conversation <conversation id>
+agent <agent id> server <server> (from .letta/transcripts path, first
+captured_at)`, `<server>` the matching `agents[]` entry's `baseUrl` in
+`~/.letta/settings.json`, `api.letta.com` when the entry has none, `-`
+when there is no entry or no file. Each `sessionsByServer` entry whose
+key does not start `local:` gives one row at the file's modification
+time, `session_id` the `conversationId`: `session synced: last session
+on <key> agent <agentId> conversation <conversationId> (from <file>,
+file mtime)`, `<file>` the path relative to the home or project, `-` for
+an absent value.
+
 Model rows in `messages.jsonl` come from the pi reader (`pi.model_text`):
 `model: <id> provider=<provider>` at the first assistant `message.model`
 (or `responseModel`) of a conversation and `model: <old> -> <new> ...` on
 each change. The reflection transcript records no model. No permission
 state is read: a project's `.letta/settings.local.json` holds its
-permissions, but the research does not record their shape.
+permissions, but the research does not record their shape, so only its
+`sessionsByServer` is read.
 
 Not parsed: `logs/chunk-logs/` (stream chunks cut to 200 characters) and
 the retired Letta server's `sqlite.db` (column encodings unverified).
@@ -79,12 +105,16 @@ from collections.abc import Iterator
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, error_rows, iter_jsonl
+from .base import Options, Parser, error_rows, file_mtime, iter_jsonl
 from .pi import SessionFile, args_summary, entry_rows, model_text, read_session
 
 TRANSCRIPT_RX = re.compile(r"^\.letta/transcripts/([^/]+)/([^/]+)/transcript\.jsonl$")
 LOCAL_RX = re.compile(r"^\.letta/lc-local-backend/conversations/([^/]+)/messages\.jsonl$")
 SESSIONS_REL = ".letta/sessions.jsonl"
+SETTINGS_REL = ".letta/settings.json"
+LOCAL_SETTINGS_REL = ".letta/settings.local.json"
+LOCAL_AGENT_PREFIX = "agent-local-"
+LETTA_CLOUD = "api.letta.com"
 # The window a transcript line may lag its messages.jsonl twin: a turn's
 # whole duration, since captured_at is stamped at the turn's end.
 TURN_TOLERANCE_SECONDS = 3600.0
@@ -114,6 +144,17 @@ def _args_text(args) -> str:
         return args_summary(json.loads(args))
     except ValueError:
         return args
+
+
+def read_settings(path) -> dict | None:
+    """A Letta settings file as a dict, or None when it cannot be read or
+    is not a JSON object."""
+    try:
+        with open(path, "rb") as fh:
+            doc = json.loads(fh.read().decode("utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return None
+    return doc if isinstance(doc, dict) else None
 
 
 def _bare_messages(session: SessionFile) -> SessionFile:
@@ -150,10 +191,11 @@ def _last_snapshots(session: SessionFile) -> SessionFile:
 class LettaParser(Parser):
     agent = "letta"
     name = "letta"
+    records_sync = True
 
     def wants(self, artifact: Artifact) -> bool:
         return (
-            artifact.rel == SESSIONS_REL
+            artifact.rel in (SESSIONS_REL, SETTINGS_REL, LOCAL_SETTINGS_REL)
             or bool(TRANSCRIPT_RX.match(artifact.rel))
             or bool(LOCAL_RX.match(artifact.rel))
         )
@@ -167,6 +209,9 @@ class LettaParser(Parser):
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if artifact.rel == SESSIONS_REL:
             yield from self._parse_sessions(artifact, opts)
+            return
+        if artifact.rel in (SETTINGS_REL, LOCAL_SETTINGS_REL):
+            yield from self._parse_settings(artifact)
             return
         m = LOCAL_RX.match(artifact.rel)
         if m:
@@ -219,10 +264,25 @@ class LettaParser(Parser):
                     out.append((ts, str(rec.get("project"))))
         return sorted(out)
 
+    @staticmethod
+    def _server(artifact: Artifact, agent_dir: str) -> str:
+        """The server of a transcript's agent: the `baseUrl` of its
+        `agents[]` entry in `~/.letta/settings.json`, `api.letta.com` when
+        the entry has none, `-` when there is no entry or no file."""
+        f = artifact.home.disk_path / SETTINGS_REL
+        if f.is_symlink() or not f.is_file() or (artifact.home.disk_path / ".letta").is_symlink():
+            return "-"
+        agents = (read_settings(f) or {}).get("agents")
+        for entry in agents if isinstance(agents, list) else []:
+            if isinstance(entry, dict) and sanitize(str(entry.get("agentId") or "")) == agent_dir:
+                return str(entry.get("baseUrl") or LETTA_CLOUD)
+        return "-"
+
     def _parse_transcript(
         self, artifact: Artifact, agent_dir: str, conv_dir: str, opts: Options
     ) -> Iterator[Row]:
         sessions = self._sessions(artifact, agent_dir)
+        server_side = not agent_dir.startswith(LOCAL_AGENT_PREFIX)
         errors: list = []
         for n, rec in iter_jsonl(artifact.disk_path, errors):
             ts = to_utc(rec.get("captured_at"))
@@ -240,6 +300,17 @@ class LettaParser(Parser):
                 row.session_id = conv_dir
                 row.project_path = project
                 return row
+
+            if server_side:
+                server_side = False
+                row = base()
+                row.turn_type = "system"
+                row.text = compact(
+                    "session synced: server conversation %s agent %s server %s "
+                    "(from .letta/transcripts path, first captured_at)"
+                    % (conv_dir, agent_dir, self._server(artifact, agent_dir))
+                )
+                yield row
 
             kind = rec.get("kind")
             text = str(rec.get("text") or "")
@@ -274,6 +345,46 @@ class LettaParser(Parser):
                     row.text = compact(result)
                     yield row
         yield from error_rows(self, artifact, errors, conv_dir)
+
+    # -- settings.json and settings.local.json ---------------------------
+
+    def _parse_settings(self, artifact: Artifact) -> Iterator[Row]:
+        """One sync row per `sessionsByServer` entry whose key does not
+        start `local:`, at the file's modification time; one `parser:` row
+        when the file is not a JSON object."""
+        doc = read_settings(artifact.disk_path)
+        project = artifact.home.original if artifact.home.project else ""
+        ts = file_mtime(artifact)
+
+        def base() -> Row:
+            row = self.base_row(artifact)
+            row.source_line, row.turn_type, row.timestamp_utc = 1, "system", ts
+            row.project_path = project
+            return row
+
+        if doc is None:
+            row = base()
+            row.text = "parser: %s is not a JSON object" % artifact.rel
+            yield row
+            return
+        servers = doc.get("sessionsByServer")
+        for key, entry in servers.items() if isinstance(servers, dict) else ():
+            if str(key).startswith("local:"):
+                continue
+            entry = entry if isinstance(entry, dict) else {}
+            row = base()
+            row.session_id = str(entry.get("conversationId") or "")
+            row.text = compact(
+                "session synced: last session on %s agent %s conversation %s "
+                "(from %s, file mtime)"
+                % (
+                    key,
+                    entry.get("agentId") or "-",
+                    entry.get("conversationId") or "-",
+                    artifact.rel,
+                )
+            )
+            yield row
 
     # -- sessions.jsonl --------------------------------------------------
 

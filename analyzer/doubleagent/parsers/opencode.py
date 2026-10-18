@@ -34,7 +34,14 @@ Files, relative to the home directory (XDG paths on every OS):
     (`agent`, `model.{id or modelID, providerID}`, `content[]` of `text`,
     `reasoning` and `tool` items with `id`, `name`, `state.{status, input,
     content[], error.message}`, `time.{created, completed}`).
-  The `credential`, `account` and `event` tables are not read.
+  - `session_share(session_id, id, secret, url, time_created)`: one row
+    per session published to OpenCode's share service. `secret`, the
+    credential for the public copy, is never read.
+  - `event(rowid, aggregate_id, seq, type, data)`: only `type`
+    `session.updated.1`, whose `data` is `{sessionID, info}` with the
+    session's `info.share.url` while it is shared and `info.time.updated`
+    (ms). The table was emptied once by the reset migration.
+  The `credential` and `account` tables are not read.
 * Legacy JSON tree `.local/share/opencode/storage/`: `session/<projectID>/
   <sessionID>.json` (`id`, `projectID`, `parentID`, `directory`, `title`,
   `version`, `time.created`), `message/<sessionID>/<messageID>.json` (the V1
@@ -77,6 +84,23 @@ session's `directory` (the cwd, as in the other parsers), else the project
 `worktree` unless it is `/`, else the message's `path.cwd`. No git branch is
 recorded. `source_line` is the SQLite `rowid` of the record for databases
 and 1 for the one-record JSON files.
+
+Sync rows (issue 153), `system`, after the session-start rows, so
+`records_sync` is set: one per `session_share` row, at its `time_created`,
+`session synced: share <id> url <url> (from <database> session_share,
+time_created)`. A session with no `session_share` row whose
+`session.updated.1` events carry `info.share.url` (shared and then
+unshared, which deletes the share row but not the events) gets
+`session synced: share url <url> (from <database> event
+session.updated.1, info.time.updated)` at the first such event's
+`info.time.updated`, and `session unshared (from <database> event
+session.updated.1, info.time.updated)` at the first later event without
+`share`; a later re-share is not reported again. `<database>` is the
+file name (`opencode.db`, `opencode-<channel>.db`, `kilo.db`). An absent
+value prints `-`; an event whose `data` does not decode is counted in
+the `parser: <n> record(s) with undecodable data` row. The legacy JSON trees have no share
+record, so their sessions have no sync row. Kilo Code's fork writes the
+same tables (see `kilo_code.py`).
 """
 
 from __future__ import annotations
@@ -222,6 +246,7 @@ class _Ctx:
 class OpenCodeParser(Parser):
     agent = "opencode"
     name = "opencode"
+    records_sync = True
     data_dir = ".local/share/opencode"
     db_prefixes: tuple[str, ...] = ("opencode",)
 
@@ -510,7 +535,9 @@ class OpenCodeParser(Parser):
         for sid, (rowid, s) in sessions.items():
             yield self._session_row(artifact, ctx_for(sid), s, s.get("time_created"), rowid, opts)
 
-        bad = 0
+        bad_events = [0]
+        yield from self._share_rows(con, tables, artifact, ctx_for, bad_events)
+        bad = bad_events[0]
         covered = set()
         if "message" in tables:
             has_parts = "part" in tables
@@ -562,6 +589,67 @@ class OpenCodeParser(Parser):
             row.turn_type = "system"
             row.text = "parser: %d record(s) with undecodable data" % bad
             yield row
+
+    def _share_rows(
+        self, con: sqlite3.Connection, tables: set, artifact: Artifact, ctx_for, bad: list
+    ) -> Iterator[Row]:
+        """The sync rows of the database: one per `session_share` row, then,
+        for a session with no such row, the share URL and the unshare that
+        its `session.updated.1` events record. `bad[0]` counts event rows
+        whose `data` does not decode. `secret` is never selected."""
+        db = self.db_label(artifact)
+        shared: set[str] = set()
+        if "session_share" in tables:
+            for r in con.execute(
+                "select rowid as _rowid, session_id, id, url, time_created from session_share "
+                "order by time_created, session_id"
+            ):
+                sid = str(r["session_id"] or "")
+                shared.add(sid)
+                row = self._row(artifact, ctx_for(sid), "", r["_rowid"], to_utc(r["time_created"]))
+                row.turn_type = "system"
+                row.text = compact(
+                    "session synced: share %s url %s (from %s session_share, time_created)"
+                    % (r["id"] or "-", r["url"] or "-", db)
+                )
+                yield row
+        if "event" not in tables:
+            return
+        state: dict[str, str] = {}  # session id -> "shared" or "unshared"
+        for r in con.execute(
+            "select rowid as _rowid, aggregate_id, data from event "
+            "where type = 'session.updated.1' order by aggregate_id, seq"
+        ):
+            sid = str(r["aggregate_id"] or "")
+            if sid in shared or state.get(sid) == "unshared":
+                continue
+            data = _loads(r["data"])
+            if data is None:
+                bad[0] += 1
+                continue
+            info = _d(data.get("info"))
+            url = _d(info.get("share")).get("url")
+            ts = to_utc(_d(info.get("time")).get("updated"))
+            if url and sid not in state:
+                state[sid] = "shared"
+                text = "session synced: share url %s" % url
+            elif not url and state.get(sid) == "shared":
+                state[sid] = "unshared"
+                text = "session unshared"
+            else:
+                continue
+            row = self._row(artifact, ctx_for(sid), "", r["_rowid"], ts)
+            row.turn_type = "system"
+            row.text = compact(
+                "%s (from %s event session.updated.1, info.time.updated)" % (text, db)
+            )
+            yield row
+
+    @staticmethod
+    def db_label(artifact: Artifact) -> str:
+        """The database's file name for row text (`opencode.db`, `kilo.db`,
+        `opencode-<channel>.db`)."""
+        return artifact.rel.rsplit("/", 1)[-1]
 
     def _v2_rows(
         self,

@@ -262,7 +262,8 @@ It is on unless the user ran `letta backend local`, which sets
 ([cli/subcommands/backend.ts:38](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/subcommands/backend.ts#L38),
 [65](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/subcommands/backend.ts#L65)). The local markers are the ids
 listed under "Server-side session markers" in
-[section 2](#2-transcript-files). Proposed rows:
+[section 2](#2-transcript-files). The parser yields, fixture only (no
+real install has shown these files):
 
 - per `transcripts/<agent id>/<conversation id>/` whose agent id does
   not start `agent-local-`, one `system` row `session synced:

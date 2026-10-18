@@ -483,8 +483,11 @@ Validated against: Source at [8b66a51](https://github.com/NousResearch/hermes-ag
 ### `kilo-code`
 
 Files read: `.local/share/kilo/kilo*.db` and `opencode-*.db` plus the same
-JSON trees under `.local/share/kilo` (OpenCode parser, Kilo paths), and
-pre-migration VS Code tasks
+JSON trees under `.local/share/kilo` (OpenCode parser, Kilo paths,
+including the `session_share` table and `session.updated.1` events),
+the cloud session markers
+`.local/share/kilo/storage/session_share/<sessionID>.json` (one
+`session synced:` row each), and pre-migration VS Code tasks
 `<globalStorage>/kilocode.kilo-code/tasks/<id>/api_conversation_history.json`.
 
 Validated against: Source at [76bcfd4](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462), synthetic fixture.
@@ -506,8 +509,12 @@ Files read: Letta Code
 format), `.letta/transcripts/<agent>/<conversation>/transcript.jsonl`
 (project path from `sessions.jsonl` by time, a heuristic; a secondary
 source, read beside the conversation's `messages.jsonl` with a one-hour
-window because each line is stamped at the end of its turn),
-`.letta/sessions.jsonl`.
+window because each line is stamped at the end of its turn; a
+server-side agent's transcript also gives a `session synced:` row),
+`.letta/sessions.jsonl`, and the `sessionsByServer` entries of
+`.letta/settings.json` and a project's `.letta/settings.local.json`
+(one `session synced:` row per server; `agents[]` `baseUrl` names a
+transcript's server; no other key is read).
 
 Validated against: Source at [77faf36](https://github.com/letta-ai/letta-code/commit/77faf36e34378946c8e69c0bfaa5595a7be4c326), synthetic fixture.
 
@@ -605,7 +612,9 @@ since removed, at [6814525](https://github.com/openclaw/openclaw/commit/68145258
 
 Files read: `.local/share/opencode/opencode*.db` (SQLite with JSON
 columns, WAL sidecars; V1 `message`/`part`, V2 `session_message` for
-sessions without V1 rows), legacy JSON `storage/session/*/*.json` and
+sessions without V1 rows, `session_share` and the `session.updated.1`
+rows of `event` for `session synced:` rows, never the share `secret`),
+legacy JSON `storage/session/*/*.json` and
 `storage/message/*/*.json` with their `part/` files, and the older
 `project/<slug>/storage/session/` tree.
 
@@ -643,7 +652,9 @@ parent file are dropped; a session that looks driven by little-coder gets
 a `system` row saying so),
 `.pi/agent/experimental/sessions/<id>/meta.json` (the durable
 `session.sqlite` beside it is not parsed), `.pi/agent/trust.json` (project
-trust decisions, one `permission setting:` row per project).
+trust decisions, one `permission setting:` row per project). A session's
+`pi.bug-report` entry gives a `session synced:` row for a `/bug` upload
+or a `bug report exported:` row for a zip.
 
 Validated against: Source at [2003871](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c), synthetic fixture.
 
@@ -714,7 +725,12 @@ Files read: `User/workspaceStorage/<hash>/chatSessions/*.jsonl` and
 `User/globalStorage/transferredChatSessions/*.json`, for Code, Code -
 Insiders, VSCodium, Positron, Trae and the `.vscode-server*/data` remote
 layout. Covers Copilot Chat; its model and participant ids are opaque
-strings.
+strings. Copilot Chat's session sync record
+`User/globalStorage/github.copilot-chat/cloudSessions.json` (one
+`session synced:` row per uploaded session) and the
+`github.copilot.cloudAgent.ownedTasks` key of the `GitHub.copilot-chat`
+row in `User/globalStorage/state.vscdb` (one `remote session:` row per
+cloud agent task).
 
 Validated against: Source at [d7622a5](https://github.com/microsoft/vscode/commit/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e), synthetic fixture.
 

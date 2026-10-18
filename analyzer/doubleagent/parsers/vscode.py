@@ -67,6 +67,33 @@ the request time). Contiguous markdown and inline references become one
 `source_line` is the log line that created the request (`.jsonl`) or 0
 (`.json`).
 
+Sync rows (issue 153), so `records_sync` is set; both sources are
+written by the Copilot Chat extension:
+
+* `globalStorage/github.copilot-chat/cloudSessions.json`, a JSON object
+  `{<chat session id>: {cloudSessionId, cloudTaskId}}`, the sessions
+  Copilot Chat's session sync uploaded to the user's GitHub account. The
+  file is rewritten on each change and an entry may name a session no
+  longer on disk, or one uploaded from another machine. One `system` row
+  per entry at the file's modification time, `session_id` the key:
+  `session synced: remote session <cloudSessionId> task <cloudTaskId>
+  (from User/globalStorage/github.copilot-chat/cloudSessions.json, file
+  mtime)`. A file that is not a JSON object is one `parser:` row.
+* `globalStorage/state.vscdb`, read through `vscode_state.read_item`:
+  the `ItemTable` row keyed `GitHub.copilot-chat` (the extension's global
+  state) holds `github.copilot.cloudAgent.ownedTasks`, `{<taskId>:
+  {recordedAt (ms), application?}}` or, in the older form, `{<taskId>:
+  <recordedAt>}`, the cloud agent tasks this install started on GitHub's
+  servers. One `system` row per task at `recordedAt`, `session_id`
+  `copilot-cloud-agent:/task/<taskId>`: `remote session: cloud agent
+  task <taskId> application=<application> (from state.vscdb
+  GitHub.copilot-chat github.copilot.cloudAgent.ownedTasks, recordedAt)`.
+  It does not start `session synced:`: the task ran on GitHub's servers
+  rather than being uploaded from here. A damaged database or a value
+  that is not JSON is one `parser:` row; no other key is read.
+
+An absent value prints `-` in both.
+
 Errors (issue 136), after the session's other rows, each a `system` row
 through `error_rows` in `base.py`: a `.jsonl` line that does not decode, or
 that decodes but whose mutation cannot be applied, carries the line in full
@@ -85,8 +112,18 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
+from ..vscode_state import read_item
 from .antigravity import uri_to_path
-from .base import Options, Parser, compact_json, error_rows, line_text, setting_value, track_change
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    error_rows,
+    file_mtime,
+    line_text,
+    setting_value,
+    track_change,
+)
 
 USER_DIR = (
     r"^(?:(?:\.config|Library/Application Support|AppData/Roaming)/(?:Code[^/]*|VSCodium[^/]*|Positron|Trae[^/]*)"
@@ -97,6 +134,13 @@ SESSION_RX = re.compile(
     r"|globalStorage/emptyWindowChatSessions/[^/]+\.jsonl?"
     r"|globalStorage/transferredChatSessions/[^/]+\.json)$"
 )
+
+CLOUD_SESSIONS_RX = re.compile(
+    USER_DIR + r"globalStorage/github\.copilot-chat/cloudSessions\.json$"
+)
+STATE_RX = re.compile(USER_DIR + r"globalStorage/state\.vscdb$")
+COPILOT_STATE_KEY = "GitHub.copilot-chat"
+OWNED_TASKS_KEY = "github.copilot.cloudAgent.ownedTasks"
 
 
 class MutationError(ValueError):
@@ -299,11 +343,19 @@ def tool_result_text(part: dict) -> str:
 class VsCodeParser(Parser):
     agent = "vscode"
     name = "vscode"
+    records_sync = True
 
     def wants(self, artifact: Artifact) -> bool:
-        return bool(SESSION_RX.match(artifact.rel))
+        rel = artifact.rel
+        return bool(SESSION_RX.match(rel) or CLOUD_SESSIONS_RX.match(rel) or STATE_RX.match(rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        if CLOUD_SESSIONS_RX.match(artifact.rel):
+            yield from self._parse_cloud_sessions(artifact)
+            return
+        if STATE_RX.match(artifact.rel):
+            yield from self._parse_owned_tasks(artifact)
+            return
         req_lines: dict[int, int] = {}
         errors: list = []
         if artifact.rel.endswith(".jsonl"):
@@ -361,6 +413,64 @@ class VsCodeParser(Parser):
             if isinstance(req, dict):
                 yield from self._request_rows(req, req_lines.get(i, 0), base, opts, seen)
         yield from error_rows(self, artifact, errors, session_id, project)
+
+    def _system_row(self, artifact: Artifact, session_id: str, ts: str, text: str) -> Row:
+        row = self.base_row(artifact)
+        row.session_id, row.timestamp_utc, row.turn_type = session_id, ts, "system"
+        row.text = compact(text)
+        return row
+
+    def _parse_cloud_sessions(self, artifact: Artifact) -> Iterator[Row]:
+        """`cloudSessions.json`: one sync row per entry at the file's
+        modification time, or one `parser:` row when it is not a JSON
+        object."""
+        ts = file_mtime(artifact)
+        try:
+            with open(artifact.disk_path, "rb") as fh:
+                doc = json.loads(fh.read().decode("utf-8", errors="replace"))
+        except ValueError as e:
+            doc = e
+        if not isinstance(doc, dict):
+            why = " (%s)" % doc if isinstance(doc, ValueError) else ""
+            row = self._system_row(
+                artifact, "", ts, "parser: cloudSessions.json is not a JSON object" + why
+            )
+            row.source_line = 1
+            yield row
+            return
+        for key, entry in doc.items():
+            entry = entry if isinstance(entry, dict) else {}
+            row = self._system_row(
+                artifact,
+                str(key),
+                ts,
+                "session synced: remote session %s task %s (from "
+                "User/globalStorage/github.copilot-chat/cloudSessions.json, file mtime)"
+                % (entry.get("cloudSessionId") or "-", entry.get("cloudTaskId") or "-"),
+            )
+            row.source_line = 1
+            yield row
+
+    def _parse_owned_tasks(self, artifact: Artifact) -> Iterator[Row]:
+        """`state.vscdb`: one `remote session:` row per cloud agent task in
+        the Copilot Chat global state's `ownedTasks`, at `recordedAt`, then
+        a `parser:` row per problem reading the database or the value."""
+        state, problems = read_item(artifact.disk_path, COPILOT_STATE_KEY)
+        tasks = state.get(OWNED_TASKS_KEY) if isinstance(state, dict) else None
+        for task_id, entry in tasks.items() if isinstance(tasks, dict) else ():
+            if isinstance(entry, dict):
+                recorded, application = entry.get("recordedAt"), entry.get("application")
+            else:
+                recorded, application = entry, None
+            yield self._system_row(
+                artifact,
+                "copilot-cloud-agent:/task/%s" % task_id,
+                to_utc(recorded),
+                "remote session: cloud agent task %s application=%s (from state.vscdb %s %s, "
+                "recordedAt)" % (task_id, application or "-", COPILOT_STATE_KEY, OWNED_TASKS_KEY),
+            )
+        for problem in problems:
+            yield self._system_row(artifact, "", "", "parser: " + problem)
 
     def _replay(self, artifact: Artifact, req_lines: dict[int, int], errors: list):
         """Replay a `.jsonl` mutation log and return the session state. A

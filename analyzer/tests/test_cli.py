@@ -15,6 +15,8 @@ from doubleagent.inputs import open_input
 from doubleagent.model import Row, canonical_project_path, project_key, summarise
 from doubleagent.parsers import ALL, Options, by_agent
 from fixtures import (
+    AGENT_ZERO_CHAT,
+    AGENT_ZERO_TG_CHAT,
     CLAUDE_SESSION,
     CLINE_BLOB_DELETED,
     CLINE_BLOB_SESSION,
@@ -27,8 +29,21 @@ from fixtures import (
     CONTINUE_SESSION,
     COPILOT_SESSION,
     COPILOT_WORKSPACE_YAML,
+    HERMES_SESSION,
+    KILO_SESSION,
+    KILO_TASK,
+    LETTA_CONV,
+    LETTA_LOCAL_AGENT_CONV,
     OI_SESSION,
+    OPENCLAW_RESET_SESSION,
+    OPENCLAW_SESSION,
+    OPENCODE_PRIVATE,
+    OPENCODE_SHARED,
+    PI_BUG_SESSION,
+    PI_SESSION,
     QWEN_SESSION,
+    VSCODE_LEGACY_SESSION,
+    VSCODE_SESSION,
     build_cline_blob_upload,
     build_cline_sync_queue,
     build_home,
@@ -737,14 +752,6 @@ class SyncedSessionOpenClawAgentZeroTests(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_synced(self):
-        from fixtures import (
-            AGENT_ZERO_CHAT,
-            AGENT_ZERO_TG_CHAT,
-            HERMES_SESSION,
-            OPENCLAW_RESET_SESSION,
-            OPENCLAW_SESSION,
-        )
-
         out = self.tmp / "out"
         rc, stdout = run_timeline(self.tmp / "home", out)
         self.assertEqual(rc, 0, stdout)
@@ -764,6 +771,42 @@ class SyncedSessionOpenClawAgentZeroTests(unittest.TestCase):
         self.assertEqual(agents["openclaw"]["synced_sessions"], 1)
         self.assertEqual(agents["agent-zero"]["synced_sessions"], 1)
         self.assertEqual(agents["hermes"]["synced_sessions"], 0)
+
+
+class SyncedSessionB3Tests(unittest.TestCase):
+    """`sessions.jsonl` `synced` for the OpenCode, Kilo Code, pi, Letta and
+    VS Code sync rows (issue 153): one fixture session of each says "yes",
+    one without the marker "no"."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-synced-b3-test-"))
+        build_home(self.tmp / "home" / "alice")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_synced(self):
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(self.tmp / "home", out)
+        self.assertEqual(rc, 0, stdout)
+        by_id = {
+            (s["agent"], s["session_id"]): s["synced"] for s in read_jsonl(out / "sessions.jsonl")
+        }
+        for key, want in (
+            (("opencode", OPENCODE_SHARED), "yes"),
+            (("opencode", OPENCODE_PRIVATE), "no"),
+            (("kilo-code", KILO_SESSION), "yes"),
+            (("kilo-code", KILO_TASK), "no"),
+            (("pi", PI_BUG_SESSION), "yes"),
+            (("pi", PI_SESSION), "no"),
+            (("letta", LETTA_CONV), "yes"),
+            (("letta", LETTA_LOCAL_AGENT_CONV), "no"),
+            (("vscode", VSCODE_SESSION), "yes"),
+            (("vscode", VSCODE_LEGACY_SESSION), "no"),
+        ):
+            self.assertEqual(by_id[key], want, key)
+        agents = {a.agent for a in ALL if a.records_sync}
+        self.assertLessEqual({"opencode", "kilo-code", "pi", "letta", "vscode"}, agents)
 
 
 class DeduplicationTimelineTests(unittest.TestCase):

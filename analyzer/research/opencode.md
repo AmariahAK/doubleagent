@@ -252,14 +252,17 @@ calls are model API calls and not sync; trace and log export over OTLP
 (OpenTelemetry's wire protocol) goes only to an endpoint the user sets in
 `OTEL_EXPORTER_OTLP_ENDPOINT`
 ([`core/src/flag/flag.ts:16-17`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/flag/flag.ts#L16-L17)).
-The planned form is one `system` row per `session_share` row,
+The parser yields one `system` row per `session_share` row,
 `session synced: share <id> url <url> (from opencode.db session_share,
 time_created)`, timestamped by `time_created`, never with `secret`; for a
 session with no `session_share` row whose `session.updated.1` events carry
 `info.share.url`, `session synced: share url <url> (from opencode.db event
 session.updated.1, info.time.updated)` at that event's `info.time.updated`,
 and `session unshared (from opencode.db event session.updated.1,
-info.time.updated)` at the first later event without `share`. Deleting a
+info.time.updated)` at the first later event without `share`; the
+database name in the text is the file's own (`opencode-<channel>.db` for
+a channel database). These rows are fixture only: no real install has
+shown a `session_share` row or a shared session's events. Deleting a
 session through OpenCode removes the `session`, `session_share` and `event`
 rows ([section 5](#5-sqlite-specifics)), and ShareNext's `session.deleted`
 subscriber asks the service to delete the public copy

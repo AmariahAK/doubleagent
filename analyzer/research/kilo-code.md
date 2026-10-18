@@ -178,11 +178,15 @@ so the upstream `session_share` table stays empty; `session.share_url` and
 the `session.updated.1` events still record the public URL as upstream
 ([`packages/opencode/src/session/session.ts:1014-1016`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/session/session.ts#L1014-L1016)).
 The marker is the `storage/session_share/<sessionID>.json` file
-([section 2](#2-transcript-files)). The planned form is one `system` row per
+([section 2](#2-transcript-files)). The parser yields one `system` row per
 file, `session synced: kilo session <id> ingest <ingestPath> share <url or
 -> (from storage/session_share/<sessionID>.json, file mtime)`, timestamped
-by the file's modification time, plus the `share_url` and event rows
-planned for OpenCode. Deleting a session asks the service to delete the
+by the file's modification time, with the session id from the file name;
+a file that is not a JSON object is one `parser:` row. The OpenCode
+reader also yields the event rows of
+[opencode.md section 8](opencode.md#8-parser-plan) from `kilo.db`
+(`session.share_url` itself is not read). These rows are fixture only: no
+real install has shown the marker file. Deleting a session asks the service to delete the
 remote copy (`DELETE /api/session/<id>`) and removes the file only when the
 service accepts; signed out, or on a network error or an error status, the
 file stays, with a `share remove failed` log line in the second and third
