@@ -7,6 +7,17 @@ Open source. [cline/cline](https://github.com/cline/cline) at [`39ff2359f7e08231
 plugin is closed ([`README.md:131`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/README.md#L131)) and only its shared data dir is known.
 Transcript record schemas: [`analyzer/research/cline.md`](../../analyzer/research/cline.md).
 
+- **Source review (2026-10-19)**: [cline/cline](https://github.com/cline/cline)
+  at [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33), against [`39ff235`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c) cited below. New files:
+  `~/.cline/data/cloud-pending-starts/` and three Cline Cloud keys in
+  `globalState.json` ([section 2](#2-per-user-storage)); standing
+  permission keys in `globalState.json` and `settings/global-settings.json`;
+  `.claude/skills` is now read as a project skill directory
+  ([section 5](#5-project-local)). No new credential file, exclusion or
+  catalog line is needed; every new file is under `~/.cline`. Scratch
+  directories are covered (see [section 2](#2-per-user-storage)). The record
+  shapes are in [section 2 of `analyzer/research/cline.md`](../../analyzer/research/cline.md#2-transcript-files).
+
 ## 2. Per-user storage
 
 One layout on every OS; home is `$HOME`, else `%USERPROFILE%`, else
@@ -76,6 +87,30 @@ extension tasks: [`apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts:25-3
 [`apps/vscode/src/utils/storage.ts:11-12`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/utils/storage.ts#L11-L12)). MCP settings for the extension
 now live in `~/.cline/data/settings/` ([`apps/vscode/src/sdk/SdkController.ts:309-312`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/sdk/SdkController.ts#L309-L312)).
 
+Added after the cited commit ([`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33)):
+`~/.cline/data/cloud-pending-starts/<pid>-<uuid>.json`, the ids of Cline
+Cloud sandboxes being started (Cline Cloud runs tasks on the vendor's
+servers), and the `globalState.json` keys `cloudSessionStatuses`,
+`cloudTaskTarget` and `cloudSessionsEnabled`
+([`apps/vscode/src/sdk/cloud-pending-starts.ts:33-44`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/cloud-pending-starts.ts#L33-L44),
+[`apps/vscode/src/shared/storage/state-keys.ts:99-101`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/shared/storage/state-keys.ts#L99-L101),
+[`:284`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/shared/storage/state-keys.ts#L284)).
+Permission settings live in `globalState.json` (`autoApprovalSettings`,
+`mode`) and `settings/global-settings.json` (`toolAutoApprove`,
+`planActMode`, `disabledTools`, `tools`)
+([`sdk/packages/core/src/services/global-settings.ts:61-74`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/services/global-settings.ts#L61-L74)).
+`logs/hooks.jsonl` is written by default and only appended to
+([`sdk/packages/core/src/hooks/hook-file-hooks.ts:629-650`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L629-L650)).
+
+Scratch directories: `~/.cline/data/workspaces/chat` (sessions without a
+project, and imported sessions with no recorded directory) and
+`~/.cline/worktrees/` (CLI task worktrees) are the agent's own working
+directories. Both are under the catalog line `cline|.cline` and both are
+in `EXCLUDES`, so their contents are not collected, and the analyzer
+classes them as scratch directories by its catalog rule. No temp root
+outside the home was found (grepped `tmpdir` and `chat-workspace` in
+`sdk/packages/shared/src/storage` and `apps/cli/src/utils`).
+
 CLI binary: `npm install -g cline` platform package, `bin/cline` ([`apps/cli/DISTRIBUTION.md:52`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/DISTRIBUTION.md#L52),[`240`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/DISTRIBUTION.md#L240));
 no home-relative binary dir. Hub daemon runs as `cline --cline-hub-daemon`
 ([`apps/cli/src/commands/doctor.test.ts:218`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/commands/doctor.test.ts#L218)).
@@ -131,7 +166,10 @@ but nothing at this commit writes it.
 `.clinerules` (file or dir) with `workflows/`, `hooks/`, `skills/`;
 `.cline/{rules,skills,workflows,plugins,tasks,cron,<remote-config plugin>}`;
 `.clineignore`; `AGENTS.md`; also reads `.cursorrules`, `.cursor/rules`,
-`.windsurfrules`, `.claude/skills`, `.agents/skills`
+`.windsurfrules`, `.claude/skills` (listed among the project skill
+directories from [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33),
+[`sdk/packages/shared/src/storage/paths.ts:42`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/shared/src/storage/paths.ts#L42),
+[`:472-477`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/shared/src/storage/paths.ts#L472-L477)), `.agents/skills`
 ([`disk.ts:17-36`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L17-L36); [`paths.ts:309-314`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L309-L314),[`357`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L357),[`461-470`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L461-L470),[`528-535`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L528-L535),[`595-617`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L595-L617);
 [`sdk/packages/shared/src/remote-config/paths.ts:11-19`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/paths.ts#L11-L19);
 [`apps/vscode/src/core/ignore/ClineIgnoreController.ts:41`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/ignore/ClineIgnoreController.ts#L41)). No per-project database.
@@ -145,6 +183,12 @@ but nothing at this commit writes it.
   ([`sdk/packages/core/src/session/models/session-manifest.ts:6-28`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/models/session-manifest.ts#L6-L28));
   `db/sessions.db` table `sessions` columns `cwd`, `workspace_root`
   ([`sdk/packages/shared/src/db/sqlite-db.ts:188-273`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/db/sqlite-db.ts#L188-L273)).
+- Imported sessions: `metadata.importedFrom.sourcePath`, the path of the
+  other agent's transcript the session was copied from
+  ([`sdk/packages/core/src/services/session-import/service.ts:20-28`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/services/session-import/service.ts#L20-L28)).
+- Cline Cloud: `globalState.json` `cloudTaskTarget.repositoryId` and
+  `branch`, a GitHub repository id rather than a local path; the
+  repository URL of a Cloud task is not stored locally.
 
 ## 7. Confidence
 

@@ -8,6 +8,12 @@ Open source. [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code) at [`
 `apps/cli` on top of `packages/vscode-shim`. Record schemas:
 [`analyzer/research/roo-code.md`](../../analyzer/research/roo-code.md).
 
+- **Source review (2026-10-19)**: HEAD is still [`b867ec9`](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16), the
+  commit cited here, so no path has moved. Found: the CLI's
+  `--ephemeral` storage under the system temp directory and a fuller key
+  list for `~/.roo/cli-settings.json` ([section 2](#2-per-user-storage)).
+  No new credential file, exclusion or catalog line is needed.
+
 ## 2. Per-user storage
 
 VS Code extension, globalStorage `rooveterinaryinc.roo-cline/` (same layout on
@@ -50,8 +56,13 @@ CLI (`roo`), `~/.vscode-mock/` from `$HOME` or `%USERPROFILE%`
 ([`src/services/skills/SkillsManager.ts:608`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/skills/SkillsManager.ts#L608)), `worktrees/<project>-<suffix>`
 ([`src/core/webview/worktree/handlers.ts:229-230`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/worktree/handlers.ts#L229-L230)), `cli-history.json`
 ([`apps/cli/src/lib/storage/history.ts:21`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L21), entries are raw prompts),
-`cli-settings.json` ([`settings.ts:9`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/settings.ts#L9); mode, provider, model only,
-[`apps/cli/src/types/types.ts:55-67`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/types/types.ts#L55-L67)). `~/.agents/skills` is also read
+`cli-settings.json` ([`settings.ts:9`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/settings.ts#L9);
+`onboardingProviderChoice`, `mode`, `provider`, `model`,
+`reasoningEffort`, `consecutiveMistakeLimit`, `requireApproval`, the
+older `dangerouslySkipPermissions` and `oneshot`,
+[`apps/cli/src/types/types.ts:55-73`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/types/types.ts#L55-L73);
+`requireApproval` is permission state, see
+[section 8 of `analyzer/research/roo-code.md`](../../analyzer/research/roo-code.md#8-parser-plan)). `~/.agents/skills` is also read
 ([`roo-config/index.ts:53-55`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/roo-config/index.ts#L53-L55); [`SkillsManager.ts:594`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/skills/SkillsManager.ts#L594)).
 
 Global MCP server install dir is platform-branched: Windows
@@ -60,6 +71,23 @@ Global MCP server install dir is platform-branched: Windows
 ([`src/core/webview/ClineProvider.ts:1547-1562`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/ClineProvider.ts#L1547-L1562)). It holds cloned server
 code, not evidence of use. No XDG use elsewhere; no environment variable
 relocates storage.
+
+`roo --ephemeral` keeps the whole CLI storage, tasks included, in
+`<system temp directory>/roo-cli-<epoch ms>-<random>` and removes it on
+exit
+([`apps/cli/src/lib/storage/ephemeral.ts:5-10`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/ephemeral.ts#L5-L10),
+[`apps/cli/src/agent/extension-host.ts:598-601`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/agent/extension-host.ts#L598-L601)).
+It is outside every home, so the collector cannot reach it with a
+catalog line; a responder who finds a killed `roo --ephemeral` process
+collects the temp directory by hand.
+
+Scratch directories: the worktree dialog's suggested root,
+`~/.roo/worktrees/<project>-<suffix>`
+([`src/core/webview/worktree/handlers.ts:224-236`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/worktree/handlers.ts#L224-L236)),
+is the only directory Roo Code chooses for itself as a working
+directory. It is under the catalog line `roo-code|.roo` and in
+`EXCLUDES` (`.roo/worktrees`), so its contents are not collected and the
+analyzer classes it as a scratch directory by its catalog rule.
 
 ## 3. Credentials
 
@@ -99,6 +127,8 @@ relocates storage.
 [`TaskHistoryStore.ts:146-149`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/TaskHistoryStore.ts#L146-L149)), in both globalStorage and
 `~/.vscode-mock/global-storage`. `checkpoints/<hash>` is a truncated sha256
 and not reversible.
+A task run in a worktree records the worktree's path as its `workspace`,
+so `~/.roo/worktrees/<project>-<suffix>` paths appear there.
 
 ## 7. Confidence
 

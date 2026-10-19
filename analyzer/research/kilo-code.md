@@ -16,6 +16,43 @@ Paths, credentials and the rest of the per-user state are in
 source. CLI, TUI and server in `packages/core`; VS Code extension
 `kilocode.kilo-code` ([`packages/kilo-vscode/package.json:2`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-vscode/package.json#L2),[`11`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-vscode/package.json#L11)).
 
+- **Source review (2026-10-19)**: [Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode)
+  at [`87cc35c`](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22), against [`76bcfd4`](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462), the commit the rest of
+  this document cites. Kilo Code is no longer a Cline or Roo Code fork in
+  any file the parser reads: its CLI, server and storage are OpenCode's
+  ([opencode.md](opencode.md)), and only the VS Code extension's import of
+  pre-migration Roo-style tasks remains of the Roo lineage. One line per
+  requirement class:
+  - Permission state: found, not read by the parser. Rejections and rule
+    denials are tool part errors; "always" grants are written to the
+    global config's `permission` key and to the `permission` table; the
+    session `permission` column and the sandbox policy files under
+    `~/.local/state` are further standing state. See
+    [section 5](#5-sqlite-stores) and [section 8](#8-parser-plan).
+  - Model: already covered (V1 message model, V2 `model-switched`).
+  - Past use beyond the primary store: found. The TUI's
+    `prompt-history.jsonl` is not read; `retention/state.json` records
+    automatic deletions.
+  - Sync, relay and origin: found. Remote control from Kilo Cloud, and
+    sessions it creates on the host, are recorded only in the log
+    directory; a session cloned from a cloud session keeps no cloud id.
+    Already covered: the ingest marker and share URL. No relay through a
+    messaging platform was found.
+  - Scratch directories: found. `<data>/worktree/<project id>/` is under
+    a catalog entry; a project's `.kilo/worktrees/` is not, and remote
+    attachments go to a temp root outside the home.
+  - Deletion: found, the opt-in retention pass; already covered, the
+    session delete and its remote delete.
+  - Version drift: 9 of the 58 files cited by this document, the
+    collector document and the parser changed, none moved or
+    disappeared, and the schema, SQL and projector files the parser
+    depends on are unchanged. The ingest queue's `session_status` item
+    gained a transition record, which is sent to the server and not
+    stored locally.
+  - Bad lines: already covered for every file the parser reads.
+    `prompt-history.jsonl` is JSON Lines and needs per-line handling when
+    it is read.
+
 ## 2. Transcript files
 
 XDG with no platform branching ([`packages/core/src/global.ts:3`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L3),[`12`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L12),[`22-26`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L22-L26)):
@@ -46,6 +83,79 @@ an unshare, which keeps the file
 ([`:1513-1547`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1513-L1547)). A session
 created while signed out, or with `KILO_DISABLE_SESSION_INGEST` set, has no
 file. The file carries no time of its own.
+
+Prompt history (2026-10-19): the terminal UI keeps the prompts typed into
+it in `~/.local/state/kilo/prompt-history.jsonl`, the state directory of
+[section 2 of `collectors/research/kilo-code.md`](../../collectors/research/kilo-code.md#2-per-user-storage)
+([`packages/tui/src/app.tsx:267-273`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/tui/src/app.tsx#L267-L273),
+[`packages/tui/src/prompt/history.tsx:53`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/tui/src/prompt/history.tsx#L53)).
+Each line is `{input, mode?: "normal"|"shell", parts[]}`, the typed text,
+whether it was a shell command (`!`), and the attached file and agent
+parts; there is no time, session id or directory
+([`:9-25`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/tui/src/prompt/history.tsx#L9-L25)). A prompt is
+appended unless it repeats the last one, and the file is rewritten with
+the last 50 (`MAX_HISTORY_ENTRIES`) whenever it grows past that and at
+every start, which drops lines that do not parse
+([`:27-42`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/tui/src/prompt/history.tsx#L27-L42),
+[`:54-60`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/tui/src/prompt/history.tsx#L54-L60),
+[`:83-108`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/tui/src/prompt/history.tsx#L83-L108)).
+It was already present at [`76bcfd4`](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462).
+
+Remote control (2026-10-19): `kilo remote`, `KILO_REMOTE=1` or
+`"remote_control": true` in the config connects the host to Kilo Cloud,
+Kilo's web service, so sessions can be driven, and created, from there
+([`packages/core/src/v1/config/config.ts:121-123`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/v1/config/config.ts#L121-L123),
+[`packages/opencode/src/kilo-sessions/kilo-sessions.ts:320`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L320),
+[`:905`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L905)).
+The only local record is in `<data>/log/<ISO time>.log`: `remote
+connection enabled` and `remote connection disabled`
+([`:1220`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1220),
+[`:1259`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1259)),
+and for each session the remote side creates on the host `remote session
+started` with `sessionID`, `startedAt`, `model` (`<providerID>/<id>`) and
+`directory`, then `remote session ended` with `sessionID`, `startedAt`,
+`durationMs` and `reason`
+([`packages/opencode/src/kilo-sessions/remote-session-log.ts:37-61`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilo-sessions/remote-session-log.ts#L37-L61),
+[`remote-sender.ts:1176-1180`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilo-sessions/remote-sender.ts#L1176-L1180)).
+The session itself is an ordinary row of `kilo.db` with nothing marking
+its remote creation. Files the remote side attaches that are not text,
+images or PDF are written to
+`<system temp directory>/kilo/remote-attachments/<base64url session id>/`
+and removed when the session's remote handling ends
+([`packages/opencode/src/kilocode/remote-attachments.ts:8-16`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/remote-attachments.ts#L8-L16),
+[`:272-287`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/remote-attachments.ts#L272-L287);
+[`packages/core/src/global.ts:28`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/global.ts#L28)).
+
+Cloud session import (2026-10-19): the VS Code extension lists the user's
+Kilo Cloud sessions and clones one locally on its first message, and the
+remote side can ask for the same clone
+([`packages/kilo-vscode/src/kilo-provider/handlers/cloud-session.ts:1-6`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/kilo-vscode/src/kilo-provider/handlers/cloud-session.ts#L1-L6)).
+The export is fetched from the ingest service
+([`packages/kilo-gateway/src/cloud-sessions.ts:153-157`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/kilo-gateway/src/cloud-sessions.ts#L153-L157))
+and stored as a new local session with a fresh id; the cloud session's
+`parentID`, `share` and `permission` are dropped
+([`:257`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/kilo-gateway/src/cloud-sessions.ts#L257),
+[`:268`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/kilo-gateway/src/cloud-sessions.ts#L268),
+[`:295-310`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/kilo-gateway/src/cloud-sessions.ts#L295-L310)),
+and no log line names the cloud id (grepped `log.info` and `cloud` in
+`packages/opencode/src/kilocode/server`). A cloned session therefore
+cannot be told from a local one.
+
+Retention (2026-10-19): with `retention.enabled: true` in `kilo.json`
+(off by default), a pass at most every 23 hours deletes sessions older
+than `retention.maxAgeDays` (default 30) through the normal session
+delete, then runs `VACUUM` and truncates the WAL when enough pages are
+free, which also removes the deleted rows' remnants from the database
+files
+([`packages/opencode/src/kilocode/session/retention.ts:13-32`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/session/retention.ts#L13-L32),
+[`:163-167`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/session/retention.ts#L163-L167),
+[`:301-324`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/session/retention.ts#L301-L324)).
+It writes `<data>/retention/state.json`, `{at, scanned, deleted,
+skippedActive, failed, durationMs, cancelled?, reclaimedBytes?}`, for the
+last pass ([`:45-54`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/session/retention.ts#L45-L54),
+[`:326`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/session/retention.ts#L326)),
+and logs `retention pass complete` with the same counts
+([`:472`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/session/retention.ts#L472)).
 
 ## 3. Record schema
 
@@ -98,6 +208,19 @@ name, sandboxes)`; `credential(value JSON)` ([`credential/sql.ts:5-14`](https://
 `message`/`part` for every event ([`session/projector.ts:213-230`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/session/projector.ts#L213-L230),[`285-300`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/session/projector.ts#L285-L300),[`335-345`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/session/projector.ts#L335-L345)),
 so either set is complete. WAL mode as in OpenCode; collect the `-wal`
 sidecar.
+
+Permission tables and columns (2026-10-19): `session.permission` is a JSON
+ruleset, `[{permission, pattern, action: "allow"|"deny"|"ask"}]`
+([`packages/core/src/session/sql.ts:55`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/session/sql.ts#L55),
+[`packages/schema/src/v1/permission.ts:16-25`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/schema/src/v1/permission.ts#L16-L25)).
+The `permission` table, `(id, project_id, action, resource,
+time_created, time_updated)`, unique per project, action and resource
+([`packages/core/src/permission/sql.ts:7-20`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/permission/sql.ts#L7-L20)),
+holds the saved allow grants of a project that the newer permission
+service reads
+([`packages/core/src/permission.ts:116`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/permission.ts#L116),
+[`:131-135`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/permission.ts#L131-L135)). Both were
+present at [`76bcfd4`](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462).
 
 ## 6. Format versions
 
@@ -154,6 +277,96 @@ message's timestamp. Kilo writes V1 and V2 for every event ([section 5](#5-sqlit
 shape, so the parser does not read them (issue 98), nor are the `.kilo/` and `.kilocode/` permission configuration files that [`collectors/research/kilo-code.md`](../../collectors/research/kilo-code.md) names; the research records
 no per-call approval or denial, and whether a denied call shows as a tool
 `state.status` of `error` is not researched.
+
+Permission state (source review of 2026-10-19 at [`87cc35c`](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22); the
+parser reads none of it yet; the code is OpenCode's with Kilo's changes,
+so a reader belongs in the shared OpenCode parser):
+
+- Per call: a request is `{id, sessionID, permission, patterns,
+  metadata, always, tool?{messageID, callID}}` and a reply is `once`,
+  `always` or `reject`
+  ([`packages/schema/src/v1/permission.ts:27-38`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/schema/src/v1/permission.ts#L27-L38)).
+  The `permission.asked` and `permission.replied` events are not durable,
+  so they never reach the `event` table
+  ([`:66-70`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/schema/src/v1/permission.ts#L66-L70);
+  [`packages/schema/src/event.ts:42-52`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/schema/src/event.ts#L42-L52)).
+  What is stored is the tool part: a rejected call ends with
+  `state.status` `error` and `state.error` `The user rejected permission
+  to use this specific tool call.`, the same text followed by ` with the
+  following feedback: <text>`, or, for a call a deny rule stopped, `The
+  user has specified a rule which prevents you from using this specific
+  tool call. Here are some of the relevant rules <JSON>`
+  ([`packages/core/src/v1/permission.ts:7-27`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/v1/permission.ts#L7-L27);
+  [`packages/opencode/src/permission/index.ts:314-333`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/permission/index.ts#L314-L333)).
+  A reject also rejects every other pending request of the session. An
+  approval leaves no mark on the part. Matching these prefixes yields
+  `permission decision: rejected`, `rejected with feedback` or `denied by
+  rule` beside the tool's `tool_result` row, on its `callID`.
+- Standing, written by the agent: an `always` reply adds `{<permission>:
+  {<pattern>: "allow"}}` to the `permission` key of the first existing
+  global config file among `kilo.jsonc`, `kilo.json`, `opencode.jsonc`,
+  `opencode.json` and `config.json` in `~/.config/kilo`
+  ([`packages/opencode/src/permission/index.ts:357-365`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/permission/index.ts#L357-L365),
+  [`packages/opencode/src/config/config.ts:206-215`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/config/config.ts#L206-L215),
+  [`:1147-1153`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/config/config.ts#L1147-L1153)),
+  and the extension's selective save writes `allow` and `deny` rules the
+  same way ([`permission/index.ts:385-403`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/permission/index.ts#L385-L403)).
+  Protected configuration paths are downgraded to `once`
+  ([`:338-340`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/permission/index.ts#L338-L340)).
+  The global config therefore records every standing grant the user gave,
+  with the file's modification time as the only time.
+- Standing, other: the `permission` table and `session.permission`
+  column of [section 5](#5-sqlite-stores); the sandbox policy files of
+  [section 2 of `collectors/research/kilo-code.md`](../../collectors/research/kilo-code.md#2-per-user-storage);
+  and project `kilo.json` and `.kilo/` permission keys.
+
+Each standing entry can be one `permission setting: <key>=<value> (from
+<file>, file mtime)` row; a `permission` table row has its own
+`time_created`.
+
+Past use beyond the primary store (2026-10-19):
+`~/.local/state/kilo/prompt-history.jsonl` ([section 2](#2-transcript-files))
+is a secondary source the parser does not read. Its lines carry no time,
+session or directory, so each would be a `user` row with an empty
+`timestamp_utc` that pairs with a transcript prompt on text alone; it
+survives a deleted session, the retention pass and a removed project,
+and holds shell commands (`mode` `shell`) typed in the TUI. A bad line
+must become its own row before the next start drops it. The log
+directory's `remote session started` lines and `retention/state.json`
+are further records the parser does not read.
+
+Origin and remote control (2026-10-19): a session created by Kilo Cloud
+over remote control can be marked from its `remote session started` log
+line (`sessionID`, `startedAt`, `model`, `directory`), and remote
+control itself from the `remote connection enabled` and `disabled`
+lines. Each log line is `INFO  <UTC time to the second> +<ms>ms
+service=<name> <key>=<value>... <message>`, written at the default level
+`INFO`
+([`packages/core/src/util/log.ts:27`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/util/log.ts#L27),
+[`:162-189`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/util/log.ts#L162-L189)), so a reader
+splits the key-value pairs off the message.
+A session cloned from a cloud session records nothing of its origin.
+Not seen on a real install.
+
+Scratch directories (2026-10-19): `<data>/worktree/<project id>/`
+([`packages/opencode/src/worktree/index.ts:210`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/worktree/index.ts#L210))
+is under the catalog entry `.local/share/kilo`, so the analyzer's catalog
+rule classes it. The agent manager's and the TUI's worktrees are
+`<project>/.kilo/worktrees/<name>`
+([`packages/opencode/src/kilocode/cli/cmd/tui-worktree.ts:14-17`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/cli/cmd/tui-worktree.ts#L14-L17)),
+inside the user's project and under no home catalog entry, so the
+analyzer counts each as a project of its own; `project_directory.type`
+`git_worktree` and `project.sandboxes` name them
+([`packages/core/src/project/sql.ts:16`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/project/sql.ts#L16),
+[`:20-34`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/project/sql.ts#L20-L34)) and could
+yield `scratch directory:` rows. Remote attachments go to a temp root
+outside the home ([section 2](#2-transcript-files)).
+
+Deletion (2026-10-19): the retention pass deletes old sessions in bulk
+and vacuums the database ([section 2](#2-transcript-files)); its
+`state.json` can be one `system` row, `sessions deleted by retention:
+deleted=<n> scanned=<n> failed=<n> (from retention/state.json, at)`, with
+no `session_id`, since the file names no session.
 
 Sync: the share code is OpenCode's
 ([opencode.md section 8](opencode.md#8-parser-plan)), and Kilo changed what

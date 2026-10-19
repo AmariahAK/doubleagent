@@ -14,6 +14,34 @@ Apache-2.0. Open source. Applies to the VS Code extension
 (`RooVeterinaryInc.roo-cline`, [`src/package.json:2`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L2),[`5`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L5)) and the CLI
 (`apps/cli`).
 
+- **Source review (2026-10-19)**: [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code)
+  HEAD is still [`b867ec9`](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16) (2026-05-15, "Remove roocode.com web
+  app"), the commit this document cites, so nothing has drifted. Roo Code
+  is a fork of Cline's legacy task layout; its drift from
+  [cline.md](cline.md) is listed in [section 3](#3-record-schema). One line
+  per requirement class:
+  - Permission state: found, not read by the parser. Per call, an approved
+    tool ask is marked `isAnswered` in `ui_messages.json` and a denial is a
+    JSON `tool_result` in the API history; standing grants are the
+    `alwaysAllow*`, `allowedCommands` and `deniedCommands` settings, MCP
+    `alwaysAllow` lists, and the CLI's `requireApproval`.
+    See [section 3](#3-record-schema) and [section 8](#8-parser-plan).
+  - Model: already covered (no model per task). Found besides: the CLI's
+    default `model` in `~/.roo/cli-settings.json`, and the provider
+    profile named by `apiConfigName`, whose current model id is in the
+    secret store.
+  - Past use beyond the primary store: already covered
+    (`~/.roo/cli-history.json`). Nothing else found.
+  - Sync, relay and origin: already covered, none.
+  - Scratch directories: found. The suggested worktree root
+    `~/.roo/worktrees/` is under the catalog entry `.roo`; the CLI's
+    `--ephemeral` storage is under the system temp directory and removed
+    on exit ([section 2](#2-transcript-files)).
+  - Deletion: found ([section 8](#8-parser-plan)).
+  - Version drift: none; HEAD is the cited commit.
+  - Bad lines: already covered; every file the parser reads is a JSON
+    document or array.
+
 ## 2. Transcript files
 
 VS Code: `globalStorage/rooveterinaryinc.roo-cline/tasks/<taskId>/` with
@@ -31,6 +59,17 @@ root: `~/.vscode-mock/global-storage/` ([`apps/cli/src/lib/task-history/index.ts
 ([`src/core/task-persistence/apiMessages.ts:73-91`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/apiMessages.ts#L73-L91)).
 
 The CLI also keeps an input history, `~/.roo/cli-history.json`: the file name is joined to `getConfigDir()` ([`apps/cli/src/lib/storage/history.ts:20-22`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L20-L22)), which is `~/.roo` on every platform ([`apps/cli/src/lib/storage/config-dir.ts:5-9`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/config-dir.ts#L5-L9)). The catalog line `roo-code|.roo` collects it. It is the history the interactive prompt steps through with the arrow keys, not a transcript: see [section 3](#3-record-schema) for its shape.
+
+`roo --ephemeral` ("Run without persisting state",
+[`apps/cli/src/index.ts:53`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/index.ts#L53)) points the
+whole extension storage, tasks included, at a new
+`<system temp directory>/roo-cli-<epoch ms>-<random>` directory
+([`apps/cli/src/lib/storage/ephemeral.ts:5-10`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/ephemeral.ts#L5-L10),
+[`apps/cli/src/agent/extension-host.ts:378-381`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/agent/extension-host.ts#L378-L381))
+and removes it when the CLI exits
+([`:598-601`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/agent/extension-host.ts#L598-L601)). Such
+a task is outside the home, so no catalog line reaches it, and it
+survives only a CLI that was killed before its cleanup ran.
 
 ## 3. Record schema
 
@@ -61,6 +100,25 @@ workspace?, mode?, apiConfigName?, status?, delegatedToId?, childIds?, ...`.
 `files_in_context` ([`src/core/context-tracking/FileContextTracker.ts:117-135`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/context-tracking/FileContextTracker.ts#L117-L135)).
 
 Timestamps are millisecond epochs. No git branch is recorded.
+
+Permission records (2026-10-19). Every approval goes through `ask`: the
+`ask` record is written first, then `checkAutoApproval` decides
+`approve`, `deny`, `timeout` or `ask` from the settings
+([`src/core/task/Task.ts:1313-1334`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L1313-L1334)).
+An approval of a `tool` ask, by the user or automatically, sets
+`isAnswered: true` on that ask record
+([`:1489-1502`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L1489-L1502),
+[`packages/types/src/message.ts:273`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/types/src/message.ts#L273));
+an automatic approval is not told apart from a click. A denial reaches the
+model as a `tool_result` in `api_conversation_history.json` whose text is
+JSON: `{"status":"denied","message":"The user denied this operation."}`,
+`{"status":"denied","feedback":...}`, or for an approval with a typed
+note `{"status":"approved","feedback":...}`
+([`src/core/prompts/responses.ts:8-24`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/prompts/responses.ts#L8-L24)).
+`HistoryItem.mode` is the task's mode slug (`code`, `architect`, `ask`,
+`debug` or a custom mode), which decides the tool groups the task may use,
+and `apiConfigName` names the provider profile
+([`packages/types/src/history.ts:21-22`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/types/src/history.ts#L21-L22)).
 
 `cli-history.json` is `{version: 1, entries: string[]}` ([`history.ts:9-15`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L9-L15)), written pretty-printed with tabs and trimmed to the newest `MAX_HISTORY_ENTRIES` (500) on every save ([`history.ts:6-7`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L6-L7), [`64-77`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L64-L77)). `addToHistory` appends the trimmed line, skipping an empty one and one equal to the last entry ([`history.ts:90-108`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L90-L108)); `loadHistory` keeps only non-blank strings ([`history.ts:44-45`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L44-L45)). Entries are oldest first and carry no time, task id or workspace. The input box adds every submitted line before acting on it ([`apps/cli/src/ui/components/autocomplete/AutocompleteInput.tsx:180-198`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/components/autocomplete/AutocompleteInput.tsx#L180-L198); [`apps/cli/src/ui/hooks/useInputHistory.ts:83-97`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/hooks/useInputHistory.ts#L83-L97)), so it holds the first prompt of a task, the answers to follow-up questions and later messages, and CLI commands such as `/new` that the CLI handles itself and never sends to a task ([`apps/cli/src/ui/hooks/useTaskSubmit.ts:56-132`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/hooks/useTaskSubmit.ts#L56-L132)). A prompt given on the command line rather than typed into the input box does not pass through it.
 
@@ -106,6 +164,75 @@ and `model` always empty.
 
 Roo Code records no model in any of these files (`apiConfigName` is a
 profile name, not a model id), so the parser yields no `model:` rows.
+
+Model, found besides (2026-10-19): the provider profiles are stored as
+one secret, `roo_cline_config_api_config`, `{currentApiConfigName,
+apiConfigs: {<name>: {id, apiProvider, <provider>ModelId or apiModelId,
+...}}, modeApiConfigs}`
+([`src/core/config/ProviderSettingsManager.ts:45-61`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/config/ProviderSettingsManager.ts#L45-L61)),
+in the editor's `state.vscdb` or the CLI's `secrets.json`, so a task's
+`apiConfigName` names a profile whose model id is known only as it is now,
+not as it was when the task ran. The CLI's `~/.roo/cli-settings.json`
+holds the default `model`, `provider`, `mode` and `reasoningEffort`
+([`apps/cli/src/types/types.ts:55-73`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/types/types.ts#L55-L73)).
+Neither is a per-task record; the parser yields no model row from them.
+
+Permission state (2026-10-19; the parser reads none of it yet):
+
+- Per call: the `isAnswered` mark and the denial and approval JSON of
+  [section 3](#3-record-schema). A `tool_result` whose JSON `status` is
+  `denied` or `approved` can yield `permission decision: <status>`
+  (with ` feedback` when the key is present) beside the `tool_result`
+  row, joined on `tool_use_id`.
+- Standing: the global settings `autoApprovalEnabled`,
+  `alwaysAllowReadOnly`, `alwaysAllowReadOnlyOutsideWorkspace`,
+  `alwaysAllowWrite`, `alwaysAllowWriteOutsideWorkspace`,
+  `alwaysAllowWriteProtected`, `alwaysAllowMcp`, `alwaysAllowModeSwitch`,
+  `alwaysAllowSubtasks`, `alwaysAllowExecute`,
+  `alwaysAllowFollowupQuestions`, `allowedCommands`, `deniedCommands`,
+  `commandTimeoutAllowlist`, `allowedMaxRequests` and `allowedMaxCost`
+  ([`packages/types/src/global-settings.ts:97-118`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/types/src/global-settings.ts#L97-L118)),
+  kept in the extension's global state: the `state.vscdb` row of the
+  extension in VS Code, and
+  `~/.vscode-mock/global-storage/global-state.json` for the CLI
+  ([`packages/vscode-shim/src/context/ExtensionContext.ts:104`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/context/ExtensionContext.ts#L104)).
+  `roo-cline.allowedCommands` and `roo-cline.deniedCommands` are also VS
+  Code settings in the user's `settings.json`
+  ([`src/package.json:280`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L280),
+  [`292`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L292)). Each MCP server in
+  `settings/mcp_settings.json` or a project's `.roo/mcp.json` has an
+  `alwaysAllow` list of tool names
+  ([`src/services/mcp/McpHub.ts:70`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/mcp/McpHub.ts#L70)).
+  Writes to Roo Code's own configuration files (`.roo/**`, `.roomodes`,
+  `.rooignore`, `.roorules*`, `.clinerules*`, `.vscode/**`,
+  `*.code-workspace`, `AGENTS.md`, `AGENT.md`) are never auto-approved;
+  the list is fixed in code, and `.rooprotected` is in it only as a name
+  reserved "for future use", not a file Roo Code reads
+  ([`src/core/protect/RooProtectedController.ts:7-25`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/protect/RooProtectedController.ts#L7-L25)).
+  The CLI runs every tool without asking unless `--require-approval` (`-a`,
+  [`apps/cli/src/index.ts:36`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/index.ts#L36)) or
+  `requireApproval: true` (or the older `dangerouslySkipPermissions:
+  false`) in `~/.roo/cli-settings.json` says otherwise
+  ([`apps/cli/src/commands/cli/run.ts:125-128`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/commands/cli/run.ts#L125-L128)).
+  Each entry can be one `permission setting:` row at the file's
+  modification time.
+- Mode: `HistoryItem.mode` can be one `permission mode: <mode>` row per
+  task.
+
+Deletion (2026-10-19): deleting a task removes it and, by default, its
+subtasks from `tasks/_index.json`, deletes their shadow checkpoint
+repositories or branches, and removes each task directory
+([`src/core/webview/ClineProvider.ts:1737-1814`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/ClineProvider.ts#L1737-L1814)).
+`~/.roo/cli-history.json` is not touched, so it is what is left of a
+deleted CLI task.
+
+Scratch directories (2026-10-19): the worktree dialog suggests
+`~/.roo/worktrees/<project>-<suffix>`
+([`src/core/webview/worktree/handlers.ts:224-236`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/worktree/handlers.ts#L224-L236)),
+under the catalog entry `.roo`, so a task run there has its `workspace`
+classed by the analyzer's catalog rule; a user-chosen path elsewhere is
+a project. No default directory for a task without a workspace was found
+(grepped `homedir`, `tmpdir` and `worktrees` in `src/` and `apps/cli/src`).
 
 Sync: Roo Code records no sync state. Cline's enterprise prompt upload and its
 manifest marker ([section 8 of `cline.md`](cline.md#8-parser-plan)) live in

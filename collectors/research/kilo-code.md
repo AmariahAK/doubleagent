@@ -9,6 +9,16 @@ Open source. [Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode) at [`76bc
 client of that server. All claims from source. Record schemas:
 [`analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md) and `opencode.md`.
 
+- **Source review (2026-10-19)**: [Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode)
+  at [`87cc35c`](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22), against [`76bcfd4`](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462) cited here; 9 cited
+  files changed and none moved. Found: the sandbox policy and preference
+  directories beside the state directory, which no catalog line
+  collects; the TUI prompt history; the retention state; remote control
+  log lines; remote attachments under the system temp directory; and
+  project worktrees ([section 2](#2-per-user-storage),
+  [section 6](#6-project-path)). Record shapes are in
+  [section 2 of `analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md#2-transcript-files).
+
 ## 2. Per-user storage
 
 `xdg-basedir` with no platform branching ([`packages/core/src/global.ts:3`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L3),[`12`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L12),[`22-26`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L22-L26)),
@@ -69,6 +79,52 @@ and reads legacy Roo-style `tasks/_index.json` for import
 ([`packages/kilo-vscode/src/legacy-migration/task-store.ts:136`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-vscode/src/legacy-migration/task-store.ts#L136)). Pre-fork
 installs leave `tasks/`, `checkpoints/`, `cache/` there.
 
+Found in the 2026-10-19 source review at [`87cc35c`](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22), all present
+at the cited commit too:
+
+- `~/.local/state/kilo-sandbox-policy/<sha256 of session id>/<sha256 of
+  directory>.json`, one per session and directory, `{enabled, mode:
+  "allow"|"deny"|"proxy", allowedHosts[], writablePaths[], version}`: the
+  confinement Kilo's sandbox applied to that session's commands (network
+  mode, allowed hosts and writable paths)
+  ([`packages/opencode/src/kilocode/sandbox/store.ts:10-31`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/sandbox/store.ts#L10-L31)),
+  and `~/.local/state/kilo-sandbox-preference/<sha256 of directory>.json`,
+  `true` or `false`, whether the sandbox is on for a directory
+  ([`preference.ts:7-34`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/sandbox/preference.ts#L7-L34)).
+  Both sit in the parent of the state directory
+  (`path.dirname(Global.Path.state)`), so on the default layout they are
+  siblings of `~/.local/state/kilo` and outside every catalog line; with
+  the fallback state directory `<data>/state` they land in
+  `~/.local/share/kilo` and are collected. The names are hashes, so a
+  file is tied to a session or project only by hashing a known id or
+  path.
+- `~/.local/state/kilo/prompt-history.jsonl`, the last 50 prompts typed
+  into the terminal UI, shell commands included
+  ([`packages/tui/src/prompt/history.tsx:27`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/tui/src/prompt/history.tsx#L27),
+  [`:53`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/tui/src/prompt/history.tsx#L53)); collected by
+  `kilo-code|.local/state/kilo`.
+- `~/.local/share/kilo/retention/state.json`, the counts of the last
+  automatic deletion pass
+  ([`packages/opencode/src/kilocode/session/retention.ts:326`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/session/retention.ts#L326)).
+- `<system temp directory>/kilo/remote-attachments/<base64url session
+  id>/`, files sent from Kilo Cloud over remote control, removed when the
+  session's remote handling ends
+  ([`packages/opencode/src/kilocode/remote-attachments.ts:272-287`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/remote-attachments.ts#L272-L287);
+  [`packages/core/src/global.ts:28`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/global.ts#L28)).
+  Outside the home, so no catalog line reaches it.
+- The `permission` key of the global config files in `~/.config/kilo`,
+  which an "always" approval rewrites; see
+  [section 8 of `analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md#8-parser-plan).
+
+Scratch directories: `~/.local/share/kilo/worktree/<project id>/` is
+under the catalog line `kilo-code|.local/share/kilo` and in `EXCLUDES`,
+and the analyzer's catalog rule classes it. A project's
+`.kilo/worktrees/<name>` (see [section 5](#5-project-local)) is the
+agent's own worktree inside the user's project; it is in `EXCLUDES` but
+under no home catalog entry, so the analyzer counts it as a project. The
+remote attachment directory above is a scratch directory outside the
+home.
+
 ## 3. Credentials
 
 - `~/.local/share/kilo/auth.json`, mode 0600: per provider `{type:"api",
@@ -118,6 +174,12 @@ directory is collected as well.
 `sandboxes[]`; table `project_directory`: `directory`, `type`
 (`main|root|git_worktree`) ([`packages/core/src/project/sql.ts:6-34`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/project/sql.ts#L6-L34)).
 Legacy `storage/project/<id>.json` `worktree`. SQLite only; left to the analyzer.
+
+A worktree the agent created is a `project_directory` row of type
+`git_worktree` and an entry of `project.sandboxes`, and a session run in
+it has the worktree as `session.directory`
+([`packages/core/src/project/sql.ts:16`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/project/sql.ts#L16),
+[`:20-34`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/core/src/project/sql.ts#L20-L34) at [`87cc35c`](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22)).
 
 ## 7. Confidence
 

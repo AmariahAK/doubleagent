@@ -30,6 +30,12 @@ All claims from source, three repositories:
   [`0b6df736c9b2799c38b9ee629668407521a7bdda`](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda)
   (2026-06-19), extension `PearAI.pearai-roo-cline` 3.15.3
   ([`package.json:2-7`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/package.json#L2-L7)).
+- **Source review (2026-10-19)**: all three HEADs are still the commits
+  cited above, so no path has moved. Found: the editor's per-session
+  output channel logs hold the chat extension's full prompt log, and
+  Creator mode makes new projects under `~/Documents/PearAI`
+  ([section 2](#2-per-user-storage), [section 6](#6-where-the-project-path-is-recorded)).
+  No new credential file, exclusion or catalog line is needed.
 
 ## 2. Per-user storage
 
@@ -124,6 +130,31 @@ MCP server checkouts go to Roo Code's own directories,
 ([`ClineProvider.ts:952-973`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/core/webview/ClineProvider.ts#L952-L973)),
 which the catalog already collects as `roo-code` and `cline`.
 
+**Output channel logs.** The editor backs every extension output channel
+with a file under its `logs/` directory,
+`logs/<YYYYMMDDTHHMMSS>/window<N>/exthost/output_logging_<time>/<n>-<channel>.log`,
+and keeps the newest 49 log session directories besides the current one
+([`src/vs/workbench/api/common/extHostOutput.ts:121`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/api/common/extHostOutput.ts#L121),
+[`:160-170`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/api/common/extHostOutput.ts#L160-L170),
+[`src/vs/workbench/contrib/logs/common/logsDataCleaner.ts:24-35`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/contrib/logs/common/logsDataCleaner.ts#L24-L35)).
+The chat extension's `PearAI` channel receives every model request's
+prompt and completion
+([`extensions/vscode/src/extension/VsCodeExtension.ts:147-155`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/extensions/vscode/src/extension/VsCodeExtension.ts#L147-L155)),
+so `<n>-PearAI.log` files are a prompt log; they are collected by the
+`.config/PearAI/logs`, `Library/Application Support/PearAI/logs` and
+`AppData/Roaming/PearAI/logs` lines. Record shape:
+[section 2 of `analyzer/research/pearai.md`](../../analyzer/research/pearai.md#2-transcript-files).
+
+**Scratch directories.** Neither extension keeps a working directory of
+its own. PearAI Creator, the mode that builds a new project from a
+description, creates the project directory, by default
+`~/Documents/PearAI/<generated name>`, and opens it as the workspace
+([`gui/src/pages/creator/index.tsx:106-114`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/gui/src/pages/creator/index.tsx#L106-L114),
+[`extensions/vscode/src/integrations/creator/index.ts:130-160`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/extensions/vscode/src/integrations/creator/index.ts#L130-L160)).
+That is the user's new project, reached by project discovery through the
+task's `workspace`, not a scratch directory; no catalog line names
+`Documents/PearAI`.
+
 ## 3. Credentials
 
 - PearAI account: the Continue fork stores `pearai-token` and
@@ -191,6 +222,10 @@ which the catalog already collects as `roo-code` and `cline`.
   ([`src/schemas/index.ts:339-352`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L339-L352)),
   SQLite only.
 - Editor: `User/workspaceStorage/*/workspace.json` as in VS Code.
+- Roo fork, Creator mode: `taskHistory[].creatorModeConfig.newProjectPath`,
+  the directory Creator mode created for the task
+  ([`src/schemas/index.ts:327-331`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L327-L331)),
+  in `state.vscdb` like the `workspace` key.
 
 ## 7. Confidence
 
