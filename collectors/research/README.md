@@ -17,6 +17,16 @@ rests on. Where a document mentions `scratchpad/...`, that is the research
 session's working directory, kept only for the duration of the research; the
 cited sources are the repositories, package versions and URLs named beside it.
 
+The first section of a document carries one **Observed** bullet per platform and
+surface the agent has been run on, naming the build or version, the date
+and what was exercised. That build is the version the document's evidence
+rests on. Before relying on a document against an install, compare the
+install's build with the latest Observed bullet for that platform and
+surface; when they differ, or no bullet exists for the cell, the document
+describes an older build or none, and the install gets a per-step round
+([Real-install rounds in `AGENTS.md`](../../AGENTS.md#real-install-rounds))
+before its paths or shapes are read from the document as current.
+
 `tools/check_research_links.py` (at the repository root) checks every
 GitHub citation in these documents and in `analyzer/research/`. For each
 link it checks that the file exists at the cited commit and that the cited

@@ -15,6 +15,20 @@ Forks of one codebase were often studied together, because the differences
 are what matter, but each agent has its own document. Where two agents
 share a lineage, each document says so and links to the other.
 
+The first section of a document carries one **Observed** bullet per platform and
+surface the agent has been run on, naming the build or version, the date,
+what was exercised and what each surface wrote. That build is the version
+the record shapes rest on: line types and key sets change between releases
+(the rollouts of the ChatGPT desktop app's bundled Codex 0.163 carried
+per-turn settings events, reviewer threads and turn triggers that the
+document written from the 0.162 install did not list). Before
+relying on a parser plan against an install, compare the install's build
+with the latest Observed bullet for that platform and surface; when they
+differ, or no bullet exists for the cell, the install gets a per-step round
+([Real-install rounds in `AGENTS.md`](../../AGENTS.md#real-install-rounds))
+and the shape tool's output is diffed against its storage and parser-plan sections before the
+parser is changed.
+
 | Agent | Document | Store | Parser |
 | --- | --- | --- | --- |
 | `agent-zero` | [agent-zero.md](agent-zero.md) | JSON per chat context, rewritten whole | yes |

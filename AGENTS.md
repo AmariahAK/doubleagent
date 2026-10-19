@@ -395,7 +395,15 @@ from `analyzer/research/<agent>.md`, whose section 8 is a parser plan mapped
 to the timeline columns and whose sample records are meant to become the
 fixture. Do not redo the research. The citations link to the commit that was
 reviewed, so check the record shape at that link, not on the default branch,
-and say in the module docstring if the shape has drifted since.
+and say in the module docstring if the shape has drifted since. A parser for
+an agent whose research rests on source alone, a parser change for a newer
+version of the agent, and a parser for a surface not yet exercised (the
+desktop app beside the CLI) each start with the per-step round of
+[Real-install rounds](#real-install-rounds): the shape tool's line types and
+key sets from the round go into the research document's sections 2 and 8
+first, and the parser is written from the updated plan, because the round
+is what shows the records a bundle grep does not (per-turn settings events,
+reviewer verdicts, the trigger of a turn, a phone driving the session).
 
 1. Create `doubleagent/parsers/<agent>.py` with a class that subclasses
    `Parser` from `parsers/base.py`. Its `agent` attribute must equal the
@@ -623,11 +631,25 @@ find. The validation for every current entry is recorded in the index table in
    `collected_only`) is updated when the agent appears in the fixture.
 
 Every catalog entry has been validated against source, a shipped bundle, or
-official documentation. When a real-install check is wanted, run the tool in
-the `lab/` sandbox and point the collector at the exported home rather than
-installing it on the workstation (Linux layout only); `collectors/research/<agent>.md` records the evidence
-for each agent and the index table in [`collectors/research/README.md`](collectors/research/README.md) summarises the level. Real-install checks
-exist for Claude Code, Antigravity CLI, Codex CLI, Copilot CLI and Ollama.
+official documentation, and that is the first half of adding an agent: it
+gets the lines into the tables. The second half is a per-step real-install
+round of the agent, run as [Real-install rounds](#real-install-rounds)
+describes, one listing diff per user action, on every platform and surface
+the agent ships. Source says where the agent can write; only the round says
+what it wrote, which of it is a credential, which directory is the agent's
+own scratch space and which is the user's project, and what a delete leaves.
+An agent added from source alone is added with its round filed as an issue
+and its evidence cell in the index table naming the source; the cell names a
+real install only after the round, and the round is not skipped because the
+source looked complete.
+The same round is how coverage of an agent already in the catalog is
+extended: a surface or platform cell with no Observed bullet, a feature
+the catalog does not mention, or a version newer than the last Observed
+bullet each gets a per-step round of its own before any table, document or
+parser is changed from a bundle grep or from memory. Run the tool in a
+clean VM, or in the `lab/` sandbox for a Linux-only CLI, never on the
+workstation; `collectors/research/<agent>.md` records the evidence for
+each agent and the index table in [`collectors/research/README.md`](collectors/research/README.md) summarises the level.
 Agents whose project paths live only in SQLite (Zed, Goose, OpenCode, Kilo
 Code, Kiro CLI) are not covered by `discover_projects`; the analyzer reads them.
 
@@ -665,7 +687,13 @@ Likely file names: `paths.ts`, `paths.rs`, `global.ts`, `storage.ts`,
 **3. Require a fixed report structure.** Eight numbered sections, under
 about a thousand words:
 
-1. Repo, commit checked, open source or not.
+1. Repo, commit checked, open source or not; and, once the agent has had
+   a real install, one **Observed** bullet per platform and surface naming
+   the build or version, the date and what was exercised (see
+   [Real-install rounds](#real-install-rounds)). The build in that bullet
+   is the version the document's evidence rests on: an install of a
+   different build is compared against it before the document is trusted,
+   and a difference means a new round, not a note.
 2. Per-user storage for Linux, macOS and Windows: every directory and file
    under the home, what each holds, and whether the layout is shared across
    OSes. Flag tools that use XDG paths on macOS and Windows.
@@ -847,6 +875,26 @@ Claude Desktop rounds of October 2026 (MSIX build, Linux deb,
 macOS) are the pattern; each found something the bundle research had not:
 an uncollected data directory, two unflagged keys, a feature that writes
 nothing locally.
+
+A round is not an optional check: it is a required step in three cases,
+adding an agent to the catalog, extending the coverage of an agent already
+in it (a surface or platform cell without an Observed bullet, a feature the
+documents do not mention), and a version of the agent newer than the one in
+the last Observed bullet, since surfaces and record shapes change between
+releases. The per-step form, one listing diff per user action, is what
+makes the round pay: the ChatGPT desktop round on macOS of 2026-10-18,
+surveyed that way over nineteen listings, produced in one pass a secret glob
+(the shell environment snapshots), a catalog line (the app's projectless
+output directories), seven parser gaps in the Codex parser (per-turn
+settings events, the reviewer's verdicts and decisions, the trigger of each
+turn, the remote-control enrolment and its phone clients, the global state
+as a secondary source), a parser for the account conversation list, the
+split of scratch directories from projects in the inventory (issue 149),
+and the Claude Code temp-root gap (issue 163); the rounds before it, which
+ran every action before the first listing, could map actions to files only
+by modification time and left most of this unseen. A version check is part
+of every round: the Observed bullet names the build, and a later install of
+a different build is a new cell to survey, not a confirmation of the old one.
 
 The round, in order:
 
