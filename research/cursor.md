@@ -1,9 +1,10 @@
 # cursor
 
-Cursor is a closed-source editor forked from VS Code (the Cursor IDE) with a command-line agent,
-the Cursor Agent CLI (`agent`, `cursor-agent`). Evidence levels below are L1 (shipped bundle), L2
-(official docs), L3 (vendor forum) and L4 (third-party write-ups and tools). There is no analyzer
-document for the agent yet.
+Cursor is a closed-source editor forked from VS Code (the Cursor IDE) with a command-line agent, the
+Cursor Agent CLI (`agent`, `cursor-agent`). Evidence levels below are L1 (shipped bundle), L2
+(official docs), L3 (vendor forum) and L4 (third-party write-ups and tools). Its parser is in the
+backlog ([issue 51](https://github.com/seanthegeek/doubleagent/issues/51)), blocked on format
+research because the `state.vscdb` key layout changes between versions.
 
 ## 1. Source and evidence
 
@@ -146,9 +147,14 @@ bundle). `.cursorindexingignore` appears in neither the bundle nor current docs.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+Cursor is `backlog`: its chats and agent runs are parseable records on disk, and the parser is
+[issue 51](https://github.com/seanthegeek/doubleagent/issues/51), blocked on format research
+because the `state.vscdb` key layout changes between versions (`composer.composerData` on <=2.6,
+`composer.composerHeaders` on 3.0+, see [Cursor IDE](#cursor-ide)). A future parser would read the
+IDE's `User/globalStorage/state.vscdb` `cursorDiskKV` rows (`composerData:<id>`,
+`bubbleId:<composer>:<bubble>`) and the Agent CLI's `projects/<sanitized cwd>/agent-transcripts/`
+(`*.jsonl`, older `*.txt`) and `chats/<md5(resolved cwd)>/<sessionId>/store.db` with its
+`meta.json` ([section 2](#2-per-user-storage)); no record schema has been researched yet.
 
 ## 14. Confidence
 
