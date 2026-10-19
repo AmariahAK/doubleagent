@@ -3,36 +3,35 @@
 Muse Code is Meta's closed-source coding agent CLI (`muse`, models
 `muse-spark-*`), shipped as a launcher script (bash on Linux and macOS,
 PowerShell on Windows) plus a native binary that the launcher downloads
-from Meta's lookaside host and keeps up to date. It reads the state of
-Claude Code, Codex CLI and Grok Build without writing to it
-([section 14](#14-confidence)). How the transcripts are encoded and how
-the parser reads them is in
-[`analyzer/research/muse-code.md`](../../analyzer/research/muse-code.md).
-
-Muse Code is Meta's closed-source coding agent CLI (`muse`, models
-`muse-spark-*`). It writes one event-sourced JSONL log per session, with
-each subagent in its own log under the session directory. Paths and the
-rest of the per-user state are in
-[`collectors/research/muse-code.md`](../../collectors/research/muse-code.md).
-No other agent in the catalog shares this format.
-
-<!-- MERGE: dedupe the intro paragraphs above into one -->
+from Meta's lookaside host (its download server) and keeps up to date. It
+reads the state of Claude Code, Codex CLI and Grok Build without writing to
+it ([section 14](#14-confidence)). It writes one event-sourced JSONL log
+per session, with each subagent in its own log under the session
+directory; no other agent in the catalog shares this format. The agent is
+parsed by the `muse-code` parser.
 
 ## 1. Source and evidence
 
 Closed source, no public repository, so there are no commit links. The
-evidence levels, cited by letter throughout:
+binary was never executed. The evidence levels, cited by letter throughout,
+best first:
 
 - Evidence level **B** = `strings -n 6` of the shipped binary
-  `muse-bin-1.4.2-R4684.1` (344,369,368 bytes, x86-64 ELF, statically
-  linked, stripped; sha256
+  `~/.local/bin/muse-bin-1.4.2-R4684.1`, Muse Code 1.4.2
+  (344,369,368 bytes, x86-64 ELF, statically linked, stripped; build sha `b538db0a2c` as
+  recorded in the sessions; sha256
   `dfb3096c91f4767c4d98006460800b7ba906a0b1a408280a926a8dc19a1af64f`).
   It is a Rust build: panic paths name
   `fbcode/musecode/build/src/crates/<crate>/src/...` for the crates `agent`,
   `tui`, `session-server`, `config`, `session-view`, `local-store`,
   `plugins`, `agent-session-storage`, `local-tracing` and others. Literal
   strings are concatenated without separators in the string table, so a
-  claim cites the literal string, not a function.
+  claim cites the literal string, not a function. serde (the Rust
+  serialization library) leaves the variant and field names of every
+  serialized enum and struct as concatenated literals (for example
+  `struct variant AgentRunEvent::AssistantMessageCommitted with 5
+  elements`), which is where the field lists for kinds not seen on disk
+  come from.
 - Evidence level **L** = the launcher `~/.local/bin/muse` (32,737 bytes,
   bash, sha256
   `c6db294799a190ca380da274beb3b9c0e160e0da9681a3d364ce8b0e5fa3a4bc`),
@@ -41,12 +40,18 @@ evidence levels, cited by letter throughout:
   and materialises on first run into
   `~/.local/share/muse/plugins/cache/builtin/muse-core/<skill>/<sha256>/`
   and `~/.local/share/muse/skills/bundled/muse-core/skills/<skill>/`
-  (version 1.4.2-R4684.1). Cited as `<skill>/SKILL.md:<line>`; the
-  directories used are `read-session/0782fa625e56…`,
-  `resume-claude/9df9d8756818…`, `resume-codex/30ddd55a24fd…`,
-  `import/5bc46b7edb9f…`, `migrate/1dda33263863…`,
-  `manage-settings/4381b5a6a995…`, `doctor/362cd5a3ba33…`, and under
-  `skills/bundled/muse-core/skills/`, `agents/` and `fleet-manager/`.
+  (version 1.4.2-R4684.1); the directory names are content hashes. Cited
+  as `<skill>/SKILL.md:<line>`; the directories used are
+  `read-session/0782fa625e56…`, `resume-claude/9df9d8756818…`,
+  `resume-codex/30ddd55a24fd…`, `import/5bc46b7edb9f…`,
+  `migrate/1dda33263863…`, `manage-settings/4381b5a6a995…`,
+  `doctor/362cd5a3ba33…`, and under `skills/bundled/muse-core/skills/`,
+  `agents/` and `fleet-manager/`. Two of them carry the format:
+  `read-session/0782fa625e56.../SKILL.md` (the session log format, written
+  for the agent itself) and
+  `doctor/362cd5a3ba33.../scripts/session-evidence.py` (Meta's own reader
+  of `session.jsonl`, which shows the field fallbacks Meta itself
+  expects).
 - Evidence level **I** = the real install on the research host
   ([Observed](#observed)).
 - Evidence level **W** = shipped binary strings (Windows build):
@@ -69,59 +74,26 @@ evidence levels, cited by letter throughout:
   The Linux artifact checksum equals the binary above.
 - No official documentation was consulted.
 
-Closed source; no public repository, so there are no commit links. Each
-claim below names its evidence level, best first:
-
-- **Binary**: `~/.local/bin/muse-bin-1.4.2-R4684.1`, Muse Code 1.4.2
-  (build sha `b538db0a2c` as recorded in the sessions), ELF x86-64,
-  statically linked Rust (crate paths `fbcode/musecode/build/src/crates/...`
-  in the strings), sha256
-  `dfb3096c91f4767c4d98006460800b7ba906a0b1a408280a926a8dc19a1af64f`.
-  Read with `strings -n 6`; serde leaves the variant and field names of
-  every serialized enum and struct as concatenated literals (for example
-  `struct variant AgentRunEvent::AssistantMessageCommitted with 5
-  elements`), which is where the field lists for kinds not seen on disk
-  come from. The binary was never executed.
-- **Vendor skills** shipped in the binary and unpacked to
-  `~/.local/share/muse/plugins/cache/builtin/muse-core/`:
-  `read-session/0782fa625e56.../SKILL.md` (the session log format, written
-  for the agent itself) and `doctor/362cd5a3ba33.../scripts/session-evidence.py`
-  (Meta's own reader of `session.jsonl`, which shows the field fallbacks
-  Meta itself expects). The directory names are content hashes.
-
-<!-- MERGE: dedupe the section 1 prose above -->
-
 ### Observed
 
-- Linux (WSL2), Muse Code 1.4.2-R4684.1 (the binary of level B),
-  2026-10-03 and 2026-10-04: the real install on the research host, two
-  interactive sessions, one of which started two subagents. Only names,
-  sizes, JSON key names and SQLite schemas were read; SQLite files were
-  copied with their sidecars before opening.
+- Linux (WSL2), Muse Code 1.4.2-R4684.1 (`muse-bin-1.4.2-R4684.1`, the
+  binary of level B), 2026-10-03 and 2026-10-04: the real install on the
+  author's Linux (WSL2) workstation, the research host. Two interactive
+  sessions: one failed on a 402 before any model output, one with web
+  search, web fetch, bash and two reminder subagents. 547 envelope lines
+  plus 4 frames and 4 markers in total, every line tabulated by key path.
+  Only names, sizes, JSON key names and SQLite schemas were read; SQLite
+  files were copied with their sidecars before opening. Shapes marked
+  observed were seen there; shapes marked binary were not exercised and
+  rest on field names only.
 - macOS: no real install; the Mac claims rest on strings only
   ([section 14](#14-confidence)).
 - Windows: no real install; the Windows claims rest on the binary's
   strings and the installer and launcher scripts (levels W and S).
 
-- Linux (WSL2), Muse Code 1.4.2 (`muse-bin-1.4.2-R4684.1`): a real
-  install on the author's Linux (WSL2) workstation, October 2026: two
-  sessions (one failed on a 402 before any model output, one with web
-  search, web fetch, bash and two reminder subagents), 547 envelope
-  lines plus 4 frames and 4 markers in total, every line tabulated by
-  key path. Shapes marked observed were seen there; shapes marked binary
-  were not exercised and rest on field names only.
-- macOS and Windows: no real install
-  ([Observed in the collector document](#observed)).
-
-<!-- MERGE: dedupe the Observed bullets above -->
-
 ### Source reviews
 
 None.
-
-None.
-
-<!-- MERGE: dedupe the Source reviews above -->
 
 ## Collection
 
@@ -477,8 +449,7 @@ same layout applies on macOS and on Windows: the Windows build
 (`muse-x86-windows.exe` 1.4.2-R4684.1) resolves its data directory from
 `XDG_DATA_HOME`, then `HOME`, then `USERPROFILE`, so a Windows home holds
 `.local\share\muse` too; the path evidence is in
-[collectors/research/muse-code.md](../../collectors/research/muse-code.md).
-Relative to the home:
+[section 2](#2-per-user-storage). Relative to the home:
 
 | Path | Content | Parse |
 | --- | --- | --- |
@@ -838,7 +809,7 @@ opaque provider blob. `approval/requested.raw_args` and
 `automated_review_started.exact_action` repeat the command or URL under
 review. No credential was found in any session file; the token is in
 `~/.config/muse/auth.json`
-([collector document](#3-credentials)). Meta's own export
+([section 3](#3-credentials)). Meta's own export
 redacts keys matching `api.?key|authorization|bearer|cookie|credential|
 password|secret|token` and `sk-`, `ghp_`, `AKIA`, `AIza`, `xox`, JWT
 shapes (session-evidence.py `SENSITIVE_KEY`, `STANDALONE_SECRET`), which is
@@ -903,8 +874,8 @@ Coverage:
 | `runtime.session.metadata` `record.model_id`, `run.model.configured` `record.model_id`, run `model_completed` `model` (when the run has no configured model) | fill `model` (the metadata record also fills `project_path`), and a `system` row `model: <id> provider=<provider_id>` at the log's first model and `model: <old> -> <new>` on a change (` provider=` only when the record has `provider_id`) |
 | `runtime.user_intent.accepted` | skip; same prompt as `started` (use it for `user` text only if `started` is missing) |
 | all task events, `tool_batch.effect.*`, approval `automated_review_started`, `model_request_configured` and the other bookkeeping run events, `session.end`, telemetry | skip: duplicates or bookkeeping |
-| `~/.config/muse/trust.json` `projects.<path>.decision` | one `system` row per project, `permission setting: projects.<path>.decision=<decision> (from .config/muse/trust.json, file mtime)`, `project_path` the path, `timestamp_utc` the file's modification time, `session_id` empty; shape in [`collectors/research/muse-code.md`](../../collectors/research/muse-code.md) |
-| `~/.config/muse/skills/.muse/lock.json` `trust` | not read: the collector research lists the file's keys but not its structure, and the file was not present on the real install |
+| `~/.config/muse/trust.json` `projects.<path>.decision` | one `system` row per project, `permission setting: projects.<path>.decision=<decision> (from .config/muse/trust.json, file mtime)`, `project_path` the path, `timestamp_utc` the file's modification time, `session_id` empty; shape in [Config root](#config-root) |
+| `~/.config/muse/skills/.muse/lock.json` `trust` | not read: [Config root](#config-root) lists the file's keys but not its structure, and the file was not present on the real install |
 | `tui-history.jsonl` entry | `user`, empty `timestamp_utc` |
 
 Columns:
@@ -949,8 +920,10 @@ coverage table above gives each row's text
 The prompt history `tui-history.jsonl` is read as `user` rows with an
 empty `timestamp_utc` ([Prompt history](#prompt-history)); the session
 index, the session names and the TUI view are not
-([What survives a delete](#what-survives-a-delete)). Whether the prompt
-history is marked a secondary source is not stated.
+([What survives a delete](#what-survives-a-delete)). The parser marks the
+prompt history a secondary source (its `secondary()` returns true for
+`tui-history.jsonl`), so each history row matches a session row of the
+same session and text.
 
 #### Sync, relay and origin rows
 
@@ -1049,25 +1022,6 @@ timestamp `2026-10-01T09:00:00.300Z`. The subagent fixture yields a
 `submit_reminder_decision`, and a `tool_result`, with `session_id`
 `0f3c2b1a-...` and `project_path` `/srv/proj` from the parent.
 
-#### Confidence
-
-High (observed and confirmed by the read-session skill and
-Meta's script): envelope fields, microsecond `recorded_at`, frame and
-marker shapes, `started`, `assistant_message_committed`,
-`assistant_tool_calls_committed` with string `args`,
-`tool_result_batch_committed`, reasoning records, `call_id` join,
-metadata, branch, model and reminder-subagent linkage, the JSONL being
-complete without the SQLite, the approval-review synthetic clock. Medium
-(field names from the binary, not exercised): `inbox_item_queued`,
-`user_prompt_display`, `tool_result`, `provider_tool_call_*`,
-`user_shell.*`, `subagent.control.*`, compaction events, and where the
-`user_shell` fields sit in the payload. Not determined: argument names of
-tools other than `bash`, `web_search`, `web_fetch`; a native
-`subagent_spawn` child's log (none was spawned); `reference.kind` values
-other than `branch`; a human approval's `decision_source`; whether later
-frames appear after a resume or permission change; `user_prompt_display`'s
-field name.
-
 ## 14. Confidence
 
 High: the two XDG roots under the home on Linux, macOS and Windows
@@ -1101,6 +1055,23 @@ sandbox scratch directory is removed at session end and how large it
 gets; the Linux location of the enterprise policy files; whether any
 state is written outside the two roots on macOS (for example a
 `Library/Logs` path; none is named).
+
+Transcript schema: high (observed and confirmed by the read-session skill and
+Meta's script): envelope fields, microsecond `recorded_at`, frame and
+marker shapes, `started`, `assistant_message_committed`,
+`assistant_tool_calls_committed` with string `args`,
+`tool_result_batch_committed`, reasoning records, `call_id` join,
+metadata, branch, model and reminder-subagent linkage, the JSONL being
+complete without the SQLite, the approval-review synthetic clock. Medium
+(field names from the binary, not exercised): `inbox_item_queued`,
+`user_prompt_display`, `tool_result`, `provider_tool_call_*`,
+`user_shell.*`, `subagent.control.*`, compaction events, and where the
+`user_shell` fields sit in the payload. Not determined: argument names of
+tools other than `bash`, `web_search`, `web_fetch`; a native
+`subagent_spawn` child's log (none was spawned); `reference.kind` values
+other than `branch`; a human approval's `decision_source`; whether later
+frames appear after a resume or permission change; `user_prompt_display`'s
+field name.
 
 Other agents whose state Muse reads (K `resume-claude`, `resume-codex`,
 `import`, `migrate`; B): Claude Code (`${CLAUDE_CONFIG_DIR:-~/.claude}/projects/*/*.jsonl`,
