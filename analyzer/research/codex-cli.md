@@ -1471,6 +1471,36 @@ to the call except its position between the call and its output (local).
 Opened only from scratchpad copies, and only for table names, row counts
 and key names.
 
+### What survives a delete
+
+A `thread/delete` request, which the TUI and the desktop app both send
+through the app server, removes the thread's rollouts (live and
+archived, plain and compressed), its `session_index.jsonl` lines, its
+rows in `state_5.sqlite`, `thread_history_1.sqlite`, `queue_1.sqlite`,
+`goals_1.sqlite` and the memories databases, and the `logs_2.sqlite`
+rows whose `thread_id` column is the thread
+([Deletion in `collectors/research/codex-cli.md`](../../collectors/research/codex-cli.md#deletion));
+an archive instead moves the rollout into `archived_sessions/`. It
+leaves `history.jsonl`, one line per prompt typed into the TUI with the
+thread id and its time in seconds (unless `history.persistence` is
+`none`, and trimmed oldest-first under `history.max_bytes`), which is
+then the one place such a prompt survives. It also leaves the memories
+files until the next consolidation, the `db-backups/` copies of a
+database Codex found corrupt, and log rows that name the thread only in
+their text. On the macOS round of 2026-10-18 the desktop app's delete
+was a hard delete that also removed the `codex-dev.db`
+`local_thread_catalog` row, while `.codex-global-state.json` kept the
+thread's prompts, description, permissions and activity time and gained
+the deletion marker `codex-writing-block-deleted-thread-v1:<uuid>`,
+and at least one `logs_2.sqlite` row and the empty projectless output
+directory remained ([section 1](#1-evidence)). Hermes Agent, Cline's SDK
+and Pydantic AI's CLAI hold copies that outlive the original rollout
+([section 2](#2-transcript-files)). The analyzer reads the archived
+rollouts as primary, `history.jsonl` and the global state as secondary
+sources (the marker as a `session deleted:` row), and neither the
+memories files nor `db-backups/` (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 6. Timestamps, ids, project, branch, model, subagents
 
 - **Timestamps.** Line `timestamp` and `session_meta.payload.timestamp`:

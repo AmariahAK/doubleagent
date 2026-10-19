@@ -100,6 +100,29 @@ line usually outlives its transcript.
   - Pydantic AI's CLAI 2.0 (its command-line chat client) `/resume` copies them into its `sessions.db` ([`claude_code_sessions.py:41-43`](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/runtime/claude_code_sessions.py#L41-L43); [section 2 of `collectors/research/pydantic-clai.md`](../../collectors/research/pydantic-clai.md#2-per-user-storage)).
 - **Indexed by Zed.** Zed's agent panel can run this agent as an external agent over ACP (the Agent Client Protocol, the JSON-RPC protocol Zed uses to drive another agent); its threads sidebar then lists the session in `sidebar_threads` with `agent_id` `claude-acp` and the ACP session id in `session_id`, while the transcript stays in this agent's own store ([`agent_servers/src/custom.rs:17-19`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_servers/src/custom.rs#L17-L19); [section 2 of `zed.md`](zed.md#2-transcript-stores)). Whether that id equals the session id this agent records was not determined (Zed source review of 2026-10-19).
 
+### What survives a delete
+
+Claude Code deletes transcripts older than `cleanupPeriodDays`
+(default 30) at startup and prunes `.claude/history.jsonl` by the same
+retention (cc:474049, cc:490770); no other delete command is stated.
+The history file is the per-prompt history: one line per prompt with
+its text, its time in epoch milliseconds, the project and the session
+id. It usually outlives its transcript and is then the only record of
+the prompt ([section 5](#5-other-files)); long pasted text is in
+`paste-cache/`, which the collector excludes. Beside it in the config
+home sit the backups of files the agent edited
+(`file-history/<session id>/`), the live-process records of
+`sessions/<pid>.json`, a background job's copy of its parent transcript
+(`jobs/<id>/parent-transcript.jsonl`, not observed) and the project
+paths in `.claude.json`; whether retention prunes them is not stated.
+Hermes Agent's `state.db`, a Cline session made by the SDK's import and
+Pydantic AI's CLAI `sessions.db` hold copies that outlive the original
+file (above). No deletion marker is stated. The analyzer reads
+`history.jsonl` as a secondary source and the session records and
+`.claude.json` for their own rows, not `file-history/`, `paste-cache/`
+or `jobs/`; the other agents' copies are read, if at all, under those
+agents (see [Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record envelope and types
 
 Every line is one JSON object with a `type`. The loader's own type table

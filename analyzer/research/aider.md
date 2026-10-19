@@ -51,6 +51,25 @@ In the git root, else the cwd ([`aider/args.py:271-275`](https://github.com/Aide
 only when `--llm-history-file` is set, [`args.py:295-299`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L295-L299)). One file holds
 every session in that repository, appended.
 
+### What survives a delete
+
+Aider has no delete command: `/clear` and `/reset` empty the in-memory
+chat, leave every file and write no marker
+([`commands.py:439-443`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L439-L443)).
+The three files are project-local, in the git root, so they go only
+with the files themselves or the repository
+([`args.py:270-275`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L270-L275)).
+`.aider.input.history` is the per-prompt history file: one entry per
+prompt with its local time and no session, which survives the chat
+history being deleted, truncated or redirected but not the project
+([section 4](#4-joins)). `.aider.llm.history`, written only when
+`--llm-history-file` is set, is a second copy of every prompt sent to
+the model and every response, each with its own time. No other store of
+past use was found. The analyzer reads `.aider.chat.history.md` as the
+primary store and the input and LLM histories as secondary sources on
+every run (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 `.aider.chat.history.md` (append-only, [`aider/io.py:1117-1136`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L1117-L1136)):

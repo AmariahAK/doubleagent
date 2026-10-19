@@ -151,6 +151,25 @@ Other sources of past use and model state (source review of 2026-10-19):
 - No other mirror, index, backup or archive of chats: the `symf` index
   holds code, not chats, and export writes only where the user saves.
 
+### What survives a delete
+
+"Delete All Chats" (`cody.chat.history.clear`) replaces only the
+signed-in account's entry in `cody-local-chatHistory-v2` with an empty
+chat map, so other accounts' chats stay in the same value, and
+`cody.chat.history.delete` removes one chat key and rewrites the whole
+value; neither writes a tombstone or other marker
+([`ChatsController.ts:505-531`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/ChatsController.ts#L505-L531);
+[section 8](#8-parser-plan)). The one local copy a delete or clear does
+not reach is the JetBrains plugin's legacy, project-local
+`<project>/.idea/cody_history.xml`, which the migration copied into the
+agent store and never deleted; it is also the only record of an
+unpaired message the migration dropped. This document names no
+per-prompt history file, and the review found no other mirror, index,
+backup or archive of chats; export files are wherever the user saved
+them. The analyzer reads the history value and not the legacy XML,
+which the collector does not collect (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 `AccountKeyedChatHistory` = `{ "<endpoint>-<username>": { "chat": { "<chatID>": SerializedChatTranscript } } }`

@@ -289,6 +289,29 @@ media ([`plugins/_whatsapp_integration/whatsapp-bridge/bridge.js:311`](https://g
 and its session directory `tmp/whatsapp/session/` is the linked
 device's login state ([section 7](#7-secrets)).
 
+### What survives a delete
+
+Deleting a chat removes its folder, `usr/chats/<ctxid>/` with
+`chat.json` and `messages/`, and the scheduler tasks bound to it, and
+asks the provider to delete the chat's stored responses; a reset
+rewrites `chat.json` and removes `messages/`
+([`api/chat_remove.py:11-26`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/api/chat_remove.py#L11-L26),
+[`api/chat_reset.py:13-19`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/api/chat_reset.py#L13-L19)).
+The provider call's errors are discarded, so nothing local says whether
+the remote copy went ([section 8](#8-parser-plan)). After a delete the
+time-travel shadow git of `usr`, the memory store, the received files
+(`usr/uploads/`, `usr/email/attachments/` and the WhatsApp media
+directories) and the Telegram plugin's `state.json` remain; `state.json`
+still maps the Telegram user and chat to the old `ctxid` until that
+user writes again, so an entry with no `chat.json` is a deleted
+Telegram chat, the only deletion marker. The scheduler's `tasks.json`
+outlives a reset of a task's chat but not a delete. Whether Agent Zero
+keeps a per-prompt history file is not stated. The analyzer reads none
+of these today: the time-travel git is excluded by the collector, the
+memory store is a pickle left to manual analysis, and the scheduler and
+Telegram rows of [section 8](#8-parser-plan) are proposed, not written
+(see [Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 6. Format versions
 
 No version field. History compression summarises topics into bulks and drops

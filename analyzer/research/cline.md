@@ -214,6 +214,35 @@ are filled from that listing, not stored. What is stored locally:
 
 Not seen on a real install.
 
+### What survives a delete
+
+A delete through the SDK hub removes the session's manifest, its
+messages file and its `sessions.db` row and leaves no marker
+([section 8](#8-parser-plan)). The VS Code extension's delete of a
+legacy task removes its entry from `state/taskHistory.json` and the
+whole task directory, and its delete of a Cloud session asks the
+control plane to delete it and writes nothing locally
+([`apps/vscode/src/sdk/legacy-state-reader.ts:160-177`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/legacy-state-reader.ts#L160-L177),
+[`apps/vscode/src/sdk/sdk-task-history.ts:662-667`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/sdk-task-history.ts#L662-L667)).
+None of them touches the per-prompt history file
+`cache/user_input_history.jsonl`, which keeps the last 20 distinct
+prompts with no session, directory or model and only the last line's
+own time, the hook audit log `logs/hooks.jsonl`, which keeps the tool
+calls, their inputs and outputs and the final reply of sessions whose
+transcripts are gone, or the enterprise upload queue; an uploaded
+prompt is never deleted from the organisation's bucket.
+`session-search.db` keeps a deleted session's turns until the hub next
+runs, at its start and every five minutes
+([section 5](#5-sqlite-stores)), and a Cloud session deleted on the
+server drops out of `globalState.json` at the next listing. A session
+the SDK imported from Claude Code, Codex or OpenCode is a copy of that
+agent's transcript under a new id. The analyzer reads
+`user_input_history.jsonl` and `session-search.db` as secondary
+sources, the upload queue for its own rows, an imported session as any
+SDK session, and
+`logs/hooks.jsonl` and `cloudSessionStatuses` not at all (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 `api_conversation_history.json` is `Anthropic.MessageParam[]` ([`disk.ts:155`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L155)):

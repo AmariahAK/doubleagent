@@ -436,6 +436,33 @@ fixture only. On Windows (**observed**, CLI 1.3.5) the one
 `trustedWorkspaces[]` entry was an absolute Windows path, not a `file://`
 URI; the parser accepts both (issue 92).
 
+### What survives a delete
+
+What Antigravity's own delete of a conversation removes, in the CLI or
+the app, is not stated: no real install has deleted one, and whether
+the app removes the conversation database before the brain directory
+is not observed. Deleting the project directory removes none of it: on
+the macOS CLI 1.3.6 install of 2026-10-15 the conversation database,
+its `brain/<uuid>/` mirror, the `history.jsonl` lines and the summaries
+row stayed in place, and the whole session parsed after the directory
+was gone ([section 1](#1-binary-and-version)). The per-prompt history
+file, `.gemini/antigravity-cli/history.jsonl`, is the CLI's alone: each
+line has the prompt, its time in milliseconds and the workspace, and
+from CLI 1.3.x some lines also the conversation id. The second copies
+are the brain mirror (`transcript_full.jsonl`, `transcript.jsonl` and
+their chunks), which survives what the database survives and is lost
+with the data directory; the summaries database with the app's
+full-text search table; the protobuf summaries files; the title in
+`annotations/<uuid>.pbtxt`; and, on the CLI 1.3.5 install, the CLI's
+summary rows and `cache/conversation_metadata.json` entries for the
+app's conversations ([section 4](#4-summaries-database)). Whether a
+compaction or a rewind rewrites the mirror is not observed, and no
+deletion marker is stated. The analyzer reads `history.jsonl` and the
+brain mirror as secondary sources and each summaries row as its own
+`conversation summary` row, and does not read the annotations, the
+protobuf summaries, the full-text search table or the CLI's cache (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Conversation database
 
 ```sql

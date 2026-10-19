@@ -187,6 +187,31 @@ documented step
 ([`collectors/docs/coverage.md`](../../collectors/docs/coverage.md),
 "Cowork VM disks").
 
+### What survives a delete
+
+What the desktop's own session delete or archive removes is not
+determined from the bundle: a Cowork session's transcript and its
+`audit.jsonl` live in the same session dir, so deleting that directory
+loses both, and whether the app removes either one on its own is not
+known ([section 8](#8-parser-plan)). The session records carry an
+`isArchived` flag and the Code-tab tree names an `archived-sessions.idx`
+index (bundle); what an archive changes on disk is not stated, and no
+deletion marker is stated. The desktop keeps no per-prompt history file
+of its own that this document names; a Code-tab transcript is a Claude
+Code file under `~/.claude/projects/`, with that agent's history file
+and retention ([What survives a delete in `claude-code.md`](claude-code.md#what-survives-a-delete)).
+Within a Cowork session, `audit.jsonl` repeats the transcript's turns
+and survives the loss of the transcript alone, and the session record's
+`initialMessage` keeps the first prompt when both are gone. A chat in
+the merged Chat/Cowork surface that ran as a remote Cowork session left
+only `remote-session-spaces.json` locally, its transcript being
+server-side ([section 1](#1-evidence)). The analyzer reads the audit log
+and the record's `initialMessage` as secondary sources (a Code-tab
+record's prompt only when its transcript was not collected) and the
+records' own `system` rows always; it does not read the logs, the
+LevelDB stores or `archived-sessions.idx` (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 ### Cowork session record (`local_<uuid>.json`, bundle)
