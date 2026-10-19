@@ -20,6 +20,55 @@ long-running `openclaw gateway` server process that owns every session) is
 self-hosted, and the Control UI (its web front end), the TUI and the mobile
 and desktop apps are clients of that Gateway, not copies of its store.
 
+- **Source review (2026-10-19).** [openclaw/openclaw](https://github.com/openclaw/openclaw)
+  at [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)
+  (2026-10-19, version `2026.10.5`,
+  [`package.json:3`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/package.json#L3);
+  shared-state schema 28 and agent schema 31,
+  [`package.json:17-20`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/package.json#L17-L20)),
+  against [`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9),
+  which the rest of this document cites (state 20, agent 24). Source only;
+  no real install of OpenClaw has been surveyed. Per requirement class:
+  - Permission state: found, not parsed. Per-call decisions are rows of
+    `operator_approvals` and standing settings rows of `exec_approvals_config`
+    and `operator_approval_standing_grants` in `state/openclaw.sqlite`, all
+    present at both commits; columns and values in
+    [section 5](#5-sqlite-and-compression).
+  - Model: covered for the transcript (`model_change`, `responseModel`,
+    `session_windows.model`); found and not parsed, the session's own
+    override in `session_nodes.entry_json` (`modelOverride`,
+    `providerOverride`, `modelOverrideSource`), in
+    [section 5](#5-sqlite-and-compression).
+  - Past use beyond the primary store: found, not parsed: the transcript
+    search index, queued and cancelled prompts, the memory index's session
+    chunks and the raw inbound channel messages, in
+    [section 2](#2-transcript-stores).
+  - Sync, relay and origin: sync already covered (public share, backup
+    upload). Relay found and not parsed: every channel session's
+    `session_windows`, `conversations` and `session_nodes.entry_json`
+    `delivery` name the platform, account and peer
+    ([section 4](#4-joins)). Origin: none (no session starts on a vendor
+    server; grepped `origin` and `remote` in `src/config/sessions/`). New
+    since the last review: the experimental PostgreSQL engine, which leaves
+    only an anchor in `openclaw-agent.sqlite` ([section 5](#5-sqlite-and-compression)).
+  - Scratch directories: found; the default workspace, managed worktrees,
+    Gateway clones and sandbox workspaces are under the state directory,
+    so the analyzer's catalog rule classes them; see
+    [section 2 of `collectors/research/openclaw.md`](../../collectors/research/openclaw.md#2-per-user-storage).
+  - Deletion: found: archive (`archivedAt`, `archiveReason`), delete (a
+    `.jsonl.deleted.*` archive unless incognito) and memory forget
+    (`memory_session_tombstones`); no `session deleted:` row is written
+    today ([section 8](#8-parser-plan)).
+  - Version drift: the transcript entry shape, header version 4 and every
+    column the parser reads are unchanged; the file-name patterns moved from
+    `artifacts.ts` to `transcript-file-names.ts` unchanged; agent schemas 25
+    to 31 add navigation and outbox columns the parser does not read
+    ([section 6](#6-format-versions)). The PostgreSQL engine is the one
+    change that leaves the parser with nothing to read.
+  - Bad lines: two gaps in the parser, the legacy `sessions.json` index and
+    JSON lines that are not objects, both dropped without a row
+    ([section 8](#8-parser-plan)).
+
 ## 2. Transcript stores
 
 Home-relative, with `.openclaw` replaceable by `.openclaw-<profile>` or the
@@ -52,6 +101,24 @@ legacy `.clawdbot`:
   ([`openclaw-state-schema.sql:149-171`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-state-schema.sql#L149-L171)) and `channel_ingress_events.payload_json`
   (raw inbound chat messages, [`:1301-1323`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-state-schema.sql#L1301-L1323)); `logs/raw-stream.jsonl`,
   `logs/anthropic-payload.jsonl`, `logs/cache-trace.jsonl` debug traces.
+
+Other records of past use, from the 2026-10-19 review at
+[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)
+(all present at [`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9)
+too; none read by the parser):
+
+| Source | Holds | Survives | Joins on | Plan |
+| --- | --- | --- | --- | --- |
+| `openclaw-agent.sqlite` `session_transcript_fts` (FTS5, the SQLite full-text index; content in its `_content` shadow table) and `session_transcript_fts_rows` ([`openclaw-agent-schema.sql:809-823`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-agent-schema.sql#L809-L823)) | user and assistant text with `session_id`, `message_id`, `role`, `timestamp`, the index behind the `sessions_search` tool ([`docs/concepts/session-search.md:10-13`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/concepts/session-search.md#L10-L13)) | rows are deleted explicitly when a generation moves to cold storage ([`session-cold-storage-worker.ts:519-521`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/session-cold-storage-worker.ts#L519-L521)); `session_transcript_fts_rows` has no foreign key to `session_windows`, so whether a session delete removes them was not determined | `session_id`, entry `id` (`message_id`), text, time | secondary |
+| `openclaw-agent.sqlite` `session_pending_inputs` ([`:848-864`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-agent-schema.sql#L848-L864)) and `session_input_completions` | each accepted prompt as `message_json` with `state` `queued`, `interrupted` or `cancelled` and `accepted_at`, kept "outside the active transcript until its exact turn owns execution" | a cancelled or interrupted prompt never reaches the transcript; the rows cascade away with the session | `session_id`, `session_key`, `consumed_event_id` (the transcript entry once consumed) | primary for rows never consumed, secondary otherwise |
+| `openclaw-agent.sqlite` `memory_index_chunks` with `source` `sessions` ([`:658-670`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-agent-schema.sql#L658-L670); the two sources are `memory` and `sessions`, [`memory-host-sdk/src/host/types.ts:5`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/packages/memory-host-sdk/src/host/types.ts#L5)) | chunks of transcript text with `path`, line range and `updated_at` | a session delete: "retained deleted-session archives can remain eligible for memory search" until `openclaw memory forget` ([`docs/cli/sessions.md:222-233`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/cli/sessions.md#L222-L233)) | `path` and text; no session id column | secondary; the chunk `path` form was not determined |
+| `state/openclaw.sqlite` `channel_ingress_events` ([`openclaw-state-schema.sql:1273-1294`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-state-schema.sql#L1273-L1294)) | each inbound channel message as `payload_json`, with `channel_id`, `account_id`, `status`, `received_at` | pruned by age and count per status (`pending`, `completed`, `failed`), not by session deletion ([`channels/message/ingress-queue.kernel.ts:494-512`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/channels/message/ingress-queue.kernel.ts#L494-L512)) | text and time; the payload shape per channel was not determined | secondary |
+| `openclaw-agent.sqlite` `conversation_deliveries` ([`:225-248`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-agent-schema.sql#L225-L248)) | each outbound send or turn to a platform conversation: `status`, `platform_message_id`, `reply_text`, `reply_timestamp`, `source_session_key` | cascades with the `conversations` row, not with the session | `source_session_key`, time | secondary |
+
+No prompt-history file exists: not found in openclaw/openclaw at
+[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)
+(grepped `history.jsonl`, `input-history`, `prompt-history` and
+`historyFile` in `src/`).
 
 ## 3. Record schema
 
@@ -114,6 +181,35 @@ record's timestamp or `Date.now()`
   `agent:<agentId>:<channel>:<peerKind>:<peerId>`, or `agent:<agentId>:main`-style
   keys ([`routing/session-key.ts:206-261`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/routing/session-key.ts#L206-L261)). This is how a responder ties a
   transcript to a Telegram chat or WhatsApp number.
+- Relay (2026-10-19 review, unchanged between the two commits). A session
+  carried through a messaging platform is recorded three ways besides its
+  key, each naming the platform's copy of the conversation:
+  `session_windows` `channel`, `account_id`, `chat_type`
+  (`direct|group|channel`), `primary_conversation_id` and
+  `hook_external_content_source` (`gmail|webhook`, a session started by a
+  Gmail or webhook hook)
+  ([`openclaw-agent-schema.sql:140-171`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-agent-schema.sql#L140-L171));
+  `conversations` (`conversation_id`, `channel`, `account_id`, `kind`,
+  `peer_id`, `delivery_target`, `thread_id`, `native_channel_id`,
+  `native_direct_user_id`, `label`, `created_at`;
+  [`:192-207`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-agent-schema.sql#L192-L207)),
+  joined to a generation by `session_conversations` (`session_id`,
+  `conversation_id`, `role` `primary|participant|related`, `first_seen_at`,
+  `last_seen_at`;
+  [`:257-267`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-agent-schema.sql#L257-L267));
+  and `session_nodes.entry_json` `delivery`, `{kind:"none"}`,
+  `{kind:"internal"}` or `{kind:"external", route, context, origin}`, whose
+  `origin` holds `provider`, `surface`, `chatType`, `from`, `to`,
+  `accountId`, `threadId`, `nativeChannelId` and `nativeDirectUserId`
+  ([`src/config/sessions/types.ts:60-83`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/types.ts#L60-L83),
+  [`:606`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/types.ts#L606)),
+  with `session_nodes.created_via` `channel` for a session a channel message
+  created ([`openclaw-agent-schema.sql:28`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-agent-schema.sql#L28)).
+  The channel `webchat` is the Control UI itself, not a platform
+  ([`utils/message-channel-constants.ts:3`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/utils/message-channel-constants.ts#L3)).
+  The parser puts `channel`, `account_id` and `chat_type` on the
+  session-start row but writes no `session relayed:` row and does not set
+  `records_relay`.
 - Tool call to result: `toolCall.id` in an assistant message equals
   `toolResult.toolCallId` in a later `message` entry.
 - Tree: `parentId → id`; `transcript_event_identities` indexes it
@@ -178,6 +274,105 @@ Sharing and upload state, all in SQLite:
   deleted when the placement is retired
   ([`src/gateway/worker-environments/placement-store.ts:261-279`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/gateway/worker-environments/placement-store.ts#L261-L279)).
 
+PostgreSQL engine (new since [`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9),
+which has no PostgreSQL source file; experimental at
+[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)).
+`database.engine: "postgres"` in `openclaw.json`, or
+`database.families.agent.engine`, moves the agent databases, transcripts
+included, to a PostgreSQL server named by `database.postgres.connection`
+(a DSN string or a SecretRef)
+([`docs/reference/database-engines.md:68-73`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L68-L73),
+[`:96-116`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L96-L116)).
+The local `openclaw-agent.sqlite` then is "a small SQLite anchor" holding one
+table, `openclaw_engine_anchor (store_id, engine, schema)` with `engine`
+`postgres` and `schema` the server namespace
+`<schemaPrefix>_<store>_<uuid-prefix>`
+([`:591-595`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L591-L595);
+[`src/infra/database-engine/open.ts:149`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/database-engine/open.ts#L149)).
+The transcript is then on the database server, wherever the operator runs
+it, and no local file holds it; transcript payloads are plain JSON there,
+never zstd. The parser opens the anchor, finds none of its tables and
+yields nothing, with no row saying where the store went.
+
+Permission records (2026-10-19 review; tables unchanged between the two
+commits, line numbers at [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)),
+all in `state/openclaw.sqlite`:
+
+- `operator_approvals`, one row per approval request the Gateway raised
+  for an `exec` (shell) call, a plugin action or a system agent: `kind`
+  (`exec|plugin|system-agent`), `status`
+  (`pending|allowed|denied|expired|cancelled`), `decision`
+  (`allow-once|allow-always|deny`), `terminal_reason`
+  (`user|timeout|malformed-verdict|no-route|run-aborted|gateway-restart|storage-corrupt`),
+  `resolver_kind` (`device|channel|runtime|system`: the paired device, the
+  chat channel, the runtime's automatic reviewer or the system), `resolver_id`,
+  `presentation_json` (what the reviewer was shown),
+  `requested_by_device_id`, `source_agent_id`, `source_session_key`,
+  `source_session_id`, `source_run_id`, `source_tool_call_id`,
+  `source_tool_name`, `created_at_ms`, `resolved_at_ms`, `consumed_at_ms`
+  ([`openclaw-state-schema.sql:370-475`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-state-schema.sql#L370-L475)).
+  `source_session_id` and `source_tool_call_id` join it to the transcript's
+  `toolCall.id`.
+- `exec_approvals_config`, the standing exec policy, migrated from the
+  legacy `~/.openclaw/exec-approvals.json`
+  ([`infra/exec-approvals-config.ts:95-101`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/exec-approvals-config.ts#L95-L101)):
+  `raw_json` (the whole file: `defaults` and per-agent `agents.<id>` with
+  `security` `deny|allowlist|full`, `ask` `off|on-miss|always`,
+  `askFallback`, `autoAllowSkills`, an `allowlist` and `mcpTools` grants,
+  and `socket.token`, a credential), plus `default_security`,
+  `default_ask`, `default_ask_fallback`, `auto_allow_skills`,
+  `allowlist_count`, `updated_at_ms`
+  ([`openclaw-state-schema.sql:356-368`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-state-schema.sql#L356-L368);
+  [`infra/exec-approvals-core.ts:12-15`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/exec-approvals-core.ts#L12-L15),
+  [`:226-234`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/exec-approvals-core.ts#L226-L234)).
+  The exec mode `auto` is `allowlist` with `on-miss` and the automatic
+  reviewer on ([`:96-115`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/exec-approvals-core.ts#L96-L115)).
+- `operator_approval_standing_grants`: an `allow-always` decision on a
+  scheduled (cron) job mints a grant, `grant_id`, `minted_by_approval_id`,
+  `agent_id`, `cron_job_id`, `operation_binding`, `created_at_ms`,
+  `expires_at_ms`, `revoked_at_ms`, `last_used_at_ms`, `use_count`
+  ([`:512-529`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-state-schema.sql#L512-L529)).
+- `channel_pairing_allow_entries` (`channel_key`, `account_id`, `entry`,
+  `updated_at`): the chat senders allowed to talk to the agent per channel
+  account ([`:794-801`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-state-schema.sql#L794-L801)).
+- `audit_events` carries `tool_call_id`, `tool_name`, `action`, `status`,
+  `reason_code` and `actor_type`/`actor_id` per action
+  ([`:100-132`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-state-schema.sql#L100-L132));
+  its `kind` and `action` values were not enumerated.
+- Per session, in `session_nodes.entry_json`: `elevatedLevel`, `execHost`,
+  `execNode`, `execCwd`, `toolOverrides` (`mcpServers` on or off,
+  `mcpToolsDeny`) and `sendPolicy` (`allow|deny`)
+  ([`src/config/sessions/types.ts:481-500`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/types.ts#L481-L500),
+  [`:532`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/types.ts#L532)).
+
+Model override (2026-10-19 review): `session_nodes.entry_json` keeps the
+session's chosen model apart from the transcript, `providerOverride`,
+`modelOverride`, `modelOverrideSource` (`auto` for a temporary runtime
+fallback, `user` for `/model` or `sessions.patch`, `default`), and
+`modelOverrideFallbackOriginProvider`/`Model` (the model the user had
+picked when a fallback replaced it)
+([`src/config/sessions/types.ts:502-516`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/types.ts#L502-L516)).
+The assistant message's `responseModel` beside `model` is the resolved id
+beside the request, as before
+([`packages/llm-core/src/types.ts:535`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/packages/llm-core/src/types.ts#L535)).
+
+Deletion (2026-10-19 review): `openclaw sessions archive` keeps the
+transcript and sets `archivedAt`, `archivedBy` and `archiveReason`
+(`manual|active-session-cap|age-retention|stale-dashboard|restart-recovery`)
+in `entry_json`, mirrored in `session_nodes.archived_at`
+([`docs/cli/sessions.md:181-196`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/cli/sessions.md#L181-L196);
+[`src/config/sessions/types.ts:300-305`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/types.ts#L300-L305);
+[`gateway-protocol/src/schema/sessions-row.ts:48-54`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/packages/gateway-protocol/src/schema/sessions-row.ts#L48-L54)).
+`openclaw sessions delete` removes the session row, its generations and
+bindings and keeps a `.jsonl.deleted.<ts>` archive (with its
+`session_transcript_archives` blob, `reason` `deleted`) unless the session
+was incognito; the memory index keeps its chunks until `openclaw memory
+forget` ([`docs/cli/sessions.md:222-233`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/cli/sessions.md#L222-L233)),
+which writes one `memory_session_tombstones` row (`session_id`, `agent_id`,
+`reason`, default `forgotten`, `created_at`) per forgotten session
+([`openclaw-agent-schema.sql:699-704`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-agent-schema.sql#L699-L704);
+[`extensions/memory-core/src/memory-session-tombstones.ts:89-106`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/extensions/memory-core/src/memory-session-tombstones.ts#L89-L106)).
+
 ## 6. Format versions
 
 Header `version`: current 4, minimum readable 3; versions 1-2 need doctor
@@ -186,6 +381,26 @@ import and may lack `id`/`parentId`; the old `hookMessage` role becomes
 Database schema version is in `schema_meta.schema_version`
 ([`openclaw-agent-schema.sql:6-14`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-agent-schema.sql#L6-L14)). Test fixtures for schema v1, v14, v15, v19,
 v21 and v22 are in `test/fixtures/sqlite/`.
+
+At [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)
+(2026-10-19) the agent schema is 31; the history lists 25 to 31 as
+unreleased changes to session-writer validation, transcript navigation
+columns, the context-engine outbox, index sizes, Brotli-compressed
+trajectory payloads and memory-index revisions
+([`docs/reference/database-schemas/agent-schema-history.md:43-50`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-schemas/agent-schema-history.md#L43-L50)).
+`transcript_events` gained `navigation_*` and `message_role` columns but keeps
+`session_id`, `seq`, `event_json`, `event_zstd`, `event_utf8_bytes` and
+`created_at` with the same zstd rule
+([`openclaw-agent-schema.sql:437-482`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-agent-schema.sql#L437-L482));
+the archive tables and `session_windows` keep every column the parser
+reads; the header version is still 4
+([`config/sessions/version.ts:2`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/version.ts#L2)).
+The archive and checkpoint file-name patterns moved, unchanged, to
+[`config/sessions/transcript-file-names.ts:12-16`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/transcript-file-names.ts#L12-L16);
+the `exec` tool name cited in [section 8](#8-parser-plan) now comes from
+[`agents/lazy-exec-tool.ts:63`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/agents/lazy-exec-tool.ts#L63),
+`core-tool-factory-descriptors.ts` being gone. The one change that defeats
+the parser is the PostgreSQL engine ([section 5](#5-sqlite-and-compression)).
 
 ## 7. Secrets
 
@@ -254,8 +469,75 @@ decision; `bashExecution.cancelled` stays on the bash `tool_result` row. The
 `exec_approvals_config`, `operator_approvals` and `audit_events` tables of
 `state/openclaw.sqlite`
 ([`collectors/research/openclaw.md`](../../collectors/research/openclaw.md))
-hold approvals, but their columns are not recorded here, so they are not
-read.
+hold approvals; their columns were recorded on 2026-10-19
+([section 5](#5-sqlite-and-compression)) and the parser does not read them
+yet (see the class lines below).
+
+**Requirement classes (source review of 2026-10-19 at
+[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)).**
+Every proposal here rests on source alone; [AGENTS.md](../../AGENTS.md#real-install-rounds) requires a per-step
+real-install round before the parser changes, and OpenClaw has none.
+
+- Permission: proposed, one `permission decision: <decision or status>
+  kind=<kind> resolver=<resolver_kind> reason=<terminal_reason>` row per
+  `operator_approvals` row at `resolved_at_ms` (else `created_at_ms`), with
+  `session_id` `source_session_id`, `tool_name` `source_tool_name` and
+  `tool_use_id` `source_tool_call_id`, so it sits beside the call it
+  governed; one `permission setting: <key>=<value> (from
+  state/openclaw.sqlite exec_approvals_config, updated_at_ms)` row per
+  default and per-agent `security`, `ask`, `askFallback`,
+  `autoAllowSkills` and allowlist entry of `raw_json` (never `socket.token`),
+  one per `operator_approval_standing_grants` and
+  `channel_pairing_allow_entries` row, and one per session-level
+  `elevatedLevel`, `execHost`, `toolOverrides` and `sendPolicy` from
+  `entry_json`. Not parsed today.
+- Model: covered for `session_windows.model`, `model_change` and
+  `responseModel`; proposed, one `model: <old> -> <modelOverride>
+  provider=<providerOverride> source=<modelOverrideSource>` row from
+  `entry_json` at the node's `updated_at`, which records a `/model` the
+  user typed even when no turn followed. Not parsed today.
+- Past use: covered for the archive blobs and their files, checkpoints and
+  pre-doctor copies; proposed, `session_pending_inputs` as a source of
+  `user` rows (primary for `queued`, `interrupted` or `cancelled` rows with
+  no `consumed_event_id`, secondary otherwise), and
+  `session_transcript_fts`, `channel_ingress_events` and
+  `conversation_deliveries` as secondary sources
+  ([section 2](#2-transcript-stores)). `memory_index_chunks` waits until
+  the form of its `path` for a session is known.
+- Sync: covered (`session synced: public share`, `backup uploaded:`).
+  Relay: proposed, one `session relayed: <channel> account <account_id>
+  <chat_type> peer <peer_id> thread <thread_id> (from openclaw-agent.sqlite
+  conversations, created_at)` row per `session_conversations` link (else
+  from `session_windows.channel` or `entry_json.delivery.origin`) for any
+  channel other than `webchat`, and `records_relay` set; a
+  `hook_external_content_source` of `gmail` is an email relay of the same
+  kind. Origin: the agent records none (no session is created on a vendor
+  server; grepped `origin` and `remote` in `src/config/sessions/`). A
+  PostgreSQL anchor ([section 5](#5-sqlite-and-compression)) should yield
+  one whole-file row, `parser: agent database is a PostgreSQL anchor
+  (store <store_id>, schema <schema>): transcripts are on the database
+  server`, so the gap is visible.
+- Scratch directories: the default workspace (`.openclaw/workspace`,
+  `workspace-<agentId>`), `worktrees/`, Gateway clones under `projects/`
+  and `sandboxes/` are under the state directory, which the analyzer's
+  catalog rule already classes as scratch; proposed, a `scratch directory:`
+  row per `state/openclaw.sqlite` `projects` row whose `source` is `cloned`
+  and per `worktrees` row, so a state directory moved by
+  `OPENCLAW_STATE_DIR` is classed too.
+- Deletion: proposed, `session deleted: <session_id> (from
+  openclaw-agent.sqlite session_transcript_archives reason deleted,
+  created_at)` for each deleted archive, `session archived: <archiveReason>
+  by <archivedBy>` from `entry_json` at `archivedAt`, and `session
+  forgotten from memory: <session_id> reason=<reason>` per
+  `memory_session_tombstones` row. Today a deleted archive shows only as an
+  `archive=deleted.<ts>` session-start row.
+- Version drift: none that changes what the parser reads, apart from the
+  PostgreSQL engine ([section 6](#6-format-versions)).
+- Bad lines: two gaps. `_legacy_key` returns an empty key when
+  `sessions.json` does not parse, with no row; it should yield one
+  `parser:` row for the file. `_iter_lines` skips a line that is valid JSON
+  but not an object without a row; it should be an `unparseable record`
+  row like any other bad line.
 
 **Primary and secondary sources** (issue 122: every source is parsed on
 every run, and a row of a secondary source is dropped when a primary

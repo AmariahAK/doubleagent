@@ -10,6 +10,33 @@ agent with a CLI, a WebUI and a gateway that connects chat channels
 (Telegram, Discord, Feishu, WhatsApp, Matrix, QQ, WeChat and others under
 `nanobot/channels/`). Transcript schema is in [`analyzer/research/nanobot.md`](../../analyzer/research/nanobot.md).
 
+- **Source review (2026-10-19)** at
+  [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9)
+  (2026-10-19, still `0.3.5` in `pyproject.toml`), against the
+  [`acdae3d`](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f)
+  above; source only. Per class, with the detail in
+  [section 2](#2-per-user-storage), [section 3](#3-credentials) and
+  [section 6](#6-where-the-project-path-is-recorded), and the parser side
+  in [section 1 of `analyzer/research/nanobot.md`](../../analyzer/research/nanobot.md#1-source):
+  - Permission state: found; `config.json` `tools` and `allowFrom`
+    settings, `pairing.json` (shape now traced) and the per-session
+    `workspace_scope`; all under `.nanobot*`, so collected.
+  - Model: covered (preset in session metadata; `llm_usage.sqlite3`).
+  - Past use: drift. Sessions moved into
+    `sessions/<workspace-id>/sessions.sqlite3`; also new
+    `jsonl-backup/`, `.webui_session_index.json`, and workspace
+    `cron/runs/` and `triggers/`. All under `.nanobot*` when the
+    workspace is the default.
+  - Sync, relay and origin: relay only, recorded in the session key and
+    `metadata.last_channel`; nothing new for the collector.
+  - Scratch directories: the default workspace and the Docker
+    `api-workspace` are under `.nanobot`, collected; a `--home` instance
+    root outside `.nanobot*` is not.
+  - Deletion: covered in the analyzer document.
+  - Version drift: found; SQLite session store, a `--home` option for
+    the instance root, `.workspace-migration.lock` in the sessions root.
+  - Bad lines: not a collector concern.
+
 ## 2. Per-user storage
 
 All paths derive from `Path.home()`, so the layout is `~/.nanobot` on Linux and
@@ -66,6 +93,57 @@ data directory and removed ([`session/manager.py:806-855`](https://github.com/HK
 Persistence: systemd user unit `~/.config/systemd/user/nanobot-gateway.service`
 or `~/Library/LaunchAgents/ai.nanobot.gateway.plist` ([`gateway/service.py:25`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/gateway/service.py#L25),[`86-87`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/gateway/service.py#L86-L87),[`135-136`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/gateway/service.py#L135-L136),[`227-236`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/gateway/service.py#L227-L236)). No Windows service.
 
+Changes at the 2026-10-19 commit:
+
+- A global `--home <dir>` option sets the instance root; without it the
+  root is `~/.nanobot`, and `history/cli_history`, the legacy sessions
+  directory and the default workspace now follow the chosen root instead
+  of staying under `~/.nanobot`
+  ([`config/home.py:19-28`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/config/home.py#L19-L28);
+  [`config/paths.py:52-72`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/config/paths.py#L52-L72);
+  [`cli/commands.py:115`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/cli/commands.py#L115)).
+  The documented form is `--home ~/.nanobot-<name>`
+  ([`docs/multiple-instances.md:3`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/docs/multiple-instances.md#L3),[`12`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/docs/multiple-instances.md#L12)),
+  which the `.nanobot*` entry covers; any other directory is missed.
+- `sessions/<workspace-id>/sessions.sqlite3` with `-wal` and `-shm`
+  sidecars is the session store (mode 0600); the namespace's `*.jsonl`
+  files are imported once and left in place, unchanged afterwards
+  ([`session/sqlite_store.py:95-96`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/session/sqlite_store.py#L95-L96),[`157-200`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/session/sqlite_store.py#L157-L200)).
+  Beside it: `jsonl-backup/` (the workspace's older `sessions/*.jsonl`,
+  moved out of the workspace,
+  [`session/jsonl_migration.py:32`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/session/jsonl_migration.py#L32),[`235-291`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/session/jsonl_migration.py#L235-L291)),
+  `.webui_session_index.json` (a WebUI sidebar cache,
+  [`webui/session_list_index.py:39-40`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/session_list_index.py#L39-L40),[`172-173`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/session_list_index.py#L172-L173)),
+  and `.workspace-migration.lock` in the `sessions/` root
+  ([`session/location.py:45-48`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/session/location.py#L45-L48)).
+  All are under the `.nanobot*` entry and collected; none is large by
+  design.
+- In the workspace: `cron/runs/<run id>.json` and `cron/action.jsonl`
+  ([`cron/service.py:207-208`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/cron/service.py#L207-L208)),
+  and `triggers/` with `triggers.json`, `inbox/`, `processing/`,
+  `failed/` and `runs/`
+  ([`triggers/local_store.py:45-50`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_store.py#L45-L50)).
+  Run records hold the prompt and the reply of each scheduled or
+  triggered run. Collected with the default workspace; a workspace
+  elsewhere is a project path ([section 6](#6-where-the-project-path-is-recorded)).
+- Docker: the compose file bind-mounts the host's `~/.nanobot` at
+  `/home/nanobot/.nanobot` rather than using a named volume, and the API
+  service's workspace is `~/.nanobot/api-workspace`
+  ([`docker-compose.yml:13-14`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/docker-compose.yml#L13-L14),[`48-49`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/docker-compose.yml#L48-L49)),
+  so the home entry collects both and no `DOCKER_VOLUMES` line is needed.
+
+Scratch directories: the default workspace (`~/.nanobot/workspace`, or
+`<home>/workspace` under `--home`,
+[`config/home.py:24-28`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/config/home.py#L24-L28)),
+the compose file's `api-workspace`, the MCP preset directories `mcp/<name>/`
+and `cli-apps/` are the agent's own working directories, not user
+projects. All are under `.nanobot*`, so the catalog collects them and the
+analyzer's catalog rule classes them as scratch directories. No temp root
+outside the home holds session state: the only `tempfile` directories are
+transient staging for skill deletes and marketplace installs and an SSH
+control-socket directory (`nb-ssh-*`,
+[`webui/remote_mux.py:29`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/remote_mux.py#L29)).
+
 ## 3. Credentials
 
 - `config.json`: `providers.<name>.apiKey` ([`config/schema.py:194-202`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/schema.py#L194-L202)), the API
@@ -89,6 +167,13 @@ or `~/Library/LaunchAgents/ai.nanobot.gateway.plist` ([`gateway/service.py:25`](
   Evidence in
   [section 7 of `analyzer/research/nanobot.md`](../../analyzer/research/nanobot.md#7-secrets).
 - No keychain use found.
+- `pairing.json` at the 2026-10-19 commit is `{"approved": {<channel>:
+  [<sender_id>...]}, "pending": {<code>: {channel, sender_id,
+  created_at, expires_at, delivery_status}}}`, the code an
+  `ABCD-EFGH` value that lives ten minutes and only lets an operator
+  approve that sender
+  ([`pairing/store.py:27-33`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L27-L33),[`73-85`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L73-L85),[`130-138`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L130-L138)).
+  It is permission evidence, not a credential, and stays unflagged.
 
 ## 4. Exclude
 
@@ -109,6 +194,14 @@ one ([`agent/context.py:194-202`](https://github.com/HKUDS/nanobot/blob/acdae3d0
   ([`session/manager.py:606-607`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L606-L607)).
 - `config.json` `agents.defaults.workspace` ([`config/schema.py:117-120`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/schema.py#L117-L120),[`188-191`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/schema.py#L188-L191),[`428`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/schema.py#L428)).
 - `webui/workspace-state.json` (WebUI workspace list; keys not traced).
+- Per session, `metadata.workspace_scope.project_path` (with
+  `access_mode` `restricted` or `full`): the project folder a WebUI chat
+  was pointed at, which can differ from the workspace in `.workspace`
+  ([`security/workspace_access.py:80-84`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/security/workspace_access.py#L80-L84);
+  [`webui/inbound_commands.py:694`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/inbound_commands.py#L694)).
+  At the 2026-10-19 commit it sits in the `metadata` column of
+  `sessions.sqlite3`, so `discover_projects` cannot read it; the
+  analyzer can.
 
 ## 7. Confidence
 

@@ -18,6 +18,55 @@ repositories decide where the data lands on the host and were also read:
 [`LICENSE:1`](https://github.com/agent0ai/a0-connector/blob/76e834f20e50f6e47954c89ee39dd4c5b50d81b7/LICENSE#L1)). All claims are from source or the in-repo docs. Nothing
 was installed or run.
 
+- **Source review (2026-10-19).** agent0ai/agent-zero at
+  [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a)
+  against
+  [`e3051fb`](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec)
+  above; a0-install unchanged, HEAD is still
+  [`c89b402`](https://github.com/agent0ai/a0-install/commit/c89b4026e9f16f53389e75537783411fefdd53f1);
+  a0-launcher at
+  [`a69403d`](https://github.com/agent0ai/a0-launcher/commit/a69403d9cc92009addb06fedb5585e60e09a3d2c)
+  against
+  [`b0333d8`](https://github.com/agent0ai/a0-launcher/commit/b0333d80b5abf38d8481f55b667b0cf23d805bbb);
+  a0-connector at
+  [`3741c88`](https://github.com/agent0ai/a0-connector/commit/3741c8809f1f99b4efee2ed1a24234a98bf896d4)
+  against
+  [`76e834f`](https://github.com/agent0ai/a0-connector/commit/76e834f20e50f6e47954c89ee39dd4c5b50d81b7).
+  Read only. One line per requirement class; the
+  record-level detail is in
+  [`analyzer/research/agent-zero.md`](../../analyzer/research/agent-zero.md#1-source).
+  - Permission state: found. Tool policy files
+    `plugins/_tool_access/config.json` under agent profiles and
+    projects, plugin switches `.toggle-0` and `.toggle-1`, and the
+    Orchestrator plugin's bypass defaults, all inside `usr/` and so
+    already collected ([section 2](#2-per-user-storage)).
+  - Model: per-chat keys in `chat.json` and
+    `usr/plugins/_model_config/presets.yaml`, already collected.
+  - Past use beyond `chat.json`: the scheduler list (now `tasks.json`
+    or `tasks.yaml`), Telegram's chat map and the memory store are
+    collected; the time-travel shadow git, which records the chat id of
+    every snapshot, is excluded ([section 4](#4-exclusions)).
+  - Sync, relay and origin: no new channel at HEAD; the connector's
+    `.env` points at a chat on another instance, already collected and
+    flagged.
+  - Scratch directories: found; `usr/workdir` is collected, the
+    connector's screenshot directory under the system temp directory is
+    not ([section 2](#2-per-user-storage)).
+  - Deletion: chat delete removes the chat folder and its scheduler
+    tasks, reset keeps the folder
+    ([`api/chat_remove.py:11-26`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/api/chat_remove.py#L11-L26),
+    [`api/chat_reset.py:13-19`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/api/chat_reset.py#L13-L19)).
+  - Version drift: the `usr/` layout is unchanged; the connector's
+    path constants moved two lines (`_ENV_DIR` is now
+    [`config.py:10-12`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/config.py#L10-L12));
+    the launcher's Windows build can now run its own WSL distribution
+    under `AppData/Local/agent-zero/wsl/Ubuntu`
+    ([section 2](#2-per-user-storage)). New credential directory:
+    the WhatsApp bridge's `tmp/whatsapp/session/`, which the cited
+    commit already had and which is collected unflagged
+    ([section 3](#3-credentials)).
+  - Bad lines: not a collector class; nothing to add.
+
 ## 2. Per-user storage
 
 **Agent Zero itself never resolves a home directory.** Every path is relative
@@ -88,6 +137,72 @@ image of an un-upgraded install may hold them in the old places.
   ([`package.json:51`](https://github.com/agent0ai/a0-launcher/blob/b0333d80b5abf38d8481f55b667b0cf23d805bbb/package.json#L51)), so `userData` is the Electron default directory of
   that name; it holds `docker_manager/state.json` and `docker_manager/cache`
   ([`state_store.js:13-23`](https://github.com/agent0ai/a0-launcher/blob/b0333d80b5abf38d8481f55b667b0cf23d805bbb/shell/docker_manager/state_store.js#L13-L23)).
+  The launcher's Windows installer treats `%APPDATA%\a0-launcher`
+  (the package name, not the product name) as the launcher's settings
+  directory and keeps it across a reinstall, renaming it to
+  `a0-launcher-installer-backup` while it runs
+  ([`packaging/platforms/windows/installer.nsh:55-62`](https://github.com/agent0ai/a0-launcher/blob/a69403d9cc92009addb06fedb5585e60e09a3d2c/packaging/platforms/windows/installer.nsh#L55-L62));
+  which of the two names Electron uses at run time was not resolved
+  from source (2026-10-19 review).
+- A0 Launcher on Windows, new since the launcher commit first cited:
+  on a host without Docker Desktop the launcher's setup can import its
+  own WSL distribution named `Ubuntu`, with its own Docker engine, into
+  `AppData/Local/agent-zero/wsl/Ubuntu`
+  ([`shell/docker_adapter/impl/WindowsWslRuntime.mjs:23`](https://github.com/agent0ai/a0-launcher/blob/a69403d9cc92009addb06fedb5585e60e09a3d2c/shell/docker_adapter/impl/WindowsWslRuntime.mjs#L23),[`31`](https://github.com/agent0ai/a0-launcher/blob/a69403d9cc92009addb06fedb5585e60e09a3d2c/shell/docker_adapter/impl/WindowsWslRuntime.mjs#L31),[`353`](https://github.com/agent0ai/a0-launcher/blob/a69403d9cc92009addb06fedb5585e60e09a3d2c/shell/docker_adapter/impl/WindowsWslRuntime.mjs#L353)),
+  whose virtual disk holds the Docker engine and the container data
+  and is kept on uninstall
+  ([`docs/runtime-troubleshooting.md:38-43`](https://github.com/agent0ai/a0-launcher/blob/a69403d9cc92009addb06fedb5585e60e09a3d2c/docs/runtime-troubleshooting.md#L38-L43)).
+  A named volume of that engine is inside the virtual disk, out of
+  reach of the collector's volume walk; no catalog line names the
+  directory.
+- A0 CLI connector, computer use: each screen capture the connector
+  takes for the agent is written to
+  `<system temp>/_a0_connector/computer_use/<ctxid>/<uuid>.png` and
+  older captures are deleted as new ones arrive
+  ([`computer_use.py:242-247`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/computer_use.py#L242-L247),[`1329-1340`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/computer_use.py#L1329-L1340),[`1348-1356`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/computer_use.py#L1348-L1356)),
+  overridable with `A0_COMPUTER_USE_HOST_ARTIFACT_ROOT`
+  ([`33`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/computer_use.py#L33)).
+  The system temp directory is `/tmp` or `$TMPDIR` on Linux and macOS,
+  outside the home, and `AppData/Local/Temp` on Windows, inside it; no
+  catalog line names it.
+
+More files under `usr/` and `tmp/`, from the 2026-10-19 review at
+[`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a),
+all collected by the existing entries:
+
+- `scheduler/tasks.yaml`, used instead of `tasks.json` when only the
+  YAML file exists
+  ([`helpers/task_scheduler.py:512-515`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L512-L515)).
+- Tool policies, the per-profile and per-project permission lists:
+  `usr/agents/<profile>/plugins/_tool_access/config.json`,
+  `usr/projects/<name>/.a0proj/plugins/_tool_access/config.json` and
+  `.a0proj/agents/<profile>/plugins/_tool_access/config.json`
+  ([`plugins/_tool_access/README.md:4-9`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_tool_access/README.md#L4-L9)).
+- Plugin switches: an empty `.toggle-0` (disabled) or `.toggle-1`
+  (enabled) in a plugin's directory under `usr/plugins/`
+  ([`helpers/plugins.py:60-61`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/plugins.py#L60-L61)).
+- `plugins/_model_config/presets.yaml`, the model presets a chat can
+  select
+  ([`plugins/_model_config/helpers/model_config.py:10`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_model_config/helpers/model_config.py#L10),[`99-101`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_model_config/helpers/model_config.py#L99-L101)).
+- `email/state.json` and `email/attachments/` of the email plugin
+  ([`plugins/_email_integration/helpers/handler.py:38-39`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_email_integration/helpers/handler.py#L38-L39)),
+  `whatsapp/media/` and, under the install's `tmp/`, `whatsapp/media/`
+  and `whatsapp/session/` of the WhatsApp bridge
+  ([`plugins/_whatsapp_integration/helpers/handler.py:31`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/helpers/handler.py#L31),
+  [`plugins/_whatsapp_integration/helpers/storage_paths.py:6-11`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/helpers/storage_paths.py#L6-L11)).
+  `tmp/` is beside `usr/` only in a native run or a whole-`/a0`
+  mount; the installer, the launcher and the README volume mount
+  `usr` alone, so `tmp/` stays inside the container.
+
+**Scratch directories.** `usr/workdir` is the working directory of a
+chat with no project
+([`helpers/settings.py:604`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/settings.py#L604)),
+and `usr/projects/<name>` directories, clones included, belong to the
+agent's own tree; both are collected under the `agent-zero` entries and
+the volumes. Chats name them by container path (`/a0/usr/...`), which
+the analyzer's catalog rule cannot match to a home path. The
+connector's screenshot directory above is the one scratch location
+outside `usr/`, and it is not collected.
 
 ## 3. Credentials
 
@@ -128,6 +243,19 @@ image of an un-upgraded install may hold them in the old places.
   passwords encrypted with Electron `safeStorage`, i.e. the OS keychain
   ([`state_store.js:683-688`](https://github.com/agent0ai/a0-launcher/blob/b0333d80b5abf38d8481f55b667b0cf23d805bbb/shell/docker_manager/state_store.js#L683-L688),[`753-761`](https://github.com/agent0ai/a0-launcher/blob/b0333d80b5abf38d8481f55b667b0cf23d805bbb/shell/docker_manager/state_store.js#L753-L761)).
 
+- WhatsApp (2026-10-19 review): the bridge, a Node.js process that
+  signs in as a linked WhatsApp device through the Baileys library,
+  keeps that device's login state in `tmp/whatsapp/session/` with
+  Baileys' `useMultiFileAuthState`
+  ([`plugins/_whatsapp_integration/helpers/storage_paths.py:6-7`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/helpers/storage_paths.py#L6-L7),
+  [`whatsapp-bridge/bridge.js:46`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/whatsapp-bridge/bridge.js#L46),[`108`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/whatsapp-bridge/bridge.js#L108)).
+  Whoever holds those files can act as the account's linked device; the
+  directory is collected where `tmp/` is on the host and no secret glob
+  flags it.
+- The connector's `.env` also holds `AGENT_ZERO_COMPUTER_USE_RESTORE_TOKEN`
+  ([`config.py:22`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/config.py#L22)),
+  already covered by the `.agent-zero/.env` glob.
+
 ## 4. Exclusions
 
 `tmp/memory/embeddings` is an embedding cache ([`memory.py:145-147`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_memory/helpers/memory.py#L145-L147)),
@@ -136,6 +264,15 @@ image of an un-upgraded install may hold them in the old places.
 For native clones: `.venv`, `.conda`, `.git`. Python environments inside
 `usr/workdir/*/.venv` occur (the code references one). The connector's and
 launcher's Chromium directories are caches and cookie stores.
+
+The `usr/.time_travel` exclusion drops more than file contents: every
+snapshot commit of the shadow git ends with base64 JSON naming the
+chat (`context_id`), the project, the trigger and the time
+([`plugins/_time_travel/helpers/time_travel.py:1192-1194`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_time_travel/helpers/time_travel.py#L1192-L1194),[`1206-1220`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_time_travel/helpers/time_travel.py#L1206-L1220)),
+so it is a record of which chat changed which files that outlives a
+chat delete (2026-10-19 review). Its size was not measured. The
+launcher's WSL directory on Windows is a whole Linux disk and is not a
+candidate for collection by default.
 
 ## 5. Project-local files
 
@@ -149,8 +286,25 @@ host's current directory ([`acp.py:314`](https://github.com/agent0ai/a0-connecto
 ## 6. Where the project path is recorded
 
 `usr/chats/<ctxid>/chat.json` key `data.project` holds the project name
-([`projects.py:27`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/projects.py#L27),[`457`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/projects.py#L457)); the path is `usr/projects/<name>`. No host
-repository paths are recorded, so there is nothing for `discover_projects`.
+([`projects.py:27`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/projects.py#L27),[`457`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/projects.py#L457)); the path is `usr/projects/<name>`.
+
+Correction from the 2026-10-19 review: a host repository path is
+recorded. A chat opened by an editor through ACP, the Agent Client
+Protocol that the connector's `a0 acp` command serves, stores the
+editor's workspace on the user's host as `data.acp_cwd` and any extra
+folders as `data.acp_additional_directories` (a JSON list) in its
+`chat.json`
+([`plugins/_a0_acp/api/session.py:13-14`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_a0_acp/api/session.py#L13-L14),[`131-141`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_a0_acp/api/session.py#L131-L141)).
+The keys were present at the commit first cited and were missed. The
+`chat.json` is on the host only where `usr/` is (installer, launcher
+host-directory mode, a native run) or in a collected volume, and the
+path names a directory on whichever host ran the editor, which need not
+be the host running Agent Zero. A plain A0 CLI chat records no host
+path: the connector's working directory stays on the host side
+([`a0-connector session.py:131`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/session.py#L131));
+no key for it was found in agent-zero's `plugins/_a0_connector` at
+[`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a)
+(grepped for `workspace` and `cwd`).
 
 ## 7. Confidence
 

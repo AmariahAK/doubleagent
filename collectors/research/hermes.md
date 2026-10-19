@@ -11,6 +11,24 @@ All claims are from source; the documented home layout in
 [`website/docs/user-guide/configuration.md:22-31`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/website/docs/user-guide/configuration.md#L22-L31)
 agrees with it. Nothing was installed or run.
 
+- **Source review (2026-10-19)** at
+  [`86fa9e6ca1de7ee71132d2be0103f3e37d1fa872`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872)
+  (HEAD of 2026-10-19), against the
+  [`8b66a51036c1e20920a17cdd049fdf55c968d683`](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683)
+  (2026-10-04) cited above. Nothing installed or run; no real install has
+  been observed. Collector-side findings: the prompt history
+  `.hermes_history` and the cron run archive `cron/output/` are under the
+  home and collected ([section 2](#2-per-user-storage)); the pairing
+  files' shape is known and they are the gateway's standing grants
+  ([section 3](#3-credentials)); the scratch directories are
+  `cache/scratch/` (collected) and `sandboxes/` (excluded) under the home
+  and `.worktrees/<name>` inside a project, recorded in `sessions.cwd`
+  ([section 2](#2-per-user-storage),
+  [section 6](#6-where-the-project-path-is-recorded)); every path the
+  catalog names is unchanged at HEAD. Permission, model, sync, relay,
+  deletion, drift and bad-line findings for the parser are in
+  [section 1 of `analyzer/research/hermes.md`](../../analyzer/research/hermes.md#1-source).
+
 ## 2. Per-user storage
 
 **Home resolution.** Context override, then `HERMES_HOME`, then the platform
@@ -67,6 +85,34 @@ deployments still leave state in the host home.
 - `hermes-agent/`: the installer's git checkout and venv
   ([`scripts/install.sh:79`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/scripts/install.sh#L79),
   [`scripts/install.ps1:23-24`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/scripts/install.ps1#L23-L24)).
+- `.hermes_history`: the prompt history of the CLI and the TUI, every
+  typed line with a timestamp (2026-10-19 HEAD,
+  [`hermes_cli/cli_init_mixin.py:389`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/cli_init_mixin.py#L389),
+  [`ui-tui/src/lib/history.ts:6-7`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/ui-tui/src/lib/history.ts#L6-L7)). Collected; the
+  profile export leaves it out, with `state.db` and `response_store.db`
+  ([`hermes_cli/profiles.py:241`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/profiles.py#L241)).
+- `cron/output/<job id>/<YYYY-mm-dd_HH-MM-SS>.md`: one Markdown file per
+  cron run with the prompt and the response
+  ([`cron/jobs.py:3384-3395`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/jobs.py#L3384-L3395)). Collected.
+- `pairing/<platform>-approved.json` and `-pending.json`: the messaging
+  gateway's approved and pending users
+  ([`gateway/pairing.py:353-356`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/pairing.py#L353-L356)), see
+  [section 3](#3-credentials).
+
+**Scratch directories** (2026-10-19 HEAD). `cache/scratch/<entry>` is
+the `TMPDIR` of every child process, reaped when idle
+([`hermes_constants.py:957`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_constants.py#L957),
+[`hermes_constants_scratch.py:1-6`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_constants_scratch.py#L1-L6)); it is under the
+catalog's `.hermes` entry and collected. `sandboxes/` (or
+`TERMINAL_SANDBOX_DIR`) holds the container backends' persistent bind
+mounts, `sandboxes/docker/<task>` for Docker
+([`tools/environments/base.py:189-191`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/environments/base.py#L189-L191),
+[`tools/environments/docker.py:856`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/environments/docker.py#L856)); it is excluded
+([section 4](#4-exclusions)). The worktrees the agent creates are inside
+the user's repository, not the home
+([section 6](#6-where-the-project-path-is-recorded)). The analyzer's
+catalog rule classes any path under the Hermes home as a scratch
+directory.
 
 **Desktop app.** Electron `productName` is `Hermes`
 ([`apps/desktop/package.json:3`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/package.json#L3)), so its `userData` is the Electron default
@@ -96,6 +142,20 @@ profiles (`browser-profile`, `browser_auth`, `bot-desktop`,
 [`hermes_constants.py:695-718`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_constants.py#L695-L718)), and `backups`, `state-snapshots`. Copies
 named `auth.json.*` and `.env.bak*` are also credential stores
 ([`profiles.py:189-195`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/profiles.py#L189-L195)).
+
+The pairing files are also standing permission state: at the 2026-10-19
+HEAD `pairing/<platform>-approved.json` is a JSON object keyed by the
+platform user id, each `{user_name, approved_at}` (epoch seconds), the
+users the bot owner approved to drive the agent from that platform
+([`gateway/pairing.py:1-7`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/pairing.py#L1-L7),
+[`gateway/pairing.py:431-437`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/pairing.py#L431-L437)); the shape is the same
+at the cited commit. They stay flagged secret, since a pending file
+holds live pairing codes. `hermes sessions export --format trace
+--upload` takes a Hugging Face token from `HF_TOKEN` or three alternate
+variable names in the environment
+([`agent/trace_upload.py:36`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/agent/trace_upload.py#L36),
+[`agent/trace_upload.py:170-172`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/agent/trace_upload.py#L170-L172)), which the setup
+message tells the user to put in `.env`; `.env` is already flagged.
 
 The installer checkout's own `hermes-agent/.env` is loaded as a fallback
 ([`cli.py:337-338`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/cli.py#L337-L338), [`hermes_cli/env_loader.py:455-462`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/env_loader.py#L455-L462)), so it can hold keys
@@ -127,6 +187,16 @@ record of deleted sessions. The catalog excludes them by default; use
 `--full` when deletion is suspected. They also contain `.env` and
 `auth.json`. `cache/` is not excluded: `cache/terminal` holds tool output.
 
+At the 2026-10-19 HEAD automatic pruning is off by default
+([`hermes_cli/config_defaults.py:2279-2289`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/config_defaults.py#L2279-L2289)), so on a
+current install a session is gone from `state.db` only when the user
+deleted or pruned it, and a deleted session leaves a tombstone in
+`state.db` itself (see
+[section 5 of `analyzer/research/hermes.md`](../../analyzer/research/hermes.md#5-sqlite-specifics)).
+`sandboxes/` stays excluded: a container backend's persistent workspace
+can hold whole repositories, and the commands that ran there are in
+`state.db`.
+
 The installer checkout is excluded entry by entry rather than as one
 directory (`hermes-agent/[!.]*` and `hermes-agent/.[!e]*`), because an
 exclusion wins over a secret glob: pruning the whole tree would lose
@@ -157,6 +227,19 @@ they cover profiles and suffixed homes without matching unrelated paths.
   ([`hermes_state_common.py:409-411`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_common.py#L409-L411)). SQLite only.
 - `projects.db` tables `projects.primary_path` and `project_folders.path`
   ([`hermes_cli/projects_db.py:29-49`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/projects_db.py#L29-L49)). SQLite only.
+- Worktrees the agent creates (2026-10-19 HEAD):
+  `<repo>/.worktrees/<name>` on branch `hermes/<name>` for `hermes -w`,
+  and `.worktrees/subagent-<id>` on `hermes-subagent/<name>` for
+  delegated subagents
+  ([`hermes_cli/worktree_ops.py:435-441`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L435-L441),
+  [`tools/subagent_worktree.py:81-96`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/subagent_worktree.py#L81-L96)). The session
+  runs in the worktree, so `sessions.cwd` is the worktree path
+  ([`hermes_cli/worktree_ops.py:822-825`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L822-L825)), and a
+  retained TUI worktree is locked with the reason
+  `hermes session=<id> db=<path>`
+  ([`hermes_cli/worktree_ops.py:805-815`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L805-L815)). These are
+  scratch directories inside a project: the project catalog collects the
+  repository's `.hermes/` files, not `.worktrees/`.
 
 ## 7. Confidence
 
