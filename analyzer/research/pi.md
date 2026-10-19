@@ -92,6 +92,25 @@ All claims from source.
   one branch) and `pi-session-*.html`.
 - Experimental durable sessions are SQLite, [section 5](#5-sqlite-or-binary-stores).
 
+### What survives a delete
+
+The session picker's delete runs the `trash` command and falls back to
+unlinking the session file
+([session-selector.ts:650-680](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/components/session-selector.ts#L650-L680)),
+so the file is gone or sits in the user's trash, with any
+`pi.bug-report` entry inside it; pi offers no way to delete the remote
+copy that `/share` or a bug report uploaded. pi keeps no per-prompt
+history file. What remains is `pi-debug.log`, the snapshot `/debug`
+writes, which ends with one session's messages as JSONL and carries no
+session id, and `crashes.json`, the last five crashes of the past seven
+days with each one's `sessionFile` and `cwd`; both survive the delete.
+Whether the delete touches the exports a user wrote into project
+directories (`session-<time>.jsonl`, `pi-session-*.html`) is not
+stated. pi writes no deletion marker. The analyzer reads the session
+files and `trust.json`; `pi-debug.log` and `crashes.json` are planned as
+secondary sources and not read yet (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 Every line is one JSON object. Malformed lines are skipped by pi

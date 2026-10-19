@@ -129,6 +129,27 @@ built-in external agents, the `sidebar_threads.agent_id` values, are
 `gemini`, `claude-acp` and `codex-acp`
 ([`agent_servers/src/custom.rs:17-19`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_servers/src/custom.rs#L17-L19)).
 
+### What survives a delete
+
+Deleting a thread removes its `threads` row, every subagent row under
+it and the macOS sandbox temp directory its blob names, then its
+`sidebar_threads` row and its draft prompt, then the archived-worktree
+rows and their `refs/archived-worktrees/<id>` ref once no other thread
+links to them
+([`crates/agent/src/db.rs:680-754`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/db.rs#L680-L754);
+[`threads_archive_view.rs:814-854`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/threads_archive_view.rs#L814-L854));
+"Delete all" empties `threads`, and whether the sidebar rows outlive it
+was not determined. Archiving only sets `sidebar_threads.archived`. A
+per-prompt history file is not stated. The `created_git_worktrees`
+entry of a thread's Zed-created worktree survives the deletion, and
+whether a sidebar terminal row does was not determined. An external
+agent's thread lives in that agent's own store, and Zed asks the agent
+to delete it over ACP `session/delete` only when the agent offers it,
+so otherwise it stays there. Nothing local records a deletion. The
+analyzer reads `threads.db` and the external agents' `sidebar_threads`
+rows, and none of the other `db.sqlite` stores (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 `threads.db` ([`crates/agent/src/db.rs:450-485`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L450-L485)):

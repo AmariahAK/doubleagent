@@ -448,6 +448,33 @@ It leaves the chat editing state, the hook transcript, the debug logs,
 the memory files and, unless the sessions view's delete ran, the
 `session-store.db` rows and the `cloudSessions.json` entry.
 
+### What survives a delete
+
+The chat view's delete, and clearing all sessions, remove each session's
+`.json` and `.jsonl` file and its index entry
+([`chatSessionStore.ts:455-482`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/common/model/chatSessionStore.ts#L455-L482));
+trimming the index to the newest 400 local sessions drops entries and
+keeps their files. A per-prompt history file is not stated. What
+remains is the chat editing state (`chatEditingSessions/<key>/`, which
+files each request edited, with which model, whether the user kept the
+edit, and the file before and after), the hook transcript and debug
+logs where they were written, the memory tool files and, unless the
+sessions view's delete ran, the `session-store.db` turns (texts cut to
+1,000 and 5,000 characters) and the `cloudSessions.json` entry. That
+delete removes both and asks GitHub to delete the remote copy only
+while sync is still on
+([`remoteSessionExporter.ts:656-690`](https://github.com/microsoft/vscode/blob/661e013024de5052af476650250dabbebb4c1165/extensions/copilot/src/extension/chronicle/vscode-node/remoteSessionExporter.ts#L656-L690)),
+so a session deleted after sync was turned off keeps its remote copy
+and loses its local marker; neither delete path writes a log line. The
+analyzer reads the `cloudSessions.json` entries, which also name
+sessions deleted here, and the `ownedTasks` list, but not the editing
+state, `session-store.db`, the hook transcripts, the debug logs, the
+memory files or the index; the plan in [section 8](#8-parser-plan)
+makes the editing state a primary source and the `session-store.db`
+turns, the hook transcripts, the debug logs and the memory files
+secondary sources (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 6. Format versions
 
 `version` absent means v1, `2` adds `computedTitle`, `3` adds `customTitle`;

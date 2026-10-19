@@ -183,6 +183,33 @@ Scratch directories:
   Records written inside it carry the worktree as `cwd`. No rule
   classes it as scratch.
 
+### What survives a delete
+
+Removing a session first salvages its usage into
+`~/.qwen/usage_record.jsonl`
+([`sessionService.ts:3347-3358`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/sessionService.ts#L3347-L3358)),
+then deletes the transcript, its worktree and pull-request sidecars, its
+prompt ledger, its file-history backups and its managed resources
+directory
+([`sessionService.ts:3539-3558`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/sessionService.ts#L3539-L3558));
+archiving moves a session to `chats/archive/` instead, and there is no
+age-based retention. The per-project `logs.json` under
+`~/.qwen/tmp/<sha256(cwd)>/`, which holds the user's prompts and model
+switches, is not touched, and neither are `shell_history`, the
+`/chat save` checkpoints (`checkpoint-<tag>.json`) or the managed
+auto-memory documents, which carry no session id or time.
+`usage_record.jsonl` keeps a deleted session's id, project, start and
+duration, its models and its tool-call counts, but no text. A session
+driven from a messaging platform also lives on that platform, and the
+daemon's `routes.json` stays on disk while the foreground service's
+`channels/sessions.json` is deleted on a clean shutdown. No deletion
+marker is written: the surviving `usage_record.jsonl` entry and the
+`logs.json` prompts are all that show a removed session. The analyzer
+reads the transcripts in `chats/` and `chats/archive/`, `logs.json` as a
+secondary source and both channel route files, and not
+`usage_record.jsonl`, `shell_history`, the checkpoints or the memory
+documents (see [Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 Every line is a `ChatRecord` ([`services/chatRecordingService.ts:336-521`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/services/chatRecordingService.ts#L336-L521)):

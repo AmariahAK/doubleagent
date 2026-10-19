@@ -56,6 +56,24 @@ relative to the clone. Storage locations are in
   ([`sgpt/cache.py:30-41`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L30-L41)). Not a
   transcript; do not parse.
 
+### What survives a delete
+
+ShellGPT has no delete command. What removes chat history is the
+`temp` chat id, invalidated at each start; the cut on every write that
+keeps the system message and the last 100 other messages
+([`chat_handler.py:75-77`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/chat_handler.py#L75-L77));
+and the operating system's cleanup of its temporary directory, where
+the chat files live by default. A per-prompt history file is not
+stated. The response cache under `<CACHE_PATH>` keeps the answers to
+chat turns that the cut dropped, and to one-shot prompts that never had
+a chat file, as text with no prompt, time or session, the newest 100
+files kept
+([`cache.py:46-61`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L46-L61));
+its Windows path since 0.9.0, `AppData/Local/Temp/cache`, is named by no
+catalog line. Deletion markers are not stated. The analyzer reads the
+chat files and not the response cache, a secondary source joined on
+text only (see [Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 The file is a single JSON array written by `json.dump` with default

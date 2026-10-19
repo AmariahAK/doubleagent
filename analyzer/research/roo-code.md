@@ -71,6 +71,23 @@ and removes it when the CLI exits
 a task is outside the home, so no catalog line reaches it, and it
 survives only a CLI that was killed before its cleanup ran.
 
+### What survives a delete
+
+Deleting a task removes it and, by default, its subtasks from
+`tasks/_index.json`, deletes their shadow checkpoint repositories or
+branches, and removes each task directory
+([`src/core/webview/ClineProvider.ts:1737-1814`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/ClineProvider.ts#L1737-L1814)).
+The CLI's `~/.roo/cli-history.json` is not touched: it holds the newest
+500 submitted lines with no time, task id or workspace, and outlives a
+deleted task directory, a removed workspace and the extension's
+task-history pruning, so it is what is left of a deleted CLI task. A
+`roo --ephemeral` task is removed with its temporary directory when the
+CLI exits and survives only a CLI killed before its cleanup ran. Other
+second copies, project-local traces and deletion markers are not
+stated. The analyzer reads `cli-history.json` as a secondary source
+whose lines are kept only when no task has the same text (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 `api_conversation_history.json` is the Anthropic `MessageParam[]` shape as

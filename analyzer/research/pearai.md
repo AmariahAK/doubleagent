@@ -125,6 +125,32 @@ Other records of chat use (source review of 2026-10-19):
   ([`extensions/vscode/src/integrations/aider/aiderProcess.ts:121-146`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/extensions/vscode/src/integrations/aider/aiderProcess.ts#L121-L146)),
   so PearAI writes no Aider state.
 
+### What survives a delete
+
+Deleting a chat session removes its `sessions/<sessionId>.json` file and
+its `sessions.json` entry only
+([`core/util/history.ts:41-66`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/util/history.ts#L41-L66));
+deleting an agent task removes its `taskHistory` entry, its shadow
+checkpoint repository or branch and its task directory
+([`src/core/webview/ClineProvider.ts:1138-1169`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/core/webview/ClineProvider.ts#L1138-L1169)).
+A per-prompt history file is not stated for either surface. Neither
+delete touches the other records of chat use listed above: the `PearAI`
+output channel log, which holds every chat prompt and completion with
+no session id or per-entry time and lasts until the editor drops its log
+session directory (the newest 49 are kept besides the current one,
+[`logsDataCleaner.ts:24-35`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/contrib/logs/common/logsDataCleaner.ts#L24-L35));
+`dev_data/chat.jsonl`, the rated prompts with their `sessionId` and no
+time; `dev_data/tokens_generated.jsonl`, which names the models used;
+the `/share` Markdown exports; and `pearai_memories.json`, derived from
+chats but naming none. PearAI's analytics may hold the ids of tasks
+deleted locally, but nothing on disk marks a deletion. The analyzer
+reads none of these survivors yet: it reads the chat session files with
+the `sessions.json` index and the agent tasks'
+`api_conversation_history.json`, and the plan in
+[section 8](#8-parser-plan) names the output channel log and
+`dev_data/chat.jsonl` as secondary sources still to be read (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 **Chat session** (`PersistedSessionInfo`,

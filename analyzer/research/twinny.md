@@ -116,6 +116,27 @@ One row holds all conversations; deleting a conversation removes it from the
 object ([conversation-history.ts:150-156](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/chat/conversation-history.ts#L150-L156)), and
 "clear all" writes `{}` ([:167-170](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/chat/conversation-history.ts#L167-L170)).
 
+### What survives a delete
+
+Deleting a conversation removes its key from `twinny.conversations` and
+clears `twinny.active-conversation` when it was open, and "clear all"
+writes `{}`
+([conversation-history.ts:157-178](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/conversation-history.ts#L157-L178));
+both touch only the extension's `globalState` row. A per-prompt history
+file is not stated. What remains is the per-reply file-change records
+under the workspace's `agent-changes/` directory, the newest 50 kept,
+each with the project root, the time and the text of every changed file
+before the reply, and the Twinny log channel's lines, which join a
+conversation by time and text only and last until VS Code removes the
+log session. A `twinny-server` gateway whose administrator turned on
+recording keeps its own copy of each request on the gateway host;
+whether a delete reaches it is not stated, and nothing on the
+developer's machine says a request was recorded. No deletion marker is
+stated. The analyzer reads only the `rjmacarthy.twinny` row: the
+`agent-changes/` records and the log channel are secondary sources not
+read yet, and the gateway recordings are not read (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 `Conversation` ([src/common/types.ts:127-135](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/common/types.ts#L127-L135)): `id` (uuid v4,
