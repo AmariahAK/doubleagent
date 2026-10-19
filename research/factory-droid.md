@@ -2,7 +2,8 @@
 
 Factory Droid is Factory's closed-source coding agent, shipped as the `droid` command-line binary
 for Linux, macOS and Windows. Evidence levels below are **B** (strings from the shipped binary)
-and **D** (vendor documentation). There is no analyzer document for the agent yet.
+and **D** (vendor documentation). Its parser is in the backlog
+([issue 54](https://github.com/seanthegeek/doubleagent/issues/54)).
 
 ## 1. Source and evidence
 
@@ -127,9 +128,13 @@ occurs nowhere.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+Factory Droid is `backlog`: its JSONL session transcripts are on disk, and the parser is
+[issue 54](https://github.com/seanthegeek/doubleagent/issues/54). A future parser would read
+`~/.factory/sessions/<projectKey>/<sessionId>.jsonl` (first line `type:"session_start"` with
+`cwd`, see [section 6](#6-where-the-project-path-is-recorded)) with its `.settings.json` sidecar,
+the session index `cache/session-index/index.db`, the prompt history `state/history.json` and the
+`missions/<sessionId>/` files ([section 2](#2-per-user-storage)); the transcript schema beyond the
+first line has not been researched.
 
 ## 14. Confidence
 
