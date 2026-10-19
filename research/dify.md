@@ -1,11 +1,12 @@
 # dify
 
 Dify is a self-hosted LLM app platform deployed with Docker Compose, with an agent backend
-that runs shell jobs through `shellctl`, a sandbox runtime, and `difyctl`, a CLI client. This
-document came out of the agent framework sweep for
+that runs shell jobs through `shellctl`, a sandbox runtime, and `difyctl`, a CLI client. It came
+into the catalog from the agent framework sweep for
 [issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
-[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
-line. There is no analyzer document: the run history is in PostgreSQL.
+[`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. Its
+parser is in the backlog ([issue 142](https://github.com/seanthegeek/doubleagent/issues/142));
+the chat and run history is in PostgreSQL, which the analyzer cannot read.
 
 ## 1. Source and evidence
 
@@ -41,10 +42,10 @@ and the agent runs shell jobs in `local_sandbox` through shellctl
   difyctl's directory; everything else is in PostgreSQL, which the
   analyzer cannot read, so the PostgreSQL findings are named for
   completeness.
-  - Permission state: found, in PostgreSQL only: workflow Human Input
-    forms (`human_input_forms` with a `status`, and their deliveries).
-    Nothing in the shellctl volume or difyctl's files records an approval;
-    not found in `dify-agent-runtime/internal/server` at [`ac17912`](https://github.com/langgenius/dify/commit/ac1791279d43b9d78edc66b2fccc8949e2a2a082)
+  - Permission state: found, in PostgreSQL only: workflow Human Input forms (`human_input_forms`
+    with a `status`, and their deliveries). Nothing in the shellctl volume or difyctl's files
+    records an approval; not found in `dify-agent-runtime/internal/server` at
+    [`ac17912`](https://github.com/langgenius/dify/commit/ac1791279d43b9d78edc66b2fccc8949e2a2a082)
     (grepped for `approv` and `permission`).
   - Model: found, in PostgreSQL only: `messages.model_provider` and
     `model_id`, and the same on `conversations`. shellctl's `jobs` table
@@ -157,7 +158,7 @@ unavailable, in `~/.config/difyctl` on Linux and macOS and
 
 Detail from the 2026-10-19 review, at
 [`ac17912`](https://github.com/langgenius/dify/commit/ac1791279d43b9d78edc66b2fccc8949e2a2a082),
-for a future analyzer document:
+for a future parser:
 
 - **shellctl's `jobs` table** has `job_id`, `script_path`, `output_path`,
   `cwd`, `terminal_cols`, `terminal_rows`, `status`, `session_name`,
@@ -203,10 +204,10 @@ for a future analyzer document:
   flagged.
 - Not collected (outside the home): `docker/.env` holds `SECRET_KEY`
   ([.env.example:33](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/docker/.env.example#L33)).
-  Per-tenant RSA keys are written to `privkeys/<tenant_id>/private.pem` in
-  storage ([api/libs/rsa.py:37](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/api/libs/rsa.py#L37)),
-  which is the OpenDAL fs root `storage` and so `volumes/app/storage` by
-  default ([.env.example:159-161](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/docker/.env.example#L159-L161)).
+  Per-tenant RSA keys are written to `privkeys/<tenant_id>/private.pem` in storage
+  ([api/libs/rsa.py:37](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/api/libs/rsa.py#L37)),
+  which is the OpenDAL fs root `storage` and so `volumes/app/storage` by default
+  ([.env.example:159-161](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/docker/.env.example#L159-L161)).
   These keys decrypt the provider API keys held in PostgreSQL.
 
 ### 4. Exclusions
@@ -226,9 +227,15 @@ Nowhere under the home.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+Dify is `backlog`: its parser is
+[issue 142](https://github.com/seanthegeek/doubleagent/issues/142), and nothing it collects is
+parsed yet. A parser would read the shellctl state in the `dify_agent_local_sandbox_home` volume:
+the `jobs` table of `shellctl.db` (each job's `cwd`, `status`, `exit_code` and times) with each
+job's `jobs/<id>/script` and `output.log`, read whole since the log is terminal output
+([Review detail](#review-detail)). Those hold only the jobs of the last few minutes before the
+collection, carry no model, conversation or user, and join a Dify conversation only by time. The
+conversations, messages, agent tool calls, models and Human Input forms are in PostgreSQL, which
+the analyzer cannot read without a PostgreSQL server ([Compose bind mounts](#compose-bind-mounts)).
 
 ## 14. Confidence
 
