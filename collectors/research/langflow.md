@@ -1,22 +1,23 @@
-# Langflow: on-disk paths
+# langflow
 
-This document came out of the agent framework sweep for issue #64; see
-[frameworks.md](frameworks.md) for the frameworks that got no catalog line.
-There is no analyzer document yet.
+Langflow is a Python visual agent builder (`langflow` and the `lfx` package), served as an
+open-source (OSS) server and as Langflow Desktop, a closed-source desktop build. This document
+came out of the agent framework sweep for
+[issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
+[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
+line. There is no analyzer document yet.
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 [langflow-ai/langflow](https://github.com/langflow-ai/langflow), MIT
 ([LICENSE:1-3](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/LICENSE#L1-L3)),
 commit
 [`504c02fc47e76087b82b0e7cbe4186e9cdd916d4`](https://github.com/langflow-ai/langflow/commit/504c02fc47e76087b82b0e7cbe4186e9cdd916d4).
-A Python visual agent builder (`langflow` and the `lfx` package). The OSS
+The OSS
 paths are from source. **Langflow Desktop is closed source; its paths rest
 on the documentation in this repository only.** Platform directory
 resolution is cited from [tox-dev/platformdirs](https://github.com/tox-dev/platformdirs) at
 [`960ff632eb575deb6f0d5bf49519d5a2ee2098b6`](https://github.com/tox-dev/platformdirs/commit/960ff632eb575deb6f0d5bf49519d5a2ee2098b6).
-Nothing was installed or run.
-
 Langflow executes code on the host: custom component code is `exec`'d in
 the server process
 ([validate.py:692](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/custom/validate.py#L692)),
@@ -25,6 +26,12 @@ there is a Python Interpreter component
 and MCP stdio servers are spawned on the host
 ([mcp/util.py:2166](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/base/mcp/util.py#L2166)).
 
+### Observed
+
+- No real install: nothing was installed or run.
+
+### Source reviews
+
 - **Source review (2026-10-19)**: HEAD
   [`972d56c`](https://github.com/langflow-ai/langflow/commit/972d56c47d3830d17060ee85cfaad152df823041)
   reviewed against the previously cited
@@ -32,7 +39,7 @@ and MCP stdio servers are spawned on the host
   from source only; the open-source schema is the one the server's
   `langflow.db` uses, and that Langflow Desktop's `database.db` uses it
   too is an inference, since Desktop is closed source. Detail in
-  [section 2](#2-per-user-storage).
+  [Database detail](#database-detail).
   - Permission state: none recorded per call. The Langflow Assistant's
     canvas edits are proposals the user approves in a UI card, and the
     approval is not stored
@@ -51,7 +58,8 @@ and MCP stdio servers are spawned on the host
     third-party tracers (LangSmith, Langfuse, LangWatch and others) send
     runs out when their environment variables are set, with no local
     marker.
-  - Scratch directories: found: `.langflow/fs_tool/fs_sandbox`, the
+  - Scratch directories: found ([Scratch directories](#scratch-directories)):
+    `.langflow/fs_tool/fs_sandbox`, the
     Assistant's file sandbox, already collected by `langflow|.langflow`.
   - Deletion: found: a session delete removes its `message` rows; a flow
     delete removes messages, transactions, vertex builds, versions and
@@ -83,22 +91,6 @@ The config directory is `LANGFLOW_CONFIG_DIR`, otherwise
   (`user_cache_dir("langflow")` in
   [logger.py:1217](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/log/logger.py#L1217)).
 
-**The OSS database is not under the home.** `langflow.db` defaults to the
-installed package directory (`site-packages/langflow/`), because
-`save_db_in_config_dir` is `False`
-([database.py:18](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/services/settings/groups/database.py#L18),
-[110-121](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/services/settings/groups/database.py#L110-L121)).
-It holds the tables `message`, `transaction` (run history) and
-`vertex_build`
-([message/model.py:183](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/services/database/models/message/model.py#L183),
-[transactions/model.py:158](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/services/database/models/transactions/model.py#L158),
-[vertex_builds/model.py:70](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/services/database/models/vertex_builds/model.py#L70)),
-plus `variable` (encrypted credentials). A virtual environment has no
-fixed home path, so the database is a manual step in
-[coverage.md](../docs/coverage.md). A `uv tool` install would put it under
-`.local/share/uv/tools/langflow/...`, but uv was not cited, so that line
-was not added.
-
 | Path | Holds | Default or opt-in |
 | --- | --- | --- |
 | `.cache/langflow`; `Library/Caches/langflow`; `AppData/Local/langflow/langflow/Cache` | `secret_key` (Fernet key for `variable`), `cache_secret_key`, `<user_id>/` uploaded files and `_mcp_servers_<id>.json`, `profile_pictures` (copied assets), and `langflow.db` only when opted in ([auth.py:352-361](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/services/settings/auth.py#L352-L361), [cache/service.py:35](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/services/cache/service.py#L35), [services/utils.py:316-317](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/services/utils.py#L316-L317), [setup.py:690-691](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/initial_setup/setup.py#L690-L691)) | default |
@@ -113,7 +105,35 @@ The docs disagree with the code on the OSS knowledge bases:
 places them in `site-packages`, but the code default is
 `~/.langflow/knowledge_bases`. The code wins.
 
-Docker: the named volume `langflow-data` is mounted at `/app/langflow`,
+### Scratch directories
+
+`.langflow/fs_tool/fs_sandbox` is the Langflow
+Assistant's own file workspace (in the table above); the
+`langflow|.langflow` catalog line collects it, so the
+analyzer's home-catalog rule would class it as a scratch directory if a
+parser ever named it as a project. Nothing else is a working directory.
+
+### OSS database
+
+The OSS database is not under the home: `langflow.db` defaults to the
+installed package directory (`site-packages/langflow/`), because
+`save_db_in_config_dir` is `False`
+([database.py:18](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/services/settings/groups/database.py#L18),
+[110-121](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/services/settings/groups/database.py#L110-L121)).
+It holds the tables `message`, `transaction` (run history) and
+`vertex_build`
+([message/model.py:183](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/services/database/models/message/model.py#L183),
+[transactions/model.py:158](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/services/database/models/transactions/model.py#L158),
+[vertex_builds/model.py:70](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/services/database/models/vertex_builds/model.py#L70)),
+plus `variable` (encrypted credentials). A virtual environment has no
+fixed home path, so the database is a manual step in
+[`collectors/docs/coverage.md`](../docs/coverage.md). A `uv tool` install would put it under
+`.local/share/uv/tools/langflow/...`, but uv was not cited, so that line
+was not added.
+
+### Docker
+
+The named volume `langflow-data` is mounted at `/app/langflow`,
 which is the config directory (`LANGFLOW_CONFIG_DIR=/app/langflow`), so its
 root holds `secret_key`, `cache_secret_key` and `profile_pictures`.
 PostgreSQL uses the volume `langflow-postgres`
@@ -123,6 +143,8 @@ which is a whole PostgreSQL cluster the analyzer cannot read and is left
 unmatched. The image home is `/app/data`
 ([build_and_push.Dockerfile:209](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/docker/build_and_push.Dockerfile#L209),
 [226](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/docker/build_and_push.Dockerfile#L226)).
+
+### Database detail
 
 Detail from the 2026-10-19 review, at
 [`972d56c`](https://github.com/langflow-ai/langflow/commit/972d56c47d3830d17060ee85cfaad152df823041),
@@ -181,12 +203,6 @@ server `langflow.db` collected by hand):
   Deleting a flow removes its triggers, messages, transactions, vertex
   builds, versions, traces and spans
   ([flow_utils.py:124-185](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/api/utils/flow_utils.py#L124-L185)).
-
-**Scratch directories.** `.langflow/fs_tool/fs_sandbox` is the Langflow
-Assistant's own file workspace ([table above](#2-per-user-storage)); the
-`langflow|.langflow` catalog line collects it, so the
-analyzer's home-catalog rule would class it as a scratch directory if a
-parser ever named it as a project. Nothing else is a working directory.
 
 ## 3. Credentials
 
