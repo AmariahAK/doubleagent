@@ -4835,6 +4835,37 @@ def build_vscode_sync(home: Path) -> None:
     )
 
 
+# Agents window and multi-root workspaces (issue 185). The Agents window
+# opens the workspace file `User/agent-sessions.code-workspace` in the
+# editor's own data directory (microsoft/vscode at 4d22f4f,
+# src/vs/platform/environment/common/environmentService.ts:280-281), so
+# its chats would be stored under that workspace's storage hash with
+# `workspace.json` `{"workspace": <that file's URI>}`; the hash is inferred
+# from the store's rule, not seen on an install. The chat's real project
+# is its `workingDirectory`. The second workspace is a user's multi-root
+# workspace file and a session that records no `workingDirectory`.
+VSCODE_AGENTS_WS = ".config/Code/User/workspaceStorage/a9e47500"
+VSCODE_AGENTS_CWD = "/srv/agentproj"
+VSCODE_MULTIROOT_WS = ".config/Code/User/workspaceStorage/b0071000"
+VSCODE_MULTIROOT_FILE = "/srv/team/team.code-workspace"
+
+
+def build_vscode_agents_window(home: Path) -> None:
+    ws = home / VSCODE_AGENTS_WS
+    _jsonl(
+        ws / "chatSessions" / (VSCODE_SESSION + ".jsonl"),
+        vscode_log_records(cwd=VSCODE_AGENTS_CWD),
+    )
+    agents_file = home / ".config/Code/User/agent-sessions.code-workspace"
+    _json(agents_file, {"folders": []})
+    _json(ws / "workspace.json", {"workspace": agents_file.as_uri()})
+    multi = home / VSCODE_MULTIROOT_WS
+    session = vscode_legacy_session()
+    del session["workingDirectory"]
+    _json(multi / "chatSessions" / (VSCODE_LEGACY_SESSION + ".json"), session)
+    _json(multi / "workspace.json", {"workspace": "file://" + VSCODE_MULTIROOT_FILE})
+
+
 # ---- OpenCode and Kilo Code ---------------------------------------------------------
 # Shapes from analyzer/research/opencode.md and kilo-code.md (drizzle tables in
 # packages/core/src/session/sql.ts, JSON in packages/schema/src/v1/session.ts).

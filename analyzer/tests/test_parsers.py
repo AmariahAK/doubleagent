@@ -5481,14 +5481,76 @@ class VsCodeTests(ParserBase):
         with self.assertRaises(ValueError):
             apply_mutation(s, {"kind": 1, "k": ["missing", "x"], "v": 1})
 
+    def _reopen_with_agents_window(self):
+        build_vscode_agents_window(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_agents_window_project_is_working_directory(self):
+        # Issue 185: the Agents window's workspace file is never the project.
+        self._reopen_with_agents_window()
+        rel = VSCODE_AGENTS_WS + "/chatSessions/%s.jsonl" % VSCODE_SESSION
+        rows = self.rows_for(VsCodeParser(), rel)
+        self.assertTrue(rows)
+        self.assertEqual({r.project_path for r in rows}, {VSCODE_AGENTS_CWD})
+        agents_file = self.home / ".config/Code/User/agent-sessions.code-workspace"
+        self.assertEqual(
+            rows[0].text,
+            "session start: responder=GitHub Copilot location=panel title=Run tests"
+            " workspace=%s" % agents_file,
+        )
+
+    def test_multiroot_workspace_file_is_not_project(self):
+        self._reopen_with_agents_window()
+        rel = VSCODE_MULTIROOT_WS + "/chatSessions/%s.json" % VSCODE_LEGACY_SESSION
+        rows = self.rows_for(VsCodeParser(), rel)
+        self.assertTrue(rows)
+        self.assertEqual({r.project_path for r in rows}, {""})
+        self.assertTrue(rows[0].text.endswith(" workspace=" + VSCODE_MULTIROOT_FILE), rows[0])
+
+    def test_working_directory_before_workspace_folder(self):
+        ws = self.home / VSCODE_WS / "workspace.json"
+        ws.write_text(json.dumps({"folder": "file:///srv/other"}), encoding="utf-8")
+        rows = self.rows_for(VsCodeParser(), self.REL)
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+        self.assertNotIn("workspace=", rows[0].text)
+
+    def test_folder_when_no_working_directory(self):
+        path = self.home / self.REL
+        lines = path.read_text(encoding="utf-8").splitlines()
+        first = json.loads(lines[0])
+        del first["v"]["workingDirectory"]
+        lines[0] = json.dumps(first)
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        rows = self.rows_for(VsCodeParser(), self.REL)
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+
+    def test_bad_workspace_json(self):
+        clean = [(r.turn_type, r.text) for r in self.rows_for(VsCodeParser(), self.REL)]
+        (self.home / VSCODE_WS / "workspace.json").write_text("{not json", encoding="utf-8")
+        rows = self.rows_for(VsCodeParser(), self.REL)
+        self.assertEqual([(r.turn_type, r.text) for r in rows[:-1]], clean)
+        last = rows[-1]
+        self.assertEqual((last.turn_type, last.source_line, last.timestamp_utc), ("system", 0, ""))
+        self.assertTrue(last.text.startswith("parser: workspace.json not read ("), last.text)
+        self.assertEqual((last.session_id, last.project_path), (VSCODE_SESSION, "/srv/proj"))
+        (self.home / VSCODE_WS / "workspace.json").write_text("[1]", encoding="utf-8")
+        rows = self.rows_for(VsCodeParser(), self.REL)
+        self.assertEqual([(r.turn_type, r.text) for r in rows[:-1]], clean)
+        self.assertEqual(rows[-1].text, "parser: workspace.json is not a JSON object")
+
 
 from fixtures import (
+    VSCODE_AGENTS_CWD,
+    VSCODE_AGENTS_WS,
     VSCODE_CLOUD_SESSIONS_MTIME,
     VSCODE_CLOUD_SESSIONS_REL,
     VSCODE_CLOUD_TASK,
+    VSCODE_MULTIROOT_FILE,
+    VSCODE_MULTIROOT_WS,
     VSCODE_OLD_TASK,
     VSCODE_OTHER_MACHINE_SESSION,
     VSCODE_STATE_REL,
+    build_vscode_agents_window,
 )
 
 

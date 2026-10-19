@@ -11,7 +11,7 @@ Files, relative to that directory's `User/`:
 
 * `workspaceStorage/<hash>/chatSessions/<sessionId>.jsonl` (1.109 and
   later) or `.json` (earlier), with `workspaceStorage/<hash>/workspace.json`
-  (`folder` or `workspace`, a file URI) giving the project path;
+  (`folder` or `workspace`, a file URI) beside it;
 * `globalStorage/emptyWindowChatSessions/<sessionId>.jsonl` or `.json`;
 * `globalStorage/transferredChatSessions/<sessionId>.json`.
 
@@ -66,6 +66,18 @@ the request time). Contiguous markdown and inline references become one
 `tool_result` row sharing `toolCallId`. There is no git branch.
 `source_line` is the log line that created the request (`.jsonl`) or 0
 (`.json`).
+
+The project path (issue 185) is the session's own `workingDirectory`
+when it is set, else the `folder` of the sibling `workspace.json`, else
+empty. A `workspace.json` `workspace` value is never the project: it names
+a `.code-workspace` file, not a directory, and the Agents window opens
+`User/agent-sessions.code-workspace` in the editor's own data directory
+(microsoft/vscode at 4d22f4f, `environmentService.ts:280-281`), which the
+inventory would class as a scratch directory and so hide the chat's real
+project. The workspace file is named in the session-start row instead,
+`workspace=<path>`. A `workspace.json` that cannot be read or is not a
+JSON object gives one `parser: workspace.json not read (<reason>)` or
+`parser: workspace.json is not a JSON object` row at the session's end.
 
 Sync rows (issue 153), so `records_sync` is set; both sources are
 written by the Copilot Chat extension:
@@ -377,9 +389,8 @@ class VsCodeParser(Parser):
         if not isinstance(state, dict):
             state = {}
         session_id = str(state.get("sessionId") or Path(artifact.rel).name.rsplit(".", 1)[0])
-        project = self._workspace_folder(artifact) or uri_to_path(
-            str(state.get("workingDirectory") or "")
-        )
+        folder, workspace_file = self._workspace_folder(artifact, errors)
+        project = uri_to_path(str(state.get("workingDirectory") or "")) or folder
 
         def base(turn_type: str, text: str, ts, line: int, model: str = "") -> Row:
             row = self.base_row(artifact)
@@ -406,6 +417,7 @@ class VsCodeParser(Parser):
                         if state.get("initialLocation")
                         else "",
                         "title=%s" % state["customTitle"] if state.get("customTitle") else "",
+                        "workspace=%s" % workspace_file if workspace_file else "",
                     )
                     if x
                 ),
@@ -539,21 +551,33 @@ class VsCodeParser(Parser):
             req_lines[path[1]] = n
 
     @staticmethod
-    def _workspace_folder(artifact: Artifact) -> str:
+    def _workspace_folder(artifact: Artifact, errors: list) -> tuple[str, str]:
+        """The sibling `workspace.json`'s `folder` and `workspace` as paths.
+
+        Returns `(folder, workspace_file)`, either empty when absent; only
+        the folder may become the project path (issue 185). A
+        `workspace.json` that cannot be read or is not a JSON object adds
+        one whole-file entry to `errors`.
+        """
         parts = artifact.rel.split("/")
         if len(parts) < 4 or parts[-2] != "chatSessions" or parts[-4] != "workspaceStorage":
-            return ""
+            return "", ""
         ws = artifact.disk_path.parent.parent / "workspace.json"
         try:
             if ws.is_symlink() or not ws.is_file():
-                return ""
+                return "", ""
             with open(ws, "rb") as fh:
                 data = json.loads(fh.read().decode("utf-8", errors="replace"))
-        except (OSError, ValueError):
-            return ""
+        except (OSError, ValueError) as e:
+            errors.append((0, "workspace.json not read (%s)" % e, ""))
+            return "", ""
         if not isinstance(data, dict):
-            return ""
-        return uri_to_path(str(data.get("folder") or data.get("workspace") or ""))
+            errors.append((0, "workspace.json is not a JSON object", ""))
+            return "", ""
+        return (
+            uri_to_path(str(data.get("folder") or "")),
+            uri_to_path(str(data.get("workspace") or "")),
+        )
 
     def _request_rows(self, req: dict, line: int, base, opts: Options, seen: dict) -> Iterator[Row]:
         model = str(req.get("modelId") or "")

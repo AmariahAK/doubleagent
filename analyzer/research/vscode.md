@@ -57,6 +57,13 @@ GitHub's servers, which VS Code lists and renders but does not run
     No relay.
   - Scratch directories: found. The Agents window's workspace file and
     the worktrees Copilot CLI sessions get ([section 8](#8-parser-plan)).
+    The Agents-window layout the parser now handles (issue 185), a chat
+    stored under the storage hash of `User/agent-sessions.code-workspace`
+    with its project in `workingDirectory`, is not observed on any real
+    install, source-derived (microsoft/vscode at
+    [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706)):
+    the storage hash is inferred from the store's rule and unconfirmed on
+    an install.
   - Deletion: found. Delete removes the session file and its index entry
     and leaves the other records; trimming the index to 400 sessions
     leaves the files ([section 5](#5-sqlite-stores)).
@@ -484,7 +491,7 @@ one `thinking` per thinking part, one `tool_use` plus `tool_result` per
 | --- | --- |
 | timestamp_utc | `timestamp` for the user row, `responseTimestamp` for response parts (ms) |
 | session_id | `sessionId` |
-| project_path | `workspace.json` `folder` (file URI to path) or `workingDirectory` |
+| project_path | `workingDirectory`, else `workspace.json` `folder` (file URI to path); never `workspace` |
 | git_branch | empty |
 | model | `modelId` |
 | tool_name, tool_use_id | `toolId`, `toolCallId` |
@@ -539,7 +546,7 @@ Additions from the source review of 2026-10-19, one line per class:
   secondary with an empty timestamp. Each needs `has_secondary` and a
   `secondary()` match.
 - Sync, relay and origin: no change.
-- Scratch directories: the session's project is `workspace.json`'s
+- Scratch directories: the session's project was `workspace.json`'s
   `folder` or `workspace` before `workingDirectory`
   ([`vscode.py`](../doubleagent/parsers/vscode.py) `_workspace_folder`).
   A chat in the Agents window runs in the workspace
@@ -547,11 +554,18 @@ Additions from the source review of 2026-10-19, one line per class:
   ([`environmentService.ts:280-281`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/platform/environment/common/environmentService.ts#L280-L281)),
   so its project would be that file, under the catalog's `User` entry,
   which the analyzer classes as a scratch directory, while the real
-  project is in `workingDirectory`. Prefer `workingDirectory` when
-  `workspace.json` names `agent-sessions.code-workspace`. That the Agents
-  window's chats are stored under that workspace's hash follows from the
-  store's rule ([section 2](#2-transcript-files)) and was not traced
-  further. An empty-window chat has no project. The worktrees VS Code
+  project is in `workingDirectory`. Since issue 185 the parser takes
+  the session's `workingDirectory` first, then `workspace.json`'s
+  `folder`, and never the `workspace` value, which names a
+  `.code-workspace` file rather than a directory (a user's multi-root
+  workspace file as well as the Agents window's); the workspace file is
+  named in the session-start row as `workspace=<path>`, and a
+  `workspace.json` that cannot be read or is not a JSON object gives a
+  `parser: workspace.json not read (<reason>)` or `parser:
+  workspace.json is not a JSON object` row. That the Agents window's
+  chats are stored under that workspace's hash follows from the store's
+  rule ([section 2](#2-transcript-files)) and was not traced further; it
+  is unconfirmed on an install. An empty-window chat has no project. The worktrees VS Code
   makes for Copilot CLI sessions, `<repo parent>/<repo>.worktrees/<branch>`
   unless the git extension's global state holds a `worktreeRoot:<repo>`
   root
