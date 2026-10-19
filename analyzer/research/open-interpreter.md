@@ -1,21 +1,33 @@
-# Open Interpreter transcript schema
+# open-interpreter
 
 Catalog agent: `open-interpreter`. The current Open Interpreter is a Rust
 fork of OpenAI Codex CLI that keeps Codex's protocol and file formats and
 moves the home to `~/.openinterpreter` (see
-[../../collectors/research/open-interpreter.md](../../collectors/research/open-interpreter.md)).
+[`collectors/research/open-interpreter.md`](../../collectors/research/open-interpreter.md)).
 Transcripts are Codex rollouts, byte for byte, so the existing Codex parser
-(`doubleagent/parsers/codex.py`) is the reference and this document
-records only what was checked in the fork and what differs. Paths cited are
+(`doubleagent/parsers/codex.py`) and [codex-cli.md](codex-cli.md) are the reference and this
+document records only what was checked in the fork and what differs. Paths cited are
 relative to `codex-rs/` in the clone.
 
-## 1. Source
+## 1. Source and evidence
 
 [openinterpreter/openinterpreter](https://github.com/openinterpreter/openinterpreter) at
 [`2767e5f20d6927500b8f1938c773c61afb823245`](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245),
 Apache-2.0, open source.
 
-- **Source review (2026-10-19)**: [openinterpreter/openinterpreter](https://github.com/openinterpreter/openinterpreter)
+Confidence. High: file locations, line envelope, timestamp format, payload
+field names (shared structs), the ledger's `records` key (no serde
+rename on the struct), `input_text` content blocks ([`protocol/src/models.rs:876-880`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/protocol/src/models.rs#L876-L880)). Not determined: the exact tool names each emulated harness emits, which
+vary by harness module.
+
+### Observed
+
+- No real install. The `session synced:` Sentry feedback row the shared reader yields for the
+  fork is fixture only ([Sync, relay and origin](#sync-relay-and-origin)).
+
+### Source reviews
+
+- 2026-10-19: [openinterpreter/openinterpreter](https://github.com/openinterpreter/openinterpreter)
   at [`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87),
   the head of `main` on 2026-10-19 (workspace version 0.0.56,
   [`codex-rs/Cargo.toml:163`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/Cargo.toml#L163)),
@@ -27,7 +39,7 @@ Apache-2.0, open source.
   ([`codex-rs/product-info/src/lib.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/product-info/src/lib.rs#L12)),
   with its tests and the version numbers. The fork has not taken
   Codex's changes after its snapshot, so the Codex findings of the same
-  day ([section 1 of `codex-cli.md`](codex-cli.md#1-evidence)) apply
+  day ([Source reviews in `codex-cli.md`](codex-cli.md#source-reviews)) apply
   only where noted. Source only. By class:
   - Permission state: found, not read, as in Codex: `rules/default.rules`
     ([`codex-rs/core/src/exec_policy.rs:54-56`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/exec_policy.rs#L54-L56)),
@@ -70,9 +82,9 @@ Apache-2.0, open source.
     unlike Codex at HEAD.
   - Bad lines: the shared reader's gap: a bad `thread_history_1.sqlite`
     `item_json` is counted, not shown
-    ([section 8 of `codex-cli.md`](codex-cli.md#8-parser-plan-the-existing-parser)).
+    ([Bad lines in `codex-cli.md`](codex-cli.md#bad-lines)).
 
-## 2. Transcript files
+## 2. Transcript stores
 
 - `.openinterpreter/sessions/YYYY/MM/DD/rollout-<YYYY-MM-DDThh-mm-ss>-<thread uuid>.jsonl`,
   one file per thread, and the same under `.openinterpreter/archived_sessions/`
@@ -87,10 +99,30 @@ Apache-2.0, open source.
 - `.openinterpreter/session_index.jsonl`: `{id, thread_name, updated_at}`
   per rename ([`rollout/src/session_index.rs:21-29`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/rollout/src/session_index.rs#L21-L29)).
 - `.openinterpreter/external_agent_session_imports.json`: which rollouts
-  were imported from Claude Code or Cursor ([section 4](#4-joins)).
+  were imported from Claude Code or Cursor ([section 4](#4-joins-and-timestamps)).
 - `.openinterpreter/.zcode/cli/artifacts/sess_<session id>/<call id>-tool-result-<uuid>.json`:
   full output of a tool call that was too long to inline under the zcode
   harness ([`core/src/tools/handlers/harness_aliases.rs:887-902`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/core/src/tools/handlers/harness_aliases.rs#L887-L902)).
+
+### What survives a delete
+
+As in Codex, `thread/delete` removes the thread's rollouts, its index
+lines and its rows in the SQLite stores, `logs_2.sqlite` included, and
+with them the `session synced:` Sentry feedback marker
+([`codex-rs/state/src/runtime/threads.rs:1153`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/state/src/runtime/threads.rs#L1153),
+[`codex-rs/thread-store/src/local/delete_thread.rs:262`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/thread-store/src/local/delete_thread.rs#L262)).
+It leaves `history.jsonl`, one line per submitted prompt with its session
+id and time, and the import ledger
+`external_agent_session_imports.json`, which names the rollouts imported
+from Claude Code or Cursor. The memories files (off by default) and
+`db-backups/` exist as in Codex ([Source reviews](#source-reviews)); what a delete
+does to them is not stated in this document. No deletion marker is
+written. The analyzer reads `history.jsonl`, `state_5.sqlite` and
+`thread_history_1.sqlite` as secondary sources and the import ledger to
+mark imported rollouts
+([Past use and secondary sources](#past-use-and-secondary-sources)), and does not read
+the memories files or `db-backups/` (see
+[Secondary sources](../docs/output.md#secondary-sources)).
 
 ## 3. Record schema
 
@@ -137,7 +169,7 @@ Types: `session_meta`, `response_item`, `inter_agent_communication`,
 `history.jsonl`: `{session_id, ts, text}`, `ts` epoch seconds
 ([`message-history/src/lib.rs:62-66`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/message-history/src/lib.rs#L62-L66),[`128-131`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/message-history/src/lib.rs#L128-L131)).
 
-## 4. Joins
+## 4. Joins and timestamps
 
 Session to project: `session_meta.payload.cwd`, updated per turn by
 `turn_context.payload.cwd`. Tool call to result: `call_id`. Subagent to
@@ -151,7 +183,7 @@ is in that ledger was written by `/import`
 ([`external-agent-sessions/src/export.rs:58-73`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/external-agent-sessions/src/export.rs#L58-L73)), so its turns were
 authored in another agent and their record timestamps are import time.
 
-## 5. SQLite or binary stores
+## 5. Other stores
 
 Same SQLite set as Codex (`state_5.sqlite`, `logs_2.sqlite`,
 `thread_history_1.sqlite` and others;
@@ -161,7 +193,7 @@ for `.jsonl.zst` rollouts.
 `state_5.sqlite` and `thread_history_1.sqlite` are parsed as secondary
 sources by the shared Codex reader (issue 122); their record shapes, joins
 and what they survive are in
-[section 5 of `codex-cli.md`](codex-cli.md#5-other-files). The fork's
+[section 5 of `codex-cli.md`](codex-cli.md#5-other-stores). The fork's
 `threads` migrations that the parser reads match Codex's
 ([`state/migrations/0001_threads.sql:1-19`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/migrations/0001_threads.sql#L1-L19),
 [`0007_threads_first_user_message.sql:1`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/migrations/0007_threads_first_user_message.sql#L1),
@@ -173,25 +205,6 @@ there is no `started_at_ms` or `completed_at_ms` on `thread_items`, so
 ([`thread-store/src/local/thread_history.rs:431-438`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/thread-store/src/local/thread_history.rs#L431-L438)),
 stamps every item row, and an `agentMessage` row precedes its rollout
 twin by the time the message took to stream.
-
-### What survives a delete
-
-As in Codex, `thread/delete` removes the thread's rollouts, its index
-lines and its rows in the SQLite stores, `logs_2.sqlite` included, and
-with them the `session synced:` Sentry feedback marker
-([`codex-rs/state/src/runtime/threads.rs:1153`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/state/src/runtime/threads.rs#L1153),
-[`codex-rs/thread-store/src/local/delete_thread.rs:262`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/thread-store/src/local/delete_thread.rs#L262)).
-It leaves `history.jsonl`, one line per submitted prompt with its session
-id and time, and the import ledger
-`external_agent_session_imports.json`, which names the rollouts imported
-from Claude Code or Cursor. The memories files (off by default) and
-`db-backups/` exist as in Codex ([section 1](#1-source)); what a delete
-does to them is not stated in this document. No deletion marker is
-written. The analyzer reads `history.jsonl`, `state_5.sqlite` and
-`thread_history_1.sqlite` as secondary sources and the import ledger to
-mark imported rollouts ([section 8](#8-parser-plan)), and does not read
-the memories files or `db-backups/` (see
-[Secondary sources](../docs/output.md#secondary-sources)).
 
 ## 6. Format versions
 
@@ -211,11 +224,9 @@ Reuse `CodexParser`, matching `.openinterpreter/sessions/` and
 `.openinterpreter/archived_sessions/` rollouts and
 `.openinterpreter/history.jsonl` with agent `open-interpreter`. The current
 parser matches only `^\.codex/sessions/` and plain `.jsonl`; extending it to
-`archived_sessions/` and `.jsonl.zst` would fix Codex as well. Mark rollouts
-listed in the import ledger with a `system` row naming `source_path`.
-The rollouts are the primary store; `history.jsonl`, `state_5.sqlite` and
-`thread_history_1.sqlite` are secondary sources, read as for Codex
-([section 8 of `codex-cli.md`](codex-cli.md#8-parser-plan-the-existing-parser)).
+`archived_sessions/` and `.jsonl.zst` would fix Codex as well. The source review of 2026-10-19
+found that this sentence predates the shared `RolloutParser`, which reads `archived_sessions/`
+and `.jsonl.zst` for both agents.
 
 | Column | Source |
 | --- | --- |
@@ -230,8 +241,35 @@ The rollouts are the primary store; `history.jsonl`, `state_5.sqlite` and
 | tool_name, tool_use_id | `name`, `call_id` |
 | text | message text, `arguments`/`input`/`action.command`, `output` |
 
-Sync: as for Codex (the `Sync:` paragraph of
-[section 8 of `codex-cli.md`](codex-cli.md#8-parser-plan-the-existing-parser)),
+### Permission state
+
+The `permission mode` row of the table carries the per-turn policy. There is no per-call
+decision row: the fork, like Codex, lists the
+approval request events among the transient events the rollout never
+stores ([`rollout/src/policy.rs:140-204`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/rollout/src/policy.rs#L140-L204)).
+
+From the source review of 2026-10-19 at [`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87) ([Source reviews](#source-reviews)): the
+standing grants of `rules/default.rules` and
+`config.toml` are not read, as in Codex; per-call decisions can come
+only from the app server's response lines, since the core does not log
+the decision.
+
+### Model
+
+Covered: the model row of the table, from the shared Codex reader.
+
+### Past use and secondary sources
+
+The rollouts are the primary store; `history.jsonl`, `state_5.sqlite` and
+`thread_history_1.sqlite` are secondary sources, read as for Codex
+([Past use and secondary sources in `codex-cli.md`](codex-cli.md#past-use-and-secondary-sources)).
+Mark rollouts listed in the import ledger with a `system` row naming `source_path`. The memories
+files and `db-backups/` are not read, as in Codex.
+
+### Sync, relay and origin
+
+As for Codex
+([Sync, relay and origin in `codex-cli.md`](codex-cli.md#sync-relay-and-origin)),
 the fork records no session sync and has the same exits, unchanged:
 `/feedback` ("send logs to maintainers";
 [`tui/src/slash_command.rs:93`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/tui/src/slash_command.rs#L93))
@@ -266,31 +304,25 @@ The fork adds no share, sync or upload feature of its own (searched
 upstream: `acp-server`, `chat-wire-compat`, `external-agent-sessions`,
 `product-info`, `mcp-server`, `execpolicy-legacy`).
 
-There is no per-call decision row: the fork, like Codex, lists the
-approval request events among the transient events the rollout never
-stores ([`rollout/src/policy.rs:140-204`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/rollout/src/policy.rs#L140-L204)).
+The fork records no relay or origin.
 
-Source review of 2026-10-19 at
-[`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87),
-by class (detail in [section 1](#1-source)):
+### Scratch directories
 
-- Permission: the standing grants of `rules/default.rules` and
-  `config.toml` are not read, as in Codex; per-call decisions can come
-  only from the app server's response lines, since the core does not log
-  the decision.
-- Model: covered.
-- Past use: memories and `db-backups/` not read, as in Codex.
-- Sync, relay and origin: covered; the fork records no relay or origin.
-- Scratch directories: worktrees under `.openinterpreter/worktrees`,
-  classed by the catalog rule; no row names them.
-- Deletion: no marker; as in Codex.
-- Drift: none since the cited commit. The paragraph above that says the
-  parser matches only `^\.codex/sessions/` and plain `.jsonl` predates
-  the shared `RolloutParser`, which reads `archived_sessions/` and
-  `.jsonl.zst` for both agents.
-- Bad lines: the shared `thread_history_1.sqlite` summary row.
+Worktrees under `.openinterpreter/worktrees`,
+classed by the catalog rule; no row names them ([Source reviews](#source-reviews)).
 
-Fixture (`.openinterpreter/sessions/2026/10/01/rollout-2026-10-01T12-00-00-0199a1b2-0000-7000-8000-000000000001.jsonl`):
+### Deletion
+
+No marker; as in Codex ([What survives a delete](#what-survives-a-delete)).
+
+### Bad lines
+
+The shared `thread_history_1.sqlite` summary row: a bad `item_json` is counted, not shown
+([Bad lines in `codex-cli.md`](codex-cli.md#bad-lines)).
+
+### Fixtures
+
+- `.openinterpreter/sessions/2026/10/01/rollout-2026-10-01T12-00-00-0199a1b2-0000-7000-8000-000000000001.jsonl`:
 
 ```json
 {"timestamp":"2026-10-01T10:00:00.000Z","type":"session_meta","payload":{"session_id":"0199a1b2-0000-7000-8000-000000000001","id":"0199a1b2-0000-7000-8000-000000000001","timestamp":"2026-10-01T10:00:00.000Z","cwd":"/home/alice/proj","originator":"codex_cli_rs","cli_version":"0.9.0","source":"cli","model_provider":"kimi-for-coding","git":{"branch":"main"}}}
@@ -300,10 +332,6 @@ Fixture (`.openinterpreter/sessions/2026/10/01/rollout-2026-10-01T12-00-00-0199a
 {"timestamp":"2026-10-01T10:00:04.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"README.md"}}
 ```
 
-`external_agent_session_imports.json`:
-`{"records":[{"source_path":"/home/alice/.claude/projects/-home-alice-proj/5b1c.jsonl","content_sha256":"ab12...","imported_thread_id":"0199a1b2-0000-7000-8000-000000000002","imported_at":1759312800}]}`
+The import ledger `external_agent_session_imports.json`:
 
-Confidence. High: file locations, line envelope, timestamp format, payload
-field names (shared structs), the ledger's `records` key (no serde
-rename on the struct), `input_text` content blocks ([`protocol/src/models.rs:876-880`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/protocol/src/models.rs#L876-L880)). Not determined: the exact tool names each emulated harness emits, which
-vary by harness module.
+- `{"records":[{"source_path":"/home/alice/.claude/projects/-home-alice-proj/5b1c.jsonl","content_sha256":"ab12...","imported_thread_id":"0199a1b2-0000-7000-8000-000000000002","imported_at":1759312800}]}`
