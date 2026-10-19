@@ -1,33 +1,21 @@
 # goose
 
 Catalog agent `goose`, Block's open-source agent: a Rust CLI and an Electron desktop app (`Goose`)
-that share the same Rust config and data directories, with a gateway (a chat-platform front end) and
-roaming (peer-to-peer remote control) beside them. This document gives its on-disk paths; the
-transcript schema is in [`analyzer/research/goose.md`](../../analyzer/research/goose.md).
-
-Catalog agent `goose`, Block's open-source agent: a Rust CLI and an Electron desktop app that keep
-their sessions in one SQLite database, with a gateway (a chat-platform front end) and roaming
-(peer-to-peer remote control) beside them. Researched together with Zed ([zed.md](zed.md)); the two
-share nothing but Rust and SQLite. Paths cited are relative to the clone. Paths, credentials and the
-rest of the per-user state are in
-[`collectors/research/goose.md`](../../collectors/research/goose.md).
-
-<!-- MERGE: dedupe the intro paragraphs above into one -->
+that share the same Rust config and data directories and keep their sessions in one SQLite
+database, with a gateway (a chat-platform front end) and roaming (peer-to-peer remote control)
+beside them. Researched together with Zed ([zed.md](zed.md)); the two share nothing but Rust and
+SQLite. Parsed: the goose parser reads `sessions.db`, the legacy JSONL sessions, the
+`llm_request` logs and both `history.txt` files. Paths cited are relative to the clone.
 
 ## 1. Source and evidence
-
-[block/goose](https://github.com/block/goose), open source, commit
-[`591edd47cf2cfea4957d720c607cf2a4def8673d`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d).
-Platform mapping verified against `etcetera` 0.11.0 (`scratchpad/crates/etcetera-0.11.0`, the
-version in
-[`Cargo.lock`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/Cargo.lock)).
-Electron userData locations are Electron documentation level, not goose source.
 
 [block/goose](https://github.com/block/goose) at
 [`591edd47cf2cfea4957d720c607cf2a4def8673d`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d),
 Apache-2.0. Open source. Rust; sqlx 0.9.0, rmcp 3.4.1, etcetera 0.11.0, rustyline 18.0.1
 ([`Cargo.lock`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/Cargo.lock)).
-Third-party crate sources were read to verify serialisation.
+Third-party crate sources were read to verify serialisation; the platform mapping was verified
+against `etcetera` 0.11.0 (`scratchpad/crates/etcetera-0.11.0`, the version in `Cargo.lock`).
+Electron userData locations are Electron documentation level, not goose source.
 
 The repository has since moved to [aaif-goose/goose](https://github.com/aaif-goose/goose) (GitHub
 redirects the old name). Sync was checked at
@@ -41,39 +29,13 @@ handling. `LOGS_TO_KEEP` is 10 at HEAD ([What survives a delete](#what-survives-
 determined: whether Goose desktop writes millisecond timestamps (only the normaliser proves that
 some client does).
 
-<!-- MERGE: dedupe the section 1 prose above -->
-
 ### Observed
-
-- No real install.
 
 - No real install. The gateway session is fixture only, and the handling of records that do not
   decode is not observed on any real install, source-derived; see [Sync, relay and
   origin](#sync-relay-and-origin-rows) and [Bad lines](#bad-line-rows).
 
-<!-- MERGE: dedupe the Observed bullets above -->
-
 ### Source reviews
-
-- 2026-10-19: reviewed [aaif-goose/goose](https://github.com/aaif-goose/goose) at HEAD
-  [`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c);
-  this document cites
-  [`591edd4`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d), and
-  `github.com/block/goose` now answers with a 301 redirect to `github.com/aaif-goose/goose`.
-  Permission state: found, the standing grants `permission.yaml` and `roaming_trust.json` in the
-  config directory, both collected under `.config/goose`; `permissions/` has no writer at HEAD.
-  Model: covered by the analyzer document. Past use: `schedule.json` and the new
-  `projects/<slug>.md` in the data directory, collected under `.local/share/goose`. Sync, relay and
-  origin: covered (Telegram gateway only). Scratch directories: found ([Scratch
-  directories](#scratch-directories)). Deletion: no file outside `sessions.db` is removed by a
-  session delete ([What survives a
-  delete](#what-survives-a-delete)). Version drift: every path in
-  [section 2](#2-per-user-storage) is still written at HEAD; the Hugging Face token cache is now
-  written from
-  [`crates/goose-local-inference/src/huggingface_auth.rs:33`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-local-inference/src/huggingface_auth.rs#L33)
-  at the same path. Bad lines: not a collector concern. Detail is in [section 7 of
-  `analyzer/research/goose.md`](#7-transcript-stores) and its
-  section on [permission files](#permission-files).
 
 - 2026-10-19: reviewed [aaif-goose/goose](https://github.com/aaif-goose/goose) at HEAD
   [`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c)
@@ -88,36 +50,42 @@ some client does).
      `deny_once`, `always_deny`, `cancel`), the request is an `actionRequired` block of `actionType`
      `toolConfirmation`, and the automatic verdict is `_meta` `goose.executable` on the
      `toolRequest` block; standing grants are `.config/goose/permission.yaml` and
-     `roaming_trust.json`; see [section 8](#8-record-schema) and [Permission
-     files](#permission-files). The parser reads none of them as permission rows; the old
-     `permissions/tool_permissions.json` store has no caller at HEAD.
+     `roaming_trust.json` in the config directory, both collected under `.config/goose`; see
+     [section 8](#8-record-schema) and [Permission files](#permission-files). The parser reads
+     none of them as permission rows; the old `permissions/tool_permissions.json` store has no
+     caller at HEAD.
   2. Model: already covered (`metadata_json.inference.requestedModel` and `resolvedModel`,
      `model_config_json`, `usage_ledger.model`), unchanged at HEAD.
   3. Past use beyond the primary store: already covered for `history.txt`; new at HEAD are the
      project files `<data>/projects/<slug>.md` (no session content) and the scheduler's
-     `schedule.json` (the job and its current session), neither read; the `llm_request` logs keep
+     `schedule.json` (the job and its current session), both in the data directory and collected
+     under `.local/share/goose`, neither read; the `llm_request` logs keep
      the last 10 provider calls, which outlive a `/clear`, a rewind and a delete; see [What survives
      a delete](#what-survives-a-delete).
   4. Sync, relay and origin: already covered (the Telegram gateway is still the only relay platform;
      no sync or share command; roaming peers leave no per-session mark).
-  5. Scratch directories: found, already classed. A gateway session's working directory
+  5. Scratch directories: found, already classed ([Scratch directories](#scratch-directories)). A
+     gateway session's working directory
      `.config/goose/gateway/<platform>/<user_id>` lies under the `.config/goose` catalog entry, so
      the analyzer's catalog rule lists it under `scratch_directories`; the desktop app's default
      working directory is the home itself, and a scheduled job runs in the scheduler process's
      current directory.
   6. Deletion: found; `goose session remove` and the desktop delete drop the rows, `/clear` and an
      edit replace the conversation, a rewind deletes the later messages, archive only sets
-     `archived_at`; see [What survives a delete](#what-survives-a-delete).
-  7. Version drift: schema version 17 at HEAD (16 at the cited commit, additive); every path and key
-     the parser reads is still written; the provider crates have moved (`huggingface_auth.rs` now
-     under `crates/goose-local-inference`); see [section 11](#11-format-versions).
+     `archived_at`; no file outside `sessions.db` is removed by a session delete; see
+     [What survives a delete](#what-survives-a-delete).
+  7. Version drift: schema version 17 at HEAD (16 at the cited commit, additive); every path in
+     [section 2](#2-per-user-storage) and every key the parser reads is still written; the provider
+     crates have moved (`huggingface_auth.rs` now under `crates/goose-local-inference`), and the
+     Hugging Face token cache is now written from
+     [`crates/goose-local-inference/src/huggingface_auth.rs:33`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-local-inference/src/huggingface_auth.rs#L33)
+     at the same path; see [section 11](#11-format-versions).
   8. Bad lines: the legacy JSONL and the request logs go through `iter_jsonl` and `error_rows`; a
      `content_json`, `metadata_json` or `model_config_json` that does not parse is its own `parser:`
      row carrying the stored value in full since issue 183 (see [section 13](#13-parser-plan)); not
      observed on any real install, source-derived (block/goose at
      [`591edd4`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d)).
-
-<!-- MERGE: dedupe the Source reviews above -->
+     Not a collector concern.
 
 ## Collection
 
@@ -474,8 +442,7 @@ with no writer; treat as empty. v11 adds `provider_inventory_*` (model lists, no
   ([`:1941-1943`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L1941-L1943)).
 - Working directory: `sessions.working_dir`. Git branch: none.
 - Model and provider: `sessions.provider_name`, `sessions.model_config_json`
-  `{"model_name","temperature","max_tokens","toolshim","toolshim_model",
-  "request_params"?,"reasoning"?,"supports_vision"?}`
+  `{"model_name","temperature","max_tokens","toolshim","toolshim_model", "request_params"?,"reasoning"?,"supports_vision"?}`
   ([`goose-provider-types/src/model.rs:41-59`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-provider-types/src/model.rs#L41-L59);
   `request_headers` is `#[serde(skip)]`); per message
   `metadata_json.inference.{provider, requestedModel, resolvedModel?, providerSessionId?}`
@@ -490,15 +457,13 @@ with no writer; treat as empty. v11 adds `provider_inventory_*` (model lists, no
   `text` `{"type":"text","text":"...","annotations"?,"_meta"?}` (rmcp
   [`content.rs:23-34`](https://github.com/modelcontextprotocol/rust-sdk/blob/9427a929959e665e0d12e9395f674026baf4bd48/crates/rmcp/src/model/content.rs#L23-L34));
   `image` `{"data","mimeType"}`; `document` `{"data", "mimeType","name"?}`; `toolRequest`
-  `{"id","toolCall":{"status":"success", "value":{"name","arguments":{...}}} |
-  {"status":"error","error":"..."}, "metadata"?,"_meta"?}`
+  `{"id","toolCall":{"status":"success", "value":{"name","arguments":{...}}} | {"status":"error","error":"..."}, "metadata"?,"_meta"?}`
   ([`message.rs:131-141`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-provider-types/src/conversation/message.rs#L131-L141);
   [`tool_result_serde.rs:7-25`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-provider-types/src/conversation/tool_result_serde.rs#L7-L25);
   rmcp
   [`model.rs:4142-4150`](https://github.com/modelcontextprotocol/rust-sdk/blob/9427a929959e665e0d12e9395f674026baf4bd48/crates/rmcp/src/model.rs#L4142-L4150));
-  `toolResponse` `{"id","toolResult":{"status":
-  "success","value":{"content":[{"type":"text","text":..}|{"type":"image",..}|
-  resource|resource_link|audio],"structuredContent"?,"isError"?}} | {"status":"error","error"}}`
+  `toolResponse`
+  `{"id","toolResult":{"status": "success","value":{"content":[{"type":"text","text":..}|{"type":"image",..}| resource|resource_link|audio],"structuredContent"?,"isError"?}} | {"status":"error","error"}}`
   ([`message.rs:175-183`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-provider-types/src/conversation/message.rs#L175-L183);
   rmcp
   [`model.rs:3886-3897`](https://github.com/modelcontextprotocol/rust-sdk/blob/9427a929959e665e0d12e9395f674026baf4bd48/crates/rmcp/src/model.rs#L3886-L3897),
@@ -508,8 +473,8 @@ with no writer; treat as empty. v11 adds `provider_inventory_*` (model lists, no
   `thinking` `{"thinking", "signature"}`; `redactedThinking` `{"data"}`; `toolConfirmationRequest`
   `{"id","toolName","arguments","prompt"}`; `actionRequired` `{"data":{"actionType":...}}`;
   `systemNotification` `{"notificationType", "msg","data"?}`; `error` `{"kind","message"}`.
-- `metadata_json`: `{"userVisible","agentVisible","inference"?,
-  "outputTokenLimitReached"?,"steer"?,"turnContext"?,"usage"?,"operations"?}`
+- `metadata_json`:
+  `{"userVisible","agentVisible","inference"?, "outputTokenLimitReached"?,"steer"?,"turnContext"?,"usage"?,"operations"?}`
   ([`message.rs:826-854`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-provider-types/src/conversation/message.rs#L826-L854)).
 
 #### Tool confirmations and permission mode
@@ -637,7 +602,7 @@ Standing grants at HEAD, none read by the parser:
 | `gateway_configs[].allowed_user_ids` in `.config/goose/config.yaml` | list of chat user ids | the chat users allowed to pair with the gateway ([`gateway/handler.rs:64`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/gateway/handler.rs#L64), [`832-835`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/gateway/handler.rs#L832-L835)); `config.yaml` is a secret glob |
 
 `.config/goose/permissions/tool_permissions.json`, the per-call store named in
-[`collectors/research/goose.md`](../../collectors/research/goose.md) (records
+[Config directory](#config-directory) (records
 `{tool_name, allowed, context_hash, readable_context, timestamp, expiry}` keyed
 `<tool>:<hash of the arguments>`,
 [`permission/permission_store.rs:11-20`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/permission/permission_store.rs#L11-L20),
@@ -649,9 +614,8 @@ the file exists only where an older release wrote it.
 #### Scheduler and project files
 
 Other files that record use and are not read: `<data>/schedule.json`, a JSON list of scheduled jobs
-`{id, source, cron, last_run, currently_running, paused, current_session_id, process_start_time,
-parameters, recipe_base_dir}`, whose `current_session_id` and `sessions.schedule_id` join a job to
-its sessions
+`{id, source, cron, last_run, currently_running, paused, current_session_id, process_start_time, parameters, recipe_base_dir}`,
+whose `current_session_id` and `sessions.schedule_id` join a job to its sessions
 ([`scheduler/common.rs:93-104`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/scheduler/common.rs#L93-L104),
 [`167-187`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/scheduler/common.rs#L167-L187);
 [`scheduler/full.rs:80-84`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/scheduler/full.rs#L80-L84));
@@ -670,9 +634,9 @@ so older databases lack `message_id`, `metadata_json`, `provider_name`, `model_c
 `parent_session_id` and `usage_ledger`. Legacy JSONL sessions are imported once when
 `schema_version` is absent
 ([`:982-989`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L982-L989),[`1145-1250`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L1145-L1250)):
-line 1 `{"description","id"?,"created_at",
-"updated_at","extension_data","message_count","working_dir"?, token fields}`, then
-`{"id","role","created","content":[...],"metadata"?}`
+line 1
+`{"description","id"?,"created_at", "updated_at","extension_data","message_count","working_dir"?, token fields}`,
+then `{"id","role","created","content":[...],"metadata"?}`
 ([`legacy.rs:62-100`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/legacy.rs#L62-L100),[`128-130`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/legacy.rs#L128-L130));
 the file name `YYYYMMDD_HHMMSS` gives the created time
 ([`legacy.rs:111`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/legacy.rs#L111)).
