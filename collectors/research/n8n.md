@@ -28,6 +28,44 @@ n8n executes tools and shell commands on the host:
   shell is denied by default
   ([computer-use README.md:21](https://github.com/n8n-io/n8n/blob/0e1c7549997f43053fda83534b597875b0310df6/packages/@n8n/computer-use/README.md#L21)).
 
+- **Source review (2026-10-19)**: HEAD
+  [`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680)
+  reviewed against the previously cited
+  [`0e1c754`](https://github.com/n8n-io/n8n/commit/0e1c7549997f43053fda83534b597875b0310df6),
+  from source only. Two surfaces matter here: Instance AI (the n8n
+  Assistant, the built-in agent of the `instance-ai` module, which can
+  drive the computer-use gateway) and Chat Hub (n8n's chat front end to
+  models and agent workflows). Both store in `database.sqlite`; detail in
+  [section 2](#2-per-user-storage).
+  - Permission state: found. Per-call: Instance AI's
+    `instance_ai_pending_confirmations` and its `confirmation-request`
+    events, and the gateway log's denial errors. Standing:
+    `instance_ai_thread_grants` ("always allow" within a thread) and
+    `.n8n-gateway/settings.json` (`permissions` per tool group and
+    `resourcePermissionsByOrigin` allow and deny lists).
+  - Model: found: `chat_hub_messages.provider` and `model` per message,
+    the same on `chat_hub_sessions`; Instance AI's model is instance
+    configuration (`N8N_INSTANCE_AI_MODEL`).
+  - Past use beyond the primary store: found: `instance_ai_events` is a
+    sequenced event log of every Instance AI run; the gateway's `log`
+    repeats each tool call with its arguments; `execution_entity` and
+    `execution_data` keep the workflow runs a chat message started.
+  - Sync: found: Instance AI's `run-start` events carry `langsmithRunId`
+    and `langsmithTraceId` when the run is traced to LangSmith (LangChain's
+    hosted tracing service) through n8n's AI proxy.
+  - Scratch directories: none created by n8n; the gateway's working
+    directory is the one the user picks.
+  - Deletion: found: deleting an Instance AI thread cascades to its
+    messages, events, checkpoints, grants and pending confirmations, and
+    one upgrade migration emptied the Instance AI tables; deleting a Chat
+    Hub session leaves the workflow executions its messages point to.
+  - Version drift: paths unchanged; the SQLite file name moved to
+    [database.config.ts:127](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/config/src/configs/database.config.ts#L127);
+    computer-use is unchanged apart from its `package.json`. Instance AI's
+    tables existed at [`0e1c754`](https://github.com/n8n-io/n8n/commit/0e1c7549997f43053fda83534b597875b0310df6) and were not in this document.
+  - Bad lines: `.n8n-local-gateway/log` and `.n8n/n8nEventLog*.log` are
+    line-oriented; a parser must report a cut line.
+
 ## 2. Per-user storage
 
 The n8n folder is `N8N_USER_FOLDER`, otherwise `HOME` (or `USERPROFILE`
@@ -58,6 +96,93 @@ with the project directory `./n8n`
 which gives the volume `n8n_n8n-data`. Both volumes hold the `.n8n`
 layout at their root, so the `DOCKER_VOLUMES` lines are `*n8n_data` and
 `*n8n-data`, with volume-relative exclusions and secret globs.
+
+Detail from the 2026-10-19 review, at
+[`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680),
+for a future analyzer document:
+
+- **Gateway permissions** (`.n8n-gateway/settings.json`). `permissions`
+  maps each tool group (`filesystemRead`, `filesystemWrite`, `shell`,
+  `computer`, `browser`; defaults `allow`, `ask`, `deny`, `deny`, `ask`)
+  to a mode, `deny`, `ask` or `allow`
+  ([config.ts:8-50](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/computer-use/src/config.ts#L8-L50)).
+  `resourcePermissionsByOrigin` holds, per connecting n8n instance and
+  tool group, `allow` and `deny` lists of resources, and the older
+  `resourcePermissions` the same without an origin; `filesystemDir` is
+  the directory the user let the gateway work in
+  ([settings-store.ts:25-61](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/computer-use/src/settings-store.ts#L25-L61)).
+  A prompt's answer is one of `allowOnce`, `allowForSession`,
+  `alwaysAllow`, `denyOnce`, `alwaysDeny`; only the two `always` answers
+  are written to the file
+  ([tools/types.ts:55-60](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/computer-use/src/tools/types.ts#L55-L60),
+  [gateway-session.ts:7-12](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/computer-use/src/gateway-session.ts#L7-L12)).
+- **Gateway log** (`.n8n-local-gateway/log`). One line per message,
+  `[<ISO time>] [<LEVEL>] <message> <meta JSON>`
+  ([logger.ts:91-97](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/computer-use/src/logger.ts#L91-L97)).
+  A tool call logs `{tool, args}`, its end `{tool, durationMs}` or, on
+  failure, `{tool, durationMs, error}`
+  ([logger.ts:323-340](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/computer-use/src/logger.ts#L323-L340)).
+  A denied resource fails the call with `User denied access to <group>:
+  <resource>` or `User permanently denied access to ...`, so denials
+  reach the log as errors while approvals leave no line of their own
+  ([gateway-client.ts:510-545](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/computer-use/src/gateway-client.ts#L510-L545)).
+- **Instance AI tables.** `instance_ai_threads` (`title`, `projectId`,
+  `metadata`), `instance_ai_messages` (`threadId`, `role`, `type`,
+  `content`), `instance_ai_events` (`threadId`, `seq`, `runId`, `type`,
+  `payload`), `instance_ai_checkpoints`, `instance_ai_thread_grants`
+  (`threadId`, `userId`, `grantKey` such as `executions:run`) and
+  `instance_ai_pending_confirmations` (`requestId`, `threadId`, `kind`
+  `suspended` or `inline`, `runId`, `toolCallId`, `expiresAt`)
+  ([instance-ai-thread.entity.ts:4-26](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/entities/instance-ai-thread.entity.ts#L4-L26),
+  [instance-ai-message.entity.ts:4-24](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/entities/instance-ai-message.entity.ts#L4-L24),
+  [instance-ai-event-log-entry.entity.ts:17-41](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/entities/instance-ai-event-log-entry.entity.ts#L17-L41),
+  [instance-ai-thread-grant.entity.ts:7-39](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/entities/instance-ai-thread-grant.entity.ts#L7-L39),
+  [instance-ai-pending-confirmation.entity.ts:7-70](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/entities/instance-ai-pending-confirmation.entity.ts#L7-L70)).
+  Event types include `run-start`, `tool-call`, `tool-result`,
+  `tool-error`, `confirmation-request`, `filesystem-request` and `error`
+  ([instance-ai.schema.ts:224-247](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/api-types/src/schemas/instance-ai.schema.ts#L224-L247));
+  an approval resumes the tool with `approved`, optional `userInput` and
+  `scope` `once` or `session`
+  ([instance-ai.schema.ts:284-296](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/api-types/src/schemas/instance-ai.schema.ts#L284-L296)).
+  The model is `N8N_INSTANCE_AI_MODEL`, `anthropic/claude-opus-4-8` by
+  default, from the environment, not the database
+  ([instance-ai.config.ts:12-14](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/config/src/configs/instance-ai.config.ts#L12-L14)).
+- **LangSmith ids.** `run-start` events keep `langsmithRunId` and
+  `langsmithTraceId`, "so user feedback can annotate the trace after a
+  restart", when the run was traced through the proxy's `/langsmith`
+  endpoint
+  ([instance-ai.schema.ts:413-430](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/api-types/src/schemas/instance-ai.schema.ts#L413-L430),
+  [instance-ai.service.ts:1033-1039](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/instance-ai.service.ts#L1033-L1039),
+  [4024-4041](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/instance-ai.service.ts#L4024-L4041)).
+- **Chat Hub model.** `chat_hub_messages` has `provider` and `model` per
+  message, and `executionId`, `previousMessageId`, `retryOfMessageId` and
+  `revisionOfMessageId`; `chat_hub_sessions` has the session's `provider`
+  and `model`
+  ([chat-hub-message.entity.ts:55-114](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/chat-hub/chat-hub-message.entity.ts#L55-L114),
+  [chat-hub-session.entity.ts:81-90](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/chat-hub/chat-hub-session.entity.ts#L81-L90)).
+- **Deletion.** Deleting an Instance AI thread deletes it and its
+  sub-agent threads, and the message, event, checkpoint, grant and
+  pending confirmation rows go with it by `ON DELETE CASCADE`
+  ([instance-ai-memory.service.ts:648-653](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/instance-ai-memory.service.ts#L648-L653),
+  [typeorm-agent-memory.ts:388-390](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/storage/typeorm-agent-memory.ts#L388-L390),
+  [CreateInstanceAiTables.ts:24-39](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/db/src/migrations/common/1775000000000-CreateInstanceAiTables.ts#L24-L39),
+  [instance-ai-event-log-entry.entity.ts:20](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/entities/instance-ai-event-log-entry.entity.ts#L20)).
+  One upgrade migration emptied the Instance AI checkpoint, message,
+  resource and thread tables outright
+  ([ResetInstanceAiNativePersistence.ts:3-19](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/db/src/migrations/common/1784000000008-ResetInstanceAiNativePersistence.ts#L3-L19)),
+  so an install upgraded past it holds no Instance AI thread from before
+  the upgrade in those tables.
+  Deleting a Chat Hub session deletes its attachments and the session
+  ([chat-hub.service.ts:394-400](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/chat-hub/chat-hub.service.ts#L394-L400));
+  the workflow executions its messages started stay in
+  `execution_entity`. The gateway log is never trimmed by n8n (not found
+  in `logger.ts` at [`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680): grepped for `truncate` and `unlink`).
+
+**Scratch directories.** None. The gateway works in the directory set by
+its configuration, the saved `filesystemDir`, or the directory it was
+started from, in that order
+([settings-store.ts:135](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/computer-use/src/settings-store.ts#L135)):
+a directory the user chose, not one the agent made.
 
 ## 3. Credentials
 

@@ -33,6 +33,54 @@ and MCP stdio servers are spawned
 The built-in CodeInterpreterTool is gone
 ([agent/core.py:293-297](https://github.com/crewAIInc/crewAI/blob/e836a191cfe524feb519c6952a458c9f1e1ff0ef/lib/crewai/src/crewai/agent/core.py#L293-L297)).
 
+- **Source review (2026-10-19)**: HEAD
+  [`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2)
+  reviewed against the previously cited
+  [`e836a19`](https://github.com/crewAIInc/crewAI/commit/e836a191cfe524feb519c6952a458c9f1e1ff0ef),
+  from source only. AMP (Agent Management Platform) is CrewAI's hosted
+  service, and Wharf is the trace intake that the source names as the
+  place a run's spans are sent
+  ([last_run.py:1-7](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/telemetry/tracing/last_run.py#L1-L7)).
+  - Permission state: found. Paused Flow reviews are rows of
+    `pending_feedback` in the opt-in `flow_states.db`, and the trace consent
+    is a standing setting in `.crewai_user.json`
+    ([section 2](#2-per-user-storage)). No per-tool approval exists: a task's
+    `human_input` review is asked on the console and its answer becomes a
+    user message in the task's `messages`
+    ([human_input.py:46](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/core/providers/human_input.py#L46)).
+  - Model: none in the run database. `latest_kickoff_task_outputs` keeps the
+    agent's role (`agent`), not its model; the only stored model string is
+    the `llm` of a pending Flow review
+    ([async_feedback/types.py:38](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/flow/async_feedback/types.py#L38)).
+    Not found in `kickoff_task_outputs_storage.py` or `last_run.py` at
+    [`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2) (grepped for `model` and `llm`).
+  - Past use beyond the primary store: found, and the run database is not
+    a history: every kickoff empties `latest_kickoff_task_outputs` before
+    its first task
+    ([crews/utils.py:339](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/crews/utils.py#L339),
+    [task_output_storage_handler.py:79-81](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/utilities/task_output_storage_handler.py#L79-L81)),
+    so it holds the last run only. Opt-in checkpoints in the project's
+    `.checkpoints/` and the project's `.crewai/last_run.json` outlive it
+    ([section 5](#5-project-local-files)).
+  - Sync: found. A traced run is uploaded to AMP, and the project's
+    `.crewai/last_run.json` records its execution id, trace tier and AMP
+    trace URL ([section 5](#5-project-local-files)).
+  - Scratch directories: none; CrewAI runs in the user's working directory.
+  - Deletion: found. `crewai reset-memories -k` (or `-a`) empties the run
+    table
+    ([cli.py:478-482](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/cli.py#L478-L482),
+    [crew.py:2486-2490](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/crew.py#L2486-L2490));
+    it leaves `last_run.json`, the checkpoints and the remote trace.
+  - Version drift: the paths and tables below are unchanged apart from
+    line shifts in `flow/persistence/sqlite.py`; the eval-awaiting markers
+    are now JSON files and their directory is derived from the account's
+    home rather than `appdirs` on Linux and macOS
+    ([crew_run_tui.py:357-376](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/crew_run_tui.py#L357-L376)),
+    the same path as before; `crewai eval export` is new
+    ([section 5](#5-project-local-files)).
+  - Bad lines: no line-oriented file; every store is SQLite or a JSON
+    document.
+
 ## 2. Per-user storage
 
 The run data directory comes from `db_storage_path()`:
@@ -64,6 +112,44 @@ case-insensitive), and the token directory looks like a project named
 so the catalog line is the class `AppData/Local/[Cc]rew[Aa][Ii]` rather
 than two lines that differ only by case (issue 29).
 
+Detail from the 2026-10-19 review, at
+[`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2):
+
+- `.crewai_user.json` holds `first_execution_done` and `trace_consent`,
+  the standing answer to "share traces with AMP": the run's first-run
+  prompt writes both
+  ([ephemeral.py:144](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/telemetry/tracing/ephemeral.py#L144)),
+  and so do `crewai traces enable` and `crewai traces disable`
+  ([cli.py:1327](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/cli.py#L1327),
+  [1348](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/cli.py#L1348)).
+  `CREWAI_TRACING_ENABLED=true` in the environment or the project's `.env`
+  overrides a recorded refusal
+  ([user_data.py:77-91](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai-core/src/crewai_core/user_data.py#L77-L91)).
+  The file sits in the run data directory, so the consent is per project
+  folder name.
+- `flow_states.db` has two tables: `flow_states` (`flow_uuid`,
+  `method_name`, `timestamp`, `state_json`), one row per persisted step,
+  and `pending_feedback` (`flow_uuid`, `context_json`, `state_json`,
+  `created_at`), a Flow paused for a human review; the row is removed when
+  the Flow resumes
+  ([sqlite.py:74-76](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/flow/persistence/sqlite.py#L74-L76),
+  [113-139](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/flow/persistence/sqlite.py#L113-L139),
+  [332](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/flow/persistence/sqlite.py#L332)).
+- `latest_kickoff_task_outputs` (columns `task_id`, `task_key`,
+  `expected_output`, `output`, `task_index`, `inputs`, `was_replayed`,
+  `timestamp`) is emptied at the start of every kickoff
+  ([kickoff_task_outputs_storage.py:49-58](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/memory/storage/kickoff_task_outputs_storage.py#L49-L58),
+  [crews/utils.py:339](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/crews/utils.py#L339)),
+  so it shows the latest run of each project folder name and nothing
+  earlier.
+- The `eval-awaiting/<token>` files are JSON (`trusted_amp_origins`,
+  `tracing_turned_on`) that live while `crewai eval` waits for a run
+  ([crew_run_tui.py:409-420](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/crew_run_tui.py#L409-L420)).
+
+**Scratch directories.** None. CrewAI creates no working directory of its
+own; tools and checkpoints write relative to the directory the crew was
+started from, which is the user's project.
+
 **Memory gap.** On Linux and macOS the opt-in `memory/`, Chroma and Qdrant
 stores under `<data>/` have no CrewAI-specific name to anchor a glob on, so
 the catalog collects the run database, the flow database and
@@ -89,14 +175,68 @@ anyway ([section 2](#2-per-user-storage)).
 
 ## 5. Project-local files
 
-None written by CrewAI itself; a CrewAI project is ordinary Python code.
-The run directory is per project but lives under the home ([section 2](#2-per-user-storage)).
+A CrewAI project is ordinary Python code, and the run directory is per
+project but lives under the home ([section 2](#2-per-user-storage)). The
+2026-10-19 review at
+[`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2)
+found these files that CrewAI writes inside the project directory (the
+working directory of the run); none is in `PROJECT_CATALOG`:
+
+- `.crewai/last_run.json`: the last traced run whose spans reached AMP:
+  `execution_id`, `tier` (`ephemeral` without a login, `authenticated`
+  with one), `started_at`, `finished_at`, `recorded_at`, `amp_base_url`
+  and, when AMP granted one, `trace_url`. It is written for every traced
+  run, not only for `crewai eval`, and it is the local mark that the run's
+  trace is on the vendor's servers
+  ([last_run.py:35-36](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/telemetry/tracing/last_run.py#L35-L36),
+  [56-57](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/telemetry/tracing/last_run.py#L56-L57),
+  [86-98](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/telemetry/tracing/last_run.py#L86-L98),
+  [grants.py:208](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/telemetry/tracing/grants.py#L208)).
+- `.crewai/last_eval.json`: `execution_id` and `at` of the run the
+  `crewai eval` app evaluated
+  ([eval_crew.py:466-495](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/experimental/eval_crew.py#L466-L495)).
+- `.crewai/eval_project_state.json`: the `execution_id` of the evaluated
+  run and `files`, every project file by relative path with its
+  modification time in nanoseconds and size (the `.env` included, other
+  dotfiles left out): a listing of the project as it was when the run was
+  sent for grading
+  ([eval_crew.py:805-866](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/experimental/eval_crew.py#L805-L866)).
+- `eval.jsonc`: the user's evaluation criteria, uploaded to AMP with the
+  evaluation
+  ([eval_crew.py:410-425](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/experimental/eval_crew.py#L410-L425)).
+- `.env`: `crewai eval` writes `CREWAI_TRACING_ENABLED=true` into it when
+  the user agrees to tracing
+  ([eval_crew.py:205-224](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/experimental/eval_crew.py#L205-L224)).
+- `crewai-eval-<id>/`: `crewai eval export <id>` downloads an evaluation
+  from AMP (report, outputs, judge verdicts and the traces) with a
+  `.gitignore` of `*`
+  ([cli.py:794-807](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/cli.py#L794-L807),
+  [eval_crew.py:2028](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/experimental/eval_crew.py#L2028)).
+- `.checkpoints/` (opt-in, `checkpoint=True` on a Crew, Flow or Agent):
+  one JSON file per checkpoint, named `{ts}_{uuid8}_p-{parent}.json`, or
+  `.checkpoints.db` with the SQLite provider; written on `task_completed`
+  by default and kept without limit unless `max_checkpoints` is set
+  ([checkpoint_config.py:160-193](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/state/checkpoint_config.py#L160-L193),
+  [json_provider.py:116](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/state/provider/json_provider.py#L116)).
+  Unlike the run table, checkpoints survive the next kickoff. The
+  directory name is generic, so a project-catalog line for it would also
+  match other tools' checkpoints.
+
+The `crewai create` template excludes `.crewai/` from the first commit
+([git.py:8-9](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/git.py#L8-L9)),
+so git is no index of these files.
 
 ## 6. Where the project path is recorded
 
 Only indirectly: the run data directory is named after the project
 folder's basename, not its full path. Nothing records the full path, so
-`discover_projects` has nothing to read.
+`discover_projects` has nothing to read. The project-local files in
+[section 5](#5-project-local-files) hold no path either; the 2026-10-19
+review found none in `last_run.py` or `eval_crew.py` at
+[`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2)
+(grepped for `cwd` and `project_dir`: the working directory is used only
+to locate the files, and `eval_project_state.json` keeps paths relative
+to it).
 
 ## 7. Confidence
 

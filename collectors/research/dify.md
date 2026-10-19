@@ -25,6 +25,40 @@ and the agent runs shell jobs in `local_sandbox` through shellctl
 ([539-548](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/docker/docker-compose.yaml#L539-L548),
 [677](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/docker/docker-compose.yaml#L677)).
 
+- **Source review (2026-10-19)**: HEAD
+  [`ac17912`](https://github.com/langgenius/dify/commit/ac1791279d43b9d78edc66b2fccc8949e2a2a082)
+  reviewed against the previously cited
+  [`519ef8b`](https://github.com/langgenius/dify/commit/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e),
+  from source only. The collected state is the shellctl volume and
+  difyctl's directory; everything else is in PostgreSQL, which the
+  analyzer cannot read, so the PostgreSQL findings are named for
+  completeness.
+  - Permission state: found, in PostgreSQL only: workflow Human Input
+    forms (`human_input_forms` with a `status`, and their deliveries).
+    Nothing in the shellctl volume or difyctl's files records an approval;
+    not found in `dify-agent-runtime/internal/server` at [`ac17912`](https://github.com/langgenius/dify/commit/ac1791279d43b9d78edc66b2fccc8949e2a2a082)
+    (grepped for `approv` and `permission`).
+  - Model: found, in PostgreSQL only: `messages.model_provider` and
+    `model_id`, and the same on `conversations`. shellctl's `jobs` table
+    has no model column ([section 2](#2-per-user-storage)).
+  - Past use beyond the primary store: none on disk; shellctl keeps no
+    copy of a job once it is collected.
+  - Sync, relay and origin: relay found, in PostgreSQL only: a Human
+    Input form is delivered by web app or by email
+    (`human_input_form_deliveries.delivery_method_type`).
+  - Scratch directories: found: the agent's `/workspace` volume, and each
+    job's `cwd` in `shellctl.db` ([section 2](#2-per-user-storage)).
+  - Deletion: found: shellctl deletes a finished job's row, script and
+    output five minutes after it ends ([section 2](#2-per-user-storage)).
+  - Version drift: the compose file moved by a few lines (the volume
+    mounts are now at lines 564-565 and the volume list at 1328-1332) and
+    `local_sandbox` now starts `shellctl serve --require-auth-token`;
+    shellctl's state paths and schema are unchanged. difyctl's files are
+    the same three plus a new `login-pending.yml`
+    ([section 3](#3-credentials)).
+  - Bad lines: each job's `output.log` is terminal output, read whole if
+    parsed; no JSONL.
+
 ## 2. Per-user storage
 
 **The server has no default path under the home.** It is deployed with
@@ -92,9 +126,60 @@ unavailable, in `~/.config/difyctl` on Linux and macOS and
 [37-64](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/cli/src/store/manager.ts#L37-L64),
 [README.md:1-3](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/cli/README.md#L1-L3)).
 
+Detail from the 2026-10-19 review, at
+[`ac17912`](https://github.com/langgenius/dify/commit/ac1791279d43b9d78edc66b2fccc8949e2a2a082),
+for a future analyzer document:
+
+- **shellctl's `jobs` table** has `job_id`, `script_path`, `output_path`,
+  `cwd`, `terminal_cols`, `terminal_rows`, `status`, `session_name`,
+  `pane_target`, `exit_code`, `reason`, `message`, `created_at`,
+  `started_at`, `ended_at` and `updated_at`
+  ([db.go:150-167](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/dify-agent-runtime/internal/server/db.go#L150-L167));
+  the command is the job's `jobs/<id>/script` file beside `output.log`
+  ([service.go:172-173](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/dify-agent-runtime/internal/server/service.go#L172-L173)).
+  No column names a model, a conversation or a Dify user, so a job joins
+  the Dify conversation that asked for it only by time.
+- **Retention.** A garbage collector runs every 60 seconds and deletes
+  every job that ended more than 300 seconds earlier: its row, and its
+  `jobs/<id>/` directory with the script and the output
+  ([config.go:24-25](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/dify-agent-runtime/internal/server/config.go#L24-L25),
+  [service.go:97](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/dify-agent-runtime/internal/server/service.go#L97),
+  [590-620](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/dify-agent-runtime/internal/server/service.go#L590-L620)).
+  An explicit delete does the same at once
+  ([service.go:548-567](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/dify-agent-runtime/internal/server/service.go#L548-L567)).
+  A collection therefore holds the jobs of the last few minutes before it
+  ran, plus whatever the deleted rows left in the database's free pages.
+- **PostgreSQL, not collected.** `messages` and `conversations` carry
+  `model_provider` and `model_id`
+  ([models/model.py:1146-1148](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/api/models/model.py#L1146-L1148),
+  [1454-1455](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/api/models/model.py#L1454-L1455));
+  workflow Human Input nodes leave `human_input_forms` (with a `status`)
+  and `human_input_form_deliveries`, whose `delivery_method_type` is
+  `webapp` or `email`
+  ([models/human_input.py:29](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/api/models/human_input.py#L29),
+  [94](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/api/models/human_input.py#L94),
+  [human_input_adapter.py:27-29](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/api/core/workflow/human_input_adapter.py#L27-L29)).
+
+**Scratch directories.** The agent's shell jobs run in the
+`dify_agent_local_sandbox_workspace` volume, mounted at `/workspace`
+([docker-compose.yaml:564-565](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/docker/docker-compose.yaml#L564-L565)),
+which is the agent's own working directory, not a user project. The
+`DOCKER_VOLUMES` line collects it whole, and each job's working directory
+is the `cwd` column of `shellctl.db`. It is outside every home, so the
+analyzer's home-catalog rule for scratch directories does not apply to it.
+
 ## 3. Credentials
 
 - difyctl `tokens.yml`, in all three locations: flagged.
+- difyctl `login-pending.yml`, new since the first review: `server`,
+  `insecure`, `no_keyring` and `device_code`, the code of a device login
+  started with `login --no-wait` and finished with `login --resume`
+  ([auth/pending-login.ts:8-15](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/cli/src/auth/pending-login.ts#L8-L15)).
+  The device code is what the CLI polls the server with to receive the
+  token once the user approves the login
+  ([auth/device-flow.ts:34-38](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/cli/src/auth/device-flow.ts#L34-L38)),
+  so while a login is pending the file can yield a token; it is not
+  flagged.
 - Not collected (outside the home): `docker/.env` holds `SECRET_KEY`
   ([.env.example:33](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/docker/.env.example#L33)).
   Per-tenant RSA keys are written to `privkeys/<tenant_id>/private.pem` in

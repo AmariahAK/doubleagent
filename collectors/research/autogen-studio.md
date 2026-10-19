@@ -27,6 +27,40 @@ directory
 and an MCP filesystem workbench rooted at the home directory
 ([builder.py:562-573](https://github.com/microsoft/autogen/blob/027ecf0a379bcc1d09956d46d12d44a3ad9cee14/python/packages/autogen-studio/autogenstudio/gallery/builder.py#L562-L573)).
 
+- **Source review (2026-10-19)**: HEAD
+  [`004749e`](https://github.com/microsoft/autogen/commit/004749e6b7102c8fd317b9b1499ce5807223c278)
+  reviewed against the previously cited
+  [`027ecf0`](https://github.com/microsoft/autogen/commit/027ecf0a379bcc1d09956d46d12d44a3ad9cee14),
+  from source only.
+  - Permission state: none recorded. Studio's gallery code executor runs
+    without an approval function
+    ([builder.py:433-434](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/gallery/builder.py#L433-L434));
+    `approval_func` exists only on AgentChat's `CodeExecutorAgent`
+    ([_code_executor_agent.py:140](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-agentchat/src/autogen_agentchat/agents/_code_executor_agent.py#L140)),
+    and not found in `autogen-studio` at [`004749e`](https://github.com/microsoft/autogen/commit/004749e6b7102c8fd317b9b1499ce5807223c278) (grepped for `approv`
+    and `permission`: only the web auth error class). A human's answer to a
+    `UserProxyAgent` arrives over the web socket and is stored as an
+    ordinary message
+    ([connection.py:201-224](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/web/managers/connection.py#L201-L224)).
+  - Model: found ([section 2](#2-per-user-storage)): each LLM call is a
+    `message` row whose JSON carries the provider's response, with its
+    `model`; the configured model is in the team's component JSON and the
+    `settings` table's `default_model_client`.
+  - Past use beyond the primary store: none. Everything is in
+    `autogen04203.db`; `run.messages`, `run.team_result` and the `message`
+    rows repeat one another inside it.
+  - Sync, relay and origin: none; not found in `autogen-studio` at
+    [`004749e`](https://github.com/microsoft/autogen/commit/004749e6b7102c8fd317b9b1499ce5807223c278) (grepped for `upload`, `sync` and `share`).
+  - Scratch directories: found ([section 2](#2-per-user-storage)): the
+    gallery's `.coding` work directory, relative to where Studio started;
+    nothing records it.
+  - Deletion: found ([section 2](#2-per-user-storage)): deleting a
+    session removes its runs and their messages.
+  - Version drift: none. `python/packages/autogen-studio` is identical at
+    the two commits (an empty `git diff`), so every citation below still
+    holds.
+  - Bad lines: no line-oriented file; the store is SQLite.
+
 ## 2. Per-user storage
 
 The app directory is `~/.autogenstudio` (`Path.home()`) on every OS, unless
@@ -50,6 +84,49 @@ Docker: no compose file and no named volume. The Studio Dockerfile sets
 `AUTOGENSTUDIO_APPDIR=/home/user/app` inside the image
 ([Dockerfile:11](https://github.com/microsoft/autogen/blob/027ecf0a379bcc1d09956d46d12d44a3ad9cee14/python/packages/autogen-studio/Dockerfile#L11)),
 so no `DOCKER_VOLUMES` line.
+
+Detail from the 2026-10-19 review, at
+[`004749e`](https://github.com/microsoft/autogen/commit/004749e6b7102c8fd317b9b1499ce5807223c278),
+for a future analyzer document:
+
+- **Records.** A run's stream is saved message by message as `message`
+  rows (`config` JSON, `session_id`, `run_id`) for the types
+  `TextMessage`, `MultiModalMessage`, `StopMessage`, `HandoffMessage`,
+  `ToolCallRequestEvent`, `ToolCallExecutionEvent` and
+  `LLMCallEventMessage`
+  ([connection.py:129-143](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/web/managers/connection.py#L129-L143),
+  [173-186](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/web/managers/connection.py#L173-L186)),
+  and the run's final `TaskResult` goes to `run.team_result`.
+- **Model.** Every model call is logged as an AutoGen `LLMCallEvent`, which
+  Studio captures and saves as a message with source `llm_call_event`
+  ([teammanager.py:26-37](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/teammanager/teammanager.py#L26-L37),
+  [types.py:25-26](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/datamodel/types.py#L25-L26)).
+  Its `content` is the event as JSON (`type: "LLMCall"`, `messages`,
+  `response`, `prompt_tokens`, `completion_tokens`, `tools`)
+  ([logging.py:42-45](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-core/src/autogen_core/logging.py#L42-L45),
+  [63-64](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-core/src/autogen_core/logging.py#L63-L64)),
+  and for the OpenAI client `response` is the provider's response dump,
+  whose `model` is the resolved model id
+  ([_openai_client.py:716-724](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-ext/src/autogen_ext/models/openai/_openai_client.py#L716-L724)).
+  The model the user configured is in the `team` row's component JSON and
+  in `settings.config.default_model_client`, `gpt-4o-mini` by default
+  ([types.py:105-110](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/datamodel/types.py#L105-L110)).
+- **Deletion.** Deleting a session deletes the `session` row with foreign
+  keys on, and `run` (`ondelete="CASCADE"` on `session_id`) and `message`
+  (`ondelete="CASCADE"` on `run_id`) follow it
+  ([sessions.py:58-62](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/web/routes/sessions.py#L58-L62),
+  [db_manager.py:253-263](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/database/db_manager.py#L253-L263),
+  [db.py:65](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/datamodel/db.py#L65),
+  [96](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/datamodel/db.py#L96)).
+  No other file keeps a copy.
+
+**Scratch directories.** The gallery's Python code execution tool runs in
+`.coding`, created relative to the directory Studio was started from
+([builder.py:433](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/gallery/builder.py#L433)).
+It is the agent's own working directory, not a user project. Started from
+the home, it is `~/.coding`, which no catalog line collects; started
+elsewhere, it is outside the home. Nothing in the database records it, so
+neither project discovery nor the analyzer can name it.
 
 ## 3. Credentials
 

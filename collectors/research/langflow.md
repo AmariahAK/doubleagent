@@ -25,6 +25,46 @@ there is a Python Interpreter component
 and MCP stdio servers are spawned on the host
 ([mcp/util.py:2166](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/base/mcp/util.py#L2166)).
 
+- **Source review (2026-10-19)**: HEAD
+  [`972d56c`](https://github.com/langflow-ai/langflow/commit/972d56c47d3830d17060ee85cfaad152df823041)
+  reviewed against the previously cited
+  [`504c02f`](https://github.com/langflow-ai/langflow/commit/504c02fc47e76087b82b0e7cbe4186e9cdd916d4),
+  from source only; the open-source schema is the one the server's
+  `langflow.db` uses, and that Langflow Desktop's `database.db` uses it
+  too is an inference, since Desktop is closed source. Detail in
+  [section 2](#2-per-user-storage).
+  - Permission state: none recorded per call. The Langflow Assistant's
+    canvas edits are proposals the user approves in a UI card, and the
+    approval is not stored
+    ([router.py:435-438](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/agentic/api/router.py#L435-L438));
+    standing governance is in `policy_bundle_revision` and
+    `model_provider_policy` (approved providers, blocked components and
+    models), and `audit_events` logs actions on resources.
+  - Model: found: `span` rows of the native tracer, on by default, carry
+    the model of each LLM call.
+  - Past use beyond the primary store: found: `trace` and `span`,
+    `transaction` (now with `session_id`), `vertex_build`, `flow_version`
+    and `audit_events` all outlive a session delete, which removes only
+    `message` rows.
+  - Sync: found for flows, not sessions: `deployment` rows record a flow
+    pushed to an external provider account under a remote `resource_key`;
+    third-party tracers (LangSmith, Langfuse, LangWatch and others) send
+    runs out when their environment variables are set, with no local
+    marker.
+  - Scratch directories: found: `.langflow/fs_tool/fs_sandbox`, the
+    Assistant's file sandbox, already collected by `langflow|.langflow`.
+  - Deletion: found: a session delete removes its `message` rows; a flow
+    delete removes messages, transactions, vertex builds, versions and
+    traces.
+  - Version drift: paths unchanged; `paths.py` lines moved (the config
+    directory validator is now at
+    [paths.py:67-76](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/lfx/src/lfx/services/settings/groups/paths.py#L67-L76)),
+    `AUTO_LOGIN` now defaults to `False` in release packages, and the
+    tables `audit_events`, `trigger` (with `trigger_event`) and
+    `data_subject_request` are new since [`504c02f`](https://github.com/langflow-ai/langflow/commit/504c02fc47e76087b82b0e7cbe4186e9cdd916d4).
+  - Bad lines: no line-oriented file is collected apart from logs; every
+    store is SQLite.
+
 ## 2. Per-user storage
 
 The config directory is `LANGFLOW_CONFIG_DIR`, otherwise
@@ -83,6 +123,70 @@ which is a whole PostgreSQL cluster the analyzer cannot read and is left
 unmatched. The image home is `/app/data`
 ([build_and_push.Dockerfile:209](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/docker/build_and_push.Dockerfile#L209),
 [226](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/docker/build_and_push.Dockerfile#L226)).
+
+Detail from the 2026-10-19 review, at
+[`972d56c`](https://github.com/langflow-ai/langflow/commit/972d56c47d3830d17060ee85cfaad152df823041),
+for a future analyzer document over Desktop's `database.db` (or a
+server `langflow.db` collected by hand):
+
+- **Model.** The native tracer is on unless `LANGFLOW_NATIVE_TRACING` is
+  `false`
+  ([native.py:110-115](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/tracing/native.py#L110-L115)).
+  It writes a `trace` row per run (name, status, times, `total_tokens`,
+  `flow_id`, `session_id`) and a `span` row per component and LangChain
+  call, named `{operation} {model}`, with `inputs`, `outputs` and
+  `attributes`; the model name is kept per LLM span and read back from
+  the `gen_ai.response.model` attribute
+  ([traces/model.py:134-160](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/traces/model.py#L134-L160),
+  [284-330](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/traces/model.py#L284-L330),
+  [native.py:442](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/tracing/native.py#L442),
+  [formatting.py:124](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/tracing/formatting.py#L124)).
+  `message` has no model column
+  ([message/model.py:30-45](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/message/model.py#L30-L45)).
+- **Other run records.** `transaction` now carries `user_id` and
+  `session_id`
+  ([transactions/model.py:122-123](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/transactions/model.py#L122-L123)),
+  so a component run joins its chat session; `vertex_build` and
+  `flow_version` (saved versions of a flow) are per flow; `audit_events`
+  (new) records `action`, `operation`, `event_type`, `result`, the actor
+  and the resource with a `timestamp` and `details` JSON
+  ([audit_event/model.py:68-120](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/audit_event/model.py#L68-L120));
+  `trigger` and `trigger_event` (new) hold scheduled and event-driven flow
+  runs
+  ([trigger/model.py:54-57](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/trigger/model.py#L54-L57),
+  [142-145](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/trigger/model.py#L142-L145)).
+- **Standing policy.** `policy_bundle_revision` keeps every revision of
+  the deployment policy (`approved_provider_ids`,
+  `blocked_component_keys`, `blocked_model_keys`,
+  `approved_integration_provider_ids` and others) with `created_by`
+  ([policy_bundle/model.py:20-60](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/policy_bundle/model.py#L20-L60)),
+  beside `model_provider_policy`
+  ([model_provider_policy/model.py:8-11](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/model_provider_policy/model.py#L8-L11)).
+- **Flows pushed out.** `deployment` rows name a flow deployed to an
+  external provider account (`deployment_provider_account`) under the
+  provider's `resource_key`, with the display name synced from the
+  provider
+  ([deployment/model.py:21-55](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/deployment/model.py#L21-L55)).
+  LangSmith, Langfuse, LangWatch, Arize Phoenix, Opik, Openlayer and
+  Traceloop tracers are enabled by their own environment variables (for
+  example `LANGCHAIN_API_KEY`, `LANGFUSE_SECRET_KEY`) and keep no local
+  row
+  ([langsmith.py:128](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/tracing/langsmith.py#L128),
+  [langfuse.py:610-612](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/tracing/langfuse.py#L610-L612)).
+- **Deletion.** Deleting a session removes its `message` rows and its
+  memory-base data, nothing else
+  ([monitor.py:533-557](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/api/v1/monitor.py#L533-L557),
+  [message/crud.py:71-84](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/message/crud.py#L71-L84)),
+  so the session's `transaction`, `trace` and `span` rows survive it.
+  Deleting a flow removes its triggers, messages, transactions, vertex
+  builds, versions, traces and spans
+  ([flow_utils.py:124-185](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/api/utils/flow_utils.py#L124-L185)).
+
+**Scratch directories.** `.langflow/fs_tool/fs_sandbox` is the Langflow
+Assistant's own file workspace ([table above](#2-per-user-storage)); the
+`langflow|.langflow` catalog line collects it, so the
+analyzer's home-catalog rule would class it as a scratch directory if a
+parser ever named it as a project. Nothing else is a working directory.
 
 ## 3. Credentials
 

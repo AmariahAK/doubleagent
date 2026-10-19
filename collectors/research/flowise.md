@@ -23,6 +23,33 @@ custom scripts
 ([MCP/core.ts:117](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/tools/MCP/core.ts#L117),
 [248-258](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/tools/MCP/core.ts#L248-L258)).
 
+- **Source review (2026-10-19)**: HEAD is still
+  [`9291856`](https://github.com/FlowiseAI/Flowise/commit/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb),
+  the commit this document already cited, so the review read the same
+  tree for the requirement classes the first pass did not look for. From
+  source only; the detail is in [section 2](#2-per-user-storage).
+  - Permission state: found. Agentflow v2 (the second-generation agent
+    canvas) pauses for a human at a Human Input node and at any Agent-node
+    tool marked "require human input"; the decision (`proceed` or
+    `reject`, with optional feedback) is in `execution.executionData`, and
+    the pending request in `chat_message.action`.
+  - Model: found: each Agent-node step in `execution.executionData`
+    carries the node's inputs, `agentModel` (the provider component) and
+    `agentModelConfig` (with `model` or `modelName`).
+  - Past use beyond the primary store: found: `execution`,
+    `chat_message_feedback`, `upsert_history`, `schedule_record` and
+    `schedule_trigger_log`, all in `database.sqlite`.
+  - Sync: found: a chatflow's `analytic` column (and tracing environment
+    variables) sends every run to third-party tracing services such as
+    LangSmith and Langfuse; no per-run marker is kept locally.
+  - Scratch directories: per-chat upload directories under
+    `.flowise/storage`, collected with the home line; no working directory.
+  - Deletion: found: clearing a chat deletes its messages, feedback and
+    uploads but not its `execution` rows; deleting messages by id deletes
+    their executions too.
+  - Version drift: none (same commit).
+  - Bad lines: no line-oriented file under the home; logs are outside it.
+
 ## 2. Per-user storage
 
 The home is `HOME`, or `USERPROFILE` on Windows
@@ -52,6 +79,82 @@ in the queue compose
 it is generic and not matched. An inferred `*flowise*` volume line, like
 the inferred block for Tabby and others, was considered and not added:
 the documented deployment uses a bind mount.
+
+Detail from the 2026-10-19 review, for a future analyzer document. All
+of it is in `database.sqlite`:
+
+- **Per-call decisions.** A Human Input node (`humanInputAgentflow`)
+  stops the run and stores the request as `chat_message.action`, JSON
+  with an `id`, a `mapping` of `approve: "Proceed"` and
+  `reject: "Reject"`, and the node's id, label and input
+  ([buildAgentflow.ts:1409-1425](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/utils/buildAgentflow.ts#L1409-L1425),
+  [2406-2407](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/utils/buildAgentflow.ts#L2406-L2407),
+  [ChatMessage.ts:49-50](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/database/entities/ChatMessage.ts#L49-L50)).
+  The answer is a `humanInput` of `type` `proceed` or `reject`, a
+  `startNodeId` and optional `feedback`
+  ([components Interface.ts:492-496](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/src/Interface.ts#L492-L496)).
+  On resume the stopped step is dropped from the execution data and the
+  node's new output records `conditions` with `isFulfilled` on the chosen
+  outcome and the feedback or the type as `content`
+  ([buildAgentflow.ts:1195-1202](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/utils/buildAgentflow.ts#L1195-L1202),
+  [HumanInput.ts:155-190](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/agentflow/HumanInput/HumanInput.ts#L155-L190)).
+  The user message saved for the resume is the feedback, or a single
+  space when there was none, so `chat_message` alone does not say which
+  button was pressed
+  ([buildAgentflow.ts:2345-2365](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/utils/buildAgentflow.ts#L2345-L2365)).
+  An Agent node whose tool has `agentSelectedToolRequiresHumanInput` set
+  stops before the call with the call's JSON in its output and
+  `isWaitingForHumanInput`; `reject` removes the tool, `proceed` runs it
+  ([Agent.ts:266](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/agentflow/Agent/Agent.ts#L266),
+  [2241-2268](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/agentflow/Agent/Agent.ts#L2241-L2268),
+  [2631-2642](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/agentflow/Agent/Agent.ts#L2631-L2642)).
+  No standing allow list exists apart from the MCP custom-script allow
+  list cited in [section 1](#1-source-and-evidence-level), which is
+  server configuration.
+- **Model.** An Agent node's step in `execution.executionData` keeps the
+  node's inputs, among them `agentModel` and `agentModelConfig`, whose
+  `model` or `modelName` is the model id
+  ([Agent.ts:695-700](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/agentflow/Agent/Agent.ts#L695-L700),
+  [1506-1514](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/agentflow/Agent/Agent.ts#L1506-L1514)).
+  `chat_message` has no model column
+  ([ChatMessage.ts:8-66](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/database/entities/ChatMessage.ts#L8-L66)),
+  so a chatflow's model is otherwise only in the node inputs of its
+  canvas JSON, `chat_flow.flowData`.
+- **Executions.** `execution` (`executionData` JSON, `state` one of
+  `INPROGRESS`, `FINISHED`, `ERROR`, `TERMINATED`, `TIMEOUT`, `STOPPED`,
+  `agentflowId`, `sessionId`, `action`, `createdDate`, `stoppedDate`)
+  holds every Agentflow v2 run step by step
+  ([Execution.ts:7-46](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/database/entities/Execution.ts#L7-L46),
+  [server Interface.ts:23](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/Interface.ts#L23)).
+  `chat_message.executionId` joins it to the chat.
+- **Schedules.** `schedule_record` (`triggerType` `AGENTFLOW`,
+  `targetId`, `cronExpression`, `timezone`, `enabled`) and
+  `schedule_trigger_log` (`scheduleRecordId`, `executionId`, `status` one
+  of `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `SKIPPED`,
+  `scheduledAt`) record scheduled Agentflow runs, which have no user
+  message of their own
+  ([ScheduleRecord.ts:5-37](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/database/entities/ScheduleRecord.ts#L5-L37),
+  [ScheduleTriggerLog.ts:6-51](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/database/entities/ScheduleTriggerLog.ts#L6-L51)).
+- **Third-party tracing.** `chat_flow.analytic` names the tracing
+  services a chatflow reports to (LangSmith, Langfuse, Lunary, LangWatch,
+  Arize, Phoenix, Opik), and tracing environment variables add more
+  ([ChatFlow.ts:39](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/database/entities/ChatFlow.ts#L39),
+  [handler.ts:518-532](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/src/handler.ts#L518-L532)).
+  The runs are then also in that service's account; no local row records
+  the remote run id.
+- **Deletion.** Clearing a chat removes its `chat_message_feedback` rows,
+  its upload directory and its `chat_message` rows, and leaves its
+  `execution` rows
+  ([chat-messages/index.ts:110-135](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/services/chat-messages/index.ts#L110-L135));
+  deleting messages by id also deletes the executions they name
+  ([144-180](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/services/chat-messages/index.ts#L144-L180)).
+  Deleting a chatflow removes its messages, feedback and upsert history
+  ([chatflows/index.ts:135-147](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/services/chatflows/index.ts#L135-L147)).
+
+**Scratch directories.** Flowise has no agent working directory. Chat
+uploads and generated files go to per-chatflow, per-chat directories
+under `.flowise/storage`, which the `.flowise` line collects; no row names
+them as a project.
 
 ## 3. Credentials
 
