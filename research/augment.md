@@ -2,8 +2,8 @@
 
 Augment is a closed-source coding agent with a command-line surface, the `auggie` CLI
 (`@augmentcode/auggie` on npm), a VS Code extension (`augment.vscode-augment`) and a JetBrains
-plugin. This document covers where they keep state on disk; there is no analyzer document for
-the agent yet.
+plugin. Its parser is in the backlog
+([issue 55](https://github.com/seanthegeek/doubleagent/issues/55)).
 
 ## 1. Source and evidence
 
@@ -119,9 +119,13 @@ truncated sha256 and is not reversible.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+Augment is `backlog`: the `auggie` CLI keeps full conversations on disk, and the parser is
+[issue 55](https://github.com/seanthegeek/doubleagent/issues/55). A future parser would read
+`~/.augment/sessions/<conversationId>.json` (full conversations, with `workspaceRoot` next to
+`conversationId`, see [section 6](#6-where-the-project-path-is-recorded)) and the prompt history
+`~/.augment/prompt-history.jsonl` (`{message}` lines, capped at 500;
+[section 2](#2-per-user-storage)); the session file's exact JSON shape has not been verified
+against a live file.
 
 ## 14. Confidence
 
