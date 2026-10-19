@@ -1,62 +1,38 @@
 # copilot-cli
 
-Catalog agent: `copilot-cli` (GitHub Copilot CLI). How the transcripts are encoded and how a parser
-reads them is in [`analyzer/research/copilot-cli.md`](../../analyzer/research/copilot-cli.md). The
-GitHub Copilot Desktop app runs its sessions through a bundled Copilot CLI and writes them into the
-same `~/.copilot/session-state/` directory, in this format, with `workspace.yaml` `client_name`
-`github/autopilot` where the CLI writes `github/cli`; those sessions stay `copilot-cli`, and the
-app's own files are the `copilot-desktop` agent's ([`copilot-desktop.md`](copilot-desktop.md) and
-[`analyzer/research/copilot-desktop.md`](copilot-desktop.md)).
-
 GitHub Copilot CLI (`copilot`, catalog agent `copilot-cli`) is GitHub's closed-source terminal
 coding agent. It writes one event log per session, `events.jsonl`, under
 `~/.copilot/session-state/<session id>/`, and keeps copies of the conversation in a cross-session
 SQLite database and a prompt history file. The GitHub Copilot Desktop app runs its sessions through
 a bundled Copilot CLI and writes them into the same `~/.copilot/session-state/` directory, in this
 format, with `workspace.yaml` `client_name` `github/autopilot` where the CLI writes `github/cli`;
-this parser reads them. The app's own store is in [`copilot-desktop.md`](copilot-desktop.md), and
-its paths in
-[`collectors/research/copilot-desktop.md`](copilot-desktop.md). The CLI
-shares no format with the VS Code Copilot Chat extension ([`vscode.md`](vscode.md)) or the `copilot`
-catalog agent. Paths, credentials and exclusions are in
-[`collectors/research/copilot-cli.md`](../../collectors/research/copilot-cli.md).
-
-<!-- MERGE: dedupe the intro paragraphs above into one -->
+those sessions stay `copilot-cli`, and the app's own files and store are the `copilot-desktop`
+agent's ([`copilot-desktop.md`](copilot-desktop.md)). The CLI shares no format with the VS Code
+Copilot Chat extension ([`vscode.md`](vscode.md)) or the `copilot` catalog agent. The
+`copilot-cli` parser reads the event logs, the database, the prompt history and the CLI-written
+Copilot Desktop sessions.
 
 ## 1. Source and evidence
 
-Closed source (`github/copilot-cli` repo is issues only). Evidence is the **shipped bundle**:
-`npm pack @github/copilot` 1.0.91 (5 KB loader, `buildMetadata.gitCommit 216810c5`) →
-`npm pack @github/copilot-linux-x64@1.0.91`, a 178 MB Node single-executable (`copilot`). Its SEA
-(Node single executable application) blob (magic 0x143da20 at 0x67a01b8) holds `sea-loader.js`
-(122 KB, `scratchpad/npm/cp-sea-loader.js`) and one asset `copilot.tgz` (69.7 MB,
-`scratchpad/npm/cp-asset-copilot.tgz`), extracted to `scratchpad/npm/cp-pkg/package/`: `app.js`
-(7.6 MB JS), `prebuilds/linux-x64/cli-native.node` (8 MB) and `runtime.node` (122 MB, Rust).
-Citations: "app.js" with the surrounding identifiers, "sea-loader" (same code appears in cc-loader),
-"native"/"runtime" for byte-string hits. **Docs**: [Copilot CLI configuration directory
-reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference).
-**Local**: names-only listing of `~/.copilot` and `~/.cache/copilot`.
-
-The 1.0.98 bundle (`@github/copilot-darwin-arm64`, loader `buildMetadata.gitCommit` `45ef16251c8`,
-`copilot` sha256 `b1a76d9eec3c88e8545ee96834189ab08c3d75ef65500a60925187fa6c33fdf1`) has the same
-SEA layout with one extra byte after the blob flags (magic at `0x5888000`, `copilot.tgz` at
-`0x58a6877`); `app.js` is now a 42 KB bootstrap and the CLI code is `cli-main.js` (sha256
-`151c2e2a37ddb2514fc5cdbd5c473f9aeeb1a74d59e5062f3921a46d12a8f1c2`), with the state paths in the
-Rust addon `prebuilds/darwin-arm64/runtime.node`. Citations to it are written
-`cli-main.js@<byte offset>` or `runtime.node@<byte offset>` with a snippet; the extraction is
-described in [section 1 of
-`analyzer/research/copilot-cli.md`](#1-source-and-evidence).
-
 Closed source: `github/copilot-cli` holds issues and a changelog only, so
-there are no commit links. Each claim names its evidence level:
+there are no commit links. Evidence is the **shipped bundle**; each claim names its evidence level:
 
-- **Bundle**: `@github/copilot-darwin-arm64` 1.0.98 (loader package
+- **Bundle** 1.0.91: `npm pack @github/copilot` 1.0.91 (5 KB loader, `buildMetadata.gitCommit
+  216810c5`) → `npm pack @github/copilot-linux-x64@1.0.91`, a 178 MB Node single-executable
+  (`copilot`). Its SEA (Node single executable application) blob (magic 0x143da20 at 0x67a01b8)
+  holds `sea-loader.js` (122 KB, `scratchpad/npm/cp-sea-loader.js`) and one asset `copilot.tgz`
+  (69.7 MB, `scratchpad/npm/cp-asset-copilot.tgz`), extracted to `scratchpad/npm/cp-pkg/package/`:
+  `app.js` (7.6 MB JS), `prebuilds/linux-x64/cli-native.node` (8 MB) and `runtime.node` (122 MB,
+  Rust). Citations to it: "app.js" with the surrounding identifiers, "sea-loader" (same code
+  appears in cc-loader), "native"/"runtime" for byte-string hits.
+- **Bundle** 1.0.98: `@github/copilot-darwin-arm64` 1.0.98 (loader package
   `@github/copilot` 1.0.98, `buildMetadata.gitCommit` `45ef16251c8`), the
   `copilot` executable, sha256
   `b1a76d9eec3c88e8545ee96834189ab08c3d75ef65500a60925187fa6c33fdf1`,
   167,681,584 bytes, copied from a Homebrew npm install on 2026-10-15. It
   is a Node.js single executable application (SEA: a Node binary with a
-  script and assets appended in a `__NODE_SEA` blob). The blob magic
+  script and assets appended in a `__NODE_SEA` blob), with the same SEA layout as 1.0.91 plus
+  one extra byte after the blob flags. The blob magic
   `0x0143da20` is at file offset `0x5888000`; flags `0x19` (no warning,
   assets, exec arguments); `sea-loader.js` (124,974 bytes, sha256
   `a9bc83c428713c66388718e554df0be3f9aa92f3e79df17fe47dbadb2e9e7eaf`); one
@@ -68,8 +44,8 @@ there are no commit links. Each claim names its evidence level:
   `c5f37d9040e5d866e01e4266c83d87d08ff3ab0804d6a0a0dc863b4414196a7b`) that
   imports `cli-main.js` (8,193,186 bytes, sha256
   `151c2e2a37ddb2514fc5cdbd5c473f9aeeb1a74d59e5062f3921a46d12a8f1c2`), the
-  minified CLI. The event store and the session database are written by
-  `prebuilds/darwin-arm64/runtime.node`, a Rust Node addon (97,100,816
+  minified CLI. The state paths, the event store and the session database are in, and written
+  by, `prebuilds/darwin-arm64/runtime.node`, a Rust Node addon (97,100,816
   bytes, sha256
   `e5bb26efbdff6cc21a607d3fee0fb9efa933ebeb3d7fe97332ee1a7f0793a02e`). The
   package also ships the event schema as JSON Schema,
@@ -81,32 +57,33 @@ there are no commit links. Each claim names its evidence level:
   Citations are `copilot 1.0.98 darwin-arm64 <file>@<byte offset>` with a
   literal snippet, shortened after this paragraph to `cli-main.js@<n>`,
   `runtime.node@<n>` and `schema@<n>` (the schema file, at the definition's
-  `"title"`). Offsets change with every build; grep for the snippet. The
-  binary was read with `strings`, `grep` and Python, never executed.
-- **Docs**: [GitHub Copilot CLI configuration
-  directory](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference)
-  (fetched 2026-10-15) for the directory layout and `permissions-config.json`.
-
-<!-- MERGE: dedupe the section 1 prose above -->
+  `"title"`); collection paths are cited the same way, as `cli-main.js@<byte offset>` or
+  `runtime.node@<byte offset>` with a snippet. Offsets change with every build; grep for the
+  snippet. The binary was read with `strings`, `grep` and Python, never executed.
+- **Docs**:
+  [GitHub Copilot CLI configuration directory](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference)
+  (the Copilot CLI configuration directory reference, fetched 2026-10-15) for the directory layout
+  and `permissions-config.json`.
+- **Local**: names-only listing of `~/.copilot` and `~/.cache/copilot`.
 
 ### Observed
 
-- **Observed (Windows, winget)**: the standalone Copilot CLI 1.0.98 installed with
-  `winget install GitHub.Copilot` (winget is the Windows Package Manager; `GitHub.Copilot` is the
-  package id), on the same Windows 11 ARM64 Parallels VM (build 10.0.26300.9550, user `sean`, home
-  `C:\Users\sean`) reverted to its clean snapshot, which has no Python, git, `gh` or Node and had
-  never run Copilot Desktop, 2026-10-17, all times UTC, surveyed for names, sizes, key names and
-  types only. This is the first round with a names-only listing after every action, so each action's
-  writes below come from a listing diff. The install (listing 21:44Z) wrote
+- **Observed (Windows, winget)**: the standalone Copilot CLI 1.0.98 installed with `winget install
+  GitHub.Copilot` (winget is the Windows Package Manager; `GitHub.Copilot` is the package id), on
+  the same Windows 11 ARM64 Parallels VM (build 10.0.26300.9550, user `sean`, home `C:\Users\sean`)
+  reverted to its clean snapshot, which has no Python, git, `gh` or Node and had never run Copilot
+  Desktop, 2026-10-17, all times UTC, surveyed for names, sizes, key names and types only. This is
+  the first round with a names-only listing after every action, so each action's writes below come
+  from a listing diff. The install (listing 21:44Z) wrote
   `AppData\Local\Microsoft\WinGet\Packages\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\`
   with `copilot.exe` (154,351,392 bytes, file date 2026-10-14, version 1.0.98) and a 16 KB winget
   database `GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe.db` beside it, a user `PATH` entry
   for that directory, the HKCU uninstall key `GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe`
   (DisplayName `Copilot CLI`, DisplayVersion `v1.0.98`, InstallLocation that directory) and the
   installer download under `AppData\Local\Temp\WinGet\GitHub.Copilot.v1.0.98`; no `.copilot`, no
-  `AppData\Local\copilot`, no credential file and no `DeveloperTools` registry key yet ([section
-  2](#2-per-user-storage)). The first start, `copilot` in `C:\Users\sean\demo` at 21:46:48 (listing
-  21:48Z), wrote the extracted package `AppData\Local\copilot\pkg\win32-arm64\1.0.98\`
+  `AppData\Local\copilot`, no credential file and no `DeveloperTools` registry key yet
+  ([section 2](#2-per-user-storage)). The first start, `copilot` in `C:\Users\sean\demo` at 21:46:48
+  (listing 21:48Z), wrote the extracted package `AppData\Local\copilot\pkg\win32-arm64\1.0.98\`
   (181,983,762 bytes), `AppData\Local\copilot\marketplaces\.auto-update.lock` and `.copilot\` with
   the Linux layout: `config.json`, `command-history-state.json` (43 bytes),
   `open-sessions-state.json` (188 bytes), an empty `installed-plugins.lock`, empty `ide\`,
@@ -124,22 +101,21 @@ there are no commit links. Each claim names its evidence level:
   21:48:02. Each rotated file holds about 9,700 each of `[WARNING] [rust:copilot_runtime::auth::gh]`
   lines saying the CLI failed to run `gh auth token` (`"error":"program path has no file name"`; no
   `gh` on the VM), three `[managedSettings]` lines (`effective policy resolved: source=none`,
-  `device MDM: no policy present on this device`,
-  `server policy fetch skipped: no authenticated GitHub host available`; MDM is mobile device
-  management, an organisation's policy push), `[INFO] Remote session access disabled` and
-  `[rust:lsp::session_service] Resolved LSP telemetry consent` with
-  `"telemetry_level":"off","source":"auth_change"` (LSP is the Language Server Protocol), and about
-  7,500 `[INFO] [rust:otel] OTel session policy applied` (OTel is OpenTelemetry, the telemetry
+  `device MDM: no policy present on this device`, `server policy fetch skipped: no authenticated
+  GitHub host available`; MDM is mobile device management, an organisation's policy push), `[INFO]
+  Remote session access disabled` and `[rust:lsp::session_service] Resolved LSP telemetry consent`
+  with `"telemetry_level":"off","source":"auth_change"` (LSP is the Language Server Protocol), and
+  about 7,500 `[INFO] [rust:otel] OTel session policy applied` (OTel is OpenTelemetry, the telemetry
   framework): a pending login re-resolves the auth state in a tight loop on Windows 1.0.98. After
-  the login the live log grew by 3 KB in fifteen minutes; the Linux and macOS 1.0.98 logs were
-  105 bytes to 47 KB. The login (21:48:02) rewrote `config.json` (418 bytes, JSONC, the five keys of
+  the login the live log grew by 3 KB in fifteen minutes; the Linux and macOS 1.0.98 logs were 105
+  bytes to 47 KB. The login (21:48:02) rewrote `config.json` (418 bytes, JSONC, the five keys of
   [section 3](#3-credentials)), wrote two Windows Credential Manager files under
   `AppData\Roaming\Microsoft\Credentials\` (634 and 666 bytes, the only ones in the profile besides
   one of 2026-10-10 under `AppData\Local\Microsoft\Credentials\`), created the registry value
   `HKCU\SOFTWARE\Microsoft\DeveloperTools\deviceid` (`REG_SZ`, 36 characters; no file), and wrote in
   `AppData\Local\copilot\` `copilot-user-cache.json` (3,309 bytes), `exp-cache.json` (10,904 bytes),
-  `memory-enablement-cache-config.json` (351 bytes), `managed-settings.<sha256>.order.json`
-  (36 bytes) and `managed-settings.<sha256>.fence` (36 bytes, a file not seen before, contents not
+  `memory-enablement-cache-config.json` (351 bytes), `managed-settings.<sha256>.order.json` (36
+  bytes) and `managed-settings.<sha256>.fence` (36 bytes, a file not seen before, contents not
   read), each with a `.lock`, and an empty `managed-settings\` directory. The first prompt
   (21:50:55, listing 22:02Z) created `events.jsonl` (1,216,194 bytes by 22:01:14; the session read
   web pages, so the tool results were large), `session-store.db` (4,096 bytes) with `-wal`
@@ -164,50 +140,109 @@ there are no commit links. Each claim names its evidence level:
   sidebar entry but never a directory (the picker appears to start a fresh session before switching
   to the chosen one); `config.json` was touched at the same size; and the cache gained
   `managed-settings\<sha256>.json` (252 bytes), with `managed-settings.<sha256>.order.json` at
-  101 bytes and `memory-enablement-cache-config.json` at 532. The resumed process logged
-  `Remote session access enabled` (the first process had logged `disabled` throughout the flood) and
-  `Using default model: gpt-6.1-sol`; the sync itself is logged nowhere. At 22:11:04 the user
-  started `copilot` again in `demo` (a new session whose directory held `workspace.yaml` of
-  212 bytes and a 1,162-byte `events.jsonl` with `session.start`, `session.model_change` and
-  `session.shutdown` only, and no `session.db` or `rewind-file-snapshots`) and deleted the first
-  session from it with `/session delete <id> --yes --remote`, after trying `/session`,
-  `/session delete-all`, `/session delete <id>` and `/session delete copilot <id>`; the CLI asked
-  whether to delete the synced copy too ("has been synced to your account. Would you also like to
-  delete the synced session data"), the user said yes, and quit at 22:16:32 (listing 22:17Z). The
-  delete removed the whole session directory and the id from the sidebar file (rewritten at
-  22:16:32, same 169 bytes, now the new session and the never-created one), and
-  `open-sessions-state.json` became `{}`. It left `session-store.db` (WAL unchanged since 22:06)
-  with the session's rows, the 0-byte `.session-operation-locks\<id>.lock` (three locks in all), the
-  seven slash commands among the ten entries of `command-history-state.json` (450 bytes), the five
-  process logs, `permissions-config.json` and the file the approved call wrote; what the analyzer
-  rebuilt from them is in [section 1 of
-  `analyzer/research/copilot-cli.md`](#1-source-and-evidence).
-  The process logs record nothing about the deletion (no `sessions.delete` line, unlike the desktop
-  app's bundled CLI), and `mcp-config.json` was never written. Collector 1.13.0, run as the user at
-  22:17:18 from an administrator SSH session, no Copilot Desktop on this snapshot: 34 files,
-  46,680,889 bytes, all `copilot-cli`, the five logs 44.4 MB of them; 3 `skipped_excluded`
-  (`.copilot\installed-plugins`, 0 bytes; `AppData\Local\copilot\marketplaces`, 0 bytes beyond its
-  lock; `AppData\Local\copilot\pkg`, 181,983,762 bytes); 0 errors; 1 `secret: true` row
+  101 bytes and `memory-enablement-cache-config.json` at 532. The resumed process logged `Remote session
+  access enabled` (the first process had logged `disabled` throughout the flood) and `Using default
+  model: gpt-6.1-sol`; the sync itself is logged nowhere. At 22:11:04 the user started `copilot`
+  again in `demo` (a new session whose directory held `workspace.yaml` of 212 bytes and a 1,162-byte
+  `events.jsonl` with `session.start`, `session.model_change` and `session.shutdown` only, and no
+  `session.db` or `rewind-file-snapshots`) and deleted the first session from it with `/session
+  delete <id> --yes --remote`, after trying `/session`, `/session delete-all`, `/session delete
+  <id>` and `/session delete copilot <id>`; the CLI asked whether to delete the synced copy too
+  ("has been synced to your account. Would you also like to delete the synced session data"), the
+  user said yes, and quit at 22:16:32 (listing 22:17Z). The delete removed the whole session
+  directory and the id from the sidebar file (rewritten at 22:16:32, same 169 bytes, now the new
+  session and the never-created one), and `open-sessions-state.json` became `{}`. It left
+  `session-store.db` (WAL unchanged since 22:06) with the session's rows, the 0-byte
+  `.session-operation-locks\<id>.lock` (three locks in all), the seven slash commands among the ten
+  entries of `command-history-state.json` (450 bytes), the five process logs,
+  `permissions-config.json` and the file the approved call wrote. The process logs record nothing
+  about the deletion (no `sessions.delete` line, unlike the desktop app's bundled CLI), and
+  `mcp-config.json` was never written. Collector 1.13.0, run as the user at 22:17:18 from an
+  administrator SSH session, no Copilot Desktop on this snapshot: 34 files, 46,680,889 bytes, all
+  `copilot-cli`, the five logs 44.4 MB of them; 3 `skipped_excluded` (`.copilot\installed-plugins`,
+  0 bytes; `AppData\Local\copilot\marketplaces`, 0 bytes beyond its lock;
+  `AppData\Local\copilot\pkg`, 181,983,762 bytes); 0 errors; 1 `secret: true` row
   (`.copilot\config.json`); project discovery found `C:\Users\sean\demo` from the two session
   directories' `workspace.yaml`, both with an `events.jsonl`. An npm install of the standalone CLI
-  on Windows is still not observed ([issue
-  133](https://github.com/seanthegeek/doubleagent/issues/133)).
+  on Windows is still not observed
+  ([issue 133](https://github.com/seanthegeek/doubleagent/issues/133)).
+
+  Records (names, key names, types, enum values and counts only). Exercised in `C:\Users\sean\demo`:
+  a first start with `/login` from inside the session (21:46:48 to 21:48:02), a session that read
+  web pages from its first prompt at 21:50:55, one tool call denied and one approved with "allow
+  always" (a `write` grant for `demo`), a `/model` switch to Auto, a quit at 22:08:31, a resume from
+  the resume picker at 22:08:50, and a delete with the CLI's own command from a new session started
+  at 22:11:04. The session's `events.jsonl` at the quit (1,973,737 bytes) held `assistant.message`
+  55, `assistant.turn_start` 55, `assistant.turn_end` 55, `session.usage_record` 55,
+  `tool.execution_start` and `tool.execution_complete` 109 each, `permission.requested` and
+  `permission.completed` 79 each, `user.message` 6, `session.model_change` 4,
+  `session.usage_checkpoint` 4, `session.info` 3, `system.message` 3, `session.start` 1,
+  `session.shutdown` 1, 12 each of the eight `model.*` types (`captured_assignment_context`,
+  `message`, `messages_snapshot`, `model_call_started`, `model_call_success`, `response`,
+  `turn_ended`, `turn_started`), and 2 each of `subagent.configured`, `subagent.selected`,
+  `subagent.started` and `subagent.completed`, which came from the session's web-reading task and
+  were seen on no other install. `session.start` `data` keys: `sessionId`, `version`, `producer`,
+  `copilotVersion`, `startTime`, `contextTier`, `context{cwd}`, `alreadyInUse`, `remoteSteerable`.
+  `system.message`: `role`, `content`, `metadata{variables{gitCommitTrailer, sessionId, clientName,
+  coauthorEnabled}}`, `interactionId`. `permission.requested` `permissionRequest` key sets: 72 of
+  the `url` form (`kind`, `toolCallId`, `intention`, `url`, `requestSandboxBypass`,
+  `requestSandboxBypassReason`, then `promptRequest`; the web fetches), 2 of the shell form
+  (`fullCommandText`, `shellType`, `intention`, `commands`, with `identifier` and `readOnly`, ...),
+  2 of the write form (`fileName`, `diff`, `newFileContents`, `canOfferSessionApproval`,
+  `fileEdits`) and 3 with a key beginning `redirecte` (the rest of its name was cut in the listing;
+  not determined). `permission.completed` was listed as `{requestId, toolCallId, result{kind,
+  decisionSource}, agentId}`, `agentId` on some records only: `decisionSource` inside `result`,
+  where the Linux records and the parser have it beside `result` ([Event types](#event-types)); not
+  determined whether this is the shape or the listing's nesting, and no row of it reached the
+  analyzer, since the session was deleted before the collection. The `result.kind` of the denial was
+  not recorded. `model.model_call_success` carried `turn`, `callId`, `modelCallDurationMs`,
+  `ttftMs`, `outputTtftMs`, `interTokenLatencyMs` and `modelCall{model, api_id, api_endpoint,
+  request_id, client_request_id, service...}`. The `mc_` keys the resume added are the keys every
+  Copilot Desktop session carries. The delete removed the session directory whole (`events.jsonl`,
+  `workspace.yaml` with the `mc_` keys, both `rewind-file-snapshots` files, `checkpoints/`,
+  `files/`, `research/`) and the id from the sidebar file, and left: in `session-store.db` (the WAL
+  unchanged since 22:06) the `sessions` row (`cwd` set, `repository` null, a 32-character
+  `summary`), 3 `turns` (prompts of 63, 18 and 42 characters, replies of 4,346, 1,704 and 30,
+  stamped 22:03:42, 22:04:58 and 22:05:54), 1 `session_files` row (`apply_patch`), 3 `search_index`
+  rows and 55 `assistant_usage_events` (`model` `claude-sonnet-5`, `api_endpoint` `/v1/messages`;
+  the new session's `gpt-6.1-sol` rows use `ws:/responses`), with `session_refs`, `checkpoints` and
+  `forge_trajectory_events` empty; the session's 0-byte operation lock; and the other files listed
+  above. The `events.jsonl` held 6 `user.message` and the store kept 3 `turns`, the last three; why
+  is not determined. With the remote copy deleted too, no local file says the session was ever
+  synced: the `mc_` keys lived only in the deleted `workspace.yaml`. Analyzer 0.14.0 over the
+  collection (collector 1.13.0, 34 files): 24 rows (`assistant` 3, `system` 11, `user` 10), 2
+  sessions, 3 duplicate secondary rows dropped, no `parser:` row, `problems: []`, `demo` the one
+  project. The deleted session was rebuilt from `session-store.db` alone: `session name:` at
+  21:46:48 (`created_at`), the three `turns` as `user` and `assistant` pairs (the last reply, 30
+  characters, the agent reporting the denied write) and `file changed: <path> tool=apply_patch` at
+  22:06:06. The other rows: `signed in: https://github.com as <login>` once per process log
+  (21:48:02, 22:08:50, 22:08:51, 22:11:05), `permission setting:
+  locations.<cwd>.tool_approvals={"kind":"write"} (from .copilot/permissions-config.json, file
+  mtime)` at 22:06:06, the new session's `session metadata: user_named=false forks=0 compactions=0
+  client=github/cli`, `session start: copilot 1.0.98 producer=copilot-agent cwd=<demo>`, `model:
+  gpt-6.1-sol cause=initial_resolution source=automatic effort=medium` and `session end: routine
+  files modified: none`, and the seven slash commands as undated `user` rows from the command
+  history, the three `/session delete` forms among them. The deletion lost from the timeline the
+  session's 109 tool calls and their permission decisions, the denial, the `/model` switch's
+  `session.info` output, the resume, and every event of its first three prompts. The sign-in line
+  the parser reads is among the roughly 280,000 process-log lines (45 MB in five files) of the
+  pending `/login`.
 - **Observed (Windows, through Copilot Desktop)**: Copilot CLI 1.0.99-2 as the bundled CLI of GitHub
   Copilot Desktop 1.1.30 (`copilot-sdk/cliVersion.d.ts` `COPILOT_CLI_VERSION = "1.0.99-2"`,
   `COPILOT_CLI_USE_NPM_PACKAGE = false`), downloaded by the app to
   `AppData\Local\github-copilot-sdk\cli\1.0.99-2\copilot.exe` (158,577,952 bytes, sha256
   `b7bc340acf1c82228de2e3504444847f8e18beec1f07f72f260f1bbeb4c3a9b2`), on a Windows 11 ARM64
   Parallels VM (build 10.0.26300.9550, home `C:\Users\sean`), 2026-10-17, surveyed for names, sizes,
-  key names and types only; the round is in [section 1 of
-  `copilot-desktop.md`](copilot-desktop.md#1-source-and-evidence). `copilot.exe` carries the strings
-  `COPILOT_HOME`, `USERPROFILE` and the named pipe prefix `\\.\pipe\copilot-taskbar-`, and no
-  keyring strings. `.copilot` sat at the top of the profile (`C:\Users\sean\.copilot`, the
-  `COPILOT_HOME` default under `USERPROFILE`) with the Linux layout: `config.json` (131 bytes,
-  JSONC, one key `firstLaunchAt`), `session-store.db` (4096 bytes, `-wal` 609,792 then
-  704,552 bytes, `-shm`), `logs/.copilot-log.lock` and 17 `logs/process-<epoch ms>-<pid>.log`
-  (1.7 KB to 47 KB), `session-state/`, empty `extensions/` and empty `installed-plugins/`. Adding
-  three MCP servers (Model Context Protocol servers, programs that offer the agent extra tools) from
-  the app wrote `mcp-config.json` (725 bytes, shape
+  key names and types only; the round is in
+  [section 1 of `copilot-desktop.md`](copilot-desktop.md#1-source-and-evidence). `copilot.exe`
+  carries the strings `COPILOT_HOME`, `USERPROFILE` and the named pipe prefix
+  `\\.\pipe\copilot-taskbar-`, and no keyring strings. `.copilot` sat at the top of the profile
+  (`C:\Users\sean\.copilot`, the `COPILOT_HOME` default under `USERPROFILE`) with the Linux layout:
+  `config.json` (131 bytes, JSONC, one key `firstLaunchAt`), `session-store.db` (4096 bytes, `-wal`
+  609,792 then 704,552 bytes, `-shm`), `logs/.copilot-log.lock` and 17 `logs/process-<epoch
+  ms>-<pid>.log` (1.7 KB to 47 KB), `session-state/`, empty `extensions/` and empty
+  `installed-plugins/`. Adding three MCP servers (Model Context Protocol servers, programs that
+  offer the agent extra tools) from the app wrote `mcp-config.json` (725 bytes, shape
   `mcpServers{<name>{type: "local", command, args[], tools[], env{}}}`; one server's `env` held a
   GitHub personal access token, [section 3](#3-credentials)), `.mcp-writer.binding` (157 bytes JSON,
   `lock{file_index, platform: "windows", volume}` and `root{...}`) and `.mcp-writer.lock` (0 bytes);
@@ -217,23 +252,59 @@ there are no commit links. Each claim names its evidence level:
   `copilot-user-cache.json` (3,309 bytes, JSONC, the Linux shape, no token; its `response` also
   named `analytics_tracking_id`, `assigned_date`, `can_signup_for_limited`, `copilotignore_enabled`,
   `restricted_telemetry`, `enterprise_usage_telemetry`, `is_staff`, `te`, `token_based_billing`,
-  `can_upgrade_plan` and `quota_reset_date_utc`, which the Linux list in [section
-  2](#2-per-user-storage) does not name) with `.lock`, `managed-settings/<sha256>.json` (252 bytes,
-  the Linux shape, `response` null) with its `.order.json` and `.lock`, `tgrep-serve.lock`,
-  `mcp-tools/<sha256>.json` (two files of 20 KB), `marketplaces/` (4,560 files, 263,616,505 bytes:
-  `freshness.json`, `github-awesome-copilot.lock` and the clone `github-awesome-copilot/`; the logs
-  say `Best-effort plugin preparation skipped 1 item.` three times) and `pkg/win32-arm64/1.0.99-2/`
-  (255 files, 191,966,761 bytes, `.extraction-complete`, `cli-main.js` and the `inuse.<pid>.hold`
-  and `.lock` pairs of five processes). No `AppData\Local\Microsoft\DeveloperTools` or `~/.cache`
-  was written; the Microsoft developer-tools device id ([issue
-  148](https://github.com/seanthegeek/doubleagent/issues/148)) is the registry value
-  `HKCU\SOFTWARE\Microsoft\DeveloperTools\deviceid` (HKCU is `HKEY_CURRENT_USER`, the registry hive
-  of the signed-in user; a string value, type `REG_SZ`, of 36 characters) on Windows, outside the
-  collector's scope. Collector 1.13.0 as first written, run as the user: `copilot-cli` 4,641 files
-  and 265,398,349 bytes, 4,560 files and 263,616,505 bytes of them the marketplace clone, now
+  `can_upgrade_plan` and `quota_reset_date_utc`, which the Linux list in
+  [section 2](#2-per-user-storage) does not name) with `.lock`, `managed-settings/<sha256>.json`
+  (252 bytes, the Linux shape, `response` null) with its `.order.json` and `.lock`,
+  `tgrep-serve.lock`, `mcp-tools/<sha256>.json` (two files of 20 KB), `marketplaces/` (4,560 files,
+  263,616,505 bytes: `freshness.json`, `github-awesome-copilot.lock` and the clone
+  `github-awesome-copilot/`; the logs say `Best-effort plugin preparation skipped 1 item.` three
+  times) and `pkg/win32-arm64/1.0.99-2/` (255 files, 191,966,761 bytes, `.extraction-complete`,
+  `cli-main.js` and the `inuse.<pid>.hold` and `.lock` pairs of five processes). No
+  `AppData\Local\Microsoft\DeveloperTools` or `~/.cache` was written; the Microsoft developer-tools
+  device id ([issue 148](https://github.com/seanthegeek/doubleagent/issues/148)) is the registry
+  value `HKCU\SOFTWARE\Microsoft\DeveloperTools\deviceid` (HKCU is `HKEY_CURRENT_USER`, the registry
+  hive of the signed-in user; a string value, type `REG_SZ`, of 36 characters) on Windows, outside
+  the collector's scope. Collector 1.13.0 as first written, run as the user: `copilot-cli` 4,641
+  files and 265,398,349 bytes, 4,560 files and 263,616,505 bytes of them the marketplace clone, now
   excluded ([section 4](#4-exclusions)); `.copilot/config.json` and `.copilot/mcp-config.json`
   flagged `secret: true`; `AppData/Local/copilot/pkg` and `.copilot/installed-plugins`
   `skipped_excluded`. The standalone CLI on Windows is the bullet above.
+
+  Records (all times UTC; names, key names, types, enum values and counts only). The CLI wrote the
+  Linux layout under `%USERPROFILE%\.copilot\` (the executable carries `COPILOT_HOME` and
+  `USERPROFILE`). The general chat's `events.jsonl` (115 lines): `session.start` (`producer`
+  `copilot-agent`, `copilotVersion` `1.0.99-2`), `session.permissions_changed` with the same
+  `allowAll*` keys as the Linux app sessions, `session.model_change` (`source` `startup`) at the
+  first prompt, 3 `user.message`, 8 `assistant.message`, 9 `tool.execution_start` and
+  `tool.execution_complete` pairs with tool names `powershell` and `create`, 27 `hook.start` and
+  `hook.end` pairs with `hookType` `sessionStart`, `userPromptSubmitted`, `userPromptTransformed`,
+  `preToolUse`, `postToolUse`, `postToolUseFailure` (not seen on Linux), `agentStop` and
+  `sessionEnd`, 1 `system.message`, 8 `session.usage_record`, 3 `session.usage_checkpoint` and 1
+  `session.shutdown`, written at 20:13:47, ten minutes after the last reply (the Linux app sessions
+  wrote none). The project session's (30 lines): one prompt, one `powershell` call, 7 hook pairs and
+  a `session.shutdown`. Three `create` calls failed ("Parent directory does not exist") and the
+  first `powershell` call exited 1 because Windows PowerShell's execution policy refused `npm.ps1`;
+  both are ordinary failed tool results, and no `permission.requested` or `permission.completed` was
+  written (allow-all stayed on). `session-store.db`: 17 tables, `schema_version` 8, `sessions` 2,
+  `turns` 4 (3 for the chat, each with its reply, so no null-response duplicate row this time, and 1
+  for the project session), `session_files` 3 (`tool_name` `create`), `search_index` 4
+  (`source_type` `turn`), `assistant_usage_events` 10 (`model` `claude-sonnet-5.5`, `initiator`
+  `user` and `agent`, `api_endpoint` `/v1/messages`, `reasoning_effort` `medium`, `finish_reason`
+  `stop` and `tool_calls`), and `checkpoints`, `dynamic_context_items`, `forge_skill_proposals`,
+  `forge_trajectory_events` and `session_refs` empty. The app also created seven sessions that were
+  never prompted, each a directory with only `workspace.yaml` (`client_name` `github/autopilot`,
+  `user_named` false), `.workspace-fork.lock`, an empty `checkpoints/index.md` table and empty
+  `files/` and `research/`, and no `events.jsonl` or `session.db`. MCP: the three servers the user
+  added from the app went into `mcp-config.json`, two of them never spawned (the CLI log's `MCP
+  server connection failed {"server_name":"<name>","raw_error":"failed to spawn MCP server process:
+  program not found"}`, six and five times), and the one that connected left one tool cache per
+  session in `AppData\Local\copilot\mcp-tools\` ([section 7](#7-transcript-stores)). Analyzer 0.14.0
+  over the collection: `copilot-cli` rows `assistant` 7, `system` 92, `tool_result` 10, `tool_use`
+  10, `user` 4, 10 duplicate secondary rows dropped, no `parser:` row; among them `session start:
+  copilot 1.0.99-2 producer=copilot-agent cwd=...`, `permission mode: allow-all off -> on`, `model:
+  claude-sonnet-5.5 source=startup`, the `hook <hookType> start:` and `end:` rows, `file changed:
+  <path> tool=create` and `session end: routine files modified: <paths>`, and one `session metadata:
+  user_named=false ... client=github/autopilot` row for each of the seven unprompted sessions.
 - **Observed (Linux)**: Copilot CLI 1.0.98 installed with `sudo npm install -g @github/copilot`, an
   Ubuntu 26.04.1 arm64 Parallels VM (kernel 7.0.0-38-generic, `/bin/sh` dash, home `/home/sean`),
   2026-10-16, surveyed for names, sizes, key names and types only. Exercised: `copilot login`, then
@@ -249,21 +320,43 @@ there are no commit links. Each claim names its evidence level:
   `~/Library/Caches/copilot`, with the package under `pkg/linux-arm64/1.0.98/`
   (`.extraction-complete`, `cli-main.js`, `prebuilds/linux-arm64/runtime.node`, `schemas/`). The
   login put the GitHub token in the GNOME keyring (the GNOME desktop's password store, which the
-  runtime reaches through its vendored Secret Service client), not in `config.json` ([section
-  3](#3-credentials)); the first session start wrote one file outside the catalog ([section
-  2](#2-per-user-storage)). The x64 GitHub Copilot Desktop AppImage, launched by mistake on the
-  arm64 VM, failed to start and wrote nothing under `~/.copilot` ([issue
-  147](https://github.com/seanthegeek/doubleagent/issues/147) tracks the desktop app). Collector
-  1.13.0, run as the user (not root): 38 files collected, 2 `skipped_excluded`
+  runtime reaches through its vendored Secret Service client), not in `config.json`
+  ([section 3](#3-credentials)); the first session start wrote one file outside the catalog
+  ([section 2](#2-per-user-storage)). The x64 GitHub Copilot Desktop AppImage, launched by mistake
+  on the arm64 VM, failed to start and wrote nothing under `~/.copilot`
+  ([issue 147](https://github.com/seanthegeek/doubleagent/issues/147) tracks the desktop app).
+  Collector 1.13.0, run as the user (not root): 38 files collected, 2 `skipped_excluded`
   (`.copilot/installed-plugins`, `.cache/copilot/pkg`), 1 `secret: true` (`.copilot/config.json`), 0
   `skipped_secret`, and 5 `error_read` rows on other accounts' homes (permission denied, expected
   without root); project discovery found `/home/sean/demo` from `workspace.yaml`. Windows on 1.0.98
   is the winget bullet above.
+
+  Records, read with `analyzer/tools/shape.py` only (key names, types, enum values, counts; no
+  values). Session 1, in `~/demo` (created 21:01:19.518Z, prompts at 21:02:40Z and 21:05:34.923Z,
+  shutdown 21:16:01Z, all UTC; 194 lines), called `bash` 2 times, `apply_patch` 2 (11 files,
+  then 1), `view` 3, `glob` 1, `web_fetch` 18, `web_search` 7 and `fetch_copilot_cli_documentation`
+  1, with 20 permission requests (`kind` `shell` 2, `url` 17, `write` 1, each carrying
+  `permissionMode` `manual` and `agentMode` `interactive`): 19 `approved` and one
+  `approved-for-location` for the write, all `decisionSource` `human_response`, and one automatic
+  model resolution. Session 2, in `~/secret` (created 21:16:26.715Z, one prompt at 21:17:18Z,
+  shutdown 21:19:27Z; 35 lines), had one `write` request approved and a model switch the user typed:
+  `/model`, choosing Auto, at 21:19:20Z, which wrote a `session.model_change` and two `session.info`
+  lines ([Event types](#event-types)). Each session wrote its `session-state/<uuid>/` directory, a
+  process log (16 KB and 15 KB), `session-store.db` rows (in a 1.37 MB WAL beside a 4096-byte main
+  file), a `sidebar-sessions-state` file and its prompts in `command-history-state.json`; the
+  `write` approval for the location the one `permissions-config.json` entry. Analyzer 0.14.0 over
+  the collection: 2 sessions, 160 rows (`system` 79, `tool_use` 35, `tool_result` 35, `assistant` 7,
+  `user` 4), no `parser:` row, 17 secondary rows deduplicated. The removed `~/secret` session was
+  reconstructed in full from `events.jsonl`, `session-store.db`, `rewind-file-snapshots/index.json`
+  and `command-history-state.json`, which survive the project directory's removal, and the inventory
+  reports `/home/sean/secret` as `referenced`. Not exercised: a denial, a resume, a rewind, a
+  session deleted with the CLI's own command, a subagent, a compaction, plan or autopilot mode, a
+  scheduled task.
 - **Observed (macOS)**: Copilot CLI 1.0.98 installed with Homebrew's npm, the author's workstation,
   2026-10-15, surveyed for names, sizes, key names and types only (three interactive sessions).
   `~/.copilot` held `command-history-state.json`, `config.json` (JSONC, JSON with comments: one or
-  two `//` comment lines before plain JSON, so a strict JSON parser refuses it; [section
-  2](#2-per-user-storage)), empty `ide/`, `installed-plugins/`, `servers/` and an empty
+  two `//` comment lines before plain JSON, so a strict JSON parser refuses it;
+  [section 2](#2-per-user-storage)), empty `ide/`, `installed-plugins/`, `servers/` and an empty
   `installed-plugins.lock`, `logs/process-<epoch ms>-<pid>.log` and `.copilot-log.lock`,
   `open-sessions-state.json` (`{}`), `permissions-config.json`, `session-state/`
   (`.session-operation-locks/<uuid>.lock` and one directory per session), `session-store.db` with
@@ -277,211 +370,22 @@ there are no commit links. Each claim names its evidence level:
   `marketplaces/.auto-update.lock`, `memory-enablement-cache-config.json`, and the extracted package
   `pkg/darwin-arm64/1.0.98/` (with `.extraction-complete`).
 
-- **Observed (Windows, winget)**: the standalone Copilot CLI 1.0.98 installed with
-  `winget install GitHub.Copilot` (winget is the Windows Package Manager) on the same Windows 11
-  ARM64 Parallels VM (build 10.0.26300.9550, home `C:\Users\sean`), reverted to a clean snapshot
-  that had never run Copilot Desktop, 2026-10-17, all times UTC, names, key names, types, enum
-  values and counts only. The first round with a names-only listing after every action; the
-  per-action writes are in [section 1 of the collector
-  document](#1-source-and-evidence). Exercised in
-  `C:\Users\sean\demo`: a first start with `/login` from inside the session (21:46:48 to 21:48:02),
-  a session that read web pages from its first prompt at 21:50:55, one tool call denied and one
-  approved with "allow always" (a `write` grant for `demo`), a `/model` switch to Auto, a quit at
-  22:08:31, a resume from the resume picker at 22:08:50, and a delete with the CLI's own command
-  from a new session started at 22:11:04. The session's `events.jsonl` at the quit (1,973,737 bytes)
-  held `assistant.message` 55, `assistant.turn_start` 55, `assistant.turn_end` 55,
-  `session.usage_record` 55, `tool.execution_start` and `tool.execution_complete` 109 each,
-  `permission.requested` and `permission.completed` 79 each, `user.message` 6,
-  `session.model_change` 4, `session.usage_checkpoint` 4, `session.info` 3, `system.message` 3,
-  `session.start` 1, `session.shutdown` 1, 12 each of the eight `model.*` types
-  (`captured_assignment_context`, `message`, `messages_snapshot`, `model_call_started`,
-  `model_call_success`, `response`, `turn_ended`, `turn_started`), and 2 each of
-  `subagent.configured`, `subagent.selected`, `subagent.started` and `subagent.completed`, which
-  came from the session's web-reading task and were seen on no other install. `session.start` `data`
-  keys: `sessionId`, `version`, `producer`, `copilotVersion`, `startTime`, `contextTier`,
-  `context{cwd}`, `alreadyInUse`, `remoteSteerable`. `system.message`: `role`, `content`,
-  `metadata{variables{gitCommitTrailer, sessionId, clientName, coauthorEnabled}}`, `interactionId`.
-  `permission.requested` `permissionRequest` key sets: 72 of the `url` form (`kind`, `toolCallId`,
-  `intention`, `url`, `requestSandboxBypass`, `requestSandboxBypassReason`, then `promptRequest`;
-  the web fetches), 2 of the shell form (`fullCommandText`, `shellType`, `intention`, `commands`,
-  with `identifier` and `readOnly`, ...), 2 of the write form (`fileName`, `diff`,
-  `newFileContents`, `canOfferSessionApproval`, `fileEdits`) and 3 with a key beginning `redirecte`
-  (the rest of its name was cut in the listing; not determined). `permission.completed` was listed
-  as `{requestId, toolCallId, result{kind, decisionSource}, agentId}`, `agentId` on some records
-  only: `decisionSource` inside `result`, where the Linux records and the parser have it beside
-  `result` ([section 3](#event-types)); not determined whether this is the shape or the listing's
-  nesting, and no row of it reached the analyzer, since the session was deleted before the
-  collection. The `result.kind` of the denial was not recorded. `model.model_call_success` carried
-  `turn`, `callId`, `modelCallDurationMs`, `ttftMs`, `outputTtftMs`, `interTokenLatencyMs` and
-  `modelCall{model, api_id, api_endpoint, request_id, client_request_id, service...}`. The resume
-  rewrote `workspace.yaml` with `updated_at` unchanged, adding `remote_steerable` (false),
-  `mc_task_id`, `mc_session_id` and `mc_last_event_id` (UUIDs), the keys every Copilot Desktop
-  session carries; the resumed process logged `Remote session access enabled` and
-  `Using default model: gpt-6.1-sol`, and the sync itself is logged nowhere. The delete,
-  `/session delete <id> --yes --remote` after four other forms (`/session`, `/session delete-all`,
-  `/session delete <id>`, `/session delete copilot <id>`), asked whether to delete the synced copy
-  too ("has been synced to your account. Would you also like to delete the synced session data");
-  the user said yes. It removed the session directory whole (`events.jsonl`, `workspace.yaml` with
-  the `mc_` keys, both `rewind-file-snapshots` files, `checkpoints/`, `files/`, `research/`) and the
-  id from the sidebar file, and left: in `session-store.db` (the WAL unchanged since 22:06) the
-  `sessions` row (`cwd` set, `repository` null, a 32-character `summary`), 3 `turns` (prompts of 63,
-  18 and 42 characters, replies of 4,346, 1,704 and 30, stamped 22:03:42, 22:04:58 and 22:05:54), 1
-  `session_files` row (`apply_patch`), 3 `search_index` rows and 55 `assistant_usage_events`
-  (`model` `claude-sonnet-5`, `api_endpoint` `/v1/messages`; the new session's `gpt-6.1-sol` rows
-  use `ws:/responses`), with `session_refs`, `checkpoints` and `forge_trajectory_events` empty; the
-  session's 0-byte operation lock; the seven slash commands among the ten entries of
-  `command-history-state.json`; the five process logs, which record nothing about the delete (no
-  `sessions.delete` line, unlike the desktop app's bundled CLI); `permissions-config.json`; and the
-  file the approved call wrote. The `events.jsonl` held 6 `user.message` and the store kept 3
-  `turns`, the last three; why is not determined. With the remote copy deleted too, no local file
-  says the session was ever synced: the `mc_` keys lived only in the deleted `workspace.yaml`.
-  Analyzer 0.14.0 over the collection (collector 1.13.0, 34 files): 24 rows (`assistant` 3, `system`
-  11, `user` 10), 2 sessions, 3 duplicate secondary rows dropped, no `parser:` row, `problems: []`,
-  `demo` the one project. The deleted session was rebuilt from `session-store.db` alone:
-  `session name:` at 21:46:48 (`created_at`), the three `turns` as `user` and `assistant` pairs (the
-  last reply, 30 characters, the agent reporting the denied write) and
-  `file changed: <path> tool=apply_patch` at 22:06:06. The other rows:
-  `signed in: https://github.com as <login>` once per process log (21:48:02, 22:08:50, 22:08:51,
-  22:11:05), `permission setting: locations.<cwd>.tool_approvals={"kind":"write"} (from
-  .copilot/permissions-config.json, file mtime)` at 22:06:06, the new session's
-  `session metadata: user_named=false forks=0 compactions=0 client=github/cli`,
-  `session start: copilot 1.0.98 producer=copilot-agent cwd=<demo>`,
-  `model: gpt-6.1-sol cause=initial_resolution source=automatic effort=medium` and
-  `session end: routine files modified: none`, and the seven slash commands as undated `user` rows
-  from the command history, the three `/session delete` forms among them. The deletion lost from the
-  timeline the session's 109 tool calls and their permission decisions, the denial, the `/model`
-  switch's `session.info` output, the resume, and every event of its first three prompts. A first
-  `/login` left pending also wrote about 280,000 process-log lines (45 MB in five files) on this
-  install; the sign-in line the parser reads is among them; the npm-installed CLI on Windows is
-  still not observed ([issue 133](https://github.com/seanthegeek/doubleagent/issues/133)).
-- **Observed (Windows, through Copilot Desktop)**: Copilot CLI 1.0.99-2
-  as the bundled CLI of GitHub Copilot Desktop 1.1.30, which downloads it
-  to `AppData\Local\github-copilot-sdk\cli\1.0.99-2\copilot.exe`
-  (158,577,952 bytes, sha256
-  `b7bc340acf1c82228de2e3504444847f8e18beec1f07f72f260f1bbeb4c3a9b2`),
-  on a Windows 11 ARM64 Parallels VM (build 10.0.26300.9550, home
-  `C:\Users\sean`), 2026-10-17, all times UTC, names, key names, types,
-  enum values and counts only; the exercise is in
-  [section 1 of `copilot-desktop.md`](copilot-desktop.md#1-source-and-evidence).
-  The CLI wrote the Linux layout under `%USERPROFILE%\.copilot\` (the
-  executable carries `COPILOT_HOME` and `USERPROFILE`). The general chat's
-  `events.jsonl` (115 lines): `session.start` (`producer`
-  `copilot-agent`, `copilotVersion` `1.0.99-2`),
-  `session.permissions_changed` with the same `allowAll*` keys as the
-  Linux app sessions, `session.model_change` (`source` `startup`) at the
-  first prompt, 3 `user.message`, 8 `assistant.message`, 9
-  `tool.execution_start` and `tool.execution_complete` pairs with tool
-  names `powershell` and `create`, 27 `hook.start` and `hook.end` pairs
-  with `hookType` `sessionStart`, `userPromptSubmitted`,
-  `userPromptTransformed`, `preToolUse`, `postToolUse`,
-  `postToolUseFailure` (not seen on Linux), `agentStop` and
-  `sessionEnd`, 1 `system.message`, 8 `session.usage_record`, 3
-  `session.usage_checkpoint` and 1 `session.shutdown`, written at
-  20:13:47, ten minutes after the last reply (the Linux app sessions
-  wrote none). The project session's (30 lines): one prompt, one
-  `powershell` call, 7 hook pairs and a `session.shutdown`. Three
-  `create` calls failed ("Parent directory does not exist") and the
-  first `powershell` call exited 1 because Windows PowerShell's
-  execution policy refused `npm.ps1`; both are ordinary failed tool
-  results, and no `permission.requested` or `permission.completed` was
-  written (allow-all stayed on). `session-store.db`: 17 tables,
-  `schema_version` 8, `sessions` 2, `turns` 4 (3 for the chat, each with
-  its reply, so no null-response duplicate row this time, and 1 for the
-  project session), `session_files` 3 (`tool_name` `create`),
-  `search_index` 4 (`source_type` `turn`), `assistant_usage_events` 10
-  (`model` `claude-sonnet-5.5`, `initiator` `user` and `agent`,
-  `api_endpoint` `/v1/messages`, `reasoning_effort` `medium`,
-  `finish_reason` `stop` and `tool_calls`), and `checkpoints`,
-  `dynamic_context_items`, `forge_skill_proposals`,
-  `forge_trajectory_events` and `session_refs` empty. The app also
-  created seven sessions that were never prompted, each a directory with
-  only `workspace.yaml` (`client_name` `github/autopilot`, `user_named`
-  false), `.workspace-fork.lock`, an empty `checkpoints/index.md` table
-  and empty `files/` and `research/`, and no `events.jsonl` or
-  `session.db`. MCP: the three servers the user added from the app went
-  into `mcp-config.json`, two of them never spawned (the CLI log's `MCP
-  server connection failed {"server_name":"<name>","raw_error":"failed
-  to spawn MCP server process: program not found"}`, six and five
-  times), and the one that connected left one tool cache per session in
-  `AppData\Local\copilot\mcp-tools\` ([section 7](#7-transcript-stores)).
-  Analyzer 0.14.0 over the collection: `copilot-cli` rows `assistant` 7,
-  `system` 92, `tool_result` 10, `tool_use` 10, `user` 4, 10 duplicate
-  secondary rows dropped, no `parser:` row; among them `session start:
-  copilot 1.0.99-2 producer=copilot-agent cwd=...`, `permission mode:
-  allow-all off -> on`, `model: claude-sonnet-5.5 source=startup`, the
-  `hook <hookType> start:` and `end:` rows, `file changed: <path>
-  tool=create` and `session end: routine files modified: <paths>`, and
-  one `session metadata: user_named=false ... client=github/autopilot`
-  row for each of the seven unprompted sessions. The standalone CLI on
-  Windows is the bullet above.
-- **Observed (Linux)**: Copilot CLI 1.0.98, installed with `sudo npm
-  install -g @github/copilot` on an Ubuntu 26.04.1 arm64 Parallels VM
-  (kernel 7.0.0-38-generic, home `/home/sean`), 2026-10-16, read with
-  `analyzer/tools/shape.py` only (key names, types, enum values, counts;
-  no values). Exercised: `copilot login`, then two interactive sessions.
-  Session 1, in `~/demo` (created 21:01:19.518Z, prompts at 21:02:40Z and
-  21:05:34.923Z, shutdown 21:16:01Z, all UTC; 194 lines), called `bash` 2
-  times, `apply_patch` 2 (11 files, then 1), `view` 3, `glob` 1,
-  `web_fetch` 18, `web_search` 7 and `fetch_copilot_cli_documentation` 1,
-  with 20 permission requests (`kind` `shell` 2, `url` 17, `write` 1,
-  each carrying `permissionMode` `manual` and `agentMode` `interactive`):
-  19 `approved` and one `approved-for-location` for the write, all
-  `decisionSource` `human_response`, and one automatic model resolution.
-  Session 2, in `~/secret` (created 21:16:26.715Z, one prompt at
-  21:17:18Z, shutdown 21:19:27Z; 35 lines), had one `write` request
-  approved and a model switch the user typed: `/model`, choosing Auto, at
-  21:19:20Z, which wrote a `session.model_change` and two `session.info`
-  lines ([section 3](#event-types)). The user then removed the project
-  with `rm -r secret/`. Every action ran before the first listing, so no
-  per-action listing diff exists; the times above are the mapping. Each
-  surface wrote: the login a 105-byte process log and the token in the
-  GNOME keyring (the GNOME desktop's password store; `config.json` held
-  no token; [section 3 of
-  `collectors/research/copilot-cli.md`](#3-credentials));
-  each session its `session-state/<uuid>/` directory, a process log (16
-  KB and 15 KB), `session-store.db` rows (in a 1.37 MB WAL beside a
-  4096-byte main file), a `sidebar-sessions-state` file and its prompts in
-  `command-history-state.json`; the `write` approval for the location
-  the one `permissions-config.json` entry. No `settings.json` was
-  written. Analyzer 0.14.0 over the collection: 2 sessions, 160 rows
-  (`system` 79, `tool_use` 35, `tool_result` 35, `assistant` 7, `user`
-  4), no `parser:` row, 17 secondary rows deduplicated. The removed
-  `~/secret` session was reconstructed in full from `events.jsonl`,
-  `session-store.db`, `rewind-file-snapshots/index.json` and
-  `command-history-state.json`, which survive the project directory's
-  removal, and the inventory reports `/home/sean/secret` as
-  `referenced`. Not exercised: a denial, a resume, a rewind, a session
-  deleted with the CLI's own command, a subagent, a compaction, plan or
-  autopilot mode, a scheduled task.
-- **Observed (macOS)**: Copilot CLI 1.0.98, Homebrew npm install, the
-  author's workstation, 2026-10-15, read with `analyzer/tools/shape.py`
-  and a schema dump only (key names, types, enum values, counts; no
-  values). Three interactive sessions in `manual` permission mode (52, 168
-  and 64 lines, none bad), with `bash`, `view`, `apply_patch`, `web_fetch`,
-  `web_search` (an MCP tool), `ask_user` and
-  `fetch_copilot_cli_documentation` calls; 17 permission prompts approved
-  once (`approved`) or for the project (`approved-for-location`, a command
-  and a write approval); one automatic model resolution per session; three
-  normal shutdowns; one session whose `turns` rows were re-indexed
-  ([section 10](#10-other-stores)). Not exercised: a denial, a
-  model switch the user typed, a resumed session, a rewind, a deleted
-  session, a subagent, a compaction.
-
-<!-- MERGE: dedupe the Observed bullets above -->
+  Records, read with `analyzer/tools/shape.py` and a schema dump only (key names, types, enum
+  values, counts; no values). Three interactive sessions in `manual` permission mode (52, 168 and 64
+  lines, none bad), with `bash`, `view`, `apply_patch`, `web_fetch`, `web_search` (an MCP tool),
+  `ask_user` and `fetch_copilot_cli_documentation` calls; 17 permission prompts approved once
+  (`approved`) or for the project (`approved-for-location`, a command and a write approval); one
+  automatic model resolution per session; three normal shutdowns; one session whose `turns` rows
+  were re-indexed ([section 10](#10-other-stores)). Not exercised: a denial, a model switch the user
+  typed, a resumed session, a rewind, a deleted session, a subagent, a compaction.
 
 ### Source reviews
 
 - 2026-10-19: microsoft/vscode at
   [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706),
   for the Copilot CLI sessions that VS Code's Copilot Chat extension runs in a git worktree;
-  findings in [Scratch directories](#scratch-directories).
-
-- 2026-10-19: microsoft/vscode at
-  [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706),
-  for the Copilot CLI sessions that VS Code's Copilot Chat extension runs in a git worktree;
-  findings in [`vscode.metadata.json`](#vscodemetadatajson).
-
-<!-- MERGE: dedupe the Source reviews above -->
+  findings in [Scratch directories](#scratch-directories) and
+  [`vscode.metadata.json`](#vscodemetadatajson).
 
 ### Confidence
 
@@ -566,8 +470,7 @@ The docs table plus the bundle:
   runtime SQL `FROM checkpoints ... session_id, checkpoint_number`), in WAL mode
   (`runtime.node@80402520` `PRAGMA journal_mode = WAL`): on the 1.0.98 install the rows were in the
   `-wal` sidecar, so the sidecars must be collected with it. Tables and their writers are in
-  [section 10 of
-  `analyzer/research/copilot-cli.md`](#10-other-stores).
+  [section 10](#10-other-stores).
 - `command-history-state.json` `{commandHistory: [...]}`, the Ctrl+R prompt history, newest first,
   at most 50 by default (observed at 1.0.98; the docs still name a `command-history-state/`
   directory). `open-sessions-state.json` open-session tracker (`runtime.node@79300674`
@@ -726,8 +629,10 @@ are Mission Control ids, GitHub's remote session mirror); `remote_steerable` and
 keys mark a session synced to the account: the winget install's `workspace.yaml` gained them when
 the session was resumed, and every Copilot Desktop session carries them. They live only in
 `workspace.yaml`, so a session deleted locally and remotely leaves no local record that it was ever
-synced. The analyzer yields no row for them yet ([issue
-151](https://github.com/seanthegeek/doubleagent/issues/151)). `cwd` is the project path;
+synced. When `mc_session_id` is set, the parser yields a `session synced:` row from them
+([Sync, relay and origin rows](#sync-relay-and-origin-rows)); before that row was added for
+[issue 151](https://github.com/seanthegeek/doubleagent/issues/151) this section said the
+analyzer yielded no row for them. `cwd` is the project path;
 `client_name` was `github/cli` on both Linux sessions.
 
 `permissions-config.json` is "organized by project location" (docs):
@@ -752,7 +657,7 @@ Relative to the home; `~/.copilot` unless `COPILOT_HOME` moves it.
 Installs that predate the XDG migration keep the same names under
 `.local/state/.copilot` (session state, store, history) and
 `.config/.copilot` (config, permissions)
-([`collectors/research/copilot-cli.md`](../../collectors/research/copilot-cli.md)).
+([section 2](#2-per-user-storage)).
 
 | Path | Content | Parse |
 | --- | --- | --- |
@@ -1139,8 +1044,8 @@ logs.
 #### `vscode.metadata.json`
 
 `session-state/<id>/vscode.metadata.json`: written by VS Code, not by the CLI. VS Code's Copilot
-Chat extension can run a Copilot CLI session in a git worktree it creates at
-`<repo parent>/<repo>.worktrees/<branch>`, unless the git extension's global state holds a
+Chat extension can run a Copilot CLI session in a git worktree it creates at `<repo
+parent>/<repo>.worktrees/<branch>`, unless the git extension's global state holds a
 `worktreeRoot:<repo>` root
 ([`extensions/git/src/repository.ts:1952-1970`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/git/src/repository.ts#L1952-L1970),
 [`chatSessionWorktreeServiceImpl.ts:113`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/copilot/src/extension/chatSessions/vscode-node/chatSessionWorktreeServiceImpl.ts#L113)),
