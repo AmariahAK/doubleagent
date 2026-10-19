@@ -15,6 +15,19 @@ user (state under their home); in Docker the images set `TABBY_ROOT=/data`
 not covered by a home catalog. The editor plugins talk to the server; chat
 history is server-side.
 
+- **Source review (2026-10-19)**: HEAD of TabbyML/tabby is still
+  [`21b2904`](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f),
+  the commit cited here, so no path has moved. One line per class:
+  permission none (Tabby runs no tools on the host); model in
+  `.tabby/config.toml`, already collected; past use found: the
+  `pages` tables inside the collected database and the two editor command
+  histories ([section 2](#2-per-user-storage)); sync, relay and origin
+  none (see [`analyzer/research/tabby.md`](../../analyzer/research/tabby.md));
+  scratch directories found, `.tabby/repositories`, already excluded;
+  deletion found, a deleted question and answer pair survives only in a
+  pre-migration backup, already collected; version drift none; bad lines
+  not a collector concern.
+
 ## 2. Per-user storage
 
 **Server root `~/.tabby`.** `TABBY_ROOT` if set, else `home::home_dir()/.tabby`
@@ -78,6 +91,24 @@ server behind the VS Code, IntelliJ, Vim and Eclipse plugins, from
 `~/Library/Application Support/JetBrains/<product>`,
 `%APPDATA%\JetBrains\<product>`
 ([JetBrains docs](https://www.jetbrains.com/help/idea/directories-used-by-the-ide-to-store-settings-caches-plugins-and-logs.html)).
+The command history (up to 30 inline-edit instructions, newest first) is
+requested as a project service
+([.../inlineChat/InlineChatIntentionAction.kt:97](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/intellij/src/main/kotlin/com/tabbyml/intellijtabby/inlineChat/InlineChatIntentionAction.kt#L97))
+under an `@Service` annotation that names no level; whether the IDE then
+stores `intellij-tabby-command-history.xml` in `options/`, where the
+catalog line looks, or in the project's `.idea/` is not determined from
+this source (source review 2026-10-19).
+
+The VS Code extension's `edit.recentlyCommand` list holds the recent
+inline-edit instructions (default 20) in the same `state.vscdb` row,
+collected under the `vscode` entries
+([clients/vscode/src/Config.ts:139-145](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/Config.ts#L139-L145)).
+
+**Scratch directories.** `.tabby/repositories/<sanitised git url>/` holds
+the clones Tabby makes of the remote repositories it indexes, Tabby's own
+working copies rather than the user's projects; the catalog excludes them
+([section 4](#4-exclusions)). Local repositories (`file://`) are indexed
+in place. No session records a local working directory.
 
 ## 3. Credentials
 

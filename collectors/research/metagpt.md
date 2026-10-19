@@ -16,6 +16,41 @@ MetaGPT runs shell commands on the host: the `Terminal` tool spawns a
 persistent shell
 ([terminal.py:47-52](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/tools/libs/terminal.py#L47-L52)).
 
+- **Source review (2026-10-19)**: HEAD of FoundationAgents/MetaGPT is
+  still
+  [`11cdf46`](https://github.com/FoundationAgents/MetaGPT/commit/11cdf466d042aece04fc6cfd13b28e1a70341b1f),
+  the commit cited here. One line per class:
+  - Permission: none on disk. The `Terminal` tool asks nothing before a
+    command (no `approve` or `confirm` in
+    [terminal.py](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/tools/libs/terminal.py));
+    the one question `RoleZero` asks, whether to continue past the
+    action limit, goes to the human through the environment and is not
+    stored
+    ([role_zero.py:328-335](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/roles/di/role_zero.py#L328-L335)).
+  - Model: `llm.model` in `.metagpt/config2.yaml`
+    ([llm_config.py:64](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/configs/llm_config.py#L64)),
+    already collected.
+  - Past use: found, outside the home. Besides `team.json`
+    ([section 2](#2-per-user-storage)), every run writes a DEBUG-level
+    log `logs/<YYYYMMDD>.txt` (or `<name>_<YYYYMMDD>.txt`) under
+    `METAGPT_ROOT`
+    ([logs.py:40-51](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/logs.py#L40-L51)),
+    the same root as `workspace`, so it is not under a home-relative
+    name either.
+  - Sync, relay and origin: none (not found in `metagpt/` at `11cdf46`,
+    grepped for `share_url`, `upload_session` and `sync_session`).
+  - Scratch directories: `<METAGPT_ROOT>/workspace` is the agent's own
+    output directory for generated projects
+    ([section 2](#2-per-user-storage)); it is not recorded anywhere under
+    the home and has no MetaGPT-specific name, so no catalog line or
+    discovery source can find it.
+  - Deletion: nothing to delete; no session store.
+  - Version drift: none (same commit).
+  - Bad lines: no parser.
+
+  The "nothing to parse" verdict stands: the log and `team.json` are
+  outside the home.
+
 ## 2. Per-user storage
 
 | Path (home-relative, all OSes) | Holds | Default or opt-in |

@@ -9,6 +9,33 @@ Editor clients keep none. Paths are in [`collectors/research/tabby.md`](../../co
 [TabbyML/tabby](https://github.com/TabbyML/tabby) at [`21b29048d7bcf6b94f9f482f2d0fd05efadfd19f`](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f).
 Apache-2.0 outside `ee/`, Tabby Enterprise licence inside; source public.
 
+- **Source review (2026-10-19)**: the repository's HEAD is still
+  [`21b2904`](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f),
+  the commit this document cites, so every citation holds. One line per
+  requirement class:
+  - Permission: none. Tabby's chat and answer engine run no tools on the
+    host, so there is no per-call decision or standing grant: `tool_calls`
+    and `ToolCall` occur in `crates/` and `ee/` only in a test helper
+    (`ee/tabby-webserver/src/service/answer/testutils/mod.rs`), and
+    `approv` matches no Rust file.
+  - Model: found, not recorded per message. A thread run names its model
+    in the request and nothing stores it; the server's `config.toml`
+    names the configured models ([section 8](#8-parser-plan)).
+  - Past use: backups and the event log already covered; found three
+    sources the parser does not read: AI-written pages, the IntelliJ
+    inline-chat command history and the VS Code inline-edit command
+    history ([section 5](#5-sqlite-specifics)).
+  - Sync, relay and origin: already covered (no upload; share stays on the
+    server).
+  - Scratch directories: found, `.tabby/repositories/` clones, already
+    excluded ([section 8](#8-parser-plan)).
+  - Deletion: thread delete and the 7-day ephemeral cleanup already
+    covered; found the delete of one question and answer pair
+    ([section 5](#5-sqlite-specifics)).
+  - Version drift: none (HEAD is the cited commit).
+  - Bad lines: already covered; the event log is read through
+    `iter_jsonl` and its errors through `error_rows`.
+
 ## 2. Transcript files
 
 - `.tabby/ee/db.sqlite` (`-wal`, `-shm`), and `.tabby/ee/db.backup-YYYYMMDD.sqlite`
@@ -175,6 +202,52 @@ back to true ([thread.rs:140](https://github.com/TabbyML/tabby/blob/21b29048d7bc
 ([ee/tabby-db/schema/schema.sql:189](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L189)); a pre-migration backup
 taken before the delete keeps the row and its flag.
 
+**More deletes and records (source review 2026-10-19).**
+`deleteThreadMessagePair`
+([ee/tabby-schema/src/schema/mod.rs:1508](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-schema/src/schema/mod.rs#L1508))
+removes one user message and the assistant answer after it
+([ee/tabby-db/src/threads.rs:339-382](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/threads.rs#L339-L382)),
+leaving the thread; only a pre-migration backup keeps the pair. No writer
+deletes a user row (`DELETE FROM users` and `delete_user` grepped in
+`ee/tabby-db/src`), although `threads.user_id` cascades
+([schema.sql:177](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L177)).
+
+`pages` and `page_sections`
+([schema.sql:267-288](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L267-L288))
+are AI-written documents: `pages(author_id, title, content, created_at,
+updated_at, code_source_id)` and `page_sections(page_id, title, content,
+position, attachment)`. A page is generated from a thread's messages
+(`convertThreadToPage`) or from a title prompt the user typed
+(`createPageRun`)
+([ee/tabby-webserver/src/service/page.rs:92-133](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/page.rs#L92-L133),
+[:135-150](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/page.rs#L135-L150)),
+and is a row of its own, so it outlives the thread it came from; it is
+removed only by `delete_page`
+([ee/tabby-db/src/pages.rs:123-124](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/pages.rs#L123-L124)).
+It records no thread id, so it joins a thread on `author_id`, text and
+time only.
+
+Two editor clients keep the user's recent inline-edit instructions,
+without times:
+
+- IntelliJ: `intellij-tabby-command-history.xml`, state
+  `CommandHistoryState.history`, a list of up to 30 strings, newest first
+  ([clients/intellij/.../inlineChat/CommandHistory.kt:5-31](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/intellij/src/main/kotlin/com/tabbyml/intellijtabby/inlineChat/CommandHistory.kt#L5-L31)).
+  The service is requested per project
+  ([InlineChatIntentionAction.kt:97](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/intellij/src/main/kotlin/com/tabbyml/intellijtabby/inlineChat/InlineChatIntentionAction.kt#L97))
+  while its `@Service` annotation names no level, so whether the IDE
+  writes the file to its `options/` directory, where the catalog looks,
+  or to the project's `.idea/` was not determined from this source.
+- VS Code: `edit.recentlyCommand` in the extension's global state, the
+  `TabbyML.vscode-tabby` row of `state.vscdb`, a list of JSON-encoded
+  commands, newest first, capped by the `chatEdit.history` advanced
+  setting (default 20)
+  ([clients/vscode/src/Config.ts:115-118](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/Config.ts#L115-L118),
+  [:139-145](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/Config.ts#L139-L145),
+  [clients/vscode/src/inline-edit/quickPick.ts:344-351](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/inline-edit/quickPick.ts#L344-L351)).
+  The catalog attributes `state.vscdb` to `vscode`, so a Tabby reader of
+  it needs `reads_agents`.
+
 ## 6. Format versions
 
 Migrations under `ee/tabby-db/migrations/`; `thread_messages` arrived in
@@ -211,6 +284,39 @@ Globs: `.tabby/ee/db.sqlite`, `.tabby/ee/db.backup-*.sqlite`,
 
 Tabby records no model in the thread or event stores, so the parser yields
 no `model:` rows.
+
+Source review 2026-10-19, one line per class:
+
+- Permission: the agent records none (no tool execution; see
+  [section 1](#1-source)).
+- Model: a thread run's `ThreadRunOptionsInput.model_name`
+  ([ee/tabby-schema/src/schema/thread/inputs.rs:73-76](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-schema/src/schema/thread/inputs.rs#L73-L76))
+  is passed to the chat request
+  ([ee/tabby-webserver/src/service/answer.rs:210](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/service/answer.rs#L210))
+  and not stored: `thread_messages` has no model column
+  ([schema.sql:179-190](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L179-L190)).
+  The configured models are in `.tabby/config.toml`: `[model.completion]`,
+  `[model.chat]` and `[model.embedding]`, each `http` with `model_name`
+  and `supported_models` or `local` with `model_id`
+  ([crates/tabby-common/src/config.rs:259-263](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/config.rs#L259-L263),
+  [:302-342](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/config.rs#L302-L342)).
+  A `system` row per configured model, `model configured: <kind>
+  <model_name or model_id>`, at the file's modification time and saying
+  so, is the most the files support; it says which models the server
+  could use, not which one answered.
+- Past use: `pages` and `page_sections` primary (their own `created_at`,
+  `session_id` `page:<id>`), and the two command histories secondary with
+  an empty timestamp (see [section 5](#5-sqlite-specifics)).
+- Sync, relay and origin: no change.
+- Scratch directories: `.tabby/repositories/<sanitised git url>/` holds
+  the clones Tabby makes of remote repositories it indexes
+  ([crates/tabby-common/src/config.rs:198-218](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/config.rs#L198-L218)),
+  excluded by the catalog. The parser's `project_path` is a repository
+  URL, never a local directory, so no scratch directory can appear as a
+  project.
+- Deletion: a pair deleted with `deleteThreadMessagePair` survives only
+  in a backup; the backups are already read.
+- Bad lines: no change.
 
 Sources, primary or secondary (see [Second copies](#second-copies)):
 
