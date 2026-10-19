@@ -694,19 +694,9 @@ Agentic variant of an interaction:
 {"humanMessage":{"speaker":"human","text":"run the tests","intent":"agentic"},"assistantMessage":{"speaker":"assistant","model":"anthropic::2024-10-22::claude-sonnet-4-latest","text":"Running tests.","content":[{"type":"text","text":"Running tests."},{"type":"tool_call","tool_call":{"id":"toolu_01","name":"run_terminal_command","arguments":"{\"command\":\"pytest -q\"}"}}],"processes":[{"type":"tool","id":"toolu_01","title":"run_terminal_command","content":"pytest -q","state":"success"}]}}
 ```
 
-#### Confidence
-
-High (frozen source): key names, transcript and message
-fields, `toUTCString` ids, tool part shapes, the JetBrains file location.
-Medium: the serialised form of `uri` (a VS Code URI's JSON form; field set
-not traced), the tool name `run_terminal_command` and the model string in
-the fixture, and how tool results are threaded into the next
-`humanMessage.content` in agentic chats. Not determined: anything after
-August 2025.
-
 ## 14. Confidence
 
-High (frozen source): storage keys and row layout, symf paths, custom
+Collection. High (frozen source): storage keys and row layout, symf paths, custom
 command files, agent `Cody-nodejs` layout, JetBrains global-state
 directory, CLI keychain use. Medium: that current shipped builds still
 use these keys and paths; the source stops in August 2025. Medium: the
@@ -716,3 +706,11 @@ determined: the size of a symf index; whether the JetBrains plugin passes a
 `globalStateDir` from the Kotlin side in builds after the snapshot (it does
 not at this commit); where the Eclipse and Visual Studio clients, which are
 not in this repository, keep state.
+
+Parsing. High (frozen source): key names, transcript and message
+fields, `toUTCString` ids, tool part shapes, the JetBrains file location.
+Medium: the serialised form of `uri` (a VS Code URI's JSON form; field set
+not traced), the tool name `run_terminal_command` and the model string in
+the fixture, and how tool results are threaded into the next
+`humanMessage.content` in agentic chats. Not determined: anything after
+August 2025.

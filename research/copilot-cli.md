@@ -387,31 +387,6 @@ there are no commit links. Evidence is the **shipped bundle**; each claim names 
   findings in [Scratch directories](#scratch-directories) and
   [`vscode.metadata.json`](#vscodemetadatajson).
 
-### Confidence
-
-High (schema and real install agree): the envelope, the
-observed event types and keys, the permission result kinds, the
-`toolCallId` join, the session-store schema and its SQL, the history
-file's order, the WAL, the utility-call purposes. Medium (bundle only):
-the unobserved event types, the denial and session-approval shapes,
-subagent events in the same file, `forge_trajectory_events`, the
-snapshot's timing. High since the Linux round: the `turns` write
-pattern behind the repeated rows (complete row at the next prompt or at
-shutdown, prompt-only row mid-turn), the `session.info` shape, the
-`model_picker` change, and the Linux layout, which matches macOS.
-`sessions.summary` holds the generated session name (Linux install).
-Not determined: why `schema_version` is 8 on Linux and 38 on macOS on the same 1.0.98; the
-legacy flat transcript's shape. The Windows layout was observed through
-the Copilot Desktop app's bundled 1.0.99-2 and the winget install of
-1.0.98 (2026-10-17), and matched Linux under `%USERPROFILE%` in both;
-the winget round also exercised a denial, a resume, a session deleted
-with the CLI's own command and subagent events, seen as listings and key
-shapes only, since the delete took the session's `events.jsonl` before
-the analyzer ran. Not determined: why the store kept 3 of 6 turns;
-whether `permission.completed` nests `decisionSource` in `result` on
-Windows. The npm-installed CLI on Windows is not observed
-([issue 133](https://github.com/seanthegeek/doubleagent/issues/133)).
-
 ## Collection
 
 ### 2. Per-user storage
@@ -1429,8 +1404,8 @@ in the timeline ([issue 150](https://github.com/seanthegeek/doubleagent/issues/1
 
 ## 14. Confidence
 
-High: config home and `COPILOT_HOME`, directory names (docs plus bundle), XDG migration list, pkg
-cache locations (`~/Library/Caches/copilot` on macOS, `~/.cache/copilot` on Linux and
+Collection. High: config home and `COPILOT_HOME`, directory names (docs plus bundle), XDG migration
+list, pkg cache locations (`~/Library/Caches/copilot` on macOS, `~/.cache/copilot` on Linux and
 `AppData/Local/copilot` on Windows observed, the last through Copilot Desktop's bundled CLI 1.0.99-2
 and the winget install of 1.0.98), log dir, keyring/plaintext token model (token in the GNOME
 keyring observed on Linux); the `session-state/<id>/` file set, the `workspace.yaml` keys (cwd in
@@ -1450,3 +1425,26 @@ determined: why `session-store.db` reported `schema_version` 8 on Linux and 38 o
 1.0.98; the Credential Manager target name; what the `managed-settings.<sha256>.fence` file holds;
 the layout of an npm-installed CLI on Windows ([issue
 133](https://github.com/seanthegeek/doubleagent/issues/133)).
+
+Parsing. High (schema and real install agree): the envelope, the
+observed event types and keys, the permission result kinds, the
+`toolCallId` join, the session-store schema and its SQL, the history
+file's order, the WAL, the utility-call purposes. Medium (bundle only):
+the unobserved event types, the denial and session-approval shapes,
+subagent events in the same file, `forge_trajectory_events`, the
+snapshot's timing. High since the Linux round: the `turns` write
+pattern behind the repeated rows (complete row at the next prompt or at
+shutdown, prompt-only row mid-turn), the `session.info` shape, the
+`model_picker` change, and the Linux layout, which matches macOS.
+`sessions.summary` holds the generated session name (Linux install).
+Not determined: why `schema_version` is 8 on Linux and 38 on macOS on the same 1.0.98; the
+legacy flat transcript's shape. The Windows layout was observed through
+the Copilot Desktop app's bundled 1.0.99-2 and the winget install of
+1.0.98 (2026-10-17), and matched Linux under `%USERPROFILE%` in both;
+the winget round also exercised a denial, a resume, a session deleted
+with the CLI's own command and subagent events, seen as listings and key
+shapes only, since the delete took the session's `events.jsonl` before
+the analyzer ran. Not determined: why the store kept 3 of 6 turns;
+whether `permission.completed` nests `decisionSource` in `result` on
+Windows. The npm-installed CLI on Windows is not observed
+([issue 133](https://github.com/seanthegeek/doubleagent/issues/133)).

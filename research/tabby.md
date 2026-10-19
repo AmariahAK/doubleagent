@@ -629,21 +629,19 @@ INSERT INTO thread_messages(id,thread_id,role,content,created_at,updated_at,atta
 {"user":"1","ts":1759312801500,"event":{"select":{"completion_id":"cmpl-7f3a","choice_index":0,"view_id":"view-1","elapsed":1377}}}
 ```
 
-#### Confidence
-
-High: table and column names, role values, event JSON shape and `ts` unit, WAL, backups, ephemeral
-cleanup (source). Medium: the exact form of `user` in the event log (the Hashids-encoded user row id
-the database logger decodes, see [What survives a delete](#what-survives-a-delete); how a request's
-user reaches the entry was not traced through the auth middleware). Not determined: `pages` and
-`page_sections` content shape beyond `title`/`content`
-([schema.sql:267-288](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L267-L288)).
-
 ## 14. Confidence
 
-High: `~/.tabby` layout, env overrides, database file names, WAL,
+Collection. High: `~/.tabby` layout, env overrides, database file names, WAL,
 pre-migration backups, table columns, event file naming and fields,
 `~/.tabby-client/agent` files, VS Code `globalState` keys (source). Medium:
 Windows `home_dir()` resolving to the profile directory (the `home` crate's
 documented behaviour, not re-read here); the JetBrains `options/` location
 (vendor docs). Not determined: Eclipse plugin storage; the size of `events/` on a busy server
 (no retention in the writer, so it grows without bound).
+
+Parsing. High: table and column names, role values, event JSON shape and `ts` unit, WAL, backups,
+ephemeral cleanup (source). Medium: the exact form of `user` in the event log (the Hashids-encoded
+user row id the database logger decodes, see [What survives a delete](#what-survives-a-delete); how
+a request's user reaches the entry was not traced through the auth middleware). Not determined:
+`pages` and `page_sections` content shape beyond `title`/`content`
+([schema.sql:267-288](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L267-L288)).

@@ -1211,17 +1211,9 @@ files arrive as `state.db`, `sessions/<id>.jsonl`,
 `profiles/<name>/...` with no prefix (`state.db`, not `.hermes/state.db`). `wants()` accepts
 these as it accepts the home forms, and the rows carry the manifest's `docker` user.
 
-#### Confidence
-
-High: table and column names, timestamp unit, content prefix, tool-call shape, joins, WAL. Medium:
-the full set of `role` values (only the four above seen in queries) and `source` values beyond the
-stale-open list. The shell tool is registered as `terminal`
-([`tools/terminal_tool.py:1634`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/tools/terminal_tool.py#L1634)).
-Not determined: `response_store.db` and legacy `session_<id>.json` schemas.
-
 ## 14. Confidence
 
-High: home resolution, profile layout, `state.db` and every file named in
+Collection. High: home resolution, profile layout, `state.db` and every file named in
 [section 2](#2-per-user-storage) and [section 3](#3-credentials) (source constants). High: backup
 exclusion list as a guide to size. Medium: the desktop `userData` path, which follows the Electron
 default from `productName` rather than an explicit `setPath` for stable builds
@@ -1234,3 +1226,9 @@ provider credentials"
 Termux installs, which come from APT
 ([`scripts/install.sh:340`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/scripts/install.sh#L340))
 and were not checked.
+
+Parsing. High: table and column names, timestamp unit, content prefix, tool-call shape, joins, WAL.
+Medium: the full set of `role` values (only the four above seen in queries) and `source` values
+beyond the stale-open list. The shell tool is registered as `terminal`
+([`tools/terminal_tool.py:1634`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/tools/terminal_tool.py#L1634)).
+Not determined: `response_store.db` and legacy `session_<id>.json` schemas.

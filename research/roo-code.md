@@ -231,7 +231,7 @@ before its cleanup ran. Other second copies, project-local traces and deletion m
 stated. The analyzer reads `cli-history.json` as a secondary source whose lines are kept only when
 no task has the same text (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-#### CLI ephemeral storage
+#### Transcripts in CLI ephemeral storage
 
 `roo --ephemeral` ("Run without persisting state",
 [`apps/cli/src/index.ts:53`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/index.ts#L53))

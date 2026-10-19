@@ -665,19 +665,9 @@ it as a `user` row with the `summary` as its text, in its place among the reply'
 before the fix for issue 171 it was a `tool_use` named `said` and an empty `tool_result`. `changes`,
 `mcpTool`, `meta.outOfSteps` and `meta.instructions` are not read.
 
-#### Confidence
-
-High: row key, globalState key names, Conversation and message
-fields, roles, `updatedAt` unit (all source). Medium: `content` is always a
-string in saved chats (the `fluency.js` type also allows part arrays; Twinny
-writes strings at the cited sites). Not determined: how `toolSteps[].args`
-names the command for each tool; whether other editors running the
-extension (VSCodium, Cursor) store it identically (they share the VS Code
-storage code, so likely).
-
 ## 14. Confidence
 
-High: extension id, `globalState` keys, the provider file name and
+Collection. High: extension id, `globalState` keys, the provider file name and
 setting, `~/.twinny` subpaths, gateway data directory layout, secret storage
 keys (all source). High: `globalState` stored in `state.vscdb` under the
 extension id (VS Code source). Medium: `chunks.lance` as the on-disk name of
@@ -685,3 +675,11 @@ the LanceDB table (LanceDB's naming convention, not visible in Twinny's
 source). Not determined: sizes of a real index; whether `invites.json`
 holds reusable secrets; how the JetBrains or other editors (Twinny is VS
 Code only at this commit) would differ.
+
+Parsing. High: row key, globalState key names, Conversation and message
+fields, roles, `updatedAt` unit (all source). Medium: `content` is always a
+string in saved chats (the `fluency.js` type also allows part arrays; Twinny
+writes strings at the cited sites). Not determined: how `toolSteps[].args`
+names the command for each tool; whether other editors running the
+extension (VSCodium, Cursor) store it identically (they share the VS Code
+storage code, so likely).

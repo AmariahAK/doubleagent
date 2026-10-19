@@ -1019,30 +1019,13 @@ why is the sky blue
 /bye
 ```
 
-#### Confidence
-
-High: the DDL, write paths, timestamp binding, the tool
-pairing rule, the history format, the absence of server-side persistence
-(source plus the local experiment on 0.30.7 and 0.35.1), the
-`config.json` and backup shapes, the `codex-proxy.log` line format, and
-the release in which each change since `v0.30.7` appeared (from the tag
-history). Medium: that the UI never sets `tool_calls.function_result` (no
-writer found in `app/`); that the built-in agent of `v0.31.2` to
-`v0.34.0` left no session store (read at its last commit only, not at
-each release). Not determined: a real `db.sqlite`, because the desktop
-app does not exist on Linux; what fills `chats.browser_state` in detail;
-whether a Windows build of the app writes `server.log` with the same gin
-lines (the path differs,
-[Desktop app, Windows](#desktop-app-windows));
-what a pre-release build may have left in `.ollama/chatgpt-ollama/electron-data`.
-
 ## 14. Confidence
 
-High: everything in [section 2](#2-per-user-storage) to [section 5](#5-project-local-files) (source
-with line numbers, local layout confirmed). Medium: WAL sidecar presence depends on app state at
-collection. Not determined: whether the macOS app also writes `db.sqlite` into `~/.ollama` on
-non-standard installs (code says no); size of `~/.ollama/launch/*` and `repl` artifacts of other
-`ollama launch` integrations.
+Collection. High: everything in [section 2](#2-per-user-storage) to
+[section 5](#5-project-local-files) (source with line numbers, local layout confirmed). Medium: WAL
+sidecar presence depends on app state at collection. Not determined: whether the macOS app also
+writes `db.sqlite` into `~/.ollama` on non-standard installs (code says no); size of
+`~/.ollama/launch/*` and `repl` artifacts of other `ollama launch` integrations.
 
 Resolved, from the collector code: the systemd service home `/usr/share/ollama` is enumerated by the
 sh collector without an extra root. `enumerate_users` in `collect-agent-artifacts.sh` takes every
@@ -1057,3 +1040,18 @@ account can read. The PowerShell collector does not read `etc/passwd` in image m
 image it misses that home, as
 [`docs/coverage.md`](../collectors/docs/coverage.md#home-directory-discovery) records under "Home
 directories"; collect a Linux image with the sh collector.
+
+Parsing. High: the DDL, write paths, timestamp binding, the tool
+pairing rule, the history format, the absence of server-side persistence
+(source plus the local experiment on 0.30.7 and 0.35.1), the
+`config.json` and backup shapes, the `codex-proxy.log` line format, and
+the release in which each change since `v0.30.7` appeared (from the tag
+history). Medium: that the UI never sets `tool_calls.function_result` (no
+writer found in `app/`); that the built-in agent of `v0.31.2` to
+`v0.34.0` left no session store (read at its last commit only, not at
+each release). Not determined: a real `db.sqlite`, because the desktop
+app does not exist on Linux; what fills `chats.browser_state` in detail;
+whether a Windows build of the app writes `server.log` with the same gin
+lines (the path differs,
+[Desktop app, Windows](#desktop-app-windows));
+what a pre-release build may have left in `.ollama/chatgpt-ollama/electron-data`.

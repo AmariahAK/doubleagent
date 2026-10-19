@@ -1067,19 +1067,9 @@ JSONL form; the SQLite form stores the same strings in `event_json`:
 {"type":"model_change","id":"d4e5f6a7","parentId":"c3d4e5f6","timestamp":"2026-10-01T09:01:00.000Z","provider":"openai","modelId":"gpt-5"}
 ```
 
-#### Confidence
-
-High: table and column names, entry and message field names,
-compression rule, archive naming, version constants. Medium: that legacy
-`.jsonl` files are removed after import on every path; `cwd` meaning the
-workspace. Not
-determined: the shapes of `trajectory_runtime_events`,
-`acp_parent_stream_events` and `custom.data` per `customType`; whether
-cold-archived generations keep any `transcript_events` rows.
-
 ## 14. Confidence
 
-High: state directory resolution, profiles, legacy `.clawdbot` migration,
+Collection. High: state directory resolution, profiles, legacy `.clawdbot` migration,
 database file names and schemas, workspace and agentDir defaults, archive
 file naming, credential tables, service names. Medium: the exclusion list
 comes from the backup documentation rather than each writer; `models.json`
@@ -1091,3 +1081,11 @@ no longer reads it). Because `*` in exclusion globs crosses `/`, the
 the state directory, nested runtime homes included. Not determined: the
 Windows log location beyond `os.tmpdir()`; what the macOS transcript cache stores; whether the
 iOS and Android apps keep transcripts on the phone.
+
+Parsing. High: table and column names, entry and message field names,
+compression rule, archive naming, version constants. Medium: that legacy
+`.jsonl` files are removed after import on every path; `cwd` meaning the
+workspace. Not
+determined: the shapes of `trajectory_runtime_events`,
+`acp_parent_stream_events` and `custom.data` per `customType`; whether
+cold-archived generations keep any `transcript_events` rows.

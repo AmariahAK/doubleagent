@@ -862,17 +862,9 @@ Fixture `usr/chats/AbCd1234/chat.json`:
   {"no":2,"id":"t1","type":"tool","heading":"A0: Using tool 'code_execution_tool'","content":"a.txt","kvps":{"runtime":"terminal","code":"ls","_tool_name":"code_execution_tool"},"timestamp":1759320003.0,"agentno":0}]}}
 ```
 
-#### Confidence
-
-High: file layout, top-level keys, history and log item shapes,
-timestamp units, masking. Medium: the exact `type` and `heading` of
-`code_execution_tool` items (they come from a tool subclass not traced; the
-generic `tool` path is shown). Not determined: content of task-scheduler
-contexts beyond `type="task"`; the `responses` metadata for every provider.
-
 ## 14. Confidence
 
-High: every path under the install directory and its `usr/` layout
+Collection. High: every path under the install directory and its `usr/` layout
 (constants), the installer and launcher defaults, the connector files. Medium:
 the Electron `userData` paths for the launcher (Electron default from
 `productName`, no `setPath` found); `Desktop/agent-zero`, which is only the
@@ -883,3 +875,9 @@ under a home; both need a manual collection, or a separate issue for
 collecting Docker volumes); the desktop plugin's credential files beyond the
 literal paths found; whether plugin state such as
 `usr/plugins/_telegram_integration/state.json` holds bot tokens.
+
+Parsing. High: file layout, top-level keys, history and log item shapes,
+timestamp units, masking. Medium: the exact `type` and `heading` of
+`code_execution_tool` items (they come from a tool subclass not traced; the
+generic `tool` path is shown). Not determined: content of task-scheduler
+contexts beyond `type="task"`; the `responses` metadata for every provider.

@@ -692,9 +692,9 @@ rollout, which no real install has shown).
     in `config.toml` (`approval_policy`, `sandbox_mode`, `approvals_reviewer`,
     `default_permissions`, a project's `trust_level`, and `approval_mode = "approve"` for each MCP
     or app tool approved for good), both collected by the `codex-cli|.codex` line
-    ([Standing grants](#standing-grants)), and the per-call records of the new `state_5.sqlite`
-    table `guardian_review_feedback` and of the `PatchApproval` and `RequestPermissionsResponse` log
-    lines. The parser reads none of them.
+    ([Standing grants and approval records](#standing-grants-and-approval-records)),
+    and the per-call records of the new `state_5.sqlite` table `guardian_review_feedback` and of
+    the `PatchApproval` and `RequestPermissionsResponse` log lines. The parser reads none of them.
   - Model: no new file; already covered; `turn_context.model` and the `thread_settings_applied`
     snapshot are unchanged at HEAD.
   - Past use beyond the rollouts: found, not read: the memories pipeline's
@@ -2231,7 +2231,7 @@ copied here; collector 1.15.0 flags the files `secret: true`
 ([section 3](#3-credentials)).
 The parser reads neither.
 
-#### Standing grants
+#### Standing grants and approval records
 
 From the source review of 2026-10-19, at
 [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857).
@@ -2544,10 +2544,10 @@ approval dialog of that build offered no standing "always allow" grant for a com
 From the source review of 2026-10-19: the standing grants in `rules/default.rules` and
 `config.toml`, the `guardian_review_feedback` records and the `PatchApproval` and
 `RequestPermissionsResponse` log lines are on disk and not read
-([Standing grants](#standing-grants)). A plan for them: one
-`permission setting: <rule> (from .codex/rules/default.rules, file mtime)` row per rule line, one
-`permission setting:` row per standing key, project trust entry and tool `approval_mode` in
-`config.toml`, and one `permission decision: <status> (auto_review) ...` row per
+([Standing grants and approval records](#standing-grants-and-approval-records)).
+A plan for them: one `permission setting: <rule> (from .codex/rules/default.rules, file mtime)`
+row per rule line, one `permission setting:` row per standing key, project trust entry and tool
+`approval_mode` in `config.toml`, and one `permission decision: <status> (auto_review) ...` row per
 `guardian_review_feedback` record, joined to the governed call on `target_item_id`; the
 `PatchApproval` line joins on its id like `ExecApproval`.
 

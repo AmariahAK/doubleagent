@@ -933,19 +933,9 @@ with `.workspace` containing `/home/alice/.nanobot/workspace`:
 {"role":"assistant","content":"python3 (pid 4242) is listening on 8080.","timestamp":"2026-10-01T10:15:09.400000"}
 ```
 
-#### Confidence
-
-High: file naming, metadata and message field names, naive local timestamps, tool call shape. The
-shell tool is named `exec`
-([`agent/tools/shell.py:247-248`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/tools/shell.py#L247-L248)).
-Medium: `thinking_blocks` element shape is provider-defined. High, from source: the WebUI transcript
-record shape and layout; medium: that the fixture's pairing holds on a real install, since no WebUI
-or CLI history was observed. Not determined: whether subagent runs are persisted anywhere; the
-legacy WebUI `<safe key>.json` snapshot shape.
-
 ## 14. Confidence
 
-High: every path in [section 2](#2-per-user-storage) to
+Collection. High: every path in [section 2](#2-per-user-storage) to
 [section 6](#6-where-the-project-path-is-recorded), read from constants in the cited files.
 Medium: that `matrix-store/` holds credentials (inferred from its role; not
 read); `.nanobot-*` as an instance naming convention comes from docs, and any
@@ -953,3 +943,11 @@ other `--config` location is missed. `nanobot|memory/...` lines assume the
 collector's project globs accept a sub-path, as `.github/...` entries do. Not
 determined: the contents of `webui/workspace-state.json`, `weixin/` and
 `mochat/` state; whether the Docker image's `/root/.nanobot` differs.
+
+Parsing. High: file naming, metadata and message field names, naive local timestamps, tool call
+shape. The shell tool is named `exec`
+([`agent/tools/shell.py:247-248`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/tools/shell.py#L247-L248)).
+Medium: `thinking_blocks` element shape is provider-defined. High, from source: the WebUI transcript
+record shape and layout; medium: that the fixture's pairing holds on a real install, since no WebUI
+or CLI history was observed. Not determined: whether subagent runs are persisted anywhere; the
+legacy WebUI `<safe key>.json` snapshot shape.
