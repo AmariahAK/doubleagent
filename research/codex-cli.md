@@ -1,36 +1,27 @@
 # codex-cli
 
-OpenAI's Codex CLI, the Rust `codex-rs` workspace, writes one JSONL transcript per thread, which
-Codex calls a rollout, under `~/.codex`. The same code runs behind the VS Code extension and, as
-Codex Desktop, inside the ChatGPT desktop app (see [`chatgpt-desktop.md`](chatgpt-desktop.md)); the
-standalone CLI and the desktop app share one `~/.codex` and one login. Open Interpreter is a fork
-that keeps the format under `~/.openinterpreter` ([`open-interpreter.md`](open-interpreter.md)), and
-Ollama's `ollama launch` writes files into `~/.codex` ([Files written by
-Ollama](#files-written-by-ollama)). How the transcripts are encoded and how the parser reads them is
-in [`analyzer/research/codex-cli.md`](../../analyzer/research/codex-cli.md).
-
-OpenAI Codex CLI (the Rust `codex-rs` workspace, also behind the VS Code extension and the desktop
-app; the ChatGPT desktop app bundles it as Codex Desktop) writes one append-only JSONL "rollout" per
-thread, each line an envelope around a tagged item, plus a global prompt history. Open Interpreter
-is a fork that keeps the format byte for byte under `~/.openinterpreter`; see
-[open-interpreter.md](open-interpreter.md), which records only what differs. The parser is
-`doubleagent/parsers/codex.py` (`CodexParser`, built on the shared `RolloutParser`). Paths and the
-rest of the per-user state are in
-[`collectors/research/codex-cli.md`](../../collectors/research/codex-cli.md). The TUI below is the
-CLI's terminal user interface.
-
-<!-- MERGE: dedupe the intro paragraphs above into one -->
+OpenAI's Codex CLI (catalog agent `codex-cli`), the Rust `codex-rs` workspace, writes one
+append-only JSONL transcript per thread, which Codex calls a rollout, under `~/.codex`: each line an
+envelope around a tagged item, plus a global prompt history. The same code runs behind the VS Code
+extension and, as Codex Desktop, inside the ChatGPT desktop app (see
+[`chatgpt-desktop.md`](chatgpt-desktop.md)); the standalone CLI and the desktop app share one
+`~/.codex` and one login. Open Interpreter is a fork that keeps the format byte for byte under
+`~/.openinterpreter` ([`open-interpreter.md`](open-interpreter.md), which records only what
+differs), and Ollama's `ollama launch` writes files into `~/.codex`
+([Files written by Ollama](#files-written-by-ollama)). The agent is parsed by
+`doubleagent/parsers/codex.py` (`CodexParser`, built on the shared `RolloutParser`). The TUI below
+is the CLI's terminal user interface.
 
 ## 1. Source and evidence
 
-Open source. [openai/codex](https://github.com/openai/codex), shallow clone at `scratchpad/repos/codex`, HEAD [3e238776e857eccd3bde6bff3026e2e9798f6524](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524) (2026-10-03). All claims are **source** (file:line under `codex-rs/`) unless marked **local** (names-only listing of `~/.codex` on this host) or **web** (community write-ups used only for the desktop app). Statements marked **observed** come from the real installs under [Observed](#observed).
-
-- **Source**: [openai/codex](https://github.com/openai/codex) at
-  [`3e238776e857eccd3bde6bff3026e2e9798f6524`](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524)
-  (2026-10-03), Apache-2.0, open source, the commit the
-  [collector document](../../collectors/research/codex-cli.md) cites. Paths below are relative
-  to `codex-rs/`. Every schema claim is from source unless marked **local** (the
-  development-host install under [Observed](#observed)).
+[openai/codex](https://github.com/openai/codex), Apache-2.0, open source, shallow clone at
+`scratchpad/repos/codex`, HEAD
+[`3e238776e857eccd3bde6bff3026e2e9798f6524`](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524)
+(2026-10-03). Paths below are relative to `codex-rs/`. All claims are **source** (file:line under
+`codex-rs/`) unless marked **local** (names-only listing of `~/.codex` on this host, the
+development-host install under [Observed](#observed); every schema claim is from source unless so
+marked) or **web** (community write-ups used only for the desktop app). Statements marked
+**observed** come from the real installs under [Observed](#observed).
 
 Confidence per claim. High: file layout and naming, envelope, the written type set and the
 legacy/paginated split, `session_meta`, `turn_context` and `ResponseItem` field names, timestamp
@@ -48,29 +39,31 @@ the table and column names agree with the Windows install under [Observed](#obse
 were not read, so the rows rest on a synthetic fixture (medium for the times' pairing with the
 rollout, which no real install has shown).
 
-<!-- MERGE: dedupe the section 1 prose above -->
-
 ### Observed
 
-- **Observed (macOS, Codex Desktop inside ChatGPT 26.1013.40934)** (issues 49, 149, 160): ChatGPT `26.1013.40934` with the bundled Codex `0.163.0-alpha.10.2` (`originator` `Codex Desktop`), observed from 2026-10-18 18:15Z to 2026-10-19 00:43Z in the macOS lab VM of the 2026-10-15 bullet below, one step per listing (names, sizes and modification times diffed after each step); the steps and the app's terms (Codex and ChatGPT composer modes, projectless output directory, Approve for me and its guardian review threads, Full access, heartbeat, remote control) are in [section 1 of `chatgpt-desktop.md`](chatgpt-desktop.md#1-source-and-evidence). Every thread was a Codex-mode thread with a rollout under `~/.codex/sessions`: a plain question, a coding task in the project `~/Demo` (later resumed after a restart, given a model switch, Approve for me, a full-access turn and two turns sent from paired phones), a guardian review thread, and a scheduled task's thread; the plain question's thread was then deleted with the app's own command. A reply to a ChatGPT-mode conversation wrote nothing under `~/.codex`. The sh collector 1.14.0, run live as the user on 2026-10-19 (00:43:01Z to 00:43:21Z), attributed 58 manifest rows to `codex-cli`, among them the automations, `sqlite/codex-dev.db`, `logs_2.sqlite` and the global state, and found the projects `~/Demo` and `~/Documents/Codex/2026-10-18/new-chat`; collector 1.16.0 collects the second as `codex-cli` files and no longer takes it for a project (issue 149). What this build adds to `~/.codex` is in [macOS, ChatGPT 26.1013.40934](#macos-chatgpt-26101340934).
-- **Observed (Ubuntu, standalone CLI)** (issue 113): observed (Ubuntu 26.04.1, Codex CLI 0.162.1 standalone, 2026-10-15), 17:12Z to 17:22Z, in the author's Ubuntu lab VM (aarch64, kernel 7.0.0-38-generic, one user; no Node.js, npm, snap or deb package of Codex, and no ChatGPT app, which has no Linux build). The CLI was installed with its shell installer, logged in through the browser flow, and given two turns in `~/demo`, which wrote seven files there. `codex --version` prints `codex-cli 0.162.1`; the rollout records `originator` `codex-tui` and `source` `vscode`. A fresh CLI's `~/.codex` holds only the source-described files: no `sqlite/codex-dev.db`, `.codex-global-state.json`, `.desktop-created`, `automations`, `ambient-suggestions`, `computer-use`, `visualizations`, `vendor_imports`, `plugins/.plugin-appserver`, `.tmp`, `cap_sid`, `node_repl` or `.sandbox*`, which are the desktop app's or Windows'; `config.toml` (42 B) holds only `tui.screen_reader_detection_done`. The sh collector from `main` (1.12.0 with this round's changes), run live as the user, not root: 1 project (`~/demo`), 39 `codex-cli` files (9.9 MiB), 6 excluded, 1 `symlink`, no `error_copy` (the sh collector reads the files the running daemon holds open), and 5 `error_read` rows for system accounts' homes the non-root run cannot list. The layout is in [Standalone CLI on Linux](#standalone-cli-on-linux).
-- **Observed (macOS, Codex Desktop inside ChatGPT and standalone CLI)** (issues 113, 120, 121): ChatGPT `26.1007.71326` (bundle id `com.openai.codex`; see [`chatgpt-desktop.md`](chatgpt-desktop.md)) with the bundled Codex `0.162.0-alpha.17.2` (`originator` `Codex Desktop`), then Codex CLI `0.162.1` (`originator` `codex-tui`) from its shell installer, observed 2026-10-15 (16:25Z to 17:05Z) in the author's macOS lab VM, macOS 26.6.2 build 25G83, arm64, one user. Four rollouts: a project task in `~/Demo`, the target thread of a scheduled automation in `~/Documents/Codex/2026-10-15/new-chat`, a thread in the projectless output directory `~/Documents/Codex/2026-10-15/e`, and the CLI's one prompt in `~/demo2`. The `~/.codex` tree is the Windows one with the differences in [macOS differences](#macos-differences). The sh collector from `main` (1.12.0 before the macOS lines), run live as the user, not root, collected 220 `codex-cli` files (85.8 MiB, 77 MB of it the computer-use app bundle, now excluded, issue 121), 9 excluded, 1 `symlink`, and found all 4 projects, since `grep` reads rollouts the running app holds open. Since collector 1.16.0 the `~/Documents/Codex` output directories are collected as `codex-cli` files instead of being discovered as projects (issue 149).
-- **Observed (Windows, standalone CLI)** (issues 113, 120): Codex CLI `0.162.1` (`originator` `codex-tui`, `cli_version` `0.162.1`; TUI is the terminal user interface), installed at 15:38Z on 2026-10-15 in the VM of the Codex Desktop bullet below, beside the ChatGPT desktop app, with the PowerShell installer OpenAI documents for Windows (the exact command was not recorded). No npm, Node.js, winget or scoop is on the host. The user gave it one prompt from a PowerShell console in a new folder, `C:\users\<user>\demo-cli` (typed in lower case). The CLI shared the desktop app's `~\.codex` and its login: `auth.json` was not rewritten, no login was asked for and no second credential file appeared. Its one rollout (106,200 B, 47 lines) records `source` `vscode` like the desktop app's, so `originator` is what tells them apart. The run hit a sandbox setup error (`setup_error.json` code `helper_unknown_error`; the daemon's stderr log records a failed process creation and a failed file write in the project folder); what the folder ended up holding was not surveyed. The console's own command history is in PSReadLine's `ConsoleHost_history.txt`, which is shell history, the job of the EDR (the endpoint detection and response tool), and not collected. Collector 1.12.0 from `main` before the changes of this round, run at 15:48Z after the CLI had exited: 57 collected, 9 excluded, 1 too large, 2 `symlink`, 4 `error_copy`, and 1 project, `C:\users\<user>\demo-cli`, read from the CLI's closed rollout; the three desktop rollouts were still held open (issue 114). What the standalone install writes is in [Standalone CLI on Windows](#standalone-cli-on-windows).
-- **Observed (Windows, Codex Desktop inside ChatGPT)** (issues 113, 114, 115, 116): the ChatGPT desktop app `26.1007.9446.0` (the Microsoft Store package `OpenAI.Codex`, see [`chatgpt-desktop.md`](chatgpt-desktop.md)) bundles Codex, which identifies itself in its rollouts as `originator` `Codex Desktop`, `cli_version` `0.162.0-alpha.17.2`; the desktop app's own database records `app_version` `26.1007.71326`, `build_flavor` `prod`. Observed 2026-10-15 in the author's Parallels lab VM, Windows 11 ARM64 (the 64-bit Arm architecture; `ver` reports `10.0.26300.9550`), one user. The bundled Codex uses the standard `CODEX_HOME`, `~\.codex` (`~` is `%USERPROFILE%`), created at first launch: 9,155 files, most of them plugin and skill copies under `.tmp\`, `plugins\cache\` and `skills\.system\`. Two local threads were run (two rollouts, one in the app's default output directory and one in a project folder), a ChatGPT chat with an image generation, which left no rollout, and a failed automation, which left nothing; later the same day (survey at 15:30Z) a ChatGPT Plus subscription (the paid plan; only a token refresh and a longer `models_cache.json`), a saved scheduled automation, which wrote `automations/` and a third rollout on a different model, and a GitHub connection, which wrote nothing locally. Not exercised: a resumed thread, a denied tool call, an "allow always" grant, a model switch within a thread, remote control, an automation run. Collector 1.12.0 from `main` before the changes of this round collected `~\.codex` as `codex-cli`: 34 files collected, 8 `skipped_excluded`, 1 `skipped_size`, 3 `error_copy` (`.sqlite-maintenance.lock` and two `thread-writer-locks\<uuid>.lock`, byte-range locked by the running app), and no project, because the PowerShell reader could not open the rollouts the app held (issue 114). What the desktop app adds to `~\.codex` is in [Codex Desktop inside the ChatGPT app](#codex-desktop-inside-the-chatgpt-app).
+- macOS, Codex Desktop inside ChatGPT 26.1013.40934 (issues 49, the ChatGPT desktop parser, 149, and
+  160, the resume and sync question): ChatGPT `26.1013.40934` (bundle identifier `com.openai.codex`,
+  the build after the 26.1007.71326 of the 2026-10-15 round) with the bundled Codex
+  `0.163.0-alpha.10.2` (`originator` `Codex Desktop`; `cli_version` 0.162.0-alpha.17.2 on
+  2026-10-15), observed from 2026-10-18 18:15Z to 2026-10-19 00:43Z in the macOS lab VM of the
+  2026-10-15 bullet below (macOS 26.6.2, build 25G83, arm64, one user), one step per listing (names,
+  sizes and modification times diffed after each step, so each file below is mapped to the step that
+  wrote it), read for file names, sizes, key names, value types, enum values and row counts only;
+  the steps and the app's terms (Codex and ChatGPT composer modes, projectless output directory,
+  Approve for me and its guardian review threads, Full access, heartbeat, remote control) are in
+  [section 1 of `chatgpt-desktop.md`](chatgpt-desktop.md#1-source-and-evidence), and the app's own
+  files in [`chatgpt-desktop.md`](chatgpt-desktop.md). Every thread was a Codex-mode thread with a
+  rollout under `~/.codex/sessions`: a plain question, a coding task in the project `~/Demo` (later
+  resumed after a restart, given a model switch, Approve for me, a full-access turn and two turns
+  sent from paired phones), a guardian review thread, and a scheduled task's thread; the plain
+  question's thread was then deleted with the app's own command. A reply to a ChatGPT-mode
+  conversation wrote nothing under `~/.codex`. The sh collector 1.14.0, run live as the user on
+  2026-10-19 (00:43:01Z to 00:43:21Z), attributed 58 manifest rows to `codex-cli`, among them the
+  automations, `sqlite/codex-dev.db`, `logs_2.sqlite` and the global state, and found the projects
+  `~/Demo` and `~/Documents/Codex/2026-10-18/new-chat`; collector 1.16.0 collects the second as
+  `codex-cli` files and no longer takes it for a project (issue 149). What this build adds to
+  `~/.codex` is in [macOS, ChatGPT 26.1013.40934](#macos-chatgpt-26101340934).
 
-- **Observed (macOS, 2026-10-18)**: the macOS lab VM of the 2026-10-15
-  bullet below (macOS 26.6.2,
-  build 25G83, arm64, one user), 2026-10-18 18:15Z to 2026-10-19
-  00:43Z (issue 160, the resume and sync question, and issue 49, the
-  ChatGPT desktop parser), read for file names, sizes, key names, value
-  types, enum values and row counts only, with a listing diff after
-  every step, so each file below is mapped to the step that wrote it.
-  The ChatGPT app was build 26.1013.40934 (bundle identifier
-  `com.openai.codex`, the build after the 26.1007.71326 of the
-  2026-10-15 round), its bundled Codex reporting `originator`
-  `Codex Desktop` and `cli_version` `0.163.0-alpha.10.2` (0.162.0-alpha.17.2
-  on 2026-10-15). The app's own files are in
-  [`collectors/research/chatgpt-desktop.md`](chatgpt-desktop.md).
   Times are UTC. The listings of the first five steps (install to the
   approvals) were taken in the VM's local zone, Eastern Daylight Time
   (UTC-4), and are converted here. Rollout file names and their date
@@ -440,14 +433,22 @@ rollout, which no real install has shown).
     (build 26.1013.40934 offered none for a command), a subagent the
     agent spawned itself, a heartbeat `NOTIFY` decision, an
     `automation_runs` row, an archived thread.
-- **Observed (Ubuntu)**: the author's Ubuntu 26.04.1 LTS lab VM, aarch64,
-  kernel 7.0.0-38-generic, one user, 2026-10-15, 17:12Z to 17:22Z (times
-  in UTC; issue 118), read for file names, sizes, key names, value types
-  and line counts only. The user installed the standalone Codex CLI
-  0.162.1 with its shell installer (no ChatGPT app exists for Linux),
-  logged in through the browser flow and ran two turns in `~/demo`. The
-  install layout is in
-  [`collectors/research/codex-cli.md`](../../collectors/research/codex-cli.md).
+- Ubuntu, standalone CLI (issues 113, 118): Ubuntu 26.04.1 LTS, Codex CLI 0.162.1 standalone,
+  2026-10-15, 17:12Z to 17:22Z (times in UTC), in the author's Ubuntu lab VM (aarch64, kernel
+  7.0.0-38-generic, one user; no Node.js, npm, snap or deb package of Codex, and no ChatGPT app,
+  which has no Linux build), read for file names, sizes, key names, value types and line counts
+  only. The CLI was installed with its shell installer, logged in through the browser flow, and
+  given two turns in `~/demo`, which wrote seven files there. `codex --version` prints
+  `codex-cli 0.162.1`; the rollout records `originator` `codex-tui` and `source` `vscode`. A fresh
+  CLI's `~/.codex` holds only the source-described files: no `sqlite/codex-dev.db`,
+  `.codex-global-state.json`, `.desktop-created`, `automations`, `ambient-suggestions`,
+  `computer-use`, `visualizations`, `vendor_imports`, `plugins/.plugin-appserver`, `.tmp`,
+  `cap_sid`, `node_repl` or `.sandbox*`, which are the desktop app's or Windows'; `config.toml`
+  (42 B) holds only `tui.screen_reader_detection_done`. The sh collector from `main` (1.12.0 with
+  this round's changes), run live as the user, not root: 1 project (`~/demo`), 39 `codex-cli` files
+  (9.9 MiB), 6 excluded, 1 `symlink`, no `error_copy` (the sh collector reads the files the running
+  daemon holds open), and 5 `error_read` rows for system accounts' homes the non-root run cannot
+  list. The layout is in [Standalone CLI on Linux](#standalone-cli-on-linux).
   - One rollout, `sessions/2026/10/15/rollout-2026-10-15T13-16-43-<uuid>.jsonl`
     (440,924 bytes, 108 lines: `session_meta` 1, `turn_context` 2, one
     per turn, `world_state` 1, `response_item` 41, `event_msg` 49,
@@ -471,17 +472,22 @@ rollout, which no real install has shown).
     on Linux, against `startSeconds`, `startMicroseconds` and `uniqueId`
     on macOS and no `processIdentity` on Windows. The parser reads
     neither.
-- **Observed (macOS)**: the author's macOS lab VM, macOS 26.6.2 (build
-  25G83), arm64, one user, 2026-10-15, 16:25Z to 17:05Z (times in UTC;
-  issues 118 and 121), read for file names, sizes, key names, value
-  types and row counts only. The user repeated the Windows round: the
-  ChatGPT app 26.1007.71326 (an Electron build, bundle identifier
-  `com.openai.codex`; its own files are in
-  [`collectors/research/chatgpt-desktop.md`](chatgpt-desktop.md)),
-  with its bundled Codex reporting `originator` `Codex Desktop` and
-  `cli_version` `0.162.0-alpha.17.2` as on Windows, then the standalone
-  Codex CLI 0.162.1 from its shell installer. Both wrote the same
-  `~/.codex` tree as on Windows.
+- macOS, Codex Desktop inside ChatGPT and standalone CLI (issues 113, 118, 120, 121): ChatGPT
+  `26.1007.71326` (an Electron build, bundle id `com.openai.codex`; see
+  [`chatgpt-desktop.md`](chatgpt-desktop.md)) with the bundled Codex `0.162.0-alpha.17.2`
+  (`originator` `Codex Desktop`), then Codex CLI `0.162.1` (`originator` `codex-tui`) from its shell
+  installer, observed 2026-10-15 (16:25Z to 17:05Z) in the author's macOS lab VM, macOS 26.6.2 build
+  25G83, arm64, one user (times in UTC). The user repeated the Windows round; the files were read
+  for file names, sizes, key names, value types and row counts only. Four rollouts: a project task
+  in `~/Demo`, the target thread of a scheduled automation in
+  `~/Documents/Codex/2026-10-15/new-chat`, a thread in the projectless output directory
+  `~/Documents/Codex/2026-10-15/e`, and the CLI's one prompt in `~/demo2`. The `~/.codex` tree is
+  the Windows one with the differences in [macOS differences](#macos-differences). The sh collector
+  from `main` (1.12.0 before the macOS lines), run live as the user, not root, collected 220
+  `codex-cli` files (85.8 MiB, 77 MB of it the computer-use app bundle, now excluded, issue 121), 9
+  excluded, 1 `symlink`, and found all 4 projects, since `grep` reads rollouts the running app holds
+  open. Since collector 1.16.0 the `~/Documents/Codex` output directories are collected as
+  `codex-cli` files instead of being discovered as projects (issue 149).
   - Four rollouts under `sessions/2026/10/15/` (348 KB in all): a task
     in the project folder `~/Demo` (16:39Z to 16:40Z, Codex Desktop,
     model `gpt-6.1-sol`); the automation's target thread in
@@ -507,50 +513,65 @@ rollout, which no real install has shown).
     `startSeconds`, `startMicroseconds`, `uniqueId`) that the Windows
     files lack. The parser reads neither.
   - Not exercised: as on Windows.
-- **Observed (Windows, standalone CLI)**: the same VM and day, after the Codex Desktop
-  steps of the next bullet: from 15:38Z to 15:46Z the user installed the standalone Codex CLI
-  beside the app with OpenAI's PowerShell installer for Windows (the
-  exact command was not recorded; its layout is in
-  [`collectors/research/codex-cli.md`](../../collectors/research/codex-cli.md))
-  and gave it one prompt from a PowerShell console in a new folder
-  `~\demo-cli`. The CLI shared `~\.codex` and the app's login: no
-  second credential file appeared. Its rollout
-  (`rollout-2026-10-15T11-41-45-<uuid>.jsonl`, 106,200 bytes, 47 lines:
-  `session_meta` 1, `turn_context` 1, `world_state` 1, `response_item`
-  20, `event_msg` 18, `token_usage_record` 6, 0 bad lines) names
-  `originator` `codex-tui`, `cli_version` `0.162.1`, and `source`
-  `vscode`, as the desktop app's do; its `session_meta.payload` has
-  the same keys as the desktop rollouts, `creator_user_id` and
-  `creator_account_id` included. The parser gave 31 rows: 2 `user`, 2
-  `assistant`, 9 tool calls with their results (`exec` 5,
-  `node_repl.js` 2, `shell` 1, `apply_patch` 1; `node_repl.js` is a
-  tool of the `node_repl` MCP (Model Context Protocol) server the
-  app's `config.toml` configures), `task_started` 15:42:43Z to
-  `task_complete` 15:43:59Z (75,943 ms), `model: gpt-6.1-sol` (a third
-  model id), and a `permission mode:` row with the granular approval
-  object (`request_permissions` and `mcp_elicitations` true, the rest
-  false) and the `workspace-write` sandbox. The sandbox failed to
-  start a process during the run (`.sandbox/setup_error.json` `code`
-  `helper_unknown_error`), so some tool calls failed. The CLI also
-  wrote `history.jsonl`, which the desktop app had not: one line with
-  `session_id`, `text` and `ts`, the shape of
-  [section 10](#10-other-stores). The console commands that started it
-  are in PowerShell's own history file, which is shell history and
-  left to the EDR (the endpoint detection and response tool).
-- **Observed (Windows)**: the author's Windows 11 ARM64 lab VM (`ver`
-  prints `10.0.26300.9550`), 2026-10-15, times in UTC, read for file
-  names, sizes, key names, value types, enum values and row counts only
-  (issues 113 and 118). The Codex here is Codex Desktop, the copy of Codex
-  bundled in the ChatGPT desktop app, installed from the Microsoft Store as
-  the MSIX package `OpenAI.Codex` 26.1007.9446.0 (MSIX is the Windows app
-  package format); its rollouts name it `originator` `Codex Desktop`,
-  `cli_version` `0.162.0-alpha.17.2`. It writes to the standard
-  `CODEX_HOME`, `~\.codex`. The paths and the app's other directories are
-  in [`collectors/research/chatgpt-desktop.md`](chatgpt-desktop.md)
-  and [`collectors/research/codex-cli.md`](../../collectors/research/codex-cli.md).
-  The user asked a question in a plain chat, generated an image and ran
-  a task in a project folder; no listing was taken between tasks, so the
-  mapping from task to file is by modification time only.
+- Windows, standalone CLI (issues 113, 120): Codex CLI `0.162.1` (`originator` `codex-tui`,
+  `cli_version` `0.162.1`; TUI is the terminal user interface), installed at 15:38Z on 2026-10-15
+  (run until 15:46Z) in the VM of the Codex Desktop bullet below, beside the ChatGPT desktop app,
+  with the PowerShell installer OpenAI documents for Windows (the exact command was not recorded).
+  No npm, Node.js, winget or scoop is on the host. The user gave it one prompt from a PowerShell
+  console in a new folder, `C:\users\<user>\demo-cli` (`~\demo-cli`, typed in lower case). The CLI
+  shared the desktop app's `~\.codex` and its login: `auth.json` was not rewritten, no login was
+  asked for and no second credential file appeared. Its one rollout (106,200 B, 47 lines) records
+  `source` `vscode` like the desktop app's, so `originator` is what tells them apart. The run hit a
+  sandbox setup error (`setup_error.json` code `helper_unknown_error`; the daemon's stderr log
+  records a failed process creation and a failed file write in the project folder); what the folder
+  ended up holding was not surveyed. The console's own command history is in PSReadLine's
+  `ConsoleHost_history.txt`, which is shell history, the job of the EDR (the endpoint detection and
+  response tool), and not collected. Collector 1.12.0 from `main` before the changes of this round,
+  run at 15:48Z after the CLI had exited: 57 collected, 9 excluded, 1 too large, 2 `symlink`, 4
+  `error_copy`, and 1 project, `C:\users\<user>\demo-cli`, read from the CLI's closed rollout; the
+  three desktop rollouts were still held open (issue 114). What the standalone install writes is in
+  [Standalone CLI on Windows](#standalone-cli-on-windows).
+
+  Its rollout (`rollout-2026-10-15T11-41-45-<uuid>.jsonl`, 106,200 bytes, 47 lines: `session_meta`
+  1, `turn_context` 1, `world_state` 1, `response_item` 20, `event_msg` 18, `token_usage_record` 6,
+  0 bad lines) names `originator` `codex-tui`, `cli_version` `0.162.1`, and `source` `vscode`, as
+  the desktop app's do; its `session_meta.payload` has the same keys as the desktop rollouts,
+  `creator_user_id` and `creator_account_id` included. The parser gave 31 rows: 2 `user`, 2
+  `assistant`, 9 tool calls with their results (`exec` 5, `node_repl.js` 2, `shell` 1, `apply_patch`
+  1; `node_repl.js` is a tool of the `node_repl` MCP (Model Context Protocol) server the app's
+  `config.toml` configures), `task_started` 15:42:43Z to `task_complete` 15:43:59Z (75,943 ms),
+  `model: gpt-6.1-sol` (a third model id), and a `permission mode:` row with the granular approval
+  object (`request_permissions` and `mcp_elicitations` true, the rest false) and the
+  `workspace-write` sandbox. The sandbox failed to start a process during the run
+  (`.sandbox/setup_error.json` `code` `helper_unknown_error`), so some tool calls failed. The CLI
+  also wrote `history.jsonl`, which the desktop app had not: one line with `session_id`, `text` and
+  `ts`, the shape of [section 10](#10-other-stores). The console commands that started it are in
+  PowerShell's own history file, which is shell history and left to the EDR (the endpoint detection
+  and response tool).
+- Windows, Codex Desktop inside ChatGPT (issues 113, 114, 115, 116, 118): the ChatGPT desktop app
+  `26.1007.9446.0` (the Microsoft Store package `OpenAI.Codex`, an MSIX package, the Windows app
+  package format; see [`chatgpt-desktop.md`](chatgpt-desktop.md)) bundles Codex, which identifies
+  itself in its rollouts as `originator` `Codex Desktop`, `cli_version` `0.162.0-alpha.17.2`; the
+  desktop app's own database records `app_version` `26.1007.71326`, `build_flavor` `prod`. Observed
+  2026-10-15 in the author's Parallels lab VM, Windows 11 ARM64 (the 64-bit Arm architecture; `ver`
+  reports `10.0.26300.9550`), one user, times in UTC, read for file names, sizes, key names, value
+  types, enum values and row counts only; no listing was taken between tasks, so the mapping from
+  task to file is by modification time only. The bundled Codex uses the standard `CODEX_HOME`,
+  `~\.codex` (`~` is `%USERPROFILE%`), created at first launch: 9,155 files, most of them plugin and
+  skill copies under `.tmp\`, `plugins\cache\` and `skills\.system\`. Two local threads were run
+  (two rollouts, one in the app's default output directory and one in a project folder), a ChatGPT
+  chat with an image generation, which left no rollout, and a failed automation, which left nothing;
+  later the same day (survey at 15:30Z) a ChatGPT Plus subscription (the paid plan; only a token
+  refresh and a longer `models_cache.json`), a saved scheduled automation, which wrote
+  `automations/` and a third rollout on a different model, and a GitHub connection, which wrote
+  nothing locally. Not exercised: a resumed thread, a denied tool call, an "allow always" grant, a
+  model switch within a thread, remote control, an automation run. Collector 1.12.0 from `main`
+  before the changes of this round collected `~\.codex` as `codex-cli`: 34 files collected, 8
+  `skipped_excluded`, 1 `skipped_size`, 3 `error_copy` (`.sqlite-maintenance.lock` and two
+  `thread-writer-locks\<uuid>.lock`, byte-range locked by the running app), and no project, because
+  the PowerShell reader could not open the rollouts the app held (issue 114). What the desktop app
+  adds to `~\.codex` is in
+  [Codex Desktop inside the ChatGPT app](#codex-desktop-inside-the-chatgpt-app).
   - Two rollouts under `sessions/2026/10/15/`, both
     `history_mode` `paginated`, 0 bad lines. The first (37 lines:
     `session_meta` 1, `turn_context` 1, `world_state` 1, `response_item`
@@ -565,36 +586,29 @@ rollout, which no real install has shown).
     `web_search` and `apply_patch` calls, `task_started` and
     `task_complete`, `model: gpt-6-luna` and one `permission mode:` row
     each.
-  - `session_meta.payload` keys: `id`, `session_id`, `timestamp`, `cwd`,
-    `runtime_workspace_roots` (1 entry), `originator` `Codex Desktop`,
-    `cli_version`, `source` `vscode`, `thread_source` `user`,
-    `model_provider` `openai`, `base_instructions` (`text`, and
-    `provenance` with `type` `model` and `model`), `history_mode`
-    `paginated`, `context_window` (`window_id`), `creator_user_id` (29
-    characters) and `creator_account_id` (36 characters, a UUID). Every
-    top-level key is in the source list in
-    [section 8](#8-record-schema); `base_instructions.provenance`
-    is observed, not checked against source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524). No `git` block
-    (neither directory was a repository). `source` is `vscode` for these
-    desktop threads, so `originator` is the key that names the desktop
-    app.
-  - `turn_context.payload` keys: `turn_id`, `root_turn_id`, `cwd`,
-    `workspace_roots` (2), `current_date`, `timezone`, `approval_policy`
-    `on-request`, `sandbox_policy` (`type`
-    `workspace-write`, `writable_roots`, `network_access`,
-    `exclude_tmpdir_env_var`, `exclude_slash_tmp`), `permission_profile`
-    (`type` `managed`, `file_system` with `type` `restricted` and 13
-    `entries`, `network` `restricted`), `model` `gpt-6-luna`,
-    `collaboration_mode` (`mode` `default`, `settings` with `model`,
-    `reasoning_effort` `medium` and `developer_instructions`), `effort`
-    `medium`, `summary` `detailed`, `personality` `friendly`. Observed
-    and not among the fields [section 8](#8-record-schema)
-    lists from source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524) (whether that commit's struct already
-    has them was not rechecked): `disabled_plugin_ids`,
-    `approvals_reviewer` `user`, `active_permission_profile` (`id`
-    `:workspace`), `file_system_sandbox_policy` (`kind` `restricted`, 13
-    `entries`), `comp_hash`, `multi_agent_version` `v2`,
-    `realtime_active`, `cyber_access_program` `standard`. The parser
+  - `session_meta.payload` keys: `id`, `session_id`, `timestamp`, `cwd`, `runtime_workspace_roots`
+    (1 entry), `originator` `Codex Desktop`, `cli_version`, `source` `vscode`, `thread_source`
+    `user`, `model_provider` `openai`, `base_instructions` (`text`, and `provenance` with `type`
+    `model` and `model`), `history_mode` `paginated`, `context_window` (`window_id`),
+    `creator_user_id` (29 characters) and `creator_account_id` (36 characters, a UUID). Every
+    top-level key is in the source list in [section 8](#8-record-schema);
+    `base_instructions.provenance` is observed, not checked against source at
+    [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524). No
+    `git` block (neither directory was a repository). `source` is `vscode` for these desktop
+    threads, so `originator` is the key that names the desktop app.
+  - `turn_context.payload` keys: `turn_id`, `root_turn_id`, `cwd`, `workspace_roots` (2),
+    `current_date`, `timezone`, `approval_policy` `on-request`, `sandbox_policy` (`type`
+    `workspace-write`, `writable_roots`, `network_access`, `exclude_tmpdir_env_var`,
+    `exclude_slash_tmp`), `permission_profile` (`type` `managed`, `file_system` with `type`
+    `restricted` and 13 `entries`, `network` `restricted`), `model` `gpt-6-luna`,
+    `collaboration_mode` (`mode` `default`, `settings` with `model`, `reasoning_effort` `medium` and
+    `developer_instructions`), `effort` `medium`, `summary` `detailed`, `personality` `friendly`.
+    Observed and not among the fields [section 8](#8-record-schema) lists from source at
+    [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524)
+    (whether that commit's struct already has them was not rechecked): `disabled_plugin_ids`,
+    `approvals_reviewer` `user`, `active_permission_profile` (`id` `:workspace`),
+    `file_system_sandbox_policy` (`kind` `restricted`, 13 `entries`), `comp_hash`,
+    `multi_agent_version` `v2`, `realtime_active`, `cyber_access_program` `standard`. The parser
     reads none of them.
   - `state_5.sqlite` `threads` (2 rows) had the columns `id`,
     `rollout_path`, `created_at`, `updated_at`, `source`,
@@ -652,7 +666,7 @@ rollout, which no real install has shown).
     always" grant, a model switch within a thread, subagents, an
     automation run. The macOS round of 2026-10-18 above exercised all
     of them but the grant and a subagent the agent spawned itself.
-- **Local**: the real install on the development host, Codex 0.160.0
+- Local: the real install on the development host, Codex 0.160.0
   (`session_meta.cli_version`), one rollout of 20 lines, a 1-line
   `history.jsonl` and a 1-line `session_index.jsonl`, plus scratchpad copies
   of `state_5.sqlite` and `thread_history_1.sqlite`. Only record types, key
@@ -661,128 +675,344 @@ rollout, which no real install has shown).
   has no `git` block, so the legacy event set and `git` are source only. The databases were
   opened only from scratchpad copies, and only for table names, row counts and key names.
 
-<!-- MERGE: dedupe the Observed bullets above -->
-
 ### Source reviews
 
-- **Source review (2026-10-19)**: [openai/codex](https://github.com/openai/codex) at [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857), the head of `main` on 2026-10-19, compared file by file with [`3e23877`](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524), the commit cited above; source only.
-  - Permission state: found, `rules/default.rules` and the standing keys of `config.toml` ([Standing grants](#standing-grants)), both collected by the `codex-cli|.codex` line.
-  - Model: no new file.
-  - Past use: the memories files and `db-backups/` were already listed; what each holds is in [section 10 of `analyzer/research/codex-cli.md`](#10-other-stores).
-  - Sync: no new file.
-  - Scratch directories: found, the thread worktrees ([Scratch directories](#scratch-directories)).
-  - Deletion: found, what `thread/delete` removes and leaves ([Deletion](#deletion)).
-  - Version drift: the paths above are unchanged at HEAD except two moved source files; no path in this document disappeared. The `secrets/` lock file is written by `login/src/oauth_session_storage.rs` ([21-25](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/login/src/oauth_session_storage.rs#L21-L25)), which replaced `gateway_auth_storage.rs`; the directory and file names are unchanged. The agent message board database moved to `ext/agent-message-board/src/local/pool.rs` ([16](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/ext/agent-message-board/src/local/pool.rs#L16)), same file name.
-  - Credentials: no new credential file was found: the quoted file names ending `.age`, `.json`, `.lock`, `.toml` or `.env` in `codex-rs/login`, `codex-rs/secrets`, `codex-rs/rmcp-client` and `codex-rs/cli` differ between the two commits only by a configuration file name, not a credential store.
-  - Project path: a rollout `cwd` inside a thread worktree (`.codex/worktrees/...` by default) is a scratch directory, not a project ([Scratch directories](#scratch-directories)); `config.toml` `[projects."<path>"]` keys name trusted and untrusted projects.
-  - Bad lines: not a collector concern.
-
-- **Source review (2026-10-19)**: [openai/codex](https://github.com/openai/codex)
+- 2026-10-19: [openai/codex](https://github.com/openai/codex)
   at [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857),
-  the head of `main` on 2026-10-19, compared with
+  the head of `main` on 2026-10-19, compared file by file with
   [`3e23877`](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524),
   the commit the rest of this document cites, by diffing the two trees.
   Source only; nothing was installed or run. One line per class, the
-  detail in [section 10](#10-other-stores),
+  detail in [section 2](#2-per-user-storage) for paths,
+  [section 10](#10-other-stores),
   [section 11](#11-format-versions) and
   [section 13](#13-parser-plan):
-  - Permission state: found, not read. Standing grants in
-    `rules/default.rules` (a prefix rule appended for each "approve and
-    remember" answer, a network rule for each network allow or deny),
-    in `config.toml` (`approval_policy`, `sandbox_mode`,
-    `approvals_reviewer`, `default_permissions`, a project's
-    `trust_level`, and `approval_mode = "approve"` for each MCP or app
-    tool approved for good), and the per-call records of the new
-    `state_5.sqlite` table `guardian_review_feedback` and of the
-    `PatchApproval` and `RequestPermissionsResponse` log lines. The
-    parser reads none of them.
-  - Model: already covered; `turn_context.model` and the
-    `thread_settings_applied` snapshot are unchanged at HEAD.
-  - Past use beyond the rollouts: found, not read: the memories
-    pipeline's `memories/rollout_summaries/*.md`, `raw_memories.md` and
-    `memories_1.sqlite` `stage1_outputs` (off by default), the thread
-    goals in `goals_1.sqlite` and the rollout's `thread_goal_updated`
-    events, and the SQLite recovery copies under `db-backups/`.
-  - Sync, relay and origin: already covered; unchanged at HEAD. A
-    `/feedback` report with logs now also attaches the thread's failed
-    automatic reviews as `auto-review-failures.jsonl`.
-  - Scratch directories: found. The worktrees Codex makes for a thread
-    sit in `<CODEX_HOME>/worktrees/<4 hex>/<repository name>`, or under
-    the absolute path in `config.toml` `[desktop] git-worktree-root`;
-    the analyzer's catalog rule classes the first, not the second.
-  - Deletion: found. `thread/delete` removes the rollouts (live and
-    archived, plain and compressed), the `session_index.jsonl` lines,
-    the thread's rows in `state_5.sqlite`, `thread_history_1.sqlite`,
-    `queue_1.sqlite`, `goals_1.sqlite` and the memories databases, and
-    the `logs_2.sqlite` rows whose `thread_id` is the thread; it leaves
-    `history.jsonl`, the memories files until the next consolidation,
-    and `db-backups/`.
-  - Version drift: found. `turn_context` no longer carries `network`
-    (the parser's `network=` field reads `-` for new rollouts);
-    `task_started` `turn_attribution`, which the parser already reads
-    from the desktop app's rollouts, is now in source; the
-    `op=ExecApproval` log line prints an opaque decision word; the
-    record envelope, `RolloutItem`, `SessionMeta`, `ResponseItem` and
-    the database file names are unchanged. The parser keeps working on
-    HEAD's rollouts.
-  - Bad lines: one gap: a `thread_history_1.sqlite` row whose
-    `item_json` does not decode is counted in one summary row instead
-    of one row per record carrying it. Fixed since ([Bad lines](#bad-line-rows)).
-
-<!-- MERGE: dedupe the Source reviews above -->
+  - Permission state: found, not read. Standing grants in `rules/default.rules` (a prefix rule
+    appended for each "approve and remember" answer, a network rule for each network allow or deny),
+    in `config.toml` (`approval_policy`, `sandbox_mode`, `approvals_reviewer`,
+    `default_permissions`, a project's `trust_level`, and `approval_mode = "approve"` for each MCP
+    or app tool approved for good), both collected by the `codex-cli|.codex` line
+    ([Standing grants](#standing-grants)), and the per-call records of the new `state_5.sqlite`
+    table `guardian_review_feedback` and of the `PatchApproval` and `RequestPermissionsResponse` log
+    lines. The parser reads none of them.
+  - Model: no new file; already covered; `turn_context.model` and the `thread_settings_applied`
+    snapshot are unchanged at HEAD.
+  - Past use beyond the rollouts: found, not read: the memories pipeline's
+    `memories/rollout_summaries/*.md`, `raw_memories.md` and `memories_1.sqlite` `stage1_outputs`
+    (off by default), the thread goals in `goals_1.sqlite` and the rollout's `thread_goal_updated`
+    events, and the SQLite recovery copies under `db-backups/`. The memories files and `db-backups/`
+    were already listed among the paths; what each holds is in [section 10](#10-other-stores).
+  - Sync, relay and origin: no new file; already covered; unchanged at HEAD. A `/feedback` report
+    with logs now also attaches the thread's failed automatic reviews as
+    `auto-review-failures.jsonl`.
+  - Scratch directories: found. The worktrees Codex makes for a thread sit in
+    `<CODEX_HOME>/worktrees/<4 hex>/<repository name>`, or under the absolute path in `config.toml`
+    `[desktop] git-worktree-root`; the analyzer's catalog rule classes the first, not the second
+    ([Scratch directories](#scratch-directories)).
+  - Deletion: found. `thread/delete` removes the rollouts (live and archived, plain and compressed),
+    the `session_index.jsonl` lines, the thread's rows in `state_5.sqlite`,
+    `thread_history_1.sqlite`, `queue_1.sqlite`, `goals_1.sqlite` and the memories databases, and
+    the `logs_2.sqlite` rows whose `thread_id` is the thread; it leaves `history.jsonl`, the
+    memories files until the next consolidation, and `db-backups/` ([Deletion](#deletion)).
+  - Version drift: found. Paths: the paths of [section 2](#2-per-user-storage) are unchanged at HEAD
+    except two moved source files; no path in this document disappeared. The `secrets/` lock file is
+    written by `login/src/oauth_session_storage.rs`
+    ([21-25](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/login/src/oauth_session_storage.rs#L21-L25)),
+    which replaced `gateway_auth_storage.rs`; the directory and file names are unchanged. The agent
+    message board database moved to `ext/agent-message-board/src/local/pool.rs`
+    ([16](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/ext/agent-message-board/src/local/pool.rs#L16)),
+    same file name. Records: `turn_context` no longer carries `network` (the parser's `network=`
+    field reads `-` for new rollouts); `task_started` `turn_attribution`, which the parser already
+    reads from the desktop app's rollouts, is now in source; the `op=ExecApproval` log line prints
+    an opaque decision word; the record envelope, `RolloutItem`, `SessionMeta`, `ResponseItem` and
+    the database file names are unchanged. The parser keeps working on HEAD's rollouts.
+  - Credentials: no new credential file was found: the quoted file names ending `.age`, `.json`,
+    `.lock`, `.toml` or `.env` in `codex-rs/login`, `codex-rs/secrets`, `codex-rs/rmcp-client` and
+    `codex-rs/cli` differ between the two commits only by a configuration file name, not a
+    credential store.
+  - Project path: a rollout `cwd` inside a thread worktree (`.codex/worktrees/...` by default) is a
+    scratch directory, not a project ([Scratch directories](#scratch-directories)); `config.toml`
+    `[projects."<path>"]` keys name trusted and untrusted projects.
+  - Bad lines: not a collector concern; one parser gap at the time of the review: a
+    `thread_history_1.sqlite` row whose `item_json` did not decode was counted in one summary row
+    instead of one row per record carrying it. Fixed since ([Bad lines](#bad-line-rows)).
 
 ## Collection
 
 ### 2. Per-user storage
 
-Home resolution: `CODEX_HOME` if set (must exist, canonicalised) else `dirs::home_dir()/.codex` ([utils/home-dir/src/lib.rs:13-56](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/utils/home-dir/src/lib.rs#L13-L56)). No OS branching: Linux, macOS and Windows all use `~/.codex` / `%USERPROFILE%\.codex`. The macOS desktop app uses the same `~/.codex` for sessions (web: github issue 49797, jazzyalex write-up) and keeps only Sparkle update state in `~/Library/Application Support/com.openai.codex` ([cli/src/doctor/updates.rs:586](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/doctor/updates.rs#L586)). Since 26.1007 the bundle id `com.openai.codex` is the ChatGPT app, which bundles Codex (observed on macOS, 2026-10-15), so that directory is collected as `chatgpt-desktop` (issue 121).
+Home resolution: `CODEX_HOME` if set (must exist, canonicalised) else `dirs::home_dir()/.codex`
+([utils/home-dir/src/lib.rs:13-56](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/utils/home-dir/src/lib.rs#L13-L56)).
+No OS branching: Linux, macOS and Windows all use `~/.codex` / `%USERPROFILE%\.codex`. The macOS
+desktop app uses the same `~/.codex` for sessions (web: github issue 49797, jazzyalex write-up) and
+keeps only Sparkle update state in `~/Library/Application Support/com.openai.codex`
+([cli/src/doctor/updates.rs:586](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/doctor/updates.rs#L586)).
+Since 26.1007 the bundle id `com.openai.codex` is the ChatGPT app, which bundles Codex (observed on
+macOS, 2026-10-15), so that directory is collected as `chatgpt-desktop` (issue 121).
 
 Inside `$CODEX_HOME`:
 
-- `sessions/YYYY/MM/DD/rollout-<YYYY-MM-DDThh-mm-ss>-<thread-uuid>.jsonl` transcripts ([rollout/src/lib.rs:86](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/lib.rs#L86), [rollout_file_name.rs:51-67](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/rollout_file_name.rs#L51-L67), [recorder.rs:1733-1734](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/recorder.rs#L1733-L1734), [list.rs:905-916](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/list.rs#L905-L916)); may be zstd-compressed `.jsonl.zst` ([rollout/src/compression.rs:29](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L29),[68](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L68),[98](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L98)). `archived_sessions/` same layout ([rollout/src/lib.rs:87](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/lib.rs#L87)). `session_index.jsonl` ([rollout/src/session_index.rs:20](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/session_index.rs#L20)). Local confirms `sessions/2026/10/03/rollout-*.jsonl`.
-- `history.jsonl` prompt history ([message-history/src/lib.rs:52](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/message-history/src/lib.rs#L52),[86](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/message-history/src/lib.rs#L86)).
-- SQLite: `state_5.sqlite` (threads, metadata), `logs_2.sqlite`, `goals_1.sqlite`, `memories_1.sqlite`, `queue_1.sqlite`, `thread_history_1.sqlite` ([state/src/sqlite.rs:34-39](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/sqlite.rs#L34-L39)), `agent_message_board_1.sqlite` ([ext/agent-message-board/src/local.rs:55](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/ext/agent-message-board/src/local.rs#L55)), with `-wal`/`-shm` sidecars (local). Recovery copies in `db-backups/sqlite-<n>/` ([state/src/runtime/recovery.rs:16](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/runtime/recovery.rs#L16)).
-- `memories/` (`MEMORY.md`, `rollout_summaries/*.md`), `memories_v2/`, `memories_extensions/` ([memories/read/src/lib.rs:14](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/memories/read/src/lib.rs#L14), [memories/write/src/control.rs:5-7](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/memories/write/src/control.rs#L5-L7),[56-63](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/memories/write/src/control.rs#L56-L63)).
-  - Source review of 2026-10-19 at [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857), not seen on a real install: the memories pipeline (off by default, [features/src/lib.rs:1303-1305](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/features/src/lib.rs#L1303-L1305)) writes `memories/rollout_summaries/<stem>.md`, `memories/raw_memories.md`, `memories/MEMORY.md` and `memories/memory_summary.md`, and `memories_1.sqlite` and `memories_v2_1.sqlite` ([memories/write/src/lib.rs:39-40](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/memories/write/src/lib.rs#L39-L40), [state/src/sqlite.rs:43](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/sqlite.rs#L43), [114-119](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/sqlite.rs#L114-L119)). Collected.
-- `log/` (`codex-tui.log`, `codex-login.log`) ([core/src/config/mod.rs:4093](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L4093), [tui/src/lib.rs:281](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/lib.rs#L281), [cli/src/login.rs:85](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/login.rs#L85)). Daemon logs in `app-server-daemon/` ([feedback/src/daemon_logs.rs:18](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/feedback/src/daemon_logs.rs#L18)); `app-server-control/` socket dir ([app-server-transport/src/transport/mod.rs:53](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-transport/src/transport/mod.rs#L53)).
-- `shell_snapshots/` ([core/src/shell_snapshot.rs:107](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/shell_snapshot.rs#L107)), `skills/` with bundled `skills/.system/` ([skills/src/lib.rs:57](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/skills/src/lib.rs#L57)), `plugins/` and `plugins/cache/` ([core-plugin-common/src/installed.rs:11](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core-plugin-common/src/installed.rs#L11)), `packages/` managed binaries ([app-server-daemon/src/managed_install.rs:52](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-daemon/src/managed_install.rs#L52)), `worktrees/` ([worktree/src/settings.rs:44](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/worktree/src/settings.rs#L44)), `visualizations/` ([tui/src/inline_visualization.rs:93](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/inline_visualization.rs#L93)), `.tmp/` ([rollout/src/maintenance.rs:27](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/maintenance.rs#L27), [core-plugins/src/startup_sync.rs:171](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core-plugins/src/startup_sync.rs#L171); `.tmp/bundled-marketplaces/`), `tmp/arg0/` ([arg0/src/lib.rs:363](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/arg0/src/lib.rs#L363)), `cache/` ([tui/src/pets/ambient.rs:158](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/pets/ambient.rs#L158)), `installation_id` ([core/src/installation_id.rs:17](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/installation_id.rs#L17)), `version.json` ([cli/src/doctor/updates.rs:35](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/doctor/updates.rs#L35)), `.sandbox_migration` ([execpolicy/src/sandbox_migration.rs:10](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/execpolicy/src/sandbox_migration.rs#L10)), `config.toml` ([config/src/lib.rs:52](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/lib.rs#L52)), `rules/` exec policy ([core/src/exec_policy.rs:54](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/exec_policy.rs#L54)), `hooks.json`, `agents/`.
-- Windows sandbox: `.sandbox/` (logs `.sandbox/logs/sandbox.<date>.log`, `setup_error.json`), `.sandbox-bin/`, `.sandbox-secrets/` ([windows-sandbox-rs/src/spawn_prep.rs:108](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/spawn_prep.rs#L108), [logging.rs:240-251](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/logging.rs#L240-L251), [setup.rs:196](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/setup.rs#L196), [uninstall_windows.rs:132-137](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/uninstall_windows.rs#L132-L137)).
-- Local only (not grepped in source): `models_cache.json`, `thread-writer-locks/`, `tui-thread-reference-capabilities/`, `.sqlite-maintenance.lock`; the first two are described under [Codex Desktop inside the ChatGPT app](#codex-desktop-inside-the-chatgpt-app).
+- `sessions/YYYY/MM/DD/rollout-<YYYY-MM-DDThh-mm-ss>-<thread-uuid>.jsonl` transcripts
+  ([rollout/src/lib.rs:86](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/lib.rs#L86),
+  [rollout_file_name.rs:51-67](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/rollout_file_name.rs#L51-L67),
+  [recorder.rs:1733-1734](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/recorder.rs#L1733-L1734),
+  [list.rs:905-916](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/list.rs#L905-L916));
+  may be zstd-compressed `.jsonl.zst`
+  ([rollout/src/compression.rs:29](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L29),[68](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L68),[98](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L98)).
+  `archived_sessions/` same layout
+  ([rollout/src/lib.rs:87](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/lib.rs#L87)).
+  `session_index.jsonl`
+  ([rollout/src/session_index.rs:20](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/session_index.rs#L20)).
+  Local confirms `sessions/2026/10/03/rollout-*.jsonl`.
+- `history.jsonl` prompt history
+  ([message-history/src/lib.rs:52](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/message-history/src/lib.rs#L52),[86](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/message-history/src/lib.rs#L86)).
+- SQLite: `state_5.sqlite` (threads, metadata), `logs_2.sqlite`, `goals_1.sqlite`,
+  `memories_1.sqlite`, `queue_1.sqlite`, `thread_history_1.sqlite`
+  ([state/src/sqlite.rs:34-39](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/sqlite.rs#L34-L39)),
+  `agent_message_board_1.sqlite`
+  ([ext/agent-message-board/src/local.rs:55](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/ext/agent-message-board/src/local.rs#L55)),
+  with `-wal`/`-shm` sidecars (local). Recovery copies in `db-backups/sqlite-<n>/`
+  ([state/src/runtime/recovery.rs:16](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/runtime/recovery.rs#L16)).
+- `memories/` (`MEMORY.md`, `rollout_summaries/*.md`), `memories_v2/`, `memories_extensions/`
+  ([memories/read/src/lib.rs:14](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/memories/read/src/lib.rs#L14),
+  [memories/write/src/control.rs:5-7](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/memories/write/src/control.rs#L5-L7),[56-63](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/memories/write/src/control.rs#L56-L63)).
+  - Source review of 2026-10-19 at
+    [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857),
+    not seen on a real install: the memories pipeline (off by default,
+    [features/src/lib.rs:1303-1305](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/features/src/lib.rs#L1303-L1305))
+    writes `memories/rollout_summaries/<stem>.md`, `memories/raw_memories.md`, `memories/MEMORY.md`
+    and `memories/memory_summary.md`, and `memories_1.sqlite` and `memories_v2_1.sqlite`
+    ([memories/write/src/lib.rs:39-40](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/memories/write/src/lib.rs#L39-L40),
+    [state/src/sqlite.rs:43](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/sqlite.rs#L43),
+    [114-119](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/sqlite.rs#L114-L119)).
+    Collected.
+- `log/` (`codex-tui.log`, `codex-login.log`)
+  ([core/src/config/mod.rs:4093](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L4093),
+  [tui/src/lib.rs:281](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/lib.rs#L281),
+  [cli/src/login.rs:85](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/login.rs#L85)).
+  Daemon logs in `app-server-daemon/`
+  ([feedback/src/daemon_logs.rs:18](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/feedback/src/daemon_logs.rs#L18));
+  `app-server-control/` socket dir
+  ([app-server-transport/src/transport/mod.rs:53](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-transport/src/transport/mod.rs#L53)).
+- `shell_snapshots/`
+  ([core/src/shell_snapshot.rs:107](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/shell_snapshot.rs#L107)),
+  `skills/` with bundled `skills/.system/`
+  ([skills/src/lib.rs:57](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/skills/src/lib.rs#L57)),
+  `plugins/` and `plugins/cache/`
+  ([core-plugin-common/src/installed.rs:11](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core-plugin-common/src/installed.rs#L11)),
+  `packages/` managed binaries
+  ([app-server-daemon/src/managed_install.rs:52](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-daemon/src/managed_install.rs#L52)),
+  `worktrees/`
+  ([worktree/src/settings.rs:44](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/worktree/src/settings.rs#L44)),
+  `visualizations/`
+  ([tui/src/inline_visualization.rs:93](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/inline_visualization.rs#L93)),
+  `.tmp/`
+  ([rollout/src/maintenance.rs:27](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/maintenance.rs#L27),
+  [core-plugins/src/startup_sync.rs:171](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core-plugins/src/startup_sync.rs#L171);
+  `.tmp/bundled-marketplaces/`), `tmp/arg0/`
+  ([arg0/src/lib.rs:363](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/arg0/src/lib.rs#L363)),
+  `cache/`
+  ([tui/src/pets/ambient.rs:158](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/pets/ambient.rs#L158)),
+  `installation_id`
+  ([core/src/installation_id.rs:17](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/installation_id.rs#L17)),
+  `version.json`
+  ([cli/src/doctor/updates.rs:35](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/doctor/updates.rs#L35)),
+  `.sandbox_migration`
+  ([execpolicy/src/sandbox_migration.rs:10](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/execpolicy/src/sandbox_migration.rs#L10)),
+  `config.toml`
+  ([config/src/lib.rs:52](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/lib.rs#L52)),
+  `rules/` exec policy
+  ([core/src/exec_policy.rs:54](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/exec_policy.rs#L54)),
+  `hooks.json`, `agents/`.
+- Windows sandbox: `.sandbox/` (logs `.sandbox/logs/sandbox.<date>.log`, `setup_error.json`),
+  `.sandbox-bin/`, `.sandbox-secrets/`
+  ([windows-sandbox-rs/src/spawn_prep.rs:108](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/spawn_prep.rs#L108),
+  [logging.rs:240-251](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/logging.rs#L240-L251),
+  [setup.rs:196](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/setup.rs#L196),
+  [uninstall_windows.rs:132-137](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/uninstall_windows.rs#L132-L137)).
+- Local only (not grepped in source): `models_cache.json`, `thread-writer-locks/`,
+  `tui-thread-reference-capabilities/`, `.sqlite-maintenance.lock`; the first two are described
+  under [Codex Desktop inside the ChatGPT app](#codex-desktop-inside-the-chatgpt-app).
 
 #### Scratch directories
 
-- `Documents/Codex/<date>/<slug>/{work,outputs}` (`~\Documents\Codex\<date>\<slug>\` on Windows): the ChatGPT desktop app's projectless output directory, the working directory the bundled Codex is given for a thread with no project, which the thread's rollout `cwd` names; `outputs/` holds the files the agent wrote for the user. Collected whole since collector 1.16.0 by the `codex-cli|Documents/Codex` catalog line and attributed to `codex-cli`, with the exclusions, the size limit and the secret globs applying as everywhere; project discovery drops a rollout `cwd` in it ([section 6](#6-where-the-project-path-is-recorded)). Observed on Windows (ChatGPT 26.1007.9446.0, 2026-10-15; [section 2 of `chatgpt-desktop.md`](chatgpt-desktop.md#2-per-user-storage)) and on macOS (2026-10-15 and 2026-10-18; [Observed](#observed)); not seen on the Ubuntu install, which ran the standalone CLI only. The Windows install has not yet had a per-step round, so which action creates the directory is known only from the macOS listings. The catalog line is tried against every home, so an install that writes the directory has it collected and one that does not is unaffected (issue 149).
+- `Documents/Codex/<date>/<slug>/{work,outputs}` (`~\Documents\Codex\<date>\<slug>\` on Windows):
+  the ChatGPT desktop app's projectless output directory, the working directory the bundled Codex is
+  given for a thread with no project, which the thread's rollout `cwd` names; `outputs/` holds the
+  files the agent wrote for the user. Collected whole since collector 1.16.0 by the
+  `codex-cli|Documents/Codex` catalog line and attributed to `codex-cli`, with the exclusions, the
+  size limit and the secret globs applying as everywhere; project discovery drops a rollout `cwd` in
+  it ([section 6](#6-where-the-project-path-is-recorded)). Observed on Windows (ChatGPT
+  26.1007.9446.0, 2026-10-15;
+  [section 2 of `chatgpt-desktop.md`](chatgpt-desktop.md#2-per-user-storage)) and on macOS
+  (2026-10-15 and 2026-10-18; [Observed](#observed)); not seen on the Ubuntu install, which ran the
+  standalone CLI only. The Windows install has not yet had a per-step round, so which action creates
+  the directory is known only from the macOS listings. The catalog line is tried against every home,
+  so an install that writes the directory has it collected and one that does not is unaffected
+  (issue 149).
 
-From the source review of 2026-10-19 at [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857); not seen on a real install: the git worktrees Codex creates for a thread are `<CODEX_HOME>/worktrees/<first 4 hex of a uuid>/<repository name>` unless `config.toml` `[desktop] git-worktree-root` names another absolute path ([worktree/src/settings.rs:12-13](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/settings.rs#L12-L13), [43-56](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/settings.rs#L43-L56), [worktree/src/paths.rs:13-30](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/paths.rs#L13-L30)); `[desktop] worktree-auto-cleanup-enabled`, on by default, lets Codex remove them ([settings.rs:62-70](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/settings.rs#L62-L70)). The default location is under the `.codex/worktrees` exclusion, so the catalog walk records it as one `skipped_excluded` row. Project discovery is a different matter: `find_cli_session_projects` drops only a rollout `cwd` under `Documents/Codex`, so a thread that ran in a worktree has that worktree discovered as a project and its project files collected, and the same holds for a configured root outside the home. The analyzer classes a worktree under `.codex` as a scratch directory and one under a configured root as a project. The thread that owns a worktree is in `codex-thread.json` (`version`, `ownerThreadId`) inside the source repository's per-worktree git directory ([worktree/src/metadata.rs:19-27](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/metadata.rs#L19-L27), [88-91](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/metadata.rs#L88-L91)), which no catalog line names. The other scratch directory is the desktop app's projectless output directory under `Documents/Codex`, above.
+From the source review of 2026-10-19 at
+[`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857); not
+seen on a real install: the git worktrees Codex creates for a thread are
+`<CODEX_HOME>/worktrees/<first 4 hex of a uuid>/<repository name>` unless `config.toml`
+`[desktop] git-worktree-root` names another absolute path
+([worktree/src/settings.rs:12-13](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/settings.rs#L12-L13),
+[43-56](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/settings.rs#L43-L56),
+[worktree/src/paths.rs:13-30](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/paths.rs#L13-L30));
+`[desktop] worktree-auto-cleanup-enabled`, on by default, lets Codex remove them
+([settings.rs:62-70](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/settings.rs#L62-L70)).
+The default location is under the `.codex/worktrees` exclusion, so the catalog walk records it as
+one `skipped_excluded` row. Project discovery is a different matter: `find_cli_session_projects`
+drops only a rollout `cwd` under `Documents/Codex`, so a thread that ran in a worktree has that
+worktree discovered as a project and its project files collected, and the same holds for a
+configured root outside the home. The analyzer classes a worktree under `.codex` as a scratch
+directory and one under a configured root as a project. The thread that owns a worktree is in
+`codex-thread.json` (`version`, `ownerThreadId`) inside the source repository's per-worktree git
+directory
+([worktree/src/metadata.rs:19-27](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/metadata.rs#L19-L27),
+[88-91](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/metadata.rs#L88-L91)),
+which no catalog line names. The other scratch directory is the desktop app's projectless output
+directory under `Documents/Codex`, above.
 
 #### Files written by Ollama
 
-Written by Ollama, not by Codex (Ollama source at `v0.35.1`, commit [`b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce`](https://github.com/ollama/ollama/commit/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce); detail in [ollama.md](ollama.md) [section 5](ollama.md#5-project-local-files)). Ollama always uses `<home>/.codex` and ignores `CODEX_HOME` ([`cmd/launch/codex.go:234-240`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L234-L240)).
+Written by Ollama, not by Codex (Ollama source at `v0.35.1`, commit
+[`b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce`](https://github.com/ollama/ollama/commit/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce);
+detail in [ollama.md](ollama.md) [section 5](ollama.md#5-project-local-files)). Ollama always uses
+`<home>/.codex` and ignores `CODEX_HOME`
+([`cmd/launch/codex.go:234-240`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L234-L240)).
 
-- `ollama launch chatgpt` (the ChatGPT desktop app's Codex, macOS and Windows) writes `ollama-launch-codex-routing.json` and `ollama-launch-models.json` ([`internal/proxy/codex_desktop.go:32-38`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/proxy/codex_desktop.go#L32-L38), [`cmd/launch/codex_app.go:952-958`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L952-L958)), rewrites `config.toml` (root `model`, `model_catalog_json`, `openai_base_url` pointing at `<ollama host>/api/codex/v1`; `profile` and `model_provider` removed; `[desktop]` reasoning efforts extended, [`codex_app.go:312-354`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L312-L354)), and creates `auth.json` when none exists ([section 3](#3-credentials)). The previous `config.toml` and catalogs are copied to `~/.ollama/backup/codex-app/`, which the `ollama` catalog line collects.
-- `ollama launch codex` (the CLI) writes `model.json` and `ollama-launch.config.toml` and leaves `config.toml` alone ([`codex.go:209-232`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L209-L232),[`250-268`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L250-L268)).
+- `ollama launch chatgpt` (the ChatGPT desktop app's Codex, macOS and Windows) writes
+  `ollama-launch-codex-routing.json` and `ollama-launch-models.json`
+  ([`internal/proxy/codex_desktop.go:32-38`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/proxy/codex_desktop.go#L32-L38),
+  [`cmd/launch/codex_app.go:952-958`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L952-L958)),
+  rewrites `config.toml` (root `model`, `model_catalog_json`, `openai_base_url` pointing at
+  `<ollama host>/api/codex/v1`; `profile` and `model_provider` removed; `[desktop]` reasoning
+  efforts extended,
+  [`codex_app.go:312-354`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L312-L354)),
+  and creates `auth.json` when none exists ([section 3](#3-credentials)). The previous `config.toml`
+  and catalogs are copied to `~/.ollama/backup/codex-app/`, which the `ollama` catalog line
+  collects.
+- `ollama launch codex` (the CLI) writes `model.json` and `ollama-launch.config.toml` and leaves
+  `config.toml` alone
+  ([`codex.go:209-232`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L209-L232),[`250-268`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L250-L268)).
 
 All of these sit under `.codex` and are collected by the `codex-cli|.codex` line; none is excluded.
 
 #### Codex Desktop inside the ChatGPT app
 
-Observed on the Windows install above, not in the source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524) unless a citation says otherwise. Names, types and counts only; no value from the install is recorded.
+Observed on the Windows install above, not in the source at
+[3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524) unless a
+citation says otherwise. Names, types and counts only; no value from the install is recorded.
 
-- `.desktop-created` (0 B, written at first launch) and `.codex-provisioning-<16 hex>.guard` (0 B): markers that the desktop app created and provisioned this home.
-- `installation_id` (36 B), `.sandbox_migration` (3 B), `.sqlite-maintenance.lock` (0 B, byte-range locked while the app runs).
-- `.codex-global-state.json` and `.codex-global-state.json.bak` (61,390 B each): the desktop app's UI and account state. Top-level keys include `local-projects` (project id to `{createdAt, id, name, rootPaths, updatedAt}`), `thread-project-assignments`, `thread-workspace-root-hints` and `thread-projectless-output-directories` (thread id to an absolute path), `projectless-thread-ids`, `selected-project`, `app-server-projects-migration-by-host`, `desktop-first-seen-at-ms` and `electron-persisted-atom-state`. Under the last: `chatgpt-conversation-resume-tokens-v1` (keyed by a JSON array of the account's user id and a ChatGPT conversation id; each value `{expiresAtMs, promptMessageId, token, turnTraceId}`, the token 419 characters), `client-thread-bindings-v1` (`client-new-thread:<uuid>` and `local-chatgpt:<uuid>` keys, the second binding a ChatGPT chat), `prompt-history` (per thread and `global`, `[{document, markdown}]`: the user's prompts), `composer-recent-model-configurations-v1` (`{model, reasoningEffort, serviceTier}`), `heartbeat-thread-permissions-by-id` (thread id to `{activePermissionProfile, approvalPolicy, approvalsReviewer, sandboxPolicy}`), `mcp-global-entrypoints-v2`, `recent-workspace-files-v3` (one entry per file a thread wrote, keyed by a JSON array whose last element spells a Windows path as `win32:/mnt/c/...`), `external-agent-import-discovery:claude-code,claude-cowork` and `...:cursor` (the app looks for Claude Code, Claude Cowork and Cursor state to import; empty results on the install), `electron:onboarding-welcome-v2-role-state` (`completedConversationalOnboardingTaskId`, `roles`, `workMode`) and `cloud-pet-artwork-cache` (`accountId`, `userId`). After a Plus subscription and an automation it gained `chatgpt-work-model-settings-v1`, `chatgpt-work-models-v1/<user id>/<workspace uuid>` (the account's user and workspace ids in the key), `fast-mode-personalized-estimate`, `seen-model-upgrade-list` and a `thread-reference-capability:<uuid>` per new thread (123,250 B). Flagged secret ([section 3](#3-credentials)).
-- `sqlite/codex-dev.db` with a WAL sidecar (write-ahead log, where SQLite holds recent writes): the desktop app's own database. Tables: `local_thread_catalog` (one row per thread the app lists: `host_id`, `thread_id`, `display_title`, `cwd`, `source_kind`, `thread_source`, `model_provider`, `git_branch`, `project_id`, `conversation_origin` and more; the two local threads had `source_kind` `vscode` and a `cwd`, the ChatGPT chat one row with `source_kind` `chatgpt` and only its title; after the second round 5 rows, three local threads and two `chatgpt` rows, one with `conversation_origin` `tpp`, a token not determined that also appears in the package's `.codex-tpp-local-executor-installation-id` file name), `local_thread_catalog_hosts` (`host_id`, `host_kind`: `local` and `chatgpt:<workspace uuid>:<user id>`), `automations` (`name`, `prompt`, `status`, `rrule`, `cwds`, `model`, `next_run_at`, `account_id`, `user_id` and more) and `automation_runs` (`thread_id`, `automation_id`, `status`, `source_cwd`, `inbox_title`, `inbox_summary`, `archived_user_message`, `archived_assistant_message`), both empty after the failed first attempt (the saved automation is described below), `inbox_items`, `live_visualization_suggestions`, `thread_timeline_ledger`, `local_app_server_feature_enablement` and `codex_schema_migrations` (33 rows with `app_version`, `build_flavor`, `build_commit`). Collected; the analyzer's `chatgpt-desktop` parser reads its `chatgpt` rows ([`analyzer/research/chatgpt-desktop.md`](chatgpt-desktop.md)).
-- `state_5.sqlite` (the source-described thread store) gains, on this build, `projects`, `project_roots` (`project_id`, `position`, `path`), `project_idempotency_keys`, `thread_sections`, `remote_control_enrollments` and `external_agent_config_imports` tables, and `threads` columns `project_id`, `originator`, `creator_user_id` and `creator_account_id` among others. `thread_history_1.sqlite` `thread_items` holds one row per turn item (`item_type` values `agentMessage`, `commandExecution`, `fileChange`, `reasoning`, `userMessage`, `webSearch`), and `logs_2.sqlite` `logs` 2,156 rows from the app server.
-- `plugins/.plugin-appserver/` (`codex.exe`, 282,678,064 B, and `codex-code-mode-host.exe`, `codex-command-runner.exe`, `codex-windows-sandbox-setup.exe`, 7 to 70 MB): copies of the package's binaries. Excluded from collector 1.12.0 (issue 116); before that change the three smaller ones were collected and `codex.exe` was `skipped_size`. `plugins/.remote-plugin-install-staging/` (empty) is excluded with it.
-- `.tmp/bundled-marketplaces/openai-bundled/` (`.materialization-key`, `plugins/`, 274 MB) and `.tmp/plugins/` (60 plugin directories, 57 MB; the whole `.tmp/` was gone by the second survey, so it is a temporary tree), the marketplace sync the source cites ([core-plugins/src/startup_sync.rs:171](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core-plugins/src/startup_sync.rs#L171)); `cache/remote_plugin_catalog/<16 hex>.json` (36 MB), `cache/codex_apps_tools/` and `cache/codex_apps_server_info/`; `plugins/cache/` with `openai-bundled`, `openai-curated-remote` and `openai-primary-runtime` (149 MB). All under existing exclusions.
-- `automations/` (observed after a scheduled automation was created in the app, 2026-10-15): `.run-jitter-salt` (37 B) and one directory per automation, named by a slug made from the name the user typed (user content), holding `automation.toml` (383 B) with the keys `version` (int), `id` (str, the slug), `kind` (str, `heartbeat`), `name` (str), `prompt` (str), `status` (str, `ACTIVE`), `rrule` (str, an iCalendar recurrence rule of the form `RRULE:FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0;BYDAY=MO,TU,WE,TH,FR`), `target_thread_id` (str, a thread uuid), `created_at` and `updated_at` (int, epoch milliseconds). The same automation is a row in `sqlite/codex-dev.db` `automations` with `status`, `kind`, `rrule`, `next_run_at` and `next_run_nominal_at` (epoch ms), `last_run_at` null, `cwds` (an empty JSON array), `target_thread_id` and `auto_archive` 0, the other columns null; `automation_runs` (one row per run, linking `thread_id` and `automation_id`) and `inbox_items` stayed empty because the automation had not fired. Creating it created its target thread at once: a third rollout with its `cwd` in a new `~/Documents/Codex/<date>/new-chat/` output directory, one user turn and one assistant message, and with it a `thread-writer-locks` lock, a `visualizations` directory and a `session_index.jsonl` line. Collected.
-- `ambient-suggestions/<40 hex>/ambient-suggestions.json` (139 B, observed): `currentSuggestionIds` (array), `generatedAtMs` (number), `projectRoot` (str, an absolute path) and `suggestions` (array), both arrays empty on the install; governed by `desktop.ambient-suggestions-enabled` in `config.toml`. Collected.
-- `computer-use/config.json` (152 B: `accentColor`, `direction`, `locale`, `strings`), `vendor_imports/skills-curated-cache.json` (1,267 B: `fetchedAt`, `skills`), `models_cache.json` (177,581 B: `client_version`, `etag`, `fetched_at`, `identity`, `models` with each model's instructions template and confirmation policies for browser and computer use): collected.
-- `thread-writer-locks/` (`.coordination.lock` and one `<thread uuid>.lock` per thread, 0 B, the thread locks byte-range locked while the app runs), `project-metadata-locks/` (empty), `visualizations/<yyyy>/<mm>/<dd>/<thread uuid>/` (empty, excluded), `code-review-plugin/` and `pets/` (empty).
-- `.sandbox/` (`deny_read_acl_state.json`, `sandbox.<date>.log`, `sandbox-<16 hex>.log`, `setup_marker.json`, excluded), `.sandbox-bin/` (empty, excluded) and `.sandbox-secrets/sandbox_users.json` ([section 3](#3-credentials)), and `tmp/arg0/codex-arg0<6 chars>/` (`apply_patch.bat`, `applypatch.bat`, excluded).
-- `config.toml` as the app writes it: `notify`, a `[desktop]` table (`followUpQueueMode`, `conversationDetailMode`, `ambient-suggestions-enabled`), `marketplaces.openai-bundled` and `marketplaces.openai-primary-runtime` (`source_type` `local`), `plugins.<id>@openai-bundled.enabled` and `plugins.<id>@openai-primary-runtime.enabled` entries, an `mcp_servers.node_repl` server with its `env`, and `windows.sandbox` `elevated`.
+- `.desktop-created` (0 B, written at first launch) and `.codex-provisioning-<16 hex>.guard` (0 B):
+  markers that the desktop app created and provisioned this home.
+- `installation_id` (36 B), `.sandbox_migration` (3 B), `.sqlite-maintenance.lock` (0 B, byte-range
+  locked while the app runs).
+- `.codex-global-state.json` and `.codex-global-state.json.bak` (61,390 B each): the desktop app's
+  UI and account state. Top-level keys include `local-projects` (project id to
+  `{createdAt, id, name, rootPaths, updatedAt}`), `thread-project-assignments`,
+  `thread-workspace-root-hints` and `thread-projectless-output-directories` (thread id to an
+  absolute path), `projectless-thread-ids`, `selected-project`,
+  `app-server-projects-migration-by-host`, `desktop-first-seen-at-ms` and
+  `electron-persisted-atom-state`. Under the last: `chatgpt-conversation-resume-tokens-v1` (keyed by
+  a JSON array of the account's user id and a ChatGPT conversation id; each value
+  `{expiresAtMs, promptMessageId, token, turnTraceId}`, the token 419 characters),
+  `client-thread-bindings-v1` (`client-new-thread:<uuid>` and `local-chatgpt:<uuid>` keys, the
+  second binding a ChatGPT chat), `prompt-history` (per thread and `global`,
+  `[{document, markdown}]`: the user's prompts), `composer-recent-model-configurations-v1`
+  (`{model, reasoningEffort, serviceTier}`), `heartbeat-thread-permissions-by-id` (thread id to
+  `{activePermissionProfile, approvalPolicy, approvalsReviewer, sandboxPolicy}`),
+  `mcp-global-entrypoints-v2`, `recent-workspace-files-v3` (one entry per file a thread wrote, keyed
+  by a JSON array whose last element spells a Windows path as `win32:/mnt/c/...`),
+  `external-agent-import-discovery:claude-code,claude-cowork` and `...:cursor` (the app looks for
+  Claude Code, Claude Cowork and Cursor state to import; empty results on the install),
+  `electron:onboarding-welcome-v2-role-state` (`completedConversationalOnboardingTaskId`, `roles`,
+  `workMode`) and `cloud-pet-artwork-cache` (`accountId`, `userId`). After a Plus subscription and
+  an automation it gained `chatgpt-work-model-settings-v1`,
+  `chatgpt-work-models-v1/<user id>/<workspace uuid>` (the account's user and workspace ids in the
+  key), `fast-mode-personalized-estimate`, `seen-model-upgrade-list` and a
+  `thread-reference-capability:<uuid>` per new thread (123,250 B). Flagged secret
+  ([section 3](#3-credentials)).
+- `sqlite/codex-dev.db` with a WAL sidecar (write-ahead log, where SQLite holds recent writes): the
+  desktop app's own database. Tables: `local_thread_catalog` (one row per thread the app lists:
+  `host_id`, `thread_id`, `display_title`, `cwd`, `source_kind`, `thread_source`, `model_provider`,
+  `git_branch`, `project_id`, `conversation_origin` and more; the two local threads had
+  `source_kind` `vscode` and a `cwd`, the ChatGPT chat one row with `source_kind` `chatgpt` and only
+  its title; after the second round 5 rows, three local threads and two `chatgpt` rows, one with
+  `conversation_origin` `tpp`, a token not determined that also appears in the package's
+  `.codex-tpp-local-executor-installation-id` file name), `local_thread_catalog_hosts` (`host_id`,
+  `host_kind`: `local` and `chatgpt:<workspace uuid>:<user id>`), `automations` (`name`, `prompt`,
+  `status`, `rrule`, `cwds`, `model`, `next_run_at`, `account_id`, `user_id` and more) and
+  `automation_runs` (`thread_id`, `automation_id`, `status`, `source_cwd`, `inbox_title`,
+  `inbox_summary`, `archived_user_message`, `archived_assistant_message`), both empty after the
+  failed first attempt (the saved automation is described below), `inbox_items`,
+  `live_visualization_suggestions`, `thread_timeline_ledger`, `local_app_server_feature_enablement`
+  and `codex_schema_migrations` (33 rows with `app_version`, `build_flavor`, `build_commit`).
+  Collected; the analyzer's `chatgpt-desktop` parser reads its `chatgpt` rows
+  ([`analyzer/research/chatgpt-desktop.md`](chatgpt-desktop.md)).
+- `state_5.sqlite` (the source-described thread store) gains, on this build, `projects`,
+  `project_roots` (`project_id`, `position`, `path`), `project_idempotency_keys`, `thread_sections`,
+  `remote_control_enrollments` and `external_agent_config_imports` tables, and `threads` columns
+  `project_id`, `originator`, `creator_user_id` and `creator_account_id` among others.
+  `thread_history_1.sqlite` `thread_items` holds one row per turn item (`item_type` values
+  `agentMessage`, `commandExecution`, `fileChange`, `reasoning`, `userMessage`, `webSearch`), and
+  `logs_2.sqlite` `logs` 2,156 rows from the app server.
+- `plugins/.plugin-appserver/` (`codex.exe`, 282,678,064 B, and `codex-code-mode-host.exe`,
+  `codex-command-runner.exe`, `codex-windows-sandbox-setup.exe`, 7 to 70 MB): copies of the
+  package's binaries. Excluded from collector 1.12.0 (issue 116); before that change the three
+  smaller ones were collected and `codex.exe` was `skipped_size`.
+  `plugins/.remote-plugin-install-staging/` (empty) is excluded with it.
+- `.tmp/bundled-marketplaces/openai-bundled/` (`.materialization-key`, `plugins/`, 274 MB) and
+  `.tmp/plugins/` (60 plugin directories, 57 MB; the whole `.tmp/` was gone by the second survey, so
+  it is a temporary tree), the marketplace sync the source cites
+  ([core-plugins/src/startup_sync.rs:171](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core-plugins/src/startup_sync.rs#L171));
+  `cache/remote_plugin_catalog/<16 hex>.json` (36 MB), `cache/codex_apps_tools/` and
+  `cache/codex_apps_server_info/`; `plugins/cache/` with `openai-bundled`, `openai-curated-remote`
+  and `openai-primary-runtime` (149 MB). All under existing exclusions.
+- `automations/` (observed after a scheduled automation was created in the app, 2026-10-15):
+  `.run-jitter-salt` (37 B) and one directory per automation, named by a slug made from the name the
+  user typed (user content), holding `automation.toml` (383 B) with the keys `version` (int), `id`
+  (str, the slug), `kind` (str, `heartbeat`), `name` (str), `prompt` (str), `status` (str,
+  `ACTIVE`), `rrule` (str, an iCalendar recurrence rule of the form
+  `RRULE:FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0;BYDAY=MO,TU,WE,TH,FR`), `target_thread_id` (str, a thread
+  uuid), `created_at` and `updated_at` (int, epoch milliseconds). The same automation is a row in
+  `sqlite/codex-dev.db` `automations` with `status`, `kind`, `rrule`, `next_run_at` and
+  `next_run_nominal_at` (epoch ms), `last_run_at` null, `cwds` (an empty JSON array),
+  `target_thread_id` and `auto_archive` 0, the other columns null; `automation_runs` (one row per
+  run, linking `thread_id` and `automation_id`) and `inbox_items` stayed empty because the
+  automation had not fired. Creating it created its target thread at once: a third rollout with its
+  `cwd` in a new `~/Documents/Codex/<date>/new-chat/` output directory, one user turn and one
+  assistant message, and with it a `thread-writer-locks` lock, a `visualizations` directory and a
+  `session_index.jsonl` line. Collected.
+- `ambient-suggestions/<40 hex>/ambient-suggestions.json` (139 B, observed): `currentSuggestionIds`
+  (array), `generatedAtMs` (number), `projectRoot` (str, an absolute path) and `suggestions`
+  (array), both arrays empty on the install; governed by `desktop.ambient-suggestions-enabled` in
+  `config.toml`. Collected.
+- `computer-use/config.json` (152 B: `accentColor`, `direction`, `locale`, `strings`),
+  `vendor_imports/skills-curated-cache.json` (1,267 B: `fetchedAt`, `skills`), `models_cache.json`
+  (177,581 B: `client_version`, `etag`, `fetched_at`, `identity`, `models` with each model's
+  instructions template and confirmation policies for browser and computer use): collected.
+- `thread-writer-locks/` (`.coordination.lock` and one `<thread uuid>.lock` per thread, 0 B, the
+  thread locks byte-range locked while the app runs), `project-metadata-locks/` (empty),
+  `visualizations/<yyyy>/<mm>/<dd>/<thread uuid>/` (empty, excluded), `code-review-plugin/` and
+  `pets/` (empty).
+- `.sandbox/` (`deny_read_acl_state.json`, `sandbox.<date>.log`, `sandbox-<16 hex>.log`,
+  `setup_marker.json`, excluded), `.sandbox-bin/` (empty, excluded) and
+  `.sandbox-secrets/sandbox_users.json` ([section 3](#3-credentials)), and
+  `tmp/arg0/codex-arg0<6 chars>/` (`apply_patch.bat`, `applypatch.bat`, excluded).
+- `config.toml` as the app writes it: `notify`, a `[desktop]` table (`followUpQueueMode`,
+  `conversationDetailMode`, `ambient-suggestions-enabled`), `marketplaces.openai-bundled` and
+  `marketplaces.openai-primary-runtime` (`source_type` `local`),
+  `plugins.<id>@openai-bundled.enabled` and `plugins.<id>@openai-primary-runtime.enabled` entries,
+  an `mcp_servers.node_repl` server with its `env`, and `windows.sandbox` `elevated`.
 
-The Windows sandbox, which the source describes ([setup.rs:196](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/setup.rs#L196)), was set up during onboarding: it created two enabled local accounts, `CodexSandboxOffline` and `CodexSandboxOnline`, whose passwords are in `.sandbox-secrets/sandbox_users.json`, and the package runs a service `CodexSandboxService.OpenAI.Codex`. The accounts and the service are the EDR's view (the endpoint detection and response tool) and are not collected.
+The Windows sandbox, which the source describes
+([setup.rs:196](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/setup.rs#L196)),
+was set up during onboarding: it created two enabled local accounts, `CodexSandboxOffline` and
+`CodexSandboxOnline`, whose passwords are in `.sandbox-secrets/sandbox_users.json`, and the package
+runs a service `CodexSandboxService.OpenAI.Codex`. The accounts and the service are the EDR's view
+(the endpoint detection and response tool) and are not collected.
 
 Outside `~/.codex` the app keeps copies of the binaries in `%LOCALAPPDATA%\OpenAI\Codex` and a
 1.27 GB runtime in `~/.cache/codex-runtimes`, neither collected; see [section 4 of
@@ -793,14 +1023,51 @@ Outside `~/.codex` the app keeps copies of the binaries in `%LOCALAPPDATA%\OpenA
 Observed with Codex CLI 0.162.1 from the PowerShell installer ([section 1](#1-source-and-evidence));
 names, types and sizes only.
 
-- `~\.codex\packages\standalone\`: `install.lock` (0 B), `auto-update-version` (31 B, one token), `current` (an NTFS junction, a directory reparse point, to `releases\0.162.1-aarch64-pc-windows-msvc`) and that release: `bin\codex.exe` (282,434,864 B), `bin\codex-code-mode-host.exe` (69,820,208 B), `codex-package.json` (216 B: `entrypoint`, `layoutVersion`, `pathDir`, `resourcesDir`, `target`, `variant`, `version`), `codex-path\rg.exe`, and `codex-resources\` with `codex-command-runner.exe`, `codex-windows-sandbox-setup.exe` and `voice\` (`bin\codex-voice-host.exe` with GStreamer, GLib, Opus and PCRE2 libraries, `manifest.json`, `runtime.json`, `sources.json`, `windows-crt.json`, licences). File times inside the release are the build's (2026-10-09). The `packages/` directory the source names ([app-server-daemon/src/managed_install.rs:52](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-daemon/src/managed_install.rs#L52)).
-- `~\.codex\packages\app-server-daemon\`: the same layout with the same binaries, fetched by the daemon's updater.
-- `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`: a junction to `~\.codex\packages\standalone\current\bin`, which the installer adds to the user `Path` value in `HKCU\Environment` (the current user's environment variables in the registry). No Start Menu entry and no Uninstall registry key.
-- `~\.codex\app-server-daemon\`: the CLI runs the app server as a daemon that outlives the TUI. `daemon.lock`, `daemon.pid.lock`, `daemon-updater.pid.lock` (0 B), `daemon.pid` (328 B, JSON: `executableIdentity.{digest, path_digest}` as arrays of 32 numbers, `pid`, `processStartTime`), `daemon-updater.pid` (52 B: `pid`, `processStartTime`), `daemon.stderr.log` (Rust `tracing` lines with ANSI colour codes, `<ISO 8601 time> ERROR codex_core::tools::router: error=...`), `daemon-updater.stderr.log` (JSON lines with `timestampMs`, `processPid`, `stage` (`installer_fetch`, `installer_run`), `outcome`, `elapsedMs`, `failure`, or `event` `package_selected` with `details.{release, trigger}`), `daemon-updater.sock` and an empty `workdir\`. `~\.codex\app-server-control\` holds `app-server-control.sock` and `app-server-startup.lock` (0 B). The two `.sock` files are Unix domain sockets, which NTFS stores as reparse points with the tag `0x80000023` (`IO_REPARSE_TAG_AF_UNIX`); the PowerShell collector records each as a `symlink` row whose `target` is the socket's own extended-length path (issue 120).
-- `cap_sid` (419 B, JSON): `readonly`, `workspace`, `workspace_by_cwd` (a map from a `c:\...` path to a string) and `writable_root_by_path` (two `c:\...` paths to strings): capability SIDs by workspace path (SIDs are Windows security identifiers; a capability SID has the form `S-1-15-3-...`), inferred from the key names and value lengths, not from a value. Collected, not flagged.
-- `version.json` (105 B: `dismissed_version`, `last_checked_at`, `latest_version`), the CLI's update check, cited in the source list above; `history.jsonl` (one line: `session_id`, `text`, `ts`), the CLI's prompt history, which the desktop app had not written; `tui-thread-reference-capabilities\<thread uuid>` (0 B, one per TUI thread); `node_repl\active_execs\` (empty), the scratch of the `node_repl` MCP server that `config.toml` configures (MCP is the Model Context Protocol, through which an agent calls external tools).
-- `.sandbox\` gained `setup_error.json` (77 B: `code`, `message`) and a longer `sandbox.<date>.log`; `.sandbox-bin\` gained the sandbox's own copies of `codex.exe` and `codex-command-runner-0.162.0-alpha.17.2.exe` (289,784,416 B together).
-- `config.toml` was rewritten at install (43 B longer; its keys were not re-read). `auth.json`, `.codex-global-state.json` and the desktop app's automation were not changed by the CLI.
+- `~\.codex\packages\standalone\`: `install.lock` (0 B), `auto-update-version` (31 B, one token),
+  `current` (an NTFS junction, a directory reparse point, to
+  `releases\0.162.1-aarch64-pc-windows-msvc`) and that release: `bin\codex.exe` (282,434,864 B),
+  `bin\codex-code-mode-host.exe` (69,820,208 B), `codex-package.json` (216 B: `entrypoint`,
+  `layoutVersion`, `pathDir`, `resourcesDir`, `target`, `variant`, `version`), `codex-path\rg.exe`,
+  and `codex-resources\` with `codex-command-runner.exe`, `codex-windows-sandbox-setup.exe` and
+  `voice\` (`bin\codex-voice-host.exe` with GStreamer, GLib, Opus and PCRE2 libraries,
+  `manifest.json`, `runtime.json`, `sources.json`, `windows-crt.json`, licences). File times inside
+  the release are the build's (2026-10-09). The `packages/` directory the source names
+  ([app-server-daemon/src/managed_install.rs:52](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-daemon/src/managed_install.rs#L52)).
+- `~\.codex\packages\app-server-daemon\`: the same layout with the same binaries, fetched by the
+  daemon's updater.
+- `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`: a junction to
+  `~\.codex\packages\standalone\current\bin`, which the installer adds to the user `Path` value in
+  `HKCU\Environment` (the current user's environment variables in the registry). No Start Menu entry
+  and no Uninstall registry key.
+- `~\.codex\app-server-daemon\`: the CLI runs the app server as a daemon that outlives the TUI.
+  `daemon.lock`, `daemon.pid.lock`, `daemon-updater.pid.lock` (0 B), `daemon.pid` (328 B, JSON:
+  `executableIdentity.{digest, path_digest}` as arrays of 32 numbers, `pid`, `processStartTime`),
+  `daemon-updater.pid` (52 B: `pid`, `processStartTime`), `daemon.stderr.log` (Rust `tracing` lines
+  with ANSI colour codes, `<ISO 8601 time> ERROR codex_core::tools::router: error=...`),
+  `daemon-updater.stderr.log` (JSON lines with `timestampMs`, `processPid`, `stage`
+  (`installer_fetch`, `installer_run`), `outcome`, `elapsedMs`, `failure`, or `event`
+  `package_selected` with `details.{release, trigger}`), `daemon-updater.sock` and an empty
+  `workdir\`. `~\.codex\app-server-control\` holds `app-server-control.sock` and
+  `app-server-startup.lock` (0 B). The two `.sock` files are Unix domain sockets, which NTFS stores
+  as reparse points with the tag `0x80000023` (`IO_REPARSE_TAG_AF_UNIX`); the PowerShell collector
+  records each as a `symlink` row whose `target` is the socket's own extended-length path (issue
+  120).
+- `cap_sid` (419 B, JSON): `readonly`, `workspace`, `workspace_by_cwd` (a map from a `c:\...` path
+  to a string) and `writable_root_by_path` (two `c:\...` paths to strings): capability SIDs by
+  workspace path (SIDs are Windows security identifiers; a capability SID has the form
+  `S-1-15-3-...`), inferred from the key names and value lengths, not from a value. Collected, not
+  flagged.
+- `version.json` (105 B: `dismissed_version`, `last_checked_at`, `latest_version`), the CLI's update
+  check, cited in the source list above; `history.jsonl` (one line: `session_id`, `text`, `ts`), the
+  CLI's prompt history, which the desktop app had not written;
+  `tui-thread-reference-capabilities\<thread uuid>` (0 B, one per TUI thread);
+  `node_repl\active_execs\` (empty), the scratch of the `node_repl` MCP server that `config.toml`
+  configures (MCP is the Model Context Protocol, through which an agent calls external tools).
+- `.sandbox\` gained `setup_error.json` (77 B: `code`, `message`) and a longer `sandbox.<date>.log`;
+  `.sandbox-bin\` gained the sandbox's own copies of `codex.exe` and
+  `codex-command-runner-0.162.0-alpha.17.2.exe` (289,784,416 B together).
+- `config.toml` was rewritten at install (43 B longer; its keys were not re-read). `auth.json`,
+  `.codex-global-state.json` and the desktop app's automation were not changed by the CLI.
 
 #### macOS differences
 
@@ -811,13 +1078,34 @@ Everything else in [Codex Desktop inside the ChatGPT app](#codex-desktop-inside-
 `ambient-suggestions/`, `vendor_imports`, `history.jsonl`, `version.json`, `app-server-daemon/`,
 `app-server-control/`).
 
-- `plugins/.plugin-appserver/codex-cli/` (337,674,240 B): on macOS the copied binaries sit in a `codex-cli` subdirectory; the `.codex/plugins/.plugin-appserver` exclusion covers it.
-- `computer-use/Codex Computer Use.app` (bundle id `com.openai.sky.CUAService`, version 26.1005.1001425, 168 files, 76,615,353 B), the computer-use agent's app, beside `computer-use/config.json`. Excluded with `.codex/computer-use/*.app` (issue 121); before that it was collected whole.
-- `ipc/ipc.sock` (a Unix domain socket) and an empty `shell_snapshots/` (2026-10-15; on 2026-10-18 it held the two most recent snapshots of each live thread, see [macOS, ChatGPT 26.1013.40934](#macos-chatgpt-26101340934)), macOS only.
-- No `.sandbox`, `.sandbox-bin` or `.sandbox-secrets`: the Windows sandbox accounts have no macOS counterpart. The macOS sandbox is Seatbelt (Apple's sandbox profile mechanism), which left no file that was observed. `.sandbox_migration` is present.
-- `app-server-daemon/daemon.pid` (472 B) and `daemon-updater.pid` (194 B) carry a `processIdentity` object (`bootId`, a uuid, `startSeconds`, `startMicroseconds`, `uniqueId`) that the Windows files lack.
-- `app-server-control/app-server-control.sock` is a real symlink here, to `/private/tmp/codex-daemon-<uid>/<64 hex>`, and gets a correct `symlink` row. `app-server-daemon/daemon-updater.sock` and `ipc/ipc.sock` are sockets and get no manifest row (issue 120).
-- The standalone CLI: `packages/standalone/releases/0.162.1-aarch64-apple-darwin/` and `packages/app-server-daemon/releases/0.162.1-aarch64-apple-darwin/` (`bin/`, `codex-path/`, `codex-resources/`, `codex`, `codex-package.json`), each with a `current` symlink, 676,267,646 B in all, one `skipped_excluded` row under `.codex/packages`. The installer adds the symlinks `~/.local/bin/codex` and `~/.local/bin/codex-code-mode-host` into `packages/standalone/current/bin`, which no catalog line names, and a block in `~/.zprofile` between `# >>> Codex installer >>>` and `# <<< Codex installer <<<` that prepends `~/.local/bin` to `PATH`; shell startup files are not collected. The daemon processes ran from the `app-server-daemon` release.
+- `plugins/.plugin-appserver/codex-cli/` (337,674,240 B): on macOS the copied binaries sit in a
+  `codex-cli` subdirectory; the `.codex/plugins/.plugin-appserver` exclusion covers it.
+- `computer-use/Codex Computer Use.app` (bundle id `com.openai.sky.CUAService`, version
+  26.1005.1001425, 168 files, 76,615,353 B), the computer-use agent's app, beside
+  `computer-use/config.json`. Excluded with `.codex/computer-use/*.app` (issue 121); before that it
+  was collected whole.
+- `ipc/ipc.sock` (a Unix domain socket) and an empty `shell_snapshots/` (2026-10-15; on 2026-10-18
+  it held the two most recent snapshots of each live thread, see
+  [macOS, ChatGPT 26.1013.40934](#macos-chatgpt-26101340934)), macOS only.
+- No `.sandbox`, `.sandbox-bin` or `.sandbox-secrets`: the Windows sandbox accounts have no macOS
+  counterpart. The macOS sandbox is Seatbelt (Apple's sandbox profile mechanism), which left no file
+  that was observed. `.sandbox_migration` is present.
+- `app-server-daemon/daemon.pid` (472 B) and `daemon-updater.pid` (194 B) carry a `processIdentity`
+  object (`bootId`, a uuid, `startSeconds`, `startMicroseconds`, `uniqueId`) that the Windows files
+  lack.
+- `app-server-control/app-server-control.sock` is a real symlink here, to
+  `/private/tmp/codex-daemon-<uid>/<64 hex>`, and gets a correct `symlink` row.
+  `app-server-daemon/daemon-updater.sock` and `ipc/ipc.sock` are sockets and get no manifest row
+  (issue 120).
+- The standalone CLI: `packages/standalone/releases/0.162.1-aarch64-apple-darwin/` and
+  `packages/app-server-daemon/releases/0.162.1-aarch64-apple-darwin/` (`bin/`, `codex-path/`,
+  `codex-resources/`, `codex`, `codex-package.json`), each with a `current` symlink, 676,267,646 B
+  in all, one `skipped_excluded` row under `.codex/packages`. The installer adds the symlinks
+  `~/.local/bin/codex` and `~/.local/bin/codex-code-mode-host` into
+  `packages/standalone/current/bin`, which no catalog line names, and a block in `~/.zprofile`
+  between `# >>> Codex installer >>>` and `# <<< Codex installer <<<` that prepends `~/.local/bin`
+  to `PATH`; shell startup files are not collected. The daemon processes ran from the
+  `app-server-daemon` release.
 
 #### macOS, ChatGPT 26.1013.40934
 
@@ -826,55 +1114,235 @@ Observed on the macOS install of 2026-10-18 ([section 1](#1-source-and-evidence)
 app](#codex-desktop-inside-the-chatgpt-app) and [macOS differences](#macos-differences) was present,
 with these additions and observations:
 
-- Before sign-in `~/.codex` already held `.codex-global-state.json` (1,282 B), `config.toml` (2,114 B), `installation_id` (36 B), `.sqlite-maintenance.lock`, `ipc/ipc.sock`, `tmp/arg0-macos/codex-arg0*/`, `vendor_imports/skills-curated-cache.json`, `.tmp/`, `plugins/`, `skills/.system/`, `computer-use/Codex Computer Use.app`, `sqlite/codex-dev.db`, `state_5.sqlite`, `logs_2.sqlite`, `goals_1.sqlite`, `memories_1.sqlite` and `queue_1.sqlite`. Sign-in wrote `auth.json` (4,299 B), `models_cache.json` (399,712 B), `.sandbox_migration` (3 B), the first shell snapshot and the first `ambient-suggestions` file. No `history.jsonl` or `version.json` was written all round: the desktop app keeps prompts in the global state's `prompt-history`. `thread_history_1.sqlite` was created with the first thread.
-- `shell_snapshots/<thread uuid>.<unix ns>.sh` (2,135 to 2,299 B, 43 lines): the snapshot the source writes ([core/src/shell_snapshot.rs:107](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/shell_snapshot.rs#L107)), written anew at each resume and turn of a thread while older ones are removed (the two most recent per thread remained at the end of the round, and a quit removed every snapshot of threads not reopened); the name is the thread id and a Unix time in nanoseconds. The content is the user's login-shell environment replayed for the sandbox ([section 3](#3-credentials)). Flagged secret from collector 1.15.0.
-- `thread-writer-locks/<uuid>.lock` can exist for a thread that never wrote anything: at the resume (2026-10-18 21:46:13Z) and when the scheduled task was created (23:18:39Z to 23:18:41Z) the app prewarmed a guardian review session (`startup_prewarm` with the model `codex-auto-review` in `logs_2.sqlite`) whose id got a 0-byte lock and no rollout, `state_5.sqlite` `threads` row, `session_index.jsonl` line or `thread_history_1.sqlite` rows. A lock is not a session. Quitting the app removed the locks of threads that were not open.
-- Rollout file names and their date directories use the Mac's local time, while every timestamp inside the rollout is UTC: the scheduled task's thread, started at 23:18:38Z, is `sessions/2026/10/18/rollout-2026-10-18T19-18-38-<uuid>.jsonl` on a host at UTC-4.
-- `automations/.run-jitter-salt` (37 B) and `automations/<slug>/automation.toml` (356 B; the slug is the kebab-case of the task's name), with the keys of [Codex Desktop inside the ChatGPT app](#codex-desktop-inside-the-chatgpt-app). Here `rrule` was `RRULE:FREQ=WEEKLY;BYHOUR=19;BYMINUTE=45;BYDAY=SU,MO,TU,WE,TH,FR,SA` for a task the user set to daily, the hour in local time. The task's `sqlite/codex-dev.db` `automations` row carries `account_id`, `user_id` and `installation_id`, `last_run_at`, and `next_run_at` offset from `next_run_nominal_at` by the jitter. A Run now and a scheduled run both reported into the task's target thread; neither wrote an `automation_runs` or `inbox_items` row (the scheduled run decided not to notify the user).
-- `cache/remote_plugin_catalog/<16 hex>.json` (38,747,166 B, downloaded at each launch), `cache/codex_apps_server_info/<40 hex>.json` (189 B) and `cache/codex_apps_tools/<40 hex>.json` (825,347 B): under the excluded `.codex/cache`, which was 39.6 MB in the live run.
-- `config.toml` gains a `[projects."<path>"]` table with `trust_level` `trusted` when a project folder is added. Neither the model nor the permission mode (Approve for me, Full access) is written to it.
-- `state_5.sqlite` on this build also has `guardian_review_feedback`, `external_agent_config_imports`, `thread_spawn_edges` and `thread_read_receipts`. `remote_control_enrollments` holds one row once remote control is enabled: `websocket_url`, `account_id`, `app_server_client_name`, `server_id`, `environment_id`, `server_name` (the Mac's host name), `updated_at` and `remote_control_enabled`, which turning connections off sets to 0 without removing the row.
-- `.codex-global-state.json` grew from 1,282 B before sign-in to 120,989 B by the remote-control step. After remote control was enabled it gained the top-level keys `electron-local-remote-control-environment-id` and `codex-mobile-has-connected-device`. After a thread was deleted it kept the keys naming that thread (its prompts, description, permissions and activity time) and gained `codex-writing-block-deleted-thread-v1:<uuid>`, a deletion marker.
-- A delete with the app's own command removed the thread's rollout, its `session_index.jsonl` line and its rows in `state_5.sqlite`, `thread_history_1.sqlite` and `sqlite/codex-dev.db`; no `archived_sessions/` directory was created. `logs_2.sqlite` kept the thread's rows.
-- Outside `~/.codex`: `~/.cache/codex-runtimes/codex-primary-runtime/` (32,625 entries), and sockets under `/private/tmp/codex-browser-use/` and `/private/tmp/codex-app-tools/`, replaced at each launch; none is collected.
+- Before sign-in `~/.codex` already held `.codex-global-state.json` (1,282 B), `config.toml`
+  (2,114 B), `installation_id` (36 B), `.sqlite-maintenance.lock`, `ipc/ipc.sock`,
+  `tmp/arg0-macos/codex-arg0*/`, `vendor_imports/skills-curated-cache.json`, `.tmp/`, `plugins/`,
+  `skills/.system/`, `computer-use/Codex Computer Use.app`, `sqlite/codex-dev.db`, `state_5.sqlite`,
+  `logs_2.sqlite`, `goals_1.sqlite`, `memories_1.sqlite` and `queue_1.sqlite`. Sign-in wrote
+  `auth.json` (4,299 B), `models_cache.json` (399,712 B), `.sandbox_migration` (3 B), the first
+  shell snapshot and the first `ambient-suggestions` file. No `history.jsonl` or `version.json` was
+  written all round: the desktop app keeps prompts in the global state's `prompt-history`.
+  `thread_history_1.sqlite` was created with the first thread.
+- `shell_snapshots/<thread uuid>.<unix ns>.sh` (2,135 to 2,299 B, 43 lines): the snapshot the source
+  writes
+  ([core/src/shell_snapshot.rs:107](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/shell_snapshot.rs#L107)),
+  written anew at each resume and turn of a thread while older ones are removed (the two most recent
+  per thread remained at the end of the round, and a quit removed every snapshot of threads not
+  reopened); the name is the thread id and a Unix time in nanoseconds. The content is the user's
+  login-shell environment replayed for the sandbox ([section 3](#3-credentials)). Flagged secret
+  from collector 1.15.0.
+- `thread-writer-locks/<uuid>.lock` can exist for a thread that never wrote anything: at the resume
+  (2026-10-18 21:46:13Z) and when the scheduled task was created (23:18:39Z to 23:18:41Z) the app
+  prewarmed a guardian review session (`startup_prewarm` with the model `codex-auto-review` in
+  `logs_2.sqlite`) whose id got a 0-byte lock and no rollout, `state_5.sqlite` `threads` row,
+  `session_index.jsonl` line or `thread_history_1.sqlite` rows. A lock is not a session. Quitting
+  the app removed the locks of threads that were not open.
+- Rollout file names and their date directories use the Mac's local time, while every timestamp
+  inside the rollout is UTC: the scheduled task's thread, started at 23:18:38Z, is
+  `sessions/2026/10/18/rollout-2026-10-18T19-18-38-<uuid>.jsonl` on a host at UTC-4.
+- `automations/.run-jitter-salt` (37 B) and `automations/<slug>/automation.toml` (356 B; the slug is
+  the kebab-case of the task's name), with the keys of
+  [Codex Desktop inside the ChatGPT app](#codex-desktop-inside-the-chatgpt-app). Here `rrule` was
+  `RRULE:FREQ=WEEKLY;BYHOUR=19;BYMINUTE=45;BYDAY=SU,MO,TU,WE,TH,FR,SA` for a task the user set to
+  daily, the hour in local time. The task's `sqlite/codex-dev.db` `automations` row carries
+  `account_id`, `user_id` and `installation_id`, `last_run_at`, and `next_run_at` offset from
+  `next_run_nominal_at` by the jitter. A Run now and a scheduled run both reported into the task's
+  target thread; neither wrote an `automation_runs` or `inbox_items` row (the scheduled run decided
+  not to notify the user).
+- `cache/remote_plugin_catalog/<16 hex>.json` (38,747,166 B, downloaded at each launch),
+  `cache/codex_apps_server_info/<40 hex>.json` (189 B) and `cache/codex_apps_tools/<40 hex>.json`
+  (825,347 B): under the excluded `.codex/cache`, which was 39.6 MB in the live run.
+- `config.toml` gains a `[projects."<path>"]` table with `trust_level` `trusted` when a project
+  folder is added. Neither the model nor the permission mode (Approve for me, Full access) is
+  written to it.
+- `state_5.sqlite` on this build also has `guardian_review_feedback`,
+  `external_agent_config_imports`, `thread_spawn_edges` and `thread_read_receipts`.
+  `remote_control_enrollments` holds one row once remote control is enabled: `websocket_url`,
+  `account_id`, `app_server_client_name`, `server_id`, `environment_id`, `server_name` (the Mac's
+  host name), `updated_at` and `remote_control_enabled`, which turning connections off sets to 0
+  without removing the row.
+- `.codex-global-state.json` grew from 1,282 B before sign-in to 120,989 B by the remote-control
+  step. After remote control was enabled it gained the top-level keys
+  `electron-local-remote-control-environment-id` and `codex-mobile-has-connected-device`. After a
+  thread was deleted it kept the keys naming that thread (its prompts, description, permissions and
+  activity time) and gained `codex-writing-block-deleted-thread-v1:<uuid>`, a deletion marker.
+- A delete with the app's own command removed the thread's rollout, its `session_index.jsonl` line
+  and its rows in `state_5.sqlite`, `thread_history_1.sqlite` and `sqlite/codex-dev.db`; no
+  `archived_sessions/` directory was created. `logs_2.sqlite` kept the thread's rows.
+- Outside `~/.codex`: `~/.cache/codex-runtimes/codex-primary-runtime/` (32,625 entries), and sockets
+  under `/private/tmp/codex-browser-use/` and `/private/tmp/codex-app-tools/`, replaced at each
+  launch; none is collected.
 
 #### Standalone CLI on Linux
 
 Observed on the Ubuntu install of [section 1](#1-source-and-evidence); names, types and sizes only.
 
-- `~/.codex/packages/standalone/` and `~/.codex/packages/app-server-daemon/` (816,297,770 B together, one `skipped_excluded` row): `install.lock`, `auto-update-version` (34 B), a `current` symlink to `releases/0.162.1-aarch64-unknown-linux-musl` and that release (`bin/`, a `codex` symlink into `bin`, `codex-path/`, `codex-resources/`, `codex-package.json`). The target triple says the Linux build is statically linked against musl, a C library.
-- `~/.local/bin/codex`, a symlink to `~/.codex/packages/standalone/current/bin/codex` (no `codex-code-mode-host` link, unlike macOS), and a block in `~/.bashrc` between `# >>> Codex installer >>>` and `# <<< Codex installer <<<` that prepends `~/.local/bin` to `PATH`, as macOS got in `~/.zprofile`. Neither is collected. No `~/.config/codex`, `~/.local/share/codex`, `~/.local/state/codex` or `~/.cache/codex*` exists: the CLI uses `~/.codex` only, and `~/.cache/codex-runtimes` belongs to the desktop app.
-- The daemon runs from the `app-server-daemon` release and listens on a socket `/tmp/codex-daemon-<uid>/<64 hex>` with a `.lock` beside it; `~/.codex/app-server-control/app-server-control.sock` is a symlink to it (recorded as a `symlink` row with that target). `app-server-daemon/daemon.pid` and `daemon-updater.pid` carry `processIdentity.{bootId, startTicks}` on Linux, against `startSeconds`, `startMicroseconds` and `uniqueId` on macOS and no `processIdentity` on Windows. `daemon.stderr.log` held one `rmcp::transport::streamable_http_client` error line, and `daemon-updater.stderr.log` the JSON lines seen on Windows.
-- The Linux sandbox is bubblewrap (a tool that runs a process in its own namespaces): `/tmp/codex-bwrap-synthetic-mount-targets-<uid>/lock` appeared with the first turn.
-- `log/codex-login.log` (544 B, mode 0600): four `tracing` lines of the browser login, from `codex_cli::login: starting browser login flow` through the `codex_login::server` callback line (`has_code`, `has_state`, `has_error`, `state_valid`) and the token exchange's issuer, token endpoint and redirect URI, to `oauth token exchange succeeded`. Source-cited above ([cli/src/login.rs:85](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/login.rs#L85)).
-- Otherwise the source-described files: `auth.json`, `config.toml`, `installation_id`, `version.json`, `.sandbox_migration`, `.sqlite-maintenance.lock`, `history.jsonl` (one line per turn), `session_index.jsonl`, the SQLite stores with WAL sidecars, `models_cache.json`, `cache/`, `plugins/cache/openai-curated-remote` and `plugins/.remote-plugin-install-staging`, `skills/.system`, `tmp/`, an empty `shell_snapshots/`, `thread-writer-locks/.coordination.lock` and `tui-thread-reference-capabilities/<thread uuid>`.
+- `~/.codex/packages/standalone/` and `~/.codex/packages/app-server-daemon/` (816,297,770 B
+  together, one `skipped_excluded` row): `install.lock`, `auto-update-version` (34 B), a `current`
+  symlink to `releases/0.162.1-aarch64-unknown-linux-musl` and that release (`bin/`, a `codex`
+  symlink into `bin`, `codex-path/`, `codex-resources/`, `codex-package.json`). The target triple
+  says the Linux build is statically linked against musl, a C library.
+- `~/.local/bin/codex`, a symlink to `~/.codex/packages/standalone/current/bin/codex` (no
+  `codex-code-mode-host` link, unlike macOS), and a block in `~/.bashrc` between
+  `# >>> Codex installer >>>` and `# <<< Codex installer <<<` that prepends `~/.local/bin` to
+  `PATH`, as macOS got in `~/.zprofile`. Neither is collected. No `~/.config/codex`,
+  `~/.local/share/codex`, `~/.local/state/codex` or `~/.cache/codex*` exists: the CLI uses
+  `~/.codex` only, and `~/.cache/codex-runtimes` belongs to the desktop app.
+- The daemon runs from the `app-server-daemon` release and listens on a socket
+  `/tmp/codex-daemon-<uid>/<64 hex>` with a `.lock` beside it;
+  `~/.codex/app-server-control/app-server-control.sock` is a symlink to it (recorded as a `symlink`
+  row with that target). `app-server-daemon/daemon.pid` and `daemon-updater.pid` carry
+  `processIdentity.{bootId, startTicks}` on Linux, against `startSeconds`, `startMicroseconds` and
+  `uniqueId` on macOS and no `processIdentity` on Windows. `daemon.stderr.log` held one
+  `rmcp::transport::streamable_http_client` error line, and `daemon-updater.stderr.log` the JSON
+  lines seen on Windows.
+- The Linux sandbox is bubblewrap (a tool that runs a process in its own namespaces):
+  `/tmp/codex-bwrap-synthetic-mount-targets-<uid>/lock` appeared with the first turn.
+- `log/codex-login.log` (544 B, mode 0600): four `tracing` lines of the browser login, from
+  `codex_cli::login: starting browser login flow` through the `codex_login::server` callback line
+  (`has_code`, `has_state`, `has_error`, `state_valid`) and the token exchange's issuer, token
+  endpoint and redirect URI, to `oauth token exchange succeeded`. Source-cited above
+  ([cli/src/login.rs:85](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/login.rs#L85)).
+- Otherwise the source-described files: `auth.json`, `config.toml`, `installation_id`,
+  `version.json`, `.sandbox_migration`, `.sqlite-maintenance.lock`, `history.jsonl` (one line per
+  turn), `session_index.jsonl`, the SQLite stores with WAL sidecars, `models_cache.json`, `cache/`,
+  `plugins/cache/openai-curated-remote` and `plugins/.remote-plugin-install-staging`,
+  `skills/.system`, `tmp/`, an empty `shell_snapshots/`, `thread-writer-locks/.coordination.lock`
+  and `tui-thread-reference-capabilities/<thread uuid>`.
 
 #### Standing grants
 
-From the source review of 2026-10-19 at [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857); not seen on a real install.
+From the source review of 2026-10-19 at
+[`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857); not
+seen on a real install.
 
-- `rules/default.rules`: Starlark lines (Starlark is the Python-like configuration language of Codex's exec policy) appended when the user approves a command and asks Codex to remember it, `prefix_rule(pattern=[...], decision="allow")`, and when the user allows or denies a network host, `network_rule(host=..., protocol=..., decision=...)` ([core/src/exec_policy.rs:54-56](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/exec_policy.rs#L54-L56), [874-876](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/exec_policy.rs#L874-L876), [execpolicy/src/amend.rs:65-80](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/execpolicy/src/amend.rs#L65-L80), [85-124](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/execpolicy/src/amend.rs#L85-L124)). Collected, not excluded, no credential. The same `rules/` directory in a project's `.codex/` is a project file ([section 5](#5-project-local-files)).
-- `config.toml` standing grants: `approval_policy`, `sandbox_mode`, `approvals_reviewer`, `default_permissions`, `[projects."<path>"] trust_level` and `approval_mode = "approve"` under a tool of `mcp_servers`, `plugins` or `apps` once the user approved that tool for good ([config/src/config_toml.rs:195-239](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/config/src/config_toml.rs#L195-L239), [473](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/config/src/config_toml.rs#L473), [core/src/mcp_tool_call.rs:2394-2457](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/mcp_tool_call.rs#L2394-L2457)). Collected.
-- Started by another agent with approvals bypassed (Agent Zero source review of 2026-10-19, at [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a)): Agent Zero's Orchestrator plugin, which tells that agent how to drive other coding CLIs on the host or in its container, defaults Codex to `bypass_sandbox: true` and runs `codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox` ([`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37), [`plugins/_orchestrator/README.md:86`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/README.md#L86)). Such a thread is an ordinary rollout in Codex's own store; the plugin's permission settings are in [section 13 of `analyzer/research/agent-zero.md`](agent-zero.md#13-parser-plan).
+- `rules/default.rules`: Starlark lines (Starlark is the Python-like configuration language of
+  Codex's exec policy) appended when the user approves a command and asks Codex to remember it,
+  `prefix_rule(pattern=[...], decision="allow")`, and when the user allows or denies a network host,
+  `network_rule(host=..., protocol=..., decision=...)`
+  ([core/src/exec_policy.rs:54-56](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/exec_policy.rs#L54-L56),
+  [874-876](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/exec_policy.rs#L874-L876),
+  [execpolicy/src/amend.rs:65-80](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/execpolicy/src/amend.rs#L65-L80),
+  [85-124](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/execpolicy/src/amend.rs#L85-L124)).
+  Collected, not excluded, no credential. The same `rules/` directory in a project's `.codex/` is a
+  project file ([section 5](#5-project-local-files)).
+- `config.toml` standing grants: `approval_policy`, `sandbox_mode`, `approvals_reviewer`,
+  `default_permissions`, `[projects."<path>"] trust_level` and `approval_mode = "approve"` under a
+  tool of `mcp_servers`, `plugins` or `apps` once the user approved that tool for good
+  ([config/src/config_toml.rs:195-239](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/config/src/config_toml.rs#L195-L239),
+  [473](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/config/src/config_toml.rs#L473),
+  [core/src/mcp_tool_call.rs:2394-2457](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/mcp_tool_call.rs#L2394-L2457)).
+  Collected.
+- Started by another agent with approvals bypassed (Agent Zero source review of 2026-10-19, at
+  [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a)):
+  Agent Zero's Orchestrator plugin, which tells that agent how to drive other coding CLIs on the
+  host or in its container, defaults Codex to `bypass_sandbox: true` and runs
+  `codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox`
+  ([`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37),
+  [`plugins/_orchestrator/README.md:86`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/README.md#L86)).
+  Such a thread is an ordinary rollout in Codex's own store; the plugin's permission settings are in
+  [section 13 of `analyzer/research/agent-zero.md`](agent-zero.md#13-parser-plan).
 
 #### Deletion
 
-From source at [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857). A `thread/delete` request (the TUI and the desktop app both go through the app server) refuses a thread whose rollout a fork still references, then removes, for the thread and its spawned subagents: the rollout under `sessions/` and under `archived_sessions/`, both the `.jsonl` and the `.jsonl.zst` form, and the thread's `session_index.jsonl` lines ([app-server/src/request_processors/thread_delete.rs:31-63](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/app-server/src/request_processors/thread_delete.rs#L31-L63), [thread-store/src/local/delete_thread.rs:95-136](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/thread-store/src/local/delete_thread.rs#L95-L136), [204-281](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/thread-store/src/local/delete_thread.rs#L204-L281)); its `thread_history_1.sqlite` rows ([thread-store/src/local/thread_history.rs:242](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/thread-store/src/local/thread_history.rs#L242)); its agent message boards ([core/src/thread_manager.rs:484-496](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/thread_manager.rs#L484-L496)); and the `logs_2.sqlite` rows whose `thread_id` column is the thread, its queued items, its memories `stage1_outputs` row, its goal, and its `state_5.sqlite` rows in `thread_dynamic_tools`, `thread_spawn_edges`, `thread_read_receipts` and `threads` ([state/src/runtime/threads.rs:1166-1216](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/threads.rs#L1166-L1216)). Neither handler touches `history.jsonl` (grepped [`delete_thread.rs`](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/thread-store/src/local/delete_thread.rs) and [`thread_delete.rs`](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/app-server/src/request_processors/thread_delete.rs) for `history.jsonl` and `message_history`), the memories files (pruned only at the next consolidation), `db-backups/` or a log row that names the thread only in its text. The macOS round of 2026-10-18 found `logs_2.sqlite` kept the deleted thread's rows ([macOS, ChatGPT 26.1013.40934](#macos-chatgpt-26101340934)); source deletes only rows whose `thread_id` column matches, so which rows survived (rows with the id only in their message text, rows written after the delete, or a build that did not yet delete log rows) was not determined. An archive (`thread/archive`) moves each rollout into `archived_sessions/` under its own file name, without the date directories ([thread-store/src/local/archive_thread.rs:67-130](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/thread-store/src/local/archive_thread.rs#L67-L130)).
+From source at
+[`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857). A
+`thread/delete` request (the TUI and the desktop app both go through the app server) refuses a
+thread whose rollout a fork still references, then removes, for the thread and its spawned
+subagents: the rollout under `sessions/` and under `archived_sessions/`, both the `.jsonl` and the
+`.jsonl.zst` form, and the thread's `session_index.jsonl` lines
+([app-server/src/request_processors/thread_delete.rs:31-63](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/app-server/src/request_processors/thread_delete.rs#L31-L63),
+[thread-store/src/local/delete_thread.rs:95-136](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/thread-store/src/local/delete_thread.rs#L95-L136),
+[204-281](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/thread-store/src/local/delete_thread.rs#L204-L281));
+its `thread_history_1.sqlite` rows
+([thread-store/src/local/thread_history.rs:242](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/thread-store/src/local/thread_history.rs#L242));
+its agent message boards
+([core/src/thread_manager.rs:484-496](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/thread_manager.rs#L484-L496));
+and the `logs_2.sqlite` rows whose `thread_id` column is the thread, its queued items, its memories
+`stage1_outputs` row, its goal, and its `state_5.sqlite` rows in `thread_dynamic_tools`,
+`thread_spawn_edges`, `thread_read_receipts` and `threads`
+([state/src/runtime/threads.rs:1166-1216](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/threads.rs#L1166-L1216)).
+Neither handler touches `history.jsonl` (grepped
+[`delete_thread.rs`](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/thread-store/src/local/delete_thread.rs)
+and
+[`thread_delete.rs`](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/app-server/src/request_processors/thread_delete.rs)
+for `history.jsonl` and `message_history`), the memories files (pruned only at the next
+consolidation), `db-backups/` or a log row that names the thread only in its text. The macOS round
+of 2026-10-18 found `logs_2.sqlite` kept the deleted thread's rows
+([macOS, ChatGPT 26.1013.40934](#macos-chatgpt-26101340934)); source deletes only rows whose
+`thread_id` column matches, so which rows survived (rows with the id only in their message text,
+rows written after the delete, or a build that did not yet delete log rows) was not determined. An
+archive (`thread/archive`) moves each rollout into `archived_sessions/` under its own file name,
+without the date directories
+([thread-store/src/local/archive_thread.rs:67-130](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/thread-store/src/local/archive_thread.rs#L67-L130)).
 
 ### 3. Credentials
 
-- `auth.json` with `OPENAI_API_KEY` and OAuth tokens ([login/src/auth/storage.rs:47-53](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/login/src/auth/storage.rs#L47-L53),[163](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/login/src/auth/storage.rs#L163)). Store mode `AuthCredentialsStoreMode`: `file` (default), `keyring`, `auto`, `ephemeral` ([config/src/types.rs:116-124](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L116-L124)). Keyring via `codex-keyring-store`. `ollama launch chatgpt` creates `auth.json` when the file does not exist, mode 0600, with `{"OPENAI_API_KEY": "ollama-local-codex", "auth_mode": "apikey"}`; the key is a fixed local sentinel that Ollama's proxy refuses to forward to OpenAI, not a credential, and `ollama launch chatgpt --restore` deletes the file only while it still holds that value ([Ollama `cmd/launch/codex_app.go:561-631`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L561-L631), [`internal/proxy/codex_desktop.go:40-42`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/proxy/codex_desktop.go#L40-L42)). The `.codex/auth.json` secret glob flags it either way; a flagged `auth.json` with that value means the integration was set up while no Codex login existed.
-- On Linux (observed, Ubuntu 26.04.1, Codex CLI 0.162.1 standalone, 2026-10-15) the browser login wrote the OAuth tokens to `auth.json` (4,302 B) at the moment of the token exchange; the GNOME keyring was not used (`~/.local/share/keyrings` held only the stock `login.keyring` and `user.keystore`). `log/codex-login.log` names the login endpoints and the callback's flags, never a token, and is rightly collected unflagged.
-- `.credentials.json`: MCP OAuth token fallback when keyring unavailable ([rmcp-client/src/oauth.rs:17](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rmcp-client/src/oauth.rs#L17),[857](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rmcp-client/src/oauth.rs#L857); [config/src/types.rs:138](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L138)).
-- `secrets/` gateway OAuth and local secrets, age-encrypted (`gateway_oauth.age`, `local.age`, `gateway_oauth.lock`) ([login/src/gateway_auth_storage.rs:20-24](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/login/src/gateway_auth_storage.rs#L20-L24), [secrets/src/local.rs:166](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/secrets/src/local.rs#L166),[587-591](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/secrets/src/local.rs#L587-L591)).
-- `.sandbox-secrets/` Windows sandbox tokens ([setup.rs:196](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/setup.rs#L196)). Observed with Codex Desktop: `sandbox_users.json` (828 B) with `offline` and `online` objects, each `{username, password}`, and `version`: the passwords of the two sandbox accounts. Flagged by `.codex/.sandbox-secrets/*`.
-- `.codex-global-state.json` and its `.bak` (observed, Codex Desktop only): ChatGPT conversation resume tokens under `electron-persisted-atom-state` `chatgpt-conversation-resume-tokens-v1`, the account and user ids in `cloud-pet-artwork-cache` and in the token keys, and the user's prompts in `prompt-history`. Flagged by `.codex/.codex-global-state.json*` from collector 1.12.0 (issue 115); before that, collector 1.12.0 from `main` collected them unflagged.
-- `shell_snapshots/<thread uuid>.<unix ns>.sh` (observed on macOS, Codex Desktop 0.163.0-alpha.10.2 inside ChatGPT 26.1013.40934, 2026-10-18; written by [core/src/shell_snapshot.rs:107](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/shell_snapshot.rs#L107)): 43 lines, a `# Snapshot file` header, 29 `export NAME=...` lines, 2 aliases, `unalias -a` and `setopt` lines, the user's exported login-shell environment replayed for the sandbox. The exported names on the clean lab VM included `BROWSER_USE_ACCESS_VERIFYING_IDENTITY`, `CODEX_TASK_WORKSPACE_VERIFYING_IDENTITY`, `CODEX_APP_TOOLS_PIPE_PATH`, `SSH_AUTH_SOCK`, `HOME`, `USER` and `TMPDIR`, and no key-like name; on a workstation any API key the login shell exports is copied into the file. Flagged by `.codex/shell_snapshots/*` from collector 1.15.0 (issue 160); collector 1.14.0 collected them unflagged.
-- The desktop app's global state also carries the account's ids inside key names (observed on macOS, 2026-10-18): `chatgpt-work-models-v1/user-<account id>/<uuid>` and the JSON-array keys of `new-task-execution-by-account-project`. The file is flagged already.
-- Remote control's server token (observed on macOS, 2026-10-18): `logs_2.sqlite` records its refresh when connections are turned back on, never the token; `state_5.sqlite` `remote_control_enrollments` has no token column, `auth.json` did not change, and no login keychain item named after OpenAI, Codex or ChatGPT existed, so where the token is kept was not determined.
-- `auth.json` as Codex Desktop writes it (observed): `OPENAI_API_KEY` `null`, `auth_mode`, `last_refresh` and `tokens` (`access_token`, `id_token`, `refresh_token`, `account_id`).
-- `config.toml` can embed `experimental_bearer_token` per provider ([model-provider-info/src/lib.rs:149-157](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/model-provider-info/src/lib.rs#L149-L157)); `env_key` names an env var instead.
-- A copy of `auth.json` outside the home (Ollama source review of 2026-10-19, at [`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120)): `ollama launch chatgpt` copies `~/.codex/auth.json` and `models_cache.json` into a scratch `CODEX_HOME`, `ollama-codex-models-*` in the system temp directory, to list Codex's native models, and removes it when the command finishes ([`cmd/launch/codex_app.go:1480-1495`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/codex_app.go#L1480-L1495)). A crash leaves that copy of the Codex credential in the temp directory, which no catalog line covers; see [section 2 of `ollama.md`](ollama.md#2-per-user-storage).
+- `auth.json` with `OPENAI_API_KEY` and OAuth tokens
+  ([login/src/auth/storage.rs:47-53](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/login/src/auth/storage.rs#L47-L53),[163](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/login/src/auth/storage.rs#L163)).
+  Store mode `AuthCredentialsStoreMode`: `file` (default), `keyring`, `auto`, `ephemeral`
+  ([config/src/types.rs:116-124](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L116-L124)).
+  Keyring via `codex-keyring-store`. `ollama launch chatgpt` creates `auth.json` when the file does
+  not exist, mode 0600, with `{"OPENAI_API_KEY": "ollama-local-codex", "auth_mode": "apikey"}`; the
+  key is a fixed local sentinel that Ollama's proxy refuses to forward to OpenAI, not a credential,
+  and `ollama launch chatgpt --restore` deletes the file only while it still holds that value
+  ([Ollama `cmd/launch/codex_app.go:561-631`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L561-L631),
+  [`internal/proxy/codex_desktop.go:40-42`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/proxy/codex_desktop.go#L40-L42)).
+  The `.codex/auth.json` secret glob flags it either way; a flagged `auth.json` with that value
+  means the integration was set up while no Codex login existed.
+- On Linux (observed, Ubuntu 26.04.1, Codex CLI 0.162.1 standalone, 2026-10-15) the browser login
+  wrote the OAuth tokens to `auth.json` (4,302 B) at the moment of the token exchange; the GNOME
+  keyring was not used (`~/.local/share/keyrings` held only the stock `login.keyring` and
+  `user.keystore`). `log/codex-login.log` names the login endpoints and the callback's flags, never
+  a token, and is rightly collected unflagged.
+- `.credentials.json`: MCP OAuth token fallback when keyring unavailable
+  ([rmcp-client/src/oauth.rs:17](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rmcp-client/src/oauth.rs#L17),[857](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rmcp-client/src/oauth.rs#L857);
+  [config/src/types.rs:138](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L138)).
+- `secrets/` gateway OAuth and local secrets, age-encrypted (`gateway_oauth.age`, `local.age`,
+  `gateway_oauth.lock`)
+  ([login/src/gateway_auth_storage.rs:20-24](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/login/src/gateway_auth_storage.rs#L20-L24),
+  [secrets/src/local.rs:166](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/secrets/src/local.rs#L166),[587-591](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/secrets/src/local.rs#L587-L591)).
+- `.sandbox-secrets/` Windows sandbox tokens
+  ([setup.rs:196](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/windows-sandbox-rs/src/setup.rs#L196)).
+  Observed with Codex Desktop: `sandbox_users.json` (828 B) with `offline` and `online` objects,
+  each `{username, password}`, and `version`: the passwords of the two sandbox accounts. Flagged by
+  `.codex/.sandbox-secrets/*`.
+- `.codex-global-state.json` and its `.bak` (observed, Codex Desktop only): ChatGPT conversation
+  resume tokens under `electron-persisted-atom-state` `chatgpt-conversation-resume-tokens-v1`, the
+  account and user ids in `cloud-pet-artwork-cache` and in the token keys, and the user's prompts in
+  `prompt-history`. Flagged by `.codex/.codex-global-state.json*` from collector 1.12.0 (issue 115);
+  before that, collector 1.12.0 from `main` collected them unflagged.
+- `shell_snapshots/<thread uuid>.<unix ns>.sh` (observed on macOS, Codex Desktop 0.163.0-alpha.10.2
+  inside ChatGPT 26.1013.40934, 2026-10-18; written by
+  [core/src/shell_snapshot.rs:107](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/shell_snapshot.rs#L107)):
+  43 lines, a `# Snapshot file` header, 29 `export NAME=...` lines, 2 aliases, `unalias -a` and
+  `setopt` lines, the user's exported login-shell environment replayed for the sandbox. The exported
+  names on the clean lab VM included `BROWSER_USE_ACCESS_VERIFYING_IDENTITY`,
+  `CODEX_TASK_WORKSPACE_VERIFYING_IDENTITY`, `CODEX_APP_TOOLS_PIPE_PATH`, `SSH_AUTH_SOCK`, `HOME`,
+  `USER` and `TMPDIR`, and no key-like name; on a workstation any API key the login shell exports is
+  copied into the file. Flagged by `.codex/shell_snapshots/*` from collector 1.15.0 (issue 160);
+  collector 1.14.0 collected them unflagged.
+- The desktop app's global state also carries the account's ids inside key names (observed on macOS,
+  2026-10-18): `chatgpt-work-models-v1/user-<account id>/<uuid>` and the JSON-array keys of
+  `new-task-execution-by-account-project`. The file is flagged already.
+- Remote control's server token (observed on macOS, 2026-10-18): `logs_2.sqlite` records its refresh
+  when connections are turned back on, never the token; `state_5.sqlite`
+  `remote_control_enrollments` has no token column, `auth.json` did not change, and no login
+  keychain item named after OpenAI, Codex or ChatGPT existed, so where the token is kept was not
+  determined.
+- `auth.json` as Codex Desktop writes it (observed): `OPENAI_API_KEY` `null`, `auth_mode`,
+  `last_refresh` and `tokens` (`access_token`, `id_token`, `refresh_token`, `account_id`).
+- `config.toml` can embed `experimental_bearer_token` per provider
+  ([model-provider-info/src/lib.rs:149-157](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/model-provider-info/src/lib.rs#L149-L157));
+  `env_key` names an env var instead.
+- A copy of `auth.json` outside the home (Ollama source review of 2026-10-19, at
+  [`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120)):
+  `ollama launch chatgpt` copies `~/.codex/auth.json` and `models_cache.json` into a scratch
+  `CODEX_HOME`, `ollama-codex-models-*` in the system temp directory, to list Codex's native models,
+  and removes it when the command finishes
+  ([`cmd/launch/codex_app.go:1480-1495`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/codex_app.go#L1480-L1495)).
+  A crash leaves that copy of the Codex credential in the temp directory, which no catalog line
+  covers; see [section 2 of `ollama.md`](ollama.md#2-per-user-storage).
 
 ### 4. Exclusions
 
@@ -904,13 +1372,40 @@ collected as `chatgpt-desktop` since the macOS round (issue 121).
 
 ### 5. Project-local files
 
-`AGENTS.md`, `AGENTS.override.md` ([core/src/agents_md.rs:43-45](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/agents_md.rs#L43-L45)), `.codex/config.toml`, `.codex/agents/`, `.codex/hooks.json`, `.codex/hooks/`, `.codex/rules/`, `.codex/skills/` ([external-agent-migration/src/scope.rs:59-62](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/external-agent-migration/src/scope.rs#L59-L62), [detect/mod.rs:86](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/external-agent-migration/src/detect/mod.rs#L86),[167](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/external-agent-migration/src/detect/mod.rs#L167),[270](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/external-agent-migration/src/detect/mod.rs#L270); [exec-server/src/discoverV2/capability_locations.rs:72](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/exec-server/src/discoverV2/capability_locations.rs#L72)), `.agents/skills` ([external-agent-migration/src/service.rs:467](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/external-agent-migration/src/service.rs#L467)), `generated_images/` in cwd ([ext/image-generation/src/tool.rs:332](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/ext/image-generation/src/tool.rs#L332)). No per-project database.
+`AGENTS.md`, `AGENTS.override.md`
+([core/src/agents_md.rs:43-45](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/agents_md.rs#L43-L45)),
+`.codex/config.toml`, `.codex/agents/`, `.codex/hooks.json`, `.codex/hooks/`, `.codex/rules/`,
+`.codex/skills/`
+([external-agent-migration/src/scope.rs:59-62](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/external-agent-migration/src/scope.rs#L59-L62),
+[detect/mod.rs:86](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/external-agent-migration/src/detect/mod.rs#L86),[167](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/external-agent-migration/src/detect/mod.rs#L167),[270](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/external-agent-migration/src/detect/mod.rs#L270);
+[exec-server/src/discoverV2/capability_locations.rs:72](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/exec-server/src/discoverV2/capability_locations.rs#L72)),
+`.agents/skills`
+([external-agent-migration/src/service.rs:467](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/external-agent-migration/src/service.rs#L467)),
+`generated_images/` in cwd
+([ext/image-generation/src/tool.rs:332](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/ext/image-generation/src/tool.rs#L332)).
+No per-project database.
 
 ### 6. Where the project path is recorded
 
-- First line of every rollout: `SessionMeta` with `cwd: PathBuf`, `timestamp`, `id`, `originator`, `cli_version`, `source`, `runtime_workspace_roots` ([protocol/src/protocol.rs:3123-3153](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3123-L3153)). Compressed rollouts need zstd before grep.
-- `session_index.jsonl` ([rollout/src/session_index.rs](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/session_index.rs)) and `state_5.sqlite` threads table (analyzer).
-- Codex Desktop (observed): `state_5.sqlite` `project_roots` `path`; `sqlite/codex-dev.db` `local_thread_catalog` `cwd`; and in `.codex-global-state.json`, `local-projects` `rootPaths`, `thread-workspace-root-hints` and `thread-projectless-output-directories`. On the install both rollouts' `cwd` values named the same directories, so the rollouts, which project discovery already reads, are enough; the PowerShell collector read none of them until the fix for issue 114, because the running app held them open. On macOS (ChatGPT 26.1013.40934, 2026-10-18) an added project is also a `[projects."<path>"]` table in `config.toml`, and collector 1.14.0 took the scheduled task's projectless output directory `~/Documents/Codex/2026-10-18/new-chat` from the rollouts as a project beside `~/Demo` (issue 149). Since collector 1.16.0 project discovery drops a rollout `cwd` that is `<home>/Documents/Codex` or lies under it, and the `codex-cli|Documents/Codex` catalog line collects the directory whole instead ([section 2](#2-per-user-storage)).
+- First line of every rollout: `SessionMeta` with `cwd: PathBuf`, `timestamp`, `id`, `originator`,
+  `cli_version`, `source`, `runtime_workspace_roots`
+  ([protocol/src/protocol.rs:3123-3153](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3123-L3153)).
+  Compressed rollouts need zstd before grep.
+- `session_index.jsonl`
+  ([rollout/src/session_index.rs](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/session_index.rs))
+  and `state_5.sqlite` threads table (analyzer).
+- Codex Desktop (observed): `state_5.sqlite` `project_roots` `path`; `sqlite/codex-dev.db`
+  `local_thread_catalog` `cwd`; and in `.codex-global-state.json`, `local-projects` `rootPaths`,
+  `thread-workspace-root-hints` and `thread-projectless-output-directories`. On the install both
+  rollouts' `cwd` values named the same directories, so the rollouts, which project discovery
+  already reads, are enough; the PowerShell collector read none of them until the fix for issue 114,
+  because the running app held them open. On macOS (ChatGPT 26.1013.40934, 2026-10-18) an added
+  project is also a `[projects."<path>"]` table in `config.toml`, and collector 1.14.0 took the
+  scheduled task's projectless output directory `~/Documents/Codex/2026-10-18/new-chat` from the
+  rollouts as a project beside `~/Demo` (issue 149). Since collector 1.16.0 project discovery drops
+  a rollout `cwd` that is `<home>/Documents/Codex` or lies under it, and the
+  `codex-cli|Documents/Codex` catalog line collects the directory whole instead
+  ([section 2](#2-per-user-storage)).
 
 ## Parsing
 
@@ -928,16 +1423,18 @@ Paths relative to the home; `$CODEX_HOME` replaces `.codex` when set.
   [rollout_file_name.rs:40-47](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/rollout_file_name.rs#L40-L47)).
   Subagent threads get their own rollout in the same tree. **Parser reads.**
 - `.codex/archived_sessions/`, same layout
-  ([rollout/src/lib.rs:86-87](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/lib.rs#L86-L87)). **Parser reads.**
-- `*.jsonl.zst`: zstd level 3, written by a background worker for rollouts
-  idle seven days, in both trees
+  ([rollout/src/lib.rs:86-87](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/lib.rs#L86-L87)).
+  **Parser reads.**
+- `*.jsonl.zst`: zstd level 3, written by a background worker for rollouts idle seven days, in both
+  trees
   ([compression.rs:29](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L29),
   [362-363](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L362-L363),
   [500-501](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L500-L501)).
-  The worker runs only with the `local_thread_store_compression` feature,
-  which is under development and off by default
+  The worker runs only with the `local_thread_store_compression` feature, which is under development
+  and off by default
   ([features/src/lib.rs:1212-1217](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/features/src/lib.rs#L1212-L1217),
-  [core/src/thread_manager.rs:461-503](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/thread_manager.rs#L461-L503)). **Parser reads** (needs `zstandard`).
+  [core/src/thread_manager.rs:461-503](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/thread_manager.rs#L461-L503)).
+  **Parser reads** (needs `zstandard`).
 - `.codex/history.jsonl`: one line per submitted prompt, all threads
   ([section 10](#10-other-stores)). **Parser reads.**
 - `.codex/session_index.jsonl`: thread renames ([section 10](#10-other-stores)). Not read.
@@ -946,11 +1443,31 @@ Paths relative to the home; `$CODEX_HOME` replaces `.codex` when set.
 - `.codex/state_5.sqlite`, `.codex/thread_history_1.sqlite`: thread metadata
   and a projection of paginated rollouts ([section 10](#10-other-stores)).
   **Parser reads**, as secondary sources (issue 122).
-- **Copies held by other agents.** Three agents copy these transcripts into stores of their own, where the copy outlives the original file (source reviews of 2026-10-19; none seen on a real install):
-  - Hermes Agent's `hermes_cli/foreign_sessions.py` reads Codex's `~/.codex/sessions/**/rollout-*.jsonl` and appends their user and assistant turns to its `state.db` as a new session whose `origin_json.imported_from` names the tool, the source path and the foreign session id, stamped with the import time ([`hermes_cli/foreign_sessions.py:254-260`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/foreign_sessions.py#L254-L260); [section 7 of `hermes.md`](hermes.md#7-transcript-stores)).
-  - Cline's SDK session import makes an ordinary Cline session with a new id and `metadata.importedFrom{tool, sourceSessionId, sourcePath, importedAt, sourceProvider, sourceModel}`; at the reviewed commit only Cline's example desktop app calls it ([`sdk/packages/core/src/services/session-import/service.ts:349-366`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/services/session-import/service.ts#L349-L366); [section 7 of `cline.md`](cline.md#7-transcript-stores)).
-  - Pydantic AI's CLAI 2.0 (its command-line chat client) `/resume` copies them into its `sessions.db` ([`codex_sessions.py:35-37`](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/runtime/codex_sessions.py#L35-L37); [section 2 of `collectors/research/pydantic-clai.md`](pydantic-clai.md#2-per-user-storage)).
-- **Indexed by Zed.** Zed's agent panel can run this agent as an external agent over ACP (the Agent Client Protocol, the JSON-RPC protocol Zed uses to drive another agent); its threads sidebar then lists the session in `sidebar_threads` with `agent_id` `codex-acp` and the ACP session id in `session_id`, while the transcript stays in this agent's own store ([`agent_servers/src/custom.rs:17-19`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_servers/src/custom.rs#L17-L19); [section 7 of `zed.md`](zed.md#7-transcript-stores)). Whether that id equals the session id this agent records was not determined (Zed source review of 2026-10-19).
+- **Copies held by other agents.** Three agents copy these transcripts into stores of their own,
+  where the copy outlives the original file (source reviews of 2026-10-19; none seen on a real
+  install):
+  - Hermes Agent's `hermes_cli/foreign_sessions.py` reads Codex's
+    `~/.codex/sessions/**/rollout-*.jsonl` and appends their user and assistant turns to its
+    `state.db` as a new session whose `origin_json.imported_from` names the tool, the source path
+    and the foreign session id, stamped with the import time
+    ([`hermes_cli/foreign_sessions.py:254-260`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/foreign_sessions.py#L254-L260);
+    [section 7 of `hermes.md`](hermes.md#7-transcript-stores)).
+  - Cline's SDK session import makes an ordinary Cline session with a new id and
+    `metadata.importedFrom{tool, sourceSessionId, sourcePath, importedAt, sourceProvider, sourceModel}`;
+    at the reviewed commit only Cline's example desktop app calls it
+    ([`sdk/packages/core/src/services/session-import/service.ts:349-366`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/services/session-import/service.ts#L349-L366);
+    [section 7 of `cline.md`](cline.md#7-transcript-stores)).
+  - Pydantic AI's CLAI 2.0 (its command-line chat client) `/resume` copies them into its
+    `sessions.db`
+    ([`codex_sessions.py:35-37`](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/runtime/codex_sessions.py#L35-L37);
+    [section 2 of `pydantic-clai.md`](pydantic-clai.md#2-per-user-storage)).
+- **Indexed by Zed.** Zed's agent panel can run this agent as an external agent over ACP (the Agent
+  Client Protocol, the JSON-RPC protocol Zed uses to drive another agent); its threads sidebar then
+  lists the session in `sidebar_threads` with `agent_id` `codex-acp` and the ACP session id in
+  `session_id`, while the transcript stays in this agent's own store
+  ([`agent_servers/src/custom.rs:17-19`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_servers/src/custom.rs#L17-L19);
+  [section 7 of `zed.md`](zed.md#7-transcript-stores)). Whether that id equals the session id this
+  agent records was not determined (Zed source review of 2026-10-19).
 
 #### What survives a delete
 
@@ -960,7 +1477,7 @@ archived, plain and compressed), its `session_index.jsonl` lines, its
 rows in `state_5.sqlite`, `thread_history_1.sqlite`, `queue_1.sqlite`,
 `goals_1.sqlite` and the memories databases, and the `logs_2.sqlite`
 rows whose `thread_id` column is the thread
-([Deletion in `collectors/research/codex-cli.md`](#deletion));
+([Deletion](#deletion));
 an archive instead moves the rollout into `archived_sessions/`. It
 leaves `history.jsonl`, one line per prompt typed into the TUI with the
 thread id and its time in seconds (unless `history.persistence` is
@@ -997,7 +1514,8 @@ Codex's own reader requires `timestamp` and treats `ordinal` as optional
 `history_base` the file continues
 ([rollout/src/ordinal.rs:22-44](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/ordinal.rs#L22-L44)).
 
-Line types ([history/src/lib.rs:209-227](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/history/src/lib.rs#L209-L227));
+Line types
+([history/src/lib.rs:209-227](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/history/src/lib.rs#L209-L227));
 which ones are written is decided in
 [rollout/src/policy.rs:22-50](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/policy.rs#L22-L50):
 
@@ -1020,67 +1538,62 @@ which ones are written is decided in
 
 `session_meta` (line 1;
 [protocol.rs:3117-3198](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3117-L3198)):
-`id` (this thread), `session_id` (the root thread's id; filled from `id`
-when absent in old files,
+`id` (this thread), `session_id` (the root thread's id; filled from `id` when absent in old files,
 [3243-3269](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3243-L3269)),
-`forked_from_id`, `parent_thread_id`, `timestamp`, `cwd`,
-`runtime_workspace_roots`, `originator` (`codex-tui` locally), `cli_version`,
-`source` (`cli`, `vscode`, `exec`, `mcp`, a custom string, or
-`{"subagent": ...}`; [2824-2837](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2824-L2837), [2905-2923](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2905-L2923)),
-`thread_source` (`user`, `subagent`, `guardian_review`,
-`memory_consolidation` or a feature name; [2843-2849](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2843-L2849)),
-`agent_nickname`, `agent_role`, `agent_path`, `model_provider`,
-`base_instructions`, `dynamic_tools`, `memory_mode`, `history_mode`
-(`legacy` or `paginated`), `history_base`, `context_window`, and the account
-fields `creator_user_id`, `creator_account_id`. Beside them, `git`
+`forked_from_id`, `parent_thread_id`, `timestamp`, `cwd`, `runtime_workspace_roots`, `originator`
+(`codex-tui` locally), `cli_version`, `source` (`cli`, `vscode`, `exec`, `mcp`, a custom string, or
+`{"subagent": ...}`;
+[2824-2837](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2824-L2837),
+[2905-2923](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2905-L2923)),
+`thread_source` (`user`, `subagent`, `guardian_review`, `memory_consolidation` or a feature name;
+[2843-2849](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2843-L2849)),
+`agent_nickname`, `agent_role`, `agent_path`, `model_provider`, `base_instructions`,
+`dynamic_tools`, `memory_mode`, `history_mode` (`legacy` or `paginated`), `history_base`,
+`context_window`, and the account fields `creator_user_id`, `creator_account_id`. Beside them, `git`
 (`commit_hash`, `branch`, `repository_url`;
-[3436-3452](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3436-L3452)) is written only when `cwd` is inside a
-git repository
+[3436-3452](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3436-L3452))
+is written only when `cwd` is inside a git repository
 ([recorder.rs:1978-1990](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/recorder.rs#L1978-L1990)).
 
 #### `turn_context`
 
 `turn_context` (once per user turn and after mid-turn compaction;
 [protocol.rs:3296-3358](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3296-L3358)):
-`turn_id`, `root_turn_id`, `cwd`, `workspace_roots`, `current_date`,
-`timezone`, `approval_policy`, `sandbox_policy`, `permission_profile`,
-`network`, `model`, `collaboration_mode` (with its own `settings.model`),
-`effort`, `summary`, `personality` and more. The four policy fields:
-`approval_policy` is a kebab-case string, `untrusted`, `on-request` (the
-default, also read from the old `on-failure`) or `never`, or an object
-`{"granular": {...}}` for per-flow controls
+`turn_id`, `root_turn_id`, `cwd`, `workspace_roots`, `current_date`, `timezone`, `approval_policy`,
+`sandbox_policy`, `permission_profile`, `network`, `model`, `collaboration_mode` (with its own
+`settings.model`), `effort`, `summary`, `personality` and more. The four policy fields:
+`approval_policy` is a kebab-case string, `untrusted`, `on-request` (the default, also read from the
+old `on-failure`) or `never`, or an object `{"granular": {...}}` for per-flow controls
 ([protocol.rs:986-1009](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L986-L1009));
-`sandbox_policy` is an object tagged by `type`: `danger-full-access`,
-`read-only`, `external-sandbox` or `workspace-write`, the last three
-with fields of their own
+`sandbox_policy` is an object tagged by `type`: `danger-full-access`, `read-only`,
+`external-sandbox` or `workspace-write`, the last three with fields of their own
 ([protocol.rs:1072-1120](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L1072-L1120));
-`permission_profile`, optional, is an object tagged by `type`: `managed`
-(`file_system`, `network`), `disabled` or `external` (`network`)
-([models.rs:421-435](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L421-L435)); `network`,
-optional, is `{allowed_domains, denied_domains}`, two lists of strings
+`permission_profile`, optional, is an object tagged by `type`: `managed` (`file_system`, `network`),
+`disabled` or `external` (`network`)
+([models.rs:421-435](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L421-L435));
+`network`, optional, is `{allowed_domains, denied_domains}`, two lists of strings
 ([protocol.rs:3291-3294](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3291-L3294)).
 
 #### `event_msg`
 
 `event_msg` (tagged enum,
-[protocol.rs:1352-1358](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L1352-L1358)). Persisted in every mode
+[protocol.rs:1352-1358](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L1352-L1358)).
+Persisted in every mode
 ([policy.rs:127-139](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/policy.rs#L127-L139)):
-`task_started` (`turn_id`, `root_turn_id`, `trace_id`, `started_at` epoch
-s, `model_context_window`, `collaboration_mode_kind`), `task_complete`
-(`turn_id`, `last_agent_message`, `error`, `started_at`, `completed_at`,
-`duration_ms`, `time_to_first_token_ms`)
-([2152-2197](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2152-L2197); the wire names
-are kept from v1, [1407-1418](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L1407-L1418)),
+`task_started` (`turn_id`, `root_turn_id`, `trace_id`, `started_at` epoch s, `model_context_window`,
+`collaboration_mode_kind`), `task_complete` (`turn_id`, `last_agent_message`, `error`, `started_at`,
+`completed_at`, `duration_ms`, `time_to_first_token_ms`)
+([2152-2197](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2152-L2197);
+the wire names are kept from v1,
+[1407-1418](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L1407-L1418)),
 `turn_aborted` (`turn_id`, `reason`, `error`, times;
 [4243-4263](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L4243-L4263)),
 `thread_rolled_back` (`num_turns`;
 [3692-3696](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3692-L3696)),
-`token_count`, `thread_goal_updated`, `thread_settings_applied`, and
-`item_completed` (below). Legacy-mode rollouts also keep `user_message`
-(`message`, `images`), `agent_message` (`message`, `phase`),
-`agent_reasoning` and `agent_reasoning_raw_content` (`text`),
-`entered_review_mode`, `exited_review_mode`, `patch_apply_end`,
-`context_compacted`, `mcp_tool_call_end`, `web_search_end`,
+`token_count`, `thread_goal_updated`, `thread_settings_applied`, and `item_completed` (below).
+Legacy-mode rollouts also keep `user_message` (`message`, `images`), `agent_message` (`message`,
+`phase`), `agent_reasoning` and `agent_reasoning_raw_content` (`text`), `entered_review_mode`,
+`exited_review_mode`, `patch_apply_end`, `context_compacted`, `mcp_tool_call_end`, `web_search_end`,
 `image_generation_end` and `sub_agent_activity`
 ([policy.rs:141-158](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/policy.rs#L141-L158);
 [protocol.rs:2518-2544](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2518-L2544),
@@ -1126,62 +1639,66 @@ Most variants carry an optional `id` and
 fractional epoch seconds, `content_item_kinds`;
 [models.rs:954-994](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L954-L994)).
 
-- `message`: `role` (`user`, `assistant`, `developer`; the harness's own
-  instructions go in as `developer`), `content[]` of `input_text`,
-  `input_image` (`image_url` or `file_id`), `input_audio` or `output_text`
-  blocks, each with `text` where textual
+- `message`: `role` (`user`, `assistant`, `developer`; the harness's own instructions go in as
+  `developer`), `content[]` of `input_text`, `input_image` (`image_url` or `file_id`), `input_audio`
+  or `output_text` blocks, each with `text` where textual
   ([876-896](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L876-L896)),
   and `phase` (`commentary` or `final_answer`;
-  [938-952](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L938-L952), [1021-1036](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1021-L1036)).
-  A `role: "user"` message is not always typed by the user: the harness
-  injects `AGENTS.md` instructions, `<environment_context>`, skill text,
-  subagent notifications, turn-aborted notices and user shell commands as
-  user-role messages
+  [938-952](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L938-L952),
+  [1021-1036](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1021-L1036)).
+  A `role: "user"` message is not always typed by the user: the harness injects `AGENTS.md`
+  instructions, `<environment_context>`, skill text, subagent notifications, turn-aborted notices
+  and user shell commands as user-role messages
   ([core/src/context/contextual_user_message.rs:22-37](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/context/contextual_user_message.rs#L22-L37)).
-  Current versions label each content block in
-  `content_item_kinds`; typed input is `user.text`, the environment block
-  `environments.environment_context`
+  Current versions label each content block in `content_item_kinds`; typed input is `user.text`, the
+  environment block `environments.environment_context`
   ([contextual_user_message.rs:51-82](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/context/contextual_user_message.rs#L51-L82),
   [core/src/context/world_state/environment.rs:200-203](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/context/world_state/environment.rs#L200-L203)).
-  Locally the first turn had three `developer` messages and two `user`
-  messages, of which one was `environments.environment_context` and one
-  `user.text`.
-- `reasoning`: `summary[]` of `summary_text` (`text`), `content[]` of
-  `reasoning_text` or `text`, `encrypted_content`
-  ([1048-1060](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1048-L1060), [1982-1993](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1982-L1993)).
+  Locally the first turn had three `developer` messages and two `user` messages, of which one was
+  `environments.environment_context` and one `user.text`.
+- `reasoning`: `summary[]` of `summary_text` (`text`), `content[]` of `reasoning_text` or `text`,
+  `encrypted_content`
+  ([1048-1060](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1048-L1060),
+  [1982-1993](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1982-L1993)).
   `content` is written only when it holds `reasoning_text` parts or is null
   ([1624-1631](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1624-L1631)).
 - `function_call`: `name`, `namespace` (MCP and plugin tools), `arguments`
   (a JSON **string**), `call_id`
   ([1074-1093](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1074-L1093)).
-- `custom_tool_call`: `status`, `call_id`, `name`, `namespace`, `input`
-  (free text) ([1134-1151](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1134-L1151)).
+- `custom_tool_call`: `status`, `call_id`, `name`, `namespace`, `input` (free text)
+  ([1134-1151](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1134-L1151)).
   Code mode's `exec` tool
   ([code-mode-protocol/src/lib.rs:52](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/code-mode-protocol/src/lib.rs#L52))
-  and the freeform `apply_patch` arrive this way; the one local call was
-  `exec`.
-- `local_shell_call`: `call_id`, `status`, `action` (`type: "exec"`,
-  `command` array, `timeout_ms`, `working_directory`, `env`, `user`)
-  ([1061-1073](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1061-L1073), [1937-1950](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1937-L1950)).
-- `function_call_output`, `custom_tool_call_output`: `call_id`, `name`,
-  `output`, which is a string or an array of `input_text`, `input_image`,
-  `input_audio`, `encrypted_content` items
-  ([1114-1133](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1114-L1133), [1155-1169](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1155-L1169), [2096-2118](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L2096-L2118), [2250-2263](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L2250-L2263)).
+  and the freeform `apply_patch` arrive this way; the one local call was `exec`.
+- `local_shell_call`: `call_id`, `status`, `action` (`type: "exec"`, `command` array, `timeout_ms`,
+  `working_directory`, `env`, `user`)
+  ([1061-1073](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1061-L1073),
+  [1937-1950](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1937-L1950)).
+- `function_call_output`, `custom_tool_call_output`: `call_id`, `name`, `output`, which is a string
+  or an array of `input_text`, `input_image`, `input_audio`, `encrypted_content` items
+  ([1114-1133](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1114-L1133),
+  [1155-1169](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1155-L1169),
+  [2096-2118](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L2096-L2118),
+  [2250-2263](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L2250-L2263)).
   Locally an array of two `input_text` items.
-- `web_search_call`: `status`, `action` (`search` with `query`/`queries`,
-  `open_page` with `url`, `find_in_page` with `url`, `pattern`)
-  ([1191-1204](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1191-L1204), [1952-1980](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1952-L1980)). No output item.
-- `tool_search_call` (`call_id`, `execution`, `arguments` object) and
-  `tool_search_output` (`call_id`, `status`, `tools[]`)
-  ([1094-1108](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1094-L1108), [1170-1182](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1170-L1182)).
-- `agent_message`: `author`, `recipient`, `content[]` of `input_text` or
-  `encrypted_content` ([906-911](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L906-L911), [1037-1047](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1037-L1047)).
+- `web_search_call`: `status`, `action` (`search` with `query`/`queries`, `open_page` with `url`,
+  `find_in_page` with `url`, `pattern`)
+  ([1191-1204](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1191-L1204),
+  [1952-1980](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1952-L1980)).
+  No output item.
+- `tool_search_call` (`call_id`, `execution`, `arguments` object) and `tool_search_output`
+  (`call_id`, `status`, `tools[]`)
+  ([1094-1108](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1094-L1108),
+  [1170-1182](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1170-L1182)).
+- `agent_message`: `author`, `recipient`, `content[]` of `input_text` or `encrypted_content`
+  ([906-911](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L906-L911),
+  [1037-1047](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1037-L1047)).
 - `image_generation_call`: `status`, `revised_prompt`, `result` (image data)
   ([1214-1226](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1214-L1226)).
-- `additional_tools` (tool definitions), `compaction` and
-  `context_compaction` (`encrypted_content`), `configuration_update`: no
-  readable conversation content
-  ([1013-1020](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1013-L1020), [1227-1253](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1227-L1253)).
+- `additional_tools` (tool definitions), `compaction` and `context_compaction`
+  (`encrypted_content`), `configuration_update`: no readable conversation content
+  ([1013-1020](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1013-L1020),
+  [1227-1253](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/models.rs#L1227-L1253)).
 
 The `metadata` sibling on a `response_item` line is harness bookkeeping:
 `client_authored`, `retained_source`, `user_input_order`,
@@ -1191,12 +1708,13 @@ and others
 
 ### 9. Joins and timestamps
 
-- **Timestamps.** Line `timestamp` and `session_meta.payload.timestamp`:
-  UTC `YYYY-MM-DDThh:mm:ss.mmmZ`, the line one taken at write time
-  ([recorder.rs:927-933](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/recorder.rs#L927-L933), [2077-2082](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/recorder.rs#L2077-L2082)); local values all had three fraction
-  digits and `Z`. `task_*` `started_at`/`completed_at`: epoch seconds;
-  `item_completed` `*_at_ms`: epoch ms; `create_time`: fractional epoch
-  seconds; `history.jsonl` `ts`: epoch seconds.
+- **Timestamps.** Line `timestamp` and `session_meta.payload.timestamp`: UTC
+  `YYYY-MM-DDThh:mm:ss.mmmZ`, the line one taken at write time
+  ([recorder.rs:927-933](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/recorder.rs#L927-L933),
+  [2077-2082](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/recorder.rs#L2077-L2082));
+  local values all had three fraction digits and `Z`. `task_*` `started_at`/`completed_at`: epoch
+  seconds; `item_completed` `*_at_ms`: epoch ms; `create_time`: fractional epoch seconds;
+  `history.jsonl` `ts`: epoch seconds.
 - **Ids.** `session_meta.payload.id` is the thread id and the file-name
   UUID; `session_id` is the root thread's id, so a subagent's rollout has
   `id` ≠ `session_id`. Reverted rollouts end `<thread id>_<rollout id>`.
@@ -1254,41 +1772,39 @@ and others
 
 #### `history.jsonl`
 
-Each line is `{session_id, ts, text}`, `ts` epoch **seconds**,
-`session_id` the thread id, one line per prompt typed into the TUI
+Each line is `{session_id, ts, text}`, `ts` epoch **seconds**, `session_id` the thread id, one line
+per prompt typed into the TUI
 ([message-history/src/lib.rs:61-66](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/message-history/src/lib.rs#L61-L66),
 [127-138](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/message-history/src/lib.rs#L127-L138)).
 Written unless `history.persistence = "none"`
-([config/src/types.rs:211-219](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L211-L219)); trimmed oldest-first when
-`history.max_bytes` is set
-([message-history/src/lib.rs:191-195](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/message-history/src/lib.rs#L191-L195)). It can outlive the rollout it
-names (deleted or ephemeral threads), so it is the one place such a
+([config/src/types.rs:211-219](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L211-L219));
+trimmed oldest-first when `history.max_bytes` is set
+([message-history/src/lib.rs:191-195](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/message-history/src/lib.rs#L191-L195)).
+It can outlive the rollout it names (deleted or ephemeral threads), so it is the one place such a
 prompt survives. Local: one line, those three keys, 10-digit `ts`.
 
 #### `session_index.jsonl`
 
-One `{id, thread_name, updated_at}` line is appended per
-rename, newest wins, `updated_at` RFC 3339 UTC with nanoseconds
-([rollout/src/session_index.rs:24-48](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/session_index.rs#L24-L48)). Titles only; local shape matches.
-Codex Desktop also lists the guardian review thread, as
-`Guardian review`, and a scheduled task's thread, under the task's
-name (macOS, build 26.1013.40934, 2026-10-18;
-[section 1](#1-source-and-evidence)). The app's delete removes the thread's line.
+One `{id, thread_name, updated_at}` line is appended per rename, newest wins, `updated_at` RFC 3339
+UTC with nanoseconds
+([rollout/src/session_index.rs:24-48](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/session_index.rs#L24-L48)).
+Titles only; local shape matches. Codex Desktop also lists the guardian review thread, as
+`Guardian review`, and a scheduled task's thread, under the task's name (macOS, build 26.1013.40934,
+2026-10-18; [section 1](#1-source-and-evidence)). The app's delete removes the thread's line.
 
 #### `state_5.sqlite` threads
 
-`state_5.sqlite` `threads`: `id`, `rollout_path`, `created_at`, `cwd`,
-`title`, `git_sha`, `git_branch`, `git_origin_url` and later
-`first_user_message`, `preview`
+`state_5.sqlite` `threads`: `id`, `rollout_path`, `created_at`, `cwd`, `title`, `git_sha`,
+`git_branch`, `git_origin_url` and later `first_user_message`, `preview`
 ([state/migrations/0001_threads.sql:1-19](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0001_threads.sql#L1-L19),
 [0007_threads_first_user_message.sql:1](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0007_threads_first_user_message.sql#L1),
-[0032_threads_preview.sql:1](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0032_threads_preview.sql#L1)); `thread_spawn_edges`
-links parent and child threads
-([0021_thread_spawn_edges.sql:1-5](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0021_thread_spawn_edges.sql#L1-L5)). A row whose rollout is gone still holds the
-first prompt. The file name is fixed beside the other databases
+[0032_threads_preview.sql:1](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0032_threads_preview.sql#L1));
+`thread_spawn_edges` links parent and child threads
+([0021_thread_spawn_edges.sql:1-5](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0021_thread_spawn_edges.sql#L1-L5)).
+A row whose rollout is gone still holds the first prompt. The file name is fixed beside the other
+databases
 ([state/src/sqlite.rs:34-39](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/sqlite.rs#L34-L39)).
-The columns the parser reads (issue 122), each only when the table has
-it:
+The columns the parser reads (issue 122), each only when the table has it:
 
 - `id`, the thread id: the rollout's `session_meta.id`, so the rows join
   the rollout's on `session_id`.
@@ -1303,14 +1819,13 @@ it:
   [0041_threads_name.sql:1](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0041_threads_name.sql#L1)),
   `source` and `thread_source`
   ([0030_threads_thread_source.sql:1](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0030_threads_thread_source.sql#L1)).
-- `first_user_message`: the first `UserMessage` event's text, trimmed
-  and with the `## My request for Codex:` prefix removed, or `[Image]`
-  or `[Audio]` for a prompt with no text
+- `first_user_message`: the first `UserMessage` event's text, trimmed and with the
+  `## My request for Codex:` prefix removed, or `[Image]` or `[Audio]` for a prompt with no text
   ([state/src/extract.rs:184-196](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/extract.rs#L184-L196),
   [protocol/src/protocol.rs:145-150](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L145-L150),
-  [2614-2635](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2614-L2635)). No column
-  records when the prompt was typed: `created_at` is the thread's
-  creation, which the TUI does before the first prompt.
+  [2614-2635](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2614-L2635)).
+  No column records when the prompt was typed: `created_at` is the thread's creation, which the TUI
+  does before the first prompt.
 
 Not read: `sandbox_policy` and `approval_mode` (the latest
 `turn_context` policy, which the rollout's `permission mode:` rows
@@ -1344,15 +1859,15 @@ Codex Desktop on Windows (observed 2026-10-15,
   ([app-server-protocol/src/protocol/thread_history_projection.rs:21-99](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs#L21-L99)).
   `history_mode` `legacy` rollouts are not projected
   ([line 1-4](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/thread_history_projection.rs#L1-L4)).
-- `thread_turns`: `status` `inProgress`, `completed`, `interrupted` or
-  `failed`, `started_at` and `completed_at` in epoch seconds (the turn
-  events' fields;
+- `thread_turns`: `status` `inProgress`, `completed`, `interrupted` or `failed`, `started_at` and
+  `completed_at` in epoch seconds (the turn events' fields;
   [protocol/src/protocol.rs:2189-2192](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L2189-L2192)),
-  `duration_ms`, `error_json`; `rollout_end_ordinal` from migration
-  0003 ([0003_turn_rollout_positions.sql:1-3](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/thread_history_migrations/0003_turn_rollout_positions.sql#L1-L3);
-  written at [thread-store/src/local/thread_history.rs:316-351](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/local/thread_history.rs#L316-L351)).
-  The two events are the rollout's `task_started` and `task_complete`
-  lines ([protocol/src/protocol.rs:1407-1418](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L1407-L1418)).
+  `duration_ms`, `error_json`; `rollout_end_ordinal` from migration 0003
+  ([0003_turn_rollout_positions.sql:1-3](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/thread_history_migrations/0003_turn_rollout_positions.sql#L1-L3);
+  written at
+  [thread-store/src/local/thread_history.rs:316-351](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/local/thread_history.rs#L316-L351)).
+  The two events are the rollout's `task_started` and `task_complete` lines
+  ([protocol/src/protocol.rs:1407-1418](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L1407-L1418)).
 - `thread_items`: `created_at_ms` is the item's `started_at_ms`, or the
   rollout line's `timestamp` when the event has none
   ([thread_history.rs:431-438](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/local/thread_history.rs#L431-L438),
@@ -1368,21 +1883,19 @@ Codex Desktop on Windows (observed 2026-10-15,
   ([app-server-protocol/src/protocol/v2/item.rs:232-429](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/v2/item.rs#L232-L429)),
   converted from the rollout's turn item
   ([869-1063](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/v2/item.rs#L869-L1063)):
-  `userMessage` (`content[]` of `UserInput`, `text` inputs with
-  `text`; [v2/turn.rs:425-459](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/v2/turn.rs#L425-L459)),
-  `agentMessage` (`text`, the content blocks concatenated, `phase`),
-  `reasoning` (`summary[]`, `content[]`, strings), `commandExecution`
-  (`command` a display string, `cwd`, `status`, `aggregatedOutput`,
-  `exitCode`, `durationMs`), `fileChange` (`changes[]` of `path`,
-  `kind`, `diff`; [v2/item.rs:1137-1144](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/v2/item.rs#L1137-L1144)),
-  `mcpToolCall` (`server`, `tool`, `arguments`, `result`, `error`),
-  `dynamicToolCall` (`tool`, `arguments`, `contentItems`),
-  `functionCallOutput`, `plan` (`text`), `subAgentActivity`,
+  `userMessage` (`content[]` of `UserInput`, `text` inputs with `text`;
+  [v2/turn.rs:425-459](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/v2/turn.rs#L425-L459)),
+  `agentMessage` (`text`, the content blocks concatenated, `phase`), `reasoning` (`summary[]`,
+  `content[]`, strings), `commandExecution` (`command` a display string, `cwd`, `status`,
+  `aggregatedOutput`, `exitCode`, `durationMs`), `fileChange` (`changes[]` of `path`, `kind`,
+  `diff`;
+  [v2/item.rs:1137-1144](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-protocol/src/protocol/v2/item.rs#L1137-L1144)),
+  `mcpToolCall` (`server`, `tool`, `arguments`, `result`, `error`), `dynamicToolCall` (`tool`,
+  `arguments`, `contentItems`), `functionCallOutput`, `plan` (`text`), `subAgentActivity`,
   `webSearch` (`id`, `query`, `action`, `results`;
   [ext/items/src/web_search.rs:11-22](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/ext/items/src/web_search.rs#L11-L22)),
-  `imageGeneration` (`revisedPrompt`, `status`, `savedPath`, and the
-  image itself in `result`), `sleep` (`durationMs`), `hookPrompt`,
-  `collabAgentToolCall`, `imageView`, `enteredReviewMode`,
+  `imageGeneration` (`revisedPrompt`, `status`, `savedPath`, and the image itself in `result`),
+  `sleep` (`durationMs`), `hookPrompt`, `collabAgentToolCall`, `imageView`, `enteredReviewMode`,
   `exitedReviewMode`, `contextCompaction`.
 
 The two files join the rollout on the thread id, which is the rollout
@@ -1715,8 +2228,7 @@ the older ones deleted. The exported names include
 `CODEX_APP_TOOLS_PIPE_PATH`, `SSH_AUTH_SOCK`, `HOME`, `USER` and
 `TMPDIR`, so an API key the user exports in the login shell is
 copied here; collector 1.15.0 flags the files `secret: true`
-([section 3 of
-`collectors/research/codex-cli.md`](#3-credentials)).
+([section 3](#3-credentials)).
 The parser reads neither.
 
 #### Standing grants
@@ -1849,24 +2361,24 @@ Each is secondary, derived from rollouts; the parser reads none.
 
 ### 11. Format versions
 
-- **History mode.** `session_meta.history_mode` (`legacy` default,
-  `paginated`; [protocol.rs:775-782](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L775-L782)). The app server starts
-  non-ephemeral threads paginated when the store supports it
-  ([app-server/src/request_processors/thread_processor.rs:1462-1465](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server/src/request_processors/thread_processor.rs#L1462-L1465)); the local TUI
-  thread was paginated. Paginated files add `ordinal` and `item_completed`
-  items and drop the legacy `user_message`/`agent_message` events. A
-  background legacy-to-paginated rewrite exists behind
-  `background_paginated_rollout_migration`, off by default
+- **History mode.** `session_meta.history_mode` (`legacy` default, `paginated`;
+  [protocol.rs:775-782](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L775-L782)).
+  The app server starts non-ephemeral threads paginated when the store supports it
+  ([app-server/src/request_processors/thread_processor.rs:1462-1465](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server/src/request_processors/thread_processor.rs#L1462-L1465));
+  the local TUI thread was paginated. Paginated files add `ordinal` and `item_completed` items and
+  drop the legacy `user_message`/`agent_message` events. A background legacy-to-paginated rewrite
+  exists behind `background_paginated_rollout_migration`, off by default
   ([features/src/lib.rs:1224-1229](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/features/src/lib.rs#L1224-L1229),
   [thread-store/src/local/rollout_migration.rs:1-9](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/local/rollout_migration.rs#L1-L9)).
 - **Compression and archive.** `.jsonl.zst` and `archived_sessions/`
   ([section 7](#7-transcript-stores)); Codex materialises a compressed file back to `.jsonl` before
   appending to it
-  ([compression.rs:104-105](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L104-L105)), so either form may be present.
-- **Flat layout.** Older releases wrote `sessions/rollout-<time>-<uuid>.jsonl`
-  without date directories (the example in
-  [recorder.rs:82](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/recorder.rs#L82)); the current lister walks only
-  `YYYY/MM/DD`
+  ([compression.rs:104-105](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L104-L105)),
+  so either form may be present.
+- **Flat layout.** Older releases wrote `sessions/rollout-<time>-<uuid>.jsonl` without date
+  directories (the example in
+  [recorder.rs:82](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/recorder.rs#L82));
+  the current lister walks only `YYYY/MM/DD`
   ([list.rs:900-920](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/list.rs#L900-L920)).
 - **Standalone CLI and desktop app on one host.** On Windows the
   standalone CLI (installed by OpenAI's PowerShell installer under
@@ -1884,10 +2396,10 @@ Each is secondary, derived from rollouts; the parser reads none.
   `type`/`payload` wrapper) exist on disk from very early releases; the
   current reader rejects lines without `timestamp`.
 
-- **Drift from [`3e23877`](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524)
-  to [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857)
-  (source review of 2026-10-19).** Unchanged: the line envelope and
-  `RolloutItem` set
+- **Drift from
+  [`3e23877`](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524) to
+  [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857)
+  (source review of 2026-10-19).** Unchanged: the line envelope and `RolloutItem` set
   ([history/src/lib.rs:215-231](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/history/src/lib.rs#L215-L231)),
   `SessionMeta`
   ([protocol/src/protocol.rs:3256-3331](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L3256-L3331)),
@@ -1937,17 +2449,16 @@ Each is secondary, derived from rollouts; the parser reads none.
 ### 12. Secrets
 
 The credential files under `~/.codex` (`auth.json`, `.credentials.json`, `secrets/`,
-`.sandbox-secrets/`) are listed in [section 3 of
-`collectors/research/codex-cli.md`](#3-credentials). Inside
+`.sandbox-secrets/`) are listed in [section 3](#3-credentials). Inside
 the stores this document describes:
 
 - `session_meta.payload.creator_account_id` and `creator_user_id`, and the `state_5.sqlite`
   `threads` columns of the same names, name the ChatGPT account and user
   ([section 9](#9-joins-and-timestamps)); `token_count.rate_limits` names the account's plan
   ([Observed](#observed)).
-- `.codex-global-state.json` holds the user's prompts, the account id inside key names and, per the
-  collector document, the ChatGPT conversation resume tokens; the collector flags it `secret: true`
-  ([`.codex-global-state.json`](#codex-global-statejson)).
+- `.codex-global-state.json` holds the user's prompts, the account id inside key names and, per
+  [section 3](#3-credentials), the ChatGPT conversation resume tokens; the collector flags it
+  `secret: true` ([`.codex-global-state.json`](#codex-global-statejson)).
 - `shell_snapshots/<thread id>.<unix ns>.sh` replays the user's exported login-shell environment, so
   an API key exported there is copied into it; collector 1.15.0 flags the files ([Thread locks and
   shell snapshots](#thread-locks-and-shell-snapshots)).
@@ -2093,78 +2604,71 @@ read ([Other past-use stores](#other-past-use-stores)).
 
 #### Sync, relay and origin rows
 
-Codex has no session sync. The thread store is local only: the
-two backends are `Local` (rollouts and SQLite) and `InMemory`
+Codex has no session sync. The thread store is local only: the two backends are `Local` (rollouts
+and SQLite) and `InMemory`
 ([core/src/config/mod.rs:599-607](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L599-L607)),
-and the old `experimental_thread_store_endpoint` for a remote store is
-now refused at load
+and the old `experimental_thread_store_endpoint` for a remote store is now refused at load
 ([3251-3254](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L3251-L3254)).
-The thread metadata sync of [section 9](#9-joins-and-timestamps)
-copies rollout facts into `state_5.sqlite` and calls no server
+The thread metadata sync of [section 9](#9-joins-and-timestamps) copies rollout facts into
+`state_5.sqlite` and calls no server
 ([thread-store/src/thread_metadata_sync.rs:34-38](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/thread_metadata_sync.rs#L34-L38)).
 `codex resume` reopens a local rollout
-([cli/src/main.rs:206-207](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L206-L207)), and the
-app server's `thread/*` methods have no share or upload method. What
-does leave the host, beyond the model API call:
+([cli/src/main.rs:206-207](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L206-L207)),
+and the app server's `thread/*` methods have no share or upload method. What does leave the host,
+beyond the model API call:
 
 - **`/feedback`** ("send logs to maintainers";
   [tui/src/slash_command.rs:73](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/slash_command.rs#L73),
-  [93](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/slash_command.rs#L93)) sends a report to OpenAI's
-  Sentry project
-  ([feedback/src/lib.rs:60-61](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/feedback/src/lib.rs#L60-L61)). The
-  TUI asks "Upload logs?" and lists the files
+  [93](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/slash_command.rs#L93))
+  sends a report to OpenAI's Sentry project
+  ([feedback/src/lib.rs:60-61](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/feedback/src/lib.rs#L60-L61)).
+  The TUI asks "Upload logs?" and lists the files
   ([tui/src/bottom_pane/feedback_view.rs:252](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/bottom_pane/feedback_view.rs#L252),
-  [282-285](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/bottom_pane/feedback_view.rs#L282-L285)); on yes
-  the open thread's rollout
+  [282-285](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/bottom_pane/feedback_view.rs#L282-L285));
+  on yes the open thread's rollout
   ([tui/src/app/background_requests.rs:623-627](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/app/background_requests.rs#L623-L627))
   and the rollouts of its subagent threads are attached
   ([app-server/src/request_processors/feedback_processor.rs:179-196](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server/src/request_processors/feedback_processor.rs#L179-L196)),
   packed into `rollouts.tar.gz` in a system temporary directory
   ([feedback/src/lib.rs:840-853](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/feedback/src/lib.rs#L840-L853)).
-  On no, the report carries the category, the note and tags only, and
-  the TUI says "Feedback recorded (no logs)"
+  On no, the report carries the category, the note and tags only, and the TUI says "Feedback
+  recorded (no logs)"
   ([feedback_view.rs:54-58](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/bottom_pane/feedback_view.rs#L54-L58)).
-  Opt-in per report; the whole flow is on by default and turned off by
-  `[feedback] enabled = false` in `config.toml`
+  Opt-in per report; the whole flow is on by default and turned off by `[feedback] enabled = false`
+  in `config.toml`
   ([config/src/types.rs:233-236](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L233-L236),
   [core/src/config/mod.rs:4498-4502](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L4498-L4502),
   [feedback_processor.rs:62-66](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server/src/request_processors/feedback_processor.rs#L62-L66)).
-  The marker is the `logs_2.sqlite` row of [section 10](#10-other-stores).
-  The parser yields one `system` row per such log row (`target`
-  `codex_feedback` and the message `feedback event uploaded to Sentry`;
-  the other `codex_feedback` rows report attachment failures and are not
-  uploads), `session synced: feedback report uploaded to Sentry,
-  attachments <uploaded_attachments> failed <attachments_failed> (from
-  logs_2.sqlite logs, ts)`, `-` for a field the body lacks, at `ts` plus
-  `ts_nanos`, with `session_id` the body's `thread_id` (empty for a
-  `no-active-thread-` id) and the project and branch of that thread's
-  `threads` row; the parser sets `records_sync`, so a thread without the
-  row is `synced` `no` in `sessions.jsonl`. A report with 0 attachments
-  sent no rollout. Fixture only: no real install has shown the row. The row survives the rollout's
-  loss outside Codex for up to 10 days; Codex's own thread delete
-  removes it with the thread, Codex offers no delete of the Sentry
-  copy, and nothing local records one.
+  The marker is the `logs_2.sqlite` row of [section 10](#10-other-stores). The parser yields one
+  `system` row per such log row (`target` `codex_feedback` and the message
+  `feedback event uploaded to Sentry`; the other `codex_feedback` rows report attachment failures
+  and are not uploads),
+  `session synced: feedback report uploaded to Sentry, attachments <uploaded_attachments> failed <attachments_failed> (from logs_2.sqlite logs, ts)`,
+  `-` for a field the body lacks, at `ts` plus `ts_nanos`, with `session_id` the body's `thread_id`
+  (empty for a `no-active-thread-` id) and the project and branch of that thread's `threads` row;
+  the parser sets `records_sync`, so a thread without the row is `synced` `no` in `sessions.jsonl`.
+  A report with 0 attachments sent no rollout. Fixture only: no real install has shown the row. The
+  row survives the rollout's loss outside Codex for up to 10 days; Codex's own thread delete removes
+  it with the thread, Codex offers no delete of the Sentry copy, and nothing local records one.
 - **`codex cloud`** (experimental;
-  [cli/src/main.rs:227-229](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L227-L229)) creates a
-  Codex Cloud task, a run on OpenAI's servers against a GitHub branch:
-  the typed prompt, the environment id and the branch, plus a local
-  diff only when `CODEX_STARTING_DIFF` is set
+  [cli/src/main.rs:227-229](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L227-L229))
+  creates a Codex Cloud task, a run on OpenAI's servers against a GitHub branch: the typed prompt,
+  the environment id and the branch, plus a local diff only when `CODEX_STARTING_DIFF` is set
   ([cloud-tasks-client/src/http.rs:332-372](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks-client/src/http.rs#L332-L372)).
-  It sends no local thread; the task's transcript is server-side, and
-  `codex apply` fetches a task's diff back
+  It sends no local thread; the task's transcript is server-side, and `codex apply` fetches a task's
+  diff back
   ([chatgpt/src/get_task.rs:37-38](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/chatgpt/src/get_task.rs#L37-L38)).
-  Its only local trace is an `error.log` that it appends to in the
-  directory it was started from, not under `~/.codex`
+  Its only local trace is an `error.log` that it appends to in the directory it was started from,
+  not under `~/.codex`
   ([cloud-tasks/src/util.rs:18-28](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks/src/util.rs#L18-L28),
   [cloud-tasks-client/src/http.rs:911-920](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks-client/src/http.rs#L911-L920)),
-  with lines `[<RFC 3339 time>] new_task: created id=<task id> env=<env
-  id> prompt_chars=<n>`
+  with lines `[<RFC 3339 time>] new_task: created id=<task id> env=<env id> prompt_chars=<n>`
   ([http.rs:374-381](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks-client/src/http.rs#L374-L381)),
   the GitHub origins it matched
   ([cloud-tasks/src/env_detect.rs:51](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks/src/env_detect.rs#L51))
   and the `account_id` it authenticated as
-  ([cloud-tasks/src/lib.rs:103](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks/src/lib.rs#L103)). No
-  catalog line collects that file; no row is proposed until it is.
+  ([cloud-tasks/src/lib.rs:103](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cloud-tasks/src/lib.rs#L103)).
+  No catalog line collects that file; no row is proposed until it is.
 - **`codex remote-control`** (experimental;
   [cli/src/main.rs:176-177](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L176-L177),
   [cli/src/remote_control_cmd.rs:53-62](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/remote_control_cmd.rs#L53-L62))
@@ -2186,27 +2690,24 @@ does leave the host, beyond the model API call:
   (read 2026-10-18) says "Repository files and local documents come
   from the connected host". The relay carries control, not a copy of
   the thread, so the parser marks no session synced or relayed for it.
-- **`--remote <ADDR>`** points the TUI at an app server the user
-  runs elsewhere
-  ([cli/src/main.rs:962-974](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L962-L974)). The
-  rollout is written on that server's host, but the TUI still appends
-  each prompt to the local `history.jsonl`
+- **`--remote <ADDR>`** points the TUI at an app server the user runs elsewhere
+  ([cli/src/main.rs:962-974](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L962-L974)).
+  The rollout is written on that server's host, but the TUI still appends each prompt to the local
+  `history.jsonl`
   ([tui/src/app/thread_routing.rs:557-566](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/app/thread_routing.rs#L557-L566)),
-  so a `history.jsonl` session with no local rollout may be such a
-  thread. Not a vendor upload.
+  so a `history.jsonl` session with no local rollout may be such a thread. Not a vendor upload.
 - **Analytics** go to `<chatgpt base URL>/codex/analytics-events/events`
-  ([analytics/src/client.rs:154](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/analytics/src/client.rs#L154)) as
-  events keyed by thread id
+  ([analytics/src/client.rs:154](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/analytics/src/client.rs#L154))
+  as events keyed by thread id
   ([analytics/src/events.rs:257](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/analytics/src/events.rs#L257));
-  no prompt or reply text field was found (searched `prompt`, `text`,
-  `user_message` in `analytics/src`). Turned off by `[analytics]
-  enabled = false`
+  no prompt or reply text field was found (searched `prompt`, `text`, `user_message` in
+  `analytics/src`). Turned off by `[analytics] enabled = false`
   ([config/src/types.rs:223-228](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L223-L228)).
-  OpenTelemetry export, which can carry prompts and replies, is off by
-  default and goes only to an exporter the user configures
+  OpenTelemetry export, which can carry prompts and replies, is off by default and goes only to an
+  exporter the user configures
   ([config/src/types.rs:597-611](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L597-L611),
-  [647-657](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L647-L657)). Image attachments are
-  kept inline in the rollout; the one attachment store uploads nothing
+  [647-657](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L647-L657)).
+  Image attachments are kept inline in the rollout; the one attachment store uploads nothing
   ([attachment-store/src/lib.rs:160-170](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/attachment-store/src/lib.rs#L160-L170)).
 
 The ChatGPT desktop app's own sync state is outside this source: its
@@ -2216,8 +2717,8 @@ client code is not in the repository (searched
 `local_thread_catalog` and `electron-persisted-atom-state` across the
 clone; the only matches are unrelated token-usage replay code). The
 `chatgpt` rows of `codex-dev.db` `local_thread_catalog` and the
-resume tokens in `.codex-global-state.json` (collector document,
-[section 3](#3-credentials)) are
+resume tokens in `.codex-global-state.json`
+([section 3](#3-credentials)) are
 the app's index of ChatGPT conversations that live on the server; what
 `chatgpt_async_status` and `conversation_origin` `tpp` mean, and
 whether a local Codex thread is ever uploaded as a ChatGPT
@@ -2264,7 +2765,7 @@ outside every catalog path.
 
 The desktop app's deletion marker already gives a `session deleted:` row. A delete through
 `thread/delete` (the TUI, the app server) leaves no marker; what it removes and what survives it is
-in [Deletion in `collectors/research/codex-cli.md`](#deletion)
+in [Deletion](#deletion)
 and in [What survives a delete](#what-survives-a-delete), and the survivors that matter here are
 `history.jsonl`, which the parser reads, and the memories files and `db-backups/`, which it does
 not.
@@ -2320,12 +2821,13 @@ this line is cut mid-wri
 
 #### Injected user-role context
 
-Rollouts without content kinds are classified per content block by the
-wrappers Codex itself recognises as injected user-role context
+Rollouts without content kinds are classified per content block by the wrappers Codex itself
+recognises as injected user-role context
 ([core/src/context/contextual_user_message.rs:22-37](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/context/contextual_user_message.rs#L22-L37)).
-As in Codex's own check, the block must begin with the open marker after
-leading whitespace and end with the close marker, ignoring ASCII case
-([context-fragments/src/fragment.rs:116-130](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/context-fragments/src/fragment.rs#L116-L130)), so a tag a person types inside a prompt leaves it `user`:
+As in Codex's own check, the block must begin with the open marker after leading whitespace and end
+with the close marker, ignoring ASCII case
+([context-fragments/src/fragment.rs:116-130](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/context-fragments/src/fragment.rs#L116-L130)),
+so a tag a person types inside a prompt leaves it `user`:
 
 | Marker name | Open … close | Source |
 | --- | --- | --- |
@@ -2340,11 +2842,14 @@ leading whitespace and end with the close marker, ignoring ASCII case
 
 #### Subagent input and copied forks
 
-Later `role: "user"` messages in a subagent's rollout stay `user`: the
-parent's v1 `send_input` tool submits plain user input to the child
-([core/src/agent/control.rs:134-143](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/agent/control.rs#L134-L143)), and a person can also type into a subagent thread, because the TUI's
-`/subagents` picker makes it the active thread and composer input is sent
-to the active thread ([tui/src/multi_agents.rs:1-5](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/multi_agents.rs#L1-L5), [tui/src/app/thread_routing.rs:475-497](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/app/thread_routing.rs#L475-L497)). The rollout records both alike.
+Later `role: "user"` messages in a subagent's rollout stay `user`: the parent's v1 `send_input` tool
+submits plain user input to the child
+([core/src/agent/control.rs:134-143](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/agent/control.rs#L134-L143)),
+and a person can also type into a subagent thread, because the TUI's `/subagents` picker makes it
+the active thread and composer input is sent to the active thread
+([tui/src/multi_agents.rs:1-5](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/multi_agents.rs#L1-L5),
+[tui/src/app/thread_routing.rs:475-497](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/app/thread_routing.rs#L475-L497)).
+The rollout records both alike.
 
 A copied fork has no boundary beyond the ancestor's `session_meta` and the
 per-message `inherited_user_message` flag, so the other copied records stay
