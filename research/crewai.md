@@ -1,10 +1,10 @@
 # crewai
 
 CrewAI is a Python multi-agent framework with a `crewai` CLI, whose traced runs can be sent to
-AMP (Agent Management Platform), CrewAI's hosted service. This document came out of the agent
-framework sweep for [issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
-[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
-line. There is no analyzer document yet.
+AMP (Agent Management Platform), CrewAI's hosted service. It came into the catalog from the
+agent framework sweep for [issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
+[`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. Its
+parser is in the backlog ([issue 140](https://github.com/seanthegeek/doubleagent/issues/140)).
 
 ## 1. Source and evidence
 
@@ -55,12 +55,12 @@ The built-in CodeInterpreterTool is gone
     `human_input` review is asked on the console and its answer becomes a
     user message in the task's `messages`
     ([human_input.py:46](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/core/providers/human_input.py#L46)).
-  - Model: none in the run database. `latest_kickoff_task_outputs` keeps the
-    agent's role (`agent`), not its model; the only stored model string is
-    the `llm` of a pending Flow review
+  - Model: none in the run database. `latest_kickoff_task_outputs` keeps the agent's role (`agent`),
+    not its model; the only stored model string is the `llm` of a pending Flow review
     ([async_feedback/types.py:38](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/flow/async_feedback/types.py#L38)).
     Not found in `kickoff_task_outputs_storage.py` or `last_run.py` at
-    [`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2) (grepped for `model` and `llm`).
+    [`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2)
+    (grepped for `model` and `llm`).
   - Past use beyond the primary store: found, and the run database is not
     a history: every kickoff empties `latest_kickoff_task_outputs` before
     its first task
@@ -261,9 +261,15 @@ to it).
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+CrewAI is `backlog`: its parser is
+[issue 140](https://github.com/seanthegeek/doubleagent/issues/140), and nothing it writes is
+parsed yet. A parser would read `latest_kickoff_task_outputs.db`, whose `output` JSON holds every
+task's output with its `messages` for the latest kickoff of each project folder name only; the
+opt-in `flow_states.db`, whose `pending_feedback` rows are paused Flow reviews and carry the only
+stored model string; and `.crewai_user.json`, whose `trace_consent` is a standing setting
+([Run data directory detail](#run-data-directory-detail)). The project-local
+`.crewai/last_run.json` (the AMP sync marker) and `.checkpoints/` outlive the run table but are
+not in `PROJECT_CATALOG` ([section 5](#5-project-local-files)).
 
 ## 14. Confidence
 
