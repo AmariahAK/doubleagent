@@ -1,16 +1,25 @@
-# gemini-cli: on-disk paths
+# gemini-cli
 
-How the transcripts are encoded and how the parser reads them is in
+Gemini CLI is Google's open-source command-line agent, from
+[google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli). Qwen Code is a fork of it
+([`collectors/research/qwen-code.md`](qwen-code.md)). How the transcripts are encoded and how the
+parser reads them is in
 [`analyzer/research/gemini-cli.md`](../../analyzer/research/gemini-cli.md).
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 [google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli), commit [`fb972b2f87fe7d5b06d37eac711490162d98de2c`](https://github.com/google-gemini/gemini-cli/commit/fb972b2f87fe7d5b06d37eac711490162d98de2c)
 (2026-10-02, package version `0.64.0-nightly.20260929`). Open source. Every
 claim below is source-level (`packages/...` file:line in that checkout) unless
 marked `docs/` (repo documentation) or `live` (names only from this
-workstation's `~/.gemini`, which holds just `config/` and `antigravity-cli/`,
-so it contributed nothing for Gemini CLI itself).
+workstation's `~/.gemini`; see [Observed](#observed)).
+
+### Observed
+
+- No real install. The workstation's `~/.gemini`, read for names only, holds just `config/` and
+  `antigravity-cli/`, so it contributed nothing for Gemini CLI itself.
+
+### Source reviews
 
 - **Source review (2026-10-19).** HEAD
   [`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d)
@@ -24,11 +33,11 @@ so it contributed nothing for Gemini CLI itself).
     [section 5](#5-project-local-files).
   - Model: no new file.
   - Past use: no new file; retention changes what survives
-    ([section 2](#2-per-user-storage)).
+    ([Deletion](#deletion)).
   - Sync, relay and origin: none, as before.
   - Scratch directories: found, collected unexcluded; see
     [section 5](#5-project-local-files).
-  - Deletion: found; see [section 2](#2-per-user-storage).
+  - Deletion: found; see [Deletion](#deletion).
   - Version drift: none in paths.
   - Bad lines: not a collector concern.
 
@@ -106,20 +115,26 @@ Additions from the source review of 2026-10-19, at
   `experimental.autoMemory` the `.inbox/<kind>/*.patch` memory
   candidates a background agent draws from past sessions
   ([`core/src/config/storage.ts:332-342`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/config/storage.ts#L332-L342)).
-- Retention: every start deletes the project's sessions older than
-  `general.sessionRetention.maxAge` (default `30d`, enabled by default),
-  every session file it cannot load, and the whole `tmp/<slug>/checkpoints/`
-  directory
-  ([`cli/src/utils/sessionCleanup.ts:102-260`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/utils/sessionCleanup.ts#L102-L260);
-  [`cli/src/utils/cleanup.ts:187-197`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/utils/cleanup.ts#L187-L197)).
-  A collection taken after the agent was started again holds less than
-  one taken before; `logs.json`, `shell_history`, `checkpoint-<tag>.json`
-  and `history/<slug>` are not touched. Detail in
-  [section 2 of `analyzer/research/gemini-cli.md`](../../analyzer/research/gemini-cli.md#2-transcript-files).
 
-Scratch directories: Gemini CLI has no default working directory of its
-own; the one directory it creates for work is the `--worktree` checkout
-inside the project, covered in [section 5](#5-project-local-files).
+### Scratch directories
+
+Gemini CLI has no default working directory of its own; the one directory it creates for work is
+the `--worktree` checkout inside the project, covered in [section 5](#5-project-local-files).
+
+### Deletion
+
+Retention, from the source review of 2026-10-19 at
+[`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d):
+every start deletes the project's sessions older than
+`general.sessionRetention.maxAge` (default `30d`, enabled by default),
+every session file it cannot load, and the whole `tmp/<slug>/checkpoints/`
+directory
+([`cli/src/utils/sessionCleanup.ts:102-260`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/utils/sessionCleanup.ts#L102-L260);
+[`cli/src/utils/cleanup.ts:187-197`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/utils/cleanup.ts#L187-L197)).
+A collection taken after the agent was started again holds less than
+one taken before; `logs.json`, `shell_history`, `checkpoint-<tag>.json`
+and `history/<slug>` are not touched. What survives is in
+[What survives a delete in `analyzer/research/gemini-cli.md`](../../analyzer/research/gemini-cli.md#what-survives-a-delete).
 
 ## 3. Credentials
 
@@ -152,9 +167,9 @@ inside the project, covered in [section 5](#5-project-local-files).
   likely holds the OAuth access token and API keys in use; secret glob
   `*.gemini/tmp/*/bug-memory-*.heapsnapshot` from collector 1.14.0.
   Evidence in
-  [section 8 of `analyzer/research/gemini-cli.md`](../../analyzer/research/gemini-cli.md#8-parser-plan).
+  [Bug reports in `analyzer/research/gemini-cli.md`](../../analyzer/research/gemini-cli.md#bug-reports).
 
-## 4. Exclude
+## 4. Exclusions
 
 `.gemini/whisper_models`, `.gemini/bin` (litert models), `.gemini/tmp/bin`,
 `.gemini/extensions/*/node_modules`, `.gemini/extensions/*/.git`,
@@ -208,7 +223,8 @@ its project root.
 
 ## 7. Confidence
 
-High: every path in [section 2](#2-per-user-storage) to [section 6](#6-where-the-project-path-is-recorded) is read from constants in the cited files.
+High: every path in [section 2](#2-per-user-storage) to
+[section 6](#6-where-the-project-path-is-recorded) is read from constants in the cited files.
 Medium: `.cache/.gemini` contents (runtime-dir files only exist there if the
 user runs the macOS sandbox); `history/*/.git` size. Not determined: whether
 a `GEMINI_CLI_HOME` relocation is common in the field; which keychain entry
