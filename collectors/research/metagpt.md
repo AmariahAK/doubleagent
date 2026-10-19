@@ -1,20 +1,27 @@
-# MetaGPT: on-disk paths
+# metagpt
 
-This document came out of the agent framework sweep for issue #64; see
-[frameworks.md](frameworks.md) for the frameworks that got no catalog line.
-There is no analyzer document: MetaGPT keeps no transcripts under the home.
+MetaGPT is a Python multi-agent "software company" framework with the `metagpt` CLI. This
+document came out of the agent framework sweep for
+[issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
+[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
+line. There is no analyzer document: MetaGPT keeps no transcripts under the home.
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 [FoundationAgents/MetaGPT](https://github.com/FoundationAgents/MetaGPT) ([geekan/MetaGPT](https://github.com/geekan/MetaGPT) redirects there), MIT
 ([setup.py:107](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/setup.py#L107)),
 open source, commit [`11cdf466d042aece04fc6cfd13b28e1a70341b1f`](https://github.com/FoundationAgents/MetaGPT/commit/11cdf466d042aece04fc6cfd13b28e1a70341b1f)
-(2026-01-21). A Python multi-agent "software company" framework with the
-`metagpt` CLI. All claims are from source; nothing was installed or run.
+(2026-01-21). All claims are from source.
 
 MetaGPT runs shell commands on the host: the `Terminal` tool spawns a
 persistent shell
 ([terminal.py:47-52](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/tools/libs/terminal.py#L47-L52)).
+
+### Observed
+
+- No real install: nothing was installed or run.
+
+### Source reviews
 
 - **Source review (2026-10-19)**: HEAD of FoundationAgents/MetaGPT is
   still
@@ -31,7 +38,7 @@ persistent shell
     ([llm_config.py:64](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/configs/llm_config.py#L64)),
     already collected.
   - Past use: found, outside the home. Besides `team.json`
-    ([section 2](#2-per-user-storage)), every run writes a DEBUG-level
+    ([Workspace](#workspace)), every run writes a DEBUG-level
     log `logs/<YYYYMMDD>.txt` (or `<name>_<YYYYMMDD>.txt`) under
     `METAGPT_ROOT`
     ([logs.py:40-51](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/logs.py#L40-L51)),
@@ -41,7 +48,7 @@ persistent shell
     grepped for `share_url`, `upload_session` and `sync_session`).
   - Scratch directories: `<METAGPT_ROOT>/workspace` is the agent's own
     output directory for generated projects
-    ([section 2](#2-per-user-storage)); it is not recorded anywhere under
+    ([Scratch directories](#scratch-directories)); it is not recorded anywhere under
     the home and has no MetaGPT-specific name, so no catalog line or
     discovery source can find it.
   - Deletion: nothing to delete; no session store.
@@ -61,6 +68,14 @@ persistent shell
 `CONFIG_ROOT / "config2.yaml"` is the only home path in the package (grep
 for `CONFIG_ROOT`, `Path.home`, `expanduser`, `platformdirs`).
 
+### Scratch directories
+
+`<METAGPT_ROOT>/workspace`, described under [Workspace](#workspace), is the agent's own output
+directory for generated projects; it is not recorded anywhere under the home and has no
+MetaGPT-specific name, so no catalog line or discovery source can find it.
+
+### Workspace
+
 Generated projects and serialized team state go to
 `<METAGPT_ROOT>/workspace` and `workspace/storage/team/team.json`, where
 `METAGPT_ROOT` is `$METAGPT_PROJECT_ROOT`, else the package parent if it
@@ -78,7 +93,9 @@ anchor a glob on. The git tool reads, but does not write,
 `~/.git-credentials`
 ([git.py:69-71](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/tools/libs/git.py#L69-L71)).
 
-Docker: no named volume.
+### Docker
+
+No named volume.
 
 ## 3. Credentials
 
@@ -90,7 +107,7 @@ None.
 
 ## 5. Project-local files
 
-The `workspace/` tree in [section 2](#2-per-user-storage), under no MetaGPT-specific name.
+The `workspace/` tree in [Workspace](#workspace), under no MetaGPT-specific name.
 
 ## 6. Where the project path is recorded
 
