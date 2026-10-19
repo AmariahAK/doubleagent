@@ -1,20 +1,14 @@
 # shellgpt
 
-ShellGPT (`sgpt`, catalog name `shellgpt`) is a Python command-line client
-for OpenAI-compatible chat APIs. It answers one-shot prompts, generates shell
+ShellGPT (`sgpt`, catalog name `shellgpt`) is an open-source Python command-line client for
+OpenAI-compatible chat APIs. It answers one-shot prompts, generates shell
 commands that the user can execute from a prompt, keeps named chat and REPL
 sessions, and can let the model run shell commands through a "function"
 plug-in. Its configuration lives under the home, but its chat history lives in
-the system temporary directory. Transcript schema is in
-[`analyzer/research/shellgpt.md`](../../analyzer/research/shellgpt.md).
-
-ShellGPT (`sgpt`, catalog name `shellgpt`) is an open-source Python command-line client for
-OpenAI-compatible chat APIs. It stores a named chat or REPL session as the raw OpenAI `messages`
+the system temporary directory. It stores a named chat or REPL session as the raw OpenAI `messages`
 array it sends to the API, one JSON file per session, with no timestamps, model or working
-directory. Paths cited are relative to the clone. Storage locations are in
-[`collectors/research/shellgpt.md`](../../collectors/research/shellgpt.md).
-
-<!-- MERGE: dedupe the intro paragraphs above into one -->
+directory. Paths cited are relative to the clone. The agent is parsed: the `shellgpt` parser
+reads the chat files ([section 13](#13-parser-plan)).
 
 ## 1. Source and evidence
 
@@ -28,66 +22,38 @@ All claims from source. The older temp-directory layout is cited from the histor
 [`a054a90`](https://github.com/TheR1D/shell_gpt/commit/a054a900958954400004e54bc7739ba94a75de1f)
 (first in tag 0.9.0).
 
-[TheR1D/shell_gpt](https://github.com/TheR1D/shell_gpt) at
-[`a082bd5327ce0c4ef5a0284d9060e833be9444a6`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6)
-(2026-07-02), version 1.5.1, MIT. Open source.
-
-<!-- MERGE: dedupe the section 1 prose above -->
-
 ### Observed
 
 No real install.
-
-No real install.
-
-<!-- MERGE: dedupe the Observed bullets above -->
 
 ### Source reviews
 
 - **Source review (2026-10-19).** HEAD of the default branch is still
   [`a082bd5`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6),
-  so every path here stands.
-  - Permission state: found, collected. The auto-execution switches
-    are `.sgptrc` keys and the callable functions are the files in
-    `functions/`, both already collected (`.sgptrc` flagged secret).
-  - Model: `DEFAULT_MODEL` in `.sgptrc`, collected.
-  - Past use: found, partly uncollected. The response cache also
-    holds chat answers, and its Windows path since 0.9.0,
+  the commit above, so every path here stands and nothing has drifted. The per-class detail, one
+  line per requirement class, is in the subsections of [section 13](#13-parser-plan).
+  - Permission state: found, collected, not parsed. A function call the model asks for runs with no
+    prompt at all; the auto-execution switches are `.sgptrc` keys and the callable functions are the
+    files in `functions/`, both already collected (`.sgptrc` flagged secret). The `--shell`
+    `[E]xecute, [M]odify, [D]escribe, [A]bort` choice and the REPL's `e` are not recorded. Detail in
+    [Permission state](#permission-rows).
+  - Model: found, collected, not parsed: `DEFAULT_MODEL` in `.sgptrc` is the only
+    record; a `--model` option leaves none.
+  - Past use: found, partly uncollected. The response cache holds the assistant text of
+    chat turns as well as one-shot answers and outlives the chat file;
+    not parsed, and its Windows path since 0.9.0,
     `AppData/Local/Temp/cache`, is not a catalog line
     ([section 2](#2-per-user-storage)).
   - Sync, relay and origin: none.
-  - Scratch directories: none ([section 2](#2-per-user-storage)).
-  - Deletion: no delete command; temp-directory cleanup by the
-    operating system is the main loss.
-  - Version drift: none.
-  - Bad lines: not a collector concern.
-
-- **Source review (2026-10-19).** HEAD of the default branch is still
-  [`a082bd5`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6),
-  the commit above, so nothing has drifted. The per-class detail, one line per requirement
-  class, is in the subsections of [section 13](#13-parser-plan).
-  - Permission state: found, not parsed. A function call the model
-    asks for runs with no prompt at all; the standing switches are
-    `.sgptrc` keys. The `--shell` `[E]xecute, [M]odify, [D]escribe,
-    [A]bort` choice and the REPL's `e` are not recorded. Detail in
-    [Permission state](#permission-rows).
-  - Model: found, not parsed: `DEFAULT_MODEL` in `.sgptrc` is the only
-    record; a `--model` option leaves none.
-  - Past use: found. The response cache holds the assistant text of
-    chat turns as well as one-shot answers and outlives the chat file;
-    not parsed, and not collected at its current Windows path.
-  - Sync, relay and origin: already covered (none).
-  - Scratch directories: none; sgpt runs in the caller's directory and
-    records none.
+  - Scratch directories: none ([section 2](#2-per-user-storage)); sgpt runs in the caller's
+    directory and records none.
   - Deletion: no delete command. The chat id `temp` is deleted at each
     use, a chat file keeps only its last 100 messages, the response
-    cache its newest 100 files, and the operating system's temp cleanup
-    removes the rest.
+    cache its newest 100 files, and the operating system's temp cleanup,
+    the main loss, removes the rest.
   - Version drift: none.
-  - Bad lines: covered (a truncated array yields the messages before
-    the cut and one `system` row).
-
-<!-- MERGE: dedupe the Source reviews above -->
+  - Bad lines: not a collector concern; for the parser, covered (a truncated array yields the
+    messages before the cut and one `system` row).
 
 ## Collection
 
@@ -288,8 +254,8 @@ So a turn with a function call is stored as user, assistant(tool_calls),
 tool, assistant(content), in that order, because the handler mutates the
 same list the session later writes.
 
-Truncation: on every write the system message is kept and only the last `CHAT_CACHE_LENGTH` (default
-100) other messages survive
+Truncation: on every write the system message is kept and only the last `CHAT_CACHE_LENGTH`
+(default 100) other messages survive
 ([`chat_handler.py:75-77`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/chat_handler.py#L75-L77);
 [`config.py:22`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L22)).
 Older turns of a long session are gone, and a cut can separate a `tool` message from its call.
@@ -313,9 +279,11 @@ No SQLite or binary store.
 
 `<CACHE_PATH>/<md5>` files hold only a response string with no prompt
 ([`sgpt/cache.py:30-41`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L30-L41)).
-Not a transcript; do not parse. `get_completion` of every handler, the chat handler included, is
-wrapped by the cache decorator, which writes the full response text to
-`<CACHE_PATH>/<md5 of the request>` unless it contains a function call
+Not a transcript, and not parsed: the first review said not to parse it, and the source review of
+2026-10-19 found that it also holds chat answers, which makes it a secondary source
+([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources)). `get_completion` of
+every handler, the chat handler included, is wrapped by the cache decorator, which writes the full
+response text to `<CACHE_PATH>/<md5 of the request>` unless it contains a function call
 ([`handler.py:102-110`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L102-L110);
 [`sgpt/cache.py:30-44`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L30-L44)).
 So the answers to chat turns that the 100-message cut dropped, and to one-shot prompts that have no
@@ -478,22 +446,20 @@ Fixture (`chat_cache/deploy-check`, shown wrapped; the real file is one line):
  {"role": "assistant", "content": "\n> @FunctionCall `execute_shell_command(shell_command=\"ss -ltnp | grep 8080\")` \n\nA python3 process (PID 4242) is listening on 8080."}]
 ```
 
-#### Confidence
-
-High: file location, array shape, message keys, ordering, truncation (source), and the leading
-`"\n"` before the marker, which is always emitted because the check runs right after the assistant
-message is appended
-([`handler.py:86-87`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L86-L87)).
-Medium: the pre-1.5.0 shape, read from the parent of
-[`4ea2f83`](https://github.com/TheR1D/shell_gpt/commit/4ea2f834cff5dc020dabb25bb02030c630cd2062) in
-history rather than a released package.
-
 ## 14. Confidence
 
-High: config folder, `.sgptrc` format and key, roles, function store, chat
+Collection. High: config folder, `.sgptrc` format and key, roles, function store, chat
 and cache layout, the 0.9.0 change of temp path (source and history).
 Medium: that `/tmp` is the effective Linux location; `gettempdir` honours
 `TMPDIR`, `TEMP` and `TMP`, so a user with any of those set writes
 elsewhere. Not determined: how long the chat files survive. `/tmp` is a
 tmpfs cleared at boot on many distributions and macOS purges old
 `/var/folders` content, but this depends on the host and was not checked.
+
+Parsing. High: file location, array shape, message keys, ordering, truncation (source), and the
+leading `"\n"` before the marker, which is always emitted because the check runs right after the
+assistant message is appended
+([`handler.py:86-87`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L86-L87)).
+Medium: the pre-1.5.0 shape, read from the parent of
+[`4ea2f83`](https://github.com/TheR1D/shell_gpt/commit/4ea2f834cff5dc020dabb25bb02030c630cd2062) in
+history rather than a released package.
