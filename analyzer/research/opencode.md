@@ -1,15 +1,23 @@
-# OpenCode transcript schema
+# opencode
 
-Catalog agent: `opencode`. Researched together with Crush, which began as
-an OpenCode fork but no longer shares any storage code
+OpenCode (catalog agent `opencode`) is an open-source coding agent with a terminal UI, a
+background server and, on the 2.0 line, a desktop app. It was researched together with Crush,
+which began as an OpenCode fork but no longer shares any storage code
 ([crush.md](crush.md)); Kilo Code's current store is an OpenCode fork and
-shares this schema ([kilo-code.md](kilo-code.md)). Paths cited are relative
-to the clone.
-
-Paths, credentials and the rest of the per-user state are in
+shares this schema ([kilo-code.md](kilo-code.md)), and Kilo Code's parser subclasses this one,
+so the per-record error rows and the `session_v2` reading apply to Kilo Code's database too,
+should Kilo Code take OpenCode's 2.0 store. Letta Code (at
+[`2a46615`](https://github.com/letta-ai/letta-code/commit/2a46615d16babb06cf5450b8e57ecb9bdbf2f436))
+can drive OpenCode as an external coding agent, starting `opencode serve`
+in its working directory
+([src/agent/subagents/index.ts:123-159](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/agent/subagents/index.ts#L123-L159),
+[src/tools/impl/opencode-server.ts:51-66](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/tools/impl/opencode-server.ts#L51-L66)),
+so a session Letta Code started lands in this store like any other
+OpenCode session ([section 1 of `letta.md`](letta.md#1-source-and-evidence)). Paths cited are
+relative to the clone. Paths, credentials and the rest of the per-user state are in
 [`collectors/research/opencode.md`](../../collectors/research/opencode.md).
 
-## 1. Source
+## 1. Source and evidence
 
 [sst/opencode](https://github.com/sst/opencode) at [`907b3bc518fa48e90e8ec24dd327d13eee71c36c`](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c), MIT. Open
 source. The schema has moved out of `packages/opencode` into
@@ -22,7 +30,20 @@ the `share/` modules are gone and the share and unshare keybindings read
 ([`packages/tui/src/config/v1/keybind.ts:101-102`](https://github.com/sst/opencode/blob/797d2afdbf8f0b4f189748373ff1a69bde9e0ff7/packages/tui/src/config/v1/keybind.ts#L101-L102));
 no migration in that tree drops `session_share`, so a database created by an
 earlier release can still hold the share rows in
-[section 5](#5-sqlite-specifics).
+[Share records](#share-records).
+
+### Observed
+
+- No real install. The 2.0 layout the parser reads since issue 165 (`session_v2` and the 2.0
+  `session_message` types) is not observed on any real install, source-derived
+  ([anomalyco/opencode](https://github.com/anomalyco/opencode) at
+  [`cb07c55`](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e)).
+  and the real-install round of 2.0 is still to run.
+- No real install has shown a `session_share` row or a shared session's events, so the
+  `session synced:` rows are fixture only
+  ([Sync, relay and origin](#sync-relay-and-origin)).
+
+### Source reviews
 
 - **Source review (2026-10-19)**: the repository has moved to
   [anomalyco/opencode](https://github.com/anomalyco/opencode) (default
@@ -41,7 +62,7 @@ earlier release can still hold the share rows in
   - Permission state: found, not read. Per-call outcomes are in the tool
     part's error text (1.x) or the tool item's `error.type` (2.0), and
     standing "always" grants in the `permission` table, which existed at
-    `907b3bc` too ([section 5](#5-sqlite-specifics)).
+    `907b3bc` too ([Permission records](#permission-records)).
   - Model: covered (`model:` rows). 2.0 adds `previous` to
     `model-switched` and a `variant` the parser does not show; no alias
     beside a resolved id.
@@ -56,7 +77,7 @@ earlier release can still hold the share rows in
     sharing is removed and the CLI keeps no event payloads, so the
     event-based share rows can no longer appear. A session imported from
     a URL keeps no mark of its origin
-    ([section 8](#8-parser-plan)).
+    ([Sync, relay and origin](#sync-relay-and-origin)).
   - Scratch directories: found, the temp root `<os.tmpdir()>/opencode`
     and the agent's worktrees ([section 6](#6-format-versions)).
   - Deletion: found; 2.0 deletes the `session_v2` row and its messages
@@ -66,26 +87,12 @@ earlier release can still hold the share rows in
     has no `session`, `message`, `part` or `session_share` table. The
     parser read session headers and project paths only from `session`
     until issue 165; it now reads `session_v2` and the 2.0
-    `session_message` types ([section 8](#8-parser-plan)). This layout is
-    not observed on any real install, source-derived
-    ([anomalyco/opencode](https://github.com/anomalyco/opencode) at
-    [`cb07c55`](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e)).
+    `session_message` types ([Version drift](#version-drift)); the layout is not observed on
+    any real install ([Observed](#observed)).
   - Bad lines: found; the parser counted undecodable database records,
     part files and events into one summary row instead of one row per
     record, until issue 139; each is now its own row
-    ([section 8](#8-parser-plan)).
-
-Other agents and this store. Letta Code (at
-[`2a46615`](https://github.com/letta-ai/letta-code/commit/2a46615d16babb06cf5450b8e57ecb9bdbf2f436))
-can drive OpenCode as an external coding agent, starting `opencode serve`
-in its working directory
-([src/agent/subagents/index.ts:123-159](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/agent/subagents/index.ts#L123-L159),
-[src/tools/impl/opencode-server.ts:51-66](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/tools/impl/opencode-server.ts#L51-L66)),
-so a session Letta Code started lands in this store like any other
-OpenCode session ([section 1 of `letta.md`](letta.md#1-source)). Kilo
-Code's parser subclasses this one, so the per-record error rows and the
-`session_v2` reading apply to Kilo Code's database too, should Kilo Code
-take OpenCode's 2.0 store ([kilo-code.md](kilo-code.md)).
+    ([Bad lines](#bad-lines)).
 
 ## 2. Transcript stores
 
@@ -99,38 +106,39 @@ branching, so the same path on macOS and Windows;
 `~/.local/share/opencode/storage/` ([`packages/opencode/src/storage/storage.ts:224`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/storage/storage.ts#L224))
 still exists ([section 6](#6-format-versions)).
 
-Other records of use, from the source review of 2026-10-19 (`dev` at
-[`cb07c55`](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e);
-the three TUI files are at the same paths at `907b3bc`, for example
-[`packages/tui/src/prompt/history.tsx:53`](https://github.com/anomalyco/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/tui/src/prompt/history.tsx#L53)).
-The parser reads the legacy tables of a 2.0 database and
-`opencode-next.db`; it reads none of the others.
+`journal_mode=WAL` ([`database.ts:27`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/database.ts#L27), also at open [`sqlite.bun.ts:164`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/sqlite.bun.ts#L164));
+`wal_checkpoint(PASSIVE)` runs at startup only ([`database.ts:32`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/database.ts#L32)). Rows
+written since the last checkpoint live only in `opencode.db-wal`, so a copy
+without the sidecar loses recent messages. No encryption or compression.
 
-| Source | Holds | Survives | Joins on | Plan |
-| --- | --- | --- | --- | --- |
-| `~/.local/state/opencode/prompt-history.jsonl` ([`packages/tui/src/prompt/history.tsx:20-23`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L20-L23), [`:60-75`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L60-L75), [`:93-100`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L93-L100), [`:139`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L139)) | the last 50 TUI prompts, `{text, files, agents, skills, pasted, mode?}`; no session id, project or time | session delete, project removal; trimmed to 50 and rewritten at each start, dropping lines that do not parse | text only | not read; secondary when read, empty `timestamp_utc` |
-| `~/.local/state/opencode/prompt-stash.jsonl` ([`packages/tui/src/prompt/stash.tsx:9-14`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L9-L14), [`:40`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L40)) | up to 50 prompts set aside unsent, `{prompt, timestamp}` (epoch ms) | everything; a stashed prompt may never reach a transcript | none (text and time when it was later sent) | not read; primary for what it holds (unsent prompts), `system` rows |
-| `~/.local/state/opencode/session.json` ([`packages/tui/src/context/local.tsx:517-530`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/context/local.tsx#L517-L530)) | `pinned`, ids of sessions the user pinned | session delete (the id stays until the user unpins it) | session id | not read; secondary: a pinned id with no session left is a trace of a deleted session |
-| Legacy `session`, `message`, `part` tables in a database migrated to 2.0 ([section 6](#6-format-versions)) | the 1.x transcript, copied into `session_message` by the migration | deletion of the session in 2.0, which removes only the `session_v2` row and what cascades from it | session id, message id (the copy keeps the V1 ids, [`v1-migration.bun.ts:353`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L353), [`:404`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L404)) | secondary: read only for a session `session_message` does not hold, its event rows marked `recovered` by the parser |
-| `~/.local/share/opencode/opencode-next.db` ([`packages/core/src/database/v1-migration.bun.ts:702-706`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L702-L706), [`:846`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L846)) | a pre-release 2.0 database (`project`, `session`, `session_message`), imported read-only and left in place | everything after the import | session id | secondary (`secondary()`), so a session it shares with `opencode.db` is shown once |
-| `~/.local/share/opencode/tool-output/tool_<id>` ([`packages/core/src/tool-output.ts:13-18`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/tool-output.ts#L13-L18), [`:86-90`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/tool-output.ts#L86-L90)) | full text of a tool result the transcript cut, kept seven days | session delete within the seven days | the path in the transcript marker `full output saved to <file>` | secondary; not collected (catalog exclusion) |
-| desktop app `drafts.sqlite` in `<appData>/ai.opencode.desktop*` ([`packages/desktop/src/main/storage/schema.ts:3-29`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/desktop/src/main/storage/schema.ts#L3-L29)) | prompt drafts and history, `document(key, value)` | not determined | not determined | not collected; needs a real-install round |
-
-The 2.0 runtime keeps no other mirror: the `event` table holds payloads
-only on the hosted (workerd) server, never in the CLI
-([section 5](#5-sqlite-specifics)).
+Other records of use, beside this store, are in [section 5](#other-records-of-use).
 
 ### What survives a delete
 
-In 2.0, deleting a session removes its events and its `session_v2` row,
+In 2.0, deleting a session publishes the durable `session.deleted` and removes
+the session's events and sequence
+([`packages/core/src/session.ts:378-388`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session.ts#L378-L388);
+[`packages/core/src/bus.ts:702-714`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/bus.ts#L702-L714));
+the projector deletes the `session_v2` row
+([`projector.ts:552-554`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/projector.ts#L552-L554)),
 which cascades to `session_message`, `session_pending`, `session_inbox`
-and the instruction tables, child sessions first; archiving only sets
-`time_archived`
-([`projector.ts:552-554`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/projector.ts#L552-L554);
-[`packages/core/src/session/sql.ts:79-160`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/sql.ts#L79-L160)).
+and the instruction tables
+([`packages/core/src/session/sql.ts:79-160`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/sql.ts#L79-L160)),
+child sessions first. Nothing deletes the legacy `session`, `message` and
+`part` rows the upgrade copied from, and no record of the deletion is
+left. Archiving sets `time_archived` and unarchiving clears it
+([`projector.ts:615-627`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/projector.ts#L615-L627)).
+
 In 1.x a delete removes the `session` row with its `session_share` and
-`event` rows and asks the share service to delete a public copy, with no
-local record that it did ([section 8](#8-parser-plan)). What remains:
+`event` rows
+([`session/session.ts:606-623`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/session/session.ts#L606-L623),
+[`projector.ts:257-259`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/session/projector.ts#L257-L259),
+[`event.ts:514-521`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/event.ts#L514-L521)),
+and ShareNext's `session.deleted` subscriber asks the share service to delete the public copy
+([`share-next.ts:200`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L200));
+whether that request still finds the share row before the cascade removes
+it is not determined from source, and no local file records that the remote
+copy was deleted. What remains:
 the legacy `session`, `message` and `part` rows of a database migrated
 to 2.0, which nothing deletes; `prompt-history.jsonl`, the last 50 TUI
 prompts with no session, project or time; unsent prompts in
@@ -145,7 +153,13 @@ files, the log or `tool-output/`, which the collector excludes (see
 
 ## 3. Record schema
 
+Git branch is not recorded anywhere. Role: `message.data.role`. Project
+path: `project.worktree`; cwd: `session.directory` or assistant
+`data.path.cwd`.
+
 Drizzle tables in [`packages/core/src/session/sql.ts`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/session/sql.ts).
+
+### `session` and `project`
 
 `session` ([`:22-66`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/session/sql.ts#L22-L66)): `id` (`ses_...`), `project_id` → `project.id`,
 `workspace_id`, `parent_id`, `slug`, `directory` (cwd, stored with `/` on
@@ -158,6 +172,8 @@ variant?}` ([`:52-56`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8e
 
 `project` ([`project/sql.ts:6-18`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/project/sql.ts#L6-L18)): `id`, `worktree` (absolute repository
 root), `vcs`, `name`, `time_*`, `sandboxes` JSON array.
+
+### `message` and `part`
 
 `message` ([`sql.ts:68-80`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/session/sql.ts#L68-L80); CREATE in
 [`database/migration/20260127222353_familiar_lady_ursula.ts:22-31`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/migration/20260127222353_familiar_lady_ursula.ts#L22-L31)): `id`
@@ -185,6 +201,8 @@ the tool call and its result are the same part, mutated in place;
 `cost`, `tokens`), `subtask` ([`:204-217`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/v1/session.ts#L204-L217), `prompt`, `description`, `agent`),
 `compaction` ([`:195-201`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/v1/session.ts#L195-L201)), `snapshot`, `patch`, `file`, `agent`, `retry`.
 
+### `session_message`
+
 Newer V2 projection in the same database: `session_message`
 ([`sql.ts:119-138`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/session/sql.ts#L119-L138)): `id`, `session_id`, `type` in
 `agent-switched|model-switched|user|synthetic|system|shell|assistant|compaction`
@@ -199,16 +217,14 @@ completed?}`. User `data`: `text`, `files?`, `agents?` ([`:44-51`](https://githu
 `session_input` and `event` on upgrade, so `message`/`part` are the durable
 transcript; treat `session_message` as supplementary. The two switch records carry the common base `id`, `metadata?` and `time.created` ([`session-message.ts:24-28`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/session-message.ts#L24-L28)) plus `agent` (a string) for `agent-switched` ([`:30-35`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/session-message.ts#L30-L35)) and `model` for `model-switched` ([`:37-42`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/session-message.ts#L37-L42)), a `Model.Ref` `{id, providerID, variant?}` ([`packages/schema/src/model.ts:13-18`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/model.ts#L13-L18)). The projector stores `id` and `type` in their own columns and the rest of the record in `data` ([`packages/core/src/session/projector.ts:192-208`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/session/projector.ts#L192-L208)), so `data` is `{time, agent}` or `{time, model}`.
 
+### `event`
+
 `event` ([`core/src/event/sql.ts:10-25`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/event/sql.ts#L10-L25)): `aggregate_id` = session id, `seq`,
 `type` such as `message.updated.1` and `message.part.updated.1`
 ([`schema/src/event.ts:94-96`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/event.ts#L94-L96)), `data` JSON with full message or part copies
 ([`core/src/event.ts:336-348`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/event.ts#L336-L348)). Also wiped by the reset migration.
 
-Git branch is not recorded anywhere. Role: `message.data.role`. Project
-path: `project.worktree`; cwd: `session.directory` or assistant
-`data.path.cwd`.
-
-## 4. Joins
+## 4. Joins and timestamps
 
 `session.project_id → project.id` (worktree); `message.session_id →
 session.id`; `part.message_id → message.id` (`part.session_id` is
@@ -216,16 +232,37 @@ denormalised). Order parts by `part.id` (ids are time-ordered,
 [`v1/session.ts:17-27`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/v1/session.ts#L17-L27)) or `time_created`. Tool call and result are one `part`
 row; assistant → user through `data.parentID`. `session_message` joins on
 `session_id`, ordered by `seq`.
+Times are epoch milliseconds ([section 3](#3-record-schema)).
 
-## 5. SQLite specifics
+## 5. Other stores
 
-`journal_mode=WAL` ([`database.ts:27`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/database.ts#L27), also at open [`sqlite.bun.ts:164`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/sqlite.bun.ts#L164));
-`wal_checkpoint(PASSIVE)` runs at startup only ([`database.ts:32`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/database.ts#L32)). Rows
-written since the last checkpoint live only in `opencode.db-wal`, so a copy
-without the sidecar loses recent messages. No encryption or compression.
+### Other records of use
 
-Share records. A session published to OpenCode's web share service (the
-`/share` command, [section 8](#8-parser-plan)) has one `session_share` row
+Other records of use, from the source review of 2026-10-19 (`dev` at
+[`cb07c55`](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e);
+the three TUI files are at the same paths at `907b3bc`, for example
+[`packages/tui/src/prompt/history.tsx:53`](https://github.com/anomalyco/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/tui/src/prompt/history.tsx#L53)).
+The parser reads the legacy tables of a 2.0 database and
+`opencode-next.db`; it reads none of the others.
+
+| Source | Holds | Survives | Joins on | Plan |
+| --- | --- | --- | --- | --- |
+| `~/.local/state/opencode/prompt-history.jsonl` ([`packages/tui/src/prompt/history.tsx:20-23`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L20-L23), [`:60-75`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L60-L75), [`:93-100`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L93-L100), [`:139`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L139)) | the last 50 TUI prompts, `{text, files, agents, skills, pasted, mode?}`; no session id, project or time | session delete, project removal; trimmed to 50 and rewritten at each start, dropping lines that do not parse | text only | not read; secondary when read, empty `timestamp_utc` |
+| `~/.local/state/opencode/prompt-stash.jsonl` ([`packages/tui/src/prompt/stash.tsx:9-14`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L9-L14), [`:40`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L40)) | up to 50 prompts set aside unsent, `{prompt, timestamp}` (epoch ms) | everything; a stashed prompt may never reach a transcript | none (text and time when it was later sent) | not read; primary for what it holds (unsent prompts), `system` rows |
+| `~/.local/state/opencode/session.json` ([`packages/tui/src/context/local.tsx:517-530`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/context/local.tsx#L517-L530)) | `pinned`, ids of sessions the user pinned | session delete (the id stays until the user unpins it) | session id | not read; secondary: a pinned id with no session left is a trace of a deleted session |
+| Legacy `session`, `message`, `part` tables in a database migrated to 2.0 ([section 6](#6-format-versions)) | the 1.x transcript, copied into `session_message` by the migration | deletion of the session in 2.0, which removes only the `session_v2` row and what cascades from it | session id, message id (the copy keeps the V1 ids, [`v1-migration.bun.ts:353`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L353), [`:404`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L404)) | secondary: read only for a session `session_message` does not hold, its event rows marked `recovered` by the parser |
+| `~/.local/share/opencode/opencode-next.db` ([`packages/core/src/database/v1-migration.bun.ts:702-706`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L702-L706), [`:846`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L846)) | a pre-release 2.0 database (`project`, `session`, `session_message`), imported read-only and left in place | everything after the import | session id | secondary (`secondary()`), so a session it shares with `opencode.db` is shown once |
+| `~/.local/share/opencode/tool-output/tool_<id>` ([`packages/core/src/tool-output.ts:13-18`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/tool-output.ts#L13-L18), [`:86-90`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/tool-output.ts#L86-L90)) | full text of a tool result the transcript cut, kept seven days | session delete within the seven days | the path in the transcript marker `full output saved to <file>` | secondary; not collected (catalog exclusion) |
+| desktop app `drafts.sqlite` in `<appData>/ai.opencode.desktop*` ([`packages/desktop/src/main/storage/schema.ts:3-29`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/desktop/src/main/storage/schema.ts#L3-L29)) | prompt drafts and history, `document(key, value)` | not determined | not determined | not collected; needs a real-install round |
+
+The 2.0 runtime keeps no other mirror: the `event` table holds payloads
+only on the hosted (workerd) server, never in the CLI
+([Event payloads in 2.0](#event-payloads-in-20)).
+
+### Share records
+
+A session published to OpenCode's web share service (the
+`/share` command, [Sync, relay and origin](#sync-relay-and-origin)) has one `session_share` row
 ([`packages/core/src/share/sql.ts:5-13`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/share/sql.ts#L5-L13); CREATE in
 [`...ursula.ts:89-97`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/migration/20260127222353_familiar_lady_ursula.ts#L89-L97)):
 `session_id` (primary key, references `session.id` with `ON DELETE
@@ -256,16 +293,15 @@ time of the change
 ([`session/session.ts:734-746`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/session/session.ts#L734-L746)),
 so the `event` table still holds the URL after an unshare. A session never
 shared has no `session_share` row, a NULL `share_url` and no `share` key in
-its events. Deleting a session removes its `session` row, its
-`session_share` row with it, and its `event` rows
-([`session/session.ts:606-623`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/session/session.ts#L606-L623),
-[`projector.ts:257-259`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/session/projector.ts#L257-L259),
-[`event.ts:514-521`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/event.ts#L514-L521)); the upgrade
+its events. Deleting a session removes its `session_share` row with it
+([What survives a delete](#what-survives-a-delete)); the upgrade
 migration
 [`20260622170816_reset_v2_session_state.ts:11`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/migration/20260622170816_reset_v2_session_state.ts#L11)
 emptied `event` once.
 
-Permission records (source review of 2026-10-19). OpenCode asks before a
+### Permission records
+
+From the source review of 2026-10-19: OpenCode asks before a
 tool call when the rules say `ask`; the user answers `once`, `always` or
 `reject` (`Permission.Reply`,
 [`packages/schema/src/permission.ts:42-54`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/schema/src/permission.ts#L42-L54)).
@@ -321,7 +357,9 @@ the answer itself is never stored; what lands on disk is:
   ([`packages/core/src/session/to-session-error.ts:61-62`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/to-session-error.ts#L61-L62)).
   An approval leaves no per-call record in either version.
 
-Events and deletion in 2.0. The `event` table keeps payloads only when
+### Event payloads in 2.0
+
+The `event` table keeps payloads only when
 the bus is configured to persist them, which the hosted (workerd) server
 does and the CLI does not
 ([`packages/core/src/bus.ts:178-179`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/bus.ts#L178-L179),
@@ -330,19 +368,6 @@ does and the CLI does not
 [`packages/server/src/workerd.ts:64-69`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/server/src/workerd.ts#L64-L69)),
 and the 2.0 upgrade deletes every existing `event` row
 ([`v1-migration.bun.ts:549-566`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L549-L566)).
-Deleting a session publishes the durable `session.deleted` and removes
-the session's events and sequence
-([`packages/core/src/session.ts:378-388`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session.ts#L378-L388);
-[`packages/core/src/bus.ts:702-714`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/bus.ts#L702-L714));
-the projector deletes the `session_v2` row
-([`projector.ts:552-554`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/projector.ts#L552-L554)),
-which cascades to `session_message`, `session_pending`, `session_inbox`
-and the instruction tables
-([`packages/core/src/session/sql.ts:79-160`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/sql.ts#L79-L160)),
-child sessions first. Nothing deletes the legacy `session`, `message` and
-`part` rows the upgrade copied from, and no record of the deletion is
-left. Archiving sets `time_archived` and unarchiving clears it
-([`projector.ts:615-627`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/projector.ts#L615-L627)).
 
 ## 6. Format versions
 
@@ -406,7 +431,7 @@ What changes for the parser:
 - Session sharing is removed ([`packages/tui/src/config/keybind.ts:125-127`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/config/keybind.ts#L125-L127));
   `session_v2.share_url` remains as a column and is copied from 1.x
   sessions.
-- New tables: `permission` ([section 5](#5-sqlite-specifics)), `worktree`
+- New tables: `permission` ([section 5](#permission-records)), `worktree`
   (`project_id`, `directory`, `strategy`, `time_created`, one row per
   worktree OpenCode made under
   `~/.local/share/opencode/worktree/<first six characters of the project
@@ -438,7 +463,7 @@ What changes for the parser:
 key}`, [`schema/src/credential.ts:16-34`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/credential.ts#L16-L34)), `account.access_token` and
 `refresh_token`, `control_account.*`, `session_share.secret` (the share
 service's per-share secret that authorises sync to and deletion of the
-public copy, [section 5](#5-sqlite-specifics)), plus the legacy
+public copy, [section 5](#share-records)), plus the legacy
 files `~/.local/share/opencode/auth.json` ([`auth/index.ts:10`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/auth/index.ts#L10),[`14-35`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/auth/index.ts#L14-L35)) and
 `mcp-auth.json`. Tool `input` and `output` text can contain pasted tokens.
 
@@ -461,12 +486,13 @@ Rows: one per `part`, plus a `user` row per user message.
 | tool_name, tool_use_id | `data.tool`, `data.callID` |
 | text | text, input JSON, output or error |
 
-Model and mode rows. A `system` row `model: <modelID> provider=<providerID>`
-precedes the first message of a session that names a model (V1 user
-`model.{providerID, modelID}`, V1 assistant `providerID` and `modelID`, V2
-assistant `model.{id, providerID}`), and `model: <old> -> <new>
-provider=<providerID>` precedes every later message, or stands for every V2
-`model-switched` record, whose model differs. The message's `agent` (V1 user
+The subsections below give the plan per requirement class from the source review of
+2026-10-19 (detail in [section 2](#2-transcript-stores), [section 5](#5-other-stores)
+and [section 6](#6-format-versions)), after what the parser does today.
+
+### Permission state
+
+The message's `agent` (V1 user
 and assistant, V2 assistant, V2 `agent-switched` `agent`) is tracked the
 same way as `permission mode: agent=<name>` and `permission mode:
 agent=<old> -> agent=<new>`, because an agent (`build`, `plan` or a custom
@@ -476,6 +502,50 @@ message's timestamp. The session's `permission` JSON and the project's
 shape, so the parser does not read them (issue 98); the research records
 no per-call approval or denial, and whether a denied call shows as a tool
 `state.status` of `error` is not researched.
+
+That statement predates the source review of 2026-10-19, which found both the per-call
+outcomes and the standing grants ([Permission records](#permission-records)). Planned, not
+read today: per call, a tool result whose 1.x `state.error` starts "The
+user rejected permission" or "The user has specified a rule which
+prevents you", or whose 2.0 `error.type` is `permission.rejected` or is
+`aborted` with "The user declined this tool call", gets `permission
+decision: rejected` (with ` feedback` or ` rule` as the text shows)
+after its `tool_result` row, joined on `tool_use_id`; no approval is
+recorded. Standing: one `permission setting: <action> <resource>=allow
+(from <database> permission, time_created)` row per `permission` table
+row at its `time_created`, `project_path` the project's `worktree`;
+and the session's `permission` rule list as `permission setting:
+session <action> <resource>=<effect>` rows at the session's
+`time_updated`. Not read today.
+
+### Model
+
+Model and mode rows. A `system` row `model: <modelID> provider=<providerID>`
+precedes the first message of a session that names a model (V1 user
+`model.{providerID, modelID}`, V1 assistant `providerID` and `modelID`, V2
+assistant `model.{id, providerID}`), and `model: <old> -> <new>
+provider=<providerID>` precedes every later message, or stands for every V2
+`model-switched` record, whose model differs; mode rows are under
+[Permission state](#permission-state).
+Plan from the source review: add the 2.0 `variant` beside `provider=` when present. No alias
+beside a resolved id exists.
+
+### Past use and secondary sources
+
+`prompt-history.jsonl` (secondary, empty `timestamp_utc`, text
+match), `prompt-stash.jsonl` (primary for unsent prompts, `system`
+rows at `timestamp`), `session.json` (`system` row per pinned id that
+has no session, at the file's modification time), the legacy V1 tables
+of a migrated database (secondary to `session_message`), and
+`opencode-next.db` (secondary to `opencode.db`). Read: the legacy V1
+tables (a session `session_message` does not hold, its event rows
+marked `recovered` "yes" by the parser, since both stores are one
+file) and `opencode-next.db` (`secondary()`, deduplicated against the
+database it was imported into); `has_secondary` is set. The three
+`~/.local/state/opencode` files are not read.
+The sources and their joins are under [Other records of use](#other-records-of-use).
+
+### Sync, relay and origin
 
 Sync: OpenCode uploads a session only when it is shared. Sharing starts
 from `/share` in the TUI, which asks once and remembers the answer as
@@ -518,15 +588,10 @@ session.updated.1, info.time.updated)` at that event's `info.time.updated`,
 and `session unshared (from opencode.db event session.updated.1,
 info.time.updated)` at the first later event without `share`; the
 database name in the text is the file's own (`opencode-<channel>.db` for
-a channel database). These rows are fixture only: no real install has
+a channel database). These rows are fixture only ([Observed](#observed)).
 shown a `session_share` row or a shared session's events. Deleting a
-session through OpenCode removes the `session`, `session_share` and `event`
-rows ([section 5](#5-sqlite-specifics)), and ShareNext's `session.deleted`
-subscriber asks the service to delete the public copy
-([`share-next.ts:200`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L200));
-whether that request still finds the share row before the cascade removes
-it is not determined from source, and no local file records that the remote
-copy was deleted. What survives is the log: `creating share` and `removing
+Deleting a shared session is under [What survives a delete](#what-survives-a-delete). What
+survives it is the log: `creating share` and `removing
 share` lines with the `sessionID` go to
 `~/.local/share/opencode/log/opencode.log` at the default INFO level
 ([`share-next.ts:312`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/share/share-next.ts#L312),
@@ -544,75 +609,39 @@ the one built-in adapter targets a local worktree
 ([`control-plane/adapters/worktree.ts:92`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/control-plane/adapters/worktree.ts#L92)),
 so a remote target comes from a plugin, and none was researched.
 
-Plan by requirement class, from the source review of 2026-10-19 (detail
-in [section 2](#2-transcript-stores), [section 5](#5-sqlite-specifics)
-and [section 6](#6-format-versions)):
+Sync: 1.x shares covered; none at `dev`. Relay: none (no messaging
+integration; not found in `packages/core`, `packages/cli`,
+`packages/server` or `packages/tui` at `cb07c55`, grepped for
+`telegram`, `whatsapp` and `slack`). Origin: none; an imported session
+carries no source.
 
-- Permission: per call, a tool result whose 1.x `state.error` starts "The
-  user rejected permission" or "The user has specified a rule which
-  prevents you", or whose 2.0 `error.type` is `permission.rejected` or is
-  `aborted` with "The user declined this tool call", gets `permission
-  decision: rejected` (with ` feedback` or ` rule` as the text shows)
-  after its `tool_result` row, joined on `tool_use_id`; no approval is
-  recorded. Standing: one `permission setting: <action> <resource>=allow
-  (from <database> permission, time_created)` row per `permission` table
-  row at its `time_created`, `project_path` the project's `worktree`;
-  and the session's `permission` rule list as `permission setting:
-  session <action> <resource>=<effect>` rows at the session's
-  `time_updated`. Not read today.
-- Model: covered; add the 2.0 `variant` beside `provider=` when present.
-  No alias beside a resolved id exists.
-- Past use: `prompt-history.jsonl` (secondary, empty `timestamp_utc`, text
-  match), `prompt-stash.jsonl` (primary for unsent prompts, `system`
-  rows at `timestamp`), `session.json` (`system` row per pinned id that
-  has no session, at the file's modification time), the legacy V1 tables
-  of a migrated database (secondary to `session_message`), and
-  `opencode-next.db` (secondary to `opencode.db`). Read: the legacy V1
-  tables (a session `session_message` does not hold, its event rows
-  marked `recovered` "yes" by the parser, since both stores are one
-  file) and `opencode-next.db` (`secondary()`, deduplicated against the
-  database it was imported into); `has_secondary` is set. The three
-  `~/.local/state/opencode` files are not read.
-- Sync: 1.x shares covered; none at `dev`. Relay: none (no messaging
-  integration; not found in `packages/core`, `packages/cli`,
-  `packages/server` or `packages/tui` at `cb07c55`, grepped for
-  `telegram`, `whatsapp` and `slack`). Origin: none; an imported session
-  carries no source.
-- Scratch directories: a session whose directory is under
-  `~/.local/share/opencode/worktree/` is already classed by the catalog
-  rule; the parser could add `scratch directory: <directory> (worktree,
-  from <database> worktree)` rows from the `worktree` table. The temp root
-  is not collectable.
-- Deletion: no local record of a deleted 2.0 session other than the
-  legacy V1 rows and a pinned id; `time_archived` should become a
-  `session archived (from <database> session_v2, time_archived)` row.
-- Version drift: done (issue 165), from source alone; the real-install
-  round of 2.0 is still to run, and its line types and key sets are to be
-  compared with this plan. Session headers and `directory` come from
-  `session_v2`, else `session`; the session-start row adds
-  `fork=<fork_session_id>`, and a session a 2.0 database holds only in
-  the 1.x `session` table ends `(only in the 1.x session table)`. In a
-  database with `session_v2`, `session_message` is the transcript and
-  the 1.x `message` and `part` rows are read only for a session it does
-  not hold. The 2.0 `shell` record (`shellID`, `status`, `exit`,
-  `output.output`) is a `tool_use` row and a `tool_result` row starting
-  `[timeout]`, `[killed]` or `[exit <code>]` when it did not exit 0;
-  `location-switched` is a `system` row `location switched: <previous
-  directory> -> <directory>` (with `workspace=` and `subpath=` when
-  set; `project_path` stays the session's `directory`), `skill` is
-  `skill <name>: <text>`, `idle` is `idle: <outcome>` with the error
-  text, and a compaction row adds its `status` and error. A 2.0 tool
-  error shows its `error.type` before the message (`[error] aborted The
-  user declined this tool call`).
-- Bad lines: done (issue 139). Each `message`, `part`, `session_message`
-  or `event` row whose `data` is not a JSON object is its own `parser:
-  unparseable record <rowid> (<table>.data: <reason>): <data>` row
-  carrying the stored value in full, with its row's session and project,
-  an empty timestamp and `source_line` the rowid; each part file of the
-  JSON trees that does not decode is `parser: unparseable part <partID>
-  (<reason>): <file text>`, `source_file` the part file. A message or
-  session file that does not decode stays one whole-file `parser:`
-  row.
+### Scratch directories
+
+A session whose directory is under
+`~/.local/share/opencode/worktree/` is already classed by the catalog
+rule; the parser could add `scratch directory: <directory> (worktree,
+from <database> worktree)` rows from the `worktree` table. The temp root
+is not collectable.
+
+### Deletion
+
+No local record of a deleted 2.0 session other than the
+legacy V1 rows and a pinned id; `time_archived` should become a
+`session archived (from <database> session_v2, time_archived)` row.
+
+### Bad lines
+
+Done (issue 139). Each `message`, `part`, `session_message`
+or `event` row whose `data` is not a JSON object is its own `parser:
+unparseable record <rowid> (<table>.data: <reason>): <data>` row
+carrying the stored value in full, with its row's session and project,
+an empty timestamp and `source_line` the rowid; each part file of the
+JSON trees that does not decode is `parser: unparseable part <partID>
+(<reason>): <file text>`, `source_file` the part file. A message or
+session file that does not decode stays one whole-file `parser:`
+row.
+
+### Fixtures
 
 Fixture rows:
 
@@ -626,7 +655,30 @@ INSERT INTO part VALUES('prt_02','msg_02','ses_01',1760000002000,1760000003000,'
 INSERT INTO credential VALUES('cred_01','anthropic','key','my key','{"type":"key","key":"sk-ant-REDACT"}',NULL,NULL,1,1760000000000,1760000000000);
 ```
 
-Confidence. High: table columns, JSON field names, timestamp units, part
+### Version drift
+
+Done (issue 165), from source alone; the real-install
+round of 2.0 is still to run, and its line types and key sets are to be
+compared with this plan. Session headers and `directory` come from
+`session_v2`, else `session`; the session-start row adds
+`fork=<fork_session_id>`, and a session a 2.0 database holds only in
+the 1.x `session` table ends `(only in the 1.x session table)`. In a
+database with `session_v2`, `session_message` is the transcript and
+the 1.x `message` and `part` rows are read only for a session it does
+not hold. The 2.0 `shell` record (`shellID`, `status`, `exit`,
+`output.output`) is a `tool_use` row and a `tool_result` row starting
+`[timeout]`, `[killed]` or `[exit <code>]` when it did not exit 0;
+`location-switched` is a `system` row `location switched: <previous
+directory> -> <directory>` (with `workspace=` and `subpath=` when
+set; `project_path` stays the session's `directory`), `skill` is
+`skill <name>: <text>`, `idle` is `idle: <outcome>` with the error
+text, and a compaction row adds its `status` and error. A 2.0 tool
+error shows its `error.type` before the message (`[error] aborted The
+user declined this tool call`).
+
+### Confidence
+
+High: table columns, JSON field names, timestamp units, part
 types, WAL, paths, absence of git branch. Medium: which table is
 authoritative over time (`session_message` is new and was reset once;
 `message`/`part` have been stable since the first migration). Not
