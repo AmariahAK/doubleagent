@@ -57,7 +57,13 @@ Rows from `.ollama/history`: `user`, or `system` prefixed `slash command:`
 for a line starting with `/`; `timestamp_utc` and `session_id` are empty,
 so the rows sort after every dated row, drop out of `--since`/`--until`
 unless `--keep-undated` is given, and are not in `sessions.jsonl`.
-`source_line` is the line number.
+`source_line` is the line number. A line that is not valid UTF-8 (the
+REPL writes the bytes typed at the prompt with `fmt.Fprintln` and checks
+no encoding) is not turned into a `user` row with replacement characters:
+it becomes its own `system` row
+`parser: unparseable line (<decode error>): <line>`, the line as read
+less its terminator (`error_rows`, issue 136), after the file's other
+rows, which are still yielded (issue 174).
 """
 
 from __future__ import annotations
@@ -71,7 +77,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, track_change
+from .base import Options, Parser, compact_json, error_rows, line_text, track_change
 
 DB_RX = re.compile(r"^(?:Library/Application Support/Ollama|AppData/Local/Ollama)/db\.sqlite$")
 HISTORY_RX = re.compile(r"^\.ollama/history$")
@@ -236,9 +242,16 @@ class OllamaParser(Parser):
 
     # -- .ollama/history ------------------------------------------------------------------
     def _parse_history(self, artifact: Artifact) -> Iterator[Row]:
+        errors: list = []
         with open(artifact.disk_path, "rb") as fh:
             for n, raw in enumerate(fh, 1):
-                line = raw.decode("utf-8", errors="replace").strip()
+                if not raw.strip():
+                    continue
+                try:
+                    line = raw.decode("utf-8").strip()
+                except UnicodeDecodeError as e:
+                    errors.append((n, "unparseable line (%s)" % e, line_text(raw)))
+                    continue
                 if not line:
                     continue
                 row = self._row(artifact, n)
@@ -249,3 +262,4 @@ class OllamaParser(Parser):
                     row.turn_type = "user"
                     row.text = line
                 yield row
+        yield from error_rows(self, artifact, errors)

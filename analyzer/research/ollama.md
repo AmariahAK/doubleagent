@@ -510,9 +510,13 @@ one line per requirement class:
 - Scratch directories: none.
 - Deletion: covered above.
 - Version drift: none for the parser.
-- Bad lines: `.ollama/history` should report a line that does not
-  decode as UTF-8 through `error_rows` with the raw line, rather than
-  replace its bytes.
+- Bad lines: `.ollama/history` reports a line that does not decode as
+  UTF-8 through `error_rows` with the line as read, rather than replace
+  its bytes in a `user` row (issue 174). Not observed on any real
+  install, source-derived ([ollama/ollama](https://github.com/ollama/ollama) at
+  [`b0c1ca4`](https://github.com/ollama/ollama/commit/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce)):
+  `Save` writes each entry with `fmt.Fprintln` and checks no encoding
+  ([`history.go:125-150`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L125-L150)).
 
 Sync: Ollama records no sync state, because it has no session sync. No
 release keeps a server copy of a chat: the desktop app's chat routes
@@ -597,7 +601,11 @@ An assistant message with empty `content`, no thinking and no tool calls
 
 `.ollama/history`: one `user` row per non-empty line, `timestamp_utc` and
 `session_id` empty, `source_line` the line number, text the line. Lines
-starting with `/` become `system` rows labelled `slash command:`. The
+starting with `/` become `system` rows labelled `slash command:`. A
+line that is not valid UTF-8 becomes, after the file's other rows, one
+`system` row `parser: unparseable line (<decode error>): <line>` carrying
+the line as read less its terminator, with the same empty fields and its
+line number. The
 rows carry no time, so they sort last and drop out of any time-window
 filter; the parser docstring must say that the file keeps only the last
 100 entries and splits pasted multi-line prompts across lines.

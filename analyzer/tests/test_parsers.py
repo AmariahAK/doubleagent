@@ -10812,11 +10812,59 @@ class OllamaTests(ParserBase):
         self.assertIn("parser: SQLite error", rows[0].text)
 
     def test_truncated_history_line_still_yields_earlier_lines(self):
+        # A last line cut inside a UTF-8 sequence is reported as read, not
+        # yielded as a user row with a replacement character (issue 174).
         with open(self.home / self.HISTORY_REL, "ab") as fh:
             fh.write(b"half a pro\xe2")
         rows = self.rows_for(OllamaParser(), self.HISTORY_REL)
-        self.assertEqual(len(rows), 4)
-        self.assertEqual(rows[-1].text, "half a pro�")
+        self.assertEqual(
+            [(r.turn_type, r.text, r.source_line) for r in rows],
+            [
+                ("user", "why is the sky blue", 1),
+                ("system", "slash command: /set nohistory", 2),
+                ("system", "slash command: /bye", 3),
+                (
+                    "system",
+                    "parser: unparseable line ('utf-8' codec can't decode byte 0xe2"
+                    " in position 10: unexpected end of data): half a pro\ufffd",
+                    4,
+                ),
+            ],
+        )
+
+    def test_undecodable_history_line_is_its_own_parser_row(self):
+        # Issue 174: each line that is not valid UTF-8 becomes one system
+        # row carrying the line in full; the lines before and after it are
+        # still yielded, and so is a second bad line.
+        (self.home / self.HISTORY_REL).write_bytes(
+            b"before\n  caf\xe9 \xff au lait \r\n\n/bye\n\xc3after\nlast\n"
+        )
+        rows = self.rows_for(OllamaParser(), self.HISTORY_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.source_line) for r in rows],
+            [
+                ("user", "before", 1),
+                ("system", "slash command: /bye", 4),
+                ("user", "last", 6),
+                (
+                    "system",
+                    "parser: unparseable line ('utf-8' codec can't decode byte 0xe9"
+                    " in position 5: invalid continuation byte):   caf\ufffd \ufffd au lait ",
+                    2,
+                ),
+                (
+                    "system",
+                    "parser: unparseable line ('utf-8' codec can't decode byte 0xc3"
+                    " in position 0: invalid continuation byte): \ufffdafter",
+                    5,
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.timestamp_utc, r.session_id, r.project_path, r.agent), ("", "", "", "ollama")
+            )
+        self.assertFalse([r for r in rows if r.turn_type == "user" and "\ufffd" in r.text])
 
 
 from doubleagent.parsers.claude_desktop import ClaudeDesktopParser
