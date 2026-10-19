@@ -1,21 +1,22 @@
 # autogen-studio
 
 AutoGen Studio is Microsoft AutoGen's web UI (`autogenstudio ui`) for building and running
-multi-agent teams. This document came out of the agent framework sweep for
+multi-agent teams. It came into the catalog from the agent framework sweep for
 [issue #64](https://github.com/seanthegeek/doubleagent/issues/64); the AutoGen libraries and
 Microsoft Agent Framework, which write nothing under the home by default, are covered in
-[`collectors/research/frameworks.md`](frameworks.md). There is no analyzer document yet.
+[`research/frameworks.md`](frameworks.md). Its parser is in the backlog
+([issue 69](https://github.com/seanthegeek/doubleagent/issues/69)).
 
 ## 1. Source and evidence
 
 [microsoft/autogen](https://github.com/microsoft/autogen), commit
 [`027ecf0a379bcc1d09956d46d12d44a3ad9cee14`](https://github.com/microsoft/autogen/commit/027ecf0a379bcc1d09956d46d12d44a3ad9cee14).
-Code is MIT ([LICENSE-CODE](https://github.com/microsoft/autogen/blob/027ecf0a379bcc1d09956d46d12d44a3ad9cee14/LICENSE-CODE)),
-docs CC-BY-4.0. The repository ships `autogen-core`, `autogen-agentchat`,
-`autogen-ext`, `magentic-one-cli` and `autogen-studio` 0.4.3
+Code is MIT
+([LICENSE-CODE](https://github.com/microsoft/autogen/blob/027ecf0a379bcc1d09956d46d12d44a3ad9cee14/LICENSE-CODE)),
+docs CC-BY-4.0. The repository ships `autogen-core`, `autogen-agentchat`, `autogen-ext`,
+`magentic-one-cli` and `autogen-studio` 0.4.3
 ([version.py:1](https://github.com/microsoft/autogen/blob/027ecf0a379bcc1d09956d46d12d44a3ad9cee14/python/packages/autogen-studio/autogenstudio/version.py#L1)).
-The README marks AutoGen as in maintenance mode and points new users to
-Microsoft Agent Framework
+The README marks AutoGen as in maintenance mode and points new users to Microsoft Agent Framework
 ([README.md:14-25](https://github.com/microsoft/autogen/blob/027ecf0a379bcc1d09956d46d12d44a3ad9cee14/README.md#L14-L25)).
 All claims are from source.
 
@@ -108,7 +109,7 @@ so no `DOCKER_VOLUMES` line.
 
 Detail from the 2026-10-19 review, at
 [`004749e`](https://github.com/microsoft/autogen/commit/004749e6b7102c8fd317b9b1499ce5807223c278),
-for a future analyzer document. A run's stream is saved message by message as `message`
+for a future parser. A run's stream is saved message by message as `message`
 rows (`config` JSON, `session_id`, `run_id`) for the types
 `TextMessage`, `MultiModalMessage`, `StopMessage`, `HandoffMessage`,
 `ToolCallRequestEvent`, `ToolCallExecutionEvent` and
@@ -174,9 +175,13 @@ Nowhere. Studio has no project concept; teams and sessions are rows in
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+AutoGen Studio is `backlog`: its parser is
+[issue 69](https://github.com/seanthegeek/doubleagent/issues/69), and nothing it writes is parsed
+yet. A parser would read the SQLite `autogen04203.db`: the `message` rows of each run (the
+message types under [Records](#records)), joined through the `session` and `run` tables, with
+the `LLMCallEventMessage` rows for the model ([Model](#model)). `run.messages` and
+`run.team_result` repeat the `message` rows inside the same file, so there is no secondary
+source, and the `settings` table holds credentials ([section 3](#3-credentials)).
 
 ## 14. Confidence
 
