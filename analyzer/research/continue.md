@@ -47,6 +47,14 @@ Apache-2.0 ([`LICENSE`](https://github.com/continuedev/continue/blob/5522c6f44ca
   - Version drift: none, same commit.
   - Bad lines: found, an unreadable `sessions.json` is dropped
     silently.
+- **Damaged index**: the `sessions.json` layouts the parser reports
+  since issue 170 (unreadable, not a JSON array, cut inside an entry, an
+  entry with no `sessionId`, data after the array) are not observed on
+  any real install, source-derived (continuedev/continue at
+  [`5522c6f`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470)):
+  the extension rewrites the whole array on every save
+  ([`core/util/history.ts:168-181`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L168-L181)),
+  so a crash or a partial copy can leave it cut.
 
 ## 2. Transcript files
 
@@ -279,8 +287,9 @@ glob.
 
 ## 8. Parser plan
 
-Globs: `.continue/sessions/*.json` (skip `sessions.json` itself, but read it
-for `dateCreated`), `.continue/dev_data/*/chatInteraction.jsonl`,
+Globs: `.continue/sessions/*.json` (`sessions.json` is read for
+`dateCreated` and yields rows only for what it loses, see "Bad lines"
+below), `.continue/dev_data/*/chatInteraction.jsonl`,
 `.continue/dev_data/*/toolUsage.jsonl`, and `.continue/logs/cn.log` with
 its rotated `cn<N>.log` files (the `Sync:` paragraph below).
 
@@ -448,10 +457,19 @@ Requirement classes, source review of 2026-10-19:
   each: `input_history.json`, `dev_data`, `cn.log` and `/share` exports.
 - Version drift: none; the documents and the parser cite this commit.
 - Bad lines. `chatInteraction.jsonl` and `toolUsage.jsonl` go through
-  `iter_jsonl` and `error_rows`. `sessions.json` does not: an
-  unreadable index, or one that is not a JSON array, is dropped without
-  a row, and every session row then has an empty time with nothing
-  saying why. The issue 136 rule wants one `parser:` row for it.
+  `iter_jsonl` and `error_rows`. `sessions.json` is read by
+  `read_index` in `continue_dev.py` (the PearAI parser shares it), whose
+  errors the index's own artifact reports through `error_rows`, once,
+  with an empty `session_id` and time (issue 170): `parser: unreadable
+  session index: <reason>`, `parser: not a JSON array`, `parser:
+  unparseable record <N> (<reason>): <the text from that entry to the
+  end of the file>` for an entry cut mid-write (the entries before it
+  still time their sessions), `parser: array cut off after record <N>`,
+  `parser: unparseable record <N> (not an object with a sessionId):
+  <the entry as JSON>` (an entry keyed by the pre-1.0 `session_id` is
+  skipped without a row, as the extension filters it) and `parser:
+  unparseable data after the JSON array`. A session the index lost
+  keeps its rows with an empty `timestamp_utc`.
 
 Fixture `sessions/0f1e.json`:
 

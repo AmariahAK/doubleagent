@@ -225,7 +225,9 @@ tokens are written to these files; they are in SecretStorage.
 ## 8. Parser plan
 
 Globs (home-relative): `.pearai/sessions/*.json` (read `sessions.json`
-as the index, do not emit rows for it),
+as the index through the Continue parser's `read_index`; it yields rows
+only for what it loses, with the texts listed under "Bad lines" in
+[section 8 of `continue.md`](continue.md#8-parser-plan), since issue 170),
 `*/User/globalStorage/pearai.pearai-roo-cline/tasks/*/api_conversation_history.json`.
 The Roo fork task files can reuse the Roo Code parser if it accepts
 XML-in-text tool calls; otherwise rows are emitted per message.

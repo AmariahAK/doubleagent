@@ -4688,7 +4688,7 @@ class GooseTests(ParserBase):
 
 from doubleagent.parsers.aider import AiderParser
 from doubleagent.parsers.continue_dev import ContinueParser, load_session
-from fixtures import CONTINUE_SESSION, build_aider
+from fixtures import CONTINUE_SESSION, build_aider, continue_index, continue_index_cut
 
 
 class ContinueTests(ParserBase):
@@ -4793,9 +4793,10 @@ class ContinueTests(ParserBase):
 
     def test_index_and_config_not_wanted(self):
         p = ContinueParser()
-        for rel in (".continue/sessions/sessions.json", ".continue/config.yaml"):
-            art = next(a for a in self.col.artifacts if a.rel == rel)
-            self.assertFalse(p.wants(art), rel)
+        art = self.artifact(".continue/config.yaml")
+        self.assertFalse(p.wants(art))
+        # the index is wanted only for the rows that say what it lost (#170)
+        self.assertEqual(self.rows_for(p, ".continue/sessions/sessions.json"), [])
 
     def test_truncated_session_keeps_earlier_turns(self):
         path = self.home / self.REL
@@ -4897,6 +4898,78 @@ class ContinueTests(ParserBase):
             encoding="utf-8",
         )
         self.assertEqual(self.rows_for(ContinueParser(), ".continue/logs/cn.log"), [])
+
+    INDEX = ".continue/sessions/sessions.json"
+
+    def _session_times(self, parser) -> set:
+        return {r.timestamp_utc for r in self.rows_for(parser, self.REL)}
+
+    def test_index_cut_mid_write_is_reported(self):
+        # #170: the entries before the cut still time their sessions, and
+        # the broken entry is one row carrying it to the end of the file.
+        text, tail = continue_index_cut(continue_index())
+        (self.home / self.INDEX).write_text(text, encoding="utf-8")
+        p = ContinueParser()
+        self.assertEqual(self._session_times(p), {"2026-10-02T10:00:00.000Z"})
+        rows = self.rows_for(p, self.INDEX)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.session_id, r.timestamp_utc) for r in rows],
+            [("system", 2, "", "")],
+        )
+        self.assertTrue(
+            rows[0].text.startswith("parser: unparseable record 2 (Unterminated string")
+        )
+        self.assertTrue(rows[0].text.endswith("): " + tail), rows[0].text)
+        self.assertEqual(rows[0].source_file, "/alice/" + self.INDEX)
+
+    def test_index_bad_entry_keeps_the_entries_after_it(self):
+        entry = continue_index()[0]
+        (self.home / self.INDEX).write_text(
+            json.dumps(["not an entry", {"session_id": "pre-1.0"}, entry]), encoding="utf-8"
+        )
+        p = ContinueParser()
+        self.assertEqual(self._session_times(p), {"2026-10-02T10:00:00.000Z"})
+        # the pre-1.0 `session_id` entry is filtered as the extension does
+        self.assertEqual(
+            [(r.source_line, r.text) for r in self.rows_for(p, self.INDEX)],
+            [(1, 'parser: unparseable record 1 (not an object with a sessionId): "not an entry"')],
+        )
+
+    def test_index_not_an_array_is_reported(self):
+        (self.home / self.INDEX).write_text("{}", encoding="utf-8")
+        p = ContinueParser()
+        # the session keeps its rows, without the index's time
+        self.assertEqual(self._session_times(p), {""})
+        self.assertEqual(
+            [(r.source_line, r.text) for r in self.rows_for(p, self.INDEX)],
+            [(1, "parser: not a JSON array")],
+        )
+        # the index is shared by the dev_data reader; it reports nothing itself
+        self.assertEqual(
+            [
+                r.turn_type
+                for r in self.rows_for(p, ".continue/dev_data/0.2.0/chatInteraction.jsonl")
+            ],
+            ["user", "assistant"],
+        )
+
+    def test_index_unreadable_is_reported(self):
+        path = self.home / self.INDEX
+        path.chmod(0)
+        try:
+            try:
+                path.read_bytes()
+                self.skipTest("a file with no permissions is still readable here (root)")
+            except PermissionError:
+                pass
+            p = ContinueParser()
+            self.assertEqual(self._session_times(p), {""})
+            self.assertEqual(
+                [(r.source_line, r.text) for r in self.rows_for(p, self.INDEX)],
+                [(0, "parser: unreadable session index: permission denied")],
+            )
+        finally:
+            path.chmod(0o644)
 
 
 class AiderTests(ParserBase):
@@ -11244,12 +11317,13 @@ class PearAiTests(ParserBase):
     def test_not_wanted(self):
         for rel in (
             ".pearai/config.json",
-            ".pearai/sessions/sessions.json",
             PEARAI_GS + "state.vscdb",
         ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertEqual(art.agent, "pearai")
             self.assertFalse(PearAiParser().wants(art), rel)
+        # the index is wanted only for the rows that say what it lost (#170)
+        self.assertEqual(self.rows_for(PearAiParser(), ".pearai/sessions/sessions.json"), [])
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.SESSION)
@@ -11264,6 +11338,41 @@ class PearAiTests(ParserBase):
         self.assertEqual(len(rows), 7)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser:", rows[-1].text)
+
+    def test_index_cut_mid_write_is_reported(self):
+        # #170, through the Continue parser's index reader: the entry before
+        # the cut still times its session, the cut one is lost, and the index
+        # yields one pearai row carrying the broken entry to the end.
+        from fixtures import continue_index_cut, pearai_index
+
+        index = ".pearai/sessions/sessions.json"
+        text, tail = continue_index_cut(pearai_index()[:1])
+        (self.home / index).write_text(text, encoding="utf-8")
+        p = PearAiParser()
+        search = ".pearai/sessions/%s.json" % PEARAI_SEARCH_SESSION
+        self.assertEqual(
+            {r.timestamp_utc for r in self.rows_for(p, self.SESSION)}, {"2026-10-03T13:00:00.000Z"}
+        )
+        self.assertEqual({r.timestamp_utc for r in self.rows_for(p, search)}, {""})
+        rows = self.rows_for(p, index)
+        self.assertEqual(
+            [(r.agent, r.turn_type, r.source_line, r.session_id, r.timestamp_utc) for r in rows],
+            [("pearai", "system", 2, "", "")],
+        )
+        self.assertTrue(
+            rows[0].text.startswith("parser: unparseable record 2 (Unterminated string")
+        )
+        self.assertTrue(rows[0].text.endswith("): " + tail), rows[0].text)
+
+    def test_index_not_an_array_is_reported(self):
+        index = ".pearai/sessions/sessions.json"
+        (self.home / index).write_text('{"sessions": []}', encoding="utf-8")
+        p = PearAiParser()
+        self.assertEqual({r.timestamp_utc for r in self.rows_for(p, self.SESSION)}, {""})
+        self.assertEqual(
+            [(r.agent, r.source_line, r.text) for r in self.rows_for(p, index)],
+            [("pearai", 1, "parser: not a JSON array")],
+        )
 
 
 from doubleagent.parsers.muse_code import MuseCodeParser, micros_to_utc, result_text

@@ -4421,6 +4421,29 @@ def build_continue_log(home: Path) -> None:
     (logs / "prompt.log").write_text("==========================\nprompt\n", encoding="utf-8")
 
 
+# A sessions.json cut mid-write (#170). The index is one JSON array that
+# core/util/history.ts at 5522c6f rewrites whole on every save, so a crash
+# or a partial copy leaves the entries before the cut and a broken last
+# one. The added entry names a session with no file of its own.
+CONTINUE_LOST_SESSION = "1a2b"
+
+
+def continue_index_cut(entries: list) -> tuple[str, str]:
+    """`entries` plus one more, serialised as `sessions.json` is and cut
+    inside the added entry's title. Returns the file text and the text from
+    the broken entry's first character to the end, which the parser's row
+    must carry in full. The PearAI fork's index has the same shape."""
+    lost = {
+        "sessionId": CONTINUE_LOST_SESSION,
+        "title": "Lost entry",
+        "dateCreated": "1790935300000",
+        "workspaceDirectory": "/srv/proj",
+    }
+    text = json.dumps([*entries, lost])
+    text = text[: text.index("Lost entry") + 4]
+    return text, text[text.index('{"sessionId": "%s"' % CONTINUE_LOST_SESSION) :]
+
+
 # Written the way aider/io.py writes them: user and blockquote lines end in
 # two spaces (markdown line breaks), assistant output is framed by blanks.
 AIDER_CHAT = "".join(

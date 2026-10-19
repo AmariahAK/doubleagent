@@ -16,8 +16,15 @@ Chat sessions, `.pearai/sessions/` (the Continue fork's global dir):
   `citations[]` (`url`, `title`). There are no tool calls, tool messages or
   thinking in this fork.
 * `sessions.json`: the index, `{sessionId, title, dateCreated (ms epoch as
-  a string), workspaceDirectory, integrationType}`; read for the time, not
-  parsed into rows.
+  a string), workspaceDirectory, integrationType}`; read for the time
+  through `continue_dev.read_index`, and yields rows only for what it
+  loses (issue 170), with the same texts as the Continue parser: `parser:
+  unreadable session index: <reason>`, `parser: not a JSON array`,
+  `parser: unparseable record <N> (<reason>): <the text from that element
+  to the end of the file>`, `parser: array cut off after record <N>`,
+  `parser: unparseable record <N> (not an object with a sessionId):
+  <the element as JSON>` and `parser: unparseable data after the JSON
+  array`. A session the index lost has an empty `timestamp_utc`.
 
 Every row of a session inherits `dateCreated` (no per-message time).
 `history[]` rows come first, then `perplexityHistory[]`; `source_line` is
@@ -69,7 +76,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
 from ..vscode_state import read_item
-from .base import Options, track_change
+from .base import Options, error_rows, track_change
 from .cline_legacy import LegacyTaskParser, content_rows, read_text
 from .continue_dev import ContinueParser, load_session, message_text
 
@@ -136,13 +143,15 @@ class PearAiParser(LegacyTaskParser):
         self._state: dict[tuple, object] = {}
 
     def wants(self, artifact: Artifact) -> bool:
-        m = SESSION_RX.match(artifact.rel)
-        if m:
-            return m.group(1) + ".json" != INDEX_NAME
-        return bool(self.task_match(artifact))
+        # sessions.json too, for the rows that say what the index lost
+        return bool(SESSION_RX.match(artifact.rel) or self.task_match(artifact))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
-        if SESSION_RX.match(artifact.rel):
+        m = SESSION_RX.match(artifact.rel)
+        if m and m.group(1) + ".json" == INDEX_NAME:
+            errors = self._continue.index_errors(artifact.disk_path)
+            yield from error_rows(self, artifact, errors)
+        elif m:
             yield from self._parse_session(artifact, opts)
         elif self.task_match(artifact):
             yield from self.parse_task_file(artifact, opts)

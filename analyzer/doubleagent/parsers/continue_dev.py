@@ -19,7 +19,19 @@ keyword. Validated against source, continuedev/continue at 5522c6f
 * `.continue/sessions/sessions.json`: the index, an array of
   `{sessionId, title, dateCreated, workspaceDirectory, messageCount}` with
   `dateCreated` a millisecond epoch as a string. It is read for the
-  timestamp, never parsed into rows itself.
+  timestamp and yields rows only for what it loses (issue 170): a file
+  that cannot be read is one `parser: unreadable session index: <reason>`
+  row, a file that is not a JSON array one `parser: not a JSON array`
+  row, an element that does not decode (the file cut mid-write) a
+  `parser: unparseable record <N> (<reason>): <the text from that
+  element to the end of the file>` row, an array with no closing bracket
+  `parser: array cut off after record <N>`, and an element that is not
+  an object with a `sessionId` (or the pre-1.0 `session_id` the
+  extension filters out) `parser: unparseable record <N> (not an object
+  with a sessionId): <the element as JSON>`; data after the array is
+  `parser: unparseable data after the JSON array`. The entries before a cut
+  still give their sessions a time; a session the index lost has an
+  empty `timestamp_utc`, and the row says why.
 * `.continue/dev_data/<schema>/chatInteraction.jsonl` (and the unversioned
   legacy `dev_data/chatInteraction.jsonl`): `timestamp` ISO 8601,
   `sessionId`, `prompt`, `completion`, `modelTitle`, `modelName`.
@@ -110,6 +122,7 @@ from .base import (
     text_of,
     track_change,
 )
+from .cline_legacy import iter_array_at
 
 SESSION_RX = re.compile(r"^(?:.*/)?\.continue/sessions/([^/]+)\.json$")
 DEV_DATA_RX = re.compile(
@@ -131,6 +144,43 @@ METADATA_RESULT_RX = re.compile(
 AGENT_URL_RX = re.compile(r"/agents/([^/]+)/metadata$")
 STORAGE_SKIPPED = "Storage sync requested but no Continue API key"
 HEADER_KEYS = ("sessionId", "title", "workspaceDirectory", "mode", "chatModelTitle")
+
+
+def read_index(path) -> tuple[dict[str, dict], list]:
+    """sessionId -> entry for the `sessions.json` index at `path`, and the
+    errors for `error_rows`: an unreadable file, a file that is not a JSON
+    array, an element that does not decode (with the text from it to the
+    end of the file, the entries before it kept) and an element that is
+    not an object with a `sessionId`. Entries keyed `session_id` are a
+    pre-1.0 format the extension itself filters out, so they are skipped
+    without a row. An absent file or a symlink is an empty index with no
+    error, since the collector does not materialise symlinks. Shared with
+    the PearAI parser, whose fork keeps the same index."""
+    out: dict[str, dict] = {}
+    errors: list = []
+    try:
+        if not path.is_file() or path.is_symlink():
+            return out, errors
+        with open(path, "rb") as fh:
+            text = fh.read().decode("utf-8", errors="replace")
+    except OSError as e:
+        errors.append((0, "unreadable session index: %s" % error_reason(e), ""))
+        return out, errors
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    end: list = []
+    count = 0
+    for n, e in iter_array_at(text, 0, errors, end):
+        count = n
+        if isinstance(e, dict) and e.get("sessionId"):
+            out[str(e["sessionId"])] = e
+        elif not (isinstance(e, dict) and e.get("session_id")):
+            errors.append(
+                (n, "unparseable record %d (not an object with a sessionId)" % n, compact_json(e))
+            )
+    if end and text[end[0] :].strip(" \t\r\n"):
+        errors.append((count + 1, "unparseable data after the JSON array", ""))
+    return out, errors
 
 
 def message_text(content) -> str:
@@ -219,13 +269,15 @@ class ContinueParser(Parser):
     name = "continue"
 
     def __init__(self) -> None:
-        self._index_cache: dict[str, dict[str, dict]] = {}
+        self._index_cache: dict[str, tuple[dict[str, dict], list]] = {}
 
     def wants(self, artifact: Artifact) -> bool:
-        m = SESSION_RX.match(artifact.rel)
-        if m:
-            return m.group(1) + ".json" != INDEX_NAME
-        return bool(DEV_DATA_RX.match(artifact.rel) or CN_LOG_RX.match(artifact.rel))
+        # sessions.json too, for the rows that say what the index lost
+        return bool(
+            SESSION_RX.match(artifact.rel)
+            or DEV_DATA_RX.match(artifact.rel)
+            or CN_LOG_RX.match(artifact.rel)
+        )
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if CN_LOG_RX.match(artifact.rel):
@@ -236,31 +288,31 @@ class ContinueParser(Parser):
             yield from self._parse_chat_interaction(artifact, opts)
         elif m:
             yield from self._parse_tool_usage(artifact, opts)
+        elif artifact.disk_path.name == INDEX_NAME:
+            yield from error_rows(self, artifact, self.index_errors(artifact.disk_path))
         else:
             yield from self._parse_session(artifact, opts)
 
     # ---- sessions.json --------------------------------------------------------
 
+    def _read_index(self, path) -> tuple[dict[str, dict], list]:
+        """`read_index` of `path`, cached per file for the session files
+        that share it."""
+        key = str(path)
+        if key not in self._index_cache:
+            self._index_cache[key] = read_index(path)
+        return self._index_cache[key]
+
     def _index(self, sessions_dir) -> dict[str, dict]:
         """sessionId -> sessions.json entry for the index beside the session
-        files; empty when it is absent or unreadable."""
-        path = sessions_dir / INDEX_NAME
-        key = str(path)
-        if key in self._index_cache:
-            return self._index_cache[key]
-        out: dict[str, dict] = {}
-        try:
-            if path.is_file() and not path.is_symlink():
-                data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-                if isinstance(data, list):
-                    for e in data:
-                        # entries with session_id are a pre-1.0 format the extension filters out
-                        if isinstance(e, dict) and e.get("sessionId"):
-                            out[str(e["sessionId"])] = e
-        except (OSError, ValueError):
-            pass
-        self._index_cache[key] = out
-        return out
+        files; empty when it is absent or unreadable. What it lost is
+        reported once, by `index_errors` on the index's own artifact."""
+        return self._read_index(sessions_dir / INDEX_NAME)[0]
+
+    def index_errors(self, path) -> list:
+        """The errors `read_index` found in the index at `path`, a fresh
+        list each call."""
+        return list(self._read_index(path)[1])
 
     # ---- session files --------------------------------------------------------
 
