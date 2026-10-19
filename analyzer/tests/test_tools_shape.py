@@ -26,7 +26,9 @@ def shape(*args):
     )
     if res.returncode != 0:
         raise AssertionError("shape.py exited %d: %s" % (res.returncode, res.stderr))
-    return res.stdout
+    # The `# <root>` header names the test's own temporary directory, whose random
+    # name can contain a token a leak check looks for (issue 229); it is not under test.
+    return "".join(line for line in res.stdout.splitlines(True) if not line.startswith("# "))
 
 
 class ShapeBase(unittest.TestCase):
