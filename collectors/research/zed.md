@@ -1,8 +1,18 @@
-# Zed: on-disk paths
+# zed
 
-## 1. Source and evidence level
+Zed is a code editor whose built-in agent panel runs Zed's own agent and drives external agents;
+this document covers where it keeps its state on disk. The transcript schema is in
+[`analyzer/research/zed.md`](../../analyzer/research/zed.md).
 
-[zed-industries/zed](https://github.com/zed-industries/zed), open source, commit [`a84689073d296dfd39987bc7dd478e43ef76d83a`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a) (blobless partial clone). Platform mapping verified against the `dirs` 6.0.0 crate (`scratchpad/crates/dirs/dirs-6.0.0`, version from `Cargo.lock`). Flatpak sandbox paths are Flatpak documentation level. Transcript schema is in [`analyzer/research/zed.md`](../../analyzer/research/zed.md).
+## 1. Source and evidence
+
+[zed-industries/zed](https://github.com/zed-industries/zed), open source, commit [`a84689073d296dfd39987bc7dd478e43ef76d83a`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a) (blobless partial clone). Platform mapping verified against the `dirs` 6.0.0 crate (`scratchpad/crates/dirs/dirs-6.0.0`, version from `Cargo.lock`). Flatpak sandbox paths are Flatpak documentation level.
+
+### Observed
+
+No real install.
+
+### Source reviews
 
 - **Source review (2026-10-19)**: [zed-industries/zed](https://github.com/zed-industries/zed)
   at [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
@@ -17,16 +27,19 @@
     and the sandbox grants `agent.sandbox_permissions`, both written by
     Zed on an "Always allow" choice, and `db.sqlite` (collected) holds
     the trusted project list in table `trusted_worktrees`; details in
-    [section 8 of `analyzer/research/zed.md`](../../analyzer/research/zed.md#8-parser-plan).
+    [Permission state in
+    `analyzer/research/zed.md`](../../analyzer/research/zed.md#permission-state).
   - Past use: draft prompts, the created-worktree registry, archived
     worktrees and sidebar terminals are tables or key namespaces inside
     the collected `db.sqlite`; no new file
-    ([section 2 of `analyzer/research/zed.md`](../../analyzer/research/zed.md#2-transcript-stores)).
+    ([section 5 of `analyzer/research/zed.md`](../../analyzer/research/zed.md#5-other-stores)).
   - Sync, relay and origin: none recorded on disk, as before.
   - Scratch directories: two, neither collected; see
-    [section 2](#2-per-user-storage).
+    [Scratch directories](#scratch-directories).
   - Deletion: a thread delete removes its rows and its macOS temp
-    directory; no file records it.
+    directory; no file records it
+    ([What survives a delete in
+    `analyzer/research/zed.md`](../../analyzer/research/zed.md#what-survives-a-delete)).
   - Credentials, exclusions: nothing new.
 
 ## 2. Per-user storage
@@ -54,12 +67,14 @@ group of tables with its migrations) opens the same file
 ([`crates/db/src/kvp.rs:20-41`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/db/src/kvp.rs#L20-L41);
 [`crates/workspace/src/persistence.rs:986-991`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/workspace/src/persistence.rs#L986-L991)).
 What each holds is in
-[section 2 of `analyzer/research/zed.md`](../../analyzer/research/zed.md#2-transcript-stores).
+[section 5 of `analyzer/research/zed.md`](../../analyzer/research/zed.md#5-other-stores).
 Global agent skills are read from `~/.agents/skills/<skill>/SKILL.md`, a
 directory shared with other agents and not created by Zed
 ([`crates/agent/src/agent.rs:616-638`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L616-L638)).
 
-Scratch directories. Zed has two, and the catalog collects neither:
+### Scratch directories
+
+Zed has two, and the catalog collects neither:
 
 - On macOS only, a thread whose terminal runs in the OS sandbox gets
   `tempfile`'s `$TMPDIR/zed-agent-terminal-<random>` (under
@@ -92,7 +107,10 @@ namespaces read for this review.
 
 ## 4. Exclusions
 
-Under either data root: `extensions`, `remote_extensions`, `node`, `languages`, `copilot`, `debug_adapters`, `external_agents`, `prettier`, `remote_servers`, `devcontainer`, `embeddings`, `server_state`, `hang_traces`, plus `build_timings`. `~/.cache/zed` and `~/Library/Caches/Zed` are temp. `prompts/*.mdb` is the user prompt library, small, keep.
+Under either data root: `extensions`, `remote_extensions`, `node`, `languages`, `copilot`,
+`debug_adapters`, `external_agents`, `prettier`, `remote_servers`, `devcontainer`, `embeddings`,
+`server_state`, `hang_traces`, plus `build_timings`. `~/.cache/zed` and `~/Library/Caches/Zed` are
+temp. `prompts/*.mdb` is the user prompt library, small, keep.
 
 ## 5. Project-local files
 
@@ -123,4 +141,7 @@ At [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac
 
 ## 7. Confidence
 
-High: all paths from `paths.rs` and the `dirs` crate; credential provider behaviour. Medium: Flatpak `~/.var/app/<id>/{config,data}` layout (Flatpak convention; Zed only reads the `FLATPAK_XDG_*` variables the runtime sets). Not determined: the serialisation format of `folder_paths` (a `PathList`), and whether any legacy `conversations/` data survives on old installs.
+High: all paths from `paths.rs` and the `dirs` crate; credential provider behaviour. Medium: Flatpak
+`~/.var/app/<id>/{config,data}` layout (Flatpak convention; Zed only reads the `FLATPAK_XDG_*`
+variables the runtime sets). Not determined: the serialisation format of `folder_paths` (a
+`PathList`), and whether any legacy `conversations/` data survives on old installs.
