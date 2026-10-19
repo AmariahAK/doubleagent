@@ -43,7 +43,10 @@ commit cited in [vscode.md](vscode.md). Sync was checked at
   - Version drift: found. New message and step fields (`changes`,
     `toolSteps[].said`, `mcpTool`, `noAlways`, `meta.outOfSteps`,
     `meta.instructions`); a `said` step, a user message sent mid-reply,
-    is emitted by the parser as a `tool_use` row.
+    is a `user` row since the fix for issue 171 (it was a `tool_use`
+    row before). The `said` step layout is not observed on any real
+    install, source-derived (twinnydotdev/twinny at
+    [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)).
   - Bad lines: no line-oriented file is read today; the two new sources
     would need `error_rows` if parsed.
 
@@ -209,10 +212,10 @@ row `key = 'rjmacarthy.twinny'`, parse JSON, iterate
 | session_id | conversation `id` |
 | project_path | empty |
 | git_branch | empty |
-| turn_type | `role`; `<think>` block → thinking; each `toolSteps[]` → tool_use plus tool_result |
+| turn_type | `role`; `<think>` block → thinking; each `toolSteps[]` → tool_use plus tool_result, except a `said: true` step → user |
 | model | `meta.model` (assistant) |
 | tool_name, tool_use_id | `toolSteps[].name`, `toolSteps[].id` |
-| text | `content` with think block removed; tool_use: `command` or `args` JSON; tool_result: `output` |
+| text | `content` with think block removed; tool_use: `command` or `args` JSON; tool_result: `output`; a `said` step: `summary` |
 | source_line | empty (one SQLite row) |
 
 Model and permission rows, all `system` (issues 96 and 97):
@@ -304,9 +307,15 @@ Requirement classes, from the source review of 2026-10-19 at
   was open; "clear all" writes `{}`
   ([conversation-history.ts:157-178](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/conversation-history.ts#L157-L178)).
   Neither touches `agent-changes/` or the log.
-- Drift: a `toolSteps[]` entry with `said: true` is a user message, and
-  the parser emits it as a `tool_use` named `said` and an empty
-  `tool_result`; `changes`, `mcpTool`, `meta.outOfSteps` and
+- Drift: a `toolSteps[]` entry with `said: true` (since 4.3.5; `name`
+  `said`, `id` `said.<id>`, the message in `summary`, `status` `done`)
+  is a message the user sent while the reply ran, and the parser emits
+  it as a `user` row with the `summary` as its text, in its place among
+  the reply's steps, with no `tool_name`, `tool_use_id` or `model`
+  ([`src/extension/chat/tool-steps.ts:101-104`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/tool-steps.ts#L101-L104),
+  [`src/common/types.ts:129-133`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/types.ts#L129-L133));
+  before the fix for issue 171 it was a `tool_use` named `said` and an
+  empty `tool_result`. `changes`, `mcpTool`, `meta.outOfSteps` and
   `meta.instructions` are not read.
 - Bad lines: the one source read is a single JSON value, and a value
   that does not decode is one whole-file `parser:` row; no line-oriented

@@ -19,7 +19,7 @@ string, reasoning inline as `<think>...</think>` or
 `<thinking>...</thinking>`), `images`, `meta.model`, `meta.withheld`
 (counts of credentials Twinny's secret shield masked) and `toolSteps[]`
 (`id`, `name`, `summary`, `args`, `command`, `output`, `status`,
-`approval`).
+`approval`, `said`).
 
 Model and permission rows, all `system`: `meta.model` gives `model: <id>`
 at the first assistant message of a conversation that names one and
@@ -44,7 +44,12 @@ Messages carry no timestamp, so every row of a conversation inherits its
 within a conversation is the order of `messages[]`. Each `toolSteps[]`
 entry becomes a `tool_use` (`command`, else `args` as JSON, else
 `summary`) and a `tool_result` (`output`, prefixed with the status when it
-is not `done`) sharing the step `id`. `<think>` blocks become `thinking`
+is not `done`) sharing the step `id`. Since 4.3.5 a message the user
+sends while a reply runs is saved among that reply's `toolSteps[]` as a
+step with `said: true` (`name` `said`, `id` `said.<id>`, the message in
+`summary`, `status` `done`; tool-steps.ts:101-104 and types.ts:129-133 at
+0337b265, 4.3.15); it is not a tool call and becomes a `user` row, in its
+place among the steps, where the model read it. `<think>` blocks become `thinking`
 rows, opt-in, and are removed from the assistant text. There is no
 project path, git branch or line number: `source_line` is 0.
 """
@@ -172,6 +177,19 @@ class TwinnyParser(Parser):
                 )
             for step in msg.get("toolSteps") or []:
                 if not isinstance(step, dict):
+                    continue
+                if step.get("said") is True:
+                    # Not a tool: a message the user sent while the reply ran.
+                    said = step.get("summary")
+                    # A summary that is not a string is kept whole, as JSON.
+                    said = (
+                        said
+                        if isinstance(said, str)
+                        else ""
+                        if said is None
+                        else compact_json(said)
+                    )
+                    yield row("user", said)
                     continue
                 name, tid = str(step.get("name") or ""), str(step.get("id") or "")
                 args = step.get("args")

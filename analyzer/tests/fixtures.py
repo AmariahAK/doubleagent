@@ -8751,6 +8751,78 @@ def build_twinny(home: Path) -> None:
     )
 
 
+TWINNY_SAID_CONVERSATION = "7d1c2b3a-1111-4000-8000-000000000003"
+TWINNY_SAID_REL = ".config/Code/User/globalStorage/state.vscdb"
+
+
+def twinny_said_records():
+    """A 4.3.15 conversation with a message the user sent mid-reply. Since
+    4.3.5 such a message is saved among the reply's `toolSteps[]` as a step
+    `{id: "said.<id>", name: "said", summary: <text>, status: "done",
+    said: true}` (src/extension/chat/tool-steps.ts:101-104 and
+    src/common/types.ts:129-133 at twinnydotdev/twinny 0337b265). The second
+    `said` step has no summary, the third a non-string one."""
+    return {
+        "twinny.conversations": {
+            TWINNY_SAID_CONVERSATION: {
+                "id": TWINNY_SAID_CONVERSATION,
+                "title": "Install deps",
+                "updatedAt": 1791029000000,
+                "messages": [
+                    {"role": "user", "content": "install the dependencies"},
+                    {
+                        "role": "assistant",
+                        "content": "Installed with pnpm.",
+                        "meta": {"model": "qwen2.5-coder:7b", "provider": "Ollama"},
+                        "toolSteps": [
+                            {
+                                "id": "step-1",
+                                "name": "run_command",
+                                "summary": "ran `npm install`",
+                                "args": {"command": "npm install"},
+                                "output": "added 3 packages",
+                                "status": "done",
+                                "at": 0,
+                            },
+                            {
+                                "id": "said.m-1",
+                                "name": "said",
+                                "summary": "use pnpm instead",
+                                "status": "done",
+                                "said": True,
+                            },
+                            {"id": "said.m-2", "name": "said", "status": "done", "said": True},
+                            {
+                                "id": "said.m-3",
+                                "name": "said",
+                                "summary": ["and", "add lodash"],
+                                "status": "done",
+                                "said": True,
+                            },
+                            {
+                                "id": "step-2",
+                                "name": "run_command",
+                                "summary": "ran `pnpm install`",
+                                "args": {"command": "pnpm install"},
+                                "output": "done",
+                                "status": "done",
+                                "at": 0,
+                            },
+                        ],
+                    },
+                ],
+            }
+        }
+    }
+
+
+def build_twinny_said(home: Path) -> None:
+    """Write `twinny_said_records()` to a plain state.vscdb in a home of its
+    own (not `build_home`'s), so the main Twinny fixture's rows and the
+    shared homes' session counts are unchanged."""
+    _vscdb(home / TWINNY_SAID_REL, {"rjmacarthy.twinny": twinny_said_records()})
+
+
 PEARAI_SESSION = "9b1c2d3e-0000-4000-8000-000000000001"
 PEARAI_SEARCH_SESSION = "9b1c2d3e-0000-4000-8000-000000000002"
 PEARAI_TASK = "1791036000000"

@@ -9762,9 +9762,13 @@ from fixtures import (
     TWINNY_ACTIVE,
     TWINNY_API_KEY,
     TWINNY_CONVERSATION,
+    TWINNY_SAID_CONVERSATION,
+    TWINNY_SAID_REL,
     TWINNY_VSCDB_REL,
     _vscdb,
+    build_twinny_said,
     cody_vscode_state,
+    twinny_said_records,
 )
 
 
@@ -10106,6 +10110,62 @@ class TwinnyTests(ParserBase):
         rows = self.rows_for(TwinnyParser(), CODY_VSCDB_REL)
         self.assertEqual([r.turn_type for r in rows], ["system"])
         self.assertIn("parser: state.vscdb unreadable", rows[0].text)
+
+    def _said_rows(self, home):
+        col = open_input(home, self.cat, host="h1")
+        art = next(a for a in col.artifacts if a.rel == TWINNY_SAID_REL)
+        return list(TwinnyParser().parse(art, Options()))
+
+    def test_said_step_is_user_row(self):
+        # Issue 171: since 4.3.5 a message the user sends mid-reply is a
+        # `said: true` tool step; it is a user row in its place, not a tool call.
+        home = self.tmp / "said-home"
+        build_twinny_said(home)
+        rows = self._said_rows(home)
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.tool_use_id, r.text) for r in rows],
+            [
+                ("system", "", "", "conversation: Install deps | messages=2"),
+                ("user", "", "", "install the dependencies"),
+                ("system", "", "", "model: qwen2.5-coder:7b"),
+                ("assistant", "", "", "Installed with pnpm."),
+                ("tool_use", "run_command", "step-1", '{"command":"npm install"}'),
+                ("tool_result", "run_command", "step-1", "added 3 packages"),
+                ("user", "", "", "use pnpm instead"),
+                ("user", "", "", ""),
+                ("user", "", "", '["and","add lodash"]'),
+                ("tool_use", "run_command", "step-2", '{"command":"pnpm install"}'),
+                ("tool_result", "run_command", "step-2", "done"),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.agent, r.session_id, r.timestamp_utc, r.project_path),
+                ("twinny", TWINNY_SAID_CONVERSATION, "2026-10-03T12:03:20.000Z", ""),
+            )
+        self.assertEqual({r.model for r in rows if r.turn_type == "user"}, {""})
+        self.assertNotIn("said", {r.tool_name for r in rows})
+
+    def test_said_value_cut_is_reported(self):
+        # The same store with its value cut mid-write: one whole-file row and
+        # no exception (the store is a single JSON value, not lines).
+        home = self.tmp / "said-home"
+        build_twinny_said(home)
+        value = json.dumps(twinny_said_records())
+        con = sqlite3.connect(str(home / TWINNY_SAID_REL))
+        con.execute(
+            "UPDATE ItemTable SET value = ? WHERE key = 'rjmacarthy.twinny'",
+            (value[: len(value) // 2].encode("utf-8"),),
+        )
+        con.commit()
+        con.close()
+        rows = self._said_rows(home)
+        self.assertEqual([r.turn_type for r in rows], ["system"])
+        self.assertTrue(
+            rows[0].text.startswith(
+                "parser: ItemTable value for rjmacarthy.twinny is not valid JSON"
+            )
+        )
 
 
 class PearAiTests(ParserBase):
