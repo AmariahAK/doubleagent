@@ -13,6 +13,36 @@ Paths, credentials and the rest of the per-user state are in
 ([`LICENSE.txt`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/LICENSE.txt)). Open source. The input history format comes from the
 upstream prompt_toolkit `history.py`, which is not vendored.
 
+- **Source review (2026-10-19)**: the head of
+  [Aider-AI/aider](https://github.com/Aider-AI/aider) `main` on
+  2026-10-19 is still
+  [`5dc9490`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c),
+  the commit cited throughout, so there is no drift; the review read the
+  writers again for each requirement class. Source only. By class:
+  - Permission state: found, not read as decisions. Every confirmation
+    is written to the chat history as a blockquote line holding the
+    question, its options and the answer
+    ([section 3](#3-record-schema)); the standing grant is `yes-always`
+    in `.aider.conf.yml` or `--yes-always`, under which the answer is
+    written as if typed. "Don't ask again" lasts the run only.
+  - Model: found, not read. The startup announcements written to the
+    chat history name the main, weak and editor models
+    ([section 3](#3-record-schema)), and each `/model`, `/weak-model`
+    or `/editor-model` switch writes them again. The earlier statement
+    that the files record no model was wrong.
+  - Past use: covered (the input and LLM histories); no other store
+    found.
+  - Sync, relay and origin: covered; none.
+  - Scratch directories: none. Aider works in the git root or cwd; the
+    only directory it makes is a system temporary directory for an image
+    pasted with `/paste`
+    ([`commands.py:1295-1298`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L1295-L1298)).
+  - Deletion: covered; `/clear` and `/reset` empty the in-memory chat
+    and leave every file
+    ([`commands.py:439-443`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L439-L443)).
+  - Version drift: none.
+  - Bad lines: covered.
+
 ## 2. Transcript files
 
 In the git root, else the cwd ([`aider/args.py:271-275`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L271-L275)):
@@ -33,6 +63,46 @@ every session in that repository, appended.
 - Tool and system output, including `Applied edit to <path>`, `Commit <hash>
   <msg>`, errors and confirmations: `> text  \n` blockquote lines
   ([`:966-973`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L966-L973), [`:995-999`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L995-L999), [`base_coder.py:2334`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L2334), [`repo.py:313`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/repo.py#L313)).
+- Startup announcements (source review of 2026-10-19): at the start of
+  each run, and again after a `/model`, `/weak-model`, `/editor-model`
+  or `/chat-mode` switch, Aider writes its announcement lines as
+  blockquotes ([`base_coder.py:550-554`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L550-L554),
+  [`main.py:1042`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/main.py#L1042),
+  [`1174-1180`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/main.py#L1174-L1180)):
+  `> Aider v<version>`, then `> Model: <name> with <format> edit format`
+  (or `> Main model: ...` when a separate weak model is in use), with
+  `, <n> think tokens`, `, reasoning <effort>`, `, prompt cache` or
+  `, infinite output` appended when they apply, `> Editor model: <name>
+  with <format> edit format` in architect mode, `> Weak model: <name>`,
+  and `> Git repo: <dir> with <n> files` or `> Git repo: none`
+  ([`base_coder.py:207-260`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L207-L260)).
+  `/model <name>` itself is a `#### /model <name>` user line
+  ([`commands.py:87-112`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L87-L112)).
+- Confirmations (source review of 2026-10-19): `confirm_ask` writes one
+  blockquote line `> <question> (Y)es/(N)o[/(A)ll][/(S)kip all][/(D)on't
+  ask again] [<default>]: <answer>`, the answer as typed (`y`, `n`, `a`,
+  `s`, `d`, or empty for the default), preceded by the subject (the
+  command, path or URL) on blockquote lines of its own
+  ([`io.py:807-858`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L807-L858),
+  [`903-905`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L903-L905),
+  [`922-923`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L922-L923)).
+  The questions include `Run shell command?`, `Create new file?`,
+  `Add file to the chat?` and `Add URL to the chat?`
+  ([`base_coder.py:977`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L977),
+  [`1773`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L1773),
+  [`2207`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L2207),
+  [`2455`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L2455)). Under
+  `--yes-always` (`yes-always: true` in a config file,
+  [`args.py:760-764`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L760-L764))
+  the answer `y` is written without asking, and `n` for a question that
+  requires an explicit yes
+  ([`io.py:866-867`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L866-L867)),
+  so a line alone does not say whether a person answered. "Don't ask
+  again" adds the question to an in-memory set for the run, and a later
+  asking of the same question is declined without a line
+  ([`io.py:269`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L269),
+  [`821-824`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L821-L824),
+  [`903`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L903)).
 - Assistant: raw markdown with no prefix, `\n<content>\n\n` ([`:793-795`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L793-L795),
   called from [`base_coder.py:1829`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L1829)), so SEARCH/REPLACE edit blocks appear
   verbatim inside fenced code. The function-call fallback writes
@@ -55,8 +125,10 @@ separator, then `ROLE <line>` per content line (`SYSTEM`, `USER`,
 
 The project is the directory containing the files (the git root). There is
 no session id; synthesise one per `# aider chat started at` header. Input
-history timestamps join to `#### ` prompts by order and text. No model name
-and no git branch are recorded.
+history timestamps join to `#### ` prompts by order and text. No branch is
+recorded; the model is named only in the startup announcement lines
+([section 3](#3-record-schema)), which carry no time of their own and
+follow the session header.
 
 Which file is primary. `.aider.chat.history.md` is the store of record: it
 is the only file with session headers and assistant and tool output, and
@@ -143,11 +215,31 @@ own time and the default two-second window (see [section 4](#4-joins)).
 | tool_name, tool_use_id | empty |
 | text | prompt text, assistant text, blockquote text |
 
-Aider records no model in these files, so the parser yields no `model:`
-rows. Its confirmation prompts are written as `> ` blockquote lines
+The model is in the chat history only as the `> Model:`, `> Main
+model:`, `> Weak model:` and `> Editor model:` announcement lines
+([section 3](#3-record-schema)); the parser does not read them, so it
+yields no `model:` rows. Its confirmation prompts are written as `> ` blockquote lines
 ([section 3](#3-record-schema)), which the parser already emits with the
 rest of the blockquote run as `tool_result` rows; no separate `permission
 decision:` row is derived from them.
+
+Source review of 2026-10-19, by class (detail in
+[section 1](#1-source) and [section 3](#3-record-schema)):
+
+- Permission: the confirmation lines are decisions on disk; a
+  `permission decision: <answer> (<question>)` `system` row beside the
+  `tool_result` row would surface them, and a `yes-always` key in a
+  collected `.aider.conf.yml` is a standing setting
+  (`permission setting: yes-always=true (from <file>, file mtime)`).
+- Model: the announcement lines give `model: <name>` at each session
+  header and `model: <old> -> <new>` at each later announcement that
+  names another; not yet parsed.
+- Past use: covered.
+- Sync, relay and origin: covered; none.
+- Scratch directories: none.
+- Deletion: no marker; the files outlive `/clear` and `/reset`.
+- Drift: none.
+- Bad lines: covered.
 
 Sync: Aider records no sync state, because it uploads no session: no
 command or setting sends a chat history, input history, LLM history or

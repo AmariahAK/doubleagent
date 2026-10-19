@@ -15,6 +15,63 @@ relative to `codex-rs/` in the clone.
 [`2767e5f20d6927500b8f1938c773c61afb823245`](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245),
 Apache-2.0, open source.
 
+- **Source review (2026-10-19)**: [openinterpreter/openinterpreter](https://github.com/openinterpreter/openinterpreter)
+  at [`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87),
+  the head of `main` on 2026-10-19 (workspace version 0.0.56,
+  [`codex-rs/Cargo.toml:163`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/Cargo.toml#L163)),
+  compared file by file with
+  [`2767e5f`](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245)
+  (0.0.55), the commit cited below. Only four files differ: the Codex
+  compatibility profile the fork announces to the model service moved
+  from 0.156.1 to 0.159.0
+  ([`codex-rs/product-info/src/lib.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/product-info/src/lib.rs#L12)),
+  with its tests and the version numbers. The fork has not taken
+  Codex's changes after its snapshot, so the Codex findings of the same
+  day ([section 1 of `codex-cli.md`](codex-cli.md#1-evidence)) apply
+  only where noted. Source only. By class:
+  - Permission state: found, not read, as in Codex: `rules/default.rules`
+    ([`codex-rs/core/src/exec_policy.rs:54-56`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/exec_policy.rs#L54-L56)),
+    `config.toml` project `trust_level`
+    ([`codex-rs/core/src/config/mod.rs:2373`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/config/mod.rs#L2373))
+    and tool `approval_mode`
+    ([`codex-rs/core/src/mcp_tool_call.rs:2291`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/mcp_tool_call.rs#L2291),
+    [`2334`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/mcp_tool_call.rs#L2334),
+    [`2369`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/mcp_tool_call.rs#L2369)).
+    Differs from Codex: the core logs a submission with its kind only,
+    `operation=exec_approval`, never the decision
+    ([`codex-rs/core/src/session/handlers.rs:421`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/session/handlers.rs#L421)),
+    so the `op=ExecApproval` rows the shared reader turns into
+    `permission decision:` rows cannot occur; the app server's
+    `<- response:` line with the decision is still logged
+    ([`codex-rs/app-server/src/outgoing_message.rs:481`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/app-server/src/outgoing_message.rs#L481)),
+    and the fork has no `guardian_review_feedback` table (its state
+    migrations stop at `0055_thread_attachments.sql`).
+  - Model: covered; unchanged.
+  - Past use: as in Codex, the memories files (off by default,
+    [`codex-rs/features/src/lib.rs:1148-1150`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/features/src/lib.rs#L1148-L1150))
+    and `db-backups/`
+    ([`codex-rs/state/src/runtime/recovery.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/state/src/runtime/recovery.rs#L12))
+    exist and are not read; the import ledger is read.
+  - Sync, relay and origin: covered; unchanged.
+  - Scratch directories: found: thread worktrees in
+    `.openinterpreter/worktrees` unless `[desktop] git-worktree-root`
+    names another path
+    ([`codex-rs/worktree/src/settings.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L12),
+    [`44`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L44)),
+    classed by the analyzer's catalog rule.
+  - Deletion: as in Codex: `thread/delete` removes the rollouts, the
+    index lines and the thread's rows, `logs_2.sqlite` rows included
+    ([`codex-rs/state/src/runtime/threads.rs:1153`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/state/src/runtime/threads.rs#L1153),
+    [`codex-rs/thread-store/src/local/delete_thread.rs:262`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/thread-store/src/local/delete_thread.rs#L262)),
+    and leaves `history.jsonl` and the import ledger.
+  - Version drift: none in the record shapes; `turn_context` still has
+    `network` here
+    ([`codex-rs/protocol/src/protocol.rs:3318`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/protocol/src/protocol.rs#L3318)),
+    unlike Codex at HEAD.
+  - Bad lines: the shared reader's gap: a bad `thread_history_1.sqlite`
+    `item_json` is counted, not shown
+    ([section 8 of `codex-cli.md`](codex-cli.md#8-parser-plan-the-existing-parser)).
+
 ## 2. Transcript files
 
 - `.openinterpreter/sessions/YYYY/MM/DD/rollout-<YYYY-MM-DDThh-mm-ss>-<thread uuid>.jsonl`,
@@ -193,6 +250,26 @@ upstream: `acp-server`, `chat-wire-compat`, `external-agent-sessions`,
 There is no per-call decision row: the fork, like Codex, lists the
 approval request events among the transient events the rollout never
 stores ([`rollout/src/policy.rs:140-204`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/rollout/src/policy.rs#L140-L204)).
+
+Source review of 2026-10-19 at
+[`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87),
+by class (detail in [section 1](#1-source)):
+
+- Permission: the standing grants of `rules/default.rules` and
+  `config.toml` are not read, as in Codex; per-call decisions can come
+  only from the app server's response lines, since the core does not log
+  the decision.
+- Model: covered.
+- Past use: memories and `db-backups/` not read, as in Codex.
+- Sync, relay and origin: covered; the fork records no relay or origin.
+- Scratch directories: worktrees under `.openinterpreter/worktrees`,
+  classed by the catalog rule; no row names them.
+- Deletion: no marker; as in Codex.
+- Drift: none since the cited commit. The paragraph above that says the
+  parser matches only `^\.codex/sessions/` and plain `.jsonl` predates
+  the shared `RolloutParser`, which reads `archived_sessions/` and
+  `.jsonl.zst` for both agents.
+- Bad lines: the shared `thread_history_1.sqlite` summary row.
 
 Fixture (`.openinterpreter/sessions/2026/10/01/rollout-2026-10-01T12-00-00-0199a1b2-0000-7000-8000-000000000001.jsonl`):
 

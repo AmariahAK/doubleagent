@@ -619,6 +619,57 @@ Paths and the rest of the per-user state are in
     on macOS and no `processIdentity` on Windows. The parser reads
     neither.
 
+- **Source review (2026-10-19)**: [openai/codex](https://github.com/openai/codex)
+  at [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857),
+  the head of `main` on 2026-10-19, compared with
+  [`3e23877`](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524),
+  the commit the rest of this document cites, by diffing the two trees.
+  Source only; nothing was installed or run. One line per class, the
+  detail in [section 5](#5-other-files),
+  [section 7](#7-variants-and-drift) and
+  [section 8](#8-parser-plan-the-existing-parser):
+  - Permission state: found, not read. Standing grants in
+    `rules/default.rules` (a prefix rule appended for each "approve and
+    remember" answer, a network rule for each network allow or deny),
+    in `config.toml` (`approval_policy`, `sandbox_mode`,
+    `approvals_reviewer`, `default_permissions`, a project's
+    `trust_level`, and `approval_mode = "approve"` for each MCP or app
+    tool approved for good), and the per-call records of the new
+    `state_5.sqlite` table `guardian_review_feedback` and of the
+    `PatchApproval` and `RequestPermissionsResponse` log lines. The
+    parser reads none of them.
+  - Model: already covered; `turn_context.model` and the
+    `thread_settings_applied` snapshot are unchanged at HEAD.
+  - Past use beyond the rollouts: found, not read: the memories
+    pipeline's `memories/rollout_summaries/*.md`, `raw_memories.md` and
+    `memories_1.sqlite` `stage1_outputs` (off by default), the thread
+    goals in `goals_1.sqlite` and the rollout's `thread_goal_updated`
+    events, and the SQLite recovery copies under `db-backups/`.
+  - Sync, relay and origin: already covered; unchanged at HEAD. A
+    `/feedback` report with logs now also attaches the thread's failed
+    automatic reviews as `auto-review-failures.jsonl`.
+  - Scratch directories: found. The worktrees Codex makes for a thread
+    sit in `<CODEX_HOME>/worktrees/<4 hex>/<repository name>`, or under
+    the absolute path in `config.toml` `[desktop] git-worktree-root`;
+    the analyzer's catalog rule classes the first, not the second.
+  - Deletion: found. `thread/delete` removes the rollouts (live and
+    archived, plain and compressed), the `session_index.jsonl` lines,
+    the thread's rows in `state_5.sqlite`, `thread_history_1.sqlite`,
+    `queue_1.sqlite`, `goals_1.sqlite` and the memories databases, and
+    the `logs_2.sqlite` rows whose `thread_id` is the thread; it leaves
+    `history.jsonl`, the memories files until the next consolidation,
+    and `db-backups/`.
+  - Version drift: found. `turn_context` no longer carries `network`
+    (the parser's `network=` field reads `-` for new rollouts);
+    `task_started` `turn_attribution`, which the parser already reads
+    from the desktop app's rollouts, is now in source; the
+    `op=ExecApproval` log line prints an opaque decision word; the
+    record envelope, `RolloutItem`, `SessionMeta`, `ResponseItem` and
+    the database file names are unchanged.
+  - Bad lines: one gap: a `thread_history_1.sqlite` row whose
+    `item_json` does not decode is counted in one summary row instead
+    of one row per record carrying it.
+
 ## 2. Transcript files
 
 Paths relative to the home; `$CODEX_HOME` replaces `.codex` when set.
@@ -1293,6 +1344,125 @@ to the call except its position between the call and its output (local).
   ([section 3 of `collectors/research/codex-cli.md`](../../collectors/research/codex-cli.md#3-credentials)).
   The parser reads neither.
 
+- **Standing grants (source review of 2026-10-19, at
+  [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857)).**
+  The parser reads none of these.
+  - `rules/default.rules`: when the user answers an approval prompt
+    with "approve and remember" (`ReviewDecision::ApprovedExecpolicyAmendment`,
+    [protocol/src/protocol.rs:4269-4304](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L4269-L4304)),
+    Codex appends one Starlark line (Starlark is the Python-like
+    configuration language the exec policy is written in)
+    `prefix_rule(pattern=["<token>", ...], decision="allow")` to
+    `<CODEX_HOME>/rules/default.rules`
+    ([core/src/session/handlers.rs:181-193](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/session/handlers.rs#L181-L193),
+    [core/src/exec_policy.rs:466-490](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/exec_policy.rs#L466-L490),
+    [874-876](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/exec_policy.rs#L874-L876),
+    [execpolicy/src/amend.rs:65-80](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/execpolicy/src/amend.rs#L65-L80)),
+    and a network allow or deny answer appends
+    `network_rule(host=..., protocol=..., decision="allow"|"deny",
+    justification=...)`
+    ([amend.rs:85-124](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/execpolicy/src/amend.rs#L85-L124)).
+    A line carries no time and no thread; the file's modification time
+    is the last grant. Every other `*.rules` file under `rules/` is
+    loaded too
+    ([exec_policy.rs:681](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/exec_policy.rs#L681)).
+  - `config.toml`: the standing policy keys `approval_policy`,
+    `approvals_reviewer`, `sandbox_mode` and `default_permissions`
+    ([config/src/config_toml.rs:195](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/config/src/config_toml.rs#L195),
+    [200](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/config/src/config_toml.rs#L200),
+    [224](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/config/src/config_toml.rs#L224),
+    [239](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/config/src/config_toml.rs#L239));
+    `[projects."<path>"] trust_level`, `trusted` or `untrusted`
+    ([config/src/config_toml.rs:473](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/config/src/config_toml.rs#L473),
+    [core/src/config/mod.rs:2464](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/config/mod.rs#L2464),
+    [protocol/src/config_types.rs:642-645](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/config_types.rs#L642-L645));
+    and, for an MCP tool call the user approved for good
+    (`ApprovedMcpPolicyAmendment`), `approval_mode = "approve"` under
+    `mcp_servers.<server>.tools.<tool>`,
+    `plugins.<plugin>.mcp_servers.<server>.tools.<tool>` or, for a
+    ChatGPT app connector, `apps.<connector>.tools.<tool>`
+    ([core/src/mcp_tool_call.rs:2394-2411](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/mcp_tool_call.rs#L2394-L2411),
+    [2428-2457](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/mcp_tool_call.rs#L2428-L2457),
+    [2472-2490](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/mcp_tool_call.rs#L2472-L2490)).
+    "Approve for this session" (`ApprovedForSession`) is kept in memory
+    only and leaves no file.
+  - `state_5.sqlite` `guardian_review_feedback` (`id`, `thread_id`,
+    `record` BLOB; migration 0060, not at
+    [`3e23877`](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524),
+    [state/migrations/0060_guardian_review_feedback.sql:1-5](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/migrations/0060_guardian_review_feedback.sql#L1-L5)):
+    one row per automatic review (the desktop app's Approve for me
+    reviewer) that did not allow the action: `record` is a JSON object
+    `reviewed_thread_id`, `reviewed_turn_id`, `target_item_id`,
+    `reviewer_thread_id`, `model`, `status` (`denied`,
+    `invalid_decision`, `missing_decision`, `failed`, `timed_out`,
+    `aborted`), `decision` (the reviewer's verdict text), `action` (the
+    reviewed command or patch), `instructions`, `history` (the
+    reviewer's own response items) and `context_omitted`
+    ([ext/guardian-reviewer/src/feedback.rs:17-30](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/ext/guardian-reviewer/src/feedback.rs#L17-L30),
+    [57-85](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/ext/guardian-reviewer/src/feedback.rs#L57-L85),
+    [core/src/guardian/feedback.rs:6-44](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/guardian/feedback.rs#L6-L44),
+    [state/src/runtime/guardian_feedback.rs:33-50](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/guardian_feedback.rs#L33-L50)).
+    An allowed review writes no row, and nothing is written when
+    feedback is turned off or the thread is ephemeral. The row outlives
+    the reviewer thread; its `thread_id` references `threads(id)` with
+    `ON DELETE CASCADE`, so it is meant to go with the reviewed thread. The table was present on the macOS install
+    of 2026-10-18 ([section 1 of the collector document](../../collectors/research/codex-cli.md#1-source-and-evidence-level)).
+  - Log lines of answers the parser does not read: beside
+    `op=ExecApproval`, the core's `Submission` debug line
+    ([core/src/session/handlers.rs:487-495](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/session/handlers.rs#L487-L495))
+    prints `PatchApproval { id, decision }` for an `apply_patch`
+    approval and `RequestPermissionsResponse { id, scope,
+    strict_auto_review }` for a permissions request
+    ([protocol/src/protocol.rs:769-776](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L769-L776),
+    [803](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L803)).
+- **Other past-use stores (source review of 2026-10-19, at
+  [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857)).**
+  Each is secondary, derived from rollouts; the parser reads none.
+  - Memories, when the `memories` feature is on (off by default,
+    [features/src/lib.rs:1303-1305](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/features/src/lib.rs#L1303-L1305)):
+    `memories_1.sqlite` (and `memories_v2_1.sqlite`) `stage1_outputs`,
+    one row per thread with `thread_id`, `raw_memory`,
+    `rollout_summary`, `rollout_slug` and `source_updated_at`
+    ([state/memory_migrations/0001_memories.sql:1-12](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/memory_migrations/0001_memories.sql#L1-L12),
+    [state/src/sqlite.rs:114-119](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/sqlite.rs#L114-L119)),
+    and the consolidated files under `memories/`:
+    `rollout_summaries/<stem>.md`, each headed `thread_id:`,
+    `updated_at:`, `rollout_path:`, `cwd:` and `git_branch:` lines
+    before a model-written summary of the thread, `raw_memories.md`
+    with the same header per thread, `MEMORY.md` and
+    `memory_summary.md`
+    ([memories/write/src/lib.rs:39-40](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/memories/write/src/lib.rs#L39-L40),
+    [storage.rs:110-136](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/memories/write/src/storage.rs#L110-L136),
+    [workspace.rs:87](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/memories/write/src/workspace.rs#L87),
+    [101](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/memories/write/src/workspace.rs#L101)).
+    A thread delete removes its `stage1_outputs` row
+    ([state/src/runtime/memory_versions.rs:39-51](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/memory_versions.rs#L39-L51)),
+    and its summary file goes only when the next consolidation prunes
+    the files it no longer keeps
+    ([storage.rs:80-108](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/memories/write/src/storage.rs#L80-L108)),
+    so until then the summary names a thread whose rollout is gone.
+    Joins on `thread_id`, `cwd` and `rollout_path`.
+  - Thread goals: `goals_1.sqlite` `thread_goals` (`thread_id`,
+    `objective`, `status`, `token_budget`, `created_at_ms`,
+    `updated_at_ms`;
+    [state/goals_migrations/0001_thread_goals.sql:1-17](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/goals_migrations/0001_thread_goals.sql#L1-L17)),
+    the objective the user set for a thread, also persisted in the
+    rollout as `event_msg` `thread_goal_updated` (`thread_id`,
+    `turn_id`, `goal.objective`, `goal.status`;
+    [rollout/src/policy.rs:131-139](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/rollout/src/policy.rs#L131-L139),
+    [protocol/src/protocol.rs:4235-4257](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L4235-L4257)),
+    which the parser skips with the other unlisted events. Removed with
+    the thread.
+  - `db-backups/sqlite-<timestamp>-<n>/`: a database Codex found
+    corrupt, renamed aside with its sidecars before a fresh one is
+    built
+    ([state/src/runtime/recovery.rs:16](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/recovery.rs#L16),
+    [181-200](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/recovery.rs#L181-L200),
+    [241-250](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/recovery.rs#L241-L250)).
+    A backed-up `state_5.sqlite` keeps the `threads` rows of its time,
+    deleted threads included; the parser wants only
+    `.codex/state_5.sqlite` itself.
+
 Opened only from scratchpad copies, and only for table names, row counts
 and key names.
 
@@ -1387,6 +1557,56 @@ and key names.
 - **Not determined at this commit:** whether pre-envelope rollouts (no
   `type`/`payload` wrapper) exist on disk from very early releases; the
   current reader rejects lines without `timestamp`.
+
+- **Drift from [`3e23877`](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524)
+  to [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857)
+  (source review of 2026-10-19).** Unchanged: the line envelope and
+  `RolloutItem` set
+  ([history/src/lib.rs:215-231](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/history/src/lib.rs#L215-L231)),
+  `SessionMeta`
+  ([protocol/src/protocol.rs:3256-3331](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L3256-L3331)),
+  the `ResponseItem` variants, the database file names
+  ([state/src/sqlite.rs:41-46](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/sqlite.rs#L41-L46)),
+  `sessions/` and `archived_sessions/`
+  ([rollout/src/lib.rs:86-87](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/rollout/src/lib.rs#L86-L87))
+  and the `/feedback` marker message
+  ([feedback/src/lib.rs:755](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/feedback/src/lib.rs#L755)).
+  Changed:
+  - `TurnContextItem` dropped `network` (the allowed and denied domain
+    lists), `workspace_roots`, `current_date`, `timezone`,
+    `personality` and `multi_agent_mode` (present at
+    [protocol.rs:3314-3346 at `3e23877`](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3314-L3346))
+    and gained `root_turn_id`, `disabled_plugin_ids`,
+    `file_system_sandbox_policy`, `comp_hash`, `realtime_active` and
+    `cyber_access_program`; `summary` is optional
+    ([protocol.rs:3428-3468](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L3428-L3468)).
+    The parser's `permission mode:` row prints `network=-` for a
+    rollout of this version.
+  - `task_started` gained `turn_attribution` (`turn_id`,
+    `turn_trigger`, `parent_turn_id`, `initiating_agent_path`,
+    `root_turn_id`) and `root_turn_id`
+    ([protocol.rs:2302-2325](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L2302-L2325),
+    [protocol/src/turn_input.rs:80-86](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/turn_input.rs#L80-L86)):
+    the field the desktop app's 0.163.0-alpha rollouts already carried
+    and the parser reads.
+  - The `op=ExecApproval` debug line now has its own format,
+    `ExecApproval { id, turn_id, decision: <word> }`, the word one of
+    `approved`, `approved_with_amendment`, `approved_for_session`,
+    `approved_mcp_policy_amendment`,
+    `approved_with_network_policy_allow`,
+    `denied_with_network_policy_deny`, `denied`, `timed_out`, `abort`
+    ([protocol.rs:759-767](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L759-L767),
+    [4323-4339](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L4323-L4339)),
+    where the derived format printed the enum (`Denied { rejection:
+    ... }`). The parser's pattern takes the first word either way.
+  - `event_msg` `elicitation_abandoned` is new and transient
+    ([rollout/src/policy.rs:199](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/rollout/src/policy.rs#L199)).
+  - New tables: `guardian_review_feedback` ([section 5](#5-other-files)),
+    `thread_read_receipts`
+    ([state/migrations/0061_thread_read_state.sql:1-8](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/migrations/0061_thread_read_state.sql#L1-L8)),
+    and `thread_turns.root_turn_id`
+    ([state/thread_history_migrations/0008_thread_turn_root.sql:1](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/thread_history_migrations/0008_thread_turn_root.sql#L1)).
+    No column the parser selects was removed.
 
 ## 8. Parser plan (the existing parser)
 
@@ -1653,6 +1873,51 @@ global state keeps the prompts and a deletion marker
 ([section 5](#5-other-files)); with no remote copy, the delete dialog
 offered none to remove. What `chatgpt_async_status` and
 `conversation_origin` `tpp` mean is still not determined.
+
+Source review of 2026-10-19, by class, at
+[`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857)
+(the detail is in [section 5](#5-other-files) and
+[section 7](#7-variants-and-drift)):
+
+- Permission: the standing grants in `rules/default.rules` and
+  `config.toml`, the `guardian_review_feedback` records and the
+  `PatchApproval` and `RequestPermissionsResponse` log lines are on
+  disk and not read. A plan for them: one `permission setting: <rule>
+  (from .codex/rules/default.rules, file mtime)` row per rule line, one
+  `permission setting:` row per standing key, project trust entry and
+  tool `approval_mode` in `config.toml`, and one `permission decision:
+  <status> (auto_review) ...` row per `guardian_review_feedback`
+  record, joined to the governed call on `target_item_id`; the
+  `PatchApproval` line joins on its id like `ExecApproval`.
+- Model: covered; nothing new.
+- Past use: memories (secondary: `rollout_summaries/*.md`,
+  `raw_memories.md`, `stage1_outputs`), thread goals (primary, in the
+  rollout's `thread_goal_updated` events; `thread_goals` secondary) and
+  `db-backups/` copies of `state_5.sqlite` (secondary) are not read.
+- Sync, relay and origin: covered; Codex records no relay and no
+  remote-origin session.
+- Scratch directories: a rollout `cwd` under `<home>/.codex/worktrees`
+  is classed by the catalog rule; one under a configured
+  `git-worktree-root` is not, and no row marks it. The worktree's
+  `codex-thread.json` (`version`, `ownerThreadId`) sits in the source
+  repository's git directory for that worktree
+  ([worktree/src/metadata.rs:19-27](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/metadata.rs#L19-L27),
+  [88-91](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/metadata.rs#L88-L91)),
+  outside every catalog path.
+- Deletion: the desktop app's deletion marker already gives a
+  `session deleted:` row. A delete through `thread/delete` (the TUI,
+  the app server) leaves no marker; what it removes and what survives
+  it is in
+  [section 2 of `collectors/research/codex-cli.md`](../../collectors/research/codex-cli.md#2-per-user-storage),
+  and the survivors that matter here are `history.jsonl`, which the
+  parser reads, and the memories files and `db-backups/`, which it
+  does not.
+- Drift: the parser keeps working on HEAD's rollouts; `network=` is
+  `-` from this version on.
+- Bad lines: `thread_history_1.sqlite` rows with an unreadable
+  `item_json` are one summary row (`parser: <n> thread_items row(s)
+  with unreadable item_json, first at rowid <n>`), not one row per
+  record with the value in full.
 
 Rollouts without content kinds are classified per content block by the
 wrappers Codex itself recognises as injected user-role context

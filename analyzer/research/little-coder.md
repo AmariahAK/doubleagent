@@ -18,6 +18,64 @@ The retired v0.0.x Python implementation, which kept its own state in
 [`424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03`](https://github.com/itayinbarr/little-coder/commit/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03),
 for sync only (2026-10-17).
 
+- **Source review (2026-10-19)**: the head of
+  [itayinbarr/little-coder](https://github.com/itayinbarr/little-coder)
+  `main` on 2026-10-19 is still
+  [`89d4fa0`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df),
+  the commit cited throughout, and it still pins pi `^0.83.0`
+  ([package.json:41](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/package.json#L41)),
+  so there is no drift; the review read it again for the requirement
+  classes. Source only. By class:
+  - Permission state: found, not read as decisions. The
+    `permission-gate` extension decides each shell and edit call by the
+    mode in `LITTLE_CODER_PERMISSION_MODE` (`auto`, the default,
+    `accept-all` or `manual`) and the extra allowed prefixes in
+    `LITTLE_CODER_BASH_ALLOW`
+    ([.pi/extensions/permission-gate/index.ts:5-19](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L5-L19),
+    [268-272](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L268-L272));
+    both are environment variables, so no file holds the standing
+    state. In `manual` mode the user is asked per call: edits offer
+    Apply, Deny and "Apply all (this session)", the last kept in memory
+    ([permission-gate/manual-edit-confirm.ts:5-37](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/manual-edit-confirm.ts#L5-L37)),
+    shell commands a yes or no. A refusal blocks the call with a reason,
+    `edit cancelled by user`, `command cancelled by user`, or in `auto`
+    mode a text starting `shell whitelist:`
+    ([index.ts:288](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L288),
+    [303](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L303),
+    [315](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L315),
+    [330](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L330),
+    [354](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L354)),
+    and pi 0.83.0 records a blocked call as a `toolResult` with that
+    reason as its text and `isError` true
+    ([packages/agent/src/agent-loop.ts:636-642](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/agent/src/agent-loop.ts#L636-L642),
+    [756-761](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/agent/src/agent-loop.ts#L756-L761)).
+    An approval leaves no record beyond the call's normal result. The
+    pi parser shows the refusal as an ordinary `tool_result` row.
+  - Model: covered. The `phase-model` extension switches the model at
+    plan and implementation phases through `pi.setModel`
+    ([.pi/extensions/phase-model/index.ts:169](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/phase-model/index.ts#L169)),
+    and pi 0.83.0's `setModel` appends a `model_change` entry
+    ([packages/coding-agent/src/core/agent-session.ts:1578-1586](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/agent-session.ts#L1578-L1586)),
+    which pi's reader turns into a `model:` row.
+  - Past use: covered (the prompt history and the checkpoints); no
+    other store found.
+  - Sync, relay and origin: covered; none in the current releases.
+  - Scratch directories: `/deep-research` runs its research agents in
+    a fresh `<tmpdir>/deep-research-*` directory and removes it when
+    done
+    ([.pi/extensions/deep-research/index.ts:167-176](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L167-L176),
+    [257](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L257));
+    those agents run with `--no-session`, so no record names it. None
+    under the home.
+  - Deletion: `/clear` is an alias for pi's new-session command and
+    deletes nothing
+    ([.pi/extensions/clear-command/index.ts:18-23](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/clear-command/index.ts#L18-L23));
+    a session file goes only through pi's own picker
+    ([pi.md](pi.md#8-parser-plan)), which leaves the checkpoint
+    directory and the prompt history behind.
+  - Version drift: none.
+  - Bad lines: covered; the prompt history reader reports a bad record.
+
 ## 2. Transcript files
 
 - `.pi/agent/sessions/--<encoded cwd>--/<ISO timestamp with - for : and .>_<uuid>.jsonl`,
@@ -154,6 +212,17 @@ not read the v0.0.x layout; when it does, the row is one `system` row
 `session synced: gist <cloudsave_last_gist_id> (from
 .little-coder/config.json, file mtime)`, at the file's modification time,
 with an empty session id.
+
+Source review of 2026-10-19, by class (detail in
+[section 1](#1-source)): permission decisions of the `permission-gate`
+extension are on disk as error `toolResult` rows whose text is
+`edit cancelled by user`, `command cancelled by user` or starts
+`shell whitelist:`; a `permission decision: denied (<reason>)` row
+joined on the `toolCallId` would show them as decisions, and there is
+no standing state on disk to read. Model: covered through pi's
+`model_change` rows. Past use, sync, relay and origin: covered.
+Scratch directories: none in the home. Deletion: no marker. Drift: none.
+Bad lines: covered.
 
 Fixture:
 

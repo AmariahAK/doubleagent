@@ -14,6 +14,8 @@ Wrappers that reuse pi's storage: `little-coder` (same `~/.pi/agent`, see
 session format in its own directory, see [letta.md](letta.md)). Record
 schema: [`analyzer/research/pi.md`](../../analyzer/research/pi.md).
 
+**Source review (2026-10-19)**: [earendil-works/pi](https://github.com/earendil-works/pi) at [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e), the head of `main` on 2026-10-19 (coding-agent 1.3.0), compared file by file with [`2003871`](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c); source only. Permission state: one new standing setting, `defaultProjectTrust` in `settings.json` (below); `trust.json` unchanged. Model: no new file. Past use: `pi-debug.log` holds a session's messages ([section 2](#2-per-user-storage)); no prompt history file exists. Sync: one new setting, `sessionShareDestination`. Scratch directories: none under the home (below). Deletion: unchanged. Version drift: the session, trust, crash and bug-report writers are unchanged; the experimental server and its `experimental/` session stores and `~/.pi/server` were removed from the CLI. Bad lines: not a collector concern.
+
 ## 2. Per-user storage
 
 One layout on every OS. The agent directory is `$PI_CODING_AGENT_DIR` (with
@@ -76,6 +78,13 @@ Under `~/.pi/agent`:
   ([`experimental/vacation/sessions.ts:18-55`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/experimental/vacation/sessions.ts#L18-L55)), and a server directory
   `$PI_SERVER_DIR` or `~/.pi/server` holding `default-server-id`, lock
   directories and Unix sockets ([`experimental/server.ts:51-56`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/experimental/server.ts#L51-L56), [`85-91`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/experimental/server.ts#L85-L91)).
+
+Source review (2026-10-19), at [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e):
+
+- `settings.json` gained `defaultProjectTrust` (`ask`, `always`, `never`; global only), the answer for a project `trust.json` does not list, and `sessionShareDestination` (`auto`, `gist`, `radius`), where `/share` uploads ([`core/settings-schema.ts:224-230`](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/settings-schema.ts#L224-L230), [`266-271`](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/settings-schema.ts#L266-L271)). Collected with the file.
+- `pi-debug.log` ([`config.ts:653-656`](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/config.ts#L653-L656)) is rewritten by each `/debug`: the rendered screen lines, then `=== Agent messages (JSONL) ===` and the open session's messages, one JSON object per line ([`modes/interactive/interactive-mode.ts:6959-6982`](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L6959-L6982)), so it can hold a deleted session's turns. Collected.
+- The experimental server's stores described above (`experimental/sessions/`, `experimental/vacation-sessions/`, `~/.pi/server`) are no longer written: the CLI keeps only `src/experimental/source-resolver.ts`, and `packages/server` and `packages/client` are gone. They remain only where an older build ran.
+- Scratch directories: pi creates none under the home; it runs in the user's cwd. Its output files go to the system temporary directory through one helper, now mode 0600 ([`utils/output-files.ts:14-34`](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/utils/output-files.ts#L14-L34)), outside every catalog line.
 
 Outside the home: truncated bash output is spilled to
 `<tmpdir>/pi-bash-<16 hex>.log` ([`core/bash-executor.ts:68-69`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/bash-executor.ts#L68-L69)), MCP and

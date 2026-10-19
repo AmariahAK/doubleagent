@@ -12,6 +12,8 @@ pi's own CLI from its `node_modules` ([bin/little-coder.mjs:98-136](https://gith
 `v0.83.0`, [`845d6ff1f6643aba440341cce877ce1c43ebbc39`](https://github.com/earendil-works/pi/commit/845d6ff1f6643aba440341cce877ce1c43ebbc39).
 Record schema: [`analyzer/research/little-coder.md`](../../analyzer/research/little-coder.md).
 
+**Source review (2026-10-19)**: `main` of [itayinbarr/little-coder](https://github.com/itayinbarr/little-coder) is still [`89d4fa0`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df) and still pins pi `^0.83.0`, so every path here holds. Permission state: the `permission-gate` extension's mode and allow list are the environment variables `LITTLE_CODER_PERMISSION_MODE` and `LITTLE_CODER_BASH_ALLOW`, not files; its refusals are in the session files ([section 1 of `analyzer/research/little-coder.md`](../../analyzer/research/little-coder.md#1-source)). Model, past use, sync: no new file. Scratch directories: none under the home ([section 2](#2-per-user-storage)). Deletion: `/clear` starts a new pi session and deletes nothing. Version drift: none. Bad lines: not a collector concern.
+
 ## 2. Per-user storage
 
 **Shared with pi: `~/.pi/agent`.** The launcher and pi both use
@@ -52,6 +54,8 @@ file's basename, so it matches a `sessions/` JSONL file
 
 **`~/.cache/little-coder/version-check.json`** (or `$XDG_CACHE_HOME`):
 update check timestamp and latest version ([bin/update-check.mjs:33-37](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/update-check.mjs#L33-L37)).
+
+**Scratch directories.** little-coder works in the user's cwd. Its one directory of its own, `/deep-research`'s `<tmpdir>/deep-research-*`, is in the system temporary directory and removed when the research ends ([.pi/extensions/deep-research/index.ts:167-176](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L167-L176), [257](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L257)); no catalog line can hold it and nothing records it. `~/.little-coder/checkpoints/` holds copies of project files, not a working directory.
 
 The package itself (`.pi/extensions/`, `AGENTS.md` used as the system
 prompt, `skills/`, bundled `models.json`) lives in the global npm or bun

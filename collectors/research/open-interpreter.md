@@ -25,6 +25,8 @@ wherever the Python tool was used, so they were researched separately in
 the agent framework sweep for issue #64 (see [frameworks.md](frameworks.md))
 and are described at the end of [section 2](#2-per-user-storage).
 
+**Source review (2026-10-19)**: [openinterpreter/openinterpreter](https://github.com/openinterpreter/openinterpreter) at [`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87), the head of `main` on 2026-10-19 (version 0.0.56), compared file by file with [`2767e5f`](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245): only the announced Codex compatibility profile ([`codex-rs/product-info/src/lib.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/product-info/src/lib.rs#L12)), a test and the version numbers changed, so every path below holds at HEAD. Permission state: the Codex standing-grant files exist here too, `rules/default.rules` and the `config.toml` keys ([Standing grants and scratch directories](#standing-grants-and-scratch-directories)), collected. Model, sync: no new file. Past use: `memories/` and `db-backups/` as in Codex, collected. Scratch directories: the thread worktrees ([Standing grants and scratch directories](#standing-grants-and-scratch-directories)). Deletion: as in Codex ([Deletion in `codex-cli.md`](codex-cli.md#deletion)). Version drift: none. Bad lines: not a collector concern.
+
 ## 2. Per-user storage
 
 Home resolution
@@ -157,6 +159,13 @@ inside the current catalog entry; its `api_key` field
 ([profiles.py:44](https://github.com/openinterpreter/openinterpreter/blob/fa06bfda18b70546baa85b9d314873e048f70c99/interpreter/profiles.py#L44))
 is not flagged, since that branch was never released to PyPI.
 
+### Standing grants and scratch directories
+
+From the source review of 2026-10-19 at [`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87); the fork keeps Codex's code for both, described in [Standing grants and scratch state in `codex-cli.md`](codex-cli.md#standing-grants-and-scratch-state).
+
+- `rules/default.rules`, the exec policy file Codex appends "approve and remember" and network rules to ([`codex-rs/core/src/exec_policy.rs:54-56`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/exec_policy.rs#L54-L56)), and `config.toml` project `trust_level` and tool `approval_mode` entries ([`codex-rs/core/src/config/mod.rs:2373`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/config/mod.rs#L2373), [`codex-rs/core/src/mcp_tool_call.rs:2291`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/mcp_tool_call.rs#L2291)). Collected by the `open-interpreter|.openinterpreter` line.
+- Scratch directories: thread worktrees in `.openinterpreter/worktrees/<4 hex>/<repository name>`, or under `config.toml` `[desktop] git-worktree-root` ([`codex-rs/worktree/src/settings.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L12), [`44`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L44)). The default location is excluded ([section 4](#4-exclusions)); project discovery reads `.openinterpreter/sessions` and `archived_sessions` and drops no `cwd`, so a thread that ran in a worktree has the worktree discovered as a project. The `.zcode/cli/artifacts` spill directory is the agent's own output, under the catalog line.
+
 ## 3. Credentials
 
 - `auth.json`: OpenAI API key and ChatGPT OAuth tokens
@@ -218,6 +227,8 @@ As in Codex: `session_meta` first line of every rollout, `payload.cwd`
 `state_5.sqlite`. The existing Codex discovery (`grep -ho '"cwd":"[^"]*"'`
 over `sessions/**/*.jsonl`) applies unchanged with `.openinterpreter` in
 place of `.codex`; `.jsonl.zst` rollouts need zstd first.
+
+Source review (2026-10-19): a rollout `cwd` under `.openinterpreter/worktrees` (or a configured `git-worktree-root`) is a thread worktree the agent made, a scratch directory rather than a project ([Standing grants and scratch directories](#standing-grants-and-scratch-directories)); `config.toml` `[projects."<path>"]` tables name the projects the user trusted or distrusted.
 
 ## 7. Confidence
 
