@@ -33,6 +33,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   prompted: no events.jsonl)` after the `session metadata:` row of a
   session directory that holds a `workspace.yaml` with a `cwd` and no
   `events.jsonl` ([#149]).
+- The bundled catalog copy gains the collector's `codex-cli|Documents/Codex`
+  line, so a home with the ChatGPT desktop app's projectless output
+  directories is detected as `codex-cli` and the directories fall under
+  `scratch_directories` by the catalog rule ([#149]).
 
 ### Changed
 

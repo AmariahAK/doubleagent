@@ -721,7 +721,12 @@ scratch directory when either holds:
 
 Neither rule looks at the collector's list of project directories, so a
 scratch directory the collector gathered project files from is listed
-under `scratch_directories` with `status` `collected`. The rows keep
+under `scratch_directories` with `status` `collected`. A scratch
+directory the collector gathers as the agent's own files (the Codex
+output directory `Documents/Codex`, a `codex-cli` catalog entry since
+collector 1.16.0) is not in `collection.json` `projects`, so it is
+listed with `status` `referenced`: its files are counted under `homes`
+for `codex-cli`, not as project files. The rows keep
 their `project_path` in `timeline.jsonl` and `sessions.jsonl`, and
 `detect` and `detect --json`, which read no rows, list every project
 directory the input holds without applying either rule.

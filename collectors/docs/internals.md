@@ -376,7 +376,7 @@ follows the order in which paths are first seen:
 | # | Sources | sh | PowerShell |
 | --- | --- | --- | --- |
 | 1 | Claude Code: prompt history and `.claude.json` project keys, also in `CLAUDE_CONFIG_DIR` homes | `find_claude_code_projects` | `Find-ClaudeCodeProjects` |
-| 2 | Codex, Qwen Code, Cline CLI, Cursor chats, Continue, Goose sessions, OpenCode, Crush | `find_cli_session_projects` | `Find-CliSessionProjects` |
+| 2 | Codex (a rollout `cwd` outside `Documents/Codex`), Qwen Code, Cline CLI, Cursor chats, Continue, Goose sessions, OpenCode, Crush | `find_cli_session_projects` | `Find-CliSessionProjects` |
 | 3 | Gemini CLI projects, trusted folders and project roots; Antigravity CLI history, settings and project cache; Gemini config projects | `find_gemini_projects` | `Find-GeminiProjects` |
 | 4 | Amp, Factory, Kiro, Cursor `acp-sessions`, Goose recent directories, Copilot CLI (sessions with an `events.jsonl`, a `cwd` outside `.copilot/`), Hermes, Letta, pi, muse, Open Interpreter, OpenHands, PearAI | `find_agent_session_projects` | `Find-AgentSessionProjects` |
 | 5 | OpenClaw (and clawdbot), nanobot, Tabby, Twinny | `find_config_file_projects` | `Find-ConfigFileProjects` |

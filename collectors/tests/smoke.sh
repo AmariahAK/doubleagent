@@ -1072,6 +1072,21 @@ S160="$H/.codex/shell_snapshots/22222222-2222-4222-8222-222222222222.17920000000
 mkdir -p "${S160%/*}"
 printf '# Snapshot file\nexport EXAMPLE_API_KEY=x\n' >"$S160"
 
+# 2026-10-19 Codex projectless output directories (#149)
+# The ChatGPT desktop app (Windows 2026-10-15, macOS 2026-10-15 and
+# 2026-10-18) runs a thread
+# with no project in Documents/Codex/<date>/<slug>, with work/ and outputs/
+# inside, and records that directory as the rollout cwd. Since 1.16.0 the
+# directory is a codex-cli catalog line and discovery drops it as a project;
+# bob's first rollout keeps its Documents/app project. Checks follow the
+# default run and --inventory below; the same files are in smoke.ps1 under bob.
+W149="$B/Documents/Codex/2026-10-18/w"
+mkdir -p "$W149/outputs" "$W149/work"
+printf '{"cwd":"/Users/bob/Documents/Codex/2026-10-18/w"}\n' \
+  >"$B/.codex/sessions/2026/10/03/rollout-2.jsonl"
+printf '# report\n' >"$W149/outputs/report.md"
+printf 'notes\n' >"$W149/work/notes.txt"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1427,6 +1442,10 @@ check "#153 Qwen Code channel routing files not flagged" "row \"$H/.qwen/channel
 check "#153 Kilo log directory collected" "row \"$H/.local/share/kilo/log/2026-10-17T120000.log\" | grep -q '\"agent\":\"kilo-code\".*\"status\":\"collected\"'"
 # 2026-10-18 Codex shell snapshots (#160)
 check "#160 Codex shell snapshot flagged secret" "row \"$S160\" | grep -q '\"agent\":\"codex-cli\".*$SEC153'"
+# 2026-10-19 Codex projectless output directories (#149)
+check "#149 Codex projectless output collected" "row \"$W149/outputs/report.md\" | grep -q '\"home\":\"$B\",\"agent\":\"codex-cli\".*\"status\":\"collected\"'"
+check "#149 Codex projectless dir not a project" "! grep '^  \"projects\"' \"\$S\" | grep -q 'Documents/Codex' && ! grep -q '\"home\":\"$B/Documents/Codex' \"\$M\" && ! grep -q 'Project .*/Documents/Codex' \"$OUT\"/default/*.log"
+check "#149 Codex rollout cwd still a project" "grep '^  \"projects\"' \"\$S\" | grep -qF '\"$B/Documents/app\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
@@ -1578,6 +1597,8 @@ check "inventory docker volume line" "agent_line inventory docker agent-zero | g
 check "inventory rootless docker volume line" "agent_line inventory docker tabby | grep -q '\"files\":1,\"bytes\":23,.*\"evidence\":\"\\*tabby\\*\"}\$'"
 check "inventory shared not inventoried" "! grep -q '\"agent\":\"\\(shared\\|project\\|live\\)\"' \"$OUT/inventory.stdout\""
 check "inventory prints no path below a home" "! grep -q '$ROOT' \"$OUT/inventory.stdout\""
+# 2026-10-19 Codex projectless output directories (#149)
+check "#149 inventory codex-cli evidence names Documents/Codex" "agent_line inventory bob codex-cli | grep -q '\"evidence\":\"[^\"]*Documents/Codex'"
 if command -v python3 >/dev/null 2>&1; then
   check "inventory stdout is valid JSON Lines" "python3 -c 'import json,sys; [json.loads(l) for l in open(sys.argv[1])]' \"$OUT/inventory.stdout\""
 fi

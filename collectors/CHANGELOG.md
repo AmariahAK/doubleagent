@@ -10,6 +10,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-10-19
+
+### Added
+
+- A `codex-cli|Documents/Codex` catalog line: the ChatGPT desktop app's
+  projectless output directories, `Documents/Codex/<date>/<slug>` with
+  `work/` and `outputs/` inside, where the bundled Codex runs a thread
+  that has no project, are collected whole and attributed to
+  `codex-cli`, so the files the agent wrote there are in the archive;
+  exclusions, the size limit and the secret globs apply as everywhere,
+  and `--list` (`-List`) and the inventory evidence print the glob
+  ([#149]).
+
+### Changed
+
+- Project discovery drops a Codex rollout `cwd` that is
+  `<home>/Documents/Codex` or lies under it, so a projectless output
+  directory is no longer listed in `collection.json` `projects` or used
+  as a project base (before 1.16.0 it was, and only its project-catalog
+  files were collected) ([#149]).
+
 ## [1.15.0] - 2026-10-19
 
 ### Added
@@ -891,7 +912,8 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
   overridden by `--full`; credential files collected and flagged
   `secret: true` by default.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.15.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.16.0...HEAD
+[1.16.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.15.0...collector-v1.16.0
 [1.15.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.14.0...collector-v1.15.0
 [1.14.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.13.0...collector-v1.14.0
 [1.13.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.12.0...collector-v1.13.0
@@ -915,6 +937,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 
 [#160]: https://github.com/seanthegeek/doubleagent/issues/160
 [#153]: https://github.com/seanthegeek/doubleagent/issues/153
+[#149]: https://github.com/seanthegeek/doubleagent/issues/149
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#131]: https://github.com/seanthegeek/doubleagent/issues/131
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121

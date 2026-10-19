@@ -81,7 +81,7 @@
 # Maintainer documentation, with the table of sh and PowerShell function
 # pairs: collectors/docs/internals.md.
 
-VERSION="1.15.0"
+VERSION="1.16.0"
 TOOL="collect-agent-artifacts"
 
 # Settings every later line relies on: the C locale for byte-wise matching
@@ -183,6 +183,10 @@ antigravity|AppData/Roaming/Antigravity IDE/User
 antigravity|AppData/Roaming/Antigravity IDE/logs
 # OpenAI
 codex-cli|.codex
+# Codex: the working directory the ChatGPT desktop app gives a thread with no
+# project, Documents/Codex/<date>/<slug> with work/ and outputs/ inside
+# (observed on Windows 2026-10-15 and macOS 2026-10-15 and 2026-10-18; #149)
+codex-cli|Documents/Codex
 chatgpt-desktop|Library/Application Support/com.openai.chat
 chatgpt-desktop|AppData/Local/Packages/OpenAI.ChatGPT-Desktop_*/LocalCache/Roaming/ChatGPT
 chatgpt-desktop|AppData/Local/Packages/OpenAI.ChatGPT-Desktop_*/LocalState
@@ -2939,9 +2943,16 @@ find_claude_code_projects() {
   done
 }
 # find_cli_session_projects HOME: Codex, Qwen Code, Cline CLI, Cursor chats,
-# Continue, Goose sessions, OpenCode and Crush.
+# Continue, Goose sessions, OpenCode and Crush. Temporaries: _fcsp_.
 find_cli_session_projects() {
-  session_cwds "$1/.codex/sessions" '*.jsonl'
+  # A Codex cwd in this home's Documents/Codex (the ChatGPT desktop app's projectless output
+  # directories, which the catalog collects whole) is not a project.
+  session_cwds "$1/.codex/sessions" '*.jsonl' | while IFS= read -r _fcsp_cwd; do
+    case $ROOT$_fcsp_cwd in
+      ("$1/Documents/Codex" | "$1/Documents/Codex/"*) ;;
+      (*) printf '%s\n' "$_fcsp_cwd" ;;
+    esac
+  done
   json_vals cwd "$1"/.qwen/projects/*/chats/*.jsonl "$1"/.cline/data/sessions/*/*.json \
     "$1"/.cursor/chats/*/*/meta.json
   json_vals workspace_root "$1"/.cline/data/sessions/*/*.json

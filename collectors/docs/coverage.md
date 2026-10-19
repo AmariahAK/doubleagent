@@ -339,6 +339,13 @@ local record is a row in `.codex/state_5.sqlite`, two keys in
 `.codex/.codex-global-state.json` and rows in the app server's log
 database `.codex/logs_2.sqlite`, all collected as `codex-cli`.
 
+A thread with no project runs in the app's projectless output directory,
+`Documents/Codex/<date>/<slug>` with `work/` and `outputs/` inside (seen
+on macOS and Windows). From collector 1.16.0 that directory is collected
+whole as `codex-cli`, so the files the agent wrote for the user are in
+the archive, and project discovery no longer takes a thread's working
+directory there for a project.
+
 ## Home directory discovery
 
 The collectors discover home directories rather than copy them: each

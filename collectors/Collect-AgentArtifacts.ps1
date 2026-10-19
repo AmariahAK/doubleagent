@@ -76,7 +76,7 @@ param(
 
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Continue'
-$ToolVersion = '1.15.0'
+$ToolVersion = '1.16.0'
 $TOOL = 'collect-agent-artifacts'
 
 # ===========================================================================
@@ -229,6 +229,10 @@ antigravity|AppData/Roaming/Antigravity IDE/User
 antigravity|AppData/Roaming/Antigravity IDE/logs
 # OpenAI
 codex-cli|.codex
+# Codex: the working directory the ChatGPT desktop app gives a thread with no
+# project, Documents/Codex/<date>/<slug> with work/ and outputs/ inside
+# (observed on Windows 2026-10-15 and macOS 2026-10-15 and 2026-10-18; #149)
+codex-cli|Documents/Codex
 chatgpt-desktop|Library/Application Support/com.openai.chat
 chatgpt-desktop|AppData/Local/Packages/OpenAI.ChatGPT-Desktop_*/LocalCache/Roaming/ChatGPT
 chatgpt-desktop|AppData/Local/Packages/OpenAI.ChatGPT-Desktop_*/LocalState
@@ -3276,7 +3280,16 @@ function Find-ClaudeCodeProjects([string]$homeDir) {
 # Codex, Qwen Code, Cline CLI, Cursor CLI chats, Continue, Goose sessions,
 # OpenCode and Crush.
 function Find-CliSessionProjects([string]$homeDir) {
-  Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.codex/sessions/*/*/*/*.jsonl')
+  # A Codex cwd in this home's Documents/Codex (the ChatGPT desktop app's projectless output
+  # directories, which the catalog collects whole) is not a project.
+  $codexOutputDir = Join-PathSafe $homeDir 'Documents/Codex'
+  $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
+  Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.codex/sessions/*/*/*/*.jsonl') |
+    Where-Object {
+      $cwdPath = [string](ConvertTo-LocalPath $_)
+      -not ($cwdPath.Equals($codexOutputDir, $ignoreCase) -or
+        $cwdPath.StartsWith($codexOutputDir + $script:Sep, $ignoreCase))
+    }
   Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.qwen/projects/*/chats/*.jsonl')
   Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.cline/data/sessions/*/*.json')
   Get-JsonValues 'workspace_root' @(Expand-Glob $homeDir '.cline/data/sessions/*/*.json')

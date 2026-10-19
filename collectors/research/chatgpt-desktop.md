@@ -388,8 +388,9 @@ The sh collector 1.14.0 ran live in the VM as the user, not root, on
 2026-10-19 from 00:43:01Z to 00:43:21Z: 1 user with artifacts (47
 accounts listed), 2 projects (`~/Demo`, and
 `~/Documents/Codex/2026-10-18/new-chat`, the projectless output
-directory that project discovery takes from the scheduled-task thread's
-rollout `cwd`; issue 149), 564 files and 20,051,811 B collected, 28
+directory that project discovery took from the scheduled-task thread's
+rollout `cwd`; since collector 1.16.0 discovery drops it and the
+directory is collected as `codex-cli`, issue 149), 564 files and 20,051,811 B collected, 28
 `skipped_excluded`, none too large, 2 `skipped_special`
 (`.codex/ipc/ipc.sock` and the group container's `IPC/computeruse.sock`),
 1 `symlink`, 30 `error_read` rows for system accounts' homes under
@@ -463,6 +464,8 @@ Elsewhere in the profile (observed, not collected,
   The same plugin tree is under `~\.codex\plugins\cache`.
 - `~\Documents\Codex\<date>\<letter>\{outputs,work}\`: the default
   output directory of a thread with no project (empty on the install).
+  Collected as `codex-cli` since collector 1.16.0 (issue 149; see
+  [section 2 of `codex-cli.md`](codex-cli.md#2-per-user-storage)).
 - `%LOCALAPPDATA%\Temp\`: 42 `.tmp<6 chars>` directories (the sandbox's
   and plugins' scratch), three `<uuid>.tmp.wav` and four `<uuid>.tmp`
   files.
@@ -547,7 +550,10 @@ with these observations:
   named after a chatgpt.com origin.
 - Outside `~/Library` and `~/.codex`: the projectless output directories
   `~/Documents/Codex/<date>/<slug>/{work,outputs}`
-  ([section 5](#5-project-local-files)), and per-launch sockets under
+  ([section 5](#5-project-local-files)), collected as `codex-cli` since
+  collector 1.16.0 (issue 149; see
+  [section 2 of `codex-cli.md`](codex-cli.md#2-per-user-storage)), and
+  per-launch sockets under
   `/private/tmp/codex-app-tools/` and `/private/tmp/codex-browser-use/`,
   outside every home, so no catalog line can name them.
 
@@ -733,7 +739,10 @@ table. The sh collector's live run found 2 projects from the rollouts:
 `~/Documents/Codex/2026-10-18/new-chat`, which is the app's scratch
 directory rather than a project the user chose (issue 149). The plain
 chat's `~/Documents/Codex/2026-10-18/w` was not among them; its rollout
-had been deleted before the run.
+had been deleted before the run. Since collector 1.16.0 project
+discovery drops a rollout `cwd` that is `<home>/Documents/Codex` or lies
+under it, and the `codex-cli|Documents/Codex` catalog line collects the
+directory whole, so its `outputs/` and `work/` files are in the archive.
 
 ## 7. Confidence
 

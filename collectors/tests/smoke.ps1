@@ -1012,6 +1012,19 @@ Mk 'Users/alice/.local/share/kilo/log/2026-10-17T120000.log' "INFO creating sess
 $s160 = 'Users/alice/.codex/shell_snapshots/22222222-2222-4222-8222-222222222222.1792000000000000000.sh'
 Mk $s160 "# Snapshot file`nexport EXAMPLE_API_KEY=x`n"
 
+# 2026-10-19 Codex projectless output directories (#149)
+# The ChatGPT desktop app (Windows 2026-10-15, macOS 2026-10-15 and
+# 2026-10-18) runs a thread
+# with no project in Documents/Codex/<date>/<slug>, with work/ and outputs/
+# inside, and records that directory as the rollout cwd. Since 1.16.0 the
+# directory is a codex-cli catalog line and discovery drops it as a project;
+# alice's rollout keeps its Documents\app project. Checks follow the default
+# run and the inventory below; the same files are in smoke.sh under bob.
+$w149 = 'home/bob/Documents/Codex/2026-10-18/w'
+Mk 'home/bob/.codex/sessions/2026/10/03/rollout-2.jsonl' '{"type":"session_meta","payload":{"cwd":"/home/bob/Documents/Codex/2026-10-18/w"}}'
+Mk "$w149/outputs/report.md" "# report`n"
+Mk "$w149/work/notes.txt" "notes`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1524,6 +1537,10 @@ Check '#153 Qwen Code channel routing files not flagged' { (Is113 'Users/alice/.
 Check '#153 Kilo log directory collected' { Is113 'Users/alice/.local/share/kilo/log/2026-10-17T120000.log' 'kilo-code' $false }
 # 2026-10-18 Codex shell snapshots (#160)
 Check '#160 Codex shell snapshot flagged secret' { Is113 $s160 'codex-cli' $true }
+# 2026-10-19 Codex projectless output directories (#149)
+Check '#149 Codex projectless output collected' { (Is113 "$w149/outputs/report.md" 'codex-cli' $false) -and ((Row "$w149/outputs/report.md").home -replace '\\', '/') -like '*/home/bob' }
+Check '#149 Codex projectless dir not a project' { -not (@($sum.projects) | Where-Object { $_ -match 'Documents[\\/]Codex' }) -and -not ($script:Rows | Where-Object { $_.home -match 'Documents[\\/]Codex' }) -and $log147 -notmatch 'Project .*Documents[\\/]Codex' }
+Check '#149 Codex rollout cwd still a project' { @($sum.projects | Where-Object { ($_ -replace '\\', '/') -like '*/Users/alice/Documents/app' }).Count -eq 1 }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
@@ -1864,6 +1881,8 @@ Check 'Inventory docker volume line' { $r -and $r.files -eq 4 -and $r.bytes -eq 
 $r = InvAgent 'docker' 'tabby'
 Check 'Inventory rootless docker volume line' { $r -and $r.files -eq 1 -and $r.bytes -eq 22 -and $r.evidence -eq '*tabby*' }
 Check 'Inventory shared not inventoried' { -not ($script:inv | Where-Object { $_.type -eq 'agent' } | Where-Object { @('shared', 'project', 'live') -contains $_.agent }) }
+# 2026-10-19 Codex projectless output directories (#149)
+Check '#149 inventory codex-cli evidence names Documents/Codex' { (InvAgent 'bob' 'codex-cli').evidence -like '*Documents/Codex*' }
 Check 'Inventory prints no path below a home' { -not ($script:invLines | Where-Object { $_.Contains($Root) -or $_.Contains($Root.Replace('\', '\\')) }) }
 $invO = Join-Path $Out 'inv-o'
 Inv @{ OutputDir = $invO }

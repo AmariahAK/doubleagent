@@ -78,6 +78,10 @@ antigravity|AppData/Roaming/Antigravity IDE/User
 antigravity|AppData/Roaming/Antigravity IDE/logs
 # OpenAI
 codex-cli|.codex
+# Codex: the working directory the ChatGPT desktop app gives a thread with no
+# project, Documents/Codex/<date>/<slug> with work/ and outputs/ inside
+# (observed on Windows 2026-10-15 and macOS 2026-10-15 and 2026-10-18; #149)
+codex-cli|Documents/Codex
 chatgpt-desktop|Library/Application Support/com.openai.chat
 chatgpt-desktop|AppData/Local/Packages/OpenAI.ChatGPT-Desktop_*/LocalCache/Roaming/ChatGPT
 chatgpt-desktop|AppData/Local/Packages/OpenAI.ChatGPT-Desktop_*/LocalState
