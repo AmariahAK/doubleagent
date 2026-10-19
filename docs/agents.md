@@ -305,16 +305,25 @@ also as `.jsonl.zst` (needs `zstandard`), `.codex/history.jsonl`,
 `.codex/automations/*/automation.toml`, and the rollouts' SQLite
 projections `.codex/state_5.sqlite` (`threads`: a thread record and the
 first prompt) and `.codex/thread_history_1.sqlite` (`thread_turns`,
-`thread_items`), secondary sources; `.codex/logs_<N>.sqlite` (`logs`),
-whose `/feedback` rows give one `session synced:` row per report sent to
-Sentry (fixture only).
+`thread_items`), secondary sources, with the `state_5.sqlite`
+`remote_control_enrollments` row as a `remote control:` row;
+`.codex/logs_<N>.sqlite` (`logs`), whose `/feedback` rows give one
+`session synced:` row per report sent to Sentry (fixture only) and whose
+approval rows give the ChatGPT desktop app's `permission decision:` rows;
+and the desktop app's `.codex/.codex-global-state.json`, a secondary
+source whose prompt history, deleted-thread markers, thread descriptions,
+standing permissions and remote control flags outlive a deleted thread.
 
 Validated against: Real install, Codex CLI, October 2026; Codex Desktop
 0.162.0-alpha.17.2 inside the ChatGPT desktop app, Windows 11, October
 2026; Codex CLI 0.162.1 (standalone installer) on Windows 11, October
 2026; Codex Desktop 0.162.0-alpha.17.2 inside ChatGPT 26.1007.71326 and
 Codex CLI 0.162.1 on macOS 26.6.2, October 2026; Codex CLI 0.162.1
-(standalone installer) on Ubuntu 26.04.1, October 2026; archived and
+(standalone installer) on Ubuntu 26.04.1, October 2026; Codex Desktop
+0.163.0-alpha.10.2 inside ChatGPT 26.1013.40934 on macOS 26.6.2,
+2026-10-18 (settings events, turn triggers, approval log rows, a
+guardian review thread, remote control from iPhone and Android, a
+scheduled task and a deleted thread); archived and
 `.zst` rollouts, subagent and fork records from source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524),
 synthetic fixture; the `state_5.sqlite` and `thread_history_1.sqlite`
 table and column names seen on the Windows 11 install, their row shapes
@@ -322,7 +331,8 @@ from source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd
 AGENTS.md, skills) is `system` by its content kind; a subagent row links
 each spawned thread to its parent; each automation of the ChatGPT desktop
 app is a `scheduled task:` row; turn items that no response item carries
-become rows.
+become rows; each turn's trigger (the composer, a paired phone, a
+scheduled task, the guardian reviewer) is a `turn trigger:` row.
 
 ### `cody`
 

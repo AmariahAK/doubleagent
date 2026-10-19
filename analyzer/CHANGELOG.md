@@ -9,6 +9,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-19
+
+### Added
+
+- The `codex-cli` and `open-interpreter` parsers read the rollout's
+  `thread_settings_applied` events, which the ChatGPT desktop app writes
+  when the user changes the model, the reviewer or the access level, so
+  `model:` and `permission mode:` rows are dated when the setting
+  changed, not at the next turn ([#160]).
+- A turn whose `task_started` record names its trigger gets a `turn
+  trigger: <turn_trigger> turn=<id>` row: `composer`, `remote_ios` and
+  `remote_android` (a prompt sent from a paired phone over remote
+  control), `guardian_review`, `scheduled_task_setup`,
+  `automation_heartbeat_run_now` and `automation_heartbeat_scheduled`
+  ([#160]).
+- The `codex-cli` parser yields the ChatGPT desktop app's per-call
+  approvals: a `permission decision: <decision> exec <item id> ...` row
+  per user decision recorded in `logs_<N>.sqlite`, joined to the call on
+  `tool_use_id`, and a `permission decision: <outcome> (auto_review ...)`
+  row per verdict of a guardian review thread (the automatic reviewer of
+  the "Approve for me" mode), attributed to the user's thread ([#160],
+  [#49]).
+- The `codex-cli` and `open-interpreter` parsers write a `remote control:
+  enabled=<0|1> server=<id> environment=<id> host=<name> ...` row per
+  `state_5.sqlite` `remote_control_enrollments` row ([#160]).
+- The `codex-cli` parser reads the desktop app's
+  `.codex/.codex-global-state.json` as a secondary source: its prompt
+  history as `user` rows (kept and marked `recovered` for a thread whose
+  rollout is gone), and `session deleted:`, `thread description:`,
+  `permission mode (standing):`, `permission setting:` and `remote
+  control: mobile device` rows, so a thread deleted in the app still
+  shows its prompts and its deletion ([#160], [#49]).
+
+### Changed
+
+- The `permission mode:` row of the `codex-cli` and `open-interpreter`
+  parsers ends with two more fields, `reviewer=<approvals_reviewer>
+  profile_id=<active_permission_profile.id>` (`-` when the rollout
+  records neither), a change to the row text of `timeline.jsonl`
+  ([#160]).
+
 ## [0.15.0] - 2026-10-18
 
 ### Added
@@ -1217,7 +1258,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--summary-length` (default 400), `--include-thinking` and `--agent`;
   `detect --json` and `--files`; `catalog --agents`.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.15.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.16.0...HEAD
+[0.16.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.15.0...analyzer-v0.16.0
 [0.15.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.14.0...analyzer-v0.15.0
 [0.14.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.13.0...analyzer-v0.14.0
 [0.13.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.12.0...analyzer-v0.13.0
@@ -1236,6 +1278,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#160]: https://github.com/seanthegeek/doubleagent/issues/160
 [#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#151]: https://github.com/seanthegeek/doubleagent/issues/151
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
@@ -1272,6 +1315,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [#73]: https://github.com/seanthegeek/doubleagent/issues/73
 [#64]: https://github.com/seanthegeek/doubleagent/issues/64
 [#50]: https://github.com/seanthegeek/doubleagent/issues/50
+[#49]: https://github.com/seanthegeek/doubleagent/issues/49
 [#48]: https://github.com/seanthegeek/doubleagent/issues/48
 [#47]: https://github.com/seanthegeek/doubleagent/issues/47
 [#45]: https://github.com/seanthegeek/doubleagent/issues/45

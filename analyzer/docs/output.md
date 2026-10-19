@@ -857,23 +857,105 @@ the record's `lastActivityAt` (else `createdAt`), which the text names as
 Desktop audit log).
 
 The `codex-cli` and `open-interpreter` parsers (one shared reader) write
-`model: <id>` at the first `turn_context` record of a rollout that names
-a model and `model: <old> -> <new>` at each later one whose model
-differs, and one composite `permission mode: approval=<approval_policy>
-sandbox=<sandbox_policy> profile=<permission_profile> network=<network>`
-row at the first `turn_context` with any of those four fields and
-`permission mode: <old> -> <new>` whenever the composite changes. A
+`model: <id>` at the first record of a rollout that names a model and
+`model: <old> -> <new>` at each later one whose model differs, and one
+composite `permission mode: approval=<approval_policy>
+sandbox=<sandbox_policy> profile=<permission_profile> network=<network>
+reviewer=<approvals_reviewer> profile_id=<active_permission_profile.id>`
+row at the first record with any of those fields and `permission mode:
+<old> -> <new>` whenever the composite changes. The records are each
+`turn_context` and each `thread_settings_applied` event, which the
+ChatGPT desktop app writes the moment the user changes the model, the
+reviewer or the access level, before any turn, so the row is dated when
+the setting changed rather than at the next turn. A settings event does
+not carry the sandbox policy: a field it lacks keeps the value last
+recorded, and reads `-` before the thread's first `turn_context`. A
 missing field is `-` and an object field is compact JSON, so a value
-reads `sandbox={"type":"workspace-write"}`. Both rows take the
-`turn_context` line's timestamp and precede that turn's rows, and the
-`model` column of both is the turn's model. Codex records no per-call
-approval in its rollouts, so these parsers write no `permission
-decision:` row. Each `/feedback` report recorded in `logs_<N>.sqlite`
+reads `sandbox={"type":"workspace-write"}`. `reviewer` is `user` when
+the user approves each escalated call, and `auto_review` in the desktop
+app's "Approve for me" mode, where an automatic reviewer (a guardian
+review thread) decides instead; `profile_id` is the desktop app's
+access level, `:workspace` or `:danger-full-access` ("Full access", no
+sandbox and no approvals), on Codex Desktop 0.163.0-alpha.10.2 inside
+ChatGPT 26.1013.40934 (macOS, 2026-10-18). Both rows take the record's
+timestamp, and the `model` column of both is the new model. The
+`reviewer` and `profile_id` fields were added at the end of the
+composite in analyzer 0.16.0, so every `permission mode:` row of these
+parsers ends `reviewer=- profile_id=-` when the rollout records
+neither.
+
+Each turn of a rollout whose `task_started` record carries
+`turn_attribution.turn_trigger` gets a row `turn trigger: <turn_trigger>
+turn=<turn_id>` after its `task_started turn=<turn_id>` row. The values
+seen with Codex Desktop 0.163.0-alpha.10.2 inside ChatGPT 26.1013.40934
+(macOS, 2026-10-18 and 2026-10-19):
+
+| `turn_trigger` | What started the turn |
+| --- | --- |
+| `composer` | A prompt typed in the desktop app. |
+| `remote_ios` | A prompt sent from the ChatGPT iPhone app over remote control (Settings > Connections > Control this Mac or PC): the phone drives the desktop's thread, which stays local. |
+| `remote_android` | The same from the ChatGPT Android app. |
+| `guardian_review` | The automatic reviewer's turn, in a guardian review thread. |
+| `scheduled_task_setup` | The first turn of a scheduled task's thread, when the task is created. |
+| `automation_heartbeat_run_now` | A scheduled task run with Run now. |
+| `automation_heartbeat_scheduled` | A scheduled task run at its scheduled time. |
+
+Codex records no per-call approval in its rollouts. The desktop app's
+are written to `logs_<N>.sqlite`: each user decision is one row
+`permission decision: <decision> exec <item id> turn=<turn_id> (from
+logs_<N>.sqlite logs, ts)` at the log row's time, with the thread as
+`session_id` and the governed item's id as `tool_use_id`, which is the
+`tool_use_id` of the call's `tool_use` row; `<decision>` is the app's
+term (`Decline` and `Accept` seen). An app-server response to an
+approval request with no such row beside it is `permission decision:
+<decision> request <request id> (from logs_<N>.sqlite logs, ts)` with no
+session. In the "Approve for me" mode the app spawns a guardian review
+thread (a rollout with `thread_source` `guardian_review` and the user's
+thread as `parent_thread_id`) whose final answer is the verdict: it is
+one row `permission decision: <outcome> (auto_review
+risk_level=<risk_level> user_authorization=<user_authorization>) exec
+<item id> reviewer <review thread id>: <rationale>` at the review's
+`task_complete` time, carrying the user's thread as `session_id`, an
+empty `model` (the reviewer's model is not the thread's), and
+the governed item's id as `tool_use_id` when the log names exactly one
+call under review in that window (else `exec -` and an empty
+`tool_use_id`); `allow` is the outcome seen. A log row of an approval
+whose text the parser cannot read is a `parser: unreadable approval log
+row (<target>): <text>` row.
+
+Each `/feedback` report recorded in `logs_<N>.sqlite`
 is one row `session synced: feedback report uploaded to Sentry,
 attachments <uploaded_attachments> failed <attachments_failed> (from
 logs_<N>.sqlite logs, ts)` at the log row's time, with `-` for a field
 the log line lacks and `session_id` the reported thread, empty when no
-thread was open.
+thread was open. Each row of the `remote_control_enrollments` table of
+`state_5.sqlite`, the host's enrollment for remote control, is one row
+`remote control: enabled=<0|1> server=<server_id>
+environment=<environment_id> host=<server_name>
+client=<app_server_client_name> account=<account_id>` at its
+`updated_at`, with an empty `session_id`: remote control lets a paired
+phone or desktop drive this host's threads, and turning it off keeps the
+row with `enabled=0`. It is not a sync: the threads stay on the host.
+
+The `codex-cli` parser also reads the desktop app's
+`.codex/.codex-global-state.json`, a secondary source that keeps traces
+of a thread the app deleted. Its prompt history gives `user` rows with
+an empty `timestamp_utc` and the thread as `session_id`, which pair with
+the rollout's prompts on text and are kept, and marked `recovered`, when
+the rollout is gone. Its `system` rows are at the file's modification
+time and end `(from .codex/.codex-global-state.json <key>, file mtime)`
+or `(from .codex/.codex-global-state.json, file mtime)`:
+`session deleted: <thread id>` for each thread the app deleted, `thread
+description: <description> last_activity=<time>` per thread, `permission
+mode (standing): approval=<approvalPolicy> sandbox=<sandboxPolicy>
+reviewer=<approvalsReviewer> profile_id=<id>` per thread, `permission
+setting: <key>.<host>=<value>` or `permission setting: <key>=<value>`
+for the app's agent mode (`agent-mode-by-host-id`,
+`preferred-non-full-access-agent-mode-by-host-id`,
+`permission-selection-by-host-id:<host>`; `guardian-approvals` is the
+"Approve for me" mode), and `remote control: mobile device
+connected=<true|false> environment=<id>` when a phone was ever paired.
+A value the file lacks is `-`.
 
 The `gemini-cli` and `qwen-code` parsers write `model: <id>` at a
 session's first record that names a model and `model: <old> -> <new>`
@@ -1275,7 +1357,7 @@ beside its `session synced: server conversation` row.
 | `claude-code` | `.claude/history.jsonl` (and `.claude-<name>/history.jsonl`) | `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `claude-desktop` | each Cowork session's `local-agent-mode-sessions/<acct>/<org>/[agent/]<session dir>/audit.jsonl` under the app-data directory; the session records `local_<uuid>.json` beside the session dirs and under `claude-code-sessions/` (a Cowork record's first prompt has no timestamp: matches on text within the session) | the session dir's `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `cline` | `.cline/data/db/session-search.db` (no timestamp per message: matches on text and session; a message of content blocks keeps their type names and tool ids, so only plain-string prompts match); `.cline/data/cache/user_input_history.jsonl` (only the last line timestamped: the others match on text alone) | `.cline/data/sessions/<id>/<id>.messages.json` |
-| `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite` | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
+| `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite`; `.codex/.codex-global-state.json` (the desktop app's prompt history, no timestamp: matches on text within the thread) | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
 | `copilot-cli` | `.copilot/session-store.db` (`turns`, the prompt and the final reply of each turn, stamped when the turn ends: a one-hour window; its `sessions` name pairs with the `workspace.yaml` row; `session_files`, `session_refs`, `checkpoints` and `forge_trajectory_events` rows the log has no copy of are always kept); `.copilot/session-state/<id>/rewind-file-snapshots/index.json` (each turn's prompt, a one-hour window); `.copilot/command-history-state.json` (no timestamp, session or project: matches on text alone); each also under the pre-XDG `.local/state/.copilot` | `.copilot/session-state/<id>/events.jsonl` and `workspace.yaml` |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
 | `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone) | `.local/share/goose/sessions/sessions.db` |
