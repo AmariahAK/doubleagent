@@ -4,15 +4,10 @@ OpenHands is an open-source coding agent, now split across several MIT-licensed 
 open source; `All-Hands-AI/OpenHands` redirects to `OpenHands/OpenHands`. Its surfaces are Agent
 Canvas (a React front end with a local-stack launcher, also shipped as an Electron app), the Agent
 Server and the SDK behind it, the `openhands` terminal CLI, and the pre-Canvas Python app, whose
-legacy layouts share `~/.openhands`. Transcript schema is in
-[`analyzer/research/openhands.md`](../../analyzer/research/openhands.md).
-
-Catalog agent `openhands`. Current OpenHands (Agent Canvas and the `openhands` CLI) persists
-conversations through the Software Agent SDK as one JSON file per event; the legacy 1.x and 0.x apps
-used other layouts ([section 11](#11-format-versions)). Path research is in
-[`collectors/research/openhands.md`](../../collectors/research/openhands.md).
-
-<!-- MERGE: dedupe the intro paragraphs above into one -->
+legacy layouts share `~/.openhands`. Catalog agent `openhands`. Current OpenHands (Agent Canvas and
+the `openhands` CLI) persists conversations through the Software Agent SDK as one JSON file per
+event; the legacy 1.x and 0.x apps used other layouts ([section 11](#11-format-versions)). Parsed:
+the openhands parser reads the SDK event files with their `meta.json` and `base_state.json`.
 
 ## 1. Source and evidence
 
@@ -37,16 +32,6 @@ used other layouts ([section 11](#11-format-versions)). Path research is in
 
 All claims are from source.
 
-[OpenHands/software-agent-sdk](https://github.com/OpenHands/software-agent-sdk) at
-[`b347047e2dcdd8f4b2be810aa8bc6632bc756d41`](https://github.com/OpenHands/software-agent-sdk/commit/b347047e2dcdd8f4b2be810aa8bc6632bc756d41)
-(SDK and Agent Server), [OpenHands/OpenHands-CLI](https://github.com/OpenHands/OpenHands-CLI) at
-[`954f2ba646e8d749261a8f2b2b7e3031fa39be9f`](https://github.com/OpenHands/OpenHands-CLI/commit/954f2ba646e8d749261a8f2b2b7e3031fa39be9f),
-and the legacy app at [OpenHands/OpenHands](https://github.com/OpenHands/OpenHands) tags `1.11.0`
-([`11ca68ab2e15dcd85c21e4d7d3409e7a259369ac`](https://github.com/OpenHands/OpenHands/commit/11ca68ab2e15dcd85c21e4d7d3409e7a259369ac))
-and `0.62.0`
-([`7fbb48c40679afd674970966b96185657d92a487`](https://github.com/OpenHands/OpenHands/commit/7fbb48c40679afd674970966b96185657d92a487)).
-MIT, open source.
-
 Sync and upload were checked on 2026-10-17 at
 [`fd26808`](https://github.com/OpenHands/software-agent-sdk/commit/fd268089e257bee4ad704ce4fdc6466bc756c71c)
 (SDK) and
@@ -60,53 +45,12 @@ Medium: the 1.x `v1_conversations` event shape. Not determined: whether any surf
 zone-aware event timestamp, and the full set of action and observation `kind` values, which grows
 with each tool.
 
-<!-- MERGE: dedupe the section 1 prose above -->
-
 ### Observed
-
-- No real install.
 
 - No real install. The 2026-10-19 review used no install, and the cut-file shape is not observed on
   any real install, source-derived ([Bad lines](#bad-line-rows)).
 
-<!-- MERGE: dedupe the Observed bullets above -->
-
 ### Source reviews
-
-- 2026-10-19: OpenHands at
-  [`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95)
-  (previously
-  [`a6bba78`](https://github.com/OpenHands/OpenHands/commit/a6bba78ffd5a8b31620770f52383b1a2c0477fcd)),
-  software-agent-sdk at
-  [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)
-  (previously
-  [`b347047`](https://github.com/OpenHands/software-agent-sdk/commit/b347047e2dcdd8f4b2be810aa8bc6632bc756d41)),
-  OpenHands-CLI at
-  [`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
-  (previously
-  [`954f2ba`](https://github.com/OpenHands/OpenHands-CLI/commit/954f2ba646e8d749261a8f2b2b7e3031fa39be9f);
-  no commit since 2026-10-09). From source only.
-  - Permission state: the per-conversation `confirmation_policy`, `security_analyzer` and
-    `blocked_actions` in `base_state.json`, and the server default in `settings.json`; both files
-    are collected. Detail in the [analyzer
-    document](#8-record-schema).
-  - Model: in `base_state.json` and event files; nothing new to collect.
-  - Past use beyond the primary store: the CLI's `projects/<sha256>/prompt_history.json` (already
-    collected) and the Canvas app's `Local Storage` (already collected, under the Electron user data
-    directory).
-  - Sync, relay and origin: Canvas now also connects to DigitalOcean Managed Agents sessions; their
-    only local files are a credential store and `Local Storage` entries
-    ([section 2](#2-per-user-storage), [section 3](#3-credentials)). No relay.
-  - Scratch directories: found; see [Scratch directories](#scratch-directories).
-    `~/.openhands/workspaces` (automation runs) is collected whole, unlike
-    `agent-canvas/workspaces`.
-  - Deletion: an Agent Server delete removes the conversation directory and the worktree under
-    `/tmp`, and keeps the workspace and branches ([What survives a
-    delete](#what-survives-a-delete)).
-  - Version drift: every path in this document is unchanged at the new commits; new is
-    `mars-credentials.json`.
-  - Bad lines: analyzer-side only; see the [analyzer
-    document](#13-parser-plan).
 
 - 2026-10-19: SDK at
   [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)
@@ -120,24 +64,31 @@ with each tool.
   [`a6bba78`](https://github.com/OpenHands/OpenHands/commit/a6bba78ffd5a8b31620770f52383b1a2c0477fcd)),
   CLI at
   [`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
-  (unchanged since 2026-10-09). Every statement below is from source at those commits; no install
-  was used.
+  (previously
+  [`954f2ba`](https://github.com/OpenHands/OpenHands-CLI/commit/954f2ba646e8d749261a8f2b2b7e3031fa39be9f);
+  unchanged since 2026-10-09). Every statement below is from source at those commits; no install was
+  used.
   - Permission state: found. A new `SecurityAnalysisEvent` records the security analyzer's verdict
-    per action, and `base_state.json` holds the standing `confirmation_policy` and
-    `security_analyzer`; an approval leaves no event. The parser reads rejections only
+    per action, and `base_state.json` holds the standing `confirmation_policy`,
+    `security_analyzer` and `blocked_actions`, with the server default in `settings.json`; both
+    files are collected. An approval leaves no event. The parser reads rejections only
     ([section 8](#8-record-schema), [section 13](#13-parser-plan)).
   - Model: found. The agent's own switches leave a `SwitchLLMObservation` or
     `ClassifyAndSwitchLLMObservation` with `active_model`; a switch through the REST endpoint
     (Canvas `/model`) leaves only the final model in `base_state.json`; `stats.usage_to_metrics`
-    keeps the model per LLM response. The parser writes one `model:` row per conversation.
-  - Past use beyond the primary store: found. The CLI's `prompt_history.json` is not read; forks are
-    full copies; Canvas keeps conversation metadata and an archive list in browser storage
-    ([section 10](#10-other-stores)).
+    keeps the model per LLM response. Nothing new to collect. The parser writes one `model:` row
+    per conversation.
+  - Past use beyond the primary store: found. The CLI's `projects/<sha256>/prompt_history.json`
+    (collected) is not read; forks are full copies; Canvas keeps conversation metadata and an
+    archive list in browser storage, its `Local Storage` under the Electron user data directory
+    (collected) ([section 10](#10-other-stores)).
   - Sync, relay and origin: found for origin, none for relay. Agent Canvas lists conversations from
     OpenHands Cloud backends and from DigitalOcean Managed Agents sessions (new since
     [`a6bba78`](https://github.com/OpenHands/OpenHands/commit/a6bba78ffd5a8b31620770f52383b1a2c0477fcd)),
-    whose only local traces are browser-storage entries; the earlier note that the Canvas front end
-    is not in these repositories was wrong. No messaging relay: not found in OpenHands at
+    whose only local traces are browser-storage entries and a credential store
+    ([section 2](#2-per-user-storage), [section 3](#3-credentials)); the earlier note that the
+    Canvas front end is not in these repositories was wrong. No messaging relay: not found in
+    OpenHands at
     [`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95),
     software-agent-sdk at
     [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)
@@ -145,17 +96,19 @@ with each tool.
     [`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
     (grepped for `telegram`, `slack`, `discord`, `whatsapp` and `jira`; the last is only a cloud
     feature flag).
-  - Scratch directories: found. `agent-canvas/workspaces/<hex>`, `~/.openhands/workspaces`
-    (automation runs) and `/tmp/conversation-worktrees/<dir>` (outside the home) are the agent's
-    own.
-  - Deletion: found. The Agent Server removes the conversation directory and its worktree but leaves
-    branches, children and forks; Canvas archive only hides; the CLI has no delete.
-  - Version drift: the event file layout and every field the parser reads are unchanged; one new
-    event kind (`SecurityAnalysisEvent`) falls into the parser's generic `system` row.
-  - Bad lines: no file is read line by line; a `meta.json` or `base_state.json` that does not decode
-    is dropped without a row.
-
-<!-- MERGE: dedupe the Source reviews above -->
+  - Scratch directories: found; see [Scratch directories](#scratch-directories).
+    `agent-canvas/workspaces/<hex>`, `~/.openhands/workspaces` (automation runs) and
+    `/tmp/conversation-worktrees/<dir>` (outside the home) are the agent's own.
+    `~/.openhands/workspaces` is collected whole, unlike `agent-canvas/workspaces`.
+  - Deletion: found. The Agent Server removes the conversation directory and its worktree under
+    `/tmp` but keeps the workspace, branches, children and forks; Canvas archive only hides; the
+    CLI has no delete ([What survives a delete](#what-survives-a-delete)).
+  - Version drift: every path in this document, the event file layout and every field the parser
+    reads are unchanged at the new commits; new are `mars-credentials.json` and one event kind
+    (`SecurityAnalysisEvent`), which falls into the parser's generic `system` row.
+  - Bad lines: no file is read line by line. The review found that a `meta.json` or
+    `base_state.json` that does not decode was dropped without a row; the parser now gives one
+    whole-file `parser:` row for it ([Bad lines](#bad-line-rows)). Not a collector concern.
 
 ## Collection
 
@@ -206,8 +159,7 @@ the Agent Server with `OH_PERSISTENCE_DIR=~/.openhands` and its own state in
   ([`docker/entrypoint.sh:174-178`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/docker/entrypoint.sh#L174-L178);
   [`config/defaults.json:23-26`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/config/defaults.json#L23-L26)).
   Each holds `meta.json`, `base_state.json`, `events/event-NNNNN-<id>.json` and `bash_events/`
-  ([section 6](#6-where-the-project-path-is-recorded), and the [analyzer
-  document](../../analyzer/research/openhands.md)).
+  ([section 6](#6-where-the-project-path-is-recorded), and [section 7](#7-transcript-stores)).
 - `agent-canvas/bash_events/`: commands typed in the Canvas terminal, one file per event named
   `<YYYYMMDDHHMMSSffffff>_<kind>_...`
   ([`openhands-agent-server/openhands/agent_server/bash_service.py:61-72`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-agent-server/openhands/agent_server/bash_service.py#L61-L72)).
@@ -289,8 +241,8 @@ Agent Server, so those conversations stay on DigitalOcean)
 [`electron/main.mjs:773-777`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/electron/main.mjs#L773-L777);
 [`src/api/mars/AGENTS.md:3`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/mars/AGENTS.md#L3)).
 The localStorage keys that matter (`openhands-backends`, `openhands-last-conversation-by-backend`,
-`openhands-agent-server-conversation-metadata`, `archived-conversations`) are listed in [section 10
-of the analyzer document](#10-other-stores).
+`openhands-agent-server-conversation-metadata`, `archived-conversations`) are listed in
+[section 10](#10-other-stores).
 
 #### Automation workspaces
 
@@ -787,12 +739,11 @@ evidence in [section 8](#8-record-schema) and [section 10](#10-other-stores)):
 Rows written today (issues 96 and 97):
 
 - `model: <id>`: a `system` row after the conversation's header row, at the header's time, from
-  `base_state.json` `agent.llm.model`. The research records one model per conversation and no event
-  that records a model switch, so no `model: <old> -> <new>` row is written; whether a switch in the
-  middle of a conversation is persisted is not researched.
+  `base_state.json` `agent.llm.model`. No `model: <old> -> <new>` row is written: when the parser
+  was written the research recorded one model per conversation and no event that records a model
+  switch. The 2026-10-19 review found the switch records ([Model records](#model-records)).
 
-The 2026-10-19 review found the switch records ([Model records](#model-records)). From the
-2026-10-19 review:
+From the 2026-10-19 review:
 
 - Model: written once per conversation from `agent.llm.model`. Not yet written:
   `model: <old> -> <new>` at each `SwitchLLMObservation` or `ClassifyAndSwitchLLMObservation`
