@@ -1,16 +1,24 @@
-# qwen-code: on-disk paths
+# qwen-code
 
-How the transcripts are encoded and how the parser reads them is in
-[`analyzer/research/qwen-code.md`](../../analyzer/research/qwen-code.md).
+Qwen Code, from [QwenLM/qwen-code](https://github.com/QwenLM/qwen-code), is a fork of Gemini CLI
+([`collectors/research/gemini-cli.md`](gemini-cli.md)). Besides the CLI it has a Web Shell served
+by `qwen serve` and Qwen Code Desktop, a Tauri app that wraps that Web Shell
+([Qwen Code Desktop](#qwen-code-desktop)). How the transcripts are encoded and how the parser
+reads them is in [`analyzer/research/qwen-code.md`](../../analyzer/research/qwen-code.md).
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 [QwenLM/qwen-code](https://github.com/QwenLM/qwen-code), commit [`2c591ecc08a6fa080342f9b1b9f7f43215178cbb`](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb)
 (2026-10-03, version `0.24.7`). Open source. All claims are source-level
 (`packages/...` file:line) unless marked `docs/` (repo documentation, used
-for directories whose writer lives in code not grepped here). `~/.qwen`
-does not exist on this workstation, so no live check. The layout has grown
+for directories whose writer lives in code not grepped here). The layout has grown
 far beyond the v1.1 catalog (channels, boards, arena, workflows, audits).
+
+### Observed
+
+- No real install. `~/.qwen` does not exist on this workstation, so no live check.
+
+### Source reviews
 
 - **Source review (2026-10-19).** HEAD
   [`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1)
@@ -25,11 +33,11 @@ far beyond the v1.1 catalog (channels, boards, arena, workflows, audits).
     the managed auto-memory ([section 2](#2-per-user-storage)).
   - Sync, relay and origin: channels as before. The Qwen Code Desktop
     app's config directory is not in the catalog
-    ([section 2](#2-per-user-storage)).
+    ([Qwen Code Desktop](#qwen-code-desktop)).
   - Scratch directories: found; `scratch-workspaces/` is excluded and
     `<project>/.qwen/worktrees/` is collected in full
     ([section 5](#5-project-local-files)).
-  - Deletion: found; see [section 2](#2-per-user-storage).
+  - Deletion: found; see [Deletion](#deletion).
   - Version drift: none in paths.
   - Bad lines: not a collector concern.
 
@@ -106,32 +114,44 @@ Additions from the source review of 2026-10-19, at
   [34](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/memory/paths.ts#L34),
   [116-148](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/memory/paths.ts#L116-L148)).
   All collected under `.qwen`.
-- Deletion: removing a session deletes its transcript, sidecars,
-  prompt ledger, file-history backups and `resources/<sessionId>`
-  ([`sessionService.ts:3539-3558`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/sessionService.ts#L3539-L3558)),
-  and leaves `logs.json`, `shell_history`, `checkpoint-<tag>.json` and
-  `usage_record.jsonl`. `tmp/<hash>/checkpoints/` is deleted at every
-  start unless an execution sandbox is configured
-  ([`cli/src/utils/cleanup.ts:126-136`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/utils/cleanup.ts#L126-L136);
-  [`cli/src/llm.tsx:587`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/llm.tsx#L587)).
-  Unlike Gemini CLI there is no age-based session cleanup.
-- Qwen Code Desktop (`packages/desktop`), a Tauri app that wraps the
-  Web Shell served by `qwen serve`, has the identifier
-  `com.alibaba.qwen-code` and keeps `desktop-state.json` (window and
-  zoom state) in its own config directory
-  ([`desktop/src-tauri/tauri.conf.json:3-5`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/desktop/src-tauri/tauri.conf.json#L3-L5);
-  [`desktop/src-tauri/src/desktop_state.rs:177-182`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/desktop/src-tauri/src/desktop_state.rs#L177-L182));
-  its sessions are ordinary `~/.qwen` transcripts. That directory and
-  the webview's own storage are not in the catalog; their platform
-  paths were not determined from source.
 
-Scratch directories: `scratch-workspaces/` is the managed scratch root
+### Scratch directories
+
+`scratch-workspaces/` is the managed scratch root
 `qwen serve` uses for a session without a workspace
 ([`cli/src/serve/run-qwen-serve.ts:5285-5292`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/serve/run-qwen-serve.ts#L5285-L5292)).
 It is under the home entry `.qwen` and excluded, so the files a session
 made there are not copied (the directory is one `skipped_excluded`
 manifest row), while the transcript that names it is collected. The project
 worktrees are in [section 5](#5-project-local-files).
+
+### Deletion
+
+From the source review of 2026-10-19 at
+[`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1),
+removing a session deletes its transcript, sidecars,
+prompt ledger, file-history backups and `resources/<sessionId>`
+([`sessionService.ts:3539-3558`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/sessionService.ts#L3539-L3558)),
+and leaves `logs.json`, `shell_history`, `checkpoint-<tag>.json` and
+`usage_record.jsonl`. `tmp/<hash>/checkpoints/` is deleted at every
+start unless an execution sandbox is configured
+([`cli/src/utils/cleanup.ts:126-136`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/utils/cleanup.ts#L126-L136);
+[`cli/src/llm.tsx:587`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/llm.tsx#L587)).
+Unlike [Gemini CLI](gemini-cli.md#deletion) there is no age-based session cleanup.
+What survives is in
+[What survives a delete in `analyzer/research/qwen-code.md`](../../analyzer/research/qwen-code.md#what-survives-a-delete).
+
+### Qwen Code Desktop
+
+From the same source review: Qwen Code Desktop (`packages/desktop`), a Tauri app that wraps the
+Web Shell served by `qwen serve`, has the identifier
+`com.alibaba.qwen-code` and keeps `desktop-state.json` (window and
+zoom state) in its own config directory
+([`desktop/src-tauri/tauri.conf.json:3-5`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/desktop/src-tauri/tauri.conf.json#L3-L5);
+[`desktop/src-tauri/src/desktop_state.rs:177-182`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/desktop/src-tauri/src/desktop_state.rs#L177-L182));
+its sessions are ordinary `~/.qwen` transcripts. That directory and
+the webview's own storage are not in the catalog; their platform
+paths were not determined from source.
 
 ## 3. Credentials
 
@@ -171,7 +191,7 @@ worktrees are in [section 5](#5-project-local-files).
   writer exists at this commit. Platform bot tokens set in `settings.json`
   are covered by that file's glob.
 
-## 4. Exclude
+## 4. Exclusions
 
 `.qwen/updates`, `.qwen/extension-store`, `.qwen/bin`,
 `.qwen/scratch-workspaces`, `.qwen/extensions/*/node_modules`, `.qwen/arena`
@@ -226,6 +246,8 @@ docs-only directories (`memories/`, `channels/<scope>/...`, `log/otel-*`,
 `paste-cache`), and that `~/.qwen/QWEN.md` rather than `memory.md` is the
 live global memory file (code defines `memory.md`, docs and the memory
 tool's users point at `QWEN.md`; collect both). Not determined: the JSON
-keys in `sessions/<pid>.json` and `usage_record.jsonl`; whether
+keys in `sessions/<pid>.json` and `usage_record.jsonl` (the source review of 2026-10-19 later
+found `project` beside `sessionId` in `usage_record.jsonl`;
+[section 6](#6-where-the-project-path-is-recorded)); whether
 `.qwen/sandbox` ever existed; whether `extension-secrets-v1.json` is used
 by anything other than MCP extension secrets.
