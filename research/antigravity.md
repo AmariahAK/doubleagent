@@ -1,43 +1,40 @@
 # antigravity
 
-Antigravity is three products under one catalog agent. The **CLI**, `agy`,
-is a single Go binary. The **desktop app** (version 2.x) is an Electron app,
-a desktop program built on Chromium and Node.js, whose bundle calls the
-product "AGY Hub" (the `--subclient_type hub` argument it passes to its
-backend, below); it describes itself to the user as "redesigned to put
-agents first". The **IDE**, the VS Code fork that carried the Antigravity
-name before 2.0, is now a separate download named "Antigravity IDE". The CLI
-and the desktop app run the same Go backend: the app ships it as
+Google Antigravity is three products under one catalog agent. The **CLI**, `agy`,
+is a single Go binary. The **desktop app** (version 2.x, since 2.0) is an
+Electron app, a desktop program built on Chromium and Node.js, whose bundle
+calls the product "AGY Hub" (its internal name for the agent-first app, and
+the `--subclient_type hub` argument it passes to its backend, below); it
+describes itself to the user as "redesigned to put agents first". The
+**IDE**, the VS Code fork that carried the Antigravity name before 2.0, is now
+a separate download named "Antigravity IDE". The CLI and the desktop app run
+the same Go backend, which the app calls the language server: it ships it as
 `language_server`, the name it gives the process that serves its agent
-conversations, and starts it in standalone mode. Both keep their state under
-`~/.gemini/`, in different subdirectories. How the transcripts are encoded
-and how the parser reads them is in
-[`analyzer/research/antigravity.md`](../../analyzer/research/antigravity.md).
-
-Google Antigravity ships two surfaces that write transcripts: the
-Antigravity CLI (`agy`) and, since 2.0, the Antigravity desktop app, an
-Electron app whose bundle calls the product "AGY Hub" (its internal name for
-the agent-first app; the VS Code-fork editor that carried the Antigravity
-name before 2.0 is now a separate download, "Antigravity IDE"). Both run the
-same Go backend, which the app calls the language server (the program that
-owns the conversation stores and runs the agent), and both write the same
+conversations (the program that owns the conversation stores and runs the
+agent), and starts it in standalone mode. Both write the same
 SQLite-of-protobuf conversation databases, each into its own data directory
-under `~/.gemini`. The app runs a scheduled task (an automation) as a
-sidecar, a long-running helper process the language server supervises.
-Paths, credentials and the rest of the per-user state are in
-[`collectors/research/antigravity.md`](../../collectors/research/antigravity.md).
-
-<!-- MERGE: dedupe the intro paragraphs above into one -->
+under `~/.gemini/`. The app runs a scheduled task (an automation) as a
+sidecar, a long-running helper process the language server supervises. The
+CLI and desktop app transcripts are parsed by the `antigravity` parser
+([section 13](#13-parser-plan)).
 
 ## 1. Source and evidence
 
-Closed source. Evidence levels, tagged per claim:
+Closed source; no public source exists. Evidence levels, tagged per claim:
 
-- **binary**: `~/.local/bin/agy`, ELF x86-64 (the Linux executable
-  format), 209,625,296 bytes, sha256 `a759ce7c7a235d9b...`, `strings -n 8`
-  saved to `scratchpad/agy_strings.txt` (552,251 lines). The embedded
-  changelog's newest heading is `## 1.2.15` (`agy_strings.txt:310457`;
-  oldest `## 1.0.0` at 311213). Cited as `str:<line>` or by quoted literal.
+- **binary**: `~/.local/bin/agy` on the author's WSL (Windows Subsystem for
+  Linux) workstation, the Google Antigravity CLI installed 2026-10-03, ELF
+  x86-64 (the Linux executable format), 209,625,296 bytes (about 200 MB),
+  sha256 `a759ce7c7a235d9b...`, `strings -n 8` saved to
+  `scratchpad/agy_strings.txt` (552,251 lines). The embedded changelog's
+  newest heading is `## 1.2.15` (`agy_strings.txt:310457`; oldest `## 1.0.0`
+  at 311213). Cited as `str:<line>` or by quoted literal. It embeds 1300
+  `.proto` descriptors; the relevant packages are `gemini_coder`
+  (`third_party/gemini_coder/proto/trajectory.proto`), `exa.cortex_pb`
+  (`third_party/jetski/cortex_pb/cortex.proto`), `exa.codeium_common_pb` and
+  `exa.jetski_cortex_pb`. The `jetski`, `cascade` and `codeium` names show the
+  lineage from Windsurf's Cascade agent. The parser's tables were built from
+  these descriptors.
 - **descriptors**: the protobuf descriptors embedded in `agy` 1.2.16
   macOS arm64 (271 descriptor files) and in the desktop app's
   `language_server` 2.23.0 (484), extracted with
@@ -62,31 +59,31 @@ Closed source. Evidence levels, tagged per claim:
   [Antigravity CLI hands-on codelab](https://codelabs.developers.google.com/antigravity-cli-hands-on); **community**:
   jazzyalex.github.io agent-sessions guide, dev.to ndondadaniel2020 restore
   write-up, [Devilaiger/antigravity-chat-history-fix](https://github.com/Devilaiger/antigravity-chat-history-fix),
-  [marioalbu08/antigravity-sync](https://github.com/marioalbu08/antigravity-sync), [SavFil/antigravity-convo-manager](https://github.com/SavFil/antigravity-convo-manager),
+  [marioalbu08/antigravity-sync](https://github.com/marioalbu08/antigravity-sync),
+  [SavFil/antigravity-convo-manager](https://github.com/SavFil/antigravity-convo-manager),
   [damadorPL/agent-memories](https://github.com/damadorPL/agent-memories) (google/antigravity.md),
   discuss.ai.google.dev thread 167445.
 
-Evidence level: shipped binaries (protobuf descriptors extracted from `agy`
-and from the app's `language_server`), confirmed against a real install on
-the author's WSL (Windows Subsystem for Linux) workstation (CLI), on the
-author's Mac (CLI and desktop app), in the author's Ubuntu lab VM (CLI and
-desktop app) and in the author's Windows 11 lab VM (CLI and desktop app),
-October 2026. No public source exists. Extraction:
+The transcript schema rests on the shipped binaries (protobuf descriptors
+extracted from `agy` and from the app's `language_server`), confirmed against
+a real install on the author's WSL workstation (CLI), on the author's Mac
+(CLI and desktop app), in the author's Ubuntu lab VM (CLI and desktop app)
+and in the author's Windows 11 lab VM (CLI and desktop app), October 2026.
+Extraction:
 `tools/proto_descriptors.py extract ~/.local/bin/agy descriptors.json`, then
 `show` on the names below.
 
-On the WSL workstation: `~/.local/bin/agy`, ELF x86-64, about 200 MB, Google
-Antigravity CLI, installed 2026-10-03. 1300 embedded `.proto` descriptors;
-the relevant packages are `gemini_coder`
-(`third_party/gemini_coder/proto/trajectory.proto`), `exa.cortex_pb`
-(`third_party/jetski/cortex_pb/cortex.proto`), `exa.codeium_common_pb` and
-`exa.jetski_cortex_pb`. The `jetski`, `cascade` and `codeium` names show the
-lineage from Windsurf's Cascade agent. The parser's tables were built from
-these descriptors.
-
-<!-- MERGE: dedupe the section 1 prose above -->
-
 ### Observed
+
+- **macOS, CLI 1.3.6**: a second look on 2026-10-15 with CLI 1.3.6
+  (`/Users/sean/.local/bin/agy`, 183,407,440 bytes, sha256
+  `827ba22b4aa33557614a57aac2cc13f386e17db6b802febd3932226906ac05ab`): one
+  conversation of 17 steps in a project directory the agent was then told to
+  delete, which left the conversation database, its `brain/<uuid>/` mirror
+  (16 `transcript_full.jsonl` lines), the `history.jsonl` lines and the
+  summaries row in place, so the whole session parsed after the directory
+  was gone; its four `history.jsonl` lines showed which ones carry
+  `conversationId` ([section 9](#9-joins-and-timestamps)).
 
 - **Windows, CLI** (issues 83, 89, 90): `agy` 1.3.5 (`agy --version`) at
   `%LOCALAPPDATA%\agy\bin\agy.exe`, on `PATH`, 184,062,616 B, sha256
@@ -94,26 +91,36 @@ these descriptors.
   installed 2026-10-14T23:56:21Z in the author's Parallels lab VM, Windows
   11 ARM64 build 26300 (`ver` reports `10.0.26300.9550`; ARM64 is the 64-bit
   Arm architecture), and observed the same evening (US Eastern daylight
-  time; the UTC times below cross into 2026-10-15). The executable's version
+  time; the UTC times below cross into 2026-10-15), read for file names,
+  sizes, key names, value types and log lines with ids redacted only.
+  `%LOCALAPPDATA%` below is the per-user `AppData\Local` folder and
+  `%APPDATA%` the per-user `AppData\Roaming` folder. The user installed the
+  desktop app and the CLI and ran a few turns with each; as on macOS and
+  Linux no listing was taken between tasks, so the mapping from task to
+  file is by modification time only. The executable's version
   resource (`VersionInfo.ProductVersion`, the version Windows shows in the
   file's properties) is empty. The embedded changelog's newest heading is
   `## 1.3.4`, with `## 1.3.0` to `## 1.3.4` present, and an ASCII search
   over the file finds the literals `plugin-secrets.json`,
   `Using file-based secret storage`, `wincred` and `CredWrite`
-  ([section 3](#3-credentials)). No WSL (Windows Subsystem for Linux)
-  distribution is installed. The CLI created `~/.gemini/antigravity-cli/` at
-  00:22:29Z (`~` is `%USERPROFILE%`, `C:\Users\<user>`, here). The user
-  started it from `<home>\demo2`, typed with a lower-case `users`
+  ([section 3](#3-credentials)). No WSL distribution is installed. The CLI
+  created `~/.gemini/antigravity-cli/` at its first run, 00:22:29Z (`~` is
+  `%USERPROFILE%`, `C:\Users\<user>`, here). The user started it from
+  `<home>\demo2`, typed with a lower-case `users`
   (`C:\users\<user>\demo2`), and ran a coding task that wrote one source
   file per language into ten subdirectories and a `README.md` (00:25:07Z to
   00:27:16Z). That left one conversation, `conversations/<uuid>.db`
-  (983,040 B, 00:28:12Z, 38 steps, `trajectory_meta.source` 17, no `-wal` or `-shm`
-  sidecar when listed). Against 1.3.4 on Linux, the CLI also wrote
+  (983,040 B, 00:28:12Z, 38 steps, `trajectory_meta.source` 17, no `-wal` or
+  `-shm` sidecar when listed). Its `history.jsonl` had one line, without
+  `conversationId`. Against 1.3.4 on Linux, the CLI also wrote
   `cache/conversation_metadata.json` and copied the desktop app's
-  conversations into its own summaries database, its `cli.log` is a hard
-  link rather than a symlink ([section 2](#2-per-user-storage)), and its
-  OAuth token went to the Windows Credential Manager, not a file
-  ([section 3](#3-credentials)).
+  conversations into its own summaries database, new in 1.3.5 as observed
+  here ([section 7](#7-transcript-stores),
+  [Summaries database](#summaries-database)); its `cli.log` is a hard link
+  rather than a symlink ([section 2](#2-per-user-storage)), and its OAuth
+  token went to the Windows Credential Manager, not a file
+  ([section 3](#3-credentials)). The descriptors of the 1.3.5 and 2.23.1
+  Windows binaries were not extracted in this round.
 
 - **Windows, desktop app** (issues 83, 84, 91): version 2.23.1
   (`main.log`: `Starting app (v2.23.1) with dynamic port…`; the version
@@ -151,23 +158,27 @@ these descriptors.
   platforms.
 
   The user ran, in the app: a question with no file writes; a coding task
-  in a project folder `<home>\demo`, which wrote six files there (a hello
-  world in C, Go, JavaScript, Python and Rust, and a `README.md`, 00:01:44Z
-  to 00:03:20Z); a research task that wrote a Markdown document to the
-  app's `scratch/` (00:10:29Z) and started a background task; and a task
-  that set up a scheduled automation (a sidecar,
-  [section 2](#2-per-user-storage)) named
+  in a project folder `<home>\demo` (`C:\Users\sean\demo`), which wrote six
+  files there (a hello world in C, Go, JavaScript, Python and Rust, and a
+  `README.md`, 00:01:44Z to 00:03:20Z); a research task that wrote a
+  Markdown document to the app's `scratch/` directory (00:10:29Z) and
+  started a background task; and a task that set up a scheduled automation
+  (a sidecar, [section 2](#2-per-user-storage)) named
   `weekly-microsoft-security-bulletins` (`sidecar.json` 00:17:41Z to
   00:20:16Z). The Google Docs plugin `gdocs` 0.0.6 was installed from the
   marketplace between 00:05:45Z and 00:08:51Z, when its `token.json` was
   written. As on macOS and Linux no listing was taken between tasks, so the
   mapping from task to file is by modification time only: the four
   conversation databases under `~/.gemini/antigravity/conversations/` are
-  00:03:54Z (622,592 B, 20 steps), 00:06:55Z (589,824 B, 10 steps),
-  00:13:30Z (1,441,792 B, 46 steps) and 00:20:53Z (6,258,688 B, 46 steps),
-  all `trajectory_meta.source` 1 and none with a `-wal` or `-shm` sidecar
-  when listed; the project file `~/.gemini/config/projects/<uuid>.json` is
-  23:59:53Z.
+  00:03:54Z (622,592 B), 00:06:55Z (589,824 B), 00:13:30Z (1,441,792 B) and
+  00:20:53Z (6,258,688 B), of 20, 10, 46 and 46 steps (the step counts are
+  in the analyzer's session order, which was not matched to the file
+  sizes), all `trajectory_meta.source` 1, each with a `brain/<uuid>/`
+  directory, an `annotations/<uuid>.pbtxt` and a summaries row, and none
+  with a `-wal` or `-shm` sidecar when listed (nor had the CLI's); the
+  project file `~/.gemini/config/projects/<uuid>.json` is 23:59:53Z. No
+  `sidecar_data/` directory appeared for the automation
+  ([Sidecar logs](#sidecar-logs)).
 
   The surveys were taken after everything (00:29Z) and again after the
   collection (00:45Z); the second showed no new file, only the size
@@ -198,7 +209,8 @@ these descriptors.
   `Network\Cookies-journal` (`... because it is being used by another process.`).
   The three lock files are empty, so only their rows were lost; the cookie
   store is the one real loss, as on a live Claude Desktop host
-  ([locked files in `collectors/docs/windows.md`](../collectors/docs/windows.md#locked-files-and-long-paths)).
+  ([locked files in
+  `collectors/docs/windows.md`](../collectors/docs/windows.md#locked-files-and-long-paths)).
   Collected unflagged with credential-like names were only `Trust Tokens`
   and its journal ([section 3](#3-credentials)).
 
@@ -228,22 +240,60 @@ these descriptors.
   issue 91 fix) and, as documented, not `demo2`, whose only references are
   Windows paths ([section 6](#6-where-the-project-path-is-recorded)).
 
+  Analyzer 0.12.0 (at `main` commit
+  [`4607cca`](https://github.com/seanthegeek/doubleagent/commit/4607ccaac18f9bcfcb1a01cefc9402939430b09d))
+  over the collector 1.12.0 archive of this VM, covering both surfaces
+  (PowerShell collector, 213 `collected` files): `detect` verified the
+  archive's sha256 and listed the one user with `antigravity`, 213 files
+  and 14,339,425 B, and its `detect.json` (a file `timeline` wrote until its
+  content moved into
+  [`inventory.json`](../analyzer/docs/output.md#inventoryjson) later in
+  0.12.0) `problems` list was empty. `timeline --include-thinking` reported
+  `antigravity` parsed and nothing detected but not parsed, with 285
+  rows (8 `user`, 10 `assistant`, 72 `tool_use`, 72 `tool_result`, 33
+  `thinking`, 90 `system`) in 5 sessions. The `system` rows: 50
+  `permission grant` (per-step grants, issue 92; three of them for
+  PowerShell `Get-ChildItem` commands the agent ran over
+  `~/.gemini/config`), 19 `permission setting` (14 from `config.json`
+  `userSettings.globalPermissionGrants.allow`, 3 from `sidecar.json`
+  `agent_permissions.access_grants` and 2 from the CLI's
+  `settings.json`), 5 `model` (one per session, `gemini-3.8-flash-n` in
+  every conversation), 5 session starts, 9 `conversation summary`
+  ([Summaries database](#summaries-database)) and 2 `system_message` steps
+  (both `task_notification` events). Four session starts read
+  `source=cascade_client` and `data_dir=antigravity`, one of them with
+  the app project's `project_id` and three `outside-of-project`; the
+  fifth read `source=cli`, `data_dir=antigravity-cli` and
+  `project_id=default-cli-project`. Tool names: `run_command` 36,
+  `write_to_file` 21, `view_file` 8, `search_web` 3, `ask_question` 3,
+  `read_url_content` 1. The `history.jsonl` row had an empty
+  `session_id`, since its line has no `conversationId`, and the
+  lower-case `C:\users\sean\demo2` as `project_path`
+  ([section 9](#9-joins-and-timestamps)). No row reported an unreadable file
+  or a decode failure.
+
 - **Linux, CLI** (issues 83, 89, 90): `agy` 1.3.4 (`agy --version`) at
   `~/.local/bin/agy`, ELF aarch64, 204,492,984 bytes, sha256
   `08d619ae3969c33b9cba5eac2a54f4566cbca1b5de68968167cb908ced5b4824`, in the
   author's Ubuntu lab VM (Ubuntu 26.04.1 LTS, aarch64, Linux
-  7.0.0-38-generic), installed 2026-10-13 21:37 local time (EDT) and
-  observed the same day; the embedded changelog's newest heading is
-  `## 1.3.3`. `~/.local/bin` is not on the non-interactive `PATH`. The user
-  ran a few turns, which left one conversation
-  (`~/.gemini/antigravity-cli/conversations/<uuid>.db`, 26 steps,
-  `trajectory_meta.source` 17) and a project folder the agent wrote files
-  into. Against 1.2.x the CLI now also writes `annotations/<uuid>.pbtxt`,
-  `cache/marketplaces/`, a `conversationId` key in `history.jsonl` and a
-  `permissions` key in `settings.json` ([section 2](#2-per-user-storage)),
-  and its log names a file secret store it did not create
-  ([section 3](#3-credentials)). The CLI left
-  `~/.cache/antigravity/staging/` empty, as on macOS.
+  7.0.0-38-generic), installed 2026-10-13 21:37 local time (EDT, US Eastern
+  daylight time) and observed the same day, read for file names, sizes, key
+  names, value types, SQLite schemas and enum values only, with `find`,
+  `ls`, `analyzer/tools/shape.py` and a read-only schema script, all Python
+  run with `python3 -I`. The user installed both products and ran a few
+  turns with each; no listing was taken between tasks, so, as on macOS, the
+  mapping from task to file is by modification time only. The embedded
+  changelog's newest heading is `## 1.3.3`. `~/.local/bin` is not on the
+  non-interactive `PATH`. The user ran a few turns, which left one
+  conversation (`~/.gemini/antigravity-cli/conversations/<uuid>.db`,
+  622,592 B, modified 21:43, 26 steps, `trajectory_meta.source` 17 (`cli`)
+  and `trajectory_type` 4) and a project folder the agent wrote files into.
+  Against 1.2.x the CLI now also writes `annotations/<uuid>.pbtxt`, as the
+  app does ([section 7](#7-transcript-stores)), `cache/marketplaces/`, a
+  `conversationId` key in `history.jsonl` (issue 89) and a `permissions` key
+  in `settings.json` ([section 2](#2-per-user-storage)), and its log names a
+  file secret store it did not create ([section 3](#3-credentials)). The CLI
+  left `~/.cache/antigravity/staging/` empty, as on macOS.
 
 - **Linux, desktop app** (issues 83, 91): version 2.23.1
   (`main.log`: `Starting app (v2.23.1) with dynamic port…`), in the same VM,
@@ -254,7 +304,8 @@ these descriptors.
   `c543041069aa2e478235447cb636f9f09faab15003862029d226bb14b8dc655b`), a
   setuid-root `chrome-sandbox`, the Chromium libraries and resource packs,
   `resources/app.asar` (4,486,221 B, the size of the macOS 2.23.0 asar,
-  sha256 `b8ec3628df2a12ee9deac5dc06367f238065af146bfe6298fdad6db5f9790d9c`),
+  with a different hash, sha256
+  `b8ec3628df2a12ee9deac5dc06367f238065af146bfe6298fdad6db5f9790d9c`),
   `resources/app-update.yml` (keys `provider`, `url`,
   `updaterCacheDirName`), `resources/bin/language_server` (181,358,800 B,
   sha256 `310ee8e0cba4c4ee05504ac8021cbd3544a79c06cc01c790536361625c5fffb3`)
@@ -265,12 +316,19 @@ these descriptors.
   The user ran a few tasks, among them a coding task and a scheduled
   automation, with no listing between tasks, so the mapping from task to
   file is by modification time only, as on macOS: four conversations under
-  `~/.gemini/antigravity/conversations/` (21:45, 21:51, 21:55, 22:00, all
-  `trajectory_meta.source` 1), a project folder `~/demo2/` (21:53 to 21:54)
-  whose project file is 21:47, the automation's `sidecar.json` (21:58 to
-  21:59) and its `sidecar_data/` (22:00), the Google Docs plugin's token
-  (21:49), and a Markdown report the agent wrote at the home root (21:59).
-  The app wrote `~/.gemini/antigravity/` (56 MB), files in
+  `~/.gemini/antigravity/conversations/` (655,360 to 1,114,112 B, modified
+  21:45, 21:51, 21:55 and 22:00, all `trajectory_meta.source` 1
+  (`cascade_client`) and `trajectory_type` 4, of 14, 43, 30 and 38 steps,
+  [Conversation database](#conversation-database)), each with a
+  `brain/<uuid>/` directory, an `annotations/<uuid>.pbtxt` and a summaries
+  row; a project folder `~/demo2/` (21:53 to 21:54) whose project file is
+  21:47, the automation's `sidecar.json` (21:58 to 21:59) and its
+  `sidecar_data/` (22:00), the Google Docs plugin's token (21:49), and a
+  Markdown report the agent wrote at the home root (21:59). The
+  automation's scheduler log is the first observed trace of a sidecar's own
+  output ([Sidecar logs](#sidecar-logs)), but no scheduled run had fired,
+  so what a run writes, and whether it becomes a conversation, is still not
+  observed. The app wrote `~/.gemini/antigravity/` (56 MB), files in
   `~/.gemini/config/` (320 KB), and the Electron user-data directory
   `~/.config/Antigravity/` (8.9 MB) with its `logs/` inside it, as the
   bundle says. It created no `~/.config/antigravity` (lower case),
@@ -279,7 +337,8 @@ these descriptors.
   systemd unit and no crontab entry for the schedule; `systemctl --user`
   showed only the running app's transient `app-antigravity-<pid>.scope`.
   The user also kept the CLI's project folder inside the install directory,
-  `~/Antigravity/demo/`.
+  `~/Antigravity/demo/`. The descriptors of the 1.3.4 and 2.23.1 binaries
+  were not extracted in this round.
 
   Collector 1.12.0, run in the VM as the user (`-q -u <user>`,
   2026-10-14T02:04Z), collected 233 files (7,002,562 B) with 13
@@ -297,40 +356,73 @@ these descriptors.
   `~/Antigravity/demo`; the app's `~/demo2` was missed (issue 91,
   [section 6](#6-where-the-project-path-is-recorded)).
 
+  Analyzer 0.12.0 over the collector 1.12.0 archive of this VM, covering
+  both surfaces: the summary line read
+  `agents:    parsed: antigravity; detected but not parsed: none`, with
+  165 rows (9 `user`, 10 `assistant`, 67 `tool_use`, 67 `tool_result`,
+  12 `system`) in 5 sessions, four with `source=cascade_client` and
+  `data_dir=antigravity` and one with `source=cli` and
+  `data_dir=antigravity-cli`. The `system` rows were the 5 session
+  starts, the 5 conversation summaries and 2 `system_message` steps
+  (both `task_notification` events); no row reported a decode failure.
+  The two `history.jsonl` rows had `project_path` set and `session_id`
+  empty, because analyzer 0.12.0 as run did not read `conversationId`;
+  the parser reads it since (issue 89).
+
 - **macOS, CLI** (issue 83): `agy` at `~/.local/bin/agy`, Mach-O 64-bit
   arm64 (the macOS executable format), 175,966,448 bytes, sha256
   `7dca095cfc1df2c057a385ed88a76c7ba98dc103258a80be87a8f42e484cb3aa`,
   installed 2026-10-04 on the author's Mac (macOS 26.4, Darwin 25.4.0, Apple
-  silicon), observed 2026-10-13. `agy --version` prints `1.2.16`; the
+  silicon, arm64), observed 2026-10-13, read for file names, sizes, key
+  names, value types and SQLite schemas only, with
+  `analyzer/tools/shape.py`. `agy --version` prints `1.2.16`; the
   embedded changelog's newest heading is still `## 1.2.15`. Two
-  conversations were on disk, each a `conversations/<uuid>.db` with
-  `trajectory_meta.source` 17 (`CORTEX_TRAJECTORY_SOURCE_CLI` in the
-  descriptor `exa.cortex_pb.CortexTrajectorySource`) and 12 and 8 steps,
-  with the `brain/<uuid>/` logs described in
+  conversations were on disk in `~/.gemini/antigravity-cli/conversations/`,
+  each a `conversations/<uuid>.db` with `trajectory_meta.source` 17
+  (`cli`, `CORTEX_TRAJECTORY_SOURCE_CLI` in the descriptor
+  `exa.cortex_pb.CortexTrajectorySource`) and `trajectory_type` 4, of 12 and
+  8 steps, with the `brain/<uuid>/` logs described in
   [section 2](#2-per-user-storage). The CLI left
   `~/.cache/antigravity/staging/` empty.
 
 - **macOS, desktop app** (issue 83): `/Applications/Antigravity.app`,
   `CFBundleShortVersionString` and `CFBundleVersion` both `2.23.0`, Electron
   (`Contents/Frameworks/Electron`, 200,443,040 bytes), on the same Mac,
-  first launched 2026-10-13 18:28 local time and observed the same day. Its
+  first launched 2026-10-13 18:28 local time and observed the same day.
+  `Contents/Resources/app.asar` is 4,486,221 bytes, sha256
+  `4e99093662d797ecba823e92823d352413e3bf2ca721257df4a255c045df1598`. Its
   backend is `Contents/Resources/bin/language_server` (Mach-O arm64,
   155,290,912 bytes, sha256
   `c1dd0c9940f712adf2185e756470752d5f5afee15441e32879e4a0f127e18273`),
-  beside `Contents/Resources/bin/webm_encoder`.
+  beside `Contents/Resources/bin/webm_encoder`. The app passes the language
+  server `--subclient_type hub`, `--standalone` and `--app_data_dir` with
+  the data-directory name (`app.asar:dist/languageServer.js@4241987`
+  `'--subclient_type',` `'hub',`; `@4242293` `'--app_data_dir',`
+  `(0, paths_1.getAppDataDirName)(),`), and the name is the app name
+  lower-cased without spaces, `antigravity`
+  (`app.asar:dist/paths.js@4312548`
+  `return electron_1.app.getName().toLowerCase().replace(/\s+/g, '');`),
+  under `~/.gemini` on every OS (`app.asar:dist/paths.js@4312621`
+  `path_1.default.join(os_1.default.homedir(), '.gemini', getAppDataDirName())`).
 
-  The user ran, in this order, a question with no tool use, a coding task,
-  an automation (a scheduled task; the app calls it a sidecar,
-  [section 2](#2-per-user-storage)) and the Google Docs plugin ("gdocs",
-  installed from the official plugin marketplace). The directory listings
-  were taken after all four, so which conversation belongs to which task is
-  not known: the four conversation databases under
-  `~/.gemini/antigravity/conversations/` have modification times 18:37,
-  18:43, 18:50 and 19:14, the automation's `sidecar.json` 18:41 to 18:42,
-  the plugin's `token.json` 18:46 and the agent's scratch document 18:47;
-  any mapping beyond those times waits for a round that lists after each
-  task. All four conversations have `trajectory_meta.source` 1
-  (`CORTEX_TRAJECTORY_SOURCE_CASCADE_CLIENT`). The app wrote
+  The user ran, in this order, a plain question-and-answer chat with no
+  tool use, a coding task, an automation (a scheduled task; the app runs it
+  as a sidecar, [section 2](#2-per-user-storage), enabled with
+  `--enable_sidecars`, `app.asar:dist/languageServer.js@4242552`) and the
+  Google Docs plugin ("gdocs", installed from the official plugin
+  marketplace). The directory listings were taken after all four, so which
+  conversation belongs to which task is not known, and the order below is
+  by modification time only: the four conversation databases under
+  `~/.gemini/antigravity/conversations/`, all `trajectory_meta.source` 1
+  (`CORTEX_TRAJECTORY_SOURCE_CASCADE_CLIENT`, `cascade_client`) and
+  `trajectory_type` 4, are 12 steps (modified 18:37), 24 steps (18:43), 43
+  steps (18:50) and 31 steps (19:14), each with a `brain/<uuid>/` directory,
+  an `annotations/<uuid>.pbtxt` and a row in `conversation_summaries.db`
+  ([section 7](#7-transcript-stores)); the automation's `sidecar.json` is
+  18:41 to 18:42, the plugin's `token.json` 18:46 and the agent's scratch
+  document 18:47; any mapping beyond those times waits for a round that
+  lists after each task. Where a scheduled run of the automation writes its
+  transcript was not observed, because no run had fired. The app wrote
   `~/.gemini/antigravity/` (49 MB), files in the shared `~/.gemini/config/`,
   the Electron user-data directory
   `~/Library/Application Support/Antigravity/` (5.3 MB) and
@@ -342,211 +434,9 @@ these descriptors.
   catalog then named only the pre-2.0 `User` and `logs` subdirectories,
   which this build does not create.
 
-- **macOS, CLI 1.3.6**: a second look on 2026-10-15 with CLI 1.3.6
-  (`/Users/sean/.local/bin/agy`, 183,407,440 bytes, sha256
-  `827ba22b4aa33557614a57aac2cc13f386e17db6b802febd3932226906ac05ab`): one
-  conversation of 17 steps in a project directory the agent was then told to
-  delete, which left the conversation database, its `brain/<uuid>/` mirror
-  (16 `transcript_full.jsonl` lines), the `history.jsonl` lines and the
-  summaries row in place, so the whole session parsed after the directory
-  was gone; its four `history.jsonl` lines showed which ones carry
-  `conversationId` ([section 9](#9-joins-and-timestamps)).
-
-- **Windows** (CLI and desktop app): the author's Windows 11 ARM64 lab VM,
-  build 26300 (`ver` prints `10.0.26300.9550`), 2026-10-14 (times below in
-  UTC; the round ran in the evening US Eastern time, so they cross midnight
-  into 2026-10-15; issue 83), read for file names, sizes, key names, value
-  types and log lines with ids redacted only. No WSL (Windows Subsystem for
-  Linux) distribution was installed. The user installed the desktop app and
-  the CLI and ran a few turns with each; as on macOS and Linux no listing
-  was taken between tasks, so the mapping from task to file is by
-  modification time only. `%LOCALAPPDATA%` below is the per-user
-  `AppData\Local` folder and `%APPDATA%` the per-user `AppData\Roaming`
-  folder.
-  - **CLI**: `%LOCALAPPDATA%\agy\bin\agy.exe`, 184,062,616 bytes, sha256
-    `223953a7d64ad199bbeaae3cf84d634b0ec3917979c7a60feac6ade05d50888b`,
-    installed 23:56:21Z and on `PATH`; its `VersionInfo.ProductVersion` is
-    empty, `agy --version` prints `1.3.5`, and the embedded changelog's
-    newest heading is `## 1.3.4`. `~/.gemini/antigravity-cli/` was created
-    at the first run, 00:22:29Z. The user started it from
-    `C:\users\sean\demo2`, typed in lower case, and ran a coding task that
-    wrote one source file per language into ten subdirectories and a
-    `README.md` (00:25:07Z to 00:27:16Z). One conversation in
-    `~/.gemini/antigravity-cli/conversations/` (983,040 B, modified
-    00:28:12Z), 38 steps. Its `history.jsonl` had one line, without
-    `conversationId`. New in 1.3.5 as observed here:
-    `cache/conversation_metadata.json`, and a summaries database that
-    mirrors the app's conversations
-    ([section 7](#7-transcript-stores),
-    [section 5](#summaries-database)).
-  - **Desktop app**: installed under
-    `%LOCALAPPDATA%\Programs\antigravity\`. `Antigravity.exe` is
-    226,382,336 bytes, sha256
-    `16febcd47a2a6823fe9ec4847b60f2fc766a46c8c355643185326a2879668243`,
-    `VersionInfo.ProductVersion` `2.23.1.0` and `FileVersion` `2.23.1`, and
-    `main.log` reads `Starting app (v2.23.1) with dynamic port…`;
-    `resources\app.asar` is 4,486,221 bytes, sha256
-    `b8ec3628df2a12ee9deac5dc06367f238065af146bfe6298fdad6db5f9790d9c`,
-    byte-identical to the Linux 2.23.1 asar;
-    `resources\bin\language_server.exe` is 160,643,584 bytes, sha256
-    `32d65353f033600274203137913207c02f636c214b8233c529a2afa0ee55ecf5`.
-    First launch 23:56:11Z. The user ran a question with no file writes, a
-    coding task in the project folder `C:\Users\sean\demo` (six files
-    written 00:01:44Z to 00:03:20Z), a research task that wrote a Markdown
-    document to the app's `scratch/` directory and started a background
-    task, and a task that set up a scheduled automation (a sidecar) named
-    `weekly-microsoft-security-bulletins`; the Google Docs plugin (`gdocs`
-    0.0.6) was installed from the marketplace between 00:05:45Z and
-    00:08:51Z. Four conversations in `~/.gemini/antigravity/conversations/`
-    (622,592, 589,824, 1,441,792 and 6,258,688 B, modified 00:03:54Z,
-    00:06:55Z, 00:13:30Z and 00:20:53Z) of 20, 10, 46 and 46 steps (the
-    step counts are in the analyzer's session order, which was not matched
-    to the file sizes), each with a `brain/<uuid>/` directory, an
-    `annotations/<uuid>.pbtxt` and a summaries row. Neither the CLI's nor
-    the app's conversation databases had a `-wal` or `-shm` sidecar when
-    listed. No `sidecar_data/` directory appeared for the automation
-    ([section 5](#sidecar-logs)). The descriptors of the 1.3.5
-    and 2.23.1 Windows binaries were not extracted in this round.
-  - **Analyzer 0.12.0** (at `main` commit [`4607cca`](https://github.com/seanthegeek/doubleagent/commit/4607ccaac18f9bcfcb1a01cefc9402939430b09d)) over the collector
-    1.12.0 archive of this VM (PowerShell collector, 213 `collected`
-    files): `detect` verified the archive's sha256 and listed the one user
-    with `antigravity`, 213 files and 14,339,425 B, and its `detect.json`
-    (a file `timeline` wrote until its content moved into
-    [`inventory.json`](../analyzer/docs/output.md#inventoryjson) later in 0.12.0)
-    `problems` list was empty. `timeline --include-thinking` reported
-    `antigravity` parsed and nothing detected but not parsed, with 285
-    rows (8 `user`, 10 `assistant`, 72 `tool_use`, 72 `tool_result`, 33
-    `thinking`, 90 `system`) in 5 sessions. The `system` rows: 50
-    `permission grant` (per-step grants, issue 92; three of them for
-    PowerShell `Get-ChildItem` commands the agent ran over
-    `~/.gemini/config`), 19 `permission setting` (14 from `config.json`
-    `userSettings.globalPermissionGrants.allow`, 3 from `sidecar.json`
-    `agent_permissions.access_grants` and 2 from the CLI's
-    `settings.json`), 5 `model` (one per session, `gemini-3.8-flash-n` in
-    every conversation), 5 session starts, 9 `conversation summary`
-    ([section 5](#summaries-database)) and 2 `system_message` steps (both
-    `task_notification` events). Four session starts read
-    `source=cascade_client` and `data_dir=antigravity`, one of them with
-    the app project's `project_id` and three `outside-of-project`; the
-    fifth read `source=cli`, `data_dir=antigravity-cli` and
-    `project_id=default-cli-project`. Tool names: `run_command` 36,
-    `write_to_file` 21, `view_file` 8, `search_web` 3, `ask_question` 3,
-    `read_url_content` 1. The `history.jsonl` row had an empty
-    `session_id`, since its line has no `conversationId`, and the
-    lower-case `C:\users\sean\demo2` as `project_path`
-    ([section 9](#9-joins-and-timestamps)). No row reported an unreadable file
-    or a decode failure.
-
-- **Linux** (CLI and desktop app): the author's Ubuntu 26.04.1 LTS lab VM,
-  aarch64, Linux 7.0.0-38-generic, 2026-10-13 (times below in US Eastern
-  daylight time; issue 83), read for file names, sizes, key names, value
-  types, SQLite schemas and enum values only, with `find`, `ls`,
-  `analyzer/tools/shape.py` and a read-only schema script, all Python run
-  with `python3 -I`. The user installed both products and ran a few turns
-  with each; no listing was taken between tasks, so, as on macOS, the
-  mapping from task to file is by modification time only.
-  - **CLI**: `~/.local/bin/agy`, ELF aarch64, 204,492,984 bytes, sha256
-    `08d619ae3969c33b9cba5eac2a54f4566cbca1b5de68968167cb908ced5b4824`,
-    installed 21:37 local time; `agy --version` prints `1.3.4`, while the
-    embedded changelog's newest heading is `## 1.3.3`. One conversation in
-    `~/.gemini/antigravity-cli/conversations/` (622,592 B, modified
-    21:43), `trajectory_meta.source` 17 (`cli`) and `trajectory_type` 4,
-    26 steps. New in 1.3.x: `history.jsonl` lines can carry
-    `conversationId` (issue 89), and the CLI writes
-    `annotations/<uuid>.pbtxt` as the app does
-    ([section 7](#7-transcript-stores)).
-  - **Desktop app**: 2.23.1 (its `main.log` line
-    `Starting app (v2.23.1) with dynamic port…`), downloaded as a
-    `.tar.gz` and unpacked into the home; it is not an AppImage, as
-    `main.log` itself says. The Electron binary `antigravity` is
-    220,466,568 bytes, sha256
-    `c543041069aa2e478235447cb636f9f09faab15003862029d226bb14b8dc655b`;
-    `resources/app.asar` is 4,486,221 bytes (the size of the macOS 2.23.0
-    asar, with a different hash), sha256
-    `b8ec3628df2a12ee9deac5dc06367f238065af146bfe6298fdad6db5f9790d9c`;
-    `resources/bin/language_server` is 181,358,800 bytes, sha256
-    `310ee8e0cba4c4ee05504ac8021cbd3544a79c06cc01c790536361625c5fffb3`.
-    First run 21:29. Four conversations in
-    `~/.gemini/antigravity/conversations/` (655,360 to 1,114,112 B,
-    modified 21:45, 21:51, 21:55 and 22:00), all `trajectory_meta.source`
-    1 (`cascade_client`) and `trajectory_type` 4, of 14, 43, 30 and 38
-    steps ([section 3](#conversation-database)), each with a
-    `brain/<uuid>/` directory, an `annotations/<uuid>.pbtxt` and a
-    summaries row. The user also scheduled an automation (a sidecar); its
-    scheduler log is the first observed trace of a sidecar's own output
-    ([section 5](#sidecar-logs)), but no scheduled run had
-    fired, so what a run writes, and whether it becomes a conversation, is
-    still not observed. The descriptors of the 1.3.4 and 2.23.1 binaries
-    were not extracted in this round.
-  - **Analyzer 0.12.0** over the collector 1.12.0 archive of this VM:
-    the summary line read
-    `agents:    parsed: antigravity; detected but not parsed: none`, with
-    165 rows (9 `user`, 10 `assistant`, 67 `tool_use`, 67 `tool_result`,
-    12 `system`) in 5 sessions, four with `source=cascade_client` and
-    `data_dir=antigravity` and one with `source=cli` and
-    `data_dir=antigravity-cli`. The `system` rows were the 5 session
-    starts, the 5 conversation summaries and 2 `system_message` steps
-    (both `task_notification` events); no row reported a decode failure.
-    The two `history.jsonl` rows had `project_path` set and `session_id`
-    empty, because analyzer 0.12.0 as run did not read `conversationId`;
-    the parser reads it since (issue 89).
-
-- **macOS** (CLI and desktop app): the author's installs on macOS 26.4
-  (Darwin 25.4.0), Apple silicon (arm64), 2026-10-13 (issue 83), read for
-  file names, sizes, key names, value types and SQLite schemas only, with
-  `analyzer/tools/shape.py`.
-  - **CLI**: `~/.local/bin/agy`, Mach-O 64-bit arm64, 175,966,448 bytes,
-    sha256
-    `7dca095cfc1df2c057a385ed88a76c7ba98dc103258a80be87a8f42e484cb3aa`,
-    installed 2026-10-04; `agy --version` prints `1.2.16`, while the
-    embedded changelog's newest heading is still `## 1.2.15`. Two
-    conversations in `~/.gemini/antigravity-cli/conversations/`, both
-    `trajectory_meta.source` 17 (`cli`) and `trajectory_type` 4, of 12 and
-    8 steps.
-  - **Desktop app**: `/Applications/Antigravity.app`,
-    `CFBundleShortVersionString` and `CFBundleVersion` both `2.23.0`.
-    `Contents/Resources/app.asar` is 4,486,221 bytes, sha256
-    `4e99093662d797ecba823e92823d352413e3bf2ca721257df4a255c045df1598`;
-    `Contents/Resources/bin/language_server` is a Mach-O arm64 binary of
-    155,290,912 bytes, sha256
-    `c1dd0c9940f712adf2185e756470752d5f5afee15441e32879e4a0f127e18273`.
-    The app passes the language server `--subclient_type hub`,
-    `--standalone` and `--app_data_dir` with the data-directory name
-    (`app.asar:dist/languageServer.js@4241987` `'--subclient_type',`
-    `'hub',`; `@4242293` `'--app_data_dir',`
-    `(0, paths_1.getAppDataDirName)(),`), and the name is the app name
-    lower-cased without spaces, `antigravity`
-    (`app.asar:dist/paths.js@4312548`
-    `return electron_1.app.getName().toLowerCase().replace(/\s+/g, '');`),
-    under `~/.gemini` on every OS (`app.asar:dist/paths.js@4312621`
-    `path_1.default.join(os_1.default.homedir(), '.gemini', getAppDataDirName())`).
-    First launched 18:28 local time. The user exercised, in this order, a
-    plain question-and-answer chat, a coding task, an automation (a
-    scheduled task, which the app runs as a sidecar: a long-running helper
-    process the language server supervises, enabled with
-    `--enable_sidecars`, `app.asar:dist/languageServer.js@4242552`) and the
-    Google Docs plugin (`gdocs`, installed from the official plugin
-    marketplace). That wrote four conversations in
-    `~/.gemini/antigravity/conversations/`, all `trajectory_meta.source` 1
-    (`cascade_client`) and `trajectory_type` 4: 12 steps (modified 18:37),
-    24 steps (18:43), 43 steps (18:50) and 31 steps (19:14), each with a
-    `brain/<uuid>/` directory, an `annotations/<uuid>.pbtxt` and a row in
-    `conversation_summaries.db` ([section 7](#7-transcript-stores)).
-    Which conversation belongs to which task was not recorded while it
-    happened: no listing was taken between the tasks, so the order above
-    is by modification time only. Where a scheduled run of
-    the automation writes its transcript was not observed, because no run
-    had fired.
-
-<!-- MERGE: dedupe the Observed bullets above -->
-
 ### Source reviews
 
 None.
-
-None.
-
-<!-- MERGE: dedupe the Source reviews above -->
 
 ## Collection
 
@@ -1372,7 +1262,7 @@ Stores in each data directory (`<dir>` is one of the four above):
 | Path | Content |
 | --- | --- |
 | `<dir>/conversations/<uuid>.db` (+`-wal`, `-shm`) | one SQLite database per conversation, WAL mode; the app's four had no sidecars when listed on macOS or Linux, nor did the app's four and the CLI's one on Windows (**observed**) |
-| `<dir>/conversation_summaries.db` | one row per conversation; the app's copy adds a full-text search table, and the CLI 1.3.5 copy on Windows also held a row for each of the app's conversations ([section 5](#summaries-database)) |
+| `<dir>/conversation_summaries.db` | one row per conversation; the app's copy adds a full-text search table, and the CLI 1.3.5 copy on Windows also held a row for each of the app's conversations ([Summaries database](#summaries-database)) |
 | `.gemini/antigravity-cli/history.jsonl` | `{display, timestamp (ms), workspace}` per prompt; CLI only, the app writes none (**observed**). CLI 1.3.4 (**observed**, Linux) adds `conversationId`, the conversation's UUID, on some lines: of its two lines one had `display`, `timestamp` and `workspace`, the other `conversationId` as well ([section 9](#9-joins-and-timestamps)). CLI 1.3.5 (**observed**, Windows) wrote one line, with `display`, `timestamp` and `workspace` and no `conversationId` |
 | `.gemini/antigravity-cli/cache/conversation_metadata.json` | CLI 1.3.5 (**observed**, Windows, 2,671 B; not seen on macOS with 1.2.16 or Linux with 1.3.4): `conversations` {`<uuid>`: {`is_internal` (bool), `last_modified_time` (ISO date), `summary` {`AgentName`, `AppDataDir`, `GroupID`, `ID` (UUID), `Internal` (bool), `Loaded` (bool), `NumSteps` (number), `Preview`, `ProjectID`, `Title`, `UpdatedAt` (ISO date), `WorkspaceURIs` (null)}}}; its four entries were the app's four conversations (`AppDataDir` of 11 characters, `antigravity`; `AgentName` and `GroupID` empty). The parser does not read it |
 | `.gemini/antigravity-cli/cache/last_conversations.json` | {`<absolute path>`: `<uuid>`} (**observed**, Windows, 70 B): by its name, the last conversation per working folder; the parser does not read it |
@@ -1408,7 +1298,7 @@ observed. Deleting the project directory removes none of it: on the macOS
 CLI 1.3.6 install of 2026-10-15 the conversation database, its
 `brain/<uuid>/` mirror, the `history.jsonl` lines and the summaries row
 stayed in place, and the whole session parsed after the directory was gone
-([section 1](#observed)).
+([Observed](#observed)).
 
 The per-prompt history file, `.gemini/antigravity-cli/history.jsonl`, is the
 CLI's alone: each line has the prompt, its time in milliseconds and the
@@ -1419,7 +1309,7 @@ survives and is lost with the data directory; the summaries database with
 the app's full-text search table; the protobuf summaries files; the title in
 `annotations/<uuid>.pbtxt`; and, on the CLI 1.3.5 install, the CLI's summary
 rows and `cache/conversation_metadata.json` entries for the app's
-conversations ([section 5](#summaries-database)). Whether a compaction or a
+conversations ([Summaries database](#summaries-database)). Whether a compaction or a
 rewind rewrites the mirror is not observed, and no deletion marker is
 stated. The analyzer reads `history.jsonl` and the brain mirror as secondary
 sources and each summaries row as its own `conversation summary` row, and
@@ -1610,12 +1500,12 @@ macOS appeared only on `ERROR_MESSAGE` lines. The line count equals the
 conversation database's step count; the Linux app's four transcripts had
 14, 30, 38 and 43 lines and no bad line; the macOS CLI 1.3.6 conversation of
 2026-10-15 had 16 `transcript_full.jsonl` lines for 17 database steps
-([section 1](#observed)), so the mirror can lag the database by
+([Observed](#observed)), so the mirror can lag the database by
 a step. The token counts appear nowhere the parser reads.
 
 The value forms come from a format description the backend embeds for its
 own agent, which is told to read past conversations from these files
-(`agy` 1.3.6 macOS arm64, the binary of [section 1](#observed),
+(`agy` 1.3.6 macOS arm64, the binary of [Observed](#observed),
 sha256 `827ba22b4aa33557614a57aac2cc13f386e17db6b802febd3932226906ac05ab`,
 read with `strings` and `grep -b`, never run):
 
@@ -1633,7 +1523,7 @@ read with `strings` and `grep -b`, never run):
   `STEP_STATUS` values upper-cased.
 - `@54351268` `` `created_at`: The ISO 8601 timestamp of when the step
   occurred. ``: one time per line. The database step has `created_at` and
-  `completed_at` ([section 3](#conversation-database)); which of them
+  `completed_at` ([Conversation database](#conversation-database)); which of them
   the line repeats was not compared on a real install, and the parser
   takes it as `created_at`.
 - `@54351541` `` `tool_calls`: An array of tool calls made in this step,
@@ -1733,7 +1623,7 @@ The CLI writes 17 (`CLI`) and the desktop app 1 (`CASCADE_CLIENT`)
 the data-directory name the app passes the language server (`antigravity`
 on the app, `antigravity-cli` on the CLI). It also tells a summary row
 the CLI 1.3.5 database mirrors from the app (`antigravity`) from the CLI's
-own ([section 5](#summaries-database)); the parser does not put
+own ([Summaries database](#summaries-database)); the parser does not put
 `app_data_dir` in the row's text, but the row's `source_file` names the
 database it came from. The parser puts
 `source=<name>` and `data_dir=<directory>` in each conversation's session
@@ -1843,7 +1733,7 @@ determined.
 #### Permission configuration files
 
 Besides the per-step grants in the conversation databases
-([section 3](#conversation-database)), Antigravity keeps standing permission
+([Conversation database](#conversation-database)), Antigravity keeps standing permission
 state in four JSON files, which together are its permission configuration. A
 grant entry is a tool-call pattern: a tool name followed by its argument in
 parentheses. The keys, with what was seen on the 2026-10-13 real installs
@@ -1855,7 +1745,7 @@ names and counts only, **observed** unless marked):
 | `.gemini/config/config.json` (shared by the CLI and the app) | `userSettings.globalPermissionGrants.allow[]` (3 entries on macOS, 11 on Ubuntu, 14 on Windows), `userSettings.permissionGrantsV2Migrated` (bool), `userSettings.sandboxEnabledAtV2Migration` (bool); per automation (sidecar) `sidecars.<name>.enabled` and `sidecars.<name>.resolvedPermissions.accessGrants[]` (not in the macOS or the Windows file; the Windows file also had neither migration flag) |
 | `.gemini/config/projects/<uuid>.json` | `permissionGrants.permissionGrants.allow[]` (seen on one Ubuntu project file), `permissionGrants.v2Migrated`; the project folder is `projectResources.resources[].folderUri` |
 | `.gemini/config/sidecars/<name>/sidecar.json` | `agent_permissions.access_grants[]` (2 entries on macOS, 3 on Windows) |
-| `.gemini/antigravity-cli/settings.json` | `permissions.allow[]` (CLI 1.3.x; one entry on Windows) and `trustedWorkspaces[]` (the folders the user trusted; a JSON tag in the binary, see [`collectors/research/antigravity.md`](../../collectors/research/antigravity.md)) |
+| `.gemini/antigravity-cli/settings.json` | `permissions.allow[]` (CLI 1.3.x; one entry on Windows) and `trustedWorkspaces[]` (the folders the user trusted; a JSON tag in the binary, see [CLI data directory](#cli-data-directory)) |
 
 #### Sidecar logs
 
@@ -1901,7 +1791,7 @@ there, is not determined.
 The builds observed differ in which files and keys they write; the
 protobuf schemas were compared only between the Linux (WSL) build and the
 macOS CLI 1.2.16 and app 2.23.0, and the descriptors of the later builds
-were not extracted ([section 1](#observed)).
+were not extracted ([Observed](#observed)).
 
 - `history.jsonl`: up to CLI 1.2.x a line has no conversation id; from CLI
   1.3.x a prompt typed into a running conversation carries
@@ -1911,15 +1801,15 @@ were not extracted ([section 1](#observed)).
 - `annotations/<uuid>.pbtxt` appears in the CLI's directory from CLI
   1.3.x, as in the app's ([section 7](#7-transcript-stores)), and the
   CLI's `settings.json` has `permissions.allow[]` from CLI 1.3.x
-  ([section 5](#permission-configuration-files)).
+  ([Permission configuration files](#permission-configuration-files)).
 - CLI 1.3.5 on Windows wrote `cache/conversation_metadata.json` and a
   summary row for each of the app's conversations, which neither CLI
   1.2.16 on macOS nor 1.3.4 on Linux showed; whether that is new in 1.3.5
   or needs the app to have run first is not determined
-  ([section 5](#summaries-database)).
+  ([Summaries database](#summaries-database)).
 - Brain mirror lines: on Linux (CLI 1.3.4 and app 2.23.1) every `GENERIC`
   line has an `error` key, which on macOS appeared only on
-  `ERROR_MESSAGE` lines ([section 3](#brain-mirror-lines)).
+  `ERROR_MESSAGE` lines ([Brain mirror lines](#brain-mirror-lines)).
 - Before 2.0 the VS Code-fork IDE wrote `.gemini/antigravity/`, the
   directory the desktop app 2.x now uses; the separately installed IDE's
   directory is `.gemini/antigravity-ide/` ([section 7](#7-transcript-stores)).
@@ -1935,7 +1825,7 @@ tables, which were built from the Linux descriptors: field numbers, names
 and types match in both macOS binaries, and the two define
 `CortexTrajectorySource` identically ([section 9](#9-joins-and-timestamps)).
 Nothing the parser reads drifted. The diff did find one error in the tables
-themselves, the `delete_file` layout ([section 3](#conversation-database)).
+themselves, the `delete_file` layout ([Conversation database](#conversation-database)).
 
 ### 12. Secrets
 
@@ -1968,11 +1858,11 @@ rows the timeline drops when the primary store yields the same event
 
 | Source | Role | Rows |
 | --- | --- | --- |
-| `<dir>/conversations/<uuid>.db` | primary: the store of record, every step with its payload, model, permissions and both times | session start, user, assistant, tool_use, tool_result, thinking, system, model and permission rows ([section 3](#conversation-database)) |
-| `<dir>/conversation_summaries.db` | primary: a summary per conversation, not a copy of its events | one `conversation summary` `system` row per conversation ([section 5](#summaries-database)) |
+| `<dir>/conversations/<uuid>.db` | primary: the store of record, every step with its payload, model, permissions and both times | session start, user, assistant, tool_use, tool_result, thinking, system, model and permission rows ([Conversation database](#conversation-database)) |
+| `<dir>/conversation_summaries.db` | primary: a summary per conversation, not a copy of its events | one `conversation summary` `system` row per conversation ([Summaries database](#summaries-database)) |
 | `.gemini/antigravity-cli/history.jsonl` | secondary (2 seconds): the prompts the database also records | one `user` row per line ([section 9](#9-joins-and-timestamps)) |
 | `<dir>/brain/<uuid>/.system_generated/logs/transcript_full.jsonl`, else `chunks/transcript_full/*.jsonl` concatenated, else `transcript.jsonl`, else `chunks/transcript/*.jsonl` | secondary (600 seconds): one copy of the database's steps, read in that order of preference, one copy per conversation | user, assistant, tool_use, tool_result, thinking and system rows, as the database reader renders the same step kinds ([section 7](#7-transcript-stores)) |
-| the standing permission files | primary: no other copy | `permission setting` rows ([section 5](#permission-configuration-files)) |
+| the standing permission files | primary: no other copy | `permission setting` rows ([Permission configuration files](#permission-configuration-files)) |
 
 The four mirror files are copies of one transcript, not four sources: the
 shortened `transcript.jsonl` holds the same lines with long fields cut, and
@@ -1987,7 +1877,7 @@ the steps already carry, or not yet mapped to a step), `annotations/*.pbtxt`
 #### Permission rows
 
 The parser decodes the `steps.permissions` column
-([section 3](#conversation-database)), or Step field 133 of the payload when
+([Conversation database](#conversation-database)), or Step field 133 of the payload when
 the column is empty, and yields after the step's own rows one `system` row
 per `permission_grants[]` entry,
 `permission grant: action=<action> target=<target> allow=<true|false> scope=<scope>`
@@ -2001,7 +1891,7 @@ governed, and the step's tool-result time; `<scope>` is the lower-case name
 without the prefix, or the number for a value not in the enum.
 
 A step with `user_rejected` set (the three tool-payload fields of
-[section 3](#conversation-database)) yields, right after its `tool_result`
+[Conversation database](#conversation-database)) yields, right after its `tool_result`
 row (whose text keeps `[rejected by user]`), a `system` row
 `permission decision: user_rejected` with the step's `tool_name`,
 `tool_use_id` and result time. `ran_in_sandbox` is not a decision: a
@@ -2047,7 +1937,7 @@ seconds) and the brain mirror (600 seconds, one copy per conversation in
 the order of preference in the table) are secondary sources; each
 summaries row is a `conversation summary` row of its own, so an app
 conversation that CLI 1.3.5 also summarises yields two
-([section 5](#summaries-database)). What each copy survives is in
+([Summaries database](#summaries-database)). What each copy survives is in
 [What survives a delete](#what-survives-a-delete); how history and mirror
 rows pair with the database's, and which rows do not pair, is in
 [section 9](#9-joins-and-timestamps).
