@@ -1,21 +1,27 @@
-# CAMEL: on-disk paths
+# camel-ai
 
-This document came out of the agent framework sweep for issue #64; see
-[frameworks.md](frameworks.md) for the frameworks that got no catalog line.
-There is no analyzer document: CAMEL keeps no transcripts under the home.
+CAMEL is a multi-agent Python framework (package `camel-ai`) with toolkits for the terminal,
+browser, Gmail and files. This document came out of the agent framework sweep for
+[issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
+[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
+line. There is no analyzer document: CAMEL keeps no transcripts under the home.
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 [camel-ai/camel](https://github.com/camel-ai/camel), Apache-2.0, open source, commit
 [`24fde60ad739b4be8f8f533fea9ba54256fbc4a2`](https://github.com/camel-ai/camel/commit/24fde60ad739b4be8f8f533fea9ba54256fbc4a2)
-(2026-10-05), package `camel-ai` 0.2.91a7. A multi-agent framework with
-toolkits for the terminal, browser, Gmail and files. All claims are from
-source; nothing was installed or run.
+(2026-10-05), package `camel-ai` 0.2.91a7. All claims are from source.
 
 CAMEL runs shell commands on the host: the terminal toolkit's `shell_exec`
 uses `subprocess.Popen`
 ([terminal_toolkit.py:757](https://github.com/camel-ai/camel/blob/24fde60ad739b4be8f8f533fea9ba54256fbc4a2/camel/toolkits/terminal_toolkit/terminal_toolkit.py#L757),
 [838](https://github.com/camel-ai/camel/blob/24fde60ad739b4be8f8f533fea9ba54256fbc4a2/camel/toolkits/terminal_toolkit/terminal_toolkit.py#L838)).
+
+### Observed
+
+- No real install: nothing was installed or run.
+
+### Source reviews
 
 - **Source review (2026-10-19)** at
   [`797296a`](https://github.com/camel-ai/camel/commit/797296a718ce856d9c9476e4bb69fedb71ab6382)
@@ -42,8 +48,8 @@ uses `subprocess.Popen`
     grepped for `share_url`, `upload_trajectory` and `sync_to`). The
     Gmail token lets an agent read and send mail, which is a tool, not a
     relay of the session.
-  - Scratch directories: `./workspace` (terminal toolkit) and
-    `./camel_working_dir` (file toolkits) in the working directory
+  - Scratch directories ([Scratch directories](#scratch-directories)): `./workspace`
+    (terminal toolkit) and `./camel_working_dir` (file toolkits) in the working directory
     ([terminal_toolkit.py:185-195](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/terminal_toolkit/terminal_toolkit.py#L185-L195),
     [file_toolkit.py:73](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/file_toolkit.py#L73)),
     unrecorded and under no CAMEL-specific name, so no catalog line can
@@ -80,7 +86,15 @@ and `camel_logs` model logs only with `CAMEL_MODEL_LOG_ENABLED`
 ([base_model.py:287-295](https://github.com/camel-ai/camel/blob/24fde60ad739b4be8f8f533fea9ba54256fbc4a2/camel/models/base_model.py#L287-L295)).
 The browser `user_data_dir` is supplied by the caller.
 
-**Name collision.** Apache Camel JBang also uses `~/.camel`
+### Scratch directories
+
+The terminal toolkit's `./workspace` and the file toolkits' `./camel_working_dir` are the
+agent's own scratch space, created in the working directory, unrecorded and under no
+CAMEL-specific name, so no catalog line can find them.
+
+### Name collision
+
+Apache Camel JBang also uses `~/.camel`
 (`CAMEL_DIR = ".camel"` resolved under the home,
 [CommandLineHelper.java:44](https://github.com/apache/camel/blob/43fb0300bd10fa74ef37f3eca82d20678b6d3350/dsl/camel-jbang/camel-jbang-core/src/main/java/org/apache/camel/dsl/jbang/core/common/CommandLineHelper.java#L44),
 [221-222](https://github.com/apache/camel/blob/43fb0300bd10fa74ef37f3eca82d20678b6d3350/dsl/camel-jbang/camel-jbang-core/src/main/java/org/apache/camel/dsl/jbang/core/common/CommandLineHelper.java#L221-L222)),
@@ -88,7 +102,9 @@ so a bare `.camel` entry would collect JBang's state as `camel-ai`. The
 catalog names only `.camel/gmail_token.json` and `.camel/skills`, plus the
 CAMEL-only `.config/camel`.
 
-Docker: no compose file or named volume.
+### Docker
+
+No compose file or named volume.
 
 ## 3. Credentials
 
