@@ -3,8 +3,9 @@
 Windsurf is a closed-source editor with the VS Code layout whose agent is Cascade; the editor is
 being renamed Devin Desktop. The same vendor's Codeium plugins (JetBrains, Eclipse, nvim) share
 its `~/.codeium` directory, and the Devin CLI is its command-line agent. Evidence levels below
-are L2 (official docs), L3 (vendor tracker) and L4 (community source). There is no analyzer
-document for the agent yet.
+are L2 (official docs), L3 (vendor tracker) and L4 (community source). Its parser is in the
+backlog ([issue 52](https://github.com/seanthegeek/doubleagent/issues/52)), blocked on format
+research because Cascade's `.pb` files have no published schema.
 
 ## 1. Source and evidence
 
@@ -142,9 +143,13 @@ data dirs.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+Windsurf is `backlog`: Cascade's history is on disk, and the parser is
+[issue 52](https://github.com/seanthegeek/doubleagent/issues/52), blocked on format research
+because the `~/.codeium/windsurf/cascade/<uuid>.pb` protobuf files have no published schema. A
+future parser would read those `.pb` files and the hook transcripts
+`~/.windsurf/transcripts/{trajectory_id}.jsonl`, whose content fields are not documented beyond
+`type`/`status` ([section 2](#2-per-user-storage),
+[section 6](#6-where-the-project-path-is-recorded)); no record schema has been researched yet.
 
 ## 14. Confidence
 
