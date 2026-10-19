@@ -1,23 +1,19 @@
-# GitHub Copilot Desktop store schema
+# copilot-desktop
 
-Catalog agent: `copilot-desktop`. GitHub Copilot Desktop is GitHub's
-closed-source desktop app (dpkg package `github` on Linux; on Windows an
-NSIS installer, NSIS being the Nullsoft Scriptable Install System, an
-installer framework), a Tauri app: Tauri is a desktop framework that
-draws the user interface in the operating system's web engine
-(WebKitGTK, the GTK port of the WebKit browser engine, on Linux;
-WebView2, Microsoft Edge's embeddable Chromium, on Windows) and runs the backend as a native Rust program. The app
-runs its sessions through a bundled Copilot CLI, whose event logs land in
-`~/.copilot/session-state/` and are read by the `copilot-cli` parser
-([`copilot-cli.md`](copilot-cli.md)); this document covers the app's own
-SQLite store, `~/.copilot/data.db`, which records the accounts,
-repositories, worktrees, workspaces, sessions, activity and schedules
-around those logs. Paths, credentials and exclusions are in
-[`collectors/research/copilot-desktop.md`](../../collectors/research/copilot-desktop.md).
-[Issue 147](https://github.com/seanthegeek/doubleagent/issues/147) tracks
-the app.
+Catalog agent: `copilot-desktop`. GitHub Copilot Desktop is GitHub's closed-source desktop app (dpkg
+package `github` on Linux; on Windows an NSIS installer, NSIS being the Nullsoft Scriptable Install
+System, an installer framework), a Tauri app: Tauri is a desktop framework that draws the user
+interface in the operating system's web engine (WebKitGTK, the GTK port of the WebKit browser
+engine, on Linux; WebView2, Microsoft Edge's embeddable Chromium, on Windows) and runs the backend
+as a native Rust program. The app runs its sessions through a bundled Copilot CLI, whose event logs
+land in `~/.copilot/session-state/` and are read by the `copilot-cli` parser
+([`copilot-cli.md`](copilot-cli.md)); this document covers the app's own SQLite store,
+`~/.copilot/data.db`, which records the accounts, repositories, worktrees, workspaces, sessions,
+activity and schedules around those logs. Paths, credentials and exclusions are in
+[`collectors/research/copilot-desktop.md`](../../collectors/research/copilot-desktop.md). [Issue 147](https://github.com/seanthegeek/doubleagent/issues/147)
+tracks the app.
 
-## 1. Evidence
+## 1. Source and evidence
 
 Closed source, so there are no commit links. Each claim names its
 evidence level:
@@ -44,56 +40,22 @@ evidence level:
   (`cliVersion.d.ts`) and `SDK_PROTOCOL_VERSION = 3`
   (`sdkProtocolVersion.d.ts`).
 - **Docs**: none fetched.
-- **Observed (Linux)**: GitHub Copilot Desktop 1.1.29, installed at 21:59Z
-  on 2026-10-16 on an Ubuntu 26.04.1 arm64 Parallels VM (home
-  `/home/sean`) that already held the Copilot CLI 1.0.98 round's
-  `~/.copilot` ([section 1 of `copilot-cli.md`](copilot-cli.md#1-evidence)),
-  read for table names, column definitions, row counts, key names, types
-  and enum values only, never values. Exercised: app start at
-  22:00:30Z, sign-in by device-code flow (a sign-in in which the app shows
-  a short code that the user enters on github.com in a browser), one
-  general chat (session `5d404e14…`, created 22:01:27Z, one prompt, no
-  tool call, titled by the user), then the GitHub repository
-  `seanthegeek/doubleagent` added (cloned and checked out into a git
-  worktree, a second working directory of the same repository on its own
-  branch, at 22:03Z) and one project session (`79255eab…`, created
-  22:03:11Z, four prompts, tools `bash` 2 and `create` 1; the `create`
-  call wrote a file outside the worktree, recorded in the CLI's
-  `session-store.db` `session_files`). Every action ran before the first
-  listing, so no per-action listing diff exists; the times above are the
-  mapping. The existing `copilot-cli` parser read both session logs (86
-  rows, no `parser:` row) but wrote `permission mode: - -> -` for the
-  permission change and the hook events as `hook.start: {...}` with the
-  whole payload ([section 3](#3-record-schema)). Not exercised: a
-  scheduled task, a session automation, a removed project, a denied tool
-  call, a model switch, a fork, a side chat, a remote session (a deleted
-  session is the next bullet).
-- **Observed (Linux), deletion**: the same VM and app version, at 02:05Z
-  on 2026-10-17 (22:05 on 2026-10-16 in the VM's local time; the app log
-  stamps `delete_workspace` 02:05:17Z and `delete_session` 02:05:31Z).
-  The user restarted the app and deleted both sessions above
-  with the app's own delete action (app log operations `delete_session`
-  and `delete_workspace`; the app sends the bundled CLI
-  `sessions.delete`), then took a listing diff, names and counts only.
-  Both `session-state/<uuid>/` directories, the chat directory, the
-  worktree with its branch, the general chat's `data.db` `sessions` row
-  and every `workspaces`, `worktrees`, `workspace_session_aliases` and
-  `workspace_checkout_bindings` row were removed;
-  `session_deletion_intents` stayed empty, 0 rows before and after. What
-  survived is in [What a deleted session leaves](#what-a-deleted-session-leaves).
-  The analyzer over a fresh collection listed both deleted sessions in
-  `sessions.jsonl` and reconstructed them from the Copilot CLI store's
-  `turns` (kept as secondary rows with no primary left) and from
-  `data.db` (the checkpoint, activity and session rows), with no
-  `parser:` row; it also listed the app's own directories as projects
-  ([issue 149](https://github.com/seanthegeek/doubleagent/issues/149)),
-  which analyzer 0.18.0 lists under `scratch_directories` instead: the
-  working directories that belong to the agent rather than to the user.
-  Two more sessions existed by then, `83277a7e…` and `4c088c7e…`
-  (`client_name` `github/autopilot`, `user_named` false, no
-  `events.jsonl`, `cwd` under `.copilot/`), and the app created an empty
-  general chat, `4e347d3e…`, at the restart; none of the three was
-  exercised.
+
+### Observed
+
+- **Observed (Windows), deletion and quit**: the VM and app version of
+  the next bullet. At 20:31 the user deleted the general chat with the
+  app's own delete action (app log message kind `delete_session`) and took
+  a listing diff, names and counts only; at 20:35 the user quit the app
+  from the tray (the notification-area icon, which keeps the app
+  running after its window is closed), leaving no `github.exe` or
+  `copilot.exe` process, and took another. The delete removed the
+  chat's `session-state/<uuid>/` directory entire, its `data.db`
+  `sessions` row and the whole `.copilot\chats\2026-10-17\` tree, with
+  the Node.js project the agent had built there; the quit checkpointed
+  `data.db`'s WAL into the main file. What survived is in
+  [What survives a delete](#what-survives-a-delete). The analyzer run
+  of the next bullet predates the deletion; no run after it is recorded.
 - **Observed (Windows)**: GitHub Copilot Desktop 1.1.30 on a Windows 11
   ARM64 Parallels VM (build 10.0.26300.9550, user `sean`, home
   `C:\Users\sean`), 2026-10-17, all times UTC, read for table names,
@@ -103,8 +65,9 @@ evidence level:
   first start the app downloaded the Copilot CLI it drives, 1.0.99-2, to
   `AppData\Local\github-copilot-sdk\cli\1.0.99-2\copilot.exe`.
   Exercised: first start at 19:53:23 (`data.db` created 19:53:24),
-  sign-in by device-code flow at 19:54:27, three MCP servers added from
-  the app's settings at 19:56 (MCP, the Model Context Protocol, is the
+  sign-in by device-code flow (a sign-in in which the app shows a short
+  code that the user enters on github.com in a browser) at 19:54:27,
+  three MCP servers added from the app's settings at 19:56 (MCP, the Model Context Protocol, is the
   plugin protocol for external tools; two of the three could not spawn,
   their commands not being installed), one general chat (`90825c78…`,
   created 19:59:11, three prompts, nine tool calls named `powershell` and
@@ -112,7 +75,9 @@ evidence level:
   server in the chat's working directory
   `.copilot\chats\2026-10-17\<slug>\`, running `npm install` there, then
   the GitHub repository `seanthegeek/doubleagent` added (cloned at
-  20:04:42 into `.copilot\repos\doubleagent\`, worktree at 20:04:47) and
+  20:04:42 into `.copilot\repos\doubleagent\`, git worktree, a second
+  working directory of the same repository on its own branch, at
+  20:04:47) and
   one project session (`f60c7c7f…`, created 20:04:52, one prompt, one
   `powershell` call, one checkpoint). Node.js and the Visual Studio Build
   Tools, which the MCP work needed, were installed by the user beside the
@@ -123,10 +88,9 @@ evidence level:
   `session_warmup_prepare`, `warm_canvas_catalogs`) whose
   `session-state/<uuid>/` directories hold a `workspace.yaml` and no
   `events.jsonl`: four with `cwd` the install directory, two with `cwd`
-  `.copilot\canvas-catalog-probe` and one with `cwd` the clone; analyzer
-  0.18.0 gives each such session a `scratch directory:` row and lists its
-  `cwd` under `scratch_directories`. Analyzer
-  0.14.0 over a collection taken before the deletion: 138 rows in 11
+  `.copilot\canvas-catalog-probe` and one with `cwd` the clone
+  ([Scratch directories](#scratch-directories)). Analyzer 0.14.0 over a
+  collection taken before the deletion: 138 rows in 11
   sessions, no `parser:` row, `problems: []`, and 10 duplicate rows
   dropped from the `copilot-cli` secondary sources. The `copilot-desktop`
   parser wrote 15 `system` rows: `desktop settings:` (at the file's
@@ -141,43 +105,78 @@ evidence level:
   (`base=main`), one `workspace:` (`type=worktree`), one `checkpoint ref
   1:` and one `checkpoint commit`. The `copilot-cli` rows (`assistant` 7,
   `system` 92, `tool_result` 10, `tool_use` 10, `user` 4) are in
-  [section 1 of `copilot-cli.md`](copilot-cli.md#1-evidence); each pool
-  session is a session of one `session metadata: user_named=false ...
+  [section 1 of `copilot-cli.md`](copilot-cli.md#1-source-and-evidence);
+  each pool session is a session of one `session metadata: user_named=false ...
   client=github/autopilot` row whose `project_path` is its `cwd`. Not
   exercised: a scheduled task, a session automation, a denied tool call
   (allow-all stayed on), a model switch, a resumed session, a fork, a
   side chat, a remote session.
-- **Observed (Windows), deletion and quit**: the same VM and app
-  version. At 20:31 the user deleted the general chat with the app's own
-  delete action (app log message kind `delete_session`) and took a
-  listing diff, names and counts only; at 20:35 the user quit the app
-  from the tray (the notification-area icon, which keeps the app
-  running after its window is closed), leaving no `github.exe` or
-  `copilot.exe` process, and took another. The delete removed the
-  chat's `session-state/<uuid>/` directory entire, its `data.db`
-  `sessions` row and the whole `.copilot\chats\2026-10-17\` tree, with
-  the Node.js project the agent had built there; the quit checkpointed
-  `data.db`'s WAL into the main file. What survived is in
-  [What a deleted session leaves](#what-a-deleted-session-leaves). The
-  analyzer run of the previous bullet predates the deletion; no run
-  after it is recorded.
+- **Observed (Linux), deletion**: the VM and app version of the next
+  bullet, at 02:05Z on 2026-10-17 (22:05 on 2026-10-16 in the VM's local
+  time; the app log stamps `delete_workspace` 02:05:17Z and
+  `delete_session` 02:05:31Z). The user restarted the app and deleted both
+  sessions of the next bullet with the app's own delete action (app log operations `delete_session`
+  and `delete_workspace`; the app sends the bundled CLI
+  `sessions.delete`), then took a listing diff, names and counts only.
+  Both `session-state/<uuid>/` directories, the chat directory, the
+  worktree with its branch, the general chat's `data.db` `sessions` row
+  and every `workspaces`, `worktrees`, `workspace_session_aliases` and
+  `workspace_checkout_bindings` row were removed;
+  `session_deletion_intents` stayed empty, 0 rows before and after. What
+  survived is in [What survives a delete](#what-survives-a-delete).
+  The analyzer over a fresh collection listed both deleted sessions in
+  `sessions.jsonl` and reconstructed them from the Copilot CLI store's
+  `turns` (kept as secondary rows with no primary left) and from
+  `data.db` (the checkpoint, activity and session rows), with no
+  `parser:` row; it also listed the app's own directories as projects
+  ([issue 149](https://github.com/seanthegeek/doubleagent/issues/149);
+  see [Scratch directories](#scratch-directories)).
+  Two more sessions existed by then, `83277a7e…` and `4c088c7e…`
+  (`client_name` `github/autopilot`, `user_named` false, no
+  `events.jsonl`, `cwd` under `.copilot/`), and the app created an empty
+  general chat, `4e347d3e…`, at the restart; none of the three was
+  exercised.
+- **Observed (Linux)**: GitHub Copilot Desktop 1.1.29, installed at 21:59Z
+  on 2026-10-16 on an Ubuntu 26.04.1 arm64 Parallels VM (home
+  `/home/sean`) that already held the Copilot CLI 1.0.98 round's
+  `~/.copilot` ([section 1 of `copilot-cli.md`](copilot-cli.md#1-source-and-evidence)),
+  read for table names, column definitions, row counts, key names, types
+  and enum values only, never values. Exercised: app start at
+  22:00:30Z, sign-in by device-code flow, one general chat (session `5d404e14…`, created 22:01:27Z, one prompt, no
+  tool call, titled by the user), then the GitHub repository
+  `seanthegeek/doubleagent` added (cloned and checked out into a git
+  worktree at 22:03Z) and one project session (`79255eab…`, created
+  22:03:11Z, four prompts, tools `bash` 2 and `create` 1; the `create`
+  call wrote a file outside the worktree, recorded in the CLI's
+  `session-store.db` `session_files`). Every action ran before the first
+  listing, so no per-action listing diff exists; the times above are the
+  mapping. The existing `copilot-cli` parser read both session logs (86
+  rows, no `parser:` row) but wrote `permission mode: - -> -` for the
+  permission change and the hook events as `hook.start: {...}` with the
+  whole payload ([section 3](#3-record-schema)). Not exercised: a
+  scheduled task, a session automation, a removed project, a denied tool
+  call, a model switch, a fork, a side chat, a remote session (a deleted
+  session is the bullet above).
+- macOS was not observed.
 
-macOS was not observed.
+### Source reviews
 
-## 2. Transcript files
+None.
+
+## 2. Transcript stores
 
 Relative to the home.
 
 | Path | Content | Parse |
 | --- | --- | --- |
 | `.copilot/data.db` (+`-wal`, `-shm`) | the app's store: accounts, settings, projects, worktrees, workspaces, sessions, activity, checkpoints, schedules | yes, primary, by the `copilot-desktop` parser |
-| `.copilot/repos/<name>/.git/refs/copilot/checkpoints/<session id>/<seq>/<event id>` | one loose ref per session checkpoint (a loose ref is a ref kept as its own file under `.git/refs/`, holding a commit hash, rather than a line of `.git/packed-refs`): `<seq>` 20 digits, zero-padded, `<event id>` an event id of the session's `events.jsonl`; outlives the session ([What a deleted session leaves](#what-a-deleted-session-leaves)) | yes, by the `copilot-desktop` parser, one `checkpoint ref` row each |
+| `.copilot/repos/<name>/.git/refs/copilot/checkpoints/<session id>/<seq>/<event id>` | one loose ref per session checkpoint (a loose ref is a ref kept as its own file under `.git/refs/`, holding a commit hash, rather than a line of `.git/packed-refs`): `<seq>` 20 digits, zero-padded, `<event id>` an event id of the session's `events.jsonl`; outlives the session ([What survives a delete](#what-survives-a-delete)) | yes, by the `copilot-desktop` parser, one `checkpoint ref` row each |
 | `.copilot/repos/<name>/.git/logs/` | the clone's reflog (git's log of each change to where a ref points) | no: on the install it held only the clone, `remote set-head`, the pre-created worktree's checkout and reset entries, and no checkpoint ref |
-| `.copilot/session-state/<uuid>/events.jsonl`, `workspace.yaml` | each app session's event log and metadata, Copilot CLI's format | yes, by the `copilot-cli` parser ([section 2 of `copilot-cli.md`](copilot-cli.md#2-transcript-files)) |
-| `.copilot/session-state/<uuid>/session.db` | per-session workflow and factory store ([section 5](#5-sqlite-and-other-stores)) | no; its tables were empty but two |
+| `.copilot/session-state/<uuid>/events.jsonl`, `workspace.yaml` | each app session's event log and metadata, Copilot CLI's format | yes, by the `copilot-cli` parser ([section 2 of `copilot-cli.md`](copilot-cli.md#2-transcript-stores)) |
+| `.copilot/session-state/<uuid>/session.db` | per-session workflow and factory store ([`session.db`](#sessiondb-and-hsts-storagesqlite)) | no; its tables were empty but two |
 | `.copilot/repo-metadata-cache.db` (+`-wal`, `-shm`) | GitHub metadata cache | no; empty but one lifecycle row |
 | `.copilot/logs/github-app.<pid>.log` | the Tauri backend's tracing log | no: it records the app's own start-up, sign-in and scheduler steps, while the sessions, prompts and tool calls it would date are in the event logs and `data.db` |
-| `.copilot/chats/<yyyy-mm-dd>/<slug>/` | a general chat's working directory and whatever the agent writes there (on the Windows install the Node.js project it built, `node_modules` included) | no; deleted with the session on Linux and Windows ([What a deleted session leaves](#what-a-deleted-session-leaves)) |
+| `.copilot/chats/<yyyy-mm-dd>/<slug>/` | a general chat's working directory and whatever the agent writes there (on the Windows install the Node.js project it built, `node_modules` included) | no; deleted with the session on Linux and Windows ([What survives a delete](#what-survives-a-delete)) |
 | `.local/share/com.github.githubapp/localstorage/tauri_localhost_0.localstorage` | Linux: the web view's local storage, SQLite `ItemTable(key, value BLOB)` | no: its values are UI state (tabs, caches, theme); the one user text, the unsent composer draft `home-composer-draft:main`, was never sent to the agent and has no time of its own; reading it is left for a later parser change |
 | `AppData/Local/com.github.githubapp/EBWebView/Default/Local Storage/leveldb/` (`000003.log`, `CURRENT`, `LOCK`, `LOG`, `MANIFEST-000001`) | Windows: the web view's local storage inside the WebView2 user data folder (`EBWebView/`, a Chromium profile), in LevelDB, Google's key-value store format, whose `.log` file holds the newest writes; for the origin `http://tauri.localhost` it held the same keys as the Linux `ItemTable` | no, for the same reason as the Linux store; Chromium writes it lazily, so it held 30 bytes while the app ran and 6,174 bytes after the deletion |
 | `.github-copilot-cli/logs/foundry.core<yyyymmdd>.log` | Foundry Local log (Foundry Local: Microsoft's runtime for local models) | no: model catalog fetches and a device id, no use of the agent; on Windows no device id file sat beside it, the Microsoft developer-tools device id being a registry value ([issue 148](https://github.com/seanthegeek/doubleagent/issues/148)) |
@@ -186,6 +185,127 @@ Desktop sessions in the event logs are told from CLI sessions by
 `workspace.yaml` `client_name` `github/autopilot` (the CLI writes
 `github/cli`); the `copilot-cli` parser writes it at the end of the
 `session metadata:` row as ` client=<client_name>`.
+
+### What survives a delete
+
+Real install (Linux), the deletion round of [section 1](#1-source-and-evidence):
+the app's delete removed each session's `session-state/<uuid>/` directory
+entire (`events.jsonl`, `workspace.yaml`, `session.db`, `checkpoints/`,
+`rewind-file-snapshots/`, `files/`, `research/`), so the `copilot-cli`
+parser has no primary store left for either session. These survived:
+
+- `session-store.db`, the Copilot CLI's cross-session store, which the
+  CLI calls its chronicle, read by the `copilot-cli` parser as a
+  secondary source ([section 5 of `copilot-cli.md`](copilot-cli.md#5-other-stores)):
+  the `sessions` rows of both sessions (`summary` the session name, `cwd`
+  under `.copilot/`, the project session with `repository` and `branch`),
+  5 `turns` rows holding every prompt and final reply in full (the general
+  chat's one turn written at 22:12:15Z, ten minutes after its reply; the
+  project session's four at 22:04:43Z, 22:06:30Z, 22:06:50Z and
+  22:17:00Z), 1 `session_files` row (the `create` of the file the agent
+  wrote), 8 `assistant_usage_events` rows and 5 `search_index` rows. The
+  CLI's research prediction that the bundle never deletes these rows held.
+- `data.db`: the project session's `sessions` row (title, `session_type`
+  `project`, `archived_at` null, `is_running` 0), one `activity_items`
+  row for the general chat (`agent_idle`, a 300-character preview of the
+  reply, `session_id` set although its session row is gone), all 4
+  `session_checkpoints` rows (commit hashes and times), 7
+  `session_context_usage` rows, the `projects` row and the
+  `reusable_worktree_pool` row (state `available`, the worktree the pool
+  pre-creates). Removed: the general chat's `sessions` row and every
+  `workspaces`, `worktrees`, `workspace_session_aliases` and
+  `workspace_checkout_bindings` row, so the project session's rows lose
+  their `project_path` join ([section 4](#4-joins-and-timestamps)).
+- `data.db-wal`: the deleted rows' pages. The two session ids occur 63
+  and 105 times in the WAL and never in `data.db`, whose main file had
+  not changed since the app first started.
+- The clone's checkpoint refs: four files
+  `.git/refs/copilot/checkpoints/79255eab…/0000000000000000000N/<event id>`
+  (N 1 to 4), each holding a commit hash. Each commit has author and
+  committer `Copilot`, subject `copilot checkpoint: <session id> @ <event
+  id>`, an empty body and one parent, and is dated at the
+  `session_checkpoints` times. Their trees were identical to `main`,
+  because the session's only write went outside the worktree; in a
+  session that edits files they are per-turn snapshots of the worktree.
+  The refs appear in no reflog. The worktree that remains is the pool's
+  `copilot-prewarm-<adjective>-<noun>` on a detached HEAD (a checkout of
+  a commit, here `main`'s, rather than of a branch).
+- `logs/github-app.<pid>.log` (160 KB): `deleted local branch ref on hard
+  delete workspace_id=<uuid> branch=<branch> repo=<path>`, `permanently
+  deleted workspace workspace_id=<uuid>`, `archived workspace
+  workspace_id=<uuid>`, `not parking worktree; removing it instead
+  project_id=<uuid> error=reusable worktree pool is full for project
+  <uuid>`, `session not found in memory during delete (already evicted)
+  session_id=<uuid>` twice and `terminated agent processes owned by
+  ending sessions scope="session_end" ...`, with 22 and 129 mentions of
+  the two ids; not parsed ([section 2](#2-transcript-stores)).
+- The CLI's `logs/process-<epoch ms>-<pid>.log`, untouched, with
+  `Cleaning up session <uuid>: Session deleted via sessions.delete` once
+  per deletion (three lines in all, one from an earlier delete); the two
+  0-byte `.session-operation-locks/<id>.lock` files; the file the agent
+  wrote.
+- `localstorage`: the `side-chat-tabs` value still keys its
+  `openSessionIdsByWorkspace` object by both deleted ids (empty lists)
+  and the pending-session id; `home-composer-draft:main` is `{state:
+  {promptText, selectedProjectId, projectExplicitlySelected}, version}`,
+  empty here. The ids occur nowhere else in it, WAL included.
+
+Real install (Windows), the deletion and quit bullets of
+[section 1](#1-source-and-evidence): the app's delete of the general chat removed
+its `session-state/<uuid>/` directory entire (`events.jsonl`,
+`workspace.yaml`, `session.db`, `checkpoints/`, `files/`, `research/`,
+`.workspace-fork.lock` and the `inuse.*` files), its `data.db`
+`sessions` row and the whole `.copilot/chats/2026-10-17/` tree: the
+chat's working directory, with the Node.js project the agent had built
+there, `node_modules` included. The files an agent writes in a general
+chat's directory do not outlive the chat. The project session's
+`inuse.<pid>.hold` and `.lock` went too, its CLI process having ended at
+the 20:15 shutdown. These survived:
+
+- `data.db`: the chat's 3 `activity_items` rows (`agent_idle`, each with
+  a reply preview and the deleted session's id);
+  `session_deletion_intents` stayed at 0 rows; six `app_state` keys were
+  rewritten at the deletion (`sidebar-project-groups`, `right-panel`,
+  `cleared-background-tasks`, `session-groups`, `main-content-tabs`,
+  `inbox-sections`).
+- `data.db-wal`, until the app quit: 1,907,592 bytes, with 220
+  occurrences of the chat's id against none in the main file. Quitting
+  the app from the tray checkpointed the WAL (`data.db-wal` 0 bytes,
+  `data.db` grown from 1,347,584 to 1,433,600 bytes), after which the id
+  occurs 23 times in the main file, in the surviving `activity_items`
+  rows and in freed pages. So the Linux finding that a deleted session's
+  rows linger in `data.db-wal` holds only until the app next quits
+  cleanly; after that the main file keeps the activity rows and whatever
+  freed pages a later write has not reused.
+- `session-store.db`, read by the `copilot-cli` parser: the chat's
+  `sessions` row, all 3 `turns` with each prompt and reply in full
+  (stamped 20:02:02, 20:02:49 and 20:13:48, the last at the shutdown), 3
+  `session_files` rows naming the three files the agent created
+  (`tool_name` `create`), 3 `search_index` rows and 8
+  `assistant_usage_events` rows. Its WAL was not checkpointed at the
+  quit (704,552 bytes, 220 mentions of the id). With the chat directory
+  gone, the `turns` and `session_files` rows are what remains of the
+  chat's work.
+- `.copilot/session-state/.session-operation-locks/<uuid>.lock` (0
+  bytes); the app log, with 41 lines naming the id, among them `session
+  not found in memory during delete (already evicted) session_id=<uuid>`
+  and `terminated agent processes owned by ending sessions
+  scope="session_end" session_count=1 runtime_outcome="not_live" ...`
+  under message kind `delete_session`; the CLI's process log, with one
+  `Cleaning up session <uuid>: Session deleted via sessions.delete`
+  line; `run/ws.port` and `run/ws.token`, rewritten at the deletion.
+- The WebView2 local storage, whose tab-list keys were rewritten, as the
+  Linux `side-chat-tabs` was.
+
+The chat had no checkpoint, so no ref of it exists; the project
+session's ref is intact. After the quit the six `run/` files, the seven
+pool session directories, the 18 `.session-operation-locks` files, the
+app log (193,758 bytes) and `repo-metadata-cache.db-wal` stayed on disk.
+
+The analyzer reads the surviving `session-store.db` rows through the
+`copilot-cli` parser, `data.db` and the checkpoint refs through this one
+([Deletion](#deletion)); how secondary rows with no primary left are kept is in
+[Secondary sources](../docs/output.md#secondary-sources).
 
 ## 3. Record schema
 
@@ -217,6 +337,8 @@ cut the statement, the list ends in "...".
 | `my_copilot_scheduled_task_invocations` | `id`, `task_id`, `trigger_id`, `occurrence_key`, `source`, `scheduled_for`, `task_revision`, `task_title`, `prompt_snapshot`, `trigger_snapshot_json`, `execution_mode`, `parent_session_id`, `runtime_agent_id`, `status`, `claimed_at`, `dispatched_at`, `completed_at`, ... (the survey cut the definition there) | 0 rows |
 | `session_automations` | `session_id`, `prompt`, `interval` (`once`, `minutes`, `daily` or `weekly`), `every_minutes`, `schedule_hour`, `schedule_day`, `last_run_at`, `next_run_at`, `updated_at`, `name`, `owner_session_id`, `paused_at`; no `created_at` | 0 rows |
 | `session_deletion_intents` | `session_id`, `created_at` | 0 rows; the binary inserts a row (binary: `INSERT OR IGNORE INTO session_deletion_intents (session_id) VALUES (?1)`) and leaves sessions that have one out of its queries (binary: `AND NOT EXISTS (SELECT 1 FROM session_deletion_intents`) |
+
+### Other `data.db` tables
 
 Other tables observed, not read: `session_context_usage` (8 rows,
 `ts_ms`, `current_tokens`, `token_limit` 200000), `app_state` (34
@@ -408,108 +530,56 @@ differences above held, with these changes:
   `session_context_usage.ts_ms` is epoch milliseconds. `settings` has no
   time column, so its row is timestamped by the file's modification time.
 
-## 5. SQLite and other stores
+## 5. Other stores
 
-Three SQLite files belong to the app (real install (Linux)):
+Three SQLite files belong to the app (real install (Linux)); the bundled
+CLI and WebKit write two more.
 
-- `~/.copilot/data.db`, WAL mode (write-ahead log: new pages go to the
-  `-wal` file until a checkpoint copies them into the main file; binary:
-  `PRAGMA journal_mode=WAL;PRAGMA foreign_keys=ON;`) with
-  `data.db.open-lock` and `data.db.startup-lock` beside it. On the install
-  the WAL (1.67 MB) was larger than the main file (1.3 MB), so the parser
-  must read the evidence copy with its sidecars, through
-  `doubleagent/sqlite_util.py`. Schema in [section 3](#3-record-schema).
-- `~/.copilot/repo-metadata-cache.db` (+`-wal`, `-shm`; binary:
-  `repo-metadata-cache.db`): `github_metadata_account_lifecycle` (1 row;
-  its schema comment says the credential column is "Hex SHA-256 of the
-  credential identity in use ... never a token"), `github_metadata_items`,
-  `_lists`, `_list_pages`, `_org_items`, `_org_lists`, `_org_lifecycle`,
-  `_repo_lifecycle`, `_repo_backoffs`, `_org_backoffs`,
-  `_cleanup_obligations`, all empty. Not parsed.
-- `~/.local/share/com.github.githubapp/localstorage/tauri_localhost_0.localstorage`
-  (+`-wal`, `-shm`): WebKit's local storage for the app's page, one table
-  `ItemTable(key, value BLOB)`, keys `copilot.first-paint-theme.v1`,
-  `backend-instance-id`, `detail-cache`, `agent-tabs`,
-  `chat-agent-tabs-source-v1`, `chat-agent-tabs-partition-v1`,
-  `home-composer-draft:main` (192 bytes), `general-chat-tabs`,
-  `inbox-cache` (2.5 KB), `side-chat-tabs`, `workspace-tabs`. Not parsed
-  ([section 2](#2-transcript-files)). This is the Linux store; on
-  Windows the web view is WebView2 and the same keys for the origin
-  `http://tauri.localhost` were in the LevelDB store
-  `AppData/Local/com.github.githubapp/EBWebView/Default/Local Storage/leveldb/`
-  (14 records in `000003.log`, several keys rewritten more than once),
-  also not parsed.
+### `data.db`
+
+`~/.copilot/data.db` is in WAL mode (write-ahead log: new pages go to the
+`-wal` file until a checkpoint copies them into the main file; binary:
+`PRAGMA journal_mode=WAL;PRAGMA foreign_keys=ON;`) with
+`data.db.open-lock` and `data.db.startup-lock` beside it. On the install
+the WAL (1.67 MB) was larger than the main file (1.3 MB), so the parser
+must read the evidence copy with its sidecars, through
+`doubleagent/sqlite_util.py`. Schema in [section 3](#3-record-schema).
 
 On Windows `data.db` was 1,347,584 bytes and unchanged while the app
-ran, its WAL 1.8 MB at 20:08 and 1.9 MB at 20:32;
-`repo-metadata-cache.db` had 12 tables and `PRAGMA user_version` 13
-(real install (Windows)).
+ran, its WAL 1.8 MB at 20:08 and 1.9 MB at 20:32 (real install (Windows)).
 
-### What a deleted session leaves
+### `repo-metadata-cache.db`
 
-Real install (Linux), the deletion round of [section 1](#1-evidence):
-the app's delete removed each session's `session-state/<uuid>/` directory
-entire (`events.jsonl`, `workspace.yaml`, `session.db`, `checkpoints/`,
-`rewind-file-snapshots/`, `files/`, `research/`), so the `copilot-cli`
-parser has no primary store left for either session. These survived:
+`~/.copilot/repo-metadata-cache.db` (+`-wal`, `-shm`; binary:
+`repo-metadata-cache.db`): `github_metadata_account_lifecycle` (1 row;
+its schema comment says the credential column is "Hex SHA-256 of the
+credential identity in use ... never a token"), `github_metadata_items`,
+`_lists`, `_list_pages`, `_org_items`, `_org_lists`, `_org_lifecycle`,
+`_repo_lifecycle`, `_repo_backoffs`, `_org_backoffs`,
+`_cleanup_obligations`, all empty. Not parsed.
 
-- `session-store.db`, the Copilot CLI's cross-session store, which the
-  CLI calls its chronicle, read by the `copilot-cli` parser as a
-  secondary source ([section 5 of `copilot-cli.md`](copilot-cli.md#5-sqlite-and-other-stores)):
-  the `sessions` rows of both sessions (`summary` the session name, `cwd`
-  under `.copilot/`, the project session with `repository` and `branch`),
-  5 `turns` rows holding every prompt and final reply in full (the general
-  chat's one turn written at 22:12:15Z, ten minutes after its reply; the
-  project session's four at 22:04:43Z, 22:06:30Z, 22:06:50Z and
-  22:17:00Z), 1 `session_files` row (the `create` of the file the agent
-  wrote), 8 `assistant_usage_events` rows and 5 `search_index` rows. The
-  CLI's research prediction that the bundle never deletes these rows held.
-- `data.db`: the project session's `sessions` row (title, `session_type`
-  `project`, `archived_at` null, `is_running` 0), one `activity_items`
-  row for the general chat (`agent_idle`, a 300-character preview of the
-  reply, `session_id` set although its session row is gone), all 4
-  `session_checkpoints` rows (commit hashes and times), 7
-  `session_context_usage` rows, the `projects` row and the
-  `reusable_worktree_pool` row (state `available`, the worktree the pool
-  pre-creates). Removed: the general chat's `sessions` row and every
-  `workspaces`, `worktrees`, `workspace_session_aliases` and
-  `workspace_checkout_bindings` row, so the project session's rows lose
-  their `project_path` join ([section 4](#4-joins-and-timestamps)).
-- `data.db-wal`: the deleted rows' pages. The two session ids occur 63
-  and 105 times in the WAL and never in `data.db`, whose main file had
-  not changed since the app first started.
-- The clone's checkpoint refs: four files
-  `.git/refs/copilot/checkpoints/79255eab…/0000000000000000000N/<event id>`
-  (N 1 to 4), each holding a commit hash. Each commit has author and
-  committer `Copilot`, subject `copilot checkpoint: <session id> @ <event
-  id>`, an empty body and one parent, and is dated at the
-  `session_checkpoints` times. Their trees were identical to `main`,
-  because the session's only write went outside the worktree; in a
-  session that edits files they are per-turn snapshots of the worktree.
-  The refs appear in no reflog. The worktree that remains is the pool's
-  `copilot-prewarm-<adjective>-<noun>` on a detached HEAD (a checkout of
-  a commit, here `main`'s, rather than of a branch).
-- `logs/github-app.<pid>.log` (160 KB): `deleted local branch ref on hard
-  delete workspace_id=<uuid> branch=<branch> repo=<path>`, `permanently
-  deleted workspace workspace_id=<uuid>`, `archived workspace
-  workspace_id=<uuid>`, `not parking worktree; removing it instead
-  project_id=<uuid> error=reusable worktree pool is full for project
-  <uuid>`, `session not found in memory during delete (already evicted)
-  session_id=<uuid>` twice and `terminated agent processes owned by
-  ending sessions scope="session_end" ...`, with 22 and 129 mentions of
-  the two ids; not parsed ([section 2](#2-transcript-files)).
-- The CLI's `logs/process-<epoch ms>-<pid>.log`, untouched, with
-  `Cleaning up session <uuid>: Session deleted via sessions.delete` once
-  per deletion (three lines in all, one from an earlier delete); the two
-  0-byte `.session-operation-locks/<id>.lock` files; the file the agent
-  wrote.
-- `localstorage`: the `side-chat-tabs` value still keys its
-  `openSessionIdsByWorkspace` object by both deleted ids (empty lists)
-  and the pending-session id; `home-composer-draft:main` is `{state:
-  {promptText, selectedProjectId, projectExplicitlySelected}, version}`,
-  empty here. The ids occur nowhere else in it, WAL included.
+On Windows it had 12 tables and `PRAGMA user_version` 13 (real install
+(Windows)).
 
-Also present: each session directory's `session.db` (192 KB), written by
+### Web view local storage
+
+`~/.local/share/com.github.githubapp/localstorage/tauri_localhost_0.localstorage`
+(+`-wal`, `-shm`): WebKit's local storage for the app's page, one table
+`ItemTable(key, value BLOB)`, keys `copilot.first-paint-theme.v1`,
+`backend-instance-id`, `detail-cache`, `agent-tabs`,
+`chat-agent-tabs-source-v1`, `chat-agent-tabs-partition-v1`,
+`home-composer-draft:main` (192 bytes), `general-chat-tabs`,
+`inbox-cache` (2.5 KB), `side-chat-tabs`, `workspace-tabs`. Not parsed
+([section 2](#2-transcript-stores)). This is the Linux store; on
+Windows the web view is WebView2 and the same keys for the origin
+`http://tauri.localhost` were in the LevelDB store
+`AppData/Local/com.github.githubapp/EBWebView/Default/Local Storage/leveldb/`
+(14 records in `000003.log`, several keys rewritten more than once),
+also not parsed.
+
+### `session.db` and `hsts-storage.sqlite`
+
+Each session directory's `session.db` (192 KB), written by
 the bundled CLI, with the tables `factory_agents`,
 `factory_credit_charges`, `factory_journal`, `factory_phases`,
 `factory_progress`, `factory_runs`, `workflow_agents`,
@@ -518,58 +588,6 @@ the bundled CLI, with the tables `factory_agents`,
 `github_metadata_*` (the account lifecycle 1 row, the rest empty); and
 WebKit's `hsts-storage.sqlite` in the Tauri data directory. Neither is
 parsed.
-
-Real install (Windows), the deletion and quit bullets of
-[section 1](#1-evidence): the app's delete of the general chat removed
-its `session-state/<uuid>/` directory entire (`events.jsonl`,
-`workspace.yaml`, `session.db`, `checkpoints/`, `files/`, `research/`,
-`.workspace-fork.lock` and the `inuse.*` files), its `data.db`
-`sessions` row and the whole `.copilot/chats/2026-10-17/` tree: the
-chat's working directory, with the Node.js project the agent had built
-there, `node_modules` included. The files an agent writes in a general
-chat's directory do not outlive the chat. The project session's
-`inuse.<pid>.hold` and `.lock` went too, its CLI process having ended at
-the 20:15 shutdown. These survived:
-
-- `data.db`: the chat's 3 `activity_items` rows (`agent_idle`, each with
-  a reply preview and the deleted session's id);
-  `session_deletion_intents` stayed at 0 rows; six `app_state` keys were
-  rewritten at the deletion (`sidebar-project-groups`, `right-panel`,
-  `cleared-background-tasks`, `session-groups`, `main-content-tabs`,
-  `inbox-sections`).
-- `data.db-wal`, until the app quit: 1,907,592 bytes, with 220
-  occurrences of the chat's id against none in the main file. Quitting
-  the app from the tray checkpointed the WAL (`data.db-wal` 0 bytes,
-  `data.db` grown from 1,347,584 to 1,433,600 bytes), after which the id
-  occurs 23 times in the main file, in the surviving `activity_items`
-  rows and in freed pages. So the Linux finding that a deleted session's
-  rows linger in `data.db-wal` holds only until the app next quits
-  cleanly; after that the main file keeps the activity rows and whatever
-  freed pages a later write has not reused.
-- `session-store.db`, read by the `copilot-cli` parser: the chat's
-  `sessions` row, all 3 `turns` with each prompt and reply in full
-  (stamped 20:02:02, 20:02:49 and 20:13:48, the last at the shutdown), 3
-  `session_files` rows naming the three files the agent created
-  (`tool_name` `create`), 3 `search_index` rows and 8
-  `assistant_usage_events` rows. Its WAL was not checkpointed at the
-  quit (704,552 bytes, 220 mentions of the id). With the chat directory
-  gone, the `turns` and `session_files` rows are what remains of the
-  chat's work.
-- `.copilot/session-state/.session-operation-locks/<uuid>.lock` (0
-  bytes); the app log, with 41 lines naming the id, among them `session
-  not found in memory during delete (already evicted) session_id=<uuid>`
-  and `terminated agent processes owned by ending sessions
-  scope="session_end" session_count=1 runtime_outcome="not_live" ...`
-  under message kind `delete_session`; the CLI's process log, with one
-  `Cleaning up session <uuid>: Session deleted via sessions.delete`
-  line; `run/ws.port` and `run/ws.token`, rewritten at the deletion.
-- The WebView2 local storage, whose tab-list keys were rewritten, as the
-  Linux `side-chat-tabs` was.
-
-The chat had no checkpoint, so no ref of it exists; the project
-session's ref is intact. After the quit the six `run/` files, the seven
-pool session directories, the 18 `.session-operation-locks` files, the
-app log (193,758 bytes) and `repo-metadata-cache.db-wal` stayed on disk.
 
 ## 6. Format versions
 
@@ -621,8 +639,8 @@ Windows build, `cliVersion.d.ts` and `sdkProtocolVersion.d.ts`).
   the app writes when the user adds a server, can hold a token in a
   server's `env`: on the Windows install the `github` server's `env` held
   a GitHub personal access token in plain text. Not read; the collector
-  flags the file `secret: true`
-  ([section 3 of `collectors/research/copilot-cli.md`](../../collectors/research/copilot-cli.md#3-credentials)).
+  flags the file `secret: true`; see
+  [section 3 of `collectors/research/copilot-cli.md`](../../collectors/research/copilot-cli.md#3-credentials).
 - On Windows the WebView2 `Local State` file's `os_crypt.encrypted_key`
   is the key Chromium encrypts cookie values and saved passwords with,
   wrapped by DPAPI (the Windows Data Protection API, which encrypts data
@@ -657,9 +675,7 @@ timestamps converted with `to_utc`:
 | `session_automations` | at `updated_at`, `session_id`: `session automation: <name or -> interval=<interval> every_minutes=<every_minutes or -> next_run_at=<next_run_at or -> prompt: <prompt>` |
 | `session_deletion_intents` | at `created_at`, `session_id`: `session deletion requested` |
 
-Every column is read as possibly NULL. A database that cannot be opened
-gives one `parser: <message>` row. Rows follow the table order above,
-then `created_at`.
+Rows follow the table order above, then `created_at`.
 
 Checkpoint refs: `wants()` also takes
 `^\.copilot/repos/[^/]+/\.git/refs/copilot/checkpoints/([0-9a-f-]{36})/(\d+)/([0-9a-f-]{36})$`
@@ -667,13 +683,11 @@ and yields one `system` row per ref file:
 `checkpoint ref <seq as an integer>: commit <file content, stripped> event <event id> (file mtime)`,
 with `session_id` the first group, `timestamp_utc` the file's
 modification time (`file_mtime` from `parsers/base.py`), `project_path`
-empty and `source_file` the ref file. A ref file that is empty or not a
-40-hex hash still yields the row with its content as read, stripped,
-nothing repaired. No secondary. These rows are what remains of a
-deleted session's checkpoints in the clone
-([What a deleted session leaves](#what-a-deleted-session-leaves)).
+empty and `source_file` the ref file. No secondary.
 
-Permission: the app records no per-call decision in `data.db`; its
+### Permission state
+
+The app records no per-call decision in `data.db`; its
 standing permission state is `sessions.auto_approve` and
 `sessions.permission_mode` (and `projects.auto_approve`, not read), on
 the `desktop session:` row. In the session logs it is the
@@ -682,39 +696,77 @@ the `desktop session:` row. In the session logs it is the
 <new>`; no `permission.requested` or `permission.completed` was written,
 since the app approved every call automatically.
 
-Model: `sessions.model` (and `reasoning_effort`, not read) per session,
+### Model
+
+`sessions.model` (and `reasoning_effort`, not read) per session,
 on the `desktop session:` row and in its `model` column; the switches are
 the logs' `session.model_change` events, which the `copilot-cli` parser
 writes as `model:` rows. `data.db` records no per-switch history.
 
-Schedules: `my_copilot_scheduled_tasks`, their triggers and invocations,
-and `session_automations` are the evidence of scheduled and recurring
-work (binary: "Scheduler starting for workflows, session automations, and
-Scheduled tasks"); all four were empty on the install, so their rows are
-fixture only.
+### Past use and secondary sources
 
-Past use beyond the primary store: `data.db` is a primary source for the
-app's own records and repeats no event of the session logs, so no
-`secondary()` file. `activity_items.preview` overlaps the start of an
-assistant reply in the log but is shorter text at a different time, so
-it stays its own row. `session_deletion_intents` would outlive a session
-the app is deleting, but it stayed empty through the observed deletion.
-What a deletion leaves is in
-[What a deleted session leaves](#what-a-deleted-session-leaves): the
-Copilot CLI's `session-store.db` rows (secondary sources of the
-`copilot-cli` parser, which then have no primary left and are kept),
-the `data.db` rows above that the delete did not remove, and the
-checkpoint refs, a primary source of their own. The logs' `hook.*` events, which
-the `copilot-cli` parser writes as `hook <hookType> start:` and `hook
-<hookType> end:` rows, repeat each prompt (`userPromptSubmitted`
-`prompt`) and the transcript path (`agentStop` `transcriptPath`).
+`data.db` is a primary source for the app's own records and repeats no
+event of the session logs, so no `secondary()` file.
+`activity_items.preview` overlaps the start of an assistant reply in the
+log but is shorter text at a different time, so it stays its own row.
+The logs' `hook.*` events, which the `copilot-cli` parser writes as
+`hook <hookType> start:` and `hook <hookType> end:` rows, repeat each
+prompt (`userPromptSubmitted` `prompt`) and the transcript path
+(`agentStop` `transcriptPath`).
 
-MCP: the MCP servers the user adds from the app
+### Sync, relay and origin
+
+Not stated.
+
+### Scratch directories
+
+The app's own directories, which the analyzer run of the Linux deletion
+round listed as projects
+([issue 149](https://github.com/seanthegeek/doubleagent/issues/149)),
+analyzer 0.18.0 lists under `scratch_directories` instead: the working
+directories that belong to the agent rather than to the user. Analyzer
+0.18.0 gives each pool or probe session (a session the app pre-created
+and never prompted, [Observed](#observed)) a `scratch directory:` row and
+lists its `cwd` under `scratch_directories`.
+
+### Deletion
+
+`session_deletion_intents` would outlive a session the app is deleting,
+but it stayed empty through the observed deletion. What a deletion leaves
+is in [What survives a delete](#what-survives-a-delete): the Copilot
+CLI's `session-store.db` rows (secondary sources of the `copilot-cli`
+parser, which then have no primary left and are kept), the `data.db` rows
+above that the delete did not remove, and the checkpoint refs, a primary
+source of their own. The `checkpoint ref` rows are what remains of a
+deleted session's checkpoints in the clone.
+
+### Bad lines
+
+Every column is read as possibly NULL. A database that cannot be opened
+gives one `parser: <message>` row. A checkpoint ref file that is empty or
+not a 40-hex hash still yields the row with its content as read,
+stripped, nothing repaired.
+
+### Fixtures
+
+The rows of the four schedule tables are fixture only, since all four
+were empty on the install ([Schedules](#schedules)).
+
+### Schedules
+
+`my_copilot_scheduled_tasks`, their triggers and invocations, and
+`session_automations` are the evidence of scheduled and recurring work
+(binary: "Scheduler starting for workflows, session automations, and
+Scheduled tasks"); all four were empty on the install.
+
+### MCP
+
+The MCP servers the user adds from the app
 (`.copilot/mcp-config.json`), their failed spawns (the CLI's
 `logs/process-*.log`, `MCP server connection failed
 {"server_name":"<name>","raw_error":"failed to spawn MCP server process:
 program not found"}`) and the cached tool list of each connected server
 (`AppData/Local/copilot/mcp-tools/<sha256>.json`,
-[section 2 of `copilot-cli.md`](copilot-cli.md#2-transcript-files)) are
+[section 2 of `copilot-cli.md`](copilot-cli.md#2-transcript-stores)) are
 recorded on disk (Windows install) and not yet in the timeline
 ([issue 150](https://github.com/seanthegeek/doubleagent/issues/150)).
