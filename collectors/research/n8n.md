@@ -1,19 +1,21 @@
-# n8n: on-disk paths
+# n8n
 
-This document came out of the agent framework sweep for issue #64; see
-[frameworks.md](frameworks.md) for the frameworks that got no catalog line.
-There is no analyzer document yet.
+n8n is a workflow automation server with AI Agent nodes, plus `@n8n/computer-use`, a local
+tool gateway for the n8n Assistant. Its agent surfaces are Instance AI (the n8n Assistant,
+the built-in agent of the `instance-ai` module, which can drive the computer-use gateway) and
+Chat Hub (n8n's chat front end to models and agent workflows). This document came out of the
+agent framework sweep for [issue #64](https://github.com/seanthegeek/doubleagent/issues/64);
+see [`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no
+catalog line. There is no analyzer document yet.
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 [n8n-io/n8n](https://github.com/n8n-io/n8n), commit
 [`0e1c7549997f43053fda83534b597875b0310df6`](https://github.com/n8n-io/n8n/commit/0e1c7549997f43053fda83534b597875b0310df6).
-The workflow automation server with AI Agent nodes, plus
-`@n8n/computer-use`, a local tool gateway for the n8n Assistant. Licence:
+Licence:
 Sustainable Use License, with `.ee.` files under the enterprise licence
 ([LICENSE.md:1-14](https://github.com/n8n-io/n8n/blob/0e1c7549997f43053fda83534b597875b0310df6/LICENSE.md#L1-L14)).
-All claims are from source unless marked inferred; nothing was installed
-or run.
+All claims are from source unless marked inferred.
 
 n8n executes tools and shell commands on the host:
 
@@ -28,15 +30,18 @@ n8n executes tools and shell commands on the host:
   shell is denied by default
   ([computer-use README.md:21](https://github.com/n8n-io/n8n/blob/0e1c7549997f43053fda83534b597875b0310df6/packages/@n8n/computer-use/README.md#L21)).
 
+### Observed
+
+- No real install: nothing was installed or run.
+
+### Source reviews
+
 - **Source review (2026-10-19)**: HEAD
   [`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680)
   reviewed against the previously cited
   [`0e1c754`](https://github.com/n8n-io/n8n/commit/0e1c7549997f43053fda83534b597875b0310df6),
-  from source only. Two surfaces matter here: Instance AI (the n8n
-  Assistant, the built-in agent of the `instance-ai` module, which can
-  drive the computer-use gateway) and Chat Hub (n8n's chat front end to
-  models and agent workflows). Both store in `database.sqlite`; detail in
-  [section 2](#2-per-user-storage).
+  from source only. Two surfaces matter here, Instance AI and Chat Hub. Both store in
+  `database.sqlite`; detail in [Database and gateway detail](#database-and-gateway-detail).
   - Permission state: found. Per-call: Instance AI's
     `instance_ai_pending_confirmations` and its `confirmation-request`
     events, and the gateway log's denial errors. Standing:
@@ -54,7 +59,7 @@ n8n executes tools and shell commands on the host:
     and `langsmithTraceId` when the run is traced to LangSmith (LangChain's
     hosted tracing service) through n8n's AI proxy.
   - Scratch directories: none created by n8n; the gateway's working
-    directory is the one the user picks.
+    directory is the one the user picks ([Scratch directories](#scratch-directories)).
   - Deletion: found: deleting an Instance AI thread cascades to its
     messages, events, checkpoints, grants and pending confirmations, and
     one upgrade migration emptied the Instance AI tables; deleting a Chat
@@ -85,7 +90,17 @@ on Windows), with `.n8n` appended: `~/.n8n` on every OS
 | `.n8n-gateway/settings.json` | computer-use permissions and resource grants ([config.ts:257-259](https://github.com/n8n-io/n8n/blob/0e1c7549997f43053fda83534b597875b0310df6/packages/@n8n/computer-use/src/config.ts#L257-L259), [settings-store.ts:104-117](https://github.com/n8n-io/n8n/blob/0e1c7549997f43053fda83534b597875b0310df6/packages/@n8n/computer-use/src/settings-store.ts#L104-L117)) | default for computer-use users |
 | `Library/Application Support/n8n Gateway`, `AppData/Roaming/n8n Gateway` | tray app `settings.json`; inferred from Electron `userData` and `productName: 'n8n Gateway'`, macOS and Windows builds only ([local-gateway settings-store.ts:83](https://github.com/n8n-io/n8n/blob/0e1c7549997f43053fda83534b597875b0310df6/packages/@n8n/local-gateway/src/main/settings-store.ts#L83), [electron-builder.config.js:4](https://github.com/n8n-io/n8n/blob/0e1c7549997f43053fda83534b597875b0310df6/packages/@n8n/local-gateway/electron-builder.config.js#L4)) | inferred; no catalog line |
 
-Docker: the named volume `n8n_data` is mounted at `/home/node/.n8n`
+### Scratch directories
+
+None. The gateway works in the directory set by
+its configuration, the saved `filesystemDir`, or the directory it was
+started from, in that order
+([settings-store.ts:135](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/computer-use/src/settings-store.ts#L135)):
+a directory the user chose, not one the agent made.
+
+### Docker
+
+The named volume `n8n_data` is mounted at `/home/node/.n8n`
 ([README.md:29-30](https://github.com/n8n-io/n8n/blob/0e1c7549997f43053fda83534b597875b0310df6/README.md#L29-L30),
 [docker/images/n8n/README.md:73](https://github.com/n8n-io/n8n/blob/0e1c7549997f43053fda83534b597875b0310df6/docker/images/n8n/README.md#L73)).
 The `get-n8n.sh` installer uses `n8n-data`
@@ -96,6 +111,8 @@ with the project directory `./n8n`
 which gives the volume `n8n_n8n-data`. Both volumes hold the `.n8n`
 layout at their root, so the `DOCKER_VOLUMES` lines are `*n8n_data` and
 `*n8n-data`, with volume-relative exclusions and secret globs.
+
+### Database and gateway detail
 
 Detail from the 2026-10-19 review, at
 [`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680),
@@ -178,12 +195,6 @@ for a future analyzer document:
   `execution_entity`. The gateway log is never trimmed by n8n (not found
   in `logger.ts` at [`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680): grepped for `truncate` and `unlink`).
 
-**Scratch directories.** None. The gateway works in the directory set by
-its configuration, the saved `filesystemDir`, or the directory it was
-started from, in that order
-([settings-store.ts:135](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/computer-use/src/settings-store.ts#L135)):
-a directory the user chose, not one the agent made.
-
 ## 3. Credentials
 
 - `.n8n/config` (`encryptionKey`) and `.n8n/ssh/*`: flagged, and in a
@@ -191,7 +202,7 @@ a directory the user chose, not one the agent made.
   matches only a file named `config` at the root of a collection base; the
   one other layout that has one is the retired Letta V1 server's
   `~/.letta/config` at the root of a `*letta*` volume
-  ([letta.md](letta.md)), which is then also flagged. That is an accepted
+  ([`collectors/research/letta.md`](letta.md)), which is then also flagged. That is an accepted
   overmatch: flagging only adds `secret: true` and the `--no-secrets`
   skip.
 - `database.sqlite` holds encrypted credentials and the history together,
