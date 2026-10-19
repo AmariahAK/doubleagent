@@ -1,4 +1,4 @@
-# PearAI: on-disk paths
+# pearai
 
 Catalog agent: `pearai`. PearAI is a VS Code fork that ships two AI
 extensions of its own: `pearai.pearai`, a fork of Continue (chat,
@@ -11,7 +11,7 @@ editor's `dataFolderName` (extensions) and the Continue fork's global
 directory (chat sessions, config, API keys).** Transcript schema is in
 [`analyzer/research/pearai.md`](../../analyzer/research/pearai.md).
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 All claims from source, three repositories:
 
@@ -30,6 +30,13 @@ All claims from source, three repositories:
   [`0b6df736c9b2799c38b9ee629668407521a7bdda`](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda)
   (2026-06-19), extension `PearAI.pearai-roo-cline` 3.15.3
   ([`package.json:2-7`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/package.json#L2-L7)).
+
+### Observed
+
+No real install.
+
+### Source reviews
+
 - **Source review (2026-10-19)**: all three HEADs are still the commits
   cited above, so no path has moved. Found: the editor's per-session
   output channel logs hold the chat extension's full prompt log, and
@@ -39,7 +46,24 @@ All claims from source, three repositories:
 
 ## 2. Per-user storage
 
-**Editor.** `product.json` sets `nameShort` `PearAI`, `dataFolderName`
+The editor, its two extension forks, the import from VS Code and the editor's output channel logs
+each have their own layout.
+
+### Scratch directories
+
+Neither extension keeps a working directory of
+its own. PearAI Creator, the mode that builds a new project from a
+description, creates the project directory, by default
+`~/Documents/PearAI/<generated name>`, and opens it as the workspace
+([`gui/src/pages/creator/index.tsx:106-114`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/gui/src/pages/creator/index.tsx#L106-L114),
+[`extensions/vscode/src/integrations/creator/index.ts:130-160`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/extensions/vscode/src/integrations/creator/index.ts#L130-L160)).
+That is the user's new project, reached by project discovery through the
+task's `workspace`, not a scratch directory; no catalog line names
+`Documents/PearAI`.
+
+### Editor
+
+`product.json` sets `nameShort` `PearAI`, `dataFolderName`
 `.pearai` and `serverDataFolderName` `.pearai-server`
 ([`product.json:2-6`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/product.json#L2-L6),
 [`15`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/product.json#L15)). The user data directory is
@@ -66,7 +90,9 @@ or `$XDG_CONFIG_HOME`/`~/.config`, joined with the product name
   `User/globalStorage/pearai.pearai` and
   `User/globalStorage/pearai.pearai-roo-cline`.
 
-**Continue fork (`pearai.pearai`).** Global directory is
+### Continue fork (`pearai.pearai`)
+
+Global directory is
 `$CONTINUE_GLOBAL_DIR` or `os.homedir()/.pearai` on every OS
 ([`core/util/paths.ts:11-21`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/util/paths.ts#L11-L21)). Layout is
 Continue's: `sessions/<id>.json` and `sessions/sessions.json`
@@ -97,7 +123,9 @@ additions in the same directory:
   `firstLaunch.flag`, `firstLaunchCreator.flag`
   ([`copySettings.ts:8-12`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/extensions/vscode/src/copySettings.ts#L8-L12)).
 
-**Import from VS Code.** The welcome flow's "import settings" copies VS
+### Import from VS Code
+
+The welcome flow's "import settings" copies VS
 Code's `settings.json`, `keybindings.json`, `snippets`, `sync` and
 `globalStorage/state.vscdb` into a PearAI `User` directory, and every
 VS Code extension except AI ones into `~/.pearai/extensions`
@@ -109,7 +137,9 @@ so on Linux it is `~/.config/pearai/User`, a different directory from the
 `~/.config/PearAI/User` the editor uses. A `state.vscdb` there is a copy
 of the user's VS Code state, not PearAI activity.
 
-**Roo Code fork (`pearai.pearai-roo-cline`).** Storage is the extension's
+### Roo Code fork (`pearai.pearai-roo-cline`)
+
+Storage is the extension's
 `globalStorage` unless the `roo-cline.customStoragePath` setting moves it
 ([`src/shared/storagePathManager.ts:11-27`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/shared/storagePathManager.ts#L11-L27)):
 `tasks/<taskId>/` ([`52-57`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/shared/storagePathManager.ts#L52-L57))
@@ -130,7 +160,9 @@ MCP server checkouts go to Roo Code's own directories,
 ([`ClineProvider.ts:952-973`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/core/webview/ClineProvider.ts#L952-L973)),
 which the catalog already collects as `roo-code` and `cline`.
 
-**Output channel logs.** The editor backs every extension output channel
+### Output channel logs
+
+The editor backs every extension output channel
 with a file under its `logs/` directory,
 `logs/<YYYYMMDDTHHMMSS>/window<N>/exthost/output_logging_<time>/<n>-<channel>.log`,
 and keeps the newest 49 log session directories besides the current one
@@ -143,17 +175,7 @@ prompt and completion
 so `<n>-PearAI.log` files are a prompt log; they are collected by the
 `.config/PearAI/logs`, `Library/Application Support/PearAI/logs` and
 `AppData/Roaming/PearAI/logs` lines. Record shape:
-[section 2 of `analyzer/research/pearai.md`](../../analyzer/research/pearai.md#2-transcript-files).
-
-**Scratch directories.** Neither extension keeps a working directory of
-its own. PearAI Creator, the mode that builds a new project from a
-description, creates the project directory, by default
-`~/Documents/PearAI/<generated name>`, and opens it as the workspace
-([`gui/src/pages/creator/index.tsx:106-114`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/gui/src/pages/creator/index.tsx#L106-L114),
-[`extensions/vscode/src/integrations/creator/index.ts:130-160`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/extensions/vscode/src/integrations/creator/index.ts#L130-L160)).
-That is the user's new project, reached by project discovery through the
-task's `workspace`, not a scratch directory; no catalog line names
-`Documents/PearAI`.
+[section 5 of `analyzer/research/pearai.md`](../../analyzer/research/pearai.md#output-channel-log).
 
 ## 3. Credentials
 
