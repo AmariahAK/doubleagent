@@ -66,8 +66,11 @@ and desktop apps are clients of that Gateway, not copies of its store.
     ([section 6](#6-format-versions)). The PostgreSQL engine is the one
     change that leaves the parser with nothing to read.
   - Bad lines: two gaps in the parser, the legacy `sessions.json` index and
-    JSON lines that are not objects, both dropped without a row
-    ([section 8](#8-parser-plan)).
+    JSON lines that are not objects, both dropped without a row; both now
+    yield a `parser:` row ([section 8](#8-parser-plan), issue 177). Not
+    observed on any real install, source-derived
+    ([openclaw/openclaw](https://github.com/openclaw/openclaw) at
+    [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)).
 
 ## 2. Transcript stores
 
@@ -533,11 +536,18 @@ real-install round before the parser changes, and OpenClaw has none.
   `archive=deleted.<ts>` session-start row.
 - Version drift: none that changes what the parser reads, apart from the
   PostgreSQL engine ([section 6](#6-format-versions)).
-- Bad lines: two gaps. `_legacy_key` returns an empty key when
-  `sessions.json` does not parse, with no row; it should yield one
-  `parser:` row for the file. `_iter_lines` skips a line that is valid JSON
-  but not an object without a row; it should be an `unparseable record`
-  row like any other bad line.
+- Bad lines (issue 177): a legacy `sessions.json` that cannot be read,
+  does not decode or is not a JSON object yields one whole-file `system`
+  row in each transcript beside it, after that transcript's line rows,
+  with `source_line` 0 and the transcript's `session_id` and `cwd`:
+  `parser: sessions.json unreadable (<reason>)`, `parser: sessions.json
+  unparseable (<reason>)` or `parser: sessions.json is not a JSON object`;
+  the transcript's own rows are still yielded, without the session key.
+  A line that is valid JSON but not an object (an array, a string, a
+  number, `null`), in a JSONL file or an archive blob, is its own row like
+  any other bad line, `parser: unparseable line (not a JSON object):
+  <line>` (prefixed `archive <name> line <n>: ` inside a blob), and the
+  lines around it are still yielded.
 
 **Primary and secondary sources** (issue 122: every source is parsed on
 every run, and a row of a secondary source is dropped when a primary

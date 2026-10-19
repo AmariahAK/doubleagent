@@ -156,7 +156,14 @@ git branch is recorded.
 
 A line that does not decode is its own `system` row (issue 136, `error_rows`
 in `base.py`), carrying the line in full after `parser: unparseable line
-(<reason>): `, with the session's id and `cwd`. For a line inside an archive
+(<reason>): `, with the session's id and `cwd`; a line that decodes to a
+JSON value other than an object is the same row with the reason `not a
+JSON object` (issue 177). A legacy `sessions.json` that cannot be read,
+does not decode or is not a JSON object is one whole-file row in each
+transcript beside it, `parser: sessions.json unreadable (<reason>)`,
+`parser: sessions.json unparseable (<reason>)` or `parser: sessions.json
+is not a JSON object`, with `source_line` 0, after the line rows;
+the transcript's other rows are still yielded, without the key. For a line inside an archive
 blob the text is `parser: archive <name> line <n>: unparseable line
 (<reason>): <line>` (or `cold archive`) and `source_line` is the archive row's rowid, as for the blob's other rows.
 """
@@ -228,7 +235,10 @@ def _maybe_zstd(blob: bytes) -> tuple[bytes | None, str]:
 
 def _iter_lines(data: bytes, errors: list) -> Iterator[tuple[int, dict]]:
     """(line number, record) for each JSON object line of `data`; a line that
-    does not decode is appended to `errors` as (line, message, line text)."""
+    does not decode, or decodes to a value other than an object (an array, a
+    string, a number, `null`), is appended to `errors` as (line, message,
+    line text), the message `unparseable line (not a JSON object)` for the
+    second kind, so `error_rows` reports it in full (issue 177)."""
     for n, raw in enumerate(data.split(b"\n"), 1):
         stripped = raw.strip()
         if not stripped:
@@ -238,8 +248,10 @@ def _iter_lines(data: bytes, errors: list) -> Iterator[tuple[int, dict]]:
         except ValueError as e:
             errors.append((n, "unparseable line (%s)" % e, line_text(raw)))
             continue
-        if isinstance(rec, dict):
-            yield n, rec
+        if not isinstance(rec, dict):
+            errors.append((n, "unparseable line (not a JSON object)", line_text(raw)))
+            continue
+        yield n, rec
 
 
 class _Session:
@@ -641,33 +653,47 @@ class OpenClawParser(Parser):
             s.extra = "archive=%s" % m.group("archive")[len(".jsonl.") :]
         elif m and m.group("copy"):
             s.extra = "copy=%s" % m.group("copy").lstrip(".")
+        key_error = ""
         if m:
-            s.key = self._legacy_key(artifact, s.session_id)
+            s.key, key_error = self._legacy_key(artifact, s.session_id)
         with open(artifact.disk_path, "rb") as fh:
             raw = fh.read()
         data, err = _maybe_zstd(raw)
         if data is None:
             yield self._bad(artifact, s, 1, "could not decompress (%s)" % err, opts)
+            if key_error:
+                yield from error_rows(self, artifact, [(0, key_error, "")], s.session_id, s.cwd)
             return
         errors: list = []
         yield from self._records(artifact, s, _iter_lines(data, errors), opts)
+        if key_error:
+            errors.append((0, key_error, ""))
         yield from error_rows(self, artifact, errors, s.session_id, s.cwd)
 
     @staticmethod
-    def _legacy_key(artifact: Artifact, session_id: str) -> str:
+    def _legacy_key(artifact: Artifact, session_id: str) -> tuple[str, str]:
+        """(session key, error) for `session_id` from the sibling legacy
+        `sessions.json`. A missing file is no error; a file that cannot be
+        read, does not decode or is not a JSON object returns the whole-file
+        message (`sessions.json unreadable (<reason>)`, `sessions.json
+        unparseable (<reason>)`, `sessions.json is not a JSON object`) for a
+        `parser:` row of the transcript that looked the key up (issue 177)."""
         store = artifact.disk_path.parent / "sessions.json"
+        if store.is_symlink() or not store.is_file():
+            return "", ""
         try:
-            if store.is_symlink() or not store.is_file():
-                return ""
             with open(store, encoding="utf-8", errors="replace") as fh:
                 data = json.load(fh)
-        except (OSError, ValueError):
-            return ""
-        if isinstance(data, dict):
-            for key, entry in data.items():
-                if isinstance(entry, dict) and entry.get("sessionId") == session_id:
-                    return str(key)
-        return ""
+        except OSError as e:
+            return "", "sessions.json unreadable (%s)" % e
+        except ValueError as e:
+            return "", "sessions.json unparseable (%s)" % e
+        if not isinstance(data, dict):
+            return "", "sessions.json is not a JSON object"
+        for key, entry in data.items():
+            if isinstance(entry, dict) and entry.get("sessionId") == session_id:
+                return str(key), ""
+        return "", ""
 
     # -- SQLite store -------------------------------------------------------------------
     def _parse_db(self, artifact: Artifact, opts: Options) -> Iterator[Row]:

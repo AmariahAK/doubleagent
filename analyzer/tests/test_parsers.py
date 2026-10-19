@@ -9469,6 +9469,94 @@ class OpenClawTests(ParserBase):
             [("system", "parser: state/openclaw.sqlite is not a SQLite database")],
         )
 
+    def test_bad_legacy_sessions_json_is_one_row(self):
+        # Issue 177: a legacy sessions.json that does not decode or is not an
+        # object is a whole-file row; the transcript's rows still come out.
+        clean = [(r.turn_type, r.text) for r in self.rows_for(OpenClawParser(), self.LEGACY)]
+        store = self.home / OPENCLAW_AGENT / "sessions/sessions.json"
+        cut = '{"%s": {"sessionId": "%s"' % (OPENCLAW_KEY, OPENCLAW_LEGACY)
+        try:
+            json.loads(cut)
+        except ValueError as e:
+            reason = str(e)
+        else:
+            raise AssertionError("cut sessions.json parses")
+        for content, message in (
+            (cut, "parser: sessions.json unparseable (%s)" % reason),
+            ("[1, 2]", "parser: sessions.json is not a JSON object"),
+        ):
+            store.write_text(content, encoding="utf-8")
+            rows = self.rows_for(OpenClawParser(), self.LEGACY)
+            self.assertEqual(len(rows), len(clean) + 1)
+            body = [(r.turn_type, r.text) for r in rows[:-1]]
+            self.assertEqual(body[1:], clean[1:])
+            self.assertNotIn("key=", body[0][1])  # the key is lost, not guessed
+            self.assertEqual(
+                (rows[-1].turn_type, rows[-1].source_line, rows[-1].session_id),
+                ("system", 0, OPENCLAW_LEGACY),
+            )
+            self.assertEqual(rows[-1].project_path, rows[0].project_path)
+            self.assertEqual((rows[-1].timestamp_utc, rows[-1].text), ("", message))
+
+    def test_non_object_line_is_reported_not_fatal(self):
+        # Issue 177: a line that is valid JSON but not an object is its own
+        # row carrying the line; the lines before and after still come out.
+        clean = [(r.turn_type, r.text) for r in self.rows_for(OpenClawParser(), self.LEGACY)]
+        path = self.home / self.LEGACY
+        lines = path.read_bytes().split(b"\n")
+        lines.insert(2, b'["not", "an", "object"]')
+        lines.insert(4, b"null")
+        path.write_bytes(b"\n".join(lines))
+        rows = self.rows_for(OpenClawParser(), self.LEGACY)
+        self.assertEqual([(r.turn_type, r.text) for r in rows[:-2]], clean)
+        self.assertEqual(
+            [
+                (r.turn_type, r.source_line, r.session_id, r.timestamp_utc, r.text)
+                for r in rows[-2:]
+            ],
+            [
+                (
+                    "system",
+                    3,
+                    OPENCLAW_LEGACY,
+                    "",
+                    'parser: unparseable line (not a JSON object): ["not", "an", "object"]',
+                ),
+                (
+                    "system",
+                    5,
+                    OPENCLAW_LEGACY,
+                    "",
+                    "parser: unparseable line (not a JSON object): null",
+                ),
+            ],
+        )
+
+    def test_non_object_line_in_archive_blob(self):
+        con = sqlite3.connect(str(self.home / self.DB))
+        rowid, name, blob = con.execute(
+            "SELECT rowid, archive_name, archive_blob FROM session_transcript_archives"
+            " WHERE encoding = 'identity'"
+        ).fetchone()
+        head, _, rest = bytes(blob).partition(b"\n")
+        con.execute(
+            "UPDATE session_transcript_archives SET archive_blob = ? WHERE rowid = ?",
+            (head + b"\n42\n" + rest, rowid),
+        )
+        con.commit()
+        con.close()
+        rows = [
+            r
+            for r in self.rows_for(OpenClawParser(), self.DB)
+            if r.session_id == OPENCLAW_RESET_SESSION
+        ]
+        self.assertEqual([r.turn_type for r in rows], ["system", "user", "system", "system"])
+        self.assertEqual(rows[1].text, "check disk space on the server")
+        self.assertEqual(
+            (rows[-1].source_line, rows[-1].text),
+            (rowid, "parser: archive %s line 2: unparseable line (not a JSON object): 42" % name),
+        )
+
 
 from fixtures import (
     NANOBOT_CLI_HISTORY_REL,
