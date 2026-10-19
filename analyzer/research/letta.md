@@ -1,12 +1,13 @@
-# Letta transcript schema
+# letta
 
 Catalog agent: `letta`. Letta Code (the current `letta` CLI) keeps
 conversations on the Letta server by default, but writes two parseable
 JSONL stores under `~/.letta` and, in local-backend mode, the full message
-history. The retired Letta V1 Python server kept messages in SQLite. Paths
-are in [`collectors/research/letta.md`](../../collectors/research/letta.md).
+history in [pi](pi.md)'s session format, which the pi parser's reader reads. The retired Letta
+V1 Python server kept messages in SQLite. Paths are in
+[`collectors/research/letta.md`](../../collectors/research/letta.md).
 
-## 1. Source
+## 1. Source and evidence
 
 [letta-ai/letta-code](https://github.com/letta-ai/letta-code) at [`77faf36e34378946c8e69c0bfaa5595a7be4c326`](https://github.com/letta-ai/letta-code/commit/77faf36e34378946c8e69c0bfaa5595a7be4c326), Apache-2.0. The local-backend
 message types are `@earendil-works/pi-ai`, read in [earendil-works/pi](https://github.com/earendil-works/pi) at
@@ -14,7 +15,22 @@ message types are `@earendil-works/pi-ai`, read in [earendil-works/pi](https://g
 pi checkout is newer, so optional fields may differ). V1 SQLite from
 [letta-ai/letta](https://github.com/letta-ai/letta) tag 0.11.7 at [`bf9356ceaf8ac4c80f1b418f209ad49b04986885`](https://github.com/letta-ai/letta/commit/bf9356ceaf8ac4c80f1b418f209ad49b04986885).
 
-- **Source review (2026-10-19)**: [letta-ai/letta-code](https://github.com/letta-ai/letta-code)
+Confidence. High: file locations, line shapes, field names, timestamp units
+(source). Medium: pi-ai optional fields at the pinned version; the
+`api` value in the fixture is illustrative. Not determined: V1 `content`
+and `tool_calls` JSON encodings; whether reflection transcripts are written
+on Windows when auto-reflection is off (`LETTA_ENABLE_WINDOWS_AUTO_REFLECTION`,
+[reflection-settings.ts:9](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/reflection-settings.ts#L9),
+exists, but the append path at the cited loop is unconditional).
+
+### Observed
+
+- No real install. No real install has shown the files behind the `session synced:` rows, so
+  those rows are fixture only ([Sync, relay and origin](#sync-relay-and-origin)).
+
+### Source reviews
+
+- 2026-10-19: [letta-ai/letta-code](https://github.com/letta-ai/letta-code)
   at [`2a46615`](https://github.com/letta-ai/letta-code/commit/2a46615d16babb06cf5450b8e57ecb9bdbf2f436),
   the head of `main` on 2026-10-19 (0.34.17,
   [package.json:3](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/package.json#L3)),
@@ -42,17 +58,17 @@ pi checkout is newer, so optional fields may differ). V1 SQLite from
     ([src/backend/local/local-store.ts:1509-1549](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/backend/local/local-store.ts#L1509-L1549)),
     which the parser shows as a plain `tool_result`; an interrupted
     turn's record keeps its approval `results`
-    ([section 3](#3-record-schema)).
+    ([Interrupted turns](#interrupted-turns)).
   - Model: covered; the model fields of all three stores are unchanged.
   - Past use beyond the parsed stores: found, not read: the interrupted
     turn records under `listener-state/`, the input ledger under
     `state/` (new since the cited commit), the scheduled tasks in
     `crons.json` with their run logs `runs/<task id>.jsonl`, and the
-    chunk logs ([section 3](#3-record-schema)).
+    chunk logs ([section 5](#5-other-stores)).
   - Sync, relay and origin: sync covered. Relay found: a conversation
     bound to a Slack, Telegram, Discord, Signal or WhatsApp chat is
     named in `~/.letta/channels/<channel>/routing.json`, and the parser
-    yields no `session relayed:` row ([section 3](#3-record-schema)).
+    yields no `session relayed:` row ([Channel routing](#channel-routing)).
     No remote-origin listing found.
   - Scratch directories: the agent's own memory clones and their
     `memory-worktrees/` under `~/.letta/agents/<agent id>/`, and
@@ -77,7 +93,7 @@ pi checkout is newer, so optional fields may differ). V1 SQLite from
     gateway modules were removed.
   - Bad lines: covered.
 
-## 2. Transcript files
+## 2. Transcript stores
 
 | Glob (relative to home) | One file per | Mode |
 | --- | --- | --- |
@@ -95,7 +111,9 @@ base64url of `conversation:<id>`, or `default:<agent id>` for an agent's
 default conversation ([local-store.ts:283-285](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L283-L285), [3262-3266](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L3262-L3266)), next to
 `conversation.json`, `manifest.json` and `system-prompt.json`.
 
-**Server-side session markers.** In the default backend, `api` (Letta
+### Server-side session markers
+
+In the default backend, `api` (Letta
 Cloud at `https://api.letta.com`, or a self-hosted Letta server named by
 `LETTA_BASE_URL`), the agent and its conversations are server objects
 and the local files name them by id
@@ -159,7 +177,10 @@ conversation directories under `lc-local-backend/` (with
 `messages.jsonl`) and leaves `~/.letta/transcripts/` alone
 ([local-store.ts:481-517](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L481-L517)).
 The only callers of `deleteConversation` remove internal fork and
-ephemeral conversations. Letta Code keeps no per-prompt history file.
+ephemeral conversations
+([agent/subagents/fork-conversation.ts:100](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent/subagents/fork-conversation.ts#L100),
+[websocket/app-server-openai.ts:326](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/websocket/app-server-openai.ts#L326)).
+Letta Code keeps no per-prompt history file.
 Since a server-agent delete touches no local file, the chunk logs (the
 last 5 per agent and session, content cut to 200 characters), the
 interrupted-turn records under `listener-state/`, the input ledger under
@@ -169,11 +190,13 @@ analyzer reads `transcript.jsonl` as a secondary source (see
 [Secondary sources](../docs/output.md#secondary-sources)), so a
 transcript whose `messages.jsonl` was deleted keeps all its rows, and
 reads `sessions.jsonl`; it reads none of the other records
-([section 8](#8-parser-plan)).
+([Past use and secondary sources](#past-use-and-secondary-sources)).
 
 ## 3. Record schema
 
-**Reflection transcript** (`transcript.jsonl`). Appended after each completed
+### Reflection transcript
+
+`transcript.jsonl`, appended after each completed
 turn ([use-conversation-loop.ts:1443-1452](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/app/use-conversation-loop.ts#L1443-L1452), [reflection-transcript.ts:927-952](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/helpers/reflection-transcript.ts#L927-L952)).
 One object per line ([reflection-transcript.ts:54-71](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/helpers/reflection-transcript.ts#L54-L71)):
 `kind` in `user|assistant|reasoning|error` with `text`; or `kind:"tool_call"`
@@ -201,20 +224,20 @@ arguments string as streamed, the chunks concatenated
 [1150-1153](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/helpers/accumulator.ts#L1150-L1153)), so a
 complete call holds the arguments JSON.
 
-**Local-backend transcript** (`messages.jsonl`, `message_format`
+### Local-backend transcript
+
+`messages.jsonl` (`message_format`
 `pi-session-entry-jsonl`, `schema_version` 2 in `manifest.json`;
 [local-transcript.ts:24-46](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-transcript.ts#L24-L46)). Line 1 is the header
 `{type:"session", version:3, id, timestamp, cwd}`; later lines are
 `{type:"message", id, parentId, timestamp, message}` or
-`{type:"compaction", id, parentId, timestamp, summary, firstKeptEntryId, tokensBefore, message, details}`
-([local-transcript.ts:122-157](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-transcript.ts#L122-L157), [236-246](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-transcript.ts#L236-L246), [local-store.ts:3036-3061](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L3036-L3061)).
+`{type:"compaction", id, parentId, timestamp, summary, firstKeptEntryId, tokensBefore, message, details}` ([local-transcript.ts:122-157](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-transcript.ts#L122-L157), [236-246](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-transcript.ts#L236-L246), [local-store.ts:3036-3061](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L3036-L3061)).
 Entry `id` is 8 hex characters; entry `timestamp` is ISO, taken from
 `message.metadata.created_at` or `message.timestamp`
 ([local-transcript.ts:479-494](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-transcript.ts#L479-L494)).
 
 `message` ([local-message.ts:26-86](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-message.ts#L26-L86)) has `id` (prefix `letta-msg-`,
-[local-store.ts:135-137](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L135-L137)), `role`, `timestamp` (Unix ms), optional
-`metadata` {`created_at`, `agent_id`, `conversation_id`, `provider`{`provider_id`,`model_id`,`usage`}}, and:
+[local-store.ts:135-137](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L135-L137)), `role`, `timestamp` (Unix ms), optional `metadata` {`created_at`, `agent_id`, `conversation_id`, `provider`{`provider_id`,`model_id`,`usage`}}, and:
 
 - `role:"user"`: `content` string or array of `text`/`image` parts ([pi types.ts:542-546](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/ai/src/types.ts#L542-L546)).
 - `role:"assistant"`: `content` array of `{type:"text",text}`,
@@ -223,59 +246,14 @@ Entry `id` is 8 hex characters; entry `timestamp` is ISO, taken from
   `usage`, `stopReason` ([types.ts:397-427](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/ai/src/types.ts#L397-L427), [548-571](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/ai/src/types.ts#L548-L571)).
 - `role:"toolResult"`: `toolCallId`, `toolName`, `content` (text/image), `isError` ([types.ts:596-609](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/ai/src/types.ts#L596-L609)).
 
-**sessions.jsonl** ([session-history.ts:6-35](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent/session-history.ts#L6-L35)): `agent_id`, `session_id`,
+### sessions.jsonl
+
+`.letta/sessions.jsonl` ([session-history.ts:6-35](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent/session-history.ts#L6-L35)): `agent_id`, `session_id`,
 `timestamp` (ms), `project`, `model`, `provider`, `usage`, `duration`, `cost`,
 and on the exit line `message_count`, `tool_call_count`, `exit_reason`
 ([116-158](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent/session-history.ts#L116-L158)). Session metadata, not turns.
 
-**Not parsed, from the source review of 2026-10-19** (at
-[`2a46615`](https://github.com/letta-ai/letta-code/commit/2a46615d16babb06cf5450b8e57ecb9bdbf2f436)):
-
-- `~/.letta/channels/<channel>/routing.json`: `{routes: [...]}`, each
-  route `accountId`, `chatId`, `chatType`, `threadId`, `agentId`,
-  `conversationId`, `enabled`, `outboundEnabled`, `detached`,
-  `createdAt` and `updatedAt` (ISO 8601): the messaging chat a
-  conversation is relayed through
-  ([src/channels/config.ts:35](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/channels/config.ts#L35),
-  [58-60](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/channels/config.ts#L58-L60),
-  [src/channels/types.ts:453-476](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/channels/types.ts#L453-L476),
-  [src/channels/routing-store.ts:15-17](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/channels/routing-store.ts#L15-L17)).
-  Joins on `conversationId` and `agentId`.
-- `~/.letta/crons.json`: `{version, scheduler_owner, scheduler_owners,
-  tasks}`, each task `id`, `agent_id`, `conversation_id`, `name`,
-  `description`, `cron`, `timezone`, `recurring`, `prompt`, `status`,
-  `created_at`, `last_fired_at`, `fire_count`, `cancel_reason`,
-  `last_run_at`, `last_run_outcome` and more
-  ([src/cron/cron-file.ts:62-131](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/cron/cron-file.ts#L62-L131));
-  fired, missed and cancelled tasks are dropped after a day. Beside it, `runs/<task
-  id>.jsonl`, one line per run: `ts` (ms), `jobId`, `action`, `status`,
-  `outcome`, `reason`, `error`, `summary`, `agentId`,
-  `conversationId`, `runId` and the schedule window
-  ([src/cron/run-log.ts:28-47](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/cron/run-log.ts#L28-L47),
-  [76-83](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/cron/run-log.ts#L76-L83)).
-  The task's `prompt` is the text a scheduled turn sends.
-- `~/.letta/listener-state/<first 24 hex of sha256 of the server URL>/<agent id>_<conversation id>.json`
-  (both ids URL-encoded): a turn the remote listener did not finish,
-  with `agentId`, `conversationId`, `runId`, `toolCallIds`,
-  `unstartedToolCallIds`, `results` (the approval results),
-  `workingDirectory` and `actingUserId`
-  ([src/websocket/listener/interrupted-turn-storage.ts:51-56](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/websocket/listener/interrupted-turn-storage.ts#L51-L56),
-  [interrupted-turn-types.ts:5-59](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/websocket/listener/interrupted-turn-types.ts#L5-L59)).
-  The transcripts never hold an interrupted turn, so this is its only
-  local trace.
-- `~/.letta/state/<24 hex>/input-dispositions-v2.json`, new since
-  [`77faf36`](https://github.com/letta-ai/letta-code/commit/77faf36e34378946c8e69c0bfaa5595a7be4c326):
-  the listener's ledger of accepted remote inputs, each entry with
-  `acceptedAt` and `expiresAt` and, until it has been replayed after a
-  crash, the `queuedInput` itself
-  ([src/websocket/listener/input-disposition-path.ts:5-17](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/websocket/listener/input-disposition-path.ts#L5-L17),
-  [types.ts:317-340](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/websocket/listener/types.ts#L317-L340)).
-  What `queuedInput` holds was not read further.
-**Chunk logs** hold the last 100 server stream chunks with content cut to
-200 characters ([chunk-log.ts:1-12](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/helpers/chunk-log.ts#L1-L12), [27-30](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/helpers/chunk-log.ts#L27-L30)). Useful for message ids
-and timing only; not parsed into turns.
-
-## 4. Joins
+## 4. Joins and timestamps
 
 - Reflection transcript: agent and conversation from the two directory names.
   Project path: the `sessions.jsonl` line with the same `agent_id` whose
@@ -307,14 +285,81 @@ and timing only; not parsed into turns.
   transcript line is later than its `messages.jsonl` entry by up to the
   turn's duration, the prompt by all of it.
 
-## 5. SQLite or binary stores
+## 5. Other stores
 
-No SQLite in Letta Code. V1 `~/.letta/sqlite.db` ([0.11.7 db.py:149](https://github.com/letta-ai/letta/blob/bf9356ceaf8ac4c80f1b418f209ad49b04986885/letta/server/db.py#L149)), table
+No SQLite in Letta Code. None of the stores below is parsed; channel routing, the scheduled
+tasks, the interrupted turns and the input ledger are from the source review of 2026-10-19 (at
+[`2a46615`](https://github.com/letta-ai/letta-code/commit/2a46615d16babb06cf5450b8e57ecb9bdbf2f436)).
+
+### V1 server database
+
+V1 `~/.letta/sqlite.db` ([0.11.7 db.py:149](https://github.com/letta-ai/letta/blob/bf9356ceaf8ac4c80f1b418f209ad49b04986885/letta/server/db.py#L149)), table
 `messages` ([orm/message.py:15-61](https://github.com/letta-ai/letta/blob/bf9356ceaf8ac4c80f1b418f209ad49b04986885/letta/orm/message.py#L15-L61)): `id`, `agent_id`, `role`
 (`user|assistant|system|tool`), `text`, `content` (JSON parts), `model`,
 `tool_calls` (OpenAI-shaped JSON), `tool_call_id`, `tool_returns`, `step_id`,
 `sequence_id`, `created_at` ([orm/base.py:16](https://github.com/letta-ai/letta/blob/bf9356ceaf8ac4c80f1b418f209ad49b04986885/letta/orm/base.py#L16)). Proposed as a later parser;
 the JSON column encodings were not verified.
+
+### Chunk logs
+
+The chunk logs, `.letta/logs/chunk-logs/*/*.jsonl`, hold the last 100 server stream chunks
+with content cut to 200 characters ([chunk-log.ts:1-12](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/helpers/chunk-log.ts#L1-L12), [27-30](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/helpers/chunk-log.ts#L27-L30)). Useful for message ids
+and timing only; not parsed into turns.
+
+### Channel routing
+
+`~/.letta/channels/<channel>/routing.json`: `{routes: [...]}`, each
+route `accountId`, `chatId`, `chatType`, `threadId`, `agentId`,
+`conversationId`, `enabled`, `outboundEnabled`, `detached`,
+`createdAt` and `updatedAt` (ISO 8601): the messaging chat a
+conversation is relayed through
+([src/channels/config.ts:35](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/channels/config.ts#L35),
+[58-60](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/channels/config.ts#L58-L60),
+[src/channels/types.ts:453-476](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/channels/types.ts#L453-L476),
+[src/channels/routing-store.ts:15-17](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/channels/routing-store.ts#L15-L17)).
+Joins on `conversationId` and `agentId`.
+
+### Scheduled tasks
+
+`~/.letta/crons.json`: `{version, scheduler_owner, scheduler_owners,
+tasks}`, each task `id`, `agent_id`, `conversation_id`, `name`,
+`description`, `cron`, `timezone`, `recurring`, `prompt`, `status`,
+`created_at`, `last_fired_at`, `fire_count`, `cancel_reason`,
+`last_run_at`, `last_run_outcome` and more
+([src/cron/cron-file.ts:62-131](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/cron/cron-file.ts#L62-L131));
+fired, missed and cancelled tasks are dropped after a day. Beside it, `runs/<task
+id>.jsonl`, one line per run: `ts` (ms), `jobId`, `action`, `status`,
+`outcome`, `reason`, `error`, `summary`, `agentId`,
+`conversationId`, `runId` and the schedule window
+([src/cron/run-log.ts:28-47](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/cron/run-log.ts#L28-L47),
+[76-83](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/cron/run-log.ts#L76-L83)).
+The task's `prompt` is the text a scheduled turn sends.
+
+### Interrupted turns
+
+The file is the following, both ids URL-encoded:
+
+- `~/.letta/listener-state/<first 24 hex of sha256 of the server URL>/<agent id>_<conversation id>.json`
+
+It holds a turn the remote listener did not finish,
+with `agentId`, `conversationId`, `runId`, `toolCallIds`,
+`unstartedToolCallIds`, `results` (the approval results),
+`workingDirectory` and `actingUserId`
+([src/websocket/listener/interrupted-turn-storage.ts:51-56](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/websocket/listener/interrupted-turn-storage.ts#L51-L56),
+[interrupted-turn-types.ts:5-59](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/websocket/listener/interrupted-turn-types.ts#L5-L59)).
+The transcripts never hold an interrupted turn, so this is its only
+local trace.
+
+### Input ledger
+
+`~/.letta/state/<24 hex>/input-dispositions-v2.json`, new since
+[`77faf36`](https://github.com/letta-ai/letta-code/commit/77faf36e34378946c8e69c0bfaa5595a7be4c326):
+the listener's ledger of accepted remote inputs, each entry with
+`acceptedAt` and `expiresAt` and, until it has been replayed after a
+crash, the `queuedInput` itself
+([src/websocket/listener/input-disposition-path.ts:5-17](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/websocket/listener/input-disposition-path.ts#L5-L17),
+[types.ts:317-340](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/websocket/listener/types.ts#L317-L340)).
+What `queuedInput` holds was not read further.
 
 ## 6. Format versions
 
@@ -335,8 +380,50 @@ column `api_key` ([0.11.7 orm/provider.py:30-32](https://github.com/letta-ai/let
 
 ## 8. Parser plan
 
-Parse `transcript.jsonl` and `messages.jsonl` always (issue 122). In
-local-backend mode `messages.jsonl` is the store of record, the local
+Parse `transcript.jsonl` and `messages.jsonl` always (issue 122), and `sessions.jsonl`.
+
+| Column | transcript.jsonl | messages.jsonl |
+| --- | --- | --- |
+| timestamp_utc | `captured_at` | entry `timestamp` |
+| session_id | conversation directory name | header `id` |
+| project_path | `sessions.jsonl` `project` (heuristic) | header `cwd` |
+| git_branch | empty | empty |
+| turn_type | `user`, `assistant`; `reasoning` → thinking; `error` → system; `tool_call` → one tool_use and one tool_result row | role/part type; `compaction` → system |
+| model | empty | `message.model` (`responseModel` when set) |
+| tool_name, tool_use_id | `name`, empty | `toolCall.name`/`id`, `toolResult.toolName`/`toolCallId` |
+| text | `text`; `argsText` through pi's argument summary when it parses as JSON; `resultText` | text, thinking, the argument summary, result text |
+
+### Permission state
+
+None of the record shapes in
+[section 3](#3-record-schema) records a permission decision. A project's
+`.letta/settings.local.json` holds its permissions
+([`collectors/research/letta.md`](../../collectors/research/letta.md)); at the cited commit
+their shape was not recorded here, so the file is not read.
+
+The source review of 2026-10-19 recorded the shape ([Source reviews](#source-reviews)), so the
+`permissions` object of the four settings files is
+readable now: one `permission setting:
+<allow|deny|ask|alwaysAsk> <rule> (from <file>, file mtime)` row per
+rule, one for `mode` and one per `additionalDirectories` entry. A
+denied call in `messages.jsonl` is an error `toolResult`; the
+interrupted-turn records carry approval results ([Interrupted turns](#interrupted-turns)).
+
+### Model
+
+`messages.jsonl` goes through pi's reader, so it gets pi's
+`model: <id> provider=<provider>` row at the first assistant
+`message.model` of a conversation and `model: <old> -> <new>
+provider=<provider>` on each change
+([Model in `pi.md`](pi.md#model)). Each `sessions.jsonl` line
+is one `system` row; after the first line of a `session_id` that names a
+`model`, a `model: <model> provider=<provider>` row follows, and a later
+line of the same `session_id` with another `model` gets a `model: <old> ->
+<new> provider=<provider>` row. `transcript.jsonl` records no model.
+
+### Past use and secondary sources
+
+In local-backend mode `messages.jsonl` is the store of record, the local
 backend's own message store, with models, tool ids and per-message
 times; it is primary. `transcript.jsonl` copies each completed turn of the
 same conversation and is a secondary source: its rows are dropped when a
@@ -352,34 +439,14 @@ copy of the conversation. `messages.jsonl` alone holds the turns that ended
 in an error or an interrupt. `sessions.jsonl` is primary, one `system` row
 per line, and gives the transcript's project attribution.
 
-| Column | transcript.jsonl | messages.jsonl |
-| --- | --- | --- |
-| timestamp_utc | `captured_at` | entry `timestamp` |
-| session_id | conversation directory name | header `id` |
-| project_path | `sessions.jsonl` `project` (heuristic) | header `cwd` |
-| git_branch | empty | empty |
-| turn_type | `user`, `assistant`; `reasoning` → thinking; `error` → system; `tool_call` → one tool_use and one tool_result row | role/part type; `compaction` → system |
-| model | empty | `message.model` (`responseModel` when set) |
-| tool_name, tool_use_id | `name`, empty | `toolCall.name`/`id`, `toolResult.toolName`/`toolCallId` |
-| text | `text`; `argsText` through pi's argument summary when it parses as JSON; `resultText` | text, thinking, the argument summary, result text |
+`crons.json` and `runs/*.jsonl` (scheduled tasks and their
+runs, secondary to the conversation they target), `listener-state/`
+(primary for the interrupted turns it holds) and the input ledger
+are not read; chunk logs as before ([section 5](#5-other-stores)).
 
-**Model rows.** `messages.jsonl` goes through pi's reader, so it gets pi's
-`model: <id> provider=<provider>` row at the first assistant
-`message.model` of a conversation and `model: <old> -> <new>
-provider=<provider>` on each change
-([section 8 of `pi.md`](pi.md#8-parser-plan)). Each `sessions.jsonl` line
-is one `system` row; after the first line of a `session_id` that names a
-`model`, a `model: <model> provider=<provider>` row follows, and a later
-line of the same `session_id` with another `model` gets a `model: <old> ->
-<new> provider=<provider>` row. `transcript.jsonl` records no model.
+### Sync, relay and origin
 
-**Permission rows.** None of the record shapes in
-[section 3](#3-record-schema) records a permission decision. A project's
-`.letta/settings.local.json` holds its permissions
-([`collectors/research/letta.md`](../../collectors/research/letta.md)), but
-their shape is not recorded here, so the file is not read.
-
-Sync: in the default `api` backend the conversation is server state by
+In the default `api` backend the conversation is server state by
 design, not an upload: Letta Code creates, reads and deletes the agent
 and its conversations through the server's API
 ([backend/backend.ts:376](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/backend.ts#L376),
@@ -391,9 +458,8 @@ It is on unless the user ran `letta backend local`, which sets
 `preferredBackendMode` to `local` in `.letta/settings.json`
 ([cli/subcommands/backend.ts:38](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/subcommands/backend.ts#L38),
 [65](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/subcommands/backend.ts#L65)). The local markers are the ids
-listed under "Server-side session markers" in
-[section 2](#2-transcript-files). The parser yields, fixture only (no
-real install has shown these files):
+listed under [Server-side session markers](#server-side-session-markers). The parser yields,
+fixture only (no real install has shown these files):
 
 - per `transcripts/<agent id>/<conversation id>/` whose agent id does
   not start `agent-local-`, one `system` row `session synced:
@@ -410,17 +476,8 @@ real install has shown these files):
   `session_id` the conversation id and, for the project file,
   `project_path` the project.
 
-Deleting an agent from the `/agents` selector deletes it on its server
-and touches no local file
-([cli/components/AgentSelector.tsx:486-514](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/components/AgentSelector.tsx#L486-L514)),
-so the transcript directories, `sessions.jsonl` lines and settings
-entries that name it survive, and nothing local records that the server
-copy is gone. The only callers of `deleteConversation` remove internal
-fork and ephemeral conversations
-([agent/subagents/fork-conversation.ts:100](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent/subagents/fork-conversation.ts#L100),
-[websocket/app-server-openai.ts:326](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/websocket/app-server-openai.ts#L326)).
 Memfs pushes the agent's memory to the server's git endpoint (see
-[section 2](#2-transcript-files)); a commit there is memory, not a
+[Server-side session markers](#server-side-session-markers)); a commit there is memory, not a
 transcript, and is not a row. Telemetry is on unless `LETTA_CODE_TELEM`
 is `0` or `false` or `DO_NOT_TRACK` is `1`, goes to
 `/v1/metadata/telemetry`, and carries counts, tool names and lengths,
@@ -436,32 +493,30 @@ streamed output; the queue is in memory and leaves no file
 session id and last run id, and no transcript
 ([cli/app/use-feedback-handler.ts:78-94](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/app/use-feedback-handler.ts#L78-L94)).
 
-Source review of 2026-10-19, by class (detail in
-[section 1](#1-source) and [section 3](#3-record-schema)):
+Relay is recorded in `channels/*/routing.json` ([Channel routing](#channel-routing))
+and not read; a parser for it sets `records_relay` and yields
+`session relayed: <channel> chat <chatId> ... (from
+.letta/channels/<channel>/routing.json, createdAt)` per route. No remote-origin listing found.
 
-- Permission: the `permissions` object of the four settings files is
-  readable now that its shape is known: one `permission setting:
-  <allow|deny|ask|alwaysAsk> <rule> (from <file>, file mtime)` row per
-  rule, one for `mode` and one per `additionalDirectories` entry. A
-  denied call in `messages.jsonl` is an error `toolResult`; the
-  interrupted-turn records carry approval results.
-- Model: covered.
-- Past use: `crons.json` and `runs/*.jsonl` (scheduled tasks and their
-  runs, secondary to the conversation they target), `listener-state/`
-  (primary for the interrupted turns it holds) and the input ledger
-  are not read; chunk logs as before.
-- Sync, relay and origin: relay is recorded in `channels/*/routing.json`
-  and not read; a parser for it sets `records_relay` and yields
-  `session relayed: <channel> chat <chatId> ... (from
-  .letta/channels/<channel>/routing.json, createdAt)` per route.
-- Scratch directories: classed by the catalog rule; none outside the
-  home.
-- Deletion: covered.
-- Drift: none.
-- Bad lines: covered for the files read; a reader added for
-  `runs/*.jsonl` reports bad lines like the others.
+### Scratch directories
 
-Fixture `.letta/transcripts/agent-1a2b/conv-9f/transcript.jsonl`:
+Classed by the catalog rule: the memory clones and their `memory-worktrees/` under
+`~/.letta/agents/<agent id>/` and `~/.letta/projects/<sanitised cwd>/agent-tools/` sit under the
+`.letta` entry ([Source reviews](#source-reviews)); none outside the home.
+
+### Deletion
+
+Covered: no local file records a server-side delete
+([What survives a delete](#what-survives-a-delete)).
+
+### Bad lines
+
+Covered for the files read; a reader added for
+`runs/*.jsonl` reports bad lines like the others.
+
+### Fixtures
+
+- `.letta/transcripts/agent-1a2b/conv-9f/transcript.jsonl`:
 
 ```json
 {"kind":"user","text":"list the repo","captured_at":"2026-10-01T12:00:05.120Z","source_line_id":"ui-1"}
@@ -469,7 +524,7 @@ Fixture `.letta/transcripts/agent-1a2b/conv-9f/transcript.jsonl`:
 {"kind":"assistant","text":"One file: README.md","captured_at":"2026-10-01T12:00:05.120Z","source_line_id":"ui-3","source_message_id":"message-77"}
 ```
 
-Fixture `.letta/lc-local-backend/conversations/Y29udmVyc2F0aW9uOmxvY2FsLWNvbnYtMQ/messages.jsonl`:
+- `.letta/lc-local-backend/conversations/Y29udmVyc2F0aW9uOmxvY2FsLWNvbnYtMQ/messages.jsonl`:
 
 ```json
 {"type":"session","version":3,"id":"local-conv-1","timestamp":"2026-10-01T12:00:00.000Z","cwd":"/home/alice/repo"}
@@ -478,16 +533,8 @@ Fixture `.letta/lc-local-backend/conversations/Y29udmVyc2F0aW9uOmxvY2FsLWNvbnYtM
 {"type":"message","id":"c3d4e5f6","parentId":"b2c3d4e5","timestamp":"2026-10-01T12:00:03.000Z","message":{"id":"letta-msg-3","role":"toolResult","toolCallId":"call_1","toolName":"Bash","content":[{"type":"text","text":"README.md"}],"isError":false,"timestamp":1759320003000}}
 ```
 
-Fixture `.letta/sessions.jsonl`:
+- `.letta/sessions.jsonl`:
 
 ```json
 {"agent_id":"agent-1a2b","session_id":"s-1","timestamp":1759320000000,"project":"/home/alice/repo","model":"claude-sonnet-4-5","provider":"anthropic","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_write_tokens":0,"reasoning_tokens":0,"steps":0},"duration":{"api_ms":0,"wall_ms":0},"cost":{"type":"hosted"}}
 ```
-
-Confidence. High: file locations, line shapes, field names, timestamp units
-(source). Medium: pi-ai optional fields at the pinned version; the
-`api` value in the fixture is illustrative. Not determined: V1 `content`
-and `tool_calls` JSON encodings; whether reflection transcripts are written
-on Windows when auto-reflection is off (`LETTA_ENABLE_WINDOWS_AUTO_REFLECTION`,
-[reflection-settings.ts:9](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/reflection-settings.ts#L9),
-exists, but the append path at the cited loop is unconditional).
