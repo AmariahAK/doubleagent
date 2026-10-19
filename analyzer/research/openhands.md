@@ -95,6 +95,29 @@ Inside ([`conversation/persistence_const.py:4-10`](https://github.com/OpenHands/
 The CLI also keeps `.openhands/projects/<sha256(cwd)>/prompt_history.json`
 ([`openhands_cli/locations.py:34-47`](https://github.com/OpenHands/OpenHands-CLI/blob/954f2ba646e8d749261a8f2b2b7e3031fa39be9f/openhands_cli/locations.py#L34-L47)).
 
+### What survives a delete
+
+The Agent Server's delete, which Agent Canvas uses, notifies webhooks
+with status `DELETING` and removes the conversation directory and, once
+no other conversation uses it, the worktree directory; the workspace and
+the worktree's branches in the user's repository stay, and children and
+forks keep their now dangling `parent_conversation_id` or
+`forked_from_conversation_id`
+([`agent_server/conversation_service.py:1774-1838`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/conversation_service.py#L1774-L1838)).
+Canvas also deletes the hidden planning conversation and the metadata
+entry, and for a cloud backend the remote conversation; its archive only
+adds the id to `archived-conversations`. The CLI has no delete. What
+remains: the CLI's `prompt_history.json`, the last 100 prompts per
+working directory with text and local time and no conversation; a fork,
+which is a full copy of its source's events and state; the global
+`agent-canvas/bash_events/` record of terminal commands; and Canvas
+browser-storage keys with no message text, such as
+`openhands-last-conversation-by-backend`
+([section 5](#5-sqlite-or-binary-stores)). Nothing local records a
+deleted conversation. The analyzer reads a fork as its own conversation
+and does not read the prompt history, the global terminal record or the
+browser storage ([section 8](#8-parser-plan)).
+
 ## 3. Record schema
 
 Every event has `kind` (the Python class name,

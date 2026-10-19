@@ -92,6 +92,24 @@ for sync only (2026-10-17).
 Sub-agents run pi with `--no-session`, so they leave no file
 ([.pi/extensions/subagent/spawn.ts:14](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/subagent/spawn.ts#L14), [318-322](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/subagent/spawn.ts#L318-L322)).
 
+### What survives a delete
+
+little-coder has no delete of its own: `/clear` is an alias for pi's
+new-session command and deletes nothing
+([.pi/extensions/clear-command/index.ts:18-23](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/clear-command/index.ts#L18-L23)).
+A session file is removed only through pi's own session picker
+([section 8 of `pi.md`](pi.md#8-parser-plan)), which leaves two things
+behind: the session's checkpoint directory
+`.little-coder/checkpoints/<session file name>/`, whose name still joins
+its pre-edit file copies to the session, and the prompt history
+`little-coder-prompt-history.json`, the last 100 prompts with no time and
+no session id
+([.pi/extensions/prompt-history/index.ts:26](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L26)).
+No deletion marker is written. The analyzer reads both: the prompt
+history as `user` rows with no timestamp and no session
+([section 8](#8-parser-plan)), and the checkpoints, which
+[section 1](#1-source) counts as covered past use.
+
 ## 3. Record schema
 
 pi session format version 3

@@ -174,6 +174,25 @@ there is no `started_at_ms` or `completed_at_ms` on `thread_items`, so
 stamps every item row, and an `agentMessage` row precedes its rollout
 twin by the time the message took to stream.
 
+### What survives a delete
+
+As in Codex, `thread/delete` removes the thread's rollouts, its index
+lines and its rows in the SQLite stores, `logs_2.sqlite` included, and
+with them the `session synced:` Sentry feedback marker
+([`codex-rs/state/src/runtime/threads.rs:1153`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/state/src/runtime/threads.rs#L1153),
+[`codex-rs/thread-store/src/local/delete_thread.rs:262`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/thread-store/src/local/delete_thread.rs#L262)).
+It leaves `history.jsonl`, one line per submitted prompt with its session
+id and time, and the import ledger
+`external_agent_session_imports.json`, which names the rollouts imported
+from Claude Code or Cursor. The memories files (off by default) and
+`db-backups/` exist as in Codex ([section 1](#1-source)); what a delete
+does to them is not stated in this document. No deletion marker is
+written. The analyzer reads `history.jsonl`, `state_5.sqlite` and
+`thread_history_1.sqlite` as secondary sources and the import ledger to
+mark imported rollouts ([section 8](#8-parser-plan)), and does not read
+the memories files or `db-backups/` (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 6. Format versions
 
 Tracks upstream Codex; no fork-specific version marker in the records.

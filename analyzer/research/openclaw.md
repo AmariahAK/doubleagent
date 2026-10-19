@@ -123,6 +123,31 @@ No prompt-history file exists: not found in openclaw/openclaw at
 (grepped `history.jsonl`, `input-history`, `prompt-history` and
 `historyFile` in `src/`).
 
+### What survives a delete
+
+`openclaw sessions archive` keeps the transcript and only sets
+`archivedAt`, `archivedBy` and `archiveReason`; `openclaw sessions
+delete` removes the session row, its generations and bindings and keeps
+a `.jsonl.deleted.<ts>` archive with its `session_transcript_archives`
+blob unless the session was incognito, as a reset keeps a
+`.jsonl.reset.<ts>` one
+([`docs/cli/sessions.md:222-233`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/cli/sessions.md#L222-L233)).
+The memory index keeps the session's `memory_index_chunks` until
+`openclaw memory forget`, which writes one `memory_session_tombstones`
+row per forgotten session; inbound channel messages in
+`channel_ingress_events` are pruned by age and count, not by deletion,
+`conversation_deliveries` rows go only with their conversation, and an
+uploaded backup keeps the session. Pending inputs cascade away with the
+session, whether the full-text index rows go is not determined, and a
+public share grant is lost with the session row
+([section 8](#8-parser-plan)). There is no prompt-history file. The
+analyzer reads the archive blobs as primary and the published
+`.jsonl.deleted.*` and `.jsonl.reset.*` files as secondary, shows a
+deleted archive only as an `archive=deleted.<ts>` session-start row and
+the backups as `backup uploaded:` rows, and does not read the memory
+index, the tombstones, the full-text index or the channel tables (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 Each `transcript_events.event_json` (or decompressed `event_zstd`) and each

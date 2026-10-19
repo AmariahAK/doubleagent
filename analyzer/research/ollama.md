@@ -107,6 +107,25 @@ explicit `/save <file>`, the raw request JSON in the current working
 directory ([`cmd/tui/chat/debug.go:28-48`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/cmd/tui/chat/debug.go#L28-L48)).
 There is no session store from those releases to parse.
 
+### What survives a delete
+
+A chat deleted in the desktop app is deleted only locally, with a WAL
+checkpoint after it
+([`ui.go:1415-1439`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1415-L1439);
+[`database.go:823-832`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L823-L832));
+its messages, tool calls and attachments go with the `chats` row through
+`ON DELETE CASCADE` ([section 3](#3-record-schema)). The REPL prompt
+history `.ollama/history` is a separate record that a desktop chat never
+reaches, since only the REPL's readline writes it: the last 100 inputs,
+slash commands included, with no time, session or working directory. A
+REPL session saved with `/save <model>` lives on as a model layer under
+the server's `models/blobs`, and an `ollama push` of it leaves only a
+`[GIN]` line in the server log. A deletion marker is not stated. The
+analyzer reads `.ollama/history` as `user` rows with no timestamp
+([section 8](#8-parser-plan)); the saved session layer is excluded by the
+collector with the weights and stays a manual step, and the server logs
+are not read.
+
 ## 3. Record schema
 
 ### `db.sqlite`

@@ -341,6 +341,21 @@ are complete paragraphs whose join is the committed record. Each
   (the prompt text as typed) followed by an object `{project, session}`.
   No timestamp.
 
+### What survives a delete
+
+How a Muse Code session is deleted, and what a delete removes, is not
+stated in this document: the real install deleted no session. Outside
+the session directory, four stores hold records of a session: the TUI
+prompt history `tui-history.jsonl` (each prompt with its session id and
+workspace root, no timestamp), the session index `session-index.db` (one
+row per session with its workspace, model, title and first prompt),
+`session-names.db` (the name history per session) and the derived TUI
+view under `sessions/.msp-view-v1/<session id>/`. Whether any of them
+outlives a deleted session is not stated, and no deletion marker is
+known. The analyzer reads the prompt history, as `user` rows with an
+empty `timestamp_utc` ([section 8](#8-parser-plan)), and none of the
+other three.
+
 ## 6. Format versions
 
 Envelope `schema_version` 1 and frame `frame_schema_version` 1 only.

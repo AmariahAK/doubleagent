@@ -181,6 +181,33 @@ yet:
   Secondary, as for the cron runs; this directory was already in the
   cited commit and was not traced then.
 
+### What survives a delete
+
+Deleting a WebUI chat removes the session's rows and its child sessions'
+rows from `sessions.sqlite3`, its WebUI transcript and, when the user
+confirms, its scheduled jobs
+([`webui/ws_http.py:1363-1378`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/ws_http.py#L1363-L1378);
+[`session/manager.py:555-574`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/session/manager.py#L555-L574));
+`/new` removes the session's messages and leaves the WebUI transcript. No
+`VACUUM` or `secure_delete` is set, so a deleted session's pages stay in
+the database's free list or WAL until reused
+([section 5](#5-sqlite-or-binary-stores)). What remains: the memory
+journal `memory/history.jsonl` (summaries, not copies of turns); the CLI
+history `history/cli_history` (each prompt with its time, no session;
+nothing truncates it); any frozen namespace JSONL and `jsonl-backup/`
+copy from the database import; the WebUI sidebar cache
+`.webui_session_index.json` until it is rebuilt; `llm_usage.sqlite3`
+(model and time per call, no session key); and the run records of
+scheduled and triggered runs, `cron/runs/<run id>.json` and
+`triggers/runs/<delivery id>.json`, each with the prompt and the reply
+([`triggers/local_store.py:45-50`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_store.py#L45-L50)).
+No deletion marker is written. The analyzer reads the frozen and backup
+JSONL copies, the WebUI transcript and the CLI history as secondary
+sources and the memory journal as a primary source of summaries
+([section 8](#8-parser-plan)), and does not read the sidebar cache, the
+run records or `llm_usage.sqlite3` (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 Line 1 is metadata ([`session/manager.py:1207-1220`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L1207-L1220)): `{"_type":"metadata", key,

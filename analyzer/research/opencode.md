@@ -120,6 +120,29 @@ The 2.0 runtime keeps no other mirror: the `event` table holds payloads
 only on the hosted (workerd) server, never in the CLI
 ([section 5](#5-sqlite-specifics)).
 
+### What survives a delete
+
+In 2.0, deleting a session removes its events and its `session_v2` row,
+which cascades to `session_message`, `session_pending`, `session_inbox`
+and the instruction tables, child sessions first; archiving only sets
+`time_archived`
+([`projector.ts:552-554`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/projector.ts#L552-L554);
+[`packages/core/src/session/sql.ts:79-160`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/sql.ts#L79-L160)).
+In 1.x a delete removes the `session` row with its `session_share` and
+`event` rows and asks the share service to delete a public copy, with no
+local record that it did ([section 8](#8-parser-plan)). What remains:
+the legacy `session`, `message` and `part` rows of a database migrated
+to 2.0, which nothing deletes; `prompt-history.jsonl`, the last 50 TUI
+prompts with no session, project or time; unsent prompts in
+`prompt-stash.jsonl`; a pinned session id in `session.json`; full tool
+outputs under `tool-output/` for seven days; and, for a 1.x share, the
+`creating share` and `removing share` lines in `log/opencode.log`. No
+record of the deletion is left. The analyzer reads the legacy V1 tables,
+for a session `session_message` does not hold, and `opencode-next.db` as
+secondary sources, and does not read the three `~/.local/state/opencode`
+files, the log or `tool-output/`, which the collector excludes (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
 ## 3. Record schema
 
 Drizzle tables in [`packages/core/src/session/sql.ts`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/session/sql.ts).
