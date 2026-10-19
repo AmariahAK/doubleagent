@@ -10,6 +10,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-10-19
+
+### Added
+
+- A secret glob for Codex's shell snapshots, `.codex/shell_snapshots/*`
+  ([#160]). Codex, and Codex Desktop inside the ChatGPT app, writes one
+  `<thread uuid>.<unix ns>.sh` file per live thread with the user's
+  exported login-shell environment, so an API key the shell exports is
+  copied into it. The files are now flagged `secret: true` and skipped
+  with `--no-secrets` (`-NoSecrets`), and `--list` (`-List`) prints the
+  glob; 1.14.0 collected them unflagged.
+
 ## [1.14.0] - 2026-10-18
 
 ### Added
@@ -878,7 +890,8 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
   overridden by `--full`; credential files collected and flagged
   `secret: true` by default.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.14.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.15.0...HEAD
+[1.15.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.14.0...collector-v1.15.0
 [1.14.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.13.0...collector-v1.14.0
 [1.13.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.12.0...collector-v1.13.0
 [1.12.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.11.0...collector-v1.12.0
@@ -899,6 +912,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#160]: https://github.com/seanthegeek/doubleagent/issues/160
 [#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#131]: https://github.com/seanthegeek/doubleagent/issues/131

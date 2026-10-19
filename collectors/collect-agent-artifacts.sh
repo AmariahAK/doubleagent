@@ -81,7 +81,7 @@
 # Maintainer documentation, with the table of sh and PowerShell function
 # pairs: collectors/docs/internals.md.
 
-VERSION="1.14.0"
+VERSION="1.15.0"
 TOOL="collect-agent-artifacts"
 
 # Settings every later line relies on: the C locale for byte-wise matching
@@ -1304,6 +1304,7 @@ AppData/Roaming/[Aa]ntigravity/plugin-secrets.json
 .codex/config.toml
 .codex/.env
 .codex/.codex-global-state.json*
+.codex/shell_snapshots/*
 */Roaming/ChatGPT/Network/Cookies*
 */Roaming/ChatGPT/Local State
 */Roaming/Codex/web/Codex/Default/Network/Cookies*

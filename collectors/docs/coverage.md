@@ -328,7 +328,16 @@ The same profile caches are excluded, in `Default` and in each partition.
 `Library/Caches/com.openai.sky.CUAService` are caches and are not
 collected. In `~/.codex` the app places the computer-use app bundle,
 `computer-use/Codex Computer Use.app` (77 MB), which is excluded with
-`.codex/computer-use/*.app`.
+`.codex/computer-use/*.app`. The bundled Codex also writes
+`.codex/shell_snapshots/<thread uuid>.<unix ns>.sh`, the user's exported
+shell environment for each open thread, which can hold any API key the
+login shell exports; the snapshots are flagged `secret: true` from
+collector 1.15.0. On ChatGPT 26.1013.40934 (macOS, October 2026) a reply
+to a ChatGPT conversation from inside the app left nothing on disk, and
+the app's paired-phone remote control left no file of its own: its
+local record is a row in `.codex/state_5.sqlite`, two keys in
+`.codex/.codex-global-state.json` and rows in the app server's log
+database `.codex/logs_2.sqlite`, all collected as `codex-cli`.
 
 ## Home directory discovery
 

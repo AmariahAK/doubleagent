@@ -1002,6 +1002,16 @@ Mk 'Users/alice/.qwen/channels/sessions.json' "{}`n"
 Mk 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json' "{}`n"
 Mk 'Users/alice/.local/share/kilo/log/2026-10-17T120000.log' "INFO creating session`n"
 
+# 2026-10-18 Codex shell snapshots (#160)
+# Codex Desktop inside the ChatGPT app (build 26.1013.40934, macOS,
+# 2026-10-18) writes .codex/shell_snapshots/<thread uuid>.<unix ns>.sh, the
+# user's exported shell environment replayed for the sandbox, so any API key
+# the login shell exports lands there. Flagged secret since 1.15.0. Checks
+# follow the default and -NoSecrets runs below; the same file is in smoke.sh
+# under alice.
+$s160 = 'Users/alice/.codex/shell_snapshots/22222222-2222-4222-8222-222222222222.1792000000000000000.sh'
+Mk $s160 "# Snapshot file`nexport EXAMPLE_API_KEY=x`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1512,6 +1522,8 @@ Check '#153 little-coder legacy config.json flagged secret' { Is113 'Users/alice
 Check '#153 Qwen Code channel credentials flagged secret' { (Is113 'Users/alice/.qwen/channels/qqbot-credentials.json' 'qwen-code' $true) -and (Is113 'Users/alice/.qwen/channels/weixin/account.json' 'qwen-code' $true) }
 Check '#153 Qwen Code channel routing files not flagged' { (Is113 'Users/alice/.qwen/channels/sessions.json' 'qwen-code' $false) -and (Is113 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json' 'qwen-code' $false) }
 Check '#153 Kilo log directory collected' { Is113 'Users/alice/.local/share/kilo/log/2026-10-17T120000.log' 'kilo-code' $false }
+# 2026-10-18 Codex shell snapshots (#160)
+Check '#160 Codex shell snapshot flagged secret' { Is113 $s160 'codex-cli' $true }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
@@ -1716,6 +1728,8 @@ Check '#153 Gemini CLI bug-memory heap snapshot skipped without secrets' { (Stat
 Check '#153 little-coder legacy config.json skipped without secrets' { (StatusOf 'Users/alice/.little-coder/config.json') -eq 'skipped_secret' }
 Check '#153 Qwen Code channel credentials skipped without secrets' { (StatusOf 'Users/alice/.qwen/channels/qqbot-credentials.json') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.qwen/channels/weixin/account.json') -eq 'skipped_secret' }
 Check '#153 Qwen Code channel routing files kept without secrets' { (StatusOf 'Users/alice/.qwen/channels/sessions.json') -eq 'collected' -and (StatusOf 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json') -eq 'collected' }
+# 2026-10-18 Codex shell snapshots (#160)
+Check '#160 Codex shell snapshot skipped without secrets' { (StatusOf $s160) -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }

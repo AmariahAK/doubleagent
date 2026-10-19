@@ -76,7 +76,7 @@ param(
 
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Continue'
-$ToolVersion = '1.14.0'
+$ToolVersion = '1.15.0'
 $TOOL = 'collect-agent-artifacts'
 
 # ===========================================================================
@@ -1341,6 +1341,7 @@ AppData/Roaming/[Aa]ntigravity/plugin-secrets.json
 .codex/config.toml
 .codex/.env
 .codex/.codex-global-state.json*
+.codex/shell_snapshots/*
 */Roaming/ChatGPT/Network/Cookies*
 */Roaming/ChatGPT/Local State
 */Roaming/Codex/web/Codex/Default/Network/Cookies*
