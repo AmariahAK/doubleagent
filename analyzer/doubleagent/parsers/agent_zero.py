@@ -34,6 +34,16 @@ Files, relative to the home directory, where `<a0>` is `agent-zero`,
   locations of the same document, which Agent Zero moves without
   conversion.
 
+A Docker or Podman named volume mounted at `/a0/usr` (the README's
+`a0_usr`, Compose's `<project>_a0_usr`, the A0 Launcher's
+`a0-launcher-<slug>-usr`) is collected with the volume's `_data` directory
+as the home, so the same files arrive as `chats/<ctxid>/chat.json`,
+`chats/<ctxid>/messages/<n>.txt` and `chats/<ctxid>.json`, without the
+`<a0>/usr/` prefix; both forms are selected (issue 175). Not observed on
+any real install, source-derived (agent0ai/agent-zero at e3051fb,
+`README.md:92`; agent0ai/a0-launcher at b0333d8,
+`shell/docker_manager/index.js:948-951`).
+
 Log item ids equal history message ids for user messages, tool results
 (`helpers/tool.py:56-61`) and assistant responses (`agent.py:529-534`, the
 `agent` log item that streamed the generation). The research document's
@@ -99,7 +109,10 @@ from ..model import Row, compact
 from ..timeutil import to_utc
 from .base import Options, Parser, compact_json, file_mtime, text_of, track_change
 
-A0 = r"(?:Desktop/)?agent-zero/(?:[^/]+/)?(?:usr|tmp)/chats"
+# A home install keeps the chats under `<a0>/usr/chats` (or the legacy
+# `<a0>/tmp/chats`); a volume mounted at `/a0/usr` is collected with its
+# `_data` directory as the home, so its chats start at `chats/` (issue 175).
+A0 = r"(?:(?:Desktop/)?agent-zero/(?:[^/]+/)?(?:usr|tmp)/)?chats"
 CHAT_RX = re.compile(r"^%s/[^/]+/chat\.json$" % A0)
 LEGACY_RX = re.compile(r"^%s/[^/]+\.json$" % A0)
 

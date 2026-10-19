@@ -8899,6 +8899,86 @@ class AgentZeroTests(ParserBase):
         )
         self.assertFalse([r for r in rows if r.text.startswith("session synced:")])
 
+    # -- Docker volume layout (issue 175) --------------------------------------
+
+    def _volume(self):
+        from fixtures import build_agent_zero_volume
+
+        col = open_input(build_agent_zero_volume(self.tmp / "volumes"), self.cat)
+        self.assertEqual(col.kind, "collected")
+        return {(a.home.original, a.rel): a for a in col.artifacts}
+
+    def test_volume_paths_selected(self):
+        from fixtures import (
+            AGENT_ZERO_LAUNCHER_VOLUME,
+            AGENT_ZERO_LEGACY_REL,
+            AGENT_ZERO_VOLUME,
+            AGENT_ZERO_VOLUME_REL,
+        )
+
+        arts = self._volume()
+        p = AgentZeroParser()
+        self.assertEqual(
+            sorted(k for k, a in arts.items() if p.wants(a)),
+            sorted(
+                [
+                    (AGENT_ZERO_LAUNCHER_VOLUME, AGENT_ZERO_LEGACY_REL),
+                    (AGENT_ZERO_VOLUME, AGENT_ZERO_VOLUME_REL),
+                ]
+            ),
+        )
+        self.assertEqual({a.agent for a in arts.values()}, {"agent-zero"})
+        self.assertIn((AGENT_ZERO_VOLUME, "settings.json"), arts)
+        self.assertTrue(p.wants(rel_only("chats/Zz/chat.json")))
+        self.assertTrue(p.wants(rel_only("chats/Zz.json")))
+        for rel in ("chats/Zz/messages/1.txt", "projects/demo/chats/Zz/chat.json", "chat.json"):
+            self.assertFalse(p.wants(rel_only(rel)), rel)
+
+    def test_volume_chat_rows_match_home_install(self):
+        from fixtures import AGENT_ZERO_VOLUME, AGENT_ZERO_VOLUME_REL
+
+        art = self._volume()[(AGENT_ZERO_VOLUME, AGENT_ZERO_VOLUME_REL)]
+        rows = list(AgentZeroParser().parse(art, Options()))
+        home_rows = self.rows_for(AgentZeroParser(), self.REL)
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.text, r.model, r.tool_use_id) for r in rows],
+            [(r.turn_type, r.timestamp_utc, r.text, r.model, r.tool_use_id) for r in home_rows],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.host, r.user, r.agent, r.session_id, r.project_path),
+                ("h3", "docker", "agent-zero", AGENT_ZERO_CHAT, "/a0/usr/projects/demo"),
+            )
+        # The long tool result comes from the volume's messages/<n>.txt.
+        self.assertIn(AGENT_ZERO_LONG + " (from file)", [r.text for r in rows])
+
+    def test_volume_legacy_chat_rows(self):
+        from fixtures import (
+            AGENT_ZERO_LAUNCHER_VOLUME,
+            AGENT_ZERO_LEGACY_CHAT,
+            AGENT_ZERO_LEGACY_REL,
+        )
+
+        art = self._volume()[(AGENT_ZERO_LAUNCHER_VOLUME, AGENT_ZERO_LEGACY_REL)]
+        rows = list(AgentZeroParser().parse(art, Options()))
+        self.assertEqual([r.turn_type for r in rows], ["system", "user", "assistant"])
+        self.assertEqual({r.session_id for r in rows}, {AGENT_ZERO_LEGACY_CHAT})
+        self.assertEqual([r.text for r in rows[1:]], ["status of the backups?", "All backups ran."])
+
+    def test_volume_truncated_chat_is_reported_not_fatal(self):
+        from fixtures import AGENT_ZERO_VOLUME, AGENT_ZERO_VOLUME_REL
+
+        art = self._volume()[(AGENT_ZERO_VOLUME, AGENT_ZERO_VOLUME_REL)]
+        raw = json.dumps(agent_zero_chat())
+        cut = raw.index('"id": "t2"')
+        art.disk_path.write_text(raw[: cut + 20], encoding="utf-8")
+        rows = list(AgentZeroParser().parse(art, Options()))
+        self.assertTrue(rows[0].text.startswith("parser: chat.json did not parse"), rows[0].text)
+        self.assertEqual(
+            [r.turn_type for r in rows[1:]], ["user", "assistant", "tool_use", "tool_result"]
+        )
+        self.assertEqual({(r.user, r.session_id) for r in rows}, {("docker", AGENT_ZERO_CHAT)})
+
 
 from doubleagent.parsers.open_interpreter import OpenInterpreterParser
 from fixtures import (

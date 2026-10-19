@@ -7660,6 +7660,67 @@ def build_agent_zero_relayed(home: Path) -> None:
     path.write_text(json.dumps(agent_zero_relayed_chat()), encoding="utf-8")
 
 
+# Docker volume layout (issue 175): the README's `docker run -v a0_usr:/a0/usr`
+# (Compose names it `<project>_a0_usr`) and the A0 Launcher's
+# `a0-launcher-<slug>-usr` volume are mounted at /a0/usr, and the collector
+# takes each volume's `_data` as the home, so the chats sit at `chats/` with
+# no `agent-zero/usr/` prefix (agent0ai/agent-zero e3051fb README.md:92;
+# agent0ai/a0-launcher b0333d8 shell/docker_manager/index.js:948-951). The
+# Compose volume holds the folder layout with its long tool result file, the
+# launcher volume a v0.8.0 legacy `chats/<ctxid>.json`; `settings.json` is
+# the noise file. Source-derived, not observed on any real install.
+AGENT_ZERO_VOLUME = "/var/lib/docker/volumes/proj_a0_usr/_data"
+AGENT_ZERO_VOLUME_REL = "chats/%s/chat.json" % AGENT_ZERO_CHAT
+AGENT_ZERO_LAUNCHER_VOLUME = "/var/lib/docker/volumes/a0-launcher-demo-usr/_data"
+AGENT_ZERO_LEGACY_CHAT = "Legacy01"
+AGENT_ZERO_LEGACY_REL = "chats/%s.json" % AGENT_ZERO_LEGACY_CHAT
+
+
+def agent_zero_legacy_chat():
+    chat = agent_zero_relayed_chat()
+    chat["id"] = AGENT_ZERO_LEGACY_CHAT
+    chat["name"] = "Legacy chat"
+    chat["data"] = {}
+    chat["agents"] = chat["agents"][:1]
+    chat["agents"][0]["data"] = {}
+    return chat
+
+
+def build_agent_zero_volume(root: Path) -> Path:
+    """A collected (manifest) input of two Agent Zero volumes under `root`,
+    attributed as the collector writes volume rows (user `docker`, home the
+    volume's `_data`); returns `root`."""
+    files = {
+        (AGENT_ZERO_VOLUME, AGENT_ZERO_VOLUME_REL): json.dumps(
+            agent_zero_chat(), ensure_ascii=False
+        ),
+        (AGENT_ZERO_VOLUME, "chats/%s/messages/1.txt" % AGENT_ZERO_CHAT): AGENT_ZERO_LONG
+        + " (from file)",
+        (AGENT_ZERO_VOLUME, "settings.json"): '{"chat_model_provider": "openrouter"}',
+        (AGENT_ZERO_LAUNCHER_VOLUME, AGENT_ZERO_LEGACY_REL): json.dumps(agent_zero_legacy_chat()),
+    }
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "collection.json").write_text(json.dumps({"hostname": "h3"}), encoding="utf-8")
+    with open(root / "manifest.jsonl", "w", encoding="utf-8") as fh:
+        for (volume, rel), text in files.items():
+            path = volume + "/" + rel
+            disk = root / ("fs" + path)
+            disk.parent.mkdir(parents=True, exist_ok=True)
+            disk.write_text(text, encoding="utf-8")
+            row = {
+                "user": "docker",
+                "home": volume,
+                "agent": "agent-zero",
+                "path": path,
+                "archive_path": "fs" + path,
+                "type": "file",
+                "status": "collected",
+                "secret": rel == "settings.json",
+            }
+            fh.write(json.dumps(row) + "\n")
+    return root
+
+
 OI_SESSION = "0199a1b2-0000-7000-8000-000000000001"
 OI_IMPORTED = "0199a1b2-0000-7000-8000-000000000002"
 OI_ROLLOUT = (

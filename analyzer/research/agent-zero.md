@@ -71,7 +71,12 @@ MIT ([`LICENSE:1-4`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36
     same. Separately, the parser's path pattern does not match a chat
     collected from a Docker volume, whose paths are relative to the
     volume's `_data` (`chats/<ctxid>/chat.json`), so the `*a0_usr` and
-    `a0-launcher-*-usr` volumes are collected and not parsed.
+    `a0-launcher-*-usr` volumes were collected and not parsed; the
+    parser selects that form since issue 175 (not observed on any real
+    install, source-derived (agent0ai/agent-zero at
+    [`e3051fb`](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec),
+    agent0ai/a0-launcher at
+    [`b0333d8`](https://github.com/agent0ai/a0-launcher/commit/b0333d80b5abf38d8481f55b667b0cf23d805bbb))).
   - Bad lines: already covered; the parser reads no file line by line,
     and a `chat.json` that does not parse yields a whole-file row plus
     the log items it can recover.
@@ -97,9 +102,14 @@ The catalog globs are therefore `agent-zero/*/usr/chats/*/chat.json`,
 `agent-zero/usr/chats/*/chat.json` and the `Desktop/agent-zero` equivalents.
 A Docker volume holding `/a0/usr` (`a0_usr`, `a0-launcher-<slug>-usr`)
 is collected with its `_data` directory as the base, so its chats are
-`chats/<ctxid>/chat.json` relative to that base; the parser's path
-pattern requires an `agent-zero` component and does not select them
-(2026-10-19 review).
+`chats/<ctxid>/chat.json` relative to that base
+([`README.md:92`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/README.md#L92),
+[`shell/docker_manager/index.js:948-951`](https://github.com/agent0ai/a0-launcher/blob/b0333d80b5abf38d8481f55b667b0cf23d805bbb/shell/docker_manager/index.js#L948-L951)).
+The 2026-10-19 review found the parser's path pattern required an
+`agent-zero` component and did not select them; it selects both forms
+since issue 175. The volume layout is not observed on any real install,
+source-derived (agent0ai/agent-zero at
+[`e3051fb`](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec)).
 
 ## 3. Record schema
 
@@ -317,6 +327,11 @@ secret glob flags them (2026-10-19 review).
 Rows from `log.logs` (timestamped); when `len(log.logs) == 1000`, also emit
 history messages that have no matching log id, with an empty timestamp and
 a `system` row saying the log was trimmed.
+
+Paths: `chat.json`, its `messages/<n>.txt` and the legacy `<ctxid>.json`
+under `<a0>/usr/chats` or `<a0>/tmp/chats` of a home install, and under
+`chats/` at the base of a Docker volume mounted at `/a0/usr` (issue 175,
+[section 2](#2-transcript-files)); the rows are the same in both forms.
 
 | Column | Source |
 | --- | --- |
