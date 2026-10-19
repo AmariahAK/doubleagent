@@ -1,77 +1,347 @@
 # claude-desktop
 
-Catalog agent: `claude-desktop`. Transcript schema is in
+Claude Desktop (catalog agent `claude-desktop`) is Anthropic's closed-source Electron app. Its
+surfaces are the claude.ai chat, the merged Chat/Cowork surface (Cowork is the app's local agent
+mode) and the Code tab, which runs the Claude Code CLI ([`claude-code.md`](claude-code.md)). The
+Windows install observed is an MSIX package (Anthropic's Windows download, not a Microsoft Store
+app; MSIX is the Windows packaged-app format, whose filesystem virtualisation redirects the app's
+`%APPDATA%` writes under `%LOCALAPPDATA%\Packages\<package family>`). Two builds share one layout.
+"3p" is the docs' name for "Claude Desktop on third-party", the enterprise build whose inference
+goes to the customer's own provider (Amazon Bedrock, Google Cloud or an inference gateway) and whose
+users need no Anthropic account; it keeps its data in `Claude-3p` directories so it "can coexist"
+with the standard build on one machine (data-storage doc, "Where data lives"). The bundle uses the
+same tag: the Code tab's `CLAUDE_CODE_ENTRYPOINT` is `claude-desktop-3p` on that build and session
+records can be `importedFrom` `sibling-3p` or `sibling-1p` (analyzer research,
+[section 2](../../analyzer/research/claude-desktop.md#2-transcript-stores) and
+[section 3](../../analyzer/research/claude-desktop.md#3-record-schema)). The transcript schema is in
 [`analyzer/research/claude-desktop.md`](../../analyzer/research/claude-desktop.md).
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
-Closed Electron app; no package inspected. Evidence: **official docs** [User identity and local data](https://claude.com/docs/third-party/claude-desktop/data-storage) (fetched 2026-10-03), [MCP debugging](https://modelcontextprotocol.io/docs/tools/debugging) (log and config paths), [Claude Code IAM](https://code.claude.com/docs/en/iam) and [Claude Code settings](https://code.claude.com/docs/en/settings) (relation to `~/.claude`); **community/forum**: [aaddrick/claude-desktop-debian README](https://github.com/aaddrick/claude-desktop-debian#readme) (Linux path), [CodeZeno/Claude-Code-Usage-Monitor issue 105](https://github.com/CodeZeno/Claude-Code-Usage-Monitor/issues/105) and [yhm138/ai-quota-tray pull request 6](https://github.com/yhm138/ai-quota-tray/pull/6) (token cache keys and encryption), [blind0wl/dms-ai-usage issue 8](https://github.com/blind0wl/dms-ai-usage/issues/8) (Linux `~/.config/Claude/config.json` keys, unanswered). No DFIR write-up found for this app.
+Closed Electron app; no package inspected. Evidence: **official docs**
+[User identity and local data](https://claude.com/docs/third-party/claude-desktop/data-storage)
+(fetched 2026-10-03), [MCP debugging](https://modelcontextprotocol.io/docs/tools/debugging) (log and
+config paths), [Claude Code IAM](https://code.claude.com/docs/en/iam) and
+[Claude Code settings](https://code.claude.com/docs/en/settings) (relation to `~/.claude`);
+**community/forum**:
+[aaddrick/claude-desktop-debian README](https://github.com/aaddrick/claude-desktop-debian#readme)
+(Linux path),
+[CodeZeno/Claude-Code-Usage-Monitor issue 105](https://github.com/CodeZeno/Claude-Code-Usage-Monitor/issues/105)
+and [yhm138/ai-quota-tray pull request 6](https://github.com/yhm138/ai-quota-tray/pull/6) (token
+cache keys and encryption),
+[blind0wl/dms-ai-usage issue 8](https://github.com/blind0wl/dms-ai-usage/issues/8) (Linux
+`~/.config/Claude/config.json` keys, unanswered). No DFIR write-up found for this app.
 
-**Real install** (issue 73): Claude Desktop 2.31226.1 installed as an MSIX package (Anthropic's Windows download, not a Microsoft Store app; MSIX is the Windows packaged-app format, whose filesystem virtualisation redirects the app's `%APPDATA%` writes under `%LOCALAPPDATA%\Packages\<package family>`; package `Claude_pzs8sxrjxfjjc`, version 2.31226.1.0 per `Get-AppxPackage`) on Windows 11 build 26300 arm64, observed 2026-10-10 in a clean VM; directory listings, `main.log`, and one Code-tab and one Chat session were inspected. The MSIX layout in [section 2](#2-per-user-storage) comes from that install.
+### Observed
 
-**Real install** (Linux, issue 73): the official `claude-desktop` 2.31226.1 `.deb` (arm64, `dpkg -l` "Desktop application for Claude.ai") on Ubuntu 26.04.1 LTS aarch64, observed 2026-10-11 in a clean VM with nested virtualisation. The package installs to `/usr/lib/claude-desktop/` (the Electron binary, `resources/app.asar`, `resources/cowork-linux-helper`, `resources/chrome-native-host`) and `/usr/bin/claude-desktop`. After sign-in, one Code-tab session on a project folder (two turns, one `Bash` call) and two chats in the merged Chat/Cowork surface were run; directory listings, file names, sizes, key names and `main.log` were inspected, and collector 1.11.0 and the analyzer were run over the result. A chat asked to write files ran as a remote Cowork session whose only local trace was `remote-session-spaces.json` ([section 6](#6-where-the-project-path-is-recorded)), as on the MSIX build and, in a repeat on the author's macOS install of 2.31226.1 on 2026-10-11 (a Mac that can run the Cowork VM), on macOS too; the local-agent session layout (`local_<uuid>.json`, `audit.jsonl`) was not observed on any of the three real installs.
+- **Real install** (macOS, issue 73): the author's install of the standard build, Claude Desktop
+  2.31226.1 (`CFBundleShortVersionString` of `/Applications/Claude.app`), on macOS 26.4.1 arm64,
+  observed 2026-10-11. One Code-tab session on a project folder (two turns, one `Write` and one
+  `Bash` call) was run, after the file-writing chat of the Linux bullet below; then collector 1.11.0
+  was run as the user under `/bin/sh` (bash 3.2.57), and the analyzer over the archive. Directory
+  listings, the manifest, the analyzer output and the key names and value types printed by
+  `analyzer/tools/shape.py` were inspected; no value. The macOS layout in
+  [section 2](#2-per-user-storage) comes from that install.
+- **Real install** (Linux, issue 73): the official `claude-desktop` 2.31226.1 `.deb` (arm64,
+  `dpkg -l` "Desktop application for Claude.ai") on Ubuntu 26.04.1 LTS aarch64, observed 2026-10-11
+  in a clean VM with nested virtualisation. The package installs to `/usr/lib/claude-desktop/` (the
+  Electron binary, `resources/app.asar`, `resources/cowork-linux-helper`,
+  `resources/chrome-native-host`) and `/usr/bin/claude-desktop`. After sign-in, one Code-tab session
+  on a project folder (two turns, one `Bash` call) and two chats in the merged Chat/Cowork surface
+  were run; directory listings, file names, sizes, key names and `main.log` were inspected, and
+  collector 1.11.0 and the analyzer were run over the result. A chat asked to write files ran as a
+  remote Cowork session whose only local trace was `remote-session-spaces.json`
+  ([section 6](#6-where-the-project-path-is-recorded)), as on the MSIX build and, in a repeat on the
+  author's macOS install of 2.31226.1 on 2026-10-11 (a Mac that can run the Cowork VM), on macOS
+  too; the local-agent session layout (`local_<uuid>.json`, `audit.jsonl`) was not observed on any
+  of the three real installs.
+- **Real install** (Windows, issue 73): Claude Desktop 2.31226.1 installed as an MSIX package
+  (package `Claude_pzs8sxrjxfjjc`, version 2.31226.1.0 per `Get-AppxPackage`) on Windows 11 build
+  26300 arm64, observed 2026-10-10 in a clean VM; directory listings, `main.log`, and one Code-tab
+  and one Chat session were inspected. The MSIX layout in [section 2](#2-per-user-storage) comes
+  from that install.
 
-**Real install** (macOS, issue 73): the author's install of the standard build, Claude Desktop 2.31226.1 (`CFBundleShortVersionString` of `/Applications/Claude.app`), on macOS 26.4.1 arm64, observed 2026-10-11. One Code-tab session on a project folder (two turns, one `Write` and one `Bash` call) was run, after the file-writing chat above; then collector 1.11.0 was run as the user under `/bin/sh` (bash 3.2.57), and the analyzer over the archive. Directory listings, the manifest, the analyzer output and the key names and value types printed by `analyzer/tools/shape.py` were inspected; no value. The macOS layout in [section 2](#2-per-user-storage) comes from that install.
+### Source reviews
+
+- 2026-10-19, Ollama: another agent writes into the 3p directories (source review of 2026-10-19,
+  Ollama at
+  [`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120); not
+  seen on a real install). `ollama launch claude-desktop` writes a gateway profile into the 3p
+  build's `configLibrary/`, and on Windows looks for that build's data directory as either
+  `%LOCALAPPDATA%\Claude-3p` or `%LOCALAPPDATA%\Claude Nest-3p`, beside `%LOCALAPPDATA%\Claude` and
+  `%LOCALAPPDATA%\Claude Nest` for the standard build
+  ([`cmd/launch/claude_desktop.go:644-649`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L644-L649)).
+  "Claude Nest" is a directory name that only the Ollama source shows; no install observed here used
+  it, and what build it belongs to was not determined. The profile sets `autoModeEnabled`, which is
+  true unless `integrations.claude-desktop.automode` in `~/.ollama/config.json` turns it off,
+  `coworkEgressAllowedHosts` (the hosts the Cowork VM may reach) and both telemetry switches off
+  ([`claude_desktop.go:320-345`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L320-L345),
+  [`741-759`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L741-L759));
+  the full key list is in [section 5 of `ollama.md`](ollama.md#5-project-local-files).
+  `AppData/Local/Claude-3p` is a catalog line; `claude-desktop|AppData/Local/Claude Nest-3p` is a
+  candidate line pending a Windows round that shows the directory, and is not in the catalog.
 
 ## 2. Per-user storage
 
-Two builds share one layout. "3p" is the docs' name for "Claude Desktop on third-party", the enterprise build whose inference goes to the customer's own provider (Amazon Bedrock, Google Cloud or an inference gateway) and whose users need no Anthropic account; it keeps its data in `Claude-3p` directories so it "can coexist" with the standard build on one machine (data-storage doc, "Where data lives"). The bundle uses the same tag: the Code tab's `CLAUDE_CODE_ENTRYPOINT` is `claude-desktop-3p` on that build and session records can be `importedFrom` `sibling-3p` or `sibling-1p` (analyzer research, [section 2](../../analyzer/research/claude-desktop.md#2-transcript-files) and [section 3](../../analyzer/research/claude-desktop.md#3-record-schema)).
+The standard build's paths (docs MCP debugging; data-storage note that 3p "is separate from standard
+Claude Desktop") differ per platform; the enterprise (3p) build keeps its own `Claude-3p`
+directories.
 
-Standard build (docs MCP debugging; data-storage note that 3p "is separate from standard Claude Desktop"):
+### Scratch directories
 
-- macOS (observed 2026-10-11, 2.31226.1): the data directory is `~/Library/Application Support/Claude/` and the logs are in `~/Library/Logs/Claude/`. Root files: `ant-device-registry.json`, `ant-did`, `buddy-tokens.json`, `ccd-ids.json`, `claude_desktop_config.json`, `config.json`, `cowork-enabled-cli-ops.json`, `extensions-blocklist.json`, `fcache`, `git-worktrees.json`, `plan-usage-history.json`, `vm-support-probe.json`, `window-state.json`, and the Chromium files `Cookies`, `Cookies-journal`, `declarative_performance_observer.db` (+ `-journal`), `DIPS`, `DIPS-wal`, `Local State`, `Network Persistent State`, `Preferences`, `SharedStorage`, `TransportSecurity`, `Trust Tokens` (+ `-journal`). Directories: `claude-code/`, `claude-code-sessions/`, `claude-code-vm/`, `local-agent-mode-sessions/`, `Partitions/`, `spaces-present/`, `vm_bundles/`, `sentry/`, and the Chromium `blob_storage`, `Cache`, `Code Cache`, `Crashpad`, `DawnGraphiteCache`, `DawnWebGPUCache`, `GPUCache`, `IndexedDB`, `Local Storage`, `Session Storage`, `Shared Dictionary`, `WebStorage`. Seen on Linux but absent here: `ca-bundle.pem`, `os-entry-points.json`, `git-shadow/` and the `Singleton*` symlinks. `claude-code/<version>/<12 hex>/claude.app/` is a macOS app bundle (`Contents/_CodeSignature`, `CodeResources`, `Info.plist`, `MacOS`) with a `.verified` sibling (64-byte hex text), two versions present (2.1.293 and 2.1.295). `claude-code-vm/<version>/claude` is the Linux CLI build that runs inside the Cowork VM, not a VM workspace: 255,516,664 bytes, the size of the linux-arm64 2.1.295 download of the Linux round, beside `.payload` (103-byte JSON `{sha256, size}`), `.verified` (64-byte hex) and `claude-code-vm/.sdk-version` (7-byte text). `Partitions/` holds two Electron session partitions, each a Chromium profile of its own: `Partitions/launch-preview-static/` (`Cache/`, `Code Cache/`, `Cookies`, `Cookies-journal`, `DIPS`, `DIPS-wal`, `InterestGroups`, `Local Storage/leveldb/`, `Network Persistent State`, `Preferences`, `PrivateAggregation` (+ `-journal`), `Session Storage/`, `Shared Dictionary/`, `SharedStorage`, `Trust Tokens` (+ `-journal`), `WebStorage/`, `declarative_performance_observer.db` (+ `-journal`)) and `Partitions/cowork-file-preview/` (`Cache/`, `Code Cache/`, `Local Storage/leveldb/`, `Network Persistent State`, `Preferences`, `Shared Dictionary/`, `SharedStorage`, `Trust Tokens` (+ `-journal`)). The first is the default partition of the built-in browser that previews servers a session launches (`app.asar:.vite/build/index.chunk-Cyt2WTko.js@3035166` ``var vN="persist:launch-preview-static";function yN(e,t,n){let r=t?"persist:":"";return n?`${r}launch-preview-session-${n}`:e?`${r}launch-preview-${e}`:vN}``, opened at `@4638925` `a.session.fromPartition("persist:launch-preview-static")`), so `launch-preview-<workspace>` and `launch-preview-session-<id>` partitions can exist beside it (not observed); it has its own cookie jar (20 KB observed). The second renders Cowork file previews from a `cowork-file://preview/` scheme with the network closed (`@4461852` `var R2r="cowork-file",z2r="chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai",B2r="persist:cowork-file-preview"`, `@4462016` `let e=a.session.fromPartition(B2r)`, then `@4462156` `var W2r="http://255.255.255.255:9"` set as its proxy). `~/Library/Application Support/Claude-3p/` also exists on this standard install (dated 2026-04-14), holding only `claude_desktop_config.json` (56 bytes, keys `_cfprefsMigrated` boolean and `enterpriseConfig` empty object). `~/Library/Logs/Claude/` holds `main.log` rotated to `main1.log`-`main4.log` at about 10 MB each, `claude.ai-web.log` and `claude.ai-web1.log`, `swift.log`, `cowork_vm_swift.log`, `coworkd.log`, `vzgvisor.log`, `cowork_vm_node.log`, `ssh.log`, `chrome-native-host.log`, `main-window.log`, `unknown-window.log` and `mcp.log`; the five largest files of the whole collection were these logs, about 59 MB together. Other macOS locations hold no agent state and are not collected: `~/Library/Preferences/com.anthropic.claudefordesktop.plist` (AppKit keys only), `~/Library/Caches/com.anthropic.claudefordesktop/` (an NSURLCache `Cache.db` and `fsCachedData/`, 2.2 MB), `~/Library/Caches/com.anthropic.claudefordesktop.ShipIt/` (the Squirrel.Mac updater's `ShipItState.plist` and `ShipIt_stderr.log`) and `~/Library/HTTPStorages/com.anthropic.claudefordesktop/httpstorages.sqlite`. The docs also name `developer_settings.json` in the data directory, not present on this install.
-- Windows `%APPDATA%\Claude\` with logs in `%APPDATA%\Claude\logs\` (MCP debugging doc). This is the path the app sees and what an unpackaged (Squirrel) install uses. The MSIX build observed on the real install keeps `userData` in `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\`: the app logs its paths as `C:\Users\<user>\AppData\Roaming\Claude\...` and MSIX filesystem virtualisation redirects them (`main.log`: `[MSIX] Filesystem virtualization active`, `user_data_location: 'package_localcache'`), so `%APPDATA%\Claude` does not exist on disk and every other process, the collector included, sees only the Packages path. The bundle names a second package family, `AnthropicPBC.Claude_fnn82j28hfe8t` (analyzer research [section 5](../../analyzer/research/claude-desktop.md#5-other-stores)), not observed. Logs on that install are in `%LOCALAPPDATA%\Claude\logs\` (`main.log`, `mcp.log`, `ssh.log`, `cowork_vm_node.log`, `claude.ai-web.log`), not under the data directory, whose own `logs\` is empty. `%LOCALAPPDATA%\Claude-Data\` (the bundle's `Claude-Data\<family, lowercased>` candidate) and `%LOCALAPPDATA%\Claude-3p\` exist and are empty. The data directory holds `ant-did`, `ant-device-registry.json`, `buddy-tokens.json`, `ccd-ids.json`, `claude_desktop_config.json`, `config.json`, `cowork-enabled-cli-ops.json`, `DIPS`, `fcache`, `git-worktrees.json`, `Local State`, `lockfile`, `plan-usage-history.json`, `Preferences`, `window-state.json`, and the directories `claude-code\<version>\<hash>\claude.exe` (247 MB), `claude-code-sessions\`, `local-agent-mode-sessions\`, `spaces-present\`, `IndexedDB\`, `Local Storage\`, `Session Storage\`, `WebStorage\`, `logs\` and the Chromium caches.
-- Linux (official `.deb`, observed 2026-10-11): the data directory is exactly `~/.config/Claude/` (the XDG config dir), and the logs are inside it in `logs/` (`main.log`, `mcp.log`, `ssh.log`, `cowork_vm_node.log`, `claude.ai-web.log`); `main.log` records `user_data_location: null` and `platform: 'linux'`. Nothing was created under `~/.cache`, `~/.local/share` or `~/.local/state`, `~/.config/Claude-3p` does not exist, and there is no `~/Claude` or `~/Documents/Claude`. Root files after sign-in: `ant-did`, `ant-device-registry.json`, `ca-bundle.pem` (a 731 KB CA bundle), `claude_desktop_config.json`, `config.json`, `cowork-enabled-cli-ops.json`, `extensions-blocklist.json`, `fcache`, `git-worktrees.json`, `os-entry-points.json`, `plan-usage-history.json`, `window-state.json`, the Chromium files (`Cookies`, `Cookies-journal`, `DIPS`, `Local State`, `Network Persistent State`, `Preferences`, `Trust Tokens`, `declarative_performance_observer.db`) and the symlinks `SingletonCookie`, `SingletonLock`, `SingletonSocket` (the last two point at `<host>-<pid>` and a `/tmp/scoped_dir*` socket); after a Code session also `buddy-tokens.json`, `ccd-ids.json` and `TransportSecurity`. Directories: `claude-code/<version>/<hash>/` with the Linux CLI `claude` (255,516,664 bytes, downloaded on first launch from `downloads.claude.ai`, per `main.log`), `.payload` and `.verified`; `claude-code-sessions/<acct>/<org>/` (`scheduled-tasks.json`, the Code-tab `local_<uuid>.json`); `local-agent-mode-sessions/<acct>/<org>/` (`scheduled-tasks.json`, `rpm/manifest.json`, and `remote-session-spaces.json` after a file-writing chat); `local-agent-mode-sessions/skills-plugin/<org>/<acct>/`, in the reversed order, with `manifest.json`, `.claude-plugin/plugin.json` and `skills/<name>/SKILL.md` (4 MB, downloaded at sign-in); `spaces-present/<acct 8 hex>/<org 8 hex>/link-key` ([section 3](#3-credentials)); `git-shadow/` with `cli-temp-roots.json` ([section 4](#4-exclusions) and [section 6](#6-where-the-project-path-is-recorded)); `sentry/`; and the Chromium `Cache`, `Code Cache`, `GPUCache`, `DawnGraphiteCache`, `DawnWebGPUCache`, `Dictionaries`, `Crashpad`, `IndexedDB`, `Local Storage`, `Session Storage`, `Shared Dictionary`, `WebStorage` and `blob_storage`. There is no `vm_bundles` or `claude-code-vm`: `cowork_vm_node.log` says `workspace VM not supported (status=unsupported)` and `[Bundle:status] rootfs.img missing` in the nested-virtualisation guest, while the app still spawns `/usr/lib/claude-desktop/resources/cowork-linux-helper`, which listens on `/run/user/<uid>/claude-cowork-vm.sock`. `main.log` also records `[updater] Linux: in-app updater off (updates via apt)`.
+`git-shadow/scratch/` holds the Code tab's private git index copies, pruned after six hours
+([section 4](#4-exclusions)); the Claude Code CLI temp roots that `git-shadow/cli-temp-roots.json`
+lists (`/tmp/claude-<uid>` on Linux) are outside every home and not collected
+([section 6](#6-where-the-project-path-is-recorded)).
 
-Enterprise/3p build (data-storage doc table): macOS `~/Library/Application Support/Claude-3p/` + `~/Library/Logs/Claude-3p/`; Windows `%LOCALAPPDATA%\Claude-3p\` (logs inside; earlier releases used `%APPDATA%\Claude-3p\`, migrated on first launch); Linux `~/.config/Claude-3p/` (logs inside).
+### Standard build on macOS
 
-Another agent writes into the 3p directories (source review of 2026-10-19, Ollama at [`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120); not seen on a real install). `ollama launch claude-desktop` writes a gateway profile into the 3p build's `configLibrary/`, and on Windows looks for that build's data directory as either `%LOCALAPPDATA%\Claude-3p` or `%LOCALAPPDATA%\Claude Nest-3p`, beside `%LOCALAPPDATA%\Claude` and `%LOCALAPPDATA%\Claude Nest` for the standard build ([`cmd/launch/claude_desktop.go:644-649`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L644-L649)). "Claude Nest" is a directory name that only the Ollama source shows; no install observed here used it, and what build it belongs to was not determined. The profile sets `autoModeEnabled`, which is true unless `integrations.claude-desktop.automode` in `~/.ollama/config.json` turns it off, `coworkEgressAllowedHosts` (the hosts the Cowork VM may reach) and both telemetry switches off ([`claude_desktop.go:320-345`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L320-L345), [`741-759`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L741-L759)); the full key list is in [section 5 of `ollama.md`](ollama.md#5-project-local-files). `AppData/Local/Claude-3p` is a catalog line; `claude-desktop|AppData/Local/Claude Nest-3p` is a candidate line pending a Windows round that shows the directory, and is not in the catalog.
+- Observed 2026-10-11, 2.31226.1: the data directory is `~/Library/Application Support/Claude/` and
+  the logs are in `~/Library/Logs/Claude/`. Root files: `ant-device-registry.json`, `ant-did`,
+  `buddy-tokens.json`, `ccd-ids.json`, `claude_desktop_config.json`, `config.json`,
+  `cowork-enabled-cli-ops.json`, `extensions-blocklist.json`, `fcache`, `git-worktrees.json`,
+  `plan-usage-history.json`, `vm-support-probe.json`, `window-state.json`, and the Chromium files
+  `Cookies`, `Cookies-journal`, `declarative_performance_observer.db` (+ `-journal`), `DIPS`,
+  `DIPS-wal`, `Local State`, `Network Persistent State`, `Preferences`, `SharedStorage`,
+  `TransportSecurity`, `Trust Tokens` (+ `-journal`).
+- Directories: `claude-code/`, `claude-code-sessions/`, `claude-code-vm/`,
+  `local-agent-mode-sessions/`, `Partitions/`, `spaces-present/`, `vm_bundles/`, `sentry/`, and the
+  Chromium `blob_storage`, `Cache`, `Code Cache`, `Crashpad`, `DawnGraphiteCache`,
+  `DawnWebGPUCache`, `GPUCache`, `IndexedDB`, `Local Storage`, `Session Storage`,
+  `Shared Dictionary`, `WebStorage`. Seen on Linux but absent here: `ca-bundle.pem`,
+  `os-entry-points.json`, `git-shadow/` and the `Singleton*` symlinks.
+- `claude-code/<version>/<12 hex>/claude.app/` is a macOS app bundle (`Contents/_CodeSignature`,
+  `CodeResources`, `Info.plist`, `MacOS`) with a `.verified` sibling (64-byte hex text), two
+  versions present (2.1.293 and 2.1.295). `claude-code-vm/<version>/claude` is the Linux CLI build
+  that runs inside the Cowork VM, not a VM workspace: 255,516,664 bytes, the size of the linux-arm64
+  2.1.295 download of the Linux round, beside `.payload` (103-byte JSON `{sha256, size}`),
+  `.verified` (64-byte hex) and `claude-code-vm/.sdk-version` (7-byte text).
+- `Partitions/` holds two Electron session partitions, each a Chromium profile of its own: `Partitions/launch-preview-static/` (`Cache/`, `Code Cache/`, `Cookies`, `Cookies-journal`, `DIPS`, `DIPS-wal`, `InterestGroups`, `Local Storage/leveldb/`, `Network Persistent State`, `Preferences`, `PrivateAggregation` (+ `-journal`), `Session Storage/`, `Shared Dictionary/`, `SharedStorage`, `Trust Tokens` (+ `-journal`), `WebStorage/`, `declarative_performance_observer.db` (+ `-journal`)) and `Partitions/cowork-file-preview/` (`Cache/`, `Code Cache/`, `Local Storage/leveldb/`, `Network Persistent State`, `Preferences`, `Shared Dictionary/`, `SharedStorage`, `Trust Tokens` (+ `-journal`)). The first is the default partition of the built-in browser that previews servers a session launches (`app.asar:.vite/build/index.chunk-Cyt2WTko.js@3035166` ``var vN="persist:launch-preview-static";function yN(e,t,n){let r=t?"persist:":"";return n?`${r}launch-preview-session-${n}`:e?`${r}launch-preview-${e}`:vN}``, opened at `@4638925` `a.session.fromPartition("persist:launch-preview-static")`), so `launch-preview-<workspace>` and `launch-preview-session-<id>` partitions can exist beside it (not observed); it has its own cookie jar (20 KB observed). The second renders Cowork file previews from a `cowork-file://preview/` scheme with the network closed (`@4461852` `var R2r="cowork-file",z2r="chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai",B2r="persist:cowork-file-preview"`, `@4462016` `let e=a.session.fromPartition(B2r)`, then `@4462156` `var W2r="http://255.255.255.255:9"` set as its proxy).
+- `~/Library/Application Support/Claude-3p/` also exists on this standard install (dated
+  2026-04-14), holding only `claude_desktop_config.json` (56 bytes, keys `_cfprefsMigrated` boolean
+  and `enterpriseConfig` empty object).
+- `~/Library/Logs/Claude/` holds `main.log` rotated to `main1.log`-`main4.log` at about 10 MB each,
+  `claude.ai-web.log` and `claude.ai-web1.log`, `swift.log`, `cowork_vm_swift.log`, `coworkd.log`,
+  `vzgvisor.log`, `cowork_vm_node.log`, `ssh.log`, `chrome-native-host.log`, `main-window.log`,
+  `unknown-window.log` and `mcp.log`; the five largest files of the whole collection were these
+  logs, about 59 MB together.
+- Other macOS locations hold no agent state and are not collected:
+  `~/Library/Preferences/com.anthropic.claudefordesktop.plist` (AppKit keys only),
+  `~/Library/Caches/com.anthropic.claudefordesktop/` (an NSURLCache `Cache.db` and `fsCachedData/`,
+  2.2 MB), `~/Library/Caches/com.anthropic.claudefordesktop.ShipIt/` (the Squirrel.Mac updater's
+  `ShipItState.plist` and `ShipIt_stderr.log`) and
+  `~/Library/HTTPStorages/com.anthropic.claudefordesktop/httpstorages.sqlite`. The docs also name
+  `developer_settings.json` in the data directory, not present on this install.
 
-Contents of the application-data directory (data-storage doc, documented for 3p; the same layout names appear in standard builds per the issues above):
+### Standard build on Windows
+
+- `%APPDATA%\Claude\` with logs in `%APPDATA%\Claude\logs\` (MCP debugging doc). This is the path
+  the app sees and what an unpackaged (Squirrel) install uses.
+- The MSIX build observed on the real install keeps `userData` in
+  `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\`: the app logs its paths
+  as `C:\Users\<user>\AppData\Roaming\Claude\...` and MSIX filesystem virtualisation redirects them
+  (`main.log`: `[MSIX] Filesystem virtualization active`,
+  `user_data_location: 'package_localcache'`), so `%APPDATA%\Claude` does not exist on disk and
+  every other process, the collector included, sees only the Packages path. The bundle names a
+  second package family, `AnthropicPBC.Claude_fnn82j28hfe8t` (analyzer research
+  [section 5](../../analyzer/research/claude-desktop.md#5-other-stores)), not observed.
+- Logs on that install are in `%LOCALAPPDATA%\Claude\logs\` (`main.log`, `mcp.log`, `ssh.log`,
+  `cowork_vm_node.log`, `claude.ai-web.log`), not under the data directory, whose own `logs\` is
+  empty. `%LOCALAPPDATA%\Claude-Data\` (the bundle's `Claude-Data\<family, lowercased>` candidate)
+  and `%LOCALAPPDATA%\Claude-3p\` exist and are empty.
+- The data directory holds `ant-did`, `ant-device-registry.json`, `buddy-tokens.json`,
+  `ccd-ids.json`, `claude_desktop_config.json`, `config.json`, `cowork-enabled-cli-ops.json`,
+  `DIPS`, `fcache`, `git-worktrees.json`, `Local State`, `lockfile`, `plan-usage-history.json`,
+  `Preferences`, `window-state.json`, and the directories `claude-code\<version>\<hash>\claude.exe`
+  (247 MB), `claude-code-sessions\`, `local-agent-mode-sessions\`, `spaces-present\`, `IndexedDB\`,
+  `Local Storage\`, `Session Storage\`, `WebStorage\`, `logs\` and the Chromium caches.
+
+### Standard build on Linux
+
+- Official `.deb`, observed 2026-10-11: the data directory is exactly `~/.config/Claude/` (the XDG
+  config dir), and the logs are inside it in `logs/` (`main.log`, `mcp.log`, `ssh.log`,
+  `cowork_vm_node.log`, `claude.ai-web.log`); `main.log` records `user_data_location: null` and
+  `platform: 'linux'`. Nothing was created under `~/.cache`, `~/.local/share` or `~/.local/state`,
+  `~/.config/Claude-3p` does not exist, and there is no `~/Claude` or `~/Documents/Claude`.
+- Root files after sign-in: `ant-did`, `ant-device-registry.json`, `ca-bundle.pem` (a 731 KB CA
+  bundle), `claude_desktop_config.json`, `config.json`, `cowork-enabled-cli-ops.json`,
+  `extensions-blocklist.json`, `fcache`, `git-worktrees.json`, `os-entry-points.json`,
+  `plan-usage-history.json`, `window-state.json`, the Chromium files (`Cookies`, `Cookies-journal`,
+  `DIPS`, `Local State`, `Network Persistent State`, `Preferences`, `Trust Tokens`,
+  `declarative_performance_observer.db`) and the symlinks `SingletonCookie`, `SingletonLock`,
+  `SingletonSocket` (the last two point at `<host>-<pid>` and a `/tmp/scoped_dir*` socket); after a
+  Code session also `buddy-tokens.json`, `ccd-ids.json` and `TransportSecurity`.
+- Directories: `claude-code/<version>/<hash>/` with the Linux CLI `claude` (255,516,664 bytes,
+  downloaded on first launch from `downloads.claude.ai`, per `main.log`), `.payload` and
+  `.verified`; `claude-code-sessions/<acct>/<org>/` (`scheduled-tasks.json`, the Code-tab
+  `local_<uuid>.json`); `local-agent-mode-sessions/<acct>/<org>/` (`scheduled-tasks.json`,
+  `rpm/manifest.json`, and `remote-session-spaces.json` after a file-writing chat);
+  `local-agent-mode-sessions/skills-plugin/<org>/<acct>/`, in the reversed order, with
+  `manifest.json`, `.claude-plugin/plugin.json` and `skills/<name>/SKILL.md` (4 MB, downloaded at
+  sign-in); `spaces-present/<acct 8 hex>/<org 8 hex>/link-key` ([section 3](#3-credentials));
+  `git-shadow/` with `cli-temp-roots.json` ([section 4](#4-exclusions) and
+  [section 6](#6-where-the-project-path-is-recorded)); `sentry/`; and the Chromium `Cache`,
+  `Code Cache`, `GPUCache`, `DawnGraphiteCache`, `DawnWebGPUCache`, `Dictionaries`, `Crashpad`,
+  `IndexedDB`, `Local Storage`, `Session Storage`, `Shared Dictionary`, `WebStorage` and
+  `blob_storage`.
+- There is no `vm_bundles` or `claude-code-vm`: `cowork_vm_node.log` says
+  `workspace VM not supported (status=unsupported)` and `[Bundle:status] rootfs.img missing` in the
+  nested-virtualisation guest, while the app still spawns
+  `/usr/lib/claude-desktop/resources/cowork-linux-helper`, which listens on
+  `/run/user/<uid>/claude-cowork-vm.sock`. `main.log` also records
+  `[updater] Linux: in-app updater off (updates via apt)`.
+
+### Enterprise (3p) build
+
+Data-storage doc table: macOS `~/Library/Application Support/Claude-3p/` +
+`~/Library/Logs/Claude-3p/`; Windows `%LOCALAPPDATA%\Claude-3p\` (logs inside; earlier releases used
+`%APPDATA%\Claude-3p\`, migrated on first launch); Linux `~/.config/Claude-3p/` (logs inside).
+
+Ollama's `ollama launch claude-desktop` writes a gateway profile into the 3p build's
+`configLibrary/` ([Source reviews](#source-reviews)).
+
+### Contents of the application-data directory
+
+From the data-storage doc, documented for 3p; the same layout names appear in standard builds per
+the issues cited in [section 1](#1-source-and-evidence):
 
 - `ant-did` device id; `configLibrary/_meta.json`, `<id>.json`.
-- `local-agent-mode-sessions/`: Cowork and Chat history, one `local_<uuid>.json` plus a working dir per session, scoped by account and org id; `uploads/`, `outputs/`, `audit.jsonl` (HMAC-chained event log) with `.audit-key`; `.../cowork_account_settings.json`; `.../memory/CLAUDE.md` and `memory/memory/*.md`; `.../spaces/<projectId>/memory/`.
-- `claude-code-sessions/`: Code session records (working folder, settings, title, summary); transcripts are in `~/.claude/projects/`.
-- `claude-code/`, `claude-code-vm/` (the docs call them the bundled Claude Code binary and VM workspace; observed on macOS, `claude-code/` is the host CLI and `claude-code-vm/` the Linux CLI build that runs inside the Cowork VM, [section 2](#2-per-user-storage)), `vm_bundles/` (VM bundle and data disk), `cowork_plugins/`, `IndexedDB/`, `Local Storage/`, `Session Storage/`.
+- `local-agent-mode-sessions/`: Cowork and Chat history, one `local_<uuid>.json` plus a working dir
+  per session, scoped by account and org id; `uploads/`, `outputs/`, `audit.jsonl` (HMAC-chained
+  event log) with `.audit-key`; `.../cowork_account_settings.json`; `.../memory/CLAUDE.md` and
+  `memory/memory/*.md`; `.../spaces/<projectId>/memory/`.
+- `claude-code-sessions/`: Code session records (working folder, settings, title, summary);
+  transcripts are in `~/.claude/projects/`.
+- `claude-code/`, `claude-code-vm/` (the docs call them the bundled Claude Code binary and VM
+  workspace; observed on macOS, `claude-code/` is the host CLI and `claude-code-vm/` the Linux CLI
+  build that runs inside the Cowork VM, [section 2](#2-per-user-storage)), `vm_bundles/` (VM bundle
+  and data disk), `cowork_plugins/`, `IndexedDB/`, `Local Storage/`, `Session Storage/`.
 - Logs: `main.log`, `cowork_vm_node.log`, `claude.ai-web.log`, `mcp.log`, `mcp-server-<name>.log`.
 - User outputs outside the app dir: `~/Claude/` (legacy `~/Documents/Claude/`).
-- `claude_desktop_config.json` (MCP servers, may hold `env` API keys), `developer_settings.json`, `config.json` (see 3), Electron `Local State`, `Preferences`, `Cookies`, `Cache/`, `Code Cache/`, `GPUCache/`, `DawnGraphiteCache/`, `DawnWebGPUCache/`, `sentry/` (standard Chromium/Electron layout; names from prior catalog, consistent with the OSCrypt `Local State` dependency reported in issue 105).
+- `claude_desktop_config.json` (MCP servers, may hold `env` API keys), `developer_settings.json`,
+  `config.json` (see 3), Electron `Local State`, `Preferences`, `Cookies`, `Cache/`, `Code Cache/`,
+  `GPUCache/`, `DawnGraphiteCache/`, `DawnWebGPUCache/`, `sentry/` (standard Chromium/Electron
+  layout; names from prior catalog, consistent with the OSCrypt `Local State` dependency reported in
+  issue 105).
 
 ## 3. Credentials
 
-- `config.json` in the app-data dir, keys `oauth:tokenCacheV2` (live grant, includes `refreshToken`, `expiresAt`, `scopes`) and legacy `oauth:tokenCache`; value is base64 OSCrypt `v10` + nonce + AES-256-GCM ciphertext, key from `Local State` (DPAPI on Windows) (issue 105, PR 6). Docs: "OAuth tokens ... encrypted with the operating system's secure storage (Keychain on macOS, DPAPI on Windows)". So `config.json` + `Local State` together are the credential; on Linux the Chromium safe-storage key comes from the keyring or the fixed "peanuts" key.
-- Transient files (docs): `host-creds-<random-id>.json` (resolved inference bearer token or API key, 0600), `ccd-session-secrets/<session-id>/` (GCP ADC / AWS files), and the same cloud credential files inside each Cowork session working directory. Deleted on quit/session end but recoverable on image.
-- `claude_desktop_config.json` `mcpServers.*.env` can embed API keys (MCP debugging doc example). `configLibrary/<id>.json` can hold an API key saved from the configuration window (docs: not encrypted).
+- `config.json` in the app-data dir, keys `oauth:tokenCacheV2` (live grant, includes `refreshToken`,
+  `expiresAt`, `scopes`) and legacy `oauth:tokenCache`; value is base64 OSCrypt `v10` + nonce +
+  AES-256-GCM ciphertext, key from `Local State` (DPAPI on Windows) (issue 105, PR 6). Docs: "OAuth
+  tokens ... encrypted with the operating system's secure storage (Keychain on macOS, DPAPI on
+  Windows)". So `config.json` + `Local State` together are the credential; on Linux the Chromium
+  safe-storage key comes from the keyring or the fixed "peanuts" key.
+- Transient files (docs): `host-creds-<random-id>.json` (resolved inference bearer token or API key,
+  0600), `ccd-session-secrets/<session-id>/` (GCP ADC / AWS files), and the same cloud credential
+  files inside each Cowork session working directory. Deleted on quit/session end but recoverable on
+  image.
+- `claude_desktop_config.json` `mcpServers.*.env` can embed API keys (MCP debugging doc example).
+  `configLibrary/<id>.json` can hold an API key saved from the configuration window (docs: not
+  encrypted).
 - `.audit-key` per session: HMAC key, OS-keychain encrypted.
-- `Cookies` (Chromium cookie DB) holds claude.ai session cookies. On macOS the `launch-preview-static` partition keeps a cookie jar of its own ([section 2](#2-per-user-storage)); the existing glob `Library/Application Support/Claude*/Cookies*` crosses `/`, so it flagged `Partitions/launch-preview-static/Cookies` and `Cookies-journal` `secret: true` in the live manifest (2026-10-11).
-- `Preferences` (306 bytes on macOS) has `electron.webauthn.touchid.metadata_secret`, a 44-character base64 string: Chromium's Touch ID WebAuthn metadata secret. The other keys are `electron.media.device_id_salt`, `migrated_user_scripts_toggle`, `partition.per_host_zoom_levels` and `spellcheck.dictionaries`. The file is collected unflagged; treat `metadata_secret` as a key to redact before sharing, like the tokens inside the Cursor and Windsurf state databases. It is not a secret glob, because the rest of the file is UI state and flagging it would withhold it under `--no-secrets`. The macOS `Local State` (57 bytes) holds only `uninstall_metrics`, with no `os_crypt` key: the safe-storage key is in the Keychain.
+- `Cookies` (Chromium cookie DB) holds claude.ai session cookies. On macOS the
+  `launch-preview-static` partition keeps a cookie jar of its own
+  ([section 2](#2-per-user-storage)); the existing glob
+  `Library/Application Support/Claude*/Cookies*` crosses `/`, so it flagged
+  `Partitions/launch-preview-static/Cookies` and `Cookies-journal` `secret: true` in the live
+  manifest (2026-10-11).
+- `Preferences` (306 bytes on macOS) has `electron.webauthn.touchid.metadata_secret`, a 44-character
+  base64 string: Chromium's Touch ID WebAuthn metadata secret. The other keys are
+  `electron.media.device_id_salt`, `migrated_user_scripts_toggle`, `partition.per_host_zoom_levels`
+  and `spellcheck.dictionaries`. The file is collected unflagged; treat `metadata_secret` as a key
+  to redact before sharing, like the tokens inside the Cursor and Windsurf state databases. It is
+  not a secret glob, because the rest of the file is UI state and flagging it would withhold it
+  under `--no-secrets`. The macOS `Local State` (57 bytes) holds only `uninstall_metrics`, with no
+  `os_crypt` key: the safe-storage key is in the Keychain.
 - `spaces-present/<acct 8 hex>/<org 8 hex>/link-key` (51 bytes, binary, created at sign-in; observed on Linux): the HMAC key that signs Cowork space links and folder grants. Bundle: `app.asar:.vite/build/index.chunk-Cyt2WTko.js@5407180` `var JUi="link-key",YUi="link-key.unreadable",XUi=6048e5,...,QUi=32,$Ui="claude-space-link-v1\0",eWi="claude-space-folder-v1\0"`; the class that uses it computes `createHmac("sha256",this.key)` over a space link's id, `url`, `title` and `provider`, or over a folder path (`macOfFolder`), verifies with `timingSafeEqual`, and stores the 32 random bytes (`randomBytes(QUi)`) as `safeStorage.encryptString` of their base64 form, so the file is OS-encrypted like `.audit-key`; without safe storage the session runs `keyless` and verifies no link or folder. Flagged by `*/Claude*/spaces-present/*/link-key` since collector 1.11.0.
-- `~/.claude/sessions/<pid>.<sha256>.key` (139 bytes on Linux, 108 bytes on macOS) beside `~/.claude/sessions/<pid>.json` belongs to the Claude Code CLI the Code tab launches (observed with CLI 2.1.295, issue 76); it is flagged by `.claude/sessions/*.key` since collector 1.11.0 and described in [`claude-code.md`](claude-code.md).
+- `~/.claude/sessions/<pid>.<sha256>.key` (139 bytes on Linux, 108 bytes on macOS) beside
+  `~/.claude/sessions/<pid>.json` belongs to the Claude Code CLI the Code tab launches (observed
+  with CLI 2.1.295, issue 76); it is flagged by `.claude/sessions/*.key` since collector 1.11.0 and
+  described in [`claude-code.md`](claude-code.md).
 - Not credentials (real install): `buddy-tokens.json` is a daily token-usage counter (`index.chunk-Cyt2WTko.js@5079810`), `ccd-ids.json` holds a start-id `salt` (`@1191469`), `os-entry-points.json` holds an account and org id and an `enabled` flag, `extensions-blocklist.json` is the downloaded extension blocklist (`@4364464`, `saveBlocklists`), `ca-bundle.pem` is a public CA bundle, `TransportSecurity` is Chromium's HSTS list and `Trust Tokens` is Chromium's Private State Token store. Observed on macOS: `vm-support-probe.json` (`hardwareKey`, `key`, strings; the cached result of the Cowork VM support probe, keyed by OS release and architecture and, for `key`, the app version: `app.asar:.vite/build/index.chunk-Cyt2WTko.js@3754369` ``Bfr="vm-support-probe.json",AW=null;function Vfr(){return`${s.default.release()}|${process.arch}`}function Hfr(){return`${a.app.getVersion()}|${Vfr()}`}``), `cowork-enabled-cli-ops.json` (`ownerAccountId`, a UUID), `plan-usage-history.json` (`version`, `samples[]` of `{org, t, u: {fh, sd}}`) and `ant-device-registry.json` (a UUID key to a string). None is flagged.
-- On the MSIX build all of the above sit under the Packages data directory ([section 2](#2-per-user-storage)); the secret globs name both package families.
+- On the MSIX build all of the above sit under the Packages data directory
+  ([section 2](#2-per-user-storage)); the secret globs name both package families.
 
 ## 4. Exclusions
 
-`*/Claude*/Cache`, `Code Cache`, `GPUCache`, `DawnGraphiteCache`, `DawnWebGPUCache`, `*/Claude*/claude-code`, `*/Claude*/claude-code-vm`, `*/Claude*/vm_bundles` (docs: binary, VM workspace, VM bundle and data disk; observed on macOS, `claude-code-vm` is the Linux CLI build the Cowork VM runs, not a workspace; observed on macOS 2.31226.1: `claudevm.bundle/rootfs.img` 10 GiB, `sessiondata.img` 29 MiB, kernel and initrds 87 MiB, see [`docs/coverage.md`](../docs/coverage.md#cowork-vm-disks) "Cowork VM disks"), `*/Claude*/sentry`. Keep `IndexedDB/`, `Local Storage/`, `Session Storage/` (UI state, recent folders). `local-agent-mode-sessions/*/uploads` can be large but is evidence.
+`*/Claude*/Cache`, `Code Cache`, `GPUCache`, `DawnGraphiteCache`, `DawnWebGPUCache`,
+`*/Claude*/claude-code`, `*/Claude*/claude-code-vm`, `*/Claude*/vm_bundles` (docs: binary, VM
+workspace, VM bundle and data disk; observed on macOS, `claude-code-vm` is the Linux CLI build the
+Cowork VM runs, not a workspace; observed on macOS 2.31226.1: `claudevm.bundle/rootfs.img` 10 GiB,
+`sessiondata.img` 29 MiB, kernel and initrds 87 MiB, see
+[`docs/coverage.md`](../docs/coverage.md#cowork-vm-disks) "Cowork VM disks"), `*/Claude*/sentry`.
+Keep `IndexedDB/`, `Local Storage/`, `Session Storage/` (UI state, recent folders).
+`local-agent-mode-sessions/*/uploads` can be large but is evidence.
 
-Observed on macOS (2026-10-11, 2.31226.1), one `skipped_excluded` row each: `vm_bundles` 10,844,483,584 bytes (`claudevm.bundle/` and `warm/` with two empty `<hex>` directories), `Cache` 1,217,064,960, `claude-code` 476,061,696 (the two app bundles, 2.1.293 and 2.1.295), `claude-code-vm` 255,528,960 (the Linux CLI and its markers), `Code Cache` 161,087,488. The same `*/Claude*/Cache` and `*/Claude*/Code Cache` globs cross `/` and excluded the `Cache/` and `Code Cache/` of both `Partitions/` profiles (four more `skipped_excluded` rows); the rest of `Partitions/` was collected.
+Observed on macOS (2026-10-11, 2.31226.1), one `skipped_excluded` row each: `vm_bundles`
+10,844,483,584 bytes (`claudevm.bundle/` and `warm/` with two empty `<hex>` directories), `Cache`
+1,217,064,960, `claude-code` 476,061,696 (the two app bundles, 2.1.293 and 2.1.295),
+`claude-code-vm` 255,528,960 (the Linux CLI and its markers), `Code Cache` 161,087,488. The same
+`*/Claude*/Cache` and `*/Claude*/Code Cache` globs cross `/` and excluded the `Cache/` and
+`Code Cache/` of both `Partitions/` profiles (four more `skipped_excluded` rows); the rest of
+`Partitions/` was collected.
 
-Observed on Linux (2026-10-11): `*/Claude*/claude-code` removed 255,541,248 bytes (the downloaded CLI) in one `skipped_excluded` row. `git-shadow/` is collected: it is small, and its `scratch/` child holds the private git index copies the Code tab uses for git operations, pruned after six hours (`app.asar:.vite/build/index.chunk-BCfH2EWk.js@17777` `function Ke(){return t.aD()??r.default.join(i.app.getPath("userData"),"git-shadow")}`, then `mkdir(Ke(),{recursive:!0,mode:448})` and a `scratch` child whose entries older than `Je=216e5` ms are removed). `local-agent-mode-sessions/skills-plugin/` (4 MB observed: Anthropic's shipped skills plus any skill the user created, told apart by `manifest.json` `skills[].creatorType`) is collected.
+Observed on Linux (2026-10-11): `*/Claude*/claude-code` removed 255,541,248 bytes (the downloaded
+CLI) in one `skipped_excluded` row. `git-shadow/` is collected: it is small, and its `scratch/`
+child holds the private git index copies the Code tab uses for git operations, pruned after six
+hours (`app.asar:.vite/build/index.chunk-BCfH2EWk.js@17777`
+`function Ke(){return t.aD()??r.default.join(i.app.getPath("userData"),"git-shadow")}`, then
+`mkdir(Ke(),{recursive:!0,mode:448})` and a `scratch` child whose entries older than `Je=216e5` ms
+are removed). `local-agent-mode-sessions/skills-plugin/` (4 MB observed: Anthropic's shipped skills
+plus any skill the user created, told apart by `manifest.json` `skills[].creatorType`) is collected.
 
 ## 5. Project-local files
 
-None written by the desktop app itself. Code sessions run Claude Code, which writes the `.claude/`, `CLAUDE.md`, `.mcp.json` set (see claude-code). Cowork sessions mount the working folder into the VM; attached files are hard-linked into `uploads/`.
+None written by the desktop app itself. Code sessions run Claude Code, which writes the `.claude/`,
+`CLAUDE.md`, `.mcp.json` set (see claude-code). Cowork sessions mount the working folder into the
+VM; attached files are hard-linked into `uploads/`.
 
 ## 6. Where the project path is recorded
 
-- `claude-code-sessions/` records "each session's working folder" (docs). File names and keys are not documented; treat as JSON to grep for absolute paths.
-- `local-agent-mode-sessions/.../local_<uuid>.json` session state; `spaces/<projectId>/` for Cowork projects (docs). Exact key names undocumented.
+- `claude-code-sessions/` records "each session's working folder" (docs). File names and keys are
+  not documented; treat as JSON to grep for absolute paths.
+- `local-agent-mode-sessions/.../local_<uuid>.json` session state; `spaces/<projectId>/` for Cowork
+  projects (docs). Exact key names undocumented.
 - `Local Storage/` holds "recent folders" (docs) in LevelDB.
-- Code-tab record `claude-code-sessions/<acct>/<org>/local_<uuid>.json`: `cwd`, `originCwd` and `gitAnchorsFolderRealpath` are the project path; observed equal to the chosen folder on Windows (2026-10-10), Linux (2026-10-11) and macOS (2026-10-11). The collector's project discovery found the Linux project from this record.
-- `claude_desktop_config.json` (observed on macOS, 2026-10-11): `coworkUserFilesPath` is an absolute path (the Cowork user-files root), and `preferences.remoteChatFolderGrants.<uuid>.folders[]` are the absolute folders granted to remote chats (each entry also has `accountUuid` and `orgUuid`). Neither is read by `discover_projects` or `Find-Projects`; on the macOS install the project was found from the Code-tab record and `.claude.json`.
-- `local-agent-mode-sessions/<acct>/<org>/remote-session-spaces.json`: `entries[].folders[]` are the absolute folders granted to a remote Cowork session (observed on Windows, Linux and macOS).
-- `git-shadow/cli-temp-roots.json` is a JSON array (at most 256 entries) of Claude Code CLI temp roots (`/tmp/claude-<uid>` on Linux), not project paths (`app.asar:.vite/build/index.chunk-Cyt2WTko.js@3642519` `var $rr="cli-temp-roots.json",MH=256`; the same code manages the shadow git dirs `shadow-of`, `*-gitdir`, `*-gitconfig` inside those roots). The root held per-project slug directories with empty `scratchpad/` and `tasks/` dirs and is outside every home, so it is not collected (see [`docs/coverage.md`](../docs/coverage.md)).
+- Code-tab record `claude-code-sessions/<acct>/<org>/local_<uuid>.json`: `cwd`, `originCwd` and
+  `gitAnchorsFolderRealpath` are the project path; observed equal to the chosen folder on Windows
+  (2026-10-10), Linux (2026-10-11) and macOS (2026-10-11). The collector's project discovery found
+  the Linux project from this record.
+- `claude_desktop_config.json` (observed on macOS, 2026-10-11): `coworkUserFilesPath` is an absolute
+  path (the Cowork user-files root), and `preferences.remoteChatFolderGrants.<uuid>.folders[]` are
+  the absolute folders granted to remote chats (each entry also has `accountUuid` and `orgUuid`).
+  Neither is read by `discover_projects` or `Find-Projects`; on the macOS install the project was
+  found from the Code-tab record and `.claude.json`.
+- `local-agent-mode-sessions/<acct>/<org>/remote-session-spaces.json`: `entries[].folders[]` are the
+  absolute folders granted to a remote Cowork session (observed on Windows, Linux and macOS).
+- `git-shadow/cli-temp-roots.json` is a JSON array (at most 256 entries) of Claude Code CLI temp
+  roots (`/tmp/claude-<uid>` on Linux), not project paths
+  (`app.asar:.vite/build/index.chunk-Cyt2WTko.js@3642519` `var $rr="cli-temp-roots.json",MH=256`;
+  the same code manages the shadow git dirs `shadow-of`, `*-gitdir`, `*-gitconfig` inside those
+  roots). The root held per-project slug directories with empty `scratchpad/` and `tasks/` dirs and
+  is outside every home, so it is not collected (see [`docs/coverage.md`](../docs/coverage.md)).
 
 ## 7. Confidence
 
-High: the macOS layout of the standard build (real install, 2026-10-11: data directory, logs, `Partitions/`, `claude-code/`, `claude-code-vm/`, `vm_bundles/` and the exclusion sizes in [section 4](#4-exclusions)); the Linux layout (official `.deb`, real install, 2026-10-11: data directory and logs under `~/.config/Claude`, no XDG data, cache or state use, the downloaded CLI under `claude-code/`); the MSIX build's data directory under `Packages`, its logs in `%LOCALAPPDATA%\Claude\logs`, the empty `Claude-Data` and `Claude-3p` directories, and the root file names there (real install, 2026-10-10); app-dir and log locations per OS (docs), 3p layout and file names (docs), `config.json` token keys and OSCrypt scheme (two independent community reports plus docs statement on secure storage). Medium: the `AnthropicPBC.Claude_fnn82j28hfe8t` family and the `Claude-Data\<family>` data directory (bundle only, not observed in use); that every 3p subdirectory name also appears in the standard build (docs say the two share a layout but document only 3p); Linux decryption key source (the observed Linux `Local State` holds only `os_crypt.portal` keys `prev_desktop` and `prev_init_success` and `uninstall_metrics`); the Linux Cowork VM layout (`vm_bundles` was not created in a nested-virtualisation guest). Not determined: where an unpackaged (non-MSIX) Windows install puts its logs today; IndexedDB schema. The `claude-code-sessions/` record keys are in the [analyzer research document](../../analyzer/research/claude-desktop.md). `CLAUDE_USER_DATA_DIR` moves the data and log directories anywhere and is not a catalog line (see [`docs/coverage.md`](../docs/coverage.md)).
+High: the macOS layout of the standard build (real install, 2026-10-11: data directory, logs,
+`Partitions/`, `claude-code/`, `claude-code-vm/`, `vm_bundles/` and the exclusion sizes in
+[section 4](#4-exclusions)); the Linux layout (official `.deb`, real install, 2026-10-11: data
+directory and logs under `~/.config/Claude`, no XDG data, cache or state use, the downloaded CLI
+under `claude-code/`); the MSIX build's data directory under `Packages`, its logs in
+`%LOCALAPPDATA%\Claude\logs`, the empty `Claude-Data` and `Claude-3p` directories, and the root file
+names there (real install, 2026-10-10); app-dir and log locations per OS (docs), 3p layout and file
+names (docs), `config.json` token keys and OSCrypt scheme (two independent community reports plus
+docs statement on secure storage).
+
+Medium: the `AnthropicPBC.Claude_fnn82j28hfe8t` family and the `Claude-Data\<family>` data directory
+(bundle only, not observed in use); that every 3p subdirectory name also appears in the standard
+build (docs say the two share a layout but document only 3p); Linux decryption key source (the
+observed Linux `Local State` holds only `os_crypt.portal` keys `prev_desktop` and
+`prev_init_success` and `uninstall_metrics`); the Linux Cowork VM layout (`vm_bundles` was not
+created in a nested-virtualisation guest).
+
+Not determined: where an unpackaged (non-MSIX) Windows install puts its logs today; IndexedDB
+schema. The `claude-code-sessions/` record keys are in the [analyzer research
+document](../../analyzer/research/claude-desktop.md). `CLAUDE_USER_DATA_DIR` moves the data and log
+directories anywhere and is not a catalog line (see [`docs/coverage.md`](../docs/coverage.md)).
