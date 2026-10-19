@@ -1,13 +1,13 @@
-# Muse Code transcript schema
+# muse-code
 
-Catalog agent: `muse-code`. Muse Code is Meta's closed-source coding agent
-CLI (`muse`, models `muse-spark-*`). It writes one event-sourced JSONL log
-per session, with each subagent in its own log under the session directory.
-Paths and the rest of the per-user state are in
+Muse Code is Meta's closed-source coding agent CLI (`muse`, models
+`muse-spark-*`). It writes one event-sourced JSONL log per session, with
+each subagent in its own log under the session directory. Paths and the
+rest of the per-user state are in
 [`collectors/research/muse-code.md`](../../collectors/research/muse-code.md).
 No other agent in the catalog shares this format.
 
-## 1. Evidence
+## 1. Source and evidence
 
 Closed source; no public repository, so there are no commit links. Each
 claim below names its evidence level, best first:
@@ -28,14 +28,24 @@ claim below names its evidence level, best first:
   for the agent itself) and `doctor/362cd5a3ba33.../scripts/session-evidence.py`
   (Meta's own reader of `session.jsonl`, which shows the field fallbacks
   Meta itself expects). The directory names are content hashes.
-- **Observed**: a real install on the author's Linux (WSL2) workstation,
-  October 2026: two sessions (one failed on a 402 before any model output,
-  one with web search, web fetch, bash and two reminder subagents),
-  547 envelope lines plus 4 frames and 4 markers in total, every line
-  tabulated by key path. Shapes marked observed were seen there; shapes
-  marked binary were not exercised and rest on field names only.
 
-## 2. Transcript files
+### Observed
+
+- Linux (WSL2), Muse Code 1.4.2 (`muse-bin-1.4.2-R4684.1`): a real
+  install on the author's Linux (WSL2) workstation, October 2026: two
+  sessions (one failed on a 402 before any model output, one with web
+  search, web fetch, bash and two reminder subagents), 547 envelope
+  lines plus 4 frames and 4 markers in total, every line tabulated by
+  key path. Shapes marked observed were seen there; shapes marked binary
+  were not exercised and rest on field names only.
+- macOS and Windows: no real install
+  ([Observed in the collector document](../../collectors/research/muse-code.md#observed)).
+
+### Source reviews
+
+None.
+
+## 2. Transcript stores
 
 All under `${XDG_DATA_HOME:-$HOME/.local/share}/muse/` (read-session skill;
 binary literal `XDG_DATA_HOME:-$HOME/.local/share}/muse/sessions`). The
@@ -50,19 +60,34 @@ Relative to the home:
 | --- | --- | --- |
 | `.local/share/muse/sessions/YYYY/MM/DD/<session id>/session.jsonl` | the session event log; date is local time of creation; id is a UUIDv7 (observed `01a1040f-aa0d-7d82-...`) | yes |
 | `.../<session id>/subagent/<child id>/session.jsonl` | one log per subagent, same format; the session-evidence script walks `subagent/` recursively, so nesting is possible | yes |
-| `.../<session id>/tool-outputs/<task id>/<call id>-<kind>.txt` | full output of a tool call whose inline result was cut (observed kind `web_fetch-page`); `.spool/<call id>-bash.txt.tmp` while running | no, [section 4](#4-joins) |
-| `.../<session id>/approval-review/<reviewer rollout id>.jsonl` | the automated approval reviewer's own run log, same envelope, synthetic clock | no, [section 5](#5-sqlite-and-other-stores) |
+| `.../<session id>/tool-outputs/<task id>/<call id>-<kind>.txt` | full output of a tool call whose inline result was cut (observed kind `web_fetch-page`); `.spool/<call id>-bash.txt.tmp` while running | no, [section 4](#4-joins-and-timestamps) |
+| `.../<session id>/approval-review/<reviewer rollout id>.jsonl` | the automated approval reviewer's own run log, same envelope, synthetic clock | no, [section 5](#5-other-stores) |
 | `.../<session id>/session.peer-history.sqlite3` (+`-wal`, `-shm`) | byte-offset index into `session.jsonl`, no content | no |
 | `.../<session id>/cron.db` | scheduled prompts (`cron_jobs`) | optional |
 | `.../<session id>/cli-<uuid>.log` | text tracing log (`2026-10-04T20:20:31.242428Z INFO <target> <file:line> event="..." key=value`) | no |
 | `.../<session id>/.session.jsonl.permission-init` | the first `retained_frame` line, staged before `session.jsonl` exists; a directory with only this and `.session.lock` is a session that never started (observed) | no |
-| `.local/share/muse/sessions/.msp-view-v1/<session id>/` | `HEAD.json`, `snapshot-<uuid>.json`, `journal-NNNNNNNN.bin`, `index-NNNNNNNN.bin`: a derived TUI view rebuilt from `session.jsonl` | no, [section 5](#5-sqlite-and-other-stores) |
-| `.local/share/muse/session-index.db` | one row per session: workspace, model, title, first prompt | no, [section 5](#5-sqlite-and-other-stores) |
+| `.local/share/muse/sessions/.msp-view-v1/<session id>/` | `HEAD.json`, `snapshot-<uuid>.json`, `journal-NNNNNNNN.bin`, `index-NNNNNNNN.bin`: a derived TUI view rebuilt from `session.jsonl` | no, [section 5](#5-other-stores) |
+| `.local/share/muse/session-index.db` | one row per session: workspace, model, title, first prompt | no, [section 5](#5-other-stores) |
 | `.local/share/muse/session-name-authority/session-names.db` | session name claims | no |
 | `.local/share/muse/tui-history.jsonl` | prompt history of the TUI composer | yes, as history |
 
 The binary also names `goals.db` and `input-assets/` beside `cron.db` in the
 session directory (binary; not observed).
+
+### What survives a delete
+
+How a Muse Code session is deleted, and what a delete removes, is not
+stated in this document: the real install deleted no session. Outside
+the session directory, four stores hold records of a session: the TUI
+prompt history `tui-history.jsonl` (each prompt with its session id and
+workspace root, no timestamp), the session index `session-index.db` (one
+row per session with its workspace, model, title and first prompt),
+`session-names.db` (the name history per session) and the derived TUI
+view under `sessions/.msp-view-v1/<session id>/`. Whether any of them
+outlives a deleted session is not stated, and no deletion marker is
+known. The analyzer reads the prompt history, as `user` rows with an
+empty `timestamp_utc` ([section 8](#8-parser-plan)), and none of the
+other three.
 
 ## 3. Record schema
 
@@ -71,7 +96,7 @@ session directory (binary; not observed).
 Every line of `session.jsonl` is one JSON object of one of three shapes
 (observed; `RawLogRecordEnvelope` with 11 fields in the binary):
 
-**Envelope** (all but a handful of lines):
+The envelope (all but a handful of lines):
 
 | Field | Value |
 | --- | --- |
@@ -87,7 +112,7 @@ Every line of `session.jsonl` is one JSON object of one of three shapes
 | `payload_schema_version` | 1, 2 (`route_facts`, `agent_tree_initialized`) or 3 (`approval` events) observed |
 | `payload` | object; shape by `payload_type` |
 
-**`retained_frame`** (line 1 of every log, observed in all four):
+A `retained_frame` line (line 1 of every log, observed in all four):
 `{retained_frame:"session_permission_transaction", frame_schema_version:1,
 outer_log_ordinal, transaction_id, children:[{child_index, record_json}],
 content_sha256}`. `record_json` is a JSON **string** holding a complete
@@ -98,7 +123,7 @@ The binary has frame and resume code (`retained permission frame has no
 trusted physical head`), so a resumed or re-permissioned session can carry
 more frames later in the file.
 
-**`retained_marker`** (observed 4 times in one log):
+A `retained_marker` line (observed 4 times in one log):
 `{retained_marker:"omitted_live_only", schema_version:1, stream,
 position:{id, sequence}, omitted_record:{record_type:"status",
 durability:"ephemeral", payload_type:"runtime.session",
@@ -153,7 +178,7 @@ Two payload layouts occur (observed):
 | `started` | `prompt` (string); binary also `video` | start of a run (one agent turn); in a top-level log the text the user submitted (read-session skill: "every submitted prompt is recorded here"); in a subagent log the task the runtime gave the child |
 | `user_prompt_display` (binary, skill) | one field, name undetermined | follows `started` only when the user-facing form differs (attachment placeholder `[Image 1]`) |
 | `model_request_configured` | `base_instructions` (full system prompt), `base_instructions_source`, `toolset{active_tools[], mode, source}`, `run_context_messages[{id, role:"developer", source, lifecycle, order, text}]`, `reminder_roster` | the request setup; `run_context_messages` hold the injected AGENTS.md/rules file, workspace identity, sandbox policy, skills catalog, memory snapshot |
-| `provider_request_options_configured`, `model_input_trace_recorded`, `context_block_diagnostic`, `goal_usage_attribution`, `resource_usage_sampled`, `task_stream_linked`, `reminder_proposal`, `reminder_reconciler_outcome`, `skill_reminder_decision`, `memory_reminder_child_session_linked` | bookkeeping | sizes, digests, usage, subagent links ([section 4](#4-joins)) |
+| `provider_request_options_configured`, `model_input_trace_recorded`, `context_block_diagnostic`, `goal_usage_attribution`, `resource_usage_sampled`, `task_stream_linked`, `reminder_proposal`, `reminder_reconciler_outcome`, `skill_reminder_decision`, `memory_reminder_child_session_linked` | bookkeeping | sizes, digests, usage, subagent links ([section 4](#4-joins-and-timestamps)) |
 | `model_response_created` | `response_id` | provider response opened |
 | `reasoning_summary_delta` | `message_id`, `summary_index`, `text` | one summary paragraph, durable, written before the committed record |
 | `reasoning_summary_committed` | `message_id`, `provider_item_id`, `response_id`, `text` | the readable reasoning summary; `text` equals the deltas of the same `message_id` joined by `\n\n` (5 of 5 observed) |
@@ -255,7 +280,7 @@ output_ref}` record a shell command the user ran from the TUI (binary,
 ### Completeness and streaming
 
 The JSONL is complete on its own. `session.peer-history.sqlite3` holds no
-content ([section 5](#5-sqlite-and-other-stores)); the only content outside the log is the full tool
+content ([section 5](#5-other-stores)); the only content outside the log is the full tool
 output in `tool-outputs/`, whose cut-down form is already in the result
 `text`. Streaming deltas are not reassembled: `text_delta` and
 `reasoning_delta` never reach the durable log, ephemeral tool progress is
@@ -263,7 +288,7 @@ replaced by `retained_marker` lines, and `reasoning_summary_delta` records
 are complete paragraphs whose join is the committed record. Each
 `*_committed` record carries the full text.
 
-## 4. Joins
+## 4. Joins and timestamps
 
 - Session id: envelope `stream.id`; equals the directory name. A subagent
   log's `stream.id` is the subagent id (its directory name), and its runs
@@ -298,63 +323,72 @@ are complete paragraphs whose join is the committed record. Each
 - Approval review: `automated_review_started.reviewer_rollout_id` is the
   `approval-review/<id>.jsonl` file name and that log's `stream.id`.
 - `tui-history.jsonl`: `session` = session id, `project` = workspace root.
+- Time: envelope `recorded_at`, integer microseconds since the Unix
+  epoch, UTC ([Line kinds](#line-kinds)); an approval-review log's
+  `recorded_at` is a synthetic clock
+  ([Approval review logs](#approval-review-logs)).
 
-## 5. SQLite and other stores
+## 5. Other stores
 
-- `session.peer-history.sqlite3` (WAL; observed): `schema_meta(key,
-  value)`, `source_snapshot(source_identity, source_len,
-  source_modified_ns, target_stream_id, target_records_complete,
-  anchor_start, anchor_end, anchor_sha256)`, `retained_records(line_start,
-  line_end, event_id, stream_kind, stream_id, sequence, raw_sha256)`,
-  `stable_ids(kind, stable_id, target_session_id, event_id, line_start)`.
-  Byte offsets and hashes into `session.jsonl` only; useful to show a log
-  was edited (`raw_sha256` per line), not for content.
-- `session-index.db` (observed, no sidecars at rest): table `sessions`
-  with `session_id`, `session_dir`, `session_log_path`, `layout`
-  (`session_jsonl`), `workspace_root`, `provider_id`, `model_id`,
-  `git_branch` (empty even for the git session), `title` and
-  `first_user_prompt` (the first prompt), `search_text`, `created_at_us`,
-  `updated_at_us`, `prompt_count`, `status`, `session_name`, `msp_*`
-  fork columns. A cross-check, not a transcript.
-- `session-names.db`: `session_name_claims_v2`,
-  `session_name_operations_v2` (name history per session).
-- `cron.db` (observed, empty): `cron_jobs(id, session_id, cron_expr,
-  prompt, recurring, agent_id, kind ('user'), created_at_ms,
-  next_fire_at_ms, last_fired_at_ms, fire_count, status,
-  last_fire_run_id, ...)`. A scheduled prompt is user-authored text that
-  fires later as a run.
-- `.msp-view-v1/<id>/journal-*.bin`: length-prefixed JSON notifications
-  (`turn/started`, `item/completed` with `item.kind` `userMessage`,
-  `toolCall`, `reasoning`, `reminderChild`, `approval/requested`,
-  `session/tokenUsage`, ...) each with `sourceRange` pointing back at
-  `session.jsonl` sequences, and `recordedAt` as ISO 8601. Derived and
-  redundant; `HEAD.json` `source_through.sequence` says how far it got.
-- `approval-review/<id>.jsonl`: envelopes with
-  `stream.kind:"approval.review.runtime"`, one run per review (7 runs in
-  one file observed), each `started.prompt` a JSON
-  `approval_review_context` document and a `submit_approval_assessment`
-  tool call. `recorded_at` is a **synthetic clock**: 1780531500000000 µs
-  (2026-06-04T00:05:00Z) plus `sequence - 1` (214 of 214 observed). The
-  real times are the parent's `automated_review_started.started_at_ms` and
-  `automated_review_completed.completed_at_ms` (milliseconds).
-- `tui-history.jsonl` (observed): **two lines per entry**, a JSON string
-  (the prompt text as typed) followed by an object `{project, session}`.
-  No timestamp.
+### Peer history index
 
-### What survives a delete
+`session.peer-history.sqlite3` (WAL; observed): `schema_meta(key,
+value)`, `source_snapshot(source_identity, source_len,
+source_modified_ns, target_stream_id, target_records_complete,
+anchor_start, anchor_end, anchor_sha256)`, `retained_records(line_start,
+line_end, event_id, stream_kind, stream_id, sequence, raw_sha256)`,
+`stable_ids(kind, stable_id, target_session_id, event_id, line_start)`.
+Byte offsets and hashes into `session.jsonl` only; useful to show a log
+was edited (`raw_sha256` per line), not for content.
 
-How a Muse Code session is deleted, and what a delete removes, is not
-stated in this document: the real install deleted no session. Outside
-the session directory, four stores hold records of a session: the TUI
-prompt history `tui-history.jsonl` (each prompt with its session id and
-workspace root, no timestamp), the session index `session-index.db` (one
-row per session with its workspace, model, title and first prompt),
-`session-names.db` (the name history per session) and the derived TUI
-view under `sessions/.msp-view-v1/<session id>/`. Whether any of them
-outlives a deleted session is not stated, and no deletion marker is
-known. The analyzer reads the prompt history, as `user` rows with an
-empty `timestamp_utc` ([section 8](#8-parser-plan)), and none of the
-other three.
+### Session index
+
+`session-index.db` (observed, no sidecars at rest): table `sessions`
+with `session_id`, `session_dir`, `session_log_path`, `layout`
+(`session_jsonl`), `workspace_root`, `provider_id`, `model_id`,
+`git_branch` (empty even for the git session), `title` and
+`first_user_prompt` (the first prompt), `search_text`, `created_at_us`,
+`updated_at_us`, `prompt_count`, `status`, `session_name`, `msp_*`
+fork columns. A cross-check, not a transcript.
+
+### Session names
+
+`session-names.db`: `session_name_claims_v2`,
+`session_name_operations_v2` (name history per session).
+
+### Scheduled prompts
+
+`cron.db` (observed, empty): `cron_jobs(id, session_id, cron_expr,
+prompt, recurring, agent_id, kind ('user'), created_at_ms,
+next_fire_at_ms, last_fired_at_ms, fire_count, status,
+last_fire_run_id, ...)`. A scheduled prompt is user-authored text that
+fires later as a run.
+
+### TUI view
+
+`.msp-view-v1/<id>/journal-*.bin`: length-prefixed JSON notifications
+(`turn/started`, `item/completed` with `item.kind` `userMessage`,
+`toolCall`, `reasoning`, `reminderChild`, `approval/requested`,
+`session/tokenUsage`, ...) each with `sourceRange` pointing back at
+`session.jsonl` sequences, and `recordedAt` as ISO 8601. Derived and
+redundant; `HEAD.json` `source_through.sequence` says how far it got.
+
+### Approval review logs
+
+`approval-review/<id>.jsonl`: envelopes with
+`stream.kind:"approval.review.runtime"`, one run per review (7 runs in
+one file observed), each `started.prompt` a JSON
+`approval_review_context` document and a `submit_approval_assessment`
+tool call. `recorded_at` is a **synthetic clock**: 1780531500000000 µs
+(2026-06-04T00:05:00Z) plus `sequence - 1` (214 of 214 observed). The
+real times are the parent's `automated_review_started.started_at_ms` and
+`automated_review_completed.completed_at_ms` (milliseconds).
+
+### Prompt history
+
+`tui-history.jsonl` (observed): **two lines per entry**, a JSON string
+(the prompt text as typed) followed by an object `{project, session}`.
+No timestamp.
 
 ## 6. Format versions
 
@@ -379,7 +413,8 @@ pages, file contents). `reasoning_committed.encrypted_content` is an
 opaque provider blob. `approval/requested.raw_args` and
 `automated_review_started.exact_action` repeat the command or URL under
 review. No credential was found in any session file; the token is in
-`~/.config/muse/auth.json` (collectors document). Meta's own export
+`~/.config/muse/auth.json`
+([collector document](../../collectors/research/muse-code.md#3-credentials)). Meta's own export
 redacts keys matching `api.?key|authorization|bearer|cookie|credential|
 password|secret|token` and `sk-`, `ghp_`, `AKIA`, `AIza`, `xox`, JWT
 shapes (session-evidence.py `SENSITIVE_KEY`, `STANDALONE_SECRET`), which is
@@ -399,12 +434,7 @@ Not wanted: `approval-review/*.jsonl`, `tool-outputs/**`, `cli-*.log`,
 Treat a file whose first parseable record has neither `retained_frame`
 nor `stream`/`payload_type` as not Muse.
 
-Read every line with `iter_jsonl`; each bad line (a log cut mid-write) is
-its own `system` row at the end of the log's rows,
-`parser: unparseable line (<decoder reason>): <the line in full>`, and
-reading continues. A `retained_frame` child whose `record_json` does not
-decode gets the same row with the reason prefixed `retained_frame child: `
-and the child's `record_json` text as the line. For each line:
+Read every line with `iter_jsonl` ([Bad lines](#bad-lines)). For each line:
 
 1. `retained_marker`: skip (no content, no time).
 2. `retained_frame`: decode each `children[].record_json` with
@@ -471,11 +501,64 @@ Columns:
 A tool result whose text says `Full output saved to: <path>` is cut; the
 parser leaves it as is (the collected `tool-outputs/` file holds the rest).
 
-Sample fixture `.local/share/muse/sessions/2026/10/01/01a0f000-0000-7000-8000-000000000001/session.jsonl`
-(frame, metadata, branch, name, model, intent, user prompt, reasoning
-delta, summary, encrypted reasoning, model completion, bash call, effect,
-marker, effect end, bash result, approval request and decision, subagent
-link, assistant reply, run end, session end, then a cut line):
+### Permission state
+
+The parser yields `system` rows for the approval records
+([Approval events](#approval-events)), for the session's permission
+profile from the `retained_frame` children and for the
+`session.opened.observed` security mode ([Line kinds](#line-kinds),
+[Session-level records](#session-level-records-observed)), and one row
+per project in `~/.config/muse/trust.json`; the coverage table above
+gives each row's text. The skills store lock
+`~/.config/muse/skills/.muse/lock.json` `trust` is not read.
+
+### Model
+
+The `runtime.session.metadata`, `run.model.configured` and
+`model_completed` records fill `model` and give the `model:` rows, and
+`runtime.model_reconfigure.completed` gives `model: <old> -> <new>`; the
+coverage table above gives each row's text
+([Session-level records](#session-level-records-observed)).
+
+### Past use and secondary sources
+
+The prompt history `tui-history.jsonl` is read as `user` rows with an
+empty `timestamp_utc` ([Prompt history](#prompt-history)); the session
+index, the session names and the TUI view are not
+([What survives a delete](#what-survives-a-delete)). Whether the prompt
+history is marked a secondary source is not stated.
+
+### Sync, relay and origin
+
+Not stated.
+
+### Scratch directories
+
+Not stated.
+
+### Deletion
+
+Not stated: the real install deleted no session
+([What survives a delete](#what-survives-a-delete)).
+
+### Bad lines
+
+Each bad line (a log cut mid-write) is its own `system` row at the end
+of the log's rows,
+`parser: unparseable line (<decoder reason>): <the line in full>`, and
+reading continues. A `retained_frame` child whose `record_json` does not
+decode gets the same row with the reason prefixed
+`retained_frame child: ` and the child's `record_json` text as the line.
+
+### Fixtures
+
+Sample fixture (frame, metadata, branch, name, model, intent, user
+prompt, reasoning delta, summary, encrypted reasoning, model completion,
+bash call, effect, marker, effect end, bash result, approval request and
+decision, subagent link, assistant reply, run end, session end, then a
+cut line):
+
+- `.local/share/muse/sessions/2026/10/01/01a0f000-0000-7000-8000-000000000001/session.jsonl`
 
 ```json
 {"retained_frame":"session_permission_transaction","frame_schema_version":1,"outer_log_ordinal":1,"transaction_id":"a1b2c3d4-0000-4000-8000-000000000001","children":[{"child_index":0,"record_json":"{\"schema_version\":1,\"id\":\"00000000-0000-4000-8000-000000000001\",\"stream\":{\"kind\":\"session\",\"id\":\"01a0f000-0000-7000-8000-000000000001\"},\"sequence\":1,\"recorded_at\":1790845200000000,\"record_type\":\"event\",\"durability\":\"durable\",\"causation_id\":null,\"payload_type\":\"runtime.session.permission_format_declared\",\"payload_schema_version\":1,\"payload\":{\"format\":\"profile_v1\",\"schema_version\":1}}"},{"child_index":1,"record_json":"{\"schema_version\":1,\"id\":\"00000000-0000-4000-8000-000000000002\",\"stream\":{\"kind\":\"session\",\"id\":\"01a0f000-0000-7000-8000-000000000001\"},\"sequence\":2,\"recorded_at\":1790845200000000,\"record_type\":\"event\",\"durability\":\"durable\",\"causation_id\":null,\"payload_type\":\"runtime.session.permission_profile_committed\",\"payload_schema_version\":1,\"payload\":{\"actor\":{\"id\":null,\"kind\":\"runtime\"},\"cause\":\"new_session_default\",\"permission_epoch\":1,\"resolved_snapshot\":{\"approval\":\"on_request\",\"reviewer\":\"auto_review\",\"schema_version\":1},\"schema_version\":1,\"source\":{\"display_name\":\"Auto-review\",\"id\":\":auto-review\",\"kind\":\"built_in\"}}}"}],"content_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}
@@ -503,7 +586,9 @@ link, assistant reply, run end, session end, then a cut line):
 {"schema_version":1,"id":"00000000-0000-4000-8000-0000000000
 ```
 
-Subagent fixture `.../01a0f000-0000-7000-8000-000000000001/subagent/0f3c2b1a-5d6e-4f70-8a9b-0c1d2e3f4a5b/session.jsonl`:
+Subagent fixture:
+
+- `.../01a0f000-0000-7000-8000-000000000001/subagent/0f3c2b1a-5d6e-4f70-8a9b-0c1d2e3f4a5b/session.jsonl`
 
 ```json
 {"retained_frame":"session_permission_transaction","frame_schema_version":1,"outer_log_ordinal":1,"transaction_id":"a1b2c3d4-0000-4000-8000-000000000002","children":[{"child_index":0,"record_json":"{\"schema_version\":1,\"id\":\"00000000-0000-4000-9000-000000000001\",\"stream\":{\"kind\":\"session\",\"id\":\"0f3c2b1a-5d6e-4f70-8a9b-0c1d2e3f4a5b\"},\"sequence\":1,\"recorded_at\":1790845200000000,\"record_type\":\"event\",\"durability\":\"durable\",\"causation_id\":null,\"payload_type\":\"runtime.session.permission_format_declared\",\"payload_schema_version\":1,\"payload\":{\"format\":\"profile_v1\",\"schema_version\":1}}"},{"child_index":1,"record_json":"{\"schema_version\":1,\"id\":\"00000000-0000-4000-9000-000000000002\",\"stream\":{\"kind\":\"session\",\"id\":\"0f3c2b1a-5d6e-4f70-8a9b-0c1d2e3f4a5b\"},\"sequence\":2,\"recorded_at\":1790845200000000,\"record_type\":\"event\",\"durability\":\"durable\",\"causation_id\":null,\"payload_type\":\"runtime.session.permission_profile_committed\",\"payload_schema_version\":1,\"payload\":{\"actor\":{\"id\":null,\"kind\":\"runtime\"},\"cause\":\"new_session_default\",\"permission_epoch\":1,\"resolved_snapshot\":{\"approval\":\"on_request\",\"reviewer\":\"auto_review\",\"schema_version\":1},\"schema_version\":1,\"source\":{\"display_name\":\"Auto-review\",\"id\":\":auto-review\",\"kind\":\"built_in\"}}}"}],"content_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}
@@ -523,9 +608,10 @@ Prompt history fixture `.local/share/muse/tui-history.jsonl`:
 ```
 
 Noise the parser must not want:
-`.local/share/muse/sessions/2026/10/01/01a0f000-0000-7000-8000-000000000001/approval-review/7a7a7a7a-0000-4000-8000-000000000001.jsonl`
-(envelopes with `stream.kind:"approval.review.runtime"`) and
-`.config/muse/settings.json`.
+
+- `.local/share/muse/sessions/2026/10/01/01a0f000-0000-7000-8000-000000000001/approval-review/7a7a7a7a-0000-4000-8000-000000000001.jsonl`
+  (envelopes with `stream.kind:"approval.review.runtime"`);
+- `.config/muse/settings.json`.
 
 Expected rows from the main fixture: `system` (session name, line 4),
 `user` (line 7), `thinking` (line 9, with `include_thinking`), `tool_use`
@@ -539,7 +625,9 @@ timestamp `2026-10-01T09:00:00.300Z`. The subagent fixture yields a
 `submit_reminder_decision`, and a `tool_result`, with `session_id`
 `0f3c2b1a-...` and `project_path` `/srv/proj` from the parent.
 
-Confidence. High (observed and confirmed by the read-session skill and
+### Confidence
+
+High (observed and confirmed by the read-session skill and
 Meta's script): envelope fields, microsecond `recorded_at`, frame and
 marker shapes, `started`, `assistant_message_committed`,
 `assistant_tool_calls_committed` with string `args`,

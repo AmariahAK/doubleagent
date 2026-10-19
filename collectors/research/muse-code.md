@@ -1,15 +1,19 @@
-# muse-code (Meta Muse Code CLI)
+# muse-code
 
-How the transcripts are encoded and how the parser reads them is in
+Muse Code is Meta's closed-source coding agent CLI (`muse`, models
+`muse-spark-*`), shipped as a launcher script (bash on Linux and macOS,
+PowerShell on Windows) plus a native binary that the launcher downloads
+from Meta's lookaside host and keeps up to date. It reads the state of
+Claude Code, Codex CLI and Grok Build without writing to it
+([section 7](#7-confidence)). How the transcripts are encoded and how
+the parser reads them is in
 [`analyzer/research/muse-code.md`](../../analyzer/research/muse-code.md).
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
-- Closed source, no public repository, so there are no commit links. Muse
-  Code is Meta's coding agent CLI (models `muse-spark-*`), shipped as a
-  launcher script (bash on Linux and macOS, PowerShell on Windows) plus a
-  native binary that the launcher downloads from Meta's lookaside host and
-  keeps up to date.
+Closed source, no public repository, so there are no commit links. The
+evidence levels, cited by letter throughout:
+
 - Evidence level **B** = `strings -n 6` of the shipped binary
   `muse-bin-1.4.2-R4684.1` (344,369,368 bytes, x86-64 ELF, statically
   linked, stripped; sha256
@@ -34,11 +38,8 @@ How the transcripts are encoded and how the parser reads them is in
   `import/5bc46b7edb9f…`, `migrate/1dda33263863…`,
   `manage-settings/4381b5a6a995…`, `doctor/362cd5a3ba33…`, and under
   `skills/bundled/muse-core/skills/`, `agents/` and `fleet-manager/`.
-- Evidence level **I** = the real install on the research host (Linux,
-  WSL2), two interactive sessions on 2026-10-03 and 2026-10-04, one of which
-  started two subagents. Only names, sizes, JSON key names and SQLite
-  schemas were read; SQLite files were copied with their sidecars before
-  opening.
+- Evidence level **I** = the real install on the research host
+  ([Observed](#observed)).
 - Evidence level **W** = shipped binary strings (Windows build):
   `muse-x86-windows.exe` 1.4.2-R4684.1 (443,192,056 bytes, sha256
   `39a97806d315ece0fc5cdbb88c903ef5bc77655f32e66dc22d267a212c5030ba`,
@@ -59,14 +60,31 @@ How the transcripts are encoded and how the parser reads them is in
   The Linux artifact checksum equals the binary above.
 - No official documentation was consulted.
 
+### Observed
+
+- Linux (WSL2), Muse Code 1.4.2-R4684.1 (the binary of level B),
+  2026-10-03 and 2026-10-04: the real install on the research host, two
+  interactive sessions, one of which started two subagents. Only names,
+  sizes, JSON key names and SQLite schemas were read; SQLite files were
+  copied with their sidecars before opening.
+- macOS: no real install; the Mac claims rest on strings only
+  ([section 7](#7-confidence)).
+- Windows: no real install; the Windows claims rest on the binary's
+  strings and the installer and launcher scripts (levels W and S).
+
+### Source reviews
+
+None.
+
 ## 2. Per-user storage
 
 Platforms: Linux, macOS and Windows, each on x86-64 and arm64 (M). The
 bash launcher covers Linux and macOS (`detect_platform`, L:91-99); a
 separate PowerShell installer and launcher cover Windows (S-inst:200-203
-refuses non-Windows hosts and names `installer.sh` for macOS and Linux; `Get-PlatformKey` returns `x86_windows` or
-`aarch64_windows`, S-ps:70-73). macOS also ships as `muse.pkg` (M); its
-install location was not read.
+refuses non-Windows hosts and names `installer.sh` for macOS and Linux;
+`Get-PlatformKey` returns `x86_windows` or `aarch64_windows`,
+S-ps:70-73). macOS also ships as `muse.pkg` (M); its install location
+was not read.
 
 Path resolution is the same on every OS: XDG base directories with a home
 fallback, never `AppData` or `Library/Application Support` for per-user
@@ -102,7 +120,23 @@ No `~/.local/state/muse` or `~/.cache/muse` exists on the host and the
 binary names neither (I, B); the XDG state and cache keys appear only in
 the crate's generic table.
 
-Config root `~/.config/muse/` (I unless stated):
+### Scratch directories
+
+- Windows shell sandbox scratch: a per-session private temp root named
+  `muse-shell-sandbox-<session id>`, required to be a direct child of
+  `FOLDERID_LocalAppDataLow`, that is
+  `%USERPROFILE%\AppData\LocalLow\muse-shell-sandbox-<session id>`
+  (W:364189-364200). It holds the temp files of sandboxed shell commands
+  for one session; whether it is removed when the session ends is not
+  determined.
+- Remote-machine forwards `/tmp/fleet-manager-<uid>/` (K): outside the
+  home, not collectable by a catalog line.
+- Git worktrees Muse creates inside a project: `.muse/worktrees/`
+  ([section 4](#4-exclusions)).
+
+### Config root
+
+Path `~/.config/muse/` (I unless stated):
 
 - `settings.json`: `schema_version`, `provider`, `model`; also `mcpServers`
   (K `migrate/SKILL.md:144-152`). Lock file `.settings.json.lock`.
@@ -121,7 +155,9 @@ Config root `~/.config/muse/` (I unless stated):
   (B `~/.config/muse/machines.toml`; K
   `fleet-manager/references/getting-started.md:69-72`). Not present.
 
-Data root `~/.local/share/muse/` (I, 6.1 MB in total after two sessions):
+### Data root
+
+Path `~/.local/share/muse/` (I, 6.1 MB in total after two sessions):
 
 - `sessions/YYYY/MM/DD/<session-id>/` (2.1 MB), session ids are UUIDv7 and
   the shard is the local date (K `read-session/SKILL.md:18-28`). Each holds
@@ -148,7 +184,7 @@ Data root `~/.local/share/muse/` (I, 6.1 MB in total after two sessions):
   session). Derived from `session.jsonl`.
 - `sessions/.prior-crash-telemetry-markers-v1`: empty marker file (I).
 - `session-index.db`: SQLite in WAL mode, table `sessions`, one row per
-  session (I; schema in [section 6](#6-project-path-records)).
+  session (I; schema in [section 6](#6-where-the-project-path-is-recorded)).
 - `session-name-authority/`: `authority.json` (`schema_version`,
   `authority_id`) and `session-names.db` (tables `session_name_claims_v2`,
   `session_name_operations_v2`, `session_name_counters_v2`) (I).
@@ -187,13 +223,16 @@ Data root `~/.local/share/muse/` (I, 6.1 MB in total after two sessions):
   fetched from remote machines by the `fleet-manager` skill) (K
   `fleet-manager/references/getting-started.md:69-71`). Not present.
 
-Other per-user locations:
+### Coordinator projects
 
 - `~/.muse/projects/<slug>/` with `tracking.json`, and
   `~/.muse/projects/.archive/<slug>-<stamp>/`: coordinator projects of the
   experimental `agents` skill (gated by `MUSE_EXPERIMENTAL_AGENTS`);
   relocated by `MUSE_PROJECTS_HOME` (K
   `agents/references/verbs.md:36-37`; B). Not present.
+
+### Install directories
+
 - Install directory on Linux and macOS, the directory holding the bash
   launcher (`~/.local/bin` on this host; the shell installer was not
   read): `muse` (launcher), `muse-bin-<version>` (binary),
@@ -219,34 +258,30 @@ Other per-user locations:
   `.muse-launcher.<pid>` (S-ps:646). The installer removes stale
   `.muse-updater` and `.muse-install-lock` from earlier versions
   (S-inst:242-246).
-- Windows shell sandbox scratch: a per-session private temp root named
-  `muse-shell-sandbox-<session id>`, required to be a direct child of
-  `FOLDERID_LocalAppDataLow`, that is
-  `%USERPROFILE%\AppData\LocalLow\muse-shell-sandbox-<session id>`
-  (W:364189-364200). It holds the temp files of sandboxed shell commands
-  for one session; whether it is removed when the session ends is not
-  determined.
-- Remote-machine forwards `/tmp/fleet-manager-<uid>/` (K): outside the
-  home, not collectable by a catalog line.
 
-System-wide (not per home, outside the catalog's scope):
+### System-wide locations
+
+Not per home, outside the catalog's scope:
 
 - Windows elevated sandbox setup root under `%ProgramData%` ("setup root
-  has no ProgramData ancestor", W:364301; `MuseSandboxUsers` group, W:364118,364240, and
-  the `TBH_WINDOWS_ELEVATED_SETUP_ROOT` override, W:364306), with
+  has no ProgramData ancestor", W:364301; `MuseSandboxUsers` group,
+  W:364118,364240, and the `TBH_WINDOWS_ELEVATED_SETUP_ROOT` override,
+  W:364306), with
   sandbox accounts `muse-sbx-r1`/`muse-sbx-u1` whose passwords are
   protected with DPAPI `CryptProtectData` (W:364322-364330).
 - Enterprise policy: Windows registry `SOFTWARE\Policies\Muse`
   (W:352349); on macOS `Library/Application Support/muse` beside the
-  keys `EnterpriseDefaultsJson` and `EnterprisePolicyJson` (W:352353-352354),
-  with file names `.enterprise-defaults.json` and `enterprise-policy.json`
+  keys `EnterpriseDefaultsJson` and `EnterprisePolicyJson`
+  (W:352353-352354), with file names `.enterprise-defaults.json` and `enterprise-policy.json`
   (W:352592; Linux binary B has the same two file names). Read as the
   system-wide `/Library/Application Support/muse/` (medium confidence).
   The Linux location of these files is not determined: the Linux strings
   name no `/etc/muse` or other system path for them. A responder collects
   these by hand; a catalog line cannot reach them.
 
-Environment relocation: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
+### Environment relocation
+
+Variables that relocate state: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
 `XDG_RUNTIME_DIR` (B), `MUSE_AUTH_PATH` (launchers' view of `auth.json`
 only, L:25, S-ps:23; the string does not occur in the Linux binary),
 `MUSE_PROJECTS_HOME`, `MUSE_CHANNEL` (`muse-stable` or `muse-canary`,
@@ -362,7 +397,7 @@ Sizes from the host after two sessions (I):
 - No per-project database. Sessions are always under the data root
   (K `read-session/SKILL.md:30-33`).
 
-## 6. Project path records
+## 6. Where the project path is recorded
 
 - `session.jsonl`: the `runtime.session.metadata` record carries
   `payload.record.workspace_root` (absolute path), and
