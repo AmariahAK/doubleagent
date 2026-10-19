@@ -75,6 +75,32 @@ class Catalog:
                 best = e
         return best.agent if best is not None else ""
 
+    def claims_home_path(self, rel: str, windows: bool = False) -> str:
+        """The agent of the home catalog entry that claims `rel`, a path
+        relative to a home, or `""` when none matches. An entry claims the
+        path when it has no more segments than the path and each of its
+        segment regexes fully matches the path's segment at the same place,
+        so `.copilot` claims `.copilot/chats/<id>` and `.config/[Cc]ursor`
+        claims `.config/Cursor/x`, while `.config/myproject` is claimed by
+        no entry, since none is the bare `.config`. The most specific
+        matching entry wins, then the first in catalog order. With
+        `windows` the path is split on backslashes and every segment is
+        matched without regard to case, as Windows compares file names.
+        Used to tell an agent's own working directory (a scratch
+        directory) from a project in inventory.json (issue 149)."""
+        sep = "\\" if windows else "/"
+        parts = [p for p in rel.split(sep) if p]
+        flags = re.IGNORECASE if windows else 0
+        best: Entry | None = None
+        for e in self.entries:
+            n = len(e.segments)
+            if n > len(parts) or (best is not None and n <= len(best.segments)):
+                continue
+            pairs = zip(e.regexes, parts[:n], strict=True)
+            if all(re.fullmatch(rx.pattern, p, flags) for rx, p in pairs):
+                best = e
+        return best.agent if best is not None else ""
+
     def nested_matches(self, agent_dir: Path, onerror=None) -> Iterator[tuple[Entry, Path]]:
         """Yield (entry, path) for catalog globs that live inside agent_dir
         when agent_dir itself is the first segment of their glob, for example

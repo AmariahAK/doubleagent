@@ -195,7 +195,13 @@ other items are still read.
   codex-mobile-has-connected-device, file mtime)` row, and
   `thread-workspace-root-hints` (else
   `thread-projectless-output-directories`) `{<id>: path}` gives a
-  thread's rows their `project_path`. Every `system` row is at the file's
+  thread's rows their `project_path`. Each entry of
+  `thread-projectless-output-directories`, the directory the app made
+  for a thread with no project (`~/Documents/Codex/<date>/<slug>`), is
+  also a `scratch directory: <path> (projectless thread <id>) (from
+  <file> thread-projectless-output-directories, file mtime)` row whose
+  `project_path` is that path, so inventory.json lists it under
+  `scratch_directories` (issue 149). Every `system` row is at the file's
   modification time; a file that does not decode, or is not an object,
   is one `parser:` row.
 """
@@ -210,7 +216,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..inputs import Artifact, error_reason
-from ..model import Row, compact
+from ..model import SCRATCH_PREFIX, Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import epoch_ms, to_utc
 from .base import Options, error_rows, file_mtime, setting_value
@@ -938,6 +944,13 @@ def _global_state_texts(doc: dict, rel: str) -> Iterator[tuple[str, str]]:
                 source(MOBILE_DEVICE),
             ),
         )
+    for sid, path in _as_object(doc.get(OUTPUT_DIRS)).items():
+        if isinstance(path, str) and path:
+            yield (
+                sid,
+                "%s %s (projectless thread %s) %s"
+                % (SCRATCH_PREFIX, path, sid, source(OUTPUT_DIRS)),
+            )
 
 
 def parse_global_state(parser: RolloutParser, artifact: Artifact) -> Iterator[Row]:
@@ -973,4 +986,8 @@ def parse_global_state(parser: RolloutParser, artifact: Artifact) -> Iterator[Ro
         row.source_line = 1
         row.timestamp_utc = mtime
         row.text = compact(text)
+        if text.startswith(SCRATCH_PREFIX):
+            # The row names the projectless directory itself, whatever
+            # root hint the thread has.
+            row.project_path = str(outputs[sid])
         yield row

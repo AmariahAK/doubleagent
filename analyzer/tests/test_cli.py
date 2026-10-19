@@ -36,9 +36,12 @@ from fixtures import (
     CLINE_QUEUE_PENDING,
     CLINE_SESSION,
     CLINE_TASK,
+    CODEX_DESKTOP_ROLLOUT,
+    CODEX_GLOBAL_STATE_REL,
     CODEX_ORPHAN,
     CODEX_SESSION,
     CONTINUE_SESSION,
+    COPILOT_EVENT_LINES,
     COPILOT_SESSION,
     COPILOT_WORKSPACE_YAML,
     GOOSE_GATEWAY_SESSION,
@@ -65,6 +68,7 @@ from fixtures import (
     build_cline_blob_upload,
     build_cline_sync_queue,
     build_home,
+    codex_rollout_records,
     goose_gateway_records,
 )
 
@@ -269,6 +273,8 @@ class InventoryJsonTests(unittest.TestCase):
         self.assertEqual(inv["sessions"], len(sessions))
         groups = dict(inv["projects"])
         self.assertNotIn("", groups)
+        self.assertNotIn("", inv["scratch_directories"])
+        groups.update(inv["scratch_directories"])
         groups[""] = inv["outside_projects"]
         # Every row and session lands in exactly one group, and each
         # group's totals are the sum of its agents'.
@@ -608,7 +614,7 @@ class TimelineProjectStatusTests(unittest.TestCase):
         self.assertIn("rows:      3 in %s" % (out / "timeline.jsonl"), lines)
         self.assertIn("sessions:  0 in %s" % (out / "sessions.jsonl"), lines)
         self.assertIn(
-            "inventory: %s (homes, projects, counts per agent, problems)"
+            "inventory: %s (homes, projects, scratch directories, counts per agent, problems)"
             % (out / "inventory.json"),
             lines,
         )
@@ -727,6 +733,9 @@ class SyncedSessionTests(unittest.TestCase):
             for k, _, v in (line.partition(":") for line in text.splitlines())
         ]
         unsynced.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # An empty log beside it: a session with no events.jsonl is a pool
+        # session, whose cwd is a scratch directory (issue 149).
+        (unsynced.parent / "events.jsonl").write_text("", encoding="utf-8")
         # A Goose gateway session, relayed through Telegram (#153).
         con = sqlite3.connect(str(home / ".local/share/goose/sessions/sessions.db"))
         for sql in goose_gateway_records():
@@ -761,7 +770,7 @@ class SyncedSessionTests(unittest.TestCase):
         recovered = sum(1 for s in sessions if s["recovered"] in ("yes", "partial"))
         keys = ["synced_sessions", "relayed_sessions", "remote_sessions", "recovered_sessions"]
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
-        self.assertEqual(list(inv)[-4:], keys)
+        self.assertEqual(list(inv)[-5:-1], keys)
         self.assertEqual(inv["synced_sessions"], synced)
         self.assertEqual(inv["relayed_sessions"], relayed)
         self.assertEqual(inv["remote_sessions"], remote)
@@ -883,7 +892,11 @@ class SyncedSessionTests(unittest.TestCase):
         agy = projects["/home/u/proj"]
         self.assertEqual(agy["recovered"], "partial")
         self.assertEqual(projects["/sessions/quiet-river-1234"]["recovered"], "yes")
-        self.assertEqual(projects["/alice/.nanobot/workspace"]["recovered"], "no")
+        # nanobot's workspace is inside its own state directory, a scratch
+        # directory by the catalog rule (issue 149).
+        self.assertNotIn("/alice/.nanobot/workspace", projects)
+        scratch = inv["scratch_directories"]
+        self.assertEqual(scratch["/alice/.nanobot/workspace"]["recovered"], "no")
         self.assertEqual(projects["/a0/usr/projects/demo"]["recovered"], "")
         self.assertEqual(projects["/srv/proj2"]["recovered"], "")
         # The recovered sessions with no project: AGY_ORPHAN is one.
@@ -1192,7 +1205,7 @@ class DeduplicationTimelineTests(unittest.TestCase):
         self.assertTrue(orphan[0]["source_file"].endswith("/.claude/history.jsonl"))
         self.assertEqual(inv["deduplicated"], FIXTURE_DEDUPLICATED)
         self.assertEqual(
-            list(inv)[-6:],
+            list(inv)[-7:],
             [
                 "deduplicated",
                 "collected_only",
@@ -1200,6 +1213,7 @@ class DeduplicationTimelineTests(unittest.TestCase):
                 "relayed_sessions",
                 "remote_sessions",
                 "recovered_sessions",
+                "scratch_directories",
             ],
         )
         self.assertEqual(inv["rows"], len(rows))
@@ -1611,6 +1625,7 @@ class ProjectAgentsTests(unittest.TestCase):
                 "relayed_sessions",
                 "remote_sessions",
                 "recovered_sessions",
+                "scratch_directories",
             ],
         )
         for key in ("input", "kind", "host", "notes"):
@@ -1680,6 +1695,7 @@ class ProjectAgentsTests(unittest.TestCase):
                 "relayed_sessions",
                 "remote_sessions",
                 "recovered_sessions",
+                "scratch_directories",
             ],
         )
         self.assertEqual(inv["problems"], [])
@@ -1820,6 +1836,182 @@ class ProjectAgentsTests(unittest.TestCase):
         rc, out = run_detect(self.tmp / "home", "--json")
         self.assertEqual(rc, 0, out)
         self.assertEqual(json.loads(out)["projects"], [])
+
+
+# Synthetic ids and paths for the scratch directory tests (issue 149).
+POOL_A = "9a9a9a9a-0000-4000-8000-000000000001"
+POOL_B = "9a9a9a9a-0000-4000-8000-000000000002"
+CHAT = "9a9a9a9a-0000-4000-8000-000000000003"
+INSTALL_DIR = "C:\\Users\\sean\\AppData\\Local\\Programs\\GitHub Copilot"
+CODEX_SCRATCH = "/home/u/Documents/Codex/2026-10-18/w"
+COPILOT_CHAT_DIR = "/home/u/.copilot/chats/" + CHAT
+COPILOT_CLONE = "/home/u/.copilot/repos/demo"
+SCRATCH_ENTRY_KEYS = [
+    "status",
+    "rows",
+    "sessions",
+    "agents",
+    "shared_files",
+    "synced",
+    "relayed",
+    "origin",
+    "recovered",
+]
+
+
+def pool_workspace(sid: str, cwd: str) -> str:
+    """A Copilot Desktop pool session's workspace.yaml: never prompted."""
+    return (
+        "id: %s\ncwd: %s\nclient_name: github/autopilot\nuser_named: false\n"
+        "summary_count: 0\nfork_count: 0\ncreated_at: 2026-10-17T10:00:00.000Z\n" % (sid, cwd)
+    )
+
+
+class ScratchDirectoryTests(unittest.TestCase):
+    """inventory.json `scratch_directories`: the agent's own working
+    directories, kept apart from `projects` (issue 149)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-scratch-test-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def files(self) -> list[tuple[str, str, str]]:
+        """(agent, path relative to the home, text) of every file."""
+        rollout = CODEX_DESKTOP_ROLLOUT % CODEX_SESSION
+        records = codex_rollout_records(cwd=CODEX_SCRATCH)
+        state = {"thread-projectless-output-directories": {CODEX_SESSION: CODEX_SCRATCH}}
+        chat_events = [line.replace("/srv/proj", COPILOT_CHAT_DIR) for line in COPILOT_EVENT_LINES]
+        chat_workspace = COPILOT_WORKSPACE_YAML.replace("/srv/proj", COPILOT_CHAT_DIR)
+        chat_workspace = chat_workspace.replace(COPILOT_SESSION, CHAT)
+        history = {"display": "in proj", "timestamp": 1790848800000, "project": "/srv/proj"}
+        session_dir = ".copilot/session-state/%s/"
+        return [
+            # (a) A projectless Codex thread: the rollout's cwd is the
+            # directory the global state names.
+            ("codex-cli", rollout, "".join(json.dumps(r) + "\n" for r in records)),
+            ("codex-cli", CODEX_GLOBAL_STATE_REL, json.dumps(state)),
+            # (b) Two pool sessions in the install directory, spelled in
+            # two cases.
+            (
+                "copilot-cli",
+                session_dir % POOL_A + "workspace.yaml",
+                pool_workspace(POOL_A, INSTALL_DIR),
+            ),
+            (
+                "copilot-cli",
+                session_dir % POOL_B + "workspace.yaml",
+                pool_workspace(POOL_B, INSTALL_DIR.lower()),
+            ),
+            # (c) A prompted Copilot session in the app's own chat directory.
+            ("copilot-cli", session_dir % CHAT + "events.jsonl", "\n".join(chat_events)),
+            ("copilot-cli", session_dir % CHAT + "workspace.yaml", chat_workspace),
+            # (d) An ordinary project.
+            ("claude-code", ".claude/history.jsonl", json.dumps(history) + "\n"),
+        ]
+
+    def collected(self) -> Path:
+        c = Collected(self.tmp / "col", ["/srv/proj", CODEX_SCRATCH, COPILOT_CLONE])
+        for agent, rel, text in self.files():
+            c.add("u", "/home/u", agent, rel, text)
+        return c.write()
+
+    def loose(self) -> Path:
+        home = self.tmp / "u"  # the input is the home itself: no original path
+        for _agent, rel, text in self.files():
+            path = home / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        return home
+
+    def inventory(self, root: Path) -> tuple[dict, str]:
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(root, out)
+        self.assertEqual(rc, 0, stdout)
+        return json.loads((out / "inventory.json").read_text(encoding="utf-8")), stdout
+
+    def check_sums(self, inv: dict) -> None:
+        groups = [*inv["projects"].values(), *inv["scratch_directories"].values()]
+        groups.append(inv["outside_projects"])
+        self.assertEqual(sum(g["rows"] for g in groups), inv["rows"])
+        self.assertEqual(sum(g["sessions"] for g in groups), inv["sessions"])
+        keys = {project_key(k) for k in inv["scratch_directories"]}
+        self.assertFalse(keys & {project_key(k) for k in inv["projects"]})
+
+    def test_collected(self):
+        inv, stdout = self.inventory(self.collected())
+        self.assertEqual(list(inv)[-1], "scratch_directories")
+        self.check_sums(inv)
+        scratch = inv["scratch_directories"]
+        # The first spelling seen names the install directory's group.
+        self.assertEqual(
+            sorted(scratch), sorted([CODEX_SCRATCH, COPILOT_CHAT_DIR, COPILOT_CLONE, INSTALL_DIR])
+        )
+        self.assertEqual(list(inv["projects"]), ["/srv/proj"])
+        # A clone the collector listed and no row names: the catalog rule.
+        self.assertEqual(
+            (scratch[COPILOT_CLONE]["status"], scratch[COPILOT_CLONE]["rows"]), ("collected", 0)
+        )
+        for path, entry in scratch.items():
+            self.assertEqual(list(entry), SCRATCH_ENTRY_KEYS, path)
+        # Listed by the collector as a project, still a scratch directory.
+        self.assertEqual(scratch[CODEX_SCRATCH]["status"], "collected")
+        self.assertEqual(scratch[CODEX_SCRATCH]["sessions"], 1)
+        self.assertEqual(scratch[COPILOT_CHAT_DIR]["status"], "referenced")
+        self.assertEqual(scratch[COPILOT_CHAT_DIR]["sessions"], 1)
+        pool = scratch[INSTALL_DIR]
+        self.assertEqual((pool["status"], pool["sessions"]), ("referenced", 2))
+        self.assertEqual(pool["agents"]["copilot-cli"]["turn_types"], {"system": 4})
+        self.assertEqual(inv["projects"]["/srv/proj"]["status"], "collected")
+        self.assertIn(
+            "inventory: %s (homes, projects, scratch directories, counts per agent, problems)"
+            % (self.tmp / "out" / "inventory.json"),
+            stdout.splitlines(),
+        )
+        # The rows keep their project_path in the timeline.
+        rows = read_jsonl(self.tmp / "out" / "timeline.jsonl")
+        scratch_rows = [r for r in rows if r["text"].startswith("scratch directory:")]
+        self.assertIn(
+            (
+                CODEX_SCRATCH,
+                "scratch directory: %s (projectless thread %s) (from %s"
+                " thread-projectless-output-directories, file mtime)"
+                % (CODEX_SCRATCH, CODEX_SESSION, CODEX_GLOBAL_STATE_REL),
+            ),
+            [(r["project_path"], r["text"]) for r in scratch_rows],
+        )
+        self.assertEqual(len(scratch_rows), 3)
+
+    def test_loose_parser_rule_only(self):
+        # Without a home path on the source host the catalog rule cannot
+        # apply, so the chat directory is a project; the parser rows still
+        # mark the other two.
+        inv, _ = self.inventory(self.loose())
+        self.check_sums(inv)
+        self.assertEqual(sorted(inv["scratch_directories"]), sorted([CODEX_SCRATCH, INSTALL_DIR]))
+        self.assertEqual(sorted(inv["projects"]), sorted([COPILOT_CHAT_DIR, "/srv/proj"]))
+        self.assertEqual(inv["scratch_directories"][CODEX_SCRATCH]["status"], "referenced")
+
+    def test_catalog_rule(self):
+        cat = catalog.parse(SYNTHETIC_CATALOG + "\n# home artifacts\ncursor|.config/[Cc]ursor\n")
+        claims = cat.claims_home_path
+        self.assertEqual(claims(".claude/projects/x"), "claude-code")
+        self.assertEqual(claims(".claude"), "claude-code")
+        self.assertEqual(claims(".config/Cursor/x"), "cursor")
+        self.assertEqual(claims(".config/myproject"), "")
+        self.assertEqual(claims(".Claude/x"), "")
+        self.assertEqual(claims("\\.CLAUDE\\x", windows=True), "claude-code")
+        scratch = cli.home_scratch_key
+        self.assertTrue(scratch("/home/u/.claude/x", "/home/u", cat))
+        self.assertTrue(scratch("/home/u/.claude", "/home/u/", cat))
+        self.assertFalse(scratch("/home/u", "/home/u", cat))
+        self.assertFalse(scratch("/home/user/.claude", "/home/u", cat))
+        self.assertFalse(scratch("/home/u/.config/myproject", "/home/u", cat))
+        windows_home = "C:\\Users\\sean"
+        self.assertTrue(scratch(project_key("C:\\Users\\Sean\\.Claude\\x"), windows_home, cat))
+        self.assertTrue(scratch(project_key("c:/users/sean/.config/CURSOR"), windows_home, cat))
+        self.assertFalse(scratch(project_key("C:\\Users\\sean\\src\\app"), windows_home, cat))
 
 
 if __name__ == "__main__":

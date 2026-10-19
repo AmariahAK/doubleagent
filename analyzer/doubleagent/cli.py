@@ -16,7 +16,15 @@ from . import inventory as inventory_mod
 from .dedup import deduplicate
 from .filters import FORMS_HELP, RowFilter, parse_bound
 from .inputs import PROJECT_AGENT, Collection, describe_error, error_reason, open_input
-from .model import Row, SessionSummary, canonical_project_path, project_key, summarise
+from .model import (
+    SCRATCH_PREFIX,
+    Row,
+    SessionSummary,
+    canonical_project_path,
+    is_windows_path,
+    project_key,
+    summarise,
+)
 from .parsers import ALL, NO_TRANSCRIPTS, Options, by_agent
 
 PROG = "doubleagent"
@@ -737,6 +745,61 @@ def collected_projects(col: Collection) -> list[str]:
     return sorted({canonical_project_path(strip_image_root(p, summary)) for p in paths})
 
 
+def scratch_keys(
+    col: Collection, rows: list[Row], cat: catalog_mod.Catalog | None = None
+) -> set[str]:
+    """The `project_key` of every path inventory.json would list as a
+    project that is a scratch directory, a working directory that belongs
+    to the agent rather than to the user (issue 149); inventory.json lists
+    these under `scratch_directories` instead of `projects`. A path is one
+    when either holds:
+
+    1. A parser says so: a `system` row whose text starts with
+       `SCRATCH_PREFIX` (`scratch directory:`) names it in its own
+       `project_path`.
+    2. The catalog says so: the path, a `project_path` of `rows` or a
+       project directory the input holds (`collected_projects`), is in
+       or under a directory that a home catalog entry (of `cat`, the
+       bundled catalog when None) names, in one of the input's homes that
+       is not a project directory and has a known path on the source host
+       (`home_scratch_key`).
+
+    The collector's project list only adds paths to test: a scratch
+    directory the collector collected project files from stays one."""
+    keys = {
+        project_key(r.project_path)
+        for r in rows
+        if r.turn_type == "system" and r.project_path and r.text.startswith(SCRATCH_PREFIX)
+    }
+    cat = cat or catalog_mod.load()
+    summary = col.summary or {}
+    homes = {
+        strip_image_root(h.original, summary) for h in col.homes if h.original and not h.project
+    }
+    paths = [r.project_path for r in rows] + collected_projects(col)
+    for key in {project_key(p) for p in paths if p} - keys:
+        if any(home_scratch_key(key, home, cat) for home in homes):
+            keys.add(key)
+    return keys
+
+
+def home_scratch_key(key: str, home: str, cat: catalog_mod.Catalog) -> bool:
+    r"""Whether `key`, a `project_key`, lies in or under a directory that a
+    home catalog entry names in `home`, a home's path on the source host:
+    `key` must be the home or start with it and a separator, and
+    `Catalog.claims_home_path` must claim the rest. A Windows home
+    (`C:\Users\a`) is compared in `project_key` form, lower case with
+    backslashes, and its segments are matched without regard to case; any
+    other home is compared exactly."""
+    windows = is_windows_path(home)
+    sep = "\\" if windows else "/"
+    home_key = project_key(home)
+    prefix = home_key if home_key.endswith(sep) else home_key + sep
+    if key != home_key and not key.startswith(prefix):
+        return False
+    return bool(cat.claims_home_path(key[len(home_key) :], windows))
+
+
 def project_files(col: Collection) -> dict[str, dict]:
     """`project_agents` keyed as `collected_projects` keys its paths, with
     the image root stripped and in `canonical_project_path` form, and summed
@@ -861,6 +924,7 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
         and (not args.agent or r["agent"] in args.agent)
     ]
     groups = project_inventory(rows, sessions, collected_projects(col), project_files(col))
+    scratch = scratch_keys(col, rows)
     synced = sum(1 for s in sessions if s.synced == "yes")
     relayed = sum(1 for s in sessions if s.relayed == "yes")
     remote = sum(1 for s in sessions if s.origin == "remote")
@@ -880,7 +944,9 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
                 "detected_not_parsed": sorted(set(unparsed)),
                 "no_rows": sorted(set(no_rows)),
                 "homes": synced_homes(detect["homes"], sessions),
-                "projects": {k: v for k, v in groups.items() if k},
+                "projects": {
+                    k: v for k, v in groups.items() if k and project_key(k) not in scratch
+                },
                 "outside_projects": groups.get("", empty),
                 "deduplicated": {
                     k: deduplicated[k] for k in sorted(deduplicated) if deduplicated[k]
@@ -890,6 +956,9 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
                 "relayed_sessions": relayed,
                 "remote_sessions": remote,
                 "recovered_sessions": recovered,
+                "scratch_directories": {
+                    k: v for k, v in groups.items() if k and project_key(k) in scratch
+                },
             },
             fh,
             indent=2,
@@ -910,5 +979,8 @@ def cmd_timeline(args: argparse.Namespace, col: Collection) -> int:
     print(
         "sessions:  %d in %s%s" % (len(sessions), sess, " (%s)" % ", ".join(marks) if marks else "")
     )
-    print("inventory: %s (homes, projects, counts per agent, problems)" % inventory_path)
+    print(
+        "inventory: %s (homes, projects, scratch directories, counts per agent, problems)"
+        % inventory_path
+    )
     return 0 if rows else 1

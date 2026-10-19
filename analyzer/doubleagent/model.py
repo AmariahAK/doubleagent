@@ -55,6 +55,11 @@ RELAYED_PREFIX = "session relayed:"
 # The text that starts a parser's row for a session that began on the
 # vendor's servers (`Parser.records_origin`, issue 153).
 ORIGIN_PREFIX = "session origin: remote"
+# The text that starts a parser's row naming a scratch directory, a
+# working directory that belongs to the agent rather than to the user
+# (issue 149); inventory.json lists the row's `project_path` under
+# `scratch_directories` instead of `projects`.
+SCRATCH_PREFIX = "scratch directory:"
 
 
 @dataclass
@@ -242,6 +247,12 @@ def _windows_path(path: str) -> str | None:
         if parts:
             return "\\\\" + "\\".join(parts)
     return None
+
+
+def is_windows_path(path: str) -> bool:
+    """Whether `path` is in one of the Windows forms that
+    `canonical_project_path` rewrites (a drive letter, UNC or `\\\\?\\`)."""
+    return bool(path) and _windows_path(path) is not None
 
 
 def canonical_project_path(path: str) -> str:

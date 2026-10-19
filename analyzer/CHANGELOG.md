@@ -9,6 +9,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-19
+
+### Added
+
+- `inventory.json` ends with a `scratch_directories` key, an object
+  keyed and shaped like `projects`, that lists the scratch directories:
+  the working directories that belong to the agent rather than to the
+  user, such as the ChatGPT desktop app's projectless
+  `~/Documents/Codex/<date>/<slug>`, a directory under the agent's own
+  state directory (`.copilot/chats/<id>`) and the working directory of a
+  Copilot Desktop session the app pre-created and never prompted. A path
+  is one when a parser's `scratch directory:` row names it, or when it
+  lies under a directory a home catalog entry names in one of the
+  input's homes ([#149]).
+- The `codex-cli` parser yields a `system` row `scratch directory:
+  <path> (projectless thread <id>) (from
+  .codex/.codex-global-state.json thread-projectless-output-directories,
+  file mtime)` for each projectless output directory the ChatGPT desktop
+  app records, with that path as `project_path` ([#149]).
+- The `copilot-cli` parser yields a `system` row `scratch directory:
+  <cwd> (working directory of a session the app pre-created and never
+  prompted: no events.jsonl)` after the `session metadata:` row of a
+  session directory that holds a `workspace.yaml` with a `cwd` and no
+  `events.jsonl` ([#149]).
+
+### Changed
+
+- `inventory.json` `projects` no longer lists the scratch directories,
+  which move to `scratch_directories`; the `rows` and `sessions` of
+  `projects`, `scratch_directories` and `outside_projects` add up to the
+  totals. `timeline.jsonl` and `sessions.jsonl` are unchanged ([#149]).
+- The `timeline` stdout line for the inventory reads `inventory:
+  out/inventory.json (homes, projects, scratch directories, counts per
+  agent, problems)` ([#149]).
+
 ## [0.17.0] - 2026-10-19
 
 ### Added
@@ -1281,7 +1316,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--summary-length` (default 400), `--include-thinking` and `--agent`;
   `detect --json` and `--files`; `catalog --agents`.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.17.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.18.0...HEAD
+[0.18.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.17.0...analyzer-v0.18.0
 [0.17.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.16.0...analyzer-v0.17.0
 [0.16.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.15.0...analyzer-v0.16.0
 [0.15.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.14.0...analyzer-v0.15.0
@@ -1305,6 +1341,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [#160]: https://github.com/seanthegeek/doubleagent/issues/160
 [#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#151]: https://github.com/seanthegeek/doubleagent/issues/151
+[#149]: https://github.com/seanthegeek/doubleagent/issues/149
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#143]: https://github.com/seanthegeek/doubleagent/issues/143
 [#138]: https://github.com/seanthegeek/doubleagent/issues/138

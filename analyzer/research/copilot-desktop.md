@@ -86,7 +86,9 @@ evidence level:
   `turns` (kept as secondary rows with no primary left) and from
   `data.db` (the checkpoint, activity and session rows), with no
   `parser:` row; it also listed the app's own directories as projects
-  ([issue 149](https://github.com/seanthegeek/doubleagent/issues/149)).
+  ([issue 149](https://github.com/seanthegeek/doubleagent/issues/149)),
+  which analyzer 0.18.0 lists under `scratch_directories` instead: the
+  working directories that belong to the agent rather than to the user.
   Two more sessions existed by then, `83277a7e…` and `4c088c7e…`
   (`client_name` `github/autopilot`, `user_named` false, no
   `events.jsonl`, `cwd` under `.copilot/`), and the app created an empty
@@ -121,7 +123,9 @@ evidence level:
   `session_warmup_prepare`, `warm_canvas_catalogs`) whose
   `session-state/<uuid>/` directories hold a `workspace.yaml` and no
   `events.jsonl`: four with `cwd` the install directory, two with `cwd`
-  `.copilot\canvas-catalog-probe` and one with `cwd` the clone. Analyzer
+  `.copilot\canvas-catalog-probe` and one with `cwd` the clone; analyzer
+  0.18.0 gives each such session a `scratch directory:` row and lists its
+  `cwd` under `scratch_directories`. Analyzer
   0.14.0 over a collection taken before the deletion: 138 rows in 11
   sessions, no `parser:` row, `problems: []`, and 10 duplicate rows
   dropped from the `copilot-cli` secondary sources. The `copilot-desktop`

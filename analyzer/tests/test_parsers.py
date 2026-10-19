@@ -1880,8 +1880,33 @@ class CodexDesktopTests(ParserBase):
                     "remote control: mobile device connected=true environment=env_e_0123abcd "
                     + src % "codex-mobile-has-connected-device",
                 ),
+                # The projectless output directory is a scratch directory
+                # (issue 149); the row names it in its own project_path.
+                (
+                    "system",
+                    mtime,
+                    CODEX_DELETED,
+                    scratch,
+                    "scratch directory: %s (projectless thread %s) %s"
+                    % (scratch, CODEX_DELETED, src % "thread-projectless-output-directories"),
+                ),
             ],
         )
+
+    def test_global_state_scratch_path_over_root_hint(self):
+        # The scratch row names the output directory even when the thread's
+        # root hint, which the other rows take, is another path.
+        path = self.home / CODEX_GLOBAL_STATE_REL
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc["thread-workspace-root-hints"][CODEX_DELETED] = "/srv/other"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        rows = self.rows_for(CodexParser(), CODEX_GLOBAL_STATE_REL)
+        scratch = [r for r in rows if r.text.startswith("scratch directory:")]
+        self.assertEqual(
+            [r.project_path for r in scratch], ["/home/alice/Documents/Codex/2026-10-18/w"]
+        )
+        deleted = [r for r in rows if r.text.startswith("session deleted:")]
+        self.assertEqual([r.project_path for r in deleted], ["/srv/other"])
 
     def test_global_state_recovers_deleted_thread(self):
         rows, _, problems, deduplicated = cli.collect_rows(self.col, Options(), ["codex-cli"])
@@ -12038,6 +12063,37 @@ class CopilotCliTests(ParserBase):
             synced = [r.text for r in rows if r.text.startswith("session synced:")]
             self.assertEqual(synced, [want] if want else [], text)
             self.assertEqual(len(rows), 3 if want else 2)
+
+    SCRATCH = (
+        "scratch directory: %s (working directory of a session the app pre-created and"
+        " never prompted: no events.jsonl)"
+    )
+
+    def test_workspace_scratch_directory(self):
+        # A session with an events.jsonl gives no scratch row (issue 149).
+        rows = self.rows_for(CopilotCliParser(), COPILOT_WORKSPACE_REL)
+        self.assertEqual([r for r in rows if r.text.startswith("scratch directory:")], [])
+        # A pool session: workspace.yaml and no events.jsonl. The row follows
+        # the metadata row with its columns, the cwd as project_path.
+        (self.home / COPILOT_EVENTS_REL).unlink()
+        rows = self.rows_for(CopilotCliParser(), COPILOT_WORKSPACE_REL)
+        self.assertEqual(
+            [r.text.split(":")[0] for r in rows],
+            ["session name", "session metadata", "scratch directory", "session synced"],
+        )
+        meta, scratch = rows[1], rows[2]
+        self.assertEqual(scratch.text, self.SCRATCH % "/srv/proj")
+        self.assertEqual(
+            (scratch.turn_type, scratch.timestamp_utc, scratch.session_id, scratch.project_path),
+            ("system", meta.timestamp_utc, meta.session_id, "/srv/proj"),
+        )
+        # Without a cwd there is no directory to name.
+        path = self.home / COPILOT_WORKSPACE_REL
+        path.write_text(
+            path.read_text(encoding="utf-8").replace("cwd: /srv/proj\n", ""), encoding="utf-8"
+        )
+        rows = self.rows_for(CopilotCliParser(), COPILOT_WORKSPACE_REL)
+        self.assertEqual([r for r in rows if r.text.startswith("scratch directory:")], [])
 
     def test_workspace_client(self):
         # The desktop app's sessions say `github/autopilot` (issue 147); a

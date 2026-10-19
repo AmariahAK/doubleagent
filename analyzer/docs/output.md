@@ -314,7 +314,7 @@ rows:      214 in out/timeline.jsonl
            claude-code    assistant    40
            claude-code    user         50
 sessions:  6 in out/sessions.jsonl
-inventory: out/inventory.json (homes, projects, counts per agent, problems)
+inventory: out/inventory.json (homes, projects, scratch directories, counts per agent, problems)
 ```
 
 `rows:` is followed by one indented line per agent and `turn_type` with
@@ -578,7 +578,8 @@ the test collection of the [`detect --json`](#detect---json) example:
   "synced_sessions": 0,
   "relayed_sessions": 0,
   "remote_sessions": 0,
-  "recovered_sessions": 0
+  "recovered_sessions": 0,
+  "scratch_directories": {}
 }
 ```
 
@@ -606,8 +607,10 @@ history lines that survive carry no session), so the `recovered` of
 analyzer 0.14.0, before `relayed_sessions`, `remote_sessions`,
 `recovered_sessions` and the project and `outside_projects` marks
 existed; those keys are filled in by applying the 0.15.0 rules to the
-agents and sessions the run shows, not by a run. Its keys, in
-order:
+agents and sessions the run shows, not by a run. `scratch_directories`
+is `{}` the same way, by the 0.18.0 rules: none of the example's paths
+lies under a home catalog entry, and none of its agents wrote a
+`scratch directory:` row. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -635,7 +638,7 @@ order:
 | `homes[].agents[].relayed_sessions` | integer | This user's sessions of this agent whose `relayed` in `sessions.jsonl` is `yes`, after the filters; 0 when there is none, and always 0 for an agent whose parser records no relay state. Sessions are matched to the home by `user`, as for `synced_sessions`. Added in 0.15.0. |
 | `homes[].agents[].remote_sessions` | integer | This user's sessions of this agent whose `origin` in `sessions.jsonl` is `remote`, after the filters; 0 when there is none, and always 0 for an agent whose parser records no origin. Sessions are matched to the home by `user`, as for `synced_sessions`. Added in 0.15.0. |
 | `homes[].agents[].recovered_sessions` | integer | This user's sessions of this agent whose `recovered` in `sessions.jsonl` is `yes` or `partial`, after the filters; 0 when there is none, and always 0 for an agent whose parser reads no secondary source. Sessions are matched to the home by `user`, as for `synced_sessions`. Last key of the object since 0.15.0. |
-| `projects` | object | Keyed by project path, sorted: every distinct non-empty `project_path` of the rows, and every project directory the input holds, as the collector's path with the image root removed and Windows paths in the canonical form of [`timeline.jsonl`](#timelinejsonl) `project_path` (see below). Windows paths that differ only in case are one project, keyed by the collected directory's spelling when the project is one, else by the first spelling the rows record. `{}` when there is neither. |
+| `projects` | object | Keyed by project path, sorted: every distinct non-empty `project_path` of the rows, and every project directory the input holds, except the scratch directories, the agent's own working directories, which are under `scratch_directories` (since 0.18.0, see below), as the collector's path with the image root removed and Windows paths in the canonical form of [`timeline.jsonl`](#timelinejsonl) `project_path` (see below). Windows paths that differ only in case are one project, keyed by the collected directory's spelling when the project is one, else by the first spelling the rows record. `{}` when there is neither. |
 | `projects.<path>.status` | string | `collected` when the path is a project directory the input holds, so its project files are in the collection; `referenced` when only rows name it, because the directory was deleted, was out of the collector's reach, was skipped with `--no-projects`, or is recorded in another form (see below). |
 | `projects.<path>.rows` | integer | Rows with this `project_path`, or for a Windows path any spelling of it that differs only in case, after the filters. |
 | `projects.<path>.sessions` | integer | Sessions whose `project_path` in `sessions.jsonl` is this one, compared as for `rows`, after the filters. |
@@ -664,17 +667,64 @@ order:
 | `synced_sessions` | integer | The number of records in `sessions.jsonl` whose `synced` is `yes`, after the filters, as for `sessions`; 0 when there is none. Last key in 0.14.0. |
 | `relayed_sessions` | integer | The number of records in `sessions.jsonl` whose `relayed` is `yes`, after the filters, as for `sessions`; 0 when there is none. Added in 0.15.0. |
 | `remote_sessions` | integer | The number of records in `sessions.jsonl` whose `origin` is `remote`, after the filters, as for `sessions`; 0 when there is none. Added in 0.15.0. |
-| `recovered_sessions` | integer | The number of records in `sessions.jsonl` whose `recovered` is `yes` or `partial`, after the filters, as for `sessions`; 0 when there is none. Last key since 0.15.0. |
+| `recovered_sessions` | integer | The number of records in `sessions.jsonl` whose `recovered` is `yes` or `partial`, after the filters, as for `sessions`; 0 when there is none. Last key from 0.15.0 to 0.17.0. |
+| `scratch_directories` | object | Keyed by path, sorted, and grouped as `projects` is: every `project_path` of the rows, and every project directory the input holds, that is a scratch directory (see below); `{}` when there is none. Last key since 0.18.0. |
+| `scratch_directories.<path>.status` | string | As `projects.<path>.status`: `collected` when the collector gathered project files from the directory, `referenced` when only rows name it. Since 0.18.0. |
+| `scratch_directories.<path>.rows`, `sessions`, `agents`, `shared_files` | integer, object | As for a project, over the rows and sessions with this `project_path` and the files in the directory; each agent object has the keys of `projects.<path>.agents.<agent>`. Since 0.18.0. |
+| `scratch_directories.<path>.synced`, `relayed`, `origin`, `recovered` | string | As for a project, by the same rules and in the same order. Since 0.18.0. |
 
 A row is counted under its own `project_path` and a session under the
 session's, the first non-empty `project_path` among its rows, so a session
 whose rows name two projects has rows under both and is counted once, under
 the first. Rows with no `session_id` belong to no session. The `rows` of
-`projects` and `outside_projects` add up to the top-level `rows`, and their
-`sessions` to the top-level `sessions`. Nothing is counted twice: files
-per home are under `homes`, files per project directory under
-`projects`, and rows and sessions under `projects` and
-`outside_projects`.
+`projects`, `scratch_directories` and `outside_projects` add up to the
+top-level `rows`, and their `sessions` to the top-level `sessions`.
+Nothing is counted twice: files per home are under `homes`, files per
+project directory under `projects` or `scratch_directories`, and rows and
+sessions under `projects`, `scratch_directories` and `outside_projects`.
+
+A scratch directory is a working directory that belongs to the agent
+rather than to the user: the directory an app creates for a chat that has
+no project (the ChatGPT desktop app's `~/Documents/Codex/<date>/<slug>`,
+with `work/` and `outputs/` inside), the agent's own state directory or a
+clone or worktree it made inside it (Copilot Desktop's
+`.copilot/chats/<id>`, `.copilot/repos/<name>` and
+`.copilot/canvas-catalog-probe`), or the working directory of a session
+the app pre-created and never prompted (Copilot Desktop's pool and probe
+sessions, whose `cwd` on Windows is the app's install directory). A
+project is a directory the user pointed the agent at. The two are kept
+apart because a scratch directory says what the agent did on its own
+account, which can still matter to the investigation. A path is a
+scratch directory when either holds:
+
+1. A parser says so: a `system` row whose `text` starts with
+   `scratch directory:` names it in its own `project_path`. The
+   `codex-cli` parser writes `scratch directory: <path> (projectless
+   thread <id>) (from .codex/.codex-global-state.json
+   thread-projectless-output-directories, file mtime)` for each entry of
+   the desktop app's map of projectless output directories, and the
+   `copilot-cli` parser writes `scratch directory: <cwd> (working
+   directory of a session the app pre-created and never prompted: no
+   events.jsonl)` for a session directory that holds a `workspace.yaml`
+   with a `cwd` and no `events.jsonl`.
+2. The catalog says so: the path is in or under a directory that a home
+   entry of the bundled catalog names, in one of the input's homes. The
+   path relative to the home is matched segment by segment against each
+   entry's glob, so `/home/alice/.copilot/chats/<id>` is under the entry
+   `.copilot` and `/home/alice/.config/Cursor/x` under
+   `.config/[Cc]ursor`, while `/home/alice/.config/myproject` is under no
+   entry. A Windows home is compared ignoring case. The rule needs the
+   home's path on the source host, which a collection's manifest gives;
+   in loose mode it applies only where the analyzer could infer the
+   home's path from the tree, and not at all when the input is a home
+   itself.
+
+Neither rule looks at the collector's list of project directories, so a
+scratch directory the collector gathered project files from is listed
+under `scratch_directories` with `status` `collected`. The rows keep
+their `project_path` in `timeline.jsonl` and `sessions.jsonl`, and
+`detect` and `detect --json`, which read no rows, list every project
+directory the input holds without applying either rule.
 
 The project directories the input holds are the paths in `collection.json`
 `projects` (the directories the collector gathered project files from,
@@ -716,6 +766,12 @@ A jq query that lists projects by row count:
 jq -r '.projects | to_entries | sort_by(-.value.rows)[] | "\(.value.rows)\t\(.key)"' out/inventory.json
 ```
 
+The same for scratch directories:
+
+```sh
+jq -r '.scratch_directories | to_entries | sort_by(-.value.rows)[] | "\(.value.rows)\t\(.key)"' out/inventory.json
+```
+
 One that lists each project with the agents used on it:
 
 ```sh
@@ -739,7 +795,9 @@ no longer lists the agents with nothing to parse, which it had held since
 and `recovered_sessions` after `synced_sessions`, in that order, as the
 last keys of the file and of each `homes[].agents[]` object, and
 `synced`, `relayed`, `origin` and `recovered` as the last keys of each
-`projects.<path>` entry and of `outside_projects`. The one key added at the front is `doubleagent_version`, in
+`projects.<path>` entry and of `outside_projects`. Analyzer 0.18.0
+added `scratch_directories` as the last key of the file and moved the
+scratch directories out of `projects` into it. The one key added at the front is `doubleagent_version`, in
 analyzer 0.14.0, because a reader needs the version before the rest; the
 file is one object read by key, not by position.
 
@@ -961,6 +1019,11 @@ for the app's agent mode (`agent-mode-by-host-id`,
 `permission-selection-by-host-id:<host>`; `guardian-approvals` is the
 "Approve for me" mode), and `remote control: mobile device
 connected=<true|false> environment=<id>` when a phone was ever paired.
+Since 0.18.0, each entry of the top-level
+`thread-projectless-output-directories` map, the directory the app made
+for a thread with no project, is also a `scratch directory: <path>
+(projectless thread <thread id>)` row whose `project_path` is that
+directory (see [`inventory.json`](#inventoryjson)).
 A value the file lacks is `-`.
 
 The `gemini-cli` and `qwen-code` parsers write `model: <id>` at a

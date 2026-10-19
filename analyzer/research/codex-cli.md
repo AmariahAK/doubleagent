@@ -267,7 +267,11 @@ Paths and the rest of the per-user state are in
     `~/Documents/Codex/2026-10-18/w`, the app's projectless output
     directory: the directory the app creates under
     `~/Documents/Codex/<date>/` for a thread that belongs to no
-    project, with `work` and `outputs` inside. The app wrote no
+    project, with `work` and `outputs` inside. Analyzer 0.18.0 lists
+    it in inventory.json under `scratch_directories`, not `projects`: a
+    scratch directory is a working directory that belongs to the agent
+    rather than to the user, and a project one the user pointed the
+    agent at (issue 149). The app wrote no
     `history.jsonl` and no `version.json`; the prompt went to the
     `prompt-history` key of `.codex-global-state.json`
     ([section 5](#5-other-files)). `session_index.jsonl` got 1 line,
@@ -1444,7 +1448,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `automations/<slug>/automation.toml` (Codex only) | one `system` row `scheduled task: <id> name=<name> kind=<kind> status=<status> rrule=<rrule> target_thread=<target_thread_id> created=<created_at> updated=<updated_at> (from <file>, file mtime) prompt: <prompt>` at the file's modification time, `session_id` the target thread; an unreadable file is one `system` row (issue 119) |
 | `logs_2.sqlite` `logs` row `codex_core::session::handlers` `op=ExecApproval` or `codex_app_server::outgoing_message` `CommandExecutionRequestApproval` (Codex Desktop) | `system` `permission decision: <decision> exec <item id> turn=<turn id> (from logs_<N>.sqlite logs, ts)` at `ts` from the handlers row (`denied`, `approved` seen), `session_id` the row's thread id, `tool_use_id` the governed item's id (`exec-<uuid>`, [section 5](#5-other-files)); a response row (`Decline`, `Accept`) with no handlers row within two seconds is `permission decision: <decision> request <n> (from logs_<N>.sqlite logs, ts)` with no session (issue 160) |
 | `state_5.sqlite` `remote_control_enrollments` row | `system` `remote control: enabled=<0\|1> server=<server_id> environment=<environment_id> host=<server_name> client=<app_server_client_name> account=<account_id>` at `updated_at`, `session_id` empty (issue 160) |
-| `.codex-global-state.json` (secondary, Codex Desktop) | `user` for each `prompt-history` entry of a thread, with an empty `timestamp_utc` (matched on text and session), `session_id` the thread id; `system` `session deleted: <id>` for each `codex-writing-block-deleted-thread-v1:<id>` key and `system` `permission mode (standing): ...` for each `heartbeat-thread-permissions-by-id` entry, at the file's modification time; `system` `thread description: ...` for each `thread-descriptions-v1` entry; one `system` `remote control: mobile device connected=<bool> environment=<id>` row from the two top-level keys; a file that does not decode is one `parser:` row (issue 160) |
+| `.codex-global-state.json` (secondary, Codex Desktop) | `user` for each `prompt-history` entry of a thread, with an empty `timestamp_utc` (matched on text and session), `session_id` the thread id; `system` `session deleted: <id>` for each `codex-writing-block-deleted-thread-v1:<id>` key and `system` `permission mode (standing): ...` for each `heartbeat-thread-permissions-by-id` entry, at the file's modification time; `system` `thread description: ...` for each `thread-descriptions-v1` entry; one `system` `remote control: mobile device connected=<bool> environment=<id>` row from the two top-level keys; one `system` `scratch directory: <path> (projectless thread <id>) (from <file> thread-projectless-output-directories, file mtime)` row for each `thread-projectless-output-directories` entry, `session_id` the thread id and `project_path` the path itself, so inventory.json lists the directory under `scratch_directories` (issue 149); a file that does not decode is one `parser:` row (issue 160) |
 
 Sources, by role (issue 122). The rollouts are the primary store: Codex
 writes every other file from them. `history.jsonl`, `state_5.sqlite`,

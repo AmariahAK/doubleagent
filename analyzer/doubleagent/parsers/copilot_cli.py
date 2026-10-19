@@ -130,7 +130,14 @@ layout.
   `client_name` is `github/cli` for a CLI session and `github/autopilot`
   for one the Copilot Desktop app ran through its bundled CLI (issue
   147). Its `cwd` is the project path of the log's rows before a
-  `session.start` and of the snapshot rows. When the file has a
+  `session.start` and of the snapshot rows. When the session directory
+  holds no `events.jsonl` beside the file and `cwd` is set, the session
+  is one the app pre-created and never prompted (Copilot Desktop's pool
+  and probe sessions), and one more row follows the metadata row with
+  the same columns: `scratch directory: <cwd> (working directory of a
+  session the app pre-created and never prompted: no events.jsonl)`, so
+  inventory.json lists the `cwd` under `scratch_directories` (issue
+  149). When the file has a
   non-empty `mc_session_id`, the session is synced to the user's GitHub
   account (issue 151); the keys can be present as `null` on a session
   that is not, as in the research document's sample. One more row then, `session synced: remote session
@@ -205,13 +212,14 @@ Not read: `rewind-file-snapshots/tracking.json`, `checkpoints/index.md`,
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from ..inputs import Artifact
-from ..model import Row, compact
+from ..model import SCRATCH_PREFIX, Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
 from .base import (
@@ -851,6 +859,18 @@ class CopilotCliParser(Parser):
             ),
             **cols,
         )
+        # A session the app pre-created and never prompted (Copilot
+        # Desktop's pool and probe sessions) has no events.jsonl; its cwd
+        # is the agent's, not a project (issue 149).
+        if meta.get("cwd") and not os.path.lexists(artifact.disk_path.parent / "events.jsonl"):
+            yield self._row(
+                artifact,
+                1,
+                "system",
+                "%s %s (working directory of a session the app pre-created and never"
+                " prompted: no events.jsonl)" % (SCRATCH_PREFIX, meta.get("cwd")),
+                **cols,
+            )
         if meta.get("mc_session_id"):
             yield self._row(
                 artifact,
