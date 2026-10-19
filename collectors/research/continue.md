@@ -1,12 +1,21 @@
-# Continue: on-disk paths
+# continue
 
-## 1. Source and evidence level
+Continue is an AI coding assistant with three surfaces that share one core and one state
+directory: the VS Code extension `continue.continue`, the JetBrains plugin (same core via
+`binary/`) and the `cn` CLI (`extensions/cli`). This document covers where they keep their
+state on disk; the record schemas are in
+[`analyzer/research/continue.md`](../../analyzer/research/continue.md).
+
+## 1. Source and evidence
 
 Open source. [continuedev/continue](https://github.com/continuedev/continue) at [`5522c6f44ca0ac3528b37244818fbfa39b5af470`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470)
-(clone `scratchpad/repos/continue`). All claims from source. Covers the VS Code
-extension `continue.continue`, the JetBrains plugin (same core via
-`binary/`) and the `cn` CLI (`extensions/cli`). Record schemas:
-[`analyzer/research/continue.md`](../../analyzer/research/continue.md).
+(clone `scratchpad/repos/continue`). All claims from source.
+
+### Observed
+
+No real install.
+
+### Source reviews
 
 - **Source review (2026-10-19)**: reviewed
   [continuedev/continue](https://github.com/continuedev/continue) at
@@ -19,14 +28,16 @@ extension `continue.continue`, the JetBrains plugin (same core via
   clone. Per requirement class: permission state, found (the CLI's
   `permissions.yaml` shape and its "don't ask again" writer; the
   extension's tool policies live in the editor's webview storage,
-  [section 2](#2-per-user-storage)); model, found (the selected models
+  [Editor extensions](#editor-extensions)); model, found (the selected models
   in `index/globalContext.json`); past use, found (`input_history.json`,
   the CLI's prompt history, collected with `.continue`); sync, relay and
   origin, already covered in
   [section 8 of `analyzer/research/continue.md`](../../analyzer/research/continue.md#8-parser-plan);
   scratch directories, found (`cn review` worktrees in the system temp
-  directory, [section 6](#6-project-path)); deletion, found (in the
-  analyzer document); version drift, none (same commit); bad lines, in
+  directory, [Scratch directories](#scratch-directories)); deletion, found
+  ([What survives a delete in
+  `analyzer/research/continue.md`](../../analyzer/research/continue.md#what-survives-a-delete));
+  version drift, none (same commit); bad lines, in
   the analyzer document.
 
 ## 2. Per-user storage
@@ -102,6 +113,33 @@ Under `~/.continue`:
   ([`core/util/GlobalContext.ts:18-33`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/GlobalContext.ts#L18-L33);
   [`extensions/cli/src/util/modelPersistence.ts:7-19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/modelPersistence.ts#L7-L19)).
 
+### Scratch directories
+
+`cn review` makes one detached git worktree per
+review agent at `<system temp directory>/cn-review-<epoch ms>-<n>`, runs
+a headless agent in it in the `auto` permission mode, and removes it in
+a `finally` block with `git worktree remove --force`
+([`extensions/cli/src/commands/review/worktree.ts:15-20`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/commands/review/worktree.ts#L15-L20),
+[`99-115`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/commands/review/worktree.ts#L99-L115);
+[`extensions/cli/src/commands/review/reviewWorker.ts:116-129`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/commands/review/reviewWorker.ts#L116-L129);
+[`extensions/cli/src/commands/review.ts:341`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/commands/review.ts#L341),
+[`389-392`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/commands/review.ts#L389-L392)).
+The worker changes into the worktree before it starts its services or
+adds the first message, and a CLI session takes `process.cwd()` as its
+`workspaceDirectory` when it is created
+([`extensions/cli/src/session.ts:92-106`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/session.ts#L92-L106)), so the review session's
+file and `sessions.json` entry name the temp path, and
+`discover_projects` lists it as a project. The system temp directory is
+outside the home on Linux and macOS and is `AppData/Local/Temp` on
+Windows; no catalog line collects it, and the worktree is normally gone
+before collection. Nothing in the path or the session marks it as the
+agent's own; the basename `cn-review-<digits>-<digits>` is the only
+sign. The extension has no scratch directory: a terminal command with no
+workspace runs in the home directory
+([`core/tools/implementations/runTerminalCommand.ts:81-87`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/tools/implementations/runTerminalCommand.ts#L81-L87)).
+
+### Editor extensions
+
 VS Code `globalStorage/continue.continue/`: `<key>.bin` AES-GCM blobs
 written by the extension's own secret store, key material in VS Code
 `context.secrets` ([`extensions/vscode/src/stubs/SecretStorage.ts:7-23`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/vscode/src/stubs/SecretStorage.ts#L7-L23),[`41-58`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/vscode/src/stubs/SecretStorage.ts#L41-L58),[`100`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/vscode/src/stubs/SecretStorage.ts#L100)).
@@ -135,7 +173,7 @@ is outside this source and not determined; the catalog's
   decryptable only with the key in the editor's `state.vscdb`.
 - No OS keychain use by the core.
 
-## 4. Exclude
+## 4. Exclusions
 
 `.continue/index/lancedb`, `.continue/index/*.sqlite`, `.continue/.utils`,
 `.continue/node_modules`, `.continue/out`, `.continue/types`,
@@ -143,7 +181,7 @@ is outside this source and not determined; the catalog's
 Keep `dev_data/**/*.jsonl` (prompts, tool usage), `logs/prompt.log`,
 `index/globalContext.json`.
 
-## 5. Project-local
+## 5. Project-local files
 
 `.continue/<subdir>/*.yaml|md` for `rules`, `prompts`, `agents`,
 `mcpServers`, `skills`, `models`, `context`, `docs`, `data`
@@ -153,34 +191,12 @@ Keep `dev_data/**/*.jsonl` (prompts, tool usage), `logs/prompt.log`,
 ([`core/config/json/loadRcConfigs.ts:18`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/config/json/loadRcConfigs.ts#L18); [`loadLocalAssistants.ts:18`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/config/loadLocalAssistants.ts#L18));
 `.continueignore` ([`core/core.ts:1287`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/core.ts#L1287)). No per-project database.
 
-## 6. Project path
+## 6. Where the project path is recorded
 
 `sessions/sessions.json[].workspaceDirectory` and
 `sessions/<id>.json.workspaceDirectory` ([`history.ts:105-120`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L105-L120),[`160-172`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L160-L172)).
-Empty string for sessions created without a workspace.
-
-Scratch directories. `cn review` makes one detached git worktree per
-review agent at `<system temp directory>/cn-review-<epoch ms>-<n>`, runs
-a headless agent in it in the `auto` permission mode, and removes it in
-a `finally` block with `git worktree remove --force`
-([`extensions/cli/src/commands/review/worktree.ts:15-20`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/commands/review/worktree.ts#L15-L20),
-[`99-115`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/commands/review/worktree.ts#L99-L115);
-[`extensions/cli/src/commands/review/reviewWorker.ts:116-129`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/commands/review/reviewWorker.ts#L116-L129);
-[`extensions/cli/src/commands/review.ts:341`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/commands/review.ts#L341),
-[`389-392`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/commands/review.ts#L389-L392)).
-The worker changes into the worktree before it starts its services or
-adds the first message, and a CLI session takes `process.cwd()` as its
-`workspaceDirectory` when it is created
-([`extensions/cli/src/session.ts:92-106`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/session.ts#L92-L106)), so the review session's
-file and `sessions.json` entry name the temp path, and
-`discover_projects` lists it as a project. The system temp directory is
-outside the home on Linux and macOS and is `AppData/Local/Temp` on
-Windows; no catalog line collects it, and the worktree is normally gone
-before collection. Nothing in the path or the session marks it as the
-agent's own; the basename `cn-review-<digits>-<digits>` is the only
-sign. The extension has no scratch directory: a terminal command with no
-workspace runs in the home directory
-([`core/tools/implementations/runTerminalCommand.ts:81-87`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/tools/implementations/runTerminalCommand.ts#L81-L87)).
+Empty string for sessions created without a workspace. A `cn review` session names its
+temporary worktree here ([Scratch directories](#scratch-directories)).
 
 ## 7. Confidence
 
