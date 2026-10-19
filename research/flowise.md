@@ -1,10 +1,10 @@
 # flowise
 
 Flowise is a Node.js visual agent and chatflow builder (`npx flowise start`, Docker); its
-Agentflow v2 is the second-generation agent canvas. This document came out of the agent
+Agentflow v2 is the second-generation agent canvas. It came into the catalog from the agent
 framework sweep for [issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
-[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
-line. There is no analyzer document yet.
+[`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. Its
+parser is in the backlog ([issue 68](https://github.com/seanthegeek/doubleagent/issues/68)).
 
 ## 1. Source and evidence
 
@@ -100,7 +100,7 @@ the documented deployment uses a bind mount.
 
 #### Database detail
 
-Detail from the 2026-10-19 review, for a future analyzer document. All
+Detail from the 2026-10-19 review, for a future parser. All
 of it is in `database.sqlite`:
 
 - **Per-call decisions.** A Human Input node (`humanInputAgentflow`)
@@ -192,9 +192,16 @@ Nowhere; Flowise has no project concept.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+Flowise is `backlog`: its parser is
+[issue 68](https://github.com/seanthegeek/doubleagent/issues/68), and nothing it writes is parsed
+yet. A parser would read `.flowise/database.sqlite`: `chat_message` (`content`, `usedTools`,
+`agentReasoning`, and `action` for a pending human-input request), joined on
+`chat_message.executionId` to `execution.executionData`, which holds every Agentflow v2 run step
+by step with the `proceed` or `reject` decisions and each Agent node's `agentModel` and
+`agentModelConfig`; and, beyond the primary store, `chat_message_feedback`, `upsert_history`,
+`schedule_record` and `schedule_trigger_log`, with `chat_flow.analytic` naming the tracing
+services a chatflow reports to ([Database detail](#database-detail)). The `credential` rows are
+encrypted with `encryption.key` ([section 3](#3-credentials)).
 
 ## 14. Confidence
 
