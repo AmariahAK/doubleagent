@@ -1,15 +1,10 @@
 # twinny
 
-Twinny is an open-source AI coding extension for VS Code (extension id `rjmacarthy.twinny`). Its
-repository also ships the `twinny-node` peer-to-peer GPU sharing CLI and the `twinny-server` team
-gateway. Record schema: [`analyzer/research/twinny.md`](../../analyzer/research/twinny.md).
-
-Twinny (catalog name `twinny`) is an open-source AI coding extension for VS Code; its chats live
-inside the editor's own SQLite state database, not in a file of its own. Its repository also
-ships the `twinny-node` peer-to-peer GPU sharing CLI and the `twinny-server` team gateway. Paths
-are in [`collectors/research/twinny.md`](../../collectors/research/twinny.md).
-
-<!-- MERGE: dedupe the intro paragraphs above into one -->
+Twinny (catalog name `twinny`) is an open-source AI coding extension for VS Code (extension id
+`rjmacarthy.twinny`); its chats live inside the editor's own SQLite state database, not in a file
+of its own. Its repository also ships the `twinny-node` peer-to-peer GPU sharing CLI and the
+`twinny-server` team gateway. The `twinny` parser reads the chats from the editor's state
+database.
 
 ## 1. Source and evidence
 
@@ -19,92 +14,63 @@ version 4.3.5, MIT
 ([package.json:32](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/package.json#L32)).
 Open source, TypeScript. All claims from source. How VS Code stores an extension's `globalState` was
 checked against [microsoft/vscode](https://github.com/microsoft/vscode) at the commit used by
-[vscode.md](vscode.md). The repository holds three programs: the VS Code extension, the
-`twinny-node` peer-to-peer GPU sharing CLI
-([package.json:61-63](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/package.json#L61-L63))
-and the `twinny-server` team gateway
-([packages/twinny-server/package.json:28-30](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/packages/twinny-server/package.json#L28-L30)).
-
-[twinnydotdev/twinny](https://github.com/twinnydotdev/twinny) at
-[`9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6`](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6),
-MIT, open source. VS Code storage behaviour from
-[microsoft/vscode](https://github.com/microsoft/vscode) at the commit cited in
 [vscode.md](vscode.md). Sync was checked at
 [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)
 (version 4.3.15,
 [package.json:5](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/package.json#L5))
-on 2026-10-17.
-
-<!-- MERGE: dedupe the section 1 prose above -->
+on 2026-10-17. The repository holds three programs: the VS Code extension, the `twinny-node`
+peer-to-peer GPU sharing CLI
+([package.json:61-63](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/package.json#L61-L63))
+and the `twinny-server` team gateway
+([packages/twinny-server/package.json:28-30](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/packages/twinny-server/package.json#L28-L30)).
 
 ### Observed
-
-No real install.
 
 - No real install.
 - The `said` step layout ([Steps typed mid-reply](#steps-typed-mid-reply)) is not observed on any
   real install, source-derived (twinnydotdev/twinny at
   [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)).
 
-<!-- MERGE: dedupe the Observed bullets above -->
-
 ### Source reviews
-
-- **Source review (2026-10-19)**: [twinnydotdev/twinny](https://github.com/twinnydotdev/twinny) at
-  [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)
-  (version 4.3.15, today's HEAD), against
-  [`9339bd1`](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6)
-  (4.3.5), which the citations below name unless they say otherwise; VS Code paths from
-  [microsoft/vscode](https://github.com/microsoft/vscode) at
-  [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706).
-  Permission state: found, standing grants in `globalState` and settings
-  ([section 2](#2-per-user-storage)). Model: already covered (per reply, in the conversation). Past
-  use: found, a new `agent-changes/` directory of per-reply file copies in the workspace's extension
-  storage and the Twinny log channel ([section 2](#2-per-user-storage)). Sync, relay and origin:
-  already covered, none (the analyzer document checked it at this commit). Scratch directories: none
-  ([section 2](#2-per-user-storage)). Deletion: a conversation delete touches only `globalState`,
-  leaving `agent-changes/` and the log. Version drift: found, new credential and account keys for
-  the ChatGPT plan sign-in ([section 3](#3-credentials)) and the change records above; every path in
-  this document is still used at HEAD. Bad lines: not applicable to the collector.
 
 - **Source review (2026-10-19)**: [twinnydotdev/twinny](https://github.com/twinnydotdev/twinny) at
   [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)
   (version 4.3.15, today's HEAD, committed 2026-10-16), against
   [`9339bd1`](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6)
-  (4.3.5), which most citations below still name; VS Code's extension storage and log-channel paths
-  from [microsoft/vscode](https://github.com/microsoft/vscode) at
+  (4.3.5), which most citations below still name unless they say otherwise; VS Code's extension
+  storage and log-channel paths from [microsoft/vscode](https://github.com/microsoft/vscode) at
   [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706).
-  Between the two Twinny commits 160 files changed; every key and field the parser reads is still
-  written at HEAD. The review's per-class detail is in the fixed subsections of
-  [section 13](#13-parser-plan).
-  - Permission state: found. The standing grants `alwaysRunCommands`,
+  Between the two Twinny commits 160 files changed; every path in this document is still used at
+  HEAD, and every key and field the parser reads is still written there. The review's per-class
+  parser detail is in the fixed subsections of [section 13](#13-parser-plan).
+  - Permission state: found, standing grants in `globalState` and settings
+    ([section 2](#2-per-user-storage)). The standing grants `alwaysRunCommands`,
     `alwaysRunMcpTools` and `autoRunCommands` and the `agentMode` switch
     are kept in the same `rjmacarthy.twinny` row the parser reads, and
     the `twinny.chatTools*` settings in `settings.json`
     ([section 13](#13-parser-plan)); the parser reads none of them. The
     per-call `waiting` and `skipped` steps are already covered.
-  - Model: already covered for `meta.model` per reply; found that it is
+  - Model: already covered for `meta.model` per reply, in the conversation; found that it is
     the configured model name, not one the server reports, and that a
     team-pool reply's `meta.provider` names the teammate's machine.
-  - Past use beyond the primary store: found. The per-reply file-change
-    records under the workspace's `agent-changes/` directory and the
-    Twinny log channel ([section 10](#10-other-stores)).
-  - Sync, relay and origin: already covered (checked at this commit on
+  - Past use beyond the primary store: found. A new `agent-changes/` directory of per-reply
+    file copies (file-change records) in the workspace's extension storage and the Twinny log
+    channel ([section 2](#2-per-user-storage); [section 10](#10-other-stores)).
+  - Sync, relay and origin: already covered, none (checked at this commit on
     2026-10-17); nothing new.
   - Scratch directories: none; agent mode works in the first workspace
-    folder.
-  - Deletion: already covered; found that a delete leaves the
-    `agent-changes/` records and the log lines.
-  - Version drift: found. New message and step fields (`changes`,
-    `toolSteps[].said`, `mcpTool`, `noAlways`, `meta.outOfSteps`,
+    folder ([section 2](#2-per-user-storage)).
+  - Deletion: already covered; found that a conversation delete touches only `globalState`,
+    leaving the `agent-changes/` records and the log lines.
+  - Version drift: found. New credential and account keys for the ChatGPT plan sign-in
+    ([section 3](#3-credentials)) and the change records above; new message and step fields
+    (`changes`, `toolSteps[].said`, `mcpTool`, `noAlways`, `meta.outOfSteps`,
     `meta.instructions`); a `said` step, a user message sent mid-reply,
     is a `user` row since the fix for issue 171 (it was a `tool_use`
     row before). The `said` step layout is not observed on any real
     install ([Observed](#observed)).
-  - Bad lines: no line-oriented file is read today; the two new sources
-    would need `error_rows` if parsed.
-
-<!-- MERGE: dedupe the Source reviews above -->
+  - Bad lines: not applicable to the collector; no line-oriented file is read by the parser
+    today; the two new sources would need `error_rows` if parsed.
 
 ## Collection
 
@@ -207,8 +173,8 @@ Since 4.3.5, at
   ([src/extension/chatgpt-plan/session.ts:11-13](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L11-L13),
   [52-57](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L52-L57),
   [397-402](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L397-L402)).
-- The **Twinny** log channel,
-  `<editor logs>/<session>/window<n>/exthost/rjmacarthy.twinny/Twinny.log`
+- The **Twinny** log channel, `<editor
+  logs>/<session>/window<n>/exthost/rjmacarthy.twinny/Twinny.log`
   ([src/common/logger.ts:93-97](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/logger.ts#L93-L97);
   [extHostOutput.ts:148-150](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/api/common/extHostOutput.ts#L148-L150)),
   one line per chat request naming the model, and the prompts and replies at Debug level; collected
@@ -367,7 +333,8 @@ gateway whose administrator turned on recording keeps its own copy of each reque
 host; whether a delete reaches it is not stated, and nothing on the developer's machine says a
 request was recorded. No deletion marker is stated. The analyzer reads only the `rjmacarthy.twinny`
 row: the `agent-changes/` records and the log channel are secondary sources not read yet, and the
-gateway recordings are not read (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+gateway recordings are not read (see
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### 8. Record schema
 
@@ -409,8 +376,8 @@ gateway recordings are not read (see [Secondary sources](../analyzer/docs/output
 
 Fields added between 4.3.5 and 4.3.15
 ([types.ts:76-165](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/types.ts#L76-L165)
-at HEAD): `changes` on an assistant message
-(`{id, files[{path, status, added, removed, undone?, noUndo?}]}`, the view of the record in
+at HEAD): `changes` on an assistant message (`{id, files[{path, status, added, removed, undone?,
+noUndo?}]}`, the view of the record in
 [Per-reply file-change records](#per-reply-file-change-records)); `toolSteps[].said` (`true` on a
 step whose `name` is `said` and whose `summary` is a message the user typed while the reply ran,
 [`src/extension/chat/tool-steps.ts:101-104`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/tool-steps.ts#L101-L104));
@@ -451,12 +418,12 @@ reply under the workspace's extension storage, `agent-changes/<uuid>.json`
 The extension's workspace storage is `<User dir>/workspaceStorage/<id>/rjmacarthy.twinny/`, and the
 global `globalStorage/rjmacarthy.twinny/` when no folder is open
 ([extHostStoragePaths.ts:82-91](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/api/common/extHostStoragePaths.ts#L82-L91)).
-A record is `{id, root, createdAt, files[]}`, each file
-`{path, status, added, removed, undone?, noUndo?, before, afterHash}`
+A record is `{id, root, createdAt, files[]}`, each file `{path, status, added, removed, undone?,
+noUndo?, before, afterHash}`
 ([reply-changes.ts:35-47](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L35-L47)):
 `root` is the absolute workspace root, `createdAt` epoch ms at the end of the reply, `status`
-`modified`, `created` or `deleted`, `before` the whole file text before the reply (files up to
-1 MiB, text only,
+`modified`, `created` or `deleted`, `before` the whole file text before the reply (files up to 1
+MiB, text only,
 [`:25-26`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L25-L26))
 and `undone` set when the user put it back
 ([`:238-245`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L238-L245)).
@@ -489,10 +456,9 @@ conversation id) and survives the conversation's deletion until VS Code removes 
 
 #### `twinny-server` recordings
 
-`twinny-server` recordings, when enabled: SQLite `recordings.sqlite` (WAL)
-with `recordings(id, ts, at, key, route, alias, model, provider, outcome,
-ended, ms, prompt_tokens, completion_tokens, request, response, preview,
-thread)`, or JSONL day files with the same `RecordingRecord` fields
+`twinny-server` recordings, when enabled: SQLite `recordings.sqlite` (WAL) with `recordings(id, ts,
+at, key, route, alias, model, provider, outcome, ended, ms, prompt_tokens, completion_tokens,
+request, response, preview, thread)`, or JSONL day files with the same `RecordingRecord` fields
 ([src/gateway/recording/store.ts:25-50](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/recording/store.ts#L25-L50),
 [336-355](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/recording/store.ts#L336-L355),
 [369-370](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/recording/store.ts#L369-L370),
@@ -582,7 +548,7 @@ from the source review of 2026-10-19 at
   entry, `permission setting: <key>=<value> (from state.vscdb
   rjmacarthy.twinny, file mtime)`.
 - `node/trusted-peers.json`, the `twinny-node` trusted-peer list named in
-  [`collectors/research/twinny.md`](../../collectors/research/twinny.md),
+  [section 2](#2-per-user-storage),
   is not read: its shape is not recorded.
 
 #### Model rows
@@ -658,7 +624,8 @@ The extension sends only the workspace name in `X-Twinny-Workspace`
 ([src/protocol/client.ts:83](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/protocol/client.ts#L83),
 [252](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/protocol/client.ts#L252)),
 and nothing on the developer's machine says a request was recorded, so the parser yields no sync
-row; the gateway host's `recordings/` directory is the place to look ([section 10](#10-other-stores)).
+row; the gateway host's `recordings/` directory is the place to look
+([section 10](#10-other-stores)).
 
 #### Scratch directory rows
 
