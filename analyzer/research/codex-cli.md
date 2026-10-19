@@ -168,7 +168,8 @@ Paths and the rest of the per-user state are in
     left to the EDR.
   - Not exercised: a resumed thread, a denied tool call, an "allow
     always" grant, a model switch within a thread, subagents, an
-    automation run.
+    automation run. The macOS round of 2026-10-18 below exercised all
+    of them but the grant and a subagent the agent spawned itself.
 - **Observed (macOS)**: the author's macOS lab VM, macOS 26.6.2 (build
   25G83), arm64, one user, 2026-10-15, 16:25Z to 17:05Z (times in UTC;
   issues 118 and 121), read for file names, sizes, key names, value
@@ -205,6 +206,380 @@ Paths and the rest of the per-user state are in
     `startSeconds`, `startMicroseconds`, `uniqueId`) that the Windows
     files lack. The parser reads neither.
   - Not exercised: as on Windows.
+- **Observed (macOS, 2026-10-18)**: the same macOS lab VM (macOS 26.6.2,
+  build 25G83, arm64, one user), 2026-10-18 18:15Z to 2026-10-19
+  00:43Z (issue 160, the resume and sync question, and issue 49, the
+  ChatGPT desktop parser), read for file names, sizes, key names, value
+  types, enum values and row counts only, with a listing diff after
+  every step, so each file below is mapped to the step that wrote it.
+  The ChatGPT app was build 26.1013.40934 (bundle identifier
+  `com.openai.codex`, the build after the 26.1007.71326 of the
+  2026-10-15 round), its bundled Codex reporting `originator`
+  `Codex Desktop` and `cli_version` `0.163.0-alpha.10.2` (0.162.0-alpha.17.2
+  on 2026-10-15). The app's own files are in
+  [`collectors/research/chatgpt-desktop.md`](../../collectors/research/chatgpt-desktop.md).
+  Times are UTC. The listings of the first five steps (install to the
+  approvals) were taken in the VM's local zone, Eastern Daylight Time
+  (UTC-4), and are converted here. Rollout file names and their date
+  directories are in local time too, as [section 2](#2-transcript-files)
+  says from source: the plain question's rollout is named
+  `rollout-2026-10-18T14-40-09-<uuid>.jsonl` for a thread that
+  started at 18:40:09Z. The parser takes every time from the records,
+  never from the file name (a research note, no parser change).
+  Terms used below, as the app names them in build 26.1013.40934
+  (2026-10-18): the composer (the prompt box) has a mode dropdown with
+  **Codex** and **ChatGPT**; Codex mode starts a local Codex thread
+  with a rollout, and the ChatGPT entry lists the account's
+  conversations on chatgpt.com. Every thread of this round was created
+  in Codex mode; which mode the plain chats of the 2026-10-15 rounds
+  used, which left no rollout, was not recorded. The **app server** is
+  Codex's local service that owns the threads; the desktop app and any
+  paired phone are its clients, and each request they send is logged
+  in `logs_2.sqlite` under a method name such as `thread/start`,
+  `thread/resume` or `turn/start` (a remote procedure call, RPC below).
+  - Install (the app first launched 18:17:26Z) and sign-in
+    (18:31:28Z to 18:32:34Z). Before sign-in `~/.codex` held
+    `config.toml`, `.codex-global-state.json`, `installation_id`,
+    `state_5.sqlite` (every table empty but `thread_sections` 1 and
+    the bookkeeping tables), `logs_2.sqlite` (1,000 rows),
+    `goals_1.sqlite`, `memories_1.sqlite`, `queue_1.sqlite` and
+    `sqlite/codex-dev.db`; no `auth.json`, no `sessions/`, no
+    `history.jsonl`. Sign-in wrote `auth.json`, `models_cache.json`
+    (9 models), the first `shell_snapshots/<uuid>.<ns>.sh`
+    ([section 5](#5-other-files)) and, in `codex-dev.db`
+    `local_thread_catalog`, three `source_kind` `chatgpt` rows before
+    any chat on this VM: the account's conversations, dated 2026-10-15
+    (the Windows round's chat and image generation on the same
+    account), each with `display_title` set, `conversation_origin`
+    empty twice and `tpp` once, and `thread_source`, `model_provider`,
+    `cwd`, `git_branch`, `project_id` and `chatgpt_async_status`
+    null. The
+    2026-10-15 macOS round's chats were not among them; why was not
+    determined. `logs_2.sqlite` `logs.ts` is integer epoch seconds.
+  - A plain question in Codex mode, no tools (18:40:09Z to
+    18:40:31Z): one rollout, `sessions/2026/10/18/rollout-...`,
+    190,766 bytes, 21 lines: `session_meta` 1, `event_msg` 6
+    (`task_started`, `thread_settings_applied`, `item_completed` 2,
+    `token_count`, `task_complete`), `response_item` 11
+    (`additional_tools` 1, `message` with role `developer` 6, `user` 3,
+    `assistant` 1), `world_state` 1, `turn_context` 1,
+    `token_usage_record` 1, 0 bad lines. Its `cwd` was
+    `~/Documents/Codex/2026-10-18/w`, the app's projectless output
+    directory: the directory the app creates under
+    `~/Documents/Codex/<date>/` for a thread that belongs to no
+    project, with `work` and `outputs` inside. The app wrote no
+    `history.jsonl` and no `version.json`; the prompt went to the
+    `prompt-history` key of `.codex-global-state.json`
+    ([section 5](#5-other-files)). `session_index.jsonl` got 1 line,
+    `thread_history_1.sqlite` was created (`thread_items` 2,
+    `thread_turns` 1), `state_5.sqlite` `threads` got 1 row and
+    `codex-dev.db` `local_thread_catalog` a `vscode` row with
+    `thread_source` `user` and the `cwd`.
+  - `session_meta.payload` keys as on Windows (`source` `vscode`,
+    `thread_source` `user`, `history_mode` `paginated`,
+    `model_provider` `openai`, `creator_account_id` a UUID,
+    `creator_user_id` 29 characters, `context_window` with
+    `window_id`, `runtime_workspace_roots` 1 entry,
+    `base_instructions` with `text` of 21,769 characters and
+    `provenance`). The guardian review thread below adds
+    `parent_thread_id` (absent on user threads) and
+    `multi_agent_version` `disabled`.
+  - `turn_context.payload` keys beyond the source list: `model`
+    `gpt-6.1-sol`, `effort` `low`, `collaboration_mode` (`mode`
+    `default`, `settings` with `model`, `reasoning_effort` and
+    `developer_instructions` of 1,288 characters), `approval_policy`
+    the granular object (`mcp_elicitations`, `request_permissions`,
+    `rules`, `sandbox_approval`, `skill_approval`) in the first thread
+    and the string `on-request` in later ones, `approvals_reviewer`
+    `user`, `active_permission_profile` (`id`), `permission_profile`
+    (`type` `managed`, `file_system` restricted, `network` restricted),
+    `sandbox_policy` (`type` `workspace-write`, `writable_roots` 2,
+    `network_access`, `exclude_slash_tmp`, `exclude_tmpdir_env_var`),
+    `file_system_sandbox_policy` (`kind` `restricted`, 18 `entries`),
+    `cyber_access_program` `standard`, `multi_agent_version` `v2`,
+    `realtime_active`, `disabled_plugin_ids` (empty).
+  - `world_state` keys: `tools` (the `mcp__codex_apps__*` tools
+    `github`, `pets`, `hotline`, `sites`, `search_service`,
+    `safety_settings`, `plugin_management` and
+    `codex_document_control`, plus `mcp__code_review` and
+    `mcp__node_repl`), `top_level_tools` (`clock.*`,
+    `collaboration.*` with `spawn_agent` and `send_message`,
+    `functions.exec`, `functions.request_user_input`,
+    `functions.wait`, `mcp__cua_repl.*`), `permissions`
+    (`approved_command_prefixes`, `instructions`), `environments`
+    (`current_date`, `timezone`, `filesystem`), `host_skills`,
+    `multi_agent_mode` (`mode` `explicitRequestOnly`),
+    `git_attribution`. Messages carry
+    `internal_chat_message_metadata_passthrough`; the line `metadata`
+    keys are `client_authored`, `mcp_attribution`, `retained_source`
+    and `user_input_order`; the assistant message has `phase` and
+    `status`.
+  - A coding task in a project (`~/Demo` added through the folder
+    picker 18:48:52Z; thread 18:49:06Z to 18:50:51Z). Adding the
+    project wrote `[projects."<path>"] trust_level = "trusted"` to
+    `config.toml` (a trusted-folder grant, standing permission state)
+    and a `projects` and a `project_roots` row to `state_5.sqlite`.
+    The rollout (205,378 bytes, 39 lines): `session_meta` 1,
+    `turn_context` 1, `world_state` 1, `response_item` 18 (developer 6,
+    user 3, assistant 2, `additional_tools` 1, `custom_tool_call` 3
+    with `call_id`, `id`, `input`, `name`, `status`,
+    `custom_tool_call_output` 3), `event_msg` 14 (`item_completed` 7:
+    `CommandExecution` 3, one `failed` with `exit_code` 1, keys `id`,
+    `process_id`, `cwd`, `parsed_cmd`, `source`, `status`,
+    `aggregated_output`, `exit_code`, `duration` with `secs` and
+    `nanos`; `FileChange` 1, its `changes` keyed by the three absolute
+    paths, `status` `completed`, `stdout`, `stderr`; `AgentMessage` 2
+    with `phase` `commentary`; `UserMessage` 1 with `client_id`,
+    `content`, `id`; then `token_count` 4, `task_started`,
+    `thread_settings_applied`, `task_complete`), `token_usage_record`
+    4. No approval event: the sandbox allowed the three writes inside
+    the workspace. No `git` block (`~/Demo` is not a repository), and
+    no file was written inside the project but the three the task
+    made. `thread_history_1.sqlite` `item_json` keys:
+    `userMessage` (`clientId`, `content`, `id`, `text`,
+    `text_elements`, `type`), `agentMessage` (`delivery`, `id`,
+    `memoryCitation`, `phase`, `questions`, `text`, `type`),
+    `commandExecution` (`aggregatedOutput`, `command`,
+    `commandActions`, `cwd`, `durationMs`, `exitCode`, `id`,
+    `pluginId`, `processId`, `scriptPath`, `source`, `status`,
+    `type`), `fileChange` (`changes`, `diff`, `id`, `kind`, `path`,
+    `status`, `type`).
+  - One tool call denied and one approved in the Demo thread (turns
+    19:03:50Z to 19:04:04Z and 19:04:46Z to 19:05:03Z). A `curl` ran
+    in the sandbox first and failed (`exit_code` 6, the network
+    sandbox: `network_access` false); the agent asked to run it
+    outside the sandbox, the user declined in the approval dialog,
+    and the second call's output was the text `Script error:
+    exec_command failed: CreateProcess { message: "Rejected(\"rejected
+    by user\")" }` (in `thread_history_1.sqlite` a `commandExecution`
+    `failed`, exit 1). The approved call wrote a file on the Desktop
+    (`CommandExecution` `completed`, exit 0). The rollout holds no
+    approval or decision event and `turn_context` did not change;
+    the decisions are only in `logs_2.sqlite`
+    ([section 5](#5-other-files)): `CommandExecutionRequestApproval`
+    with `decision: Decline` at 19:04:01Z and `decision: Accept` at
+    19:05:00Z. The dialog of build 26.1013.40934 offered no "always
+    allow" choice for a command, and the approval was one-off: the
+    thread's standing permissions in the global state kept one
+    writable root. `task_started.turn_attribution` keys: `turn_id`,
+    `turn_trigger` (`composer` for a prompt typed in the app),
+    `parent_turn_id`, `initiating_agent_path`, `root_turn_id`.
+    `token_count.rate_limits` keys: `limit_id` (`codex`), `plan_type`
+    (`plus`), `primary`, `secondary`, `credits`, `limit_name`,
+    `individual_limit`, `spend_control_reached`,
+    `rate_limit_reached_type`, so every rollout names the account's
+    plan.
+  - A model switch and the **Approve for me** mode in the Demo
+    thread (21:25:09Z and 21:25:28Z), then one prompt (21:26:40Z to
+    21:27:32Z). Approve for me is a permission mode of build
+    26.1013.40934 (2026-10-18) that hands each approval request to an
+    automatic reviewer instead of asking the user; Codex calls the
+    reviewer the guardian (`thread_source` `guardian_review`) and the
+    mode auto-review (`approvals_reviewer` `auto_review`), and the
+    app's global state calls it `guardian-approvals`. The switch alone,
+    before any prompt, appended `event_msg` `thread_settings_applied`
+    with `thread_settings.model` `gpt-5.6-terra` (the three earlier
+    ones said `gpt-6.1-sol`); the mode change appended a second one
+    with `approvals_reviewer` `user` -> `auto_review`, `approval_policy`
+    still `on-request`, `permission_profile` `managed` and
+    `active_permission_profile` `id` `:workspace`; a third, identical,
+    preceded the turn. The event's full key set has 14 keys:
+    `active_permission_profile`, `approval_policy`,
+    `approvals_reviewer`, `collaboration_mode`, `cwd`,
+    `disabled_plugin_ids`, `model`, `model_provider_id`,
+    `permission_profile`, `personality`, `reasoning_effort`,
+    `reasoning_summary`, `runtime_workspace_roots`, `service_tier`;
+    it has no `sandbox_policy`. The next `turn_context` (21:26:41Z)
+    said `gpt-5.6-terra` and `auto_review`, and
+    `task_started.model_context_window` went from 475000 to 258400.
+    `state_5.sqlite` `threads.model` was overwritten with the new
+    model, so the switch history is only in the rollout and
+    `logs_2.sqlite`. The config file did not change: the mode is kept
+    in the global state, not in `config.toml`. The agent wrote the
+    requested file to `~/Documents`, not to the Desktop as asked
+    (build 26.1013.40934).
+  - The guardian review thread. When the turn's command wrote outside
+    the workspace, no dialog appeared; the app started a second
+    thread with its own rollout (105,545 bytes, 17 lines:
+    `session_meta`, `task_started`, 5 `response_item`, `world_state`,
+    `turn_context`, `thread_settings_applied`, `item_completed`
+    `Reasoning` and `AgentMessage`, `token_usage_record`,
+    `token_count`, `task_complete`). Its `session_meta` has `source`
+    `{"subagent": {"other": "guardian"}}`, `thread_source`
+    `guardian_review`, `parent_thread_id` the Demo thread, the same
+    `cwd` and two `runtime_workspace_roots`; its `turn_context` has
+    `model` `codex-auto-review`, `approval_policy` `never`,
+    `approvals_reviewer` `auto_review`, `sandbox_policy` `read-only`;
+    `turn_attribution.turn_trigger` is `guardian_review`.
+    `task_complete.last_agent_message` (and the `AgentMessage`) is a
+    JSON string with `risk_level` (`low`), `user_authorization`
+    (`high`), `outcome` (`allow`) and `rationale` (free text): the
+    automatic decision for the call. The parent rollout then shows the
+    `FileChange` completing at 21:27:27Z with no approval event of
+    its own. `logs_2.sqlite` joins the two ([section 5](#5-other-files)).
+    The reviewer thread has a `state_5.sqlite` `threads` row
+    (`thread_source` `guardian_review`, `model` `codex-auto-review`,
+    `approval_mode` `never`, `has_user_event` 0), items in
+    `thread_history_1.sqlite` and a `session_index.jsonl` line named
+    `Guardian review`, but no `thread_spawn_edges` row. This turn also
+    had the first `item_completed` `Extension` items with `kind`
+    `web.search` (keys `action`, `id`, `kind`, `query`, `results`,
+    `type`) and `Reasoning` items (`id`, `raw_content`,
+    `summary_text`).
+  - A resumed thread: the app quit about 21:38Z to 21:40Z, relaunched
+    21:45:36Z, the Demo thread reopened 21:46:06Z and given one prompt
+    (21:47:36Z to 21:47:45Z). The resume appended to the same rollout:
+    no new file, no second `session_meta`, no resume event. Opening the
+    thread appended a `thread_settings_applied` with 11 keys (the 14
+    less `personality`, `reasoning_summary` and `service_tier`) at
+    21:46:11Z, which is the only resume mark in the rollout; the model
+    switch and Approve for me survived the restart. `logs_2.sqlite`
+    has the `thread/resume` requests at 21:46:06Z and 21:46:11Z, with
+    `app_server.client_name` `Codex Desktop` and
+    `app_server.client_version` `26.1013.40934`. The resume also
+    started a prewarmed reviewer: a guardian session warmed up in
+    advance that was not needed, which left a 0-byte
+    `thread-writer-locks/<uuid>.lock` and nothing else
+    ([section 5](#5-other-files)).
+  - A **Full access** turn: Full access is the app's access level of
+    build 26.1013.40934 (2026-10-18) that runs commands with no sandbox
+    and no approvals. Setting it (21:52:30Z) appended a
+    `thread_settings_applied` with `approval_policy` `never`,
+    `approvals_reviewer` `user`, `active_permission_profile` `id`
+    `:danger-full-access` and `permission_profile` `{"type":
+    "disabled"}`; the turn's `turn_context` (21:53:27Z) adds
+    `sandbox_policy` `danger-full-access` and
+    `file_system_sandbox_policy` null. The user set it back by hand
+    at 21:53:38Z, 5 seconds after the turn, which appended another
+    `thread_settings_applied` with the earlier values (`on-request`,
+    `auto_review`, `:workspace`, `managed`): the app does not turn Full
+    access off by itself, and it stays a thread setting until changed. `state_5.sqlite`
+    `threads.approval_mode` and the global state keep only the
+    reverted value, so the full-access turn is recorded only in the
+    rollout and `logs_2.sqlite`.
+  - A reply to an existing ChatGPT conversation in ChatGPT mode
+    (about 22:02Z to 22:15Z) wrote nothing to the Codex stores: no
+    rollout, no index line, no database growth, and the three
+    `chatgpt` catalog rows kept their 2026-10-15 update times. The
+    conversation never passed through the app server. On chatgpt.com
+    the Codex area did not list the app's local threads (user report,
+    no listing).
+  - A scheduled task, created in the sidebar's Scheduled view
+    (23:18:38Z) on a daily schedule, run once with Run now
+    (23:19:26Z to 23:19:30Z) and once on schedule (23:45:49Z to
+    23:45:53Z). The app calls this kind of task a heartbeat
+    (`automation.toml` `kind` `heartbeat`): each run ends with a
+    `<heartbeat>` block in which the model decides whether to notify
+    the user. Creating it wrote `automations/<slug>/automation.toml`
+    and `automations/.run-jitter-salt` ([section 5](#5-other-files))
+    and at once a new thread with its rollout (42 lines after Run now,
+    62 after the scheduled run), whose `session_meta` says nothing
+    about an automation (`source` `vscode`, `thread_source` `user`,
+    `cwd` `~/Documents/Codex/2026-10-18/new-chat`). Only
+    `turn_attribution.turn_trigger` marks the turns:
+    `scheduled_task_setup` for the setup turn (the agent acknowledges
+    the schedule, no tool call), `automation_heartbeat_run_now` for
+    Run now, `automation_heartbeat_scheduled` for the scheduled run;
+    the two runs' user messages have no `client_id`. The scheduled run's
+    `task_complete.last_agent_message` ends in a `<heartbeat>` block
+    with `<decision>DONT_NOTIFY</decision>` and a `<message>`, and the
+    Run now report ends in a `<heartbeat>` block with an
+    `<automation_id>`. Both runs reported into the same thread, the
+    file's `target_thread_id`. The vendor page
+    [Scheduled tasks | ChatGPT Learn](https://learn.chatgpt.com/docs/automations)
+    (read 2026-10-18) says "Standalone scheduled tasks start a new
+    chat for each scheduled run and report results in **Scheduled**";
+    neither run here started a new chat. `automation_runs` and
+    `inbox_items` stayed empty after both runs (a `NOTIFY` decision was
+    not observed).
+    A second prewarmed reviewer lock appeared at creation.
+  - Remote control: the app's Settings > Connections > Control this
+    Mac or PC, which pairs a phone (the ChatGPT app on iOS or
+    Android) with the desktop so that the phone can drive the Mac's
+    app server through OpenAI's relay. The vendor page
+    [Remote connections | ChatGPT Learn](https://learn.chatgpt.com/docs/remote-connections)
+    (read 2026-10-18) says "Remote connections let you access work
+    running on another device or machine", "Your phone sends prompts,
+    approvals, and follow-up messages to ChatGPT" and "Repository files
+    and local documents come from the connected host"; it does not say
+    whether a transcript is copied to the account. Enabling it
+    (23:50:17Z) wrote one `state_5.sqlite` `remote_control_enrollments`
+    row ([section 5](#5-other-files)) and two top-level global-state
+    keys; pairing alone changed no rollout. One prompt from the iPhone
+    (23:59:14Z to 23:59:31Z) and one from an Android phone (2026-10-19
+    00:29:14Z to 00:29:16Z) appended ordinary turns to the Demo
+    rollout, `turn_trigger` `remote_ios` and `remote_android`, with
+    `turn_context` in the shape of a composer turn; the trigger is the
+    only mark in the rollout that a turn came from a phone. In
+    `logs_2.sqlite` each phone is a second app-server connection with
+    `app_server.client_name` `codex_chatgpt_ios_remote` (version
+    `1.2026.279`) or `codex_chatgpt_android_remote` (version `dev`);
+    besides `turn/start` the phones sent `command/exec` (a command run
+    on the host outside any turn), `fs/readFile` and
+    `gitDiffToRemote`. Turning "Allow connections" off (00:05:42Z) and
+    on (00:09:25Z) flipped `remote_control_enabled` in the same row;
+    revoking the iPhone (00:14:36Z) and pairing the Android phone
+    (00:23:10Z) wrote only log rows. The full `turn_trigger` set of
+    this build: `composer`, `remote_ios`, `remote_android`,
+    `guardian_review`, `scheduled_task_setup`,
+    `automation_heartbeat_run_now`, `automation_heartbeat_scheduled`.
+  - The plain-question thread deleted with the app's own delete
+    command (2026-10-19 00:36:02Z; the dialog mentioned no remote
+    copy). Removed: the rollout (no `archived_sessions/` exists: a
+    hard delete, not an archive), its `session_index.jsonl` line, its
+    `state_5.sqlite` `threads` and `thread_read_receipts` rows, its
+    `thread_history_1.sqlite` rows and its `codex-dev.db`
+    `local_thread_catalog` row; `logs_2.sqlite` has `fs/remove` and
+    `thread/delete` requests at that second. Survived: the global
+    state keys that name the thread (its `prompt-history` entry with
+    the prompts, `thread-descriptions-v1`,
+    `thread-user-activity-times-v1`,
+    `heartbeat-thread-permissions-by-id`, `client-thread-bindings-v1`,
+    the top-level `projectless-thread-ids`,
+    `thread-projectless-output-directories` and
+    `thread-workspace-root-hints`) plus a new key
+    `codex-writing-block-deleted-thread-v1:<uuid>` set to true, the
+    deletion marker; the empty projectless output directory
+    `~/Documents/Codex/2026-10-18/w`; and at least one
+    `logs_2.sqlite` row carrying the thread id.
+  - Collector 1.14.0 ran in the VM as the user (2026-10-19 00:43:01Z
+    to 00:43:21Z) and analyzer 0.15.0 over its archive. Every
+    `~/.codex` file, `codex-dev.db`, `logs_2.sqlite`, the global state
+    and `automations/` included, is attributed to `codex-cli` by the
+    `codex-cli|.codex` catalog line. The analyzer gave 182 rows in 3
+    sessions (`assistant` 19, `system` 80, `tool_result` 36,
+    `tool_use` 36, `user` 11), dropped 92 rows repeated by the
+    secondary sources, and gave 0 `parser:` rows: the Demo thread (8
+    user turns, models `gpt-6.1-sol` and `gpt-5.6-terra`), the
+    guardian thread (0 user turns, `codex-auto-review`) and the
+    scheduled task's thread (3 user turns), with 3 `thread record:`
+    rows and 1 `scheduled task:` row. It already gave the session
+    start, `model:` rows with the switch, `permission mode:` rows with
+    the full-access transition, `subagent <id> of <parent>` for the
+    guardian thread, and event times rather than file-name times. It
+    dated the model switch and the full-access revert at the next
+    `turn_context` instead of the settings event, did not show the
+    Approve for me change, and gave no permission decision, turn
+    trigger, remote-control or deleted-thread row. Since this round
+    the parser reads those records ([section 8](#8-parser-plan-the-existing-parser)):
+    `thread_settings_applied` for the model and permission mode, with
+    the reviewer and profile id in the composite; the user decisions
+    in `logs_2.sqlite` and the guardian verdicts; the turn trigger on
+    `task_started`; the `remote_control_enrollments` row; and the
+    global state as a secondary source, which recovers the deleted
+    thread's prompts and its deletion.
+  - Research notes, no parser change: a `thread-writer-locks` lock can
+    exist for a thread that has no rollout, `threads` row or index
+    line (the prewarmed reviewers), so a lock is never a session; and
+    rollout file names are in local time, which the parser never
+    reads for a time.
+  - Exercised here for the first time on any platform: a resumed
+    thread, a denied and an approved tool call, a model switch within
+    a thread, an automatic approval, scheduled-task runs, remote
+    control and a delete. Not exercised: an "always allow" grant
+    (build 26.1013.40934 offered none for a command), a subagent the
+    agent spawned itself, a heartbeat `NOTIFY` decision, an
+    `automation_runs` row, an archived thread.
 - **Observed (Ubuntu)**: the author's Ubuntu 26.04.1 LTS lab VM, aarch64,
   kernel 7.0.0-38-generic, one user, 2026-10-15, 17:12Z to 17:22Z (times
   in UTC; issue 118), read for file names, sizes, key names, value types
@@ -493,6 +868,10 @@ to the call except its position between the call and its output (local).
 - `session_index.jsonl`: `{id, thread_name, updated_at}` appended per
   rename, newest wins, `updated_at` RFC 3339 UTC with nanoseconds
   ([rollout/src/session_index.rs:24-48](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/session_index.rs#L24-L48)). Titles only; local shape matches.
+  Codex Desktop also lists the guardian review thread, as
+  `Guardian review`, and a scheduled task's thread, under the task's
+  name (macOS, build 26.1013.40934, 2026-10-18;
+  [section 1](#1-evidence)). The app's delete removes the thread's line.
 - `state_5.sqlite` `threads`: `id`, `rollout_path`, `created_at`, `cwd`,
   `title`, `git_sha`, `git_branch`, `git_origin_url` and later
   `first_user_message`, `preview`
@@ -634,11 +1013,58 @@ to the call except its position between the call and its output (local).
   `codex_core`, `codex_tui`, `codex_rmcp_client` and
   `codex_realtime_webrtc`
   ([tui/src/startup_orchestration.rs:817-820](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/startup_orchestration.rs#L817-L820)).
-  The parser reads this row and no other of the database
+  The parser reads this row and the approval rows below, and no other
+  row of the database
   ([section 8](#8-parser-plan-the-existing-parser)); a body field may
   come in any order, and the first logs migration named the body column
-  `message`. Not seen on a real install: the row is read from a
-  synthetic fixture only.
+  `message`. Not seen on a real install: the feedback row is read from
+  a synthetic fixture only.
+
+  Codex Desktop writes the per-call permission decisions here and
+  nowhere else (macOS, build 26.1013.40934, 2026-10-18;
+  [section 1](#1-evidence)); `ts` was integer epoch seconds:
+  - A user's decision in the approval dialog:
+    `codex_app_server::outgoing_message` at `INFO`, `thread_id` empty,
+    `<- response: CommandExecutionRequestApproval { request_id:
+    Integer(<n>), response: CommandExecutionRequestApprovalResponse {
+    decision: Decline } }` (or `Accept`), and in the same second
+    `codex_core::session::handlers` at `DEBUG`, `thread_id` set,
+    `Submission thread_id=<uuid> submission_id=<uuid>
+    operation="exec_approval" ... op=ExecApproval { id: "exec-<uuid>",
+    turn_id: Some("<uuid>"), decision: ... }`. A rejected call adds a
+    `codex_core::tools::router` `ERROR` row. The `exec-<uuid>` id is
+    the `id` of the governed `CommandExecution` or `FileChange` item
+    (the rollout's `item_completed` line and the `thread_items` row),
+    not the rollout's `call_id` (`call_<hex>`), so the join to the
+    call is on the item id. Values seen: `Decline`, `Accept`.
+  - An automatic decision in the Approve for me mode (auto-review):
+    `codex_guardian_v2::async_scorer::approval` at `DEBUG`,
+    `decide_request{approval_id="<uuid>"}: reviewing approval
+    decision_source="synchronous_assessment" reason=Policy`, and rows
+    inside the span `guardian_review{review_id="<uuid>"
+    thread_id=<parent uuid> tool_call_id="exec-<uuid>"}`, whose
+    `tool_call_id` is the governed item's id; the app-server events
+    `item/autoApprovalReview/started`, `guardianWarning` and
+    `item/autoApprovalReview/completed`. No
+    `CommandExecutionRequestApproval` or `ExecApproval` row is written
+    for it; the verdict itself is in the guardian thread's rollout.
+  - A settings change: `operation="thread_settings"` with
+    `op=ThreadSettings { requested_settings: ThreadSettingsOverrides {
+    approval_policy: ..., approvals_reviewer: ..., sandbox_policy: ...,
+    permission_profile: ... } }`, values seen `Some(OnRequest)`,
+    `Some(Never)`, `Some(AutoReview)`, `Some(User)`,
+    `Some("managed")`, `Some("disabled")` and `None`. The model is not
+    in it; the rollout's `thread_settings_applied` is the model record.
+  - Every app-server request by method (`thread/start`,
+    `thread/resume`, `thread/fork`, `thread/delete`, `fs/remove`,
+    `turn/start`, `command/exec`, `fs/readFile`, `gitDiffToRemote`,
+    `remoteControl/*` and more), with `app_server.client_name` and
+    `app_server.client_version` in its span: `Codex Desktop`
+    `26.1013.40934`, `codex_chatgpt_ios_remote` `1.2026.279`,
+    `codex_chatgpt_android_remote` `dev`. A paired phone can run a
+    command on the host (`command/exec`) and read a file
+    (`fs/readFile`) outside any turn; those requests are recorded only
+    here.
 - `state_5.sqlite` `remote_control_enrollments`: one row per remote
   control enrollment, the link that lets a ChatGPT client drive this
   host's app server (`codex remote-control`; `websocket_url`,
@@ -648,7 +1074,35 @@ to the call except its position between the call and its output (local).
   [state/migrations/0024_remote_control_enrollments.sql:1-10](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0024_remote_control_enrollments.sql#L1-L10),
   [0037_remote_control_enrollments_enabled.sql:1-2](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0037_remote_control_enrollments_enabled.sql#L1-L2)).
   It names the host's enrollment, not a thread. Empty on the Windows
-  install of [section 1](#1-evidence). Not read.
+  install of [section 1](#1-evidence). On macOS (build 26.1013.40934,
+  2026-10-18 and 2026-10-19) enabling remote control in the app
+  (Settings > Connections > Control this Mac or PC) wrote one row:
+  `websocket_url` the relay's websocket address on the chatgpt.com
+  host (56 characters, no query string), `account_id`,
+  `app_server_client_name` `Codex Desktop`, `server_id`
+  (`srv_e_<hex>`), `environment_id` (`env_e_<hex>`), `server_name`
+  the Mac's host name (`<name>.local`), `updated_at` and
+  `remote_control_enabled` 1. Turning "Allow connections" off kept the
+  row and set `remote_control_enabled` to 0 with a new `updated_at`;
+  turning it on again reused the row, same ids, with 1. Revoking a
+  paired phone and pairing a second phone changed nothing in it: the
+  list of paired devices is held on the server. The row holds no
+  token; the log says a server token is refreshed on re-enable, and
+  where that token is stored was not found. The log rows (targets
+  `codex_app_server_transport::transport::remote_control::enroll`,
+  `::websocket` and `::client_tracker`, and the app-server requests):
+  `remoteControl/enable`, `persisted remote control enrollment: ...`,
+  `connected to app-server remote control websocket`, status changes
+  between `Connecting`, `Connected` and `Disabled` (with
+  `connection_end_reason=Disabled`), `remoteControl/disable`,
+  `remoteControl/pairing/start`, `remoteControl/client/list` (polled
+  while the Connections page is open), `remoteControl/client/revoke`
+  (no device name in the row), the event
+  `remoteControl/status/changed` when a phone connects, and
+  `client_tracker` `... connection closed` when it leaves. The first
+  pairing also wrote two top-level keys of `.codex-global-state.json`
+  (below). **Parser reads** the row
+  ([section 8](#8-parser-plan-the-existing-parser)).
 - `sqlite/codex-dev.db`: written only by the ChatGPT desktop app (observed
   on Windows, ChatGPT 26.1007.9446.0, 2026-10-15; not in the Codex
   source this document cites). It is the app's own thread catalog and
@@ -689,7 +1143,23 @@ to the call except its position between the call and its output (local).
   `26.1007.71326`, `build_flavor` `prod`). The chat's text is not in it.
   The analyzer does not read it: the automation is read from
   `automation.toml`, and a run would be in `automation_runs`, which no
-  real install has shown filled.
+  real install has shown filled. On macOS (build 26.1013.40934,
+  2026-10-18; [section 1](#1-evidence)) the database also had
+  `local_thread_catalog_metadata`, `local_thread_catalog_scan_checkpoints`,
+  `local_thread_catalog_scan_entries`, `local_thread_catalog_sync_state`
+  (`host_id`, `watermark_updated_at`, `initial_build_complete`,
+  `observation_sequence`, `last_full_reconciled_at`),
+  `live_visualization_suggestions`, `local_app_server_feature_enablement`
+  and a table not seen on Windows, `thread_timeline_ledger` (`host_id`,
+  `thread_id`, `sequence`, `record_id`, `payload_json`), empty through
+  every step. The `chatgpt` rows appeared at sign-in, before any chat,
+  and were not updated when a conversation was continued in the app:
+  they are the account's conversation list as of sign-in. Each
+  Codex-mode thread added a `vscode` row with `thread_source` `user`
+  and its `cwd`, `project_id` null even for the thread in a project,
+  and the app's delete removed the deleted thread's row. The collector
+  gathers the file through the `codex-cli|.codex` catalog line, under
+  `codex-cli`.
 - `automations/<slug>/automation.toml`: one directory per automation of
   the ChatGPT desktop app, named by a slug of the name the user typed
   (observed on Windows, 2026-10-15; not in the Codex source this
@@ -703,13 +1173,110 @@ to the call except its position between the call and its output (local).
   `target_thread_id` string (the thread the automation runs in, whose
   rollout appeared when the automation was created), `created_at` and
   `updated_at` integers (epoch milliseconds). **Parser reads** (issue
-  119).
+  119). On macOS (build 26.1013.40934, 2026-10-18;
+  [section 1](#1-evidence)) the file was 356 bytes with the same keys,
+  `rrule`
+  `RRULE:FREQ=WEEKLY;BYHOUR=19;BYMINUTE=45;BYDAY=SU,MO,TU,WE,TH,FR,SA`
+  for a task the user set to run daily (the hour is local time), and
+  `target_thread_id` the thread created with the task, into which both
+  runs reported. Its `codex-dev.db` `automations` row had `status`
+  `ACTIVE`, `kind` `heartbeat`, empty strings for `target_type`,
+  `execution_environment`, `notification_policy`, `model` and
+  `reasoning_effort`, `cwds` `[]`, `project_id` and
+  `legacy_automation_id` null, `account_id`, `user_id` and
+  `installation_id` set (null on Windows), `last_run_at` the last run,
+  `next_run_nominal_at` the scheduled minute and `next_run_at` that
+  minute moved by a jitter seeded from `.run-jitter-salt`. After a Run
+  now and a scheduled run whose heartbeat decision was `DONT_NOTIFY`,
+  `automation_runs` and `inbox_items` were still empty.
 - `ambient-suggestions/<40 hex>/ambient-suggestions.json`: the desktop
   app's suggestions for a project (observed on Windows, 2026-10-15, 139
   bytes): `currentSuggestionIds` (empty list), `generatedAtMs` number,
   `projectRoot` absolute path, `suggestions` (empty list). Governed by
   `desktop.ambient-suggestions-enabled` in `config.toml`. Not read; a
   file holding suggestions has not been observed.
+
+- `.codex-global-state.json` (and its `.bak`): the ChatGPT desktop
+  app's state, one JSON object (macOS, build 26.1013.40934, 2026-10-18
+  and 2026-10-19, [section 1](#1-evidence); not in the Codex source this
+  document cites). The key `electron-persisted-atom-state` holds a JSON
+  object, not a string, of the app's interface state; it and the top
+  level name threads by id. The keys that record use of a thread:
+  - `prompt-history`: a `global` list and one list per thread id, each
+    entry `{markdown, document}` (the prompt as Markdown and as an
+    editor document tree with `type` `doc`). It is the prompt history
+    of Codex Desktop, which writes no `history.jsonl`.
+  - `thread-descriptions-v1` (`{<thread id>: string}`),
+    `thread-user-activity-times-v1` (keyed `["local","<thread id>"]`,
+    a number, the last activity in epoch ms) and
+    `client-thread-bindings-v1` (`client-new-thread:<uuid>` to a
+    thread id).
+  - `heartbeat-thread-permissions-by-id`: per thread id
+    `activePermissionProfile` (`{id, extends}` or null),
+    `approvalPolicy` (a string or the granular object),
+    `approvalsReviewer`, `sandboxPolicy` (`type`, `writableRoots`,
+    `networkAccess`, `excludeTmpdirEnvVar`, `excludeSlashTmp`): each
+    thread's standing permission state, in camelCase
+    (`workspaceWrite` here, `workspace-write` in the rollout). A
+    one-off approval leaves it unchanged, and Full access was never
+    stored in it.
+  - `agent-mode-by-host-id` (`{local: "guardian-approvals"}`),
+    `permission-selection-by-host-id:local` (`{kind: "agent-mode",
+    agentMode}`) and `preferred-non-full-access-agent-mode-by-host-id`:
+    the permission mode the app starts threads in (the scheduled task's
+    new thread started in auto-review). Only `guardian-approvals` was
+    observed.
+  - `composer-recent-model-configurations-v1`
+    (`[{model, reasoningEffort, serviceTier}]`, most recent first) and
+    `composer-model-picker-selection-mode-v1`.
+  - `codex-writing-block-deleted-thread-v1:<thread id>`, `true`:
+    written when the thread is deleted in the app, absent for a live
+    thread.
+  - Top level: `projectless-thread-ids` (a list of thread ids),
+    `thread-projectless-output-directories` and
+    `thread-workspace-root-hints` (`{<thread id>: path}`), and, from
+    the first remote-control pairing,
+    `electron-local-remote-control-environment-id` (a string) and
+    `codex-mobile-has-connected-device` (a boolean).
+  - Projects and files: `local-projects`
+    (`{<uuid>: {createdAt, id, name, rootPaths, updatedAt}}`),
+    `thread-project-assignments`, `recent-workspace-files-v3` (the
+    files a thread wrote, keyed
+    `["local","client-new-thread:<uuid>","<path>"]`) and
+    `composer-prompt-drafts-v2` (an unsent draft per composer surface).
+  - `external-agent-import-discovery:claude-code`, `:claude-cowork`
+    and `:cursor` (`detectedAtMs`, `requestKey`, `result` with `items`
+    and `unsupportedProjects`), written at sign-in: the app looks for
+    other agents' state.
+
+  The ChatGPT account id appears inside key names:
+  `chatgpt-work-models-v1/user-<account id>/<uuid>` and the keys of
+  `new-task-execution-by-account-project` (`{kind: "cloud"}`). The
+  app's delete removed `thread-client-id-v1:local%3A<thread id>` and
+  kept every other key naming the thread, so the file outlives a
+  deleted thread with its prompts. The collector flags the file
+  `secret: true` and collects it by default. **Parser reads**, as a
+  secondary source ([section 8](#8-parser-plan-the-existing-parser)).
+- `thread-writer-locks/` (`.coordination.lock` and one
+  `<thread id>.lock` per open thread, 0 bytes) and
+  `shell_snapshots/<thread id>.<unix ns>.sh` (macOS, build
+  26.1013.40934, 2026-10-18): working files of the running app. The
+  locks of closed threads went at the next launch. A prewarmed reviewer
+  (a guardian session the app warms up in advance, observed at a
+  resume and at a scheduled task's creation) left a lock for a thread
+  id with no rollout, `threads` row or index line, so a lock is not a
+  session. A shell snapshot (2,135 to 2,299 bytes, 43 lines: a
+  `# Snapshot file` header, 29 `export` lines, 2 aliases,
+  `unalias -a`, `setopt` lines) replays the user's exported shell
+  environment for the sandbox, one per thread per resume or turn with
+  the older ones deleted. The exported names include
+  `BROWSER_USE_ACCESS_VERIFYING_IDENTITY`,
+  `CODEX_TASK_WORKSPACE_VERIFYING_IDENTITY`,
+  `CODEX_APP_TOOLS_PIPE_PATH`, `SSH_AUTH_SOCK`, `HOME`, `USER` and
+  `TMPDIR`, so an API key the user exports in the login shell is
+  copied here; collector 1.15.0 flags the files `secret: true`
+  ([section 3 of `collectors/research/codex-cli.md`](../../collectors/research/codex-cli.md#3-credentials)).
+  The parser reads neither.
 
 Opened only from scratchpad copies, and only for table names, row counts
 and key names.
@@ -742,12 +1309,21 @@ and key names.
 - **Branch.** `session_meta.payload.git.branch`, set once at thread
   creation, absent outside a git repository.
 - **Model.** `turn_context.payload.model`; `model_provider` on
-  `session_meta`. No per-message model.
+  `session_meta`. No per-message model. Codex Desktop also appends
+  `event_msg` `thread_settings_applied` (`model`, `reasoning_effort`
+  and the permission fields) the moment the user changes a setting,
+  before the next turn (macOS, build 26.1013.40934, 2026-10-18;
+  [section 1](#1-evidence)); `state_5.sqlite` `threads.model` keeps
+  only the latest.
 - **Subagents.** Each spawned agent has its own rollout whose
   `session_meta` has `parent_thread_id`, `agent_nickname`, `agent_role`,
   `agent_path`, `thread_source: "subagent"` and `source:
   {"subagent": {"thread_spawn": {parent_thread_id, depth, ...}}}`;
   messages between agents are `inter_agent_communication` lines.
+  Codex Desktop's guardian reviewer has `parent_thread_id`,
+  `thread_source` `guardian_review` and `source`
+  `{"subagent": {"other": "guardian"}}`, no `thread_spawn` and no
+  `thread_spawn_edges` row (macOS, 2026-10-18).
 - **Forks.** `forked_from_id` on the child. A copied fork re-appends the
   parent's records into the child file at fork time, so they carry the
   fork's line timestamps; a referenced (paginated) fork keeps them in the
@@ -823,7 +1399,8 @@ emitting rows, so that an `item_completed` line can be checked against every
 | --- | --- |
 | first `session_meta` | `system` ("session start: originator version provider cwd", then ` account=<creator_account_id> user=<creator_user_id>` with only the keys present, issue 118); plus `system` `subagent <id> of <parent> [agent_path= agent_role= agent_nickname=]` when `parent_thread_id`, `source.subagent.thread_spawn.parent_thread_id`, or a `session_id` other than `id` on a non-fork names a parent; plus `system` `forked from <id>` for `forked_from_id` |
 | later `session_meta` | `system` `copied from ancestor: session start ... id= cwd=` when its id differs; none when it repeats the file's own |
-| `turn_context` | sets project and model; `system` `model: <model>` at the first one that names a model and `model: <old> -> <new>` at each later one whose `model` differs; `system` `permission mode: approval=<approval_policy> sandbox=<sandbox_policy> profile=<permission_profile> network=<network>` at the first one with any of the four fields and `permission mode: <old> -> <new>` on every change to the composite (a missing field is `-`, an object compact JSON); both at the line's `timestamp`, before the turn's rows, keyed per session |
+| `turn_context` | sets project and model; `system` `model: <model>` at the first one that names a model and `model: <old> -> <new>` at each later one whose `model` differs; `system` `permission mode: approval=<approval_policy> sandbox=<sandbox_policy> profile=<permission_profile> network=<network> reviewer=<approvals_reviewer> profile_id=<active_permission_profile.id>` at the first one with any of the fields and `permission mode: <old> -> <new>` on every change to the composite (a missing field is `-`, an object compact JSON); both at the line's `timestamp`, before the turn's rows, keyed per session |
+| `event_msg` `thread_settings_applied` (Codex Desktop) | the same `model:` and `permission mode:` tracking as `turn_context`, at the event's `timestamp`, so a change the user makes between turns (a model switch, Approve for me, Full access and its revert) is dated when it was made rather than at the next turn; the event carries `model`, `approval_policy`, `approvals_reviewer`, `permission_profile` and `active_permission_profile` but no `sandbox_policy` (issue 160) |
 | `response_item` with `metadata.inherited_user_message` | none (copied from the parent thread) |
 | `response_item` `message` user | per `content_item_kinds` run: `user` for `user.*`, `unknown` or empty kinds; `system` `context: <kind>: ...` for any other kind; without a kinds list as long as `content`, per block: `system` `context: <marker name>: ...` for a block that is wholly one of the harness wrappers below, else `user`. In a subagent file the first prompt is `system` `subagent task: ...`; later ones stay `user` (below) |
 | `response_item` `message` assistant / developer | `assistant` / `system` (`developer: ...`); empty text skipped |
@@ -833,7 +1410,8 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `response_item` `image_generation_call` | `system` `image generation: <revised_prompt> status=...` |
 | `response_item` `reasoning` | `thinking` with `--include-thinking` when it has text, else skipped |
 | `response_item` `additional_tools`, `compaction`, `context_compaction`, `configuration_update` | skipped (no readable content) |
-| `event_msg` `task_started`, `task_complete` | `system` |
+| `event_msg` `task_started`, `task_complete` | `system`; `task_started turn=<id> trigger=<turn_trigger>` when `turn_attribution.turn_trigger` is set (values seen in [section 1](#1-evidence): `composer`, `remote_ios`, `remote_android`, `guardian_review`, `scheduled_task_setup`, `automation_heartbeat_run_now`, `automation_heartbeat_scheduled`; a `remote_*` turn came from a paired phone) |
+| `event_msg` `task_complete` of a guardian review thread (`thread_source` `guardian_review`) | `system` `permission decision: <outcome> (auto_review risk_level=<risk_level> user_authorization=<user_authorization>) ...` from the JSON verdict in `last_agent_message`, naming the reviewer thread and carrying the `rationale` in full, at the line's `timestamp`, with `session_id` the governed thread (`session_meta.parent_thread_id`) |
 | `event_msg` `turn_aborted` | `system` `turn aborted: <reason> [error message]` |
 | `event_msg` `thread_rolled_back` | `system` `rolled back <n> turns`; earlier rows are not changed |
 | `event_msg` `item_completed` `UserMessage`, `AgentMessage`, `Reasoning`, `HookPrompt`, `ContextCompaction` | skipped (repeat a response item or `compacted`) |
@@ -853,10 +1431,14 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `thread_history_1.sqlite` `thread_turns` row (secondary) | `system` `task_started turn=<id>` at `started_at`; `task_complete turn=<id> duration_ms=<n>` at `completed_at` for a completed or failed turn; an interrupted turn has no closing row (its reason is only in the rollout) |
 | `thread_history_1.sqlite` `thread_items` row (secondary) | `userMessage` `user`, `agentMessage` `assistant`, `reasoning` `thinking` (opt-in), at `completed_at_ms`; `hookPrompt`, `contextCompaction` none; any other item renamed to the turn-item form and rendered as the `item_completed` rows above, at `started_at_ms` and `completed_at_ms` (else `created_at_ms`); a bad `item_json` is counted in one `system` row |
 | `automations/<slug>/automation.toml` (Codex only) | one `system` row `scheduled task: <id> name=<name> kind=<kind> status=<status> rrule=<rrule> target_thread=<target_thread_id> created=<created_at> updated=<updated_at> (from <file>, file mtime) prompt: <prompt>` at the file's modification time, `session_id` the target thread; an unreadable file is one `system` row (issue 119) |
+| `logs_2.sqlite` `logs` row `codex_core::session::handlers` `op=ExecApproval` or `codex_app_server::outgoing_message` `CommandExecutionRequestApproval` (Codex Desktop) | `system` `permission decision: <Accept\|Decline> exec <item id>` at `ts`, `session_id` the row's thread id, `tool_use_id` the governed item's id (`exec-<uuid>`, [section 5](#5-other-files)) (issue 160) |
+| `state_5.sqlite` `remote_control_enrollments` row | `system` `remote control: enabled=<0\|1> server=<server_id> environment=<environment_id> host=<server_name> client=<app_server_client_name> account=<account_id>` at `updated_at`, `session_id` empty (issue 160) |
+| `.codex-global-state.json` (secondary, Codex Desktop) | `user` for each `prompt-history` entry of a thread, with an empty `timestamp_utc` (matched on text and session), `session_id` the thread id; `system` `session deleted: <id>` for each `codex-writing-block-deleted-thread-v1:<id>` key and `system` `permission mode (standing): ...` for each `heartbeat-thread-permissions-by-id` entry, at the file's modification time; `system` `thread description: ...` for each `thread-descriptions-v1` entry; one `system` `remote control: mobile device connected=<bool> environment=<id>` row from the two top-level keys; a file that does not decode is one `parser:` row (issue 160) |
 
 Sources, by role (issue 122). The rollouts are the primary store: Codex
-writes every other file from them. `history.jsonl`, `state_5.sqlite` and
-`thread_history_1.sqlite` are secondary sources, read on every run; the
+writes every other file from them. `history.jsonl`, `state_5.sqlite`,
+`thread_history_1.sqlite` and Codex Desktop's `.codex-global-state.json`
+are secondary sources, read on every run; the
 timeline drops a row of theirs that a rollout row of the same session
 repeats (same `turn_type` and `text`, time within 2 seconds, or any time
 for a row with none) and keeps the rest. How each joins:
@@ -867,6 +1449,7 @@ for a row with none) and keeps the rest. How each joins:
 | `state_5.sqlite` thread record | `threads.id` | `threads.cwd` | `created_at_ms`, the thread's creation |
 | `state_5.sqlite` first prompt | `threads.id` | `threads.cwd` | none: matches on text and session |
 | `thread_history_1.sqlite` | `thread_id` | the same thread's `threads.cwd` from the `state_5.sqlite` beside it, else empty | the item's or turn's own, as the rollout row it repeats |
+| `.codex-global-state.json` prompt history | the thread id in the key | none | none: matches on text and session |
 
 The projection's rows take the times of the rollout rows they repeat:
 a message at `completed_at_ms`, when the response item is written; a
@@ -890,13 +1473,22 @@ sources (`history.jsonl`, `first_user_message`, the projection's
 `first_user_message` included, so only the rollout's row is kept
 (fixture: `FIXTURE_DEDUPLICATED` in `tests/test_cli.py`).
 
-Permission state is the per-turn `turn_context` policy above. There is no
-per-call decision row: approval requests and their answers are transient
+Permission state is the per-turn `turn_context` policy above and, on
+Codex Desktop, every `thread_settings_applied` event and the standing
+per-thread entries of `.codex-global-state.json`. The rollout holds no
+per-call decision: approval requests and their answers are transient
 events that the rollout never stores
 ([policy.rs:160-223](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/policy.rs#L160-L223)), so a
-rollout shows what the policy allowed, not what the user approved. The
-model is recorded only per turn, in `turn_context.model`; there is no
-per-message model, so the model rows follow the turns.
+rollout shows what the policy allowed, not what the user approved. Codex
+Desktop logs the user's answers in `logs_2.sqlite` and records an
+automatic answer as the verdict of a guardian review thread (macOS,
+build 26.1013.40934, 2026-10-18; [section 5](#5-other-files)); the
+parser yields a `permission decision:` row from each, joined to the
+governed call on its item id. The approval dialog of that build
+offered no standing "always allow" grant for a command. The model is
+recorded per turn, in `turn_context.model`, and on Codex Desktop also
+at each change, in `thread_settings_applied`; there is no per-message
+model, so the model rows follow the turns and the settings events.
 
 Sync: Codex has no session sync. The thread store is local only: the
 two backends are `Local` (rollouts and SQLite) and `InMemory`
@@ -977,10 +1569,20 @@ does leave the host, beyond the model API call:
   (`wham/remote/control/environments`;
   [app-server-transport/src/transport/remote_control/clients.rs:268-270](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server-transport/src/transport/remote_control/clients.rs#L268-L270))
   so a ChatGPT client can drive it over a websocket. Threads stay in
-  the local store and the remote client reads them live; the only
-  record is the host-level `remote_control_enrollments` row of
-  [section 5](#5-other-files), with no per-thread mark, so no row is
-  proposed.
+  the local store and the remote client reads them live through the
+  app server. Observed with the ChatGPT app's remote connections
+  (Settings > Connections > Control this Mac or PC; build
+  26.1013.40934, 2026-10-18 and 2026-10-19, [section 1](#1-evidence)),
+  it leaves two records: the host-level `remote_control_enrollments`
+  row of [section 5](#5-other-files), which the parser yields as a
+  `remote control:` row, and a per-turn mark, `turn_attribution.turn_trigger`
+  `remote_ios` or `remote_android` on a turn sent from a paired phone,
+  which the parser's `task_started ... trigger=` row carries; the
+  phone's own connection is in `logs_2.sqlite`. The vendor page
+  [Remote connections | ChatGPT Learn](https://learn.chatgpt.com/docs/remote-connections)
+  (read 2026-10-18) says "Repository files and local documents come
+  from the connected host". The relay carries control, not a copy of
+  the thread, so the parser marks no session synced or relayed for it.
 - **`--remote <ADDR>`** points the TUI at an app server the user
   runs elsewhere
   ([cli/src/main.rs:962-974](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/main.rs#L962-L974)). The
@@ -1016,8 +1618,26 @@ resume tokens in `.codex-global-state.json` (collector document,
 the app's index of ChatGPT conversations that live on the server; what
 `chatgpt_async_status` and `conversation_origin` `tpp` mean, and
 whether a local Codex thread is ever uploaded as a ChatGPT
-conversation, is not determined. Settling it needs a real-install round
-that resumes a ChatGPT conversation in the app and diffs the listing.
+conversation, was not determined from source. The macOS round of
+2026-10-18 ([section 1](#1-evidence), build 26.1013.40934) answered the
+second question for that build. The `chatgpt` catalog rows are written
+at sign-in from the account's conversation list and were not refreshed
+when the user continued one of those conversations in the app; the
+reply left no transcript locally and never passed through the app
+server. The app's Codex-mode threads did not appear in the Codex area
+of chatgpt.com (a user report). So the account's conversation list is
+copied one way, account to app, as a sign-in snapshot, and Codex-mode
+threads are not uploaded. The vendor page
+[Codex Cloud](https://learn.chatgpt.com/docs/cloud) (read 2026-10-18)
+describes server-side tasks, where "Each task has its own workspace and
+can keep working while your computer is asleep", and says nothing about
+uploading local threads. No `chatgpt-conversation-resume-tokens` key had
+appeared in the global state by the end of sign-in. A delete in the app
+removes the rollout, the index line and the database rows, and the
+global state keeps the prompts and a deletion marker
+([section 5](#5-other-files)); with no remote copy, the delete dialog
+offered none to remove. What `chatgpt_async_status` and
+`conversation_origin` `tpp` mean is still not determined.
 
 Rollouts without content kinds are classified per content block by the
 wrappers Codex itself recognises as injected user-role context
