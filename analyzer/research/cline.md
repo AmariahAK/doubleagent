@@ -487,7 +487,7 @@ Globs (home-relative; `<GS>` is each VS Code `User/globalStorage`):
 `.cline/data/`, `.cline/data/sessions/*/*.json`,
 `.cline/data/sessions/*/*.messages.json`, `.cline/data/db/sessions.db`,
 `.cline/data/db/session-search.db`, `.cline/data/cache/user_input_history.jsonl`,
-`.cline/data/logs/hooks.jsonl`, `<GS>/saoudrizwan.claude-dev/cache/sync-queue.json`.
+`<GS>/saoudrizwan.claude-dev/cache/sync-queue.json`.
 
 Sources, primary or secondary (the analyzer drops a row of a secondary
 source that a primary store records too, issue 122):
