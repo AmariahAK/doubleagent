@@ -1,50 +1,47 @@
 # ollama
 
-Ollama (catalog agent `ollama`) runs language models locally: a CLI and server on every OS and a
-desktop app on macOS and Windows. `ollama launch` points other agents (Claude Code, Claude
-Desktop, the ChatGPT desktop app's Codex, Qwen Code, Droid and others) at the local server, and
-versions `v0.31.2` to `v0.34.0` shipped a built-in agent that was later removed. The transcript
-schema is in [`analyzer/research/ollama.md`](../../analyzer/research/ollama.md).
-
-Ollama (catalog agent `ollama`) is a local model server, a terminal REPL
-(`ollama run`), a launcher for other agents (`ollama launch`) and, on macOS
-and Windows only, a desktop chat app. Only the desktop app keeps
-transcripts, in one SQLite database. The REPL keeps a prompt history
-without times. The server keeps nothing, and keeps no copy of what a launched agent sends or
-receives ([section 5](#overlap-with-launched-agents)). Paths, credentials and exclusions
-are in
-[`collectors/research/ollama.md`](../../collectors/research/ollama.md).
-
-<!-- MERGE: dedupe the intro paragraphs above into one -->
+Ollama (catalog agent `ollama`) runs language models locally: a model server and CLI on every
+OS, a terminal REPL (`ollama run`), a launcher for other agents (`ollama launch`, which points
+Claude Code, Claude Desktop, the ChatGPT desktop app's Codex, Qwen Code, Droid and others at the
+local server) and, on macOS and Windows only, a desktop chat app. Versions `v0.31.2` to
+`v0.34.0` shipped a built-in agent that was later removed. Only the desktop app keeps
+transcripts, in one SQLite database. The REPL keeps a prompt history without times. The server
+keeps nothing, and keeps no copy of what a launched agent sends or receives
+([Overlap with launched agents](#overlap-with-launched-agents)). The agent is parsed: the
+`ollama` parser reads the desktop app's database and the REPL history.
 
 ## 1. Source and evidence
 
-- Open source, `https://github.com/ollama/ollama`, shallow clone at `scratchpad/repos/ollama-0351`, commit [`b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce`](https://github.com/ollama/ollama/commit/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce), tag `v0.35.1` (2026-10-01). The first version of this document cited [`42e911bc3d05798cad729cb474bf62f378cb2e26`](https://github.com/ollama/ollama/commit/42e911bc3d05798cad729cb474bf62f378cb2e26) (2026-10-02); the two commits between them change one documentation page, so every line cited here was re-checked at `v0.35.1` and is unchanged. The removed built-in agent ([section 2](#2-per-user-storage)) was read at [`b68b112bd8868d6278250d7d4bdfafa5cbf035c8`](https://github.com/ollama/ollama/commit/b68b112bd8868d6278250d7d4bdfafa5cbf035c8), its last state, from the history of the same checkout. All claims below are evidence level **A** (source, file:line) unless marked **D** (repo docs `docs/*.mdx`) or **L** (local layout check, `ls ~/.ollama`, names only).
-
-[ollama/ollama](https://github.com/ollama/ollama) at tag `v0.35.1`, commit
+[ollama/ollama](https://github.com/ollama/ollama), open source, MIT, Go, at tag `v0.35.1`, commit
 [`b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce`](https://github.com/ollama/ollama/commit/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce)
-(2026-10-01), the latest release and the version installed on the
-workstation used for the local check under [Observed](#observed). MIT, Go. The code was only
-read, never built or run. The SQLite driver is [mattn/go-sqlite3](https://github.com/mattn/go-sqlite3) v1.14.24
-([`go.mod:12`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/go.mod#L12)), read at
+(2026-10-01), the latest release and the version installed on the workstation used for the local
+check under [Observed](#observed); shallow clone at `scratchpad/repos/ollama-0351`. The code was
+only read, never built or run. The first version of this document cited
+[`42e911bc3d05798cad729cb474bf62f378cb2e26`](https://github.com/ollama/ollama/commit/42e911bc3d05798cad729cb474bf62f378cb2e26)
+(2026-10-02), two commits after `v0.35.1` that change only one documentation page, so every line
+cited here was re-checked at `v0.35.1` and is unchanged. The removed built-in agent
+([section 2](#2-per-user-storage)) was read at
+[`b68b112bd8868d6278250d7d4bdfafa5cbf035c8`](https://github.com/ollama/ollama/commit/b68b112bd8868d6278250d7d4bdfafa5cbf035c8),
+its last state, from the history of the same checkout. The SQLite driver is
+[mattn/go-sqlite3](https://github.com/mattn/go-sqlite3) v1.14.24
+([`go.mod:12`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/go.mod#L12)),
+read at
 [`846fea6c1443e8cc366fc1966fe078d7f825f6a9`](https://github.com/mattn/go-sqlite3/commit/846fea6c1443e8cc366fc1966fe078d7f825f6a9).
-The HTTP router is gin v1.10.0 ([`go.mod:8`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/go.mod#L8)), read at
+The HTTP router is gin v1.10.0
+([`go.mod:8`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/go.mod#L8)),
+read at
 [`75ccf94d605a05fe24817fc2f166f6f2959d5cea`](https://github.com/gin-gonic/gin/commit/75ccf94d605a05fe24817fc2f166f6f2959d5cea).
-The [collector document](../../collectors/research/ollama.md) cites
-[`42e911bc3d05798cad729cb474bf62f378cb2e26`](https://github.com/ollama/ollama/commit/42e911bc3d05798cad729cb474bf62f378cb2e26),
-two commits after `v0.35.1` that change only one documentation page, so
-its line numbers hold for this release.
-
-<!-- MERGE: dedupe the section 1 prose above -->
+All claims below are evidence level **A** (source, file:line) unless marked **D** (repo docs
+`docs/*.mdx`) or **L** (local layout check, `ls ~/.ollama`, names only).
 
 ### Observed
 
-- Local check (L): `~/.ollama/` on this workstation holds `backup/config.json.<epoch>`, `cache/model-recommendations.json`, `config.json`, `history`, `id_ed25519`, `id_ed25519.pub`, `models/blobs/` (6 blobs, 1.9 GB), `models/manifests/registry.ollama.ai/library/llama3.2/`.
-- Ollama 0.35.1 systemd install on this workstation (L): a live, non-root collection, whose
-  result is under [section 14](#14-confidence).
-
-- On this workstation (Linux, Ollama 0.35.1, systemd service user `ollama`,
-  home `/usr/share/ollama`), the user's `.ollama/config.json` has the keys
+- Ollama 0.35.1 systemd install on this workstation (Linux, systemd service user `ollama`, home
+  `/usr/share/ollama`) (L). Local check: `~/.ollama/` holds `backup/config.json.<epoch>`,
+  `cache/model-recommendations.json`, `config.json`, `history`, `id_ed25519`,
+  `id_ed25519.pub`, `models/blobs/` (6 blobs, 1.9 GB),
+  `models/manifests/registry.ollama.ai/library/llama3.2/`. The user's `.ollama/config.json` has
+  the keys
   `integrations` (empty), `last_model` and `last_selection`;
   `backup/config.json.<epoch>` has `integrations` and `last_selection`;
   `history` has five entries, four of them slash commands; there is no
@@ -59,6 +56,7 @@ its line numbers hold for this release.
   only the three `[GIN]` request lines and llama-server slot and sampler
   lines without prompt text. All three responses named the requested local
   model. The same check against 0.30.7 gave the same result.
+  A live, non-root collection, whose result is under [section 14](#14-confidence).
 - Desktop app, macOS and Windows: no real install; a real `db.sqlite` was not determined, because
   the desktop app does not exist on Linux ([section 7](#7-transcript-stores)).
 - A `.ollama/history` line that is not valid UTF-8: not observed on any real
@@ -67,62 +65,39 @@ its line numbers hold for this release.
   `Save` writes each entry with `fmt.Fprintln` and checks no encoding
   ([`history.go:125-150`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L125-L150)).
 
-<!-- MERGE: dedupe the Observed bullets above -->
-
 ### Source reviews
 
-- **Source review (2026-10-19).** HEAD
+- 2026-10-19: HEAD
   [`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120)
-  of `main` (the latest release tag is `v0.40.6`, 2026-10-16) against
-  `v0.35.1` above. `app/store/`, `readline/` and `internal/onboarding/`
-  did not change between them; the citations at
+  of `main` (the latest release tag is `v0.40.6`, 2026-10-16) against `v0.35.1` above. No release
+  `v0.36` to `v0.39` was tagged. `app/store/`, `readline/` and `internal/onboarding/` did not
+  change between them; the citations at
   [`b68b112`](https://github.com/ollama/ollama/commit/b68b112bd8868d6278250d7d4bdfafa5cbf035c8)
   name files of the removed agent and are meant to be absent at HEAD.
-  - Permission state: found, collected. `integrations.<name>.automode`
-    in `~/.ollama/config.json` is a standing auto-mode choice that
-    `ollama launch claude-desktop` writes into Claude Desktop's
-    configuration ([section 5](#5-project-local-files)).
-  - Model: no new file.
-  - Past use: no new file.
-  - Sync, relay and origin: none, as before.
-  - Scratch directories: none under the home; two temporary
-    directories outside it ([section 2](#2-per-user-storage)).
-  - Deletion: as before; the desktop app deletes a chat locally only.
-  - Version drift: found, paths only: models now also keep
-    `models/manifests-v2/` ([section 2](#2-per-user-storage)).
-  - Bad lines: not a collector concern.
-
-- **Source review (2026-10-19).** HEAD
-  [`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120)
-  of `main` (latest release `v0.40.6`, 2026-10-16) against `v0.35.1`
-  above. No release `v0.36` to `v0.39` was tagged.
-  - Permission state: found, not parsed. The desktop app still asks
-    nothing before its web tools run, and the REPL has no tools. The
-    one standing setting is `integrations.<name>.automode` in
-    `.ollama/config.json`, which `ollama launch claude-desktop` now
-    writes into Claude Desktop's profile as `autoModeEnabled`, true
-    when unset ([Permission state](#permission-rows)).
-  - Model: covered (`messages.model_name`). The REPL's new decision
-    mode for yes/no classifier models (`cmd/decide.go`) keeps nothing
-    on disk beyond the readline history.
-  - Past use: covered. `.ollama/history` is parsed; the saved REPL
-    session layer stays a manual step.
-  - Sync, relay and origin: covered; nothing new.
-  - Scratch directories: none under the home. Two temporary
-    directories outside it are in
-    [`collectors/research/ollama.md`](#scratch-directories).
-  - Deletion: covered; the chat delete is local.
-  - Version drift: none for the parser. `app/store/`, `readline/` and
-    `app/ui/ui.go`'s chat writes did not change (the `ui.go` diff
-    touches only an error message and a request header).
-  - Bad lines: one gap. The parser decodes `.ollama/history` with
-    `errors="replace"`, so a line that is not valid UTF-8 becomes a
-    `user` row with replacement characters and no `parser:` row; issue
-    136 asks for the line to be reported as read.
+  - Permission state: found, collected, not parsed. The desktop app still asks nothing before its
+    web tools run, and the REPL has no tools. The one standing setting is
+    `integrations.<name>.automode` in `~/.ollama/config.json`, a standing auto-mode choice that
+    `ollama launch claude-desktop` now writes into Claude Desktop's profile as
+    `autoModeEnabled`, true when unset ([section 5](#5-project-local-files),
+    [Permission rows](#permission-rows)).
+  - Model: covered (`messages.model_name`); no new file. The REPL's new decision mode for yes/no
+    classifier models (`cmd/decide.go`) keeps nothing on disk beyond the readline history.
+  - Past use: covered; no new file. `.ollama/history` is parsed; the saved REPL session layer
+    stays a manual step.
+  - Sync, relay and origin: none, as before; covered; nothing new.
+  - Scratch directories: none under the home; two temporary directories outside it
+    ([Scratch directories](#scratch-directories)).
+  - Deletion: covered, as before; the desktop app deletes a chat locally only.
+  - Version drift: found, paths only: models now also keep `models/manifests-v2/`
+    ([section 2](#2-per-user-storage)). None for the parser: `app/store/`, `readline/` and
+    `app/ui/ui.go`'s chat writes did not change (the `ui.go` diff touches only an error message
+    and a request header).
+  - Bad lines: not a collector concern. One parser gap at the time of the review: the parser
+    decoded `.ollama/history` with `errors="replace"`, so a line that is not valid UTF-8 became a
+    `user` row with replacement characters and no `parser:` row; issue 136 asks for the line to
+    be reported as read. The parser now does ([Bad-line rows](#bad-line-rows)).
   - The per-class plan from this review is in the subsections of
     [section 13](#13-parser-plan).
-
-<!-- MERGE: dedupe the Source reviews above -->
 
 ## Collection
 
@@ -149,19 +124,97 @@ is the only working directory it records
 
 All OSes, `os.UserHomeDir()`:
 
-- `~/.ollama/models/` — [`envconfig/config.go:111-123`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L111-L123) (`OLLAMA_MODELS` override, default `$HOME/.ollama/models`); `models/manifests/<host>/<ns>/<model>/<tag>` and `models/blobs/sha256-<digest>` ([`manifest/paths.go:30`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/manifest/paths.go#L30),[`49`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/manifest/paths.go#L49),[`61`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/manifest/paths.go#L61)); `models/metadata/sha256-<digest>.json`, one small JSON file per blob with its GGUF key-value metadata, arrays longer than 4096 elements (tokenizer vocabularies) recorded by key only ([`server/gguf_metadata.go:26-38`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/gguf_metadata.go#L26-L38),[`101-110`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/gguf_metadata.go#L101-L110)); no other directory is created under `models/` (the three `envconfig.Models()` joins above are the only ones outside tests); transient `models/blobs/.ollama-split-*` ([`llm/model_split.go:21-23`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/llm/model_split.go#L21-L23)). There is no `OLLAMA_HOME` variable; only `OLLAMA_MODELS` relocates data (grep of [`envconfig/config.go`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L315-L336) lines 315-336).
-- `~/.ollama/history` — REPL readline history, mode 0600 ([`readline/history.go:41-52`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L41-L52)); disabled by `OLLAMA_NOHISTORY` ([`envconfig/config.go:224`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L224),[`333`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L333)).
-- `~/.ollama/id_ed25519`, `id_ed25519.pub` — generated on first serve ([`cmd/cmd.go:2120-2126`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/cmd.go#L2120-L2126)), used to sign registry/cloud requests ([`auth/auth.go:19`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/auth/auth.go#L19),[`53-59`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/auth/auth.go#L53-L59)).
-- `~/.ollama/server.json` — `disable_ollama_cloud` ([`envconfig/config.go:382-404`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L382-L404), [`app/store/cloud_config.go:15-30`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/cloud_config.go#L15-L30)).
-- `~/.ollama/config.json` — `ollama launch` integration config. Top-level keys `integrations{}`, `last_model`, `last_selection` and `onboarding_version`; `models[]`, `aliases{}`, `onboarded` and `automode` sit inside each `integrations.<name>` object, not at the top level ([`cmd/config/config.go:19-34`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L19-L34),[`88`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L88)). `onboarding_version` is written on Linux only, where it records that the welcome flow was completed ([`config.go:36-81`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L36-L81)). Legacy `~/.ollama/config/config.json` ([`:96`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L96)).
-- `~/.ollama/onboarding-v1.completed` — on macOS and Windows, an empty marker created once (mode 0600, `O_EXCL`, never rewritten), so its mtime is when onboarding was first completed in the app or the CLI ([`internal/onboarding/state.go:12-29`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/state.go#L12-L29),[`50-75`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/state.go#L50-L75); [`cmd/config/config.go:36-60`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L36-L60)).
-- `~/.ollama/chatgpt-ollama/` — on macOS, the desktop app's ChatGPT integration names an `electron-data/` profile directory and a `chatgpt.pid` file here ([`cmd/launch/codex_app.go:38-40`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L38-L40),[`916-938`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L916-L938)). `v0.35.1` only uses them to find and stop a ChatGPT process an earlier build started with that profile, so the directory is normally empty; an `electron-data/` with content is a ChatGPT Electron profile, collected under `.ollama` like the rest. Detail under [Launch state in `analyzer/research/ollama.md`](#launch-state).
-- `~/.ollama/backup/<integration>/<file>.<epoch>` — copies of other agents' config files taken before `ollama launch` edits them; a write that names no integration (Ollama's own `config.json`) lands in `backup/<file>.<epoch>` ([`cmd/internal/fileutil/files.go:54-65`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/internal/fileutil/files.go#L54-L65), [`76-88`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/internal/fileutil/files.go#L76-L88); for example [`cmd/launch/hermes.go:311`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/hermes.go#L311)).
-- `~/.ollama/cache/model-recommendations.json` ([`server/model_recommendations.go:310-314`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/model_recommendations.go#L310-L314)); no `cache/show` is written ([`server/model_show_cache.go:49-50`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/model_show_cache.go#L49-L50)).
-- `~/.ollama/launch/{muse-config, dsh, codex-app-restore.json, chatgpt-session-start}` ([`cmd/launch/muse.go:218`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/muse.go#L218), [`deepseek_harness.go:503`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/deepseek_harness.go#L503), [`codex_app.go:2653`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L2653), [`codex_app_profile.go:86`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app_profile.go#L86)).
-- `~/.ollama/logs/codex-proxy.log` — activity log of the Codex desktop proxy, under the home of the account the server runs as (`/usr/share/ollama` for the systemd service) ([`server/codex_proxy.go:31`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/codex_proxy.go#L31)).
-- Linux systemd install: service user `ollama`, home `/usr/share/ollama`, so data is `/usr/share/ollama/.ollama/`, collected as that account's home by the sh collector ([section 14](#14-confidence)) ([`scripts/install.sh:200`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/scripts/install.sh#L200),[`222`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/scripts/install.sh#L222); D [`docs/faq.mdx:236`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/faq.mdx#L236),[`398`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/faq.mdx#L398)). Docker: `/root/.ollama` (D [`docs/docker.mdx:4`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/docker.mdx#L4)). `OLLAMA_DEBUG_LOG_REQUESTS` writes request bodies to a temp dir `ollama-request-logs-*`, outside home ([`server/inference_request_log.go:25-34`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/inference_request_log.go#L25-L34)).
-- Skills of the removed built-in agent (`v0.31.2` to `v0.34.0`): `SkillsDir()` returned `$OLLAMA_SKILLS` when set, else `$XDG_CONFIG_HOME/ollama/skills` when `XDG_CONFIG_HOME` was set, else `~/.ollama/skills`; the bundled `skill-creator/SKILL.md` and skills imported from `~/.codex/skills`, `~/.claude/skills` or `~/.pi/agent/skills` were written there ([`agent/skills.go:79-92`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L79-L92),[`250-270`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L250-L270),[`296-316`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L296-L316), at [`b68b112`](https://github.com/ollama/ollama/commit/b68b112bd8868d6278250d7d4bdfafa5cbf035c8)). It also read, never wrote, `~/.agents/skills`, `<project>/.agents/skills` and `<project>/.ollama/skills` ([`skills.go:200-210`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L200-L210),[`625-650`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L625-L650)). The default is inside `~/.ollama`, which `ollama|.ollama` already collects. The XDG form is used only when the variable is set, which no distribution does by default, and neither the code nor `docs/` at that commit names a value for it (grep of `docs/` for `XDG` and `skills` finds only Hermes pages), so no `.config/ollama` catalog line is added; no catalog entry claims `.config/ollama` today. No Go code at `v0.35.1` names a `skills` directory (grep of non-test `*.go` files for `"skills"`), so an upgrade leaves the directory in place.
+- `~/.ollama/models/` —
+  [`envconfig/config.go:111-123`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L111-L123)
+  (`OLLAMA_MODELS` override, default `$HOME/.ollama/models`);
+  `models/manifests/<host>/<ns>/<model>/<tag>` and `models/blobs/sha256-<digest>`
+  ([`manifest/paths.go:30`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/manifest/paths.go#L30),[`49`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/manifest/paths.go#L49),[`61`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/manifest/paths.go#L61));
+  `models/metadata/sha256-<digest>.json`, one small JSON file per blob with its GGUF key-value
+  metadata, arrays longer than 4096 elements (tokenizer vocabularies) recorded by key only
+  ([`server/gguf_metadata.go:26-38`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/gguf_metadata.go#L26-L38),[`101-110`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/gguf_metadata.go#L101-L110));
+  no other directory is created under `models/` (the three `envconfig.Models()` joins above are the
+  only ones outside tests); transient `models/blobs/.ollama-split-*`
+  ([`llm/model_split.go:21-23`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/llm/model_split.go#L21-L23)).
+  There is no `OLLAMA_HOME` variable; only `OLLAMA_MODELS` relocates data (grep of
+  [`envconfig/config.go`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L315-L336)
+  lines 315-336).
+- `~/.ollama/history` — REPL readline history, mode 0600
+  ([`readline/history.go:41-52`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L41-L52));
+  disabled by `OLLAMA_NOHISTORY`
+  ([`envconfig/config.go:224`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L224),[`333`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L333)).
+- `~/.ollama/id_ed25519`, `id_ed25519.pub` — generated on first serve
+  ([`cmd/cmd.go:2120-2126`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/cmd.go#L2120-L2126)),
+  used to sign registry/cloud requests
+  ([`auth/auth.go:19`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/auth/auth.go#L19),[`53-59`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/auth/auth.go#L53-L59)).
+- `~/.ollama/server.json` — `disable_ollama_cloud`
+  ([`envconfig/config.go:382-404`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L382-L404),
+  [`app/store/cloud_config.go:15-30`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/cloud_config.go#L15-L30)).
+- `~/.ollama/config.json` — `ollama launch` integration config. Top-level keys `integrations{}`,
+  `last_model`, `last_selection` and `onboarding_version`; `models[]`, `aliases{}`, `onboarded` and
+  `automode` sit inside each `integrations.<name>` object, not at the top level
+  ([`cmd/config/config.go:19-34`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L19-L34),[`88`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L88)).
+  `onboarding_version` is written on Linux only, where it records that the welcome flow was
+  completed
+  ([`config.go:36-81`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L36-L81)).
+  Legacy `~/.ollama/config/config.json`
+  ([`:96`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L96)).
+- `~/.ollama/onboarding-v1.completed` — on macOS and Windows, an empty marker created once (mode
+  0600, `O_EXCL`, never rewritten), so its mtime is when onboarding was first completed in the app
+  or the CLI
+  ([`internal/onboarding/state.go:12-29`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/state.go#L12-L29),[`50-75`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/state.go#L50-L75);
+  [`cmd/config/config.go:36-60`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L36-L60)).
+- `~/.ollama/chatgpt-ollama/` — on macOS, the desktop app's ChatGPT integration names an
+  `electron-data/` profile directory and a `chatgpt.pid` file here
+  ([`cmd/launch/codex_app.go:38-40`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L38-L40),[`916-938`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L916-L938)).
+  `v0.35.1` only uses them to find and stop a ChatGPT process an earlier build started with that
+  profile, so the directory is normally empty; an `electron-data/` with content is a ChatGPT
+  Electron profile, collected under `.ollama` like the rest. Detail under
+  [Launch state in `analyzer/research/ollama.md`](#launch-state).
+- `~/.ollama/backup/<integration>/<file>.<epoch>` — copies of other agents' config files taken
+  before `ollama launch` edits them; a write that names no integration (Ollama's own `config.json`)
+  lands in `backup/<file>.<epoch>`
+  ([`cmd/internal/fileutil/files.go:54-65`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/internal/fileutil/files.go#L54-L65),
+  [`76-88`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/internal/fileutil/files.go#L76-L88);
+  for example
+  [`cmd/launch/hermes.go:311`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/hermes.go#L311)).
+- `~/.ollama/cache/model-recommendations.json`
+  ([`server/model_recommendations.go:310-314`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/model_recommendations.go#L310-L314));
+  no `cache/show` is written
+  ([`server/model_show_cache.go:49-50`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/model_show_cache.go#L49-L50)).
+- `~/.ollama/launch/{muse-config, dsh, codex-app-restore.json, chatgpt-session-start}`
+  ([`cmd/launch/muse.go:218`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/muse.go#L218),
+  [`deepseek_harness.go:503`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/deepseek_harness.go#L503),
+  [`codex_app.go:2653`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L2653),
+  [`codex_app_profile.go:86`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app_profile.go#L86)).
+- `~/.ollama/logs/codex-proxy.log` — activity log of the Codex desktop proxy, under the home of the
+  account the server runs as (`/usr/share/ollama` for the systemd service)
+  ([`server/codex_proxy.go:31`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/codex_proxy.go#L31)).
+- Linux systemd install: service user `ollama`, home `/usr/share/ollama`, so data is
+  `/usr/share/ollama/.ollama/`, collected as that account's home by the sh collector
+  ([section 14](#14-confidence))
+  ([`scripts/install.sh:200`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/scripts/install.sh#L200),[`222`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/scripts/install.sh#L222);
+  D
+  [`docs/faq.mdx:236`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/faq.mdx#L236),[`398`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/faq.mdx#L398)).
+  Docker: `/root/.ollama` (D
+  [`docs/docker.mdx:4`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/docker.mdx#L4)).
+  `OLLAMA_DEBUG_LOG_REQUESTS` writes request bodies to a temp dir `ollama-request-logs-*`, outside
+  home
+  ([`server/inference_request_log.go:25-34`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/inference_request_log.go#L25-L34)).
+- Skills of the removed built-in agent (`v0.31.2` to `v0.34.0`): `SkillsDir()` returned
+  `$OLLAMA_SKILLS` when set, else `$XDG_CONFIG_HOME/ollama/skills` when `XDG_CONFIG_HOME` was set,
+  else `~/.ollama/skills`; the bundled `skill-creator/SKILL.md` and skills imported from
+  `~/.codex/skills`, `~/.claude/skills` or `~/.pi/agent/skills` were written there
+  ([`agent/skills.go:79-92`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L79-L92),[`250-270`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L250-L270),[`296-316`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L296-L316),
+  at [`b68b112`](https://github.com/ollama/ollama/commit/b68b112bd8868d6278250d7d4bdfafa5cbf035c8)).
+  It also read, never wrote, `~/.agents/skills`, `<project>/.agents/skills` and
+  `<project>/.ollama/skills`
+  ([`skills.go:200-210`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L200-L210),[`625-650`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L625-L650)).
+  The default is inside `~/.ollama`, which `ollama|.ollama` already collects. The XDG form is used
+  only when the variable is set, which no distribution does by default, and neither the code nor
+  `docs/` at that commit names a value for it (grep of `docs/` for `XDG` and `skills` finds only
+  Hermes pages), so no `.config/ollama` catalog line is added; no catalog entry claims
+  `.config/ollama` today. No Go code at `v0.35.1` names a `skills` directory (grep of non-test
+  `*.go` files for `"skills"`), so an upgrade leaves the directory in place.
 
 Added at
 [`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120)
@@ -178,43 +231,137 @@ Added at
 
 The desktop app's code is under `app/`.
 
-- `~/.ollama/logs/server.log`, `app.log`, `upgrade.log` ([`app/server/server_unix.go:20`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/server/server_unix.go#L20), [`app/cmd/app/app_darwin.go:81`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/cmd/app/app_darwin.go#L81), [`app/updater/updater_darwin.go:86`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/updater/updater_darwin.go#L86); D [`docs/macos.mdx:25-28`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/macos.mdx#L25-L28)).
-- `~/Library/Application Support/Ollama/db.sqlite` — chat database: tables `settings` (incl. `device_id`, `working_dir`, `onboarding_version`, and the booleans `claude_desktop_used` and `codex_desktop_used`, set once Claude Desktop or ChatGPT has been connected through the app, without a time; [`database.go:86`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L86),[`92-93`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L92-L93), [`store.go:180-185`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L180-L185)), `chats`, `messages` (role, content, thinking, model_name, tool_result), `tool_calls`, `attachments` (filename + BLOB), `users` (name, email, plan) ([`internal/onboarding/app_state.go:26-34`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/app_state.go#L26-L34), [`app/store/database.go:65-155`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L65-L155)). WAL mode ([`database.go:31`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L31)), so `db.sqlite-wal`/`-shm` sidecars.
-- `~/Library/Application Support/Ollama/config.json` (legacy app config, [`app/store/store.go:209`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L209)), `ollama.pid` ([`server_unix.go:19`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/server/server_unix.go#L19)), `~/Library/LaunchAgents/com.ollama.ollama.plist` ([`app_darwin.go:82`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/cmd/app/app_darwin.go#L82)). Low value: `~/Library/Caches/ollama`, `~/Library/Caches/com.electron.ollama`, `~/Library/WebKit/com.electron.ollama`, `~/Library/Saved Application State/com.electron.ollama.savedState` (D [`docs/macos.mdx:38-42`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/macos.mdx#L38-L42)).
+- `~/.ollama/logs/server.log`, `app.log`, `upgrade.log`
+  ([`app/server/server_unix.go:20`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/server/server_unix.go#L20),
+  [`app/cmd/app/app_darwin.go:81`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/cmd/app/app_darwin.go#L81),
+  [`app/updater/updater_darwin.go:86`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/updater/updater_darwin.go#L86);
+  D
+  [`docs/macos.mdx:25-28`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/macos.mdx#L25-L28)).
+- `~/Library/Application Support/Ollama/db.sqlite` — chat database: tables `settings` (incl.
+  `device_id`, `working_dir`, `onboarding_version`, and the booleans `claude_desktop_used` and
+  `codex_desktop_used`, set once Claude Desktop or ChatGPT has been connected through the app,
+  without a time;
+  [`database.go:86`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L86),[`92-93`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L92-L93),
+  [`store.go:180-185`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L180-L185)),
+  `chats`, `messages` (role, content, thinking, model_name, tool_result), `tool_calls`,
+  `attachments` (filename + BLOB), `users` (name, email, plan)
+  ([`internal/onboarding/app_state.go:26-34`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/app_state.go#L26-L34),
+  [`app/store/database.go:65-155`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L65-L155)).
+  WAL mode
+  ([`database.go:31`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L31)),
+  so `db.sqlite-wal`/`-shm` sidecars.
+- `~/Library/Application Support/Ollama/config.json` (legacy app config,
+  [`app/store/store.go:209`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L209)),
+  `ollama.pid`
+  ([`server_unix.go:19`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/server/server_unix.go#L19)),
+  `~/Library/LaunchAgents/com.ollama.ollama.plist`
+  ([`app_darwin.go:82`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/cmd/app/app_darwin.go#L82)).
+  Low value: `~/Library/Caches/ollama`, `~/Library/Caches/com.electron.ollama`,
+  `~/Library/WebKit/com.electron.ollama`,
+  `~/Library/Saved Application State/com.electron.ollama.savedState` (D
+  [`docs/macos.mdx:38-42`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/macos.mdx#L38-L42)).
 
 #### Desktop app, Windows
 
-- `%LOCALAPPDATA%\Ollama\{db.sqlite, server.log, server-#.log, app.log, config.json, ollama.pid, updates\}` ([`app_state.go:33`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/app_state.go#L33), [`app/server/server_windows.go:18-19`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/server/server_windows.go#L18-L19), [`app/cmd/app/app_windows.go:39`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/cmd/app/app_windows.go#L39), [`store.go:207`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L207), [`app/ollama.iss:120`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ollama.iss#L120); D [`docs/windows.mdx:66-71`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/windows.mdx#L66-L71)). Binaries in `%LOCALAPPDATA%\Programs\Ollama`. Models, history, keys stay in `%USERPROFILE%\.ollama` ([`ollama.iss:139`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ollama.iss#L139),[`260-261`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ollama.iss#L260-L261)).
-- Linux has no desktop database (`AppDatabasePath` returns "" by default, [`app_state.go:35`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/app_state.go#L35)).
+- `%LOCALAPPDATA%\Ollama\{db.sqlite, server.log, server-#.log, app.log, config.json, ollama.pid, updates\}`
+  ([`app_state.go:33`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/app_state.go#L33),
+  [`app/server/server_windows.go:18-19`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/server/server_windows.go#L18-L19),
+  [`app/cmd/app/app_windows.go:39`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/cmd/app/app_windows.go#L39),
+  [`store.go:207`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L207),
+  [`app/ollama.iss:120`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ollama.iss#L120);
+  D
+  [`docs/windows.mdx:66-71`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/windows.mdx#L66-L71)).
+  Binaries in `%LOCALAPPDATA%\Programs\Ollama`. Models, history, keys stay in
+  `%USERPROFILE%\.ollama`
+  ([`ollama.iss:139`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ollama.iss#L139),[`260-261`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ollama.iss#L260-L261)).
+- Linux has no desktop database (`AppDatabasePath` returns "" by default,
+  [`app_state.go:35`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/app_state.go#L35)).
 
 ### 3. Credentials
 
-- `~/.ollama/id_ed25519` is the only credential: Ollama cloud "sign-in" binds this public key to the account ([`app/auth/connect.go:14-25`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/auth/connect.go#L14-L25), [`cmd/cmd.go:1012-1026`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/cmd.go#L1012-L1026)); no token file is written. `id_ed25519.pub` identifies the device.
+- `~/.ollama/id_ed25519` is the only credential: Ollama cloud "sign-in" binds this public key to the
+  account
+  ([`app/auth/connect.go:14-25`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/auth/connect.go#L14-L25),
+  [`cmd/cmd.go:1012-1026`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/cmd.go#L1012-L1026));
+  no token file is written. `id_ed25519.pub` identifies the device.
 - No keychain use anywhere in the tree (grep `keychain|Keychain` in cmd, auth, server, app: none).
-- `~/.ollama/config.json`, `server.json`, `~/.ollama/backup/*` can contain copies of other tools' settings files (which may embed API keys) but hold no Ollama secret themselves.
-- `db.sqlite` `users` table holds account name/email/plan; `attachments.data` holds user-uploaded files.
-- `ollama launch chatgpt` creates `~/.codex/auth.json` when none exists, holding the fixed sentinel `{"OPENAI_API_KEY": "ollama-local-codex", "auth_mode": "apikey"}`, which is not an OpenAI credential ([section 5](#5-project-local-files)). The existing `.codex/auth.json` secret glob flags it like a real one.
+- `~/.ollama/config.json`, `server.json`, `~/.ollama/backup/*` can contain copies of other tools'
+  settings files (which may embed API keys) but hold no Ollama secret themselves.
+- `db.sqlite` `users` table holds account name/email/plan; `attachments.data` holds user-uploaded
+  files.
+- `ollama launch chatgpt` creates `~/.codex/auth.json` when none exists, holding the fixed sentinel
+  `{"OPENAI_API_KEY": "ollama-local-codex", "auth_mode": "apikey"}`, which is not an OpenAI
+  credential ([section 5](#5-project-local-files)). The existing `.codex/auth.json` secret glob
+  flags it like a real one.
 
 ### 4. Exclusions
 
-- `.ollama/models/blobs`: model weights (multi-GB `sha256-<digest>` files), the transient `.ollama-split-*` hard-link directories, and any `/save`d REPL session layer, see [`analyzer/research/ollama.md`](../../analyzer/research/ollama.md) [section 7](#7-transcript-stores) ([`manifest/paths.go:52-72`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/manifest/paths.go#L52-L72), [`llm/model_split.go:21-23`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/llm/model_split.go#L21-L23)). Collector 1.8.1 and earlier excluded the whole `.ollama/models`; the rest of `models/` is now collected: `manifests/<host>/<namespace>/<model>/<tag>`, small JSON files whose names and pre-copy times are an inventory of the pulled models and when each tag was pulled, and `metadata/*.json`, one small file per blob ([section 2](#2-per-user-storage)). No other subdirectory of `models/` is written.
-- `AppData/Local/Ollama/updates`, `Library/Caches/ollama`, `Library/Caches/com.electron.ollama`. `Library/WebKit/com.electron.ollama` is outside every catalog line, so it needs no exclusion.
-- Docker volumes: the volume-relative exclusion `models` stays whole. It also covers `models` in Tabby (`TABBY_ROOT=/data`), Hermes and Local Deep Research volumes, where it holds model weights or embedding models, so narrowing it to `models/blobs` would collect those. A Docker Ollama volume's `models/manifests` is therefore not collected; [`docs/coverage.md`](../collectors/docs/coverage.md) says so.
+- `.ollama/models/blobs`: model weights (multi-GB `sha256-<digest>` files), the transient
+  `.ollama-split-*` hard-link directories, and any `/save`d REPL session layer, see
+  [section 7](#7-transcript-stores)
+  ([`manifest/paths.go:52-72`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/manifest/paths.go#L52-L72),
+  [`llm/model_split.go:21-23`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/llm/model_split.go#L21-L23)).
+  Collector 1.8.1 and earlier excluded the whole `.ollama/models`; the rest of `models/` is now
+  collected: `manifests/<host>/<namespace>/<model>/<tag>`, small JSON files whose names and pre-copy
+  times are an inventory of the pulled models and when each tag was pulled, and `metadata/*.json`,
+  one small file per blob ([section 2](#2-per-user-storage)). No other subdirectory of `models/` is
+  written.
+- `AppData/Local/Ollama/updates`, `Library/Caches/ollama`, `Library/Caches/com.electron.ollama`.
+  `Library/WebKit/com.electron.ollama` is outside every catalog line, so it needs no exclusion.
+- Docker volumes: the volume-relative exclusion `models` stays whole. It also covers `models` in
+  Tabby (`TABBY_ROOT=/data`), Hermes and Local Deep Research volumes, where it holds model weights
+  or embedding models, so narrowing it to `models/blobs` would collect those. A Docker Ollama
+  volume's `models/manifests` is therefore not collected;
+  [`docs/coverage.md`](../collectors/docs/coverage.md) says so.
 
 ### 5. Project-local files
 
-None. Ollama writes nothing into repositories. `ollama launch` edits other agents' configs under their own homes ([`cmd/launch/droid.go:60`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/droid.go#L60), [`qwen.go:381`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/qwen.go#L381), …); for Claude Code it writes nothing and sets `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` in the environment instead ([`claude.go:69-71`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/claude.go#L69-L71)).
+None. Ollama writes nothing into repositories. `ollama launch` edits other agents' configs under
+their own homes
+([`cmd/launch/droid.go:60`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/droid.go#L60),
+[`qwen.go:381`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/qwen.go#L381),
+…); for Claude Code it writes nothing and sets `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` in
+the environment instead
+([`claude.go:69-71`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/claude.go#L69-L71)).
 
 #### ChatGPT desktop app
 
-`ollama launch chatgpt` (macOS and Windows only, [`codex_app.go:885-892`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L885-L892)) points the ChatGPT desktop app's Codex at Ollama's proxy by writing into `~/.codex`. The path is always `<home>/.codex`; `CODEX_HOME` is not consulted ([`codex.go:234-240`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L234-L240)). In order ([`codex_app.go:101-147`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L101-L147)):
+`ollama launch chatgpt` (macOS and Windows only,
+[`codex_app.go:885-892`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L885-L892))
+points the ChatGPT desktop app's Codex at Ollama's proxy by writing into `~/.codex`. The path is
+always `<home>/.codex`; `CODEX_HOME` is not consulted
+([`codex.go:234-240`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L234-L240)).
+In order
+([`codex_app.go:101-147`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L101-L147)):
 
-- `~/.ollama/launch/codex-app-restore.json` saves Codex's previous root values ([section 2](#2-per-user-storage)).
-- `~/.codex/ollama-launch-codex-routing.json`, the Ollama-only routing allow-list, and `~/.codex/ollama-launch-models.json`, the combined native and Ollama model picker catalog ([`internal/proxy/codex_desktop.go:32-38`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/proxy/codex_desktop.go#L32-L38); [`codex_app.go:952-958`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L952-L958),[`966-1011`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L966-L1011),[`1111-1155`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L1111-L1155)).
-- `~/.codex/auth.json`, only when no such file exists, with `OPENAI_API_KEY` set to the sentinel `ollama-local-codex` and `auth_mode` `apikey`, mode 0600; `--restore` removes it only if it still holds that sentinel ([`codex_app.go:561-631`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L561-L631); [`codex_desktop.go:40-42`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/proxy/codex_desktop.go#L40-L42)). An `auth.json` with that value means the ChatGPT integration was set up while no Codex login existed.
-- `~/.codex/config.toml`: root `model` set to the chosen model, `model_catalog_json` to the picker catalog, `openai_base_url` to `<ollama host>/api/codex/v1`, `profile` and `model_provider` removed, and the `[desktop]` reasoning efforts extended ([`codex_app.go:312-354`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L312-L354)).
+- `~/.ollama/launch/codex-app-restore.json` saves Codex's previous root values
+  ([section 2](#2-per-user-storage)).
+- `~/.codex/ollama-launch-codex-routing.json`, the Ollama-only routing allow-list, and
+  `~/.codex/ollama-launch-models.json`, the combined native and Ollama model picker catalog
+  ([`internal/proxy/codex_desktop.go:32-38`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/proxy/codex_desktop.go#L32-L38);
+  [`codex_app.go:952-958`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L952-L958),[`966-1011`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L966-L1011),[`1111-1155`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L1111-L1155)).
+- `~/.codex/auth.json`, only when no such file exists, with `OPENAI_API_KEY` set to the sentinel
+  `ollama-local-codex` and `auth_mode` `apikey`, mode 0600; `--restore` removes it only if it still
+  holds that sentinel
+  ([`codex_app.go:561-631`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L561-L631);
+  [`codex_desktop.go:40-42`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/proxy/codex_desktop.go#L40-L42)).
+  An `auth.json` with that value means the ChatGPT integration was set up while no Codex login
+  existed.
+- `~/.codex/config.toml`: root `model` set to the chosen model, `model_catalog_json` to the picker
+  catalog, `openai_base_url` to `<ollama host>/api/codex/v1`, `profile` and `model_provider`
+  removed, and the `[desktop]` reasoning efforts extended
+  ([`codex_app.go:312-354`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L312-L354)).
 
-The two catalogs and `config.toml` go through `WriteWithBackup` with the integration name `codex-app`, so their previous versions land in `~/.ollama/backup/codex-app/` ([section 2](#2-per-user-storage)). It reads, without writing, `~/.codex/models_cache.json` and `sessions/` ([`codex_app.go:1447-1466`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L1447-L1466),[`1511`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L1511); [`codex_app_profile.go:54-79`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app_profile.go#L54-L79)). The Codex CLI integration, `ollama launch codex`, writes `~/.codex/model.json` and `~/.codex/ollama-launch.config.toml` instead and leaves `config.toml` alone ([`codex.go:209-232`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L209-L232),[`250-268`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L250-L268),[`675-688`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L675-L688)). All of these are under the `codex-cli|.codex` catalog line; [codex-cli.md](codex-cli.md) lists them.
+The two catalogs and `config.toml` go through `WriteWithBackup` with the integration name
+`codex-app`, so their previous versions land in `~/.ollama/backup/codex-app/`
+([section 2](#2-per-user-storage)). It reads, without writing, `~/.codex/models_cache.json` and
+`sessions/`
+([`codex_app.go:1447-1466`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L1447-L1466),[`1511`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L1511);
+[`codex_app_profile.go:54-79`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app_profile.go#L54-L79)).
+The Codex CLI integration, `ollama launch codex`, writes `~/.codex/model.json` and
+`~/.codex/ollama-launch.config.toml` instead and leaves `config.toml` alone
+([`codex.go:209-232`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L209-L232),[`250-268`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L250-L268),[`675-688`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L675-L688)).
+All of these are under the `codex-cli|.codex` catalog line; [codex-cli.md](codex-cli.md) lists them.
 
 #### Claude Desktop third-party mode
 
@@ -250,7 +397,9 @@ line.
 
 ### 6. Where the project path is recorded
 
-None for the CLI. The desktop app stores a single `settings.working_dir` in `db.sqlite` ([`database.go:75`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L75)). `~/.ollama/history` lines are raw prompts without cwd.
+None for the CLI. The desktop app stores a single `settings.working_dir` in `db.sqlite`
+([`database.go:75`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L75)).
+`~/.ollama/history` lines are raw prompts without cwd.
 
 ## Parsing
 
@@ -295,23 +444,21 @@ are not read.
 
 #### Built-in agent (v0.31.2 to v0.34.0)
 
-`v0.35.1` has no agent loop of its own: `ollama run` is the REPL above.
-Older releases had one. Up to `v0.31.1`, `ollama run --experimental` ran
-an agent loop with a bash tool that persisted nothing but the readline
-history. From `v0.31.2` to `v0.34.0`, a built-in agent with bash and file
-tools replaced it; it was removed in commit
+`v0.35.1` has no agent loop of its own: `ollama run` is the REPL above. Older releases had one. Up
+to `v0.31.1`, `ollama run --experimental` ran an agent loop with a bash tool that persisted nothing
+but the readline history. From `v0.31.2` to `v0.34.0`, a built-in agent with bash and file tools
+replaced it; it was removed in commit
 [`c16bf9892a560a11c208618968966246e485540c`](https://github.com/ollama/ollama/commit/c16bf9892a560a11c208618968966246e485540c)
 (2026-09-11), first absent from `v0.34.1`. At its last state, commit
 [`b68b112bd8868d6278250d7d4bdfafa5cbf035c8`](https://github.com/ollama/ollama/commit/b68b112bd8868d6278250d7d4bdfafa5cbf035c8),
 its prompt history was rebuilt in memory from the session's messages
-([`cmd/tui/chat/input.go:375-383`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/cmd/tui/chat/input.go#L375-L383)) and
-its only writes were skills under `.ollama/skills` (or
-`$XDG_CONFIG_HOME/ollama/skills`,
-[`agent/skills.go:80-92`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L80-L92)), a temporary
-working-directory file for the bash tool
-([`agent/tools/bash.go:85`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/tools/bash.go#L85)) and, on an
-explicit `/save <file>`, the raw request JSON in the current working
-directory ([`cmd/tui/chat/debug.go:28-48`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/cmd/tui/chat/debug.go#L28-L48)).
+([`cmd/tui/chat/input.go:375-383`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/cmd/tui/chat/input.go#L375-L383))
+and its only writes were skills under `.ollama/skills` (or `$XDG_CONFIG_HOME/ollama/skills`,
+[`agent/skills.go:80-92`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/skills.go#L80-L92)),
+a temporary working-directory file for the bash tool
+([`agent/tools/bash.go:85`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/agent/tools/bash.go#L85))
+and, on an explicit `/save <file>`, the raw request JSON in the current working directory
+([`cmd/tui/chat/debug.go:28-48`](https://github.com/ollama/ollama/blob/b68b112bd8868d6278250d7d4bdfafa5cbf035c8/cmd/tui/chat/debug.go#L28-L48)).
 There is no session store from those releases to parse.
 
 ### 8. Record schema
@@ -347,87 +494,88 @@ CREATE TABLE users (name TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '
   plan TEXT NOT NULL DEFAULT '', cached_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);
 ```
 
-`settings` is a single row (`id = 1`) holding `device_id`, `working_dir`,
-`selected_model`, `schema_version`, `onboarding_version`,
-`claude_desktop_used`, `codex_desktop_used` and UI preferences
-([`database.go:65-95`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L65-L95)). Migrations 16 to
-19 add only `onboarding_version`, `claude_desktop_used` and
-`codex_desktop_used` to `settings`
-([`database.go:563-604`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L563-L604)); a database
-last opened by a release before `v0.34.0` has a lower `schema_version` and
-lacks those columns, with the same transcript tables. A parser should not
-require any `settings` column.
+`settings` is a single row (`id = 1`) holding `device_id`, `working_dir`, `selected_model`,
+`schema_version`, `onboarding_version`, `claude_desktop_used`, `codex_desktop_used` and UI
+preferences
+([`database.go:65-95`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L65-L95)).
+Migrations 16 to 19 add only `onboarding_version`, `claude_desktop_used` and `codex_desktop_used` to
+`settings`
+([`database.go:563-604`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L563-L604));
+a database last opened by a release before `v0.34.0` has a lower `schema_version` and lacks those
+columns, with the same transcript tables. A parser should not require any `settings` column.
 
 - `chats.id`: a UUIDv7 string created when the UI posts to chat `new`
-  ([`app/ui/ui.go:717-726`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L717-L726)). `chats.title` is set
-  by the UI ([`ui.go:1404`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1404)). `browser_state` is
-  JSON for the built-in browser tool's pages.
+  ([`app/ui/ui.go:717-726`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L717-L726)).
+  `chats.title` is set by the UI
+  ([`ui.go:1404`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1404)).
+  `browser_state` is JSON for the built-in browser tool's pages.
 - `messages.role`: `user`, `assistant` or `tool`; `system` is accepted when
   replayed but the UI does not create one
   ([`ui.go:805`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L805),[`836`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L836),[`1113`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1113),[`1173`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1173),[`1889-1918`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1889-L1918)).
-- `messages.content`: the text. For a `tool` row it is the text sent back to
-  the model, falling back to the JSON result
-  ([`ui.go:1162-1175`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1162-L1175)); a failed tool writes
-  `Error: <err>` ([`ui.go:1111-1118`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1111-L1118)).
+- `messages.content`: the text. For a `tool` row it is the text sent back to the model, falling back
+  to the JSON result
+  ([`ui.go:1162-1175`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1162-L1175));
+  a failed tool writes `Error: <err>`
+  ([`ui.go:1111-1118`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1111-L1118)).
 - `messages.thinking`: reasoning text accumulated from the stream
-  ([`ui.go:1268`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1268)), with
-  `thinking_time_start`/`thinking_time_end`.
+  ([`ui.go:1268`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1268)),
+  with `thinking_time_start`/`thinking_time_end`.
 - `messages.model_name`: the model chosen in the UI, NULL when empty
   ([`database.go:1044-1047`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1044-L1047)).
-- `messages.tool_result`: JSON of the tool's structured result on `tool`
-  rows, or the JSON `null` when the browser tool ran
-  ([`ui.go:1140-1161`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1140-L1161); marshalled at
+- `messages.tool_result`: JSON of the tool's structured result on `tool` rows, or the JSON `null`
+  when the browser tool ran
+  ([`ui.go:1140-1161`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1140-L1161);
+  marshalled at
   [`database.go:1049-1056`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1049-L1056)).
-- `tool_calls`: one row per call on the `assistant` message that requested
-  it. `type` is `function`, `function_arguments` is the arguments as a JSON
-  string ([`ui.go:1083-1092`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1083-L1092);
-  [`store.go:90-99`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L90-L99)). `function_result` is
-  written only when `Function.Result` is set
-  ([`database.go:1187-1211`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1187-L1211)), which
-  the UI never does, so expect NULL.
-- The tools the desktop app can run are web search, web fetch and the
-  browser tools (`browser.search`, `browser.open`, `browser.find`)
-  ([`ui.go:946-952`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L946-L952)); there is no shell or
-  file tool.
+- `tool_calls`: one row per call on the `assistant` message that requested it. `type` is `function`,
+  `function_arguments` is the arguments as a JSON string
+  ([`ui.go:1083-1092`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1083-L1092);
+  [`store.go:90-99`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L90-L99)).
+  `function_result` is written only when `Function.Result` is set
+  ([`database.go:1187-1211`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1187-L1211)),
+  which the UI never does, so expect NULL.
+- The tools the desktop app can run are web search, web fetch and the browser tools
+  (`browser.search`, `browser.open`, `browser.find`)
+  ([`ui.go:946-952`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L946-L952));
+  there is no shell or file tool.
 - `attachments`: user-supplied files as BLOBs on the `user` message
   ([`database.go:1178-1185`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1178-L1185)).
 
 #### `.ollama/history`
 
-Plain text, one entry per line, no header, no timestamps, no working
-directory, no escaping. `Save` writes every buffered entry with
-`fmt.Fprintln` to `history.tmp` and renames it over the file
-([`history.go:125-150`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L125-L150)); only the last
-100 entries are kept ([`history.go:24-31`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L24-L31),[`92-99`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L92-L99)).
-Each line submitted at the prompt is added, including slash commands such
-as `/bye` and `/set` ([`readline/readline.go:317-325`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/readline.go#L317-L325)).
+Plain text, one entry per line, no header, no timestamps, no working directory, no escaping. `Save`
+writes every buffered entry with `fmt.Fprintln` to `history.tmp` and renames it over the file
+([`history.go:125-150`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L125-L150));
+only the last 100 entries are kept
+([`history.go:24-31`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L24-L31),[`92-99`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L92-L99)).
+Each line submitted at the prompt is added, including slash commands such as `/bye` and `/set`
+([`readline/readline.go:317-325`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/readline.go#L317-L325)).
 A pasted multi-line block is joined with `\n` into one entry
-([`readline.go:319-322`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/readline.go#L319-L322)) and so is
-written as several physical lines; a `"""` block arrives line by line from
-the prompt, so each of its lines is a separate entry
-([`cmd/interactive.go:171-199`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/interactive.go#L171-L199)). On load,
-lines are trimmed and empty ones skipped
-([`history.go:62-78`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L62-L78)), so the file cannot
-tell a multi-line prompt from several prompts. `OLLAMA_NOHISTORY` or
-`/set nohistory` stops saving ([`envconfig/config.go:223-224`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L223-L224);
+([`readline.go:319-322`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/readline.go#L319-L322))
+and so is written as several physical lines; a `"""` block arrives line by line from the prompt, so
+each of its lines is a separate entry
+([`cmd/interactive.go:171-199`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/interactive.go#L171-L199)).
+On load, lines are trimmed and empty ones skipped
+([`history.go:62-78`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L62-L78)),
+so the file cannot tell a multi-line prompt from several prompts. `OLLAMA_NOHISTORY` or
+`/set nohistory` stops saving
+([`envconfig/config.go:223-224`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L223-L224);
 [`cmd/interactive.go:128-130`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/interactive.go#L128-L130),[`288-295`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/interactive.go#L288-L295)).
-The history is the invoking user's, written from `os.UserHomeDir()`,
-whatever account runs the server. `readline/history.go` and
-`readline/readline.go` are unchanged since `v0.30.7`.
+The history is the invoking user's, written from `os.UserHomeDir()`, whatever account runs the
+server. `readline/history.go` and `readline/readline.go` are unchanged since `v0.30.7`.
 
 #### Tool calls and results
 
-There is no call id. An `assistant` message carries one or more
-`tool_calls` rows (ordered by `tool_calls.id`); the results follow as
-`role = 'tool'` messages in the same order. The tool name of a `tool` row is
-not stored (`Message.ToolName` has no column,
-[`store.go:44`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L44) against
-[`database.go:1030-1034`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1030-L1034)); the UI
-recovers it on reload from the last call of the nearest earlier assistant
-message ([`ui.go:1343-1358`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1343-L1358)). A parser
-should pair the n-th `tool` message after an assistant message with that
-message's n-th `tool_calls` row and synthesise `tool_use_id` as
-`<chat_id>:<tool_calls.id>`.
+There is no call id. An `assistant` message carries one or more `tool_calls` rows (ordered by
+`tool_calls.id`); the results follow as `role = 'tool'` messages in the same order. The tool name of
+a `tool` row is not stored (`Message.ToolName` has no column,
+[`store.go:44`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L44)
+against
+[`database.go:1030-1034`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1030-L1034));
+the UI recovers it on reload from the last call of the nearest earlier assistant message
+([`ui.go:1343-1358`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1343-L1358)).
+A parser should pair the n-th `tool` message after an assistant message with that message's n-th
+`tool_calls` row and synthesise `tool_use_id` as `<chat_id>:<tool_calls.id>`.
 
 Thinking: `messages.thinking`, non-empty only for thinking models; emit as
 `thinking` rows only with `--include-thinking`.
@@ -438,8 +586,8 @@ Thinking: `messages.thinking`, non-empty only for thinking models; emit as
 
 - Session: `messages.chat_id = chats.id`.
 - Project: none per chat. `settings.working_dir` is one global value
-  ([`store.go:147-148`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L147-L148)) and the desktop
-  tools do not use the file system; leave `project_path` empty.
+  ([`store.go:147-148`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L147-L148))
+  and the desktop tools do not use the file system; leave `project_path` empty.
 - Model: `messages.model_name` on `assistant` rows.
 - Git branch: none.
 - `.ollama/history`: no session, no project, no model.
@@ -448,22 +596,20 @@ Thinking: `messages.thinking`, non-empty only for thinking models; emit as
 
 #### Timestamps
 
-- `db.sqlite`: `created_at`, `updated_at`, `thinking_time_*` and
-  `chats.created_at` are bound from Go `time.Time` values made with
-  `time.Now()` ([`store.go:65-73`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L65-L73),[`115-122`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L115-L122)).
-  go-sqlite3 binds a `time.Time` as text in its first format,
-  `2006-01-02 15:04:05.999999999-07:00`
+- `db.sqlite`: `created_at`, `updated_at`, `thinking_time_*` and `chats.created_at` are bound from
+  Go `time.Time` values made with `time.Now()`
+  ([`store.go:65-73`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L65-L73),[`115-122`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L115-L122)).
+  go-sqlite3 binds a `time.Time` as text in its first format, `2006-01-02 15:04:05.999999999-07:00`
   ([`sqlite3.go:228-232`](https://github.com/mattn/go-sqlite3/blob/846fea6c1443e8cc366fc1966fe078d7f825f6a9/sqlite3.go#L228-L232),[`1979-1981`](https://github.com/mattn/go-sqlite3/blob/846fea6c1443e8cc366fc1966fe078d7f825f6a9/sqlite3.go#L1979-L1981)):
-  local time with a numeric offset, fractional seconds with trailing zeros
-  trimmed, for example `2026-03-01 09:00:00.123456-08:00`. Convert with the
-  offset. A `CURRENT_TIMESTAMP` default (`YYYY-MM-DD HH:MM:SS`, UTC) would
-  only appear for a row inserted without a value, which the code never
-  does.
-- Order messages by `messages.id`. `saveChat` deletes and re-inserts every
-  message of a chat on each save
-  ([`database.go:789-809`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L789-L809)), so `id`
-  values are not stable across saves but the order is preserved; the
-  `created_at` values are carried over from the in-memory message.
+  local time with a numeric offset, fractional seconds with trailing zeros trimmed, for example
+  `2026-03-01 09:00:00.123456-08:00`. Convert with the offset. A `CURRENT_TIMESTAMP` default
+  (`YYYY-MM-DD HH:MM:SS`, UTC) would only appear for a row inserted without a value, which the code
+  never does.
+- Order messages by `messages.id`. `saveChat` deletes and re-inserts every message of a chat on each
+  save
+  ([`database.go:789-809`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L789-L809)),
+  so `id` values are not stable across saves but the order is preserved; the `created_at` values are
+  carried over from the in-memory message.
 - `.ollama/history`: none. File mtime is the time of the last entry only.
 
 ### 10. Other stores
@@ -501,59 +647,52 @@ repeat prompt or output content, and a parser should not read them.
 
 #### Server logs
 
-The API handlers persist nothing under any home. The routes that
-`ollama launch` points agents at, `/api/chat`, `/api/generate`,
-`/v1/chat/completions`, `/v1/completions`, `/v1/responses` and
+The API handlers persist nothing under any home. The routes that `ollama launch` points agents at,
+`/api/chat`, `/api/generate`, `/v1/chat/completions`, `/v1/completions`, `/v1/responses` and
 `/v1/messages`, all end in `ChatHandler` or `GenerateHandler`
-([`server/routes.go:2072-2092`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L2072-L2092)), as do
-`/v1/responses/compact` and `/v1/systemone`, which are new since
-`v0.30.7` and write no file either. None of the server, `middleware`,
-`openai` or `anthropic` packages imports the desktop `app/store` package
-(its only importers are under `app/`), so the server never writes
-`db.sqlite`; `.ollama/history` is written only by the REPL's readline
-([section 8](#8-record-schema)). The server's file writes outside the models directory are the
-model-recommendation cache, the [Codex proxy log](#codex-proxy-log) and, only when
-`OLLAMA_DEBUG_LOG_REQUESTS` is set, request bodies in a fresh temporary
-directory `ollama-request-logs-*`
+([`server/routes.go:2072-2092`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L2072-L2092)),
+as do `/v1/responses/compact` and `/v1/systemone`, which are new since `v0.30.7` and write no file
+either. None of the server, `middleware`, `openai` or `anthropic` packages imports the desktop
+`app/store` package (its only importers are under `app/`), so the server never writes `db.sqlite`;
+`.ollama/history` is written only by the REPL's readline ([section 8](#8-record-schema)). The
+server's file writes outside the models directory are the model-recommendation cache, the
+[Codex proxy log](#codex-proxy-log) and, only when `OLLAMA_DEBUG_LOG_REQUESTS` is set, request
+bodies in a fresh temporary directory `ollama-request-logs-*`
 ([`server/inference_request_log.go:25`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/inference_request_log.go#L25),[`33-47`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/inference_request_log.go#L33-L47),[`104-123`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/inference_request_log.go#L104-L123)),
-outside any home. What does reach a log is the server's stdout and stderr:
-`gin.Default()` ([`routes.go:2030`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L2030)) adds gin's
-request logger, which writes one
-`[GIN] <local time> | <status> | <latency> | <client IP> | <method> "<path>"`
-line per request
+outside any home. What does reach a log is the server's stdout and stderr: `gin.Default()`
+([`routes.go:2030`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L2030))
+adds gin's request logger, which writes one
+`[GIN] <local time> | <status> | <latency> | <client IP> | <method> "<path>"` line per request
 ([`gin.go:221-226`](https://github.com/gin-gonic/gin/blob/75ccf94d605a05fe24817fc2f166f6f2959d5cea/gin.go#L221-L226),
 [`logger.go:141-161`](https://github.com/gin-gonic/gin/blob/75ccf94d605a05fe24817fc2f166f6f2959d5cea/logger.go#L141-L161));
 gin runs in debug mode unless `GIN_MODE` says otherwise
 ([`routes.go:96`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L96),[`106-115`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L106-L115)).
 Only at `OLLAMA_DEBUG=2` (trace,
-[`envconfig/config.go:199-212`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L199-L212)) does the
-server log model output text
+[`envconfig/config.go:199-212`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L199-L212))
+does the server log model output text
 ([`routes.go:2987`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L2987),[`3004`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L3004))
 and `/v1/messages` responses
 ([`middleware/anthropic.go:64`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/middleware/anthropic.go#L64),[`75`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/middleware/anthropic.go#L75)).
-For a systemd install that output goes to the journal; for the macOS
-desktop app it goes to `.ollama/logs/server.log`
+For a systemd install that output goes to the journal; for the macOS desktop app it goes to
+`.ollama/logs/server.log`
 ([`app/server/server_unix.go:20`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/server/server_unix.go#L20),
 [`app/server/server.go:242`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/server/server.go#L242),[`288-294`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/server/server.go#L288-L294)).
 That log is not a transcript and is not parsed.
 
 #### Codex proxy log
 
-`codex-proxy.log` is metadata only. It exists since `v0.34.0`.
-The Codex desktop proxy, mounted at `/api/codex/*` on the server's own
-listener
+`codex-proxy.log` is metadata only. It exists since `v0.34.0`. The Codex desktop proxy, mounted at
+`/api/codex/*` on the server's own listener
 ([`routes.go:1997`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L1997),[`2045`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L2045)),
-writes to `.ollama/logs/codex-proxy.log` under the home of the *server*
-process ([`server/codex_proxy.go:19-33`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/codex_proxy.go#L19-L33)),
-so for a systemd install it lands in `/usr/share/ollama/.ollama/logs`, not
-the user's home. Its only writer is `logActivity`, one line per request:
-`<RFC 3339 local time> route=<openai|chatgpt|ollama|none> model="<name>"
-method=<m> path=<p> status=<n> duration=<d> result=<ok|canceled|...>`
+writes to `.ollama/logs/codex-proxy.log` under the home of the *server* process
+([`server/codex_proxy.go:19-33`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/codex_proxy.go#L19-L33)),
+so for a systemd install it lands in `/usr/share/ollama/.ollama/logs`, not the user's home. Its only
+writer is `logActivity`, one line per request:
+`<RFC 3339 local time> route=<openai|chatgpt|ollama|none> model="<name>" method=<m> path=<p> status=<n> duration=<d> result=<ok|canceled|...>`
 ([`internal/proxy/codex_desktop.go:481-516`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/proxy/codex_desktop.go#L481-L516)).
-No prompt, completion or tool call is written. It does not repeat Codex
-session content. A parser may skip it; if read, one `system` row per line
-(`codex proxy: <route> <model> <status> <result>`) is the most it supports,
-with no session id. The Claude Desktop gateway in the same package writes
+No prompt, completion or tool call is written. It does not repeat Codex session content. A parser
+may skip it; if read, one `system` row per line (`codex proxy: <route> <model> <status> <result>`)
+is the most it supports, with no session id. The Claude Desktop gateway in the same package writes
 no file.
 
 #### Launch state
@@ -579,74 +718,72 @@ no file.
 
 On macOS, the desktop app's ChatGPT integration
 ([`app/cmd/app/codex_app_darwin.go:201`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/cmd/app/codex_app_darwin.go#L201),
-[`codex_app.go:700-722`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L700-L722)) also makes
-`.ollama/chatgpt-ollama/` with an `electron-data/` directory and, when it
-finds a matching process, a `chatgpt.pid` file
+[`codex_app.go:700-722`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L700-L722))
+also makes `.ollama/chatgpt-ollama/` with an `electron-data/` directory and, when it finds a
+matching process, a `chatgpt.pid` file
 ([`codex_app.go:38-39`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L38-L39),[`916-938`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L916-L938),[`1909-1926`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L1909-L1926),[`1976-1988`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L1976-L1988)).
-`v0.35.1` uses them only to detect and stop a ChatGPT process started
-with that profile by an earlier build
+`v0.35.1` uses them only to detect and stop a ChatGPT process started with that profile by an
+earlier build
 ([`codex_app.go:792-800`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L792-L800),[`1953-1965`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L1953-L1965));
-no release from `v0.34.0` to `v0.35.1` starts ChatGPT with
-`--user-data-dir` pointing there, so the directory should be empty. If an
-`electron-data/` with content is found, it is a ChatGPT Electron profile
-and may hold that app's state; it is not an Ollama transcript.
+no release from `v0.34.0` to `v0.35.1` starts ChatGPT with `--user-data-dir` pointing there, so the
+directory should be empty. If an `electron-data/` with content is found, it is a ChatGPT Electron
+profile and may hold that app's state; it is not an Ollama transcript.
 
-`backup/` holds the previous version of every file `ollama launch` (or the
-config writer) overwrote: `backup/<integration>/<file name>.<unix
-seconds>`, or `backup/<file name>.<unix seconds>` when no integration is
-given (Ollama's own `config.json`, Codex `config.toml`), five per file
+`backup/` holds the previous version of every file `ollama launch` (or the config writer) overwrote:
+`backup/<integration>/<file name>.<unix seconds>`, or `backup/<file name>.<unix seconds>` when no
+integration is given (Ollama's own `config.json`, Codex `config.toml`), five per file
 ([`cmd/internal/fileutil/files.go:17-19`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/internal/fileutil/files.go#L17-L19),[`46-71`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/internal/fileutil/files.go#L46-L71),[`76-94`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/internal/fileutil/files.go#L76-L94)).
-The ChatGPT integration still backs up under `backup/codex-app/`. The
-backed-up files are the agents' configs: Hermes `config.yaml`
-([`hermes.go:268-311`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/hermes.go#L268-L311)), OpenClaw
-`openclaw.json` ([`openclaw.go:652-663`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/openclaw.go#L652-L663),[`747`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/openclaw.go#L747)),
+The ChatGPT integration still backs up under `backup/codex-app/`. The backed-up files are the
+agents' configs: Hermes `config.yaml`
+([`hermes.go:268-311`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/hermes.go#L268-L311)),
+OpenClaw `openclaw.json`
+([`openclaw.go:652-663`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/openclaw.go#L652-L663),[`747`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/openclaw.go#L747)),
 OpenCode's `.local/state/opencode/model.json` recent-model list
 ([`opencode.go:208-214`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/opencode.go#L208-L214),[`216-280`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/opencode.go#L216-L280)).
-They can hold API keys from those configs, but no conversation content,
-session id or working directory. Claude Code gets nothing on disk: it is
-started with `--model <model>` and `ANTHROPIC_BASE_URL`,
-`ANTHROPIC_AUTH_TOKEN=ollama` and the `ANTHROPIC_DEFAULT_*_MODEL`
-variables in its environment ([`claude.go:20-27`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/claude.go#L20-L27),[`52-87`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/claude.go#L52-L87)).
-One launch edits another agent's session state: for OpenClaw,
-`clearSessionModelOverride` rewrites `.openclaw/agents/main/sessions/sessions.json`
-without a backup, setting each session's `model` to the launched model and
-dropping `modelOverride`/`providerOverride`
-([`openclaw.go:757-792`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/openclaw.go#L757-L792)), unchanged
-since `v0.30.7`. That changes OpenClaw's own evidence (the session index's
-model field), not Ollama's.
+They can hold API keys from those configs, but no conversation content, session id or working
+directory. Claude Code gets nothing on disk: it is started with `--model <model>` and
+`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN=ollama` and the `ANTHROPIC_DEFAULT_*_MODEL` variables in
+its environment
+([`claude.go:20-27`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/claude.go#L20-L27),[`52-87`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/claude.go#L52-L87)).
+One launch edits another agent's session state: for OpenClaw, `clearSessionModelOverride` rewrites
+`.openclaw/agents/main/sessions/sessions.json` without a backup, setting each session's `model` to
+the launched model and dropping `modelOverride`/`providerOverride`
+([`openclaw.go:757-792`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/openclaw.go#L757-L792)),
+unchanged since `v0.30.7`. That changes OpenClaw's own evidence (the session index's model field),
+not Ollama's.
 
 #### Launch configuration
 
 There is no per-launch record. `config.json` holds
-`integrations{<name>: {models[], aliases{}, onboarded, automode}}`,
-`last_model`, `last_selection` and, on Linux, `onboarding_version`, with
-no time field ([`cmd/config/config.go:19-34`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L19-L34)).
-A `codex-app` entry from an older release is copied to `chatgpt` on the
-next load ([`launch.go:1525-1555`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/launch.go#L1525-L1555)).
-The file is rewritten only when something changes: `SaveIntegration` when
-the model chosen for an integration differs from the saved one
-([`launch.go:734-739`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/launch.go#L734-L739)), `SetLastModel`
-when the REPL model changes ([`launch.go:717-720`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/launch.go#L717-L720)),
-`SetLastSelection` from the menu ([`cmd/cmd.go:2324-2327`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/cmd.go#L2324-L2327)),
+`integrations{<name>: {models[], aliases{}, onboarded, automode}}`, `last_model`, `last_selection`
+and, on Linux, `onboarding_version`, with no time field
+([`cmd/config/config.go:19-34`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/config/config.go#L19-L34)).
+A `codex-app` entry from an older release is copied to `chatgpt` on the next load
+([`launch.go:1525-1555`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/launch.go#L1525-L1555)).
+The file is rewritten only when something changes: `SaveIntegration` when the model chosen for an
+integration differs from the saved one
+([`launch.go:734-739`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/launch.go#L734-L739)),
+`SetLastModel` when the REPL model changes
+([`launch.go:717-720`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/launch.go#L717-L720)),
+`SetLastSelection` from the menu
+([`cmd/cmd.go:2324-2327`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/cmd.go#L2324-L2327)),
 and `WriteWithBackup` skips a write whose bytes are unchanged
-([`files.go:84-87`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/internal/fileutil/files.go#L84-L87)). So the
-file says which integrations were configured with which local model, the
-`backup/config.json.<epoch>` names give the times the configuration
-changed (the epoch is when the old version was replaced), and the mtime
-gives the last change. Repeated launches with the same model leave no
-trace in Ollama's files. Three newer markers add a little:
+([`files.go:84-87`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/internal/fileutil/files.go#L84-L87)).
+So the file says which integrations were configured with which local model, the
+`backup/config.json.<epoch>` names give the times the configuration changed (the epoch is when the
+old version was replaced), and the mtime gives the last change. Repeated launches with the same
+model leave no trace in Ollama's files. Three newer markers add a little:
 
-- `launch/chatgpt-session-start` is rewritten each time the macOS desktop
-  app applies Ollama models to ChatGPT, not on a CLI `ollama launch
-  chatgpt` ([`codex_app.go:653-662`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L653-L662),[`700-722`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L700-L722)). Ollama
-  then counts prompts by reading, never writing, Codex's
-  `sessions/*.jsonl` newer than that time
+- `launch/chatgpt-session-start` is rewritten each time the macOS desktop app applies Ollama models
+  to ChatGPT, not on a CLI `ollama launch chatgpt`
+  ([`codex_app.go:653-662`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L653-L662),[`700-722`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L700-L722)).
+  Ollama then counts prompts by reading, never writing, Codex's `sessions/*.jsonl` newer than that
+  time
   ([`codex_app_profile.go:54-79`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app_profile.go#L54-L79),[`111-142`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app_profile.go#L111-L142)).
-- `settings.claude_desktop_used` and `settings.codex_desktop_used` in
-  `db.sqlite` are set once Claude Desktop or ChatGPT has been connected
-  through the desktop app
-  ([`store.go:180-185`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L180-L185)), booleans
-  without a time.
+- `settings.claude_desktop_used` and `settings.codex_desktop_used` in `db.sqlite` are set once
+  Claude Desktop or ChatGPT has been connected through the desktop app
+  ([`store.go:180-185`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L180-L185)),
+  booleans without a time.
 - On macOS and Windows, `.ollama/onboarding-v1.completed` is an empty file
   whose mtime is when onboarding was first completed in the app or CLI
   ([`internal/onboarding/state.go:12-29`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/state.go#L12-L29),[`50-75`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/state.go#L50-L75);
@@ -674,26 +811,25 @@ that covers it):
 
 ### 12. Secrets
 
-Sensitive columns: `users.name`, `users.email` and `users.plan` identify
-the Ollama account ([`database.go:1383-1397`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1383-L1397));
-`attachments.data` holds whole user files; `settings.device_id` is a
-stable device identifier. The parser must not emit any of them in full: an
-attachment becomes its `filename` and byte length, and the `users` table
-is not read.
+Sensitive columns: `users.name`, `users.email` and `users.plan` identify the Ollama account
+([`database.go:1383-1397`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1383-L1397));
+`attachments.data` holds whole user files; `settings.device_id` is a stable device identifier. The
+parser must not emit any of them in full: an attachment becomes its `filename` and byte length, and
+the `users` table is not read.
 
-Sign-in (`ollama signin`, or the app's connect page) binds the device's
-public key to the ollama.com account in the browser and writes no token
+Sign-in (`ollama signin`, or the app's connect page) binds the device's public key to the ollama.com
+account in the browser and writes no token
 ([`cmd/cmd.go:1012-1030`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/cmd.go#L1012-L1030);
 [`server/routes.go:248-257`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L248-L257)).
-The desktop app caches the account at each start in the `users` row
-(`name`, `email`, `plan`, `cached_at`)
+The desktop app caches the account at each start in the `users` row (`name`, `email`, `plan`,
+`cached_at`)
 ([`app/cmd/app/app.go:345`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/cmd/app/app.go#L345);
-[`ui.go:464-492`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L464-L492)), and nothing outside
-tests calls `ClearUser`
-([`app/store/store.go:584-590`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L584-L590)), so the
-row survives a sign-out
-([`routes.go:2407-2438`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L2407-L2438)). That is
-account state, not sync state; the parser does not read it (above).
+[`ui.go:464-492`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L464-L492)),
+and nothing outside tests calls `ClearUser`
+([`app/store/store.go:584-590`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L584-L590)),
+so the row survives a sign-out
+([`routes.go:2407-2438`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L2407-L2438)).
+That is account state, not sync state; the parser does not read it (above).
 
 ### 13. Parser plan
 
@@ -721,27 +857,26 @@ Read schema versions 16 to 19 the same way.
 | text | `content`; for tool_use the `url` or `query` argument when present, else `function_arguments`; for user rows with attachments, append `[attachment: <filename>, <n> bytes]` per row, never the BLOB |
 | source_line | `messages.id` (or `tool_calls.id` for tool_use rows) |
 
-An assistant message with empty `content`, no thinking and no tool calls
-(the placeholder written while the model is being pulled,
-[`ui.go:832-841`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L832-L841)) yields no row. A chat with
-`title` yields nothing extra; the title is not a turn.
+An assistant message with empty `content`, no thinking and no tool calls (the placeholder written
+while the model is being pulled,
+[`ui.go:832-841`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L832-L841))
+yields no row. A chat with `title` yields nothing extra; the title is not a turn.
 
 #### Permission rows
 
-The desktop app asks before no tool call and the REPL
-has no tools, so there is no per-call decision. Standing:
-`.ollama/config.json` `integrations.<name>.automode`, a boolean
+The parser yields no permission rows. The desktop app asks before no tool call and the REPL has no
+tools, so there is no per-call decision. Standing: `.ollama/config.json`
+`integrations.<name>.automode`, a boolean
 ([`cmd/config/config.go:19-24`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/config/config.go#L19-L24)).
-For `claude-desktop` it becomes `autoModeEnabled` in the Claude
-Desktop profile Ollama writes, true when the key is unset
+For `claude-desktop` it becomes `autoModeEnabled` in the Claude Desktop profile Ollama writes, true
+when the key is unset
 ([`cmd/launch/claude_desktop.go:320-345`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L320-L345),
 [741-759](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L741-L759)).
-Proposed: `permission setting: integrations.<name>.automode=<value>
-(from .ollama/config.json, file mtime)` for each integration that
-has the key. The row says what Ollama configured for the other
-agent; that agent's own parser reads what it did with it.
-The research records no permission state for the app, so there are no permission rows (written
-before the source review of 2026-10-19, which found the standing setting above).
+Proposed at the source review of 2026-10-19, not yet written:
+`permission setting: integrations.<name>.automode=<value> (from .ollama/config.json, file mtime)`
+for each integration that has the key. The row says what Ollama configured for the other agent; that
+agent's own parser reads what it did with it. Before that review this subsection said the research
+recorded no permission state for the app.
 
 #### Model rows
 
@@ -765,70 +900,60 @@ was covered at the source review of 2026-10-19 ([Source reviews](#source-reviews
 
 #### Sync, relay and origin rows
 
-Sync: Ollama records no sync state, because it has no session sync. No
-release keeps a server copy of a chat: the desktop app's chat routes
-(list, get, post, delete, create, rename) are served from `db.sqlite`
-by the app's own local handler
-([`app/ui/ui.go:286-291`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L286-L291)), and a chat
-turn goes to the local server through `inferenceClient`
+Sync: Ollama records no sync state, because it has no session sync. No release keeps a server copy
+of a chat: the desktop app's chat routes (list, get, post, delete, create, rename) are served from
+`db.sqlite` by the app's own local handler
+([`app/ui/ui.go:286-291`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L286-L291)),
+and a chat turn goes to the local server through `inferenceClient`
 ([`ui.go:431-433`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L431-L433),[`827`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L827),[`1001`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/ui.go#L1001)).
-What leaves the host is the model call. A cloud model is one whose name
-ends in `:cloud` or `-cloud`
+What leaves the host is the model call. A cloud model is one whose name ends in `:cloud` or `-cloud`
 ([`internal/modelref/modelref.go:98-115`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/modelref/modelref.go#L98-L115));
-for it the local server forwards the whole request, every message of the
-conversation, to `https://ollama.com:443` signed with the device key
-`.ollama/id_ed25519`
+for it the local server forwards the whole request, every message of the conversation, to
+`https://ollama.com:443` signed with the device key `.ollama/id_ed25519`
 ([`server/routes.go:2656-2664`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/routes.go#L2656-L2664);
 [`server/cloud_proxy.go:29`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/cloud_proxy.go#L29),[`180-220`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/cloud_proxy.go#L180-L220),[`372-386`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/cloud_proxy.go#L372-L386)),
-the same for the REPL, `ollama launch` agents and the desktop app.
-"Ollama Turbo" is the earlier name of that cloud service; its trace is
-the `settings.turbo_enabled` column
+the same for the REPL, `ollama launch` agents and the desktop app. "Ollama Turbo" is the earlier
+name of that cloud service; its trace is the `settings.turbo_enabled` column
 ([`app/store/database.go:375-380`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L375-L380)),
-which the app now reads only to move a Turbo user's selected model to its
-cloud name and then sets to false
+which the app now reads only to move a Turbo user's selected model to its cloud name and then sets
+to false
 ([`app/ui/app/src/hooks/useSelectedModel.ts:63-74`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/app/src/hooks/useSelectedModel.ts#L63-L74),[`119-122`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ui/app/src/hooks/useSelectedModel.ts#L119-L122)).
-Ollama's documentation says cloud prompts and responses are processed and
-not stored or logged
+Ollama's documentation says cloud prompts and responses are processed and not stored or logged
 ([`docs/faq.mdx:161`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/faq.mdx#L161),
 [`docs/cloud.mdx:90`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/cloud.mdx#L90));
-the server side is not in the repository, so that is the vendor's
-statement, not a source finding. The local evidence of cloud use is the
-model name: `messages.model_name` with the `:cloud` or `-cloud` suffix,
-which the `model:` rows already carry; the `model_cloud` column is
-deprecated and never written
+the server side is not in the repository, so that is the vendor's statement, not a source finding.
+The local evidence of cloud use is the model name: `messages.model_name` with the `:cloud` or
+`-cloud` suffix, which the `model:` rows already carry; the `model_cloud` column is deprecated and
+never written
 ([`database.go:115`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L115),[`1044-1047`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/database.go#L1044-L1047)).
 The desktop app's web search and web fetch tools send the query or URL to
 `ollama.com/api/web_search` and `/api/web_fetch`
 ([`app/tools/web_search.go:110`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/tools/web_search.go#L110),
 [`app/tools/web_fetch.go:96`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/tools/web_fetch.go#L96));
-the `tool_use` rows show them. Cloud use is turned off by
-`OLLAMA_NO_CLOUD` or `disable_ollama_cloud: true` in
-`.ollama/server.json`, the desktop app's cloud toggle
+the `tool_use` rows show them. Cloud use is turned off by `OLLAMA_NO_CLOUD` or
+`disable_ollama_cloud: true` in `.ollama/server.json`, the desktop app's cloud toggle
 ([`envconfig/config.go:237-238`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/envconfig/config.go#L237-L238);
 [`app/store/cloud_config.go:15-42`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/cloud_config.go#L15-L42)),
-on by default.
-Sign-in writes no token and is account state, not sync state ([section 12](#12-secrets)).
-The anonymous-usage `settings.survey`
-flag is stored but read by nothing
-([`store.go:132-135`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L132-L135)), and there is no
-telemetry or crash-report client in `app/`, `cmd/`, `server/` or
-`internal/` (searched `telemetry`, `analytics`, `sentry`, `posthog`,
-`crash`, `upload`).
+on by default. Sign-in writes no token and is account state, not sync state
+([section 12](#12-secrets)). The anonymous-usage `settings.survey` flag is stored but read by
+nothing
+([`store.go:132-135`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L132-L135)),
+and there is no telemetry or crash-report client in `app/`, `cmd/`, `server/` or `internal/`
+(searched `telemetry`, `analytics`, `sentry`, `posthog`, `crash`, `upload`).
 
-One path does upload a transcript, with no local marker: a REPL session
-saved with `/save <model>` becomes a model whose
-`application/vnd.ollama.image.messages` layer holds the conversation
-([section 7](#7-transcript-stores)), and `ollama push` of that model
-uploads every layer, the messages layer included, to the registry
-([`server/images.go:960-1024`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/images.go#L960-L1024)). Push writes
-nothing locally; only the server log's `[GIN]` line for `POST
-"/api/push"` records it, without the model name. No
-`session synced:` row is proposed. Relay and origin: the agent records none.
+One path does upload a transcript, with no local marker: a REPL session saved with `/save <model>`
+becomes a model whose `application/vnd.ollama.image.messages` layer holds the conversation
+([section 7](#7-transcript-stores)), and `ollama push` of that model uploads every layer, the
+messages layer included, to the registry
+([`server/images.go:960-1024`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/server/images.go#L960-L1024)).
+Push writes nothing locally; only the server log's `[GIN]` line for `POST "/api/push"` records it,
+without the model name. No `session synced:` row is proposed. Relay and origin: the agent records
+none.
 
 #### Scratch directory rows
 
 None under the home; the two temporary directories outside it are in
-[`collectors/research/ollama.md`](#scratch-directories).
+[Scratch directories](#scratch-directories).
 
 #### Deletion rows
 
@@ -841,10 +966,10 @@ In `.ollama/history`, a line that is not valid UTF-8 becomes, after the file's o
 `system` row `parser: unparseable line (<decode error>): <line>` carrying
 the line as read less its terminator, with the same empty fields and its
 line number.
-Plan from the source review of 2026-10-19: `.ollama/history` reports a line that does not
-decode as UTF-8 through `error_rows` with the line as read, rather than replace its bytes in a
-`user` row (issue 174); the evidence is under [Observed](#observed). The review itself recorded
-the earlier gap ([Source reviews](#source-reviews)). A `db.sqlite` that is not a database
+This is the plan of the source review of 2026-10-19 (issue 174), which recorded the earlier gap
+([Source reviews](#source-reviews)): `.ollama/history` reports a line that does not decode as
+UTF-8 through `error_rows` with the line as read, rather than replace its bytes in a `user` row;
+the evidence is under [Observed](#observed). A `db.sqlite` that is not a database
 becomes one `system` row ([Fixtures](#fixtures)).
 
 #### Fixtures
@@ -908,7 +1033,7 @@ each release). Not determined: a real `db.sqlite`, because the desktop
 app does not exist on Linux; what fills `chats.browser_state` in detail;
 whether a Windows build of the app writes `server.log` with the same gin
 lines (the path differs,
-[`collectors/research/ollama.md`](../../collectors/research/ollama.md));
+[Desktop app, Windows](#desktop-app-windows));
 what a pre-release build may have left in `.ollama/chatgpt-ollama/electron-data`.
 
 ## 14. Confidence
@@ -929,5 +1054,6 @@ the installer ([section 2](#2-per-user-storage)), so `/usr/share/ollama/.ollama`
 non-root collection on this workstation (L, Ollama 0.35.1 systemd install) listed
 `/usr/share/ollama/.ollama` under the user `ollama`, with `error_copy` rows for the files only that
 account can read. The PowerShell collector does not read `etc/passwd` in image mode, so on a Linux
-image it misses that home, as [`docs/coverage.md`](../collectors/docs/coverage.md#home-directory-discovery)
-records under "Home directories"; collect a Linux image with the sh collector.
+image it misses that home, as
+[`docs/coverage.md`](../collectors/docs/coverage.md#home-directory-discovery) records under "Home
+directories"; collect a Linux image with the sh collector.
