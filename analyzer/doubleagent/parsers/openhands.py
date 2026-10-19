@@ -31,8 +31,14 @@ Files, relative to the home directory (the same layout on every OS):
   conversation: `meta.json` (`id`, `title`, `created_at`,
   `parent_conversation_id`, `forked_from_conversation_id`,
   `workspace.working_dir`) and `base_state.json` (`agent.llm.model`,
-  `workspace.working_dir`). Their `secrets`, `api_key` and
-  `secret_registry` fields are never read, and `settings.json`,
+  `workspace.working_dir`). A `meta.json` or `base_state.json` that exists
+  but cannot be read, is not JSON (cut mid-write) or is not an object gives
+  one whole-file `system` row on the first event file, after the header and
+  model rows, `parser: <file name> could not be decoded (<reason>)`,
+  `could not be read (<reason>)` or `is not a JSON object`, with an empty
+  timestamp and the session id and `project_path` known from the other
+  file; the header then lacks what that file held (issue 176). Their
+  `secrets`, `api_key` and `secret_registry` fields are never read, and `settings.json`,
   `secrets.json` and `profiles/*.json` are never opened.
 * Legacy 0.x `.openhands/sessions/<sid>/events/<n>.json` and
   `.openhands/users/<uid>/conversations/<sid>/events/<n>.json`: detected and
@@ -81,11 +87,11 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ..inputs import Artifact
+from ..inputs import Artifact, error_reason
 from ..model import Row, compact
 from ..timeutil import to_utc
 from .base import Options, Parser, compact_json, text_of
@@ -112,14 +118,42 @@ def _join(*parts: str) -> str:
     return " | ".join(p for p in parts if p)
 
 
-def _read_json(path: Path):
+def _load_json(path: Path) -> tuple[object, str]:
+    """The decoded JSON of `path` and "", or None and the reason it could not
+    be read or decoded. A missing file, a symlink or a directory is None and
+    "", since the CLI writes no `meta.json` and that is not an error."""
     try:
         if path.is_symlink() or not path.is_file():
-            return None
+            return None, ""
         with open(path, "rb") as fh:
-            return json.loads(fh.read().decode("utf-8", errors="replace"))
-    except (OSError, ValueError):
-        return None
+            return json.loads(fh.read().decode("utf-8", errors="replace")), ""
+    except OSError as e:
+        return None, "could not be read (%s)" % error_reason(e)
+    except ValueError as e:
+        return None, "could not be decoded (%s)" % e
+
+
+def _read_json(path: Path):
+    return _load_json(path)[0]
+
+
+def _is_file(path: Path) -> bool:
+    try:
+        return not path.is_symlink() and path.is_file()
+    except OSError:
+        return False
+
+
+def _load_object(path: Path, problems: list[str]) -> dict:
+    """The JSON object in `path`, else {}; a file that exists but cannot be
+    read, decoded or is not an object appends `parser: <name> <reason>` to
+    `problems`."""
+    value, reason = _load_json(path)
+    if not reason and not isinstance(value, dict) and (value is not None or _is_file(path)):
+        reason = "is not a JSON object"  # a list, a scalar or a literal null
+    if reason:
+        problems.append("parser: %s %s" % (path.name, reason))
+    return value if isinstance(value, dict) else {}
 
 
 def _aware(value) -> datetime | None:
@@ -156,6 +190,9 @@ class _Conv:
     first_event: str = ""  # file name of the lowest-index event
     header: str = ""
     created: str = ""
+    # Whole-file `parser:` rows for a meta.json or base_state.json that
+    # exists but did not decode (issue 176).
+    problems: list[str] = field(default_factory=list)
 
 
 class OpenHandsParser(Parser):
@@ -183,10 +220,14 @@ class OpenHandsParser(Parser):
                 row.timestamp_utc = conv.created
                 row.text = "model: " + conv.model
                 yield row
-        ev = _read_json(artifact.disk_path)
+            for problem in conv.problems:
+                row = self._row(artifact, conv, "system")
+                row.text = problem
+                yield row
+        ev, reason = _load_json(artifact.disk_path)
         if not isinstance(ev, dict):
             row = self._row(artifact, conv, "system")
-            row.text = "parser: event file could not be decoded"
+            row.text = "parser: event file %s" % (reason or "is not a JSON object")
             yield row
             return
         ts = self._timestamp(ev.get("timestamp"), conv)
@@ -217,9 +258,9 @@ class OpenHandsParser(Parser):
         return conv
 
     def _load_conversation(self, cdir: Path) -> _Conv:
-        meta = _d(_read_json(cdir / "meta.json"))
-        state = _d(_read_json(cdir / "base_state.json"))
         conv = _Conv(session_id=cdir.name)
+        meta = _load_object(cdir / "meta.json", conv.problems)
+        state = _load_object(cdir / "base_state.json", conv.problems)
         conv.project_path = str(
             _d(meta.get("workspace")).get("working_dir")
             or _d(state.get("workspace")).get("working_dir")

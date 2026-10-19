@@ -541,11 +541,19 @@ evidence in [section 3](#3-record-schema) and
   ([`auth/token_storage.py:55-61`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/auth/token_storage.py#L55-L61)).
   Nothing local records a deleted conversation.
 - Bad lines: no file is read line by line, and an event file that does
-  not decode gives one `parser: event file could not be decoded` row. A
-  `meta.json` or `base_state.json` that does not decode is read as empty
-  with no row, so the conversation loses its project, model and time
-  basis silently (`_read_json` in the parser); one `parser:` row per
-  undecodable sibling file is proposed.
+  not decode gives one `parser: event file could not be decoded
+  (<reason>)` row. A `meta.json` or `base_state.json` that exists but
+  cannot be read, does not decode or is not a JSON object is read as
+  empty and gives one whole-file `system` row on the conversation's first
+  event file, after the header and model rows: `parser: <file name> could
+  not be decoded (<reason>)`, `parser: <file name> could not be read
+  (<reason>)` or `parser: <file name> is not a JSON object`, with an
+  empty timestamp and the session id and `project_path` the other file
+  still gives. The header then lacks what the file held (title, model,
+  time basis). A missing file is not an error, since the CLI writes no
+  `meta.json`. The cut-file shape is not observed on any real install,
+  source-derived (OpenHands/software-agent-sdk at
+  [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)).
 
 Fixture (`.openhands/conversations/0f0e0d0c111140008000000000000001/`):
 

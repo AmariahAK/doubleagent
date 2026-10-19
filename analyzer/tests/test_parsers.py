@@ -7310,8 +7310,80 @@ class OpenHandsTests(ParserBase):
         rows = self.rows_for(OpenHandsParser(), rel)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].turn_type, "system")
-        self.assertIn("parser:", rows[0].text)
+        self.assertTrue(
+            rows[0].text.startswith("parser: event file could not be decoded ("), rows[0].text
+        )
         self.assertEqual(len(self.conversation(self.CANVAS)), 10)  # the other events still parse
+
+    def _cut(self, rel):
+        path = self.home / rel
+        raw = path.read_text(encoding="utf-8")
+        path.write_text(raw[: len(raw) // 2], encoding="utf-8")
+        try:
+            json.loads(raw[: len(raw) // 2])
+        except ValueError as e:
+            return str(e)
+        self.fail("cut file still decodes")
+
+    def test_undecodable_meta_json_is_reported(self):
+        # Issue 176: a cut meta.json gave no row and lost the title silently.
+        reason = self._cut(
+            ".openhands/agent-canvas/dev_conversations/%s/meta.json" % OPENHANDS_CONV
+        )
+        rows = self.conversation(self.CANVAS)
+        header, model, problem = rows[:3]
+        self.assertTrue(header.text.startswith("conversation start | model="), header.text)
+        self.assertEqual(model.text, "model: litellm_proxy/claude-sonnet-4-5")
+        self.assertEqual(
+            (problem.turn_type, problem.text, problem.timestamp_utc, problem.source_line),
+            ("system", "parser: meta.json could not be decoded (%s)" % reason, "", 1),
+        )
+        # The session id and the project from base_state.json still apply.
+        self.assertEqual((problem.session_id, problem.project_path), (OPENHANDS_CONV, "/srv/proj"))
+        self.assertEqual(len(rows), 11)  # every event still yields its rows
+        self.assertEqual(rows[3].text, "system prompt, 2 tools: You are OpenHands agent.")
+        self.assertEqual(rows[-1].text, "The project has a README.")
+        self.assertEqual([r for r in rows if r.text.startswith("parser:")], [problem])
+
+    def test_undecodable_base_state_json_is_reported(self):
+        reason = self._cut(".openhands/conversations/%s/base_state.json" % OPENHANDS_CLI_CONV)
+        rows = self.conversation(self.CLI)
+        header, problem = rows[:2]
+        self.assertIn("emitted as if UTC", header.text)
+        self.assertEqual(
+            (problem.turn_type, problem.text, problem.timestamp_utc),
+            ("system", "parser: base_state.json could not be decoded (%s)" % reason, ""),
+        )
+        # No meta.json either: nothing records the project or the model.
+        self.assertEqual(
+            (problem.session_id, problem.project_path, problem.model),
+            (OPENHANDS_CLI_CONV, "", ""),
+        )
+        self.assertFalse([r for r in rows if r.text.startswith("model: ")])
+        self.assertEqual(rows[2].text, "system prompt, 2 tools: You are OpenHands agent.")
+        self.assertEqual(len(rows), 6)
+
+    def test_sibling_file_not_an_object_is_reported(self):
+        path = self.home / (
+            ".openhands/agent-canvas/dev_conversations/%s/base_state.json" % OPENHANDS_CONV
+        )
+        path.write_text("[]", encoding="utf-8")
+        rows = self.conversation(self.CANVAS)
+        self.assertEqual(rows[1].text, "parser: base_state.json is not a JSON object")
+        self.assertEqual(
+            (rows[1].session_id, rows[1].project_path, rows[1].timestamp_utc),
+            (OPENHANDS_CONV, "/srv/proj", ""),
+        )
+        self.assertEqual(rows[-1].text, "The project has a README.")
+
+    def test_null_meta_json_is_reported(self):
+        path = self.home / (
+            ".openhands/agent-canvas/dev_conversations/%s/meta.json" % OPENHANDS_CONV
+        )
+        path.write_text("null", encoding="utf-8")
+        rows = self.conversation(self.CANVAS)
+        self.assertEqual(rows[2].text, "parser: meta.json is not a JSON object")
+        self.assertEqual(len(rows), 11)
 
 
 class ShellGptTests(ParserBase):
