@@ -9,6 +9,151 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-19
+
+### Changed
+
+- The `continue` and `pearai` parsers now want the session index
+  `sessions/sessions.json`, so `detect --files` lists it as parsed; it
+  yields rows only when it is damaged ([#170]).
+- The `vscode` session-start row ends with `workspace=<path>` when the
+  workspace is a `.code-workspace` file, and a multi-root session with no
+  `workingDirectory` of its own now has an empty `project_path`, where it
+  had the `.code-workspace` file's path ([#185]).
+- The `goose` parser reports a `content_json` that holds a bare JSON
+  string as not a JSON array, since Goose writes an array there ([#183]).
+- The `crush` `model:` rows end with ` requested=<model>` when the
+  requested model differs from the one that served the turn, and the
+  `model` column reads `<provider>/<served model>` ([#167]).
+- The `opencode` parser now reads secondary sources, so an OpenCode
+  session's `recovered` in `sessions.jsonl` and the inventory reads `no`,
+  `yes` or `partial` where it was `""`; `kilo-code` keeps `""`, since
+  Kilo Code has no such source ([#165]).
+- The `hermes` parser may show one model switch twice: the `model: <old>
+  -> <new>` row of the stored switch marker and the row of the session's
+  model usage, at different times ([#180]).
+
+### Fixed
+
+- A JSONL line that is valid JSON but not an object (an array, a
+  string, a number, `null`) is its own `system` row `parser: unparseable
+  line (not a JSON object): <line>` in every parser that reads JSONL
+  through the shared reader, instead of being skipped silently ([#228]).
+- Ollama: a `.ollama/history` line that is not valid UTF-8 is no longer
+  shown as a `user` row with replacement characters; it becomes its own
+  `system` row `parser: unparseable line (<reason>): <line>` carrying the
+  line as read, and the other lines are still yielded ([#174]).
+- `trustedFolders.json` for Gemini CLI and Qwen Code is read as Qwen Code
+  reads it: a byte-order mark and trailing commas no longer reduce the
+  file to a single "is not a JSON object" row, so the standing trust
+  grants appear in the timeline ([#173]).
+- Twinny: a message the user sends while a reply runs (a `said` tool
+  step, since Twinny 4.3.5) is now a `user` row; it was a `tool_use` row
+  named `said` with an empty `tool_result` ([#171]).
+- Cody: a Deep Cody confirmation the user refused now reads `permission
+  decision: rejected confirmation state=error error=Command rejected
+  ...`, and a pending one reads `approved or unanswered`, because Cody
+  saves an approval and an unanswered request the same way; any other
+  confirmation error is printed as `error=<message>` ([#169]).
+- OpenClaw: a legacy `sessions.json` that cannot be read, does not decode
+  or is not a JSON object now yields a `parser:` row in each transcript
+  beside it instead of silently losing the session key, and a transcript
+  or archive line that is valid JSON but not an object is its own
+  `parser: unparseable line (not a JSON object): <line>` row instead of
+  being dropped ([#177]).
+- Qwen Code `cron` and `notification` records, and `agent_message` and
+  `agent_mention` records written by another workspace agent, are
+  `system` rows naming the subtype, provenance and agent (`cron
+  (provenance=system): ...`, `agent_message (provenance=external_agent
+  agent=<name> agentId=<id>): ...`) instead of `user` rows that read as
+  prompts the user typed; the user's own @-mention stays a `user` row
+  ([#172]).
+- Crush: a `messages.parts` value that does not decode is carried in full
+  in a `parser: unparseable record <rowid> (message <id> parts:
+  <reason>): <parts>` row, where only the error was reported ([#166]).
+- Crush: the model that served a Hyper Prism turn (`prism_model_id`) is
+  named in the `model:` rows and the `model` column, with the requested
+  model beside it as `requested=<model>`, where only the requested model
+  was shown whenever both were set ([#167]).
+- Codex CLI and Open Interpreter: each `thread_history_1.sqlite`
+  `thread_items` row whose `item_json` does not decode to a JSON object
+  is now its own `parser: unparseable record <rowid> (<reason>):
+  <item_json>` row carrying the stored value, with its thread's session
+  and project, instead of one row that counted them ([#184]).
+- OpenHands: a `meta.json` or `base_state.json` that cannot be read, does
+  not decode or is not a JSON object now gives a `parser:` row naming the
+  file and the reason, instead of silently dropping the conversation's
+  title, model and project ([#176]).
+- Agent Zero chats collected from a Docker or Podman volume (`*a0_usr`,
+  `a0-launcher-*-usr`), whose paths start at `chats/` under the volume's
+  `_data`, are now parsed; they were collected and detected but yielded
+  no rows ([#175]).
+- Goose: a `sessions.db` `content_json`, `metadata_json` or
+  `model_config_json` that does not parse, or is not the array or object
+  Goose writes, is now its own `parser: unparseable record <N>
+  (<table>.<column>: <reason>): <stored value>` row carrying the stored
+  value in full, and the rest of the session is still read; before, the
+  content row lost the stored text and bad metadata or model config was
+  silently dropped ([#183]).
+- VS Code: a chat's project path is now its own `workingDirectory`, then
+  the workspace's folder, and never a `.code-workspace` file, so
+  Agents-window chats are no longer classed under the editor's
+  `agent-sessions.code-workspace` scratch file; the workspace file is
+  named in the session-start row as `workspace=<path>` ([#185]).
+- VS Code: a `workspace.json` that cannot be read or is not a JSON object
+  now gives a `parser:` row instead of being skipped silently ([#185]).
+- Zed: a `threads.db` or `db.sqlite` that is not SQLite is reported as
+  one `parser: not a SQLite database` row, and a SQLite error as
+  `parser: SQLite error: <error>`, instead of yielding nothing ([#168]).
+- Zed: a thread blob that does not decode is now `parser: unparseable
+  record <rowid> (<reason>): <stored value>`, carrying the `json` text or
+  the `zstd` bytes as hex, instead of an unprefixed `thread <id> could
+  not be decoded` row ([#168]).
+- Zed: `messages[]` items, `Agent` content items, legacy segments and
+  tool entries of an unknown variant each become a `parser: unparseable
+  record <N> (<reason>): <item>` row instead of being skipped, and a
+  `Compaction` of an unknown variant is no longer reported as provider
+  native ([#168]).
+- Hermes: a model switch made in the TUI or desktop app (a stored message
+  with `display_kind` `model_switch`) is now a `system` row `model: <old>
+  -> <new> provider=<provider>` at the switch time, instead of a user
+  prompt, or a `[rewound]` user prompt once a later switch superseded it
+  ([#180]).
+- Hermes: a Hermes home collected from a Docker or Podman named volume,
+  whose files start at the volume root (`state.db`, `sessions/`,
+  `state-snapshots/`, `pastes/`), is now parsed; before, it was collected
+  and never read ([#181]).
+- Hermes: a `tool_calls` value that is not valid JSON, is not a list or
+  holds a non-object entry is now a `parser: unparseable record <id>
+  (<reason>): <value>` row carrying the stored value, instead of being
+  dropped silently or reported without the value ([#182]).
+- Continue: an unreadable or damaged `.continue/sessions/sessions.json`
+  (not a JSON array, cut mid-write, an entry without a `sessionId`) now
+  yields `parser:` rows from the index file instead of being dropped
+  silently, and the entries before a cut still give their sessions a
+  time ([#170]).
+- PearAI: the same for `.pearai/sessions/sessions.json`, which is read
+  through the Continue parser's index reader ([#170]).
+- nanobot: sessions stored in `sessions/<workspace-id>/sessions.sqlite3`
+  are read, each undecodable record its own `parser:` row, and the JSONL
+  files and `jsonl-backup/` copies the database imported are secondary
+  sources, so each event shows once and a turn the database lost is
+  recovered ([#178]).
+- nanobot: the CLI history `history/cli_history` is read under any
+  `.nanobot*` state directory, where `--home` moves it, not only under
+  `.nanobot` ([#179]).
+- OpenCode 2.0 databases are read: session headers and project paths
+  from `session_v2`, the `session_message` transcript including the 2.0
+  shell, location-switched, skill and idle records; a migrated session
+  is no longer shown twice, a session deleted in 2.0 is recovered from
+  the 1.x tables left behind, and `opencode-next.db` is a secondary
+  source ([#165]).
+- OpenCode and Kilo Code: each undecodable message, part,
+  `session_message` or event record and each undecodable part file is
+  its own `parser:` row carrying the record in full, replacing the "N
+  part(s) of message ... could not be decoded" and "N record(s) with
+  undecodable data" count rows ([#139]).
+
 ## [0.18.0] - 2026-10-19
 
 ### Added
@@ -1320,7 +1465,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--summary-length` (default 400), `--include-thinking` and `--agent`;
   `detect --json` and `--files`; `catalog --agents`.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.18.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.19.0...HEAD
+[0.19.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.18.0...analyzer-v0.19.0
 [0.18.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.17.0...analyzer-v0.18.0
 [0.17.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.16.0...analyzer-v0.17.0
 [0.16.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.15.0...analyzer-v0.16.0
@@ -1342,12 +1488,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#228]: https://github.com/seanthegeek/doubleagent/issues/228
+[#185]: https://github.com/seanthegeek/doubleagent/issues/185
+[#184]: https://github.com/seanthegeek/doubleagent/issues/184
+[#183]: https://github.com/seanthegeek/doubleagent/issues/183
+[#182]: https://github.com/seanthegeek/doubleagent/issues/182
+[#181]: https://github.com/seanthegeek/doubleagent/issues/181
+[#180]: https://github.com/seanthegeek/doubleagent/issues/180
+[#179]: https://github.com/seanthegeek/doubleagent/issues/179
+[#178]: https://github.com/seanthegeek/doubleagent/issues/178
+[#177]: https://github.com/seanthegeek/doubleagent/issues/177
+[#176]: https://github.com/seanthegeek/doubleagent/issues/176
+[#175]: https://github.com/seanthegeek/doubleagent/issues/175
+[#174]: https://github.com/seanthegeek/doubleagent/issues/174
+[#173]: https://github.com/seanthegeek/doubleagent/issues/173
+[#172]: https://github.com/seanthegeek/doubleagent/issues/172
+[#171]: https://github.com/seanthegeek/doubleagent/issues/171
+[#170]: https://github.com/seanthegeek/doubleagent/issues/170
+[#169]: https://github.com/seanthegeek/doubleagent/issues/169
+[#168]: https://github.com/seanthegeek/doubleagent/issues/168
+[#167]: https://github.com/seanthegeek/doubleagent/issues/167
+[#166]: https://github.com/seanthegeek/doubleagent/issues/166
+[#165]: https://github.com/seanthegeek/doubleagent/issues/165
 [#160]: https://github.com/seanthegeek/doubleagent/issues/160
 [#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#151]: https://github.com/seanthegeek/doubleagent/issues/151
 [#149]: https://github.com/seanthegeek/doubleagent/issues/149
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#143]: https://github.com/seanthegeek/doubleagent/issues/143
+[#139]: https://github.com/seanthegeek/doubleagent/issues/139
 [#138]: https://github.com/seanthegeek/doubleagent/issues/138
 [#136]: https://github.com/seanthegeek/doubleagent/issues/136
 [#135]: https://github.com/seanthegeek/doubleagent/issues/135

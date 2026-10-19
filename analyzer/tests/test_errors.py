@@ -256,3 +256,29 @@ def _empty_error_lists(func):
         for target in targets:
             if isinstance(target, ast.Name) and target.id.endswith("errors"):
                 yield target.id, node.lineno
+
+
+class IterJsonlTests(unittest.TestCase):
+    """The shared JSONL reader reports every line it does not yield."""
+
+    def test_non_object_line_is_an_error(self):
+        # Issue 228: a line that is valid JSON but not an object (an array,
+        # a string, a number, null) was skipped silently.
+        from doubleagent.parsers.base import iter_jsonl
+
+        lines = [b'{"a": 1}', b"[1, 2]", b'"text"', b"42", b"null", b"{bad", b'{"b": 2}']
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "t.jsonl"
+            path.write_bytes(b"\r\n".join(lines) + b"\n")
+            errors: list = []
+            records = list(iter_jsonl(path, errors))
+        self.assertEqual(records, [(1, {"a": 1}), (7, {"b": 2})])
+        self.assertEqual(
+            [(n, raw) for n, _message, raw in errors],
+            [(2, "[1, 2]"), (3, '"text"'), (4, "42"), (5, "null"), (6, "{bad")],
+        )
+        self.assertEqual(
+            [message for _n, message, _raw in errors[:4]],
+            ["unparseable line (not a JSON object)"] * 4,
+        )
+        self.assertTrue(errors[4][1].startswith("unparseable line (Expecting"))

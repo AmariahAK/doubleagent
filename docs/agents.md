@@ -66,7 +66,7 @@ agent name in each row links to its subsection.
 | [`ollama`](#ollama) | parsed | source; fixture only | [collector research](../collectors/research/ollama.md); [analyzer research](../analyzer/research/ollama.md) |
 | [`open-interpreter`](#open-interpreter) | parsed | source; fixture only | [collector research](../collectors/research/open-interpreter.md); [analyzer research](../analyzer/research/open-interpreter.md); [issue 70](https://github.com/seanthegeek/doubleagent/issues/70); the legacy Python tool's `conversations/*.json` files are collected but not parsed yet |
 | [`openclaw`](#openclaw) | parsed | source; fixture only | [collector research](../collectors/research/openclaw.md); [analyzer research](../analyzer/research/openclaw.md) |
-| [`opencode`](#opencode) | parsed | source; fixture only | [collector research](../collectors/research/opencode.md); [analyzer research](../analyzer/research/opencode.md); [issue 139](https://github.com/seanthegeek/doubleagent/issues/139); undecodable message parts and records are counted, not carried in full |
+| [`opencode`](#opencode) | parsed | source; fixture only | [collector research](../collectors/research/opencode.md); [analyzer research](../analyzer/research/opencode.md); [issue 139](https://github.com/seanthegeek/doubleagent/issues/139) |
 | [`openhands`](#openhands) | parsed | source; fixture only | [collector research](../collectors/research/openhands.md); [analyzer research](../analyzer/research/openhands.md) |
 | [`pearai`](#pearai) | parsed | source; fixture only | [collector research](../collectors/research/pearai.md); [analyzer research](../analyzer/research/pearai.md) |
 | [`pi`](#pi) | parsed | source; fixture only | [collector research](../collectors/research/pi.md); [analyzer research](../analyzer/research/pi.md) |
@@ -110,7 +110,9 @@ agent's history for full text and model, `messages/<n>.txt` for long tool
 results; history-only turns without timestamps when the log was trimmed at
 1000 items) under `agent-zero`, `agent-zero/<instance>` or
 `Desktop/agent-zero`, also the legacy `chats/<ctxid>.json` and
-`tmp/chats`; project path is the container path `/a0/usr/projects/<name>`.
+`tmp/chats`, or at the base of an `*a0_usr` or `a0-launcher-*-usr`
+Docker or Podman volume (`chats/<ctxid>/chat.json` and the legacy
+`chats/<ctxid>.json`); project path is the container path `/a0/usr/projects/<name>`.
 From the same file, each agent's `data.responses_state` (a turn chained
 on a provider-stored response marks the chat synced) and the chat's
 Telegram, WhatsApp and email `data` keys (a relayed chat, so the parser
@@ -521,7 +523,8 @@ with a `[rewound]` prefix) and two secondary sources, the quick snapshots
 snapshot <id>` row; collected only with `--full`) and the
 `sessions/<id>.jsonl` diverts written when `state.db` was replaced under a
 running process, under `.hermes`, `.hermes_<suffix>`,
-`AppData/Local/hermes` and their `profiles/<name>/` homes. Also
+`AppData/Local/hermes` and their `profiles/<name>/` homes, or at the
+root of a `*hermes*` Docker or Podman volume. Also
 `pastes/pending.json`, the paste.rs links of recent `hermes debug share`
 uploads.
 
@@ -777,7 +780,7 @@ Files read: The `rjmacarthy.twinny` row of a VS Code or fork
 no time of their own: every row carries the conversation's `updatedAt`.
 Provider `apiKey`s in the same value are never emitted.
 
-Validated against: Source at [9339bd10](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6), synthetic fixture.
+Validated against: Source at [9339bd10](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6), synthetic fixture; the `said` tool step of Twinny 4.3.5 and later from source at [0337b265](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a) (version 4.3.15), synthetic fixture.
 
 ### `vscode`
 

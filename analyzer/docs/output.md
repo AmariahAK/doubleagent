@@ -869,14 +869,27 @@ line cut off mid-write, is reported as its own `system` row whose
 decoder's message and `<line>` is the whole line as read (decoded as
 UTF-8 with undecodable bytes replaced, less its line terminator), with
 nothing repaired, extracted or shortened. The rest of the file is still
-read. Readers of JSON arrays say `unparseable record <N> (<reason>)`, with
-the record's text from its first character to the end of the file, and a
-line that decodes but cannot be applied names what failed, as VS Code's
-`parser: mutation not applied (<reason>): <line>` does. An error that
-concerns the whole file rather than one line (the file cannot be read, is
-not a JSON array, or ends inside an array) is one `system` row
-`parser: <message>`, such as `parser: unterminated JSON array`, with the
-line number when the error has one and `0` otherwise.
+read. A line that is valid JSON but not an object, in a format whose
+lines are objects, is reported the same way as `parser: unparseable line
+(not a JSON object): <line>` (since 0.19.0). A database row or an array
+element that does not decode is `parser: unparseable record <N>
+(<reason>): <record>`: `<N>` is the row's `rowid` (or the id the table
+keys it by), the element's position or its index, `<reason>` names the
+table and column when the parser knows them (`(<table>.<column>:
+<reason>)`, as in `goose`'s `messages.content_json` or `opencode`'s
+`part.data`) and otherwise the decoder's message or `not a JSON object`,
+and `<record>` is the stored value in full as text (a binary blob as
+hex, as `zed` writes a `zstd` thread blob). Readers of JSON arrays use
+the same form, with the record's text from its first character to the
+end of the file, and a line that decodes but cannot be applied names what
+failed, as VS Code's `parser: mutation not applied (<reason>): <line>`
+does. An error that concerns the whole file rather than one line (the
+file cannot be read, is not a JSON array, ends inside an array, is not a
+SQLite database, or lacks the table the format keeps its records in) is
+one `system` row `parser: <message>`, such as `parser: unterminated JSON
+array`, `parser: not a SQLite database`, `parser: SQLite error:
+<error>` or `parser: no <table> table in the session database`, with
+the line number when the error has one and `0` otherwise.
 
 Antigravity's permission state is also typed `system`. A grant recorded on
 a step is `permission grant: action=<action> target=<target>
@@ -1054,6 +1067,14 @@ channel <channelName> chat <chatId> sender <senderId> thread <threadId>
 the entry's `sessionId` as `session_id` and its `cwd` as
 `project_path`, at `startedAt`, or at the file's modification time with
 the text ending `file mtime)`; the daemon form names its `routes.json`.
+Since 0.19.0 both parsers read a `trustedFolders.json` with a byte-order
+mark, comments or trailing commas, as Qwen Code does. A Qwen Code `user`
+record the user did not type is a `system` row `<subtype>
+(provenance=<provenance> agent=<agentName> agentId=<agentId>): <text>`,
+the parts the record lacks left out: a `cron` or `notification` record
+(`cron (provenance=system): ...`), an `agent_message` or `agent_mention`
+another workspace agent wrote (`provenance=external_agent`), and a
+record of `goal_runtime` provenance; the user's own `agent_mention` stays a `user` row.
 
 The `antigravity` parser writes `model: <id>` before the rows of a
 conversation's first step that the `gen_metadata` table names a model for
@@ -1077,10 +1098,29 @@ column of the row is the new `<providerID>/<modelID>`. They write
 agent=<new>` for the message's `agent` and for a V2 `agent-switched`
 record, because an OpenCode or Kilo Code agent (`build`, `plan`, a custom
 one) is a mode with its own permission ruleset. Both rows take the
-message's timestamp and `source_line` and precede its other rows. The
+message's timestamp and `source_line` and precede its other rows. Since
+0.19.0 they read an OpenCode 2.0 database: session-start rows come from
+`session_v2` and end with `fork=<id>` for a forked session, and the
+`session_message` records of 2.0 add these rows: a `shell` record's
+`tool_use` row (tool `shell`) and its `tool_result` row, whose text starts
+`[timeout]`, `[killed]` or `[exit <code>]` when the command did not exit
+0; `location switched: <old directory> -> <new directory>` with
+` workspace=<id>` and ` subpath=<path>` when recorded (the session's
+`project_path` stays its `directory`); `skill <name>: <text>`; `idle:
+<outcome>` with the error after it when there is one; and `compaction
+<reason> <status> <summary>`, all `system` but the shell rows. A session
+that a 2.0 database holds only in the 1.x `session` table has a
+session-start row ending `(only in the 1.x session table)`, and its rows
+come from the 1.x `message` and `part` tables (see
+[Secondary sources](#secondary-sources)). The
 `crush` parser writes `model: <model> provider=<provider>` and `model:
 <old> -> <new> provider=<provider>` the same way, from each message's
-`model` and `provider`; it writes no permission rows, because Crush
+`model` and `provider`, where `<model>` is the model that served the
+turn: Crush's `prism_model_id` for a Hyper Prism turn, else `model`.
+Since 0.19.0 the row ends with ` requested=<model>` when the requested
+`model` differs from the served one, and the `model` column reads
+`<provider>/<served model>`, or the served model alone when no provider
+is recorded. It writes no permission rows, because Crush
 records no permission state the research names.
 The `opencode` and `kilo-code` parsers write, after a database's
 session-start rows, `session synced: share <id> url <url> (from
@@ -1208,9 +1248,18 @@ the user in the chat is `permission decision: confirmation
 isUsed=<true|false> buttons=<list> title=<title>` with its message on
 the next line, and the request that answering it sent is followed by
 `permission decision: confirmation=<button label>`. Cody's confirmation
-steps are `permission decision: confirmation state=<state>
-title=<title>` with the step's description and content on the next
-lines. Twinny's tool steps saved while waiting for the user's Run or
+steps are `permission decision: <decision> confirmation state=<state>
+error=<message> title=<title>`, the parts the step lacks left out, with
+the step's description and content on the next lines. Since 0.19.0
+`<decision>` is `rejected` for a step the user refused (saved as state
+`error` with the message `Command rejected`) and `approved or
+unanswered` for a `pending` step, because Cody saves an approval and an
+unanswered request the same way; any other step reads `permission
+decision: confirmation state=<state> ...` with no separate decision
+word. VS Code's session-start row ends with `workspace=<path>` when the
+chat's workspace is a `.code-workspace` file (since 0.19.0); the
+`project_path` is the session's `workingDirectory`, else the
+workspace's folder, never that file. Twinny's tool steps saved while waiting for the user's Run or
 Skip, or skipped, are `permission decision: waiting` and `permission
 decision: skipped`, each with ` approval=<command|change>` when the
 step records what was asked, after the step's `tool_result` row with
@@ -1263,7 +1312,15 @@ the history entry whose `request_metadata.model_id` names it, ending
 conversation-level field stood in. `hermes` writes them from the
 `session_model_usage` table at each model's first use, with
 ` provider=<billing_provider>`, or one `model: <id>` from the session row
-at its start. `ollama` writes them before the assistant message whose
+at its start. Since 0.19.0 a switch made in the Hermes TUI or desktop
+app, stored as a message with `display_kind` `model_switch`, is also a
+row `model: <old> -> <new> provider=<provider>` at the switch time,
+`<old>` being the previous switch's model, else the last model the
+`session_model_usage` table first saw before it; `model: <new>` when
+neither is known, and `model_switch: <text>` when the stored message
+does not parse. Such a switch can therefore appear twice, once from the
+stored message and once from the usage table at the model's first use.
+`ollama` writes them before the assistant message whose
 `model_name` names the model. `goose` also writes
 `permission mode: <goose_mode>` after each session's start row, and,
 for a session the gateway relayed through its Telegram bot, `session
@@ -1426,7 +1483,13 @@ drops are counted per agent on the `dropped:` line of stdout and under
 0.13.0 both rows were written. Since analyzer 0.15.0 every secondary
 event row kept is marked `recovered` `yes` in `timeline.jsonl`; a
 `system` row of a secondary source is not, since it describes the
-source or the session rather than a lost turn. [`sessions.jsonl`](#sessionsjsonl)
+source or the session rather than a lost turn. A parser whose primary
+and secondary copies live in one file pairs them itself and marks the
+event rows it took from the secondary copy `recovered` `yes` in the same
+way: since 0.19.0 the `opencode` parser reads the 1.x
+`message` and `part` tables of a database upgraded to OpenCode 2.0 only
+for a session its `session_message` table does not hold, matched exactly
+on the session id. [`sessions.jsonl`](#sessionsjsonl)
 `recovered` says whether a session was rebuilt from such rows alone
 (`yes`) or in part (`partial`):
 `jq -c 'select(.recovered == "yes")' out/sessions.jsonl` lists the
@@ -1452,12 +1515,13 @@ beside its `session synced: server conversation` row.
 | `copilot-cli` | `.copilot/session-store.db` (`turns`, the prompt and the final reply of each turn, stamped when the turn ends: a one-hour window; its `sessions` name pairs with the `workspace.yaml` row; `session_files`, `session_refs`, `checkpoints` and `forge_trajectory_events` rows the log has no copy of are always kept); `.copilot/session-state/<id>/rewind-file-snapshots/index.json` (each turn's prompt, a one-hour window); `.copilot/command-history-state.json` (no timestamp, session or project: matches on text alone); each also under the pre-XDG `.local/state/.copilot` | `.copilot/session-state/<id>/events.jsonl` and `workspace.yaml` |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
 | `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone) | `.local/share/goose/sessions/sessions.db` |
-| `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full`) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session), also under `.hermes_<suffix>`, `AppData/Local/hermes` and `profiles/<name>/` | `.hermes/state.db` |
+| `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full`) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session), also under `.hermes_<suffix>`, `AppData/Local/hermes`, `profiles/<name>/` and, since 0.19.0, the root of a Docker or Podman volume | `.hermes/state.db` |
 | `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
-| `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot/history/cli_history` (no session or project: matches on text and time) | `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
+| `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot*/history/cli_history` (no session or project: matches on text and time); when a `sessions.sqlite3` sits in the namespace directory, the namespace's `<key>.jsonl` files and their `jsonl-backup/` copies, which the database imported (since 0.19.0) | `.nanobot*/sessions/<workspace-id>/sessions.sqlite3`, else `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
 | `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
 | `openclaw` | `.openclaw/agents/<id>/sessions/` copies of a transcript: the published `*.jsonl.reset.*` / `*.jsonl.deleted.*` archive files, `*.checkpoint.<uuid>.jsonl` and `*.jsonl.pre-doctor-*-repair-*.bak` (each copy's session-start row names it and is kept) | `.openclaw/agents/<id>/agent/openclaw-agent.sqlite` (`transcript_events` and the `session_transcript_archives` blobs) and the legacy `sessions/<id>.jsonl` |
+| `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
 | `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |

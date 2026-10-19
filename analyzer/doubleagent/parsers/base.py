@@ -85,9 +85,12 @@ def iter_jsonl(path, errors: list) -> Iterator[tuple[int, dict]]:
     """Yield (line_number, record) for each JSON object line. A bad line is
     appended to `errors` as (line_number, message, raw_text) and skipped: a
     transcript truncated mid-write by a running agent must not lose its
-    earlier turns. `raw_text` is the line as read, decoded UTF-8 with
-    `errors="replace"`, less only its trailing line terminator, for
-    `error_rows` to report in full (issue 136)."""
+    earlier turns. A line that decodes to a JSON value other than an object
+    (an array, a string, a number, `null`) is a bad line too, with the
+    message `unparseable line (not a JSON object)` (issue 228); a parser
+    whose format holds such lines reads them itself. `raw_text` is the line
+    as read, decoded UTF-8 with `errors="replace"`, less only its trailing
+    line terminator, for `error_rows` to report in full (issue 136)."""
     with open(path, "rb") as fh:
         for n, raw in enumerate(fh, 1):
             stripped = raw.strip()
@@ -98,8 +101,10 @@ def iter_jsonl(path, errors: list) -> Iterator[tuple[int, dict]]:
             except ValueError as e:
                 errors.append((n, "unparseable line (%s)" % e, line_text(raw)))
                 continue
-            if isinstance(rec, dict):
-                yield n, rec
+            if not isinstance(rec, dict):
+                errors.append((n, "unparseable line (not a JSON object)", line_text(raw)))
+                continue
+            yield n, rec
 
 
 def line_text(raw: bytes) -> str:

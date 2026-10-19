@@ -55,9 +55,12 @@ version 0.24.7, Apache-2.0. Open source.
     source-derived (QwenLM/qwen-code at
     [`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1)).
   - Bad lines: covered for the transcript, `logs.json`,
-    `trustedFolders.json` and the channel routes; a `trustedFolders.json`
-    that Qwen accepts (trailing comma, byte-order mark) is reported by
-    the parser as not a JSON object.
+    `trustedFolders.json` and the channel routes. Since analyzer 0.19.0
+    the shared trusted-folders reader in `parsers/gemini_cli.py` accepts
+    both forms, plain JSON with comments and Qwen's JSONC with trailing
+    commas and a byte-order mark, so a file Qwen accepts yields its
+    `permission setting:` rows; only a file that is still undecodable is
+    reported as not a JSON object (issue 173).
 
 ## 2. Transcript files
 
@@ -493,9 +496,12 @@ at that commit.
   ([`cli/src/utils/jsonc-editor.ts:24`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/utils/jsonc-editor.ts#L24),
   [92-107](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/utils/jsonc-editor.ts#L92-L107);
   [`cli/src/config/trustedFolders.ts:172-182`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/config/trustedFolders.ts#L172-L182)).
-  The shared `trusted_folder_rows` strips comments and calls
-  `json.loads`, so a file Qwen accepts can yield only the whole-file
-  `parser:` row.
+  Before analyzer 0.19.0 the shared `trusted_folder_rows` stripped
+  comments and called `json.loads`, so a file Qwen accepts could yield
+  only the whole-file `parser:` row; since 0.19.0 it reads the file with
+  `parse_jsonc` in `parsers/gemini_cli.py`, which strips a byte-order
+  mark, comments and trailing commas outside strings, so the shared
+  reader accepts both forms (issue 173).
 - Bad lines: `usage_record.jsonl` is JSONL and needs `iter_jsonl` and
   `error_rows` when it is parsed.
 

@@ -61,7 +61,14 @@ one `parser: <n> record(s) with undecodable data` row instead of one row
 per record, and Kilo Code inherits that row. OpenCode 2.0 moved
 sessions to a `session_v2` table that the parser does not read; no
 `session_v2` table was found in Kilo Code's packages at [`87cc35c`](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22), so
-this applies only once Kilo Code takes that store.
+this applies only once Kilo Code takes that store. Both are fixed in the
+OpenCode parser since analyzer 0.19.0 and apply to Kilo Code through the
+subclass: each undecodable record, part file and event is its own
+`parser: unparseable record <rowid> (<table>.data: <reason>): <data>` or
+`parser: unparseable part <partID> (<reason>): <text>` row carrying it in
+full (issue 139), and a database with `session_v2` is read from it, its
+`session_message` transcript and the 1.x tables only for a session that
+`session_message` lacks (issue 165).
 
 ## 2. Transcript files
 

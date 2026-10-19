@@ -79,7 +79,9 @@ class Row:
     source_file: str = ""
     source_line: int = 0
     # "yes" for a row of a secondary source that survived deduplication, so
-    # the primary store does not hold the event (set by `dedup.deduplicate`).
+    # the primary store does not hold the event (set by `dedup.deduplicate`,
+    # or by a parser that pairs both copies within one file, as `opencode`
+    # does for the 1.x tables of a 2.0 database).
     recovered: str = ""
 
     def as_dict(self) -> dict[str, object]:

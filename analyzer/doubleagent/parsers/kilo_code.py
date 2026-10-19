@@ -16,7 +16,11 @@ Files, relative to the home directory:
   The `model:` and `permission mode: agent=<name>` rows therefore come
   from each V1 message's model and `agent` (see `opencode.py`); the V2
   `model-switched` and `agent-switched` records are read only for a
-  session that has no V1 rows.
+  session that has no V1 rows. The OpenCode 2.0 reading (`session_v2`
+  headers, `session_message` as the transcript, the 1.x tables only for a
+  session it lacks; issue 165) and the full-record `parser: unparseable
+  record` and `unparseable part` rows (issue 139) apply here through the
+  subclass, though Kilo Code at 87cc35c has no `session_v2` table.
 * `.local/share/kilo/storage/{session,message,part,project}/...` and the
   older `.local/share/kilo/project/<slug>/storage/session/...` JSON trees,
   laid out exactly as OpenCode's.
@@ -136,6 +140,12 @@ class KiloCodeParser(OpenCodeParser):
     name = "kilo-code"
     data_dir = ".local/share/kilo"
     db_prefixes = ("kilo", "opencode")
+    # Kilo Code at 87cc35c has no `session_v2` table and no pre-release
+    # database that a later build imports, so it reads no secondary source:
+    # every database under its directory, `opencode-next.db` included, is
+    # primary, and `sessions.jsonl` `recovered` stays "".
+    has_secondary = False
+    next_db = ""
 
     def __init__(self) -> None:
         super().__init__()
