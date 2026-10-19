@@ -1,18 +1,19 @@
-# Flowise: on-disk paths
+# flowise
 
-This document came out of the agent framework sweep for issue #64; see
-[frameworks.md](frameworks.md) for the frameworks that got no catalog line.
-There is no analyzer document yet.
+Flowise is a Node.js visual agent and chatflow builder (`npx flowise start`, Docker); its
+Agentflow v2 is the second-generation agent canvas. This document came out of the agent
+framework sweep for [issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
+[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
+line. There is no analyzer document yet.
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 [FlowiseAI/Flowise](https://github.com/FlowiseAI/Flowise), commit
 [`9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb`](https://github.com/FlowiseAI/Flowise/commit/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb).
-A Node.js visual agent and chatflow builder (`npx flowise start`, Docker).
 Licence: Apache 2.0, except `packages/server/src/enterprise`, which is
 commercial
 ([LICENSE.md:1-7](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/LICENSE.md#L1-L7)).
-All claims are from source; nothing was installed or run.
+All claims are from source.
 
 Flowise executes tools on the host. Custom JavaScript functions and tools
 run in-process in a vm2 `NodeVM` unless `E2B_APIKEY` is set
@@ -23,11 +24,17 @@ custom scripts
 ([MCP/core.ts:117](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/tools/MCP/core.ts#L117),
 [248-258](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/tools/MCP/core.ts#L248-L258)).
 
+### Observed
+
+- No real install: nothing was installed or run.
+
+### Source reviews
+
 - **Source review (2026-10-19)**: HEAD is still
   [`9291856`](https://github.com/FlowiseAI/Flowise/commit/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb),
   the commit this document already cited, so the review read the same
   tree for the requirement classes the first pass did not look for. From
-  source only; the detail is in [section 2](#2-per-user-storage).
+  source only; the detail is in [Database detail](#database-detail).
   - Permission state: found. Agentflow v2 (the second-generation agent
     canvas) pauses for a human at a Human Input node and at any Agent-node
     tool marked "require human input"; the decision (`proceed` or
@@ -69,7 +76,16 @@ Logs are not under the home. They go to `<install>/packages/server/logs`
 ([utils/config.ts:10](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/utils/config.ts#L10),
 [services/log/index.ts:73-75](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/services/log/index.ts#L73-L75)).
 
-Docker: the README compose bind-mounts the host's `~/.flowise` to
+### Scratch directories
+
+Flowise has no agent working directory. Chat
+uploads and generated files go to per-chatflow, per-chat directories
+under `.flowise/storage`, which the `.flowise` line collects; no row names
+them as a project.
+
+### Docker
+
+The README compose bind-mounts the host's `~/.flowise` to
 `/home/node/.flowise`
 ([docker/docker-compose.yml:162-165](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/docker/docker-compose.yml#L162-L165)),
 so the home line already covers it. The only named volume is `redis_data`,
@@ -79,6 +95,8 @@ in the queue compose
 it is generic and not matched. An inferred `*flowise*` volume line, like
 the inferred block for Tabby and others, was considered and not added:
 the documented deployment uses a bind mount.
+
+### Database detail
 
 Detail from the 2026-10-19 review, for a future analyzer document. All
 of it is in `database.sqlite`:
@@ -109,7 +127,7 @@ of it is in `database.sqlite`:
   [2241-2268](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/agentflow/Agent/Agent.ts#L2241-L2268),
   [2631-2642](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/agentflow/Agent/Agent.ts#L2631-L2642)).
   No standing allow list exists apart from the MCP custom-script allow
-  list cited in [section 1](#1-source-and-evidence-level), which is
+  list cited in [section 1](#1-source-and-evidence), which is
   server configuration.
 - **Model.** An Agent node's step in `execution.executionData` keeps the
   node's inputs, among them `agentModel` and `agentModelConfig`, whose
@@ -150,11 +168,6 @@ of it is in `database.sqlite`:
   ([144-180](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/services/chat-messages/index.ts#L144-L180)).
   Deleting a chatflow removes its messages, feedback and upsert history
   ([chatflows/index.ts:135-147](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/services/chatflows/index.ts#L135-L147)).
-
-**Scratch directories.** Flowise has no agent working directory. Chat
-uploads and generated files go to per-chatflow, per-chat directories
-under `.flowise/storage`, which the `.flowise` line collects; no row names
-them as a project.
 
 ## 3. Credentials
 
