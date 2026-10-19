@@ -1,13 +1,25 @@
-# Kilo Code: on-disk paths
+# kilo-code
 
-## 1. Source and evidence level
+Kilo Code is an open-source coding agent: a CLI, terminal UI (TUI) and server that are an
+OpenCode fork, and a VS Code extension that is a thin client of that server. It began as a fork
+of Roo Code ([`roo-code.md`](roo-code.md)), itself a fork of Cline, and its extension still reads
+the Roo-style tasks that pre-fork installs left. Record schemas:
+[`analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md) and
+[`opencode.md`](../../analyzer/research/opencode.md).
+
+## 1. Source and evidence
 
 Open source. [Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode) at [`76bcfd40be616a72f4697b3041565f322245b462`](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462)
 (clone `scratchpad/repos/kilo`). The CLI/TUI/server is an OpenCode fork
 (`packages/core`, `packages/opencode`); the VS Code extension
 `kilocode.kilo-code` ([`packages/kilo-vscode/package.json:2`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-vscode/package.json#L2),[`11`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-vscode/package.json#L11)) is a thin
-client of that server. All claims from source. Record schemas:
-[`analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md) and `opencode.md`.
+client of that server. All claims from source.
+
+### Observed
+
+No real install.
+
+### Source reviews
 
 - **Source review (2026-10-19)**: [Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode)
   at [`87cc35c`](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22), against [`76bcfd4`](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462) cited here; 9 cited
@@ -16,8 +28,8 @@ client of that server. All claims from source. Record schemas:
   collects; the TUI prompt history; the retention state; remote control
   log lines; remote attachments under the system temp directory; and
   project worktrees ([section 2](#2-per-user-storage),
-  [section 6](#6-project-path)). Record shapes are in
-  [section 2 of `analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md#2-transcript-files).
+  [section 6](#6-where-the-project-path-is-recorded)). Record shapes are in
+  [section 2 of `analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md#2-transcript-stores).
 
 ## 2. Per-user storage
 
@@ -27,6 +39,20 @@ so the same paths on Linux, macOS and Windows; `XDG_DATA_HOME`,
 `KILO_TEST_HOME` overrides home ([`global.ts:32`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L32)). Newlines are stripped
 from `$HOME` ([`global.ts:21`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L21)). All three roots are tagged no-index for
 Spotlight ([`global.ts:58`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L58)).
+
+### Scratch directories
+
+`~/.local/share/kilo/worktree/<project id>/` is
+under the catalog line `kilo-code|.local/share/kilo` and in `EXCLUDES`,
+and the analyzer's catalog rule classes it. A project's
+`.kilo/worktrees/<name>` (see [section 5](#5-project-local-files)) is the
+agent's own worktree inside the user's project; it is in `EXCLUDES` but
+under no home catalog entry, so the analyzer counts it as a project. The
+remote attachment directory
+([Found in the source review of 2026-10-19](#found-in-the-source-review-of-2026-10-19))
+is a scratch directory outside the home.
+
+### `~/.local/share/kilo`
 
 `~/.local/share/kilo` (data):
 
@@ -50,9 +76,13 @@ Spotlight ([`global.ts:58`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be
 - `state/` fallback for the state dir when `XDG_STATE_HOME` is unset and
   `~/.local/state/kilo` is unusable ([`global.ts:26`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L26); [`kilocode/global.ts:38-72`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/kilocode/global.ts#L38-L72)).
 
+### `~/.local/state/kilo`
+
 `~/.local/state/kilo` (state): `indexing/` codebase index
 ([`kilocode/indexing.ts:298`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/indexing.ts#L298)), `model.json`, `plugin-meta.json`,
 `background-process/`.
+
+### `~/.config/kilo`
 
 `~/.config/kilo` (config, `KILO_CONFIG_DIR` overrides, [`flag.ts:140-141`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/flag/flag.ts#L140-L141)):
 `kilo.jsonc`, `kilo.json`, `opencode.jsonc`, `opencode.json`,
@@ -61,9 +91,13 @@ Spotlight ([`global.ts:58`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be
 `marketplace/`. `KILO_CONFIG` points at an extra config file,
 `KILO_CONFIG_CONTENT` inlines one ([`config.ts:762-777`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/config/config.ts#L762-L777),[`897-903`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/config/config.ts#L897-L903)).
 
+### `~/.cache/kilo`
+
 `~/.cache/kilo`: `bin/` ([`global.ts:35`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L35), LSP servers such as clangd, zls),
 `skills/`, `packages/git/`, `commands/` ([`kilocode/skill-remove.ts:25`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/skill-remove.ts#L25);
 [`kilocode/plugin/git-source.ts:158`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/plugin/git-source.ts#L158); [`kilocode/command-files.ts:118`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/command-files.ts#L118)).
+
+### `~/.kilo` and `~/.kilocode`
 
 `~/.kilo`: `bin/kilo` installer target ([`install:70`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/install#L70)), `skills/`
 ([`marketplace/paths.ts:81`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/marketplace/paths.ts#L81)), `rules/` ([`kilocode/rules-migrator.ts:12`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/rules-migrator.ts#L12)); it
@@ -73,11 +107,15 @@ and `~/.kilocode` are extra config roots ([`kilocode/config/overlay.ts:244`](htt
 `~/.kilocodemodes` ([`modes-migrator.ts:174`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/modes-migrator.ts#L174)). `~/.agents` is read for
 skills ([`kilocode/config/claude-migration.ts:641`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/config/claude-migration.ts#L641)).
 
+### VS Code extension
+
 VS Code `globalStorage/kilocode.kilo-code/`: the current extension keeps only
 `globalState` keys ([`packages/kilo-vscode/src/KiloProvider.ts:1652-1663`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-vscode/src/KiloProvider.ts#L1652-L1663))
 and reads legacy Roo-style `tasks/_index.json` for import
 ([`packages/kilo-vscode/src/legacy-migration/task-store.ts:136`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-vscode/src/legacy-migration/task-store.ts#L136)). Pre-fork
 installs leave `tasks/`, `checkpoints/`, `cache/` there.
+
+### Found in the source review of 2026-10-19
 
 Found in the 2026-10-19 source review at [`87cc35c`](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22), all present
 at the cited commit too:
@@ -114,16 +152,7 @@ at the cited commit too:
   Outside the home, so no catalog line reaches it.
 - The `permission` key of the global config files in `~/.config/kilo`,
   which an "always" approval rewrites; see
-  [section 8 of `analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md#8-parser-plan).
-
-Scratch directories: `~/.local/share/kilo/worktree/<project id>/` is
-under the catalog line `kilo-code|.local/share/kilo` and in `EXCLUDES`,
-and the analyzer's catalog rule classes it. A project's
-`.kilo/worktrees/<name>` (see [section 5](#5-project-local)) is the
-agent's own worktree inside the user's project; it is in `EXCLUDES` but
-under no home catalog entry, so the analyzer counts it as a project. The
-remote attachment directory above is a scratch directory outside the
-home.
+  [section 8 of `analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md#permission-state).
 
 ## 3. Credentials
 
@@ -137,7 +166,7 @@ home.
   and `config.json` can embed `{env:...}` provider keys and MCP headers.
 - No keychain use. `KILO_SERVER_PASSWORD` is env only ([`flag.ts:68`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/flag/flag.ts#L68)).
 
-## 4. Exclude
+## 4. Exclusions
 
 `.local/share/kilo/snapshot`, `/worktree`, `/repos`, `/tool-output`,
 `.local/state/kilo/indexing`, `.local/share/kilo/state/indexing`,
@@ -148,7 +177,8 @@ home.
 collected from it. Its `<ISO time>.log` files hold the session service's
 `creating session`, `sharing`, `unsharing` and `removing share` lines,
 the only local record of a session deletion whose remote delete failed
-(see [section 8 of `analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md#8-parser-plan)).
+(see
+[section 8 of `analyzer/research/kilo-code.md`](../../analyzer/research/kilo-code.md#sync-relay-and-origin)).
 The directory is bounded: the ten newest `????-??-??T??????.log` files
 are kept and each rotates at 50 MB
 ([`packages/core/src/util/log.ts:24`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/util/log.ts#L24),
@@ -156,7 +186,7 @@ are kept and each rotates at 50 MB
 [`127-141`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/util/log.ts#L127-L141)). OpenCode's log
 directory is collected as well.
 
-## 5. Project-local
+## 5. Project-local files
 
 `.kilo/` and legacy `.kilocode/` at any depth ([`kilocode/permission/config-paths.ts:9-11`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/permission/config-paths.ts#L9-L11);
 [`config.ts:808`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/config/config.ts#L808)) with `rules/`, `workflows/`, `agent/`, `agents/`, `skills/`,
@@ -168,7 +198,7 @@ directory is collected as well.
 ([`modes-migrator.ts:187`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/modes-migrator.ts#L187)), `.kilocoderules` ([`rules-migrator.ts:7`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/rules-migrator.ts#L7)),
 `AGENTS.md`. No per-project database.
 
-## 6. Project path
+## 6. Where the project path is recorded
 
 `kilo.db` table `project`: `worktree` (absolute), `vcs`, `name`,
 `sandboxes[]`; table `project_directory`: `directory`, `type`
