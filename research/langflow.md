@@ -1,11 +1,11 @@
 # langflow
 
 Langflow is a Python visual agent builder (`langflow` and the `lfx` package), served as an
-open-source (OSS) server and as Langflow Desktop, a closed-source desktop build. This document
-came out of the agent framework sweep for
+open-source (OSS) server and as Langflow Desktop, a closed-source desktop build. It came into
+the catalog from the agent framework sweep for
 [issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
-[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
-line. There is no analyzer document yet.
+[`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. Its
+parser is in the backlog ([issue 141](https://github.com/seanthegeek/doubleagent/issues/141)).
 
 ## 1. Source and evidence
 
@@ -13,13 +13,12 @@ line. There is no analyzer document yet.
 ([LICENSE:1-3](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/LICENSE#L1-L3)),
 commit
 [`504c02fc47e76087b82b0e7cbe4186e9cdd916d4`](https://github.com/langflow-ai/langflow/commit/504c02fc47e76087b82b0e7cbe4186e9cdd916d4).
-The OSS
-paths are from source. **Langflow Desktop is closed source; its paths rest
-on the documentation in this repository only.** Platform directory
-resolution is cited from [tox-dev/platformdirs](https://github.com/tox-dev/platformdirs) at
+The OSS paths are from source. **Langflow Desktop is closed source; its paths rest on the
+documentation in this repository only.** Platform directory resolution is cited from
+[tox-dev/platformdirs](https://github.com/tox-dev/platformdirs) at
 [`960ff632eb575deb6f0d5bf49519d5a2ee2098b6`](https://github.com/tox-dev/platformdirs/commit/960ff632eb575deb6f0d5bf49519d5a2ee2098b6).
-Langflow executes code on the host: custom component code is `exec`'d in
-the server process
+
+Langflow executes code on the host: custom component code is `exec`'d in the server process
 ([validate.py:692](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/custom/validate.py#L692)),
 there is a Python Interpreter component
 ([python_repl_core.py:13-14](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/components/utilities/python_repl_core.py#L13-L14)),
@@ -64,12 +63,11 @@ and MCP stdio servers are spawned on the host
   - Deletion: found: a session delete removes its `message` rows; a flow
     delete removes messages, transactions, vertex builds, versions and
     traces.
-  - Version drift: paths unchanged; `paths.py` lines moved (the config
-    directory validator is now at
+  - Version drift: paths unchanged; `paths.py` lines moved (the config directory validator is now at
     [paths.py:67-76](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/lfx/src/lfx/services/settings/groups/paths.py#L67-L76)),
-    `AUTO_LOGIN` now defaults to `False` in release packages, and the
-    tables `audit_events`, `trigger` (with `trigger_event`) and
-    `data_subject_request` are new since [`504c02f`](https://github.com/langflow-ai/langflow/commit/504c02fc47e76087b82b0e7cbe4186e9cdd916d4).
+    `AUTO_LOGIN` now defaults to `False` in release packages, and the tables `audit_events`,
+    `trigger` (with `trigger_event`) and `data_subject_request` are new since
+    [`504c02f`](https://github.com/langflow-ai/langflow/commit/504c02fc47e76087b82b0e7cbe4186e9cdd916d4).
   - Bad lines: no line-oriented file is collected apart from logs; every
     store is SQLite.
 
@@ -117,21 +115,18 @@ parser ever named it as a project. Nothing else is a working directory.
 
 #### OSS database
 
-The OSS database is not under the home: `langflow.db` defaults to the
-installed package directory (`site-packages/langflow/`), because
-`save_db_in_config_dir` is `False`
+The OSS database is not under the home: `langflow.db` defaults to the installed package directory
+(`site-packages/langflow/`), because `save_db_in_config_dir` is `False`
 ([database.py:18](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/services/settings/groups/database.py#L18),
 [110-121](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/services/settings/groups/database.py#L110-L121)).
-It holds the tables `message`, `transaction` (run history) and
-`vertex_build`
+It holds the tables `message`, `transaction` (run history) and `vertex_build`
 ([message/model.py:183](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/services/database/models/message/model.py#L183),
 [transactions/model.py:158](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/services/database/models/transactions/model.py#L158),
 [vertex_builds/model.py:70](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/backend/base/langflow/services/database/models/vertex_builds/model.py#L70)),
-plus `variable` (encrypted credentials). A virtual environment has no
-fixed home path, so the database is a manual step in
-[`collectors/docs/coverage.md`](../collectors/docs/coverage.md). A `uv tool` install would put it under
-`.local/share/uv/tools/langflow/...`, but uv was not cited, so that line
-was not added.
+plus `variable` (encrypted credentials). A virtual environment has no fixed home path, so the
+database is a manual step in [`collectors/docs/coverage.md`](../collectors/docs/coverage.md). A
+`uv tool` install would put it under `.local/share/uv/tools/langflow/...`, but uv was not cited, so
+that line was not added.
 
 #### Docker
 
@@ -150,7 +145,7 @@ unmatched. The image home is `/app/data`
 
 Detail from the 2026-10-19 review, at
 [`972d56c`](https://github.com/langflow-ai/langflow/commit/972d56c47d3830d17060ee85cfaad152df823041),
-for a future analyzer document over Desktop's `database.db` (or a
+for a future parser over Desktop's `database.db` (or a
 server `langflow.db` collected by hand):
 
 - **Model.** The native tracer is on unless `LANGFLOW_NATIVE_TRACING` is
@@ -231,9 +226,16 @@ Nowhere; Langflow has no project concept.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+Langflow is `backlog`: its parser is
+[issue 141](https://github.com/seanthegeek/doubleagent/issues/141), and nothing it writes is
+parsed yet. A parser would read Langflow Desktop's `database.db` (or a server `langflow.db`
+collected by hand, since the server's database is not under the home and is not collected,
+[OSS database](#oss-database)): `message` rows for the chat, `transaction` (which joins a
+component run to its chat session), `vertex_build` and `flow_version`, the native tracer's
+`trace` and `span` rows for the model of each LLM call, `audit_events`, `trigger` and
+`trigger_event`, `policy_bundle_revision` and `model_provider_policy` for standing policy, and
+`deployment` rows for flows pushed out ([Database detail](#database-detail)). That Desktop's
+`database.db` uses the open-source schema is an inference, since Desktop is closed source.
 
 ## 14. Confidence
 
