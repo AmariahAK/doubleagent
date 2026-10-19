@@ -1,18 +1,25 @@
-# Roo Code transcript schema
+# roo-code
 
-Catalog agent: `roo-code`. Roo Code forked Cline and keeps Cline's task
-layout, so the record shapes in [cline.md](cline.md) apply with the
-differences listed here. Paths cited are relative to the clone.
-
-Paths, credentials and the rest of the per-user state are in
+Catalog agent: `roo-code`, an open-source coding agent shipped as a VS Code extension and a CLI.
+Roo Code forked Cline and keeps Cline's task layout, so the record shapes in [cline.md](cline.md)
+apply with the differences listed here; PearAI bundles an older fork of it
+([pearai.md](pearai.md)). Paths, credentials and the rest of the per-user state are in
 [`collectors/research/roo-code.md`](../../collectors/research/roo-code.md).
 
-## 1. Source
+## 1. Source and evidence
 
 [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code) at [`b867ec9145750d0ae1ff7f02d35406e9bf2a0b16`](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16),
 Apache-2.0. Open source. Applies to the VS Code extension
 (`RooVeterinaryInc.roo-cline`, [`src/package.json:2`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L2),[`5`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L5)) and the CLI
 (`apps/cli`).
+
+Paths cited are relative to the clone.
+
+### Observed
+
+No real install.
+
+### Source reviews
 
 - **Source review (2026-10-19)**: [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code)
   HEAD is still [`b867ec9`](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16) (2026-05-15, "Remove roocode.com web
@@ -36,13 +43,14 @@ Apache-2.0. Open source. Applies to the VS Code extension
   - Scratch directories: found. The suggested worktree root
     `~/.roo/worktrees/` is under the catalog entry `.roo`; the CLI's
     `--ephemeral` storage is under the system temp directory and removed
-    on exit ([section 2](#2-transcript-files)).
-  - Deletion: found ([section 8](#8-parser-plan)).
+    on exit ([section 2](#2-transcript-stores)).
+  - Deletion: found ([section 8](#8-parser-plan);
+    [What survives a delete](#what-survives-a-delete)).
   - Version drift: none; HEAD is the cited commit.
   - Bad lines: already covered; every file the parser reads is a JSON
     document or array.
 
-## 2. Transcript files
+## 2. Transcript stores
 
 VS Code: `globalStorage/rooveterinaryinc.roo-cline/tasks/<taskId>/` with
 `api_conversation_history.json`, `ui_messages.json`, `task_metadata.json`,
@@ -57,19 +65,6 @@ root: `~/.vscode-mock/global-storage/` ([`apps/cli/src/lib/task-history/index.ts
 ([`apps/cli/src/lib/storage/config-dir.ts:5`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/config-dir.ts#L5)). The legacy transcript name
 `claude_messages.json` is read and then deleted on upgrade
 ([`src/core/task-persistence/apiMessages.ts:73-91`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/apiMessages.ts#L73-L91)).
-
-The CLI also keeps an input history, `~/.roo/cli-history.json`: the file name is joined to `getConfigDir()` ([`apps/cli/src/lib/storage/history.ts:20-22`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L20-L22)), which is `~/.roo` on every platform ([`apps/cli/src/lib/storage/config-dir.ts:5-9`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/config-dir.ts#L5-L9)). The catalog line `roo-code|.roo` collects it. It is the history the interactive prompt steps through with the arrow keys, not a transcript: see [section 3](#3-record-schema) for its shape.
-
-`roo --ephemeral` ("Run without persisting state",
-[`apps/cli/src/index.ts:53`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/index.ts#L53)) points the
-whole extension storage, tasks included, at a new
-`<system temp directory>/roo-cli-<epoch ms>-<random>` directory
-([`apps/cli/src/lib/storage/ephemeral.ts:5-10`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/ephemeral.ts#L5-L10),
-[`apps/cli/src/agent/extension-host.ts:378-381`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/agent/extension-host.ts#L378-L381))
-and removes it when the CLI exits
-([`:598-601`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/agent/extension-host.ts#L598-L601)). Such
-a task is outside the home, so no catalog line reaches it, and it
-survives only a CLI that was killed before its cleanup ran.
 
 ### What survives a delete
 
@@ -88,7 +83,22 @@ stated. The analyzer reads `cli-history.json` as a secondary source
 whose lines are kept only when no task has the same text (see
 [Secondary sources](../docs/output.md#secondary-sources)).
 
+### CLI ephemeral storage
+
+`roo --ephemeral` ("Run without persisting state",
+[`apps/cli/src/index.ts:53`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/index.ts#L53)) points the
+whole extension storage, tasks included, at a new
+`<system temp directory>/roo-cli-<epoch ms>-<random>` directory
+([`apps/cli/src/lib/storage/ephemeral.ts:5-10`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/ephemeral.ts#L5-L10),
+[`apps/cli/src/agent/extension-host.ts:378-381`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/agent/extension-host.ts#L378-L381))
+and removes it when the CLI exits
+([`:598-601`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/agent/extension-host.ts#L598-L601)). Such
+a task is outside the home, so no catalog line reaches it, and it
+survives only a CLI that was killed before its cleanup ran.
+
 ## 3. Record schema
+
+### Task files
 
 `api_conversation_history.json` is the Anthropic `MessageParam[]` shape as
 in Cline ([`apiMessages.ts:12`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/apiMessages.ts#L12)), extended with `ts` (ms), `isSummary`, `id`,
@@ -118,7 +128,9 @@ workspace?, mode?, apiConfigName?, status?, delegatedToId?, childIds?, ...`.
 
 Timestamps are millisecond epochs. No git branch is recorded.
 
-Permission records (2026-10-19). Every approval goes through `ask`: the
+### Permission records
+
+Source review of 2026-10-19. Every approval goes through `ask`: the
 `ask` record is written first, then `checkAutoApproval` decides
 `approve`, `deny`, `timeout` or `ask` from the settings
 ([`src/core/task/Task.ts:1313-1334`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L1313-L1334)).
@@ -137,20 +149,56 @@ note `{"status":"approved","feedback":...}`
 and `apiConfigName` names the provider profile
 ([`packages/types/src/history.ts:21-22`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/types/src/history.ts#L21-L22)).
 
-`cli-history.json` is `{version: 1, entries: string[]}` ([`history.ts:9-15`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L9-L15)), written pretty-printed with tabs and trimmed to the newest `MAX_HISTORY_ENTRIES` (500) on every save ([`history.ts:6-7`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L6-L7), [`64-77`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L64-L77)). `addToHistory` appends the trimmed line, skipping an empty one and one equal to the last entry ([`history.ts:90-108`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L90-L108)); `loadHistory` keeps only non-blank strings ([`history.ts:44-45`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L44-L45)). Entries are oldest first and carry no time, task id or workspace. The input box adds every submitted line before acting on it ([`apps/cli/src/ui/components/autocomplete/AutocompleteInput.tsx:180-198`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/components/autocomplete/AutocompleteInput.tsx#L180-L198); [`apps/cli/src/ui/hooks/useInputHistory.ts:83-97`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/hooks/useInputHistory.ts#L83-L97)), so it holds the first prompt of a task, the answers to follow-up questions and later messages, and CLI commands such as `/new` that the CLI handles itself and never sends to a task ([`apps/cli/src/ui/hooks/useTaskSubmit.ts:56-132`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/hooks/useTaskSubmit.ts#L56-L132)). A prompt given on the command line rather than typed into the input box does not pass through it.
-
-## 4. Joins
+## 4. Joins and timestamps
 
 Directory name = `HistoryItem.id`; workspace = `workspace` in
 `history_item.json` or `_index.json`; `rootTaskId` and `parentTaskId` link
 subtasks. `ClineMessage.conversationHistoryIndex` indexes into the API
 history.
 
-A `cli-history.json` entry joins a task on text only. The first prompt of a task becomes the task's first `say: "text"` record with the same text ([`src/core/task/Task.ts:1908`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L1908)), and a later message or follow-up answer becomes a `say: "user_feedback"` record ([`Task.ts:2027-2029`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L2027-L2029)); both are `user` rows of the task. The API history wraps the first prompt in `<user_message>` tags ([`Task.ts:1935`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L1935)), so a task that has only `api_conversation_history.json` left does not match on text. The file outlives a deleted task directory, a removed workspace and the extension's task-history pruning, since nothing but the 500-entry cap removes an entry; it does not record which task or workspace a line went to.
+A `cli-history.json` entry joins a task on text only. The first prompt of a task becomes the task's
+first `say: "text"` record with the same text
+([`src/core/task/Task.ts:1908`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L1908)),
+and a later message or follow-up answer becomes a `say: "user_feedback"` record
+([`Task.ts:2027-2029`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L2027-L2029));
+both are `user` rows of the task. The API history wraps the first prompt in `<user_message>` tags
+([`Task.ts:1935`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L1935)),
+so a task that has only `api_conversation_history.json` left does not match on text. The file
+outlives a deleted task directory, a removed workspace and the extension's task-history pruning,
+since nothing but the 500-entry cap removes an entry; it does not record which task or workspace a
+line went to.
 
-## 5. SQLite stores
+## 5. Other stores
 
-None. The VS Code side keeps secrets in SecretStorage (`state.vscdb`).
+No SQLite store. The VS Code side keeps secrets in SecretStorage (`state.vscdb`).
+
+### CLI input history
+
+The CLI also keeps an input history, `~/.roo/cli-history.json`: the file name is joined to
+`getConfigDir()`
+([`apps/cli/src/lib/storage/history.ts:20-22`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L20-L22)),
+which is `~/.roo` on every platform
+([`apps/cli/src/lib/storage/config-dir.ts:5-9`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/config-dir.ts#L5-L9)).
+The catalog line `roo-code|.roo` collects it. It is the history the interactive prompt steps through
+with the arrow keys, not a transcript.
+
+`cli-history.json` is `{version: 1, entries: string[]}`
+([`history.ts:9-15`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L9-L15)),
+written pretty-printed with tabs and trimmed to the newest `MAX_HISTORY_ENTRIES` (500) on every save
+([`history.ts:6-7`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L6-L7),
+[`64-77`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L64-L77)).
+`addToHistory` appends the trimmed line, skipping an empty one and one equal to the last entry
+([`history.ts:90-108`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L90-L108));
+`loadHistory` keeps only non-blank strings
+([`history.ts:44-45`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/history.ts#L44-L45)).
+Entries are oldest first and carry no time, task id or workspace. The input box adds every submitted
+line before acting on it
+([`apps/cli/src/ui/components/autocomplete/AutocompleteInput.tsx:180-198`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/components/autocomplete/AutocompleteInput.tsx#L180-L198);
+[`apps/cli/src/ui/hooks/useInputHistory.ts:83-97`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/hooks/useInputHistory.ts#L83-L97)),
+so it holds the first prompt of a task, the answers to follow-up questions and later messages, and
+CLI commands such as `/new` that the CLI handles itself and never sends to a task
+([`apps/cli/src/ui/hooks/useTaskSubmit.ts:56-132`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/hooks/useTaskSubmit.ts#L56-L132)).
+A prompt given on the command line rather than typed into the input box does not pass through it.
 
 ## 6. Format versions
 
@@ -167,32 +215,18 @@ issue 23). Transcripts carry file contents and command output.
 
 ## 8. Parser plan
 
-Globs: `<GS>/rooveterinaryinc.roo-cline/tasks/*/{api_conversation_history,ui_messages,history_item}.json`,
+Globs:
+`<GS>/rooveterinaryinc.roo-cline/tasks/*/{api_conversation_history,ui_messages,history_item}.json`,
 `<GS>/rooveterinaryinc.roo-cline/tasks/_index.json`,
 `.vscode-mock/global-storage/tasks/**` (same files),
 `.roo/cli-history.json`.
-
-The task files are the primary store. `cli-history.json` is a secondary source (issue 122): one `user` row per entry, with empty `timestamp_utc`, `session_id` and `project_path` because the file records none, so the timeline's deduplication pairs it with a task's `user` row of the same text and keeps it only when no task has the text (a prompt whose task directory was deleted, or a CLI command such as `/new`).
 
 Rows and columns follow the Cline legacy mapping, with `ApiMessage.ts`
 available as a fallback timestamp, `condense_context` typed `system`,
 `session_id` the directory name, `project_path` from `history_item.workspace`,
 and `model` always empty.
 
-Roo Code records no model in any of these files (`apiConfigName` is a
-profile name, not a model id), so the parser yields no `model:` rows.
-
-Model, found besides (2026-10-19): the provider profiles are stored as
-one secret, `roo_cline_config_api_config`, `{currentApiConfigName,
-apiConfigs: {<name>: {id, apiProvider, <provider>ModelId or apiModelId,
-...}}, modeApiConfigs}`
-([`src/core/config/ProviderSettingsManager.ts:45-61`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/config/ProviderSettingsManager.ts#L45-L61)),
-in the editor's `state.vscdb` or the CLI's `secrets.json`, so a task's
-`apiConfigName` names a profile whose model id is known only as it is now,
-not as it was when the task ran. The CLI's `~/.roo/cli-settings.json`
-holds the default `model`, `provider`, `mode` and `reasoningEffort`
-([`apps/cli/src/types/types.ts:55-73`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/types/types.ts#L55-L73)).
-Neither is a per-task record; the parser yields no model row from them.
+### Permission state
 
 Permission state (2026-10-19; the parser reads none of it yet):
 
@@ -236,23 +270,35 @@ Permission state (2026-10-19; the parser reads none of it yet):
 - Mode: `HistoryItem.mode` can be one `permission mode: <mode>` row per
   task.
 
-Deletion (2026-10-19): deleting a task removes it and, by default, its
-subtasks from `tasks/_index.json`, deletes their shadow checkpoint
-repositories or branches, and removes each task directory
-([`src/core/webview/ClineProvider.ts:1737-1814`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/ClineProvider.ts#L1737-L1814)).
-`~/.roo/cli-history.json` is not touched, so it is what is left of a
-deleted CLI task.
+### Model
 
-Scratch directories (2026-10-19): the worktree dialog suggests
-`~/.roo/worktrees/<project>-<suffix>`
-([`src/core/webview/worktree/handlers.ts:224-236`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/worktree/handlers.ts#L224-L236)),
-under the catalog entry `.roo`, so a task run there has its `workspace`
-classed by the analyzer's catalog rule; a user-chosen path elsewhere is
-a project. No default directory for a task without a workspace was found
-(grepped `homedir`, `tmpdir` and `worktrees` in `src/` and `apps/cli/src`).
+Roo Code records no model in any of these files (`apiConfigName` is a
+profile name, not a model id), so the parser yields no `model:` rows.
+
+Model, found besides (2026-10-19): the provider profiles are stored as
+one secret, `roo_cline_config_api_config`, `{currentApiConfigName,
+apiConfigs: {<name>: {id, apiProvider, <provider>ModelId or apiModelId,
+...}}, modeApiConfigs}`
+([`src/core/config/ProviderSettingsManager.ts:45-61`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/config/ProviderSettingsManager.ts#L45-L61)),
+in the editor's `state.vscdb` or the CLI's `secrets.json`, so a task's
+`apiConfigName` names a profile whose model id is known only as it is now,
+not as it was when the task ran. The CLI's `~/.roo/cli-settings.json`
+holds the default `model`, `provider`, `mode` and `reasoningEffort`
+([`apps/cli/src/types/types.ts:55-73`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/types/types.ts#L55-L73)).
+Neither is a per-task record; the parser yields no model row from them.
+
+### Past use and secondary sources
+
+The task files are the primary store. `cli-history.json` ([CLI input history](#cli-input-history))
+is a secondary source (issue 122): one `user` row per entry, with empty `timestamp_utc`,
+`session_id` and `project_path` because the file records none, so the timeline's deduplication pairs
+it with a task's `user` row of the same text and keeps it only when no task has the text (a prompt
+whose task directory was deleted, or a CLI command such as `/new`).
+
+### Sync, relay and origin
 
 Sync: Roo Code records no sync state. Cline's enterprise prompt upload and its
-manifest marker ([section 8 of `cline.md`](cline.md#8-parser-plan)) live in
+manifest marker ([Sync, relay and origin in `cline.md`](cline.md#sync-relay-and-origin)) live in
 Cline's later SDK, which Roo Code never took: its tasks keep the forked legacy
 layout, and its `HistoryItem` has no share, sync or remote field
 ([`packages/types/src/history.ts:7-29`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/types/src/history.ts#L7-L29)).
@@ -284,6 +330,28 @@ but no telemetry code is in the tree. The releases that shipped Roo Code Cloud
 were not reviewed, so an install of one of them may hold sync state this
 document does not describe.
 
+### Scratch directories
+
+Source review of 2026-10-19: the worktree dialog suggests
+`~/.roo/worktrees/<project>-<suffix>`
+([`src/core/webview/worktree/handlers.ts:224-236`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/worktree/handlers.ts#L224-L236)),
+under the catalog entry `.roo`, so a task run there has its `workspace`
+classed by the analyzer's catalog rule; a user-chosen path elsewhere is
+a project. No default directory for a task without a workspace was found
+(grepped `homedir`, `tmpdir` and `worktrees` in `src/` and `apps/cli/src`).
+
+### Deletion
+
+Not stated: what a task delete removes and what survives it is in
+[What survives a delete](#what-survives-a-delete).
+
+### Bad lines
+
+The source review of 2026-10-19 found bad lines already covered: every file the parser reads is a
+JSON document or array.
+
+### Fixtures
+
 Fixture:
 
 ```json
@@ -292,5 +360,7 @@ Fixture:
 {"_file":"api_conversation_history.json","record":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01A","content":"3 passed","is_error":false}],"ts":1760000003000}}
 ```
 
-Confidence. High: file names, layouts and type definitions (read from
+### Confidence
+
+High: file names, layouts and type definitions (read from
 source). Not determined: the `checkpoint` object keys.

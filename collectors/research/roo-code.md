@@ -1,12 +1,22 @@
-# Roo Code: on-disk paths
+# roo-code
 
-## 1. Source and evidence level
+Roo Code is an open-source coding agent shipped as a VS Code extension and a CLI (`roo`). It is a
+fork of Cline and keeps Cline's legacy task layout ([`cline.md`](cline.md)); PearAI bundles a fork
+of it ([`pearai.md`](pearai.md)). Record schemas:
+[`analyzer/research/roo-code.md`](../../analyzer/research/roo-code.md).
+
+## 1. Source and evidence
 
 Open source. [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code) at [`b867ec9145750d0ae1ff7f02d35406e9bf2a0b16`](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16)
 (clone `scratchpad/repos/roo`). All claims from source. Extension id
 `RooVeterinaryInc.roo-cline` ([`src/package.json:2`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L2),[`5`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L5)); the CLI is
-`apps/cli` on top of `packages/vscode-shim`. Record schemas:
-[`analyzer/research/roo-code.md`](../../analyzer/research/roo-code.md).
+`apps/cli` on top of `packages/vscode-shim`.
+
+### Observed
+
+No real install.
+
+### Source reviews
 
 - **Source review (2026-10-19)**: HEAD is still [`b867ec9`](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16), the
   commit cited here, so no path has moved. Found: the CLI's
@@ -15,6 +25,21 @@ Open source. [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code) at [`
   No new credential file, exclusion or catalog line is needed.
 
 ## 2. Per-user storage
+
+The layouts differ by surface: the VS Code extension, the CLI's VS Code shim, and the
+shared `~/.roo`.
+
+### Scratch directories
+
+The worktree dialog's suggested root,
+`~/.roo/worktrees/<project>-<suffix>`
+([`src/core/webview/worktree/handlers.ts:224-236`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/worktree/handlers.ts#L224-L236)),
+is the only directory Roo Code chooses for itself as a working
+directory. It is under the catalog line `roo-code|.roo` and in
+`EXCLUDES` (`.roo/worktrees`), so its contents are not collected and the
+analyzer classes it as a scratch directory by its catalog rule.
+
+### VS Code extension
 
 VS Code extension, globalStorage `rooveterinaryinc.roo-cline/` (same layout on
 every OS; root is redirectable by the setting `roo-cline.customStoragePath`,
@@ -37,6 +62,8 @@ every OS; root is redirectable by the setting `roo-cline.customStoragePath`,
   ([`src/services/code-index/cache-manager.ts:24-26`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/code-index/cache-manager.ts#L24-L26)). Vectors go to Qdrant,
   not disk.
 
+### CLI
+
 CLI (`roo`), `~/.vscode-mock/` from `$HOME` or `%USERPROFILE%`
 ([`packages/vscode-shim/src/utils/paths.ts:8-16`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L8-L16),[`65-82`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L65-L82)):
 
@@ -48,6 +75,8 @@ CLI (`roo`), `~/.vscode-mock/` from `$HOME` or `%USERPROFILE%`
   hash is a 32-bit string hash of the workspace path, not reversible
   ([`paths.ts:24-32`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L24-L32),[`72-75`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L72-L75)).
 - `logs/` ([`paths.ts:80-82`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L80-L82)).
+
+### `~/.roo`
 
 `~/.roo/` ([`src/services/roo-config/index.ts:26-28`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/roo-config/index.ts#L26-L28);
 [`apps/cli/src/lib/storage/config-dir.ts:5`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/config-dir.ts#L5)): `rules/`, `rules-<mode>/`
@@ -62,8 +91,10 @@ CLI (`roo`), `~/.vscode-mock/` from `$HOME` or `%USERPROFILE%`
 older `dangerouslySkipPermissions` and `oneshot`,
 [`apps/cli/src/types/types.ts:55-73`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/types/types.ts#L55-L73);
 `requireApproval` is permission state, see
-[section 8 of `analyzer/research/roo-code.md`](../../analyzer/research/roo-code.md#8-parser-plan)). `~/.agents/skills` is also read
+[section 8 of `analyzer/research/roo-code.md`](../../analyzer/research/roo-code.md#permission-state)). `~/.agents/skills` is also read
 ([`roo-config/index.ts:53-55`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/roo-config/index.ts#L53-L55); [`SkillsManager.ts:594`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/skills/SkillsManager.ts#L594)).
+
+### Global MCP servers
 
 Global MCP server install dir is platform-branched: Windows
 `AppData/Roaming/Roo-Code/MCP`, macOS `Documents/Cline/MCP` (sic), Linux
@@ -71,6 +102,8 @@ Global MCP server install dir is platform-branched: Windows
 ([`src/core/webview/ClineProvider.ts:1547-1562`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/ClineProvider.ts#L1547-L1562)). It holds cloned server
 code, not evidence of use. No XDG use elsewhere; no environment variable
 relocates storage.
+
+### CLI ephemeral storage
 
 `roo --ephemeral` keeps the whole CLI storage, tasks included, in
 `<system temp directory>/roo-cli-<epoch ms>-<random>` and removes it on
@@ -80,14 +113,6 @@ exit
 It is outside every home, so the collector cannot reach it with a
 catalog line; a responder who finds a killed `roo --ephemeral` process
 collects the temp directory by hand.
-
-Scratch directories: the worktree dialog's suggested root,
-`~/.roo/worktrees/<project>-<suffix>`
-([`src/core/webview/worktree/handlers.ts:224-236`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/worktree/handlers.ts#L224-L236)),
-is the only directory Roo Code chooses for itself as a working
-directory. It is under the catalog line `roo-code|.roo` and in
-`EXCLUDES` (`.roo/worktrees`), so its contents are not collected and the
-analyzer classes it as a scratch directory by its catalog rule.
 
 ## 3. Credentials
 
@@ -101,7 +126,7 @@ analyzer classes it as a scratch directory by its catalog rule.
 - `settings/mcp_settings.json` and project `.roo/mcp.json` can embed `env`
   and headers. No keychain use.
 
-## 4. Exclude
+## 4. Exclusions
 
 `*/rooveterinaryinc.roo-cline/tasks/*/checkpoints`,
 `*/rooveterinaryinc.roo-cline/checkpoints`, `*/rooveterinaryinc.roo-cline/cache`,
@@ -109,7 +134,7 @@ analyzer classes it as a scratch directory by its catalog rule.
 `.vscode-mock/global-storage/checkpoints`, `.roo/worktrees`,
 `.local/share/Roo-Code/MCP`, `AppData/Roaming/Roo-Code/MCP`, `.roo-code/mcp`.
 
-## 5. Project-local
+## 5. Project-local files
 
 `.roo/rules/`, `.roo/rules-<mode>/`, `.roo/commands/`, `.roo/mcp.json`,
 `.roo/skills/` ([`roo-config/index.ts:68-80`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/roo-config/index.ts#L68-L80); [`webviewMessageHandler.ts:1901`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/webviewMessageHandler.ts#L1901);
@@ -120,7 +145,7 @@ analyzer classes it as a scratch directory by its catalog rule.
 [`src/core/prompts/sections/custom-instructions.ts:229`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/prompts/sections/custom-instructions.ts#L229)); `.agents/skills`;
 `AGENTS.md`. No per-project database.
 
-## 6. Project path
+## 6. Where the project path is recorded
 
 `tasks/_index.json[].workspace` and `tasks/<id>/history_item.json.workspace`
 ([`src/core/task-persistence/taskMetadata.ts:22`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/taskMetadata.ts#L22),[`37`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/taskMetadata.ts#L37),[`111`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/taskMetadata.ts#L111);
