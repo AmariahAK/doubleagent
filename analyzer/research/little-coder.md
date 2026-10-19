@@ -1,12 +1,12 @@
-# little-coder transcript schema
+# little-coder
 
 Catalog agent: `little-coder`. little-coder is a launcher and extension set
 for the pi coding agent, so its transcripts are pi session files written by
 pi itself. This document covers what little-coder adds and how to tell its
-sessions from plain pi sessions; the full pi record schema belongs to pi's
-own research. Paths are in [`collectors/research/little-coder.md`](../../collectors/research/little-coder.md).
+sessions from plain pi sessions; the full pi record schema is in [`pi.md`](pi.md). Paths are in
+[`collectors/research/little-coder.md`](../../collectors/research/little-coder.md).
 
-## 1. Source
+## 1. Source and evidence
 
 [itayinbarr/little-coder](https://github.com/itayinbarr/little-coder) at [`89d4fa0af864230527ab75d12604ed0eb320e6df`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df),
 Apache-2.0. It depends on `@earendil-works/pi-coding-agent` `^0.83.0`
@@ -18,7 +18,20 @@ The retired v0.0.x Python implementation, which kept its own state in
 [`424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03`](https://github.com/itayinbarr/little-coder/commit/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03),
 for sync only (2026-10-17).
 
-- **Source review (2026-10-19)**: the head of
+Confidence. High: file locations, header and entry fields, message roles,
+`lc-*` custom types, sub-agents unsaved (source). Medium: that every
+little-coder session contains an `lc-` entry; with injection set to
+`system` mode and no plan, bg-shell or research use, a session may carry
+none, and then only `provider: "llamacpp"` hints at it. Not determined:
+the exact `usage` sub-fields beyond those shown ([types.ts:368-380](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L368-L380)).
+
+### Observed
+
+- No real install.
+
+### Source reviews
+
+- 2026-10-19: the head of
   [itayinbarr/little-coder](https://github.com/itayinbarr/little-coder)
   `main` on 2026-10-19 is still
   [`89d4fa0`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df),
@@ -71,12 +84,12 @@ for sync only (2026-10-17).
     deletes nothing
     ([.pi/extensions/clear-command/index.ts:18-23](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/clear-command/index.ts#L18-L23));
     a session file goes only through pi's own picker
-    ([pi.md](pi.md#8-parser-plan)), which leaves the checkpoint
+    ([What survives a delete in `pi.md`](pi.md#what-survives-a-delete)), which leaves the checkpoint
     directory and the prompt history behind.
   - Version drift: none.
   - Bad lines: covered; the prompt history reader reports a bad record.
 
-## 2. Transcript files
+## 2. Transcript stores
 
 - `.pi/agent/sessions/--<encoded cwd>--/<ISO timestamp with - for : and .>_<uuid>.jsonl`,
   one file per session, appended per entry
@@ -98,7 +111,7 @@ little-coder has no delete of its own: `/clear` is an alias for pi's
 new-session command and deletes nothing
 ([.pi/extensions/clear-command/index.ts:18-23](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/clear-command/index.ts#L18-L23)).
 A session file is removed only through pi's own session picker
-([section 8 of `pi.md`](pi.md#8-parser-plan)), which leaves two things
+([What survives a delete in `pi.md`](pi.md#what-survives-a-delete)), which leaves two things
 behind: the session's checkpoint directory
 `.little-coder/checkpoints/<session file name>/`, whose name still joins
 its pre-edit file copies to the session, and the prompt history
@@ -107,8 +120,8 @@ no session id
 ([.pi/extensions/prompt-history/index.ts:26](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L26)).
 No deletion marker is written. The analyzer reads both: the prompt
 history as `user` rows with no timestamp and no session
-([section 8](#8-parser-plan)), and the checkpoints, which
-[section 1](#1-source) counts as covered past use.
+([Past use and secondary sources](#past-use-and-secondary-sources)), and the checkpoints, which
+[Source reviews](#source-reviews) counts as covered past use.
 
 ## 3. Record schema
 
@@ -136,7 +149,9 @@ Extension messages become `custom_message` entries with `customType`,
 `content`, `display`, `details` ([session-manager.ts:135-141](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/session-manager.ts#L135-L141);
 [packages/coding-agent/src/core/agent-session.ts:624-633](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/agent-session.ts#L624-L633)).
 
-**little-coder markers.** Its extensions tag what they inject:
+### little-coder markers
+
+Its extensions tag what they inject:
 `lc-skills`, `lc-knowledge`, `lc-project-context`
 ([.pi/extensions/_shared/inject.ts:49-64](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/_shared/inject.ts#L49-L64); [skill-inject/index.ts:393](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/skill-inject/index.ts#L393);
 [knowledge-inject/index.ts:169](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/knowledge-inject/index.ts#L169); [project-context/index.ts:96](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/project-context/index.ts#L96)),
@@ -148,16 +163,17 @@ system prompt (`injectMode` `system`), which leaves no entry
 little-coder's local provider ([.pi/extensions/llama-cpp-provider/index.ts:172](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/llama-cpp-provider/index.ts#L172);
 [models.json:2-4](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/models.json#L2-L4)).
 
-## 4. Joins
+## 4. Joins and timestamps
 
 Session id: header `id`, also in the file name. Tree: `parentId` → `id`.
 Tool use to result: `toolCall.id` = `toolResult.toolCallId`. Project path:
 header `cwd`. Forked sessions: header `parentSession`. Checkpoint directory
 name = session file basename.
 
-## 5. SQLite or binary stores
+## 5. Other stores
 
-None. Images are base64 inside `image` parts ([types.ts:354-358](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L354-L358)).
+None besides the prompt history and the checkpoints of [section 2](#2-transcript-stores): no
+SQLite or binary store. Images are base64 inside `image` parts ([types.ts:354-358](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L354-L358)).
 
 ## 6. Format versions
 
@@ -192,16 +208,39 @@ session.
 | project_path | header `cwd` |
 | git_branch | empty |
 | turn_type | `user`, `assistant`; `toolCall` → tool_use; `toolResult` → tool_result; `thinking` → thinking; `custom_message`, `model_change`, `compaction`, `bashExecution` → system |
-| model | assistant `provider`/`model`; a `model: <id> provider=<provider>` `system` row at the first assistant message that names a model and `model: <old> -> <new> provider=<provider>` on each change, from pi's reader ([section 8 of `pi.md`](pi.md#8-parser-plan)) |
+| model | assistant `provider`/`model`; a `model: <id> provider=<provider>` `system` row at the first assistant message that names a model and `model: <old> -> <new> provider=<provider>` on each change, from pi's reader ([Model in `pi.md`](pi.md#model)) |
 | tool_name, tool_use_id | `toolCall.name`/`id`; `toolResult.toolName`/`toolCallId` |
 | text | text parts; tool_use: `arguments.command` or `path`, else JSON; tool_result: text parts |
 
-Sync: on the pi it pins (0.83.x) little-coder inherits pi's `/share`,
+### Permission state
+
+Permission decisions of the `permission-gate`
+extension are on disk as error `toolResult` rows whose text is
+`edit cancelled by user`, `command cancelled by user` or starts
+`shell whitelist:` ([Source reviews](#source-reviews)); a `permission decision: denied (<reason>)`
+row joined on the `toolCallId` would show them as decisions. The pi parser shows the refusal as an
+ordinary `tool_result` row today. There is no standing state on disk to read: the mode and the
+allow list are environment variables.
+
+### Model
+
+Covered through pi's `model_change` rows: the `phase-model` extension's switches become
+`model_change` entries, which pi's reader turns into `model:` rows
+([Model in `pi.md`](pi.md#model)).
+
+### Past use and secondary sources
+
+The prompt history is read on every run, as above, and is the one secondary source. The
+checkpoints of [section 2](#2-transcript-stores) are covered past use. No other store found.
+
+### Sync, relay and origin
+
+On the pi it pins (0.83.x) little-coder inherits pi's `/share`,
 which uploads a session as a secret GitHub gist through `gh` and leaves
 no local marker; pi's `/bug` upload and its `pi.bug-report` entry
 arrived after 0.83.0
 ([0.83.0 interactive-mode.ts:5523-5608](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L5523-L5608);
-[the `Sync:` paragraph in section 8 of `pi.md`](pi.md#8-parser-plan)).
+[Sync, relay and origin in `pi.md`](pi.md#sync-relay-and-origin)).
 little-coder's own extensions add no upload: a search of `bin/` and
 `.pi/extensions/` for `gist`, `upload`, `share`, `telemetry` and
 `fetch(` finds only the npm update check
@@ -231,16 +270,23 @@ not read the v0.0.x layout; when it does, the row is one `system` row
 .little-coder/config.json, file mtime)`, at the file's modification time,
 with an empty session id.
 
-Source review of 2026-10-19, by class (detail in
-[section 1](#1-source)): permission decisions of the `permission-gate`
-extension are on disk as error `toolResult` rows whose text is
-`edit cancelled by user`, `command cancelled by user` or starts
-`shell whitelist:`; a `permission decision: denied (<reason>)` row
-joined on the `toolCallId` would show them as decisions, and there is
-no standing state on disk to read. Model: covered through pi's
-`model_change` rows. Past use, sync, relay and origin: covered.
-Scratch directories: none in the home. Deletion: no marker. Drift: none.
-Bad lines: covered.
+The current releases sync nothing of their own, and no session is relayed or of remote origin.
+
+### Scratch directories
+
+None in the home. `/deep-research`'s `<tmpdir>/deep-research-*` directory is removed when done
+and no record names it ([Source reviews](#source-reviews)).
+
+### Deletion
+
+No marker; see [What survives a delete](#what-survives-a-delete).
+
+### Bad lines
+
+Covered: the session files go through pi's reader
+([Bad lines in `pi.md`](pi.md#bad-lines)), and the prompt history reader reports a bad record.
+
+### Fixtures
 
 Fixture:
 
@@ -253,10 +299,3 @@ Fixture:
 ```
 
 `little-coder-prompt-history.json`: `["fix the failing test","now run lint"]`
-
-Confidence. High: file locations, header and entry fields, message roles,
-`lc-*` custom types, sub-agents unsaved (source). Medium: that every
-little-coder session contains an `lc-` entry; with injection set to
-`system` mode and no plan, bg-shell or research use, a session may carry
-none, and then only `provider: "llamacpp"` hints at it. Not determined:
-the exact `usage` sub-fields beyond those shown ([types.ts:368-380](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L368-L380)).

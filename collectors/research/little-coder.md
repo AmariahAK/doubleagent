@@ -1,22 +1,44 @@
-# little-coder: on-disk paths
+# little-coder
 
-## 1. Source and evidence level
+little-coder is a launcher plus a fixed set of extensions for the [pi](pi.md) coding agent: a
+terminal CLI that spawns pi's own CLI and writes its sessions into pi's directory, `~/.pi/agent`,
+beside a few files of its own. The retired v0.0.x releases were a separate Python
+implementation with their own state in `~/.little-coder`. The record schema is in
+[`analyzer/research/little-coder.md`](../../analyzer/research/little-coder.md).
+
+## 1. Source and evidence
 
 [itayinbarr/little-coder](https://github.com/itayinbarr/little-coder) at [`89d4fa0af864230527ab75d12604ed0eb320e6df`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df),
 version 1.20.0, Apache-2.0 ([package.json:3](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/package.json#L3), [10](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/package.json#L10)). Open source,
-TypeScript and Node. All claims from source. little-coder is a launcher plus
-a fixed set of extensions for the **pi** coding agent
+TypeScript and Node. All claims from source. little-coder depends on the pi coding agent
 (`@earendil-works/pi-coding-agent` `^0.83.0`, [package.json:41](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/package.json#L41)); it spawns
 pi's own CLI from its `node_modules` ([bin/little-coder.mjs:98-136](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L98-L136),
 [505-509](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L505-L509)). pi's storage was therefore read at [earendil-works/pi](https://github.com/earendil-works/pi) tag
 `v0.83.0`, [`845d6ff1f6643aba440341cce877ce1c43ebbc39`](https://github.com/earendil-works/pi/commit/845d6ff1f6643aba440341cce877ce1c43ebbc39).
-Record schema: [`analyzer/research/little-coder.md`](../../analyzer/research/little-coder.md).
 
-**Source review (2026-10-19)**: `main` of [itayinbarr/little-coder](https://github.com/itayinbarr/little-coder) is still [`89d4fa0`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df) and still pins pi `^0.83.0`, so every path here holds. Permission state: the `permission-gate` extension's mode and allow list are the environment variables `LITTLE_CODER_PERMISSION_MODE` and `LITTLE_CODER_BASH_ALLOW`, not files; its refusals are in the session files ([section 1 of `analyzer/research/little-coder.md`](../../analyzer/research/little-coder.md#1-source)). Model, past use, sync: no new file. Scratch directories: none under the home ([section 2](#2-per-user-storage)). Deletion: `/clear` starts a new pi session and deletes nothing. Version drift: none. Bad lines: not a collector concern.
+### Observed
+
+- No real install.
+
+### Source reviews
+
+- 2026-10-19: `main` of [itayinbarr/little-coder](https://github.com/itayinbarr/little-coder) is still [`89d4fa0`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df) and still pins pi `^0.83.0`, so every path here holds. By class:
+  - Permission state: the `permission-gate` extension's mode and allow list are the
+    environment variables `LITTLE_CODER_PERMISSION_MODE` and `LITTLE_CODER_BASH_ALLOW`, not
+    files; its refusals are in the session files
+    ([Source reviews](../../analyzer/research/little-coder.md#source-reviews) of the analyzer
+    document).
+  - Model, past use, sync: no new file.
+  - Scratch directories: none under the home ([Scratch directories](#scratch-directories)).
+  - Deletion: `/clear` starts a new pi session and deletes nothing.
+  - Version drift: none.
+  - Bad lines: not a collector concern.
 
 ## 2. Per-user storage
 
-**Shared with pi: `~/.pi/agent`.** The launcher and pi both use
+### Shared with pi: `~/.pi/agent`
+
+The launcher and pi both use
 `PI_CODING_AGENT_DIR` (with `~` expansion) or `homedir()/.pi/agent` on every
 OS ([little-coder.mjs:24-35](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L24-L35); pi
 [packages/coding-agent/src/config.ts:491-496](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/config.ts#L491-L496), [515-521](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/config.ts#L515-L521)). In it pi
@@ -35,7 +57,9 @@ cannot be told apart by path. little-coder itself writes:
 - `little-coder-prompt-history.json`: a JSON array of the last 100 prompts
   typed, no timestamps ([.pi/extensions/prompt-history/index.ts:23-26](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L23-L26), [38-40](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L38-L40), [52-57](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L52-L57)).
 
-**`~/.little-coder/checkpoints/<session file name>/`.** Before a `write` or
+### Checkpoints: `~/.little-coder/checkpoints/<session file name>/`
+
+Before a `write` or
 `edit` tool call, the first time per session, a copy of the target file's
 previous contents is saved under a name derived from its path (non
 `[A-Za-z0-9._-]` characters become `_`, last 200 characters), or an empty
@@ -44,7 +68,9 @@ previous contents is saved under a name derived from its path (non
 file's basename, so it matches a `sessions/` JSONL file
 ([:63-65](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/checkpoint/index.ts#L63-L65)). `homedir()` on every OS.
 
-**`~/.config/little-coder/`**, or `$XDG_CONFIG_HOME/little-coder`, using
+### Configuration: `~/.config/little-coder/`
+
+`~/.config/little-coder/`, or `$XDG_CONFIG_HOME/little-coder`, using
 `HOME` or `USERPROFILE`, so `~/.config` on macOS and Windows too:
 
 - `models.json`, the user's provider override (`LITTLE_CODER_MODELS_FILE`
@@ -52,14 +78,25 @@ file's basename, so it matches a `sessions/` JSONL file
 - `extensions/`, user extensions loaded on every launch
   (`LITTLE_CODER_EXTENSIONS_DIR` wins) ([bin/user-extensions.mjs:17-22](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/user-extensions.mjs#L17-L22), [37-51](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/user-extensions.mjs#L37-L51)).
 
-**`~/.cache/little-coder/version-check.json`** (or `$XDG_CACHE_HOME`):
+### Update check: `~/.cache/little-coder/version-check.json`
+
+`~/.cache/little-coder/version-check.json` (or `$XDG_CACHE_HOME`):
 update check timestamp and latest version ([bin/update-check.mjs:33-37](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/update-check.mjs#L33-L37)).
 
-**Scratch directories.** little-coder works in the user's cwd. Its one directory of its own, `/deep-research`'s `<tmpdir>/deep-research-*`, is in the system temporary directory and removed when the research ends ([.pi/extensions/deep-research/index.ts:167-176](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L167-L176), [257](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L257)); no catalog line can hold it and nothing records it. `~/.little-coder/checkpoints/` holds copies of project files, not a working directory.
+### Package install
 
 The package itself (`.pi/extensions/`, `AGENTS.md` used as the system
 prompt, `skills/`, bundled `models.json`) lives in the global npm or bun
 install, not the home ([little-coder.mjs:163](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L163), [314](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L314)).
+
+### Scratch directories
+
+None known under the home. little-coder works in the user's cwd. Its one directory of its own, `/deep-research`'s `<tmpdir>/deep-research-*`, is in the system temporary directory and removed when the research ends ([.pi/extensions/deep-research/index.ts:167-176](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L167-L176), [257](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L257)); no catalog line can hold it and nothing records it. `~/.little-coder/checkpoints/` holds copies of project files, not a working directory.
+
+### Deletion
+
+What a delete leaves (the checkpoints and the prompt history) is in
+[What survives a delete](../../analyzer/research/little-coder.md#what-survives-a-delete).
 
 ## 3. Credentials
 
