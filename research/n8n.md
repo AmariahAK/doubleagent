@@ -3,10 +3,10 @@
 n8n is a workflow automation server with AI Agent nodes, plus `@n8n/computer-use`, a local
 tool gateway for the n8n Assistant. Its agent surfaces are Instance AI (the n8n Assistant,
 the built-in agent of the `instance-ai` module, which can drive the computer-use gateway) and
-Chat Hub (n8n's chat front end to models and agent workflows). This document came out of the
-agent framework sweep for [issue #64](https://github.com/seanthegeek/doubleagent/issues/64);
-see [`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no
-catalog line. There is no analyzer document yet.
+Chat Hub (n8n's chat front end to models and agent workflows). It came into the catalog from
+the agent framework sweep for [issue #64](https://github.com/seanthegeek/doubleagent/issues/64);
+see [`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. Its
+parser is in the backlog ([issue 67](https://github.com/seanthegeek/doubleagent/issues/67)).
 
 ## 1. Source and evidence
 
@@ -66,8 +66,9 @@ n8n executes tools and shell commands on the host:
     Hub session leaves the workflow executions its messages point to.
   - Version drift: paths unchanged; the SQLite file name moved to
     [database.config.ts:127](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/config/src/configs/database.config.ts#L127);
-    computer-use is unchanged apart from its `package.json`. Instance AI's
-    tables existed at [`0e1c754`](https://github.com/n8n-io/n8n/commit/0e1c7549997f43053fda83534b597875b0310df6) and were not in this document.
+    computer-use is unchanged apart from its `package.json`. Instance AI's tables existed at
+    [`0e1c754`](https://github.com/n8n-io/n8n/commit/0e1c7549997f43053fda83534b597875b0310df6) and
+    were not in this document.
   - Bad lines: `.n8n-local-gateway/log` and `.n8n/n8nEventLog*.log` are
     line-oriented; a parser must report a cut line.
 
@@ -118,7 +119,7 @@ layout at their root, so the `DOCKER_VOLUMES` lines are `*n8n_data` and
 
 Detail from the 2026-10-19 review, at
 [`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680),
-for a future analyzer document:
+for a future parser:
 
 - **Gateway permissions** (`.n8n-gateway/settings.json`). `permissions`
   maps each tool group (`filesystemRead`, `filesystemWrite`, `shell`,
@@ -179,23 +180,22 @@ for a future analyzer document:
   and `model`
   ([chat-hub-message.entity.ts:55-114](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/chat-hub/chat-hub-message.entity.ts#L55-L114),
   [chat-hub-session.entity.ts:81-90](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/chat-hub/chat-hub-session.entity.ts#L81-L90)).
-- **Deletion.** Deleting an Instance AI thread deletes it and its
-  sub-agent threads, and the message, event, checkpoint, grant and
-  pending confirmation rows go with it by `ON DELETE CASCADE`
+- **Deletion.** Deleting an Instance AI thread deletes it and its sub-agent threads, and the
+  message, event, checkpoint, grant and pending confirmation rows go with it by `ON DELETE CASCADE`
   ([instance-ai-memory.service.ts:648-653](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/instance-ai-memory.service.ts#L648-L653),
   [typeorm-agent-memory.ts:388-390](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/storage/typeorm-agent-memory.ts#L388-L390),
   [CreateInstanceAiTables.ts:24-39](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/db/src/migrations/common/1775000000000-CreateInstanceAiTables.ts#L24-L39),
   [instance-ai-event-log-entry.entity.ts:20](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/entities/instance-ai-event-log-entry.entity.ts#L20)).
-  One upgrade migration emptied the Instance AI checkpoint, message,
-  resource and thread tables outright
+  One upgrade migration emptied the Instance AI checkpoint, message, resource and thread tables
+  outright
   ([ResetInstanceAiNativePersistence.ts:3-19](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/db/src/migrations/common/1784000000008-ResetInstanceAiNativePersistence.ts#L3-L19)),
-  so an install upgraded past it holds no Instance AI thread from before
-  the upgrade in those tables.
-  Deleting a Chat Hub session deletes its attachments and the session
+  so an install upgraded past it holds no Instance AI thread from before the upgrade in those
+  tables. Deleting a Chat Hub session deletes its attachments and the session
   ([chat-hub.service.ts:394-400](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/chat-hub/chat-hub.service.ts#L394-L400));
-  the workflow executions its messages started stay in
-  `execution_entity`. The gateway log is never trimmed by n8n (not found
-  in `logger.ts` at [`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680): grepped for `truncate` and `unlink`).
+  the workflow executions its messages started stay in `execution_entity`. The gateway log is never
+  trimmed by n8n (not found in `logger.ts` at
+  [`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680):
+  grepped for `truncate` and `unlink`).
 
 ### 3. Credentials
 
@@ -204,7 +204,7 @@ for a future analyzer document:
   matches only a file named `config` at the root of a collection base; the
   one other layout that has one is the retired Letta V1 server's
   `~/.letta/config` at the root of a `*letta*` volume
-  ([`collectors/research/letta.md`](letta.md)), which is then also flagged. That is an accepted
+  ([`research/letta.md`](letta.md)), which is then also flagged. That is an accepted
   overmatch: flagging only adds `secret: true` and the `--no-secrets`
   skip.
 - `database.sqlite` holds encrypted credentials and the history together,
@@ -227,9 +227,18 @@ Nowhere; n8n has no project concept on disk.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+n8n is `backlog`: its parser is
+[issue 67](https://github.com/seanthegeek/doubleagent/issues/67), and nothing it writes is parsed
+yet. A parser would read `.n8n/database.sqlite`: the Chat Hub sessions and messages
+(`chat_hub_sessions`, `chat_hub_messages`, with `provider` and `model` per message), the Instance
+AI threads, messages and sequenced `instance_ai_events` (with the `confirmation-request` events,
+`instance_ai_pending_confirmations` and `instance_ai_thread_grants` for permission, and the
+LangSmith ids on `run-start` events for sync), and `execution_entity` and `execution_data` for the
+workflow runs a chat message started; beside it, the computer-use gateway's line-oriented
+`.n8n-local-gateway/log`, which repeats each tool call with its arguments and records denials as
+errors, and the standing grants in `.n8n-gateway/settings.json`
+([Database and gateway detail](#database-and-gateway-detail)). `.n8n/n8nEventLog*.log` is also
+line-oriented.
 
 ## 14. Confidence
 
