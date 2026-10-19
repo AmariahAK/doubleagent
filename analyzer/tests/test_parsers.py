@@ -9974,6 +9974,66 @@ class CodyTests(ParserBase):
         self.assertNotIn("All three pass.", texts)
         self.assertEqual(rows[-1].turn_type, "system")
 
+    def deep_rows(self):
+        from fixtures import CODY_DEEP_REL, build_cody_deep
+
+        build_cody_deep(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        return self.rows_for(CodyParser(), CODY_DEEP_REL)
+
+    def test_rejected_confirmation_says_command_rejected(self):
+        # Issue 169: a refusal is saved as state error, error.message "Command rejected".
+        from fixtures import CODY_DEEP_CHAT, CODY_REJECTED_STEP
+
+        rows = self.deep_rows()
+        self.assertEqual(
+            [r.turn_type for r in rows],
+            ["system", "user", "system", "system", "tool_use", "system", "assistant"],
+        )
+        rejected = rows[2]
+        self.assertEqual(
+            (rejected.text, rejected.tool_use_id, rejected.session_id, rejected.source_line),
+            (
+                "permission decision: rejected confirmation state=error"
+                " error=Command rejected title=Terminal\nrm -rf build",
+                CODY_REJECTED_STEP,
+                CODY_DEEP_CHAT,
+                1,
+            ),
+        )
+        self.assertEqual(rejected.timestamp_utc, "2026-10-03T11:00:00.000Z")
+        # The rows before and after the decisions still come out.
+        self.assertEqual(rows[1].text, "what changed?")
+        self.assertEqual((rows[4].tool_name, rows[4].text), ("Terminal", "ls -la"))
+        self.assertEqual(rows[-1].text, "Only README.md changed.")
+
+    def test_pending_confirmation_is_not_called_an_approval(self):
+        # Issue 169: an approval never completes the step, so pending is either.
+        from fixtures import CODY_PENDING_STEP
+
+        pending = self.deep_rows()[3]
+        self.assertEqual(
+            (pending.text, pending.tool_use_id),
+            (
+                "permission decision: approved or unanswered confirmation state=pending"
+                " title=Terminal\nls -la",
+                CODY_PENDING_STEP,
+            ),
+        )
+
+    def test_other_confirmation_error_is_printed_not_interpreted(self):
+        hist = json.loads((self.home / CODY_JB_REL).read_text(encoding="utf-8"))
+        agentic = hist[CODY_ACCOUNT]["chat"][CODY_AGENTIC_CHAT]
+        step = agentic["interactions"][0]["assistantMessage"]["processes"][0]
+        step.update(state="error", error={"name": "Error", "message": "aborted"})
+        (self.home / CODY_JB_REL).write_text(json.dumps(hist), encoding="utf-8")
+        rows = self.rows_for(CodyParser(), CODY_JB_REL)
+        self.assertEqual(
+            rows[9].text,
+            "permission decision: confirmation state=error error=aborted"
+            " title=Run terminal command\npytest -q\nAllow Cody to run this command?",
+        )
+
 
 class TwinnyTests(ParserBase):
     def test_rows(self):

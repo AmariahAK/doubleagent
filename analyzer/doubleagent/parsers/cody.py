@@ -24,16 +24,22 @@ Transcript fields: `id`, `chatTitle`, `lastInteractionTimestamp`,
 parts (`{type: "tool_call", tool_call: {id, name, arguments}}` on the
 assistant, `{type: "tool_result", tool_result: {id, content}}` on the
 human), and `processes[]` (`{type, id, title, description, content,
-state}`, `type` one of `tool`, `confirmation`, `step`).
+state, error.message}`, `type` one of `tool`, `confirmation`, `step`).
 
 Model and permission rows, all `system`: the assistant message `model`
 gives `model: <id>` at the first assistant message of a chat that names
 one and `model: <old> -> <new>` on every later change, before that
 message's rows. A `processes[]` entry of type `confirmation` (a step
-that prompted the user) becomes `permission decision: confirmation
-state=<state> title=<title>` with its `description` and `content` on the
-following lines, `tool_use_id` the entry's `id`; the source does not say
-how the user's answer maps onto `state`, so it is printed as recorded.
+that prompted the user; Deep Cody's terminal tool adds one per command,
+on the human message) becomes `permission decision: <decision>
+confirmation state=<state> error=<error.message> title=<title>` with its
+`description` and `content` on the following lines, `tool_use_id` the
+entry's `id`. A refusal completes the step with `Error('Command
+rejected')`, so `state` `error` with `error.message` `Command rejected` is
+`rejected`; an approval never completes the step, so `pending` is
+`approved or unanswered`, which the format cannot tell apart. Any other
+state keeps the plain `permission decision: confirmation state=<state>`,
+with `error=` whenever the step carries an `error.message`.
 
 There is no per-message timestamp. The chat id is the chat's creation time
 as `Date.toUTCString()` (`Fri, 03 Oct 2026 10:00:00 GMT`), and every row of
@@ -69,6 +75,7 @@ JETBRAINS_RX = re.compile(
 )
 ITEM_KEY = "sourcegraph.cody-ai"
 HISTORY_KEY = "cody-local-chatHistory-v2"
+REJECTED = "Command rejected"
 
 _DATE_KEY = (
     r'"((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT)"\s*:\s*\{'
@@ -129,6 +136,35 @@ def _fs_path(uri) -> str:
             if isinstance(uri.get(k), str) and uri[k]:
                 return uri[k]
     return ""
+
+
+def _confirmation_head(proc: dict) -> str:
+    """First line of the permission row for a `confirmation` process step.
+
+    A refusal completes the step with `Error('Command rejected')`, so it is
+    saved as `state` `error` with that `error.message`; an approval never
+    completes the step, so `pending` is an approval or an unanswered request.
+    """
+    state = proc.get("state")
+    err = proc.get("error")
+    message = err.get("message") if isinstance(err, dict) else err
+    message = setting_value(message) if message else ""
+    if state == "error" and message == REJECTED:
+        decision = "rejected"
+    elif state == "pending":
+        decision = "approved or unanswered"
+    else:
+        decision = "confirmation"
+    head = "permission decision: %s" % decision
+    if decision != "confirmation":
+        head += " confirmation"
+    if state:
+        head += " state=%s" % setting_value(state)
+    if message:
+        head += " error=%s" % message
+    if proc.get("title"):
+        head += " title=%s" % setting_value(proc["title"])
+    return head
 
 
 class CodyParser(Parser):
@@ -302,11 +338,7 @@ class CodyParser(Parser):
         for proc in msg.get("processes") or []:
             if isinstance(proc, dict) and proc.get("type") == "confirmation":
                 tid = str(proc.get("id") or "")
-                head = "permission decision: confirmation"
-                for k in ("state", "title"):
-                    if proc.get(k):
-                        head += " %s=%s" % (k, setting_value(proc[k]))
-                lines = [head] + [
+                lines = [_confirmation_head(proc)] + [
                     setting_value(proc[k]) for k in ("description", "content") if proc.get(k)
                 ]
                 yield row("system", "\n".join(lines), model, names.get(tid, ""), tid)

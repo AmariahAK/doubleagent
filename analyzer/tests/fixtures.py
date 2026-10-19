@@ -8630,6 +8630,79 @@ def build_cody(home: Path) -> None:
     )
 
 
+# Deep Cody terminal confirmations (issue 169), from sourcegraph/cody-public-snapshot
+# at 8e20ac6c1460c08b0db581c0204658112a246eda: `CodyTool.ts:166-181` adds one
+# `confirmation` step per command (id `<tool tag>-<uuid>`, title the tool's title,
+# content the command); `ProcessManager.ts:51-61` completes a refused one with
+# `errorToChatError(new Error('Command rejected'))` (`messages.ts:253-260`), and
+# an approved one is never completed, so it stays `pending` (`DeepCody.ts:176`).
+# The steps are saved on the human message (`ChatController.ts:943-946`). The
+# file sits in the plugin's `Cody-nodejs/Data/` layout so `build_home` is unchanged.
+CODY_DEEP_REL = ".local/share/Cody-nodejs/Data/JetBrains-globalState/cody-local-chatHistory-v2"
+CODY_DEEP_CHAT = "Sat, 03 Oct 2026 11:00:00 GMT"
+CODY_REJECTED_STEP = "TOOLCLI-0b5c1e2a-1111-4000-8000-000000000001"
+CODY_PENDING_STEP = "TOOLCLI-0b5c1e2a-1111-4000-8000-000000000002"
+
+
+def cody_deep_records():
+    """A Deep Cody chat with one refused and one approved terminal command."""
+    chat = {
+        "id": CODY_DEEP_CHAT,
+        "chatTitle": "what changed?",
+        "lastInteractionTimestamp": CODY_DEEP_CHAT,
+        "interactions": [
+            {
+                "humanMessage": {
+                    "speaker": "human",
+                    "text": "what changed?",
+                    "intent": "chat",
+                    "processes": [
+                        {
+                            "type": "confirmation",
+                            "id": CODY_REJECTED_STEP,
+                            "title": "Terminal",
+                            "content": "rm -rf build",
+                            "state": "error",
+                            "error": {
+                                "isChatErrorGuard": "isChatErrorGuard",
+                                "message": "Command rejected",
+                                "name": "Error",
+                            },
+                        },
+                        {
+                            "type": "confirmation",
+                            "id": CODY_PENDING_STEP,
+                            "title": "Terminal",
+                            "content": "ls -la",
+                            "state": "pending",
+                        },
+                        {
+                            "type": "tool",
+                            "id": "TOOLCLI",
+                            "title": "Terminal",
+                            "content": "ls -la",
+                            "state": "success",
+                        },
+                    ],
+                },
+                "assistantMessage": {
+                    "speaker": "assistant",
+                    "model": CODY_MODEL,
+                    "text": "Only README.md changed.",
+                },
+            }
+        ],
+    }
+    return {CODY_ACCOUNT: {"chat": {CODY_DEEP_CHAT: chat}}}
+
+
+def build_cody_deep(home: Path) -> None:
+    """Write the Deep Cody history; not part of `build_home`, a test adds it."""
+    path = home / CODY_DEEP_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cody_deep_records()), encoding="utf-8")
+
+
 TWINNY_CONVERSATION = "7d1c2b3a-1111-4000-8000-000000000001"
 TWINNY_ACTIVE = "7d1c2b3a-1111-4000-8000-000000000002"
 TWINNY_API_KEY = "sk-twinny-fixture-not-real"

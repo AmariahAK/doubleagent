@@ -34,9 +34,13 @@ frozen public snapshot, so later releases may differ. Paths are in
     `cody.agentic.context.experimentalOptions.shell.allow` and `.block`,
     the deprecated `cody.agentic.context.experimentalShell`, and
     `cody.mcpServers.<server>.disabled` and `.disabledTools` in the
-    editor's user `settings.json`; the parser prints the confirmation
-    state but neither the error nor any setting
-    ([section 3](#3-record-schema), [section 8](#8-parser-plan)).
+    editor's user `settings.json`; the parser names a refusal
+    `rejected` and a `pending` step `approved or unanswered`, and reads
+    no setting ([section 3](#3-record-schema), [section 8](#8-parser-plan)).
+    No real install has shown a confirmation step: the layout the parser
+    handles is not observed on any real install, source-derived
+    (sourcegraph/cody-public-snapshot at
+    [`8e20ac6`](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda)).
   - Model: already covered per assistant message; found the
     `cody-model-preferences` global-state key (the selected and default
     model per endpoint and usage) and the per-chat `llm` element of the
@@ -329,24 +333,26 @@ Model and permission rows, all `system` (issues 96 and 97):
   with a different `model`, before that message's rows, at the chat's
   time. The model is recorded per assistant message, so a change inside
   a chat shows.
-- `permission decision: confirmation state=<state> title=<title>` for a
+- `permission decision: <decision> confirmation state=<state>
+  error=<error.message> title=<title>` for a
   `processes[]` entry of `type` `confirmation`, which the source
   describes as "a process that prompts the user confirmation"
   ([`messages.ts:76-79`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/chat/transcript/messages.ts#L76-L79)),
   with its `description` and `content` on the following lines and
-  `tool_use_id` its `id`. `state` is printed as recorded (`pending`,
-  `success`, `error`,
+  `tool_use_id` its `id`. `state` and `error.message` are printed as
+  recorded (`pending`, `success`, `error`,
   [`messages.ts:117-124`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/chat/transcript/messages.ts#L117-L124)):
-  the row does not interpret it. The source review of 2026-10-19 traced
-  the states ([section 3](#3-record-schema)): a refusal is `error` with
-  `error.message` `Command rejected`, and `pending` is an approval or an
-  unanswered request. The parser does not print the step's `error`, so
-  the refusal reads only as `state=error` today (gap).
+  and `<decision>` follows the states the source review of 2026-10-19
+  traced ([section 3](#3-record-schema)): `rejected` for `state` `error`
+  with `error.message` `Command rejected`, and `approved or unanswered`
+  for `pending`, which source cannot split. Any other state is written
+  `permission decision: confirmation state=<state>`, with `error=` when
+  the step has an `error.message`, and the row does not interpret it
+  (issue 169).
 
 Source review of 2026-10-19, one line per class:
 
-- Permission: per-call, the Deep Cody confirmation row above, which
-  should add ` error=<error.message>` when the step has one; the agentic
+- Permission: per-call, the Deep Cody confirmation row above; the agentic
   chat records no per-call decision. Standing: the `settings.json` keys
   in [section 3](#3-record-schema) (`cody.agentic.context.experimentalOptions`,
   `cody.agentic.context.experimentalShell`, `cody.chat.agenticContext`,
