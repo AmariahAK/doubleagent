@@ -1,9 +1,13 @@
-# Hermes Agent: on-disk paths
+# hermes
 
-Catalog agent: `hermes`. Transcript schema is in
+Hermes Agent (catalog agent `hermes`) is Nous Research's open-source Python agent, with a classic
+CLI, a TUI (terminal interface), an Electron desktop app, a messaging gateway that drives the agent
+from chat platforms, and cron jobs; every front end writes to one SQLite store per profile home.
+It is not a fork of another agent; Agent Zero's Orchestrator plugin can start it
+([Started by another agent](#started-by-another-agent)). The transcript schema is in
 [`analyzer/research/hermes.md`](../../analyzer/research/hermes.md).
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent), MIT ([`LICENSE`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/LICENSE#L1-L3)), open source, Python with an Electron desktop app,
 commit [`8b66a51036c1e20920a17cdd049fdf55c968d683`](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683).
@@ -11,27 +15,33 @@ All claims are from source; the documented home layout in
 [`website/docs/user-guide/configuration.md:22-31`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/website/docs/user-guide/configuration.md#L22-L31)
 agrees with it. Nothing was installed or run.
 
+### Observed
+
+No real install. Nothing was installed or run for the source review of 2026-10-19 either; no real
+install has been observed.
+
+### Source reviews
+
 - **Source review (2026-10-19)** at
   [`86fa9e6ca1de7ee71132d2be0103f3e37d1fa872`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872)
   (HEAD of 2026-10-19), against the
   [`8b66a51036c1e20920a17cdd049fdf55c968d683`](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683)
-  (2026-10-04) cited above. Nothing installed or run; no real install has
-  been observed. Collector-side findings: the prompt history
+  (2026-10-04) cited above. Collector-side findings: the prompt history
   `.hermes_history` and the cron run archive `cron/output/` are under the
   home and collected ([section 2](#2-per-user-storage)); the pairing
   files' shape is known and they are the gateway's standing grants
   ([section 3](#3-credentials)); the scratch directories are
   `cache/scratch/` (collected) and `sandboxes/` (excluded) under the home
   and `.worktrees/<name>` inside a project, recorded in `sessions.cwd`
-  ([section 2](#2-per-user-storage),
+  ([Scratch directories](#scratch-directories),
   [section 6](#6-where-the-project-path-is-recorded)); every path the
   catalog names is unchanged at HEAD. Permission, model, sync, relay,
   deletion, drift and bad-line findings for the parser are in
-  [section 1 of `analyzer/research/hermes.md`](../../analyzer/research/hermes.md#1-source).
+  [Source reviews of `analyzer/research/hermes.md`](../../analyzer/research/hermes.md#source-reviews).
 
 ## 2. Per-user storage
 
-**Home resolution.** Context override, then `HERMES_HOME`, then the platform
+Home resolution: context override, then `HERMES_HOME`, then the platform
 default ([`hermes_constants.py:111-118`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_constants.py#L111-L118)): `~/.hermes` on Linux and macOS,
 `%LOCALAPPDATA%\hermes` (fallback `~/AppData/Local/hermes`) on Windows, each
 with an optional `HERMES_DATA_DIR_SUFFIX` appended
@@ -40,15 +50,38 @@ legacy `~/.hermes` when `%LOCALAPPDATA%\hermes` does not exist
 ([`apps/desktop/electron/data-paths.mjs:26-33`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/electron/data-paths.mjs#L26-L33),[`56-65`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/electron/data-paths.mjs#L56-L65)), so both
 forms occur on Windows. No XDG paths.
 
-**Profiles.** Named profiles are complete homes under `<root>/profiles/<name>/`
+### Scratch directories
+
+At the 2026-10-19 HEAD, `cache/scratch/<entry>` is
+the `TMPDIR` of every child process, reaped when idle
+([`hermes_constants.py:957`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_constants.py#L957),
+[`hermes_constants_scratch.py:1-6`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_constants_scratch.py#L1-L6)); it is under the
+catalog's `.hermes` entry and collected. `sandboxes/` (or
+`TERMINAL_SANDBOX_DIR`) holds the container backends' persistent bind
+mounts, `sandboxes/docker/<task>` for Docker
+([`tools/environments/base.py:189-191`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/environments/base.py#L189-L191),
+[`tools/environments/docker.py:856`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/environments/docker.py#L856)); it is excluded
+([section 4](#4-exclusions)). The worktrees the agent creates are inside
+the user's repository, not the home
+([section 6](#6-where-the-project-path-is-recorded)). The analyzer's
+catalog rule classes any path under the Hermes home as a scratch
+directory.
+
+### Profiles
+
+Named profiles are complete homes under `<root>/profiles/<name>/`
 ([`hermes_cli/profiles.py:287-297`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/profiles.py#L287-L297)); every path below can also appear one
 level down under `profiles/*/`.
 
-**Docker.** The compose file bind-mounts the host `~/.hermes` to
+### Docker
+
+The compose file bind-mounts the host `~/.hermes` to
 `/opt/data` ([`docker-compose.yml:36-37`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/docker-compose.yml#L36-L37)), so container
 deployments still leave state in the host home.
 
-**Contents of the home** (relative to it):
+### Contents of the home
+
+Relative to the home:
 
 - `state.db` with `-wal`/`-shm`: the session and message store, canonical for
   CLI, gateway and desktop ([`hermes_state.py:176`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state.py#L176)).
@@ -99,24 +132,24 @@ deployments still leave state in the host home.
   ([`gateway/pairing.py:353-356`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/pairing.py#L353-L356)), see
   [section 3](#3-credentials).
 
-**Scratch directories** (2026-10-19 HEAD). `cache/scratch/<entry>` is
-the `TMPDIR` of every child process, reaped when idle
-([`hermes_constants.py:957`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_constants.py#L957),
-[`hermes_constants_scratch.py:1-6`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_constants_scratch.py#L1-L6)); it is under the
-catalog's `.hermes` entry and collected. `sandboxes/` (or
-`TERMINAL_SANDBOX_DIR`) holds the container backends' persistent bind
-mounts, `sandboxes/docker/<task>` for Docker
-([`tools/environments/base.py:189-191`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/environments/base.py#L189-L191),
-[`tools/environments/docker.py:856`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/environments/docker.py#L856)); it is excluded
-([section 4](#4-exclusions)). The worktrees the agent creates are inside
-the user's repository, not the home
-([section 6](#6-where-the-project-path-is-recorded)). The analyzer's
-catalog rule classes any path under the Hermes home as a scratch
-directory.
+### Started by another agent
 
-**Started by another agent** (Agent Zero source review of 2026-10-19, at [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a)). Agent Zero's Orchestrator plugin, which tells that agent how to drive other coding CLIs on the host or in its container, defaults Hermes to `yolo: true` and runs `hermes chat --quiet --source tool -q <task> --yolo`, which bypasses every dangerous-command approval prompt for the run ([`hermes_cli/_parser.py:307-308`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/_parser.py#L307-L308); [`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37), [`plugins/_orchestrator/skills/orchestrator/references/hermes.md:16`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/skills/orchestrator/references/hermes.md#L16)). Such a session is an ordinary session in this home's `state.db`, started by another agent with approvals bypassed; the plugin's permission settings are in [section 8 of `analyzer/research/agent-zero.md`](../../analyzer/research/agent-zero.md#8-parser-plan).
+From the Agent Zero source review of 2026-10-19, at
+[`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a):
+Agent Zero's Orchestrator plugin, which tells that agent how to drive other coding CLIs on the
+host or in its container, defaults Hermes to `yolo: true` and runs
+`hermes chat --quiet --source tool -q <task> --yolo`, which bypasses every dangerous-command
+approval prompt for the run
+([`hermes_cli/_parser.py:307-308`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/_parser.py#L307-L308);
+[`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37),
+[`plugins/_orchestrator/skills/orchestrator/references/hermes.md:16`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/skills/orchestrator/references/hermes.md#L16)).
+Such a session is an ordinary session in this home's `state.db`, started by another agent with
+approvals bypassed; the plugin's permission settings are in
+[Permission state of `analyzer/research/agent-zero.md`](../../analyzer/research/agent-zero.md#permission-state).
 
-**Desktop app.** Electron `productName` is `Hermes`
+### Desktop app
+
+Electron `productName` is `Hermes`
 ([`apps/desktop/package.json:3`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/package.json#L3)), so its `userData` is the Electron default
 `Hermes` directory, overridable by `HERMES_DESKTOP_USER_DATA_DIR`
 ([`data-paths.mjs:35-39`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/electron/data-paths.mjs#L35-L39)). It holds `connection.json`, `connections.json`,
@@ -194,7 +227,7 @@ At the 2026-10-19 HEAD automatic pruning is off by default
 current install a session is gone from `state.db` only when the user
 deleted or pruned it, and a deleted session leaves a tombstone in
 `state.db` itself (see
-[section 5 of `analyzer/research/hermes.md`](../../analyzer/research/hermes.md#5-sqlite-specifics)).
+[What survives a delete in `analyzer/research/hermes.md`](../../analyzer/research/hermes.md#what-survives-a-delete)).
 `sandboxes/` stays excluded: a container backend's persistent workspace
 can hold whole repositories, and the commands that ran there are in
 `state.db`.
