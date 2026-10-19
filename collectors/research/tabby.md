@@ -1,19 +1,24 @@
-# Tabby: on-disk paths
+# tabby
 
-## 1. Source and evidence level
+Tabby, from [TabbyML/tabby](https://github.com/TabbyML/tabby), is a self-hosted server with a
+`tabby-agent` language server and VS Code, IntelliJ, Vim and Eclipse plugins. The
+editor plugins talk to the server; chat history is server-side. Record schema:
+[`analyzer/research/tabby.md`](../../analyzer/research/tabby.md).
+
+## 1. Source and evidence
 
 [TabbyML/tabby](https://github.com/TabbyML/tabby) at [`21b29048d7bcf6b94f9f482f2d0fd05efadfd19f`](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f).
 Source public: Apache-2.0 outside `ee/`, the Tabby Enterprise licence inside
 it ([LICENSE:3-7](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/LICENSE#L3-L7); [ee/LICENSE:1-12](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/LICENSE#L1-L12)). Rust server, TypeScript
 `tabby-agent` and VS Code client, Kotlin IntelliJ plugin. All claims from
 source except the JetBrains settings directory, which is from JetBrains
-documentation. Record schema: [`analyzer/research/tabby.md`](../../analyzer/research/tabby.md).
+documentation.
 
-Tabby is a self-hosted server. On a developer workstation it runs as that
-user (state under their home); in Docker the images set `TABBY_ROOT=/data`
-([docker/Dockerfile.cuda:88](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/docker/Dockerfile.cuda#L88)), which is outside any home and
-not covered by a home catalog. The editor plugins talk to the server; chat
-history is server-side.
+### Observed
+
+- No real install.
+
+### Source reviews
 
 - **Source review (2026-10-19)**: HEAD of TabbyML/tabby is still
   [`21b2904`](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f),
@@ -30,7 +35,22 @@ history is server-side.
 
 ## 2. Per-user storage
 
-**Server root `~/.tabby`.** `TABBY_ROOT` if set, else `home::home_dir()/.tabby`
+### Scratch directories
+
+`.tabby/repositories/<sanitised git url>/` holds
+the clones Tabby makes of the remote repositories it indexes, Tabby's own
+working copies rather than the user's projects; the catalog excludes them
+([section 4](#4-exclusions)). Local repositories (`file://`) are indexed
+in place. No session records a local working directory.
+
+### Server root `~/.tabby`
+
+On a developer workstation Tabby runs as that
+user (state under their home); in Docker the images set `TABBY_ROOT=/data`
+([docker/Dockerfile.cuda:88](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/docker/Dockerfile.cuda#L88)), which is outside any home and
+not covered by a home catalog.
+
+`TABBY_ROOT` if set, else `home::home_dir()/.tabby`
 ([crates/tabby-common/src/path.rs:5-14](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/path.rs#L5-L14)). No platform branching: the
 same name under the profile on Windows. The root is created with mode 0700
 on Unix ([crates/tabby/src/main.rs:61-68](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby/src/main.rs#L61-L68)). Contents
@@ -64,7 +84,9 @@ on Unix ([crates/tabby/src/main.rs:61-68](https://github.com/TabbyML/tabby/blob/
 The webserver (and so the database) runs unless the hidden
 `--no-webserver` flag is given ([crates/tabby/src/serve.rs:112-114](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby/src/serve.rs#L112-L114), [125-145](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby/src/serve.rs#L125-L145)).
 
-**Client `~/.tabby-client/agent`**, used by `tabby-agent`, the language
+### Client `~/.tabby-client/agent`
+
+Used by `tabby-agent`, the language
 server behind the VS Code, IntelliJ, Vim and Eclipse plugins, from
 `os.homedir()` on every OS:
 
@@ -76,13 +98,22 @@ server behind the VS Code, IntelliJ, Vim and Eclipse plugins, from
 - `logs/YYYYMMDD/HHMMSS-<pid>*.log` plus `logs/audit.json`, rotated at
   10 MB, kept 30 days ([clients/tabby-agent/src/logger/fileLogger.ts:13-26](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/tabby-agent/src/logger/fileLogger.ts#L13-L26)).
 
-**VS Code extension `TabbyML.vscode-tabby`**
+### VS Code extension
+
+`TabbyML.vscode-tabby`
 ([clients/vscode/package.json:2-3](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/package.json#L2-L3)) keeps its state in `globalState`
 (`server.serverRecords` with per-endpoint `token`, `edit.recentlyCommand`,
 [clients/vscode/src/Config.ts:41-43](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/Config.ts#L41-L43), [55-66](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/Config.ts#L55-L66), [139-145](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/Config.ts#L139-L145)), that is in
 `state.vscdb` under the `vscode` entry; it writes no `globalStorage` files.
 
-**IntelliJ plugin** persists `intellij-tabby.xml` and
+The VS Code extension's `edit.recentlyCommand` list holds the recent
+inline-edit instructions (default 20) in the same `state.vscdb` row,
+collected under the `vscode` entries
+([clients/vscode/src/Config.ts:139-145](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/Config.ts#L139-L145)).
+
+### IntelliJ plugin
+
+The plugin persists `intellij-tabby.xml` and
 `intellij-tabby-command-history.xml`
 ([clients/intellij/.../settings/SettingsService.kt:11-13](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/intellij/src/main/kotlin/com/tabbyml/intellijtabby/settings/SettingsService.kt#L11-L13);
 [.../inlineChat/CommandHistory.kt:9-12](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/intellij/src/main/kotlin/com/tabbyml/intellijtabby/inlineChat/CommandHistory.kt#L9-L12)); the settings hold
@@ -100,20 +131,9 @@ catalog line looks, or in the project's `.idea/` is not determined from
 this source (source review 2026-10-19). The same `options/` directory
 holds the settings of every other plugin, among them the Cody plugin's
 `cody.xml` and its siblings
-([section 2 of `cody.md`](cody.md#2-per-user-storage)), which is why the
+([JetBrains IDE settings in `cody.md`](cody.md#jetbrains-ide-settings)), which is why the
 catalog lines name Tabby's `intellij-tabby*.xml` files rather than the
 directory.
-
-The VS Code extension's `edit.recentlyCommand` list holds the recent
-inline-edit instructions (default 20) in the same `state.vscdb` row,
-collected under the `vscode` entries
-([clients/vscode/src/Config.ts:139-145](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/vscode/src/Config.ts#L139-L145)).
-
-**Scratch directories.** `.tabby/repositories/<sanitised git url>/` holds
-the clones Tabby makes of the remote repositories it indexes, Tabby's own
-working copies rather than the user's projects; the catalog excludes them
-([section 4](#4-exclusions)). Local repositories (`file://`) are indexed
-in place. No session records a local working directory.
 
 ## 3. Credentials
 
@@ -165,5 +185,5 @@ pre-migration backups, table columns, event file naming and fields,
 `~/.tabby-client/agent` files, VS Code `globalState` keys (source). Medium:
 Windows `home_dir()` resolving to the profile directory (the `home` crate's
 documented behaviour, not re-read here); the JetBrains `options/` location
-(vendor docs). Not determined: Eclipse plugin storage; the size of `events/` on a busy server (no retention in the
-writer, so it grows without bound).
+(vendor docs). Not determined: Eclipse plugin storage; the size of `events/` on a busy server
+(no retention in the writer, so it grows without bound).
