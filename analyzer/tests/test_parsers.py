@@ -4199,7 +4199,7 @@ class CrushTests(ParserBase):
         self.assertEqual(len(rows), 10)
         self.assertEqual(rows[-2].text, "model: gpt-5 -> m provider=p")
         self.assertEqual(rows[-1].turn_type, "system")
-        self.assertIn("m5 parts did not parse", rows[-1].text)
+        self.assertIn("message m5 parts", rows[-1].text)
         self.assertEqual(rows[2].text, "list files")
 
     def test_not_sqlite_is_reported(self):
@@ -4208,6 +4208,82 @@ class CrushTests(ParserBase):
         self.assertEqual(
             [(r.turn_type, r.text) for r in rows], [("system", "parser: not a SQLite database")]
         )
+
+    def _insert(self, statements):
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.REL))
+        for sql in statements:
+            con.execute(sql)
+        con.commit()
+        con.close()
+
+    def test_bad_parts_carries_the_value_in_full(self):
+        # Issue 166: the stored parts value is the row's text, unshortened,
+        # and the messages before and after it are still yielded.
+        bad = '[{"type":"text","data":{"text":"cut' + " tail" * 60
+        insert = (
+            "INSERT INTO messages(id,session_id,role,parts,model,provider,created_at,updated_at) "
+            "VALUES ('%s','6f1c0001','%s','%s','gpt-5','openai',%d,%d)"
+        )
+        after = '[{"type":"text","data":{"text":"after"}}]'
+        self._insert(
+            [
+                insert % ("m5", "assistant", bad, 1760000006, 1760000006),
+                insert % ("m6", "user", after, 1760000007, 1760000007),
+                insert % ("m7", "user", '{"type":"text"}', 1760000008, 1760000008),
+            ]
+        )
+        rows = self.rows_for(CrushParser(), self.REL)
+        texts = [r.text for r in rows]
+        self.assertEqual(texts[2], "list files")
+        self.assertIn("There is one file, a.txt.", texts)
+        bad_row = next(r for r in rows if r.source_line == 5 and r.text.startswith("parser:"))
+        self.assertTrue(
+            bad_row.text.startswith("parser: unparseable record 5 (message m5 parts: "),
+            bad_row.text,
+        )
+        self.assertTrue(bad_row.text.endswith("): " + bad), bad_row.text)
+        self.assertEqual(
+            (bad_row.turn_type, bad_row.timestamp_utc, bad_row.session_id, bad_row.project_path),
+            ("system", "", CRUSH_SESSION, "/alice"),
+        )
+        self.assertEqual(texts[texts.index(bad_row.text) + 1], "after")
+        self.assertEqual(
+            rows[-1].text,
+            'parser: unparseable record 7 (message m7 parts: not a JSON array): {"type":"text"}',
+        )
+        self.assertEqual((rows[-1].source_line, rows[-1].timestamp_utc), (7, ""))
+
+    def test_hyper_prism_model_rows(self):
+        # Issue 167: prism_model_id is the served model, model the request.
+        from fixtures import CRUSH_HYPER_SESSION, crush_hyper_records
+
+        self._insert(crush_hyper_records())
+        rows = [
+            r for r in self.rows_for(CrushParser(), self.REL) if r.session_id == CRUSH_HYPER_SESSION
+        ]
+        models = [(r.text, r.model, r.source_line) for r in rows if r.text.startswith("model:")]
+        self.assertEqual(
+            models,
+            [
+                (
+                    "model: claude-sonnet-4-5 provider=hyper requested=prism-auto",
+                    "hyper/claude-sonnet-4-5",
+                    6,
+                ),
+                (
+                    "model: claude-sonnet-4-5 -> gpt-5-mini provider=hyper requested=prism-auto",
+                    "hyper/gpt-5-mini",
+                    7,
+                ),
+            ],
+        )
+        # The third step has no prism_model_id and repeats the request: no row.
+        third = next(r for r in rows if r.text == "third step")
+        self.assertEqual(third.model, "hyper/prism-auto")
+        first = next(r for r in rows if r.text == "first step")
+        self.assertEqual(first.model, "hyper/claude-sonnet-4-5")
 
 
 class GooseTests(ParserBase):

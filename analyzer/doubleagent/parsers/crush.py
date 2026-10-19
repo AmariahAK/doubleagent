@@ -39,13 +39,29 @@ one. Parts carry no timestamp of their own: they inherit the message's
 `created_at`, except tool calls and results, which use `finished_at` or the
 finish part's `time` when set. No git branch is recorded.
 
-Model rows: the first message of a session whose `model` (or
-`prism_model_id`) is set is preceded by a `system` row `model: <model>
-provider=<provider>`, and every later message of the session whose model or
-provider differs by `model: <old> -> <new> provider=<provider>`, with the
-message's `created_at` and `source_line`; `tool` messages carry no model and
-are skipped. The research records no permission state for Crush, so no
-permission rows are emitted.
+Model rows: `model` and `provider` are the model the turn requested, and
+`prism_model_id` (migration `20260902000000`, at crush 7f799fb) the model
+Hyper's Prism router actually served it with. The served model is
+`prism_model_id` when set, else `model`. The first message of a session that
+names a model is preceded by a `system` row `model: <served>
+provider=<provider>`, and every later message whose served model, requested
+model or provider differs by `model: <old served> -> <new served>
+provider=<provider>`; ` requested=<model>` is appended when the requested
+model differs from the served one. The rows carry the message's `created_at`
+and `source_line`, and the `model` column names `<provider>/<served>`. A
+message with no `prism_model_id` that requests the same model from the same
+provider as the session's last one is not a change, so a Hyper turn's step
+without Prism headers does not flip the row back to the request; `tool`
+messages carry no model and are skipped. The Prism layout is not observed on
+any real install, source-derived (charmbracelet/crush at 7f799fb). The
+research records no permission state for Crush, so no permission rows are
+emitted.
+
+Bad records: a `parts` value that is not a JSON array becomes one `system`
+row through `error_rows`, `parser: unparseable record <rowid> (message <id>
+parts: <reason>): <parts>`, carrying the stored value in full, with the
+message's session and project, an empty timestamp and `source_line` set to
+the rowid; the session's other messages are still yielded.
 """
 
 from __future__ import annotations
@@ -59,8 +75,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json
-from .opencode import model_row_text
+from .base import Options, Parser, compact_json, error_rows
 
 DB_RX = re.compile(r"(^|/)\.crush/crush\.db$")
 PROJECTS_RX = re.compile(r"^(\.local/share/crush|AppData/Local/crush)/projects\.json$")
@@ -71,6 +86,36 @@ NORMAL_FINISH = ("", "end_turn", "tool_use", "stop")
 
 def _join(*parts: str) -> str:
     return " | ".join(x for x in parts if x)
+
+
+def _str(value) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _model_text(seen: dict, session_id: str, provider: str, requested: str, prism: str) -> str:
+    """The `model:` row text for one message, or "" when the session's model
+    is unchanged. `seen` maps a session id to its last (provider, requested,
+    served) triple. The served model is `prism` when set, else `requested`;
+    a message without `prism` that repeats the last provider and request
+    keeps the last served model rather than counting as a change."""
+    old = seen.get(session_id)
+    served = prism
+    if not served:
+        if old and old[:2] == (provider, requested):
+            return ""
+        served = requested
+    if not served:
+        return ""
+    new = (provider, requested, served)
+    if old == new:
+        return ""
+    seen[session_id] = new
+    text = "model: %s -> %s" % (old[2], served) if old else "model: " + served
+    if provider:
+        text += " provider=" + provider
+    if requested and requested != served:
+        text += " requested=" + requested
+    return text
 
 
 def project_of(original: str) -> str:
@@ -173,12 +218,12 @@ class CrushParser(Parser):
         self, artifact: Artifact, m: dict, project_path: str, opts: Options, models: dict
     ) -> Iterator[Row]:
         role = str(m.get("role") or "")
-        provider, model_id = (
-            m.get("provider") or "",
-            m.get("model") or m.get("prism_model_id") or "",
-        )
+        provider = _str(m.get("provider"))
+        requested, prism = _str(m.get("model")), _str(m.get("prism_model_id"))
+        model_id = prism or requested
         model = "%s/%s" % (provider, model_id) if provider and model_id else model_id
         created = to_utc(m.get("created_at"))
+        session_id = str(m.get("session_id") or "")
 
         def base(ts: str = "") -> Row:
             row = self.base_row(artifact)
@@ -189,21 +234,25 @@ class CrushParser(Parser):
             row.timestamp_utc = ts or created
             return row
 
-        text = model_row_text(models, str(m.get("session_id") or ""), provider, model_id)
+        text = _model_text(models, session_id, provider, requested, prism)
         if text:
             row = base()
             row.turn_type = "system"
             row.text = text
             yield row
+        raw = m.get("parts")
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
+        elif raw is not None and not isinstance(raw, str):
+            raw = str(raw)
         try:
-            parts = json.loads(m.get("parts") or "[]")
+            parts = json.loads(raw or "[]")
             if not isinstance(parts, list):
-                raise ValueError("parts is not a list")
+                raise ValueError("not a JSON array")
         except ValueError as e:
-            row = base()
-            row.turn_type = "system"
-            row.text = "parser: message %s parts did not parse: %s" % (m.get("id"), e)
-            yield row
+            reason = "unparseable record %s (message %s parts: %s)" % (m["_rowid"], m.get("id"), e)
+            errors = [(m["_rowid"], reason, raw)]
+            yield from error_rows(self, artifact, errors, session_id, project_path)
             return
         finished = to_utc(m.get("finished_at")) if m.get("finished_at") else ""
         for p in parts:

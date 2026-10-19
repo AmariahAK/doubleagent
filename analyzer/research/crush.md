@@ -37,10 +37,13 @@ on 2026-10-17; the `Sync:` paragraph in
     ([section 3](#3-record-schema)); approvals, session grants, the allow
     list and yolo mode leave no record. Standing grants live in
     `crush.json` and `crushrc` ([section 8](#8-parser-plan)).
-  - Model: covered for the configured model; the model that actually
-    served a Hyper Prism turn (`prism_model_id`) is read only when `model`
-    is empty, so the parser never shows both
-    ([section 3](#3-record-schema)).
+  - Model: covered. The `model:` row names the model that served the
+    turn, `prism_model_id` for a Hyper Prism turn, with the requested
+    `model` beside it as `requested=<model>`
+    ([section 3](#3-record-schema), [section 8](#8-parser-plan)). The
+    Prism layout is not observed on any real install, source-derived
+    (charmbracelet/crush at
+    [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da)).
   - Past use beyond the primary store: none that repeats the transcript.
     The TUI's prompt history is a query over `messages`
     ([`internal/ui/model/history.go:18-30`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/ui/model/history.go#L18-L30)),
@@ -67,8 +70,8 @@ on 2026-10-17; the `Sync:` paragraph in
     `internal/config/load.go` moved about 50 lines up; the paths they name
     are unchanged.
   - Bad lines: the parser reads no line-oriented file; a `parts` value that
-    does not decode becomes a `parser:` row without the value itself
-    ([section 8](#8-parser-plan)).
+    does not decode becomes a `parser: unparseable record` row carrying the
+    stored value in full ([section 8](#8-parser-plan)).
 
 ## 2. Transcript stores
 
@@ -280,16 +283,22 @@ Rows: one per part in `parts`.
 | project_path | directory containing `.crush`, or `projects.json` `path` |
 | git_branch | empty |
 | turn_type | `user`/`assistant` text; `reasoning` → thinking; `tool_call` → tool_use; `tool_result` → tool_result; role `system`, `finish`, `shell_command` → system |
-| model | `provider`/`model` (or `prism_model_id`) |
+| model | `provider`/`prism_model_id` when set, else `provider`/`model` |
 | tool_name, tool_use_id | `data.name`, `data.id` or `data.tool_call_id` |
 | text | text, input JSON, output |
 
-Model rows. A `system` row `model: <model> provider=<provider>` precedes
-the first message of a session whose `model` (else `prism_model_id`) is
-set, and `model: <old> -> <new> provider=<provider>` every later message
-of the session whose model or provider differs, with the message's
-`created_at`; `tool` messages store an empty model and are skipped. The
-parser emits no permission rows: the research before 2026-10-19 named
+Model rows. The served model of a message is `prism_model_id` when set,
+else `model`. A `system` row `model: <served> provider=<provider>`
+precedes the first message of a session that names a model, and
+`model: <old served> -> <new served> provider=<provider>` every later
+message of the session whose served model, requested model or provider
+differs, with the message's `created_at`; ` requested=<model>` follows
+when the requested model differs from the served one (a Hyper Prism
+turn: `model: claude-sonnet-4-5 provider=hyper requested=<model>`). A
+message with no `prism_model_id` that repeats the session's last provider
+and requested model is not a change, so a Hyper step without Prism
+headers does not flip the row back to the request. `tool` messages store
+an empty model and are skipped. The parser emits no permission rows: the research before 2026-10-19 named
 no permission state, and the review of that date found the records
 listed below, which the parser does not yet read.
 
@@ -381,11 +390,11 @@ Requirement lines from the source review of 2026-10-19 at
   never written. The `crush.json` files and `crushrc` are collected; one
   `permission setting:` row per entry at the file's modification time, as
   other parsers write, would need the parser to want those files.
-- **Model (primary, partly parsed).** Per message only: `model` and
+- **Model (primary, parsed).** Per message only: `model` and
   `provider` (requested), `prism_model_id` (resolved by Prism). The rows
-  should read `model: <prism_model_id> provider=<provider>
-  requested=<model>` when both are set and differ; today `prism_model_id`
-  is used only when `model` is empty. No per-session or switch record.
+  read `model: <prism_model_id> provider=<provider> requested=<model>`
+  when both are set and differ (issue 167; until then `prism_model_id`
+  was used only when `model` was empty). No per-session or switch record.
   The global data `crush.json` keeps the user's current `models.large` and
   `models.small` and up to five `recent_models` per type
   ([`internal/config/config.go:850-854`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/config.go#L850-L854),
@@ -439,9 +448,11 @@ Requirement lines from the source review of 2026-10-19 at
   the delete.
 - **Bad lines.** No line-oriented file is read. `projects.json` that does
   not parse is one whole-file `parser:` row; a `messages.parts` value that
-  does not decode is a `parser: message <id> parts did not parse` row that
-  omits the raw value, where the rule for a record that does not decode
-  is to carry it in full (`source_line` is the message's rowid).
+  does not decode (not JSON, or JSON that is not an array) is one `system`
+  row `parser: unparseable record <rowid> (message <id> parts: <reason>):
+  <parts>`, carrying the stored value in full, with the message's session
+  and project, an empty timestamp and `source_line` set to the rowid; the
+  session's other messages are still yielded (issue 166).
 
 Fixture rows:
 

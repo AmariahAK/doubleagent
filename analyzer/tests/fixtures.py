@@ -3977,6 +3977,35 @@ def build_crush(home: Path) -> None:
     (home / ".config/crush/crush.json").write_text("{}", encoding="utf-8")
 
 
+CRUSH_HYPER_SESSION = "6f1c0002"
+
+
+def crush_hyper_records():
+    """A session routed through Hyper's Prism router (issue 167): the
+    assistant messages request `prism-auto` from provider `hyper` and record
+    the model that served each step in `prism_model_id`, the column of
+    migration 20260902000000 at crush 7f799fb (internal/agent/agent.go
+    1085 and 1914-1929). The user message stores no model, as
+    createUserMessage writes it. The third step has no Prism headers, so
+    its `prism_model_id` is NULL. The requested id `prism-auto` is invented;
+    no real install has shown a Hyper turn. The Crush tests apply these on
+    top of `crush_records()` so the default session's rows stay as they are."""
+    cols = (
+        "id,session_id,role,parts,model,provider,created_at,updated_at,finished_at,"
+        "prism_model_id,prism_model_name"
+    )
+    return [
+        "INSERT INTO sessions(id,title,message_count,prompt_tokens,completion_tokens,cost,updated_at,created_at) "
+        "VALUES('6f1c0002','Hyper',4,20,8,0,1760000110,1760000100)",
+        "INSERT INTO messages(%s) VALUES "
+        % cols
+        + """('h1','6f1c0002','user','[{"type":"text","data":{"text":"route this"}}]',NULL,NULL,1760000100,1760000100,NULL,NULL,NULL),"""
+        """('h2','6f1c0002','assistant','[{"type":"text","data":{"text":"first step"}},{"type":"finish","data":{"reason":"end_turn","time":1760000102}}]','prism-auto','hyper',1760000101,1760000102,1760000102,'claude-sonnet-4-5','Claude Sonnet 4.5'),"""
+        """('h3','6f1c0002','assistant','[{"type":"text","data":{"text":"second step"}},{"type":"finish","data":{"reason":"end_turn","time":1760000104}}]','prism-auto','hyper',1760000103,1760000104,1760000104,'gpt-5-mini','GPT-5 mini'),"""
+        """('h4','6f1c0002','assistant','[{"type":"text","data":{"text":"third step"}},{"type":"finish","data":{"reason":"end_turn","time":1760000106}}]','prism-auto','hyper',1760000105,1760000106,1760000106,NULL,NULL)""",
+    ]
+
+
 GOOSE_SESSION = "20260301_1"
 
 # session_manager.rs at goose 591edd4, schema version 16 (research/goose.md section 3).
