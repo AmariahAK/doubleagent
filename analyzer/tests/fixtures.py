@@ -4622,6 +4622,40 @@ def build_zed(home: Path) -> None:
     )
 
 
+def zed_unknown_variants_record():
+    """A version 0.3.0 thread blob (issue 168) whose known messages follow
+    the `UserMessage`, `AgentMessage` and `Message` enums of
+    zed-industries/zed at a84689073d29 (crates/agent/src/thread.rs:202-208,
+    287-301, 743-759; analyzer/research/zed.md section 3), with items no
+    release writes today mixed in: a message variant, a `Compaction`
+    variant, an `Agent` content variant, a content item and a
+    `tool_results` entry that are not objects, and a legacy segment type.
+    Each must become its own `parser:` row while the messages around them
+    still yield theirs."""
+    return {
+        "version": "0.3.0",
+        "title": "Unknown variants",
+        "messages": [
+            {"User": {"id": "u1", "content": [{"Text": "before the unknown"}]}},
+            {"Checkpoint": {"id": "c1", "label": "naïve"}},
+            {
+                "Agent": {
+                    "content": [
+                        {"Text": "agent text"},
+                        {"Citation": {"url": "https://example.com"}},
+                        42,
+                    ],
+                    "tool_results": {"toolu_x": "not an object"},
+                }
+            },
+            7,
+            {"Compaction": {"Remote": {"id": "r1"}}},
+            {"role": "assistant", "segments": [{"type": "audio", "data": "AAA="}]},
+            {"User": {"id": "u2", "content": [{"Text": "after the unknown"}]}},
+        ],
+    }
+
+
 VSCODE_SESSION = "9ab0c1d2-0000-4000-8000-00000000c0de"
 VSCODE_LEGACY_SESSION = "9ab0c1d2-0000-4000-8000-0000000001d0"
 VSCODE_T0 = 1791025200000  # 2026-10-03T11:00:00Z, ms

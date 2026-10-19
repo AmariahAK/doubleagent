@@ -57,6 +57,30 @@ thread-start row and before the first message:
   "for the rest of this thread", stored in the blob, so the row carries the
   thread id as `session_id` and the thread's `updated_at` as its time (the
   last write, not the moment of the grant, which is not recorded).
+
+Bad files and records (issues 136 and 168). A file that is not SQLite is
+one `parser: not a SQLite database` row, and a SQLite error while reading
+one `parser: SQLite error: <error>` row. Inside `threads.db`, each record
+that does not decode is a `system` row with an empty `timestamp_utc`, the
+thread's `session_id` and `project_path`, and `source_line` the `threads`
+rowid:
+
+* A `data` blob that does not decode to a JSON object is
+  `parser: unparseable record <rowid> (<reason>): <stored value>`, the
+  stored value being a `json` row's text, or a `zstd` row's compressed
+  bytes as lowercase hex (a truncated frame can decompress to nothing, so
+  the bytes are what is carried), its reason then ending `stored zstd
+  blob as hex`.
+* A `messages[]` item of no known variant (not `User`, `Agent`,
+  `Compaction` with `Summary` or `ProviderNative`, a string or a legacy
+  `role` message), an `Agent` content item of no known variant, a content
+  or `segments[]` item that is not an object, or a `tool_uses[]` or
+  `tool_results` entry that is not an object is
+  `parser: unparseable record <N> (<reason>): <item as JSON>`, N the
+  message's 1-based position in `messages[]` and the reason naming the
+  item's place inside it. These rows follow the thread's other rows. An
+  unknown `User` content object stays in the prompt text as JSON, as
+  before.
 """
 
 from __future__ import annotations
@@ -64,6 +88,7 @@ from __future__ import annotations
 import io
 import json
 import re
+import sqlite3
 from collections.abc import Iterator
 
 import zstandard
@@ -72,7 +97,7 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, setting_value
+from .base import Options, Parser, compact_json, error_rows, setting_value
 
 DATA_DIR = r"(?:\.local/share/zed|Library/Application Support/Zed|AppData/Local/Zed|\.var/app/dev\.zed\.Zed[A-Za-z]*/data/zed)"
 SANDBOX_FLAGS = ("network_any_host", "allow_fs_write_all", "unsandboxed", "sandbox_fallback")
@@ -94,6 +119,15 @@ def decompress(blob: bytes) -> bytes:
                     break
                 out.write(chunk)
         return out.getvalue()
+
+
+def record_json(value) -> str:
+    """A decoded blob item as error row text: compact JSON in the blob's own
+    key order, non-ASCII kept, so the item is carried in full."""
+    try:
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def content_text(content) -> str:
@@ -158,11 +192,22 @@ class ZedParser(Parser):
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if not is_sqlite(artifact.disk_path):
+            yield self._file_error(artifact, "not a SQLite database")
             return
-        if THREADS_RX.match(artifact.rel):
-            yield from self._parse_threads(artifact, opts)
-        else:
-            yield from self._parse_sidebar(artifact, opts)
+        try:
+            if THREADS_RX.match(artifact.rel):
+                yield from self._parse_threads(artifact, opts)
+            else:
+                yield from self._parse_sidebar(artifact, opts)
+        except sqlite3.DatabaseError as e:
+            yield self._file_error(artifact, "SQLite error: %s" % e)
+
+    def _file_error(self, artifact: Artifact, message: str) -> Row:
+        """The one `parser: <message>` row for a file that cannot be read."""
+        row = self.base_row(artifact)
+        row.turn_type = "system"
+        row.text = "parser: " + message
+        return row
 
     # -- db/0-<channel>/db.sqlite -------------------------------------------------
     def _parse_sidebar(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
@@ -216,13 +261,10 @@ class ZedParser(Parser):
             row.text = compact(text)
             return row
 
-        thread, err = self._decode(r)
+        thread, err, raw = self._decode(r)
         if thread is None:
-            yield base(
-                "system",
-                "thread %s could not be decoded (%s): %s"
-                % (session_id, err, r.get("summary") or ""),
-            )
+            label = "unparseable record %d (%s)" % (r["_rowid"], err)
+            yield from error_rows(self, artifact, [(r["_rowid"], label, raw)], session_id, project)
             return
 
         snap = thread.get("initial_project_snapshot")
@@ -281,7 +323,8 @@ class ZedParser(Parser):
                 branch,
             )
 
-        for kind, text, tool_name, tool_id in self._messages(thread):
+        errors: list = []
+        for kind, text, tool_name, tool_id in self._messages(thread, r["_rowid"], errors):
             if kind == "thinking" and not opts.include_thinking:
                 continue
             if not text and kind not in ("tool_use", "tool_result"):
@@ -290,6 +333,7 @@ class ZedParser(Parser):
             row.tool_name = tool_name
             row.tool_use_id = tool_id
             yield row
+        yield from error_rows(self, artifact, errors, session_id, project)
 
     @staticmethod
     def _grants(thread: dict) -> Iterator[tuple[str, object]]:
@@ -311,55 +355,94 @@ class ZedParser(Parser):
                 yield "sandbox_grants.%s" % key, True
 
     @staticmethod
-    def _decode(r: dict) -> tuple[dict | None, str]:
+    def _decode(r: dict) -> tuple[dict | None, str, str]:
+        """(thread, "", "") for a blob that decodes to a JSON object, else
+        (None, reason, the stored value as text). A `json` row's stored
+        value is its text, decoded UTF-8 with `errors="replace"`; a `zstd`
+        row's is its compressed bytes as lowercase hex, since they have no
+        faithful text form and a truncated frame can decompress to nothing,
+        and its reason ends `stored zstd blob as hex`."""
         data = r.get("data")
         if data is None:
-            return None, "no data"
-        dtype = str(r.get("data_type") or "").lower()
+            return None, "no data", ""
+        binary = isinstance(data, (bytes, bytearray))
+        stored = bytes(data) if binary else str(data).encode("utf-8")
+        is_zstd = str(r.get("data_type") or "").lower() == "zstd"
         try:
-            if dtype == "zstd":
-                raw = decompress(bytes(data))
-            else:
-                raw = data if isinstance(data, (bytes, bytearray)) else str(data).encode("utf-8")
-            thread = json.loads(bytes(raw).decode("utf-8", errors="replace"))
-        except Exception as e:  # noqa: BLE001 - zstandard.ZstdError, ValueError, ...
-            return None, "%s: %s" % (type(e).__name__, e)
-        if not isinstance(thread, dict):
-            return None, "not a JSON object"
-        return thread, ""
+            raw = decompress(stored) if is_zstd else stored
+            thread = json.loads(raw.decode("utf-8", errors="replace"))
+            if not isinstance(thread, dict):
+                raise ValueError("not a JSON object")
+        except Exception as e:  # noqa: BLE001 - ZstdError, the stream reader's errors, ValueError
+            if is_zstd:
+                reason = "%s: %s; stored zstd blob as hex" % (type(e).__name__, e)
+                return None, reason, stored.hex()
+            return None, "%s: %s" % (type(e).__name__, e), stored.decode("utf-8", errors="replace")
+        return thread, "", ""
 
-    def _messages(self, thread: dict) -> Iterator[tuple[str, str, str, str]]:
-        """(turn_type, text, tool_name, tool_use_id) in transcript order."""
-        for msg in thread.get("messages") or []:
+    def _messages(
+        self, thread: dict, rowid: int, errors: list
+    ) -> Iterator[tuple[str, str, str, str]]:
+        """(turn_type, text, tool_name, tool_use_id) in transcript order. A
+        `messages[]` item, or a content, segment, tool use or tool result
+        item inside one, of a shape not recognised is appended to `errors`
+        as (rowid, `unparseable record <N> (<reason>)`, the item as JSON),
+        N the message's 1-based position in `messages[]`."""
+        messages = thread.get("messages")
+        if messages is None:
+            return
+        if not isinstance(messages, list):
+            reason = "unparseable record 0 (messages is not a list)"
+            errors.append((rowid, reason, record_json(messages)))
+            return
+
+        def bad(n: int, reason: str, item) -> None:
+            errors.append((rowid, "unparseable record %d (%s)" % (n, reason), record_json(item)))
+
+        for n, msg in enumerate(messages, 1):
             if isinstance(msg, str):
                 yield "system", msg.lower(), "", ""
             elif not isinstance(msg, dict):
-                continue
+                bad(n, "unknown message variant", msg)
             elif "User" in msg:
-                yield from self._user(msg["User"])
+                yield from self._user(msg["User"], n, bad)
             elif "Agent" in msg:
-                yield from self._agent(msg["Agent"])
+                yield from self._agent(msg["Agent"], n, bad)
             elif "Compaction" in msg:
                 c = msg["Compaction"]
                 if isinstance(c, dict) and isinstance(c.get("Summary"), str):
                     yield "system", "compaction: " + c["Summary"], "", ""
-                else:
+                elif isinstance(c, dict) and "ProviderNative" in c:
                     yield "system", "compaction: provider native", "", ""
+                else:
+                    bad(n, "unknown Compaction variant", msg)
             elif "role" in msg:
-                yield from self._legacy(msg)
+                yield from self._legacy(msg, n, bad)
+            else:
+                bad(n, "unknown message variant", msg)
 
     @staticmethod
-    def _user(u) -> Iterator[tuple[str, str, str, str]]:
+    def _user(u, n: int, bad) -> Iterator[tuple[str, str, str, str]]:
         # One row per prompt: text, mentions and images of one User message
-        # are joined so sessions.jsonl counts prompts, not content items.
-        content = u.get("content") if isinstance(u, dict) else None
+        # are joined so sessions.jsonl counts prompts, not content items. A
+        # content object of an unknown variant stays in the prompt text as
+        # JSON; an item that is not an object or string goes to `bad`.
+        if not isinstance(u, dict):
+            bad(n, "User message is not an object", {"User": u})
+            return
+        content = u.get("content")
         if isinstance(content, (str, dict)):
             content = [content]
+        elif content is not None and not isinstance(content, list):
+            bad(n, "User content is not a list", content)
+            content = []
         parts = []
-        for c in content or []:
+        for k, c in enumerate(content or []):
             if isinstance(c, str):
                 parts.append(c)
-            elif isinstance(c, dict):
+            elif not isinstance(c, dict):
+                bad(n, "unknown User content variant, content[%d]" % k, c)
+            else:
                 if isinstance(c.get("Text"), str):
                     parts.append(c["Text"])
                 elif "Mention" in c:
@@ -371,17 +454,18 @@ class ZedParser(Parser):
         yield "user", "\n".join(parts), "", ""
 
     @staticmethod
-    def _agent(a) -> Iterator[tuple[str, str, str, str]]:
+    def _agent(a, n: int, bad) -> Iterator[tuple[str, str, str, str]]:
         if not isinstance(a, dict):
+            bad(n, "Agent message is not an object", {"Agent": a})
             return
         results = a.get("tool_results")
+        if results is not None and not isinstance(results, dict):
+            bad(n, "Agent tool_results is not an object", results)
         if not isinstance(results, dict):
             results = {}
         done = set()
 
-        def result(key, res):
-            if not isinstance(res, dict):
-                res = {}
+        def result(key, res: dict):
             text = content_text(res.get("content"))
             if not text and res.get("output") is not None:
                 text = (
@@ -401,11 +485,14 @@ class ZedParser(Parser):
         content = a.get("content")
         if isinstance(content, (str, dict)):
             content = [content]
-        for c in content or []:
+        elif content is not None and not isinstance(content, list):
+            bad(n, "Agent content is not a list", content)
+            content = []
+        for k, c in enumerate(content or []):
             if isinstance(c, str):
                 yield "assistant", c, "", ""
             elif not isinstance(c, dict):
-                continue
+                bad(n, "unknown Agent content variant, content[%d]" % k, c)
             elif isinstance(c.get("Text"), str):
                 yield "assistant", c["Text"], "", ""
             elif "Thinking" in c:
@@ -418,45 +505,62 @@ class ZedParser(Parser):
                 tid = str(tu.get("id") or "")
                 yield "tool_use", tool_input_text(tu), str(tu.get("name") or ""), tid
                 # The result follows its call, so the timeline reads in order.
-                if tid in results:
+                if isinstance(results.get(tid), dict):
                     done.add(tid)
                     yield result(tid, results[tid])
             elif "Image" in c:
                 yield "assistant", "[image]", "", ""
+            else:
+                bad(n, "unknown Agent content variant, content[%d]" % k, c)
         for key, res in results.items():
-            if key not in done:
+            if key in done:
+                continue
+            if isinstance(res, dict):
                 yield result(key, res)
+            else:
+                bad(n, "Agent tool_results entry %s is not an object" % key, res)
 
     @staticmethod
-    def _legacy(msg: dict) -> Iterator[tuple[str, str, str, str]]:
+    def _legacy(msg: dict, n: int, bad) -> Iterator[tuple[str, str, str, str]]:
         role = str(msg.get("role") or "").lower()
         kind = "user" if role == "user" else "assistant" if role == "assistant" else "system"
         if isinstance(msg.get("text"), str):
             yield kind, msg["text"] if kind != "system" else "%s: %s" % (role, msg["text"]), "", ""
-        for seg in msg.get("segments") or []:
-            if not isinstance(seg, dict):
-                continue
-            st = str(seg.get("type") or "").lower()
+        for k, seg in enumerate(msg.get("segments") or []):
+            st = str(seg.get("type") or "").lower() if isinstance(seg, dict) else ""
             if st == "text":
                 yield kind, str(seg.get("text") or ""), "", ""
             elif st == "thinking":
                 yield "thinking", str(seg.get("text") or ""), "", ""
             elif st == "redactedthinking":
                 yield "thinking", "[redacted thinking]", "", ""
-        for tu in msg.get("tool_uses") or []:
-            if isinstance(tu, dict):
+            else:
+                bad(n, "unknown segment variant, segments[%d]" % k, seg)
+        for k, tu in enumerate(msg.get("tool_uses") or []):
+            if not isinstance(tu, dict):
+                bad(n, "tool_uses[%d] is not an object" % k, tu)
+            else:
                 yield (
                     "tool_use",
                     tool_input_text(tu),
                     str(tu.get("name") or ""),
                     str(tu.get("id") or ""),
                 )
-        for res in msg.get("tool_results") or []:
-            if isinstance(res, dict):
+        for k, res in enumerate(msg.get("tool_results") or []):
+            if not isinstance(res, dict):
+                bad(n, "tool_results[%d] is not an object" % k, res)
+            else:
                 text = content_text(res.get("content"))
                 if res.get("is_error"):
                     text = "[error] " + text
                 yield "tool_result", text, "", str(res.get("tool_use_id") or "")
 
 
-__all__ = ["ZedParser", "content_text", "decompress", "first_folder", "tool_input_text"]
+__all__ = [
+    "ZedParser",
+    "content_text",
+    "decompress",
+    "first_folder",
+    "record_json",
+    "tool_input_text",
+]

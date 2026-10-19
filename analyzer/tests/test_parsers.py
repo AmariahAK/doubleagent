@@ -5182,15 +5182,22 @@ class ZedTests(ParserBase):
 
     def test_corrupt_blob_is_reported_not_fatal(self):
         blob = zstandard.ZstdCompressor().compress(b'{"version":"0.3.0","messages":[]}' * 50)
-        self._insert("bad-thread", "zstd", blob[: len(blob) // 2])
+        cut = blob[: len(blob) // 2]
+        self._insert("bad-thread", "zstd", cut)
         rows = self.rows_for(ZedParser(), self.REL)
         self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 13)
         bad = [r for r in rows if r.session_id == "bad-thread"]
         self.assertEqual(len(bad), 1)
         self.assertEqual(
-            (bad[0].turn_type, bad[0].project_path, bad[0].source_line), ("system", "/srv/other", 2)
+            (bad[0].turn_type, bad[0].project_path, bad[0].source_line, bad[0].timestamp_utc),
+            ("system", "/srv/other", 2, ""),
         )
-        self.assertIn("could not be decoded", bad[0].text)
+        # issue 168: a full-record parser: row, the stored blob as hex
+        self.assertEqual(
+            bad[0].text,
+            "parser: unparseable record 2 (JSONDecodeError: Expecting value: line 1 column 1"
+            " (char 0); stored zstd blob as hex): " + cut.hex(),
+        )
 
     def test_json_and_legacy_versions(self):
         legacy = {
@@ -5270,6 +5277,93 @@ class ZedTests(ParserBase):
         self._insert("bare", "json", b'{"version":"0.3.0","messages":[]}')
         rows = [r for r in self.rows_for(ZedParser(), self.REL) if r.session_id == "bare"]
         self.assertEqual([r.text for r in rows], ["thread start: extra version=0.3.0"])
+
+    def test_not_sqlite_is_one_parser_row(self):
+        # issue 168: a threads.db or db.sqlite that is not SQLite yields one
+        # whole-file row instead of nothing
+        for rel in (self.REL, self.SIDEBAR):
+            (self.home / rel).write_bytes(b"not a database\n")
+            rows = self.rows_for(ZedParser(), rel)
+            self.assertEqual(
+                [(r.turn_type, r.text, r.session_id) for r in rows],
+                [("system", "parser: not a SQLite database", "")],
+                rel,
+            )
+
+    def test_bad_json_blob_is_carried_in_full(self):
+        # issue 168: a `json` row that is not a JSON object, and one cut
+        # mid-record, each carry their stored text; the fixture thread
+        # before them still yields every row
+        self._insert("list-thread", "json", b'["not", "an", "object"]')
+        self._insert("cut-thread", "json", b'{"version":"0.3.0","messages":[{"User"')
+        rows = self.rows_for(ZedParser(), self.REL)
+        self.assertEqual(len([r for r in rows if r.session_id == ZED_THREAD]), 13)
+        by_session = {r.session_id: r for r in rows if r.session_id != ZED_THREAD}
+        self.assertEqual(
+            by_session["list-thread"].text,
+            'parser: unparseable record 2 (ValueError: not a JSON object): ["not", "an", "object"]',
+        )
+        self.assertEqual(
+            by_session["cut-thread"].text,
+            "parser: unparseable record 3 (JSONDecodeError: Expecting ':' delimiter: line 1"
+            ' column 39 (char 38)): {"version":"0.3.0","messages":[{"User"',
+        )
+        for sid in ("list-thread", "cut-thread"):
+            r = by_session[sid]
+            self.assertEqual(
+                (r.turn_type, r.project_path, r.timestamp_utc), ("system", "/srv/other", "")
+            )
+
+    def test_unknown_variants_are_full_record_rows(self):
+        from fixtures import zed_unknown_variants_record
+
+        self._insert(
+            "odd-thread", "json", json.dumps(zed_unknown_variants_record()).encode("utf-8")
+        )
+        rows = [r for r in self.rows_for(ZedParser(), self.REL) if r.session_id == "odd-thread"]
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [
+                ("system", "thread start: Unknown variants version=0.3.0"),
+                ("user", "before the unknown"),
+                ("assistant", "agent text"),
+                ("user", "after the unknown"),
+                (
+                    "system",
+                    "parser: unparseable record 2 (unknown message variant):"
+                    ' {"Checkpoint":{"id":"c1","label":"naïve"}}',
+                ),
+                (
+                    "system",
+                    "parser: unparseable record 3 (unknown Agent content variant, content[1]):"
+                    ' {"Citation":{"url":"https://example.com"}}',
+                ),
+                (
+                    "system",
+                    "parser: unparseable record 3 (unknown Agent content variant, content[2]): 42",
+                ),
+                (
+                    "system",
+                    "parser: unparseable record 3 (Agent tool_results entry toolu_x is not an"
+                    ' object): "not an object"',
+                ),
+                ("system", "parser: unparseable record 4 (unknown message variant): 7"),
+                (
+                    "system",
+                    "parser: unparseable record 5 (unknown Compaction variant):"
+                    ' {"Compaction":{"Remote":{"id":"r1"}}}',
+                ),
+                (
+                    "system",
+                    "parser: unparseable record 6 (unknown segment variant, segments[0]):"
+                    ' {"type":"audio","data":"AAA="}',
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual((r.project_path, r.source_line), ("/srv/other", 2))
+        for r in rows[4:]:
+            self.assertEqual(r.timestamp_utc, "")
 
 
 class VsCodeTests(ParserBase):

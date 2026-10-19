@@ -79,6 +79,13 @@ on 2026-10-17; the citations in the Sync paragraph of
     not decode yields a row not prefixed `parser:`, and a message or
     content item of an unknown variant is skipped
     ([section 8](#8-parser-plan)).
+- **Not observed on any real install, source-derived
+  ([zed-industries/zed](https://github.com/zed-industries/zed) at
+  [`a846890`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a))**:
+  every layout the parser handles, `threads.db`, the thread blob and
+  `sidebar_threads`, rests on source and a synthetic fixture; no Zed
+  install has been surveyed. So do the bad-record rows of issue 168
+  ([section 8](#8-parser-plan)).
 
 ## 2. Transcript stores
 
@@ -360,8 +367,8 @@ already sent with a rating stays with Zed, and nothing local says so.
 
 Plan lines from the source review of 2026-10-19, at
 [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6),
-one per requirement; none is implemented yet, and every new row rests on
-source alone (fixture only):
+one per requirement; none is implemented yet except the bad-lines line
+(issue 168), and every new row rests on source alone (fixture only):
 
 - **Permission, standing rules (not read).** The user's `settings.json`
   (and a project's `.zed/settings.json`; patterns from every layer add
@@ -498,13 +505,27 @@ source alone (fixture only):
   and the `sidebar_threads` migrations
   ([`thread_metadata_store.rs:1372-1465`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_metadata_store.rs#L1372-L1465))
   read as at `a846890`, with line numbers moved by one or two.
-- **Bad lines.** The parser reads no file line by line. Three silent
-  paths remain: `parse()` returns nothing for a file that is not SQLite
-  (the `goose` parser writes `parser: not a SQLite database`); a blob
-  that does not decode yields `thread <id> could not be decoded
-  (<reason>)`, not a row prefixed `parser:`; and a `messages[]` item, or
-  an `Agent` content item, of an unknown variant is skipped without a
-  row.
+- **Bad lines (implemented, issue 168).** The parser reads no file line
+  by line; its bad records are whole files, `threads` rows and items
+  inside a thread blob. A file that is not SQLite is one `parser: not a
+  SQLite database` row, and a SQLite error while reading one `parser:
+  SQLite error: <error>` row. A `data` blob that does not decode to a
+  JSON object is `parser: unparseable record <rowid> (<reason>):
+  <stored value>`, the stored value being a `json` row's text or a
+  `zstd` row's compressed bytes as lowercase hex (a truncated frame can
+  decompress to nothing), the reason then ending `stored zstd blob as
+  hex`. A `messages[]` item of no known variant, a `Compaction` with
+  neither `Summary` nor `ProviderNative`, an `Agent` content item of no
+  known variant, a content or legacy `segments[]` item of no known type,
+  and a `tool_uses[]` or `tool_results` entry that is not an object is
+  `parser: unparseable record <N> (<reason>): <item as JSON>`, N the
+  message's 1-based position in `messages[]` and the reason naming the
+  item (`unknown message variant`, `unknown Agent content variant,
+  content[1]`, `Agent tool_results entry <id> is not an object`). Every
+  such row is `system`, carries the thread's `session_id` and
+  `project_path`, an empty `timestamp_utc` and the `threads` rowid as
+  `source_line`, and follows the thread's other rows. An unknown `User`
+  content object stays in the prompt text as JSON.
 
 Fixtures. `threads.db` (`data` is the zstd of the JSON below,
 `data_type='zstd'`):
