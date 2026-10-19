@@ -1,19 +1,28 @@
-# Aider transcript schema
+# aider
 
-Catalog agent: `aider`. Aider writes plain-text history files into the
-repository it runs in, so most of its evidence is project-level. Paths cited
-are relative to the clone.
+Catalog agent: `aider`, the terminal pair-programming CLI. Aider writes plain-text history files
+into the repository it runs in, so most of its evidence is project-level; it shares no format
+with another agent. Paths cited are relative to the clone. Paths, credentials and the rest of the
+per-user state are in [`collectors/research/aider.md`](../../collectors/research/aider.md).
 
-Paths, credentials and the rest of the per-user state are in
-[`collectors/research/aider.md`](../../collectors/research/aider.md).
-
-## 1. Source
+## 1. Source and evidence
 
 [Aider-AI/aider](https://github.com/Aider-AI/aider) at [`5dc9490bb35f9729ef2c95d00a19ccd30c26339c`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c), Apache-2.0
 ([`LICENSE.txt`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/LICENSE.txt)). Open source. The input history format comes from the
 upstream prompt_toolkit `history.py`, which is not vendored.
 
-- **Source review (2026-10-19)**: the head of
+Confidence. High: chat and LLM history formats (read from the writers).
+Medium-high: input history (upstream prompt_toolkit source, not pinned to
+Aider's dependency version). Local-time timestamps need the host time zone
+to convert exactly.
+
+### Observed
+
+- No real install.
+
+### Source reviews
+
+- 2026-10-19: the head of
   [Aider-AI/aider](https://github.com/Aider-AI/aider) `main` on
   2026-10-19 is still
   [`5dc9490`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c),
@@ -43,7 +52,7 @@ upstream prompt_toolkit `history.py`, which is not vendored.
   - Version drift: none.
   - Bad lines: covered.
 
-## 2. Transcript files
+## 2. Transcript stores
 
 In the git root, else the cwd ([`aider/args.py:271-275`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L271-L275)):
 `.aider.chat.history.md` (markdown), `.aider.input.history` (prompt_toolkit
@@ -62,8 +71,8 @@ with the files themselves or the repository
 `.aider.input.history` is the per-prompt history file: one entry per
 prompt with its local time and no session, which survives the chat
 history being deleted, truncated or redirected but not the project
-([section 4](#4-joins)). `.aider.llm.history`, written only when
-`--llm-history-file` is set, is a second copy of every prompt sent to
+([Past use and secondary sources](#past-use-and-secondary-sources)). `.aider.llm.history`,
+written only when `--llm-history-file` is set, is a second copy of every prompt sent to
 the model and every response, each with its own time. No other store of
 past use was found. The analyzer reads `.aider.chat.history.md` as the
 primary store and the input and LLM histories as secondary sources on
@@ -71,6 +80,8 @@ every run (see
 [Secondary sources](../docs/output.md#secondary-sources)).
 
 ## 3. Record schema
+
+### .aider.chat.history.md
 
 `.aider.chat.history.md` (append-only, [`aider/io.py:1117-1136`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L1117-L1136)):
 
@@ -129,10 +140,14 @@ every run (see
 - Aider's own reader ([`utils.py:148-188`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/utils.py#L148-L188)): skip lines starting `# `; `> ` is
   tool output; `#### ` is user; anything else is assistant.
 
+### .aider.input.history
+
 `.aider.input.history` (prompt_toolkit `FileHistory`, [`io.py:19`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L19),[`356`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L356),[`740`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L740);
 format `prompt_toolkit/history.py:298-307`): an entry is
 `\n# YYYY-MM-DD HH:MM:SS.ffffff\n` followed by one `+<line>` per input line
 (local time).
+
+### .aider.llm.history
 
 `.aider.llm.history` ([`io.py:754-764`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L754-L764)): `TO LLM YYYY-MM-DDTHH:MM:SS\n`
 followed by `format_messages` output ([`utils.py:112-134`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/utils.py#L112-L134)): a `-------`
@@ -140,7 +155,7 @@ separator, then `ROLE <line>` per content line (`SYSTEM`, `USER`,
 `ASSISTANT`), and `LLM RESPONSE <ts>\n` plus `ASSISTANT <line>` lines
 ([`base_coder.py:1793`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L1793), [`:1822-1826`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L1822-L1826)).
 
-## 4. Joins
+## 4. Joins and timestamps
 
 The project is the directory containing the files (the git root). There is
 no session id; synthesise one per `# aider chat started at` header. Input
@@ -149,7 +164,73 @@ recorded; the model is named only in the startup announcement lines
 ([section 3](#3-record-schema)), which carry no time of their own and
 follow the session header.
 
-Which file is primary. `.aider.chat.history.md` is the store of record: it
+## 5. Other stores
+
+None besides the input and LLM histories of [section 2](#2-transcript-stores), and no SQLite
+store. `.aider.tags.cache.v*` is a repository-map cache, not chat, and is
+excluded by the collector.
+
+## 6. Format versions
+
+None; the format has not changed across sessions.
+
+## 7. Secrets
+
+`.aider.llm.history` contains the complete system prompt with every added
+file; `.aider.chat.history.md` contains any pasted secrets. Aider writes no
+keys itself; the collector flags `.aider.conf.yml` and the model settings
+files.
+
+## 8. Parser plan
+
+Globs: `**/.aider.chat.history.md`, `**/.aider.input.history`,
+`**/.aider.llm.history` (project-level, so they arrive through the
+collector's project catalog).
+
+Rows: one per `#### ` block (user), per assistant run, per `> ` run
+(tool_result); `# aider chat started` becomes `system`.
+
+| Column | Source |
+| --- | --- |
+| timestamp_utc | last `# aider chat started at` header, or the matching `# ` input-history line, converted from local time |
+| session_id | synthesised `<path>#<header timestamp>` |
+| project_path | the directory holding the file |
+| git_branch | empty |
+| model | empty |
+| tool_name, tool_use_id | empty |
+| text | prompt text, assistant text, blockquote text |
+
+### Permission state
+
+Aider's confirmation prompts are written as `> ` blockquote lines
+([section 3](#3-record-schema)), which the parser already emits with the
+rest of the blockquote run as `tool_result` rows; no separate `permission
+decision:` row is derived from them.
+
+From the source review of 2026-10-19 ([Source reviews](#source-reviews)): the confirmation lines
+are decisions on disk; a
+`permission decision: <answer> (<question>)` `system` row beside the
+`tool_result` row would surface them, and a `yes-always` key in a
+collected `.aider.conf.yml` is a standing setting
+(`permission setting: yes-always=true (from <file>, file mtime)`).
+
+### Model
+
+The model is in the chat history only as the `> Model:`, `> Main
+model:`, `> Weak model:` and `> Editor model:` announcement lines
+([section 3](#3-record-schema)); the parser does not read them, so it
+yields no `model:` rows. From the source review of 2026-10-19: the announcement lines give
+`model: <name>` at each session
+header and `model: <old> -> <new>` at each later announcement that
+names another; not yet parsed.
+
+### Past use and secondary sources
+
+Sources: `.aider.chat.history.md` is primary; `.aider.input.history` and
+`.aider.llm.history` are secondary, parsed on every run, with each row's
+own time and the default two-second window.
+
+`.aider.chat.history.md` is the store of record: it
 is the only file with session headers and assistant and tool output, and
 the one Aider itself reads back with `--restore-chat-history`
 ([`base_coder.py:519-520`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L519-L520)). The
@@ -195,72 +276,9 @@ primary store's events, in the sense of
   text that arrived within the two-second window. Expect the LLM
   history's rows to stay in the timeline.
 
-## 5. SQLite stores
+### Sync, relay and origin
 
-None. `.aider.tags.cache.v*` is a repository-map cache, not chat, and is
-excluded by the collector.
-
-## 6. Format versions
-
-None; the format has not changed across sessions.
-
-## 7. Secrets
-
-`.aider.llm.history` contains the complete system prompt with every added
-file; `.aider.chat.history.md` contains any pasted secrets. Aider writes no
-keys itself; the collector flags `.aider.conf.yml` and the model settings
-files.
-
-## 8. Parser plan
-
-Globs: `**/.aider.chat.history.md`, `**/.aider.input.history`,
-`**/.aider.llm.history` (project-level, so they arrive through the
-collector's project catalog).
-
-Rows: one per `#### ` block (user), per assistant run, per `> ` run
-(tool_result); `# aider chat started` becomes `system`.
-
-Sources: `.aider.chat.history.md` is primary; `.aider.input.history` and
-`.aider.llm.history` are secondary, parsed on every run, with each row's
-own time and the default two-second window (see [section 4](#4-joins)).
-
-| Column | Source |
-| --- | --- |
-| timestamp_utc | last `# aider chat started at` header, or the matching `# ` input-history line, converted from local time |
-| session_id | synthesised `<path>#<header timestamp>` |
-| project_path | the directory holding the file |
-| git_branch | empty |
-| model | empty |
-| tool_name, tool_use_id | empty |
-| text | prompt text, assistant text, blockquote text |
-
-The model is in the chat history only as the `> Model:`, `> Main
-model:`, `> Weak model:` and `> Editor model:` announcement lines
-([section 3](#3-record-schema)); the parser does not read them, so it
-yields no `model:` rows. Its confirmation prompts are written as `> ` blockquote lines
-([section 3](#3-record-schema)), which the parser already emits with the
-rest of the blockquote run as `tool_result` rows; no separate `permission
-decision:` row is derived from them.
-
-Source review of 2026-10-19, by class (detail in
-[section 1](#1-source) and [section 3](#3-record-schema)):
-
-- Permission: the confirmation lines are decisions on disk; a
-  `permission decision: <answer> (<question>)` `system` row beside the
-  `tool_result` row would surface them, and a `yes-always` key in a
-  collected `.aider.conf.yml` is a standing setting
-  (`permission setting: yes-always=true (from <file>, file mtime)`).
-- Model: the announcement lines give `model: <name>` at each session
-  header and `model: <old> -> <new>` at each later announcement that
-  names another; not yet parsed.
-- Past use: covered.
-- Sync, relay and origin: covered; none.
-- Scratch directories: none.
-- Deletion: no marker; the files outlive `/clear` and `/reset`.
-- Drift: none.
-- Bad lines: covered.
-
-Sync: Aider records no sync state, because it uploads no session: no
+Aider records no sync state, because it uploads no session: no
 command or setting sends a chat history, input history, LLM history or
 conversation title anywhere beyond the prompt sent to the model provider
 through litellm (the library Aider calls for every model API). The
@@ -326,6 +344,23 @@ auth and model-list endpoints, GitHub's Copilot token endpoint when a
 table and pages fetched by `/web`. No other agent's directory is read or
 written for this. The parser yields no `session synced:` row.
 
+No session is relayed or of remote origin.
+
+### Scratch directories
+
+None ([Source reviews](#source-reviews)).
+
+### Deletion
+
+No marker; the files outlive `/clear` and `/reset`
+([What survives a delete](#what-survives-a-delete)).
+
+### Bad lines
+
+Covered (source review of 2026-10-19).
+
+### Fixtures
+
 Fixture `.aider.chat.history.md`:
 
 ```markdown
@@ -345,11 +380,7 @@ bar
 > Commit abc1234 refactor: rename foo to bar  
 ```
 
-`.aider.input.history`: `\n# 2026-10-02 12:00:05.123456\n+rename foo to bar\n`
+The other two files:
 
-`.aider.llm.history`: `TO LLM 2026-10-02T12:00:05\n-------\nSYSTEM Act as an expert\n-------\nUSER rename foo to bar\nLLM RESPONSE 2026-10-02T12:00:09\nASSISTANT Here is the change:\n`
-
-Confidence. High: chat and LLM history formats (read from the writers).
-Medium-high: input history (upstream prompt_toolkit source, not pinned to
-Aider's dependency version). Local-time timestamps need the host time zone
-to convert exactly.
+- `.aider.input.history`: `\n# 2026-10-02 12:00:05.123456\n+rename foo to bar\n`
+- `.aider.llm.history`: `TO LLM 2026-10-02T12:00:05\n-------\nSYSTEM Act as an expert\n-------\nUSER rename foo to bar\nLLM RESPONSE 2026-10-02T12:00:09\nASSISTANT Here is the change:\n`

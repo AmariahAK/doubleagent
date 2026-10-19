@@ -1,14 +1,35 @@
-# Aider: on-disk paths
+# aider
 
-## 1. Source and evidence level
+Aider is a terminal pair-programming CLI that works inside a git repository (or the current
+directory) and keeps its chat and prompt history there, with a few optional files under the home.
+It shares no storage with another agent. The transcript format is in
+[`analyzer/research/aider.md`](../../analyzer/research/aider.md).
 
-[Aider-AI/aider](https://github.com/Aider-AI/aider), open source, commit [`5dc9490bb35f9729ef2c95d00a19ccd30c26339c`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c). All claims from source; the config-key example is from the shipped docs in the same tree. Transcript format is in [`analyzer/research/aider.md`](../../analyzer/research/aider.md).
+## 1. Source and evidence
 
-**Source review (2026-10-19)**: `main` of [Aider-AI/aider](https://github.com/Aider-AI/aider) is still [`5dc9490`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c), so every path here holds. Permission state: the standing grant is `yes-always` in an `.aider.conf.yml` ([section 2](#2-per-user-storage)); per-call answers are lines in `.aider.chat.history.md` ([section 3 of `analyzer/research/aider.md`](../../analyzer/research/aider.md#3-record-schema)). Model: named in the chat history's announcement lines, no separate file. Past use, sync: no new file. Scratch directories: none (below). Deletion: `/clear` and `/reset` leave every file. Version drift: none. Bad lines: not a collector concern.
+[Aider-AI/aider](https://github.com/Aider-AI/aider), open source, commit [`5dc9490bb35f9729ef2c95d00a19ccd30c26339c`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c). All claims from source; the config-key example is from the shipped docs in the same tree.
+
+### Observed
+
+- No real install.
+
+### Source reviews
+
+- 2026-10-19: `main` of [Aider-AI/aider](https://github.com/Aider-AI/aider) is still [`5dc9490`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c), so every path here holds. By class:
+  - Permission state: the standing grant is `yes-always` in an `.aider.conf.yml`
+    ([section 2](#2-per-user-storage)); per-call answers are lines in `.aider.chat.history.md`
+    ([section 3 of `analyzer/research/aider.md`](../../analyzer/research/aider.md#3-record-schema)).
+  - Model: named in the chat history's announcement lines, no separate file.
+  - Past use, sync: no new file.
+  - Scratch directories: none ([Scratch directories](#scratch-directories)).
+  - Deletion: `/clear` and `/reset` leave every file.
+  - Version drift: none.
+  - Bad lines: not a collector concern.
 
 ## 2. Per-user storage
 
-Aider has no platform branching; everything is `Path.home()` (`%USERPROFILE%` on Windows), so the layout is identical on Linux, macOS and Windows. No `XDG` use.
+Aider has no platform branching; everything is `Path.home()` (`%USERPROFILE%` on Windows), so the
+layout is identical on Linux, macOS and Windows. No `XDG` use.
 
 Home-level files, all optional:
 
@@ -19,10 +40,19 @@ Home-level files, all optional:
 - `~/.aider/analytics.json`: anonymous `uuid` and disable flag ([`aider/analytics.py:139-152`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/analytics.py#L139-L152)). `--analytics-log <file>` writes JSONL events wherever the user says ([`args.py:575-578`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L575-L578)).
 - `~/.aider/caches/`: `model_prices_and_context_window.json` ([`aider/models.py:169-170`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/models.py#L169-L170)), `openrouter_models.json` ([`aider/openrouter.py:34-35`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/openrouter.py#L34-L35)), `versioncheck` ([`aider/versioncheck.py:12`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/versioncheck.py#L12)), `help.<version>/` llama-index embedding store ([`aider/help.py:93`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/help.py#L93)).
 - History files default to the git root ([section 5](#5-project-local-files)); when aider runs outside a repository they land in the cwd ([`args.py:271-276`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L271-L276)), so `~/.aider.chat.history.md` and friends exist only for sessions started in the home directory.
+- At [`5dc9490`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c) (source review of 2026-10-19): `.aider.conf.yml` at any level can set `yes-always: true`, which answers yes to every confirmation without asking ([`aider/args.py:760-764`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L760-L764)); collected with the file.
 
-- Source review (2026-10-19): `.aider.conf.yml` at any level can set `yes-always: true`, which answers yes to every confirmation without asking ([`aider/args.py:760-764`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L760-L764)); collected with the file. Scratch directories: Aider works in the git root or the cwd and makes no working directory of its own; the only directory it creates is a system temporary directory for an image pasted with `/paste` ([`aider/commands.py:1295-1298`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L1295-L1298)), outside every catalog line.
+No relocation environment variable; everything is `--option` or config-file driven. `pip`/`uv`
+install directories are out of scope.
 
-No relocation environment variable; everything is `--option` or config-file driven. `pip`/`uv` install directories are out of scope.
+### Scratch directories
+
+None known: Aider works in the git root or the cwd and makes no working directory of its own; the only directory it creates is a system temporary directory for an image pasted with `/paste` ([`aider/commands.py:1295-1298`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L1295-L1298)), outside every catalog line.
+
+### Deletion
+
+`/clear` and `/reset` delete no file; what remains is in
+[What survives a delete](../../analyzer/research/aider.md#what-survives-a-delete).
 
 ## 3. Credentials
 
@@ -43,8 +73,13 @@ Defaults placed in the git root, or cwd without git ([`args.py:271-276`](https:/
 
 ## 6. Where the project path is recorded
 
-Nowhere under home. Aider keeps no index of repositories; `analytics.json` holds only a UUID, and the chat history lives inside each repository. Discovery sources for other agents (and shell history) are the only way to find aider projects; the `# aider chat started at <timestamp>` headers in `.aider.chat.history.md` date the sessions once found.
+Nowhere under home. Aider keeps no index of repositories; `analytics.json` holds only a UUID, and
+the chat history lives inside each repository. Discovery sources for other agents (and shell
+history) are the only way to find aider projects; the `# aider chat started at <timestamp>` headers
+in `.aider.chat.history.md` date the sessions once found.
 
 ## 7. Confidence
 
-High: all file names and search orders (source). Medium: whether the collector's exclusion and secret globs are evaluated against project paths (affects `.aider.tags.cache*` and project `.aider.conf.yml`). Not determined: nothing material; aider is the simplest layout of the five.
+High: all file names and search orders (source). Medium: whether the collector's exclusion and
+secret globs are evaluated against project paths (affects `.aider.tags.cache*` and project
+`.aider.conf.yml`). Not determined: nothing material; aider is the simplest layout of the five.
