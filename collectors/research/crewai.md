@@ -1,16 +1,17 @@
-# CrewAI: on-disk paths
+# crewai
 
-This document came out of the agent framework sweep for issue #64; see
-[frameworks.md](frameworks.md) for the frameworks that got no catalog line.
-There is no analyzer document yet.
+CrewAI is a Python multi-agent framework with a `crewai` CLI, whose traced runs can be sent to
+AMP (Agent Management Platform), CrewAI's hosted service. This document came out of the agent
+framework sweep for [issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
+[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
+line. There is no analyzer document yet.
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 [crewAIInc/crewAI](https://github.com/crewAIInc/crewAI), MIT, open source, commit
 [`e836a191cfe524feb519c6952a458c9f1e1ff0ef`](https://github.com/crewAIInc/crewAI/commit/e836a191cfe524feb519c6952a458c9f1e1ff0ef).
 The repository ships the `crewai` library, `crewai-core`, the `crewai` CLI
-(`lib/cli`) and `crewai-tools`. All claims are from source; nothing was
-installed or run.
+(`lib/cli`) and `crewai-tools`. All claims are from source.
 
 Path resolution uses `appdirs~=1.4.4`
 ([lib/crewai-core/pyproject.toml:11](https://github.com/crewAIInc/crewAI/blob/e836a191cfe524feb519c6952a458c9f1e1ff0ef/lib/crewai-core/pyproject.toml#L11)),
@@ -33,6 +34,12 @@ and MCP stdio servers are spawned
 The built-in CodeInterpreterTool is gone
 ([agent/core.py:293-297](https://github.com/crewAIInc/crewAI/blob/e836a191cfe524feb519c6952a458c9f1e1ff0ef/lib/crewai/src/crewai/agent/core.py#L293-L297)).
 
+### Observed
+
+- No real install: nothing was installed or run.
+
+### Source reviews
+
 - **Source review (2026-10-19)**: HEAD
   [`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2)
   reviewed against the previously cited
@@ -44,7 +51,7 @@ The built-in CodeInterpreterTool is gone
   - Permission state: found. Paused Flow reviews are rows of
     `pending_feedback` in the opt-in `flow_states.db`, and the trace consent
     is a standing setting in `.crewai_user.json`
-    ([section 2](#2-per-user-storage)). No per-tool approval exists: a task's
+    ([Run data directory detail](#run-data-directory-detail)). No per-tool approval exists: a task's
     `human_input` review is asked on the console and its answer becomes a
     user message in the task's `messages`
     ([human_input.py:46](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/core/providers/human_input.py#L46)).
@@ -65,7 +72,8 @@ The built-in CodeInterpreterTool is gone
   - Sync: found. A traced run is uploaded to AMP, and the project's
     `.crewai/last_run.json` records its execution id, trace tier and AMP
     trace URL ([section 5](#5-project-local-files)).
-  - Scratch directories: none; CrewAI runs in the user's working directory.
+  - Scratch directories: none; CrewAI runs in the user's working directory
+    ([Scratch directories](#scratch-directories)).
   - Deletion: found. `crewai reset-memories -k` (or `-a`) empties the run
     table
     ([cli.py:478-482](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/cli.py#L478-L482),
@@ -105,12 +113,23 @@ CrewAI's own file names below a `*` segment.
 | `.crewai/skills/<org>/<name>`, `.crewai/model_catalog_cache.json`, `.crewai/provider_cache.json` | downloaded skills, model lists ([skills/cache.py:24](https://github.com/crewAIInc/crewAI/blob/e836a191cfe524feb519c6952a458c9f1e1ff0ef/lib/crewai/src/crewai/skills/cache.py#L24), [model_catalog.py:594-599](https://github.com/crewAIInc/crewAI/blob/e836a191cfe524feb519c6952a458c9f1e1ff0ef/lib/cli/src/crewai_cli/model_catalog.py#L594-L599), [provider.py:215-217](https://github.com/crewAIInc/crewAI/blob/e836a191cfe524feb519c6952a458c9f1e1ff0ef/lib/cli/src/crewai_cli/provider.py#L215-L217)) | CLI and skills |
 | `user_cache_dir("crewai")/version_cache.json` | update check ([version.py:44](https://github.com/crewAIInc/crewAI/blob/e836a191cfe524feb519c6952a458c9f1e1ff0ef/lib/crewai-core/src/crewai_core/version.py#L44)) | cache only, not collected |
 
+### Scratch directories
+
+None. CrewAI creates no working directory of its
+own; tools and checkpoints write relative to the directory the crew was
+started from, which is the user's project.
+
+### Windows
+
 On Windows `%LOCALAPPDATA%\crewai\credentials` and
 `%LOCALAPPDATA%\CrewAI\<project>` share one parent (NTFS is
 case-insensitive), and the token directory looks like a project named
 `credentials`. A Windows image mounted on Linux can hold either spelling,
 so the catalog line is the class `AppData/Local/[Cc]rew[Aa][Ii]` rather
-than two lines that differ only by case (issue 29).
+than two lines that differ only by case
+([issue 29](https://github.com/seanthegeek/doubleagent/issues/29)).
+
+### Run data directory detail
 
 Detail from the 2026-10-19 review, at
 [`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2):
@@ -146,19 +165,19 @@ Detail from the 2026-10-19 review, at
   `tracing_turned_on`) that live while `crewai eval` waits for a run
   ([crew_run_tui.py:409-420](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/crew_run_tui.py#L409-L420)).
 
-**Scratch directories.** None. CrewAI creates no working directory of its
-own; tools and checkpoints write relative to the directory the crew was
-started from, which is the user's project.
+### Memory gap
 
-**Memory gap.** On Linux and macOS the opt-in `memory/`, Chroma and Qdrant
+On Linux and macOS the opt-in `memory/`, Chroma and Qdrant
 stores under `<data>/` have no CrewAI-specific name to anchor a glob on, so
 the catalog collects the run database, the flow database and
 `.crewai_user.json` but not the memory stores beside them. A responder who
 finds a run database should copy its sibling directory by hand; see
-[coverage.md](../docs/coverage.md). On Windows the whole `CrewAI`
+[`collectors/docs/coverage.md`](../docs/coverage.md). On Windows the whole `CrewAI`
 directory is collected.
 
-Docker: no compose file or named volume.
+### Docker
+
+No compose file or named volume.
 
 ## 3. Credentials
 
@@ -171,7 +190,7 @@ Docker: no compose file or named volume.
 
 None at default. The opt-in Chroma and LanceDB stores can be large, but
 they are agent memory, and on Linux and macOS they are not collected
-anyway ([section 2](#2-per-user-storage)).
+anyway ([Memory gap](#memory-gap)).
 
 ## 5. Project-local files
 
