@@ -596,15 +596,22 @@ install (Linux), October 2026, synthetic fixture.
 
 ### `nanobot`
 
-Files read: `.nanobot*/sessions/<workspace-id>/<key>.jsonl` (project path
-from the sibling `.workspace`), legacy `sessions/*.jsonl` and
-`.migration-conflicts/`, and `memory/history.jsonl`; times are host local
-time, emitted as if UTC. Secondary sources: the WebUI transcript
+Files read: `.nanobot*/sessions/<workspace-id>/sessions.sqlite3`, the
+session database of newer builds (tables `sessions` and `messages`, with
+its `-wal` sidecar), and `.nanobot*/sessions/<workspace-id>/<key>.jsonl`
+(project path from the sibling `.workspace`), legacy `sessions/*.jsonl`
+and `.migration-conflicts/`, and `memory/history.jsonl`; times are host
+local time, emitted as if UTC. Secondary sources: the session JSONL files
+and `jsonl-backup/*.jsonl` copies beside a `sessions.sqlite3`, which the
+database imported and which are never written again; the WebUI transcript
 `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (true UTC
-`created_at_ms`, 15-hour window) and `.nanobot/history/cli_history` (local
-time, prompts only).
+`created_at_ms`, 15-hour window); and `.nanobot*/history/cli_history`
+(local time, prompts only).
 
-Validated against: Source at [acdae3d](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f), synthetic fixture.
+Validated against: Source at [acdae3d](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f), synthetic fixture. The session database and the `--home` history
+location are fixture only, from source at
+[909b277](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9),
+which may not be released yet.
 
 ### `ollama`
 

@@ -2,9 +2,27 @@
 
 Validated against source, HKUDS/nanobot at acdae3d (see
 `analyzer/research/nanobot.md`), with a synthetic fixture; no real install
-was checked. The state directory is `.nanobot`, or `.nanobot-<instance>`.
+was checked. The SQLite session store below is source-derived from
+HKUDS/nanobot at 909b277 (2026-10-19), whose `pyproject.toml` still reads
+0.3.5 while the import module names 0.3.6 as the version that introduces
+the store, so it may not be in a release yet. The state directory is
+`.nanobot`, or `.nanobot-<instance>` (an instance's `--config` or `--home`
+root under the home).
 Files:
 
+* `sessions/<workspace-id>/sessions.sqlite3` (with its `-wal` sidecar,
+  read through `sqlite_util.open_copy`): the session store of record from
+  0.3.6. Table `sessions` (`key`, `created_at`, `updated_at`, `metadata`
+  JSON text) is the JSONL metadata line, one row per session, and
+  `messages` (`session_key`, `position`, `record` JSON text) one message
+  per row, `record` exactly a JSONL message line; both map as below.
+  Sessions come in `created_at` order, each with its messages in
+  `position` order and `source_line` the row's `rowid`. A `record` that
+  is not a JSON object is its own row, `parser: unparseable record
+  <position> (<reason>): <record>`, and a `metadata` value that is not
+  one `parser: unparseable session metadata (<reason>): <metadata>`; the
+  other rows are still yielded. `checkpoints` and `pending_inputs` are
+  not read. `project_path` is the namespace's `.workspace`.
 * `sessions/<workspace-id>/<stem>.jsonl`: one file per session key,
   `<workspace-id>` 32 hex characters, `<stem>` the URL-safe base64 of the
   key without padding. The sibling `sessions/<workspace-id>/.workspace`
@@ -53,9 +71,25 @@ entries are model-written summaries of archived messages, or `[RAW] <n>
 messages` blocks of several formatted messages, never one event of the
 session file, so no row of it repeats a session row.
 
-Two secondary sources (issue 122) repeat session events and are read on
-every run; `secondary()` is True for them, and `dedup.deduplicate` drops
-a row the session file also yields:
+Three secondary sources (issues 122 and 178) repeat session events and
+are read on every run; `secondary()` is True for them, and
+`dedup.deduplicate` drops a row the session store also yields:
+
+* The session JSONL a `sessions.sqlite3` imported, once the database is
+  beside it: the namespace's own `sessions/<workspace-id>/<stem>.jsonl`,
+  imported on the store's first start and never written again, so a
+  frozen copy of the session as it stood that day; and
+  `sessions/<workspace-id>/jsonl-backup/<name>.jsonl`, the older
+  `<workspace>/sessions/<key with ":" as "_">.jsonl` files, imported, then
+  copied there byte for byte and removed from the workspace. Same format
+  and the same `timestamp` strings as the database's records, so the
+  default 2-second window applies; a turn the database has since lost (a
+  `/new`, a rewind, a deleted session) is kept from the copy. Without a
+  database beside it, a namespace's JSONL is the store of record and is
+  primary, as before 0.3.6. `.migration-conflicts/` copies and legacy
+  global `sessions/*.jsonl` files, which the import does not read, stay
+  primary. The frozen copy's session start row names the `updated_at` of
+  the import, not the database's, and is kept beside the database's.
 
 * `webui/<safe key>.jsonl` and `webui/<safe key>.segments/NNNNNN.jsonl`
   under a nanobot directory: the WebUI display transcript (schema version
@@ -100,8 +134,14 @@ a row the session file also yields:
   runtime context (appended to the session's copy, not the WebUI's) are
   shown twice. A WebUI row kept because no session row matched carries
   true UTC, unlike every other nanobot row.
-* `.nanobot/history/cli_history` (always under `~/.nanobot`, whatever
-  instance runs): the CLI's prompt_toolkit `FileHistory`, `# <timestamp>`
+  The `project_path` lookup reads session JSONL files only, so a WebUI
+  chat whose session exists only in `sessions.sqlite3` gets none.
+* `history/cli_history` under the state directory: `~/.nanobot` for every
+  `--config` instance, but the `--home <dir>` option of 909b277 moves it
+  into the chosen root (`nanobot/config/home.py`, `config/paths.py`
+  `get_cli_history_path`), so it is selected under any `.nanobot*`
+  directory, as the catalog's entries are. The CLI's prompt_toolkit
+  `FileHistory`, `# <timestamp>`
   then one `+<line>` per input line, read with the Aider parser's
   `read_input_history`. Each entry is a `user` row at its own time (naive
   local time, emitted as if UTC like the session file's, so the default
@@ -113,12 +153,15 @@ a row the session file also yields:
 from __future__ import annotations
 
 import base64
+import json
 import re
-from collections.abc import Iterator
+import sqlite3
+from collections.abc import Generator, Iterable, Iterator
 from pathlib import Path
 
 from ..inputs import Artifact
 from ..model import Row, compact
+from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
 from .aider import read_input_history
 from .base import (
@@ -134,14 +177,18 @@ from .openclaw import tool_args_text
 
 STATE = r"\.nanobot(?:-[^/]+)?"
 SESSION_RX = re.compile(
-    r"^" + STATE + r"/sessions/(?:(?P<ws>[0-9a-f]{32})/(?:\.migration-conflicts/)?)?"
+    r"^"
+    + STATE
+    + r"/sessions/(?:(?P<ws>[0-9a-f]{32})/(?P<sub>\.migration-conflicts/|jsonl-backup/)?)?"
     r"(?P<stem>[^/]+)\.jsonl$"
 )
+DB_RX = re.compile(r"^" + STATE + r"/sessions/[0-9a-f]{32}/sessions\.sqlite3$")
+DB_NAME = "sessions.sqlite3"
 HISTORY_RX = re.compile(r"^" + STATE + r"/(?:.+/)?memory/history\.jsonl$")
 WEBUI_RX = re.compile(
     r"^" + STATE + r"/webui/(?:(?P<seg>[^/]+)\.segments/\d{6}|(?P<stem>[^/]+))\.jsonl$"
 )
-CLI_HISTORY_REL = ".nanobot/history/cli_history"
+CLI_HISTORY_RX = re.compile(r"^" + STATE + r"/history/cli_history$")
 WEBUI_PREFIX = "websocket:"
 # The host's UTC offset (at most 14 hours) plus an hour of turn; see the
 # module docstring.
@@ -174,6 +221,22 @@ def _read_marker(path: Path) -> str:
         return ""
 
 
+def _json_object(raw: object, rowid: int, label: str, errors: list) -> dict | None:
+    """`raw`, a stored JSON text, decoded to an object; None, with
+    (rowid, `<label> (<reason>)`, the value as text) appended to `errors`,
+    when it does not decode to one."""
+    text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
+    try:
+        value = json.loads(text)
+    except ValueError as e:
+        errors.append((rowid, "%s (%s)" % (label, e), text))
+        return None
+    if not isinstance(value, dict):
+        errors.append((rowid, "%s (not a JSON object)" % label, text))
+        return None
+    return value
+
+
 class NanobotParser(Parser):
     agent = "nanobot"
     name = "nanobot"
@@ -184,11 +247,38 @@ class NanobotParser(Parser):
             SESSION_RX.match(artifact.rel)
             or HISTORY_RX.match(artifact.rel)
             or WEBUI_RX.match(artifact.rel)
-            or artifact.rel == CLI_HISTORY_REL
+            or DB_RX.match(artifact.rel)
+            or CLI_HISTORY_RX.match(artifact.rel)
         )
 
     def secondary(self, artifact: Artifact) -> bool:
-        return bool(WEBUI_RX.match(artifact.rel)) or artifact.rel == CLI_HISTORY_REL
+        return bool(
+            WEBUI_RX.match(artifact.rel) or CLI_HISTORY_RX.match(artifact.rel)
+        ) or self._frozen(artifact)
+
+    @staticmethod
+    def _namespace(artifact: Artifact) -> Path | None:
+        """The `sessions/<workspace-id>` directory of a namespaced session
+        file (the file's own directory, or its parent for a
+        `.migration-conflicts/` or `jsonl-backup/` copy); None for a legacy
+        global file or any other path."""
+        m = SESSION_RX.match(artifact.rel)
+        if not m or not m.group("ws"):
+            return None
+        return artifact.disk_path.parent.parent if m.group("sub") else artifact.disk_path.parent
+
+    @classmethod
+    def _frozen(cls, artifact: Artifact) -> bool:
+        """True for a session JSONL that the namespace's `sessions.sqlite3`
+        imported: a `<stem>.jsonl` of the namespace or a `jsonl-backup/`
+        copy, when the database is beside it. A `.migration-conflicts/`
+        copy and a legacy global file were never imported."""
+        m = SESSION_RX.match(artifact.rel)
+        namespace = cls._namespace(artifact)
+        if m is None or namespace is None or m.group("sub") == ".migration-conflicts/":
+            return False
+        db = namespace / DB_NAME
+        return not db.is_symlink() and db.is_file()
 
     def secondary_tolerance(self, artifact: Artifact) -> float:
         if WEBUI_RX.match(artifact.rel):
@@ -198,32 +288,44 @@ class NanobotParser(Parser):
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if SESSION_RX.match(artifact.rel):
             yield from self._parse_session(artifact, opts)
+        elif DB_RX.match(artifact.rel):
+            yield from self._parse_db(artifact, opts)
         elif WEBUI_RX.match(artifact.rel):
             yield from self._parse_webui(artifact, opts)
-        elif artifact.rel == CLI_HISTORY_REL:
+        elif CLI_HISTORY_RX.match(artifact.rel):
             yield from self._parse_cli_history(artifact)
         else:
             yield from self._parse_history(artifact, opts)
 
-    @staticmethod
-    def _workspace(artifact: Artifact) -> str:
-        marker = artifact.disk_path.parent / ".workspace"
-        m = SESSION_RX.match(artifact.rel)
-        assert m is not None  # parse() routes only matching paths here
-        if not m.group("ws"):
-            return ""
-        if artifact.disk_path.parent.name == ".migration-conflicts":
-            marker = artifact.disk_path.parent.parent / ".workspace"
-        return _read_marker(marker)
-
     def _parse_session(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         m = SESSION_RX.match(artifact.rel)
         assert m is not None  # parse() routes only matching paths here
-        session_id = decode_stem(m.group("stem"))
-        project = self._workspace(artifact)
+        namespace = self._namespace(artifact)
+        project = _read_marker(namespace / ".workspace") if namespace else ""
+        errors: list = []
+        session_id = yield from self._session_rows(
+            artifact,
+            opts,
+            decode_stem(m.group("stem")),
+            project,
+            iter_jsonl(artifact.disk_path, errors),
+        )
+        yield from error_rows(self, artifact, errors, session_id, project)
+
+    def _session_rows(
+        self,
+        artifact: Artifact,
+        opts: Options,
+        session_id: str,
+        project: str,
+        records: Iterable[tuple[int, dict]],
+    ) -> Generator[Row, None, str]:
+        """The rows of one session from its (source_line, record) pairs: the
+        metadata record first, then the messages, as a session JSONL holds
+        them and as `_parse_db` rebuilds them from `sessions.sqlite3`.
+        Returns the session id, the metadata `key` when there is one."""
         model = ""
         last_ts = ""
-        errors: list = []
         models: dict = {}
 
         def row(
@@ -241,7 +343,7 @@ class NanobotParser(Parser):
             r.text = compact(text)
             return r
 
-        for n, rec in iter_jsonl(artifact.disk_path, errors):
+        for n, rec in records:
             rtype = rec.get("_type")
             if rtype == "metadata":
                 if rec.get("key"):
@@ -310,7 +412,83 @@ class NanobotParser(Parser):
                 )
             else:
                 yield row(n, "system", "%s: %s" % (role or "message", text))
-        yield from error_rows(self, artifact, errors, session_id, project)
+        return session_id
+
+    def _parse_db(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        project = _read_marker(artifact.disk_path.parent / ".workspace")
+        if not is_sqlite(artifact.disk_path):
+            yield self._file_row(artifact, project, "parser: not a SQLite database")
+            return
+        messages: dict[str, list[tuple[int, object, object]]] = {}
+        try:
+            with open_copy(artifact.disk_path) as con:
+                missing = {"sessions", "messages"} - table_names(con)
+                if missing:
+                    text = "parser: no %s table in the session database" % " or ".join(
+                        sorted(missing)
+                    )
+                    yield self._file_row(artifact, project, text)
+                    return
+                sessions = [
+                    tuple(r)
+                    for r in con.execute(
+                        "SELECT rowid, key, created_at, updated_at, metadata FROM sessions"
+                        " ORDER BY created_at, key"
+                    )
+                ]
+                for rowid, key, position, record in con.execute(
+                    "SELECT rowid, session_key, position, record FROM messages"
+                    " ORDER BY session_key, position"
+                ):
+                    messages.setdefault(str(key), []).append((rowid, position, record))
+        except sqlite3.DatabaseError as e:
+            yield self._file_row(artifact, project, "parser: SQLite error: %s" % e)
+            return
+        known = {str(sess[1]) for sess in sessions}
+        # Messages whose session row is gone (nanobot enforces the foreign
+        # key only on its own connections) still yield their rows.
+        heads: list[tuple[str, tuple | None]] = [(str(sess[1]), sess) for sess in sessions]
+        heads += [(k, None) for k in sorted(messages) if k not in known]
+        for key, head in heads:
+            errors: list = []
+            records = self._db_records(head, messages.get(key, []), errors)
+            session_id = yield from self._session_rows(artifact, opts, key, project, records)
+            yield from error_rows(self, artifact, errors, session_id, project)
+
+    @staticmethod
+    def _db_records(
+        head: tuple | None, messages: list[tuple[int, object, object]], errors: list
+    ) -> Iterator[tuple[int, dict]]:
+        """(rowid, record) pairs of one session of `sessions.sqlite3`: its
+        `sessions` row as the JSONL metadata record, when the row exists,
+        then each `messages.record` in `position` order. A `metadata` or
+        `record` value that is not a JSON object is appended to `errors` as
+        (rowid, message, the stored value as text) and skipped."""
+        if head is not None:
+            rowid, key, created_at, updated_at, raw = head
+            meta = _json_object(raw, rowid, "unparseable session metadata", errors)
+            yield (
+                rowid,
+                {
+                    "_type": "metadata",
+                    "key": key,
+                    "created_at": created_at,
+                    "updated_at": updated_at,
+                    "metadata": meta or {},
+                },
+            )
+        for rowid, position, raw in messages:
+            rec = _json_object(raw, rowid, "unparseable record %s" % position, errors)
+            if rec is not None:
+                yield rowid, rec
+
+    def _file_row(self, artifact: Artifact, project: str, text: str) -> Row:
+        """A whole-file `parser:` row for a database that cannot be read."""
+        r = self.base_row(artifact)
+        r.project_path = project
+        r.turn_type = "system"
+        r.text = text
+        return r
 
     def _parse_history(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         m = ORIGINAL_MEMORY_RX.match(artifact.original or "")

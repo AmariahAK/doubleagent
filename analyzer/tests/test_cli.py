@@ -675,6 +675,9 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # of "show disk usage" pair with the session file's within the 15-hour
 # window, and the CLI history's "hello" with the legacy cli:direct
 # session's; the segment's older turn and the second CLI prompt are kept.
+# The frozen discord:555 JSONL's model row and four message rows pair with
+# sessions.sqlite3's; the jsonl-backup/ heartbeat turn the database lost is
+# kept.
 # OpenClaw: the deleted archive file's prompt (the blob holds it), the
 # pre-doctor backup's seven entry rows (the legacy file holds them) and the
 # checkpoint's three entry rows, which collapse onto the backup's copies of
@@ -705,7 +708,7 @@ FIXTURE_DEDUPLICATED = {
     "hermes": 11,  # snapshot copies and the divert's screenshot prompt
     "letta": 4,  # transcript.jsonl turn: prompt, tool_use, tool_result, reply
     "muse-code": 1,  # "fix the failing test", no timestamp
-    "nanobot": 5,  # four WebUI rows of one turn, the CLI history's "hello"
+    "nanobot": 10,  # four WebUI rows, CLI "hello", frozen JSONL 5 (sessions.sqlite3)
     "open-interpreter": 3,  # history.jsonl "list the files", state_5.sqlite 2
     "openclaw": 11,  # .jsonl.deleted.* 1, pre-doctor .bak 7, checkpoint 3
     "qwen-code": 1,  # "run the tests"

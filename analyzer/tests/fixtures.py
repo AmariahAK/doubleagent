@@ -8781,6 +8781,7 @@ def build_nanobot(home: Path) -> None:
     (home / ".nanobot/config.json").write_text(
         '{"providers": {"openai": {"apiKey": "sk-not-real"}}}', encoding="utf-8"
     )
+    build_nanobot_sqlite(home)
 
 
 # nanobot WebUI mirror and CLI history (issue 122). The host is taken to be
@@ -8940,6 +8941,144 @@ def build_nanobot_webui(home: Path) -> None:
         "\n# 2026-09-01 08:00:01.200000\n+hello\n"
         "\n# 2026-09-01 07:59:00.000000\n+first line\n+second line\n",
         encoding="utf-8",
+    )
+
+
+# nanobot's SQLite session store (issue 178), from the schema and import of
+# HKUDS/nanobot at 909b277 (nanobot/session/sqlite_store.py:44-73, 185-200;
+# nanobot/session/jsonl_migration.py:155-197, 221-232); source-derived, no
+# real install. A second namespace holds the database, the frozen JSONL of
+# the session it imported (discord:555, two turns later only in the
+# database) and a jsonl-backup/ copy of the older workspace file of the
+# heartbeat session, whose first turn a /new later removed from the
+# database.
+NANOBOT_DB_WS = "fedcba9876543210fedcba9876543210"
+NANOBOT_DB_REL = ".nanobot/sessions/%s/sessions.sqlite3" % NANOBOT_DB_WS
+NANOBOT_DB_KEY = "discord:555"
+NANOBOT_DB_FROZEN_REL = ".nanobot/sessions/%s/ZGlzY29yZDo1NTU.jsonl" % NANOBOT_DB_WS
+NANOBOT_DB_BACKUP_REL = ".nanobot/sessions/%s/jsonl-backup/heartbeat.jsonl" % NANOBOT_DB_WS
+NANOBOT_DB_SCHEMA = """
+CREATE TABLE storage_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE sessions (
+    key TEXT PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    metadata TEXT NOT NULL, provider_state TEXT, last_archived INTEGER NOT NULL,
+    revision INTEGER NOT NULL, generation TEXT NOT NULL,
+    title TEXT NOT NULL, preview TEXT NOT NULL, visible_updated_at TEXT
+);
+CREATE TABLE messages (
+    session_key TEXT NOT NULL REFERENCES sessions(key) ON DELETE CASCADE,
+    position INTEGER NOT NULL, record TEXT NOT NULL,
+    PRIMARY KEY (session_key, position)
+);
+CREATE TABLE checkpoints (
+    session_key TEXT PRIMARY KEY REFERENCES sessions(key) ON DELETE CASCADE,
+    record TEXT NOT NULL
+);
+CREATE TABLE pending_inputs (
+    session_key TEXT NOT NULL REFERENCES sessions(key) ON DELETE CASCADE,
+    kind TEXT NOT NULL, position INTEGER NOT NULL, record TEXT NOT NULL,
+    PRIMARY KEY (session_key, kind, position)
+);
+CREATE INDEX sessions_updated ON sessions(updated_at DESC);
+"""
+
+
+def nanobot_db_messages():
+    """The discord:555 messages in `position` order; the first four are the
+    frozen JSONL's."""
+    return [
+        {"role": "user", "content": "rotate the api key", "timestamp": "2026-10-03T11:00:01"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_rot1",
+                    "type": "function",
+                    "function": {"name": "exec", "arguments": '{"command": "./rotate.sh"}'},
+                }
+            ],
+            "timestamp": "2026-10-03T11:00:03",
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_rot1",
+            "name": "exec",
+            "content": "rotated",
+            "timestamp": "2026-10-03T11:00:04",
+        },
+        {"role": "assistant", "content": "The key is rotated.", "timestamp": "2026-10-03T11:00:05"},
+        {"role": "user", "content": "thanks", "timestamp": "2026-10-03T11:00:30"},
+        {"role": "assistant", "content": "You're welcome.", "timestamp": "2026-10-03T11:00:31"},
+    ]
+
+
+def nanobot_db_insert_message(path: Path, key: str, position: int, record: str) -> None:
+    """Store `record` verbatim as `messages` row (`key`, `position`)."""
+    con = sqlite3.connect(str(path))
+    con.execute(
+        "INSERT INTO messages (session_key, position, record) VALUES (?, ?, ?)",
+        (key, position, record),
+    )
+    con.commit()
+    con.close()
+
+
+def build_nanobot_sqlite(home: Path) -> None:
+    db = home / NANOBOT_DB_REL
+    db.parent.mkdir(parents=True, exist_ok=True)
+    (db.parent / ".workspace").write_text("/srv/proj\n", encoding="utf-8")
+    meta = {"last_channel": NANOBOT_DB_KEY, "_nanobot_model_preset": "smart"}
+    con = sqlite3.connect(str(db))
+    con.execute("PRAGMA journal_mode = WAL")
+    con.executescript(NANOBOT_DB_SCHEMA)
+    con.execute("PRAGMA user_version = 1")
+    con.execute("INSERT INTO storage_meta VALUES ('jsonl_import', 'complete')")
+    sessions = [
+        (NANOBOT_DB_KEY, "2026-10-03T11:00:00", "2026-10-03T11:00:31", meta),
+        ("heartbeat", "2026-09-28T06:00:00", "2026-10-03T06:00:05", {}),
+    ]
+    for key, created, updated, metadata in sessions:
+        con.execute(
+            "INSERT INTO sessions VALUES (?, ?, ?, ?, NULL, 0, 3, 'g1', '', '', ?)",
+            (key, created, updated, json.dumps(metadata), updated),
+        )
+    heartbeat = [
+        {"role": "user", "content": "check the inbox", "timestamp": "2026-10-03T06:00:01"},
+        {"role": "assistant", "content": "Inbox is empty.", "timestamp": "2026-10-03T06:00:05"},
+    ]
+    for key, records in ((NANOBOT_DB_KEY, nanobot_db_messages()), ("heartbeat", heartbeat)):
+        for position, rec in enumerate(records):
+            con.execute(
+                "INSERT INTO messages VALUES (?, ?, ?)",
+                (key, position, json.dumps(rec, separators=(",", ":"))),
+            )
+    con.commit()
+    con.close()
+    frozen_meta = {
+        "_type": "metadata",
+        "key": NANOBOT_DB_KEY,
+        "created_at": "2026-10-03T11:00:00",
+        "updated_at": "2026-10-03T11:00:05",
+        "metadata": meta,
+    }
+    _jsonl(home / NANOBOT_DB_FROZEN_REL, [frozen_meta, *nanobot_db_messages()[:4]])
+    _jsonl(
+        home / NANOBOT_DB_BACKUP_REL,
+        [
+            {
+                "_type": "metadata",
+                "key": "heartbeat",
+                "created_at": "2026-09-28T06:00:00",
+                "updated_at": "2026-09-28T06:00:04",
+                "metadata": {},
+            },
+            {"role": "user", "content": "old heartbeat prompt", "timestamp": "2026-09-28T06:00:01"},
+            {"role": "assistant", "content": "Nothing to do.", "timestamp": "2026-09-28T06:00:04"},
+        ],
+    )
+    (home / NANOBOT_DB_BACKUP_REL).parent.joinpath("heartbeat.checkpoint.json").write_text(
+        "{}", encoding="utf-8"
     )
 
 

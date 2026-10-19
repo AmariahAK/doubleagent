@@ -67,6 +67,16 @@ every save. Path research is in
     `read_input_history` report each bad line). The database's
     `messages.record` JSON text needs the same per-record rule when it is
     read.
+- **Parsed since the source review (issues 178 and 179):** the session
+  database `sessions/<workspace-id>/sessions.sqlite3`, the frozen
+  namespace JSONL and `jsonl-backup/` copies beside it as secondary
+  sources, and `history/cli_history` under any `.nanobot*` state
+  directory. Not observed on any real install, source-derived
+  ([HKUDS/nanobot](https://github.com/HKUDS/nanobot) at
+  [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9)).
+  The database may not be in a release yet: `pyproject.toml` at that
+  commit still reads 0.3.5, while the import module names 0.3.6 as the
+  version that introduces it.
 
 ## 2. Transcript files
 
@@ -106,10 +116,12 @@ elsewhere ([`nanobot/config/paths.py:20-27`](https://github.com/HKUDS/nanobot/bl
   [`config/paths.py:52-72`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/config/paths.py#L52-L72);
   [`docs/multiple-instances.md:3`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/docs/multiple-instances.md#L3),[`12`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/docs/multiple-instances.md#L12)),
   so an instance run as `--home ~/.nanobot-work` writes
-  `.nanobot-work/history/cli_history`, which the parser's fixed
-  `.nanobot/history/cli_history` path does not select.
+  `.nanobot-work/history/cli_history`. The parser selects
+  `history/cli_history` under any `.nanobot*` state directory (issue 179).
 
-Found in the source review of 2026-10-19 (not read by the parser yet):
+Found in the source review of 2026-10-19. The session database and
+`jsonl-backup/` are parsed (issue 178); the other entries are not read
+yet:
 
 - `.nanobot/sessions/<workspace-id>/sessions.sqlite3`, with its `-wal`
   and `-shm` sidecars: the session store of record at that commit
@@ -134,8 +146,10 @@ Found in the source review of 2026-10-19 (not read by the parser yet):
   copied byte for byte with their modification time kept and then
   removed from the workspace
   ([`session/jsonl_migration.py:32`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/session/jsonl_migration.py#L32),[`221-232`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/session/jsonl_migration.py#L221-L232),[`235-291`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/session/jsonl_migration.py#L235-L291)).
-  Same record format as the session JSONL; secondary once the database
-  is read, since every one was imported into it.
+  Same record format as the session JSONL; secondary, since every one
+  was imported into the database. The file name is the older workspace
+  form, the key with `:` as `_`, so the session id comes from its
+  metadata line.
 - `.nanobot/sessions/<workspace-id>/.webui_session_index.json`: a
   rebuildable cache of the WebUI sidebar, `{"version": 8, "sessions":
   [...]}` with one row per WebUI transcript (title, preview, model
@@ -384,9 +398,11 @@ matches the two private keys.
 
 ## 8. Parser plan
 
-Globs (home-relative): `.nanobot*/sessions/*/*.jsonl`,
-`.nanobot*/sessions/*.jsonl`, `.nanobot*/sessions/*/.migration-conflicts/*.jsonl`.
-Skip `*.checkpoint.json`. Read `.workspace` from the same directory.
+Globs (home-relative): `.nanobot*/sessions/*/sessions.sqlite3`,
+`.nanobot*/sessions/*/*.jsonl`, `.nanobot*/sessions/*.jsonl`,
+`.nanobot*/sessions/*/.migration-conflicts/*.jsonl`,
+`.nanobot*/sessions/*/jsonl-backup/*.jsonl`. Skip `*.checkpoint.json`.
+Read `.workspace` from the namespace directory.
 
 **Timestamps are host local time.** The collector does not record the host
 zone, so follow the aider parser's documented convention (local time emitted
@@ -478,10 +494,19 @@ Sources, primary or secondary (issue 122; every one read on every run):
 
 | File | Role | Rows |
 | --- | --- | --- |
-| `sessions/<workspace-id>/<stem>.jsonl`, legacy and `.migration-conflicts/` copies | primary | as above |
+| `sessions/<workspace-id>/sessions.sqlite3` | primary (issue 178) | as above, one session per `sessions` row in `created_at` order, its `messages.record` values in `position` order, `source_line` the row's `rowid`; a value that is not a JSON object is a `parser: unparseable record <position> (<reason>): <record>` or `parser: unparseable session metadata (<reason>): <metadata>` row |
+| `sessions/<workspace-id>/<stem>.jsonl` and `jsonl-backup/<name>.jsonl` beside a `sessions.sqlite3` | secondary, tolerance 2 seconds (the same `timestamp` strings) | as above |
+| `sessions/<workspace-id>/<stem>.jsonl` with no database beside it, legacy and `.migration-conflicts/` copies | primary | as above |
 | `<workspace>/memory/history.jsonl` | primary: summaries, not copies of events | one `system` row per entry, `memory history #<cursor>: <content>` |
 | `webui/<safe key>.jsonl`, `webui/<safe key>.segments/NNNNNN.jsonl` | secondary, tolerance 15 hours | `user`; `assistant` (`message` with no `kind`, `stream_end` without `merge_next`); `tool_use` and `tool_result` per tool event; `thinking` (opt-in); `system` for breadcrumbs without tool events, finished file edits, `fork_marker`, `context_compaction` and unknown events; nothing for `delta`, `reasoning_delta`, `turn_end` |
-| `.nanobot/history/cli_history` | secondary, tolerance 2 seconds | one `user` row per entry at its own time, no session or project |
+| `.nanobot*/history/cli_history` | secondary, tolerance 2 seconds | one `user` row per entry at its own time, no session or project |
+
+A frozen JSONL keeps the session start row of the import day, whose
+`updated_at` differs from the database's, so both start rows are shown;
+every message the database still holds is shown once, and a turn it lost
+(a `/new`, a rewind, a deleted session) is recovered from the copy. The
+WebUI rows' `project_path` comes from the session JSONL of the same key,
+so a WebUI chat whose session exists only in the database has none.
 
 The WebUI rows carry `created_at_ms` as true UTC, the session file's rows
 local time as if UTC; the 15-hour window is the largest UTC offset (14
@@ -492,17 +517,23 @@ the fork), and a user message whose session copy carries appended runtime
 context. A kept WebUI row keeps its true-UTC time.
 
 Requirement classes at the 2026-10-19 commit (see the review bullet in
-[section 1](#1-source)); none of this is in the parser yet:
+[section 1](#1-source)); the primary store and the CLI history location
+are in the parser (issues 178 and 179), the rest is not yet:
 
-- Primary store: read `sessions/<workspace-id>/sessions.sqlite3` through
+- Primary store (done): read `sessions/<workspace-id>/sessions.sqlite3` through
   `sqlite_util.py` ([section 5](#5-sqlite-or-binary-stores)): one session
   per `sessions` row, `metadata` as the old metadata line, `messages`
   ordered by `position` with `record` mapped as the JSONL message lines
   are now, and each `record` that does not decode its own
-  `parser: unparseable record <position> (<reason>)` row. The
+  `parser: unparseable record <position> (<reason>): <record>` row. The
   namespace's `*.jsonl` files and `jsonl-backup/*.jsonl` then become
   secondary (`secondary()` true, default 2-second window: the same
-  `timestamp` strings), since the import copied every one of them.
+  `timestamp` strings), since the import copied every one of them; the
+  parser makes them secondary only when the database is beside them,
+  since without it the JSONL is still the store of record. Messages
+  whose session row is gone still yield rows, with no start row.
+  `checkpoints` (the mid-turn checkpoint) and `pending_inputs` (queued
+  follow-up prompts) are not read.
 - Permission: one `system` row per standing setting at the file's
   modification time, `permission setting: <key>=<value> (from
   config.json, file mtime)`, for `tools.restrictToWorkspace`,
@@ -586,8 +617,8 @@ Requirement classes at the 2026-10-19 commit (see the review bullet in
   ([`webui/ws_http.py:1363-1378`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/ws_http.py#L1363-L1378);
   [`session/manager.py:555-574`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/session/manager.py#L555-L574)),
   and what survives is the secondary sources above.
-- CLI history: select `.nanobot*/history/cli_history`, since `--home`
-  moves it.
+- CLI history (done): select `.nanobot*/history/cli_history`, since
+  `--home` moves it.
 
 Fixture, file `.nanobot/sessions/0123456789abcdef0123456789abcdef/dGVsZWdyYW06MTIzNDU2Nzg5.jsonl`,
 with `.workspace` containing `/home/alice/.nanobot/workspace`:

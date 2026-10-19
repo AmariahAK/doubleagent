@@ -9842,6 +9842,11 @@ class OpenInterpreterTests(ParserBase):
 from doubleagent.parsers.nanobot import NanobotParser, decode_stem
 from doubleagent.parsers.openclaw import OpenClawParser
 from fixtures import (
+    NANOBOT_DB_BACKUP_REL,
+    NANOBOT_DB_FROZEN_REL,
+    NANOBOT_DB_KEY,
+    NANOBOT_DB_REL,
+    NANOBOT_DB_WS,
     NANOBOT_HISTORY_REL,
     NANOBOT_KEY,
     NANOBOT_LEGACY_REL,
@@ -9856,6 +9861,7 @@ from fixtures import (
     OPENCLAW_RESET_SESSION,
     OPENCLAW_SESSION,
     OPENCLAW_TOKEN,
+    nanobot_db_insert_message,
     openclaw_legacy_records,
 )
 
@@ -10570,7 +10576,7 @@ class NanobotTests(ParserBase):
             self.assertFalse(p.wants(art), rel)
         for rel in (
             ".nanobot/webui/websocket_chat-1.json",  # legacy thread, shape not recorded
-            ".nanobot-work/history/cli_history",  # the CLI writes only ~/.nanobot
+            ".nanobot/history/cli_history.bak",
         ):
             self.assertFalse(p.wants(rel_only(rel)), rel)
 
@@ -10726,7 +10732,175 @@ class NanobotTests(ParserBase):
         self.assertEqual(by_text["list the old logs"], ["000001.jsonl"])
         self.assertEqual(by_text["first line\nsecond line"], ["cli_history"])
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
-        self.assertEqual(inv["deduplicated"], {"nanobot": 5})
+        # Five more: the frozen discord:555 JSONL's model row and four
+        # message rows, which sessions.sqlite3 also holds (issue 178).
+        self.assertEqual(inv["deduplicated"], {"nanobot": 10})
+
+    # -- sessions.sqlite3 (issue 178) -----------------------------------------------------
+    DB_ROWS: ClassVar[list[tuple[int, str, str, str]]] = [
+        (
+            2,
+            "system",
+            "heartbeat",
+            "session start: key=heartbeat updated_at=2026-10-03T06:00:05 workspace=/srv/proj",
+        ),
+        (7, "user", "heartbeat", "check the inbox"),
+        (8, "assistant", "heartbeat", "Inbox is empty."),
+        (
+            1,
+            "system",
+            NANOBOT_DB_KEY,
+            "session start: key=discord:555 last_channel=discord:555"
+            " updated_at=2026-10-03T11:00:31 workspace=/srv/proj",
+        ),
+        (1, "system", NANOBOT_DB_KEY, "model: smart (preset)"),
+        (1, "user", NANOBOT_DB_KEY, "rotate the api key"),
+        (2, "tool_use", NANOBOT_DB_KEY, "./rotate.sh"),
+        (3, "tool_result", NANOBOT_DB_KEY, "rotated"),
+        (4, "assistant", NANOBOT_DB_KEY, "The key is rotated."),
+        (5, "user", NANOBOT_DB_KEY, "thanks"),
+        (6, "assistant", NANOBOT_DB_KEY, "You're welcome."),
+    ]
+
+    def test_sqlite_store_rows(self):
+        p = NanobotParser()
+        self.assertTrue(p.wants(self.artifact(NANOBOT_DB_REL)))
+        self.assertFalse(p.secondary(self.artifact(NANOBOT_DB_REL)))
+        for rel in (NANOBOT_DB_REL + "-wal", NANOBOT_DB_REL + "-shm"):
+            self.assertFalse(p.wants(rel_only(rel)), rel)
+        rows = self.rows_for(p, NANOBOT_DB_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.session_id, r.text) for r in rows], self.DB_ROWS
+        )
+        self.assertEqual({(r.agent, r.project_path) for r in rows}, {("nanobot", "/srv/proj")})
+        by_text = {r.text: r for r in rows}
+        self.assertEqual(by_text["thanks"].timestamp_utc, "2026-10-03T11:00:30.000Z")
+        self.assertEqual(
+            (by_text["./rotate.sh"].tool_name, by_text["./rotate.sh"].tool_use_id),
+            ("exec", "call_rot1"),
+        )
+        self.assertEqual(by_text["rotated"].tool_use_id, "call_rot1")
+        self.assertEqual({r.model for r in rows if r.session_id == NANOBOT_DB_KEY}, {"smart"})
+
+    def test_sqlite_frozen_jsonl_is_secondary(self):
+        p = NanobotParser()
+        for rel in (NANOBOT_DB_FROZEN_REL, NANOBOT_DB_BACKUP_REL):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
+            self.assertTrue(p.secondary(self.artifact(rel)), rel)
+        # No database beside it: the session file is still the store of record.
+        self.assertFalse(p.secondary(self.artifact(NANOBOT_REL)))
+        conflict = ".nanobot/sessions/%s/.migration-conflicts/Y2xpOmRpcmVjdA.jsonl" % NANOBOT_DB_WS
+        self.assertTrue(p.wants(rel_only(conflict)))
+        backup = self.rows_for(p, NANOBOT_DB_BACKUP_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.project_path, r.text) for r in backup[1:]],
+            [
+                ("user", "heartbeat", "/srv/proj", "old heartbeat prompt"),
+                ("assistant", "heartbeat", "/srv/proj", "Nothing to do."),
+            ],
+        )
+        self.assertFalse(
+            p.wants(rel_only(NANOBOT_DB_BACKUP_REL.replace(".jsonl", ".checkpoint.json")))
+        )
+
+    def test_sqlite_bad_record(self):
+        db = self.home / NANOBOT_DB_REL
+        cut = '{"role": "user", "content": "cut'
+        nanobot_db_insert_message(db, NANOBOT_DB_KEY, 6, cut)
+        nanobot_db_insert_message(db, NANOBOT_DB_KEY, 7, "[1, 2]")
+        nanobot_db_insert_message(
+            db,
+            NANOBOT_DB_KEY,
+            8,
+            '{"role": "user", "content": "after the cut", "timestamp": "2026-10-03T11:01:00"}',
+        )
+        rows = self.rows_for(NanobotParser(), NANOBOT_DB_REL)
+        reason = ""
+        try:
+            json.loads(cut)
+        except ValueError as e:
+            reason = str(e)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[-5:]],
+            [
+                (5, "user", "thanks"),
+                (6, "assistant", "You're welcome."),
+                (11, "user", "after the cut"),
+                (9, "system", "parser: unparseable record 6 (%s): %s" % (reason, cut)),
+                (10, "system", "parser: unparseable record 7 (not a JSON object): [1, 2]"),
+            ],
+        )
+        for r in rows[-2:]:
+            self.assertEqual(
+                (r.session_id, r.project_path, r.timestamp_utc), (NANOBOT_DB_KEY, "/srv/proj", "")
+            )
+
+    def test_sqlite_bad_metadata(self):
+        con = sqlite3.connect(str(self.home / NANOBOT_DB_REL))
+        con.execute("UPDATE sessions SET metadata = 'not json' WHERE key = 'heartbeat'")
+        con.commit()
+        con.close()
+        rows = [
+            r for r in self.rows_for(NanobotParser(), NANOBOT_DB_REL) if r.session_id == "heartbeat"
+        ]
+        reason = ""
+        try:
+            json.loads("not json")
+        except ValueError as e:
+            reason = str(e)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                *[(n, t, x) for n, t, _, x in self.DB_ROWS[:3]],
+                (2, "system", "parser: unparseable session metadata (%s): not json" % reason),
+            ],
+        )
+
+    def test_sqlite_not_a_database(self):
+        (self.home / NANOBOT_DB_REL).write_bytes(b"not a database")
+        rows = self.rows_for(NanobotParser(), NANOBOT_DB_REL)
+        self.assertEqual(
+            [(r.turn_type, r.project_path, r.text) for r in rows],
+            [("system", "/srv/proj", "parser: not a SQLite database")],
+        )
+
+    def test_sqlite_timeline_dedup(self):
+        import contextlib
+
+        out = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--agent", "nanobot"])
+        rows = read_jsonl(out / "timeline.jsonl")
+        by_text: dict = {}
+        for r in rows:
+            by_text.setdefault(r["text"], []).append(
+                (r["source_file"].rsplit("/", 1)[-1], r["recovered"])
+            )
+        db = ("sessions.sqlite3", "")
+        for text in ("rotate the api key", "./rotate.sh", "rotated", "The key is rotated."):
+            self.assertEqual(by_text[text], [db], text)
+        self.assertEqual(by_text["model: smart (preset)"], [db])
+        self.assertEqual(by_text["thanks"], [db])
+        # What only the jsonl-backup/ copy still holds is recovered from it.
+        self.assertEqual(by_text["old heartbeat prompt"], [("heartbeat.jsonl", "yes")])
+
+    # -- CLI history under an instance home (issue 179) --------------------------------------
+    def test_cli_history_under_instance_home(self):
+        rel = ".nanobot-work/history/cli_history"
+        path = self.home / rel
+        path.parent.mkdir(parents=True)
+        path.write_text("\n# 2026-10-04 09:00:00.000000\n+deploy the bot\n", encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        p = NanobotParser()
+        self.assertTrue(p.wants(self.artifact(rel)))
+        self.assertTrue(p.secondary(self.artifact(rel)))
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.timestamp_utc) for r in rows],
+            [(2, "user", "deploy the bot", "2026-10-04T09:00:00.000Z")],
+        )
+        self.assertFalse(p.wants(rel_only(".nanobot-work/history/cli_history.bak")))
+        self.assertFalse(p.wants(rel_only("work/.nanobot/history/cli_history")))
 
 
 from doubleagent import vscode_state
