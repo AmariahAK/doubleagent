@@ -2,10 +2,11 @@
 
 The catalog agent `pydantic-clai` covers the Pydantic AI CLIs: `clai` v1, a chat CLI, and
 CLAI 2.0 (`pydantic-clai2`), a terminal coding agent; both come from the Pydantic AI
-repository. This document came out of the agent framework sweep for
+repository. It came into the catalog from the agent framework sweep for
 [issue #64](https://github.com/seanthegeek/doubleagent/issues/64); the Pydantic AI library
 itself and Logfire (Pydantic's hosted tracing service), which got no catalog line, are covered
-in [`collectors/research/frameworks.md`](frameworks.md). There is no analyzer document yet.
+in [`research/frameworks.md`](frameworks.md). Its parser is in the backlog
+([issue 66](https://github.com/seanthegeek/doubleagent/issues/66)).
 
 ## 1. Source and evidence
 
@@ -20,8 +21,7 @@ The repository ships `pydantic-ai(-slim)`, `pydantic-graph`,
 installed). CLAI 2.0 is a terminal coding agent with a `coder` plugin on
 by default
 ([README.md:3-5](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/README.md#L3-L5)).
-All claims are from source. The catalog agent `pydantic-clai` covers both
-CLIs.
+All claims are from source.
 
 CLAI 2.0 runs commands on the host: `LocalWorkspaceBackend` "runs commands
 as plain host subprocesses — it isolates nothing"
@@ -99,7 +99,7 @@ and the harness ships a shell toolset
 ### 2. Per-user storage
 
 The library has no default path under the home; message history is
-returned to the caller (see [`collectors/research/frameworks.md`](frameworks.md)). The CLIs
+returned to the caller (see [`research/frameworks.md`](frameworks.md)). The CLIs
 write:
 
 | Path (home-relative, all OSes) | Holds | Default or opt-in |
@@ -183,8 +183,8 @@ sessions (`~/.claude/projects/*/*.jsonl`) and Codex rollouts
 [claude_code_sessions.py:41-43](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/runtime/claude_code_sessions.py#L41-L43),
 [codex_sessions.py:35-37](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/runtime/codex_sessions.py#L35-L37)).
 A Claude Code or Codex session can therefore appear in CLAI's store as
-well as in its own; see [`collectors/research/claude-code.md`](claude-code.md) and
-[`collectors/research/codex-cli.md`](codex-cli.md). Both are already in the catalog.
+well as in its own; see [`research/claude-code.md`](claude-code.md) and
+[`research/codex-cli.md`](codex-cli.md). Both are already in the catalog.
 
 #### Docker
 
@@ -208,12 +208,13 @@ None.
 
 ### 4. Exclusions
 
+None under the home in the catalog today, since nothing the catalog collects there needs one.
 Source review (2026-10-19): `.local/state/pydantic-clai2/workspaces/clones`
 holds full git clones of remote repositories
 ([State directory](#state-directory)); if the state directory is collected,
 the clones need an exclusion.
 
-None under the home. CLAI 2.0 puts git worktrees at
+CLAI 2.0 puts git worktrees at
 `<repo>/.worktrees/<name>`
 ([worktrees.py:46](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/runtime/worktrees.py#L46));
 `.worktrees` is not a project catalog entry, and it is too generic a name
@@ -243,9 +244,17 @@ are scratch directories rather than projects
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+`pydantic-clai` is `backlog`: its parser is
+[issue 66](https://github.com/seanthegeek/doubleagent/issues/66), and nothing it writes is parsed
+yet. A parser would read CLAI 2.0's `.config/pydantic-clai2/sessions.db`: the `conversations`
+table (`metadata` with `workspace`, `model`, `title`, `checkout` and `archived_at`; `messages`)
+and the harness step store in the same file (`runs`, `events`, `snapshots`, `tool_effects`)
+([Session store at HEAD](#session-store-at-head)), with the prompt histories `input-history` and
+`clai` v1's `.pydantic-ai/prompt-history.txt`, which keep a deleted session's prompts, and the
+saved model defaults in `config.db`. The orchestrator's `orchestrator.json` and the workspace
+records sit in the state directory, which no catalog line names
+([State directory](#state-directory)); a session imported from Claude Code or Codex repeats
+that agent's own store ([Other agents' sessions](#other-agents-sessions)).
 
 ## 14. Confidence
 
@@ -254,4 +263,5 @@ High (source at the commit). Not determined: whether the
 lock file holds no secrets,
 [credential_store.py:80](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/config/credential_store.py#L80));
 the full `messages` encoding in `sessions.db` (media externalised to a
-`SqliteMediaStore`), which needs an analyzer research document.
+`SqliteMediaStore`), which needs a record-schema study under [Parsing](#parsing) before a
+parser is written.
