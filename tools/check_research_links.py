@@ -23,6 +23,7 @@ import re
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -42,7 +43,9 @@ def line_count_local(repos: pathlib.Path, repo: str, sha: str, path: str):
     ).stdout.strip()
     if head != sha:
         return None
-    f = d / path
+    # A link may percent-encode characters such as the parentheses in a Next.js
+    # route group directory; the checkout holds the decoded name.
+    f = d / urllib.parse.unquote(path)
     if not f.is_file():
         return -1
     with open(f, "rb") as fh:
