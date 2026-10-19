@@ -1,23 +1,36 @@
-# Cline transcript schema
+# cline
 
-Catalog agent: `cline`. Researched together with Roo Code and Kilo Code; Roo
-forked Cline and still shares its task layout ([roo-code.md](roo-code.md)),
-Kilo has since moved to an OpenCode-derived store
-([kilo-code.md](kilo-code.md)). Paths cited are relative to the clone.
-
-Paths, credentials and the rest of the per-user state are in
+Catalog agent: `cline`, an open-source coding agent with a VS Code extension
+(`saoudrizwan.claude-dev`), a CLI and a JetBrains plugin, all writing through its `sdk/`
+packages. Researched together with Roo Code and Kilo Code; Roo forked Cline and still shares its
+task layout ([roo-code.md](roo-code.md)), Kilo has since moved to an OpenCode-derived store
+([kilo-code.md](kilo-code.md)). Paths, credentials and the rest of the per-user state are in
 [`collectors/research/cline.md`](../../collectors/research/cline.md).
 
-## 1. Source
+## 1. Source and evidence
 
 [cline/cline](https://github.com/cline/cline) at [`39ff2359f7e08231281539696e48a166ce49270c`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c), Apache-2.0. Open
 source. Applies to the VS Code extension (`saoudrizwan.claude-dev`), the CLI
 and JetBrains, all through the `sdk/` packages.
 
+Paths cited are relative to the clone.
+
+### Observed
+
+No real install.
+
+- Not seen on a real install: the enterprise upload queue `cache/sync-queue.json`
+  ([Enterprise upload queue](#enterprise-upload-queue)) and the local state of Cline Cloud
+  sessions ([Cline Cloud](#cline-cloud)).
+- Fixture only: no real install has shown the `enterprise.blobUpload` key or the upload queue
+  file ([Sync, relay and origin](#sync-relay-and-origin)).
+
+### Source reviews
+
 - **Source review (2026-10-19)**: [cline/cline](https://github.com/cline/cline)
   at [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33), against [`39ff235`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c), the commit the rest of
   this document cites. One line per requirement class; the detail is in
-  [section 2](#2-transcript-files) and [section 8](#8-parser-plan).
+  [section 2](#2-transcript-stores) and [section 8](#8-parser-plan).
   - Permission state: found, not read by the parser. Rejected and blocked
     calls of SDK sessions are `tool_result` text; standing grants are
     `autoApprovalSettings` and `mode` in `globalState.json`,
@@ -55,7 +68,7 @@ and JetBrains, all through the `sdk/` packages.
     `logs/hooks.jsonl` is JSON Lines and needs the same per-line handling
     when it is read.
 
-## 2. Transcript files
+## 2. Transcript stores
 
 Legacy task layout, one directory per task. Root is VS Code
 `globalStorage/saoudrizwan.claude-dev/` for the extension
@@ -78,66 +91,8 @@ subagent transcripts in the same directory as `<agentId>.messages.json` or
 `${Date.now()}_${nanoid(5)}` ([`session/services/persistence-service.ts:109`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/persistence-service.ts#L109)).
 Fallback index `sessions/sessions.index.json`
 ([`session/services/file-session-service.ts:63`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/file-session-service.ts#L63)). SQLite in `~/.cline/data/db/`
-([section 5](#5-sqlite-stores)). Hook audit `~/.cline/data/logs/hooks.jsonl`
+([section 5](#5-other-stores)). Hook audit `~/.cline/data/logs/hooks.jsonl`
 ([`hooks/hook-file-hooks.ts:647`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/hooks/hook-file-hooks.ts#L647)).
-
-The CLI's prompt history for up-arrow recall is
-`~/.cline/data/cache/user_input_history.jsonl`
-([`apps/cli/src/utils/input-history.ts:7-9`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L7-L9)). Each line is
-`{"prompt": <string>, "ts": <epoch ms>}`. When the terminal UI submits a
-prompt that is not a queued delivery
-([`apps/cli/src/tui/hooks/use-prompt-input-controller.ts:335-337`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/tui/hooks/use-prompt-input-controller.ts#L335-L337),
-[`use-input-history.ts:109-116`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/tui/hooks/use-input-history.ts#L109-L116)),
-the CLI reads the file, removes any earlier copy of the trimmed prompt,
-appends it, keeps the last 20 (`MAX_HISTORY`) and rewrites the whole file,
-stamping every line with that write's `Date.now()`
-([`input-history.ts:5`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L5), [`:37-72`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L37-L72)). So the lines
-are oldest first, each prompt once, and only the last line's `ts` is its
-own prompt's time; the others carry the time of the last write. No
-session id, working directory or model is recorded. Malformed lines are
-skipped when the CLI reads it ([`:11-30`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L11-L30)) and dropped at the
-next rewrite.
-
-The VS Code extension keeps its enterprise prompt upload queue, the task
-files waiting for or done with an upload to the organisation's bucket, in
-`<GS>/saoudrizwan.claude-dev/cache/sync-queue.json`
-([`apps/vscode/src/shared/services/worker/sync.ts:27-29`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/sync.ts#L27-L29)):
-`{items: {<taskId>/<key>: {id, taskId, key, data, timestamp, status,
-retryCount, lastError}}}`, where `key` is the task file's name (such as
-`api_conversation_history.json`), `data` the file's whole content,
-`timestamp` the enqueue time in epoch ms and `status` `pending`, `synced`
-or `failed` ([`queue.ts:9-31`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L9-L31),
-[`157-170`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L157-L170)). An upload marks its item `synced`
-([`212-220`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L212-L220)); a synced item older than seven days
-and a failed one past its retries or seven days old are removed
-([`302-315`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L302-L315), [`325-338`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L325-L338);
-[`worker.ts:201-204`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/worker.ts#L201-L204)), so the file holds the
-recent uploads only. Not seen on a real install.
-
-The SDK writes a hook audit log, `~/.cline/data/logs/hooks.jsonl` (or
-`CLINE_HOOKS_LOG_PATH`), for every session that has no runtime hooks
-configured, which is the default
-([`sdk/packages/core/src/services/local-runtime-bootstrap.ts:447-454`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/services/local-runtime-bootstrap.ts#L447-L454)).
-Each line is appended, never rewritten
-([`sdk/packages/core/src/hooks/hook-file-hooks.ts:629-650`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L629-L650)),
-and carries `ts`, `clineVersion`, `timestamp`, `taskId` (the conversation
-id), `sessionContext.rootSessionId` (the session id), `workspaceRoots`,
-`userId` (`CLINE_USER_ID`, else `USER`), `agent_id` and
-`parent_agent_id`
-([`:234-254`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L234-L254)),
-plus a `hookName`: `agent_start`; `tool_call` with `tool_call{id, name,
-input}`; `tool_result` with `tool_result` (the call record) and
-`postToolUse{toolName, parameters, result, success, executionTimeMs}`;
-`agent_end` with `turn.outputText`; `agent_abort` with `reason`; or
-`agent_error` with `error{name, message, stack}`
-([`:652-730`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L652-L730)).
-The session store appends `session_shutdown` lines `{ts, hookName,
-reason, sessionId, pid, source}` for stale sessions it finds
-([`sdk/packages/core/src/session/stores/session-manifest-store.ts:320-341`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/session/stores/session-manifest-store.ts#L320-L341)).
-No code in `hook-file-hooks.ts` truncates, rotates or deletes the file,
-and the session delete of [section 8](#8-parser-plan) does not touch it,
-so it keeps the tool calls, their inputs and outputs and the final reply
-of sessions whose transcripts are gone.
 
 `<sessionId>.compaction.json` is the model-facing view after compaction,
 `{version, updated_at, conversation_id?, source_message_count,
@@ -147,6 +102,38 @@ the canonical history in `<sessionId>.messages.json` is left unchanged
 ([`session-manifest-store.ts:299`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/session/stores/session-manifest-store.ts#L299)),
 so the sidecar holds no turn the messages file lacks, only the summary
 that replaced the older turns.
+
+### What survives a delete
+
+A delete through the SDK hub removes the session's manifest, its
+messages file and its `sessions.db` row and leaves no marker
+([`session/services/persistence-service.ts:586-630`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/persistence-service.ts#L586-L630);
+[Sync, relay and origin](#sync-relay-and-origin)). The VS Code extension's delete of a
+legacy task removes its entry from `state/taskHistory.json` and the
+whole task directory, and its delete of a Cloud session asks the
+control plane to delete it and writes nothing locally
+([`apps/vscode/src/sdk/legacy-state-reader.ts:160-177`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/legacy-state-reader.ts#L160-L177),
+[`apps/vscode/src/sdk/sdk-task-history.ts:662-667`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/sdk-task-history.ts#L662-L667)).
+None of them touches the per-prompt history file
+`cache/user_input_history.jsonl`, which keeps the last 20 distinct
+prompts with no session, directory or model and only the last line's
+own time, the hook audit log `logs/hooks.jsonl`, which keeps the tool
+calls, their inputs and outputs and the final reply of sessions whose
+transcripts are gone, or the enterprise upload queue; an uploaded
+prompt is never deleted from the organisation's bucket.
+`session-search.db` keeps a deleted session's turns until the hub next
+runs, at its start and every five minutes
+([`session-search.db`](#session-searchdb)), and a Cloud session deleted on the
+server drops out of `globalState.json` at the next listing. A session
+the SDK imported from Claude Code, Codex or OpenCode is a copy of that
+agent's transcript under a new id. The analyzer reads
+`user_input_history.jsonl` and `session-search.db` as secondary
+sources, the upload queue for its own rows, an imported session as any
+SDK session, and
+`logs/hooks.jsonl` and `cloudSessionStatuses` not at all (see
+[Secondary sources](../docs/output.md#secondary-sources)).
+
+### Imported sessions
 
 The SDK can import sessions of other agents: `claude-code`, `codex` and
 `opencode`
@@ -166,6 +153,8 @@ At this commit the only caller is the example desktop app
 ([`apps/examples/desktop-app/sidecar/commands.ts:2509`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/examples/desktop-app/sidecar/commands.ts#L2509)),
 not the CLI or the VS Code extension. The import service was already
 present at the cited commit.
+
+### Cline Cloud
 
 Cline Cloud is the vendor's hosted service that runs a task in a sandbox
 on its servers against a GitHub repository; it was added after the cited
@@ -212,38 +201,9 @@ are filled from that listing, not stored. What is stored locally:
   [`:103-111`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/cloud-pending-starts.ts#L103-L111);
   [`apps/vscode/src/sdk/SdkController.ts:730`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/SdkController.ts#L730)).
 
-Not seen on a real install.
-
-### What survives a delete
-
-A delete through the SDK hub removes the session's manifest, its
-messages file and its `sessions.db` row and leaves no marker
-([section 8](#8-parser-plan)). The VS Code extension's delete of a
-legacy task removes its entry from `state/taskHistory.json` and the
-whole task directory, and its delete of a Cloud session asks the
-control plane to delete it and writes nothing locally
-([`apps/vscode/src/sdk/legacy-state-reader.ts:160-177`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/legacy-state-reader.ts#L160-L177),
-[`apps/vscode/src/sdk/sdk-task-history.ts:662-667`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/sdk-task-history.ts#L662-L667)).
-None of them touches the per-prompt history file
-`cache/user_input_history.jsonl`, which keeps the last 20 distinct
-prompts with no session, directory or model and only the last line's
-own time, the hook audit log `logs/hooks.jsonl`, which keeps the tool
-calls, their inputs and outputs and the final reply of sessions whose
-transcripts are gone, or the enterprise upload queue; an uploaded
-prompt is never deleted from the organisation's bucket.
-`session-search.db` keeps a deleted session's turns until the hub next
-runs, at its start and every five minutes
-([section 5](#5-sqlite-stores)), and a Cloud session deleted on the
-server drops out of `globalState.json` at the next listing. A session
-the SDK imported from Claude Code, Codex or OpenCode is a copy of that
-agent's transcript under a new id. The analyzer reads
-`user_input_history.jsonl` and `session-search.db` as secondary
-sources, the upload queue for its own rows, an imported session as any
-SDK session, and
-`logs/hooks.jsonl` and `cloudSessionStatuses` not at all (see
-[Secondary sources](../docs/output.md#secondary-sources)).
-
 ## 3. Record schema
+
+### Legacy task files
 
 `api_conversation_history.json` is `Anthropic.MessageParam[]` ([`disk.ts:155`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L155)):
 `{role: "user"|"assistant", content: string | [{type:"text",text} |
@@ -279,12 +239,16 @@ cwdOnTaskInitialization?, modelId?, apiProvider?, isLegacy?`.
 cline_edit_date}]`, `model_usage[{ts, model_id, model_provider_id, mode}]`,
 `environment_history[{ts, os_name, os_version, host_name, cline_version}]`.
 
+### SDK manifest
+
 SDK manifest `<id>.json` ([`sdk/packages/core/src/session/models/session-manifest.ts:6-28`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/models/session-manifest.ts#L6-L28)):
 `version:1, session_id, source, pid, started_at (ISO 8601), ended_at?,
 exit_code?, status (idle|running|pending|completed|failed|cancelled,
 shared/src/session/records.ts:1-15), interactive, provider, model, cwd,
 workspace_root, team_name?, enable_tools, enable_spawn, enable_teams,
 prompt?, metadata?{title,...}, messages_path?`.
+
+### Enterprise upload marker
 
 The manifest's `metadata` object, also stored as the `sessions.db` column
 `metadata_json`
@@ -306,6 +270,7 @@ endpoint?, accountId?}, userDistinctId?}`, the target with the access keys
 stripped
 ([`:79-89`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/blob-storage.ts#L79-L89),
 [`:129-160`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/blob-storage.ts#L129-L160)).
+
 The CLI writes it with `updateSession` right after the session starts
 ([`apps/cli/src/connectors/session-runtime.ts:248-258`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/connectors/session-runtime.ts#L248-L258),
 [`apps/cli/src/runtime/run-zen.ts:110-119`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/runtime/run-zen.ts#L110-L119),
@@ -328,6 +293,8 @@ a failed upload is logged at debug level only and leaves the key in place.
 `keyPrefix` is read back from the stored metadata but not used in the object
 name.
 
+### SDK messages file
+
 SDK `<id>.messages.json` ([`services/session-data.ts:334-359`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/session-data.ts#L334-L359),[`281-294`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/session-data.ts#L281-L294)):
 `{version:1, updated_at (ISO), agent:"lead"|"subagent"|"teammate",
 sessionId, taskType?, origin{source, mode, sessionId, parentThreadId?,
@@ -346,7 +313,7 @@ signature?}`, `redacted_thinking{data}`, `image{data, mediaType}`,
 Timestamps are millisecond epochs except the SDK manifest and payload
 (`started_at`, `updated_at` ISO). No git branch is recorded.
 
-## 4. Joins
+## 4. Joins and timestamps
 
 Legacy: directory name = `HistoryItem.id`; workspace =
 `cwdOnTaskInitialization` in `state/taskHistory.json`;
@@ -358,12 +325,14 @@ XML text). SDK: `messages.json.sessionId` = manifest `session_id` =
 `tool_use.id` pairs with `tool_result.tool_use_id`. `session-search.db`
 `session_search.session_id` = `sessions.session_id` = the session directory
 name, and a message document's `ordinal` is the message's 0-based position
-in the lead `<sessionId>.messages.json` ([section 5](#5-sqlite-stores)).
+in the lead `<sessionId>.messages.json` ([`session-search.db`](#session-searchdb)).
 VS Code merges the legacy
 and SDK lists ([`apps/vscode/src/sdk/sdk-task-history.ts:413-424`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/sdk/sdk-task-history.ts#L413-L424)), stamping
 `metadata.legacyTask`.
 
-## 5. SQLite stores
+## 5. Other stores
+
+### `sessions.db` and `teams.db`
 
 `~/.cline/data/db/sessions.db` ([`paths.ts:240-249`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L240-L249);
 [`shared/src/db/sqlite-db.ts:188-273`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/db/sqlite-db.ts#L188-L273)): `sessions(session_id, source, pid,
@@ -375,12 +344,15 @@ metadata_json, transcript_path, hook_path, messages_path, updated_at)`,
 `schedule_executions`. `db/session-search.db`: `indexed_sessions` plus FTS5
 `session_search(session_id, document_id, ordinal, role, started_at,
 workspace_root, title, content)` ([`session/search/session-history-search.ts:123-153`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L123-L153),[`196`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/search/session-history-search.ts#L196)),
-a full-text copy of every transcript, described below. `teams/teams.db`
+a full-text copy of every transcript, described in
+[`session-search.db`](#session-searchdb). `teams/teams.db`
 ([`services/storage/sqlite-team-store.ts:210-330`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/storage/sqlite-team-store.ts#L210-L330),[`431-445`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/storage/sqlite-team-store.ts#L431-L445)): `team_events(payload_json)`,
 `team_tasks`, `team_runs`, `team_mailbox(data_json)`,
 `team_mission_log(data_json)`.
 
-`session-search.db` in detail. It sits beside `sessions.db` in the
+### `session-search.db`
+
+It sits beside `sessions.db` in the
 directory `resolveDbDataDir()` names, `~/.cline/data/db` unless
 `CLINE_DB_DATA_DIR` or `CLINE_DATA_DIR` moves it
 ([`paths.ts:179-185`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L179-L185),
@@ -441,6 +413,70 @@ script or by an attacker while no Cline process ran is still in it at
 collection time. It holds no compaction or rewind history of its own,
 since each re-index replaces a session's documents.
 
+### CLI prompt history
+
+The CLI's prompt history for up-arrow recall is
+`~/.cline/data/cache/user_input_history.jsonl`
+([`apps/cli/src/utils/input-history.ts:7-9`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L7-L9)). Each line is
+`{"prompt": <string>, "ts": <epoch ms>}`. When the terminal UI submits a
+prompt that is not a queued delivery
+([`apps/cli/src/tui/hooks/use-prompt-input-controller.ts:335-337`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/tui/hooks/use-prompt-input-controller.ts#L335-L337),
+[`use-input-history.ts:109-116`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/tui/hooks/use-input-history.ts#L109-L116)),
+the CLI reads the file, removes any earlier copy of the trimmed prompt,
+appends it, keeps the last 20 (`MAX_HISTORY`) and rewrites the whole file,
+stamping every line with that write's `Date.now()`
+([`input-history.ts:5`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L5), [`:37-72`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L37-L72)). So the lines
+are oldest first, each prompt once, and only the last line's `ts` is its
+own prompt's time; the others carry the time of the last write. No
+session id, working directory or model is recorded. Malformed lines are
+skipped when the CLI reads it ([`:11-30`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/input-history.ts#L11-L30)) and dropped at the
+next rewrite.
+
+### Enterprise upload queue
+
+The VS Code extension keeps its enterprise prompt upload queue, the task
+files waiting for or done with an upload to the organisation's bucket, in
+`<GS>/saoudrizwan.claude-dev/cache/sync-queue.json`
+([`apps/vscode/src/shared/services/worker/sync.ts:27-29`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/sync.ts#L27-L29)):
+`{items: {<taskId>/<key>: {id, taskId, key, data, timestamp, status,
+retryCount, lastError}}}`, where `key` is the task file's name (such as
+`api_conversation_history.json`), `data` the file's whole content,
+`timestamp` the enqueue time in epoch ms and `status` `pending`, `synced`
+or `failed` ([`queue.ts:9-31`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L9-L31),
+[`157-170`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L157-L170)). An upload marks its item `synced`
+([`212-220`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L212-L220)); a synced item older than seven days
+and a failed one past its retries or seven days old are removed
+([`302-315`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L302-L315), [`325-338`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L325-L338);
+[`worker.ts:201-204`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/worker.ts#L201-L204)), so the file holds the
+recent uploads only.
+
+### Hook audit log
+
+The SDK writes a hook audit log, `~/.cline/data/logs/hooks.jsonl` (or
+`CLINE_HOOKS_LOG_PATH`), for every session that has no runtime hooks
+configured, which is the default
+([`sdk/packages/core/src/services/local-runtime-bootstrap.ts:447-454`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/services/local-runtime-bootstrap.ts#L447-L454)).
+Each line is appended, never rewritten
+([`sdk/packages/core/src/hooks/hook-file-hooks.ts:629-650`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L629-L650)),
+and carries `ts`, `clineVersion`, `timestamp`, `taskId` (the conversation
+id), `sessionContext.rootSessionId` (the session id), `workspaceRoots`,
+`userId` (`CLINE_USER_ID`, else `USER`), `agent_id` and
+`parent_agent_id`
+([`:234-254`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L234-L254)),
+plus a `hookName`: `agent_start`; `tool_call` with `tool_call{id, name,
+input}`; `tool_result` with `tool_result` (the call record) and
+`postToolUse{toolName, parameters, result, success, executionTimeMs}`;
+`agent_end` with `turn.outputText`; `agent_abort` with `reason`; or
+`agent_error` with `error{name, message, stack}`
+([`:652-730`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L652-L730)).
+The session store appends `session_shutdown` lines `{ts, hookName,
+reason, sessionId, pid, source}` for stale sessions it finds
+([`sdk/packages/core/src/session/stores/session-manifest-store.ts:320-341`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/session/stores/session-manifest-store.ts#L320-L341)).
+No code in `hook-file-hooks.ts` truncates, rotates or deletes the file,
+and no session delete ([What survives a delete](#what-survives-a-delete)) touches it,
+so it keeps the tool calls, their inputs and outputs and the final reply
+of sessions whose transcripts are gone.
+
 ## 6. Format versions
 
 Three generations coexist on disk: VS Code globalStorage tasks,
@@ -489,57 +525,6 @@ Globs (home-relative; `<GS>` is each VS Code `User/globalStorage`):
 `.cline/data/db/session-search.db`, `.cline/data/cache/user_input_history.jsonl`,
 `<GS>/saoudrizwan.claude-dev/cache/sync-queue.json`.
 
-Sources, primary or secondary (the analyzer drops a row of a secondary
-source that a primary store records too, issue 122):
-
-- Primary: `ui_messages.json`, `api_conversation_history.json` (when no
-  `ui_messages.json` is beside it), `task_metadata.json`,
-  `state/taskHistory.json`, the SDK manifest and `*.messages.json`, and
-  `sessions.db` (only for sessions whose manifest is gone).
-- Secondary: `session-search.db`. One `system` row per indexed session at
-  its `started_at`, `session search index: title=<title>
-  workspace_root=<workspace_root> prompt=<metadata content>
-  document_count=<n> indexed_at=<indexed_at>`; then one row per message
-  document in `ordinal` order, `user` or `assistant` by `role`, `system`
-  for any other, `source_line` `ordinal + 1` (the message's position in
-  the transcript, as the messages reader numbers it), and no
-  `timestamp_utc`, since the index records none per message.
-  `session_id` is the index's `session_id`, which is the session
-  directory name the messages reader uses; `project_path` is the
-  manifest's `cwd` (else `workspace_root`) when the manifest is on disk,
-  as the messages reader takes it, and the document's `workspace_root`
-  otherwise. A plain-string message pairs with its transcript row on
-  text and session; a block-array message's text carries the block type
-  names and tool ids and never equals a transcript row, so it is kept
-  whether or not the transcript survives. When the SQLite build lacks
-  FTS5, one `system` row says so and `indexed_sessions` is read alone,
-  each session row without a time.
-- Secondary: `cache/user_input_history.jsonl`
-  ([section 2](#2-transcript-files)). One `user` row per line, with no
-  `session_id` or `project_path`; the last line at its `ts`, every other
-  line with no `timestamp_utc`, and every line undated when the file has a
-  bad line, since the last line read may then not be the newest. An
-  undated row matches a transcript prompt of any Cline session on text
-  alone; the dated one matches within 2 seconds. It survives the deletion
-  of the sessions it came from, holding their last 20 distinct prompts.
-  When a prompt is in this file and in `session-search.db` too, whichever
-  secondary row the duplicate rule reaches first takes the transcript row,
-  and in the fixture the index's copy is the one left over.
-
-The API history is not a second copy of `ui_messages.json` that the rule
-could pair, so it stays a fallback for a task without `ui_messages.json`.
-The two record different texts for the same turn: the API history wraps
-the first prompt as `<task>\n...\n</task>` (with environment details in
-real tasks) where `ui_messages.json` holds the prompt as typed, as the
-extension's own sample-task generator writes them
-([`apps/vscode/src/dev/commands/tasks.ts:95-117`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/dev/commands/tasks.ts#L95-L117),
-[`:172-177`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/dev/commands/tasks.ts#L172-L177)).
-Its tool calls are content blocks or XML inside text, where
-`ui_messages.json` has one `say`/`ask` record per tool with JSON text, and
-its records carry no time. In the fixture the task's API user row is
-`<task>fix tests</task>` beside the UI row `fix tests | [1 image(s)]`, and
-its tool rows have no UI twin with the same text.
-
 Rows: one per `ui_messages` entry for legacy tasks (preferred over the API
 history because it has `ts`), one per content block of SDK messages.
 
@@ -555,27 +540,13 @@ history because it has `ts`), one per content block of SDK messages.
 | tool_use_id | `ts` | `tool_use.id` / `tool_use_id` |
 | text | `text` | first text or tool input |
 
-Model and mode rows, all typed `system`:
+### Permission state
 
-- Legacy: the task's first `task_metadata.json` `model_usage[]` entry
-  yields `model: <model_id> model_provider_id=<model_provider_id>
-  mode=<mode>`, and a later entry whose `model_id` differs yields
-  `model: <old> -> <new>` with the same pairs, at the entry's `ts`.
-- Legacy: the first entry's `mode` yields `permission mode: <mode>` and a
-  later entry whose `mode` differs yields `permission mode: <old> ->
-  <new>`, so an entry that changes only the mode still has a row.
-- SDK: the manifest `model` and `provider` (or the `sessions.db` row of a
-  session whose manifest is gone) yield `model: <model>
-  provider=<provider>` at `started_at`, and the session start row no
-  longer carries `model=`.
-- SDK: a message whose `modelInfo.id` differs from the model before it
-  yields `model: <old> -> <new> provider=<modelInfo.provider>` ahead of
-  its rows. The lead transcript starts from the manifest `model`; a
-  subagent transcript starts from its own first `modelInfo.id`.
-- `ui_messages.json` `modelInfo` and `HistoryItem.modelId` fill the
-  `model` column only.
+Legacy: the first `task_metadata.json` `model_usage[]` entry's `mode` yields a `system` row
+`permission mode: <mode>` and a later entry whose `mode` differs yields `permission mode: <old> ->
+<new>`, so an entry that changes only the mode still has a row ([Model](#model)).
 
-Permission state (source review of 2026-10-19 at [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33); the
+The rest (source review of 2026-10-19 at [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33); the
 parser reads none of it yet):
 
 - Per call, SDK sessions. A call the policy does not auto-approve asks the
@@ -632,8 +603,96 @@ parser reads none of it yet):
 Each standing entry can be one `permission setting: <key>=<value> (from
 <file>, file mtime)` row, as the `claude-code` parser writes them.
 
+### Model
+
+Model rows, all typed `system`:
+
+- Legacy: the task's first `task_metadata.json` `model_usage[]` entry
+  yields `model: <model_id> model_provider_id=<model_provider_id>
+  mode=<mode>`, and a later entry whose `model_id` differs yields
+  `model: <old> -> <new>` with the same pairs, at the entry's `ts`.
+
+- SDK: the manifest `model` and `provider` (or the `sessions.db` row of a
+  session whose manifest is gone) yield `model: <model>
+  provider=<provider>` at `started_at`, and the session start row no
+  longer carries `model=`.
+- SDK: a message whose `modelInfo.id` differs from the model before it
+  yields `model: <old> -> <new> provider=<modelInfo.provider>` ahead of
+  its rows. The lead transcript starts from the manifest `model`; a
+  subagent transcript starts from its own first `modelInfo.id`.
+- `ui_messages.json` `modelInfo` and `HistoryItem.modelId` fill the
+  `model` column only.
+
+### Past use and secondary sources
+
+Sources, primary or secondary (the analyzer drops a row of a secondary
+source that a primary store records too, issue 122):
+
+- Primary: `ui_messages.json`, `api_conversation_history.json` (when no
+  `ui_messages.json` is beside it), `task_metadata.json`,
+  `state/taskHistory.json`, the SDK manifest and `*.messages.json`, and
+  `sessions.db` (only for sessions whose manifest is gone).
+- Secondary: `session-search.db`. One `system` row per indexed session at
+  its `started_at`, `session search index: title=<title>
+  workspace_root=<workspace_root> prompt=<metadata content>
+  document_count=<n> indexed_at=<indexed_at>`; then one row per message
+  document in `ordinal` order, `user` or `assistant` by `role`, `system`
+  for any other, `source_line` `ordinal + 1` (the message's position in
+  the transcript, as the messages reader numbers it), and no
+  `timestamp_utc`, since the index records none per message.
+  `session_id` is the index's `session_id`, which is the session
+  directory name the messages reader uses; `project_path` is the
+  manifest's `cwd` (else `workspace_root`) when the manifest is on disk,
+  as the messages reader takes it, and the document's `workspace_root`
+  otherwise. A plain-string message pairs with its transcript row on
+  text and session; a block-array message's text carries the block type
+  names and tool ids and never equals a transcript row, so it is kept
+  whether or not the transcript survives. When the SQLite build lacks
+  FTS5, one `system` row says so and `indexed_sessions` is read alone,
+  each session row without a time.
+- Secondary: `cache/user_input_history.jsonl`
+  ([CLI prompt history](#cli-prompt-history)). One `user` row per line, with no
+  `session_id` or `project_path`; the last line at its `ts`, every other
+  line with no `timestamp_utc`, and every line undated when the file has a
+  bad line, since the last line read may then not be the newest. An
+  undated row matches a transcript prompt of any Cline session on text
+  alone; the dated one matches within 2 seconds. It survives the deletion
+  of the sessions it came from, holding their last 20 distinct prompts.
+  When a prompt is in this file and in `session-search.db` too, whichever
+  secondary row the duplicate rule reaches first takes the transcript row,
+  and in the fixture the index's copy is the one left over.
+
+The API history is not a second copy of `ui_messages.json` that the rule
+could pair, so it stays a fallback for a task without `ui_messages.json`.
+The two record different texts for the same turn: the API history wraps
+the first prompt as `<task>\n...\n</task>` (with environment details in
+real tasks) where `ui_messages.json` holds the prompt as typed, as the
+extension's own sample-task generator writes them
+([`apps/vscode/src/dev/commands/tasks.ts:95-117`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/dev/commands/tasks.ts#L95-L117),
+[`:172-177`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/dev/commands/tasks.ts#L172-L177)).
+Its tool calls are content blocks or XML inside text, where
+`ui_messages.json` has one `say`/`ask` record per tool with JSON text, and
+its records carry no time. In the fixture the task's API user row is
+`<task>fix tests</task>` beside the UI row `fix tests | [1 image(s)]`, and
+its tool rows have no UI twin with the same text.
+
+Past use beyond the primary store (2026-10-19): `logs/hooks.jsonl`
+([Hook audit log](#hook-audit-log)) is a secondary source the parser does
+not read. Its `tool_call` and `tool_result` lines join a transcript's
+`tool_use` and `tool_result` blocks on the call id and session id, its
+`agent_end` line repeats the final reply, and every line has its own
+time, so it survives a deleted session, a rewind and a removed project.
+`<sessionId>.compaction.json` repeats turns the messages file keeps, and
+stays unread. An imported session is read as any SDK session; its
+`metadata.importedFrom` can be one `system` row naming the source agent,
+session id and path, since the transcript is then a copy of another
+agent's.
+
+### Sync, relay and origin
+
 Sync: the SDK manifest `metadata` key `enterprise.blobUpload` (and the same
-object in `sessions.db` `metadata_json`, [section 3](#3-record-schema)) marks
+object in `sessions.db` `metadata_json`,
+[Enterprise upload marker](#enterprise-upload-marker)) marks
 a session whose transcript is uploaded to the organisation's own S3, R2 or
 Azure bucket under an enterprise remote config. It is written once, at session
 start, and the upload repeats on every rewrite of the messages file, so the
@@ -650,9 +709,11 @@ session. For a session whose manifest is gone, the `sessions.db` row
 yields the same text ending `(from sessions.db sessions.metadata_json
 enterprise.blobUpload, started_at)` at that row's `started_at`. The
 parser sets `records_sync`, so an SDK session without the key is `synced`
-`no`. Fixture only: no real install has shown the key. For the VS Code
+`no`. Fixture only: no real install has shown the key.
+
+For the VS Code
 extension's legacy tasks the marker is the upload queue
-`cache/sync-queue.json` ([section 2](#2-transcript-files)): the parser
+`cache/sync-queue.json` ([Enterprise upload queue](#enterprise-upload-queue)): the parser
 yields one `system` row per item, with `session_id` the `taskId` and
 `project_path` the task's `cwdOnTaskInitialization` from
 `state/taskHistory.json`, at the item's `timestamp`: for a `synced`
@@ -664,7 +725,9 @@ the `session synced: ` prefix (`enterprise prompt upload <status> key
 such items is `synced` `no`; `-` for a value absent or empty. It never
 prints `data` (the file's content) or
 `lastError`. A file that is not a JSON object with an `items` object is
-one `parser:` row. Fixture only: no real install has shown the file. A
+one `parser:` row. Fixture only: no real install has shown the file.
+
+A
 delete through the hub removes the manifest, the messages file and the
 `sessions.db` row
 ([`session/services/persistence-service.ts:586-630`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/persistence-service.ts#L586-L630)),
@@ -711,19 +774,7 @@ The task history (`HistoryItem`) has no share, sync or remote field
 and no share-task feature or `shareUrl` exists at this commit (searched
 `share`, `shareUrl`, `shareTask` in `apps/` and `sdk/`).
 
-Past use beyond the primary store (2026-10-19): `logs/hooks.jsonl`
-([section 2](#2-transcript-files)) is a secondary source the parser does
-not read. Its `tool_call` and `tool_result` lines join a transcript's
-`tool_use` and `tool_result` blocks on the call id and session id, its
-`agent_end` line repeats the final reply, and every line has its own
-time, so it survives a deleted session, a rewind and a removed project.
-`<sessionId>.compaction.json` repeats turns the messages file keeps, and
-stays unread. An imported session is read as any SDK session; its
-`metadata.importedFrom` can be one `system` row naming the source agent,
-session id and path, since the transcript is then a copy of another
-agent's.
-
-Origin (2026-10-19): a Cline Cloud session ([section 2](#2-transcript-files))
+Origin (2026-10-19): a Cline Cloud session ([Cline Cloud](#cline-cloud))
 originated on the vendor's servers and has no local transcript. Each
 `cloudSessionStatuses` entry of `globalState.json` can be one `system`
 row, `session origin: remote cline-cloud <ses- id> status <status> (from
@@ -733,7 +784,9 @@ with the id as `session_id`, and each record of a
 time; the parser would then set `records_origin`. Not seen on a real
 install, so a real-install round of the Cloud surface comes first.
 
-Scratch directories (2026-10-19): `~/.cline/data/workspaces/chat`, the
+### Scratch directories
+
+Source review of 2026-10-19: `~/.cline/data/workspaces/chat`, the
 working directory of a session started without a project and of an
 imported session with no recorded directory
 ([`sdk/packages/shared/src/storage/chat-workspace-paths.ts:2`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/shared/src/storage/chat-workspace-paths.ts#L2)),
@@ -743,15 +796,20 @@ are recorded as the manifest `cwd` and `workspace_root`; both are under
 the catalog entry `.cline`, so the analyzer's catalog rule classes them
 and the parser need not write `scratch directory:` rows.
 
-Deletion (2026-10-19): a hub delete is described under Sync above. The
-VS Code extension's delete of a legacy task removes its entry from
-`state/taskHistory.json` and the whole task directory
-([`apps/vscode/src/sdk/legacy-state-reader.ts:160-177`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/legacy-state-reader.ts#L160-L177)),
-and its delete of a Cloud session asks the control plane to delete it and
-writes nothing locally
-([`apps/vscode/src/sdk/sdk-task-history.ts:662-667`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/sdk-task-history.ts#L662-L667)).
-None of them touches `logs/hooks.jsonl`, `cache/user_input_history.jsonl`
-or the upload queue.
+### Deletion
+
+Not stated: what each delete removes and what survives it is in
+[What survives a delete](#what-survives-a-delete).
+
+### Bad lines
+
+The source review of 2026-10-19 found bad lines already covered for every file the parser reads;
+`logs/hooks.jsonl` is JSON Lines and needs the same per-line handling when it is read. How a bad
+line changes the history rows and the upload queue rows is under
+[Past use and secondary sources](#past-use-and-secondary-sources) and
+[Sync, relay and origin](#sync-relay-and-origin).
+
+### Fixtures
 
 Fixtures (invented content, real field names):
 
@@ -765,7 +823,9 @@ Fixtures (invented content, real field names):
 {"_file":"sessions/<id>/<id>.messages.json","record":{"version":1,"updated_at":"2026-10-03T09:00:05.000Z","agent":"lead","sessionId":"1760000000000_k3x9q","origin":{"source":"cli","mode":"user","sessionId":"1760000000000_k3x9q"},"messages":[{"id":"m1","role":"user","content":"fix tests","ts":1760000000000},{"id":"m2","role":"assistant","content":[{"type":"thinking","thinking":"run the suite"},{"type":"tool_use","id":"call_1","name":"bash","input":{"command":"pytest -q"}}],"modelInfo":{"id":"claude-sonnet-4-5","provider":"anthropic"},"metrics":{"inputTokens":1200,"outputTokens":80,"cost":0.0041},"ts":1760000002000},{"id":"m3","role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","name":"bash","content":"3 passed","is_error":false}],"ts":1760000003000}]}}
 ```
 
-Confidence. High: file names, layouts, `ClineMessage`, `HistoryItem`,
+### Confidence
+
+High: file names, layouts, `ClineMessage`, `HistoryItem`,
 manifest and `MessageWithMetadata` fields, `sessions.db` columns. Medium:
 exact `metadata` keys in SDK messages (collected from call sites, not a
 schema); whether the VS Code extension now writes new tasks to

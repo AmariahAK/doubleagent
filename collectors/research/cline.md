@@ -1,11 +1,22 @@
-# Cline: on-disk paths
+# cline
 
-## 1. Source and evidence level
+Cline is an open-source coding agent with a VS Code extension (`saoudrizwan.claude-dev`), a CLI
+and a closed-source JetBrains plugin, all built on its `sdk/` packages. Roo Code forked it
+([`roo-code.md`](roo-code.md)), and PearAI bundles a fork of Roo Code
+([`pearai.md`](pearai.md)). Transcript record schemas:
+[`analyzer/research/cline.md`](../../analyzer/research/cline.md).
+
+## 1. Source and evidence
 
 Open source. [cline/cline](https://github.com/cline/cline) at [`39ff2359f7e08231281539696e48a166ce49270c`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c)
 (clone `scratchpad/repos/cline`). Everything below is from source; the JetBrains
 plugin is closed ([`README.md:131`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/README.md#L131)) and only its shared data dir is known.
-Transcript record schemas: [`analyzer/research/cline.md`](../../analyzer/research/cline.md).
+
+### Observed
+
+No real install.
+
+### Source reviews
 
 - **Source review (2026-10-19)**: [cline/cline](https://github.com/cline/cline)
   at [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33), against [`39ff235`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c) cited below. New files:
@@ -13,16 +24,29 @@ Transcript record schemas: [`analyzer/research/cline.md`](../../analyzer/researc
   `globalState.json` ([section 2](#2-per-user-storage)); standing
   permission keys in `globalState.json` and `settings/global-settings.json`;
   `.claude/skills` is now read as a project skill directory
-  ([section 5](#5-project-local)). No new credential file, exclusion or
+  ([section 5](#5-project-local-files)). No new credential file, exclusion or
   catalog line is needed; every new file is under `~/.cline`. Scratch
-  directories are covered (see [section 2](#2-per-user-storage)). The record
-  shapes are in [section 2 of `analyzer/research/cline.md`](../../analyzer/research/cline.md#2-transcript-files).
+  directories are covered ([Scratch directories](#scratch-directories)). The record shapes are in
+  [section 2 of `analyzer/research/cline.md`](../../analyzer/research/cline.md#2-transcript-stores).
 
 ## 2. Per-user storage
 
 One layout on every OS; home is `$HOME`, else `%USERPROFILE%`, else
 `%HOMEDRIVE%%HOMEPATH%`, else `os.homedir()`
 ([`sdk/packages/shared/src/storage/paths.ts:84-103`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L84-L103)).
+
+### Scratch directories
+
+`~/.cline/data/workspaces/chat` (sessions without a
+project, and imported sessions with no recorded directory) and
+`~/.cline/worktrees/` (CLI task worktrees) are the agent's own working
+directories. Both are under the catalog line `cline|.cline` and both are
+in `EXCLUDES`, so their contents are not collected, and the analyzer
+classes them as scratch directories by its catalog rule. No temp root
+outside the home was found (grepped `tmpdir` and `chat-workspace` in
+`sdk/packages/shared/src/storage` and `apps/cli/src/utils`).
+
+### `~/.cline`
 
 `~/.cline` ([`paths.ts:151-160`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L151-L160), env `CLINE_DIR`):
 
@@ -69,6 +93,8 @@ One layout on every OS; home is `$HOME`, else `%USERPROFILE%`, else
   ([`paths.ts:299-305`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L299-L305),[`348-349`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L348-L349),[`563-617`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L563-L617); [`services/marketplace.ts:251`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/marketplace.ts#L251);
   [`apps/cli/src/utils/worktree.ts:20`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/utils/worktree.ts#L20)).
 
+### Documents folder
+
 `~/Documents/Cline/{Rules,Workflows,MCP,Hooks,Agents,Plugins}`
 ([`apps/vscode/src/core/storage/disk.ts:55-97`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L55-L97); [`paths.ts:162-177`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L162-L177)). Documents
 is resolved via PowerShell `MyDocuments` on Windows and `xdg-user-dir
@@ -76,8 +102,12 @@ DOCUMENTS` on Linux ([`documents-path.ts:6-40`](https://github.com/cline/cline/b
 `%OneDrive%\Documents` or, on headless Linux, at `~/Cline/Rules`
 ([`paths.ts:538-575`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L538-L575)).
 
+### Shared `~/.agents`
+
 `~/.agents/skills`, `~/.agents/plugins`, `~/.agents/AGENTS.md`
 ([`paths.ts:509-513`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L509-L513),[`517-518`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L517-L518),[`630-632`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L630-L632)) are shared cross-agent.
+
+### VS Code extension
 
 VS Code extension `saoudrizwan.claude-dev` globalStorage (still the root for
 extension tasks: [`apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts:25-32`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts#L25-L32)):
@@ -86,6 +116,8 @@ extension tasks: [`apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts:25-3
 `cache/cline_recommended_models.json` ([`disk.ts:17-36`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L17-L36),[`51-52`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L51-L52),[`186-194`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L186-L194);
 [`apps/vscode/src/utils/storage.ts:11-12`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/utils/storage.ts#L11-L12)). MCP settings for the extension
 now live in `~/.cline/data/settings/` ([`apps/vscode/src/sdk/SdkController.ts:309-312`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/sdk/SdkController.ts#L309-L312)).
+
+### Cline Cloud and settings added after the cited commit
 
 Added after the cited commit ([`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33)):
 `~/.cline/data/cloud-pending-starts/<pid>-<uuid>.json`, the ids of Cline
@@ -102,14 +134,7 @@ Permission settings live in `globalState.json` (`autoApprovalSettings`,
 `logs/hooks.jsonl` is written by default and only appended to
 ([`sdk/packages/core/src/hooks/hook-file-hooks.ts:629-650`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L629-L650)).
 
-Scratch directories: `~/.cline/data/workspaces/chat` (sessions without a
-project, and imported sessions with no recorded directory) and
-`~/.cline/worktrees/` (CLI task worktrees) are the agent's own working
-directories. Both are under the catalog line `cline|.cline` and both are
-in `EXCLUDES`, so their contents are not collected, and the analyzer
-classes them as scratch directories by its catalog rule. No temp root
-outside the home was found (grepped `tmpdir` and `chat-workspace` in
-`sdk/packages/shared/src/storage` and `apps/cli/src/utils`).
+### CLI binary
 
 CLI binary: `npm install -g cline` platform package, `bin/cline` ([`apps/cli/DISTRIBUTION.md:52`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/DISTRIBUTION.md#L52),[`240`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/DISTRIBUTION.md#L240));
 no home-relative binary dir. Hub daemon runs as `cline --cline-hub-daemon`
@@ -140,7 +165,7 @@ no home-relative binary dir. Hub daemon runs as `cline --cline-hub-daemon`
 - VS Code extension: secrets migrated out of `context.secrets` into
   `secrets.json` ([`vscode-to-file-migration.ts:4-15`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts#L4-L15)). No keychain use.
 
-## 4. Exclude
+## 4. Exclusions
 
 `.cline/data/checkpoint-scratch`, `.cline/worktrees`, `.cline/data/workspaces/chat`
 (agent working tree), `.cline/data/agent-plugins`, `.cline/plugins`,
@@ -148,7 +173,7 @@ no home-relative binary dir. Hub daemon runs as `cline --cline-hub-daemon`
 `.cline/data/db/session-search.db*`: a searchable copy of every transcript, not a cache.
 
 The extension's `cache/` directory was excluded before collector 1.14.0
-and is collected from it. At the commit in [section 1](#1-source-and-evidence-level) it holds
+and is collected from it. At the commit in [section 1](#1-source-and-evidence) it holds
 only `remote_config_<organization id>.json`, a credential (see
 [section 3](#3-credentials)), and `sync-queue.json`, the queue of task files
 waiting for, or done with, upload to the organisation's Amazon S3 or Cloudflare R2 bucket
@@ -161,7 +186,7 @@ which is evidence of what was uploaded; neither is a cache in size or
 kind. `cline_recommended_models.json` is still named in `GlobalFileNames`
 but nothing at this commit writes it.
 
-## 5. Project-local
+## 5. Project-local files
 
 `.clinerules` (file or dir) with `workflows/`, `hooks/`, `skills/`;
 `.cline/{rules,skills,workflows,plugins,tasks,cron,<remote-config plugin>}`;
@@ -174,7 +199,7 @@ directories from [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7a
 [`sdk/packages/shared/src/remote-config/paths.ts:11-19`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/paths.ts#L11-L19);
 [`apps/vscode/src/core/ignore/ClineIgnoreController.ts:41`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/ignore/ClineIgnoreController.ts#L41)). No per-project database.
 
-## 6. Project path
+## 6. Where the project path is recorded
 
 - Legacy: `state/taskHistory.json[].cwdOnTaskInitialization`
   ([`apps/vscode/src/shared/HistoryItem.ts:13`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/HistoryItem.ts#L13)), both under globalStorage and
