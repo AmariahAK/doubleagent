@@ -367,8 +367,9 @@ rules are different from the collectors'.
   that rests on source or a bundle alone, while the row's "Validated
   against" cell names the evidence class and platforms in a few words
   (`real installs: macOS, Windows (October 2026)`,
-  `source; fixture only`); section 1 of the research document carries
-  one **Observed** bullet per platform (see "Real-install rounds").
+  `source; fixture only`); the Observed subsection of the research
+  document's section 1 carries one bullet per platform (see "Real-install
+  rounds" and [Research document structure](#research-document-structure)).
 - **The outputs are interfaces.** The `timeline.jsonl` and `sessions.jsonl`
   fields, their order and their JSON types are documented in
   [`analyzer/docs/output.md`](analyzer/docs/output.md), and the `fleet-inventory.csv` columns in
@@ -391,17 +392,19 @@ rules are different from the collectors'.
 ## Adding a parser
 
 The research is already done for every agent in the parser backlog: start
-from `analyzer/research/<agent>.md`, whose section 8 is a parser plan mapped
-to the timeline columns and whose sample records are meant to become the
-fixture. Do not redo the research. The citations link to the commit that was
+from `analyzer/research/<agent>.md`, whose section 8 (Parser plan) is mapped
+to the timeline columns, one fixed subsection per requirement class, and
+whose Fixtures subsection holds the sample records that become the test
+fixture (the outline is [Research document structure](#research-document-structure)).
+Do not redo the research. The citations link to the commit that was
 reviewed, so check the record shape at that link, not on the default branch,
 and say in the module docstring if the shape has drifted since. A parser for
 an agent whose research rests on source alone, a parser change for a newer
 version of the agent, and a parser for a surface not yet exercised (the
 desktop app beside the CLI) each start with the per-step round of
 [Real-install rounds](#real-install-rounds): the shape tool's line types and
-key sets from the round go into the research document's sections 2 and 8
-first, and the parser is written from the updated plan, because the round
+key sets from the round go into the research document's Record schema and
+Parser plan sections first, and the parser is written from the updated plan, because the round
 is what shows the records a bundle grep does not (per-turn settings events,
 reviewer verdicts, the trigger of a turn, a phone driving the session).
 
@@ -515,8 +518,8 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
    [survival table of `analyzer/research/README.md`](analyzer/research/README.md#where-transcripts-live-and-what-survives)
    is updated in the same commit, and the facts behind it live in the
    document, not the table: every analyzer research document carries a
-   `### What survives a delete` subsection, at the end of section 2 (or of
-   section 5 when the stores are SQLite), that says what the agent's own
+   `### What survives a delete` subsection under section 2 (Transcript
+   stores) that says what the agent's own
    delete, clear, archive or retention removes, what remains (the history
    file, second copies, deletion markers, copies held by other agents,
    project-local traces) and what the analyzer reads, with a link to
@@ -621,8 +624,8 @@ find. The validation for every current entry is recorded in the index table in
    every shell in it, including Windows PowerShell 5.1 through the WSL
    path, is available on the development host, so an untested shell is a
    gap to close, not a note to leave.
-7. Write or update `collectors/research/<agent>.md` with the evidence
-   (the eight sections in the research process below, less section 7), add
+7. Write or update `collectors/research/<agent>.md` with the evidence, in
+   the seven sections of [Research document structure](#research-document-structure), add
    a row to the index table in [`collectors/research/README.md`](collectors/research/README.md), mention the
    tool in [`collectors/docs/coverage.md`](collectors/docs/coverage.md) if it needs
    a note there, and close the matching GitHub issue. If the tool keeps
@@ -695,32 +698,16 @@ cwd  workspace  project  worktree  mcp  rules  AGENTS.md
 Likely file names: `paths.ts`, `paths.rs`, `global.ts`, `storage.ts`,
 `home.go`, `config/load.go`, `env.ts`, `directories.rs`.
 
-**3. Require a fixed report structure.** Eight numbered sections, under
-about a thousand words:
-
-1. Repo, commit checked, open source or not; and, once the agent has had
-   a real install, one **Observed** bullet per platform and surface naming
-   the build or version, the date and what was exercised (see
-   [Real-install rounds](#real-install-rounds)). The build in that bullet
-   is the version the document's evidence rests on: an install of a
-   different build is compared against it before the document is trusted,
-   and a difference means a new round, not a note.
-2. Per-user storage for Linux, macOS and Windows: every directory and file
-   under the home, what each holds, and whether the layout is shared across
-   OSes. Flag tools that use XDG paths on macOS and Windows.
-3. Credentials on disk, by exact file name, and whether the OS keychain is
-   used with a file fallback. Note config files that can embed API keys.
-4. Large or low-value subtrees to exclude, as exact path patterns: binaries,
-   model weights, caches, embedding indexes, shadow git checkpoints,
-   worktrees, marketplace clones, Electron caches.
-5. Project-local files written or read inside repositories. Call out any
-   per-project database, since those are easy to miss.
-6. Where the project or workspace path is recorded, with file and JSON key or
-   table and column, so `discover_projects` or the analyzer can use it.
-7. Proposed lines in the collector's own formats: `agent|glob` for
-   `CATALOG`, globs for `EXCLUDES` and `SECRET_GLOBS`, `project|glob` for
-   `PROJECT_CATALOG`.
-8. Confidence per item and what could not be determined.
+**3. Require a fixed report structure.** The report follows the collector
+document's outline in [Research document structure](#research-document-structure),
+under about a thousand words, with one extra section, "Proposed lines",
+holding the lines in the collector's own formats (`agent|glob` for
+`CATALOG`, globs for `EXCLUDES` and `SECRET_GLOBS`, `project|glob` for
+`PROJECT_CATALOG`); that section is dropped when the lines land in the
+tables, so no committed document reviews a catalog that has moved on. The
+build named in an Observed bullet is the version the document's evidence
+rests on: an install of a different build is compared against it before the
+document is trusted, and a difference means a new round, not a note.
 
 **4. Evidence hierarchy for closed-source tools.** In order: the shipped npm
 tarball or binary (`npm pack`, then grep or `strings`; minified bundles keep
@@ -754,11 +741,10 @@ agents editing them in parallel conflict on every line. One integration
 agent makes every table change after all reports are in, so the tables
 change once. New lines go under the vendor's comment block in the table, or
 a new comment block for a new vendor, never at the end. Then split every group report into one document per catalog agent,
-named exactly as the agent appears in `--list`, keeping the numbered section
-structure, the citations and the fixtures, but dropping section 7 once its
-proposals are in the tables, so no committed document reviews a catalog
-that has moved on (the collector documents number confidence as section 7
-for that reason): path research (where state lives,
+named exactly as the agent appears in `--list`, in the outline of
+[Research document structure](#research-document-structure), keeping the
+citations and the fixtures and dropping the proposed lines once they are in
+the tables: path research (where state lives,
 credentials, exclusions, project files, discovery) goes to
 `collectors/research/<agent>.md`, record schema research (how transcripts
 are encoded and how a parser reads them) goes to
@@ -791,6 +777,80 @@ names the evidence source and commit, the key findings, and the catalog
 changes. Comment on the analyzer parser issue with any SQLite-only sources found.
 File new issues for anything out of scope that the research surfaced, such
 as sandboxed install paths or tokens stored inside chat databases.
+
+### Research document structure
+
+The research documents are the source of truth for everything the project
+knows about an agent: the parser is written from its analyzer document, the
+catalog from its collector document, and the agents page, the docs pages
+and the parser docstrings state a fact about an agent by linking the section
+that holds it rather than restating it. So every agent document follows one
+outline, with the same heading names and numbers (the number is part of the
+anchor the link check and the site derive, so the anchors are stable), the
+same fixed subsections, and room for unique subsections under the section
+that owns the fact. `tools/check_research_structure.py` enforces the
+outline; with `--before <dir>` holding the previous copies it also lists
+every citation, code span, fenced line, number and label a rewrite dropped,
+so a restructure never loses a fact.
+
+Both documents open with `# <agent>` (the catalog name) and one unheaded
+intro paragraph: what the agent is and which surfaces it has, its lineage
+(a fork of, a wrapper around, bundled with), and the link to the sibling
+document. Nothing else precedes `## 1.`. Headings are `## <n>. <Name>` and
+`### <Name>`; a bold label never stands in for a heading; prose lines wrap
+at 100 characters, a citation link on its own line excepted; tables stay
+tables.
+
+The collector document, `collectors/research/<agent>.md`:
+
+1. `## 1. Source and evidence`: the repository and commit (or bundle,
+   binary, documentation), the evidence level per claim, then
+   `### Observed` (one bullet per platform and surface: build, date, what
+   was exercised and what each surface wrote; "No real install." when
+   none) and `### Source reviews` (dated entries, newest first; "None."
+   when none).
+2. `## 2. Per-user storage`: every directory and file under the home per
+   platform, what each holds, sizes where observed; `### <platform>` or
+   `### <product>` subsections when layouts differ; the fixed
+   `### Scratch directories` ("None known." when none).
+3. `## 3. Credentials`: credential files by exact name, keychain use and
+   its file fallback, config files that can embed keys, identity values to
+   redact.
+4. `## 4. Exclusions`: large or low-value subtrees as exact patterns.
+5. `## 5. Project-local files`: files written or read inside repositories.
+6. `## 6. Where the project path is recorded`: file and key, or table and
+   column, that discovery or the analyzer reads.
+7. `## 7. Confidence`: confidence per item and what could not be
+   determined.
+
+The analyzer document, `analyzer/research/<agent>.md`:
+
+1. `## 1. Source and evidence`: as above, with `### Observed` and
+   `### Source reviews`.
+2. `## 2. Transcript stores`: where the transcripts live and how they are
+   named, per surface; the fixed `### What survives a delete` (what the
+   agent's own delete, clear, archive or retention removes; what remains;
+   what the analyzer reads, linking
+   [Secondary sources](analyzer/docs/output.md#secondary-sources)).
+3. `## 3. Record schema`: line or row types and their key sets, `###` per
+   store or record family; the field names the parser depends on.
+4. `## 4. Joins and timestamps`: session id, project path, tool-call ids,
+   the time basis and precision, what cannot be joined.
+5. `## 5. Other stores`: databases, indexes, histories, logs, mirrors and
+   backups beside the transcript store, `###` per store.
+6. `## 6. Format versions`: how the shapes changed between versions and
+   which build writes which.
+7. `## 7. Secrets`: what inside the stores is a credential or an identity.
+8. `## 8. Parser plan`: the row table and the globs, then the fixed
+   subsections in this order, each present and saying "The agent records
+   none." or "Not stated." when that is the fact: `### Permission state`,
+   `### Model`, `### Past use and secondary sources`,
+   `### Sync, relay and origin`, `### Scratch directories`, `### Deletion`,
+   `### Bad lines`, `### Fixtures`; unique subsections follow them.
+
+The two README indexes and `collectors/research/frameworks.md` (the
+framework sweep, one section per framework) keep their own shape;
+`collectors/research/shared.md` follows the collector outline.
 
 **Running a round with subagents.** The split in [CLAUDE.md](CLAUDE.md) applies: the
 main session writes one brief and a per-tool assignment, one research
@@ -958,17 +1018,17 @@ The round, in order:
    unreadable file. A parser update starts the same way: run the shape
    tool over the new version's transcripts and diff the line types and
    key sets against the lists in the research document.
-5. **Write it down the same day.** Section 1 of both research documents
-   gets an **Observed** bullet per platform with the version, build,
+5. **Write it down the same day.** The Observed subsection of section 1
+   of both research documents gets a bullet per platform with the version, build,
    date, what was exercised and what each surface wrote; a layout the
    parser handles that no real install has shown is marked "not observed
    on any real install, bundle-derived"; every statement about a product
    surface (a tab, a button, a mode) carries the build and date, because
    surfaces change between releases and training-era knowledge of the UI
    is stale. What the delete step left and removed goes into the analyzer
-   document's `### What survives a delete` subsection as well as the
-   Observed bullet, so the dated bullet records the round and the
-   subsection stays the reader's answer. Catalog, exclusion, secret-glob
+   document's `### What survives a delete` subsection (and its Parser
+   plan's `### Deletion`) as well as the Observed bullet, so the dated
+   bullet records the round and the subsections stay the reader's answer. Catalog, exclusion, secret-glob
    and parser changes follow the usual checklists, under the pending
    version.
 6. **Clean up, after the main session says so.** Delete the collections
@@ -1014,7 +1074,7 @@ never parsed until the app itself was exercised (October 2026), because
 the CLI round had been taken as covering the agent. The matrix is
 surfaces times platforms and each cell is its own round: install the
 CLI and exercise it, install the app and exercise it, on macOS, Windows
-and Linux, with one **Observed** bullet per cell in section 1 of both
+and Linux, with one bullet per cell in the Observed subsection of both
 research documents; a cell with no bullet is a gap to close, not a note
 to leave. Within a surface, run every kind of task it offers, each one
 on its own with a listing diff after it: a question with no tool use, a
@@ -1310,7 +1370,7 @@ for a documentation-only change, only markdownlint and
   does not say what it holds. A reader who has only this document and
   the code must never need the vendor's documentation to decode a
   sentence; "3p" needed "the enterprise build that runs inference through
-  the customer's own provider" beside it. Section 1 of a research
+  the customer's own provider" beside it. The intro paragraph of a research
   document is the place when the term runs through the whole document,
   otherwise the first sentence that uses it. Before committing a
   document, list its capitalised and letter-digit short tokens and check
@@ -1321,11 +1381,12 @@ for a documentation-only change, only markdownlint and
   ``[`collectors/docs/coverage.md`](collectors/docs/coverage.md)`` with
   the path relative to the citing file, and a section is written
   `[section 5](#5-project-local-files)` or, in another document,
-  ``[section 2 of `analyzer/research/claude-desktop.md`](../../analyzer/research/claude-desktop.md#2-per-user-storage)``,
+  ``[section 2 of `analyzer/research/claude-desktop.md`](../../analyzer/research/claude-desktop.md#2-transcript-stores)``,
   with the fragment GitHub derives from the heading (lower case,
   punctuation other than hyphens removed, spaces to hyphens). A reference
   to several sections is one link per section. The exception is this
-  file's references to the numbered sections of the research template
+  file's references to the numbered sections of
+  [Research document structure](#research-document-structure)
   (`<agent>.md`), which describe every research document at once and
   have no single target. A template path with a placeholder
   (`collectors/research/<agent>.md`) names a family of documents, not
