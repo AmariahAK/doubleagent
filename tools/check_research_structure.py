@@ -1,33 +1,40 @@
 #!/usr/bin/env python3
 """Check that every research document follows the structure AGENTS.md fixes.
 
-Every agent's document under `collectors/research/` and `analyzer/research/`
-(not the two README indexes and not `collectors/research/frameworks.md`) has
-one H1 equal to the agent's catalog name, one unheaded intro paragraph, then
-the numbered sections of its directory's outline in order, each with the
-fixed subsections AGENTS.md names (the "Research document structure"
-subsection of "Validating catalog entries from source"). This checks, for
-each such file:
+Every agent's document under `research/` (not `research/README.md` and not
+`research/frameworks.md`) has one H1 equal to the agent's catalog name, one
+unheaded intro paragraph, then the outline of the "Research document
+structure" subsection of AGENTS.md: `## 1. Source and evidence` with
+`### Observed` and `### Source reviews`; `## Collection` holding
+`### 2. Per-user storage` (with `#### Scratch directories`),
+`### 3. Credentials`, `### 4. Exclusions`, `### 5. Project-local files` and
+`### 6. Where the project path is recorded`; `## Parsing` holding
+`### 7. Transcript stores` (with `#### What survives a delete`),
+`### 8. Record schema`, `### 9. Joins and timestamps`, `### 10. Other
+stores`, `### 11. Format versions`, `### 12. Secrets` and `### 13. Parser
+plan` (with the eight fixed `####` row subsections, in order, before any
+other), or for an agent with nothing to parse one paragraph and no `###`;
+then `## 14. Confidence`. This checks, for each such file:
 
 - the H1 is `# <agent>` where `<agent>` is the file's stem;
-- the H2 headings are exactly the outline's, in order, with their numbers;
-- the fixed H3 subsections sit under the right H2 (`### Observed` and
-  `### Source reviews` under section 1; `### Scratch directories` under the
-  collector document's section 2; `### What survives a delete` under the
-  analyzer document's section 2; the eight requirement-class subsections,
-  in order, before any other H3 of the analyzer document's section 8);
+- the H2 headings are exactly `1. Source and evidence`, `Collection`,
+  `Parsing`, `14. Confidence`, in order;
+- the `###` headings under Collection and Parsing are exactly the numbered
+  sections above, in order (Parsing may instead hold prose and no `###`);
+- the fixed `###` and `####` subsections sit under the right heading;
 - no bold label stands in for a heading: a paragraph may not open with
-  `**Label**` or `**Label.**` or `**Label:**` followed by prose (a list
-  item or table row may);
-- no prose line is longer than `--width` characters (default 100) unless it
-  carries a URL, since a citation link cannot be wrapped.
+  `**Label**`, `**Label.**` or `**Label:**` followed by prose (a list item
+  or table row may);
+- no prose line is longer than `--width` characters (default 100) unless
+  it carries a URL or is a single code span, since neither can be wrapped.
 
 With `--before DIR`, where DIR holds the `collectors/` and `analyzer/`
-trees of the documents as they were before a rewrite, it also reports every
-citation URL, code span, fenced-block line, number and bold label that the
-old document holds and the new one lacks, as `path: lost <kind>: <text>`.
-A rewrite that merges a repeated statement loses nothing; a rewrite that
-drops a file name, a key, a size or a citation shows up here.
+trees of the two documents each agent had before the merge, it also
+reports every citation URL, code span, fenced-block line, number and bold
+label that the old documents hold and the new one lacks, as `path: lost
+<kind>: <text>`. A merge that collapses a repeated statement loses nothing;
+one that drops a file name, a key, a size or a citation shows up here. A
+code span wrapped across lines or moved into a fence still counts as kept.
 
 Usage: tools/check_research_structure.py [--before DIR] [--width N] [FILE...]
 
@@ -44,45 +51,49 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+RESEARCH = ROOT / "research"
 SKIP = {"README.md", "frameworks.md"}
 
-COLLECTOR_H2 = (
-    "1. Source and evidence",
+H2 = ("1. Source and evidence", "Collection", "Parsing", "14. Confidence")
+COLLECTION_H3 = (
     "2. Per-user storage",
     "3. Credentials",
     "4. Exclusions",
     "5. Project-local files",
     "6. Where the project path is recorded",
-    "7. Confidence",
 )
-ANALYZER_H2 = (
-    "1. Source and evidence",
-    "2. Transcript stores",
-    "3. Record schema",
-    "4. Joins and timestamps",
-    "5. Other stores",
-    "6. Format versions",
-    "7. Secrets",
-    "8. Parser plan",
+PARSING_H3 = (
+    "7. Transcript stores",
+    "8. Record schema",
+    "9. Joins and timestamps",
+    "10. Other stores",
+    "11. Format versions",
+    "12. Secrets",
+    "13. Parser plan",
 )
-PLAN_H3 = (
-    "Permission state",
-    "Model",
-    "Past use and secondary sources",
-    "Sync, relay and origin",
-    "Scratch directories",
-    "Deletion",
-    "Bad lines",
+PLAN_H4 = (
+    "Permission rows",
+    "Model rows",
+    "Past-use rows and secondary sources",
+    "Sync, relay and origin rows",
+    "Scratch directory rows",
+    "Deletion rows",
+    "Bad-line rows",
     "Fixtures",
 )
-# Fixed H3s per directory, keyed by the section number they sit under.
-COLLECTOR_H3 = {1: ("Observed", "Source reviews"), 2: ("Scratch directories",)}
-ANALYZER_H3 = {1: ("Observed", "Source reviews"), 2: ("What survives a delete",), 8: PLAN_H3}
+# Fixed subsections, keyed by the heading they sit under.
+FIXED = {
+    "1. Source and evidence": ("Observed", "Source reviews"),
+    "2. Per-user storage": ("Scratch directories",),
+    "7. Transcript stores": ("What survives a delete",),
+    "13. Parser plan": PLAN_H4,
+}
 
 ATX = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 BOLD_LEAD = re.compile(r"^\*\*[^*]+\*\*[.:]?(\s|$)")
 URL = re.compile(r"https?://[^\s)\]>]+")
-CODE_SPAN = re.compile(r"`([^`\n]+)`")
+CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)
+ONLY_CODE_SPAN = re.compile(r"^\s*`[^`]+`[.,;:]?\s*$")
 BOLD = re.compile(r"\*\*([^*\n]+)\*\*")
 NUMBER = re.compile(r"(?<![\w/.-])\d[\d,.]*(?:\s?(?:[KMGT]i?B|B|bytes|ms|s|%))?(?![\w/.-])")
 
@@ -98,18 +109,11 @@ def load_link_check():
 
 
 def research_files() -> list[pathlib.Path]:
-    files = []
-    for part in ("collectors", "analyzer"):
-        files += sorted((ROOT / part / "research").glob("*.md"))
-    return [f for f in files if f.name not in SKIP]
+    return [f for f in sorted(RESEARCH.glob("*.md")) if f.name not in SKIP]
 
 
-def kind_of(path: pathlib.Path) -> str | None:
-    parts = path.resolve().parts
-    if "research" not in parts or path.name in SKIP:
-        return None
-    idx = parts.index("research")
-    return parts[idx - 1] if idx > 0 and parts[idx - 1] in ("collectors", "analyzer") else None
+def is_agent_document(path: pathlib.Path) -> bool:
+    return path.resolve().parent == RESEARCH.resolve() and path.name not in SKIP
 
 
 def headings(text: str) -> list[tuple[int, int, str]]:
@@ -122,9 +126,69 @@ def headings(text: str) -> list[tuple[int, int, str]]:
     return found
 
 
+def parents(heads: list[tuple[int, int, str]]) -> dict[str, list[str]]:
+    """Each heading's direct children (level + 1), keyed by the parent's text."""
+    owner: dict[str, list[str]] = {}
+    stack: dict[int, str] = {}
+    for _, level, title in heads:
+        stack[level] = title
+        for deeper in [k for k in stack if k > level]:
+            del stack[deeper]
+        parent = stack.get(level - 1, "")
+        owner.setdefault(parent, []).append(title)
+    return owner
+
+
+def check_outline(rel, owner: dict[str, list[str]], h2: list[str]) -> list[str]:
+    problems = []
+    if h2 != list(H2):
+        problems.append(
+            "%s: H2 headings must be, in order: %s; found: %s"
+            % (rel, " | ".join(H2), " | ".join(h2) or "none")
+        )
+    if owner.get("Collection", []) != list(COLLECTION_H3):
+        problems.append(
+            "%s: Collection must hold, in order: %s; found: %s"
+            % (rel, " | ".join(COLLECTION_H3), " | ".join(owner.get("Collection", [])) or "none")
+        )
+    parsing = owner.get("Parsing", [])
+    if parsing and parsing != list(PARSING_H3):
+        problems.append(
+            "%s: Parsing must hold, in order: %s (or prose with no ###); found: %s"
+            % (rel, " | ".join(PARSING_H3), " | ".join(parsing))
+        )
+    if owner.get("14. Confidence"):
+        problems.append("%s: section 14 takes no subheadings" % rel)
+    return problems
+
+
+def check_fixed(rel, owner: dict[str, list[str]], present: set[str]) -> list[str]:
+    problems = []
+    for section, fixed in FIXED.items():
+        if section not in present:
+            continue
+        have = owner.get(section, [])
+        missing = [t for t in fixed if t not in have]
+        if missing:
+            problems.append(
+                "%s: `%s` lacks the fixed subsection(s): %s" % (rel, section, ", ".join(missing))
+            )
+            continue
+        if [t for t in have if t in fixed] != list(fixed):
+            problems.append(
+                "%s: `%s` fixed subsections out of order; want %s"
+                % (rel, section, ", ".join(fixed))
+            )
+        if section == "13. Parser plan" and have[: len(fixed)] != list(fixed):
+            problems.append(
+                "%s: the eight fixed row subsections of `13. Parser plan` come before any other"
+                % rel
+            )
+    return problems
+
+
 def check_structure(path: pathlib.Path, text: str, width: int, link_check) -> list[str]:
-    kind = kind_of(path)
-    if kind is None:
+    if not is_agent_document(path):
         return []
     rel = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
     problems: list[str] = []
@@ -133,49 +197,20 @@ def check_structure(path: pathlib.Path, text: str, width: int, link_check) -> li
     h1 = [h for h in heads if h[1] == 1]
     if len(h1) != 1 or h1[0][2] != path.stem:
         problems.append("%s:%d: H1 must be `# %s`" % (rel, h1[0][0] if h1 else 1, path.stem))
-    want_h2 = COLLECTOR_H2 if kind == "collectors" else ANALYZER_H2
-    want_h3 = COLLECTOR_H3 if kind == "collectors" else ANALYZER_H3
-    h2 = [h for h in heads if h[1] == 2]
-    if [h[2] for h in h2] != list(want_h2):
-        problems.append(
-            "%s: H2 headings must be, in order: %s; found: %s"
-            % (rel, " | ".join(want_h2), " | ".join(h[2] for h in h2) or "none")
-        )
-    # H3s grouped under the H2 that precedes them.
-    section = 0
-    under: dict[int, list[str]] = {}
-    for _, level, title in heads:
-        if level == 2:
-            section = int(title.split(".", 1)[0]) if title[:1].isdigit() else 0
-        elif level == 3:
-            under.setdefault(section, []).append(title)
-    for num, fixed in want_h3.items():
-        have = under.get(num, [])
-        missing = [t for t in fixed if t not in have]
-        if missing:
-            problems.append(
-                "%s: section %d lacks the fixed subsection(s): %s" % (rel, num, ", ".join(missing))
-            )
-        elif len(fixed) > 1 and [t for t in have if t in fixed] != list(fixed):
-            problems.append(
-                "%s: section %d fixed subsections out of order; want %s"
-                % (rel, num, ", ".join(fixed))
-            )
-        elif num == 8 and have[: len(fixed)] != list(fixed):
-            problems.append(
-                "%s: section 8's eight fixed subsections must come before any other H3" % rel
-            )
-    first_h2 = next((h[0] for h in h2), None)
+    owner = parents(heads)
+    problems += check_outline(rel, owner, [h[2] for h in heads if h[1] == 2])
+    problems += check_fixed(rel, owner, {h[2] for h in heads})
     lines = stripped.split("\n")
     prev_blank = True
     for n, line in enumerate(lines, 1):
         in_prose = line.strip() and not line.lstrip().startswith(("|", "-", "*", ">", "#", "["))
         if prev_blank and in_prose and BOLD_LEAD.match(line):
-            problems.append("%s:%d: bold label used as a heading; make it a `###`" % (rel, n))
+            problems.append("%s:%d: bold label used as a heading; make it a heading" % (rel, n))
         long = in_prose and not line.lstrip()[:2].rstrip(".").isdigit() and len(line) > width
-        if long and not URL.search(line):
+        if long and not URL.search(line) and not ONLY_CODE_SPAN.match(line):
             problems.append("%s:%d: prose line longer than %d characters" % (rel, n, width))
         prev_blank = not line.strip()
+    first_h2 = next((h[0] for h in heads if h[1] == 2), None)
     if first_h2 is not None and h1:
         intro = [x for x in lines[h1[0][0] : first_h2 - 1] if x.strip()]
         if not intro:
@@ -184,7 +219,11 @@ def check_structure(path: pathlib.Path, text: str, width: int, link_check) -> li
 
 
 def tokens(text: str, link_check) -> dict[str, set[str]]:
-    """The facts a rewrite must keep: URLs, code spans, fenced lines, numbers, bold labels."""
+    """The facts a rewrite must keep: URLs, code spans, fenced lines, numbers, bold labels.
+
+    A code span is compared with its whitespace collapsed, so one wrapped
+    across lines matches; a span also counts as kept when its text is a
+    fenced line."""
     fenced: set[str] = set()
     in_fence = False
     for line in text.split("\n"):
@@ -192,11 +231,12 @@ def tokens(text: str, link_check) -> dict[str, set[str]]:
             in_fence = not in_fence
             continue
         if in_fence and line.strip():
-            fenced.add(line.strip())
+            fenced.add(" ".join(line.split()))
     prose = link_check.strip_fences(text)
+    spans = {" ".join(body.split()) for _, body in CODE_SPAN.findall(prose)}
     return {
         "url": {u.rstrip(".,;:") for u in URL.findall(prose)},
-        "code span": set(CODE_SPAN.findall(prose)),
+        "code span": spans | fenced,
         "fenced line": fenced,
         "number": {m.group(0).strip() for m in NUMBER.finditer(prose)},
         "bold label": {b.strip().rstrip(".:") for b in BOLD.findall(prose)},
@@ -204,26 +244,29 @@ def tokens(text: str, link_check) -> dict[str, set[str]]:
 
 
 def check_invariants(path: pathlib.Path, text: str, before: pathlib.Path, link_check) -> list[str]:
-    kind = kind_of(path)
-    if kind is None:
+    if not is_agent_document(path):
         return []
     rel = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
-    old_path = before / kind / path.name
-    if not old_path.is_file():
-        return ["%s: no pre-rewrite copy at %s" % (rel, old_path)]
-    old = tokens(old_path.read_text(encoding="utf-8"), link_check)
+    candidates = (before / "collectors" / path.name, before / "analyzer" / path.name)
+    olds = [p for p in candidates if p.is_file()]
+    if not olds:
+        return ["%s: no pre-merge copy under %s" % (rel, before)]
+    old: dict[str, set[str]] = {}
+    for p in olds:
+        for kind, items in tokens(p.read_text(encoding="utf-8"), link_check).items():
+            old.setdefault(kind, set()).update(items)
     new = tokens(text, link_check)
     problems = []
-    for kind_name in ("url", "code span", "fenced line", "number", "bold label"):
-        for item in sorted(old[kind_name] - new[kind_name]):
-            problems.append("%s: lost %s: %s" % (rel, kind_name, item))
+    for kind in ("url", "code span", "fenced line", "number", "bold label"):
+        for item in sorted(old.get(kind, set()) - new[kind]):
+            problems.append("%s: lost %s: %s" % (rel, kind, item))
     return problems
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument(
-        "--before", type=pathlib.Path, help="pre-rewrite copies, <DIR>/{collectors,analyzer}/"
+        "--before", type=pathlib.Path, help="pre-merge copies, <DIR>/{collectors,analyzer}/"
     )
     ap.add_argument("--width", type=int, default=100, help="longest prose line allowed")
     ap.add_argument("files", nargs="*", type=lambda s: pathlib.Path(s).resolve())

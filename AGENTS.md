@@ -781,27 +781,25 @@ as sandboxed install paths or tokens stored inside chat databases.
 ### Research document structure
 
 The research documents are the source of truth for everything the project
-knows about an agent: the parser is written from its analyzer document, the
-catalog from its collector document, and the agents page, the docs pages
-and the parser docstrings state a fact about an agent by linking the section
-that holds it rather than restating it. So every agent document follows one
-outline, with the same heading names and numbers (the number is part of the
-anchor the link check and the site derive, so the anchors are stable), the
-same fixed subsections, and room for unique subsections under the section
-that owns the fact. `tools/check_research_structure.py` enforces the
-outline; with `--before <dir>` holding the previous copies it also lists
-every citation, code span, fenced line, number and label a rewrite dropped,
-so a restructure never loses a fact.
+knows about an agent: the catalog is written from the Collection part of
+its document, the parser from the Parsing part, and the agents page, the
+docs pages and the parser docstrings state a fact about an agent by linking
+the section that holds it rather than restating it. One document per
+agent, `research/<agent>.md`, follows one outline, with the same heading
+names and numbers (the number is part of the anchor the link check and the
+site derive, so the anchors are stable), the same fixed subsections, and
+room for unique subsections under the section that owns the fact.
+`tools/check_research_structure.py` enforces the outline; with
+`--before <dir>` holding the previous copies it also lists every citation,
+code span, fenced line, number and label a rewrite dropped, so a
+restructure never loses a fact.
 
-Both documents open with `# <agent>` (the catalog name) and one unheaded
+The document opens with `# <agent>` (the catalog name) and one unheaded
 intro paragraph: what the agent is and which surfaces it has, its lineage
-(a fork of, a wrapper around, bundled with), and the link to the sibling
-document. Nothing else precedes `## 1.`. Headings are `## <n>. <Name>` and
-`### <Name>`; a bold label never stands in for a heading; prose lines wrap
-at 100 characters, a citation link on its own line excepted; tables stay
-tables.
-
-The collector document, `collectors/research/<agent>.md`:
+(a fork of, a wrapper around, bundled with), and the one-sentence state of
+its parser. Nothing else precedes `## 1.`. A bold label never stands in for
+a heading; prose lines wrap at 100 characters, a citation link or a lone
+code span excepted; tables stay tables.
 
 1. `## 1. Source and evidence`: the repository and commit (or bundle,
    binary, documentation), the evidence level per claim, then
@@ -809,48 +807,50 @@ The collector document, `collectors/research/<agent>.md`:
    was exercised and what each surface wrote; "No real install." when
    none) and `### Source reviews` (dated entries, newest first; "None."
    when none).
-2. `## 2. Per-user storage`: every directory and file under the home per
-   platform, what each holds, sizes where observed; `### <platform>` or
-   `### <product>` subsections when layouts differ; the fixed
-   `### Scratch directories` ("None known." when none).
-3. `## 3. Credentials`: credential files by exact name, keychain use and
-   its file fallback, config files that can embed keys, identity values to
-   redact.
-4. `## 4. Exclusions`: large or low-value subtrees as exact patterns.
-5. `## 5. Project-local files`: files written or read inside repositories.
-6. `## 6. Where the project path is recorded`: file and key, or table and
-   column, that discovery or the analyzer reads.
-7. `## 7. Confidence`: confidence per item and what could not be
-   determined.
+2. `## Collection`, the collector's half:
+   - `### 2. Per-user storage`: every directory and file under the home per
+     platform, what each holds, sizes where observed; `####` subsections
+     per platform or product when layouts differ; the fixed
+     `#### Scratch directories` ("None known." when none).
+   - `### 3. Credentials`: credential files by exact name, keychain use and
+     its file fallback, config files that can embed keys, identity values
+     to redact.
+   - `### 4. Exclusions`: large or low-value subtrees as exact patterns.
+   - `### 5. Project-local files`: files written or read inside
+     repositories.
+   - `### 6. Where the project path is recorded`: file and key, or table
+     and column, that discovery or the analyzer reads.
+3. `## Parsing`, the analyzer's half; an agent with nothing to parse has
+   one paragraph here (collected only, or the parser issue) and no
+   numbered sections:
+   - `### 7. Transcript stores`: where the transcripts live and how they are
+     named, per surface; the fixed `#### What survives a delete` (what the
+     agent's own delete, clear, archive or retention removes; what
+     remains; what the analyzer reads, linking
+     [Secondary sources](analyzer/docs/output.md#secondary-sources)).
+   - `### 8. Record schema`: line or row types and their key sets, `####`
+     per store or record family; the field names the parser depends on.
+   - `### 9. Joins and timestamps`: session id, project path, tool-call
+     ids, the time basis and precision, what cannot be joined.
+   - `### 10. Other stores`: databases, indexes, histories, logs, mirrors
+     and backups beside the transcript store, `####` per store.
+   - `### 11. Format versions`: how the shapes changed between versions and
+     which build writes which.
+   - `### 12. Secrets`: what inside the stores is a credential or an
+     identity.
+   - `### 13. Parser plan`: the row table and the globs, then the fixed
+     `####` subsections in this order, each present and saying "The agent
+     records none." or "Not stated." when that is the fact:
+     `Permission rows`, `Model rows`, `Past-use rows and secondary sources`,
+     `Sync, relay and origin rows`, `Scratch directory rows`,
+     `Deletion rows`, `Bad-line rows`, `Fixtures`; unique subsections
+     follow them.
+4. `## 14. Confidence`: confidence per item and what could not be
+   determined, for both halves.
 
-The analyzer document, `analyzer/research/<agent>.md`:
-
-1. `## 1. Source and evidence`: as above, with `### Observed` and
-   `### Source reviews`.
-2. `## 2. Transcript stores`: where the transcripts live and how they are
-   named, per surface; the fixed `### What survives a delete` (what the
-   agent's own delete, clear, archive or retention removes; what remains;
-   what the analyzer reads, linking
-   [Secondary sources](analyzer/docs/output.md#secondary-sources)).
-3. `## 3. Record schema`: line or row types and their key sets, `###` per
-   store or record family; the field names the parser depends on.
-4. `## 4. Joins and timestamps`: session id, project path, tool-call ids,
-   the time basis and precision, what cannot be joined.
-5. `## 5. Other stores`: databases, indexes, histories, logs, mirrors and
-   backups beside the transcript store, `###` per store.
-6. `## 6. Format versions`: how the shapes changed between versions and
-   which build writes which.
-7. `## 7. Secrets`: what inside the stores is a credential or an identity.
-8. `## 8. Parser plan`: the row table and the globs, then the fixed
-   subsections in this order, each present and saying "The agent records
-   none." or "Not stated." when that is the fact: `### Permission state`,
-   `### Model`, `### Past use and secondary sources`,
-   `### Sync, relay and origin`, `### Scratch directories`, `### Deletion`,
-   `### Bad lines`, `### Fixtures`; unique subsections follow them.
-
-The two README indexes and `collectors/research/frameworks.md` (the
-framework sweep, one section per framework) keep their own shape;
-`collectors/research/shared.md` follows the collector outline.
+`research/README.md` is the index (the evidence level and parse status per
+agent, and the survival table) and `research/frameworks.md` (the framework
+sweep, one section per framework) keeps its own shape.
 
 **Running a round with subagents.** The split in [CLAUDE.md](CLAUDE.md) applies: the
 main session writes one brief and a per-tool assignment, one research
