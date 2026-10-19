@@ -1,14 +1,23 @@
-# nanobot: on-disk paths
+# nanobot
 
-## 1. Source and evidence level
+nanobot is a small personal-assistant agent with a CLI, a WebUI and a gateway that connects chat
+channels (Telegram, Discord, Feishu, WhatsApp, Matrix, QQ, WeChat and others under
+`nanobot/channels/`); it is open source, written in Python, and not a fork of another agent.
+This document covers where it keeps state on disk; the transcript schema is in
+[`analyzer/research/nanobot.md`](../../analyzer/research/nanobot.md).
+
+## 1. Source and evidence
 
 [HKUDS/nanobot](https://github.com/HKUDS/nanobot), commit [`acdae3d0ae2714b6dde672428e921dbf705c096f`](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f)
 (2026-10-04, PyPI package `nanobot-ai` version `0.3.5`, [`pyproject.toml:2-3`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/pyproject.toml#L2-L3)), MIT
 ([`LICENSE`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/LICENSE)), open source, Python. Every claim is source-level unless it
-cites `docs/` in the same checkout. nanobot is a small personal-assistant
-agent with a CLI, a WebUI and a gateway that connects chat channels
-(Telegram, Discord, Feishu, WhatsApp, Matrix, QQ, WeChat and others under
-`nanobot/channels/`). Transcript schema is in [`analyzer/research/nanobot.md`](../../analyzer/research/nanobot.md).
+cites `docs/` in the same checkout.
+
+### Observed
+
+- No real install.
+
+### Source reviews
 
 - **Source review (2026-10-19)** at
   [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9)
@@ -17,7 +26,8 @@ agent with a CLI, a WebUI and a gateway that connects chat channels
   above; source only. Per class, with the detail in
   [section 2](#2-per-user-storage), [section 3](#3-credentials) and
   [section 6](#6-where-the-project-path-is-recorded), and the parser side
-  in [section 1 of `analyzer/research/nanobot.md`](../../analyzer/research/nanobot.md#1-source):
+  in
+  [section 1 of `analyzer/research/nanobot.md`](../../analyzer/research/nanobot.md#1-source-and-evidence):
   - Permission state: found; `config.json` `tools` and `allowFrom`
     settings, `pairing.json` (shape now traced) and the per-session
     `workspace_scope`; all under `.nanobot*`, so collected.
@@ -71,12 +81,28 @@ Under the data directory:
   ([`channels/whatsapp/runtime.py:75`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/whatsapp/runtime.py#L75); [`channels/matrix/runtime.py:354`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/matrix/runtime.py#L354); [`channels/weixin/runtime.py:378`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/weixin/runtime.py#L378); [`channels/mochat/runtime.py:283`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/mochat/runtime.py#L283); [`channels/linear/state.py:44`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/linear/state.py#L44)).
 - `mcp/<name>/` working directories for MCP presets ([`webui/mcp_presets_api.py:563`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/mcp_presets_api.py#L563)),
   `cli-apps/` ([`apps/cli/service.py:428`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/apps/cli/service.py#L428)).
-- `cache/tiktoken/`, `bin/tui/<version>/`, `run/executables/` ([section 4](#4-exclude)).
+- `cache/tiktoken/`, `bin/tui/<version>/`, `run/executables/` ([section 4](#4-exclusions)).
 
 Always under `~/.nanobot` regardless of `--config`: `history/cli_history`
 (prompt_toolkit input history), legacy `sessions/<safe key>.jsonl`, the
 default `workspace/`, and launchd logs `logs/<name>.launchd.log`
 ([`config/paths.py:51-71`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/paths.py#L51-L71); [`gateway/service.py:135-139`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/gateway/service.py#L135-L139)).
+
+### Scratch directories
+
+The default workspace (`~/.nanobot/workspace`, or
+`<home>/workspace` under `--home`,
+[`config/home.py:24-28`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/config/home.py#L24-L28)),
+the compose file's `api-workspace`, the MCP preset directories `mcp/<name>/`
+and `cli-apps/` are the agent's own working directories, not user
+projects. All are under `.nanobot*`, so the catalog collects them and the
+analyzer's catalog rule classes them as scratch directories. No temp root
+outside the home holds session state: the only `tempfile` directories are
+transient staging for skill deletes and marketplace installs and an SSH
+control-socket directory (`nb-ssh-*`,
+[`webui/remote_mux.py:29`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/remote_mux.py#L29)).
+
+### Workspace
 
 The **workspace** (default `~/.nanobot/workspace`, [`config/schema.py:117-120`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/schema.py#L117-L120))
 holds the agent's instructions and memory: `AGENTS.md`, `SOUL.md`, `USER.md`
@@ -90,10 +116,12 @@ repository versioning those files ([`agent/memory.py:89-91`](https://github.com/
 releases kept `sessions/*.jsonl` inside the workspace; they are copied to the
 data directory and removed ([`session/manager.py:806-855`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L806-L855)).
 
+### Persistence
+
 Persistence: systemd user unit `~/.config/systemd/user/nanobot-gateway.service`
 or `~/Library/LaunchAgents/ai.nanobot.gateway.plist` ([`gateway/service.py:25`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/gateway/service.py#L25),[`86-87`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/gateway/service.py#L86-L87),[`135-136`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/gateway/service.py#L135-L136),[`227-236`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/gateway/service.py#L227-L236)). No Windows service.
 
-Changes at the 2026-10-19 commit:
+### Changes at the 2026-10-19 commit
 
 - A global `--home <dir>` option sets the instance root; without it the
   root is `~/.nanobot`, and `history/cli_history`, the legacy sessions
@@ -132,18 +160,6 @@ Changes at the 2026-10-19 commit:
   ([`docker-compose.yml:13-14`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/docker-compose.yml#L13-L14),[`48-49`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/docker-compose.yml#L48-L49)),
   so the home entry collects both and no `DOCKER_VOLUMES` line is needed.
 
-Scratch directories: the default workspace (`~/.nanobot/workspace`, or
-`<home>/workspace` under `--home`,
-[`config/home.py:24-28`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/config/home.py#L24-L28)),
-the compose file's `api-workspace`, the MCP preset directories `mcp/<name>/`
-and `cli-apps/` are the agent's own working directories, not user
-projects. All are under `.nanobot*`, so the catalog collects them and the
-analyzer's catalog rule classes them as scratch directories. No temp root
-outside the home holds session state: the only `tempfile` directories are
-transient staging for skill deletes and marketplace installs and an SSH
-control-socket directory (`nb-ssh-*`,
-[`webui/remote_mux.py:29`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/remote_mux.py#L29)).
-
 ## 3. Credentials
 
 - `config.json`: `providers.<name>.apiKey` ([`config/schema.py:194-202`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/schema.py#L194-L202)), the API
@@ -175,7 +191,7 @@ control-socket directory (`nb-ssh-*`,
   ([`pairing/store.py:27-33`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L27-L33),[`73-85`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L73-L85),[`130-138`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L130-L138)).
   It is permission evidence, not a credential, and stays unflagged.
 
-## 4. Exclude
+## 4. Exclusions
 
 `bin/tui` (downloaded TUI binaries, [`cli/tui_launcher.py:261`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/cli/tui_launcher.py#L261)), `run/executables`
 ([`:248`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/cli/tui_launcher.py#L248)), `cache/tiktoken` ([`utils/token_encoding.py:20`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/utils/token_encoding.py#L20)). Nothing else is
@@ -205,7 +221,8 @@ one ([`agent/context.py:194-202`](https://github.com/HKUDS/nanobot/blob/acdae3d0
 
 ## 7. Confidence
 
-High: every path in [section 2](#2-per-user-storage) to [section 6](#6-where-the-project-path-is-recorded), read from constants in the cited files.
+High: every path in [section 2](#2-per-user-storage) to
+[section 6](#6-where-the-project-path-is-recorded), read from constants in the cited files.
 Medium: that `matrix-store/` holds credentials (inferred from its role; not
 read); `.nanobot-*` as an instance naming convention comes from docs, and any
 other `--config` location is missed. `nanobot|memory/...` lines assume the
