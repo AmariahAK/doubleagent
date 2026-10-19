@@ -1,6 +1,11 @@
-# Augment (auggie CLI): on-disk paths
+# augment
 
-## 1. Source and evidence level
+Augment is a closed-source coding agent with a command-line surface, the `auggie` CLI
+(`@augmentcode/auggie` on npm), a VS Code extension (`augment.vscode-augment`) and a JetBrains
+plugin. This document covers where they keep state on disk; there is no analyzer document for
+the agent yet.
+
+## 1. Source and evidence
 
 Closed source. Evidence, in order of weight:
 
@@ -16,6 +21,14 @@ Closed source. Evidence, in order of weight:
 The VS Code extension `augment.vscode-augment` was not unpacked; its state is
 whatever sits in the editor's `globalStorage/augment.vscode-augment`, covered
 by the vscode entries.
+
+### Observed
+
+No real install.
+
+### Source reviews
+
+None.
 
 ## 2. Per-user storage
 
@@ -49,9 +62,17 @@ Files and directories (bundle literals `".augment","<name>"`):
 
 Logs are not under home: `$TMPDIR/augment-log.txt`, `augment-daemon.txt`,
 `%TEMP%\augment-log.txt` (bundle `tmpdir(),"augment-log.txt"`; docs
-`/troubleshooting/logs`). Temp also holds `tmpdir()/.augment/...` scratch.
+`/troubleshooting/logs`).
 
-Environment: `AUGMENT_SESSION_AUTH` (session JSON inline),
+### Scratch directories
+
+The agent's own working space is `~/.augment/worktrees/` (its git worktrees, listed above and
+excluded in [section 4](#4-exclusions)) and, outside the home, `tmpdir()/.augment/...` in the
+system temp directory.
+
+### Environment variables
+
+`AUGMENT_SESSION_AUTH` (session JSON inline),
 `AUGMENT_API_TOKEN`, `AUGMENT_API_URL`, `AUGMENT_VFS_DIR`,
 `AUGMENT_WORKSPACE_ROOT`, `AUGMENT_ANTHROPIC_API_KEY`,
 `AUGMENT_OPENAI_API_KEY`, `AUGMENT_FIREWORKS_API_KEY`, `AUGMENT_BEDROCK_API_KEY`
@@ -69,13 +90,13 @@ Environment: `AUGMENT_SESSION_AUTH` (session JSON inline),
   `.augment/settings.local.json`: MCP `mcpServers` with env/headers.
 - No OS keychain use found in the bundle (no `keytar`/`security` strings).
 
-## 4. Exclude
+## 4. Exclusions
 
 `.augment/binaries`, `.augment/vfs`, `.augment/knowledgebase`,
 `.augment/uploads`, `.augment/worktrees`, `.augment/plugins/marketplaces`.
 Keep `daemon/` (small state and locks with workspace hashes).
 
-## 5. Project-local
+## 5. Project-local files
 
 `.augment/rules/*.md`, `.augment/commands/<name>.md`, `.augment/agents/`,
 `.augment/skills/<name>/SKILL.md`, `.augment/settings.json`,
@@ -86,7 +107,7 @@ Keep `daemon/` (small state and locks with workspace hashes).
 No per-project database; the code index is server-side ("Augment stores
 your code securely", docs) with only `vfs/` mirrors locally.
 
-## 6. Project path
+## 6. Where the project path is recorded
 
 `sessions/<id>.json` carries `workspaceRoot` next to `conversationId`
 (bundle `conversationId:n,workspaceRoot:r`; telemetry objects use the same
