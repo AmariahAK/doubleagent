@@ -4,7 +4,8 @@ Amp is a closed-source coding agent, first published by Sourcegraph as `@sourceg
 `@ampcode/cli`, whose command-line binary `amp` also drives desktop runners and an orb sandbox (the
 binary's name for its sandbox environment). Its thread transcripts are server-side. Evidence levels
 below are **B** (strings from the shipped binary), **D** (vendor documentation) and **S** (the
-install script). There is no analyzer document for the agent yet.
+install script). Its parser is in the backlog
+([issue 53](https://github.com/seanthegeek/doubleagent/issues/53)).
 
 ## 1. Source and evidence
 
@@ -154,9 +155,13 @@ thread index.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+Amp is `backlog`: the parser is [issue 53](https://github.com/seanthegeek/doubleagent/issues/53).
+The full threads are stored server-side by ampcode.com ([section 1](#1-source-and-evidence)), so a
+future parser would read what stays local ([section 2](#2-per-user-storage)): the prompt history
+`~/.local/share/amp/history.jsonl` (`{text, cwd}` entries), the per-thread logs
+`~/.cache/amp/logs/threads/<T-id>.log` and `logs/cli.log`, the terminal tool's shell history
+`~/.cache/amp/terminal/<threadId>/history`, and the Claude Code session files Amp copies into
+`~/.amp/claude-diagnostics/<T-id>/sessions/`; no record schema has been researched yet.
 
 ## 14. Confidence
 
