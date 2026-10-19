@@ -1,10 +1,13 @@
-# Dify: on-disk paths
+# dify
 
-This document came out of the agent framework sweep for issue #64; see
-[frameworks.md](frameworks.md) for the frameworks that got no catalog line.
-There is no analyzer document: the run history is in PostgreSQL.
+Dify is a self-hosted LLM app platform deployed with Docker Compose, with an agent backend
+that runs shell jobs through `shellctl`, a sandbox runtime, and `difyctl`, a CLI client. This
+document came out of the agent framework sweep for
+[issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
+[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
+line. There is no analyzer document: the run history is in PostgreSQL.
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 [langgenius/dify](https://github.com/langgenius/dify), commit
 [`519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e`](https://github.com/langgenius/dify/commit/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e).
@@ -13,8 +16,7 @@ worker, Next.js web), a `dify-agent` backend with a Go `shellctl` sandbox
 runtime, and `difyctl`, a CLI client. Licence: modified Apache 2.0 with
 multi-tenant and logo conditions
 ([LICENSE:1-5](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/LICENSE#L1-L5)).
-All claims are from source unless marked inferred; nothing was installed
-or run.
+All claims are from source unless marked inferred.
 
 Dify executes tools and shell commands, inside containers on the host. The
 Code node posts to `dify-sandbox`
@@ -24,6 +26,12 @@ Code node posts to `dify-sandbox`
 and the agent runs shell jobs in `local_sandbox` through shellctl
 ([539-548](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/docker/docker-compose.yaml#L539-L548),
 [677](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/docker/docker-compose.yaml#L677)).
+
+### Observed
+
+- No real install: nothing was installed or run.
+
+### Source reviews
 
 - **Source review (2026-10-19)**: HEAD
   [`ac17912`](https://github.com/langgenius/dify/commit/ac1791279d43b9d78edc66b2fccc8949e2a2a082)
@@ -40,16 +48,16 @@ and the agent runs shell jobs in `local_sandbox` through shellctl
     (grepped for `approv` and `permission`).
   - Model: found, in PostgreSQL only: `messages.model_provider` and
     `model_id`, and the same on `conversations`. shellctl's `jobs` table
-    has no model column ([section 2](#2-per-user-storage)).
+    has no model column ([Review detail](#review-detail)).
   - Past use beyond the primary store: none on disk; shellctl keeps no
     copy of a job once it is collected.
   - Sync, relay and origin: relay found, in PostgreSQL only: a Human
     Input form is delivered by web app or by email
     (`human_input_form_deliveries.delivery_method_type`).
   - Scratch directories: found: the agent's `/workspace` volume, and each
-    job's `cwd` in `shellctl.db` ([section 2](#2-per-user-storage)).
+    job's `cwd` in `shellctl.db` ([Scratch directories](#scratch-directories)).
   - Deletion: found: shellctl deletes a finished job's row, script and
-    output five minutes after it ends ([section 2](#2-per-user-storage)).
+    output five minutes after it ends ([Review detail](#review-detail)).
   - Version drift: the compose file moved by a few lines (the volume
     mounts are now at lines 564-565 and the volume list at 1328-1332) and
     `local_sandbox` now starts `shellctl serve --require-auth-token`;
@@ -61,8 +69,21 @@ and the agent runs shell jobs in `local_sandbox` through shellctl
 
 ## 2. Per-user storage
 
-**The server has no default path under the home.** It is deployed with
-Compose from the clone (`cd dify`, `cd docker`, `docker compose up -d`,
+The server has no default path under the home.
+
+### Scratch directories
+
+The agent's shell jobs run in the
+`dify_agent_local_sandbox_workspace` volume, mounted at `/workspace`
+([docker-compose.yaml:564-565](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/docker/docker-compose.yaml#L564-L565)),
+which is the agent's own working directory, not a user project. The
+`DOCKER_VOLUMES` line collects it whole, and each job's working directory
+is the `cwd` column of `shellctl.db`. It is outside every home, so the
+analyzer's home-catalog rule for scratch directories does not apply to it.
+
+### Compose bind mounts
+
+The server is deployed with Compose from the clone (`cd dify`, `cd docker`, `docker compose up -d`,
 [README.md:77-82](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/README.md#L77-L82)),
 and almost all state goes to bind mounts under `./volumes` beside the
 compose file, not to named volumes:
@@ -95,9 +116,11 @@ without a PostgreSQL server.
 The clone location is not fixed. The README's `cd dify` suggests a clone
 named `dify`, often in a home directory, but that is an inference, so the
 bind mounts have no catalog line. Collecting them by hand is a manual step
-in [coverage.md](../docs/coverage.md).
+in [`collectors/docs/coverage.md`](../docs/coverage.md).
 
-**Named volumes.** The compose file declares four
+### Named volumes
+
+The compose file declares four
 ([docker-compose.yaml:1325-1328](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/docker/docker-compose.yaml#L1325-L1328)).
 `dify_agent_local_sandbox_home` is mounted at `/home/dify` and
 `dify_agent_local_sandbox_workspace` at `/workspace`
@@ -117,7 +140,9 @@ Compose prefixes the volume names with the directory name (`docker_`); the
 `*dify_agent_local_sandbox_workspace`. `dify_es01_data` and `oradata` are
 opt-in vector-store profiles and are left unmatched.
 
-**difyctl.** The CLI client, described as an internal "edge" build, keeps
+### difyctl
+
+The CLI client, described as an internal "edge" build, keeps
 `config.yml`, `login.yml`, and `tokens.yml` when the OS keyring is
 unavailable, in `~/.config/difyctl` on Linux and macOS and
 `AppData/Roaming/difyctl` on Windows, with a `LOCALAPPDATA` fallback
@@ -125,6 +150,8 @@ unavailable, in `~/.config/difyctl` on Linux and macOS and
 [store/manager.ts:8](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/cli/src/store/manager.ts#L8),
 [37-64](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/cli/src/store/manager.ts#L37-L64),
 [README.md:1-3](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/cli/README.md#L1-L3)).
+
+### Review detail
 
 Detail from the 2026-10-19 review, at
 [`ac17912`](https://github.com/langgenius/dify/commit/ac1791279d43b9d78edc66b2fccc8949e2a2a082),
@@ -160,14 +187,6 @@ for a future analyzer document:
   [94](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/api/models/human_input.py#L94),
   [human_input_adapter.py:27-29](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/api/core/workflow/human_input_adapter.py#L27-L29)).
 
-**Scratch directories.** The agent's shell jobs run in the
-`dify_agent_local_sandbox_workspace` volume, mounted at `/workspace`
-([docker-compose.yaml:564-565](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/docker/docker-compose.yaml#L564-L565)),
-which is the agent's own working directory, not a user project. The
-`DOCKER_VOLUMES` line collects it whole, and each job's working directory
-is the `cwd` column of `shellctl.db`. It is outside every home, so the
-analyzer's home-catalog rule for scratch directories does not apply to it.
-
 ## 3. Credentials
 
 - difyctl `tokens.yml`, in all three locations: flagged.
@@ -197,7 +216,7 @@ on) and `volumes/sandbox/dependencies` are large.
 ## 5. Project-local files
 
 None in the sense of the project catalog; the deployment's own
-`docker/` directory is the state ([section 2](#2-per-user-storage)).
+`docker/` directory is the state ([Compose bind mounts](#compose-bind-mounts)).
 
 ## 6. Where the project path is recorded
 
