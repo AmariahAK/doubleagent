@@ -7524,6 +7524,142 @@ def build_hermes_pastes(home: Path) -> None:
     path.write_text(json.dumps(hermes_pastes_records()), encoding="utf-8")
 
 
+# Model-switch markers (issue 180) and malformed tool_calls (issue 182), in a
+# database of their own so the main fixture's rows stay as they are. Shapes
+# from hermes-agent 86fa9e6ca1de7ee71132d2be0103f3e37d1fa872: the TUI
+# gateway appends a `role = 'user'` row with `display_kind = 'model_switch'`
+# and the marker text, after setting `active = 0` on the session's earlier
+# markers (tui_gateway/server.py:1274-1331, hermes_state_messages.py:1064-1070);
+# `display_kind` and `display_metadata` are messages columns
+# (hermes_state_common.py:538-539). No real install has shown either shape.
+HERMES_SWITCH = "20261001_170000_5ca1ab1e"
+HERMES_SWITCH_SCHEMA = (
+    HERMES_SCHEMA
+    + "ALTER TABLE messages ADD COLUMN display_kind TEXT;\n"
+    + "ALTER TABLE messages ADD COLUMN display_metadata TEXT;\n"
+)
+HERMES_SWITCH_MARKER = (
+    "[System: The active model for this chat has changed to %s%s. From this point forward, "
+    "use this runtime metadata when answering questions about what model/provider is active.]"
+)
+# tool_calls values that do not decode to a list of call objects.
+HERMES_BAD_CALLS_JSON = '[{"id":"call_7","function":{"name":"terminal","argu'
+HERMES_BAD_CALLS_SCALAR = "42"
+HERMES_BAD_CALLS_ENTRY = (
+    '["oops",{"id":"call_8","type":"function",'
+    '"function":{"name":"terminal","arguments":"{\\"command\\":\\"pwd\\"}"}}]'
+)
+
+
+def hermes_switch_records():
+    """A TUI session (sessions.model rewritten to the last switch's model)
+    whose first API calls used claude-sonnet-4, then two switches: the first
+    marker, superseded, has active=0; the second names no provider, and a
+    third marker's text has an unknown form. Between them three assistant
+    messages whose tool_calls do not decode, with plain user turns before
+    and after."""
+    sid = HERMES_SWITCH
+    marker = HERMES_SWITCH_MARKER
+
+    def msg(role, content, ts, active=1, kind=None, calls=None):
+        return (
+            "INSERT INTO messages (session_id,role,content,tool_calls,timestamp,active,"
+            "display_kind) VALUES (%s,%s,%s,%s,%s,%d,%s)"
+            % (
+                _hermes_sql(sid),
+                _hermes_sql(role),
+                _hermes_sql(content),
+                _hermes_sql(calls),
+                ts,
+                active,
+                _hermes_sql(kind),
+            )
+        )
+
+    return [
+        "INSERT INTO schema_version VALUES (31)",
+        "INSERT INTO sessions VALUES ('%s','tui','anthropic/claude-opus-4',NULL,1790874000.0,"
+        "NULL,NULL,'/srv/proj','main','/srv/proj','Switch models')" % sid,
+        msg("user", "hello", 1790874001.0),
+        msg("assistant", "Hi.", 1790874002.0),
+        msg(
+            "user",
+            marker % ("openai/gpt-5", " via provider openrouter"),
+            1790874010.0,
+            active=0,
+            kind="model_switch",
+        ),
+        msg("user", "list files", 1790874011.0),
+        msg("assistant", "bad json", 1790874012.0, calls=HERMES_BAD_CALLS_JSON),
+        msg("assistant", "", 1790874013.0, calls=HERMES_BAD_CALLS_SCALAR),
+        msg("assistant", "", 1790874014.0, calls=HERMES_BAD_CALLS_ENTRY),
+        msg("user", marker % ("anthropic/claude-opus-4", ""), 1790874020.0, kind="model_switch"),
+        msg("user", "[System: model changed]", 1790874021.0, kind="model_switch"),
+        msg("user", "after the switches", 1790874030.0),
+        "INSERT INTO session_model_usage (session_id,model,billing_provider,task,api_call_count,"
+        "first_seen,last_seen) VALUES "
+        "('%s','anthropic/claude-sonnet-4','openrouter','',1,1790874002.0,1790874002.0)" % sid,
+    ]
+
+
+def _hermes_sql(value) -> str:
+    """`value` as an SQL literal: NULL, or a single-quoted string."""
+    if value is None:
+        return "NULL"
+    return "'%s'" % str(value).replace("'", "''")
+
+
+def build_hermes_switch(path: Path) -> None:
+    """state.db at `path` holding hermes_switch_records()."""
+    _wal_db(path, HERMES_SWITCH_SCHEMA, hermes_switch_records())
+
+
+# A Hermes home in a Docker named volume (issue 181): the catalog's
+# `hermes|*hermes*` DOCKER_VOLUMES line collects the volume whole with its
+# `_data` directory as the base (user `docker`). The container's Hermes home
+# is /opt/data (docker-compose.yml:36-37 at hermes-agent 8b66a51 mounts
+# ~/.hermes there), so a named volume mounted in its place holds the Hermes
+# home itself and state.db is at the base's root.
+HERMES_VOLUME_HOME = "/var/lib/docker/volumes/hermes_data/_data"
+HERMES_VOLUME_FILES = (
+    "state.db",
+    "state.db-wal",
+    "state.db-shm",
+    "sessions/%s.jsonl" % HERMES_DIVERTED,
+    "pastes/pending.json",
+    "config.yaml",
+)
+
+
+def build_hermes_volume(root: Path, cwd="/opt/data/workspace") -> None:
+    """A collector output directory (collection.json, manifest.jsonl and
+    fs/) holding only the Hermes volume: the main fixture's state.db with
+    `cwd` as the project path, its divert, the debug-share list and a
+    config.yaml the parser must not want."""
+    base = root / ("fs" + HERMES_VOLUME_HOME)
+    _wal_db(base / "state.db", HERMES_SCHEMA, hermes_records(cwd))
+    _jsonl(base / "sessions" / ("%s.jsonl" % HERMES_DIVERTED), hermes_diverted_records())
+    _json(base / "pastes" / "pending.json", hermes_pastes_records())
+    (base / "config.yaml").write_text("model: anthropic/claude-sonnet-4\n", encoding="utf-8")
+    _json(root / "collection.json", {"hostname": "h2"})
+    _jsonl(
+        root / "manifest.jsonl",
+        [
+            {
+                "user": "docker",
+                "home": HERMES_VOLUME_HOME,
+                "agent": "hermes",
+                "path": HERMES_VOLUME_HOME + "/" + rel,
+                "archive_path": "fs" + HERMES_VOLUME_HOME + "/" + rel,
+                "type": "file",
+                "status": "collected",
+                "secret": False,
+            }
+            for rel in HERMES_VOLUME_FILES
+        ],
+    )
+
+
 def agent_zero_history():
     """Agent 0's history from research/agent-zero.md section 8, with the
     assistant message carrying the id of the `agent` log item that streamed

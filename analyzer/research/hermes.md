@@ -22,10 +22,11 @@ MIT ([`LICENSE`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e
     `config.yaml` (`command_allowlist`, `approvals.*`), in
     `sessions.model_config.yolo_mode` and in the gateway pairing files
     ([section 3](#3-record-schema), [section 8](#8-parser-plan)).
-  - Model: partly covered. `session_model_usage` and `sessions.model`
-    are read; the durable model-switch marker rows
-    (`display_kind = 'model_switch'`) are not, and the parser shows them
-    as user prompts ([section 3](#3-record-schema)).
+  - Model: covered. `session_model_usage` and `sessions.model` are
+    read, and since issue 180 the durable model-switch marker rows
+    (`display_kind = 'model_switch'`) are `model:` `system` rows rather
+    than user prompts ([section 3](#3-record-schema),
+    [section 8](#8-parser-plan)).
   - Past use beyond `state.db`: found, not read. The prompt history
     `.hermes_history`, the cron run archive `cron/output/`,
     `response_store.db`, trajectory files, the Bot Mode room log and
@@ -47,9 +48,17 @@ MIT ([`LICENSE`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e
     columns and four new tables, a new `local-<sha256>` session id form;
     every path, table and column the parser reads is unchanged
     ([section 6](#6-format-versions)).
-  - Bad lines: the divert reader is covered; a `tool_calls` value that
-    is not valid JSON is dropped without a row
-    ([section 8](#8-parser-plan)).
+  - Bad lines: covered. The divert reader goes through `iter_jsonl`, and
+    since issue 182 a `tool_calls` value that does not decode is a
+    `parser:` row carrying the value ([section 8](#8-parser-plan)).
+  - Layouts the parser handles that no install has shown: the
+    model-switch marker rows, a malformed `tool_calls` value and a Hermes
+    home in a Docker or Podman named volume are not observed on any real
+    install, source-derived (NousResearch/hermes-agent at
+    [`86fa9e6`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872)
+    for the markers,
+    [`8b66a51`](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683)
+    for the volume mount point).
 
 ## 2. Transcript files
 
@@ -539,7 +548,11 @@ holds messaging user and chat identifiers.
 
 ## 8. Parser plan
 
-Inputs, under any Hermes home, each marked for the timeline's
+Inputs, under any Hermes home (a home's `.hermes`,
+`.hermes_<suffix>`, `AppData/Local/hermes[_<suffix>]`, any of them
+followed by `profiles/<name>`, or the root of a Docker or Podman named
+volume's `_data`, which holds the Hermes home itself, as the next
+paragraph but one says), each marked for the timeline's
 deduplication (issue 122, see
 [Secondary sources in `docs/output.md`](../docs/output.md#secondary-sources)):
 
@@ -581,14 +594,54 @@ already used is not visible. A session with no such rows gets one
 `model: <sessions.model>` row at `started_at`. The `model` column of the
 other rows stays `sessions.model`.
 
+Model-switch markers (issue 180), `system`, in message order: each
+`messages` row with `display_kind = 'model_switch'` is one row
+`model: <old> -> <model> provider=<provider>` at the row's `timestamp`,
+with `model` set to the new model and `source_line` to `messages.id`,
+parsed from the marker text `[System: The active model for this chat
+has changed to <model> via provider <provider>. From this point
+forward, ...]` (the provider part only when one was set). The marker
+names only the new model: `<old>` is the session's previous marker's
+model, else the last main-loop `session_model_usage` model whose
+`first_seen` is before the marker; with neither, or when it is the new
+model, the row is `model: <model>` with the provider suffix. A later
+switch sets the marker's `active` to 0, which is no rewind, so the row
+has no `[rewound]` prefix, and a marker is never a `user` row. A marker
+whose text has another form is a `system` row `model_switch: <text>`.
+These rows sit beside the `session_model_usage` rows above, which show
+the first API call on each model rather than the switch.
+
+Malformed `tool_calls` (issue 182): a value that is not valid JSON, is
+not a list (a lone object is read as a one-call list) or holds an entry
+that is not an object gives one row through `error_rows`, after the
+message's other rows, `parser: unparseable record <messages.id>
+(tool_calls is not valid JSON: <reason>)`, `(tool_calls is not a
+list)` or `(tool_calls entry is not an object)`, followed by `: ` and
+the value as stored, with the message's `session_id` and project path
+and an empty `timestamp_utc`; the entries that are objects still give
+`tool_use` rows. A divert line uses the same rule, with `<N>` the line
+number and the value written as compact JSON when it is not a string.
+
+Volume homes (issue 181): the catalog's `hermes|*hermes*` volume line
+collects a named volume whole with its `_data` directory as the base.
+The container's Hermes home is `/opt/data`
+([`docker-compose.yml:36-37`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/docker-compose.yml#L36-L37)),
+so a named volume mounted there holds the Hermes home itself and the
+files arrive as `state.db`, `sessions/<id>.jsonl`,
+`state-snapshots/<id>/state.db`, `pastes/pending.json` and
+`profiles/<name>/...` with no prefix. `wants()` accepts these as it
+accepts the home forms, and the rows carry the manifest's `docker` user.
+
 Permission: the pairing stores named in
 [section 3 of `collectors/research/hermes.md`](../../collectors/research/hermes.md#3-credentials)
 have no recorded shape and are not read, so there are no permission rows.
 
 Per-class plan from the source review of 2026-10-19 (HEAD
 [`86fa9e6`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872));
-none of it is implemented, and every line rests on source alone, so each
-change starts with a per-step real-install round:
+the model-switch rows, the volume homes and the `tool_calls` rows are
+implemented (issues 180, 181 and 182, above); the rest is not, and every
+line rests on source alone, so each change starts with a per-step
+real-install round:
 
 - Permission (gap): the shape of the pairing store is now known
   ([section 3](#3-record-schema)). Proposed rows: after a `terminal`
@@ -608,13 +661,11 @@ change starts with a per-step real-install round:
   pairing/<platform>-approved.json, approved_at)` row per user at
   `approved_at`. Both files are collected (the pairing files flagged
   secret).
-- Model (gap): a `messages` row with `display_kind = 'model_switch'` is
-  today a `user` row, and `[rewound]` when a later switch deactivated it.
-  Proposed: a `system` row `model: <old> -> <model> provider=<provider>`
-  at the row's time, parsed from the marker text, with no `[rewound]`
-  prefix; and every other non-empty `display_kind` on a `user` row
-  becomes a `system` row prefixed with the kind, so injected notices are
-  not counted as typed prompts. The `session_model_usage` rows stay.
+- Model (partly done): the `display_kind = 'model_switch'` rows are
+  `model:` rows (issue 180, above). Still proposed: every other
+  non-empty `display_kind` on a `user` row becomes a `system` row
+  prefixed with the kind, so injected notices are not counted as typed
+  prompts.
 - Past use (gap): `.hermes_history` (secondary, `user` rows with the
   entry's time and no session; a slash command keeps its own row),
   `cron/output/*/*.md` (secondary, `user` from `## Prompt` and
@@ -669,18 +720,16 @@ change starts with a per-step real-install round:
   `archived=1` on the session start row.
 - Version drift: none affects the parser
   ([section 6](#6-format-versions)). A Hermes home collected from a
-  Docker or Podman named volume (the catalog's `hermes|*hermes*`
-  volume line) has its files at the volume root, so their `artifact.rel`
-  is `state.db`, not `.hermes/state.db`, and no `wants()` pattern
-  matches: such a home is collected and not parsed.
+  Docker or Podman named volume has its files at the volume root
+  (`state.db`, not `.hermes/state.db`); `wants()` accepts that form
+  since issue 181 (above).
 - Bad lines: `sessions/<id>.jsonl` goes through `iter_jsonl` and
-  `error_rows` and `pastes/pending.json` reports each bad entry. In
-  `state.db`, a `tool_calls` value that is not valid JSON is turned into
-  an empty list by `_json` and dropped with no row; only a value that
-  parses to something other than a list gets the parser's own
-  `parser: message <n> tool_calls did not parse` row, which does not
-  carry the value. Both should become an `error_rows` entry carrying the
-  stored string.
+  `error_rows` and `pastes/pending.json` reports each bad entry. A
+  `tool_calls` value that does not decode is an `error_rows` entry
+  carrying the stored value since issue 182 (above); before it, a value
+  that was not valid JSON was dropped with no row and one that parsed to
+  something other than a list got a row of the parser's own without the
+  value.
 
 Sync: Hermes records no sync state for a session. Nothing uploads a
 session, a transcript or a title to the Nous account: the Nous Portal

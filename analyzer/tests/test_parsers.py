@@ -8872,6 +8872,201 @@ class HermesTests(ParserBase):
             (3, 'parser: unparseable record 3 (not an object with a url): {"expire_at":1}'),
         )
 
+    # -- model-switch markers and malformed tool_calls (issues 180, 182) ------------------
+
+    def switch_rows(self):
+        from fixtures import build_hermes_switch
+
+        db = self.tmp / "switch" / "state.db"
+        build_hermes_switch(db)
+        art = dc_replace(self.artifact(self.REL), disk_path=db)
+        return list(HermesParser().parse(art, Options()))
+
+    def test_model_switch_markers_are_model_rows(self):
+        from fixtures import HERMES_SWITCH
+
+        rows = self.switch_rows()
+        self.assertEqual(
+            [
+                (r.turn_type, r.text, r.timestamp_utc, r.model, r.source_line)
+                for r in rows
+                if r.turn_type != "system" or r.text.startswith(("model", "session"))
+            ],
+            [
+                ("system", "session start | Switch models | source=tui",
+                 "2026-10-01T17:00:00.000Z", "anthropic/claude-opus-4", 1),
+                ("system", "model: anthropic/claude-sonnet-4 provider=openrouter",
+                 "2026-10-01T17:00:02.000Z", "anthropic/claude-sonnet-4", 1),
+                ("user", "hello", "2026-10-01T17:00:01.000Z", "anthropic/claude-opus-4", 1),
+                ("assistant", "Hi.", "2026-10-01T17:00:02.000Z", "anthropic/claude-opus-4", 2),
+                # the superseded marker (active=0): a model row, not [rewound]
+                ("system",
+                 "model: anthropic/claude-sonnet-4 -> openai/gpt-5 provider=openrouter",
+                 "2026-10-01T17:00:10.000Z", "openai/gpt-5", 3),
+                ("user", "list files", "2026-10-01T17:00:11.000Z", "anthropic/claude-opus-4", 4),
+                ("assistant", "bad json", "2026-10-01T17:00:12.000Z",
+                 "anthropic/claude-opus-4", 5),
+                ("tool_use", "pwd", "2026-10-01T17:00:14.000Z", "anthropic/claude-opus-4", 7),
+                # no provider in the marker
+                ("system", "model: openai/gpt-5 -> anthropic/claude-opus-4",
+                 "2026-10-01T17:00:20.000Z", "anthropic/claude-opus-4", 8),
+                # a marker text of another form keeps its kind and text
+                ("system", "model_switch: [System: model changed]",
+                 "2026-10-01T17:00:21.000Z", "anthropic/claude-opus-4", 9),
+                ("user", "after the switches", "2026-10-01T17:00:30.000Z",
+                 "anthropic/claude-opus-4", 10),
+            ],
+        )  # fmt: skip
+        self.assertFalse([r for r in rows if "[rewound]" in r.text])
+        self.assertFalse([r for r in rows if r.turn_type == "user" and "active model" in r.text])
+        self.assertEqual(
+            {(r.session_id, r.project_path) for r in rows}, {(HERMES_SWITCH, "/srv/proj")}
+        )
+
+    def test_model_switch_without_usage_or_earlier_marker(self):
+        """The marker names only the new model; with no earlier marker and
+        no usage row before it the row is `model: <new>`."""
+        from fixtures import HERMES_SWITCH_MARKER, HERMES_SWITCH_SCHEMA
+
+        db = self.tmp / "switch1" / "state.db"
+        db.parent.mkdir()
+        con = sqlite3.connect(str(db))
+        con.executescript(HERMES_SWITCH_SCHEMA)
+        con.execute(
+            "INSERT INTO messages (session_id,role,content,timestamp,display_kind)"
+            " VALUES ('s1','user',?,1790874010.0,'model_switch')",
+            (HERMES_SWITCH_MARKER % ("openai/gpt-5", " via provider openai"),),
+        )
+        con.commit()
+        con.close()
+        art = dc_replace(self.artifact(self.REL), disk_path=db)
+        rows = list(HermesParser().parse(art, Options()))
+        self.assertEqual(
+            [(r.turn_type, r.text, r.model) for r in rows],
+            [("system", "model: openai/gpt-5 provider=openai", "openai/gpt-5")],
+        )
+
+    def test_malformed_tool_calls_are_reported_in_full(self):
+        from fixtures import (
+            HERMES_BAD_CALLS_ENTRY,
+            HERMES_BAD_CALLS_JSON,
+            HERMES_BAD_CALLS_SCALAR,
+            HERMES_SWITCH,
+        )
+
+        try:
+            json.loads(HERMES_BAD_CALLS_JSON)
+            reason = ""
+        except ValueError as e:
+            reason = str(e)
+        rows = self.switch_rows()
+        texts = [r.text for r in rows]
+        bad = [r for r in rows if r.text.startswith("parser:")]
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.timestamp_utc, r.text) for r in bad],
+            [
+                (
+                    "system",
+                    5,
+                    "",
+                    "parser: unparseable record 5 (tool_calls is not valid JSON: %s): %s"
+                    % (reason, HERMES_BAD_CALLS_JSON),
+                ),
+                (
+                    "system",
+                    6,
+                    "",
+                    "parser: unparseable record 6 (tool_calls is not a list): %s"
+                    % HERMES_BAD_CALLS_SCALAR,
+                ),
+                (
+                    "system",
+                    7,
+                    "",
+                    "parser: unparseable record 7 (tool_calls entry is not an object): %s"
+                    % HERMES_BAD_CALLS_ENTRY,
+                ),
+            ],
+        )
+        for r in bad:
+            self.assertEqual((r.session_id, r.project_path), (HERMES_SWITCH, "/srv/proj"))
+        # the rows of the same messages, and those before and after, still come out
+        self.assertEqual(texts.index(bad[0].text), texts.index("bad json") + 1)
+        self.assertEqual(texts.index(bad[2].text), texts.index("pwd") + 1)
+        self.assertLess(texts.index("list files"), texts.index("bad json"))
+        self.assertLess(texts.index(bad[2].text), texts.index("after the switches"))
+
+    def test_malformed_tool_calls_in_divert_line(self):
+        """A divert line's tool_calls is a list already; a value of another
+        type is reported with the value, beside the bad-line rows."""
+        path = self.home / HERMES_DIVERTED_REL
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"role": "assistant", "content": "x", "tool_calls": "nope"}) + "\n")
+        write_bad_line(path)
+        rows = self.rows_for(HermesParser(), HERMES_DIVERTED_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (1, "user", "show the env"),
+                (2, "tool_use", "/srv/proj/.env"),
+                (3, "tool_result", "TOKEN=x"),
+                (4, "assistant", "x"),
+                (4, "system", 'parser: unparseable record 4 (tool_calls is not valid JSON: '
+                 'Expecting value: line 1 column 1 (char 0)): nope'),
+                (5, "system", bad_line_text()),
+            ],
+        )  # fmt: skip
+        self.assertEqual({r.session_id for r in rows}, {HERMES_DIVERTED})
+
+    def test_volume_home(self):
+        """A Hermes home collected from a Docker named volume has its files
+        at the base's root (issue 181); the parser reads them as it reads a
+        home's `.hermes`."""
+        from fixtures import HERMES_VOLUME_HOME, build_hermes_volume
+
+        p = HermesParser()
+        for rel in (
+            "state.db",
+            "profiles/work/state.db",
+            "sessions/abc.jsonl",
+            "state-snapshots/20261001-120000/state.db",
+            "pastes/pending.json",
+        ):
+            self.assertTrue(p.wants(rel_only(rel)), rel)
+        for rel in (
+            "config.yaml",
+            "state.db-wal",
+            "response_store.db",
+            "sessions/abc.json",
+            "state-snapshots/state.db",
+            ".config/Hermes/state.db",
+            "x/state.db",
+        ):
+            self.assertFalse(p.wants(rel_only(rel)), rel)
+        self.assertTrue(p.secondary(rel_only("sessions/abc.jsonl")))
+        self.assertFalse(p.secondary(rel_only("state.db")))
+
+        root = self.tmp / "volume"
+        build_hermes_volume(root)
+        col = open_input(root, self.cat)
+        self.assertEqual(col.kind, "collected")
+        wanted = sorted(a.rel for a in col.artifacts if a.agent == "hermes" and p.wants(a))
+        self.assertEqual(
+            wanted,
+            sorted(["state.db", "sessions/%s.jsonl" % HERMES_DIVERTED, "pastes/pending.json"]),
+        )
+        rows, _, problems, _ = cli.collect_rows(col, Options(), [])
+        self.assertEqual(problems, [])
+        self.assertEqual({(r.host, r.user, r.agent) for r in rows}, {("h2", "docker", "hermes")})
+        main = [r for r in rows if r.session_id == HERMES_SESSION]
+        self.assertIn("list files", [r.text for r in main])
+        self.assertEqual(
+            {r.project_path for r in main if r.turn_type == "user"}, {"/opt/data/workspace"}
+        )
+        self.assertIn("show the env", [r.text for r in rows if r.session_id == HERMES_DIVERTED])
+        self.assertEqual(len([r for r in rows if r.text.startswith("debug report uploaded:")]), 2)
+        self.assertTrue(all(a.home.original == HERMES_VOLUME_HOME for a in col.artifacts))
+
 
 class AgentZeroTests(ParserBase):
     REL = AGENT_ZERO_REL

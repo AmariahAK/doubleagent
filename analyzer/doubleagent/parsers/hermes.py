@@ -7,7 +7,13 @@ chat-completions message shape. See `analyzer/research/hermes.md`.
 
 Files, relative to the home directory, where `<hermes>` is `.hermes`,
 `.hermes_<suffix>`, `AppData/Local/hermes` or `AppData/Local/hermes_<suffix>`,
-optionally followed by `profiles/<name>` (named profiles are complete homes):
+optionally followed by `profiles/<name>` (named profiles are complete homes).
+A Hermes home collected from a Docker or Podman named volume (the
+`hermes|*hermes*` volume line; the image mounts the Hermes home at
+`/opt/data`) has the volume's `_data` as its base, so `<hermes>` is empty
+there and the paths start at `state.db`, `sessions/`, `state-snapshots/`,
+`pastes/` or `profiles/<name>/` (issue 181; source-derived, not observed on
+any real install):
 
 * `<hermes>/state.db`, with `-wal` and `-shm` sidecars (WAL mode, schema
   version 31 at the checked commit). Migrations add columns in place, so
@@ -20,7 +26,8 @@ optionally followed by `profiles/<name>` (named profiles are complete homes):
     stored as `"\\x00json:"` + JSON), `tool_calls` (JSON list of `{id,
     call_id, type, function: {name, arguments}}`, `arguments` a JSON
     string), `tool_call_id`, `tool_name`, `timestamp` (epoch seconds),
-    `reasoning`, `reasoning_content`, `finish_reason`, `active`.
+    `reasoning`, `reasoning_content`, `finish_reason`, `active`,
+    `display_kind` (`model_switch` marks a model-switch marker).
 * `<hermes>/state-snapshots/<id>/state.db`: quick snapshots, consistent
   copies of `state.db` made with SQLite's backup API by `/snapshot`,
   `hermes backup --quick` and `hermes update` (20 kept by default). `<id>` is
@@ -69,11 +76,17 @@ message one `user`, `assistant`, `tool_result` (role `tool`, joined on
 `tool_call_id`) or `system` row for non-empty content, a `thinking` row for
 `reasoning`/`reasoning_content` with `--include-thinking`, and one `tool_use`
 row per `tool_calls` entry whose text is the `command` or `path` argument,
-else the arguments. Messages are ordered by `timestamp, id`. Rewind and
+else the arguments. A `tool_calls` value that is not valid JSON, is not a
+list or holds an entry that is not an object yields one `parser:
+unparseable record <messages.id> (<reason>): <value as stored>` row through
+`error_rows` after the message's other rows, with the message's session
+and project path (issue 182); the entries that are objects still give
+`tool_use` rows. Messages are ordered by `timestamp, id`. Rewind and
 compaction keep the old rows with `active = 0` instead of deleting them (both
 set the same flags, so the two cannot be told apart); those rows are still
-evidence and are emitted with a `[rewound]` prefix on their text. The model
-is the session's `model`; messages record none of their own. `project_path`
+evidence and are emitted with a `[rewound]` prefix on their text (except
+model-switch markers, below). The model is the session's `model`; messages
+record none of their own beyond the markers. `project_path`
 is `sessions.cwd`, else `git_repo_root`, and `git_branch` is
 `sessions.git_branch`. Not parsed: the legacy `sessions/<id>.json` and
 `session_<id>.json` snapshots (nothing at the checked commit writes them,
@@ -93,7 +106,28 @@ not visible. A session with no such rows (an older database, or no API call
 yet) gets one `model: <sessions.model>` row at `started_at`;
 `sessions.model` is rewritten by a `/model` switch, so it is the latest
 model, not necessarily the first. The `model` column of the other rows
-stays `sessions.model`. Hermes's pairing stores are named in the collector
+stays `sessions.model`.
+
+Model-switch markers (issue 180): a switch made in the TUI, the desktop
+app or another TUI gateway front end is a `messages` row with `role`
+`user`, `display_kind` `model_switch` and the content `[System: The
+active model for this chat has changed to <model> via provider
+<provider>. From this point forward, ...]` (the provider part only when
+one is set), at the switch time (tui_gateway/server.py:1274-1331 at
+86fa9e6, present at 8b66a51 as well). Each switch sets `active = 0` on
+the session's earlier markers (hermes_state_messages.py:1064-1070 at
+86fa9e6), which is not a rewind. Each marker is one `system` row
+`model: <old> -> <model> provider=<provider>` at its time, with `model`
+set to the new model and no `[rewound]` prefix, never a `user` row. The
+marker names only the new model: `<old>` is the session's previous
+marker's model, else the last main-loop `session_model_usage` model first
+seen before the marker; with neither, or when it equals the new one, the
+row is `model: <model> provider=<provider>`. A marker whose text does not
+have that form is a `system` row `model_switch: <text>`. The classic
+CLI's `/model` writes no marker. Source-derived: no real install has
+shown a marker row.
+
+Hermes's pairing stores are named in the collector
 research without a recorded shape and are not read, so there are no
 permission rows.
 """
@@ -119,16 +153,26 @@ from .base import (
     track_change,
 )
 
-HOME = r"(?:\.hermes(?:_[^/]+)?|AppData/Local/hermes(?:_[^/]+)?)(?:/profiles/[^/]+)?"
-DB_RX = re.compile(r"^%s/state\.db$" % HOME)
-JSONL_RX = re.compile(r"^%s/sessions/[^/]+\.jsonl$" % HOME)
-SNAP_RX = re.compile(r"^%s/state-snapshots/([^/]+)/state\.db$" % HOME)
+# The Hermes home a path starts with: `.hermes[_<suffix>]/` or
+# `AppData/Local/hermes[_<suffix>]/` under a user's home, or nothing when the
+# collection base is a Docker or Podman named volume's `_data` (the
+# `hermes|*hermes*` volume line), which holds the Hermes home itself (issue
+# 181); either one optionally followed by `profiles/<name>/`.
+HOME = r"(?:(?:\.hermes(?:_[^/]+)?|AppData/Local/hermes(?:_[^/]+)?)/)?(?:profiles/[^/]+/)?"
+DB_RX = re.compile(r"^%sstate\.db$" % HOME)
+JSONL_RX = re.compile(r"^%ssessions/[^/]+\.jsonl$" % HOME)
+SNAP_RX = re.compile(r"^%sstate-snapshots/([^/]+)/state\.db$" % HOME)
 SNAP_TIME_RX = re.compile(r"^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-|$)")
-PASTES_RX = re.compile(r"^%s/pastes/pending\.json$" % HOME)
+PASTES_RX = re.compile(r"^%spastes/pending\.json$" % HOME)
 # A paste.rs upload's `expire_at` is its upload time plus this (hermes_cli/debug.py).
 PASTE_LIFETIME = 21600
 
 JSON_PREFIX = "\x00json:"
+# The TUI gateway's model-switch marker (tui_gateway/server.py:1274-1300 at
+# 86fa9e6): `<prefix><model>[ via provider <provider>]<end> ...]`.
+SWITCH_PREFIX = "[System: The active model for this chat has changed to "
+SWITCH_END = ". From this point forward,"
+SWITCH_PROVIDER = " via provider "
 ROLE_TYPES = {"user": "user", "assistant": "assistant", "tool": "tool_result", "system": "system"}
 
 
@@ -164,6 +208,44 @@ def _json(value, default):
         return json.loads(value)
     except ValueError:
         return default
+
+
+def model_switch(content) -> tuple[str, str] | None:
+    """(model, provider) named by a model-switch marker's text, provider
+    `""` when the marker has none; None when the text is not one."""
+    if not isinstance(content, str) or not content.startswith(SWITCH_PREFIX):
+        return None
+    head, sep, _ = content[len(SWITCH_PREFIX) :].partition(SWITCH_END)
+    if not sep:
+        return None
+    model, _, provider = head.partition(SWITCH_PROVIDER)
+    return (model, provider) if model else None
+
+
+def tool_calls(m: dict, line) -> tuple[list, list]:
+    """The `tool_calls` of message `m` as (calls, errors). A value that is
+    not valid JSON, is not a list (a lone object is taken as a one-call
+    list) or holds an entry that is not an object is an `errors` entry
+    carrying the value as stored, for `error_rows` (issue 182); the
+    entries that are objects are still returned."""
+    value = m.get("tool_calls")
+    if value is None or value == "":
+        return [], []
+    raw = value if isinstance(value, str) else compact_json(value)
+    label = "unparseable record %s" % line
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError as e:
+            return [], [(line, "%s (tool_calls is not valid JSON: %s)" % (label, e), raw)]
+    if isinstance(value, dict):
+        value = [value]
+    if not isinstance(value, list):
+        return [], [(line, "%s (tool_calls is not a list)" % label, raw)]
+    calls = [c for c in value if isinstance(c, dict)]
+    if len(calls) != len(value):
+        return calls, [(line, "%s (tool_calls entry is not an object)" % label, raw)]
+    return calls, []
 
 
 def call_summary(arguments) -> str:
@@ -239,9 +321,14 @@ class HermesParser(Parser):
         line: int,
         tool_names: dict[str, str],
         opts: Options,
+        switches: dict[str, str],
+        usage: dict[str, list[dict]] | None = None,
     ) -> Iterator[Row]:
         ts = to_utc(m.get("timestamp"))
         role = str(m.get("role") or "")
+        if m.get("display_kind") == "model_switch":
+            yield self._switch_row(artifact, m, session, line, switches, usage or {})
+            return
         marker = "[rewound] " if m.get("active", 1) in (0, "0", False) else ""
 
         def mk(turn_type: str, text: str) -> Row:
@@ -265,15 +352,8 @@ class HermesParser(Parser):
             if turn_type == "system" and role not in ("", "system"):
                 text = "%s: %s" % (role, text)
             yield mk(turn_type, text)
-        calls = _json(m.get("tool_calls"), [])
-        if isinstance(calls, dict):
-            calls = [calls]
-        if not isinstance(calls, list):
-            yield mk("system", "parser: message %s tool_calls did not parse" % line)
-            return
+        calls, errors = tool_calls(m, line)
         for c in calls:
-            if not isinstance(c, dict):
-                continue
             fn = c.get("function")
             if not isinstance(fn, dict):
                 fn = {}
@@ -282,6 +362,53 @@ class HermesParser(Parser):
             row.tool_name = str(fn.get("name") or "")
             tool_names[row.tool_use_id] = row.tool_name
             yield row
+        yield from error_rows(
+            self,
+            artifact,
+            errors,
+            str(session.get("id") or ""),
+            str(session.get("cwd") or session.get("git_repo_root") or ""),
+        )
+
+    def _switch_row(
+        self,
+        artifact: Artifact,
+        m: dict,
+        session: dict,
+        line: int,
+        switches: dict[str, str],
+        usage: dict[str, list[dict]],
+    ) -> Row:
+        """The `system` row for a TUI gateway model-switch marker (a `user`
+        message with `display_kind` `model_switch`, issue 180): `model: <old>
+        -> <new> provider=<provider>` at the marker's time. The marker names
+        only the new model; the old one is the session's previous marker's,
+        else the last main-loop `session_model_usage` model first seen
+        before the marker, else unknown (`model: <new>`). A later switch
+        sets the marker's `active` to 0, which is not a rewind, so the row
+        has no `[rewound]` prefix. A marker whose text does not parse is a
+        `system` row `model_switch: <text>`."""
+        row = self._row(artifact, line, session, to_utc(m.get("timestamp")))
+        row.turn_type = "system"
+        sid = row.session_id
+        parsed = model_switch(m.get("content"))
+        if parsed is None:
+            row.text = compact("model_switch: " + content_text(m.get("content")))
+            return row
+        model, provider = parsed
+        old = switches.get(sid, "")
+        at = m.get("timestamp")
+        if not old and isinstance(at, (int, float)):
+            for u in usage.get(sid) or []:
+                first = u.get("first_seen")
+                if isinstance(first, (int, float)) and first < at:
+                    old = str(u.get("model") or "")
+        switches[sid] = model
+        row.text = "model: %s -> %s" % (old, model) if old and old != model else "model: " + model
+        if provider:
+            row.text += " provider=%s" % provider
+        row.model = model
+        return row
 
     def _model_rows(
         self,
@@ -365,12 +492,13 @@ class HermesParser(Parser):
                         yield row
                         yield from self._model_rows(artifact, s, row, usage, seen_model)
                 tool_names: dict[str, str] = {}
+                switches: dict[str, str] = {}
                 for m in con.execute("select * from messages order by timestamp, id"):
                     m = dict(m)
                     sid = str(m.get("session_id") or "")
                     session = sessions.get(sid) or {"id": sid}
                     yield from self._message_rows(
-                        artifact, m, session, m.get("id") or 0, tool_names, opts
+                        artifact, m, session, m.get("id") or 0, tool_names, opts, switches, usage
                     )
         except sqlite3.DatabaseError as e:
             yield self._system(artifact, 0, {}, "parser: SQLite error: %s" % e)
@@ -380,8 +508,9 @@ class HermesParser(Parser):
         errors: list[tuple] = []
         session = {"id": artifact.disk_path.name[: -len(".jsonl")]}
         tool_names: dict[str, str] = {}
+        switches: dict[str, str] = {}
         for n, rec in iter_jsonl(artifact.disk_path, errors):
-            yield from self._message_rows(artifact, rec, session, n, tool_names, opts)
+            yield from self._message_rows(artifact, rec, session, n, tool_names, opts, switches)
         yield from error_rows(
             self,
             artifact,
