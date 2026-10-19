@@ -86,12 +86,13 @@ start, the commands and the option table, then:
 
 ## Research
 
-[Research](../research/README.md) holds one document per agent: where the
-agent keeps its state, which files are credentials and what the collector
-excludes, the evidence behind every catalog entry; and how the agent
-records its transcripts and how the parser reads them, the evidence behind
-every parser. The index lists every document with its evidence level and
-parse status, and which records survive a delete.
+[Research](../research/README.md) holds one document per agent in two
+parts. The Collection part is the evidence behind every catalog entry:
+where the agent keeps its state, which files are credentials and what the
+collector excludes. The Parsing part is the evidence behind every parser:
+how the agent records its transcripts and how the parser reads them. The
+index lists every document with its evidence level and parse status, and
+which records survive a delete.
 
 ## Agent lab
 

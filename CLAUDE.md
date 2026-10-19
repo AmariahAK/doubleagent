@@ -25,8 +25,9 @@ Claude Code specific notes:
   let CI cover the rest; run the analyzer tests here. Under fish, a string of ssh flags in a variable
   is not word-split; keep an ssh config file with host aliases in the
   scratchpad and pass it with `-F`.
-- The research documents under `collectors/research/` and `analyzer/research/`
-  link every source citation to the commit that was reviewed. Open that link
+- The research documents under `research/` (one per agent, a Collection part
+  and a Parsing part) link every source citation to the commit that was
+  reviewed. Open that link
   when checking a path or record shape; the line numbers are only valid at
   that commit, not on the default branch.
 - Parser work suits delegation: give a subagent the research document and the
