@@ -6,6 +6,7 @@ from .agent_zero import AgentZeroParser
 from .aider import AiderParser
 from .antigravity import AntigravityParser
 from .base import Options, Parser
+from .chatgpt_desktop import ChatGptDesktopParser
 from .claude_code import ClaudeCodeParser
 from .claude_desktop import ClaudeDesktopParser
 from .cline import ClineParser
@@ -75,6 +76,7 @@ ALL: list[Parser] = [
     OllamaParser(),
     CopilotCliParser(),
     CopilotDesktopParser(),
+    ChatGptDesktopParser(),
 ]
 
 
@@ -85,7 +87,6 @@ ALL: list[Parser] = [
 NO_TRANSCRIPTS: frozenset[str] = frozenset(
     {
         "camel-ai",  # an OAuth token and config; chat history is under the working directory
-        "chatgpt-desktop",  # app profile, logs and preferences; local threads parse as codex-cli
         "copilot",  # the language server's OAuth token store; Copilot Chat parses as vscode
         "metagpt",  # LLM configuration only; its workspace is under the working directory
         "shared",  # cross-agent instruction and skill directories

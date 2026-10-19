@@ -1165,6 +1165,23 @@ the same time and session, `session origin: remote GitHub cloud agent
 github.copilot.cloudAgent.ownedTasks, recordedAt)`, records where it
 began, so its `origin` is `remote`.
 
+The `chatgpt-desktop` parser reads the ChatGPT desktop app's list of
+the account's ChatGPT conversations, the `chatgpt` rows of
+`.codex/sqlite/codex-dev.db` `local_thread_catalog`, which the app
+writes at sign-in; a conversation's text stays on OpenAI's servers and
+is not on disk. Per conversation it writes three `system` rows with the
+conversation id as `session_id`, at the row's `source_updated_at`:
+`account conversation: <title> origin=<conversation_origin>
+created=<UTC> updated=<UTC> host=<host_id> (from
+.codex/sqlite/codex-dev.db local_thread_catalog)`, where `host_id` is
+`chatgpt:<workspace uuid>:user-<account id>` and `-` stands for an
+absent value; `session origin: remote chatgpt.com conversation <id>
+(listed at sign-in; its transcript is server-side)`; and `session
+synced: chatgpt.com holds conversation <id>, no local transcript`. Such
+a session's `origin` is `remote`, its `synced` `yes`, and its turn
+counts 0. The update time is the conversation's as of sign-in: a reply
+from inside the app did not change it.
+
 The `zed`, `goose`, `kiro`, `hermes` and `ollama` parsers write model rows
 in the same form. `zed` writes `model: <model> provider=<provider>` once
 per thread, after the thread-start row, since a thread blob keeps one
@@ -1474,9 +1491,9 @@ no timestamp come first. Its fields, in order:
 | `assistant_turns` | integer | The number with `turn_type` `assistant`. |
 | `tool_calls` | integer | The number with `turn_type` `tool_use`. |
 | `source_file` | string | The `source_file` that contributed the most of the session's records, the first met on a tie, so a transcript wins over a one-line-per-prompt history file; `""` when no record names one. |
-| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (written by the `agent-zero`, `cline`, `codex-cli`, `copilot-cli`, `kilo-code`, `letta`, `open-interpreter`, `openclaw`, `opencode`, `pi` and `vscode` parsers); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
+| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (written by the `agent-zero`, `chatgpt-desktop`, `cline`, `codex-cli`, `copilot-cli`, `kilo-code`, `letta`, `open-interpreter`, `openclaw`, `opencode`, `pi` and `vscode` parsers); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
 | `relayed` | string | Whether the session was carried through a messaging platform (Telegram, WhatsApp, email, a GitHub thread), which keeps its own copy of the conversation, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session relayed:` (written by the `agent-zero`, `goose` and `qwen-code` parsers); `no` when the agent's parser records relay state and no record carries that row; `""` when the agent's parser records no relay state, so nothing is known. A relay is not a sync: the copy is on the platform, not in the agent vendor's account, so a session can read `yes` in both fields (an Agent Zero Telegram chat chained on a stored provider response). Since analyzer 0.15.0. |
-| `origin` | string | Where the session began, from the agent's own record of it: `remote` when one of the session's records is a `system` row whose `text` starts with `session origin: remote` (written by the `vscode` parser, for a Copilot cloud agent task that ran on GitHub's servers and is only listed in the editor); `local` when the agent's parser records origin and no record carries that row; `""` when the agent's parser records no origin, so nothing is known. A remote session is also `synced` `yes`, since the vendor holds its copy. Since analyzer 0.15.0. |
+| `origin` | string | Where the session began, from the agent's own record of it: `remote` when one of the session's records is a `system` row whose `text` starts with `session origin: remote` (written by the `vscode` parser, for a Copilot cloud agent task that ran on GitHub's servers and is only listed in the editor, and by the `chatgpt-desktop` parser, for a ChatGPT conversation the app lists from the account); `local` when the agent's parser records origin and no record carries that row; `""` when the agent's parser records no origin, so nothing is known. A remote session is also `synced` `yes`, since the vendor holds its copy. Since analyzer 0.15.0. |
 | `recovered` | string | Whether the session was rebuilt from secondary sources (see [Secondary sources](#secondary-sources)): `yes` when every one of its records in `timeline.jsonl` has `recovered` `yes`, so its primary transcript is gone and only secondary sources hold it; `partial` when some do, so the primary was cut or rewound and a secondary source kept turns it lost; `no` when none does and the agent's parser reads at least one secondary source; `""` when the agent's parser reads no secondary source, so nothing is known. Computed after the filters, over the session's event records only (`system` rows left out), so a secondary source's header, record or `parser:` row never makes a complete session `partial`, and a session with no event record reads `no` or `""`. Because deduplication matches on text, `partial` also results when a secondary source records an event in another form than the primary store does (an index that compresses a tool call into one line), so it marks a session to compare against its secondary sources, not proof of a cut; and a Letta session on the server backend, whose local transcript mirrors the server's store of record, reads `yes` or `partial` by design. Since analyzer 0.15.0. |
 
 ## Compatibility

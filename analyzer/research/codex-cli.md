@@ -1150,9 +1150,11 @@ to the call except its position between the call and its output (local).
   paragraph of [section 8](#8-parser-plan-the-existing-parser)).
   `codex_schema_migrations` rows carry the app version (`app_version`
   `26.1007.71326`, `build_flavor` `prod`). The chat's text is not in it.
-  The analyzer does not read it: the automation is read from
+  The `codex-cli` parser does not read it: the automation is read from
   `automation.toml`, and a run would be in `automation_runs`, which no
-  real install has shown filled. On macOS (build 26.1013.40934,
+  real install has shown filled. The `chatgpt-desktop` parser reads its
+  `chatgpt` rows, the account's ChatGPT conversations, since analyzer
+  0.17.0 ([`chatgpt-desktop.md`](chatgpt-desktop.md)). On macOS (build 26.1013.40934,
   2026-10-18; [section 1](#1-evidence)) the database also had
   `local_thread_catalog_metadata`, `local_thread_catalog_scan_checkpoints`,
   `local_thread_catalog_scan_entries`, `local_thread_catalog_sync_state`

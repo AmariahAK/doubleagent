@@ -9,6 +9,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-19
+
+### Added
+
+- A `chatgpt-desktop` parser for the ChatGPT desktop app's list of the
+  account's ChatGPT conversations, the `chatgpt` rows of
+  `.codex/sqlite/codex-dev.db` `local_thread_catalog`, which the app
+  writes at sign-in. A conversation's text stays on OpenAI's servers,
+  so each gives three `system` rows at its update time:
+  `account conversation: <title> origin=<conversation_origin>
+  created=<UTC> updated=<UTC> host=<host_id> (from
+  .codex/sqlite/codex-dev.db local_thread_catalog)`, `session origin:
+  remote chatgpt.com conversation <id> (listed at sign-in; its
+  transcript is server-side)` and `session synced: chatgpt.com holds
+  conversation <id>, no local transcript`, so its session reads
+  `origin` `remote` and `synced` `yes` in `sessions.jsonl` ([#49]).
+
+### Changed
+
+- `chatgpt-desktop` is no longer reported as `collected only`: with a
+  parser it is listed under `parsed`, or under `parser found no rows`
+  when its files hold no account conversation ([#49]).
+
 ## [0.16.0] - 2026-10-19
 
 ### Added
@@ -1258,7 +1281,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--summary-length` (default 400), `--include-thinking` and `--agent`;
   `detect --json` and `--files`; `catalog --agents`.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.16.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.17.0...HEAD
+[0.17.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.16.0...analyzer-v0.17.0
 [0.16.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.15.0...analyzer-v0.16.0
 [0.15.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.14.0...analyzer-v0.15.0
 [0.14.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.13.0...analyzer-v0.14.0

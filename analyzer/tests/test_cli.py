@@ -27,6 +27,8 @@ from fixtures import (
     AGENT_ZERO_TG_CHAT,
     AGY_APP_CONVERSATION,
     AGY_ORPHAN,
+    CHATGPT_CONVERSATION,
+    CHATGPT_TPP_CONVERSATION,
     CLAUDE_SESSION,
     CLINE_BLOB_DELETED,
     CLINE_BLOB_SESSION,
@@ -786,28 +788,36 @@ class SyncedSessionTests(unittest.TestCase):
         by_id = {
             (s["agent"], s["session_id"]): s["origin"] for s in read_jsonl(out / "sessions.jsonl")
         }
-        # The two Copilot cloud agent tasks began on GitHub's servers.
+        # The two Copilot cloud agent tasks began on GitHub's servers, and
+        # the two ChatGPT desktop account conversations on chatgpt.com (#49).
         for key, want in (
             (("vscode", "copilot-cloud-agent:/task/" + VSCODE_CLOUD_TASK), "remote"),
             (("vscode", "copilot-cloud-agent:/task/" + VSCODE_OLD_TASK), "remote"),
             (("vscode", VSCODE_SESSION), "local"),
+            (("chatgpt-desktop", CHATGPT_CONVERSATION), "remote"),
+            (("chatgpt-desktop", CHATGPT_TPP_CONVERSATION), "remote"),
             (("copilot-cli", COPILOT_SESSION), ""),
             (("claude-code", CLAUDE_SESSION), ""),
         ):
             self.assertEqual(by_id[key], want, key)
         origin_agents = {p.agent for p in ALL if p.records_origin}
-        self.assertEqual(origin_agents, {"vscode"})
-        self.assertEqual({v for (agent, _), v in by_id.items() if agent != "vscode"}, {""})
+        self.assertEqual(origin_agents, {"vscode", "chatgpt-desktop"})
+        self.assertEqual({v for (agent, _), v in by_id.items() if agent not in origin_agents}, {""})
         self.assertEqual(
             {v for (agent, _), v in by_id.items() if agent == "vscode"}, {"remote", "local"}
         )
+        self.assertEqual(
+            {v for (agent, _), v in by_id.items() if agent == "chatgpt-desktop"}, {"remote"}
+        )
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
-        self.assertEqual(inv["remote_sessions"], 2)
+        self.assertEqual(inv["remote_sessions"], 4)
         agents = {a["agent"]: a for h in inv["homes"] for a in h["agents"]}
         self.assertEqual(agents["vscode"]["remote_sessions"], 2)
+        self.assertEqual(agents["chatgpt-desktop"]["remote_sessions"], 2)
+        self.assertEqual(agents["chatgpt-desktop"]["synced_sessions"], 2)
         self.assertEqual(agents["copilot-cli"]["remote_sessions"], 0)
         line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
-        self.assertIn(", 2 remote", line)
+        self.assertIn(", 4 remote", line)
 
     def test_recovered(self):
         out = self.tmp / "out"
@@ -902,9 +912,10 @@ class SyncedSessionTests(unittest.TestCase):
         self.assertEqual(marks("/srv/old")[:2], ["no", "no"])
         # No session, and agents that record none of the marks.
         self.assertEqual(marks("/srv/proj2"), ["", "", "", ""])
-        # The two Copilot cloud agent tasks have no project path, so they are
-        # summarised outside projects, beside local VS Code sessions without
-        # one and synced ones: origin "mixed", synced "partial" by the rules.
+        # The two Copilot cloud agent tasks and the two ChatGPT desktop account
+        # conversations have no project path, so they are summarised outside
+        # projects, beside local VS Code sessions without one and synced
+        # ones: origin "mixed", synced "partial" by the rules.
         outside = json.loads((out / "inventory.json").read_text(encoding="utf-8"))[
             "outside_projects"
         ]

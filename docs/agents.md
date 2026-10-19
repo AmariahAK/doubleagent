@@ -34,7 +34,7 @@ agent name in each row links to its subsection.
 | [`augment`](#augment) | backlog | Shipped bundle, docs | [collector research](../collectors/research/augment.md); [issue 55](https://github.com/seanthegeek/doubleagent/issues/55); full conversations in `.augment/sessions/*.json` and a prompt history |
 | [`autogen-studio`](#autogen-studio) | backlog | Source | [collector research](../collectors/research/autogen-studio.md); [issue 69](https://github.com/seanthegeek/doubleagent/issues/69); SQLite `autogen04203.db` with the `message`, `session` and `run` tables |
 | [`camel-ai`](#camel-ai) | collected | Source | [collector research](../collectors/research/camel-ai.md); no transcripts under the home; history is in the working directory |
-| [`chatgpt-desktop`](#chatgpt-desktop) | collected | Write-ups and press; real installs on Windows and macOS, October 2026 | [collector research](../collectors/research/chatgpt-desktop.md); [issue 49](https://github.com/seanthegeek/doubleagent/issues/49); a chat left only an index entry; Codex threads parse as `codex-cli` |
+| [`chatgpt-desktop`](#chatgpt-desktop) | parsed | real installs: Windows, macOS (October 2026) | [collector research](../collectors/research/chatgpt-desktop.md); [analyzer research](../analyzer/research/chatgpt-desktop.md); [issue 49](https://github.com/seanthegeek/doubleagent/issues/49); ChatGPT conversations are listed only, their text is server-side; Codex threads parse as `codex-cli` |
 | [`claude-code`](#claude-code) | parsed | real installs: Linux (WSL2), macOS (October 2026) | [collector research](../collectors/research/claude-code.md); [analyzer research](../analyzer/research/claude-code.md) |
 | [`claude-desktop`](#claude-desktop) | parsed | real installs: Windows (MSIX), Linux, macOS (October 2026) | [collector research](../collectors/research/claude-desktop.md); [analyzer research](../analyzer/research/claude-desktop.md) |
 | [`cline`](#cline) | parsed | source; fixture only | [collector research](../collectors/research/cline.md); [analyzer research](../analyzer/research/cline.md) |
@@ -177,6 +177,39 @@ grant patterns) fixture only; the brain mirror's file names and line keys
 seen on the macOS, Ubuntu and Windows installs, its value forms from the
 format description embedded in `agy` 1.3.6 (macOS arm64), the
 `tool_calls[]` element shape fixture only.
+
+### `chatgpt-desktop`
+
+Files read: `.codex/sqlite/codex-dev.db` (SQLite with WAL sidecars), the
+ChatGPT desktop app's own database, which the catalog attributes to
+`codex-cli` because it sits under `~/.codex`: the rows of its
+`local_thread_catalog` table whose `source_kind` is `chatgpt`. Each such
+row is one of the account's ChatGPT conversations (a chat on chatgpt.com
+or in the app's ChatGPT mode), which the app lists there at sign-in;
+the conversation's text stays on OpenAI's servers. Each gives three
+`system` rows at the row's `source_updated_at`, with `session_id` the
+conversation id: `account conversation:` with the title,
+`conversation_origin`, the creation and update times and the account's
+`host_id`; `session origin: remote chatgpt.com conversation <id>`; and
+`session synced: chatgpt.com holds conversation <id>, no local
+transcript`, so the conversation's `origin` is `remote` and its
+`synced` is `yes` in `sessions.jsonl`. The `vscode` rows of the table
+are the app's Codex-mode threads, whose rollouts under `~/.codex` the
+`codex-cli` parser reads. The collector also gathers the app's Chromium
+profile (the directory Chromium keeps one user's state in), logs and
+preferences, on Windows under the `OpenAI.Codex_*` package and on macOS
+under `Library/Application Support/Codex`, `com.openai.codex` and the
+computer-use service's group container; no parser reads them.
+
+Validated against: Real installs. ChatGPT 26.1013.40934 on macOS 26.6.2
+(2026-10-18): signing in wrote three `chatgpt` rows, the account's
+conversations, dated 2026-10-15, before any chat on that machine; a
+reply to one of them from inside the app wrote nothing locally and left
+the row's times unchanged; deleting a Codex-mode thread with the app's
+own command removed only that thread's `vscode` row. ChatGPT
+26.1007.9446.0 on Windows 11 (2026-10-15): a plain chat and an image
+generation left a title-only `chatgpt` row each and no transcript.
+Synthetic fixture.
 
 ### `claude-code`
 
@@ -814,23 +847,6 @@ Validated against: Source.
 
 Notes in full: no transcripts under the home; its `chat_history.json` is
 relative to the working directory.
-
-### `chatgpt-desktop`
-
-Files collected: Windows: the `OpenAI.Codex_*` package's Chromium profile
-(the directory Chromium keeps one user's state in), `Local State`, the
-app's logs and the package settings hive; macOS: the `Library/Application
-Support/Codex` profile, the `com.openai.codex` logs, preferences and
-URL-session stores, and the group container (a directory macOS shares
-between an app and its helpers) of the computer-use service, the agent
-mode that drives the desktop; the former package and native macOS app
-paths.
-
-Validated against: Write-ups and press; real installs on Windows and
-macOS, October 2026.
-
-Notes in full: a chat left only an index entry on the installs checked;
-its local Codex threads are parsed as `codex-cli`.
 
 ### `copilot`
 

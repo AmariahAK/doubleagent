@@ -196,7 +196,9 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
 
 Not read: `session_index.jsonl` (thread names),
 `sqlite/codex-dev.db` (the desktop app's thread catalog and automation
-store; the `automations` table repeats `automation.toml`),
+store; the `automations` table repeats `automation.toml`, and the
+`chatgpt` rows of `local_thread_catalog` are read by the
+`chatgpt-desktop` parser),
 `.codex-global-state.json.bak`, `thread-writer-locks/<id>.lock` (a lock
 can exist for a prewarmed guardian thread that never wrote a rollout, so
 it is no evidence of a session) and `config.toml`. Rollout file names

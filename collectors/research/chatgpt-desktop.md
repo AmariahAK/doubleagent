@@ -4,12 +4,14 @@ OpenAI's ChatGPT desktop app. On Windows and macOS it now bundles Codex,
 OpenAI's coding agent, whose state goes to `~/.codex` and is collected as
 `codex-cli`; that half of the app is described in
 [`codex-cli.md`](codex-cli.md), under
-[Codex Desktop](codex-cli.md#codex-desktop-inside-the-chatgpt-app). No
-analyzer research document exists: on the Windows and macOS installs
-checked the app keeps no local chat transcript to parse
-([section 2](#2-per-user-storage)), and a reply to a ChatGPT
+[Codex Desktop](codex-cli.md#codex-desktop-inside-the-chatgpt-app). On
+the Windows and macOS installs checked the app keeps no local chat
+transcript ([section 2](#2-per-user-storage)), and a reply to a ChatGPT
 conversation from inside the app (build 26.1013.40934 on macOS,
-2026-10-18) left none either.
+2026-10-18) left none either. The one local trace of the account's
+ChatGPT conversations, the `chatgpt` rows of `~/.codex/sqlite/codex-dev.db`
+`local_thread_catalog`, and how the analyzer reads them are in
+[`analyzer/research/chatgpt-desktop.md`](../../analyzer/research/chatgpt-desktop.md).
 
 ## 1. Source and evidence level
 

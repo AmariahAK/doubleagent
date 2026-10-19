@@ -111,3 +111,9 @@ directory holds it (`cursor`, `windsurf`, `pearai`, `kiro`, `antigravity`);
 both parsers list all six editors in `reads_agents`, so that file is offered
 to them too and the rows come out under `cody` or `twinny`, and
 `--agent cody` selects them.
+The ChatGPT desktop app keeps its list of the account's ChatGPT
+conversations in `.codex/sqlite/codex-dev.db`, which the catalog
+attributes to `codex-cli` because it sits under `.codex`; the
+`chatgpt-desktop` parser lists `codex-cli` in `reads_agents`, so its
+rows come out under `chatgpt-desktop`, and `--agent chatgpt-desktop`
+selects them.
