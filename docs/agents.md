@@ -669,14 +669,17 @@ since removed, at [6814525](https://github.com/openclaw/openclaw/commit/68145258
 ### `opencode`
 
 Files read: `.local/share/opencode/opencode*.db` (SQLite with JSON
-columns, WAL sidecars; V1 `message`/`part`, V2 `session_message` for
-sessions without V1 rows, `session_share` and the `session.updated.1`
-rows of `event` for `session synced:` rows, never the share `secret`),
-legacy JSON `storage/session/*/*.json` and
-`storage/message/*/*.json` with their `part/` files, and the older
-`project/<slug>/storage/session/` tree.
+columns, WAL sidecars; in a 1.x database V1 `message`/`part`, V2
+`session_message` for sessions without V1 rows; in a 2.0 database
+`session_v2` and `session_message`, the 1.x tables for sessions that
+`session_message` does not hold; `session_share` and the
+`session.updated.1` rows of `event` for `session synced:` rows, never
+the share `secret`), with `opencode-next.db`, the pre-release 2.0
+database, read as a secondary source; legacy JSON
+`storage/session/*/*.json` and `storage/message/*/*.json` with their
+`part/` files, and the older `project/<slug>/storage/session/` tree.
 
-Validated against: Source at [907b3bc](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c), synthetic fixture.
+Validated against: Source at [907b3bc](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c) for 1.x and at [cb07c55](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e) (CLI 2.0.32) for 2.0, synthetic fixture; no real install of either.
 
 ### `openhands`
 

@@ -45,11 +45,13 @@ earlier release can still hold the share rows in
   - Model: covered (`model:` rows). 2.0 adds `previous` to
     `model-switched` and a `variant` the parser does not show; no alias
     beside a resolved id.
-  - Past use beyond the primary store: found, none read.
+  - Past use beyond the primary store: found.
     `prompt-history.jsonl`, `prompt-stash.jsonl`, `session.json`, the
     legacy V1 tables that survive a 2.0 delete, `opencode-next.db`, the
     full tool outputs and the desktop app's `drafts.sqlite`
-    ([section 2](#2-transcript-stores)).
+    ([section 2](#2-transcript-stores)). The parser reads the legacy V1
+    tables of a 2.0 database and `opencode-next.db` (issue 165); the
+    others are not read.
   - Sync, relay and origin: covered for 1.x shares; none at `dev`, where
     sharing is removed and the CLI keeps no event payloads, so the
     event-based share rows can no longer appear. A session imported from
@@ -60,13 +62,18 @@ earlier release can still hold the share rows in
   - Deletion: found; 2.0 deletes the `session_v2` row and its messages
     but not the legacy V1 rows of a migrated session; archiving sets
     `time_archived`, which the parser does not show.
-  - Version drift: found, and a parser bug once 2.0 ships: sessions move
-    to `session_v2`, a new database has no `session`, `message`, `part`
-    or `session_share` table, and the parser reads session headers and
-    project paths only from `session`.
-  - Bad lines: found; the parser counts undecodable database records,
+  - Version drift: found: sessions move to `session_v2`, a new database
+    has no `session`, `message`, `part` or `session_share` table. The
+    parser read session headers and project paths only from `session`
+    until issue 165; it now reads `session_v2` and the 2.0
+    `session_message` types ([section 8](#8-parser-plan)). This layout is
+    not observed on any real install, source-derived
+    ([anomalyco/opencode](https://github.com/anomalyco/opencode) at
+    [`cb07c55`](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e)).
+  - Bad lines: found; the parser counted undecodable database records,
     part files and events into one summary row instead of one row per
-    record.
+    record, until issue 139; each is now its own row
+    ([section 8](#8-parser-plan)).
 
 Other agents and this store. Letta Code (at
 [`2a46615`](https://github.com/letta-ai/letta-code/commit/2a46615d16babb06cf5450b8e57ecb9bdbf2f436))
@@ -76,10 +83,9 @@ in its working directory
 [src/tools/impl/opencode-server.ts:51-66](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/tools/impl/opencode-server.ts#L51-L66)),
 so a session Letta Code started lands in this store like any other
 OpenCode session ([section 1 of `letta.md`](letta.md#1-source)). Kilo
-Code's parser subclasses this one, so the summary row for undecodable
-records above applies to Kilo Code sessions too, and the `session_v2`
-drift would once Kilo Code takes OpenCode's 2.0 store
-([kilo-code.md](kilo-code.md)).
+Code's parser subclasses this one, so the per-record error rows and the
+`session_v2` reading apply to Kilo Code's database too, should Kilo Code
+take OpenCode's 2.0 store ([kilo-code.md](kilo-code.md)).
 
 ## 2. Transcript stores
 
@@ -97,15 +103,16 @@ Other records of use, from the source review of 2026-10-19 (`dev` at
 [`cb07c55`](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e);
 the three TUI files are at the same paths at `907b3bc`, for example
 [`packages/tui/src/prompt/history.tsx:53`](https://github.com/anomalyco/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/tui/src/prompt/history.tsx#L53)).
-None is read by the parser today.
+The parser reads the legacy tables of a 2.0 database and
+`opencode-next.db`; it reads none of the others.
 
 | Source | Holds | Survives | Joins on | Plan |
 | --- | --- | --- | --- | --- |
 | `~/.local/state/opencode/prompt-history.jsonl` ([`packages/tui/src/prompt/history.tsx:20-23`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L20-L23), [`:60-75`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L60-L75), [`:93-100`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L93-L100), [`:139`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L139)) | the last 50 TUI prompts, `{text, files, agents, skills, pasted, mode?}`; no session id, project or time | session delete, project removal; trimmed to 50 and rewritten at each start, dropping lines that do not parse | text only | secondary, empty `timestamp_utc` |
 | `~/.local/state/opencode/prompt-stash.jsonl` ([`packages/tui/src/prompt/stash.tsx:9-14`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L9-L14), [`:40`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L40)) | up to 50 prompts set aside unsent, `{prompt, timestamp}` (epoch ms) | everything; a stashed prompt may never reach a transcript | none (text and time when it was later sent) | primary for what it holds (unsent prompts), `system` rows |
 | `~/.local/state/opencode/session.json` ([`packages/tui/src/context/local.tsx:517-530`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/context/local.tsx#L517-L530)) | `pinned`, ids of sessions the user pinned | session delete (the id stays until the user unpins it) | session id | secondary: a pinned id with no session left is a trace of a deleted session |
-| Legacy `session`, `message`, `part` tables in a database migrated to 2.0 ([section 6](#6-format-versions)) | the 1.x transcript, copied into `session_message` by the migration | deletion of the session in 2.0, which removes only the `session_v2` row and what cascades from it | session id, message id (the copy keeps the V1 ids, [`v1-migration.bun.ts:353`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L353), [`:404`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L404)) | secondary once the parser reads `session_message` for migrated sessions; today it reads them as primary |
-| `~/.local/share/opencode/opencode-next.db` ([`packages/core/src/database/v1-migration.bun.ts:702-706`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L702-L706), [`:846`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L846)) | a pre-release 2.0 database (`project`, `session`, `session_message`), imported read-only and left in place | everything after the import | session id | secondary; the parser's database pattern already reads it as a channel database, so its sessions appear twice today |
+| Legacy `session`, `message`, `part` tables in a database migrated to 2.0 ([section 6](#6-format-versions)) | the 1.x transcript, copied into `session_message` by the migration | deletion of the session in 2.0, which removes only the `session_v2` row and what cascades from it | session id, message id (the copy keeps the V1 ids, [`v1-migration.bun.ts:353`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L353), [`:404`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L404)) | secondary: read only for a session `session_message` does not hold, its event rows marked `recovered` by the parser |
+| `~/.local/share/opencode/opencode-next.db` ([`packages/core/src/database/v1-migration.bun.ts:702-706`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L702-L706), [`:846`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L846)) | a pre-release 2.0 database (`project`, `session`, `session_message`), imported read-only and left in place | everything after the import | session id | secondary (`secondary()`), so a session it shares with `opencode.db` is shown once |
 | `~/.local/share/opencode/tool-output/tool_<id>` ([`packages/core/src/tool-output.ts:13-18`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/tool-output.ts#L13-L18), [`:86-90`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/tool-output.ts#L86-L90)) | full text of a tool result the transcript cut, kept seven days | session delete within the seven days | the path in the transcript marker `full output saved to <file>` | secondary; not collected (catalog exclusion) |
 | desktop app `drafts.sqlite` in `<appData>/ai.opencode.desktop*` ([`packages/desktop/src/main/storage/schema.ts:3-29`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/desktop/src/main/storage/schema.ts#L3-L29)) | prompt drafts and history, `document(key, value)` | not determined | not determined | not collected; needs a real-install round |
 
@@ -537,8 +544,12 @@ and [section 6](#6-format-versions)):
   rows at `timestamp`), `session.json` (`system` row per pinned id that
   has no session, at the file's modification time), the legacy V1 tables
   of a migrated database (secondary to `session_message`), and
-  `opencode-next.db` (secondary to `opencode.db`). None is read today;
-  `has_secondary` would be needed.
+  `opencode-next.db` (secondary to `opencode.db`). Read: the legacy V1
+  tables (a session `session_message` does not hold, its event rows
+  marked `recovered` "yes" by the parser, since both stores are one
+  file) and `opencode-next.db` (`secondary()`, deduplicated against the
+  database it was imported into); `has_secondary` is set. The three
+  `~/.local/state/opencode` files are not read.
 - Sync: 1.x shares covered; none at `dev`. Relay: none (no messaging
   integration; not found in `packages/core`, `packages/cli`,
   `packages/server` or `packages/tui` at `cb07c55`, grepped for
@@ -552,15 +563,33 @@ and [section 6](#6-format-versions)):
 - Deletion: no local record of a deleted 2.0 session other than the
   legacy V1 rows and a pinned id; `time_archived` should become a
   `session archived (from <database> session_v2, time_archived)` row.
-- Version drift: read `session_v2` as well as `session` for session
-  headers and `directory`; read the 2.0 `shell` shape (`shellID`,
-  `output.output`) and the `location-switched`, `skill` and `idle` types.
-  This needs a real-install round of 2.0 first (a newer version).
-- Bad lines: each undecodable `message`, `part`, `session_message` or
-  `event` `data`, and each undecodable part file of the JSON tree,
-  should be its own `parser: unparseable record <rowid> (<reason>)` row
-  carrying the value, not a count in one `parser: <n> record(s) with
-  undecodable data` row.
+- Version drift: done (issue 165), from source alone; the real-install
+  round of 2.0 is still to run, and its line types and key sets are to be
+  compared with this plan. Session headers and `directory` come from
+  `session_v2`, else `session`; the session-start row adds
+  `fork=<fork_session_id>`, and a session a 2.0 database holds only in
+  the 1.x `session` table ends `(only in the 1.x session table)`. In a
+  database with `session_v2`, `session_message` is the transcript and
+  the 1.x `message` and `part` rows are read only for a session it does
+  not hold. The 2.0 `shell` record (`shellID`, `status`, `exit`,
+  `output.output`) is a `tool_use` row and a `tool_result` row starting
+  `[timeout]`, `[killed]` or `[exit <code>]` when it did not exit 0;
+  `location-switched` is a `system` row `location switched: <previous
+  directory> -> <directory>` (with `workspace=` and `subpath=` when
+  set; `project_path` stays the session's `directory`), `skill` is
+  `skill <name>: <text>`, `idle` is `idle: <outcome>` with the error
+  text, and a compaction row adds its `status` and error. A 2.0 tool
+  error shows its `error.type` before the message (`[error] aborted The
+  user declined this tool call`).
+- Bad lines: done (issue 139). Each `message`, `part`, `session_message`
+  or `event` row whose `data` is not a JSON object is its own `parser:
+  unparseable record <rowid> (<table>.data: <reason>): <data>` row
+  carrying the stored value in full, with its row's session and project,
+  an empty timestamp and `source_line` the rowid; each part file of the
+  JSON trees that does not decode is `parser: unparseable part <partID>
+  (<reason>): <file text>`, `source_file` the part file. A message or
+  session file that does not decode stays one whole-file `parser:`
+  row.
 
 Fixture rows:
 

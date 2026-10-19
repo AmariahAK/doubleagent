@@ -5852,10 +5852,25 @@ from doubleagent.parsers.opencode import tool_summary as opencode_tool_summary
 from fixtures import (
     KILO_SESSION,
     KILO_TASK,
+    OPENCODE_DELETED,
     OPENCODE_LEGACY_SESSION,
+    OPENCODE_MIGRATED,
+    OPENCODE_NEXT_DB_NAME,
+    OPENCODE_NEXT_ONLY,
     OPENCODE_SESSION,
+    OPENCODE_V2_DB_NAME,
+    OPENCODE_V2_ONLY,
     OPENCODE_V2_SESSION,
 )
+
+
+def json_reason(raw: str) -> str:
+    """The decoder's message for `raw`, which must not decode."""
+    try:
+        json.loads(raw)
+    except ValueError as e:
+        return str(e)
+    raise AssertionError("decodes: %r" % raw)
 
 
 class OpenCodeTests(ParserBase):
@@ -6061,6 +6076,8 @@ class OpenCodeTests(ParserBase):
             wanted,
             [
                 ".local/share/opencode/opencode-beta.db",
+                ".local/share/opencode/" + OPENCODE_V2_DB_NAME,
+                ".local/share/opencode/" + OPENCODE_NEXT_DB_NAME,
                 self.DB,
                 self.STORAGE + "message/%s/msg_a.json" % OPENCODE_LEGACY_SESSION,
                 self.STORAGE + "message/%s/msg_b.json" % OPENCODE_LEGACY_SESSION,
@@ -6069,14 +6086,27 @@ class OpenCodeTests(ParserBase):
         )
 
     def test_truncated_part_is_reported_not_fatal(self):
-        write_bad_line(self.home / self.STORAGE / "part/msg_b/prt_b2.json")
+        # Issue 139: the part file is carried in full, not counted.
+        part = self.home / self.STORAGE / "part/msg_b/prt_b2.json"
+        write_bad_line(part)
+        raw = part.read_text(encoding="utf-8")
         rows = self.rows_for(
             OpenCodeParser(), self.STORAGE + "message/%s/msg_b.json" % OPENCODE_LEGACY_SESSION
         )
         self.assertEqual(
             [r.turn_type for r in rows], ["tool_use", "tool_result", "system", "system"]
         )
-        self.assertIn("1 part(s) of message msg_b could not be decoded", rows[-1].text)
+        self.assertEqual(rows[0].tool_use_id, "call_r1")
+        self.assertEqual(rows[2].text, "error: APIError overloaded")
+        bad = rows[3]
+        self.assertEqual(
+            bad.text, "parser: unparseable part prt_b2 (%s): %s" % (json_reason(raw), raw)
+        )
+        self.assertEqual(
+            (bad.session_id, bad.project_path, bad.timestamp_utc, bad.source_line),
+            (OPENCODE_LEGACY_SESSION, "/srv/proj", "", 1),
+        )
+        self.assertEqual(bad.source_file, "/alice/" + self.STORAGE + "part/msg_b/prt_b2.json")
 
     def test_truncated_message_file(self):
         write_bad_line(
@@ -6091,29 +6121,49 @@ class OpenCodeTests(ParserBase):
         self.assertIn("could not be decoded", rows[0].text)
 
     def test_bad_data_column_is_reported_not_fatal(self):
+        # Issue 139: one row per record, carrying the stored value in full.
         import sqlite3
 
         con = sqlite3.connect(str(self.home / self.DB))
-        con.execute(
+        part_rowid = con.execute(
             "INSERT INTO part VALUES ('prt_09','msg_02',?,1791018005000,1791018005000,'{\"type\":\"te')",
             (OPENCODE_SESSION,),
-        )
-        con.execute(
+        ).lastrowid
+        msg_rowid = con.execute(
             "INSERT INTO message VALUES ('msg_09',?,1791018006000,1791018006000,'{bad')",
             (OPENCODE_SESSION,),
-        )
+        ).lastrowid
         con.commit()
         con.close()
         rows = self.rows_for(OpenCodeParser(), self.DB)
         self.assertEqual(len([r for r in rows if r.turn_type == "tool_use"]), 2)
-        texts = [r.text for r in rows if r.text.startswith("parser:")]
+        bad = [r for r in rows if r.text.startswith("parser:")]
         self.assertEqual(
-            texts,
+            [(r.text, r.session_id, r.project_path, r.timestamp_utc, r.source_line) for r in bad],
             [
-                "parser: 1 part(s) of message msg_02 could not be decoded",
-                "parser: 1 record(s) with undecodable data",
+                (
+                    'parser: unparseable record %d (part.data: %s): {"type":"te'
+                    % (part_rowid, json_reason('{"type":"te')),
+                    OPENCODE_SESSION,
+                    "/srv/proj",
+                    "",
+                    part_rowid,
+                ),
+                (
+                    "parser: unparseable record %d (message.data: %s): {bad"
+                    % (msg_rowid, json_reason("{bad")),
+                    OPENCODE_SESSION,
+                    "/srv/proj",
+                    "",
+                    msg_rowid,
+                ),
             ],
         )
+        # The part rows before and after the bad one are still read: the
+        # bad part sorts last in msg_02, so its row follows the message's.
+        texts = [r.text for r in rows if r.session_id == OPENCODE_SESSION]
+        self.assertLess(texts.index("There is one file, a.txt."), texts.index(bad[0].text))
+        self.assertIn("step-finish reason=stop cost=0.01 tokens_in=10 tokens_out=5", texts)
 
     def test_tool_summary(self):
         self.assertEqual(opencode_tool_summary({"command": "ls", "description": "list"}), "ls")
@@ -6146,6 +6196,10 @@ class OpenCodeTests(ParserBase):
                 OPENCODE_SESSION,
                 OPENCODE_V2_SESSION,
                 OPENCODE_LEGACY_SESSION,
+                OPENCODE_MIGRATED,
+                OPENCODE_DELETED,
+                OPENCODE_V2_ONLY,
+                OPENCODE_NEXT_ONLY,
                 "ses_05SHARE",
                 "ses_06UNSHARE",
                 "ses_07PRIVATE",
@@ -6157,6 +6211,200 @@ class OpenCodeTests(ParserBase):
         self.assertEqual(sessions[OPENCODE_SESSION]["tool_calls"], 1)
         self.assertEqual(sessions[KILO_SESSION]["agent"], "kilo-code")
         self.assertEqual({s["project_path"] for s in sessions.values()}, {"/srv/proj"})
+
+    V2_DB = ".local/share/opencode/" + OPENCODE_V2_DB_NAME
+    NEXT_DB = ".local/share/opencode/" + OPENCODE_NEXT_DB_NAME
+
+    def test_v2_database(self):
+        # Issue 165: a database upgraded to 2.0 is read from `session_v2` and
+        # `session_message`; the 1.x rows of a migrated session are not
+        # repeated, and a session deleted in 2.0 is recovered from them.
+        p = OpenCodeParser()
+        rows = self.rows_for(p, self.V2_DB)
+        self.assertFalse(p.secondary(self.artifact(self.V2_DB)))
+        got = [(r.session_id, r.turn_type, r.text, r.recovered) for r in rows]
+        self.assertEqual(
+            got,
+            [
+                (
+                    OPENCODE_MIGRATED,
+                    "system",
+                    "session start: Migrated slug=migrated version=2.0.32 agent=build "
+                    "directory=/srv/proj",
+                    "",
+                ),
+                (
+                    OPENCODE_V2_ONLY,
+                    "system",
+                    "session start: Start server slug=start-server version=2.0.32 agent=build "
+                    "directory=/srv/proj",
+                    "",
+                ),
+                (
+                    OPENCODE_DELETED,
+                    "system",
+                    "session start: Deleted slug=deleted version=1.2.0 agent=build "
+                    "directory=/srv/proj (only in the 1.x session table)",
+                    "",
+                ),
+                (OPENCODE_MIGRATED, "user", "migrate me", ""),
+                (OPENCODE_MIGRATED, "system", "model: claude-sonnet-4 provider=anthropic", ""),
+                (OPENCODE_MIGRATED, "system", "permission mode: agent=build", ""),
+                (OPENCODE_MIGRATED, "assistant", "Migrated reply.", ""),
+                (OPENCODE_V2_ONLY, "user", "start the server", ""),
+                (OPENCODE_V2_ONLY, "system", "model: claude-sonnet-4-5 provider=anthropic", ""),
+                (OPENCODE_V2_ONLY, "system", "permission mode: agent=build", ""),
+                (OPENCODE_V2_ONLY, "assistant", "Starting it.", ""),
+                (OPENCODE_V2_ONLY, "tool_use", "npm start", ""),
+                (OPENCODE_V2_ONLY, "tool_result", "listening on 3000", ""),
+                (OPENCODE_V2_ONLY, "tool_use", "/srv/proj/.env", ""),
+                (
+                    OPENCODE_V2_ONLY,
+                    "tool_result",
+                    "[error] aborted The user declined this tool call",
+                    "",
+                ),
+                (OPENCODE_V2_ONLY, "tool_use", "git status", ""),
+                (OPENCODE_V2_ONLY, "tool_result", "[exit 128] fatal: not a git repository", ""),
+                (OPENCODE_V2_ONLY, "system", "location switched: /srv/proj -> /srv/proj/web", ""),
+                (OPENCODE_V2_ONLY, "system", "skill deploy: Run the deploy script.", ""),
+                (OPENCODE_V2_ONLY, "system", "compaction auto completed Server started.", ""),
+                (
+                    OPENCODE_V2_ONLY,
+                    "system",
+                    "model: claude-sonnet-4-5 -> gpt-5 provider=openai",
+                    "",
+                ),
+                (OPENCODE_V2_ONLY, "system", "idle: succeeded", ""),
+                (OPENCODE_DELETED, "system", "permission mode: agent=build", ""),
+                (OPENCODE_DELETED, "user", "what was deleted", "yes"),
+                (OPENCODE_DELETED, "system", "model: claude-sonnet-4 provider=anthropic", ""),
+                (OPENCODE_DELETED, "assistant", "A deleted reply.", "yes"),
+            ],
+        )
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+        shell = [r for r in rows if r.tool_use_id == "sh_01N"]
+        self.assertEqual(
+            [(r.tool_name, r.timestamp_utc) for r in shell],
+            [("shell", "2026-10-03T11:20:04.000Z"), ("shell", "2026-10-03T11:20:04.500Z")],
+        )
+
+    def test_next_db_is_secondary(self):
+        # Issue 165: `opencode-next.db` repeats what 2.0 imported from it, so
+        # only the session it alone still holds is kept, as recovered.
+        import contextlib
+
+        p = OpenCodeParser()
+        self.assertTrue(OpenCodeParser.has_secondary)
+        self.assertTrue(p.secondary(self.artifact(self.NEXT_DB)))
+        self.assertFalse(p.secondary(self.artifact(self.DB)))
+        out = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--agent", "opencode"])
+        timeline = read_jsonl(out / "timeline.jsonl")
+        self.assertEqual(
+            [
+                (r["source_file"].rsplit("/", 1)[-1], r["recovered"])
+                for r in timeline
+                if r["text"] == "start the server"
+            ],
+            [(OPENCODE_V2_DB_NAME, "")],
+        )
+        self.assertEqual(
+            [
+                (r["source_file"].rsplit("/", 1)[-1], r["recovered"])
+                for r in timeline
+                if r["text"] == "only in next"
+            ],
+            [(OPENCODE_NEXT_DB_NAME, "yes")],
+        )
+        recovered = {r["session_id"]: r["recovered"] for r in read_jsonl(out / "sessions.jsonl")}
+        self.assertEqual(
+            [
+                recovered[s]
+                for s in (OPENCODE_DELETED, OPENCODE_NEXT_ONLY, OPENCODE_V2_ONLY, OPENCODE_MIGRATED)
+            ],
+            ["yes", "yes", "no", "no"],
+        )
+
+    def test_v2_bad_session_message_record(self):
+        # Issue 139 for the 2.0 transcript: the record is carried in full and
+        # the records before and after it are still read.
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.V2_DB))
+        rowid = con.execute(
+            "INSERT INTO session_message VALUES ('msg_nbad',?,'assistant',20,1791025210000,"
+            '1791025210000,\'{"agent":"build","content":[\')',
+            (OPENCODE_V2_ONLY,),
+        ).lastrowid
+        con.execute(
+            "INSERT INTO session_message VALUES ('msg_nafter',?,'user',21,1791025211000,"
+            '1791025211000,\'{"text":"after the cut"}\')',
+            (OPENCODE_V2_ONLY,),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenCodeParser(), self.V2_DB)
+        texts = [r.text for r in rows if r.session_id == OPENCODE_V2_ONLY]
+        self.assertIn("idle: succeeded", texts)
+        self.assertIn("after the cut", texts)
+        raw = '{"agent":"build","content":['
+        bad = [r for r in rows if r.text.startswith("parser:")]
+        self.assertEqual(
+            [(r.text, r.session_id, r.project_path, r.timestamp_utc, r.source_line) for r in bad],
+            [
+                (
+                    "parser: unparseable record %d (session_message.data: %s): %s"
+                    % (rowid, json_reason(raw), raw),
+                    OPENCODE_V2_ONLY,
+                    "/srv/proj",
+                    "",
+                    rowid,
+                )
+            ],
+        )
+
+    def test_v2_bad_legacy_record_of_deleted_session(self):
+        # The recovered 1.x rows go through the same reader: a bad part row
+        # is its own row and the parts around it are kept.
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.V2_DB))
+        rowid = con.execute(
+            "INSERT INTO part VALUES ('prt_d1b','msg_d1',?,1791025801000,1791025801000,'[1,')",
+            (OPENCODE_DELETED,),
+        ).lastrowid
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenCodeParser(), self.V2_DB)
+        deleted = [(r.turn_type, r.text) for r in rows if r.session_id == OPENCODE_DELETED]
+        self.assertIn(("user", "what was deleted"), deleted)
+        self.assertIn(("assistant", "A deleted reply."), deleted)
+        self.assertIn(
+            (
+                "system",
+                "parser: unparseable record %d (part.data: %s): [1," % (rowid, json_reason("[1,")),
+            ),
+            deleted,
+        )
+
+    def test_not_an_object_record(self):
+        # A value that decodes but is not a JSON object is reported too.
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.DB))
+        rowid = con.execute(
+            "INSERT INTO message VALUES ('msg_10',?,1791018007000,1791018007000,'[1]')",
+            (OPENCODE_SESSION,),
+        ).lastrowid
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenCodeParser(), self.DB)
+        self.assertEqual(
+            [r.text for r in rows if r.text.startswith("parser:")],
+            ["parser: unparseable record %d (message.data: not a JSON object): [1]" % rowid],
+        )
 
 
 class KiloCodeTests(ParserBase):
@@ -6405,7 +6653,16 @@ class OpenCodeSyncTests(ParserBase):
         con.close()
         rows = self.rows_for(OpenCodeParser(), self.DB)
         self.assertEqual(len(self.sync_rows(rows)), 3)
-        self.assertEqual(rows[-1].text, "parser: 1 record(s) with undecodable data")
+        # Issue 139: the event is carried in full, under its session.
+        last = rows[-1]
+        self.assertEqual(
+            last.text,
+            'parser: unparseable record 8 (event.data: %s): {"info":' % json_reason('{"info":'),
+        )
+        self.assertEqual(
+            (last.session_id, last.project_path, last.timestamp_utc, last.source_line),
+            (OPENCODE_PRIVATE, "/srv/proj", "", 8),
+        )
 
     def test_unreadable_database_is_one_row(self):
         path = self.home / self.DB

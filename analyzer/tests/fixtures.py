@@ -5291,6 +5291,8 @@ def build_opencode(home: Path) -> None:
         home / ".config/opencode/opencode.json", {"$schema": "https://opencode.ai/config.json"}
     )
     build_opencode_share_db(data / OPENCODE_SHARE_DB_NAME)
+    build_opencode_v2_db(data / OPENCODE_V2_DB_NAME)
+    build_opencode_next_db(data / OPENCODE_NEXT_DB_NAME)
 
 
 # Session sync (issue 153): a channel database with the share records of
@@ -5367,6 +5369,217 @@ def build_opencode_share_db(db: Path, t0: int = OPENCODE_SHARE_T0) -> None:
         "INSERT INTO event_sequence VALUES (?,?,NULL)",
         [(OPENCODE_SHARED, 1), (OPENCODE_UNSHARED, 5), (OPENCODE_PRIVATE, 1)],
     )
+    con.commit()
+    con.close()
+
+
+# OpenCode 2.0 (issue 165), source-derived, not observed on any real install:
+# anomalyco/opencode at cb07c555d4d1ca34430b7857b52f104c3d95e09e (CLI 2.0.32).
+# `session_v2` from packages/core/src/session/sql.ts:22-68; `session_message`
+# `data` without `type` and `id` (sql.ts:20, :79-91), shapes from
+# packages/schema/src/session-message.ts:44-309 and shell.ts:25, :77-84. The
+# upgrade copies each 1.x session into `session_v2` and its messages into
+# `session_message` and keeps the 1.x rows (v1-migration.bun.ts:534-700); a
+# session deleted in 2.0 is left only in the 1.x tables. `opencode-next.db`
+# is a pre-release 2.0 database (`project`, `session`, `session_message`,
+# v1-migration.bun.ts:839-846) that 2.0 imports and leaves in place.
+OPENCODE_V2_DB_NAME = "opencode-local.db"
+OPENCODE_NEXT_DB_NAME = "opencode-next.db"
+OPENCODE_MIGRATED = "ses_10MIGRATED"
+OPENCODE_DELETED = "ses_11DELETED"
+OPENCODE_V2_ONLY = "ses_12NEW"
+OPENCODE_NEXT_ONLY = "ses_13NEXTONLY"
+OPENCODE_V2_T0 = OPENCODE_T0 + 7200000  # 2026-10-03T11:00:00Z
+OPENCODE_SESSION_V2_COLUMNS = """(id text PRIMARY KEY, project_id text NOT NULL, workspace_id text,
+  parent_id text, fork_session_id text, fork_boundary text, slug text NOT NULL, directory text NOT NULL,
+  path text, title text, version text NOT NULL, share_url text, summary_additions integer,
+  summary_deletions integer, summary_files integer, summary_diffs text, metadata text,
+  cost real NOT NULL DEFAULT 0, tokens_input integer NOT NULL DEFAULT 0,
+  tokens_output integer NOT NULL DEFAULT 0, tokens_reasoning integer NOT NULL DEFAULT 0,
+  tokens_cache_read integer NOT NULL DEFAULT 0, tokens_cache_write integer NOT NULL DEFAULT 0,
+  revert text, permission text, agent text, model text, time_created integer NOT NULL,
+  time_updated integer NOT NULL, time_idle integer, time_viewed integer, idle_outcome text,
+  time_compacting integer, time_archived integer, time_suspended integer,
+  resume_attempts integer NOT NULL DEFAULT 0)"""
+
+
+def _oc_v2_session(con, table, sid, title, t):
+    con.execute(
+        "INSERT INTO %s (id, project_id, slug, directory, title, version, agent, model, "
+        "time_created, time_updated) VALUES (?,?,?,?,?,?,?,?,?,?)" % table,
+        (
+            sid,
+            "proj_a1",
+            title.lower().replace(" ", "-"),
+            "/srv/proj",
+            title,
+            "2.0.32",
+            "build",
+            json.dumps({"id": "claude-sonnet-4-5", "providerID": "anthropic"}),
+            t,
+            t + 60000,
+        ),
+    )
+
+
+def _oc_v2_message(con, mid, sid, mtype, seq, t, data):
+    """A `session_message` row: `id` and `type` are columns, `data` the rest."""
+    con.execute(
+        "INSERT INTO session_message VALUES (?,?,?,?,?,?,?)",
+        (
+            mid,
+            sid,
+            mtype,
+            seq,
+            t,
+            t,
+            json.dumps(dict(data, time=dict(data.get("time", {}), created=t))),
+        ),
+    )
+
+
+def opencode_v2_assistant(t, content, model="claude-sonnet-4-5"):
+    return {
+        "agent": "build",
+        "model": {"id": model, "providerID": "anthropic", "variant": "default"},
+        "content": content,
+        "finish": "stop",
+        "time": {"completed": t + 3000},
+    }
+
+
+def _oc_v2_new_session(con, t):
+    """The 2.0-only session: every `session_message` type the parser reads."""
+    sid = OPENCODE_V2_ONLY
+    _oc_v2_message(con, "msg_n1", sid, "user", 1, t + 1000, {"text": "start the server"})
+    tool_ok = {
+        "type": "tool",
+        "id": "call_n1",
+        "name": "bash",
+        "state": {
+            "status": "completed",
+            "input": {"command": "npm start"},
+            "content": [{"type": "text", "text": "listening on 3000"}],
+        },
+        "time": {"created": t + 2500, "completed": t + 2800},
+    }
+    tool_declined = {
+        "type": "tool",
+        "id": "call_n2",
+        "name": "edit",
+        "state": {
+            "status": "error",
+            "input": {"filePath": "/srv/proj/.env"},
+            "error": {"type": "aborted", "message": "The user declined this tool call"},
+        },
+        "time": {"created": t + 2900, "completed": t + 2950},
+    }
+    content = [{"type": "text", "text": "Starting it."}, tool_ok, tool_declined]
+    _oc_v2_message(
+        con, "msg_n2", sid, "assistant", 2, t + 2000, opencode_v2_assistant(t + 2000, content)
+    )
+    shell = {
+        "shellID": "sh_01N",
+        "command": "git status",
+        "status": "exited",
+        "exit": 128,
+        "output": {
+            "output": "fatal: not a git repository",
+            "cursor": 27,
+            "size": 27,
+            "truncated": False,
+        },
+        "time": {"completed": t + 4500},
+    }
+    _oc_v2_message(con, "msg_n3", sid, "shell", 3, t + 4000, shell)
+    location = {
+        "location": {"directory": "/srv/proj/web"},
+        "previous": {"location": {"directory": "/srv/proj"}},
+    }
+    _oc_v2_message(con, "msg_n4", sid, "location-switched", 4, t + 5000, location)
+    skill = {"skill": "skl_deploy", "name": "deploy", "text": "Run the deploy script."}
+    _oc_v2_message(con, "msg_n5", sid, "skill", 5, t + 6000, skill)
+    compaction = {
+        "status": "completed",
+        "reason": "auto",
+        "summary": "Server started.",
+        "recent": "",
+    }
+    _oc_v2_message(con, "msg_n6", sid, "compaction", 6, t + 7000, compaction)
+    switch = {
+        "model": {"id": "gpt-5", "providerID": "openai"},
+        "previous": {"id": "claude-sonnet-4-5", "providerID": "anthropic"},
+    }
+    _oc_v2_message(con, "msg_n7", sid, "model-switched", 7, t + 8000, switch)
+    _oc_v2_message(con, "msg_n8", sid, "idle", 8, t + 9000, {"outcome": "succeeded"})
+
+
+def build_opencode_v2_db(db: Path, t0: int = OPENCODE_V2_T0) -> None:
+    """A 1.x database upgraded by 2.0: the 1.x tables beside `session_v2`."""
+    db.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(db))
+    con.executescript(OPENCODE_SCHEMA + "CREATE TABLE session_v2 %s;" % OPENCODE_SESSION_V2_COLUMNS)
+    con.execute(
+        "INSERT INTO project (id, worktree, vcs, time_created, time_updated, sandboxes) VALUES (?,?,?,?,?,?)",
+        ("proj_a1", "/srv/proj", "git", t0, t0, "[]"),
+    )
+    # Migrated: the same turns in the 1.x tables and in session_message.
+    sid, t = OPENCODE_MIGRATED, t0
+    _oc_session(con, sid, "proj_a1", "/srv/proj", "Migrated", t)
+    _oc_v2_session(con, "session_v2", sid, "Migrated", t)
+    user = {"role": "user", "time": {"created": t + 1000}, "agent": "build"}
+    _oc_message(con, "msg_m1", sid, t + 1000, user)
+    _oc_part(con, "prt_m1", "msg_m1", sid, t + 1000, {"type": "text", "text": "migrate me"})
+    _oc_message(con, "msg_m2", sid, t + 2000, opencode_assistant(t + 2000, parentID="msg_m1"))
+    _oc_part(con, "prt_m2", "msg_m2", sid, t + 2100, {"type": "text", "text": "Migrated reply."})
+    _oc_v2_message(con, "msg_m1", sid, "user", 1, t + 1000, {"text": "migrate me"})
+    content = [{"type": "text", "text": "Migrated reply."}]
+    _oc_v2_message(
+        con,
+        "msg_m2",
+        sid,
+        "assistant",
+        2,
+        t + 2000,
+        opencode_v2_assistant(t + 2000, content, model="claude-sonnet-4"),
+    )
+    # Deleted in 2.0: the session_v2 row and its messages are gone.
+    sid, t = OPENCODE_DELETED, t0 + 600000
+    _oc_session(con, sid, "proj_a1", "/srv/proj", "Deleted", t)
+    user = {"role": "user", "time": {"created": t + 1000}, "agent": "build"}
+    _oc_message(con, "msg_d1", sid, t + 1000, user)
+    _oc_part(con, "prt_d1", "msg_d1", sid, t + 1000, {"type": "text", "text": "what was deleted"})
+    _oc_message(con, "msg_d2", sid, t + 2000, opencode_assistant(t + 2000, parentID="msg_d1"))
+    _oc_part(con, "prt_d2", "msg_d2", sid, t + 2100, {"type": "text", "text": "A deleted reply."})
+    # Written by 2.0 only.
+    _oc_v2_session(con, "session_v2", OPENCODE_V2_ONLY, "Start server", t0 + 1200000)
+    _oc_v2_new_session(con, t0 + 1200000)
+    con.commit()
+    con.close()
+
+
+def build_opencode_next_db(db: Path, t0: int = OPENCODE_V2_T0) -> None:
+    """The pre-release 2.0 database: the 2.0-only session's first turns,
+    imported into the main database, and one session found nowhere else."""
+    db.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(db))
+    con.executescript(
+        "CREATE TABLE project (id text PRIMARY KEY, worktree text NOT NULL, time_created integer,"
+        " time_updated integer, sandboxes text);"
+        "CREATE TABLE session %s;"
+        "CREATE TABLE session_message (id text PRIMARY KEY, session_id text NOT NULL,"
+        " type text NOT NULL, seq integer NOT NULL, time_created integer NOT NULL,"
+        " time_updated integer NOT NULL, data text NOT NULL);" % OPENCODE_SESSION_V2_COLUMNS
+    )
+    con.execute("INSERT INTO project VALUES (?,?,?,?,?)", ("proj_a1", "/srv/proj", t0, t0, "[]"))
+    t = t0 + 1200000
+    _oc_v2_session(con, "session", OPENCODE_V2_ONLY, "Start server", t)
+    _oc_v2_message(
+        con, "msg_n1", OPENCODE_V2_ONLY, "user", 1, t + 1000, {"text": "start the server"}
+    )
+    t = t0 + 1800000
+    _oc_v2_session(con, "session", OPENCODE_NEXT_ONLY, "Next only", t)
+    _oc_v2_message(con, "msg_x1", OPENCODE_NEXT_ONLY, "user", 1, t + 1000, {"text": "only in next"})
     con.commit()
     con.close()
 

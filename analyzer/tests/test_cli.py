@@ -711,6 +711,7 @@ FIXTURE_DEDUPLICATED = {
     "nanobot": 10,  # four WebUI rows, CLI "hello", frozen JSONL 5 (sessions.sqlite3)
     "open-interpreter": 3,  # history.jsonl "list the files", state_5.sqlite 2
     "openclaw": 11,  # .jsonl.deleted.* 1, pre-doctor .bak 7, checkpoint 3
+    "opencode": 2,  # opencode-next.db: the imported session's start row and prompt
     "qwen-code": 1,  # "run the tests"
     "roo-code": 2,  # "rename the helper" and "yes", no timestamp
     "tabby": 8,  # completion prompt and choice, threads 7 and 3 in the backups
