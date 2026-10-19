@@ -19,6 +19,57 @@ Sync was checked at
 on 2026-10-17; the `Sync:` paragraph in
 [section 8](#8-parser-plan) cites that commit.
 
+- **Source review (2026-10-19)**: [charmbracelet/crush](https://github.com/charmbracelet/crush)
+  at [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da)
+  (the default branch on 2026-10-19), against the schema research at
+  [`ca6ae26`](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f)
+  and the sync check at
+  [`12f96b4`](https://github.com/charmbracelet/crush/commit/12f96b4acd8f36312befbbf6fe7459da9ca07a72).
+  Crush is still a separate Go code base from OpenCode
+  ([opencode.md](opencode.md)): one database per project instead of one
+  per user, no share service, no permission JSON on the session, no
+  agent or mode recorded per message, and file history in a `files` table
+  instead of git snapshots. One line per requirement:
+  - Permission state: found, not parsed. A denied prompt leaves a
+    `tool_result` with `is_error` and the text `User denied permission`,
+    and a hook that blocks a call leaves `Tool call blocked by hook.
+    Reason:` with a `hook` object in the result's `metadata`
+    ([section 3](#3-record-schema)); approvals, session grants, the allow
+    list and yolo mode leave no record. Standing grants live in
+    `crush.json` and `crushrc` ([section 8](#8-parser-plan)).
+  - Model: covered for the configured model; the model that actually
+    served a Hyper Prism turn (`prism_model_id`) is read only when `model`
+    is empty, so the parser never shows both
+    ([section 3](#3-record-schema)).
+  - Past use beyond the primary store: none that repeats the transcript.
+    The TUI's prompt history is a query over `messages`
+    ([`internal/ui/model/history.go:18-30`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/ui/model/history.go#L18-L30)),
+    not a file; the logs, the stats page and the lock file are listed in
+    [section 2](#2-transcript-stores).
+  - Sync, relay and origin: no sync, as at [`12f96b4`](https://github.com/charmbracelet/crush/commit/12f96b4acd8f36312befbbf6fe7459da9ca07a72). Relay found: an MCP
+    channel (an MCP server that pushes messages into a session, such as a
+    Signal bridge) starts turns and gets Crush's replies, recorded in
+    `sessions.channel` and in the `<channel>` prompt text; not parsed
+    ([section 8](#8-parser-plan)). No origin: every session starts locally.
+  - Scratch directories: `.crush/crush-fetch-*` per web fetch, removed
+    afterwards, and `.crush/shell-output`; both sit under the project's
+    data directory, which the parser already treats as the project, and no
+    session records a working directory of its own.
+  - Deletion: a session delete removes its messages, file snapshots and
+    read-file rows but not its sub-agent sessions, which keep a
+    `parent_session_id` that no longer resolves
+    ([section 8](#8-parser-plan)).
+  - Version drift: no schema drift (the same twelve migrations, columns
+    and part keys). New since [`ca6ae26`](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f): `internal/agent/settle.go`, which
+    writes synthetic error `tool_result` messages for calls a dead process
+    left unanswered and backdates their turn's `finish`
+    ([section 3](#3-record-schema)). Line numbers in
+    `internal/config/load.go` moved about 50 lines up; the paths they name
+    are unchanged.
+  - Bad lines: the parser reads no line-oriented file; a `parts` value that
+    does not decode becomes a `parser:` row without the value itself
+    ([section 8](#8-parser-plan)).
+
 ## 2. Transcript stores
 
 Per project: `<project>/.crush/crush.db` ([`internal/config/config.go:25`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/config/config.go#L25)
@@ -30,6 +81,36 @@ registry `~/.local/share/crush/projects.json` (Windows
 [`internal/projects/projects.go:14`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/projects/projects.go#L14),[`31-33`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/projects/projects.go#L31-L33)) maps each project `path` to its
 `data_dir`. One `messages` row per message; parts are a JSON array in the
 `parts` column.
+
+Other files in the data directory, checked at
+[`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da)
+(none repeats the transcript, so none is a secondary source):
+
+- `logs/crush.log`, JSON lines from Go's `slog` at INFO level, rotated at
+  10 MB and kept 30 days
+  ([`internal/cmd/root.go:324`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/cmd/root.go#L324),
+  [`internal/log/log.go:23-44`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/log/log.go#L23-L44)).
+  It is the only local record of a reply Crush routed back to a channel
+  (`Routed reply to originating channel`,
+  [`internal/agent/channelreply.go:302-306`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/channelreply.go#L302-L306))
+  and of the `permissions allow|deny` lines a `crushrc` ran
+  ([`internal/shellconfig/permissions.go:56`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/shellconfig/permissions.go#L56),
+  [`:76`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/shellconfig/permissions.go#L76)).
+  Not parsed; it survives a session delete.
+- `stats/index.html`, written by `crush stats`
+  ([`internal/cmd/stats.go:232`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/cmd/stats.go#L232)):
+  totals, usage by day, model, hour and tool, never message text
+  ([`:62-73`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/cmd/stats.go#L62-L73)).
+  A snapshot at generation time, so it still counts sessions deleted
+  since.
+- `crush.lock`, the data-directory lock, rewritten at each start with
+  `pid`, `version` and `started_at`
+  ([`internal/db/datadirlock.go:23`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/db/datadirlock.go#L23),
+  [`:29-33`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/db/datadirlock.go#L29-L33),
+  [`:89-103`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/db/datadirlock.go#L89-L103)):
+  the Crush version and time of the last start in that project.
+- `init`, an empty flag file marking a project initialised
+  ([`internal/config/init.go:15`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/init.go#L15)).
 
 ## 3. Record schema
 
@@ -66,6 +147,94 @@ part's `time`, [`message.go:435-439`](https://github.com/charmbracelet/crush/blo
 Other tables: `files` (session file snapshots: `path`, `content`,
 `version`), `read_files`, `mcp_enabled_servers`, `mcp_disabled_servers`. No
 project path, cwd or git branch column anywhere.
+
+Checked at
+[`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da)
+(2026-10-19); the columns and part keys above are unchanged, and these
+record shapes were added or not yet described:
+
+- **Permission outcomes in tool results.** The permission service keeps
+  every decision in memory: the per-session grant ("allow for session",
+  `GrantPersistent`), the allow list and the skip flag behind `--yolo`
+  ([`internal/permission/permission.go:165-197`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/permission/permission.go#L165-L197)),
+  and none of it is written to a table. A call the user denies returns
+  `User denied permission` as an error result that ends the turn
+  ([`internal/agent/tools/tools.go:78-84`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/tools/tools.go#L78-L84)),
+  stored as a `tool_result` part with `is_error: true`
+  ([`internal/agent/agent.go:2155-2172`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/agent.go#L2155-L2172)).
+  A `PreToolUse` hook (a user command configured under `hooks` in
+  `crush.json`) that denies or halts a call returns `Tool call blocked by
+  hook. Reason: <reason>` or `Turn halted by hook. Reason: <reason>`, and
+  every hooked result carries `{"hook": {"hook_count", "decision",
+  "halt", "reason", "input_rewrite", "hooks": [{"name", "matcher",
+  "decision", ...}]}}` in its `metadata`, `decision` being `allow`, `deny`
+  or `none`
+  ([`internal/agent/hooked_tool.go:62-73`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/hooked_tool.go#L62-L73),
+  [`:98-140`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/hooked_tool.go#L98-L140),
+  [`internal/hooks/hooks.go:26-40`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/hooks/hooks.go#L26-L40),
+  [`:56-65`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/hooks/hooks.go#L56-L65)).
+  That the tool response's `Metadata` reaches the stored
+  `ClientMetadata` happens in the `fantasy` library, which was not
+  cloned; treat the `hook` key in stored results as unverified until a
+  real install shows it.
+- **Synthetic results.** `internal/agent/settle.go`, new since
+  [`ca6ae26`](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f), settles tool calls that never got an answer (a cancel, a
+  crash, a truncated or refused response) with an error `tool_result` in a
+  new `tool` message whose text is one of a fixed set (`Error: user
+  cancelled assistant tool calling`, `tool call was interrupted and did not
+  produce a result...` and four others), and on reopening a session after
+  a dead process gives the unfinished assistant message a `finish` of
+  reason `error`, message `Interrupted`, backdated to the message's
+  `updated_at`
+  ([`internal/agent/settle.go:14-24`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/settle.go#L14-L24),
+  [`:140-170`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/settle.go#L140-L170)).
+  The synthetic result's message is created at repair time, so it can be
+  stamped long after the call.
+- **Model.** `messages.model` and `provider` are the configured model of
+  the turn ([`internal/agent/agent.go:557-562`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/agent.go#L557-L562));
+  `prism_model_id` and `prism_model_name` are the model that actually
+  served it when the turn went through Hyper's Prism router (Charm's
+  hosted model gateway, which picks a model per request), from its
+  response headers
+  ([`:1085`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/agent.go#L1085),
+  [`:1914-1929`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/agent.go#L1914-L1929);
+  [`20260902000000_add_prism_model_to_messages.sql:3-8`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/db/migrations/20260902000000_add_prism_model_to_messages.sql#L3-L8)).
+  So `model` is the request and `prism_model_id` the resolved id. No
+  per-session model and no switch record exist; the plan and code modes
+  and yolo mode the TUI toggles are in memory only
+  ([`internal/ui/model/ui.go:4762-4790`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/ui/model/ui.go#L4762-L4790)),
+  and the reasoning effort and thinking flag reach only telemetry.
+- **Channels (relay).** An MCP server that declares the
+  `claude/channel` capability pushes events into the active session as a
+  user message whose text is `<channel source="<server>" <meta
+  attributes>>content</channel>`
+  ([`internal/agent/tools/mcp/channel.go:20-36`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/tools/mcp/channel.go#L20-L36),
+  [`:124-150`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/tools/mcp/channel.go#L124-L150);
+  [`internal/agent/agent.go:1550-1551`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/agent.go#L1550-L1551)),
+  `sessions.channel` holds the server of the latest channel-started turn
+  and is cleared by the next local turn
+  ([`internal/agent/coordinator.go:436-465`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/coordinator.go#L436-L465)),
+  and at the end of such a turn Crush sends the reply through one of the
+  server's tools, chosen by `mcp.<name>.channel_reply` in `crush.json` or
+  discovered from the tool list (the latter only in yolo mode); the
+  `sender` and `group` meta attributes name the recipient
+  ([`internal/agent/channelreply.go:23-40`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/channelreply.go#L23-L40),
+  [`:245-307`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/channelreply.go#L245-L307)).
+  The source names a Signal MCP server as the model case, so a channel
+  session can be carried through a messaging platform. The automatic reply
+  is not a stored tool call: only the log records it.
+- **Sub-agent sessions.** A sub-agent's session id is
+  `<message id>$$<tool call id>` with `parent_session_id` set
+  ([`internal/session/session.go:116-128`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/session/session.go#L116-L128),
+  [`:427-430`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/session/session.go#L427-L430);
+  [`internal/agent/coordinator.go:1667-1668`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/coordinator.go#L1667-L1668)).
+  `parent_session_id` has no foreign key
+  ([`20250424200609_initial.sql:4-14`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/db/migrations/20250424200609_initial.sql#L4-L14)).
+- **Repository-scoped MCP overrides.** `mcp_enabled_servers` and
+  `mcp_disabled_servers` hold one `name` each, an MCP server the user
+  turned on or off for this project, overriding `crush.json`
+  ([`20260928000000_add_mcp_disabled_servers.sql:3-5`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/db/migrations/20260928000000_add_mcp_disabled_servers.sql#L3-L5);
+  [`internal/session/session.go:403-415`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/session/session.go#L403-L415)).
 
 ## 4. Joins
 
@@ -120,9 +289,9 @@ the first message of a session whose `model` (else `prism_model_id`) is
 set, and `model: <old> -> <new> provider=<provider>` every later message
 of the session whose model or provider differs, with the message's
 `created_at`; `tool` messages store an empty model and are skipped. The
-research records no permission state for Crush (no approval, denial or
-standing grant is named in [section 3](#3-record-schema)), so the parser
-emits no permission rows.
+parser emits no permission rows: the research before 2026-10-19 named
+no permission state, and the review of that date found the records
+listed below, which the parser does not yet read.
 
 Sync: Crush records no sync state. No command shares, exports, publishes
 or uploads a session: the subcommands are `run`, `dirs`, `projects`,
@@ -178,6 +347,101 @@ and the only other trace is the `session deleted` telemetry event, which
 carries no session id ([`internal/session/session.go:173`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/session/session.go#L173),
 [`internal/event/all.go:28-30`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/event/all.go#L28-L30)). The parser plan proposes no sync
 row.
+
+Requirement lines from the source review of 2026-10-19 at
+[`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da):
+
+- **Permission, per call (primary, not parsed).** A `tool_result` whose
+  content is `User denied permission` is a user denial; one whose content
+  starts `Tool call blocked by hook.` or `Turn halted by hook.` is a hook
+  denial; a `metadata.hook.decision` of `allow` on any result is a hook
+  approval that skipped the prompt ([section 3](#3-record-schema)). The
+  parser could yield `permission decision: denied` and `permission
+  decision: <hook decision> (hook <name>)` beside the result, joined on
+  `tool_call_id`. A prompt the user approved, a session grant, the allow
+  list and yolo mode leave nothing, so the absence of a denial is not an
+  approval.
+- **Permission, standing (not parsed).** `permissions.allowed_tools`
+  (tools or `tool:action` pairs that skip the prompt), `options.disabled_tools`
+  (tools hidden from the agent), `mcp.<name>.disabled_tools` and
+  `enabled_tools`, and `hooks` (the `PreToolUse` commands) in any
+  `crush.json` scope
+  ([`internal/config/config.go:224-225`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/config.go#L224-L225),
+  [`:431-433`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/config.go#L431-L433),
+  [`:471`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/config.go#L471),
+  [`:865-869`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/config.go#L865-L869);
+  [`internal/app/app.go:103-106`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/app/app.go#L103-L106)),
+  plus the same two lists set by `permissions allow <tool>...` and
+  `permissions deny <tool>...` lines in a `crushrc` shell config
+  ([`internal/shellconfig/permissions.go:10-78`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/shellconfig/permissions.go#L10-L78)),
+  and the per-project `mcp_enabled_servers` and `mcp_disabled_servers`
+  tables. `--yolo` (`-y`) is a command-line flag held in memory
+  ([`internal/cmd/root.go:61`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/cmd/root.go#L61),
+  [`:301`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/cmd/root.go#L301)),
+  never written. The `crush.json` files and `crushrc` are collected; one
+  `permission setting:` row per entry at the file's modification time, as
+  other parsers write, would need the parser to want those files.
+- **Model (primary, partly parsed).** Per message only: `model` and
+  `provider` (requested), `prism_model_id` (resolved by Prism). The rows
+  should read `model: <prism_model_id> provider=<provider>
+  requested=<model>` when both are set and differ; today `prism_model_id`
+  is used only when `model` is empty. No per-session or switch record.
+  The global data `crush.json` keeps the user's current `models.large` and
+  `models.small` and up to five `recent_models` per type
+  ([`internal/config/config.go:850-854`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/config.go#L850-L854),
+  [`internal/config/store.go:521-547`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/store.go#L521-L547)),
+  a preference, not a per-session record.
+- **Past use beyond the primary store.** Crush keeps none that repeats
+  the transcript: no prompt history file (the TUI reads `messages`), no
+  search index, no export. Secondary evidence of other kinds, none parsed:
+  `files` (each version of every file the agent wrote, per session),
+  `read_files` (each file read, per session, with `read_at`), both deleted
+  with their session; `logs/crush.log` and `stats/index.html`
+  ([section 2](#2-transcript-stores)), which outlive it. Compaction
+  (`is_summary_message`) adds a summary message and keeps the earlier
+  ones; the model reads from the summary onward
+  ([`internal/db/sql/messages.sql:79`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/db/sql/messages.sql#L79)),
+  so nothing is lost locally.
+- **Sync.** None, as the `Sync:` paragraph above says; rechecked at
+  [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da) (the subcommand list is unchanged,
+  [`internal/cmd/root.go:68-79`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/cmd/root.go#L68-L79),
+  and the twelve migrations add no remote id or share column).
+- **Relay (primary, not parsed).** A session whose `sessions.channel` is
+  set, or whose user text starts with `<channel source=`, was driven by an
+  MCP channel ([section 3](#3-record-schema)). The parser could yield
+  `session relayed: channel <server> (from crush.db sessions.channel)` at
+  the first such user message and set `records_relay`; whether the
+  channel is a messaging platform is only in the server's name and the
+  `<channel>` attributes. A channel turn's automatic reply is in the log
+  alone.
+- **Origin.** None: every session is created by the local process.
+- **Scratch directories.** `.crush/crush-fetch-*` is the working
+  directory of the web-fetch sub-agent, created with `os.MkdirTemp` in
+  the data directory and removed when the fetch ends
+  ([`internal/agent/agentic_fetch_tool.go:102-106`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/agentic_fetch_tool.go#L102-L106),
+  [`:142`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/agentic_fetch_tool.go#L142));
+  its paths appear only in the sub-agent's tool inputs. Since sessions
+  record no working directory and the parser takes the project from the
+  database's location, no scratch path can become a project; no
+  `scratch directory:` row is needed.
+- **Deletion.** `crush session delete` and the TUI delete one session's
+  `messages`, `files` and `sessions` rows in one transaction (and its
+  `read_files` rows by foreign key), with `secure_delete` zeroing the
+  pages
+  ([`internal/session/session.go:144-168`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/session/session.go#L144-L168);
+  [`20260127000000_add_read_files_table.sql:7`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/db/migrations/20260127000000_add_read_files_table.sql#L7)).
+  Its sub-agent sessions stay, with their messages, because
+  `parent_session_id` has no foreign key and the delete names one id; so
+  a session whose `parent_session_id` names no session is the trace of a
+  deleted parent, and the parser could say so on its `session start` row
+  (`parent=<id> (parent session not in database)`). The log, the stats
+  page and the telemetry event `session deleted` (no session id) outlive
+  the delete.
+- **Bad lines.** No line-oriented file is read. `projects.json` that does
+  not parse is one whole-file `parser:` row; a `messages.parts` value that
+  does not decode is a `parser: message <id> parts did not parse` row that
+  omits the raw value, where the rule for a record that does not decode
+  is to carry it in full (`source_line` is the message's rowid).
 
 Fixture rows:
 

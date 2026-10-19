@@ -12,6 +12,38 @@ Paths, credentials and the rest of the per-user state are in
 [continuedev/continue](https://github.com/continuedev/continue) at [`5522c6f44ca0ac3528b37244818fbfa39b5af470`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470),
 Apache-2.0 ([`LICENSE`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/LICENSE)). Open source.
 
+- **Source review (2026-10-19)**: reviewed
+  [continuedev/continue](https://github.com/continuedev/continue) at
+  [`5522c6f`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470), the commit this document already cited. The default
+  branch `main` has not moved since 2026-07-20; the README says the
+  repository "is no longer actively maintained and is read-only for all
+  users" after a final 2.0.0 release ([`README.md:19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/README.md#L19),
+  [`README.md:27-29`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/README.md#L27-L29)), so this commit is the last source, and
+  whether development continues elsewhere cannot be told from the
+  clone. One line per requirement class (detail in
+  [section 2](#2-transcript-files), [section 3](#3-record-schema) and
+  [section 8](#8-parser-plan)):
+  - Permission state: found. Per-call decisions are covered
+    (`toolUsage.accepted`, `canceled` states); not covered are the CLI's
+    standing grants in `permissions.yaml`, the session's `mode`, the
+    reason of a denial (user or security policy) and the extension's
+    policy blocks, which end as `errored`.
+  - Model: covered for extension sessions; found that CLI session files
+    record no model, and that the selected models sit in
+    `index/globalContext.json`.
+  - Past use: found. `input_history.json` (the CLI's prompt history) and
+    the `editInteraction`, `editOutcome` and `chatFeedback` dev data
+    events are not read.
+  - Sync, relay and origin: already covered; the CLI's remote TUI is
+    unused at this commit and no relay exists.
+  - Scratch directories: found, the `cn review` worktrees in the system
+    temp directory.
+  - Deletion: found; the extension's clear-all removes the whole
+    `sessions/` directory, and the CLI has no delete command.
+  - Version drift: none, same commit.
+  - Bad lines: found, an unreadable `sessions.json` is dropped
+    silently.
+
 ## 2. Transcript files
 
 `~/.continue`, overridable by `CONTINUE_GLOBAL_DIR`
@@ -78,6 +110,57 @@ Apache-2.0 ([`LICENSE`](https://github.com/continuedev/continue/blob/5522c6f44ca
   ([`extensions/cli/src/util/metadata.ts:125-181`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/metadata.ts#L125-L181)).
   The base URL is `CONTINUE_API_BASE` or `https://api.continue.dev/`
   ([`extensions/cli/src/env.ts:9`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/env.ts#L9)).
+- `input_history.json` (CLI): the TUI's prompt history, a JSON array of
+  `{text, timestamp}` with `timestamp` in epoch milliseconds, newest
+  first, at most 1000 entries; a prompt typed again is moved to the
+  front, so only its latest time is kept
+  ([`extensions/cli/src/util/inputHistory.ts:6-12`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/inputHistory.ts#L6-L12),
+  [`53-72`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/inputHistory.ts#L53-L72)). Every prompt
+  and slash command submitted in the TUI is added
+  ([`extensions/cli/src/ui/UserInput.tsx:477`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/UserInput.tsx#L477),
+  [`585`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/UserInput.tsx#L585)). It carries no
+  session id or directory, so it joins a session's `user` items on text
+  and time only. It survives everything that removes a session: the
+  extension's delete and clear-all, a CLI edit that rewinds the history
+  and a compaction. Secondary.
+- `permissions.yaml` (CLI): standing tool grants, three optional lists
+  `allow`, `ask` and `exclude` of `Tool` or `Tool(<argument pattern>)`
+  entries ([`extensions/cli/src/permissions/permissionsYamlLoader.ts:15-19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/permissionsYamlLoader.ts#L15-L19),
+  [`77-146`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/permissionsYamlLoader.ts#L77-L146)).
+  `cn` writes it with empty lists on first use and appends to `allow`
+  on a "Continue + don't ask again" answer, `Bash(<first word>*)` for a
+  shell command and the tool name otherwise
+  ([`152-179`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/permissionsYamlLoader.ts#L152-L179);
+  [`extensions/cli/src/permissions/policyWriter.ts:18-76`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/policyWriter.ts#L18-L76);
+  [`extensions/cli/src/ui/components/ToolPermissionSelector.tsx:37-55`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/components/ToolPermissionSelector.tsx#L37-L55);
+  [`extensions/cli/src/ui/hooks/useChat.ts:789-823`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/hooks/useChat.ts#L789-L823)). The append also
+  logs `Added policy rule to permissions.yaml: <rule>` at level `info`
+  to `logs/cn.log`
+  ([`extensions/cli/src/permissions/policyWriter.ts:67`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/policyWriter.ts#L67)), the only
+  record of when the grant was made. Primary for permission state.
+- `index/globalContext.json`: `selectedModelsByProfileId.<profile
+  id>.<role>` (the extension's selected model per role, `chat` among
+  them) and `cliSelectedModel` (the CLI's)
+  ([`core/util/GlobalContext.ts:18-33`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/GlobalContext.ts#L18-L33);
+  [`extensions/cli/src/util/modelPersistence.ts:7-19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/modelPersistence.ts#L7-L19)). Standing
+  state with no time but the file's. The file also holds MCP OAuth
+  tokens and is a flagged secret.
+- `dev_data/0.2.0/editInteraction.jsonl`, `editOutcome.jsonl` and
+  `chatFeedback.jsonl`: still written locally at every level
+  ([`core/data/log.ts:71-117`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/log.ts#L71-L117); the 0.2.0 schema table,
+  [`packages/config-yaml/src/schemas/data/index.ts:117-128`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/packages/config-yaml/src/schemas/data/index.ts#L117-L128)).
+  `editInteraction` (`prompt`, `completion`, `modelTitle`, `filepath`,
+  written by the VS Code edit flow,
+  [`extensions/vscode/src/extension/VsCodeMessenger.ts:236`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/vscode/src/extension/VsCodeMessenger.ts#L236)) and
+  `editOutcome` (`prompt`, `completion`, `accepted`, `previousCode`,
+  `newCode`, `filepath`) record edit requests; whether an edit also
+  reaches a session file is not determined, so they are marked primary.
+  `chatFeedback` (`prompt`, `completion`, `modelTitle`, `feedback`,
+  `sessionId`, one line per prompt log of a rated reply,
+  [`gui/src/components/FeedbackButtons.tsx:20-30`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/gui/src/components/FeedbackButtons.tsx#L20-L30)) repeats a chat
+  turn and adds the user's thumbs up or down: secondary. `quickEdit` has
+  no 0.2.0 schema, so `logLocalData` throws and nothing is written for
+  it at this commit ([`core/data/log.ts:78-84`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/log.ts#L78-L84)).
 
 ## 3. Record schema
 
@@ -106,6 +189,28 @@ redactedThinking?, reasoning_details?}`; `system` `{content}`; `tool`
 function:{name, arguments}}`, `status: "generating"|"generated"|"calling"|
 "errored"|"done"|"canceled"`, `parsedArgs`, `processedArgs?`, `output?:
 ContextItem[]` (tool result text in `content`).
+
+A denied or blocked call ends as a state whose output says why. In the
+CLI a refusal at the prompt is `canceled` with the output text
+`Permission denied by user`, and a call an `exclude` rule or a headless
+`ask` rule stops is `canceled` with `Command blocked by security policy`
+([`extensions/cli/src/stream/streamChatResponse.helpers.ts:113-137`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/stream/streamChatResponse.helpers.ts#L113-L137),
+[`519-547`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/stream/streamChatResponse.helpers.ts#L519-L547);
+[`extensions/cli/src/services/ChatHistoryService.ts:297-327`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/services/ChatHistoryService.ts#L297-L327)). In the
+extension a call whose policy is `disabled`, or whose terminal command
+the security check refuses, is set to `errored` with one output item
+named `Security Policy Violation`
+([`gui/src/redux/thunks/evaluateToolPolicies.ts:93-117`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/gui/src/redux/thunks/evaluateToolPolicies.ts#L93-L117)). Session
+`mode` is the extension's mode at the last save, `chat`, `agent` or
+`plan` (`background` is in the type but nothing sets it), written from
+the GUI state on each save ([`gui/src/redux/thunks/session.ts:250-257`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/gui/src/redux/thunks/session.ts#L250-L257);
+[`core/index.d.ts:495`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/index.d.ts#L495)). CLI session files carry no `mode` and no
+`chatModelTitle`, and their items no `promptLogs`: the CLI's
+`Session` is built with `sessionId`, `title`, `workspaceDirectory`,
+`history` and `usage` only ([`extensions/cli/src/session.ts:92-106`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/session.ts#L92-L106);
+[`extensions/cli/src/services/ChatHistoryService.ts:131-147`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/services/ChatHistoryService.ts#L131-L147); not
+found in `extensions/cli/src` outside tests, grepped for
+`chatModelTitle` and `promptLogs`).
 
 No per-message timestamp exists in session files. `sessions.json` entry
 (`BaseSessionMetadata` [`:292-298`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/index.d.ts#L292-L298)): `sessionId`, `title`, `dateCreated`
@@ -281,6 +386,68 @@ commit (`allowAnonymousTelemetry` survives only as a shared-config flag,
 `upload`, `remote`, `remoteId`, `storage`, `telemetry`, `posthog`,
 `agents/`, `api.continue.dev` and `userToken` in `core/`, `gui/src`,
 `extensions/vscode/src` and `extensions/cli/src`.
+
+Requirement classes, source review of 2026-10-19:
+
+- Permission state. Read: `toolUsage.accepted` and `canceled` states.
+  Not read: `permissions.yaml` (one `permission setting:` row per
+  entry, at the file's modification time, would follow the rule);
+  the session's `mode`, a `permission mode:` row as the `opencode`
+  parser writes, since `plan` restricts the tools; the denial reason
+  in a `canceled` state's output (`Permission denied by user` against
+  `Command blocked by security policy`); an `errored` state whose
+  output is `Security Policy Violation`, which gets no `permission
+  decision:` row today; and the `Added policy rule to permissions.yaml`
+  line of `logs/cn.log`, which the log reader skips. The CLI's
+  permission mode (`normal`, `plan` or `auto`, cycled in the TUI or set
+  by `--auto` and `--readonly`, with `--allow`, `--ask` and `--exclude`
+  overrides) is recorded nowhere on disk: the switch is logged at
+  `debug`, below the file's `info` level
+  ([`extensions/cli/src/services/ToolPermissionService.ts:285-290`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/services/ToolPermissionService.ts#L285-L290);
+  [`extensions/cli/src/ui/UserInput.tsx:206-213`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/UserInput.tsx#L206-L213);
+  [`extensions/cli/src/index.ts:232-239`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/index.ts#L232-L239)). The extension's
+  `toolSettings` live in the editor's webview storage, which the
+  collector does not gather
+  ([section 2 of `collectors/research/continue.md`](../../collectors/research/continue.md#2-per-user-storage)).
+- Model. Read: `chatModelTitle` and `promptLogs[].modelTitle`. CLI
+  sessions name no model at all ([section 3](#3-record-schema)), so
+  they get no `model:` row; `globalContext.json` `cliSelectedModel` and
+  `selectedModelsByProfileId` are standing selections, not read.
+- Past use. Read: `sessions/`, `chatInteraction`, `toolUsage`,
+  `cn.log`. Not read: `input_history.json` (secondary, joins on text
+  and time) and `editInteraction`, `editOutcome` and `chatFeedback`
+  ([section 2](#2-transcript-files)).
+- Sync, relay and origin: covered by the `Sync:` paragraph above. The
+  CLI's remote TUI (`startRemoteTUIChat`, which polls a `cn serve`
+  `/state` endpoint and skips local persistence) has no caller at this
+  commit ([`extensions/cli/src/ui/index.ts:128-131`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/index.ts#L128-L131);
+  [`extensions/cli/src/services/ChatHistoryService.ts:66-70`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/services/ChatHistoryService.ts#L66-L70)), and
+  the extension's `ContinueServerClient` fetches configuration and an
+  embeddings cache, not sessions
+  ([`core/continueServer/stubs/client.ts:33-40`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/continueServer/stubs/client.ts#L33-L40)). No relay through
+  a messaging platform: not found in `core/`, `extensions/cli/src` or
+  `extensions/vscode/src` (grepped for `telegram`, `slack` and
+  `webhook`; the one hit is a `slack-dark` syntax theme name).
+- Scratch directories: `cn review` sessions name a temp worktree
+  `cn-review-<epoch ms>-<n>` as `workspaceDirectory`
+  ([section 6 of `collectors/research/continue.md`](../../collectors/research/continue.md#6-project-path)).
+  The parser writes no `scratch directory:` row for them, so they count
+  as projects.
+- Deletion. `history/delete` removes the session file and its
+  `sessions.json` entry; `history/clear` removes the whole `sessions/`
+  directory, the index with it
+  ([`core/util/history.ts:87-89`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L87-L89); [`core/core.ts:331`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/core.ts#L331)). The CLI
+  has no delete command (not found in `extensions/cli/src`, grepped for
+  `historyManager.delete` and `deleteSession`); editing an earlier
+  message rewrites the session with the history cut before it
+  ([`extensions/cli/src/ui/hooks/useChat.ts:762-777`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/hooks/useChat.ts#L762-L777)). What survives
+  each: `input_history.json`, `dev_data`, `cn.log` and `/share` exports.
+- Version drift: none; the documents and the parser cite this commit.
+- Bad lines. `chatInteraction.jsonl` and `toolUsage.jsonl` go through
+  `iter_jsonl` and `error_rows`. `sessions.json` does not: an
+  unreadable index, or one that is not a JSON array, is dropped without
+  a row, and every session row then has an empty time with nothing
+  saying why. The issue 136 rule wants one `parser:` row for it.
 
 Fixture `sessions/0f1e.json`:
 

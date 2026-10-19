@@ -12,6 +12,41 @@ commit cited in [vscode.md](vscode.md). Sync was checked at
 [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)
 (version 4.3.15, [package.json:5](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/package.json#L5)) on 2026-10-17.
 
+- **Source review (2026-10-19)**: [twinnydotdev/twinny](https://github.com/twinnydotdev/twinny) at
+  [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)
+  (version 4.3.15, today's HEAD, committed 2026-10-16), against
+  [`9339bd1`](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6)
+  (4.3.5), which most citations below still name; VS Code's extension
+  storage and log-channel paths from
+  [microsoft/vscode](https://github.com/microsoft/vscode) at
+  [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706).
+  Between the two Twinny commits 160 files changed; every key and field
+  the parser reads is still written at HEAD.
+  - Permission state: found. The standing grants `alwaysRunCommands`,
+    `alwaysRunMcpTools` and `autoRunCommands` and the `agentMode` switch
+    are kept in the same `rjmacarthy.twinny` row the parser reads, and
+    the `twinny.chatTools*` settings in `settings.json`
+    ([section 8](#8-parser-plan)); the parser reads none of them. The
+    per-call `waiting` and `skipped` steps are already covered.
+  - Model: already covered for `meta.model` per reply; found that it is
+    the configured model name, not one the server reports, and that a
+    team-pool reply's `meta.provider` names the teammate's machine.
+  - Past use beyond the primary store: found. The per-reply file-change
+    records under the workspace's `agent-changes/` directory and the
+    Twinny log channel ([section 2](#2-transcript-stores)).
+  - Sync, relay and origin: already covered (checked at this commit on
+    2026-10-17); nothing new.
+  - Scratch directories: none; agent mode works in the first workspace
+    folder.
+  - Deletion: already covered; found that a delete leaves the
+    `agent-changes/` records and the log lines.
+  - Version drift: found. New message and step fields (`changes`,
+    `toolSteps[].said`, `mcpTool`, `noAlways`, `meta.outOfSteps`,
+    `meta.instructions`); a `said` step, a user message sent mid-reply,
+    is emitted by the parser as a `tool_use` row.
+  - Bad lines: no line-oriented file is read today; the two new sources
+    would need `error_rows` if parsed.
+
 ## 2. Transcript stores
 
 - `<editor User dir>/globalStorage/state.vscdb`, `ItemTable` row whose `key`
@@ -30,6 +65,49 @@ commit cited in [vscode.md](vscode.md). Sync was checked at
   `vscode`.
 - Optional `twinny-server` recordings (`~/.twinny/server/recordings/`), off by
   default, cover requests from every team member; see [section 5](#5-sqlite-and-other-stores).
+
+- Per-reply file-change records (secondary, new since 4.3.5): when agent
+  mode changes files, the extension keeps one JSON file per reply under
+  the workspace's extension storage, `agent-changes/<uuid>.json`
+  ([src/extension/chat/index.ts:210-221](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/index.ts#L210-L221);
+  [src/extension/chat/reply-changes.ts:211-228](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L211-L228)).
+  The extension's workspace storage is
+  `<User dir>/workspaceStorage/<id>/rjmacarthy.twinny/`, and the global
+  `globalStorage/rjmacarthy.twinny/` when no folder is open
+  ([extHostStoragePaths.ts:82-91](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/api/common/extHostStoragePaths.ts#L82-L91)).
+  A record is `{id, root, createdAt, files[]}`, each file
+  `{path, status, added, removed, undone?, noUndo?, before, afterHash}`
+  ([reply-changes.ts:35-47](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L35-L47)):
+  `root` is the absolute workspace root, `createdAt` epoch ms at the end
+  of the reply, `status` `modified`, `created` or `deleted`, `before` the
+  whole file text before the reply (files up to 1 MiB, text only,
+  [`:25-26`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L25-L26)) and
+  `undone` set when the user put it back
+  ([`:238-245`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L238-L245)).
+  The newest 50 records are kept and older ones deleted by modification
+  time ([`:28`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L28),
+  [`:247-259`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L247-L259)). A
+  record joins its conversation through the assistant message's
+  `changes.id` ([src/common/types.ts:76-101](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/types.ts#L76-L101)), and survives the
+  conversation's deletion and "clear all", which touch only
+  `globalState`. It is the only Twinny record that names the project
+  path.
+- The **Twinny** log channel (secondary, line-oriented): a VS Code log
+  output channel ([src/common/logger.ts:93-97](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/logger.ts#L93-L97)), which VS Code
+  writes to `<extension host logs>/rjmacarthy.twinny/Twinny.log`
+  ([extHostOutput.ts:148-150](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/api/common/extHostOutput.ts#L148-L150))
+  under the editor's `logs/` directory, collected as agent `vscode`.
+  With `twinny.enableLogging` on (the default,
+  [package.json:633-638](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/package.json#L633-L638)) each chat request
+  is one line `Chat → <model> (<provider label>) · <n> messages, <n>
+  chars` and each reply one line with its duration
+  ([src/extension/chat/generation.ts:188-207](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/generation.ts#L188-L207),
+  [`:150-153`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/generation.ts#L150-L153)); at the
+  channel's Debug level the messages and the reply are written in full
+  as blocks ([logger.ts:140-144](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/logger.ts#L140-L144)), after the secret shield's
+  redaction. A line joins its conversation by time and text only (no
+  conversation id) and survives the conversation's deletion until VS Code
+  removes the log session.
 
 One row holds all conversations; deleting a conversation removes it from the
 object ([conversation-history.ts:150-156](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/chat/conversation-history.ts#L150-L156)), and
@@ -64,6 +142,21 @@ Twinny fields ([types.ts:50-76](https://github.com/twinnydotdev/twinny/blob/9339
 - `toolSteps?[]` `ToolStepView` ([types.ts:79-101](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/common/types.ts#L79-L101)): `id`, `name`,
   `summary`, `args` (string map), `output`, `status`
   (`running|waiting|done|failed|skipped|stopped`), `command`, `approval`.
+
+Fields added between 4.3.5 and 4.3.15 ([types.ts:76-165](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/types.ts#L76-L165) at HEAD):
+`changes` on an assistant message (`{id, files[{path, status, added,
+removed, undone?, noUndo?}]}`, the view of the record in
+[section 2](#2-transcript-stores)); `toolSteps[].said` (`true` on a step
+whose `name` is `said` and whose `summary` is a message the user typed
+while the reply ran,
+[`src/extension/chat/tool-steps.ts:101-104`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/tool-steps.ts#L101-L104));
+`toolSteps[].mcpTool` (`server/tool`, a call to a tool of an MCP server,
+Model Context Protocol, the standard by which an external program offers
+tools to a model) and `noAlways` (the team gateway asks for every
+command), both cleared when the step finishes
+([`:79-97`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/tool-steps.ts#L79-L97)); `meta.outOfSteps` (the reply used every tool
+step `twinny.chatToolsMaxSteps` allows) and `meta.instructions`
+(relative paths of the `AGENTS.md` files agent mode followed).
 
 There is no per-message timestamp; only the conversation's `updatedAt`.
 
@@ -150,6 +243,74 @@ Model and permission rows, all `system` (issues 96 and 97):
 - `node/trusted-peers.json`, the `twinny-node` trusted-peer list named in
   [`collectors/research/twinny.md`](../../collectors/research/twinny.md),
   is not read: its shape is not recorded.
+
+Requirement classes, from the source review of 2026-10-19 at
+[`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a):
+
+- Permission, standing grants (gap, not parsed). In the same
+  `rjmacarthy.twinny` value, under keys prefixed `twinny-global-context-`
+  (the prefix the webview gives every global value): `alwaysRunCommands`
+  (array of normalised commands the user chose Always run for),
+  `alwaysRunMcpTools` (array of `server/tool` names), `autoRunCommands`
+  (boolean, the composer's auto-run switch: every command runs unasked)
+  and `agentMode` (boolean, tools on)
+  ([src/common/constants/storage.ts:25-35](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/constants/storage.ts#L25-L35);
+  [src/extension/chat/index.ts:162-192](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/index.ts#L162-L192),
+  [`:466-491`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/index.ts#L466-L491)). The
+  command `twinny.forgetAlwaysRunCommands` clears the first list
+  ([src/index.ts:517-526](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/index.ts#L517-L526)). Until the
+  switches are first used, the editor settings `twinny.chatTools`
+  (boolean), `twinny.chatToolsCommands` (`ask`, `allow`, `off`) and
+  `twinny.chatToolsEdits` (`apply`, `review`) decide
+  ([package.json:645-683](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/package.json#L645-L683)); those are in
+  `settings.json`, which the `vscode` parser owns. The plan is a row per
+  entry, `permission setting: <key>=<value> (from state.vscdb
+  rjmacarthy.twinny, file mtime)`. An Always run choice leaves no mark on
+  the step itself, which ends `done` like any other
+  ([tool-steps.ts:169-176](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/tool-steps.ts#L169-L176)),
+  so the list is the only record of it. A team gateway's agent policy
+  (commands asked or off, blocked paths) is held in memory only
+  ([src/common/team-policy.ts:79-89](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/team-policy.ts#L79-L89)).
+- Model: covered by the `model:` rows from `meta.model`. That value is
+  the provider entry's configured `modelName`, set before the request
+  ([generation.ts:112](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/generation.ts#L112)), not a model the server
+  reports, and `meta.provider` is overwritten with the backend's name
+  when a team gateway routes the request
+  ([`:123-126`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/generation.ts#L123-L126)), so for
+  a team pool it names the teammate's machine that answered. The current
+  selection is also kept as `twinny-global-context-twinny.selectedModel`
+  and in `twinny.active-chat-provider`
+  ([src/extension/providers/store.ts:92-100](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/providers/store.ts#L92-L100));
+  neither is history.
+- Past use: the `agent-changes/` records (secondary for the reply they
+  belong to, but the only source of its file changes and project path)
+  and the log channel (secondary, line-oriented), both in
+  [section 2](#2-transcript-stores); neither is read. The plan for the
+  first is a `system` row per changed file, `file changed: <status>
+  <path> +<added> -<removed>`, with `project_path` from `root`, joined to
+  the conversation by `changes.id`, at `createdAt`.
+- Sync, relay and origin: the agent records none (the paragraph below is
+  unchanged at HEAD). Team share and P2P lend compute; a team-pool reply
+  only names the teammate's machine in `meta.provider`.
+- Scratch directories: none. Agent mode works only in the first
+  workspace folder
+  ([index.ts:494-497](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/index.ts#L494-L497)); the
+  one temporary file, a copy of the repository's index named
+  `twinny-index-<uuid>` in the system temporary directory, used to
+  snapshot the tree around a command, is deleted at once
+  ([src/extension/chat/command-snapshot.ts:62-80](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/command-snapshot.ts#L62-L80)).
+- Deletion: deleting a conversation removes its key from
+  `twinny.conversations` and clears `twinny.active-conversation` when it
+  was open; "clear all" writes `{}`
+  ([conversation-history.ts:157-178](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/conversation-history.ts#L157-L178)).
+  Neither touches `agent-changes/` or the log.
+- Drift: a `toolSteps[]` entry with `said: true` is a user message, and
+  the parser emits it as a `tool_use` named `said` and an empty
+  `tool_result`; `changes`, `mcpTool`, `meta.outOfSteps` and
+  `meta.instructions` are not read.
+- Bad lines: the one source read is a single JSON value, and a value
+  that does not decode is one whole-file `parser:` row; no line-oriented
+  file is read.
 
 Sync: Twinny records no sync state. Conversations are written and
 deleted only in the extension's `globalState`

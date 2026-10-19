@@ -12,6 +12,27 @@ extension, the `twinny-node` peer-to-peer GPU sharing CLI
 gateway ([packages/twinny-server/package.json:28-30](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/packages/twinny-server/package.json#L28-L30)).
 Record schema: [`analyzer/research/twinny.md`](../../analyzer/research/twinny.md).
 
+- **Source review (2026-10-19)**: [twinnydotdev/twinny](https://github.com/twinnydotdev/twinny) at
+  [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)
+  (version 4.3.15, today's HEAD), against
+  [`9339bd1`](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6)
+  (4.3.5), which the citations below name unless they say otherwise;
+  VS Code paths from [microsoft/vscode](https://github.com/microsoft/vscode) at
+  [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706).
+  Permission state: found, standing grants in `globalState` and settings
+  ([section 2](#2-per-user-storage)). Model: already covered (per reply,
+  in the conversation). Past use: found, a new `agent-changes/` directory
+  of per-reply file copies in the workspace's extension storage and the
+  Twinny log channel ([section 2](#2-per-user-storage)). Sync, relay and
+  origin: already covered, none (the analyzer document checked it at
+  this commit). Scratch directories: none
+  ([section 2](#2-per-user-storage)). Deletion: a conversation delete
+  touches only `globalState`, leaving `agent-changes/` and the log.
+  Version drift: found, new credential and account keys for the ChatGPT
+  plan sign-in ([section 3](#3-credentials)) and the change records
+  above; every path in this document is still used at HEAD. Bad lines:
+  not applicable to the collector.
+
 ## 2. Per-user storage
 
 Extension id `rjmacarthy.twinny` (publisher `rjmacarthy`, name `twinny`,
@@ -51,7 +72,59 @@ goes to `workspaceStorage/<id>/state.vscdb` under the same key.
   [src/extension/team/share.ts:28](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/team/share.ts#L28), [86-90](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/team/share.ts#L86-L90);
   [src/extension/utils/window-lock.ts:26-52](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/utils/window-lock.ts#L26-L52)).
 
-No chat, embedding or symmetry data is written there.
+No chat, embedding or symmetry data is written there, except
+`agent-changes/` when no folder is open (below).
+
+**Since 4.3.5, at
+[`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a):**
+
+- `workspaceStorage/<id>/rjmacarthy.twinny/agent-changes/<uuid>.json`, one
+  record per agent-mode reply that changed files: the absolute workspace
+  root, each changed file's relative path and status, and the whole text
+  of each file (up to 1 MiB) as it was before the reply, the newest 50
+  kept ([src/extension/chat/index.ts:210-221](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/index.ts#L210-L221);
+  [src/extension/chat/reply-changes.ts:25-47](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L25-L47),
+  [211-259](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L211-L259)). With no
+  folder open it goes to `globalStorage/rjmacarthy.twinny/agent-changes/`
+  instead (VS Code's workspace storage is then undefined,
+  [extHostStoragePaths.ts:82-91](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/api/common/extHostStoragePaths.ts#L82-L91)).
+  The workspace copy is collected only inside the editor's `User`
+  directory, attributed to the editor (`vscode` or the fork); no
+  `twinny` catalog line names `workspaceStorage`.
+- Standing permission grants, as keys of the extension's `globalState`
+  value (the `rjmacarthy.twinny` row of `globalStorage/state.vscdb`),
+  each prefixed `twinny-global-context-`: `alwaysRunCommands`,
+  `alwaysRunMcpTools`, `autoRunCommands`, `agentMode`, and the current
+  `twinny.selectedModel`
+  ([src/common/constants/storage.ts:25-35](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/constants/storage.ts#L25-L35);
+  [src/extension/chat/index.ts:162-192](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/index.ts#L162-L192),
+  [466-491](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/index.ts#L466-L491)); the editor
+  settings `twinny.chatTools`, `twinny.chatToolsCommands`,
+  `twinny.chatToolsEdits` and `twinny.chatToolsMcpServers` in the
+  user `settings.json`
+  ([package.json:645-720](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/package.json#L645-L720)). Both files are
+  collected as agent `vscode`.
+- The ChatGPT plan sign-in's profile, `twinny.chatgpt-plan.profile`
+  (`clientId`, `subject`, `email`, `name` of the signed-in OpenAI
+  account) and `twinny.chatgpt-plan.host-id`, also in the `globalState`
+  value ([src/extension/chatgpt-plan/session.ts:11-13](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L11-L13),
+  [52-57](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L52-L57),
+  [397-402](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L397-L402)).
+- The **Twinny** log channel, `<editor logs>/<session>/window<n>/exthost/rjmacarthy.twinny/Twinny.log`
+  ([src/common/logger.ts:93-97](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/logger.ts#L93-L97);
+  [extHostOutput.ts:148-150](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/api/common/extHostOutput.ts#L148-L150)),
+  one line per chat request naming the model, and the prompts and
+  replies at Debug level; collected as agent `vscode` under the editor's
+  `logs` entries.
+
+**Scratch directories.** Twinny has none. Agent mode works in the first
+workspace folder only
+([src/extension/chat/index.ts:494-497](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/index.ts#L494-L497)),
+and its one temporary file, a copy of the repository's index named
+`twinny-index-<uuid>` in the system temporary directory, is deleted as
+soon as the tree is snapshotted
+([src/extension/chat/command-snapshot.ts:62-80](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/command-snapshot.ts#L62-L80));
+nothing for the catalog to collect or for discovery to drop.
 
 **`~/.twinny`** from `os.homedir()` on every OS (no platform branching):
 
@@ -103,6 +176,22 @@ config (`auth.keysFile`, `auth.licenseFile`, `usage.dir`, `recording.dir`,
 - `twinny.githubToken` setting, a GitHub PAT, in the editor `settings.json`
   ([package.json:693-698](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/package.json#L693-L698)).
 - `~/.twinny/node/identity.json`: the `twinny-node` key seed.
+- ChatGPT plan sign-in (new since 4.3.5): access, refresh and id tokens
+  in VS Code secret storage under `twinny.chatgpt-plan.credentials`, an
+  encrypted `secret://` row; the account's email and subject in plain
+  `globalState`
+  ([src/extension/chatgpt-plan/session.ts:11-13](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L11-L13),
+  [59-66](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L59-L66),
+  [484](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chatgpt-plan/session.ts#L484)).
+- `twinny.chatToolsMcpServers` in the user `settings.json` can carry
+  tokens in each server's `env` (the setting's own example is a
+  `GITHUB_TOKEN`, [package.json:684-720](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/package.json#L684-L720)).
+- Exported provider lists: the "Export providers" command writes the
+  providers, `apiKey` included, to a file the user picks, named
+  `twinny-providers.json` by default
+  ([src/extension/providers/manager.ts:690-704](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/providers/manager.ts#L690-L704));
+  only the copy in `globalStorage/rjmacarthy.twinny/` is in a known
+  place.
 - `twinny-server`: `license` (a licence token), `keys.json` (SHA-256 of
   client keys, not the keys, [src/gateway/keys.ts:4-7](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/keys.ts#L4-L7)),
   `plugins/<id>/settings.json` with git clone tokens for the context plugin
@@ -130,6 +219,11 @@ instructions file of its own.
   absolute path of every indexed file ([database.ts:45-51](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/embeddings/database.ts#L45-L51);
   [indexer.ts:123-133](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/embeddings/indexer.ts#L123-L133), [313](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/embeddings/indexer.ts#L313)). The workspace
   root is a common prefix of those keys, not a field.
+- `workspaceStorage/<id>/rjmacarthy.twinny/agent-changes/*.json` (since
+  4.3.5): key `root`, the absolute workspace root agent mode worked in
+  ([src/extension/chat/reply-changes.ts:42-47](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L42-L47),
+  [161](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/reply-changes.ts#L161)); a grep-able
+  `"root":"<path>"` in one-line JSON.
 - Conversations carry no workspace path. The workspace link is the
   `workspaceStorage/<id>/workspace.json` that holds Twinny's per-workspace
   state.

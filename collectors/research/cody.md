@@ -7,8 +7,8 @@ process. **In VS Code, chat history and the access token are not files:
 they are rows in the editor's `User/globalStorage/state.vscdb`**, which
 the `vscode` entries already collect. The extension's own
 `globalStorage` folder holds only a local search index. The JetBrains
-plugin and CLI keep the same chat history as files under an `env-paths`
-directory named `Cody-nodejs`. Transcript schema is in
+plugin keeps the same chat history as files under an `env-paths`
+directory named `Cody-nodejs` (the CLI keeps it in memory). Transcript schema is in
 [`analyzer/research/cody.md`](../../analyzer/research/cody.md).
 
 ## 1. Source and evidence level
@@ -28,6 +28,38 @@ of `env-paths` is cited from its source at the locked version 2.2.1
 (`pnpm-lock.yaml`). VS Code storage mechanics are cited from the PearAI
 fork of VS Code 1.96.4, the only VS Code checkout read in this round; see
 [vscode.md](vscode.md) for upstream.
+
+- **Source review (2026-10-19)**: the repository's HEAD on 2026-10-19 is
+  still
+  [`8e20ac6`](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda),
+  committed 2025-08-01 and the commit this document already cited; the
+  public source has been frozen since August 2025, so nothing later can
+  be reviewed. Per class (the record-level detail is in
+  [section 1 of `analyzer/research/cody.md`](../../analyzer/research/cody.md#1-source)):
+  - Permission state: found. Standing settings live in the editor's user
+    `settings.json` (`cody.agentic.context.experimentalOptions`,
+    `cody.mcpServers`), already collected with the editor, and for the
+    JetBrains plugin in the IDE's `options/cody.xml`, which is not
+    collected ([section 2](#2-per-user-storage)).
+  - Model: found `cody-model-preferences`, a key inside files already
+    collected (the `state.vscdb` row, `JetBrains-globalState/`).
+  - Past use beyond the primary store: found the JetBrains plugin's
+    pre-agent `<project>/.idea/cody_history.xml`, never deleted after
+    migration and not collected ([section 5](#5-project-local-files)).
+  - Sync, relay and origin: none recorded on disk (already covered in
+    the analyzer document).
+  - Scratch directories: none ([section 2](#2-per-user-storage)).
+  - Deletion: clear and delete rewrite the history value in place; no
+    file is removed
+    ([section 8 of `analyzer/research/cody.md`](../../analyzer/research/cody.md#8-parser-plan)).
+  - Version drift: none; the snapshot is HEAD.
+  - Bad lines: not a collector concern; the analyzer reads each history
+    as one JSON value.
+  - Correction: the `cody chat` CLI keeps global state, chat history
+    included, in memory and writes no `Cody-nodejs/<name>-globalState`
+    directory
+    ([`agent/src/cli/command-chat.ts:141-158`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/agent/src/cli/command-chat.ts#L141-L158);
+    [`agent/src/global-state/AgentGlobalState.ts:23-33`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/agent/src/global-state/AgentGlobalState.ts#L23-L33)).
 
 ## 2. Per-user storage
 
@@ -107,6 +139,46 @@ data, `logUri` to log, and copies extension resources into
   ([`types.ts:13-14`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/commands/types.ts#L13-L14);
   [`custom-commands.ts:46-47`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/commands/services/custom-commands.ts#L46-L47)).
 
+**JetBrains IDE settings (source review of 2026-10-19).** The plugin
+also persists application-level components in the IDE's `options/`
+directory (`~/.config/JetBrains/<product>`,
+`~/Library/Application Support/JetBrains/<product>`,
+`%APPDATA%\JetBrains\<product>`, per
+[Directories used by the IDE to store settings, caches, plugins and logs](https://www.jetbrains.com/help/idea/directories-used-by-the-ide-to-store-settings-caches-plugins-and-logs.html)),
+none of which the catalog collects:
+
+- `cody.xml`: `GlobalCodySettings.jsonConfig`, a global `cody.*`
+  settings document
+  ([`jetbrains/.../config/GlobalCodySettings.kt:10-24`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/config/GlobalCodySettings.kt#L10-L24)).
+  The plugin passes the agent the per-project file
+  `<project>/.idea/.sourcegraph/cody_settings.json`, or
+  `~/.sourcegraph/cody_settings.json` when the project has no base path,
+  with this document as the fallback
+  ([`ConfigUtil.kt:152-162`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/config/ConfigUtil.kt#L152-L162),
+  [`184-199`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/config/ConfigUtil.kt#L184-L199)),
+  so a JetBrains user's `cody.agentic.context.experimentalOptions` and
+  `cody.mcpServers` are in one of those three; neither
+  `~/.sourcegraph/` nor `.idea/.sourcegraph/` is a catalog line (the
+  project table's `.sourcegraph` names the project root's directory).
+- `cody_application_settings.xml`: feature toggles, `anonymousUserId`
+  and `shouldAcceptNonTrustedCertificatesAutomatically`
+  ([`CodyApplicationSettings.kt:9-25`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/config/CodyApplicationSettings.kt#L9-L25)).
+- `cody_accounts_settings.xml`: the pre-agent account list
+  ([`auth/deprecated/DeprecatedCodyAccountManager.kt:44-47`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/auth/deprecated/DeprecatedCodyAccountManager.kt#L44-L47)).
+
+The project-level files are in [section 5](#5-project-local-files).
+
+**Scratch directories.** None. Deep Cody's terminal tool and the agentic
+chat's `run_terminal_command` both run in the first workspace folder
+([`vscode/src/commands/context/shell.ts:37`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/commands/context/shell.ts#L37);
+[`vscode/src/chat/chat-view/tools/shell.ts:52-69`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/shell.ts#L52-L69)),
+and no clone, worktree or per-chat directory is created outside the
+internal `cody bench` evaluation command, whose `cody-bench-` worktree
+sits in the system temp directory
+([`agent/src/cli/command-bench/testTypecheck.ts:49-55`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/agent/src/cli/command-bench/testTypecheck.ts#L49-L55)).
+The `symf/indexroot/<path>` directories are indexes named after real
+workspaces, not working directories.
+
 ## 3. Credentials
 
 - VS Code: the access token is stored in SecretStorage three times, under
@@ -131,6 +203,12 @@ data, `logUri` to log, and copies extension resources into
   [`204-213`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/agent/src/cli/command-auth/secrets.ts#L204-L213)).
   `user-settings.json` holds `serverEndpoint`, `username` and
   `customHeaders`, which may carry proxy auth.
+- `cody.mcpServers.<server>` entries (VS Code `settings.json`, the
+  JetBrains `cody_settings.json` files and `cody.xml`) take `headers`
+  for an SSE (server-sent events, the HTTP transport) server and `env` for a stdio one, where MCP (Model Context Protocol) servers usually
+  receive their tokens
+  ([`vscode/src/chat/chat-view/tools/MCPManager.ts:31-43`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/MCPManager.ts#L31-L43));
+  source review of 2026-10-19.
 
 ## 4. Exclusions
 
@@ -148,12 +226,32 @@ at the first workspace folder ([`custom-commands.ts:36-39`](https://github.com/s
 ([`vscode/src/rules/fs-rule-provider.ts:20-26`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/rules/fs-rule-provider.ts#L20-L26)).
 No per-project database.
 
+JetBrains project files (source review of 2026-10-19), neither in the
+project table:
+
+- `.idea/cody_history.xml`: the plugin's pre-agent chat history, a
+  project-level component (`HistoryService`), with every chat's
+  messages, `updatedAt` and model
+  ([`jetbrains/.../history/HistoryService.kt:13-15`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/history/HistoryService.kt#L13-L15)).
+  The run-once migration copies it into the agent store and leaves it in
+  place
+  ([`ChatHistoryMigration.kt:17-28`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/config/migration/ChatHistoryMigration.kt#L17-L28)),
+  so it is the copy a chat deleted in the plugin still has. The `.idea/`
+  location is the IntelliJ Platform's rule for project-level
+  components, not re-read from platform source here. Its schema is in
+  [section 2 of `analyzer/research/cody.md`](../../analyzer/research/cody.md#2-transcript-files).
+- `.idea/.sourcegraph/cody_settings.json`: the per-project `cody.*`
+  settings, permission settings and MCP servers included
+  ([section 2](#2-per-user-storage)).
+
 ## 6. Where the project path is recorded
 
 - Chat transcripts carry no workspace field; context items carry file URIs
   (`contextFiles[].uri`), from which the project can be inferred.
 - `symf/indexroot/<path>` directory names are indexed workspace roots.
 - VS Code `workspaceStorage/*/workspace.json` as usual.
+- A JetBrains `.idea/cody_history.xml` or `.idea/.sourcegraph/` names its
+  project by where it sits; nothing inside records the path.
 
 ## 7. Confidence
 
