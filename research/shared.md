@@ -2,7 +2,8 @@
 
 The catalog agent `shared` is a pseudo-agent for files and directories read by several agents
 at once, so they cannot be attributed to one tool: cross-agent instruction and skill
-directories. It has no analyzer document.
+directories. It is collected only, with no parser: these are instruction and skill files, not
+transcripts.
 
 ## 1. Source and evidence
 
@@ -21,11 +22,13 @@ agent definitions adopted by Codex, Copilot CLI and others.
 - **Source review (2026-10-19)**: the source reviews of 2026-10-19 add two readers of the skills
   directories. Zed reads `~/.agents/skills/<skill>/SKILL.md`
   ([`crates/agent/src/agent.rs:616-638`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L616-L638)
-  at [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)),
+  at
+  [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)),
   and Crush reads `~/.config/agents/skills` and `~/.agents/skills`, and also Claude Code's
   `~/.claude/skills`
   ([`internal/config/load.go:1312-1322`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1312-L1322)
-  at [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da));
+  at
+  [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da));
   see [`zed.md`](zed.md), [`crush.md`](crush.md) and [`claude-code.md`](claude-code.md).
 
 ## Collection
@@ -67,9 +70,10 @@ Not applicable.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+`shared` is `collected` only: there is nothing to parse. Its paths are cross-agent instruction
+and skill directories (`.agents`, `.config/agents`, `.config/AGENTS.md`) with no transcripts,
+written by the user and read by several agents, so they record what an agent was told, not what
+it did. The transcripts of each reader are parsed, where they are, under that agent.
 
 ## 14. Confidence
 
