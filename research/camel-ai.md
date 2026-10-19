@@ -1,10 +1,10 @@
 # camel-ai
 
 CAMEL is a multi-agent Python framework (package `camel-ai`) with toolkits for the terminal,
-browser, Gmail and files. This document came out of the agent framework sweep for
+browser, Gmail and files. It came into the catalog from the agent framework sweep for
 [issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
-[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
-line. There is no analyzer document: CAMEL keeps no transcripts under the home.
+[`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. It is
+collected only, with no parser: CAMEL keeps no transcripts under the home.
 
 ## 1. Source and evidence
 
@@ -130,9 +130,13 @@ Nowhere under the home.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+CAMEL is `collected` only: there is nothing to parse, because it keeps no transcripts under the
+home. What it collects is the Gmail OAuth token and the user-scope skills; the chat history
+(`./chat_history.json` for `JsonStorage`), the opt-in `camel_logs` model logs, the
+caller-chosen `tool_log_dir` and `save_memory(path)` files are all written in the working
+directory or wherever the calling program says ([section 2](#2-per-user-storage) and the
+2026-10-19 source review), so no catalog line reaches them and a parser would have no file to
+read.
 
 ## 14. Confidence
 
