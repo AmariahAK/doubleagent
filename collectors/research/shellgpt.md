@@ -19,6 +19,24 @@ history commits [`1465c4a`](https://github.com/TheR1D/shell_gpt/commit/1465c4af1
 (first in tag 0.7.3) and [`a054a90`](https://github.com/TheR1D/shell_gpt/commit/a054a900958954400004e54bc7739ba94a75de1f)
 (first in tag 0.9.0).
 
+- **Source review (2026-10-19).** HEAD of the default branch is still
+  [`a082bd5`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6),
+  so every path here stands.
+  - Permission state: found, collected. The auto-execution switches
+    are `.sgptrc` keys and the callable functions are the files in
+    `functions/`, both already collected (`.sgptrc` flagged secret).
+  - Model: `DEFAULT_MODEL` in `.sgptrc`, collected.
+  - Past use: found, partly uncollected. The response cache also
+    holds chat answers, and its Windows path since 0.9.0,
+    `AppData/Local/Temp/cache`, is not a catalog line
+    ([section 2](#2-per-user-storage)).
+  - Sync, relay and origin: none.
+  - Scratch directories: none ([section 2](#2-per-user-storage)).
+  - Deletion: no delete command; temp-directory cleanup by the
+    operating system is the main loss.
+  - Version drift: none.
+  - Bad lines: not a collector concern.
+
 ## 2. Per-user storage
 
 The config folder is `os.path.expanduser("~/.config")/shell_gpt` on every OS,
@@ -83,6 +101,21 @@ location.**
   is not recoverable from it. The oldest files beyond `CACHE_LENGTH` (100)
   are deleted ([`cache.py:30-61`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L30-L61)).
   Caching is on by default ([`app.py:88-91`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/app.py#L88-L91)).
+  Source review of 2026-10-19: the cache is not limited to one-shot
+  completions. The chat and REPL handlers share the cached
+  `get_completion`
+  ([`sgpt/handlers/handler.py:102-110`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L102-L110)),
+  so each chat answer without a function call is also written here and
+  outlives the 100-message cut of its chat file. The catalog collects
+  the pre-0.9.0 Windows form under `AppData/Local/Temp/shell_gpt`; the
+  current form, `AppData/Local/Temp/cache`, is not a catalog line, and
+  `cache` is too common a directory name in the temp directory to add
+  as one without collecting other programs' caches. Reading
+  `CACHE_PATH` from `.sgptrc` is the manual step.
+
+Scratch directories: none. ShellGPT runs commands in the caller's
+working directory and creates no directory of its own to work in
+(`--install-functions` writes only into `functions/`).
 
 One-shot prompts without `--chat` are not stored anywhere except as that
 response cache ([`app.py:222-239`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/app.py#L222-L239);

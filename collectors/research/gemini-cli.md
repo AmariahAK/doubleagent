@@ -12,6 +12,26 @@ marked `docs/` (repo documentation) or `live` (names only from this
 workstation's `~/.gemini`, which holds just `config/` and `antigravity-cli/`,
 so it contributed nothing for Gemini CLI itself).
 
+- **Source review (2026-10-19).** HEAD
+  [`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d)
+  (version 0.66.0-nightly.20261013) against the commit above. The
+  storage layout did not change between them (`storage.ts`,
+  `projectRegistry.ts`, `logger.ts` and `trust.ts` are identical), so
+  every path in this document stands.
+  - Permission state: found, collected. The per-workspace policy file
+    `<project>/.gemini/policies/auto-saved.toml` and its `.bak` are
+    under the project catalog entry `.gemini`; see
+    [section 5](#5-project-local-files).
+  - Model: no new file.
+  - Past use: no new file; retention changes what survives
+    ([section 2](#2-per-user-storage)).
+  - Sync, relay and origin: none, as before.
+  - Scratch directories: found, collected unexcluded; see
+    [section 5](#5-project-local-files).
+  - Deletion: found; see [section 2](#2-per-user-storage).
+  - Version drift: none in paths.
+  - Bad lines: not a collector concern.
+
 ## 2. Per-user storage
 
 Home resolution: `homedir()` returns `$GEMINI_CLI_HOME` if set, else
@@ -71,6 +91,36 @@ optionally under `<sessionId>/` ([372-411](https://github.com/google-gemini/gemi
 `.gemini-extension-install.json`, `.env` ([`variables.ts:22-24`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/config/extensions/variables.ts#L22-L24)); git sources
 are shallow clones ([`cli/src/config/extensions/github.ts:57`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/cli/src/config/extensions/github.ts#L57)).
 
+Additions from the source review of 2026-10-19, at
+[`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d):
+
+- `tmp/background-processes/background-<pid>.log`: output of shell
+  commands run in the background, deleted after seven days
+  ([`core/src/services/shellExecutionService.ts:390-412`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/services/shellExecutionService.ts#L390-L412);
+  [`cli/src/utils/logCleanup.ts:11-43`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/utils/logCleanup.ts#L11-L43)).
+  Collected under `.gemini`.
+- `policies/auto-saved.toml` (and `auto-saved.toml.bak`, the copy kept
+  when the file fails to parse): the "Allow for all future sessions"
+  grants ([`core/src/policy/config.ts:795-880`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/policy/config.ts#L795-L880)).
+- `tmp/<slug>/memory/`: `MEMORY.md`, skills, and under
+  `experimental.autoMemory` the `.inbox/<kind>/*.patch` memory
+  candidates a background agent draws from past sessions
+  ([`core/src/config/storage.ts:332-342`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/config/storage.ts#L332-L342)).
+- Retention: every start deletes the project's sessions older than
+  `general.sessionRetention.maxAge` (default `30d`, enabled by default),
+  every session file it cannot load, and the whole `tmp/<slug>/checkpoints/`
+  directory
+  ([`cli/src/utils/sessionCleanup.ts:102-260`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/utils/sessionCleanup.ts#L102-L260);
+  [`cli/src/utils/cleanup.ts:187-197`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/cli/src/utils/cleanup.ts#L187-L197)).
+  A collection taken after the agent was started again holds less than
+  one taken before; `logs.json`, `shell_history`, `checkpoint-<tag>.json`
+  and `history/<slug>` are not touched. Detail in
+  [section 2 of `analyzer/research/gemini-cli.md`](../../analyzer/research/gemini-cli.md#2-transcript-files).
+
+Scratch directories: Gemini CLI has no default working directory of its
+own; the one directory it creates for work is the `--worktree` checkout
+inside the project, covered in [section 5](#5-project-local-files).
+
 ## 3. Credentials
 
 - `oauth_creds.json`: legacy. On load it is migrated into the keychain and
@@ -123,6 +173,20 @@ rely on the size cap.
 `.gemini/sandbox.Dockerfile`, `.gemini/sandbox-macos-custom.sb` (docs),
 `.agents/skills` ([356-358](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/config/storage.ts#L356-L358)). No per-project database.
 
+Source review of 2026-10-19, at
+[`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d):
+`.gemini/policies/auto-saved.toml` in a project holds the "Allow for
+all future sessions" grants the user saved for that workspace
+([`core/src/config/storage.ts:236-245`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/config/storage.ts#L236-L245)),
+collected by the `gemini-cli|.gemini` project entry. `.gemini/worktrees/<name>`
+is a scratch directory: a full git worktree on branch `worktree-<name>`
+that `gemini --worktree` creates when `experimental.worktrees` is on
+([`core/src/services/worktreeService.ts:117-134`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/services/worktreeService.ts#L117-L134)).
+No exclusion covers it, so the project entry collects every worktree
+checkout in full, as `.claude/worktrees` and `.codex/worktrees` would be
+without theirs. The session that ran there records the worktree path as
+its project root.
+
 ## 6. Where the project path is recorded
 
 - `~/.gemini/tmp/<slug>/.project_root` and
@@ -132,6 +196,15 @@ rely on the size cap.
   ([`projectRegistry.ts:16-21`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/config/projectRegistry.ts#L16-L21)).
 - `~/.gemini/trustedFolders.json`: keys are folder paths ([`storage.ts:131`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/config/storage.ts#L131)).
 - Chat records carry `projectHash` = sha256(path) only ([`chatRecordingService.ts:580`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/services/chatRecordingService.ts#L580),[`812`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/services/chatRecordingService.ts#L812)); not reversible, but matches legacy `tmp/<sha256>` dirs.
+- Source review of 2026-10-19, at
+  [`3be3d44`](https://github.com/google-gemini/gemini-cli/commit/3be3d4424b3c8a760d793ae1bea6cb5180adf27d):
+  `~/.gemini/trusted_hooks.json` and `~/.gemini/acknowledgments/agents.json`
+  are objects keyed by absolute project path
+  ([`core/src/hooks/trustedHooks.ts:103-119`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/hooks/trustedHooks.ts#L103-L119);
+  [`core/src/agents/acknowledgedAgents.ts:13-18`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/agents/acknowledgedAgents.ts#L13-L18)),
+  two more sources a project discovery could read. A `.project_root`
+  under `<project>/.gemini/worktrees/` names a scratch worktree, not a
+  separate project.
 
 ## 7. Confidence
 

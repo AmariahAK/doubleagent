@@ -7,6 +7,26 @@ Catalog agent: `ollama`. Transcript schema is in
 
 - Open source, `https://github.com/ollama/ollama`, shallow clone at `scratchpad/repos/ollama-0351`, commit [`b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce`](https://github.com/ollama/ollama/commit/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce), tag `v0.35.1` (2026-10-01). The first version of this document cited [`42e911bc3d05798cad729cb474bf62f378cb2e26`](https://github.com/ollama/ollama/commit/42e911bc3d05798cad729cb474bf62f378cb2e26) (2026-10-02); the two commits between them change one documentation page, so every line cited here was re-checked at `v0.35.1` and is unchanged. The removed built-in agent ([section 2](#2-per-user-storage)) was read at [`b68b112bd8868d6278250d7d4bdfafa5cbf035c8`](https://github.com/ollama/ollama/commit/b68b112bd8868d6278250d7d4bdfafa5cbf035c8), its last state, from the history of the same checkout. All claims below are evidence level **A** (source, file:line) unless marked **D** (repo docs `docs/*.mdx`) or **L** (local layout check, `ls ~/.ollama`, names only).
 - Local check (L): `~/.ollama/` on this workstation holds `backup/config.json.<epoch>`, `cache/model-recommendations.json`, `config.json`, `history`, `id_ed25519`, `id_ed25519.pub`, `models/blobs/` (6 blobs, 1.9 GB), `models/manifests/registry.ollama.ai/library/llama3.2/`.
+- **Source review (2026-10-19).** HEAD
+  [`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120)
+  of `main` (the latest release tag is `v0.40.6`, 2026-10-16) against
+  `v0.35.1` above. `app/store/`, `readline/` and `internal/onboarding/`
+  did not change between them; the citations at
+  [`b68b112`](https://github.com/ollama/ollama/commit/b68b112bd8868d6278250d7d4bdfafa5cbf035c8)
+  name files of the removed agent and are meant to be absent at HEAD.
+  - Permission state: found, collected. `integrations.<name>.automode`
+    in `~/.ollama/config.json` is a standing auto-mode choice that
+    `ollama launch claude-desktop` writes into Claude Desktop's
+    configuration ([section 5](#5-project-local-files)).
+  - Model: no new file.
+  - Past use: no new file.
+  - Sync, relay and origin: none, as before.
+  - Scratch directories: none under the home; two temporary
+    directories outside it ([section 2](#2-per-user-storage)).
+  - Deletion: as before; the desktop app deletes a chat locally only.
+  - Version drift: found, paths only: models now also keep
+    `models/manifests-v2/` ([section 2](#2-per-user-storage)).
+  - Bad lines: not a collector concern.
 
 ## 2. Per-user storage
 
@@ -37,6 +57,29 @@ Desktop app, Windows:
 - `%LOCALAPPDATA%\Ollama\{db.sqlite, server.log, server-#.log, app.log, config.json, ollama.pid, updates\}` ([`app_state.go:33`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/app_state.go#L33), [`app/server/server_windows.go:18-19`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/server/server_windows.go#L18-L19), [`app/cmd/app/app_windows.go:39`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/cmd/app/app_windows.go#L39), [`store.go:207`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/store/store.go#L207), [`app/ollama.iss:120`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ollama.iss#L120); D [`docs/windows.mdx:66-71`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/docs/windows.mdx#L66-L71)). Binaries in `%LOCALAPPDATA%\Programs\Ollama`. Models, history, keys stay in `%USERPROFILE%\.ollama` ([`ollama.iss:139`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ollama.iss#L139),[`260-261`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/ollama.iss#L260-L261)).
 - Linux has no desktop database (`AppDatabasePath` returns "" by default, [`app_state.go:35`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/internal/onboarding/app_state.go#L35)).
 
+Additions from the source review of 2026-10-19, at
+[`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120):
+
+- `~/.ollama/models/manifests-v2/` beside the legacy `manifests/`
+  ([`manifest/paths.go:23-24`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/manifest/paths.go#L23-L24)),
+  so the statement above that no other directory is created under
+  `models/` no longer holds at HEAD. It is collected (only
+  `models/blobs` is excluded) and is the same kind of small manifest
+  file.
+- Scratch directories: Ollama has none under the home. Two temporary
+  directories go to the system temp directory and are removed when
+  the command finishes: `ollama-qwen-install-*`, a shim for the Qwen
+  Code installer
+  ([`cmd/launch/qwen.go:143-150`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/qwen.go#L143-L150)),
+  and `ollama-codex-models-*`, a scratch `CODEX_HOME` into which
+  `ollama launch chatgpt` copies `~/.codex/auth.json` and
+  `models_cache.json` to list Codex's native models
+  ([`cmd/launch/codex_app.go:1480-1495`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/codex_app.go#L1480-L1495)).
+  A crash leaves a copy of the Codex credential in the temp directory,
+  outside every catalog line. The desktop app's `settings.working_dir`
+  is the only working directory it records
+  ([section 6](#6-project-path-records)).
+
 ## 3. Credentials
 
 - `~/.ollama/id_ed25519` is the only credential: Ollama cloud "sign-in" binds this public key to the account ([`app/auth/connect.go:14-25`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/app/auth/connect.go#L14-L25), [`cmd/cmd.go:1012-1026`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/cmd.go#L1012-L1026)); no token file is written. `id_ed25519.pub` identifies the device.
@@ -63,6 +106,36 @@ None. Ollama writes nothing into repositories. `ollama launch` edits other agent
 - `~/.codex/config.toml`: root `model` set to the chosen model, `model_catalog_json` to the picker catalog, `openai_base_url` to `<ollama host>/api/codex/v1`, `profile` and `model_provider` removed, and the `[desktop]` reasoning efforts extended ([`codex_app.go:312-354`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L312-L354)).
 
 The two catalogs and `config.toml` go through `WriteWithBackup` with the integration name `codex-app`, so their previous versions land in `~/.ollama/backup/codex-app/` ([section 2](#2-per-user-storage)). It reads, without writing, `~/.codex/models_cache.json` and `sessions/` ([`codex_app.go:1447-1466`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L1447-L1466),[`1511`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L1511); [`codex_app_profile.go:54-79`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app_profile.go#L54-L79)). The Codex CLI integration, `ollama launch codex`, writes `~/.codex/model.json` and `~/.codex/ollama-launch.config.toml` instead and leaves `config.toml` alone ([`codex.go:209-232`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L209-L232),[`250-268`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L250-L268),[`675-688`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L675-L688)). All of these are under the `codex-cli|.codex` catalog line; [codex-cli.md](codex-cli.md) lists them.
+
+Source review of 2026-10-19, at
+[`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120):
+`ollama launch claude-desktop` writes a gateway profile for Claude
+Desktop's third-party mode (the build that runs inference through a
+provider the user names) into
+`Library/Application Support/Claude-3p/configLibrary/00000000-0000-4000-8000-000000000114.json`
+on macOS, beside `_meta.json` and `claude_desktop_config.json` in the
+same base
+([`cmd/launch/claude_desktop.go:22-24`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L22-L24),
+[570-583](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L570-L583),
+[634-635](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L634-L635)),
+and the Windows equivalent under `AppData/Local/Claude-3p` or
+`Claude Nest-3p`
+([644-649](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L644-L649)).
+The profile sets `inferenceProvider` `gateway`,
+`inferenceGatewayBaseUrl` to the local server, `inferenceGatewayApiKey`
+to the literal `ollama` (not a credential), `coworkEgressAllowedHosts`,
+both telemetry switches off, and `autoModeEnabled`
+([741-759](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L741-L759)).
+`autoModeEnabled` comes from `integrations.claude-desktop.automode` in
+`~/.ollama/config.json` and is true when that key is unset
+([320-345](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L320-L345);
+[`cmd/config/config.go:19-24`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/config/config.go#L19-L24)),
+so a Claude Desktop launched through Ollama runs with auto mode on
+unless the user turned it off. Writing `autoModeEnabled` into the
+profile is new since `v0.35.1` (`autoModeEnabled` does not occur in
+`cmd/launch/claude_desktop.go` at that tag). The catalog collects the
+`Claude-3p` bases; `AppData/Local/Claude Nest-3p` is not a catalog
+line.
 
 ## 6. Project path records
 

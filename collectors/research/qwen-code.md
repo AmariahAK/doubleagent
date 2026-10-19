@@ -12,6 +12,27 @@ for directories whose writer lives in code not grepped here). `~/.qwen`
 does not exist on this workstation, so no live check. The layout has grown
 far beyond the v1.1 catalog (channels, boards, arena, workflows, audits).
 
+- **Source review (2026-10-19).** HEAD
+  [`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1)
+  (version 0.25.3) against the commit above. `storage.ts`, `paths.ts`
+  and the channel runtime did not change between them.
+  - Permission state: found, collected. The "always allow" rules are
+    written into `settings.json` `permissions.allow`, home and project;
+    both files are collected (the home one flagged secret).
+  - Model: no new file.
+  - Past use: found, collected, not parsed: `usage_record.jsonl` keeps a
+    summary of every removed session, and `projects/<x>/memory/` holds
+    the managed auto-memory ([section 2](#2-per-user-storage)).
+  - Sync, relay and origin: channels as before. The Qwen Code Desktop
+    app's config directory is not in the catalog
+    ([section 2](#2-per-user-storage)).
+  - Scratch directories: found; `scratch-workspaces/` is excluded and
+    `<project>/.qwen/worktrees/` is collected in full
+    ([section 5](#5-project-local-files)).
+  - Deletion: found; see [section 2](#2-per-user-storage).
+  - Version drift: none in paths.
+  - Bad lines: not a collector concern.
+
 ## 2. Per-user storage
 
 `QWEN_DIR = '.qwen'` ([`core/src/utils/paths.ts:14`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/utils/paths.ts#L14)). `getGlobalQwenDir()`
@@ -69,6 +90,49 @@ the install dir, [`cli/src/i18n/index.ts:47`](https://github.com/QwenLM/qwen-cod
 `attachments/`, `scheduled_tasks.json`, `otel/` (docs). No shadow git
 repository exists in this fork (`gitService.ts` absent).
 
+Additions from the source review of 2026-10-19, at
+[`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1):
+
+- `usage_record.jsonl`: one JSON summary per session (id, project,
+  start, duration, models, tool counts, lines changed), to which a
+  session's usage is salvaged before its transcript is removed
+  ([`core/src/services/usageHistoryService.ts:37-77`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/usageHistoryService.ts#L37-L77);
+  [`core/src/services/sessionService.ts:3347-3358`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/sessionService.ts#L3347-L3358)).
+  The `memories/` and `memory/` directories this document lists as
+  docs-only are written by code: `projects/<sanitized project>/memory/`
+  holds the managed auto-memory, on by default, and `memories/` the
+  user-level form
+  ([`core/src/memory/paths.ts:19`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/memory/paths.ts#L19),
+  [34](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/memory/paths.ts#L34),
+  [116-148](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/memory/paths.ts#L116-L148)).
+  All collected under `.qwen`.
+- Deletion: removing a session deletes its transcript, sidecars,
+  prompt ledger, file-history backups and `resources/<sessionId>`
+  ([`sessionService.ts:3539-3558`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/sessionService.ts#L3539-L3558)),
+  and leaves `logs.json`, `shell_history`, `checkpoint-<tag>.json` and
+  `usage_record.jsonl`. `tmp/<hash>/checkpoints/` is deleted at every
+  start unless an execution sandbox is configured
+  ([`cli/src/utils/cleanup.ts:126-136`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/utils/cleanup.ts#L126-L136);
+  [`cli/src/llm.tsx:587`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/llm.tsx#L587)).
+  Unlike Gemini CLI there is no age-based session cleanup.
+- Qwen Code Desktop (`packages/desktop`), a Tauri app that wraps the
+  Web Shell served by `qwen serve`, has the identifier
+  `com.alibaba.qwen-code` and keeps `desktop-state.json` (window and
+  zoom state) in its own config directory
+  ([`desktop/src-tauri/tauri.conf.json:3-5`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/desktop/src-tauri/tauri.conf.json#L3-L5);
+  [`desktop/src-tauri/src/desktop_state.rs:177-182`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/desktop/src-tauri/src/desktop_state.rs#L177-L182));
+  its sessions are ordinary `~/.qwen` transcripts. That directory and
+  the webview's own storage are not in the catalog; their platform
+  paths were not determined from source.
+
+Scratch directories: `scratch-workspaces/` is the managed scratch root
+`qwen serve` uses for a session without a workspace
+([`cli/src/serve/run-qwen-serve.ts:5285-5292`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/serve/run-qwen-serve.ts#L5285-L5292)).
+It is under the home entry `.qwen` and excluded, so the files a session
+made there are not copied (the directory is one `skipped_excluded`
+manifest row), while the transcript that names it is collected. The project
+worktrees are in [section 5](#5-project-local-files).
+
 ## 3. Credentials
 
 - `oauth_creds.json` plaintext, mode 0600, plus `oauth_creds.lock`
@@ -123,6 +187,19 @@ outputs), `.qwen/resources`, `.qwen/startup-perf`. Keep `file-history/`
 ([746-750](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/config/storage.ts#L746-L750)), `.qwen/skills` and `.agents/skills` ([17](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/config/storage.ts#L17)), `.qwen/batch`
 ([`cli/src/commands/batch-workflow.ts:486`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/commands/batch-workflow.ts#L486)). No per-project database.
 
+Source review of 2026-10-19, at
+[`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1):
+`.qwen/settings.json` in a project also holds the "always allow" rules
+the user saved for that project, under `permissions.allow`
+([`cli/src/config/config.ts:2624-2636`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/config/config.ts#L2624-L2636)).
+`.qwen/worktrees/<slug>` is a scratch directory: a git worktree the
+`enter_worktree` tool creates
+([`core/src/tools/enter-worktree.ts:29`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/tools/enter-worktree.ts#L29)).
+No exclusion covers it, so the `qwen-code|.qwen` project entry collects
+each worktree checkout in full. `.qwen/memory/` holds the auto-memory
+when `QWEN_CODE_MEMORY_LOCAL=1` is set
+([`core/src/memory/paths.ts:116-148`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/memory/paths.ts#L116-L148)).
+
 ## 6. Where the project path is recorded
 
 - `projects/<sanitized>/chats/*.jsonl`: first record has `cwd`
@@ -132,6 +209,15 @@ outputs), `.qwen/resources`, `.qwen/startup-perf`. Keep `file-history/`
 - `tmp/<sha256>` is one-way; match it by hashing discovered paths.
 - `sessions/<pid>.json` and `usage_record.jsonl` likely carry a cwd but the
   keys were not verified.
+- Source review of 2026-10-19, at
+  [`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1):
+  `usage_record.jsonl` records carry the session's project as
+  `project` beside `sessionId`
+  ([`core/src/services/usageHistoryService.ts:37-43`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/usageHistoryService.ts#L37-L43)),
+  and survive the session's deletion. `chats/<sessionId>.worktree.json`
+  holds `originalCwd`, the project, and `worktreePath`, the scratch
+  worktree inside it
+  ([`core/src/services/worktreeSessionService.ts:38-80`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/worktreeSessionService.ts#L38-L80)).
 
 ## 7. Confidence
 

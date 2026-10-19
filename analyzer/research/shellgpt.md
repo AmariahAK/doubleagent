@@ -11,6 +11,30 @@ relative to the clone. Storage locations are in
 [TheR1D/shell_gpt](https://github.com/TheR1D/shell_gpt) at [`a082bd5327ce0c4ef5a0284d9060e833be9444a6`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6)
 (2026-07-02), version 1.5.1, MIT. Open source.
 
+- **Source review (2026-10-19).** HEAD of the default branch is still
+  [`a082bd5`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6),
+  the commit above, so nothing has drifted.
+  - Permission state: found, not parsed. A function call the model
+    asks for runs with no prompt at all; the standing switches are
+    `.sgptrc` keys. The `--shell` `[E]xecute, [M]odify, [D]escribe,
+    [A]bort` choice and the REPL's `e` are not recorded. Detail in
+    [section 8](#8-parser-plan).
+  - Model: found, not parsed: `DEFAULT_MODEL` in `.sgptrc` is the only
+    record; a `--model` option leaves none.
+  - Past use: found. The response cache holds the assistant text of
+    chat turns as well as one-shot answers and outlives the chat file;
+    not parsed, and not collected at its current Windows path.
+  - Sync, relay and origin: already covered (none).
+  - Scratch directories: none; sgpt runs in the caller's directory and
+    records none.
+  - Deletion: no delete command. The chat id `temp` is deleted at each
+    use, a chat file keeps only its last 100 messages, the response
+    cache its newest 100 files, and the operating system's temp cleanup
+    removes the rest.
+  - Version drift: none.
+  - Bad lines: covered (a truncated array yields the messages before
+    the cut and one `system` row).
+
 ## 2. Transcript files
 
 - `<CHAT_CACHE_PATH>/<chat id>`: one file per session started with
@@ -132,6 +156,71 @@ content parses as a JSON array of objects with `role`.
 
 ShellGPT records no model in the chat cache, so the parser yields no
 `model:` rows.
+
+Source review of 2026-10-19, at
+[`a082bd5`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6),
+one line per requirement class:
+
+- Permission, per call: none recorded, and none asked for function
+  calls. `handle_function_call` appends the call, runs
+  `get_function(name)(**dict_args)` and appends the result with no
+  confirmation
+  ([`sgpt/handlers/handler.py:64-100`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L64-L100)),
+  so every `tool_use` row in a chat file is a command that ran. The
+  `--shell` prompt `[E]xecute, [M]odify, [D]escribe, [A]bort` runs the
+  generated command with `run_command` after the answer is written and
+  records the choice nowhere
+  ([`sgpt/app.py:243-260`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/app.py#L243-L260)),
+  nor does the REPL's `e` in the shell role
+  ([`sgpt/handlers/repl_handler.py:56-59`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/repl_handler.py#L56-L59)).
+- Permission, standing (proposed, not parsed). `.sgptrc` keys
+  `OPENAI_USE_FUNCTIONS` (default `true`: function calls allowed),
+  `DEFAULT_EXECUTE_SHELL_CMD` (default `false`; `true` makes Execute
+  the default answer) and `SHELL_INTERACTION` (default `true`; `false`
+  skips the prompt)
+  ([`sgpt/config.py:29`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L29),
+  [33](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L33),
+  [38](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L38);
+  read at
+  [`app.py:60-61`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/app.py#L60-L61),
+  [79-80](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/app.py#L79-L80),
+  [247](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/app.py#L247)).
+  The environment override of `SHELL_INTERACTION` reads the variable
+  `"SHELL_INTERACTION "`, with a trailing space, so only the file value
+  takes effect in practice. The functions the model may call are the
+  `*.py` files in `~/.config/shell_gpt/functions/`, which
+  `--install-functions` fills with `execute_shell.py`
+  ([`sgpt/llm_functions/init_functions.py:13-22`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/llm_functions/init_functions.py#L13-L22)).
+  Proposed: one `permission setting: <key>=<value> (from .sgptrc, file
+  mtime)` row per key and one `permission setting: function <file name>
+  (from .config/shell_gpt/functions, file mtime)` row per installed
+  function, the API key never read. `.sgptrc` is a secret glob, so a
+  `--no-secrets` collection lacks it.
+- Model: `.sgptrc` `DEFAULT_MODEL` (default `gpt-5.4-mini`,
+  [`config.py:25`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L25))
+  is the model used when no `--model` was given; nothing records a
+  per-call choice. Proposed: one `model: <DEFAULT_MODEL> (configured
+  default, from .sgptrc, file mtime)` row; not a per-session model.
+- Past use: the response cache (secondary, not parsed). `get_completion`
+  of every handler, the chat handler included, is wrapped by the cache
+  decorator, which writes the full response text to `<CACHE_PATH>/<md5
+  of the request>` unless it contains a function call
+  ([`handler.py:102-110`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L102-L110);
+  [`sgpt/cache.py:30-44`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L30-L44)).
+  So the answers to chat turns that the 100-message cut dropped, and to
+  one-shot prompts that have no chat file, survive there as text with
+  no prompt, time or session; they join on text only. The newest 100
+  files are kept
+  ([`cache.py:46-61`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L46-L61)).
+  Its Windows path since 0.9.0 is `AppData/Local/Temp/cache`, which no
+  catalog line names.
+- Sync, relay and origin: as above; the agent records none.
+- Scratch directories: none.
+- Deletion: no delete command; see [section 2](#2-transcript-files) for
+  `temp` and the truncation.
+- Version drift: none.
+- Bad lines: covered; the response cache, if parsed, is one text per
+  file with nothing to cut.
 
 Sync: ShellGPT records no sync state, because it has no feature that
 uploads a session. Its only network client is the chat completion call:

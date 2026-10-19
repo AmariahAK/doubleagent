@@ -16,6 +16,45 @@ Paths, credentials and the rest of the per-user state are in
 [QwenLM/qwen-code](https://github.com/QwenLM/qwen-code) at [`2c591ecc08a6fa080342f9b1b9f7f43215178cbb`](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb) (2026-10-03),
 version 0.24.7, Apache-2.0. Open source.
 
+- **Source review (2026-10-19).** HEAD
+  [`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1)
+  (2026-10-20 UTC+8, version 0.25.3) against the commit above. Drift
+  from Gemini CLI, checked first: Qwen Code has no `auto-saved.toml`
+  policy file (an "always allow" goes to `settings.json`
+  `permissions.allow`), no session retention cleanup
+  (`sessionRetention` and `maxAge` occur in no session code), and an
+  AUTO approval mode with a model classifier that Gemini CLI lacks; it
+  keeps Gemini's start-up deletion of `checkpoints/`.
+  - Permission state: found, not parsed. Every user record now carries
+    `executionContext.approvalMode`; `session_approval_mode` records,
+    the per-call `decision` inside `ui_telemetry` records and the
+    `permissions` lists in `settings.json` are read only as generic
+    rows or not at all. Detail in [section 8](#8-parser-plan).
+  - Model: found. `executionContext.modelId` on every user record is
+    new and not read; `session_model`, assistant `model` and the
+    `logs.json` switch are covered.
+  - Past use: found. `usage_record.jsonl`, written for a session before
+    its transcript is deleted, and the managed auto-memory directory
+    are not parsed. Detail in [section 2](#2-transcript-files).
+  - Sync, relay and origin: relay covered (channels). New surfaces not
+    reviewed in depth: the Qwen Code Desktop app and the `qwen serve`
+    Local Control phone sharing (see [section 8](#8-parser-plan)).
+  - Scratch directories: found. `~/.qwen/scratch-workspaces/` is
+    already classed by the catalog rule; `<project>/.qwen/worktrees/<slug>`
+    is not.
+  - Deletion: found; see [section 2](#2-transcript-files).
+  - Version drift: found. New record subtypes (`agent_mention`,
+    `agent_message`, `turn_attempt`, `code_mode_tool_result`), the
+    `executionContext` field, `cancelReason` on `turn_result`, and
+    `trustedFolders.json` now parsed as JSONC (JSON with comments) with trailing commas and
+    a byte-order mark allowed. The parser reads `notification`, `cron`,
+    `agent_mention` and `agent_message` records, all `type: "user"`, as
+    user prompts.
+  - Bad lines: covered for the transcript, `logs.json`,
+    `trustedFolders.json` and the channel routes; a `trustedFolders.json`
+    that Qwen accepts (trailing comma, byte-order mark) is reported by
+    the parser as not a JSON object.
+
 ## 2. Transcript files
 
 Base directory `~/.qwen`, overridable by `$QWEN_HOME`
@@ -67,6 +106,75 @@ Base directory `~/.qwen`, overridable by `$QWEN_HOME`
   [892](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/commands/channel/daemon-worker.ts#L892)),
   so that file stays. The session transcripts themselves are ordinary
   `chats/<sessionId>.jsonl` files.
+
+Past use beyond the transcript, at
+[`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1)
+(source review of 2026-10-19). All are collected under `.qwen`; only
+`logs.json` is parsed.
+
+- `logs.json` (secondary, parsed): user prompts and model switches.
+  The session delete does not touch it (`logs.json` and
+  `getProjectTempDir` do not occur in
+  [`core/src/services/sessionService.ts`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/sessionService.ts)).
+- `~/.qwen/usage_record.jsonl` (secondary, not parsed): one JSON object
+  per session, `{version: 1, sessionId, timestamp, startTime, project,
+  durationMs, totalLatencyMs?, models: {<model id>: {requests,
+  inputTokens, outputTokens, cachedTokens, thoughtsTokens, totalTokens}},
+  tools: {totalCalls, totalSuccess, totalFail, byName: {<tool>: {count,
+  success, fail}}}, files: {linesAdded, linesRemoved}, skills?}`, with
+  epoch-millisecond times, last record per `sessionId` winning
+  ([`core/src/services/usageHistoryService.ts:37-77`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/usageHistoryService.ts#L37-L77),
+  [140](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/usageHistoryService.ts#L140)).
+  Removing a session first salvages its usage into this file and then
+  deletes the transcript
+  ([`sessionService.ts:3347-3358`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/sessionService.ts#L3347-L3358),
+  [3440-3452](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/sessionService.ts#L3440-L3452)),
+  so a deleted session survives here as its id, project, start and
+  duration, the models it used and how often it called each tool. Joins
+  on `sessionId`.
+- `~/.qwen/projects/<sanitized project>/memory/` (a projection, not
+  parsed): the managed auto-memory documents a background agent
+  extracts from conversations, on by default
+  (`memory.enableManagedAutoMemory` and `memory.enableManagedAutoDream`,
+  [`cli/src/config/settingsSchema.ts:2457-2476`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/config/settingsSchema.ts#L2457-L2476);
+  root at
+  [`core/src/memory/paths.ts:116-148`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/memory/paths.ts#L116-L148),
+  or `<project>/.qwen/memory` with `QWEN_CODE_MEMORY_LOCAL=1`). No
+  session id or time; outlives the sessions.
+- `shell_history`, `checkpoint-<tag>.json` and `checkpoints/` as in
+  Gemini CLI (shell history at
+  [`core/src/config/storage.ts:772-774`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/config/storage.ts#L772-L774));
+  `checkpoints/` is deleted at start unless an execution sandbox is
+  configured
+  ([`cli/src/utils/cleanup.ts:126-136`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/utils/cleanup.ts#L126-L136);
+  [`cli/src/llm.tsx:587`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/llm.tsx#L587)).
+
+Deletion: removing a session deletes the transcript and then its
+worktree and pull-request sidecars, its prompt ledger, its file-history
+backups and its managed resources directory
+([`sessionService.ts:3539-3558`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/sessionService.ts#L3539-L3558)).
+It leaves `logs.json`, `shell_history`, the `/chat save` checkpoints,
+`usage_record.jsonl` (with the salvaged summary) and the auto-memory
+documents. There is no age-based retention as in Gemini CLI.
+
+Scratch directories:
+
+- `~/.qwen/scratch-workspaces/`: the managed scratch root `qwen serve`
+  (the daemon behind the Web Shell and the desktop app) prepares for
+  sessions that have no workspace
+  ([`cli/src/serve/run-qwen-serve.ts:5285-5292`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/serve/run-qwen-serve.ts#L5285-L5292)).
+  A transcript whose `cwd` is under it lies under the home catalog
+  entry `.qwen`, so the analyzer's catalog rule already lists it under
+  `scratch_directories`; the collector excludes the directory itself.
+- `<project>/.qwen/worktrees/<slug>`: the git worktree the
+  `enter_worktree` tool creates
+  ([`core/src/tools/enter-worktree.ts:29`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/tools/enter-worktree.ts#L29)),
+  recorded in `chats/<sessionId>.worktree.json` as `{slug,
+  worktreePath, worktreeBranch, originalCwd, workspaceCwd?,
+  originalBranch, originalHeadCommit, supersededBy?, supersedes?}`
+  ([`core/src/services/worktreeSessionService.ts:38-80`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/worktreeSessionService.ts#L38-L80)).
+  Records written inside it carry the worktree as `cwd`. No rule
+  classes it as scratch.
 
 ## 3. Record schema
 
@@ -265,6 +373,119 @@ changed them as follows, at the commit in [section 1](#1-source).
   ([`qwen-live/src/config.ts:867-869`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/qwen-live/src/config.ts#L867-L869));
   it streams audio to the DashScope realtime model (Alibaba Cloud's
   model API), which is the model API, not sync.
+
+Source review of 2026-10-19, at
+[`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1),
+one line per requirement class. `CRS` below is
+[`core/src/services/chatRecordingService.ts`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts)
+at that commit.
+
+- Permission, per call (not parsed). A `system` record with subtype
+  `ui_telemetry` holds `systemPayload.uiEvent`
+  ([CRS 3124-3140](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L3124-L3140);
+  written for every telemetry event,
+  [`core/src/telemetry/loggers.ts:172-175`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/telemetry/loggers.ts#L172-L175)).
+  For a tool call the event has `"event.name": "tool_call"`,
+  `call_id`, `function_name`, `function_args`, `status`
+  (`success`, `error`, `cancelled`) and `decision`, set only when the
+  user was asked: `accept` (allow once), `auto_accept` (any "allow
+  always" choice), `modify` (edited first) or `reject`
+  ([`core/src/telemetry/types.ts:182-245`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/telemetry/types.ts#L182-L245);
+  [`core/src/telemetry/tool-call-decision.ts:9-36`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/telemetry/tool-call-decision.ts#L9-L36)).
+  The parser emits the record as `ui_telemetry: <JSON>`. Proposed:
+  `permission decision: <decision> (tool_call ui_telemetry)` with
+  `tool_name` `function_name` and `tool_use_id` `call_id`, beside the
+  call. No separate record of the AUTO classifier's verdict was found
+  (`classifier` and `denial` do not occur in `CRS`); a call it blocks
+  shows only as the tool result.
+- Permission, mode (not parsed). Every user prompt record, and every
+  `mid_turn_user_message`, carries `executionContext: {modelId,
+  authType?, approvalMode}`
+  ([CRS 475-479](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L475-L479),
+  [2329-2335](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L2329-L2335),
+  [2356-2359](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L2356-L2359),
+  [2420-2422](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L2420-L2422)),
+  `approvalMode` one of `plan`, `default`, `auto-edit`, `auto`, `yolo`
+  ([`core/src/config/approval-mode.ts:7-13`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/config/approval-mode.ts#L7-L13)).
+  A daemon session also writes a `session_approval_mode` record,
+  `systemPayload {mode, prePlanMode?, planExecutionMode?}`, whenever
+  the mode changes
+  ([CRS 749-754](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L749-L754),
+  [3516-3545](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L3516-L3545)).
+  Proposed: `permission setting: approvalMode=<mode>` at a session's
+  first user record and `approvalMode=<old> -> <new>` on each change,
+  tracked per session as the model is; the `session_approval_mode`
+  record read the same way.
+- Permission, standing (not parsed). `settings.json` (`~/.qwen/` and
+  `<project>/.qwen/`) holds `permissions.allow`, `permissions.ask` and
+  `permissions.deny` rule lists and `permissions.autoMode` (the AUTO
+  classifier's hints and limits)
+  ([`cli/src/config/settingsSchema.ts:2691-2740`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/config/settingsSchema.ts#L2691-L2740)),
+  and `tools.approvalMode`, whose default is `auto`
+  ([3286-3300](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/config/settingsSchema.ts#L3286-L3300)).
+  An "always allow" choice for the project or for the user appends its
+  rules to `permissions.allow` of the matching file
+  ([`core/src/core/permission-helpers.ts:194-243`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/core/permission-helpers.ts#L194-L243);
+  [`cli/src/config/config.ts:2624-2636`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/config/config.ts#L2624-L2636)).
+  Proposed: one `permission setting: permissions.<list>=<rule> (from
+  <file>, file mtime)` row per rule and one for `tools.approvalMode`.
+  `~/.qwen/settings.json` is a secret glob, so a `--no-secrets`
+  collection lacks it.
+- Model: `executionContext.modelId` (with `authType`) on each user
+  record is the model in force when the prompt was sent; proposed as a
+  further input to the `model:` tracking above. `session_model`,
+  assistant `model` and `logs.json` `model_switch` are covered.
+- Past use: `usage_record.jsonl` (secondary, joins on `sessionId`;
+  proposed row per record: `session usage: project <project> models
+  <ids> tools <name>=<count>... (from usage_record.jsonl)` at
+  `startTime`), then `shell_history` and `checkpoint-<tag>.json` as in
+  Gemini CLI; the auto-memory directory after a real-install round
+  ([section 2](#2-transcript-files)).
+- Sync, relay and origin: channels covered. Not reviewed in depth: the
+  Qwen Code Desktop app (`packages/desktop`, a Tauri shell, identifier
+  `com.alibaba.qwen-code`, that runs `qwen serve` and keeps only
+  `desktop-state.json` in its own config directory;
+  [`desktop/src-tauri/tauri.conf.json:3-5`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/desktop/src-tauri/tauri.conf.json#L3-L5),
+  [`desktop/src-tauri/src/desktop_state.rs:177-182`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/desktop/src-tauri/src/desktop_state.rs#L177-L182)),
+  and its Local Control setting that shares the live daemon with a
+  phone on the same network
+  ([`desktop/README.md:17`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/desktop/README.md#L17)).
+  Whether either leaves a local record of a paired device was not
+  determined.
+- Scratch directories: a record whose `cwd` lies under
+  `<project>/.qwen/worktrees/`, or a `.worktree.json` sidecar, should
+  yield `scratch directory: <worktreePath> (enter_worktree <slug>)`.
+- Deletion: no row; nothing marks a removed session except its
+  surviving `usage_record.jsonl` entry and `logs.json` prompts.
+- Version drift, record subtypes. `notification` and `cron` records
+  (`type: "user"`, `provenance: "system"`,
+  [CRS 2655-2690](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L2655-L2690))
+  and the new `agent_mention` and `agent_message` records (`type:
+  "user"`, `provenance: "external_agent"` unless a user mention, with
+  `agentId` and `agentName`; messages from another agent of the same
+  workspace,
+  [CRS 2541-2585](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L2541-L2585))
+  are yielded by the parser as `user` rows, so a scheduled-task trigger
+  or another agent's message reads as a prompt the user typed. They
+  should be `system` rows naming the subtype (and the agent). New
+  `turn_attempt` records and `turn_result.cancelReason`
+  ([CRS 998](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L998),
+  [3713-3734](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L3713-L3734))
+  fall to the generic `system` row. A tool result may carry subtype
+  `code_mode_tool_result`
+  ([CRS 403](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L403));
+  the parser reads it as an ordinary `tool_result`.
+- Version drift, `trustedFolders.json`: since the commit first
+  reviewed, Qwen reads the file with `parseJsoncObject`, which allows
+  trailing commas and strips a byte-order mark
+  ([`cli/src/utils/jsonc-editor.ts:24`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/utils/jsonc-editor.ts#L24),
+  [92-107](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/utils/jsonc-editor.ts#L92-L107);
+  [`cli/src/config/trustedFolders.ts:172-182`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/config/trustedFolders.ts#L172-L182)).
+  The shared `trusted_folder_rows` strips comments and calls
+  `json.loads`, so a file Qwen accepts can yield only the whole-file
+  `parser:` row.
+- Bad lines: `usage_record.jsonl` is JSONL and needs `iter_jsonl` and
+  `error_rows` when it is parsed.
 
 Fixture:
 

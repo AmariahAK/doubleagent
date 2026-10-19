@@ -41,6 +41,33 @@ that covers it):
   column; the transcript tables did not change ([section 3](#3-record-schema)).
 - The saved REPL session layer moved from `server/create.go` to
   `create/manifest.go`, same media type and content.
+- **Source review (2026-10-19).** HEAD
+  [`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120)
+  of `main` (latest release `v0.40.6`, 2026-10-16) against `v0.35.1`
+  above. No release `v0.36` to `v0.39` was tagged.
+  - Permission state: found, not parsed. The desktop app still asks
+    nothing before its web tools run, and the REPL has no tools. The
+    one standing setting is `integrations.<name>.automode` in
+    `.ollama/config.json`, which `ollama launch claude-desktop` now
+    writes into Claude Desktop's profile as `autoModeEnabled`, true
+    when unset ([section 8](#8-parser-plan)).
+  - Model: covered (`messages.model_name`). The REPL's new decision
+    mode for yes/no classifier models (`cmd/decide.go`) keeps nothing
+    on disk beyond the readline history.
+  - Past use: covered. `.ollama/history` is parsed; the saved REPL
+    session layer stays a manual step.
+  - Sync, relay and origin: covered; nothing new.
+  - Scratch directories: none under the home. Two temporary
+    directories outside it are in
+    [section 2 of `collectors/research/ollama.md`](../../collectors/research/ollama.md#2-per-user-storage).
+  - Deletion: covered; the chat delete is local.
+  - Version drift: none for the parser. `app/store/`, `readline/` and
+    `app/ui/ui.go`'s chat writes did not change (the `ui.go` diff
+    touches only an error message and a request header).
+  - Bad lines: one gap. The parser decodes `.ollama/history` with
+    `errors="replace"`, so a line that is not valid UTF-8 becomes a
+    `user` row with replacement characters and no `parser:` row; issue
+    136 asks for the line to be reported as read.
 
 ## 2. Transcript stores
 
@@ -459,6 +486,33 @@ a chat's first assistant message that names a model, and
 whose `model_name` differs, with the message's time and `source_line`.
 `config.json` `last_model` is not read for rows. The research records no
 permission state for the app, so there are no permission rows.
+
+Source review of 2026-10-19, at
+[`6787222`](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120),
+one line per requirement class:
+
+- Permission: the desktop app asks before no tool call and the REPL
+  has no tools, so there is no per-call decision. Standing:
+  `.ollama/config.json` `integrations.<name>.automode`, a boolean
+  ([`cmd/config/config.go:19-24`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/config/config.go#L19-L24)).
+  For `claude-desktop` it becomes `autoModeEnabled` in the Claude
+  Desktop profile Ollama writes, true when the key is unset
+  ([`cmd/launch/claude_desktop.go:320-345`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L320-L345),
+  [741-759](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/claude_desktop.go#L741-L759)).
+  Proposed: `permission setting: integrations.<name>.automode=<value>
+  (from .ollama/config.json, file mtime)` for each integration that
+  has the key. The row says what Ollama configured for the other
+  agent; that agent's own parser reads what it did with it.
+- Model: covered; `last_model` and each integration's `models[]` are
+  configuration, not use.
+- Past use: covered, as in [section 2](#2-transcript-stores).
+- Sync, relay and origin: covered above; the agent records none.
+- Scratch directories: none.
+- Deletion: covered above.
+- Version drift: none for the parser.
+- Bad lines: `.ollama/history` should report a line that does not
+  decode as UTF-8 through `error_rows` with the raw line, rather than
+  replace its bytes.
 
 Sync: Ollama records no sync state, because it has no session sync. No
 release keeps a server copy of a chat: the desktop app's chat routes
