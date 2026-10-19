@@ -56,8 +56,6 @@ start and the option table, then:
 - [Testing](../collectors/docs/testing.md) and
   [Internals](../collectors/docs/internals.md): for developers changing
   the collectors.
-- [Collector research](../collectors/research/README.md): the evidence
-  behind every catalog entry, one document per agent.
 
 ## Analyzer
 
@@ -85,8 +83,15 @@ start, the commands and the option table, then:
 - [Options](../analyzer/docs/options.md): every option and exit code.
 - [Development](../analyzer/docs/development.md): tests, lint checks and
   adding a parser.
-- [Analyzer research](../analyzer/research/README.md): how each agent
-  records its transcripts, one document per agent.
+
+## Research
+
+[Research](../research/README.md) holds one document per agent: where the
+agent keeps its state, which files are credentials and what the collector
+excludes, the evidence behind every catalog entry; and how the agent
+records its transcripts and how the parser reads them, the evidence behind
+every parser. The index lists every document with its evidence level and
+parse status, and which records survive a delete.
 
 ## Agent lab
 

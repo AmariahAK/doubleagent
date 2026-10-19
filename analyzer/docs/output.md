@@ -41,7 +41,7 @@ Some project files belong to no single agent, because several agents read
 the same file. These are the shared files: the collector records them
 with agent `project`, and the tables count them on the project's
 `(shared)` line. They are the `project` lines of the project catalog, and
-[`collectors/research/shared.md`](../../collectors/research/shared.md)
+[`research/shared.md`](../../research/shared.md)
 and the per-agent research documents cite each reader:
 
 - `AGENTS.md`, the repository instruction file read by Codex CLI, Copilot
@@ -1597,8 +1597,8 @@ when the task's `ui_messages.json` is absent, because the two record different
 texts for the same turn (the API history wraps the first prompt in `<task>`
 tags, and its tool calls are content blocks where the UI messages have one
 JSON record per tool), so the rule could not pair them and the task's turns
-would be shown twice; see [section 8 of
-`research/cline.md`](../research/cline.md#8-parser-plan).
+would be shown twice; see [section 13 of
+`research/cline.md`](../../research/cline.md#13-parser-plan).
 
 ## sessions.jsonl
 

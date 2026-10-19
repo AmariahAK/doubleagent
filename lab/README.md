@@ -68,7 +68,7 @@ no transcript can be parsed yet, `collect` says so and still keeps the
 collection.
 
 Read the manifest for `secret: true` and `skipped_excluded` rows, compare
-what the agent wrote against `collectors/research/<agent>.md`, and lift
+what the agent wrote against `research/<agent>.md`, and lift
 record shapes from the exported home into analyzer fixtures. The export holds
 whatever credentials the agents wrote, so `lab/out` is gitignored. Delete it
 when finished, and replace any real token in a record lifted into a fixture.

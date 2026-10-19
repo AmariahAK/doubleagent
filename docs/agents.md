@@ -20,66 +20,67 @@ DoubleAgent does with its files. The status is one of three words:
   command reports these agents as `collected only`.
 
 For a `backlog` or `collected` agent, "Validated against" gives the
-evidence level of the collector research, and the agent's subsection
-under [Collected agents](#collected-agents) lists what the collector
-gathers. Notes links the research documents and the open issues. The
+evidence level of the Collection part of the agent's research document,
+and the agent's subsection under [Collected agents](#collected-agents)
+lists what the collector gathers. Notes links the research document and
+the open issues. The
 agent name in each row links to its subsection.
 
 | Agent | Status | Validated against | Notes |
 | --- | --- | --- | --- |
-| [`agent-zero`](#agent-zero) | parsed | source; fixture only | [collector research](../collectors/research/agent-zero.md); [analyzer research](../analyzer/research/agent-zero.md) |
-| [`aider`](#aider) | parsed | source; fixture only | [collector research](../collectors/research/aider.md); [analyzer research](../analyzer/research/aider.md) |
-| [`amp`](#amp) | backlog | Shipped binary strings, docs | [collector research](../collectors/research/amp.md); [issue 53](https://github.com/seanthegeek/doubleagent/issues/53); prompt history and thread logs; full threads are server-side |
-| [`antigravity`](#antigravity) | parsed | real installs: WSL, macOS, Ubuntu, Windows (October 2026) | [collector research](../collectors/research/antigravity.md); [analyzer research](../analyzer/research/antigravity.md) |
-| [`augment`](#augment) | backlog | Shipped bundle, docs | [collector research](../collectors/research/augment.md); [issue 55](https://github.com/seanthegeek/doubleagent/issues/55); full conversations in `.augment/sessions/*.json` and a prompt history |
-| [`autogen-studio`](#autogen-studio) | backlog | Source | [collector research](../collectors/research/autogen-studio.md); [issue 69](https://github.com/seanthegeek/doubleagent/issues/69); SQLite `autogen04203.db` with the `message`, `session` and `run` tables |
-| [`camel-ai`](#camel-ai) | collected | Source | [collector research](../collectors/research/camel-ai.md); no transcripts under the home; history is in the working directory |
-| [`chatgpt-desktop`](#chatgpt-desktop) | parsed | real installs: Windows, macOS (October 2026) | [collector research](../collectors/research/chatgpt-desktop.md); [analyzer research](../analyzer/research/chatgpt-desktop.md); [issue 49](https://github.com/seanthegeek/doubleagent/issues/49); ChatGPT conversations are listed only, their text is server-side; Codex threads parse as `codex-cli` |
-| [`claude-code`](#claude-code) | parsed | real installs: Linux (WSL2), macOS (October 2026) | [collector research](../collectors/research/claude-code.md); [analyzer research](../analyzer/research/claude-code.md) |
-| [`claude-desktop`](#claude-desktop) | parsed | real installs: Windows (MSIX), Linux, macOS (October 2026) | [collector research](../collectors/research/claude-desktop.md); [analyzer research](../analyzer/research/claude-desktop.md) |
-| [`cline`](#cline) | parsed | source; fixture only | [collector research](../collectors/research/cline.md); [analyzer research](../analyzer/research/cline.md) |
-| [`codex-cli`](#codex-cli) | parsed | real installs: Windows, macOS, Ubuntu (October 2026) | [collector research](../collectors/research/codex-cli.md); [analyzer research](../analyzer/research/codex-cli.md) |
-| [`cody`](#cody) | parsed | source; fixture only | [collector research](../collectors/research/cody.md); [analyzer research](../analyzer/research/cody.md) |
-| [`continue`](#continue) | parsed | source; fixture only | [collector research](../collectors/research/continue.md); [analyzer research](../analyzer/research/continue.md) |
-| [`copilot`](#copilot) | collected | Source (the vendored language server) | [collector research](../collectors/research/copilot.md); an OAuth token store with no transcripts; Copilot Chat is parsed as `vscode` |
-| [`copilot-cli`](#copilot-cli) | parsed | bundle and real installs: macOS, Linux, Windows (winget 1.0.98 and Copilot Desktop's bundled 1.0.99-2) (October 2026) | [collector research](../collectors/research/copilot-cli.md); [analyzer research](../analyzer/research/copilot-cli.md); [issue 132](https://github.com/seanthegeek/doubleagent/issues/132); the legacy flat `session-state/<id>.jsonl` transcript is not parsed yet |
-| [`copilot-desktop`](#copilot-desktop) | parsed | shipped app and real installs: Linux, Windows (October 2026) | [collector research](../collectors/research/copilot-desktop.md); [analyzer research](../analyzer/research/copilot-desktop.md); [issue 147](https://github.com/seanthegeek/doubleagent/issues/147); [issue 149](https://github.com/seanthegeek/doubleagent/issues/149): the inventory lists the app's own directories as projects |
-| [`crewai`](#crewai) | backlog | Source, appdirs source | [collector research](../collectors/research/crewai.md); [issue 140](https://github.com/seanthegeek/doubleagent/issues/140); `latest_kickoff_task_outputs.db` holds every task's output with its messages |
-| [`crush`](#crush) | parsed | source; fixture only | [collector research](../collectors/research/crush.md); [analyzer research](../analyzer/research/crush.md) |
-| [`cursor`](#cursor) | backlog | Shipped Agent CLI bundle, docs, forum, write-ups | [collector research](../collectors/research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); blocked on format research: the `state.vscdb` key layout varies by version |
-| [`dify`](#dify) | backlog | Source | [collector research](../collectors/research/dify.md); [issue 142](https://github.com/seanthegeek/doubleagent/issues/142); sandbox `shellctl.db` and job logs hold shell jobs; chats in PostgreSQL |
-| [`factory-droid`](#factory-droid) | backlog | Shipped binary strings, docs | [collector research](../collectors/research/factory-droid.md); [issue 54](https://github.com/seanthegeek/doubleagent/issues/54); JSONL session transcripts under `.factory/sessions` and a prompt history |
-| [`flowise`](#flowise) | backlog | Source | [collector research](../collectors/research/flowise.md); [issue 68](https://github.com/seanthegeek/doubleagent/issues/68); `database.sqlite` with `chat_message` (tool use and agent reasoning) and `execution` |
-| [`gemini-cli`](#gemini-cli) | parsed | source; fixture only | [collector research](../collectors/research/gemini-cli.md); [analyzer research](../analyzer/research/gemini-cli.md) |
-| [`goose`](#goose) | parsed | source; fixture only | [collector research](../collectors/research/goose.md); [analyzer research](../analyzer/research/goose.md) |
-| [`hermes`](#hermes) | parsed | source; fixture only | [collector research](../collectors/research/hermes.md); [analyzer research](../analyzer/research/hermes.md) |
-| [`kilo-code`](#kilo-code) | parsed | source; fixture only | [collector research](../collectors/research/kilo-code.md); [analyzer research](../analyzer/research/kilo-code.md) |
-| [`kiro`](#kiro) | parsed | source; fixture only | [collector research](../collectors/research/kiro.md); [analyzer research](../analyzer/research/kiro.md) |
-| [`langflow`](#langflow) | backlog | Source, platformdirs source; Desktop from docs only | [collector research](../collectors/research/langflow.md); [issue 141](https://github.com/seanthegeek/doubleagent/issues/141); Desktop's `database.db`; the server's `langflow.db` is not collected |
-| [`letta`](#letta) | parsed | source; fixture only | [collector research](../collectors/research/letta.md); [analyzer research](../analyzer/research/letta.md) |
-| [`little-coder`](#little-coder) | parsed | source; fixture only | [collector research](../collectors/research/little-coder.md); [analyzer research](../analyzer/research/little-coder.md) |
-| [`local-deep-research`](#local-deep-research) | backlog | Source, platformdirs source | [collector research](../collectors/research/local-deep-research.md); [issue 56](https://github.com/seanthegeek/doubleagent/issues/56); history and chat in SQLCipher databases keyed from the login password |
-| [`metagpt`](#metagpt) | collected | Source | [collector research](../collectors/research/metagpt.md); configuration only; its workspace and `team.json` are under the working directory |
-| [`muse-code`](#muse-code) | parsed | binary strings and real install: Linux (October 2026) | [collector research](../collectors/research/muse-code.md); [analyzer research](../analyzer/research/muse-code.md) |
-| [`n8n`](#n8n) | backlog | Source | [collector research](../collectors/research/n8n.md); [issue 67](https://github.com/seanthegeek/doubleagent/issues/67); `database.sqlite` executions and chats, and the gateway's tool-call log |
-| [`nanobot`](#nanobot) | parsed | source; fixture only | [collector research](../collectors/research/nanobot.md); [analyzer research](../analyzer/research/nanobot.md) |
-| [`ollama`](#ollama) | parsed | source; fixture only | [collector research](../collectors/research/ollama.md); [analyzer research](../analyzer/research/ollama.md) |
-| [`open-interpreter`](#open-interpreter) | parsed | source; fixture only | [collector research](../collectors/research/open-interpreter.md); [analyzer research](../analyzer/research/open-interpreter.md); [issue 70](https://github.com/seanthegeek/doubleagent/issues/70); the legacy Python tool's `conversations/*.json` files are collected but not parsed yet |
-| [`openclaw`](#openclaw) | parsed | source; fixture only | [collector research](../collectors/research/openclaw.md); [analyzer research](../analyzer/research/openclaw.md) |
-| [`opencode`](#opencode) | parsed | source; fixture only | [collector research](../collectors/research/opencode.md); [analyzer research](../analyzer/research/opencode.md); [issue 139](https://github.com/seanthegeek/doubleagent/issues/139) |
-| [`openhands`](#openhands) | parsed | source; fixture only | [collector research](../collectors/research/openhands.md); [analyzer research](../analyzer/research/openhands.md) |
-| [`pearai`](#pearai) | parsed | source; fixture only | [collector research](../collectors/research/pearai.md); [analyzer research](../analyzer/research/pearai.md) |
-| [`pi`](#pi) | parsed | source; fixture only | [collector research](../collectors/research/pi.md); [analyzer research](../analyzer/research/pi.md) |
-| [`pydantic-clai`](#pydantic-clai) | backlog | Source, PyPI wheel | [collector research](../collectors/research/pydantic-clai.md); [issue 66](https://github.com/seanthegeek/doubleagent/issues/66); CLAI 2.0 `sessions.db` conversations and the prompt histories |
-| [`qwen-code`](#qwen-code) | parsed | source; fixture only | [collector research](../collectors/research/qwen-code.md); [analyzer research](../analyzer/research/qwen-code.md) |
-| [`roo-code`](#roo-code) | parsed | source; fixture only | [collector research](../collectors/research/roo-code.md); [analyzer research](../analyzer/research/roo-code.md) |
-| [`shared`](#shared) | collected | Derived from the per-agent documents | [collector research](../collectors/research/shared.md); cross-agent instruction and skill directories with no transcripts |
-| [`shellgpt`](#shellgpt) | parsed | source; fixture only | [collector research](../collectors/research/shellgpt.md); [analyzer research](../analyzer/research/shellgpt.md) |
-| [`tabby`](#tabby) | parsed | source; fixture only | [collector research](../collectors/research/tabby.md); [analyzer research](../analyzer/research/tabby.md) |
-| [`twinny`](#twinny) | parsed | source; fixture only | [collector research](../collectors/research/twinny.md); [analyzer research](../analyzer/research/twinny.md) |
-| [`vscode`](#vscode) | parsed | source; fixture only | [collector research](../collectors/research/vscode.md); [analyzer research](../analyzer/research/vscode.md) |
-| [`windsurf`](#windsurf) | backlog | Official docs, community write-ups | [collector research](../collectors/research/windsurf.md); [issue 52](https://github.com/seanthegeek/doubleagent/issues/52); blocked on format research: Cascade's `.pb` files have no published schema |
-| [`zed`](#zed) | parsed | source; fixture only | [collector research](../collectors/research/zed.md); [analyzer research](../analyzer/research/zed.md) |
+| [`agent-zero`](#agent-zero) | parsed | source; fixture only | [research](../research/agent-zero.md) |
+| [`aider`](#aider) | parsed | source; fixture only | [research](../research/aider.md) |
+| [`amp`](#amp) | backlog | Shipped binary strings, docs | [research](../research/amp.md); [issue 53](https://github.com/seanthegeek/doubleagent/issues/53); prompt history and thread logs; full threads are server-side |
+| [`antigravity`](#antigravity) | parsed | real installs: WSL, macOS, Ubuntu, Windows (October 2026) | [research](../research/antigravity.md) |
+| [`augment`](#augment) | backlog | Shipped bundle, docs | [research](../research/augment.md); [issue 55](https://github.com/seanthegeek/doubleagent/issues/55); full conversations in `.augment/sessions/*.json` and a prompt history |
+| [`autogen-studio`](#autogen-studio) | backlog | Source | [research](../research/autogen-studio.md); [issue 69](https://github.com/seanthegeek/doubleagent/issues/69); SQLite `autogen04203.db` with the `message`, `session` and `run` tables |
+| [`camel-ai`](#camel-ai) | collected | Source | [research](../research/camel-ai.md); no transcripts under the home; history is in the working directory |
+| [`chatgpt-desktop`](#chatgpt-desktop) | parsed | real installs: Windows, macOS (October 2026) | [research](../research/chatgpt-desktop.md); [issue 49](https://github.com/seanthegeek/doubleagent/issues/49); ChatGPT conversations are listed only, their text is server-side; Codex threads parse as `codex-cli` |
+| [`claude-code`](#claude-code) | parsed | real installs: Linux (WSL2), macOS (October 2026) | [research](../research/claude-code.md) |
+| [`claude-desktop`](#claude-desktop) | parsed | real installs: Windows (MSIX), Linux, macOS (October 2026) | [research](../research/claude-desktop.md) |
+| [`cline`](#cline) | parsed | source; fixture only | [research](../research/cline.md) |
+| [`codex-cli`](#codex-cli) | parsed | real installs: Windows, macOS, Ubuntu (October 2026) | [research](../research/codex-cli.md) |
+| [`cody`](#cody) | parsed | source; fixture only | [research](../research/cody.md) |
+| [`continue`](#continue) | parsed | source; fixture only | [research](../research/continue.md) |
+| [`copilot`](#copilot) | collected | Source (the vendored language server) | [research](../research/copilot.md); an OAuth token store with no transcripts; Copilot Chat is parsed as `vscode` |
+| [`copilot-cli`](#copilot-cli) | parsed | bundle and real installs: macOS, Linux, Windows (winget 1.0.98 and Copilot Desktop's bundled 1.0.99-2) (October 2026) | [research](../research/copilot-cli.md); [issue 132](https://github.com/seanthegeek/doubleagent/issues/132); the legacy flat `session-state/<id>.jsonl` transcript is not parsed yet |
+| [`copilot-desktop`](#copilot-desktop) | parsed | shipped app and real installs: Linux, Windows (October 2026) | [research](../research/copilot-desktop.md); [issue 147](https://github.com/seanthegeek/doubleagent/issues/147); [issue 149](https://github.com/seanthegeek/doubleagent/issues/149): the inventory lists the app's own directories as projects |
+| [`crewai`](#crewai) | backlog | Source, appdirs source | [research](../research/crewai.md); [issue 140](https://github.com/seanthegeek/doubleagent/issues/140); `latest_kickoff_task_outputs.db` holds every task's output with its messages |
+| [`crush`](#crush) | parsed | source; fixture only | [research](../research/crush.md) |
+| [`cursor`](#cursor) | backlog | Shipped Agent CLI bundle, docs, forum, write-ups | [research](../research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); blocked on format research: the `state.vscdb` key layout varies by version |
+| [`dify`](#dify) | backlog | Source | [research](../research/dify.md); [issue 142](https://github.com/seanthegeek/doubleagent/issues/142); sandbox `shellctl.db` and job logs hold shell jobs; chats in PostgreSQL |
+| [`factory-droid`](#factory-droid) | backlog | Shipped binary strings, docs | [research](../research/factory-droid.md); [issue 54](https://github.com/seanthegeek/doubleagent/issues/54); JSONL session transcripts under `.factory/sessions` and a prompt history |
+| [`flowise`](#flowise) | backlog | Source | [research](../research/flowise.md); [issue 68](https://github.com/seanthegeek/doubleagent/issues/68); `database.sqlite` with `chat_message` (tool use and agent reasoning) and `execution` |
+| [`gemini-cli`](#gemini-cli) | parsed | source; fixture only | [research](../research/gemini-cli.md) |
+| [`goose`](#goose) | parsed | source; fixture only | [research](../research/goose.md) |
+| [`hermes`](#hermes) | parsed | source; fixture only | [research](../research/hermes.md) |
+| [`kilo-code`](#kilo-code) | parsed | source; fixture only | [research](../research/kilo-code.md) |
+| [`kiro`](#kiro) | parsed | source; fixture only | [research](../research/kiro.md) |
+| [`langflow`](#langflow) | backlog | Source, platformdirs source; Desktop from docs only | [research](../research/langflow.md); [issue 141](https://github.com/seanthegeek/doubleagent/issues/141); Desktop's `database.db`; the server's `langflow.db` is not collected |
+| [`letta`](#letta) | parsed | source; fixture only | [research](../research/letta.md) |
+| [`little-coder`](#little-coder) | parsed | source; fixture only | [research](../research/little-coder.md) |
+| [`local-deep-research`](#local-deep-research) | backlog | Source, platformdirs source | [research](../research/local-deep-research.md); [issue 56](https://github.com/seanthegeek/doubleagent/issues/56); history and chat in SQLCipher databases keyed from the login password |
+| [`metagpt`](#metagpt) | collected | Source | [research](../research/metagpt.md); configuration only; its workspace and `team.json` are under the working directory |
+| [`muse-code`](#muse-code) | parsed | binary strings and real install: Linux (October 2026) | [research](../research/muse-code.md) |
+| [`n8n`](#n8n) | backlog | Source | [research](../research/n8n.md); [issue 67](https://github.com/seanthegeek/doubleagent/issues/67); `database.sqlite` executions and chats, and the gateway's tool-call log |
+| [`nanobot`](#nanobot) | parsed | source; fixture only | [research](../research/nanobot.md) |
+| [`ollama`](#ollama) | parsed | source; fixture only | [research](../research/ollama.md) |
+| [`open-interpreter`](#open-interpreter) | parsed | source; fixture only | [research](../research/open-interpreter.md); [issue 70](https://github.com/seanthegeek/doubleagent/issues/70); the legacy Python tool's `conversations/*.json` files are collected but not parsed yet |
+| [`openclaw`](#openclaw) | parsed | source; fixture only | [research](../research/openclaw.md) |
+| [`opencode`](#opencode) | parsed | source; fixture only | [research](../research/opencode.md); [issue 139](https://github.com/seanthegeek/doubleagent/issues/139) |
+| [`openhands`](#openhands) | parsed | source; fixture only | [research](../research/openhands.md) |
+| [`pearai`](#pearai) | parsed | source; fixture only | [research](../research/pearai.md) |
+| [`pi`](#pi) | parsed | source; fixture only | [research](../research/pi.md) |
+| [`pydantic-clai`](#pydantic-clai) | backlog | Source, PyPI wheel | [research](../research/pydantic-clai.md); [issue 66](https://github.com/seanthegeek/doubleagent/issues/66); CLAI 2.0 `sessions.db` conversations and the prompt histories |
+| [`qwen-code`](#qwen-code) | parsed | source; fixture only | [research](../research/qwen-code.md) |
+| [`roo-code`](#roo-code) | parsed | source; fixture only | [research](../research/roo-code.md) |
+| [`shared`](#shared) | collected | Derived from the per-agent documents | [research](../research/shared.md); cross-agent instruction and skill directories with no transcripts |
+| [`shellgpt`](#shellgpt) | parsed | source; fixture only | [research](../research/shellgpt.md) |
+| [`tabby`](#tabby) | parsed | source; fixture only | [research](../research/tabby.md) |
+| [`twinny`](#twinny) | parsed | source; fixture only | [research](../research/twinny.md) |
+| [`vscode`](#vscode) | parsed | source; fixture only | [research](../research/vscode.md) |
+| [`windsurf`](#windsurf) | backlog | Official docs, community write-ups | [research](../research/windsurf.md); [issue 52](https://github.com/seanthegeek/doubleagent/issues/52); blocked on format research: Cascade's `.pb` files have no published schema |
+| [`zed`](#zed) | parsed | source; fixture only | [research](../research/zed.md) |
 
 Files that are not transcripts, such as skills and configuration files,
 are detected but not parsed.

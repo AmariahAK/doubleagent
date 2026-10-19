@@ -532,7 +532,7 @@ listed after the table):
 
 | Path | Observed |
 | --- | --- |
-| `conversations/<uuid>.db` x4 (688,128 to 1,409,024 B, no sidecar files) | one SQLite database per conversation, the same schema as the CLI's ([section 8 of `analyzer/research/antigravity.md`](#8-record-schema)) |
+| `conversations/<uuid>.db` x4 (688,128 to 1,409,024 B, no sidecar files) | one SQLite database per conversation, the same schema as the CLI's ([section 8](#8-record-schema)) |
 | `conversation_summaries.db` (131,072 B; `-shm` 32,768 B, `-wal` 0 B) | the conversation index: the CLI's `conversation_summaries` table plus `search_schema_version` and `conversations_fts`, an FTS5 table (SQLite's full-text search module) over titles, workspaces and message bodies |
 | `brain/<uuid>/` x4 | per-conversation logs and tool output, below |
 | `annotations/<uuid>.pbtxt` x4 (94 to 99 B) | pbtxt is the protobuf text format, a human-readable serialisation of a protobuf message; each holds one `title:` field, the conversation title |
@@ -630,7 +630,7 @@ background task started by step `<idx>`); the CLI's brain directories
 have no `messages/` or `tasks/`. The binary also names
 `.system_generated/worktrees` and `.system_generated/subagents` (binary).
 The line shapes are in
-[section 8 of `analyzer/research/antigravity.md`](#8-record-schema).
+[section 8](#8-record-schema).
 
 #### CLI data directory
 
@@ -698,7 +698,7 @@ Observed on Windows (CLI 1.3.5, Windows 11 ARM64 build 26300,
   `reconcile_summaries.go` and one from `project_uris_migration.go`. So
   CLI 1.3.5 copies the app's conversation index into its own; the
   analyzer yields a summary row per app conversation from each database, see
-  [section 10 of `analyzer/research/antigravity.md`](#10-other-stores).
+  [section 10](#10-other-stores).
   This was not seen on macOS (CLI 1.2.16) or Linux (1.3.4); whether it is
   new in 1.3.5 or needs the app to have run first is not determined.
 - `cli.log` (41,122 B) is an NTFS hard link to
@@ -1103,7 +1103,7 @@ unknown.
   is collected unflagged: the rest of the file is install metadata, and
   the key is useless without the user's DPAPI context. Treat
   `encrypted_key` as a key to redact before sharing, as
-  [section 3 of `collectors/research/claude-desktop.md`](claude-desktop.md#3-credentials)
+  [section 3 of `claude-desktop.md`](claude-desktop.md#3-credentials)
   treats Claude Desktop's `metadata_secret`, not as a secret glob.
   `app_storage.json` holds the signed-in account name
   (`jetski.onboarding.lastLoginUsername`), which identifies the user but
@@ -1191,7 +1191,7 @@ in favour of `cache/projects.json`). No per-project database.
 
 - `history.jsonl`: `workspace` per prompt (CLI only; the app writes no
   `history.jsonl`), see
-  [section 7 of `analyzer/research/antigravity.md`](#7-transcript-stores).
+  [section 7](#7-transcript-stores).
   On Windows it is the folder as the user typed it, with a lower-case
   `users` (`C:\users\<user>\demo2`, observed, CLI 1.3.5). The PowerShell
   collector compares project paths without regard to case
@@ -1202,7 +1202,7 @@ in favour of `cache/projects.json`). No per-project database.
 - `history.jsonl` also carries `conversationId` from CLI 1.3.x (observed,
   Linux), which joins a prompt to its conversation; the analyzer uses it
   as the row's session id, see
-  [section 9 of `analyzer/research/antigravity.md`](#9-joins-and-timestamps).
+  [section 9](#9-joins-and-timestamps).
   The collectors read only `workspace`.
 - `config/projects/<uuid>.json`: `projectResources.resources[].folderUri`,
   a `file://` URL of the project folder (observed on macOS and Linux,
@@ -1847,7 +1847,7 @@ On Windows (**observed**, CLI 1.3.5) the CLI kept its OAuth token in the
 OS keyring, the Windows Credential Manager, and wrote no
 `antigravity-oauth-token` or `plugin-secrets.json` file; the desktop app's
 `Local State` file there holds key material. Both are described in
-[section 3 of `collectors/research/antigravity.md`](#3-credentials);
+[section 3](#3-credentials);
 the parser reads neither.
 
 ### 13. Parser plan

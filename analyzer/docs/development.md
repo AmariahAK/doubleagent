@@ -111,8 +111,10 @@ The full checklist, including the fixture, test class, agents table row,
 version bump and the lists to update, is "Adding a parser" in
 [AGENTS.md](../../AGENTS.md#adding-a-parser). In short:
 
-1. Confirm the record format against source or a real install and write the
-   field names into the module docstring, as the existing parsers do.
+1. Start from the Parsing part of the agent's research document, listed in
+   the [research index](../../research/README.md). Confirm the record
+   format against source or a real install and write the field names into
+   the module docstring, as the existing parsers do.
 2. Subclass `Parser` in `doubleagent/parsers/<agent>.py`: set `agent` to
    the catalog name, implement `wants` on `artifact.rel` and `parse` yielding
    `Row` objects. Use `iter_jsonl` so a truncated line is reported, not fatal.

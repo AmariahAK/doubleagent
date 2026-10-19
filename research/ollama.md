@@ -169,7 +169,7 @@ All OSes, `os.UserHomeDir()`:
   `v0.35.1` only uses them to find and stop a ChatGPT process an earlier build started with that
   profile, so the directory is normally empty; an `electron-data/` with content is a ChatGPT
   Electron profile, collected under `.ollama` like the rest. Detail under
-  [Launch state in `analyzer/research/ollama.md`](#launch-state).
+  [Launch state](#launch-state).
 - `~/.ollama/backup/<integration>/<file>.<epoch>` — copies of other agents' config files taken
   before `ollama launch` edits them; a write that names no integration (Ollama's own `config.json`)
   lands in `backup/<file>.<epoch>`

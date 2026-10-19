@@ -59,12 +59,9 @@ collectors/
   tests/smoke.ps1              end-to-end test of the PowerShell collector
   tests/catalog-sync.sh        fails if the catalog tables differ between the scripts
                                or from the analyzer's bundled copy
-  research/<agent>.md          where each agent stores state: paths, credentials,
-                               exclusions, project files, discovery; one per agent
 analyzer/
   doubleagent/                 Python package: cli, inputs, catalog, model, parsers/
   doubleagent/catalog.txt      verbatim copy of collect-agent-artifacts.sh --list
-  research/<agent>.md          how each agent records transcripts; one per agent
   README.md                    analyzer user documentation: quick start, commands, options
   docs/<topic>.md              detailed analyzer documentation: inputs and detection,
                                output and JSONL schema, filtering, searching, inventory,
@@ -74,6 +71,12 @@ analyzer/
   pyproject.toml               installable as the doubleagent command
   requirements.txt             third-party dependencies (python-dateutil;
                                zstandard, for compressed transcripts)
+research/<agent>.md            everything known about one agent, one per agent: the
+                               Collection part (paths, credentials, exclusions, project
+                               files, discovery) and the Parsing part (how it records
+                               transcripts, the parser plan)
+research/README.md             the research index and the survival table
+research/frameworks.md         the framework sweep
 lab/                           Docker sandbox for running CLI agents against a scratch
                                home and exporting it for the collector; see lab/README.md
 docs/index.md                  the documentation site's home page; the root README.md is
@@ -81,6 +84,8 @@ docs/index.md                  the documentation site's home page; the root READ
 docs/agents.md                 every catalog agent with its parse status, files and evidence
 tools/check_research_links.py  verifies every citation link in the research documents
                                resolves to its file and line range at the cited commit
+tools/check_research_structure.py  verifies every research document follows the
+                               outline; with --before, lists facts a rewrite dropped
 tools/check_doc_links.py       verifies every relative link and heading fragment in the
                                Markdown documents and that section and external
                                references are links
@@ -322,8 +327,8 @@ rules are different from the collectors'.
   input without a manifest infers them from paths, and the output says so.
   Never silently guess when the manifest is present.
 - **Parsers are validated like catalog entries.** Confirm the record shape
-  against source or a real install, write the evidence into
-  `analyzer/research/<agent>.md` (one document per catalog agent, see the
+  against source or a real install, write the evidence into the Parsing
+  part of `research/<agent>.md` (one document per catalog agent, see the
   research process above), list the field names the parser depends on in
   the module docstring, and build the test fixture from those shapes.
   For a closed-source agent that stores protobuf, the shipped binary usually
@@ -392,8 +397,8 @@ rules are different from the collectors'.
 ## Adding a parser
 
 The research is already done for every agent in the parser backlog: start
-from `analyzer/research/<agent>.md`, whose section 8 (Parser plan) is mapped
-to the timeline columns, one fixed subsection per requirement class, and
+from the Parsing part of `research/<agent>.md`, whose section 13 (Parser
+plan) is mapped to the timeline columns, one fixed subsection per requirement class, and
 whose Fixtures subsection holds the sample records that become the test
 fixture (the outline is [Research document structure](#research-document-structure)).
 Do not redo the research. The citations link to the commit that was
@@ -515,11 +520,11 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
    returns a wider window from `secondary_tolerance()` and says why in
    its docstring.
    The agent's row in the
-   [survival table of `analyzer/research/README.md`](analyzer/research/README.md#where-transcripts-live-and-what-survives)
+   [survival table of `research/README.md`](research/README.md#where-transcripts-live-and-what-survives)
    is updated in the same commit, and the facts behind it live in the
-   document, not the table: every analyzer research document carries a
-   `### What survives a delete` subsection under section 2 (Transcript
-   stores) that says what the agent's own
+   document, not the table: every research document with a Parsing part
+   carries a `#### What survives a delete` subsection under section 7
+   (Transcript stores) that says what the agent's own
    delete, clear, archive or retention removes, what remains (the history
    file, second copies, deletion markers, copies held by other agents,
    project-local traces) and what the analyzer reads, with a link to
@@ -546,8 +551,7 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
 7. Fill the agent's row in the table of the [agents page](docs/agents.md):
    set its status to `parsed`, its "Validated against" cell to the
    evidence class and platforms in a few words, and keep its Notes cell's
-   shape: the research links, now with the analyzer research document,
-   the open issue links, and a clause of about twelve words only when
+   shape: the research link, the open issue links, and a clause of about twelve words only when
    something is still unparsed. Move the agent's subsection from
    [Collected agents](docs/agents.md#collected-agents) to
    [Parsed agents](docs/agents.md#parsed-agents), in
@@ -569,7 +573,7 @@ to delegate the backlog.
 Prefer reading the tool's source over installing it. Most agents are open
 source even when their models are not, and the path constants are easy to
 find. The validation for every current entry is recorded in the index table in
-[`collectors/research/README.md`](collectors/research/README.md).
+[`research/README.md`](research/README.md).
 
 1. Shallow-clone the repository into the scratchpad and grep for `homedir`,
    `XDG`, `APPDATA`, `Application Support`, `.config/`, `.local/share`,
@@ -624,13 +628,13 @@ find. The validation for every current entry is recorded in the index table in
    every shell in it, including Windows PowerShell 5.1 through the WSL
    path, is available on the development host, so an untested shell is a
    gap to close, not a note to leave.
-7. Write or update `collectors/research/<agent>.md` with the evidence, in
-   the seven sections of [Research document structure](#research-document-structure), add
-   a row to the index table in [`collectors/research/README.md`](collectors/research/README.md), mention the
+7. Write or update the Collection part of `research/<agent>.md` with the
+   evidence, in the outline of [Research document structure](#research-document-structure), add
+   a row to the index table in [`research/README.md`](research/README.md), mention the
    tool in [`collectors/docs/coverage.md`](collectors/docs/coverage.md) if it needs
    a note there, and close the matching GitHub issue. If the tool keeps
-   transcripts worth parsing, also write `analyzer/research/<agent>.md` and
-   its index row. Add the agent's row to the
+   transcripts worth parsing, also write the document's Parsing part and
+   fill the row's Parser and Notes cells. Add the agent's row to the
    table of the [agents page](docs/agents.md) with status `backlog`
    (parseable records on disk, with a parser issue) or `collected`
    (nothing to parse, with the reason), its name linked to a new
@@ -662,8 +666,8 @@ the catalog does not mention, or a version newer than the last Observed
 bullet each gets a per-step round of its own before any table, document or
 parser is changed from a bundle grep or from memory. Run the tool in a
 clean VM, or in the `lab/` sandbox for a Linux-only CLI, never on the
-workstation; `collectors/research/<agent>.md` records the evidence for
-each agent and the index table in [`collectors/research/README.md`](collectors/research/README.md) summarises the level.
+workstation; `research/<agent>.md` records the evidence for
+each agent and the index table in [`research/README.md`](research/README.md) summarises the level.
 Agents whose project paths live only in SQLite (Zed, Goose, OpenCode, Kilo
 Code, Kiro CLI) are not covered by `discover_projects`; the analyzer reads them.
 
@@ -714,7 +718,7 @@ tarball or binary (`npm pack`, then grep or `strings`; minified bundles keep
 literal path strings), official docs, vendor forums and issue trackers, then
 published DFIR or reverse-engineering write-ups. The report must say which
 level each claim came from, and the index table in
-[`collectors/research/README.md`](collectors/research/README.md) records it. Two habits for minified
+[`research/README.md`](research/README.md) records it. Two habits for minified
 bundles and compiled binaries:
 
 - Grep for the stable fragment of a message, never the whole sentence.
@@ -728,7 +732,7 @@ bundles and compiled binaries:
   work, but offsets differ per platform build. Cite as
   `<tool> <version> <platform> @<byte offset>` with the literal snippet,
   and record the artifact's sha256 and where it came from, as
-  [`analyzer/research/claude-code.md`](analyzer/research/claude-code.md) does for `claude 2.1.295 linux-arm64`.
+  [`research/claude-code.md`](research/claude-code.md) does for `claude 2.1.295 linux-arm64`.
   The `app.asar` form is `app.asar:<path>@<offset>` with the snippet;
   chunk names change every release, so the snippet is what a reader of
   another version greps for.
@@ -745,22 +749,19 @@ named exactly as the agent appears in `--list`, in the outline of
 [Research document structure](#research-document-structure), keeping the
 citations and the fixtures and dropping the proposed lines once they are in
 the tables: path research (where state lives,
-credentials, exclusions, project files, discovery) goes to
-`collectors/research/<agent>.md`, record schema research (how transcripts
-are encoded and how a parser reads them) goes to
-`analyzer/research/<agent>.md`. A document covers one agent only, and
+credentials, exclusions, project files, discovery) goes to the Collection
+part of `research/<agent>.md`, record schema research (how transcripts
+are encoded and how a parser reads them) goes to its Parsing part. A
+document covers one agent only, and
 every agent that earns a catalog line gets its own, even when it came out
 of a grouped sweep such as the framework sweep (issue 64): the sweep
-document ([`collectors/research/frameworks.md`](collectors/research/frameworks.md)) keeps only the summary
+document ([`research/frameworks.md`](research/frameworks.md)) keeps only the summary
 table and the evidence for what got no catalog line. Where
 agents share a lineage, each says so and links to the other rather than
-repeating it. When an agent has both documents, each links to the other
-with a Markdown link in a short paragraph before its first section, the
-analyzer document to `../../collectors/research/<agent>.md` and the
-collector document to `../../analyzer/research/<agent>.md`. A path to
+repeating it. A path to
 another project document, or to one of its sections, is always a link,
-never a bare code span (the link rule under "Conventions"). Each
-directory has a README index that lists every document, sorted
+never a bare code span (the link rule under "Conventions"). The
+directory's README index lists every document, sorted
 alphabetically by agent name, and holds the cross-agent observations.
 Grouped reports are never committed. Then: rewrite the five tables in both
 scripts and regenerate
@@ -770,7 +771,7 @@ PowerShell collector with every new grep-able source, add a fixture and
 checks to `collectors/tests/smoke.sh` and `collectors/tests/smoke.ps1` for
 each new secret pattern, exclusion and discovery source, run the full shell
 matrix, run a live collection and read the `skipped_excluded` and
-`secret: true` rows, update the research index tables, bump `VERSION`.
+`secret: true` rows, update the research index table, bump `VERSION`.
 
 **6. Close the loop on GitHub.** Close each tool's issue with a comment that
 names the evidence source and commit, the key findings, and the catalog
@@ -1019,15 +1020,15 @@ The round, in order:
    tool over the new version's transcripts and diff the line types and
    key sets against the lists in the research document.
 5. **Write it down the same day.** The Observed subsection of section 1
-   of both research documents gets a bullet per platform with the version, build,
+   of the research document gets a bullet per platform with the version, build,
    date, what was exercised and what each surface wrote; a layout the
    parser handles that no real install has shown is marked "not observed
    on any real install, bundle-derived"; every statement about a product
    surface (a tab, a button, a mode) carries the build and date, because
    surfaces change between releases and training-era knowledge of the UI
-   is stale. What the delete step left and removed goes into the analyzer
-   document's `### What survives a delete` subsection (and its Parser
-   plan's `### Deletion`) as well as the Observed bullet, so the dated
+   is stale. What the delete step left and removed goes into the
+   document's `#### What survives a delete` subsection (and its Parser
+   plan's `#### Deletion rows`) as well as the Observed bullet, so the dated
    bullet records the round and the subsections stay the reader's answer. Catalog, exclusion, secret-glob
    and parser changes follow the usual checklists, under the pending
    version.
@@ -1053,8 +1054,8 @@ The brief is one file that holds every number the documents will cite
 redacted), the install facts, the collector and analyzer runs, and the
 assignments; two subagents run in parallel on disjoint file sets, one for
 the collector side (catalog, exclusions, secret globs, discovery, smoke
-fixtures, collector documents, changelog) and one for the analyzer
-documents and the agents page, each reporting every check it ran with
+fixtures, collector documentation pages, changelog) and one for the
+research document and the agents page, each reporting every check it ran with
 the result line. The main session then re-runs the checks itself (the
 catalog drift check, the analyzer suite, markdownlint, the link check,
 the sh smoke test under `/bin/sh` and the PowerShell smoke test under
@@ -1287,8 +1288,7 @@ for a documentation-only change, only markdownlint and
 - Evidence lives in the research documents, not in issues. When an issue
   records file names, keys, values a field can take, or bundle and
   binary offsets, the commit that files or acts on it puts the same facts
-  in `collectors/research/<agent>.md` or `analyzer/research/<agent>.md`
-  with their citations; the issue keeps the proposal, the open questions
+  in `research/<agent>.md` with their citations; the issue keeps the proposal, the open questions
   and a pointer to the document. An issue is closed and forgotten; the
   document is what the next parser change reads.
 - Documentation describes the code, not the intent. Every sentence that
@@ -1342,10 +1342,10 @@ for a documentation-only change, only markdownlint and
   maintains it. The READMEs and the pages under `collectors/docs/`,
   `analyzer/docs/` and `docs/` address the responder or analyst who runs
   the tool; `testing.md`, `development.md`, `internals.md`, the lab
-  README and the two research indexes address a contributor; this file
+  README and the research index address a contributor; this file
   alone holds the rules for making a change, and the documents do not
   repeat them. An index table (the agents page, the survival table of the
-  analyzer research index) points at the documents with a short cell and
+  research index) points at the documents with a short cell and
   a link rather than repeating their detail, so a fact has one home and
   the table stays scannable. So a document never says how it is kept up to date ("a
   test keeps the set and the table equal", "updated in the same commit",
@@ -1381,7 +1381,7 @@ for a documentation-only change, only markdownlint and
   ``[`collectors/docs/coverage.md`](collectors/docs/coverage.md)`` with
   the path relative to the citing file, and a section is written
   `[section 5](#5-project-local-files)` or, in another document,
-  ``[section 2 of `analyzer/research/claude-desktop.md`](../../analyzer/research/claude-desktop.md#2-transcript-stores)``,
+  ``[section 7 of `research/claude-desktop.md`](../research/claude-desktop.md#7-transcript-stores)``,
   with the fragment GitHub derives from the heading (lower case,
   punctuation other than hyphens removed, spaces to hyphens). A reference
   to several sections is one link per section. The exception is this
@@ -1389,7 +1389,7 @@ for a documentation-only change, only markdownlint and
   [Research document structure](#research-document-structure)
   (`<agent>.md`), which describe every research document at once and
   have no single target. A template path with a placeholder
-  (`collectors/research/<agent>.md`) names a family of documents, not
+  (`research/<agent>.md`) names a family of documents, not
   one, and stays a code span, as does a catalog path that happens to end
   in `.md` (an agent's `AGENTS.md` or `GEMINI.md` inside a project),
   which is data, not a document reference.

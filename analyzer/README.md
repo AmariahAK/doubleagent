@@ -117,6 +117,10 @@ against. Thinking and reasoning blocks are left out unless
 | [docs/options.md](docs/options.md) | Every option with its subcommands, and the exit codes |
 | [docs/development.md](docs/development.md) | Running the tests and lint checks, reading a real install, protobuf and SQLite stores, adding a parser |
 
+The evidence behind every parser, with citations and the level each claim
+rests on, is one document per agent, listed in the
+[research index](../research/README.md).
+
 ## License
 
 Copyright 2026 Sean Whalen. Licensed under the Apache License, Version 2.0.

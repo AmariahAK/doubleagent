@@ -9,7 +9,7 @@ the analyzer, and `--list` prints it in full. Every catalog entry is tried
 against every home directory, so macOS, Linux and Windows paths coexist and a Windows image
 mounted on a Linux workstation is collected correctly. The evidence for every
 catalog entry, with citations and the level each claim rests on, is one
-document per agent under [research/](../research/README.md).
+document per agent, listed in the [research index](../../research/README.md).
 
 ## Editors, extensions and shared directories
 
@@ -305,7 +305,7 @@ binary copies and Node.js runtime under `AppData/Local/OpenAI/Codex`, the
 1.27 GB runtime under `.cache/codex-runtimes`, and the sandbox's scratch
 directories in `AppData/Local/Temp`, which have no stable name. The
 evidence is in
-[`research/chatgpt-desktop.md`](../research/chatgpt-desktop.md).
+[`research/chatgpt-desktop.md`](../../research/chatgpt-desktop.md).
 
 On macOS the app is the same Electron build (ChatGPT 26.1007.71326,
 observed on macOS 26.6.2, October 2026), with the bundle identifier
@@ -522,10 +522,10 @@ entry can reach these, so copy them by hand when they exist:
 | Gemini CLI | `gemini-conversation-<epoch ms>.json` or `.md` from `/chat share`, and the JSON file `/export-session <path>` writes. | The working directory of the session for `/chat share`; the path given for `/export-session`. |
 
 Details and sources are in
-[section 5 of `analyzer/research/openclaw.md`](../../analyzer/research/openclaw.md#5-sqlite-and-compression),
-[section 8 of `analyzer/research/codex-cli.md`](../../analyzer/research/codex-cli.md#8-parser-plan-the-existing-parser),
-[section 2 of `analyzer/research/continue.md`](../../analyzer/research/continue.md#2-transcript-files) and
-[section 8 of `analyzer/research/gemini-cli.md`](../../analyzer/research/gemini-cli.md#8-parser-plan).
+[section 10 of `research/openclaw.md`](../../research/openclaw.md#10-other-stores),
+[section 13 of `research/codex-cli.md`](../../research/codex-cli.md#13-parser-plan),
+[section 10 of `research/continue.md`](../../research/continue.md#10-other-stores) and
+[section 13 of `research/gemini-cli.md`](../../research/gemini-cli.md#13-parser-plan).
 
 ## Agent frameworks and self-hosted platforms
 
@@ -536,7 +536,7 @@ legacy Open Interpreter Python tool) and the self-hosted platforms Dify,
 Flowise, Langflow and n8n, in the home and in their Docker volumes (see
 [docker.md](docker.md)). The sweep behind this, with the reason each
 framework got a catalog line or not, is
-[research/frameworks.md](../research/frameworks.md).
+[research/frameworks.md](../../research/frameworks.md).
 
 Some of their state has no fixed home-relative name and is not collected.
 Copy it by hand when the framework was in use:

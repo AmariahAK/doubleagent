@@ -950,7 +950,7 @@ citation says otherwise. Names, types and counts only; no value from the install
   `live_visualization_suggestions`, `thread_timeline_ledger`, `local_app_server_feature_enablement`
   and `codex_schema_migrations` (33 rows with `app_version`, `build_flavor`, `build_commit`).
   Collected; the analyzer's `chatgpt-desktop` parser reads its `chatgpt` rows
-  ([`analyzer/research/chatgpt-desktop.md`](chatgpt-desktop.md)).
+  ([`chatgpt-desktop.md`](chatgpt-desktop.md)).
 - `state_5.sqlite` (the source-described thread store) gains, on this build, `projects`,
   `project_roots` (`project_id`, `position`, `path`), `project_idempotency_keys`, `thread_sections`,
   `remote_control_enrollments` and `external_agent_config_imports` tables, and `threads` columns
@@ -1241,7 +1241,7 @@ seen on a real install.
   ([`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37),
   [`plugins/_orchestrator/README.md:86`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/README.md#L86)).
   Such a thread is an ordinary rollout in Codex's own store; the plugin's permission settings are in
-  [section 13 of `analyzer/research/agent-zero.md`](agent-zero.md#13-parser-plan).
+  [section 13 of `agent-zero.md`](agent-zero.md#13-parser-plan).
 
 #### Deletion
 

@@ -115,7 +115,7 @@ network connections and other host state are left to the EDR.
 
 Details are in [docs/coverage.md](docs/coverage.md), and the evidence for
 every catalog entry, with citations and the level each claim rests on, is
-one document per agent under [research/](research/README.md).
+one document per agent, listed in the [research index](../research/README.md).
 
 ## Documentation
 
