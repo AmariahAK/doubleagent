@@ -40,6 +40,15 @@ without a rollout is a rollout removed outside Codex. Citations are in
   `sandbox_policy` and `approval_mode` copy the rollout's `turn_context`
   policy, which the rollout reader's `permission mode:` rows carry, and
   `preview` repeats the first prompt (or a thread goal); none is read.
+  Then table `remote_control_enrollments`, the host's link to the ChatGPT
+  backend that lets a paired phone or desktop drive this app server
+  (`codex remote-control`, or the desktop app's Settings > Connections):
+  per row a `system` row `remote control: enabled=<remote_control_enabled>
+  server=<server_id> environment=<environment_id> host=<server_name>
+  client=<app_server_client_name> account=<account_id>` (`-` for an empty
+  value) at `updated_at`, with an empty `session_id`, since the row names
+  the host, not a thread. Turning connections off keeps the row with
+  `remote_control_enabled` 0 (ChatGPT 26.1013.40934, macOS, 2026-10-19).
 * `thread_history_1.sqlite`, the projection of a paginated rollout's
   `item_completed` and turn events (`app-server-protocol/src/protocol/
   thread_history_projection.rs:21-99`):
@@ -100,20 +109,21 @@ other items are still read.
 
 * `logs_<N>.sqlite` (`logs_2.sqlite` at 3e23877, `state/src/sqlite.rs:34`),
   Codex's own tracing log, is not a projection and not a secondary
-  source: it holds the one local record that a thread left the host. Table
-  `logs` (`state/logs_migrations/0002_logs_feedback_log_body.sql:3-16`):
+  source: it holds the one local record that a thread left the host, and
+  the desktop app's approval decisions. Table `logs`
+  (`state/logs_migrations/0002_logs_feedback_log_body.sql:3-16`):
   `ts` and `ts_nanos` (epoch seconds and nanoseconds), `level`, `target`,
   `feedback_log_body` (the event's message and then its fields as
   `key=value` pairs, `state/src/log_db.rs:436-474`; the first migration
   called the column `message`, read when `feedback_log_body` is absent)
-  and `thread_id`. Only the row a `/feedback` report writes once it is sent
-  to Sentry (an error-reporting service OpenAI runs for Codex feedback) is
-  read: `target` `codex_feedback` and the message `feedback event uploaded
-  to Sentry`, with the fields `thread_id`, `uploaded_attachments`,
+  and `thread_id`. Read are the approval rows below and the row a
+  `/feedback` report writes once it is sent to Sentry (an error-reporting
+  service OpenAI runs for Codex feedback): `target` `codex_feedback` and
+  the message `feedback event uploaded to Sentry`, with the fields `thread_id`, `uploaded_attachments`,
   `attachments_failed` and `elapsed_ms` in any order
   (`feedback/src/lib.rs:749-755`). The other `codex_feedback` rows (an
-  attachment that failed or was skipped) are not uploads and every other
-  target is Codex's diagnostics; neither is an event. One `system` row
+  attachment that failed or was skipped) are not uploads and the other
+  targets are Codex's diagnostics; neither is an event. One `system` row
   `session synced: feedback report uploaded to Sentry, attachments
   <uploaded_attachments> failed <attachments_failed> (from logs_<N>.sqlite
   logs, ts)`, `-` for a field the body lacks, at `ts` plus `ts_nanos`, with
@@ -124,6 +134,67 @@ other items are still read.
   `uploaded_attachments` 0 means the user declined to upload logs, so no
   rollout went with the report. Fixture only: no real install has shown
   the row.
+  The desktop app's per-call approvals (Codex Desktop 0.163.0-alpha.10.2
+  inside ChatGPT 26.1013.40934, macOS, 2026-10-18) are two rows each:
+  target `codex_core::session::handlers`, a body `Submission
+  thread_id=<id> ... op=ExecApproval { id: "<item id>", turn_id:
+  Some("<turn>"), decision: <decision> }`, where the item id is the
+  governed `CommandExecution` or `FileChange` item's `id` in the rollout;
+  and target `codex_app_server::outgoing_message`, `<- response:
+  CommandExecutionRequestApproval { request_id: Integer(<n>), response:
+  CommandExecutionRequestApprovalResponse { decision: <decision> } }`
+  with no thread. The first becomes `permission decision: <decision> exec
+  <item id> turn=<turn> (from logs_<N>.sqlite logs, ts)` with the thread
+  as `session_id` and the item id as `tool_use_id`; the second is left
+  out when a first row of the same decision is within 2 seconds of it,
+  and is otherwise `permission decision: <decision> request <n> (from
+  logs_<N>.sqlite logs, ts)` with no session. Decisions seen: `Decline`,
+  `Accept`. A row of either target holding the marker
+  (`op=ExecApproval {`, `CommandExecutionRequestApproval {`) whose body
+  the pattern cannot read is a `parser: unreadable approval log row
+  (<target>): <body>` row. `guardian_calls` reads the
+  `guardian_review{review_id=... thread_id=<parent> tool_call_id="<item
+  id>"}` span text of any row for the rollout reader's guardian verdicts.
+
+* `.codex-global-state.json` (Codex only), the ChatGPT desktop app's own
+  state, a JSON object (observed with ChatGPT 26.1013.40934 on macOS,
+  2026-10-18). It outlives a thread the app deletes, whose rollout and
+  database rows go, so it is a secondary source. The top-level key
+  `electron-persisted-atom-state` (an object; a string holding one is
+  decoded) holds the app's persisted UI atoms. Read from it:
+  - `prompt-history`: `{global: [...], <thread id>: [...]}`, each entry
+    `{markdown, document}`; each `markdown` is a `user` row with **no
+    timestamp** (`source_line` its 1-based index), `session_id` the
+    thread id, so it pairs with the rollout's prompt on text and session.
+    A `global` entry, the composer's history across threads, has no
+    session and is left out when a thread's list in the file has its
+    text.
+  - `codex-writing-block-deleted-thread-v1:<thread id>` `true`, the
+    marker the app writes when it deletes a thread: `session deleted:
+    <id> (from <file> codex-writing-block-deleted-thread-v1, file mtime)`.
+  - `thread-descriptions-v1` `{<id>: str}` and
+    `thread-user-activity-times-v1` `{'["local","<id>"]': epoch ms}`:
+    one `thread description: <text or -> last_activity=<UTC or -> (from
+    <file> thread-descriptions-v1, file mtime)` per thread in either.
+  - `heartbeat-thread-permissions-by-id` `{<id>: {activePermissionProfile
+    {id, extends} or null, approvalPolicy, approvalsReviewer,
+    sandboxPolicy}}`: `permission mode (standing): approval=<p>
+    sandbox=<s> reviewer=<r> profile_id=<id> (from <file>
+    heartbeat-thread-permissions-by-id, file mtime)`.
+  - `agent-mode-by-host-id` and
+    `preferred-non-full-access-agent-mode-by-host-id` (`{<host>: mode}`,
+    `guardian-approvals` seen) and `permission-selection-by-host-id:<host>`
+    (`{kind, agentMode}`): `permission setting: <key>.<host>=<value>` or
+    `permission setting: <key>=<value>`, each `(from <file>, file mtime)`.
+  At the top level, `codex-mobile-has-connected-device` (bool) and
+  `electron-local-remote-control-environment-id` (str) are one `remote
+  control: mobile device connected=<bool> environment=<id> (from <file>
+  codex-mobile-has-connected-device, file mtime)` row, and
+  `thread-workspace-root-hints` (else
+  `thread-projectless-output-directories`) `{<id>: path}` gives a
+  thread's rows their `project_path`. Every `system` row is at the file's
+  modification time; a file that does not decode, or is not an object,
+  is one `parser:` row.
 """
 
 from __future__ import annotations
@@ -132,13 +203,14 @@ import json
 import re
 import sqlite3
 from collections.abc import Iterator
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..inputs import Artifact
+from ..inputs import Artifact, error_reason
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
-from ..timeutil import to_utc
-from .base import Options
+from ..timeutil import epoch_ms, to_utc
+from .base import Options, error_rows, file_mtime, setting_value
 from .codex import item_rows
 
 if TYPE_CHECKING:
@@ -271,16 +343,58 @@ def _problem(parser: RolloutParser, artifact: Artifact, text: str) -> Row:
 
 
 def parse_state(parser: RolloutParser, artifact: Artifact, opts: Options) -> Iterator[Row]:
-    """Rows of `state_5.sqlite`: a thread record and the first prompt per thread."""
+    """Rows of `state_5.sqlite`: a thread record and the first prompt per
+    thread, then a `remote control:` row per enrollment."""
     if not is_sqlite(artifact.disk_path):
         yield _problem(parser, artifact, "parser: not a SQLite database")
         return
     try:
         with open_copy(artifact.disk_path) as con:
             threads = read_threads(con)
+            enrollments = read_enrollments(con)
     except sqlite3.DatabaseError as e:
         yield _problem(parser, artifact, "parser: SQLite error: %s" % e)
         return
+    yield from _thread_rows(parser, artifact, threads)
+    for rec in enrollments:
+        row = _problem(parser, artifact, _enrollment_text(rec))
+        row.source_line = int(rec["_rowid"])
+        row.timestamp_utc = to_utc(rec.get("updated_at"))
+        yield row
+
+
+ENROLLMENT_COLUMNS = (
+    "remote_control_enabled",
+    "server_id",
+    "environment_id",
+    "server_name",
+    "app_server_client_name",
+    "account_id",
+    "updated_at",
+)
+
+
+def read_enrollments(con: sqlite3.Connection) -> list[dict]:
+    """The `remote_control_enrollments` rows in rowid order, or [] without
+    the table."""
+    if "remote_control_enrollments" not in table_names(con):
+        return []
+    return _select(con, "remote_control_enrollments", ENROLLMENT_COLUMNS)
+
+
+def _enrollment_text(rec: dict) -> str:
+    def field(key: str) -> str:
+        value = rec.get(key)
+        return "-" if value in (None, "") else str(value)
+
+    return (
+        "remote control: enabled=%s server=%s environment=%s host=%s client=%s account=%s"
+        % tuple(field(k) for k in ENROLLMENT_COLUMNS[:6])
+    )
+
+
+def _thread_rows(parser: RolloutParser, artifact: Artifact, threads: list[dict]) -> Iterator[Row]:
+    """A thread record and the first prompt per `threads` row."""
     for thread in threads:
         sid = str(thread.get("id") or "")
         row = _stamp(parser, artifact, thread, sid)
@@ -478,23 +592,101 @@ def _log_fields(body: str) -> dict[str, str]:
     return out
 
 
-def _feedback_rows(con: sqlite3.Connection) -> list[dict]:
-    """The `logs` rows of sent `/feedback` reports, in id order; [] without
-    the table."""
+# The user's per-call approval decisions of the ChatGPT desktop app, as
+# Codex Desktop 0.163.0-alpha.10.2 logs them (research/codex-cli.md
+# section 5): the core's submission of the decision, with the thread and
+# the governed item's id, and the app server's response to the approval
+# request, with only a request id.
+EXEC_APPROVAL_TARGET = "codex_core::session::handlers"
+EXEC_APPROVAL_MARK = "op=ExecApproval {"
+EXEC_APPROVAL_RX = re.compile(
+    r'op=ExecApproval \{ id: "([^"]*)"(?:, turn_id: (?:Some\("([^"]*)"\)|None))?'
+    r".*?decision: ([A-Za-z_]+)"
+)
+REQUEST_APPROVAL_TARGET = "codex_app_server::outgoing_message"
+REQUEST_APPROVAL_MARK = "CommandExecutionRequestApproval {"
+REQUEST_APPROVAL_RX = re.compile(
+    r'CommandExecutionRequestApproval \{ request_id: (?:[A-Za-z]+\()?"?([^,)"]*)"?\)?,'
+    r".*?decision: ([A-Za-z_]+)"
+)
+GUARDIAN_SPAN_MARK = "guardian_review{"
+GUARDIAN_SPAN_RX = re.compile(r"guardian_review\{([^}]*)\}")
+LOG_KINDS = (
+    (LOGS_TARGET, LOGS_MESSAGE, "feedback"),
+    (EXEC_APPROVAL_TARGET, EXEC_APPROVAL_MARK, "exec"),
+    (REQUEST_APPROVAL_TARGET, REQUEST_APPROVAL_MARK, "request"),
+)
+
+
+def _logs_shape(con: sqlite3.Connection) -> tuple[str, str] | None:
+    """(body column, select list of `ts`, `ts_nanos` and `thread_id`) of
+    `logs`, or None without the table or its body and target columns."""
     if "logs" not in table_names(con):
-        return []
+        return None
     have = {r[1] for r in con.execute("pragma table_info(logs)")}
     body = "feedback_log_body" if "feedback_log_body" in have else "message"
     if body not in have or "target" not in have:
-        return []
+        return None
     cols = ", ".join(
         "%s as %s" % (c if c in have else "null", c) for c in ("ts", "ts_nanos", "thread_id")
     )
-    sql = (
-        "select rowid as _rowid, %s, %s as body from logs where target = ? and instr(%s, ?) > 0"
-        " order by rowid" % (cols, body, body)
+    return body, cols
+
+
+def _log_rows(con: sqlite3.Connection) -> list[dict]:
+    """The `logs` rows the parser reads, in id order, each with `kind`
+    `feedback`, `exec` or `request` (`LOG_KINDS`); [] without the table."""
+    shape = _logs_shape(con)
+    if shape is None:
+        return []
+    body, cols = shape
+    where = " or ".join("(target = ? and instr(%s, ?) > 0)" % body for _k in LOG_KINDS)
+    sql = "select rowid as _rowid, %s, target, %s as body from logs where %s order by rowid" % (
+        cols,
+        body,
+        where,
     )
-    return [dict(r) for r in con.execute(sql, (LOGS_TARGET, LOGS_MESSAGE))]
+    args = [v for target, mark, _kind in LOG_KINDS for v in (target, mark)]
+    kinds = {target: kind for target, _mark, kind in LOG_KINDS}
+    rows = [dict(r) for r in con.execute(sql, args)]
+    for r in rows:
+        r["kind"] = kinds.get(r["target"], "")
+    return rows
+
+
+def guardian_calls(home: Path, parent: str, start: str, end: str) -> list[str]:
+    """The distinct `tool_call_id`s of the `guardian_review{...}` spans of
+    thread `parent` in the `logs_<N>.sqlite` files in the Codex home
+    `home`, logged from 2 seconds before `start` to 2 seconds after `end`
+    (both timeline timestamps), in log order; [] when there are none or no
+    log can be read."""
+    t0, t1 = epoch_ms(start), epoch_ms(end)
+    if t0 is None or t1 is None:
+        return []
+    calls: list[str] = []
+    for path in sorted(home.glob("logs_*.sqlite")):
+        if not is_sqlite(path):
+            continue
+        try:
+            with open_copy(path) as con:
+                shape = _logs_shape(con)
+                if shape is None:
+                    continue
+                sql = "select %s from logs where instr(%s, ?) > 0 and ts between ? and ?" % (
+                    shape[0],
+                    shape[0],
+                )
+                args = (GUARDIAN_SPAN_MARK, t0 // 1000 - 2, t1 // 1000 + 2)
+                bodies = [str(r[0] or "") for r in con.execute(sql + " order by rowid", args)]
+        except sqlite3.DatabaseError:
+            continue
+        for body in bodies:
+            for m in GUARDIAN_SPAN_RX.finditer(body):
+                fields = _log_fields(m.group(1))
+                call = fields.get("tool_call_id", "")
+                if fields.get("thread_id") == parent and call and call not in calls:
+                    calls.append(call)
+    return calls
 
 
 def _log_time(rec: dict) -> str:
@@ -507,35 +699,274 @@ def _log_time(rec: dict) -> str:
     return to_utc(ts)
 
 
+def _near(a, b) -> bool:
+    """Whether two `ts` values are numbers at most 2 seconds apart."""
+    numbers = all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (a, b))
+    return numbers and abs(a - b) <= 2
+
+
+def _approval_match(rec: dict, kind: str, errors: list) -> re.Match | None:
+    """The approval pattern's match in a `logs` row of `kind`, or None; a
+    row of that kind the pattern cannot read goes to `errors` as
+    (rowid, message, body)."""
+    if rec["kind"] != kind:
+        return None
+    body = str(rec.get("body") or "")
+    m = (EXEC_APPROVAL_RX if kind == "exec" else REQUEST_APPROVAL_RX).search(body)
+    if not m:
+        errors.append(
+            (int(rec["_rowid"]), "unreadable approval log row (%s)" % rec["target"], body)
+        )
+    return m
+
+
+def _decisions(recs: list[dict], errors: list) -> dict[int, tuple[str, str, str]]:
+    """(session id, tool_use_id, text less its source suffix) of each
+    approval row, by rowid; a row the patterns cannot read goes to
+    `errors`. A request row whose decision an exec row of the same decision
+    records within 2 seconds is left out, since the exec row names the
+    thread and the governed item."""
+    out: dict[int, tuple[str, str, str]] = {}
+    execs: list[list] = []  # [ts, decision, paired]
+    for rec in recs:
+        m = _approval_match(rec, "exec", errors)
+        if not m:
+            continue
+        body = str(rec.get("body") or "")
+        sid = _log_fields(body).get("thread_id") or str(rec.get("thread_id") or "")
+        item, turn, decision = m.group(1), m.group(2) or "-", m.group(3)
+        text = "permission decision: %s exec %s turn=%s" % (decision, item, turn)
+        out[int(rec["_rowid"])] = (sid, item, text)
+        execs.append([rec.get("ts"), decision, False])
+    for rec in recs:
+        m = _approval_match(rec, "request", errors)
+        if not m:
+            continue
+        twin = next(
+            (e for e in execs if not e[2] and e[1] == m.group(2) and _near(e[0], rec.get("ts"))),
+            None,
+        )
+        if twin is not None:
+            twin[2] = True
+            continue
+        text = "permission decision: %s request %s" % (m.group(2), m.group(1))
+        out[int(rec["_rowid"])] = ("", "", text)
+    return out
+
+
+def _feedback_text(rec: dict, name: str) -> tuple[str, str]:
+    """(session id, text) of a sent `/feedback` report's row."""
+    fields = _log_fields(str(rec.get("body") or ""))
+    sid = fields.get("thread_id") or str(rec.get("thread_id") or "")
+    if sid.startswith(NO_THREAD_PREFIX):
+        sid = ""
+    text = (
+        "session synced: feedback report uploaded to Sentry, attachments %s failed %s"
+        " (from %s logs, ts)"
+        % (fields.get("uploaded_attachments") or "-", fields.get("attachments_failed") or "-", name)
+    )
+    return sid, text
+
+
 def parse_logs(parser: RolloutParser, artifact: Artifact) -> Iterator[Row]:
     """Rows of `logs_<N>.sqlite`: one `session synced:` row per sent
-    `/feedback` report."""
+    `/feedback` report and one `permission decision:` row per approval."""
     if not is_sqlite(artifact.disk_path):
         yield _problem(parser, artifact, "parser: not a SQLite database")
         return
     try:
         with open_copy(artifact.disk_path) as con:
-            reports = _feedback_rows(con)
+            recs = _log_rows(con)
     except sqlite3.DatabaseError as e:
         yield _problem(parser, artifact, "parser: SQLite error: %s" % e)
         return
-    threads = _sibling_threads(artifact) if reports else {}
-    for rec in reports:
-        fields = _log_fields(str(rec.get("body") or ""))
-        sid = fields.get("thread_id") or str(rec.get("thread_id") or "")
-        if sid.startswith(NO_THREAD_PREFIX):
-            sid = ""
+    threads = _sibling_threads(artifact) if recs else {}
+    errors: list = []
+    decisions = _decisions(recs, errors)
+    name = artifact.disk_path.name
+    for rec in recs:
+        rowid = int(rec["_rowid"])
+        tool_use_id = ""
+        if rec["kind"] == "feedback":
+            sid, text = _feedback_text(rec, name)
+        elif rowid in decisions:
+            sid, tool_use_id, text = decisions[rowid]
+            text += " (from %s logs, ts)" % name
+        else:
+            continue
         row = _stamp(parser, artifact, threads.get(sid) if sid else None, sid)
-        row.source_line = int(rec["_rowid"])
+        row.source_line = rowid
         row.turn_type = "system"
         row.timestamp_utc = _log_time(rec)
-        row.text = (
-            "session synced: feedback report uploaded to Sentry, attachments %s failed %s"
-            " (from %s logs, ts)"
+        row.tool_use_id = tool_use_id
+        row.text = text
+        yield row
+    yield from error_rows(parser, artifact, errors)
+
+
+# `.codex-global-state.json`, the ChatGPT desktop app's own state (Codex
+# Desktop 0.163.0-alpha.10.2 inside ChatGPT 26.1013.40934, macOS,
+# 2026-10-18; research/codex-cli.md section 5). The key holding the app's
+# persisted UI atoms, and the keys read inside it and at the top level.
+ATOM_KEY = "electron-persisted-atom-state"
+PROMPT_HISTORY = "prompt-history"
+DESCRIPTIONS = "thread-descriptions-v1"
+ACTIVITY = "thread-user-activity-times-v1"
+PERMISSIONS = "heartbeat-thread-permissions-by-id"
+DELETED_PREFIX = "codex-writing-block-deleted-thread-v1:"
+HOST_SETTINGS = (
+    "agent-mode-by-host-id",
+    "preferred-non-full-access-agent-mode-by-host-id",
+)
+SELECTION_PREFIX = "permission-selection-by-host-id:"
+ROOT_HINTS = "thread-workspace-root-hints"
+OUTPUT_DIRS = "thread-projectless-output-directories"
+MOBILE_DEVICE = "codex-mobile-has-connected-device"
+REMOTE_ENVIRONMENT = "electron-local-remote-control-environment-id"
+
+
+def _as_object(value) -> dict:
+    """`value` when it is a JSON object, or a string holding one; else {}."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _activity_by_thread(atom: dict) -> dict[str, object]:
+    """Last activity time per thread id, from keys `["local","<id>"]`."""
+    out: dict[str, object] = {}
+    for key, value in _as_object(atom.get(ACTIVITY)).items():
+        try:
+            parts = json.loads(key)
+        except ValueError:
+            continue
+        if isinstance(parts, list) and len(parts) == 2 and isinstance(parts[1], str):
+            out[parts[1]] = value
+    return out
+
+
+def _prompt_entries(atom: dict) -> Iterator[tuple[str, int, str]]:
+    """(thread id, 1-based index, markdown) of each `prompt-history` entry.
+    An entry of the `global` list, the composer's history across threads,
+    has no thread id and is left out when a thread's list in the same file
+    has its text, since two rows of one file never pair in deduplication."""
+    lists = {
+        str(key): [
+            (i, entry["markdown"])
+            for i, entry in enumerate(entries, 1)
+            if isinstance(entry, dict)
+            and isinstance(entry.get("markdown"), str)
+            and entry["markdown"].strip()
+        ]
+        for key, entries in _as_object(atom.get(PROMPT_HISTORY)).items()
+        if isinstance(entries, list)
+    }
+    threaded = {text for key, pairs in lists.items() if key != "global" for _i, text in pairs}
+    for key, pairs in lists.items():
+        for i, text in pairs:
+            if key != "global":
+                yield key, i, text
+            elif text not in threaded:
+                yield "", i, text
+
+
+def _standing_text(entry: dict, suffix: str) -> str:
+    profile = entry.get("activePermissionProfile")
+    if isinstance(profile, dict):
+        profile = profile.get("id")
+    pairs = (
+        ("approval", entry.get("approvalPolicy")),
+        ("sandbox", entry.get("sandboxPolicy")),
+        ("reviewer", entry.get("approvalsReviewer")),
+        ("profile_id", profile),
+    )
+    return "permission mode (standing): %s %s" % (
+        " ".join("%s=%s" % (k, "-" if v in (None, "") else setting_value(v)) for k, v in pairs),
+        suffix,
+    )
+
+
+def _global_state_texts(doc: dict, rel: str) -> Iterator[tuple[str, str]]:
+    """(session id, text) of each file-mtime `system` row of the global state."""
+    atom = _as_object(doc.get(ATOM_KEY))
+
+    def source(key: str) -> str:
+        return "(from %s %s, file mtime)" % (rel, key)
+
+    for key, value in atom.items():
+        if key.startswith(DELETED_PREFIX) and value is True:
+            sid = key[len(DELETED_PREFIX) :]
+            yield sid, "session deleted: %s %s" % (sid, source(DELETED_PREFIX.rstrip(":")))
+    descriptions = _as_object(atom.get(DESCRIPTIONS))
+    activity = _activity_by_thread(atom)
+    for sid in list(descriptions) + [t for t in activity if t not in descriptions]:
+        text = descriptions.get(sid)
+        yield (
+            sid,
+            "thread description: %s last_activity=%s %s"
             % (
-                fields.get("uploaded_attachments") or "-",
-                fields.get("attachments_failed") or "-",
-                artifact.disk_path.name,
-            )
+                text if isinstance(text, str) and text else "-",
+                to_utc(activity.get(sid)) or "-",
+                source(DESCRIPTIONS),
+            ),
         )
+    for sid, entry in _as_object(atom.get(PERMISSIONS)).items():
+        if isinstance(entry, dict):
+            yield sid, _standing_text(entry, source(PERMISSIONS))
+    for key in HOST_SETTINGS:
+        for host, value in _as_object(atom.get(key)).items():
+            setting = "%s.%s=%s" % (key, host, setting_value(value))
+            yield "", "permission setting: %s (from %s, file mtime)" % (setting, rel)
+    for key, value in atom.items():
+        if key.startswith(SELECTION_PREFIX):
+            setting = "%s=%s" % (key, setting_value(value))
+            yield "", "permission setting: %s (from %s, file mtime)" % (setting, rel)
+    if MOBILE_DEVICE in doc or REMOTE_ENVIRONMENT in doc:
+        yield (
+            "",
+            "remote control: mobile device connected=%s environment=%s %s"
+            % (
+                setting_value(doc[MOBILE_DEVICE]) if MOBILE_DEVICE in doc else "-",
+                doc.get(REMOTE_ENVIRONMENT) or "-",
+                source(MOBILE_DEVICE),
+            ),
+        )
+
+
+def parse_global_state(parser: RolloutParser, artifact: Artifact) -> Iterator[Row]:
+    """Rows of `.codex-global-state.json`: the app's prompt history as
+    `user` rows with no timestamp, then the file-mtime `system` rows."""
+    try:
+        with open(artifact.disk_path, "rb") as fh:
+            doc = json.loads(fh.read().decode("utf-8", errors="replace"))
+    except (OSError, ValueError) as e:
+        yield _problem(parser, artifact, "parser: unreadable global state: %s" % error_reason(e))
+        return
+    if not isinstance(doc, dict):
+        yield _problem(parser, artifact, "parser: global state is not a JSON object")
+        return
+    roots = _as_object(doc.get(ROOT_HINTS))
+    outputs = _as_object(doc.get(OUTPUT_DIRS))
+
+    def stamp(sid: str) -> Row:
+        row = _stamp(parser, artifact, None, sid)
+        row.project_path = str(roots.get(sid) or outputs.get(sid) or "") if sid else ""
+        return row
+
+    for sid, index, text in _prompt_entries(_as_object(doc.get(ATOM_KEY))):
+        row = stamp(sid)
+        row.turn_type = "user"
+        row.source_line = index
+        row.text = compact(text)
+        yield row
+    mtime = file_mtime(artifact)
+    for sid, text in _global_state_texts(doc, artifact.rel):
+        row = stamp(sid)
+        row.turn_type = "system"
+        row.source_line = 1
+        row.timestamp_utc = mtime
+        row.text = compact(text)
         yield row

@@ -1302,6 +1302,415 @@ def write_codex_logs(path: Path, rows) -> None:
     con.close()
 
 
+# The ChatGPT desktop app's Codex threads (#160): key names, enum values and
+# formats seen with Codex Desktop 0.163.0-alpha.10.2 inside ChatGPT
+# 26.1013.40934 on macOS, 2026-10-18; every id and value is invented.
+# CODEX_DESKTOP is a user thread, CODEX_GUARDIAN the guardian review thread
+# the app spawned for one of its calls, CODEX_DELETED a thread deleted with
+# the app's own command, whose rollout is gone and whose traces survive in
+# `.codex-global-state.json`.
+CODEX_DESKTOP = "0d0d0d0d-1111-4222-8333-000000000001"
+CODEX_GUARDIAN = "0d0d0d0d-1111-4222-8333-000000000002"
+CODEX_DELETED = "0d0d0d0d-1111-4222-8333-000000000003"
+CODEX_DECLINED_ITEM = "exec-0d0d0d0d-1111-4222-8333-0000000000e1"
+CODEX_REVIEWED_ITEM = "exec-0d0d0d0d-1111-4222-8333-0000000000e2"
+CODEX_DESKTOP_ROLLOUT = ".codex/sessions/2026/10/18/rollout-2026-10-18T17-20-00-%s.jsonl"
+CODEX_GLOBAL_STATE_REL = ".codex/.codex-global-state.json"
+CODEX_GLOBAL_STATE_MTIME = 1792370000  # 2026-10-19T00:33:20Z
+CODEX_VERDICT = {
+    "risk_level": "low",
+    "user_authorization": "high",
+    "outcome": "allow",
+    "rationale": "The user asked for the file in that folder.",
+}
+
+
+def _desk(ts: str, rtype: str, payload: dict) -> dict:
+    return {"timestamp": "2026-10-18T21:%s.000Z" % ts, "type": rtype, "payload": payload}
+
+
+def _desk_settings(ts: str, **settings) -> dict:
+    return _desk(ts, "event_msg", {"type": "thread_settings_applied", "thread_settings": settings})
+
+
+def _desk_started(ts: str, turn: str, trigger: str) -> dict:
+    attribution = {
+        "turn_id": turn,
+        "turn_trigger": trigger,
+        "parent_turn_id": None,
+        "initiating_agent_path": None,
+        "root_turn_id": turn,
+    }
+    return _desk(
+        ts, "event_msg", {"type": "task_started", "turn_id": turn, "turn_attribution": attribution}
+    )
+
+
+WORKSPACE = {"id": ":workspace"}
+MANAGED = {"type": "managed", "file_system": {"type": "restricted"}, "network": "restricted"}
+
+
+def codex_desktop_records(cwd="/srv/proj"):
+    """A Codex Desktop thread: a settings event before the first turn, a
+    composer turn whose shell call the user declined, a model switch and the
+    switch to "Approve for me" (`approvals_reviewer` `auto_review`) with no
+    turn, a resume's reduced settings event that changes nothing, a turn
+    sent from a paired phone whose file write a guardian review allowed,
+    and the switch to full access after it."""
+    return [
+        _desk(
+            "20:00",
+            "session_meta",
+            {
+                "id": CODEX_DESKTOP,
+                "timestamp": "2026-10-18T21:20:00.000Z",
+                "cwd": cwd,
+                "originator": "Codex Desktop",
+                "cli_version": "0.163.0-alpha.10.2",
+                "source": "vscode",
+                "thread_source": "user",
+                "model_provider": "openai",
+                "history_mode": "paginated",
+            },
+        ),
+        _desk_settings(
+            "20:01",
+            model="gpt-6.1-sol",
+            approval_policy="on-request",
+            approvals_reviewer="user",
+            active_permission_profile=WORKSPACE,
+            permission_profile=MANAGED,
+            reasoning_effort="low",
+        ),
+        _desk_started("20:02", "t1", "composer"),
+        _desk(
+            "20:02",
+            "turn_context",
+            {
+                "turn_id": "t1",
+                "cwd": cwd,
+                "model": "gpt-6.1-sol",
+                "effort": "low",
+                "approval_policy": "on-request",
+                "approvals_reviewer": "user",
+                "active_permission_profile": WORKSPACE,
+                "permission_profile": MANAGED,
+                "sandbox_policy": {"type": "workspace-write"},
+            },
+        ),
+        _desk(
+            "20:03",
+            "response_item",
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "fetch the example page"}],
+                "internal_chat_message_metadata_passthrough": {"content_item_kinds": ["user.text"]},
+            },
+        ),
+        _desk(
+            "20:05",
+            "event_msg",
+            {
+                "type": "item_completed",
+                "thread_id": CODEX_DESKTOP,
+                "turn_id": "t1",
+                "item": {
+                    "type": "CommandExecution",
+                    "id": CODEX_DECLINED_ITEM,
+                    "command": "curl https://example.com",
+                    "cwd": cwd,
+                    "source": "unified_exec_startup",
+                    "status": "failed",
+                    "aggregated_output": "rejected by user",
+                    "exit_code": 1,
+                },
+                "started_at_ms": 1792358404000,
+                "completed_at_ms": 1792358405000,
+            },
+        ),
+        _desk(
+            "20:07", "event_msg", {"type": "task_complete", "turn_id": "t1", "duration_ms": 5000}
+        ),
+        _desk_settings(
+            "25:09",
+            model="gpt-5.6-terra",
+            approval_policy="on-request",
+            approvals_reviewer="user",
+            active_permission_profile=WORKSPACE,
+            permission_profile=MANAGED,
+        ),
+        _desk_settings(
+            "25:28",
+            model="gpt-5.6-terra",
+            approval_policy="on-request",
+            approvals_reviewer="auto_review",
+            active_permission_profile=WORKSPACE,
+            permission_profile=MANAGED,
+        ),
+        # A resume's reduced key set: no active_permission_profile.
+        _desk_settings(
+            "26:40",
+            model="gpt-5.6-terra",
+            approval_policy="on-request",
+            approvals_reviewer="auto_review",
+            permission_profile=MANAGED,
+        ),
+        _desk_started("26:41", "t2", "remote_ios"),
+        _desk(
+            "26:41",
+            "turn_context",
+            {
+                "turn_id": "t2",
+                "cwd": cwd,
+                "model": "gpt-5.6-terra",
+                "approval_policy": "on-request",
+                "approvals_reviewer": "auto_review",
+                "active_permission_profile": WORKSPACE,
+                "permission_profile": MANAGED,
+                "sandbox_policy": {"type": "workspace-write"},
+            },
+        ),
+        _desk(
+            "27:27",
+            "event_msg",
+            {
+                "type": "item_completed",
+                "thread_id": CODEX_DESKTOP,
+                "turn_id": "t2",
+                "item": {
+                    "type": "FileChange",
+                    "id": CODEX_REVIEWED_ITEM,
+                    "changes": {"/home/alice/Documents/guide.md": {"type": "add"}},
+                    "status": "completed",
+                },
+                "started_at_ms": 1792358847000,
+                "completed_at_ms": 1792358847600,
+            },
+        ),
+        _desk(
+            "27:32", "event_msg", {"type": "task_complete", "turn_id": "t2", "duration_ms": 51000}
+        ),
+        _desk_settings(
+            "52:30",
+            model="gpt-5.6-terra",
+            approval_policy="never",
+            approvals_reviewer="user",
+            active_permission_profile={"id": ":danger-full-access"},
+            permission_profile={"type": "disabled"},
+        ),
+    ]
+
+
+def codex_guardian_records(cwd="/srv/proj"):
+    """The guardian review thread of CODEX_DESKTOP's file write: its verdict
+    is the JSON text of the final agent message."""
+    verdict = json.dumps(CODEX_VERDICT)
+    return [
+        _desk(
+            "27:23",
+            "session_meta",
+            {
+                "id": CODEX_GUARDIAN,
+                "timestamp": "2026-10-18T21:27:23.000Z",
+                "cwd": cwd,
+                "originator": "Codex Desktop",
+                "cli_version": "0.163.0-alpha.10.2",
+                "source": {"subagent": {"other": "guardian"}},
+                "thread_source": "guardian_review",
+                "parent_thread_id": CODEX_DESKTOP,
+                "multi_agent_version": "disabled",
+                "model_provider": "openai",
+            },
+        ),
+        _desk_started("27:23", "tg", "guardian_review"),
+        _desk(
+            "27:23",
+            "turn_context",
+            {
+                "turn_id": "tg",
+                "cwd": cwd,
+                "model": "codex-auto-review",
+                "approval_policy": "never",
+                "approvals_reviewer": "auto_review",
+                "sandbox_policy": {"type": "read-only"},
+            },
+        ),
+        _desk(
+            "27:26",
+            "response_item",
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": verdict}],
+            },
+        ),
+        _desk(
+            "27:27",
+            "event_msg",
+            {
+                "type": "task_complete",
+                "turn_id": "tg",
+                "duration_ms": 4000,
+                "last_agent_message": verdict,
+            },
+        ),
+    ]
+
+
+def codex_desktop_log_rows():
+    """`logs_2.sqlite` rows (ts, ts_nanos, level, target, body, thread_id)
+    of the desktop app: the core's record of the user's decline and the app
+    server's response that repeats it, a response with no core record
+    beside it, and a model-manager line inside the guardian review span."""
+    return [
+        (
+            1792358405,
+            0,
+            "DEBUG",
+            "codex_core::session::handlers",
+            "Submission thread_id=%s submission_id=0d0d0d0d-1111-4222-8333-0000000000f1 "
+            'operation="exec_approval" op=ExecApproval { id: "%s", turn_id: Some("t1"), '
+            "decision: Decline }" % (CODEX_DESKTOP, CODEX_DECLINED_ITEM),
+            CODEX_DESKTOP,
+        ),
+        (
+            1792358405,
+            0,
+            "INFO",
+            "codex_app_server::outgoing_message",
+            "<- response: CommandExecutionRequestApproval { request_id: Integer(9), response: "
+            "CommandExecutionRequestApprovalResponse { decision: Decline } }",
+            None,
+        ),
+        (
+            1792358843,
+            0,
+            "DEBUG",
+            "codex_models_manager::manager",
+            'guardian_review{review_id="0d0d0d0d-1111-4222-8333-0000000000f2" thread_id=%s '
+            'tool_call_id="%s"}: models cache hit' % (CODEX_DESKTOP, CODEX_REVIEWED_ITEM),
+            None,
+        ),
+        (
+            1792359000,
+            0,
+            "INFO",
+            "codex_app_server::outgoing_message",
+            "<- response: CommandExecutionRequestApproval { request_id: Integer(11), response: "
+            "CommandExecutionRequestApprovalResponse { decision: Accept } }",
+            None,
+        ),
+    ]
+
+
+def codex_global_state(cwd="/srv/proj"):
+    """`.codex-global-state.json`: the persisted atoms hold the prompt
+    history (a `global` list and one per thread, CODEX_DELETED's too), a
+    description and an activity time for CODEX_DELETED and its deletion
+    marker, CODEX_DESKTOP's standing permissions and the host's agent mode;
+    the top level the deleted thread's output directory and the remote
+    control flags."""
+
+    def prompt(text):
+        para = {"type": "paragraph", "content": [{"type": "text", "text": text}]}
+        return {"markdown": text, "document": {"type": "doc", "content": [para]}}
+
+    scratch = "/home/alice/Documents/Codex/2026-10-18/w"
+    atom = {
+        "prompt-history": {
+            "global": [prompt("fetch the example page"), prompt("what is the capital of the UK")],
+            CODEX_DESKTOP: [prompt("fetch the example page")],
+            CODEX_DELETED: [prompt("what is the capital of the UK")],
+        },
+        "thread-descriptions-v1": {CODEX_DELETED: "Find the UK capital"},
+        "thread-user-activity-times-v1": {'["local","%s"]' % CODEX_DELETED: 1792330834000},
+        "heartbeat-thread-permissions-by-id": {
+            CODEX_DESKTOP: {
+                "activePermissionProfile": {"id": ":workspace", "extends": None},
+                "approvalPolicy": "on-request",
+                "approvalsReviewer": "auto_review",
+                "sandboxPolicy": {
+                    "type": "workspaceWrite",
+                    "writableRoots": [cwd],
+                    "networkAccess": False,
+                    "excludeTmpdirEnvVar": False,
+                    "excludeSlashTmp": False,
+                },
+            }
+        },
+        "codex-writing-block-deleted-thread-v1:%s" % CODEX_DELETED: True,
+        "agent-mode-by-host-id": {"local": "guardian-approvals"},
+        "permission-selection-by-host-id:local": {
+            "kind": "agent-mode",
+            "agentMode": "guardian-approvals",
+        },
+        "composer-recent-model-configurations-v1": [
+            {"model": "gpt-5.6-terra", "reasoningEffort": "low", "serviceTier": None}
+        ],
+    }
+    return {
+        "electron-persisted-atom-state": atom,
+        "projectless-thread-ids": [CODEX_DELETED],
+        "thread-projectless-output-directories": {CODEX_DELETED: scratch},
+        "thread-workspace-root-hints": {CODEX_DELETED: scratch},
+        "electron-local-remote-control-environment-id": "env_e_0123abcd",
+        "codex-mobile-has-connected-device": True,
+    }
+
+
+def build_codex_desktop(home: Path) -> None:
+    """The desktop app's thread and guardian rollouts, its approval and
+    guardian log rows added to `.codex/logs_2.sqlite` (which
+    `build_codex_stores` writes first) and `.codex-global-state.json`."""
+    for sid, records in (
+        (CODEX_DESKTOP, codex_desktop_records()),
+        (CODEX_GUARDIAN, codex_guardian_records()),
+    ):
+        _jsonl(home / (CODEX_DESKTOP_ROLLOUT % sid), records)
+    con = sqlite3.connect(str(home / ".codex/logs_2.sqlite"))
+    con.executemany(
+        "INSERT INTO logs (ts, ts_nanos, level, target, feedback_log_body, thread_id)"
+        " VALUES (?,?,?,?,?,?)",
+        codex_desktop_log_rows(),
+    )
+    con.commit()
+    con.close()
+    path = home / CODEX_GLOBAL_STATE_REL
+    path.write_text(json.dumps(codex_global_state()), encoding="utf-8")
+    os.utime(path, (CODEX_GLOBAL_STATE_MTIME, CODEX_GLOBAL_STATE_MTIME))
+
+
+# `state_5.sqlite` `remote_control_enrollments` (codex
+# state/migrations/0024 and 0037 at 3e23877; ids invented).
+CODEX_ENROLLMENT_SCHEMA = """
+create table remote_control_enrollments (websocket_url text not null,
+  account_id text not null, app_server_client_name text, server_id text not null,
+  environment_id text not null, server_name text not null, updated_at integer not null,
+  remote_control_enabled integer not null default 1);
+"""
+
+
+def write_codex_enrollment(path: Path, enabled: int = 1) -> None:
+    con = sqlite3.connect(str(path))
+    con.executescript(CODEX_ENROLLMENT_SCHEMA)
+    con.execute(
+        "insert into remote_control_enrollments values (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "wss://chatgpt.com/backend-api/wham/remote/control/server",
+            CODEX_ACCOUNT,
+            "Codex Desktop",
+            "srv_e_0123abcd",
+            "env_e_0123abcd",
+            "lab-mac.local",
+            1792367418,
+            enabled,
+        ),
+    )
+    con.commit()
+    con.close()
+
+
 def codex_history_records():
     return [
         {

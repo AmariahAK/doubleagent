@@ -35,15 +35,20 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
     `sandbox_policy`, `permission_profile`, `network`; updates the current
     project path and model. The first `turn_context` that names a model
     yields a `system` row `model: <id>` and each later one with another
-    model `model: <old> -> <new>`. The four policy fields are one
-    composite `permission mode: approval=<p> sandbox=<s> profile=<pp>
-    network=<n>` row (a missing field is `-`, an object compact JSON) at
-    the first `turn_context` that has any of them and
-    `permission mode: <old> -> <new>` on every change. Both rows take the
-    `turn_context` line's timestamp and precede the turn's rows. Codex
-    writes no per-call approval to the rollout (approval requests are
-    transient events, `rollout/src/policy.rs:160-223`), so there is no
-    `permission decision:` row.
+    model `model: <old> -> <new>`. The policy fields `approval_policy`,
+    `sandbox_policy`, `permission_profile`, `network`, `approvals_reviewer`
+    (`user`, or `auto_review` for the desktop app's "Approve for me" mode)
+    and `active_permission_profile.id` (`:workspace`,
+    `:danger-full-access`) are one composite `permission mode:
+    approval=<p> sandbox=<s> profile=<pp> network=<n> reviewer=<r>
+    profile_id=<id>` row (a missing field is `-`, an object compact JSON;
+    `reviewer` and `profile_id` since analyzer 0.16.0) at the first
+    record that has any of them and `permission mode: <old> -> <new>` on
+    every change. Both rows take the line's timestamp; a `turn_context`'s
+    precede the turn's rows. Codex writes no per-call approval to the
+    rollout (approval requests are transient events,
+    `rollout/src/policy.rs:160-223`); the desktop app's are read from
+    `logs_<N>.sqlite` (below) and from guardian review threads.
   - `response_item`: payload `type` is `message` (`role` user, assistant or
     developer; `content` blocks with `text`;
     `internal_chat_message_metadata_passthrough.content_item_kinds`, one
@@ -80,7 +85,33 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
     text is skipped.
   - `event_msg`: payload `type` task_started and task_complete
     (`turn_id`, `duration_ms`), turn_aborted (`reason`, `error.message`),
-    thread_rolled_back (`num_turns`) become system rows. item_completed
+    thread_rolled_back (`num_turns`) become system rows. A task_started
+    with `turn_attribution.turn_trigger` (Codex Desktop
+    0.163.0-alpha.10.2: `composer`, `remote_ios`, `remote_android`,
+    `guardian_review`, `scheduled_task_setup`,
+    `automation_heartbeat_run_now`, `automation_heartbeat_scheduled`) is
+    followed by `turn trigger: <trigger> turn=<id>`; the `task_started`
+    text stays as it was, so the `thread_history_1.sqlite` copy still
+    pairs with it. thread_settings_applied (`thread_settings`: `model`,
+    else `collaboration_mode.settings.model`, and the policy fields but
+    not `sandbox_policy`) is written when the user changes a setting,
+    with no turn, and before each turn; it feeds the `model:` and
+    `permission mode:` rows above, a policy field it lacks keeping the
+    value last recorded (a resume writes it with fewer keys). In a
+    guardian review thread (`thread_source` `guardian_review` or
+    `source.subagent.other` `guardian`, with `parent_thread_id`), the
+    desktop app's automatic reviewer of a call, the task_complete's
+    `last_agent_message` is a JSON verdict (`outcome`, `risk_level`,
+    `user_authorization`, `rationale`) and becomes `permission decision:
+    <outcome> (auto_review risk_level=<r> user_authorization=<u>) exec
+    <id> reviewer <thread>: <rationale>` with the parent's `session_id`
+    and an empty `model` (the reviewer's model is not the parent's);
+    `<id>` and `tool_use_id` are the governed item's id when the
+    `guardian_review{...}` spans of the `logs_<N>.sqlite` beside the home
+    name exactly one `tool_call_id` of the parent between the review's
+    start and its verdict (2 seconds either side), else `-` and empty.
+    A verdict that is not a JSON object with `outcome` adds no row.
+    item_completed
     (`item`, `started_at_ms`, `completed_at_ms`) carries a turn item; a
     `UserMessage`, `AgentMessage`, `Reasoning`, `HookPrompt` or
     `ContextCompaction` item only repeats a response_item or `compacted`
@@ -126,10 +157,16 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
 * `logs_<N>.sqlite` (`logs_2.sqlite` today), Codex's tracing log: one
   `session synced: feedback report uploaded to Sentry, attachments <n>
   failed <bool> (from logs_<N>.sqlite logs, ts)` row per `/feedback`
-  report sent with the thread as its `session_id`, read by
-  `codex_state.py`, whose docstring lists the fields. The only local
-  record that a thread's rollout left the host, so `records_sync` is set
-  and a thread without the row is `synced` `no`.
+  report sent with the thread as its `session_id`, and one `permission
+  decision:` row per approval the desktop app's user gave, read by
+  `codex_state.py`, whose docstring lists the fields. The feedback row is
+  the only local record that a thread's rollout left the host, so
+  `records_sync` is set and a thread without the row is `synced` `no`.
+* Codex only: `.codex-global-state.json`, the ChatGPT desktop app's own
+  state, a secondary source read by `codex_state.py`: the app's prompt
+  history as `user` rows with no timestamp, and the deleted-thread
+  markers, thread descriptions, standing permissions and remote control
+  flags as `system` rows at the file's modification time.
 * Forks only, when `ledger_name` is set: an import ledger
   `{"records": [{source_path, content_sha256, imported_thread_id,
   imported_at, source_modified_at?}]}` (times epoch seconds), one `system`
@@ -153,7 +190,11 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
 
 Not read: `session_index.jsonl` (thread names),
 `sqlite/codex-dev.db` (the desktop app's thread catalog and automation
-store; the `automations` table repeats `automation.toml`).
+store; the `automations` table repeats `automation.toml`),
+`.codex-global-state.json.bak`, `thread-writer-locks/<id>.lock` (a lock
+can exist for a prewarmed guardian thread that never wrote a rollout, so
+it is no evidence of a session) and `config.toml`. Rollout file names
+carry the host's local time; every timestamp is taken from the records.
 """
 
 from __future__ import annotations
@@ -187,6 +228,7 @@ AUTOMATION_TMPL = r"^%s/automations/[^/]+/automation\.toml$"
 LOGS_TMPL = r"^%s/logs_[0-9]+\.sqlite$"
 ROLLOUT_RX = re.compile(ROLLOUT_TMPL % re.escape(".codex"))
 HISTORY_REL = ".codex/history.jsonl"
+GLOBAL_STATE_NAME = ".codex-global-state.json"
 UUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 # `rollout-<time>-<thread id>.jsonl`, or `...-<thread id>_<rollout id>.jsonl`
 # for a reverted thread; group 1 is the thread id either way.
@@ -419,26 +461,93 @@ def _prescan(records: list) -> tuple[set, dict]:
     return carried, exit_codes
 
 
-# `turn_context` policy fields, in the order of the `permission mode:` row,
-# as (label, payload key); research/codex-cli.md section 3.
+# `turn_context` and `thread_settings_applied` policy fields, in the order of
+# the `permission mode:` row, as (label, payload key); research/codex-cli.md
+# section 3. `reviewer` and `profile_id` (Codex Desktop 0.163.0-alpha.10.2)
+# were added at the end in analyzer 0.16.0.
 POLICY_FIELDS = (
     ("approval", "approval_policy"),
     ("sandbox", "sandbox_policy"),
     ("profile", "permission_profile"),
     ("network", "network"),
+    ("reviewer", "approvals_reviewer"),
+    ("profile_id", "active_permission_profile"),
 )
+POLICY_KEYS = tuple(key for _label, key in POLICY_FIELDS)
+
+
+def _policy_value(key: str, value) -> object:
+    """A policy field as the composite shows it: the `id` of an
+    `active_permission_profile` object, any other value as it is."""
+    if key == "active_permission_profile" and isinstance(value, dict):
+        return value.get("id")
+    return value
 
 
 def policy_text(payload: dict) -> str:
-    """The composite permission mode of a `turn_context` payload,
-    `approval=<p> sandbox=<s> profile=<pp> network=<n>` with `-` for a
-    missing field, or "" when it has none of them."""
-    pairs = [(label, payload.get(key)) for label, key in POLICY_FIELDS]
+    """The composite permission mode of a `turn_context` payload (or of the
+    merged policy state), `approval=<p> sandbox=<s> profile=<pp> network=<n>
+    reviewer=<r> profile_id=<id>` with `-` for a missing field, or "" when
+    it has none of them."""
+    pairs = [(label, _policy_value(key, payload.get(key))) for label, key in POLICY_FIELDS]
     if all(v in (None, "") for _label, v in pairs):
         return ""
     return " ".join(
         "%s=%s" % (label, "-" if v in (None, "") else setting_value(v)) for label, v in pairs
     )
+
+
+def settings_model(settings: dict) -> str:
+    """The model a `thread_settings_applied` event's `thread_settings` names:
+    `model`, else `collaboration_mode.settings.model`."""
+    if settings.get("model"):
+        return str(settings["model"])
+    mode = settings.get("collaboration_mode")
+    inner = mode.get("settings") if isinstance(mode, dict) else None
+    if isinstance(inner, dict) and inner.get("model"):
+        return str(inner["model"])
+    return ""
+
+
+def guardian_verdict(message) -> dict | None:
+    """The verdict a guardian review thread's `task_complete`
+    `last_agent_message` holds: a JSON object string with `outcome` (and
+    `risk_level`, `user_authorization`, `rationale`), else None."""
+    if not isinstance(message, str):
+        return None
+    try:
+        verdict = json.loads(message)
+    except ValueError:
+        return None
+    if isinstance(verdict, dict) and verdict.get("outcome"):
+        return verdict
+    return None
+
+
+def guardian_text(verdict: dict, call: str, reviewer: str) -> str:
+    """The `permission decision:` text of a guardian review verdict."""
+    return (
+        "permission decision: %s (auto_review risk_level=%s user_authorization=%s) exec %s"
+        " reviewer %s: %s"
+        % (
+            verdict.get("outcome"),
+            verdict.get("risk_level") or "-",
+            verdict.get("user_authorization") or "-",
+            call,
+            reviewer,
+            verdict.get("rationale") or "",
+        )
+    )
+
+
+def _is_guardian(meta: dict) -> bool:
+    """A guardian review thread: `thread_source` `guardian_review`, or a
+    `source.subagent.other` of `guardian`."""
+    if meta.get("thread_source") == "guardian_review":
+        return True
+    source = meta.get("source")
+    sub = source.get("subagent") if isinstance(source, dict) else None
+    return isinstance(sub, dict) and sub.get("other") == "guardian"
 
 
 def _with_exit(text: str, code) -> str:
@@ -651,6 +760,7 @@ class RolloutParser(Parser):
     home_prefix = ".codex"
     ledger_name = ""  # import ledger file under home_prefix; empty when the agent has none
     automations = False  # read `automations/<slug>/automation.toml` (the ChatGPT desktop app)
+    global_state = False  # read `.codex-global-state.json` (the ChatGPT desktop app)
     # A `/feedback` report in `logs_<N>.sqlite` marks a thread sent to Sentry.
     records_sync = True
 
@@ -662,6 +772,9 @@ class RolloutParser(Parser):
         self.state_rel = self.home_prefix + "/state_5.sqlite"
         self.thread_history_rel = self.home_prefix + "/thread_history_1.sqlite"
         self.ledger_rel = self.home_prefix + "/" + self.ledger_name if self.ledger_name else ""
+        self.global_state_rel = (
+            self.home_prefix + "/" + GLOBAL_STATE_NAME if self.global_state else ""
+        )
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
@@ -671,14 +784,18 @@ class RolloutParser(Parser):
             or bool(self.ledger_rel and rel == self.ledger_rel)
             or bool(self.automations and self.automation_rx.match(rel))
             or bool(self.logs_rx.match(rel))
+            or bool(self.global_state_rel and rel == self.global_state_rel)
         )
 
     def secondary(self, artifact: Artifact) -> bool:
-        return artifact.rel in (self.history_rel, self.state_rel, self.thread_history_rel)
+        rel = artifact.rel
+        return rel in (self.history_rel, self.state_rel, self.thread_history_rel) or bool(
+            self.global_state_rel and rel == self.global_state_rel
+        )
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         # codex_state imports item_rows from this module, so it is imported here.
-        from .codex_state import parse_logs, parse_state, parse_thread_history
+        from .codex_state import parse_global_state, parse_logs, parse_state, parse_thread_history
 
         if artifact.rel == self.history_rel:
             yield from self._parse_history(artifact, opts)
@@ -692,6 +809,8 @@ class RolloutParser(Parser):
             yield from parse_logs(self, artifact)
         elif self.ledger_rel and artifact.rel == self.ledger_rel:
             yield from self._parse_ledger(artifact, opts)
+        elif self.global_state_rel and artifact.rel == self.global_state_rel:
+            yield from parse_global_state(self, artifact)
         else:
             yield from self._parse_rollout(artifact, opts)
 
@@ -789,7 +908,10 @@ class RolloutParser(Parser):
         meta_seen = False
         seen_model: dict = {}  # session id -> last model, for the model rows
         seen_mode: dict = {}  # session id -> last composite permission mode
+        policy: dict = {}  # session id -> the policy fields last recorded
         task_pending = False  # a subagent file whose first prompt is still to come
+        guardian_parent = ""  # the parent thread of a guardian review thread
+        started = ""  # the guardian thread's session_meta time
         for n, rec in records:
             rtype = rec.get("type")
             payload = rec.get("payload")
@@ -866,12 +988,18 @@ class RolloutParser(Parser):
                         opts,
                     )
                 task_pending = bool(parent) or _is_subagent(payload)
+                if _is_guardian(payload) and parent:
+                    guardian_parent = parent
+                    started = str(payload.get("timestamp") or rec.get("timestamp") or "")
             elif rtype == "turn_context":
                 cwd = str(payload.get("cwd") or cwd)
                 model = str(payload.get("model") or model)
+                policy[session_id] = {key: payload.get(key) for key in POLICY_KEYS}
                 for text in (
                     track_change("model", seen_model, session_id, str(payload.get("model") or "")),
-                    track_change("permission mode", seen_mode, session_id, policy_text(payload)),
+                    track_change(
+                        "permission mode", seen_mode, session_id, policy_text(policy[session_id])
+                    ),
                 ):
                     if text:
                         yield self._fill(base(), text, opts)
@@ -938,6 +1066,11 @@ class RolloutParser(Parser):
                     yield self._fill(
                         base(), "task_started turn=%s" % (payload.get("turn_id") or ""), opts
                     )
+                    attribution = payload.get("turn_attribution")
+                    if isinstance(attribution, dict) and attribution.get("turn_trigger"):
+                        turn = payload.get("turn_id") or attribution.get("turn_id") or ""
+                        text = "turn trigger: %s turn=%s" % (attribution["turn_trigger"], turn)
+                        yield self._fill(base(), text, opts)
                 elif ptype == "task_complete":
                     yield self._fill(
                         base(),
@@ -945,6 +1078,29 @@ class RolloutParser(Parser):
                         % (payload.get("turn_id") or "", payload.get("duration_ms") or ""),
                         opts,
                     )
+                    verdict = guardian_verdict(payload.get("last_agent_message"))
+                    if guardian_parent and verdict:
+                        row = base()
+                        row.session_id = guardian_parent
+                        row.model = ""  # the reviewer's model is not the parent thread's
+                        call = self._guardian_call(artifact, guardian_parent, started, row)
+                        row.tool_use_id = call
+                        yield self._fill(row, guardian_text(verdict, call or "-", session_id), opts)
+                elif ptype == "thread_settings_applied":
+                    settings = payload.get("thread_settings")
+                    if not isinstance(settings, dict):
+                        continue
+                    state = dict(policy.get(session_id, {}))
+                    state.update({k: settings[k] for k in POLICY_KEYS if k in settings})
+                    policy[session_id] = state
+                    new_model = settings_model(settings)
+                    model = new_model or model
+                    for text in (
+                        track_change("model", seen_model, session_id, new_model),
+                        track_change("permission mode", seen_mode, session_id, policy_text(state)),
+                    ):
+                        if text:
+                            yield self._fill(base(), text, opts)
                 elif ptype == "turn_aborted":
                     err = payload.get("error")
                     detail = err.get("message") if isinstance(err, dict) else ""
@@ -1001,6 +1157,19 @@ class RolloutParser(Parser):
                     yield self._fill(base(), text, opts)
         yield from error_rows(self, artifact, errors, session_id)
 
+    def _guardian_call(self, artifact: Artifact, parent: str, started: str, row: Row) -> str:
+        """The governed call's item id for a guardian verdict at `row`'s time,
+        from the `guardian_review{...}` spans of the `logs_<N>.sqlite` files in
+        the Codex home; "" unless exactly one call of `parent` was reviewed
+        between the review thread's start and its verdict."""
+        from .codex_state import guardian_calls
+
+        home = artifact.disk_path
+        for _ in range(len(artifact.rel.split("/")) - len(self.home_prefix.split("/"))):
+            home = home.parent
+        calls = guardian_calls(home, parent, started or row.timestamp_utc, row.timestamp_utc)
+        return calls[0] if len(calls) == 1 else ""
+
     @staticmethod
     def _fill(row: Row, text: str, opts: Options) -> Row:
         row.text = compact(text)
@@ -1012,3 +1181,4 @@ class CodexParser(RolloutParser):
     name = "codex-cli"
     home_prefix = ".codex"
     automations = True
+    global_state = True

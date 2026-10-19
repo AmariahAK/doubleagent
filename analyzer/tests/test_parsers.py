@@ -907,13 +907,16 @@ class CodexTests(ParserBase):
         "system",  # model: old -> new (second turn_context)
         "system",  # permission mode: old -> new (second turn_context)
     ]
-    MODE_1 = 'approval=on-request sandbox={"type":"workspace-write"} profile=- network=-'
+    MODE_1 = (
+        'approval=on-request sandbox={"type":"workspace-write"} profile=- network=-'
+        " reviewer=- profile_id=-"
+    )
     STATE_REL = ".codex/state_5.sqlite"
     THREAD_HISTORY_REL = ".codex/thread_history_1.sqlite"
     LOGS_REL = ".codex/logs_2.sqlite"
     MODE_2 = (
         'approval=never sandbox={"type":"danger-full-access"} profile={"type":"disabled"} '
-        'network={"allowed_domains":["github.com"],"denied_domains":[]}'
+        'network={"allowed_domains":["github.com"],"denied_domains":[]} reviewer=- profile_id=-'
     )
 
     def test_secondary(self):
@@ -1552,6 +1555,360 @@ class CodexTests(ParserBase):
         path.write_text("not a database", encoding="utf-8")
         rows = self.rows_for(CodexParser(), self.LOGS_REL)
         self.assertEqual([r.text for r in rows], ["parser: not a SQLite database"])
+
+
+from fixtures import (
+    CODEX_DECLINED_ITEM,
+    CODEX_DELETED,
+    CODEX_DESKTOP,
+    CODEX_DESKTOP_ROLLOUT,
+    CODEX_GLOBAL_STATE_MTIME,
+    CODEX_GLOBAL_STATE_REL,
+    CODEX_GUARDIAN,
+    CODEX_REVIEWED_ITEM,
+    build_codex_desktop,
+    codex_guardian_records,
+    write_codex_enrollment,
+)
+
+
+class CodexDesktopTests(ParserBase):
+    """Codex threads of the ChatGPT desktop app (#160): settings events,
+    turn triggers, approval decisions, the guardian review, remote control
+    and `.codex-global-state.json`."""
+
+    DESKTOP = CODEX_DESKTOP_ROLLOUT % CODEX_DESKTOP
+    GUARDIAN = CODEX_DESKTOP_ROLLOUT % CODEX_GUARDIAN
+    LOGS_REL = ".codex/logs_2.sqlite"
+    STATE_REL = ".codex/state_5.sqlite"
+    PROFILE = '{"file_system":{"type":"restricted"},"network":"restricted","type":"managed"}'
+    WS = '{"type":"workspace-write"}'
+
+    def setUp(self):
+        super().setUp()
+        build_codex_desktop(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def mode(self, approval, sandbox, profile, reviewer, profile_id) -> str:
+        return "approval=%s sandbox=%s profile=%s network=- reviewer=%s profile_id=%s" % (
+            approval,
+            sandbox,
+            profile,
+            reviewer,
+            profile_id,
+        )
+
+    def test_settings_events_date_model_and_mode_changes(self):
+        rows = self.rows_for(CodexParser(), self.DESKTOP)
+        got = [
+            (r.timestamp_utc, r.model, r.text)
+            for r in rows
+            if r.text.startswith(("model:", "permission mode:"))
+        ]
+        first = self.mode("on-request", "-", self.PROFILE, "user", ":workspace")
+        workspace = self.mode("on-request", self.WS, self.PROFILE, "user", ":workspace")
+        guardian = self.mode("on-request", self.WS, self.PROFILE, "auto_review", ":workspace")
+        full = self.mode("never", self.WS, '{"type":"disabled"}', "user", ":danger-full-access")
+        self.assertEqual(
+            got,
+            [
+                # The settings event before the first turn names no sandbox.
+                ("2026-10-18T21:20:01.000Z", "gpt-6.1-sol", "model: gpt-6.1-sol"),
+                ("2026-10-18T21:20:01.000Z", "gpt-6.1-sol", "permission mode: " + first),
+                (
+                    "2026-10-18T21:20:02.000Z",
+                    "gpt-6.1-sol",
+                    "permission mode: %s -> %s" % (first, workspace),
+                ),
+                # The switches made with no turn are dated when they were made;
+                # the resume's reduced event and the next turn_context add none.
+                (
+                    "2026-10-18T21:25:09.000Z",
+                    "gpt-5.6-terra",
+                    "model: gpt-6.1-sol -> gpt-5.6-terra",
+                ),
+                (
+                    "2026-10-18T21:25:28.000Z",
+                    "gpt-5.6-terra",
+                    "permission mode: %s -> %s" % (workspace, guardian),
+                ),
+                # Full access, a sandbox the settings event does not carry kept.
+                (
+                    "2026-10-18T21:52:30.000Z",
+                    "gpt-5.6-terra",
+                    "permission mode: %s -> %s" % (guardian, full),
+                ),
+            ],
+        )
+        self.assertEqual({r.session_id for r in rows}, {CODEX_DESKTOP})
+
+    def test_turn_trigger_rows(self):
+        rows = self.rows_for(CodexParser(), self.DESKTOP)
+        texts = [r.text for r in rows if r.text.startswith(("task_started", "turn trigger"))]
+        self.assertEqual(
+            texts,
+            [
+                "task_started turn=t1",
+                "turn trigger: composer turn=t1",
+                "task_started turn=t2",
+                "turn trigger: remote_ios turn=t2",
+            ],
+        )
+        trigger = next(r for r in rows if r.text == "turn trigger: remote_ios turn=t2")
+        self.assertEqual(
+            (trigger.turn_type, trigger.timestamp_utc, trigger.session_id),
+            ("system", "2026-10-18T21:26:41.000Z", CODEX_DESKTOP),
+        )
+        # A rollout without turn_attribution keeps its rows (CodexTests).
+        plain = self.rows_for(CodexParser(), CodexTests.REL)
+        self.assertFalse([r for r in plain if r.text.startswith("turn trigger:")])
+
+    VERDICT = (
+        "permission decision: allow (auto_review risk_level=low user_authorization=high)"
+        " exec %s reviewer %s: The user asked for the file in that folder."
+    )
+
+    def test_guardian_review_decision(self):
+        rows = self.rows_for(CodexParser(), self.GUARDIAN)
+        self.assertEqual(
+            [(r.session_id, r.text) for r in rows[:2]],
+            [
+                (
+                    CODEX_GUARDIAN,
+                    "session start: Codex Desktop 0.163.0-alpha.10.2 provider=openai cwd=/srv/proj",
+                ),
+                (CODEX_GUARDIAN, "subagent %s of %s" % (CODEX_GUARDIAN, CODEX_DESKTOP)),
+            ],
+        )
+        self.assertIn("turn trigger: guardian_review turn=tg", [r.text for r in rows])
+        decision = rows[-1]
+        # The verdict belongs to the parent thread and joins the governed
+        # call through the guardian_review span in logs_2.sqlite.
+        self.assertEqual(
+            (
+                decision.turn_type,
+                decision.timestamp_utc,
+                decision.session_id,
+                decision.tool_use_id,
+                decision.project_path,
+                decision.text,
+            ),
+            (
+                "system",
+                "2026-10-18T21:27:27.000Z",
+                CODEX_DESKTOP,
+                CODEX_REVIEWED_ITEM,
+                "/srv/proj",
+                self.VERDICT % (CODEX_REVIEWED_ITEM, CODEX_GUARDIAN),
+            ),
+        )
+        call = next(
+            r
+            for r in self.rows_for(CodexParser(), self.DESKTOP)
+            if r.turn_type == "tool_use" and r.tool_use_id == CODEX_REVIEWED_ITEM
+        )
+        self.assertEqual(call.session_id, decision.session_id)
+        # The reviewer's model stays out of the parent thread's models.
+        self.assertEqual(decision.model, "")
+
+    def test_guardian_decision_without_log_span(self):
+        con = sqlite3.connect(str(self.home / self.LOGS_REL))
+        con.execute("delete from logs where feedback_log_body like 'guardian_review{%'")
+        con.commit()
+        con.close()
+        rows = self.rows_for(CodexParser(), self.GUARDIAN)
+        self.assertEqual(
+            (rows[-1].tool_use_id, rows[-1].text), ("", self.VERDICT % ("-", CODEX_GUARDIAN))
+        )
+
+    def test_guardian_verdict_not_json_is_no_decision(self):
+        recs = codex_guardian_records()
+        recs[-1]["payload"]["last_agent_message"] = "allow, low risk"
+        path = self.home / self.GUARDIAN
+        path.write_text("".join(json.dumps(r) + "\n" for r in recs), encoding="utf-8")
+        rows = self.rows_for(CodexParser(), self.GUARDIAN)
+        self.assertFalse([r for r in rows if r.text.startswith("permission decision:")])
+
+    def test_bad_line_in_desktop_rollout(self):
+        row = CodexTests.check_bad_line(self, CodexParser, self.DESKTOP, 2)
+        self.assertEqual(row.session_id, CODEX_DESKTOP)
+
+    def test_log_approval_decisions(self):
+        rows = self.rows_for(CodexParser(), self.LOGS_REL)
+        got = [
+            (r.timestamp_utc, r.session_id, r.tool_use_id, r.source_line, r.text)
+            for r in rows
+            if r.text.startswith("permission decision:")
+        ]
+        self.assertEqual(
+            got,
+            [
+                # The core's record names the thread and the governed item; the
+                # app server's response that repeats it is left out.
+                (
+                    "2026-10-18T21:20:05.000Z",
+                    CODEX_DESKTOP,
+                    CODEX_DECLINED_ITEM,
+                    5,
+                    "permission decision: Decline exec %s turn=t1 (from logs_2.sqlite logs, ts)"
+                    % CODEX_DECLINED_ITEM,
+                ),
+                # A response with no core record beside it: no thread known.
+                (
+                    "2026-10-18T21:30:00.000Z",
+                    "",
+                    "",
+                    8,
+                    "permission decision: Accept request 11 (from logs_2.sqlite logs, ts)",
+                ),
+            ],
+        )
+        # The /feedback rows are unchanged (CodexTests.test_feedback_report_rows).
+        self.assertEqual(len([r for r in rows if r.text.startswith("session synced:")]), 2)
+        decline = next(
+            r
+            for r in self.rows_for(CodexParser(), self.DESKTOP)
+            if r.turn_type == "tool_use" and r.tool_use_id == CODEX_DECLINED_ITEM
+        )
+        self.assertEqual(decline.session_id, got[0][1])
+
+    def test_unreadable_approval_log_row(self):
+        con = sqlite3.connect(str(self.home / self.LOGS_REL))
+        cut = 'Submission thread_id=%s operation="exec_approval" op=ExecApproval { id: "exec-' % (
+            CODEX_DESKTOP
+        )
+        con.execute(
+            "insert into logs (ts, ts_nanos, level, target, feedback_log_body, thread_id)"
+            " values (1792358500, 0, 'DEBUG', 'codex_core::session::handlers', ?, ?)",
+            (cut, CODEX_DESKTOP),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(CodexParser(), self.LOGS_REL)
+        decisions = [r for r in rows if r.text.startswith("permission decision:")]
+        self.assertEqual(len(decisions), 2)  # the rows around it are still read
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            (
+                "system",
+                9,
+                "parser: unreadable approval log row (codex_core::session::handlers): " + cut,
+            ),
+        )
+
+    def test_remote_control_enrollment(self):
+        write_codex_enrollment(self.home / self.STATE_REL, enabled=0)
+        rows = self.rows_for(CodexParser(), self.STATE_REL)
+        remote = [r for r in rows if r.text.startswith("remote control:")]
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.source_line, r.text) for r in remote],
+            [
+                (
+                    "system",
+                    "2026-10-18T23:50:18.000Z",
+                    "",
+                    1,
+                    "remote control: enabled=0 server=srv_e_0123abcd environment=env_e_0123abcd"
+                    " host=lab-mac.local client=Codex Desktop account=%s" % CODEX_ACCOUNT,
+                ),
+            ],
+        )
+        # The thread rows come first and are unchanged (CodexTests.test_state_rows).
+        self.assertEqual(rows[-1].text, remote[0].text)
+        self.assertEqual([r.turn_type for r in rows[:-1]], ["system", "user", "system", "user"])
+
+    def test_global_state_rows(self):
+        p = CodexParser()
+        art = self.artifact(CODEX_GLOBAL_STATE_REL)
+        self.assertTrue(p.wants(art))
+        self.assertTrue(p.secondary(art))
+        self.assertFalse(OpenInterpreterParser().wants(art))
+        rows = self.rows_for(p, CODEX_GLOBAL_STATE_REL)
+        mtime = to_utc(CODEX_GLOBAL_STATE_MTIME)
+        src = "(from %s %%s, file mtime)" % CODEX_GLOBAL_STATE_REL
+        scratch = "/home/alice/Documents/Codex/2026-10-18/w"
+        standing = (
+            "permission mode (standing): approval=on-request sandbox="
+            '{"excludeSlashTmp":false,"excludeTmpdirEnvVar":false,"networkAccess":false,'
+            '"type":"workspaceWrite","writableRoots":["/srv/proj"]} reviewer=auto_review'
+            " profile_id=:workspace " + src % "heartbeat-thread-permissions-by-id"
+        )
+        setting = "permission setting: %s (from " + CODEX_GLOBAL_STATE_REL + ", file mtime)"
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.text) for r in rows],
+            [
+                # The global list's entries repeat the threads' and are left out.
+                ("user", "", CODEX_DESKTOP, "", "fetch the example page"),
+                ("user", "", CODEX_DELETED, scratch, "what is the capital of the UK"),
+                (
+                    "system",
+                    mtime,
+                    CODEX_DELETED,
+                    scratch,
+                    "session deleted: %s %s"
+                    % (CODEX_DELETED, src % "codex-writing-block-deleted-thread-v1"),
+                ),
+                (
+                    "system",
+                    mtime,
+                    CODEX_DELETED,
+                    scratch,
+                    "thread description: Find the UK capital last_activity="
+                    "2026-10-18T13:40:34.000Z " + src % "thread-descriptions-v1",
+                ),
+                ("system", mtime, CODEX_DESKTOP, "", standing),
+                (
+                    "system",
+                    mtime,
+                    "",
+                    "",
+                    setting % "agent-mode-by-host-id.local=guardian-approvals",
+                ),
+                (
+                    "system",
+                    mtime,
+                    "",
+                    "",
+                    setting
+                    % 'permission-selection-by-host-id:local={"agentMode":"guardian-approvals",'
+                    '"kind":"agent-mode"}',
+                ),
+                (
+                    "system",
+                    mtime,
+                    "",
+                    "",
+                    "remote control: mobile device connected=true environment=env_e_0123abcd "
+                    + src % "codex-mobile-has-connected-device",
+                ),
+            ],
+        )
+
+    def test_global_state_recovers_deleted_thread(self):
+        rows, _, problems, deduplicated = cli.collect_rows(self.col, Options(), ["codex-cli"])
+        self.assertEqual(problems, [])
+        users = [
+            (r.session_id, r.recovered, r.source_file.endswith(".codex-global-state.json"))
+            for r in rows
+            if r.turn_type == "user" and r.session_id in (CODEX_DESKTOP, CODEX_DELETED)
+        ]
+        # The rollout's prompt wins over the app's copy; the deleted thread's
+        # prompt survives only in the global state and is marked recovered.
+        self.assertEqual(sorted(users), [(CODEX_DESKTOP, "", False), (CODEX_DELETED, "yes", True)])
+        self.assertGreaterEqual(deduplicated["codex-cli"], 12)
+        sessions = {s.session_id: s for s in summarise(rows, frozenset({"codex-cli"}))}
+        self.assertEqual(sessions[CODEX_DELETED].recovered, "yes")
+
+    def test_global_state_unreadable_is_one_row(self):
+        path = self.home / CODEX_GLOBAL_STATE_REL
+        for body, text in (
+            ('{"electron-persisted-atom-state": {"prompt-hist', "parser: unreadable global state:"),
+            ("[1]", "parser: global state is not a JSON object"),
+        ):
+            path.write_text(body, encoding="utf-8")
+            rows = self.rows_for(CodexParser(), CODEX_GLOBAL_STATE_REL)
+            self.assertEqual([r.turn_type for r in rows], ["system"])
+            self.assertTrue(rows[0].text.startswith(text), rows[0].text)
 
 
 class TimelineTests(ParserBase):
@@ -8361,7 +8718,7 @@ class OpenInterpreterTests(ParserBase):
             self.assertTrue(r.source_file.endswith(OI_ROLLOUT), r.source_file)
         start, model1, mode1, user, use, result, asst, done, model2, mode2 = rows
         self.assertIn("session start: codex_cli_rs 0.9.0 provider=kimi-for-coding", start.text)
-        sandbox = 'sandbox={"type":"workspace-write"} profile=- network=-'
+        sandbox = 'sandbox={"type":"workspace-write"} profile=- network=- reviewer=- profile_id=-'
         self.assertEqual(
             [(r.timestamp_utc, r.model, r.text) for r in (model1, mode1, model2, mode2)],
             [
