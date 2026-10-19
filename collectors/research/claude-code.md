@@ -1,72 +1,279 @@
 # claude-code
 
-How the transcripts are encoded and how the parser reads them is in
+Claude Code is Anthropic's closed-source coding agent CLI (catalog agent `claude-code`); Claude
+Desktop's Code tab launches the same CLI ([`claude-desktop.md`](claude-desktop.md)). This document
+covers where it keeps its state; how the transcripts are encoded and how the parser reads them is in
 [`analyzer/research/claude-code.md`](../../analyzer/research/claude-code.md).
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
-Closed source. Evidence is the shipped package: `npm pack @anthropic-ai/claude-code` gives 2.1.288, a 28 KB shim whose `package.json` lists `optionalDependencies` on eight platform packages (`scratchpad/npm/cc/package/package.json`). `npm pack @anthropic-ai/claude-code-linux-x64@2.1.288` gives a single 245 MB Bun-compiled binary `claude`; `strings -n 6` of it is `scratchpad/npm/cc.strings` and every "cc:NNN" below is a line in that file. Official docs: [Claude Code settings](https://code.claude.com/docs/en/settings), [Claude Code IAM](https://code.claude.com/docs/en/iam), [Claude Code managed settings](https://code.claude.com/docs/en/managed-settings); [Claude Desktop data storage](https://claude.com/docs/third-party/claude-desktop/data-storage). Layout confirmed names-only against `~/.claude` on this host (2.1.288 native install). Evidence level per claim: **bundle** unless marked **docs** or **local**.
+Closed source. Evidence is the shipped package: `npm pack @anthropic-ai/claude-code` gives 2.1.288,
+a 28 KB shim whose `package.json` lists `optionalDependencies` on eight platform packages
+(`scratchpad/npm/cc/package/package.json`). `npm pack @anthropic-ai/claude-code-linux-x64@2.1.288`
+gives a single 245 MB Bun-compiled binary `claude`; `strings -n 6` of it is
+`scratchpad/npm/cc.strings` and every "cc:NNN" below is a line in that file. Official docs:
+[Claude Code settings](https://code.claude.com/docs/en/settings),
+[Claude Code IAM](https://code.claude.com/docs/en/iam),
+[Claude Code managed settings](https://code.claude.com/docs/en/managed-settings);
+[Claude Desktop data storage](https://claude.com/docs/third-party/claude-desktop/data-storage).
+Evidence level per claim: **bundle** unless marked **docs** or **local**.
+
+### Observed
+
+- macOS, CLI 2.1.295 launched by the Claude Desktop Code tab, 2026-10-11: the CLI cache directory
+  `~/Library/Caches/claude-cli-nodejs/` ([CLI cache directory](#cli-cache-directory)) and
+  `sessions/<pid>.<sha256>.key` beside `sessions/<pid>.json` ([section 3](#3-credentials)).
+- Linux, CLI 2.1.295 launched from the Claude Desktop Code tab, 2026-10-11:
+  `sessions/<pid>.<sha256>.key` beside `sessions/<pid>.json` ([section 3](#3-credentials)).
+- The author's host, 2.1.288 native install: layout confirmed names-only against `~/.claude` on this
+  host; claims marked **local** rest on it.
+- The transcript-level observations (2.1.286 to 2.1.289 and 2.1.296) are in [section 1 of
+  `analyzer/research/claude-code.md`](../../analyzer/research/claude-code.md#1-source-and-evidence).
+
+### Source reviews
+
+- 2026-10-19, other agents that read or drive Claude Code (not seen on a real install):
+  - Crush reads `~/.claude/skills` as one of its global skills directories, beside
+    `~/.agents/skills`, and a project's `.claude/skills` as a project one
+    ([`internal/config/load.go:1312-1322`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1312-L1322),
+    [`1345-1350`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1345-L1350)),
+    so a skill in the config home or the project may have been loaded by Crush as well as by Claude
+    Code ([`crush.md`](crush.md)).
+  - Agent Zero's Orchestrator plugin, which tells that agent how to drive other coding CLIs on the host or in its container, defaults Claude Code to `permission_mode: bypassPermissions` and, when not running as root, runs `claude -p "$TASK" --output-format json --permission-mode bypassPermissions --allowedTools Bash,Read,Edit` ([`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37), [`plugins/_orchestrator/README.md:96`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/README.md#L96)). Such a session is an ordinary transcript under `projects/`, started by another agent with approvals bypassed; the plugin's permission settings are in [section 8 of `analyzer/research/agent-zero.md`](../../analyzer/research/agent-zero.md#8-parser-plan).
 
 ## 2. Per-user storage
 
-Config home = `process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude")`, NFC-normalised (cc:472945 `o()??u(R(),".claude")`, cc:497291). Same on Linux, macOS and Windows (`%USERPROFILE%\.claude`, docs settings page). No XDG or Library/AppData paths for user state, apart from the cache directory below. `CLAUDE_CONFIG_DIR` relocates everything including `.credentials.json` and the keychain entry name (docs /iam "Credential management"); separate account dirs such as `~/.claude-work` are documented practice (docs /iam "multiple accounts").
+Config home = `process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude")`, NFC-normalised
+(cc:472945 `o()??u(R(),".claude")`, cc:497291). Same on Linux, macOS and Windows
+(`%USERPROFILE%\.claude`, docs settings page). No XDG or Library/AppData paths for user state, apart
+from the cache directory below. `CLAUDE_CONFIG_DIR` relocates everything including
+`.credentials.json` and the keychain entry name (docs /iam "Credential management"); separate
+account dirs such as `~/.claude-work` are documented practice (docs /iam "multiple accounts").
 
-Known top-level directories inside the config home, from the literal set at cc:482244: `agent-memory`, `agent-memory-local`, `agent-memory-project`, `api-dumps`, `backups`, `cache`, `chrome`, `cowork_plugins`, `daemon`, `debug`, `downloads`, `dump-prompts`, `feedback`, `feedback-bundles`, `file-history`, `file-transfers`, `ide`, `image-cache`, `jobs`, `local`, `local-settings`, `logs`, `mcp-discovery-cache`, `mcp-skill-archives`, `paste-cache`, `plans`, `plugins`, `project-settings`, `projects`, `remote`, `scratch`, `seed-admin`, `session-env`, `sessions`, `shares`, `shell-snapshots`, `startup-perf`, `state`, `statsig`, `storage-v2`, `systemd`, `tasks`, `teams`, `telemetry`, `todos`, `traces`, `uploads`, `usage-data`. User-config subdirs also include `commands`, `agents`, `output-styles`, `skills`, `workflows`, `routines`, `themes`, `rules` (cc:473782). Known top-level files (cc:483303): `.claude.json`, `.claude.json.backup`, `.credentials.json`, `history.jsonl`, `.session_ingress_token`, `policy-limits.json`, `remote-settings.json`, `hfi-auth.json`, `stats-cache.json`, `mcp-needs-auth-cache.json`, `gh-pr-status-cache.json`, `antproto.json`, `active-time.json`, `loop.md`, `server-sessions.json`, `computer-use.lock`, `server.lock`; plus `settings.json`, `settings.local.json` (cc:436317-8), `.device-keys.json` and `.config.json` (cc:477075).
+Known top-level directories inside the config home, from the literal set at cc:482244:
+`agent-memory`, `agent-memory-local`, `agent-memory-project`, `api-dumps`, `backups`, `cache`,
+`chrome`, `cowork_plugins`, `daemon`, `debug`, `downloads`, `dump-prompts`, `feedback`,
+`feedback-bundles`, `file-history`, `file-transfers`, `ide`, `image-cache`, `jobs`, `local`,
+`local-settings`, `logs`, `mcp-discovery-cache`, `mcp-skill-archives`, `paste-cache`, `plans`,
+`plugins`, `project-settings`, `projects`, `remote`, `scratch`, `seed-admin`, `session-env`,
+`sessions`, `shares`, `shell-snapshots`, `startup-perf`, `state`, `statsig`, `storage-v2`,
+`systemd`, `tasks`, `teams`, `telemetry`, `todos`, `traces`, `uploads`, `usage-data`. User-config
+subdirs also include `commands`, `agents`, `output-styles`, `skills`, `workflows`, `routines`,
+`themes`, `rules` (cc:473782). Known top-level files (cc:483303): `.claude.json`,
+`.claude.json.backup`, `.credentials.json`, `history.jsonl`, `.session_ingress_token`,
+`policy-limits.json`, `remote-settings.json`, `hfi-auth.json`, `stats-cache.json`,
+`mcp-needs-auth-cache.json`, `gh-pr-status-cache.json`, `antproto.json`, `active-time.json`,
+`loop.md`, `server-sessions.json`, `computer-use.lock`, `server.lock`; plus `settings.json`,
+`settings.local.json` (cc:436317-8), `.device-keys.json` and `.config.json` (cc:477075).
 
-What holds evidence:
+### Scratch directories
 
-- `projects/<key>/<sessionId>.jsonl`: transcripts. `<key>` = cwd with `[^a-zA-Z0-9]` → `-`, truncated to 200 chars plus a base-36 hash (cc:473017, cc:473728). Subagent transcripts: `projects/<key>/<sessionId>/subagents/agent-<id>.jsonl` (cc:476679). Per-project memory: `projects/<key>/memory/*.md` (cc:489631). Local shows `-home-sean-dev-...` dirs holding `<uuid>.jsonl`, `<uuid>/`, `memory/`.
+None known under the home; the Claude Code CLI temp roots outside it (`/tmp/claude-<uid>` on Linux)
+are described in [section 6 of
+`claude-desktop.md`](claude-desktop.md#6-where-the-project-path-is-recorded).
+
+### Files that hold evidence
+
+- `projects/<key>/<sessionId>.jsonl`: transcripts. `<key>` = cwd with `[^a-zA-Z0-9]` → `-`,
+  truncated to 200 chars plus a base-36 hash (cc:473017, cc:473728). Subagent transcripts:
+  `projects/<key>/<sessionId>/subagents/agent-<id>.jsonl` (cc:476679). Per-project memory:
+  `projects/<key>/memory/*.md` (cc:489631). Local shows `-home-sean-dev-...` dirs holding
+  `<uuid>.jsonl`, `<uuid>/`, `memory/`.
 - `history.jsonl`: prompt history, with retention pruning (cc:338013-15, 478233).
 - `debug/<sessionId>.txt`: per-session debug logs (cc:472977); `debug/latest` symlink (local).
-- `file-history/<sessionId>/`: pre-edit file backups (cc:482923); `session-env/<sessionId>/` (cc:480109); `shell-snapshots/snapshot-<shell>-<epoch>-<rand>.sh` (shell function dumps, cc:480528 region, local name confirms); `todos/`, `tasks/<sessionId>/`, `plans/*.md` (cc:476220), `teams/`, `jobs/<id>/parent-transcript.jsonl` (cc "jobs" ctx), `dump-prompts/*.jsonl` (full outgoing prompts, cc "dump-prompts" ctx), `api-dumps`, `traces/*.json`, `usage-data/{facets,session-meta}/*.json` and `report-*.html` (cc:492127), `feedback-bundles/*.zip`, `shares/*.zip`, `uploads/<sessionId>/`, `ide/<port>.lock` (local `13502.lock`; Windows/WSL also probes `%USERPROFILE%\.claude\ide`, cc "ide" ctx), `backups/` (`.claude.json` snapshots; docs: `~/.claude/backups/.claude.json.corrupted.<ts>`).
-- `.claude.json` sits in `$HOME`, or inside the config home when `CLAUDE_CONFIG_DIR` is set: its path is ``join(process.env.CLAUDE_CONFIG_DIR || homedir(), `.claude${suffix}.json`)`` (cc:473059 `mar()`, cc:473896 `configPath`; variants `.claude${suffix}.json`, cc:477075); docs: "holds your sign-in session, MCP server configurations, per-project state such as trust decisions, and the global config keys" (settings page). Its `projects` object is keyed by project path (cc:474276 `e.projects`).
-- Permission configuration (issue 93): the settings files `<config home>/settings.json`, `<config home>/settings.local.json`, and a project's `.claude/settings.json` (shared) and `.claude/settings.local.json` (personal, gitignored) hold the `permissions` object: `allow`, `deny` and `ask` rule lists (a tool name with an optional argument pattern, such as `Bash(npm test:*)`), `defaultMode` (the permission mode: `default`, `acceptEdits`, `plan`, `bypassPermissions`, `dontAsk` or `auto`), `disableBypassPermissionsMode` and `additionalDirectories`; "always allow" answers to a prompt are persisted there. In `.claude.json` each `projects.<path>` object holds `allowedTools`, `hasTrustDialogAccepted` (the folder trust prompt was accepted), `hasClaudeMdExternalIncludesApproved`, `enabledMcpjsonServers`, `disabledMcpjsonServers` and `mcpServers`. These are standing grants: the evidence of what the person authorised for the agent, collected as part of the config home and the project catalog's `.claude` entry (key names and citations to the 2.1.296 binary in [section 5 of `analyzer/research/claude-code.md`](../../analyzer/research/claude-code.md#5-other-files), where the rows the analyzer makes of them are listed). From a relocated `.claude-<name>` home only `.claude.json` is collected, not the settings files (below).
-- `plugins/`: `installed_plugins.json`, `known_marketplaces.json`, `marketplaces/<name>/` git clones, `cache/` zip cache (cc plugins ctx); local also `blocklist.json`, `plugin-directory-cache-v2.json`, `synced/`.
-- `statsig/` feature-flag cache, `cache/gateway-models.json`, `cache/model-capabilities.json`, `telemetry/`, `telemetry/runs/`, `chrome/chrome-native-host[.bat]`, `local/` (npm-local install), `remote/` (cloud sessions: `/home/claude/.claude/remote/.oauth_token`, `.api_key`, `.session_ingress_token`, cc `.session_ingress_token` ctx).
-- Native installer binaries: `$XDG_DATA_HOME/claude/versions/<ver>` (default `~/.local/share/claude/versions`) and symlink `~/.local/bin/claude` (cc "versions" ctx `o(wje(e),"claude","versions")`, `o(n,".local","bin")`; local confirms three ~245 MB versions). Windows: `winget Anthropic.ClaudeCode` (cc:296086).
-- CLI cache directory (issue 81), from the env-paths code bundled in the CLI with app name `claude-cli` and suffix `nodejs`: `~/Library/Caches/claude-cli-nodejs/` on macOS (observed with CLI 2.1.295 launched by the Claude Desktop Code tab, 2026-10-11), `$XDG_CACHE_HOME/claude-cli-nodejs/` else `~/.cache/claude-cli-nodejs/` on Linux, and `%LOCALAPPDATA%\claude-cli-nodejs\Cache\` on Windows (both bundle-derived, not observed on a real install). Under it, `<project slug>/mcp-logs-<server>/<timestamp>.jsonl`: the slug is the cwd with every non-alphanumeric character replaced by `-` (the `projects/` key scheme), the server is the MCP server name slugged the same way, and the file name is an ISO timestamp with `:` and `.` replaced by `-` (`2026-10-12T02-23-51-709Z.jsonl`). Each line is `{cwd, debug, sessionId, timestamp}`. The bundle also names `<project slug>/errors/` (not observed). `CLAUDE_CONFIG_DIR` does not move it. Observed on macOS: the Code tab's CLI wrote `mcp-logs-ccd-host/` and `mcp-logs-terminal/` (the desktop's own two MCP servers) under the project's slug at session start, one line of about 200 bytes each, and ordinary CLI sessions on another project wrote `mcp-logs-<connector name>/` files of 7-9 lines (1.5-2.2 KB); the whole directory was 16 KB. Evidence, `claude 2.1.295 linux-arm64` (the binary recorded in [`analyzer/research/claude-code.md`](../../analyzer/research/claude-code.md), [section 5](../../analyzer/research/claude-code.md#5-other-files)):
-  - `@206335642`, env-paths with the three platform branches: `F=(t)=>{let e=n.join(d,"Library");return{data:n.join(e,"Application Support",t),config:n.join(e,"Preferences",t),cache:n.join(e,"Caches",t),log:n.join(e,"Logs",t),temp:n.join(_,t)}}`, `P=(t)=>{let e=g.APPDATA||n.join(d,"AppData","Roaming"),r=g.LOCALAPPDATA||n.join(d,"AppData","Local");return{data:n.join(r,t,"Data"),config:n.join(e,t,"Config"),cache:n.join(r,t,"Cache"),log:n.join(r,t,"Log"),temp:n.join(_,t)}}` and, at `@206336051`, `G=(t)=>{...cache:n.join(g.XDG_CACHE_HOME||n.join(d,".cache"),t),log:n.join(g.XDG_STATE_HOME||n.join(d,".local","state"),t)...}`.
-  - `@206336334`: ``function f(t,{suffix:e="nodejs"}={}){...if(e)t+=`-${e}`;if(E.platform==="darwin")return F(t);if(E.platform==="win32")return P(t);return G(t)}import{join as h}from"path";var k=f("claude-cli"),O=200;function N(t){let e=t.replace(/[^a-zA-Z0-9]/g,"-");if(e.length<=O)return e;return`${e.slice(0,O)}-${Math.abs(yse(t)).toString(36)}`}``.
-  - `@206336793`: ``function y(){return h(k.cache,N(n2n()))}var yut={baseLogs:()=>y(),errors:()=>h(y(),"errors"),mcpLogs:(t)=>h(y(),`mcp-logs-${N(t)}`)}``.
-- System-wide managed policy (outside home): `/Library/Application Support/ClaudeCode/`, `/etc/claude-code/`, `C:\Program Files\ClaudeCode\` holding `managed-settings.json`, `managed-settings.d/`, `managed-mcp.json` (cc:412717-9; docs /managed-settings). MDM plist domain `com.anthropic.claudecode`; registry `HKLM|HKCU\SOFTWARE\Policies\ClaudeCode\Settings` (docs).
-- Other agents that read or drive Claude Code (source reviews of 2026-10-19; not seen on a real install):
-  - Crush reads `~/.claude/skills` as one of its global skills directories, beside `~/.agents/skills`, and a project's `.claude/skills` as a project one ([`internal/config/load.go:1312-1322`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1312-L1322), [`1345-1350`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1345-L1350)), so a skill in the config home or the project may have been loaded by Crush as well as by Claude Code ([`crush.md`](crush.md)).
-  - Agent Zero's Orchestrator plugin, which tells that agent how to drive other coding CLIs on the host or in its container, defaults Claude Code to `permission_mode: bypassPermissions` and, when not running as root, runs `claude -p "$TASK" --output-format json --permission-mode bypassPermissions --allowedTools Bash,Read,Edit` ([`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37), [`plugins/_orchestrator/README.md:96`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/README.md#L96)). Such a session is an ordinary transcript under `projects/`, started by another agent with approvals bypassed; the plugin's permission settings are in [section 8 of `analyzer/research/agent-zero.md`](../../analyzer/research/agent-zero.md#8-parser-plan).
+- `file-history/<sessionId>/`: pre-edit file backups (cc:482923); `session-env/<sessionId>/`
+  (cc:480109); `shell-snapshots/snapshot-<shell>-<epoch>-<rand>.sh` (shell function dumps, cc:480528
+  region, local name confirms); `todos/`, `tasks/<sessionId>/`, `plans/*.md` (cc:476220), `teams/`,
+  `jobs/<id>/parent-transcript.jsonl` (cc "jobs" ctx), `dump-prompts/*.jsonl` (full outgoing
+  prompts, cc "dump-prompts" ctx), `api-dumps`, `traces/*.json`,
+  `usage-data/{facets,session-meta}/*.json` and `report-*.html` (cc:492127),
+  `feedback-bundles/*.zip`, `shares/*.zip`, `uploads/<sessionId>/`, `ide/<port>.lock` (local
+  `13502.lock`; Windows/WSL also probes `%USERPROFILE%\.claude\ide`, cc "ide" ctx), `backups/`
+  (`.claude.json` snapshots; docs: `~/.claude/backups/.claude.json.corrupted.<ts>`).
+- `.claude.json` sits in `$HOME`, or inside the config home when `CLAUDE_CONFIG_DIR` is set: its
+  path is ``join(process.env.CLAUDE_CONFIG_DIR || homedir(), `.claude${suffix}.json`)`` (cc:473059
+  `mar()`, cc:473896 `configPath`; variants `.claude${suffix}.json`, cc:477075); docs: "holds your
+  sign-in session, MCP server configurations, per-project state such as trust decisions, and the
+  global config keys" (settings page). Its `projects` object is keyed by project path (cc:474276
+  `e.projects`).
+- Permission configuration (issue 93): the settings files `<config home>/settings.json`,
+  `<config home>/settings.local.json`, and a project's `.claude/settings.json` (shared) and
+  `.claude/settings.local.json` (personal, gitignored) hold the `permissions` object: `allow`,
+  `deny` and `ask` rule lists (a tool name with an optional argument pattern, such as
+  `Bash(npm test:*)`), `defaultMode` (the permission mode: `default`, `acceptEdits`, `plan`,
+  `bypassPermissions`, `dontAsk` or `auto`), `disableBypassPermissionsMode` and
+  `additionalDirectories`; "always allow" answers to a prompt are persisted there. In `.claude.json`
+  each `projects.<path>` object holds `allowedTools`, `hasTrustDialogAccepted` (the folder trust
+  prompt was accepted), `hasClaudeMdExternalIncludesApproved`, `enabledMcpjsonServers`,
+  `disabledMcpjsonServers` and `mcpServers`. These are standing grants: the evidence of what the
+  person authorised for the agent, collected as part of the config home and the project catalog's
+  `.claude` entry (key names and citations to the 2.1.296 binary in [section 5 of
+  `analyzer/research/claude-code.md`](../../analyzer/research/claude-code.md#5-other-stores), where
+  the rows the analyzer makes of them are listed). From a relocated `.claude-<name>` home only
+  `.claude.json` is collected, not the settings files (below).
+- `plugins/`: `installed_plugins.json`, `known_marketplaces.json`, `marketplaces/<name>/` git
+  clones, `cache/` zip cache (cc plugins ctx); local also `blocklist.json`,
+  `plugin-directory-cache-v2.json`, `synced/`.
+- `statsig/` feature-flag cache, `cache/gateway-models.json`, `cache/model-capabilities.json`,
+  `telemetry/`, `telemetry/runs/`, `chrome/chrome-native-host[.bat]`, `local/` (npm-local install),
+  `remote/` (cloud sessions: `/home/claude/.claude/remote/.oauth_token`, `.api_key`,
+  `.session_ingress_token`, cc `.session_ingress_token` ctx).
+- Native installer binaries: `$XDG_DATA_HOME/claude/versions/<ver>` (default
+  `~/.local/share/claude/versions`) and symlink `~/.local/bin/claude` (cc "versions" ctx
+  `o(wje(e),"claude","versions")`, `o(n,".local","bin")`; local confirms three ~245 MB versions).
+  Windows: `winget Anthropic.ClaudeCode` (cc:296086).
+
+### CLI cache directory
+
+The CLI cache directory (issue 81) comes from the env-paths code bundled in the CLI with app name
+`claude-cli` and suffix `nodejs`: `~/Library/Caches/claude-cli-nodejs/` on macOS (observed with CLI
+2.1.295 launched by the Claude Desktop Code tab, 2026-10-11), `$XDG_CACHE_HOME/claude-cli-nodejs/`
+else `~/.cache/claude-cli-nodejs/` on Linux, and `%LOCALAPPDATA%\claude-cli-nodejs\Cache\` on
+Windows (both bundle-derived, not observed on a real install). Under it,
+`<project slug>/mcp-logs-<server>/<timestamp>.jsonl`: the slug is the cwd with every
+non-alphanumeric character replaced by `-` (the `projects/` key scheme), the server is the MCP
+server name slugged the same way, and the file name is an ISO timestamp with `:` and `.` replaced by
+`-` (`2026-10-12T02-23-51-709Z.jsonl`).
+
+Each line is `{cwd, debug, sessionId, timestamp}`. The bundle also names `<project slug>/errors/`
+(not observed). `CLAUDE_CONFIG_DIR` does not move it. Observed on macOS: the Code tab's CLI wrote
+`mcp-logs-ccd-host/` and `mcp-logs-terminal/` (the desktop's own two MCP servers) under the
+project's slug at session start, one line of about 200 bytes each, and ordinary CLI sessions on
+another project wrote `mcp-logs-<connector name>/` files of 7-9 lines (1.5-2.2 KB); the whole
+directory was 16 KB. Evidence, `claude 2.1.295 linux-arm64` (the binary recorded in
+[`analyzer/research/claude-code.md`](../../analyzer/research/claude-code.md),
+[section 5](../../analyzer/research/claude-code.md#5-other-stores)):
+
+- `@206335642`, env-paths with the three platform branches: `F=(t)=>{let e=n.join(d,"Library");return{data:n.join(e,"Application Support",t),config:n.join(e,"Preferences",t),cache:n.join(e,"Caches",t),log:n.join(e,"Logs",t),temp:n.join(_,t)}}`, `P=(t)=>{let e=g.APPDATA||n.join(d,"AppData","Roaming"),r=g.LOCALAPPDATA||n.join(d,"AppData","Local");return{data:n.join(r,t,"Data"),config:n.join(e,t,"Config"),cache:n.join(r,t,"Cache"),log:n.join(r,t,"Log"),temp:n.join(_,t)}}` and, at `@206336051`, `G=(t)=>{...cache:n.join(g.XDG_CACHE_HOME||n.join(d,".cache"),t),log:n.join(g.XDG_STATE_HOME||n.join(d,".local","state"),t)...}`.
+- `@206336334`: ``function f(t,{suffix:e="nodejs"}={}){...if(e)t+=`-${e}`;if(E.platform==="darwin")return F(t);if(E.platform==="win32")return P(t);return G(t)}import{join as h}from"path";var k=f("claude-cli"),O=200;function N(t){let e=t.replace(/[^a-zA-Z0-9]/g,"-");if(e.length<=O)return e;return`${e.slice(0,O)}-${Math.abs(yse(t)).toString(36)}`}``.
+- `@206336793`: ``function y(){return h(k.cache,N(n2n()))}var yut={baseLogs:()=>y(),errors:()=>h(y(),"errors"),mcpLogs:(t)=>h(y(),`mcp-logs-${N(t)}`)}``.
+
+### Managed policy
+
+System-wide managed policy (outside the home): `/Library/Application Support/ClaudeCode/`,
+`/etc/claude-code/`, `C:\Program Files\ClaudeCode\` holding `managed-settings.json`,
+`managed-settings.d/`, `managed-mcp.json` (cc:412717-9; docs /managed-settings). MDM plist domain
+`com.anthropic.claudecode`; registry `HKLM|HKCU\SOFTWARE\Policies\ClaudeCode\Settings` (docs).
 
 ### Relocated config homes (`CLAUDE_CONFIG_DIR`)
 
-With `CLAUDE_CONFIG_DIR` set, every file above moves into that directory, `.claude.json` included (cc:473059, cc:473896); the one exception is `.device-keys.json`, which stays at `~/.claude/.device-keys.json` (cc:477075 `E9n()` joins `homedir()`, `".claude"`). Third-party tools that read Claude Code state resolve `.claude.json` the same way ([claude-mem `observed-billing.ts`](https://github.com/thedotmack/claude-mem/blob/c91e30491ce078a6dfe73296cd96f9b3b9578a32/src/shared/observed-billing.ts#L46-L48)). The catalog covers a relocated home only when it is a `.claude-<name>` directory in the home, such as `~/.claude-work`, and only through the Claude-specific names inside it: `.claude-*/projects`, `.claude-*/file-history`, `.claude-*/history.jsonl`, `.claude-*/.claude.json*`, `.claude-*/.credentials.json`, `.claude-*/hfi-auth.json`, `.claude-*/.session_ingress_token`, `.claude-*/remote/.oauth_token` and `.claude-*/remote/.api_key`. A bare `.claude-*` entry would claim other tools' directories that share the prefix:
+With `CLAUDE_CONFIG_DIR` set, every file above moves into that directory, `.claude.json` included
+(cc:473059, cc:473896); the one exception is `.device-keys.json`, which stays at
+`~/.claude/.device-keys.json` (cc:477075 `E9n()` joins `homedir()`, `".claude"`). Third-party tools
+that read Claude Code state resolve `.claude.json` the same way
+([claude-mem `observed-billing.ts`](https://github.com/thedotmack/claude-mem/blob/c91e30491ce078a6dfe73296cd96f9b3b9578a32/src/shared/observed-billing.ts#L46-L48)).
+The catalog covers a relocated home only when it is a `.claude-<name>` directory in the home, such
+as `~/.claude-work`, and only through the Claude-specific names inside it: `.claude-*/projects`,
+`.claude-*/file-history`, `.claude-*/history.jsonl`, `.claude-*/.claude.json*`,
+`.claude-*/.credentials.json`, `.claude-*/hfi-auth.json`, `.claude-*/.session_ingress_token`,
+`.claude-*/remote/.oauth_token` and `.claude-*/remote/.api_key`. A bare `.claude-*` entry would
+claim other tools' directories that share the prefix:
 
-- claude-code-router: `~/.claude-code-router` on macOS and Linux, `%APPDATA%\claude-code-router` on Windows ([`app-paths.ts`](https://github.com/musistudio/claude-code-router/blob/f2e01bfe0c01e0c7ea7a37077747473f69869048/packages/core/src/runtime/app-paths.ts#L35-L42); [`packages/cli/README.md`](https://github.com/musistudio/claude-code-router/blob/f2e01bfe0c01e0c7ea7a37077747473f69869048/packages/cli/README.md#L115-L128)). Top level: `config.sqlite`, `app-data/`, `service.json`, `gateway.config.json`, `profiles/`, `bin/`, plus `config.json`, `app-cache`, `bot-gateway`, `grok-media` and a few state JSON files; no `projects/`, `history.jsonl`, `file-history/`, `.claude.json` or `.credentials.json` at its root. It does run Claude Code with `CLAUDE_CONFIG_DIR` set to `~/.claude-code-router/profiles/<slug>[/custom]/claude` ([`launch-core.ts`](https://github.com/musistudio/claude-code-router/blob/f2e01bfe0c01e0c7ea7a37077747473f69869048/packages/core/src/profiles/launch-core.ts#L257-L266), [env](https://github.com/musistudio/claude-code-router/blob/f2e01bfe0c01e0c7ea7a37077747473f69869048/packages/core/src/profiles/launch-core.ts#L320-L326)); those homes are three levels down and are not matched by the `.claude-*/` lines.
-- claude-mem: `~/.claude-mem` ([`paths.ts`](https://github.com/thedotmack/claude-mem/blob/c91e30491ce078a6dfe73296cd96f9b3b9578a32/src/shared/paths.ts#L26)) holds `settings.json` ([`paths.ts`](https://github.com/thedotmack/claude-mem/blob/c91e30491ce078a6dfe73296cd96f9b3b9578a32/src/shared/paths.ts#L56)), which can carry provider API keys ([`OpenAICompatProvider.ts`](https://github.com/thedotmack/claude-mem/blob/c91e30491ce078a6dfe73296cd96f9b3b9578a32/src/services/worker/OpenAICompatProvider.ts#L450)), plus `claude-mem.db`, `logs/`, `chroma/` and `.env`. Its `settings.json` is why `.claude-*/settings.json` is not a catalog line; it has no `projects/` or `history.jsonl`.
-- claude-squad: `~/.claude-squad` ([`config.go`](https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/config/config.go#L26)) holds `config.json`, `state.json` and `instances.json` ([`config.go`](https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/config/config.go#L16), [`state.go`](https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/config/state.go#L12-L13)).
+- claude-code-router: `~/.claude-code-router` on macOS and Linux, `%APPDATA%\claude-code-router` on
+  Windows
+  ([`app-paths.ts`](https://github.com/musistudio/claude-code-router/blob/f2e01bfe0c01e0c7ea7a37077747473f69869048/packages/core/src/runtime/app-paths.ts#L35-L42);
+  [`packages/cli/README.md`](https://github.com/musistudio/claude-code-router/blob/f2e01bfe0c01e0c7ea7a37077747473f69869048/packages/cli/README.md#L115-L128)).
+  Top level: `config.sqlite`, `app-data/`, `service.json`, `gateway.config.json`, `profiles/`,
+  `bin/`, plus `config.json`, `app-cache`, `bot-gateway`, `grok-media` and a few state JSON files;
+  no `projects/`, `history.jsonl`, `file-history/`, `.claude.json` or `.credentials.json` at its
+  root. It does run Claude Code with `CLAUDE_CONFIG_DIR` set to
+  `~/.claude-code-router/profiles/<slug>[/custom]/claude`
+  ([`launch-core.ts`](https://github.com/musistudio/claude-code-router/blob/f2e01bfe0c01e0c7ea7a37077747473f69869048/packages/core/src/profiles/launch-core.ts#L257-L266),
+  [env](https://github.com/musistudio/claude-code-router/blob/f2e01bfe0c01e0c7ea7a37077747473f69869048/packages/core/src/profiles/launch-core.ts#L320-L326));
+  those homes are three levels down and are not matched by the `.claude-*/` lines.
+- claude-mem: `~/.claude-mem`
+  ([`paths.ts`](https://github.com/thedotmack/claude-mem/blob/c91e30491ce078a6dfe73296cd96f9b3b9578a32/src/shared/paths.ts#L26))
+  holds `settings.json`
+  ([`paths.ts`](https://github.com/thedotmack/claude-mem/blob/c91e30491ce078a6dfe73296cd96f9b3b9578a32/src/shared/paths.ts#L56)),
+  which can carry provider API keys
+  ([`OpenAICompatProvider.ts`](https://github.com/thedotmack/claude-mem/blob/c91e30491ce078a6dfe73296cd96f9b3b9578a32/src/services/worker/OpenAICompatProvider.ts#L450)),
+  plus `claude-mem.db`, `logs/`, `chroma/` and `.env`. Its `settings.json` is why
+  `.claude-*/settings.json` is not a catalog line; it has no `projects/` or `history.jsonl`.
+- claude-squad: `~/.claude-squad`
+  ([`config.go`](https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/config/config.go#L26))
+  holds `config.json`, `state.json` and `instances.json`
+  ([`config.go`](https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/config/config.go#L16),
+  [`state.go`](https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/config/state.go#L12-L13)).
 
-Not collected from a relocated home: `settings.json`, `settings.local.json`, `todos/`, `plans/`, `tasks/`, `session-env/`, `shell-snapshots/`, `debug/` and the other subdirectories, and any config home outside the home directory or not named `.claude-<name>`.
+Not collected from a relocated home: `settings.json`, `settings.local.json`, `todos/`, `plans/`,
+`tasks/`, `session-env/`, `shell-snapshots/`, `debug/` and the other subdirectories, and any config
+home outside the home directory or not named `.claude-<name>`.
 
 ## 3. Credentials
 
-- macOS: Keychain generic password, account = OS user, service = `"Claude Code"` + `"-credentials"` (keyed to the config dir when non-default), read with `security find-generic-password -a <user> -w -s <service>` (cc:473906, cc:494949, `HAn="-credentials"` chunk near cc:473906). Fallback and Linux/Windows: `<config>/.credentials.json` mode 0600 (docs /iam). Local file present.
-- `~/.claude/.device-keys.json` (device key store, file fallback to keychain, cc:477075, cc:337890-900). Not moved by `CLAUDE_CONFIG_DIR`.
-- `.claude.json` holds the sign-in session / `oauthAccount` and MCP server `env` blocks (docs; cc:406053 "refusing to write to avoid wiping ~/.claude.json" auth).
-- `hfi-auth.json`, `.session_ingress_token`, `remote/.oauth_token`, `remote/.api_key` (cloud/host handoff), `CLAUDE_CODE_HOST_CREDS_FILE` path (cc:272494, 276584 region), Claude Desktop `host-creds-*.json` (see claude-desktop).
-- `<config>/sessions/<pid>.<sha256>.key` (139 bytes on Linux, 108 bytes on macOS) beside the per-process `sessions/<pid>.json`, observed on real installs with CLI 2.1.295 launched from the Claude Desktop Code tab on Linux and on macOS, 2026-10-11 (see issue 76 and [`claude-desktop.md`](claude-desktop.md)); flagged `secret: true` since collector 1.11.0 (`.claude/sessions/*.key`, `.claude-*/sessions/*.key`). The `<pid>.json` itself is not flagged.
-- Config files that can embed keys: `settings.json` / `settings.local.json` (`apiKeyHelper`, `env.ANTHROPIC_API_KEY`, MCP headers), `.mcp.json`, `managed-mcp.json`. Env: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` (docs /iam precedence list). Anthropic profiles live outside: `~/.config/anthropic` / `%APPDATA%\Anthropic` (docs /iam).
+- macOS: Keychain generic password, account = OS user, service = `"Claude Code"` + `"-credentials"`
+  (keyed to the config dir when non-default), read with
+  `security find-generic-password -a <user> -w -s <service>` (cc:473906, cc:494949,
+  `HAn="-credentials"` chunk near cc:473906). Fallback and Linux/Windows:
+  `<config>/.credentials.json` mode 0600 (docs /iam). Local file present.
+- `~/.claude/.device-keys.json` (device key store, file fallback to keychain, cc:477075,
+  cc:337890-900). Not moved by `CLAUDE_CONFIG_DIR`.
+- `.claude.json` holds the sign-in session / `oauthAccount` and MCP server `env` blocks (docs;
+  cc:406053 "refusing to write to avoid wiping ~/.claude.json" auth).
+- `hfi-auth.json`, `.session_ingress_token`, `remote/.oauth_token`, `remote/.api_key` (cloud/host
+  handoff), `CLAUDE_CODE_HOST_CREDS_FILE` path (cc:272494, 276584 region), Claude Desktop
+  `host-creds-*.json` (see claude-desktop).
+- `<config>/sessions/<pid>.<sha256>.key` (139 bytes on Linux, 108 bytes on macOS) beside the
+  per-process `sessions/<pid>.json`, observed on real installs with CLI 2.1.295 launched from the
+  Claude Desktop Code tab on Linux and on macOS, 2026-10-11 (see issue 76 and
+  [`claude-desktop.md`](claude-desktop.md)); flagged `secret: true` since collector 1.11.0
+  (`.claude/sessions/*.key`, `.claude-*/sessions/*.key`). The `<pid>.json` itself is not flagged.
+- Config files that can embed keys: `settings.json` / `settings.local.json` (`apiKeyHelper`,
+  `env.ANTHROPIC_API_KEY`, MCP headers), `.mcp.json`, `managed-mcp.json`. Env: `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` (docs /iam precedence list). Anthropic profiles
+  live outside: `~/.config/anthropic` / `%APPDATA%\Anthropic` (docs /iam).
 
-## 4. Exclusions (relative to home)
+## 4. Exclusions
 
-`.claude/plugins/marketplaces` (git clones), `.claude/plugins/cache`, `.claude/plugins/*/node_modules`, `.claude/local/node_modules`, `.claude/image-cache`, `.claude/paste-cache`, `.claude/chrome`, `.claude/cache`, `.claude/statsig` (flag cache, optional), `.local/share/claude/versions` (~245 MB per version). Project-side: `*/.claude/worktrees`, `*/.claude/checkpoints` (gitignore template cc "claude-code-runtime"). `downloads/`, `uploads/`, `file-transfers/` may be large but are user content; cap by size rather than exclude. The CLI cache directory (`claude-cli-nodejs`, [section 2](#2-per-user-storage)) is small (16 KB observed on macOS) and its `errors/` subdirectory is not excluded. On Windows the cache directory is `%LOCALAPPDATA%\claude-cli-nodejs\Cache\`, and the catalog names its children (`AppData/Local/claude-cli-nodejs/Cache/*`) rather than `claude-cli-nodejs`: the PowerShell collector matches exclusions without regard to case, so the Claude Desktop exclusion `*/Claude*/Cache` would match `AppData/Local/claude-cli-nodejs/Cache` and prune it, while the project-slug directories below it match no exclusion.
+Patterns are relative to the home: `.claude/plugins/marketplaces` (git clones),
+`.claude/plugins/cache`, `.claude/plugins/*/node_modules`, `.claude/local/node_modules`,
+`.claude/image-cache`, `.claude/paste-cache`, `.claude/chrome`, `.claude/cache`, `.claude/statsig`
+(flag cache, optional), `.local/share/claude/versions` (~245 MB per version). Project-side:
+`*/.claude/worktrees`, `*/.claude/checkpoints` (gitignore template cc "claude-code-runtime").
+`downloads/`, `uploads/`, `file-transfers/` may be large but are user content; cap by size rather
+than exclude. The CLI cache directory (`claude-cli-nodejs`, [section 2](#2-per-user-storage)) is
+small (16 KB observed on macOS) and its `errors/` subdirectory is not excluded. On Windows the cache
+directory is `%LOCALAPPDATA%\claude-cli-nodejs\Cache\`, and the catalog names its children
+(`AppData/Local/claude-cli-nodejs/Cache/*`) rather than `claude-cli-nodejs`: the PowerShell
+collector matches exclusions without regard to case, so the Claude Desktop exclusion
+`*/Claude*/Cache` would match `AppData/Local/claude-cli-nodejs/Cache` and prune it, while the
+project-slug directories below it match no exclusion.
 
 ## 5. Project-local files
 
-`.claude/settings.json`, `.claude/settings.local.json`, `.claude/{skills,commands,agents,hooks,rules}/` (cc "agents"/"settings.json" ctx), `.mcp.json` (cc:273219), `CLAUDE.md`, `CLAUDE.local.md` (cc:19360, 299964), `.claude/scheduled_tasks.json`, `.claude/scheduled_tasks.lock`, `.claude/routines/.state/`, `.claude/worktrees/`, `.claude/checkpoints/`, `.claude/mailbox/`, `.claude/agent-registry.json`, `.claude/agent-memory-local`, `.claude/first-run`, `.claude/assistant-daemon-state.json` (gitignore template, cc "claude-code-runtime" ctx). No per-project database.
+`.claude/settings.json`, `.claude/settings.local.json`,
+`.claude/{skills,commands,agents,hooks,rules}/` (cc "agents"/"settings.json" ctx), `.mcp.json`
+(cc:273219), `CLAUDE.md`, `CLAUDE.local.md` (cc:19360, 299964), `.claude/scheduled_tasks.json`,
+`.claude/scheduled_tasks.lock`, `.claude/routines/.state/`, `.claude/worktrees/`,
+`.claude/checkpoints/`, `.claude/mailbox/`, `.claude/agent-registry.json`,
+`.claude/agent-memory-local`, `.claude/first-run`, `.claude/assistant-daemon-state.json` (gitignore
+template, cc "claude-code-runtime" ctx). No per-project database.
 
 ## 6. Where the project path is recorded
 
-- `~/.claude.json` → `projects` object, keys are absolute cwd paths (cc:474276; docs "per-project state such as trust decisions"). In a relocated home it is `<config home>/.claude.json`; `discover_projects` and `Find-Projects` read `~/.claude-*/.claude.json` and `~/.claude-*/history.jsonl` as well as the default paths.
-- Transcript records: `projects/<key>/<id>.jsonl` lines carry `"cwd"`, `"sessionId"`, `"parentUuid"`, `"isSidechain"`, `"timestamp"`, `"type"` (cc:482870 parser, key counts in cc.strings). The dir key is lossy (dashes), so read `cwd` from the first record.
-- CLI cache directory ([section 2](#2-per-user-storage)): every `mcp-logs-*/<timestamp>.jsonl` line carries `cwd`, a project path, and the slug directory above it is the lossy key of the same path. `discover_projects` and `Find-Projects` do not read it.
-- Claude Desktop `claude-code-sessions/` records each Code session's working folder (docs data-storage) and points back to `~/.claude/projects/`.
+- `~/.claude.json` → `projects` object, keys are absolute cwd paths (cc:474276; docs "per-project
+  state such as trust decisions"). In a relocated home it is `<config home>/.claude.json`;
+  `discover_projects` and `Find-Projects` read `~/.claude-*/.claude.json` and
+  `~/.claude-*/history.jsonl` as well as the default paths.
+- Transcript records: `projects/<key>/<id>.jsonl` lines carry `"cwd"`, `"sessionId"`,
+  `"parentUuid"`, `"isSidechain"`, `"timestamp"`, `"type"` (cc:482870 parser, key counts in
+  cc.strings). The dir key is lossy (dashes), so read `cwd` from the first record.
+- CLI cache directory ([section 2](#2-per-user-storage)): every `mcp-logs-*/<timestamp>.jsonl` line
+  carries `cwd`, a project path, and the slug directory above it is the lossy key of the same path.
+  `discover_projects` and `Find-Projects` do not read it.
+- Claude Desktop `claude-code-sessions/` records each Code session's working folder (docs
+  data-storage) and points back to `~/.claude/projects/`.
 
 ## 7. Confidence
 
-High: config-dir resolution, directory and file name sets, projects key scheme, transcript naming, keychain service construction, `.credentials.json`, managed paths, native installer paths (all from bundle literals plus docs, layout confirmed locally). Medium: exact keychain service string (built from `"Claude Code"` + `"-credentials"`; not seen as one literal), contents of `storage-v2`, `seed-admin`, `remote`, `systemd`, `daemon` (names only). High: `.claude.json` inside a relocated config home (bundle, corroborated by claude-mem source), and that claude-code-router, claude-mem and claude-squad keep nothing at their roots that the `.claude-*/` lines collect (source at the linked commits). Not determined: how common config-home names other than `.claude-<name>` are; other `.claude-` prefixed tools beyond the three checked. Not determined: whether `.claude.json` suffix variants (`.claude<suffix>.json`) appear on normal installs; Windows-only paths beyond `%USERPROFILE%\.claude` (none found); size of `dump-prompts` in practice.
+High: config-dir resolution, directory and file name sets, projects key scheme, transcript naming,
+keychain service construction, `.credentials.json`, managed paths, native installer paths (all from
+bundle literals plus docs, layout confirmed locally). Medium: exact keychain service string (built
+from `"Claude Code"` + `"-credentials"`; not seen as one literal), contents of `storage-v2`,
+`seed-admin`, `remote`, `systemd`, `daemon` (names only). High: `.claude.json` inside a relocated
+config home (bundle, corroborated by claude-mem source), and that claude-code-router, claude-mem and
+claude-squad keep nothing at their roots that the `.claude-*/` lines collect (source at the linked
+commits). Not determined: how common config-home names other than `.claude-<name>` are; other
+`.claude-` prefixed tools beyond the three checked. Not determined: whether `.claude.json` suffix
+variants (`.claude<suffix>.json`) appear on normal installs; Windows-only paths beyond
+`%USERPROFILE%\.claude` (none found); size of `dump-prompts` in practice.
