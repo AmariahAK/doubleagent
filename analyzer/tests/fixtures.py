@@ -4128,6 +4128,78 @@ def build_goose(home: Path) -> None:
     )
 
 
+# Bad stored JSON in sessions.db (issue 183). Column shapes from
+# session_manager.rs at block/goose 591edd4 (research/goose.md section 3):
+# content_json is a JSON array, metadata_json and model_config_json JSON
+# objects. Kept out of build_home, as the gateway session is, so the shared
+# session's rows stay as the other tests expect.
+GOOSE_BAD_SESSION = "20261019_5"
+GOOSE_BAD_MODEL_CONFIG = '{"model_name":"gpt-4.1",'
+GOOSE_BAD_METADATA = '{"userVisible":tru'
+GOOSE_BAD_CONTENT = '[{"type":"text","te'
+
+
+def goose_bad_json_records():
+    """A session whose model_config_json is cut off, then four messages:
+    a good one, one with a cut-off metadata_json, one with a cut-off
+    content_json, and a good one after it."""
+
+    def q(text: str) -> str:
+        return text.replace("'", "''")
+
+    msg = (
+        "INSERT INTO messages(id,message_id,session_id,role,content_json,created_timestamp,"
+        "metadata_json) VALUES (%d,'%s','%s','%s','%s',%d,'%s')"
+    )
+    good = '{"userVisible":true}'
+    return [
+        "INSERT INTO sessions(id,name,session_type,working_dir,created_at,updated_at,"
+        "provider_name,model_config_json) VALUES ('%s','bad json','user','/srv/bad',"
+        "'2026-10-19 08:00:00','2026-10-19 08:05:00','openai','%s')"
+        % (GOOSE_BAD_SESSION, q(GOOSE_BAD_MODEL_CONFIG)),
+        msg
+        % (
+            101,
+            "msg_bad_1",
+            GOOSE_BAD_SESSION,
+            "user",
+            '[{"type":"text","text":"before the bad rows"}]',
+            1792396800,
+            good,
+        ),
+        msg
+        % (
+            102,
+            "msg_bad_2",
+            GOOSE_BAD_SESSION,
+            "assistant",
+            '[{"type":"text","text":"kept despite bad metadata"}]',
+            1792396801,
+            q(GOOSE_BAD_METADATA),
+        ),
+        msg
+        % (
+            103,
+            "msg_bad_3",
+            GOOSE_BAD_SESSION,
+            "assistant",
+            q(GOOSE_BAD_CONTENT),
+            1792396802,
+            good,
+        ),
+        msg
+        % (
+            104,
+            "msg_bad_4",
+            GOOSE_BAD_SESSION,
+            "user",
+            '[{"type":"text","text":"after the bad rows"}]',
+            1792396803,
+            good,
+        ),
+    ]
+
+
 CONTINUE_SESSION = "0f1e"
 CONTINUE_CREATED = (
     "1790935200000"  # 2026-10-02T10:00:00Z, a millisecond epoch string as sessions.json stores it

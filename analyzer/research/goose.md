@@ -69,11 +69,12 @@ unless it names the later one.
      the provider crates have moved (`huggingface_auth.rs` now under
      `crates/goose-local-inference`); see [section 6](#6-format-versions).
   8. Bad lines: the legacy JSONL and the request logs go through
-     `iter_jsonl` and `error_rows`; a `content_json` that does not parse
-     yields a `parser:` row without the stored text, and a
-     `metadata_json` or `model_config_json` that does not parse is
-     replaced by a default with no row (a gap; see
-     [section 8](#8-parser-plan)).
+     `iter_jsonl` and `error_rows`; a `content_json`, `metadata_json` or
+     `model_config_json` that does not parse is its own `parser:` row
+     carrying the stored value in full since issue 183 (see
+     [section 8](#8-parser-plan)); not observed on any real install,
+     source-derived (block/goose at
+     [`591edd4`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d)).
 
 ## 2. Transcript stores
 
@@ -642,11 +643,23 @@ Per requirement class, from the source review at
   row (`archived=`).
 - Bad lines: the legacy JSONL and request logs are covered by
   `iter_jsonl` and `error_rows`; `history.txt` cannot fail to decode (each
-  line is a row). In `sessions.db` a `content_json` that does not parse
-  gives `parser: message <id> content_json did not parse` without the
-  stored text, and a `metadata_json` or `model_config_json` that does not
-  parse is silently replaced by `{}`; both should carry the stored value
-  in full, as issue 136 asks of a bad line.
+  line is a row). In `sessions.db` (issue 183) a `content_json`,
+  `metadata_json` or `model_config_json` that does not decode, or decodes
+  to another type than Goose writes (an array for `content_json`
+  ([`message.rs:317-330`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-provider-types/src/conversation/message.rs#L317-L330)),
+  an object for the other two), is one `system` row through
+  `error_rows`: `parser: unparseable record <N> (<table>.<column>:
+  <reason>): <stored value>`, the stored text in full, `<N>` the
+  `messages.id` or the `sessions` rowid (also `source_line`), with the
+  session's `session_id` and `working_dir` and an empty `timestamp_utc`.
+  A NULL or empty `content_json` gives the row with reason `empty` and no
+  value. The rest of the session is still yielded: a bad
+  `model_config_json` row follows the session start row and the session
+  has no `model:` row; a bad `metadata_json` row precedes the message's
+  content rows, which keep the session's model and count as visible; a
+  bad `content_json` row stands in for the message's rows. Not observed
+  on any real install, source-derived (block/goose at
+  [`591edd4`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d)).
 
 Fixture:
 

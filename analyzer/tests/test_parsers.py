@@ -4492,7 +4492,12 @@ class GooseTests(ParserBase):
             [r.turn_type for r in rows],
             ["system", "user", "tool_use", "tool_result", "assistant", "system"],
         )
-        self.assertIn("content_json did not parse", rows[-1].text)
+        # The stored value in full (issue 183), not a summary of it.
+        self.assertEqual(
+            rows[-1].text,
+            "parser: unparseable record 5 (messages.content_json: Unterminated string"
+            ' starting at: line 1 column 17 (char 16)): [{"type":"text","te',
+        )
 
     def test_model_and_mode_rows(self):
         rows = self.rows_for(GooseParser(), self.REL)
@@ -4580,6 +4585,105 @@ class GooseTests(ParserBase):
     def test_user_session_has_no_relayed_row(self):
         rows = self.rows_for(GooseParser(), self.REL)
         self.assertFalse([r for r in rows if r.text.startswith("session relayed:")])
+
+    # -- bad stored JSON in sessions.db (issue 183) ------------------------------
+
+    def _bad_json_rows(self):
+        import sqlite3
+
+        from fixtures import GOOSE_BAD_SESSION, goose_bad_json_records
+
+        con = sqlite3.connect(str(self.home / self.REL))
+        for sql in goose_bad_json_records():
+            con.execute(sql)
+        con.commit()
+        con.close()
+        return [
+            r for r in self.rows_for(GooseParser(), self.REL) if r.session_id == GOOSE_BAD_SESSION
+        ]
+
+    def test_bad_model_config_json_is_its_own_row(self):
+        from fixtures import GOOSE_BAD_MODEL_CONFIG
+
+        rows = self._bad_json_rows()
+        self.assertEqual(rows[0].text, "session start | bad json | type=user")
+        bad = rows[1]
+        self.assertEqual(
+            bad.text,
+            "parser: unparseable record 2 (sessions.model_config_json: Expecting property"
+            " name enclosed in double quotes: line 1 column 25 (char 24)): "
+            + GOOSE_BAD_MODEL_CONFIG,
+        )
+        self.assertEqual(
+            (bad.turn_type, bad.timestamp_utc, bad.project_path, bad.source_line),
+            ("system", "", "/srv/bad", 2),
+        )
+        # The session has no model, so no `model:` row; the mode row follows.
+        self.assertEqual(rows[2].text, "permission mode: auto")
+        self.assertFalse([r for r in rows if r.text.startswith("model:")])
+
+    def test_bad_metadata_json_is_its_own_row(self):
+        from fixtures import GOOSE_BAD_METADATA
+
+        rows = self._bad_json_rows()
+        texts = [r.text for r in rows]
+        i = texts.index("kept despite bad metadata")
+        bad = rows[i - 1]
+        self.assertEqual(
+            bad.text,
+            "parser: unparseable record 102 (messages.metadata_json: Expecting value:"
+            " line 1 column 16 (char 15)): " + GOOSE_BAD_METADATA,
+        )
+        self.assertEqual(
+            (bad.turn_type, bad.timestamp_utc, bad.project_path, bad.source_line),
+            ("system", "", "/srv/bad", 102),
+        )
+        # The content is kept, as visible text at the message's time.
+        self.assertEqual(
+            (rows[i].turn_type, rows[i].timestamp_utc), ("assistant", "2026-10-19T08:00:01.000Z")
+        )
+
+    def test_bad_content_json_carries_the_stored_value(self):
+        from fixtures import GOOSE_BAD_CONTENT
+
+        rows = self._bad_json_rows()
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows if r.source_line > 100],
+            [(101, "user"), (102, "system"), (102, "assistant"), (103, "system"), (104, "user")],
+        )
+        bad = next(r for r in rows if r.source_line == 103)
+        self.assertEqual(
+            bad.text,
+            "parser: unparseable record 103 (messages.content_json: Unterminated string"
+            " starting at: line 1 column 17 (char 16)): " + GOOSE_BAD_CONTENT,
+        )
+        self.assertEqual((bad.timestamp_utc, bad.project_path), ("", "/srv/bad"))
+        self.assertEqual(
+            [r.text for r in rows if r.turn_type == "user"],
+            ["before the bad rows", "after the bad rows"],
+        )
+
+    def test_content_json_of_the_wrong_shape_or_empty_is_reported(self):
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.REL))
+        con.execute(
+            "INSERT INTO messages(id,session_id,role,content_json,created_timestamp) VALUES "
+            "(201,'20260301_1','assistant','{\"type\":\"text\"}',1772355606),"
+            "(202,'20260301_1','assistant','',1772355607)"
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(GooseParser(), self.REL)
+        self.assertEqual(
+            [r.text for r in rows if r.source_line in (201, 202)],
+            [
+                "parser: unparseable record 201 (messages.content_json: not a JSON array):"
+                ' {"type":"text"}',
+                "parser: unparseable record 202 (messages.content_json: empty)",
+            ],
+        )
+        self.assertEqual(rows[-1].session_id, GOOSE_SESSION)
 
 
 from doubleagent.parsers.aider import AiderParser

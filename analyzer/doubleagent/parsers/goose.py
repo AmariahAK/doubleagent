@@ -83,6 +83,23 @@ Model and permission rows from `sessions.db` (issues 96 and 97), all
 The legacy JSONL sessions record no model, and the request log has no
 session id, so neither yields model rows.
 
+Bad stored values in `sessions.db` (issue 183): a `content_json`,
+`metadata_json` or `model_config_json` that does not decode as JSON, or
+decodes to another type than Goose writes (an array for `content_json`,
+an object for the other two), is one `system` row through `error_rows`,
+`parser: unparseable record <N> (<table>.<column>: <reason>): <stored
+value>`, the stored text in full, `<N>` the `messages.id` or the
+`sessions` rowid, with the session's `session_id` and `working_dir`, an
+empty `timestamp_utc` and `source_line` `<N>`. A NULL or empty
+`content_json` gives the same row with reason `empty` and no value. The
+session's other rows are still yielded: a bad `model_config_json` row
+follows the session start row and the session has no model; a bad
+`metadata_json` row precedes the message's content rows, which are kept
+with the session's model and as visible; a bad `content_json` row stands
+in for the message's content rows. Fixture only: the shapes are
+source-derived (block/goose at 591edd4), no real install has shown a bad
+value.
+
 Relayed sessions (issue 153): a `sessions` row whose `session_type` is
 `gateway` was carried through the gateway's chat bot (Telegram, the one
 platform implemented), so the chat keeps a copy on the platform. Its
@@ -140,15 +157,27 @@ def epoch(value) -> str:
     return to_utc(value)
 
 
-def _json(value, default):
-    if value is None or value == "":
-        return default
+def _stored_json(value, kind: type) -> tuple[object, str, str]:
+    """(decoded value, reason, stored text) of a JSON column of `sessions.db`.
+    `kind` is the type Goose writes there (`list` for `content_json`, `dict`
+    for `metadata_json` and `model_config_json`). A NULL or empty column
+    gives (None, "", ""); a value that does not decode, or decodes to a
+    type other than `kind` (a JSON `null` excepted), gives (None, reason,
+    the stored text in full) for an `unparseable record` row (issue 183).
+    A BLOB is read as UTF-8 with replacement."""
+    if value is None or value == "" or value == b"":
+        return None, "", ""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
     if not isinstance(value, str):
-        return value
+        return None, "not JSON text", str(value)
     try:
-        return json.loads(value)
-    except ValueError:
-        return default
+        obj = json.loads(value)
+    except ValueError as e:
+        return None, str(e), value
+    if obj is not None and not isinstance(obj, kind):
+        return None, "not a JSON %s" % ("array" if kind is list else "object"), value
+    return obj, "", value
 
 
 def _join(*parts: str) -> str:
@@ -368,7 +397,17 @@ class GooseParser(Parser):
                         "select rowid as _rowid, * from sessions order by created_at, rowid"
                     ):
                         s = dict(s)
-                        cfg = _json(s.get("model_config_json"), {})
+                        cfg, reason, raw = _stored_json(s.get("model_config_json"), dict)
+                        cfg_errors = []
+                        if reason:
+                            cfg_errors.append(
+                                (
+                                    s["_rowid"],
+                                    "unparseable record %d (sessions.model_config_json: %s)"
+                                    % (s["_rowid"], reason),
+                                    raw,
+                                )
+                            )
                         model_name = str(
                             (cfg.get("model_name") if isinstance(cfg, dict) else "") or ""
                         )
@@ -398,6 +437,9 @@ class GooseParser(Parser):
                             ),
                         )
                         yield row
+                        yield from error_rows(
+                            self, artifact, cfg_errors, sid, s.get("working_dir") or ""
+                        )
                         text = gateway_text(s)
                         if text:
                             yield self._system_copy(row, text)
@@ -418,7 +460,19 @@ class GooseParser(Parser):
                     m = dict(m)
                     sid = str(m.get("session_id") or "")
                     s = sessions.get(sid, {})
-                    meta = _json(m.get("metadata_json"), {})
+                    project_path = s.get("working_dir") or ""
+                    record = m.get("id") or 0
+                    msg_errors: list = []
+                    meta, reason, raw = _stored_json(m.get("metadata_json"), dict)
+                    if reason:
+                        msg_errors.append(
+                            (
+                                record,
+                                "unparseable record %s (messages.metadata_json: %s)"
+                                % (record, reason),
+                                raw,
+                            )
+                        )
                     meta = meta if isinstance(meta, dict) else {}
                     inf = meta.get("inference") or {}
                     model = _model(
@@ -427,9 +481,9 @@ class GooseParser(Parser):
                     ) or s.get("_model", "")
                     base = self._row(
                         artifact,
-                        m.get("id") or 0,
+                        record,
                         sid,
-                        s.get("working_dir") or "",
+                        project_path,
                         model,
                         epoch(m.get("created_timestamp")) or to_utc(m.get("timestamp")),
                     )
@@ -442,11 +496,25 @@ class GooseParser(Parser):
                         if requested and requested != resolved:
                             text += " requested=%s" % requested
                         yield self._system_copy(base, text)
-                    content = _json(m.get("content_json"), None)
-                    if content is None:
-                        base.turn_type = "system"
-                        base.text = "parser: message %s content_json did not parse" % m.get("id")
-                        yield base
+                    yield from error_rows(self, artifact, msg_errors, sid, project_path)
+                    content, reason, raw = _stored_json(m.get("content_json"), list)
+                    if content is None and not reason:
+                        reason = "not a JSON array" if raw else "empty"
+                    if reason:
+                        yield from error_rows(
+                            self,
+                            artifact,
+                            [
+                                (
+                                    record,
+                                    "unparseable record %s (messages.content_json: %s)"
+                                    % (record, reason),
+                                    raw,
+                                )
+                            ],
+                            sid,
+                            project_path,
+                        )
                         continue
                     yield from self._block_rows(
                         artifact,
