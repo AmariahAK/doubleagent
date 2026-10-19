@@ -3253,6 +3253,106 @@ def build_qwen_channels(home: Path) -> None:
     (channels / "1791367200000-4242-ab12.tmp").write_text("{", encoding="utf-8")
 
 
+# Injected `type: "user"` records (#172), shapes from QwenLM/qwen-code at
+# 5dcf7c7cb162e825d95d531081f67ee60da3c0e1 (0.25.3): createNotificationRecord
+# (cron, notification; provenance "system") and recordExternalAgentRecordStrict
+# (agent_mention, agent_message; provenance "external_agent", or "real_user"
+# for the user's own mention) in
+# packages/core/src/services/chatRecordingService.ts:2541-2585 and 2655-2690,
+# payloads in packages/core/src/agents/session-agents/contract.ts. Not wired
+# into build_home, so the shared fixture's session counts stay as they are;
+# the tests that need it call build_qwen_injected.
+QWEN_INJECTED_SESSION = "e5f6a7b8-4444-4000-8000-000000000044"
+QWEN_INJECTED_REL = ".qwen/projects/-srv-proj/chats/%s.jsonl" % QWEN_INJECTED_SESSION
+
+
+def qwen_injected_records():
+    """Cron, notification, a user's and an agent's mention, an agent's reply."""
+    common = dict(
+        sessionId=QWEN_INJECTED_SESSION,
+        cwd="/srv/proj",
+        version="0.25.3",
+        gitBranch="main",
+        type="user",
+    )
+    reviewer = {"agentId": "agt-reviewer", "name": "Reviewer", "program": "claude"}
+    return [
+        dict(
+            common,
+            uuid="i1",
+            parentUuid=None,
+            timestamp="2026-10-02T09:00:00.000Z",
+            subtype="cron",
+            provenance="system",
+            message={"role": "user", "parts": [{"text": "check the nightly build"}]},
+        ),
+        dict(
+            common,
+            uuid="i2",
+            parentUuid="i1",
+            timestamp="2026-10-02T09:01:00.000Z",
+            subtype="notification",
+            provenance="system",
+            message={"role": "user", "parts": []},
+            systemPayload={
+                "displayText": "Background shell finished",
+                "backgroundTask": {"taskId": "bg-1", "status": "completed", "kind": "shell"},
+            },
+        ),
+        dict(
+            common,
+            uuid="i3",
+            parentUuid="i2",
+            timestamp="2026-10-02T09:02:00.000Z",
+            subtype="agent_mention",
+            provenance="real_user",
+            message={"role": "user", "parts": [{"text": "@Reviewer look at the diff"}]},
+            systemPayload={
+                "displayText": "@Reviewer look at the diff",
+                "mentionedAgentIds": ["agt-reviewer"],
+            },
+            externalRecordKey="k1",
+        ),
+        dict(
+            common,
+            uuid="i4",
+            parentUuid="i3",
+            timestamp="2026-10-02T09:03:00.000Z",
+            subtype="agent_message",
+            provenance="external_agent",
+            message={"role": "user", "parts": [{"text": "The diff deletes the tests."}]},
+            systemPayload={
+                "displayText": "The diff deletes the tests.",
+                "author": reviewer,
+                "runId": "run-1",
+                "status": "completed",
+            },
+            externalRecordKey="k2",
+            agentId="agt-reviewer",
+            agentName="Reviewer",
+        ),
+        dict(
+            common,
+            uuid="i5",
+            parentUuid="i4",
+            timestamp="2026-10-02T09:04:00.000Z",
+            subtype="agent_mention",
+            provenance="external_agent",
+            message={"role": "user", "parts": [{"text": "@Fixer restore the tests"}]},
+            systemPayload={
+                "displayText": "@Fixer restore the tests",
+                "mentionedAgentIds": ["agt-fixer"],
+                "author": reviewer,
+            },
+            externalRecordKey="k3",
+        ),
+    ]
+
+
+def build_qwen_injected(home: Path) -> None:
+    _jsonl(home / QWEN_INJECTED_REL, qwen_injected_records())
+
+
 KIRO_SESSION = "3f2b8c1e-9d7a-4e6b-b1c2-0a9f8e7d6c5b"
 KIRO_EXPORT_SESSION = "7c1d2e3f-4a5b-4c6d-8e7f-901234567890"
 KIRO_SHELL_SESSION = "fig-shell-1"

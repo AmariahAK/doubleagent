@@ -1,7 +1,8 @@
 """Qwen Code transcripts.
 
 Validated against source, QwenLM/qwen-code at 2c591ecc (0.24.7, October
-2026), with a synthetic fixture; see `research/qwen-code.md`. Qwen Code
+2026) and, for the injected user records, 5dcf7c7c (0.25.3), with a
+synthetic fixture; see `research/qwen-code.md`. Qwen Code
 forked Gemini CLI but its session format is a Claude-Code-style record
 stream, not Gemini's. Files:
 
@@ -11,7 +12,16 @@ stream, not Gemini's. Files:
   (user, assistant, tool_result, system), `subtype`, `cwd`, `gitBranch`
   and `version`. `message` is a Gemini `Content` `{role, parts}`:
   - user: `parts[].text`; `systemPayload.displayText` is used when the
-    parts carry no text.
+    parts carry no text. A `user` row only when `provenance` is absent or
+    `real_user`. A record the user did not type is a `system` row
+    `<subtype> (provenance=<provenance> agent=<agentName> agentId=<agentId>):
+    <text>`, absent parts left out: `notification` and `cron` records
+    (`provenance: system`; 0.24.7 already writes them), `agent_message`
+    and an agent's `agent_mention` (`provenance: external_agent`, with
+    top-level `agentId` and `agentName` on `agent_message` and
+    `systemPayload.author {agentId, name}` on both; 0.25.x, issue 172),
+    `goal_runtime` (`provenance: goal_runtime`). A user's own
+    `agent_mention` has `provenance: real_user` and stays a `user` row.
   - assistant: top-level `model`; `parts[]` hold `text`, `thought: true`
     text (a `thinking` row, opt-in) and `functionCall {id, name, args}`.
   - tool_result: `parts[].functionResponse {id, name, response}` and
@@ -108,6 +118,8 @@ TRUSTED_RX = re.compile(r"^\.qwen/trustedFolders\.json$")
 CHANNELS_RX = re.compile(r"^\.qwen/(channels/(?:sessions\.json|daemon/[^/]+/routes\.json))$")
 DECISION_STATUSES = ("cancelled", "awaiting_approval")
 SIDECAR_SUFFIX = ".ledger.jsonl"
+# `type: user` subtypes that never hold a prompt the user typed (#172).
+INJECTED_SUBTYPES = ("notification", "cron", "agent_message")
 
 ARG_KEYS = (
     "command",
@@ -174,6 +186,30 @@ def system_text(subtype: str, payload) -> str:
         detail = compact_json(payload) if payload else ""
     detail = str(detail).strip()
     return "%s: %s" % (subtype, detail) if detail else subtype
+
+
+def injected_origin(rec: dict) -> str:
+    """For a `type: user` record that the user did not type, its row prefix
+    `<subtype> (provenance=<provenance> agent=<agentName> agentId=<agentId>)`,
+    with the parts not recorded left out; "" for a prompt the user typed.
+    A record is the user's when its `provenance` is absent or `real_user`,
+    unless its subtype is one only the system or another agent writes."""
+    provenance = str(rec.get("provenance") or "")
+    subtype = str(rec.get("subtype") or "")
+    if provenance in ("", "real_user") and subtype not in INJECTED_SUBTYPES:
+        return ""
+    payload = rec.get("systemPayload")
+    author = payload.get("author") if isinstance(payload, dict) else None
+    author = author if isinstance(author, dict) else {}
+    name = rec.get("agentName") or author.get("name")
+    agent_id = rec.get("agentId") or author.get("agentId")
+    keys = [
+        "%s=%s" % (k, v)
+        for k, v in (("provenance", provenance), ("agent", name), ("agentId", agent_id))
+        if v not in (None, "")
+    ]
+    label = subtype or "user"
+    return "%s (%s)" % (label, " ".join(keys)) if keys else label
 
 
 class QwenCodeParser(Parser):
@@ -247,12 +283,14 @@ class QwenCodeParser(Parser):
 
     def _parse_session(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
-        session_id = ""
+        session_id = project_path = ""
         models: dict = {}  # session id -> model in force, for the model rows
         for n, rec in iter_jsonl(artifact.disk_path, errors):
             rtype = rec.get("type")
             if rec.get("sessionId"):
                 session_id = str(rec["sessionId"])
+            if rec.get("cwd"):
+                project_path = str(rec["cwd"])
 
             def base(turn_type: str, text: str) -> Row:
                 row = self.base_row(artifact)
@@ -276,7 +314,11 @@ class QwenCodeParser(Parser):
                     payload = rec.get("systemPayload")
                     if isinstance(payload, dict):
                         text = str(payload.get("displayText") or "")
-                yield base("user", text)
+                origin = injected_origin(rec)
+                if origin:
+                    yield base("system", "%s: %s" % (origin, text) if text else origin)
+                else:
+                    yield base("user", text)
             elif rtype == "assistant":
                 model = str(rec.get("model") or "")
                 change = track_change("model", models, session_id, model)
@@ -348,7 +390,7 @@ class QwenCodeParser(Parser):
                 row = base("system", text)
                 row.model = model
                 yield row
-        yield from error_rows(self, artifact, errors, session_id)
+        yield from error_rows(self, artifact, errors, session_id, project_path)
 
     def _parse_logs(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []

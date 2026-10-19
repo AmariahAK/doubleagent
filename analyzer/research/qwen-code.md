@@ -47,9 +47,13 @@ version 0.24.7, Apache-2.0. Open source.
     `agent_message`, `turn_attempt`, `code_mode_tool_result`), the
     `executionContext` field, `cancelReason` on `turn_result`, and
     `trustedFolders.json` now parsed as JSONC (JSON with comments) with trailing commas and
-    a byte-order mark allowed. The parser reads `notification`, `cron`,
-    `agent_mention` and `agent_message` records, all `type: "user"`, as
-    user prompts.
+    a byte-order mark allowed. The `notification`, `cron`,
+    `agent_mention` and `agent_message` records, all `type: "user"`, are
+    read as `system` rows naming the provenance and the agent unless the
+    record is the user's own (issue 172; see
+    [section 8](#8-parser-plan)); not observed on any real install,
+    source-derived (QwenLM/qwen-code at
+    [`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1)).
   - Bad lines: covered for the transcript, `logs.json`,
     `trustedFolders.json` and the channel routes; a `trustedFolders.json`
     that Qwen accepts (trailing comma, byte-order mark) is reported by
@@ -265,7 +269,7 @@ row per `functionCall` part and a `thinking` row per `thought:true` part.
 | session_id | `sessionId` |
 | project_path | `cwd` |
 | git_branch | `gitBranch` |
-| turn_type | user/assistant/tool_result as-is; system → system; functionCall → tool_use; thought part → thinking |
+| turn_type | user/assistant/tool_result as-is, except a user record the user did not type (`provenance` other than `real_user`, or subtype `notification`, `cron` or `agent_message`) → system; system → system; functionCall → tool_use; thought part → thinking |
 | model | `model` |
 | tool_name | `functionCall.name` / `functionResponse.name` |
 | tool_use_id | `functionCall.id` / `toolCallResult.callId` |
@@ -465,9 +469,17 @@ at that commit.
   `agentId` and `agentName`; messages from another agent of the same
   workspace,
   [CRS 2541-2585](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L2541-L2585))
-  are yielded by the parser as `user` rows, so a scheduled-task trigger
-  or another agent's message reads as a prompt the user typed. They
-  should be `system` rows naming the subtype (and the agent). New
+  are parsed as `system` rows (issue 172):
+  `<subtype> (provenance=<provenance> agent=<agentName> agentId=<agentId>): <text>`,
+  the agent from the record's `agentId` and `agentName` or, on an
+  agent's `agent_mention`, from `systemPayload.author` (`agentId`,
+  `name`), parts not recorded left out, `<text>` the message parts or
+  `systemPayload.displayText`. A `type: "user"` record is a `user` row
+  only when its `provenance` is absent or `real_user` and its subtype is
+  not `notification`, `cron` or `agent_message`, so the user's own
+  `agent_mention` (`provenance: "real_user"`) stays a `user` row and a
+  `goal_runtime` record (`provenance: "goal_runtime"`) becomes a
+  `system` row too. New
   `turn_attempt` records and `turn_result.cancelReason`
   ([CRS 998](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L998),
   [3713-3734](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L3713-L3734))

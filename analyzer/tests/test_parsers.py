@@ -3111,7 +3111,7 @@ class AntigravityPermissionSettingsTests(ParserBase):
             self.assertFalse(p.wants(rels[rel]), rel)
 
 
-from doubleagent.parsers.qwen_code import QwenCodeParser, args_summary
+from doubleagent.parsers.qwen_code import QwenCodeParser, args_summary, injected_origin
 from fixtures import (
     QWEN_ARCHIVED,
     QWEN_DAEMON_HASH,
@@ -3472,6 +3472,103 @@ class QwenCodeTests(ParserBase):
             [(r.turn_type, r.text, r.source_line) for r in self.rows_for(QwenCodeParser(), rel)],
             [("system", "parser: .qwen/trustedFolders.json is not a JSON object", 1)],
         )
+
+    def injected_rows(self, bad_line=False):
+        """Rows of the injected-records session (#172), after building it and
+        reopening the collection; with `bad_line`, a cut line and a cron
+        record written after it."""
+        from fixtures import QWEN_INJECTED_REL, build_qwen_injected, qwen_injected_records
+
+        build_qwen_injected(self.home)
+        path = self.home / QWEN_INJECTED_REL
+        if bad_line:
+            write_bad_line(path)
+            after: dict = dict(qwen_injected_records()[0], uuid="i6")
+            after["message"] = {"role": "user", "parts": [{"text": "after the cut"}]}
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write("\n" + json.dumps(after) + "\n")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        return self.rows_for(QwenCodeParser(), QWEN_INJECTED_REL)
+
+    def test_injected_user_records_are_system_rows(self):
+        # Cron and notification records (provenance system) and another
+        # agent's message or mention (provenance external_agent) are not
+        # prompts the user typed (#172); the user's own mention is.
+        from fixtures import QWEN_INJECTED_SESSION
+
+        rows = self.injected_rows()
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    1,
+                    "system",
+                    "2026-10-02T09:00:00.000Z",
+                    "cron (provenance=system): check the nightly build",
+                ),
+                (
+                    2,
+                    "system",
+                    "2026-10-02T09:01:00.000Z",
+                    "notification (provenance=system): Background shell finished",
+                ),
+                (3, "user", "2026-10-02T09:02:00.000Z", "@Reviewer look at the diff"),
+                (
+                    4,
+                    "system",
+                    "2026-10-02T09:03:00.000Z",
+                    "agent_message (provenance=external_agent agent=Reviewer"
+                    " agentId=agt-reviewer): The diff deletes the tests.",
+                ),
+                (
+                    5,
+                    "system",
+                    "2026-10-02T09:04:00.000Z",
+                    "agent_mention (provenance=external_agent agent=Reviewer"
+                    " agentId=agt-reviewer): @Fixer restore the tests",
+                ),
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.session_id, r.project_path, r.git_branch),
+                (QWEN_INJECTED_SESSION, "/srv/proj", "main"),
+            )
+
+    def test_injected_origin_without_provenance(self):
+        # A cron record that lost its provenance is still not the user's;
+        # a plain user record without one is.
+        self.assertEqual(injected_origin({"type": "user", "subtype": "cron"}), "cron")
+        self.assertEqual(injected_origin({"type": "user"}), "")
+        self.assertEqual(
+            injected_origin(
+                {"type": "user", "subtype": "goal_runtime", "provenance": "goal_runtime"}
+            ),
+            "goal_runtime (provenance=goal_runtime)",
+        )
+
+    def test_injected_records_truncated_line(self):
+        # Issue 136: the cut line is its own row in full; the records before
+        # it and the one written after it still come out.
+        from fixtures import QWEN_INJECTED_SESSION
+
+        rows = self.injected_rows(bad_line=True)
+        self.assertEqual(len(rows), 7)
+        self.assertEqual([r.source_line for r in rows[:5]], [1, 2, 3, 4, 5])
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows[5:]],
+            [
+                (
+                    7,
+                    "system",
+                    QWEN_INJECTED_SESSION,
+                    "2026-10-02T09:00:00.000Z",
+                    "cron (provenance=system): after the cut",
+                ),
+                (6, "system", QWEN_INJECTED_SESSION, "", bad_line_text()),
+            ],
+        )
+        self.assertEqual(rows[6].project_path, "/srv/proj")
 
 
 from doubleagent.parsers.kiro import KiroParser, salvage
