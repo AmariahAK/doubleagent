@@ -3,7 +3,7 @@ Kiro CLI (catalog agent `kiro`).
 
 Validated against the source of aws/amazon-q-developer-cli at 15cc8f3
 (1.19.7, `crates/chat-cli`), with a synthetic fixture; see
-`analyzer/research/kiro.md`. No real install was used. Files, relative to
+`research/kiro.md`. No real install was used. Files, relative to
 the home directory:
 
 * `data.sqlite3` under `.local/share/amazon-q/`, `Library/Application

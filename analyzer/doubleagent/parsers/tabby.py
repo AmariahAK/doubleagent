@@ -4,7 +4,7 @@ Tabby (TabbyML/tabby, checked at 21b2904) is a self-hosted completion and
 chat server, so its transcripts live under the server account's home, not
 the developer's: the `user` column is the account the server ran as, and the
 person who chatted is named in the thread's `system` row. See
-`analyzer/research/tabby.md`.
+`research/tabby.md`.
 
 Files, relative to the home directory:
 
@@ -54,7 +54,8 @@ Files, relative to the home directory:
   Only the `user` and `assistant` rows pair: the `system` rows name the
   owner as the log's encoded id there and as the account's email in the
   database, so their texts differ and both copies are kept. The evidence
-  is in the "Second copies" part of section 4 of the research document.
+  is in the "What survives a delete" part of section 7 of the research
+  document.
 
 The database also stores plaintext secrets (`users.auth_token`,
 `users.password_encrypted`, `registration_token`, `refresh_tokens`,

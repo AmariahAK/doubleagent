@@ -3,7 +3,7 @@
 Goose (block/goose, checked at 591edd4) resolves its directories with
 etcetera's app strategy: XDG paths on Linux and macOS, `AppData/Roaming/
 Block/goose/{config,data}` on Windows, where state falls back to data. See
-`analyzer/research/goose.md`.
+`research/goose.md`.
 
 Files, relative to the home directory (`<data>` is `.local/share/goose` or
 `AppData/Roaming/Block/goose/data`, `<state>` is `.local/state/goose` or the
@@ -77,7 +77,7 @@ Model and permission rows from `sessions.db` (issues 96 and 97), all
   when the two differ; the start value is the session's model. Messages
   without `inference` (user messages) do not change it.
 * The answer to a `toolConfirmationRequest` is not recorded in the research
-  (analyzer/research/goose.md), so there is no `permission decision:` row;
+  (research/goose.md), so there is no `permission decision:` row;
   the request keeps its `confirmation requested:` row.
 
 The legacy JSONL sessions record no model, and the request log has no

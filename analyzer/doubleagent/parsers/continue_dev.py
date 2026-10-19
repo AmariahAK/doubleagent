@@ -4,7 +4,7 @@ The module is not called `continue.py` because `continue` is a Python
 keyword. Validated against source, continuedev/continue at 5522c6f
 (`core/index.d.ts`, `core/util/history.ts`, `core/data/log.ts`,
 `packages/config-yaml/src/schemas/data/`), with a synthetic fixture; see
-`analyzer/research/continue.md`. Files, relative to the home directory:
+`research/continue.md`. Files, relative to the home directory:
 
 * `.continue/sessions/<sessionId>.json`: one pretty-printed JSON session,
   keys `sessionId`, `title`, `workspaceDirectory`, `history[]`, `mode`,

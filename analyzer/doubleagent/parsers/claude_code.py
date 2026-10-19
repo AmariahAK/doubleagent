@@ -3,7 +3,7 @@
 Validated against a real install (Claude Code 2.1.286 to 2.1.289, October
 2026), the shipped 2.1.289 package, and 2.1.295 installs on Linux and macOS
 (2026-10-11) for the permission decision and the process registry; the
-evidence is in `analyzer/research/claude-code.md`. Files:
+evidence is in `research/claude-code.md`. Files:
 
 * `~/.claude/projects/<slug>/<session>.jsonl`: one JSON object per line.
   Records with `type` user, assistant, system or attachment carry `uuid`,
@@ -198,7 +198,7 @@ REGISTRY_RX = re.compile(r"^\.claude(?:-[^/]+)?/sessions/\d+\.json$")
 SETTINGS_RX = re.compile(r"^\.claude(?:-[^/]+)?/settings(?:\.local)?\.json$")
 GLOBAL_CONFIG_RX = re.compile(r"^(?:\.claude-[^/]+/)?\.claude\.json$")
 # Settings `permissions` keys read, the lists first (claude 2.1.296 settings
-# schema, research/claude-code.md section 5).
+# schema, research/claude-code.md section 10).
 PERMISSION_LISTS = ("allow", "deny", "ask", "additionalDirectories")
 PERMISSION_SCALARS = ("defaultMode", "disableBypassPermissionsMode")
 # `.claude.json` `projects.<path>` flags read beside `allowedTools`.
@@ -274,7 +274,7 @@ SYSTEM_ENVELOPE = frozenset(
 TRANSCRIPT_TYPES = ("user", "assistant", "system", "attachment")
 
 # `user` record keys appended to the `permission decision:` row, in this
-# order; `userFeedback` is free text, so it comes last (research section 3).
+# order; `userFeedback` is free text, so it comes last (research section 8).
 DENIAL_KEYS = ("toolDenialKind", "userFeedback")
 
 

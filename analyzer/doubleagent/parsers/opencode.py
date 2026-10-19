@@ -2,7 +2,7 @@
 
 Validated against source, sst/opencode at 907b3bc for 1.x and
 anomalyco/opencode at cb07c55 (CLI 2.0.32, the `dev` branch) for 2.0 (see
-`analyzer/research/opencode.md`), with a synthetic fixture; no real install
+`research/opencode.md`), with a synthetic fixture; no real install
 was used, and the 2.0 layout is source-derived only. The same storage model is used by Kilo Code's CLI, which is an
 OpenCode fork, so `KiloCodeParser` subclasses this one with its own paths.
 

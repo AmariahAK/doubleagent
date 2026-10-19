@@ -1,7 +1,7 @@
 """Twinny chat conversations.
 
 Validated against source, twinnydotdev/twinny at 9339bd10 (see
-`analyzer/research/twinny.md`), with a synthetic fixture; no real install
+`research/twinny.md`), with a synthetic fixture; no real install
 was checked. Twinny keeps no transcript file of its own: every conversation
 is inside the `ItemTable` row `key = 'rjmacarthy.twinny'` of the editor's
 `<User dir>/globalStorage/state.vscdb`, whose JSON value is the extension's

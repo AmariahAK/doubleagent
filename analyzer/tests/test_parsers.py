@@ -13215,7 +13215,7 @@ from fixtures import (
 
 class CopilotCliTests(ParserBase):
     # (source_line, turn_type, text) for every row of the fixture log
-    # without thinking (research/copilot-cli.md section 8, expected rows).
+    # without thinking (research/copilot-cli.md section 13, expected rows).
     EXPECTED: ClassVar[list[tuple[int, str, str]]] = [
         (1, "system", "session start: copilot 1.0.98 producer=copilot-agent cwd=/srv/proj"),
         (
@@ -14067,7 +14067,7 @@ from fixtures import (
 
 class CopilotDesktopTests(ParserBase):
     # (timestamp_utc, session_id, project_path, text) for every row of the
-    # fixture data.db (research/copilot-desktop.md section 8).
+    # fixture data.db (research/copilot-desktop.md section 13).
     EXPECTED: ClassVar[list[tuple[str, str, str, str]]] = [
         (
             "2026-10-01T08:50:00.000Z",
@@ -14388,7 +14388,7 @@ from fixtures import (
 
 class ChatGptDesktopTests(ParserBase):
     """The account conversation list in `.codex/sqlite/codex-dev.db`
-    `local_thread_catalog` (issue 49, research/chatgpt-desktop.md section 8)."""
+    `local_thread_catalog` (issue 49, research/chatgpt-desktop.md section 13)."""
 
     SOURCE = "(from .codex/sqlite/codex-dev.db local_thread_catalog)"
     # (timestamp_utc, session_id, text) for every row of the fixture; the

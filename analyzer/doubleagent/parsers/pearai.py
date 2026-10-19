@@ -1,7 +1,7 @@
 """PearAI chat sessions (Continue fork) and agent tasks (Roo Code fork).
 
 Validated against source, trypear/pearai-submodule at 51eceef6 and
-trypear/PearAI-Roo-Code at 0b6df736 (see `analyzer/research/pearai.md`),
+trypear/PearAI-Roo-Code at 0b6df736 (see `research/pearai.md`),
 with a synthetic fixture; no real install was checked. Both forks are older
 snapshots of their upstreams, so the shapes differ from `continue_dev.py`
 and `roo_code.py`.

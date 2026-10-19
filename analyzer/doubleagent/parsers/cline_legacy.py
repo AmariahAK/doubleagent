@@ -1,6 +1,6 @@
 """The per-task layout Cline introduced and Roo Code inherited, shared by the
-`cline` and `roo-code` parsers. See `analyzer/research/cline.md` (cline/cline
-at 39ff2359) and `analyzer/research/roo-code.md` (RooCodeInc/Roo-Code at
+`cline` and `roo-code` parsers. See `research/cline.md` (cline/cline
+at 39ff2359) and `research/roo-code.md` (RooCodeInc/Roo-Code at
 b867ec91).
 
 Files, under a storage root (the editor's `User/globalStorage/<extension id>`

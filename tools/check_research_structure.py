@@ -26,7 +26,9 @@ then `## 14. Confidence`. This checks, for each such file:
   `**Label**`, `**Label.**` or `**Label:**` followed by prose (a list item
   or table row may);
 - no prose line is longer than `--width` characters (default 100) unless
-  it carries a URL or is a single code span, since neither can be wrapped.
+  it carries a URL or is a single code span (delimited by a backtick run
+  of any length, and optionally followed by closing parentheses and `.`,
+  `,`, `;` or `:`), since neither can be wrapped.
 
 With `--before DIR`, where DIR holds the `collectors/` and `analyzer/`
 trees of the two documents each agent had before the merge, it also
@@ -93,7 +95,7 @@ ATX = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 BOLD_LEAD = re.compile(r"^\*\*[^*]+\*\*[.:]?(\s|$)")
 URL = re.compile(r"https?://[^\s)\]>]+")
 CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)
-ONLY_CODE_SPAN = re.compile(r"^\s*`[^`]+`[.,;:]?\s*$")
+ONLY_CODE_SPAN = re.compile(r"^\s*(`+)(?!`)(?:[^`]|(?!\1(?!`))`+(?!`))+\1(?!`)[).,;:]*\s*$")
 BOLD = re.compile(r"\*\*([^*\n]+)\*\*")
 NUMBER = re.compile(r"(?<![\w/.-])\d[\d,.]*(?:\s?(?:[KMGT]i?B|B|bytes|ms|s|%))?(?![\w/.-])")
 

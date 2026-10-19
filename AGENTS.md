@@ -1095,8 +1095,9 @@ with the quality gates below. A change that touches only Markdown files
 and `.markdownlint-cli2.jsonc` is documentation only: the workflow's
 first job classifies the push or pull request from the changed file
 list, and when it is documentation only every other job is skipped and
-the lint job runs just markdownlint and `tools/check_doc_links.py`.
-Those two are also all a documentation-only change needs locally; the
+the lint job runs just markdownlint, `tools/check_doc_links.py` and
+`tools/check_research_structure.py`. Those three are also all a
+documentation-only change needs locally; the
 smoke tests, the analyzer tests and the other linters are for changes to
 code. A push whose previous commit GitHub cannot name (a new branch, a
 force push) is treated as a code change. Run the same locally before
@@ -1120,6 +1121,7 @@ uvx ruff@0.16.10 check . && uvx ruff@0.16.10 format --check .
 uvx --from pyright==1.1.414 --with zstandard --with python-dateutil pyright
 npx -y markdownlint-cli2@0.23.3 "**/*.md"
 python3 tools/check_doc_links.py
+python3 tools/check_research_structure.py
 shfmt -ln posix $(shfmt -f .) >/dev/null && shellcheck -s sh $(shfmt -f .) && checkbashisms -p $(shfmt -f .)
 pwsh -NoProfile -Command '$r = @("collectors/Collect-AgentArtifacts.ps1","collectors/tests/smoke.ps1") | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Settings collectors/PSScriptAnalyzerSettings.psd1 }; $r | Format-Table -AutoSize; exit @($r).Count'
 ```
@@ -1208,8 +1210,9 @@ Every gate runs in the CI `lint` job, not in the pre-commit hook: the hook
 is reserved for fast operations (see below).
 The versions are pinned in the workflow's `env` block; change it and this
 list together. Run the commands from the repository root before pushing;
-for a documentation-only change, only markdownlint and
-`tools/check_doc_links.py` (see the start of this section).
+for a documentation-only change, only markdownlint,
+`tools/check_doc_links.py` and `tools/check_research_structure.py` (see
+the start of this section).
 
 | Gate | Version | Local command | Configuration |
 | --- | --- | --- | --- |
@@ -1222,6 +1225,7 @@ for a documentation-only change, only markdownlint and
 | checkbashisms | devscripts v2.26.13 | `checkbashisms -p $(shfmt -f .)` | none |
 | PSScriptAnalyzer | 1.25.0 | the `pwsh` line in the block above | `collectors/PSScriptAnalyzerSettings.psd1` |
 | document links | none | `python3 tools/check_doc_links.py` | none; see the link rule under "Conventions" |
+| research document structure | none | `python3 tools/check_research_structure.py` | none; see [Research document structure](#research-document-structure) |
 
 - `shfmt -f .` lists the sh files by shebang as well as extension, so the
   hook script, `lab/lab.sh` and `analyzer/tests/run.sh` are checked too.

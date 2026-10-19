@@ -1,7 +1,7 @@
 """Sourcegraph Cody chat history.
 
 Validated against source, sourcegraph/cody-public-snapshot at 8e20ac6c (see
-`analyzer/research/cody.md`), with a synthetic fixture; no real install was
+`research/cody.md`), with a synthetic fixture; no real install was
 checked. Every chat of every account lives in one JSON object,
 `AccountKeyedChatHistory`, stored in two places:
 

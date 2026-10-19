@@ -1,7 +1,7 @@
 """Roo Code transcripts.
 
 Validated against source (RooCodeInc/Roo-Code at b867ec91, see
-`analyzer/research/roo-code.md`) with a synthetic fixture; no real install.
+`research/roo-code.md`) with a synthetic fixture; no real install.
 
 Roo Code forked Cline and keeps its per-task layout, so the transcript files
 are read by the shared mapping in `cline_legacy.py`, whose docstring lists

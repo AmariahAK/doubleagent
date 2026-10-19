@@ -2,7 +2,7 @@
 
 Validated against source, TheR1D/shell_gpt at a082bd5 (1.5.1) and the
 pre-1.5.0 function-call shape at 6bd0bde, with a synthetic fixture; no real
-install was used. See `analyzer/research/shellgpt.md`.
+install was used. See `research/shellgpt.md`.
 
 Files: every file directly under a `chat_cache/` directory, at any depth.
 ShellGPT keeps its chat cache in the temp directory, not the home

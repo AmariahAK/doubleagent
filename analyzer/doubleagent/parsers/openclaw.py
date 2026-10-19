@@ -1,7 +1,7 @@
 """OpenClaw (formerly Clawdbot and Moltbot) agent transcripts.
 
 Validated against source, openclaw/openclaw at 3b16db7 (see
-`analyzer/research/openclaw.md`), with a synthetic fixture; no real install
+`research/openclaw.md`), with a synthetic fixture; no real install
 was checked. The state directory is `.openclaw`, a profile's
 `.openclaw-<profile>`, or the legacy `.clawdbot` / `.moltbot`. Files:
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Verify every GitHub blob link in the research documents.
 
-Each citation in collectors/research/*.md and analyzer/research/*.md links to
-a file and line range at the commit the document reviewed. This checks that
-the path exists at that commit and that the line range lies inside the file.
+Each citation in research/*.md links to a file and line range at the commit
+the document reviewed. This checks that the path exists at that commit and
+that the line range lies inside the file.
 It is the first review gate for a research round: a citation that does not
 resolve, or a claim with no citation, is unverified.
 
@@ -69,10 +69,7 @@ def main() -> int:
     ap.add_argument("--repos", type=pathlib.Path, help="directory of local checkouts")
     ap.add_argument("files", nargs="*", type=lambda s: pathlib.Path(s).resolve())
     args = ap.parse_args()
-    files = args.files or sorted(
-        list((ROOT / "collectors" / "research").glob("*.md"))
-        + list((ROOT / "analyzer" / "research").glob("*.md"))
-    )
+    files = args.files or sorted((ROOT / "research").glob("*.md"))
     cache = {}
     total = bad = 0
     for f in files:

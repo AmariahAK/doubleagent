@@ -2,7 +2,7 @@
 
 Crush (charmbracelet/crush, checked at ca6ae26) keeps one SQLite database per
 project, written through sqlc with goose migrations. See
-`analyzer/research/crush.md`.
+`research/crush.md`.
 
 Files:
 

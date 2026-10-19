@@ -2,7 +2,7 @@
 
 Validated against source, OpenHands/software-agent-sdk at b347047 and
 OpenHands/OpenHands at 7fbb48c (0.62.0, legacy layout), with a synthetic
-fixture; no real install was used. See `analyzer/research/openhands.md`.
+fixture; no real install was used. See `research/openhands.md`.
 
 Files, relative to the home directory (the same layout on every OS):
 
@@ -72,9 +72,13 @@ by a `system` row `permission decision: rejected rejection_source=<source>
 <rejection_reason>` (`-` for a missing source) with the call's `tool_name`
 and `tool_use_id`. The conversation's model, `agent.llm.model` from
 `base_state.json`, becomes a `system` row `model: <id>` after the header
-row, at the header's time; `base_state.json` holds one model per
-conversation and no event in the research records a switch, so no change
-row is written. Thoughts, `reasoning_content` and thinking blocks become
+row, at the header's time. `base_state.json` holds only the
+conversation's current model, and the parser takes no model from the
+`SwitchLLMObservation` and `ClassifyAndSwitchLLMObservation` events
+(`active_model`) that record the agent's own switches, so no change row is
+written; a switch through the Agent Server's REST endpoints leaves no event
+(Model records in section 8 of `research/openhands.md`, and Model rows in
+section 13). Thoughts, `reasoning_content` and thinking blocks become
 `thinking` rows with `--include-thinking`. The session id is the directory
 name, `project_path` is `workspace.working_dir` from `meta.json`, else from
 `base_state.json` (a container path under Canvas in Docker), and the model

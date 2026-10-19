@@ -1,7 +1,7 @@
 """nanobot sessions, memory history, the WebUI mirror and the CLI history.
 
 Validated against source, HKUDS/nanobot at acdae3d (see
-`analyzer/research/nanobot.md`), with a synthetic fixture; no real install
+`research/nanobot.md`), with a synthetic fixture; no real install
 was checked. The SQLite session store below is source-derived from
 HKUDS/nanobot at 909b277 (2026-10-19), whose `pyproject.toml` still reads
 0.3.5 while the import module names 0.3.6 as the version that introduces
@@ -61,8 +61,10 @@ branch is recorded. A preset also becomes a `system` row after the session
 start row, at its time, `model: <preset> (preset)`: the value names a model
 preset of nanobot's configuration, not a model id. A file has one
 metadata line, so it names one preset and no change row is written. No
-permission state is read: `pairing.json` (the chat senders the operator
-approved) is named in the collector research without its shape. `/new`
+permission state is read: neither `pairing.json` (the chat senders the
+operator approved, whose shape section 3 of `research/nanobot.md` now
+traces) nor the standing settings of `config.json` become rows yet; the
+plan is under Permission rows in section 13 of that document. `/new`
 empties a session file, so earlier turns may survive only in
 `memory/history.jsonl` and the WebUI mirror below.
 

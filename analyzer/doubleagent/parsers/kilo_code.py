@@ -1,7 +1,7 @@
 """Kilo Code sessions.
 
 Validated against source, Kilo-Org/kilocode at 76bcfd4 (see
-`analyzer/research/kilo-code.md`), with a synthetic fixture; no real install
+`research/kilo-code.md`), with a synthetic fixture; no real install
 was used. Kilo Code's CLI, TUI and server are an OpenCode fork with the same
 SQLite and JSON storage, so this parser is `OpenCodeParser` (see
 `opencode.py` for the tables, fields and row mapping) pointed at Kilo's

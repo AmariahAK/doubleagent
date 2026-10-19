@@ -1,7 +1,7 @@
 """VS Code chat sessions (GitHub Copilot Chat and other chat participants).
 
 Validated against source, microsoft/vscode at d7622a529314 (see
-`analyzer/research/vscode.md`), with a synthetic fixture; no real install
+`research/vscode.md`), with a synthetic fixture; no real install
 was checked. The store is VS Code's own, so the same parser covers every
 editor data directory the catalog attributes to `vscode`: Code, Code -
 Insiders, VSCodium, Positron and Trae under `.config`, `Library/Application

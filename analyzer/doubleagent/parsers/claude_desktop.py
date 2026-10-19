@@ -214,7 +214,7 @@ def _value(v) -> str:
 
 
 # Session-record keys that hold per-session permission grants (research
-# section 3): lists read one row per entry, then keys read one row each.
+# section 8): lists read one row per entry, then keys read one row each.
 GRANT_LISTS = ("alwaysAllowedReasons", "sessionPermissionUpdates")
 GRANT_KEYS = (
     "chromePermissionMode",
@@ -223,7 +223,7 @@ GRANT_KEYS = (
     "cuGrantFlags",
     "cuFlagsGrantedAt",
 )
-# Cowork tool, network and folder grants (research section 3, "arrays and
+# Cowork tool, network and folder grants (research section 8, "arrays and
 # objects"; which key is which type is not determined): a list is one row
 # per entry, an object one row per member, anything else one row.
 COWORK_GRANTS = (

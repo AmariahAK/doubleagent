@@ -9,7 +9,7 @@ rollout is gone (deleted by hand, excluded by size, truncated): Codex's
 own thread delete removes the rollout and the database rows together
 (`thread-store/src/local/delete_thread.rs:66-92`), so a surviving row
 without a rollout is a rollout removed outside Codex. Citations are in
-`research/codex-cli.md` section 5.
+`research/codex-cli.md` section 10.
 
 * `state_5.sqlite` table `threads`, one row per thread
   (`state/migrations/0001_threads.sql`, later columns by migration): `id`
@@ -103,7 +103,7 @@ command, so `exec_command` calls and `apply_patch` patches differ), and
 pairs on the `tool_use_id` both rows carry. A thread's first prompt is in
 `history.jsonl`, in `first_user_message` and in the projection: one of
 the three pairs with the rollout's prompt and `dedup.deduplicate`
-collapses the other two onto it (`research/codex-cli.md` section 8). A
+collapses the other two onto it (`research/codex-cli.md` section 13). A
 `thread_items` row whose `item_json` does not decode to a JSON object is
 its own `system` row at the end of the file's rows, `parser:
 unparseable record <rowid> (<reason>): <item_json as stored>` with
@@ -623,7 +623,7 @@ def _log_fields(body: str) -> dict[str, str]:
 
 # The user's per-call approval decisions of the ChatGPT desktop app, as
 # Codex Desktop 0.163.0-alpha.10.2 logs them (research/codex-cli.md
-# section 5): the core's submission of the decision, with the thread and
+# section 10): the core's submission of the decision, with the thread and
 # the governed item's id, and the app server's response to the approval
 # request, with only a request id.
 EXEC_APPROVAL_TARGET = "codex_core::session::handlers"
@@ -836,7 +836,7 @@ def parse_logs(parser: RolloutParser, artifact: Artifact) -> Iterator[Row]:
 
 # `.codex-global-state.json`, the ChatGPT desktop app's own state (Codex
 # Desktop 0.163.0-alpha.10.2 inside ChatGPT 26.1013.40934, macOS,
-# 2026-10-18; research/codex-cli.md section 5). The key holding the app's
+# 2026-10-18; research/codex-cli.md section 10). The key holding the app's
 # persisted UI atoms, and the keys read inside it and at the top level.
 ATOM_KEY = "electron-persisted-atom-state"
 PROMPT_HISTORY = "prompt-history"

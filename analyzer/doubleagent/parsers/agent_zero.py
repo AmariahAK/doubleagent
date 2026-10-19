@@ -2,7 +2,7 @@
 
 Agent Zero (agent0ai/agent-zero, checked at e3051fb) saves each chat or task
 context as one JSON file under the install directory's `usr/chats`. See
-`analyzer/research/agent-zero.md`.
+`research/agent-zero.md`.
 
 Files, relative to the home directory, where `<a0>` is `agent-zero`,
 `agent-zero/<instance>` (installer and launcher layouts) or the same under

@@ -441,7 +441,7 @@ def claude_work_history_records():
 
 def claude_295_records():
     """A Claude Code 2.1.295 session: the state lines and keys that version
-    writes (research/claude-code.md, sections 3 and 5). Line numbers are what
+    writes (research/claude-code.md, sections 8 and 10). Line numbers are what
     ClaudeCode295Tests asserts."""
     c = _claude_common("/srv/proj", "main")
     c.update(sessionId=CLAUDE_295_SESSION, version="2.1.295", entrypoint="claude-desktop")
@@ -570,7 +570,7 @@ def claude_296_records():
     """A Claude Code 2.1.296 session: the `permission-mode` record and the
     prompt key `permissionMode` changing, and a `/model` switch with the
     command output text of that version (research/claude-code.md, section
-    3). Line numbers are what ClaudeCode296Tests asserts."""
+    8). Line numbers are what ClaudeCode296Tests asserts."""
     c = _claude_common("/srv/proj", "main")
     c.update(sessionId=CLAUDE_296_SESSION, version="2.1.296")
     sid = CLAUDE_296_SESSION
@@ -675,7 +675,7 @@ def claude_global_config():
 
 
 def claude_registry_records():
-    """`.claude/sessions/<pid>.json` (2.1.295 key set, research section 5):
+    """`.claude/sessions/<pid>.json` (2.1.295 key set, research section 10):
     a Code-tab process, and a process under Remote Control."""
     base = {
         "procStart": "Thu Oct  1 11:00:00 2026",
@@ -735,7 +735,7 @@ def claude_history_records():
 
 
 def codex_rollout_records(cwd="/srv/proj"):
-    """Paginated shape (analyzer/research/codex-cli.md section 8): content
+    """Paginated shape (research/codex-cli.md section 13): content
     kinds on user messages, item_completed turn items, ordinals."""
     ts = "2026-10-02T09:00:0%d.000Z"
     recs = [
@@ -1038,7 +1038,7 @@ def build_codex_automation(home: Path) -> None:
 
 
 # Codex's SQLite projections (#122): `state_5.sqlite` `threads` and
-# `thread_history_1.sqlite` (research/codex-cli.md section 5, migrations at
+# `thread_history_1.sqlite` (research/codex-cli.md section 10, migrations at
 # 3e23877). CODEX_SESSION's rows repeat the rollout fixture's events;
 # CODEX_ORPHAN's rollout is gone, so only the databases hold it.
 CODEX_ORPHAN = "aaaaaaaa-bbbb-4ccc-8ddd-000000000006"
@@ -2979,7 +2979,7 @@ QWEN_TRUST_MTIME = 1790856000  # 2026-10-01T12:00:00Z, trustedFolders.json's mti
 
 
 def qwen_session_records(cwd="/srv/proj", branch="main"):
-    """Qwen Code ChatRecords, shapes from research/qwen-code.md section 8."""
+    """Qwen Code ChatRecords, shapes from research/qwen-code.md section 13."""
     common = dict(sessionId=QWEN_SESSION, cwd=cwd, version="0.24.7", gitBranch=branch)
     return [
         dict(
@@ -3392,7 +3392,7 @@ def _kiro_meta(n, start_ms, end_ms, kind="NotToolUse", tools=(), tags=()):
 
 
 def kiro_conversation_records():
-    """The ConversationState from analyzer/research/kiro.md section 8, with
+    """The ConversationState from research/kiro.md section 13, with
     the project moved to /srv/proj. The research sample's user timestamp was
     six hours off its own request metadata; it is corrected here so the
     turns are in order."""
@@ -3935,7 +3935,7 @@ CREATE TABLE files (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, path TEXT NOT
 
 
 def crush_records():
-    """The INSERT statements of research/crush.md section 8, plus a final
+    """The INSERT statements of research/crush.md section 13, plus a final
     assistant message with reasoning, text and an abnormal finish, answered
     by another provider's model so the session has a model change."""
     return [
@@ -4008,7 +4008,7 @@ def crush_hyper_records():
 
 GOOSE_SESSION = "20260301_1"
 
-# session_manager.rs at goose 591edd4, schema version 16 (research/goose.md section 3).
+# session_manager.rs at goose 591edd4, schema version 16 (research/goose.md section 8).
 GOOSE_SCHEMA = """
 CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE sessions (
@@ -4035,7 +4035,7 @@ CREATE TABLE usage_ledger (
 
 
 def goose_records(cwd="/srv/proj"):
-    """The INSERT statements of research/goose.md section 8, with the
+    """The INSERT statements of research/goose.md section 13, with the
     working directory moved to the shared project path."""
     return [
         "INSERT INTO schema_version(version) VALUES (16)",
@@ -4129,7 +4129,7 @@ def build_goose(home: Path) -> None:
 
 
 # Bad stored JSON in sessions.db (issue 183). Column shapes from
-# session_manager.rs at block/goose 591edd4 (research/goose.md section 3):
+# session_manager.rs at block/goose 591edd4 (research/goose.md section 8):
 # content_json is a JSON array, metadata_json and model_config_json JSON
 # objects. Kept out of build_home, as the gateway session is, so the shared
 # session's rows stay as the other tests expect.
@@ -4488,7 +4488,7 @@ ZED_EXTERNAL = "ext-claude-code-sess-1"
 
 
 def zed_thread_record(cwd="/srv/proj"):
-    """A `threads.data` blob, version 0.3.0, as in analyzer/research/zed.md."""
+    """A `threads.data` blob, version 0.3.0, as in research/zed.md."""
     return {
         "version": "0.3.0",
         "title": "Fix flaky test",
@@ -4649,7 +4649,7 @@ def zed_unknown_variants_record():
     """A version 0.3.0 thread blob (issue 168) whose known messages follow
     the `UserMessage`, `AgentMessage` and `Message` enums of
     zed-industries/zed at a84689073d29 (crates/agent/src/thread.rs:202-208,
-    287-301, 743-759; analyzer/research/zed.md section 3), with items no
+    287-301, 743-759; research/zed.md section 8), with items no
     release writes today mixed in: a message variant, a `Compaction`
     variant, an `Agent` content variant, a content item and a
     `tool_results` entry that are not objects, and a legacy segment type.
@@ -4686,7 +4686,7 @@ VSCODE_WS = ".config/Code/User/workspaceStorage/abc123"
 
 
 def vscode_log_records(cwd="/srv/proj"):
-    """A `chatSessions/<id>.jsonl` mutation log, as in analyzer/research/vscode.md.
+    """A `chatSessions/<id>.jsonl` mutation log, as in research/vscode.md.
     The modelId, agent id and responder strings come from the closed Copilot
     extension and are invented."""
     t = VSCODE_T0
@@ -4856,7 +4856,7 @@ def build_vscode(home: Path) -> None:
 # Session sync (issue 153): Copilot Chat's cloudSessions.json, naming the
 # fixture session and one uploaded from another machine, and the
 # extension's global state with its cloud agent tasks, in an Insiders data
-# directory (research/vscode.md section 5).
+# directory (research/vscode.md section 10).
 VSCODE_CLOUD_SESSIONS_REL = ".config/Code/User/globalStorage/github.copilot-chat/cloudSessions.json"
 VSCODE_CLOUD_SESSIONS_MTIME = 1759400100  # 2025-10-02T10:15:00Z
 VSCODE_OTHER_MACHINE_SESSION = "9ab0c1d2-0000-4000-8000-00000000a1b2"
@@ -4924,7 +4924,7 @@ def build_vscode_agents_window(home: Path) -> None:
 
 
 # ---- OpenCode and Kilo Code ---------------------------------------------------------
-# Shapes from analyzer/research/opencode.md and kilo-code.md (drizzle tables in
+# Shapes from research/opencode.md and kilo-code.md (drizzle tables in
 # packages/core/src/session/sql.ts, JSON in packages/schema/src/v1/session.ts).
 
 OPENCODE_SESSION = "ses_01OC"
@@ -5296,7 +5296,7 @@ def build_opencode(home: Path) -> None:
 
 
 # Session sync (issue 153): a channel database with the share records of
-# research/opencode.md section 5, the `session_share` table and the
+# research/opencode.md section 10, the `session_share` table and the
 # `session.updated.1` events. One session is shared now, one was shared
 # and then unshared (its share row is gone, its events stay), one never.
 OPENCODE_SHARE_DB_NAME = "opencode-beta.db"
@@ -5787,7 +5787,7 @@ def build_kilo(home: Path) -> None:
 
 
 # Session sync (issue 153): Kilo's cloud session marker,
-# storage/session_share/<sessionID>.json (research/kilo-code.md section 2).
+# storage/session_share/<sessionID>.json (research/kilo-code.md section 10).
 KILO_SHARE_REL = ".local/share/kilo/storage/session_share/%s.json" % KILO_SESSION
 KILO_SHARE_MTIME = 1791022000  # 2026-10-03T10:06:40Z
 
@@ -6503,7 +6503,7 @@ def build_roo_code(home: Path) -> None:
     _json(mock / "secrets.json", {"roo_cline_config_api_config": '{"apiKey":"sk-not-real"}'})
 
 
-# Tabby: ee/tabby-db/schema/schema.sql at 21b2904 (research/tabby.md section 3),
+# Tabby: ee/tabby-db/schema/schema.sql at 21b2904 (research/tabby.md section 8),
 # trimmed to the tables the parser reads plus every table that holds a secret,
 # so the tests can prove those are never read.
 TABBY_SCHEMA = """
@@ -6579,7 +6579,7 @@ TABBY_SELECT_PAYLOAD = (
 
 
 def tabby_records():
-    """The INSERT statements of research/tabby.md section 8, with the
+    """The INSERT statements of research/tabby.md section 13, with the
     research's single fixture token replaced by one per secret column, and a
     user_events row whose payload is the pretty JSON event_logger.rs writes."""
     return [
@@ -6622,7 +6622,7 @@ def tabby_backup_records():
 
 
 def tabby_event_records():
-    """The two event log lines of research/tabby.md section 8 plus a
+    """The two event log lines of research/tabby.md section 13 plus a
     chat_completion event, whose body is empty (routes/chat.rs:83)."""
     return [
         {
@@ -7212,7 +7212,7 @@ def build_pi(home: Path) -> None:
 
 
 # Session sync (issue 153): a session reported with `/bug` twice, once
-# uploaded and once exported to a zip (research/pi.md section 3).
+# uploaded and once exported to a zip (research/pi.md section 8).
 PI_BUG_SESSION = "0199a1b2-7c3d-7e4f-8a5b-6c7d8e9f0b3d"
 PI_BUG_FILE = "2026-10-01T13-00-00-000Z_%s.jsonl" % PI_BUG_SESSION
 PI_BUG_REPORT = "0199a1b2-9999-7000-8000-00000000b001"
@@ -7495,7 +7495,7 @@ def build_letta(home: Path) -> None:
 
 
 # Session sync (issue 153): the server-side session markers of
-# research/letta.md section 2. settings.json is rewritten with
+# research/letta.md section 7. settings.json is rewritten with
 # `sessionsByServer` and `agents[]` beside the credential the parser must
 # never print, and a local-backend agent's transcript, which is not
 # server state. A project's settings.local.json is built by its test.
@@ -7550,7 +7550,7 @@ HERMES_CHILD = "20261001_121500_e5f60708"
 HERMES_DIVERTED = "20261001_130000_0badf00d"
 
 # hermes_state_common.py:372-480 at hermes-agent 8b66a51, the columns
-# research/hermes.md section 8 lists (schema version 31).
+# research/hermes.md section 13 lists (schema version 31).
 HERMES_SCHEMA = """
 CREATE TABLE schema_version (version INTEGER NOT NULL);
 CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, model TEXT,
@@ -7569,7 +7569,7 @@ CREATE TABLE session_model_usage (session_id TEXT NOT NULL, model TEXT NOT NULL,
 
 
 def hermes_records(cwd="/srv/proj"):
-    """The INSERT statements of research/hermes.md section 8 with the shared
+    """The INSERT statements of research/hermes.md section 13 with the shared
     project path, plus a rewound turn kept as active=0, a multimodal user
     message behind the NUL json prefix, and a subagent child session."""
     return [
@@ -7743,7 +7743,7 @@ def _a0_message(mid, ai, content, metadata=None):
 
 # Session sync (issue 153): pastes/pending.json, the paste.rs links of
 # `hermes debug share` uploads (hermes_cli/debug.py:38-39 at hermes-agent
-# 8b66a51, research/hermes.md section 2): expire_at is upload + 21600 s.
+# 8b66a51, research/hermes.md section 10): expire_at is upload + 21600 s.
 HERMES_PASTES_REL = ".hermes/pastes/pending.json"
 
 
@@ -7897,7 +7897,7 @@ def build_hermes_volume(root: Path, cwd="/opt/data/workspace") -> None:
 
 
 def agent_zero_history():
-    """Agent 0's history from research/agent-zero.md section 8, with the
+    """Agent 0's history from research/agent-zero.md section 13, with the
     assistant message carrying the id of the `agent` log item that streamed
     it (agent.py:529-534) and its provider model, a second tool result
     long enough to be saved to messages/1.txt, and a later assistant message
@@ -8094,7 +8094,7 @@ def build_agent_zero(home: Path) -> None:
 
 # Session sync (issue 153): a Telegram chat whose main agent chained a turn
 # on a provider-stored response, and a subordinate agent in local mode
-# (ids recorded, nothing stored). Keys from research/agent-zero.md section 3
+# (ids recorded, nothing stored). Keys from research/agent-zero.md section 8
 # (agent.py:1062-1082, plugins/_telegram_integration/helpers/constants.py:5-15
 # at agent-zero e3051fb).
 AGENT_ZERO_TG_CHAT = "TgChat01"
@@ -8242,7 +8242,7 @@ OI_ARCHIVED = (
 
 
 def open_interpreter_rollout_records(cwd="/srv/proj"):
-    """research/open-interpreter.md section 8, with a reasoning item and a
+    """research/open-interpreter.md section 13, with a reasoning item and a
     task_complete event added."""
     return [
         {
@@ -8503,7 +8503,7 @@ CREATE TABLE auth_profile_store (store_key TEXT NOT NULL PRIMARY KEY, store_json
 
 
 def openclaw_records(session_id=OPENCLAW_SESSION, cwd="/srv/proj"):
-    """The research document's sample entries (section 8), cwd moved to /srv/proj."""
+    """The research document's sample entries (section 13), cwd moved to /srv/proj."""
     return [
         {
             "type": "session",
@@ -8896,7 +8896,7 @@ NANOBOT_HISTORY_REL = ".nanobot/workspace/memory/history.jsonl"
 
 
 def nanobot_records():
-    """The research document's sample file (section 8), plus a hidden-history
+    """The research document's sample file (section 13), plus a hidden-history
     message and a provider_state line."""
     return [
         {
@@ -9296,7 +9296,7 @@ def build_nanobot_sqlite(home: Path) -> None:
 
 
 # ---- VS Code state.vscdb rows (Cody, Twinny) and PearAI ----------------------------
-# Shapes from analyzer/research/cody.md, twinny.md and pearai.md.
+# Shapes from research/cody.md, twinny.md and pearai.md.
 
 VSCDB_SCHEMA = "CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB);"
 
@@ -10022,7 +10022,7 @@ def _muse_model(sid, seq, t_us, run_id, ns="8000"):
 
 
 def muse_session_records():
-    """The main fixture of research/muse-code.md section 8, less the cut
+    """The main fixture of research/muse-code.md section 13, less the cut
     line (tests append one with `write_bad_line`), plus a
     `session.opened.observed` record with a `security_mode`, an automated
     review verdict between the approval request and its decision, and a
@@ -10537,7 +10537,7 @@ def build_muse_code(home: Path) -> None:
     _jsonl(home / MUSE_DIR / "approval-review/7a7a7a7a-0000-4000-8000-000000000001.jsonl", [review])
     (home / ".config/muse").mkdir(parents=True, exist_ok=True)
     (home / ".config/muse/settings.json").write_text("{}", encoding="utf-8")
-    # Trusted projects (collectors/research/muse-code.md section 2).
+    # Trusted projects (research/muse-code.md section 2).
     _json_file(
         home / MUSE_TRUST_REL,
         {
@@ -10559,7 +10559,7 @@ OLLAMA_ATTACHMENT = b"hello"
 OLLAMA_MANIFEST_REL = ".ollama/models/manifests/registry.ollama.ai/library/gemma4/e4b"
 
 # app/store/database.go at ollama v0.35.1 (b0c1ca4), schema version 19
-# (research/ollama.md section 8). OLLAMA_SETTINGS_16 is the settings table
+# (research/ollama.md section 13). OLLAMA_SETTINGS_16 is the settings table
 # before migrations 16 to 19 added onboarding_version, claude_desktop_used
 # and codex_desktop_used; the transcript tables are the same in both.
 OLLAMA_SETTINGS_19 = """
@@ -10591,7 +10591,7 @@ CREATE TABLE users (name TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '
 
 
 def ollama_records(schema_version: int = 19):
-    """The INSERT statements of research/ollama.md section 8."""
+    """The INSERT statements of research/ollama.md section 13."""
     c = OLLAMA_CHAT
     return [
         "INSERT INTO settings (id, device_id, schema_version) "
@@ -10679,7 +10679,7 @@ CD_CODE_SESSION = "local_e2e2e2e2-9999-4aaa-8bbb-cccccccccccc"
 CD_CODE_CLI = "11111111-2222-4333-8444-555555555555"
 CD_CODE_RECORD_REL = "%s/%s.json" % (CD_CODE_ORG, CD_CODE_SESSION)
 # A Code-tab record with the persisted Remote Control state set (bundle
-# serializer keys, research/claude-desktop.md section 3; fixture only).
+# serializer keys, research/claude-desktop.md section 8; fixture only).
 CD_CODE_RC_SESSION = "local_e3e3e3e3-9999-4aaa-8bbb-cccccccccccc"
 CD_CODE_RC_CLI = "e3e3e3e3-5555-4666-8777-888888888888"
 CD_CODE_RC_RECORD_REL = "%s/%s.json" % (CD_CODE_ORG, CD_CODE_RC_SESSION)
@@ -10737,7 +10737,7 @@ def _cd_hmac(n: int) -> str:
 
 
 def claude_desktop_audit_records():
-    """Research section 8, verbatim (HMAC values and tool ids are
+    """Research section 13, verbatim (HMAC values and tool ids are
     placeholders). Line 1's prompt has no transcript twin; line 8's and the
     `init` model repeat the transcript's rows (issue 122). The `npm test`
     call is not the transcript's, so its id is not the transcript's
@@ -11076,7 +11076,7 @@ def claude_desktop_worktrees():
 
 
 def claude_desktop_remote_spaces():
-    """Research section 3: `entries[]` with `sessionId` (32 hex) and
+    """Research section 8: `entries[]` with `sessionId` (32 hex) and
     `folders[]`; observed shape, fixture values."""
     return {"entries": [{"sessionId": CD_REMOTE_SESSION, "folders": ["/srv/proj", "/srv/docs"]}]}
 
@@ -11114,7 +11114,7 @@ def build_claude_desktop(home: Path) -> None:
 
 
 # GitHub Copilot CLI (issue 50): the sample records of
-# research/copilot-cli.md section 8, verbatim, plus the `/model` switch to
+# research/copilot-cli.md section 13, verbatim, plus the `/model` switch to
 # Auto of the Linux round (2026-10-16): a `model_picker` change and its two
 # `session.info` lines (issue 133). The last line is cut mid-write, as a log
 # whose session was still running.
@@ -11172,7 +11172,7 @@ COPILOT_EVENT_LINES = [
     '{"id":"e0000000-0000-4000-8000-000000000035","parentId":"e0000000-0000-4000-8000-000000000034","timestamp":"2026-10-01T09:01:00.000Z","type":"user.message","data":{"content":"and run',
 ]
 
-# session-store.db, schema version 38 as research/copilot-cli.md section 5
+# session-store.db, schema version 38 as research/copilot-cli.md section 10
 # lists its tables; only the columns named there.
 COPILOT_STORE_SCHEMA = """
 CREATE TABLE sessions (id TEXT PRIMARY KEY, cwd TEXT, repository TEXT, host_type TEXT,
@@ -11246,7 +11246,7 @@ COPILOT_LOG = """\
 def copilot_snapshot_index() -> dict:
     """`rewind-file-snapshots/index.json` with the snapshot taken before the
     first prompt (its `eventId` is that `user.message` line's `id`), in the
-    key layout of research/copilot-cli.md section 5; the file key is a
+    key layout of research/copilot-cli.md section 10; the file key is a
     synthetic hex digest and the images are left out."""
     return {
         "schema": 1,
@@ -11309,7 +11309,7 @@ def build_copilot_cli(home: Path) -> None:
     )
     (home / COPILOT_LOG_REL).parent.mkdir(parents=True, exist_ok=True)
     (home / COPILOT_LOG_REL).write_text(COPILOT_LOG, encoding="utf-8")
-    # Noise the parser must not want (research/copilot-cli.md section 8).
+    # Noise the parser must not want (research/copilot-cli.md section 13).
     (home / ".copilot/config.json").write_text("{}", encoding="utf-8")
     (home / ".copilot/open-sessions-state.json").write_text("{}", encoding="utf-8")
     _json_file(home / COPILOT_DIR / "rewind-file-snapshots/tracking.json", {"schema": 1})
@@ -11320,7 +11320,7 @@ def build_copilot_cli(home: Path) -> None:
 
 
 # GitHub Copilot Desktop (issue 147): the app's own store `.copilot/data.db`,
-# with the table and column names of research/copilot-desktop.md section 3
+# with the table and column names of research/copilot-desktop.md section 8
 # (a subset of each table's columns, names exact). The project session's id
 # is the Copilot CLI fixture's session, since the app's sessions are the
 # bundled CLI's session-state directories. The rows live only in the -wal
@@ -11483,7 +11483,7 @@ def build_copilot_desktop(home: Path) -> None:
     db = home / COPILOT_DESKTOP_DB_REL
     os.utime(db, (COPILOT_DESKTOP_MTIME, COPILOT_DESKTOP_MTIME))
     # Noise the parser must not want: the WebSocket token and the web view's
-    # local storage (research/copilot-desktop.md section 2).
+    # local storage (research/copilot-desktop.md sections 3 and 10).
     run = home / ".copilot/run"
     run.mkdir(parents=True, exist_ok=True)
     (run / "ws.token").write_text("A" * 49, encoding="utf-8")
@@ -11509,7 +11509,7 @@ def build_copilot_desktop(home: Path) -> None:
 
 # The ChatGPT desktop app's `.codex/sqlite/codex-dev.db` (issue 49): the
 # `local_thread_catalog` column names seen on the macOS install of 2026-10-18
-# (`pragma table_info`, research/chatgpt-desktop.md section 3; the column
+# (`pragma table_info`, research/chatgpt-desktop.md section 8; the column
 # types other than the REAL times were not recorded) and its
 # hosts table. The rows live only in the -wal sidecar, as on a running app.
 CHATGPT_DESKTOP_DB_REL = ".codex/sqlite/codex-dev.db"

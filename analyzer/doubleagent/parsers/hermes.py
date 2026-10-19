@@ -3,7 +3,7 @@
 Hermes (NousResearch/hermes-agent, checked at 8b66a51) keeps every
 conversation of a profile, whatever the front end (CLI, TUI, desktop,
 messaging gateway, cron, subagents), in one SQLite database in OpenAI
-chat-completions message shape. See `analyzer/research/hermes.md`.
+chat-completions message shape. See `research/hermes.md`.
 
 Files, relative to the home directory, where `<hermes>` is `.hermes`,
 `.hermes_<suffix>`, `AppData/Local/hermes` or `AppData/Local/hermes_<suffix>`,

@@ -1,7 +1,7 @@
 """Zed agent panel threads.
 
 Validated against source, zed-industries/zed at a84689073d29 (see
-`analyzer/research/zed.md`), with a synthetic fixture; no real install was
+`research/zed.md`), with a synthetic fixture; no real install was
 checked. Files, relative to the Zed data directory (`.local/share/zed`,
 `Library/Application Support/Zed`, `AppData/Local/Zed`, or the Flatpak
 `.var/app/dev.zed.Zed*/data/zed`):

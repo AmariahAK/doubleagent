@@ -2,7 +2,7 @@
 
 Validated against source, Aider-AI/aider at 5dc9490 (`aider/io.py`,
 `aider/utils.py`, `aider/coders/base_coder.py`) and prompt_toolkit's
-`FileHistory`, with a synthetic fixture; see `analyzer/research/aider.md`.
+`FileHistory`, with a synthetic fixture; see `research/aider.md`.
 
 Aider writes into the git root of the repository it runs in (else the
 working directory), so these files usually arrive through the collector's
@@ -38,7 +38,13 @@ take the session header's time, or, from a user prompt on, the time of the
 matching `.aider.input.history` entry (same text, between this header and
 the next). Input and LLM history rows are assigned to the last session
 header at or before their own time when the chat history sits beside them.
-No model, git branch or tool call id is recorded. Each `TO LLM` request
+No git branch or tool call id is recorded. The model is named only in the
+chat history's announcement lines (`> Model:`, `> Main model:`, `> Weak
+model:`, `> Editor model:`), written at startup and again after each
+`/model`, `/weak-model` or `/editor-model` switch; the parser reads them as
+ordinary blockquote lines, part of a `tool_result` row, and yields no
+`model:` row and no `model` value (section 13 of `research/aider.md`, Model
+rows). Each `TO LLM` request
 becomes one `system` row naming the message count and the last user
 message; the full prompt is at `source_file:source_line`. A non-blank
 input or LLM history line that fits neither format is its own `system`
