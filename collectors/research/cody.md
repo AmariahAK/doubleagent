@@ -1,23 +1,23 @@
-# Sourcegraph Cody: on-disk paths
+# cody
 
-Catalog agent: `cody`. Cody is Sourcegraph's coding assistant, shipped as
+Sourcegraph Cody (catalog agent `cody`) is Sourcegraph's coding assistant, shipped as
 a VS Code extension (`sourcegraph.cody-ai`), a JetBrains plugin and a
 `cody` CLI; the last two run the same TypeScript "agent" in a Node
-process. **In VS Code, chat history and the access token are not files:
-they are rows in the editor's `User/globalStorage/state.vscdb`**, which
+process. In VS Code, chat history and the access token are not files:
+they are rows in the editor's `User/globalStorage/state.vscdb`, which
 the `vscode` entries already collect. The extension's own
 `globalStorage` folder holds only a local search index. The JetBrains
 plugin keeps the same chat history as files under an `env-paths`
 directory named `Cody-nodejs` (the CLI keeps it in memory). Transcript schema is in
 [`analyzer/research/cody.md`](../../analyzer/research/cody.md).
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
 [sourcegraph/cody-public-snapshot](https://github.com/sourcegraph/cody-public-snapshot), commit
 [`8e20ac6c1460c08b0db581c0204658112a246eda`](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda)
 (2025-08-01), VS Code extension version 1.116.0
-([`vscode/package.json:3-7`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/package.json#L3-L7)). **The source
-is frozen.** Sourcegraph moved Cody to a private repository and this is the
+([`vscode/package.json:3-7`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/package.json#L3-L7)). The source
+is frozen. Sourcegraph moved Cody to a private repository and this is the
 copy taken just before
 ([`README.md:1-5`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/README.md#L1-L5)); the README names
 [`d7fc674`](https://github.com/sourcegraph/cody-public-snapshot/commit/d7fc6741e7893e3f6e29efe58043f1afe08d505f)
@@ -29,18 +29,24 @@ of `env-paths` is cited from its source at the locked version 2.2.1
 fork of VS Code 1.96.4, the only VS Code checkout read in this round; see
 [vscode.md](vscode.md) for upstream.
 
+### Observed
+
+- No real install.
+
+### Source reviews
+
 - **Source review (2026-10-19)**: the repository's HEAD on 2026-10-19 is
   still
   [`8e20ac6`](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda),
   committed 2025-08-01 and the commit this document already cited; the
   public source has been frozen since August 2025, so nothing later can
   be reviewed. Per class (the record-level detail is in
-  [section 1 of `analyzer/research/cody.md`](../../analyzer/research/cody.md#1-source)):
+  [Source reviews in `analyzer/research/cody.md`](../../analyzer/research/cody.md#source-reviews)):
   - Permission state: found. Standing settings live in the editor's user
     `settings.json` (`cody.agentic.context.experimentalOptions`,
     `cody.mcpServers`), already collected with the editor, and for the
     JetBrains plugin in the IDE's `options/cody.xml`, which is not
-    collected ([section 2](#2-per-user-storage)).
+    collected ([JetBrains IDE settings](#jetbrains-ide-settings)).
   - Model: found `cody-model-preferences`, a key inside files already
     collected (the `state.vscdb` row, `JetBrains-globalState/`).
   - Past use beyond the primary store: found the JetBrains plugin's
@@ -48,10 +54,11 @@ fork of VS Code 1.96.4, the only VS Code checkout read in this round; see
     migration and not collected ([section 5](#5-project-local-files)).
   - Sync, relay and origin: none recorded on disk (already covered in
     the analyzer document).
-  - Scratch directories: none ([section 2](#2-per-user-storage)).
+  - Scratch directories: none ([Scratch directories](#scratch-directories)).
   - Deletion: clear and delete rewrite the history value in place; no
     file is removed
-    ([section 8 of `analyzer/research/cody.md`](../../analyzer/research/cody.md#8-parser-plan)).
+    ([What survives a delete in
+    `analyzer/research/cody.md`](../../analyzer/research/cody.md#what-survives-a-delete)).
   - Version drift: none; the snapshot is HEAD.
   - Bad lines: not a collector concern; the analyzer reads each history
     as one JSON value.
@@ -63,7 +70,24 @@ fork of VS Code 1.96.4, the only VS Code checkout read in this round; see
 
 ## 2. Per-user storage
 
-**VS Code extension.**
+The layout differs by surface: the VS Code extension keeps its state in the editor's own
+storage, the JetBrains plugin and the CLI in an `env-paths` directory, and the JetBrains plugin
+also in the IDE's `options/` directory.
+
+### Scratch directories
+
+None. Deep Cody's terminal tool and the agentic
+chat's `run_terminal_command` both run in the first workspace folder
+([`vscode/src/commands/context/shell.ts:37`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/commands/context/shell.ts#L37);
+[`vscode/src/chat/chat-view/tools/shell.ts:52-69`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/shell.ts#L52-L69)),
+and no clone, worktree or per-chat directory is created outside the
+internal `cody bench` evaluation command, whose `cody-bench-` worktree
+sits in the system temp directory
+([`agent/src/cli/command-bench/testTypecheck.ts:49-55`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/agent/src/cli/command-bench/testTypecheck.ts#L49-L55)).
+The `symf/indexroot/<path>` directories are indexes named after real
+workspaces, not working directories.
+
+### VS Code extension
 
 - Global state: `localStorage.setStorage(context.globalState)`
   ([`vscode/src/main.ts:133-136`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/main.ts#L133-L136)). VS
@@ -101,7 +125,9 @@ fork of VS Code 1.96.4, the only VS Code checkout read in this round; see
   The `vscode` entries do not collect it today.
 - Output channel logs go to the editor's `logs/` tree, already collected.
 
-**JetBrains plugin and CLI (agent).** Paths come from
+### JetBrains plugin and CLI (agent)
+
+Paths come from
 `envPaths('Cody')` ([`lib/shared/src/codyPaths.ts:3`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/codyPaths.ts#L3)),
 which appends `-nodejs` by default
 ([env-paths `index.js:54-59`](https://github.com/sindresorhus/env-paths/blob/62d4ec8cd42f1a419e00856fab949ca8286773f6/index.js#L54-L59)):
@@ -139,7 +165,9 @@ data, `logUri` to log, and copies extension resources into
   ([`types.ts:13-14`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/commands/types.ts#L13-L14);
   [`custom-commands.ts:46-47`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/commands/services/custom-commands.ts#L46-L47)).
 
-**JetBrains IDE settings (source review of 2026-10-19).** The plugin
+### JetBrains IDE settings
+
+From the source review of 2026-10-19: the plugin
 also persists application-level components in the IDE's `options/`
 directory (`~/.config/JetBrains/<product>`,
 `~/Library/Application Support/JetBrains/<product>`,
@@ -168,17 +196,6 @@ none of which the catalog collects:
 
 The project-level files are in [section 5](#5-project-local-files).
 
-**Scratch directories.** None. Deep Cody's terminal tool and the agentic
-chat's `run_terminal_command` both run in the first workspace folder
-([`vscode/src/commands/context/shell.ts:37`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/commands/context/shell.ts#L37);
-[`vscode/src/chat/chat-view/tools/shell.ts:52-69`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/shell.ts#L52-L69)),
-and no clone, worktree or per-chat directory is created outside the
-internal `cody bench` evaluation command, whose `cody-bench-` worktree
-sits in the system temp directory
-([`agent/src/cli/command-bench/testTypecheck.ts:49-55`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/agent/src/cli/command-bench/testTypecheck.ts#L49-L55)).
-The `symf/indexroot/<path>` directories are indexes named after real
-workspaces, not working directories.
-
 ## 3. Credentials
 
 - VS Code: the access token is stored in SecretStorage three times, under
@@ -205,7 +222,8 @@ workspaces, not working directories.
   `customHeaders`, which may carry proxy auth.
 - `cody.mcpServers.<server>` entries (VS Code `settings.json`, the
   JetBrains `cody_settings.json` files and `cody.xml`) take `headers`
-  for an SSE (server-sent events, the HTTP transport) server and `env` for a stdio one, where MCP (Model Context Protocol) servers usually
+  for an SSE (server-sent events, the HTTP transport) server and `env` for a stdio one, where MCP
+  (Model Context Protocol) servers usually
   receive their tokens
   ([`vscode/src/chat/chat-view/tools/MCPManager.ts:31-43`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/MCPManager.ts#L31-L43));
   source review of 2026-10-19.
@@ -239,10 +257,11 @@ project table:
   so it is the copy a chat deleted in the plugin still has. The `.idea/`
   location is the IntelliJ Platform's rule for project-level
   components, not re-read from platform source here. Its schema is in
-  [section 2 of `analyzer/research/cody.md`](../../analyzer/research/cody.md#2-transcript-files).
+  [Legacy JetBrains history in
+  `analyzer/research/cody.md`](../../analyzer/research/cody.md#legacy-jetbrains-history).
 - `.idea/.sourcegraph/cody_settings.json`: the per-project `cody.*`
   settings, permission settings and MCP servers included
-  ([section 2](#2-per-user-storage)).
+  ([JetBrains IDE settings](#jetbrains-ide-settings)).
 
 ## 6. Where the project path is recorded
 

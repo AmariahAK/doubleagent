@@ -1,6 +1,7 @@
-# Sourcegraph Cody transcript schema
+# cody
 
-Catalog agent: `cody`. Cody keeps all chats of all accounts in one JSON
+Sourcegraph Cody (catalog agent `cody`) is Sourcegraph's coding assistant, shipped as a VS Code
+extension, a JetBrains plugin and a `cody` CLI. Cody keeps all chats of all accounts in one JSON
 object, `AccountKeyedChatHistory`, stored under the key
 `cody-local-chatHistory-v2`. In VS Code that object sits inside the
 `sourcegraph.cody-ai` row of `User/globalStorage/state.vscdb`; in the
@@ -9,12 +10,22 @@ keeps it in memory only. Source is the
 frozen public snapshot, so later releases may differ. Paths are in
 [`collectors/research/cody.md`](../../collectors/research/cody.md).
 
-## 1. Source
+## 1. Source and evidence
 
 [sourcegraph/cody-public-snapshot](https://github.com/sourcegraph/cody-public-snapshot) at
 [`8e20ac6c1460c08b0db581c0204658112a246eda`](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda)
 (2025-08-01), archived copy of the now-private Cody repository
 ([`README.md:1-5`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/README.md#L1-L5)).
+
+### Observed
+
+- No real install. In particular no real install has shown a Deep Cody confirmation step: the
+  layout the parser handles is not observed on any real install, source-derived
+  (sourcegraph/cody-public-snapshot at
+  [`8e20ac6`](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda);
+  [Permission state](#permission-state)).
+
+### Source reviews
 
 - **Source review (2026-10-19)**: the repository's HEAD on 2026-10-19 is
   still
@@ -36,32 +47,30 @@ frozen public snapshot, so later releases may differ. Paths are in
     `cody.mcpServers.<server>.disabled` and `.disabledTools` in the
     editor's user `settings.json`; the parser names a refusal
     `rejected` and a `pending` step `approved or unanswered`, and reads
-    no setting ([section 3](#3-record-schema), [section 8](#8-parser-plan)).
-    No real install has shown a confirmation step: the layout the parser
-    handles is not observed on any real install, source-derived
-    (sourcegraph/cody-public-snapshot at
-    [`8e20ac6`](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda)).
+    no setting ([Permission records](#permission-records),
+    [Permission state](#permission-state)). No real install has shown a confirmation step
+    ([Observed](#observed)).
   - Model: already covered per assistant message; found the
     `cody-model-preferences` global-state key (the selected and default
     model per endpoint and usage) and the per-chat `llm` element of the
     JetBrains plugin's legacy history, which the parser does not read
-    ([section 2](#2-transcript-files)).
+    ([section 5](#5-other-stores)).
   - Past use beyond the primary store: found. The JetBrains plugin's
     pre-agent history `cody_history.xml` in each project's `.idea/` is
     copied once into the agent store and never deleted, so it outlives a
     delete or clear in the plugin; it is neither collected nor parsed.
     A deprecated `cody-chat-memory` key is cleared at every activation.
     Export files go wherever the user saves them
-    ([section 2](#2-transcript-files)).
+    ([section 5](#5-other-stores)).
   - Sync, relay and origin: already covered (none recorded locally);
     added that the agentic chat's `cody.runTerminalCommand` and
     `cody.tool-use` telemetry events carry each tool call's arguments
-    ([section 8](#8-parser-plan)).
+    ([Sync, relay and origin](#sync-relay-and-origin)).
   - Scratch directories: none. Both the Deep Cody terminal tool and the
     agentic `run_terminal_command` run in the first workspace folder.
   - Deletion: found. Clear empties only the signed-in account's chats in
     the shared object, delete removes one chat key; neither leaves a
-    marker ([section 8](#8-parser-plan)).
+    marker ([What survives a delete](#what-survives-a-delete)).
   - Version drift: none at the source level. The parser's keys
     (`sourcegraph.cody-ai`, `cody-local-chatHistory-v2`, the message and
     process fields) are at the cited lines; whether builds after August
@@ -70,7 +79,7 @@ frozen public snapshot, so later releases may differ. Paths are in
     parser recovers a damaged history chat by chat; the uncollected
     legacy XML has no reader to drop lines.
 
-## 2. Transcript files
+## 2. Transcript stores
 
 - VS Code (and forks): `<User>/globalStorage/state.vscdb`, table
   `ItemTable`, row `key = 'sourcegraph.cody-ai'`; `value` is the
@@ -97,71 +106,24 @@ frozen public snapshot, so later releases may differ. Paths are in
   which is an in-memory database
   ([`AgentGlobalState.ts:23-33`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/agent/src/global-state/AgentGlobalState.ts#L23-L33)).
 
-Other sources of past use and model state (source review of 2026-10-19):
-
-- **Legacy JetBrains history, secondary.** Before the plugin ran the
-  agent, it kept chats in a project-level persistent component,
-  `HistoryService`, stored as `cody_history.xml`
-  ([`jetbrains/.../history/HistoryService.kt:13-15`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/history/HistoryService.kt#L13-L15)).
-  The IntelliJ Platform keeps a project-level component's file in the
-  project's `.idea/` directory, so the path is
-  `<project>/.idea/cody_history.xml` (platform behaviour, not re-read
-  from platform source here). Each `<chat>` has `internalId`,
-  `updatedAt`, `messages` of `<message>` with `text` and `speaker`
-  (`HUMAN`, `ASSISTANT`), the deprecated `model` and `accountId`, an
-  `llm` element (`model`, `title`, `provider`, `tags`, `usage`) and
-  `enhancedContext`
-  ([`history/state/ChatState.kt:13-31`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/history/state/ChatState.kt#L13-L31),
-  [`MessageState.kt:10-20`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/history/state/MessageState.kt#L10-L20),
-  [`LLMState.kt:10-18`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/history/state/LLMState.kt#L10-L18)).
-  The run-once migration `CodyMigrateChatHistory-v2`
-  ([`config/migration/SettingsMigration.kt:69-71`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/config/migration/SettingsMigration.kt#L69-L71))
-  copies it into the agent store through `chat/import` with merge on,
-  keyed `<server url>-<account name>` with `updatedAt` as both the chat
-  id and `lastInteractionTimestamp`, the chat's `llm.model` on every
-  message, and only complete human and assistant pairs
-  ([`ChatHistoryMigration.kt:17-79`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/config/migration/ChatHistoryMigration.kt#L17-L79)).
-  Nothing deletes the XML, so it survives a delete or clear of the
-  migrated chat in the agent store, and it is the only record of a
-  dropped unpaired message. It names the project by where it sits. It
-  joins the primary store on account key, chat id (`updatedAt`) and
-  message text.
-- **`cody-model-preferences`, a model setting.** A global-state key
-  (`sourcegraph.cody-ai` row in VS Code, a file of that name under
-  `JetBrains-globalState/` for the plugin) holding, per endpoint,
-  `defaults` and `selected`, each a map from usage (`chat`, `edit`,
-  `autocomplete`, `unlimitedChat`) to model id
-  ([`LocalStorageProvider.ts:37`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L37),
-  [`338-344`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L338-L344);
-  [`lib/shared/src/models/modelsService.ts:198-219`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/models/modelsService.ts#L198-L219),
-  [`545`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/models/modelsService.ts#L545);
-  [`lib/shared/src/models/types.ts:3-8`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/models/types.ts#L3-L8)).
-  It records the user's current choice, not when it was made. Deep
-  Cody's helper model is chosen at run time and recorded nowhere
-  ([`DeepCodyHandler.ts:162-167`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/handlers/DeepCodyHandler.ts#L162-L167)).
-- **`cody-chat-memory`, gone.** Listed as a deprecated key that
-  `clearDeprecatedKeys` sets to null whenever the storage is attached at
-  activation
-  ([`LocalStorageProvider.ts:42-46`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L42-L46),
-  [`63-72`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L63-L72),
-  [`374-384`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L374-L384)).
-  Its earlier content is not in the snapshot (no other reference found
-  for `cody-chat-memory` or `CODY_CHAT_MEMORY`); a `state.vscdb` from a
-  build that predates the cleanup may still hold it.
-- No other mirror, index, backup or archive of chats: the `symf` index
-  holds code, not chats, and export writes only where the user saves.
+Other sources of past use and model state are in [section 5](#5-other-stores).
 
 ### What survives a delete
 
-"Delete All Chats" (`cody.chat.history.clear`) replaces only the
+"Delete All Chats" (`cody.chat.history.clear`, with a modal
+confirmation unless called with `clear-all-no-confirm`) replaces only the
 signed-in account's entry in `cody-local-chatHistory-v2` with an empty
-chat map, so other accounts' chats stay in the same value, and
+chat map, `{chat: {}}`, so other accounts' chats stay in the same value, and
 `cody.chat.history.delete` removes one chat key and rewrites the whole
 value; neither writes a tombstone or other marker
 ([`ChatsController.ts:505-531`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/ChatsController.ts#L505-L531);
-[section 8](#8-parser-plan)). The one local copy a delete or clear does
+[`LocalStorageProvider.ts:231-241`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L231-L241),
+[`270-276`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L270-L276)),
+so the parser has nothing to yield for a delete ([Deletion](#deletion)). The one local copy a
+delete or clear does
 not reach is the JetBrains plugin's legacy, project-local
-`<project>/.idea/cody_history.xml`, which the migration copied into the
+`<project>/.idea/cody_history.xml` ([Legacy JetBrains history](#legacy-jetbrains-history)),
+which the migration copied into the
 agent store and never deleted; it is also the only record of an
 unpaired message the migration dropped. This document names no
 per-prompt history file, and the review found no other mirror, index,
@@ -172,9 +134,14 @@ which the collector does not collect (see
 
 ## 3. Record schema
 
-`AccountKeyedChatHistory` = `{ "<endpoint>-<username>": { "chat": { "<chatID>": SerializedChatTranscript } } }`
+`AccountKeyedChatHistory`
 ([`lib/shared/src/chat/transcript/messages.ts:193-204`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/chat/transcript/messages.ts#L193-L204);
-key built at [`LocalStorageProvider.ts:393-397`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L393-L397)).
+key built at [`LocalStorageProvider.ts:393-397`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L393-L397)) is:
+
+```text
+{ "<endpoint>-<username>": { "chat": { "<chatID>": SerializedChatTranscript } } }
+```
+
 The endpoint is a URL such as `https://sourcegraph.com/`, so split the key
 on the last `-` only with care: usernames may contain hyphens, endpoints
 rarely end in one.
@@ -215,6 +182,8 @@ Agentic tool use appears two ways:
   `{type:"tool_result",tool_result:{id,content}}` (human).
 
 No per-message timestamp. `model` is on the assistant message.
+
+### Permission records
 
 Where the two carry permission state (source review of 2026-10-19):
 
@@ -270,7 +239,7 @@ Where the two carry permission state (source review of 2026-10-19):
 - **Standing settings**, all in the editor's user `settings.json` (or,
   for the JetBrains plugin, `<project>/.idea/.sourcegraph/cody_settings.json`
   with the `jsonConfig` string of the IDE's `cody.xml` as fallback; see
-  [section 2 of `collectors/research/cody.md`](../../collectors/research/cody.md#2-per-user-storage)):
+  [JetBrains IDE settings in `collectors/research/cody.md`](../../collectors/research/cody.md#jetbrains-ide-settings)):
   `cody.agentic.context.experimentalOptions` `shell.allow` (command
   prefixes, empty allows all) and `shell.block` (added to a built-in
   block list), `cody.agentic.context.experimentalShell` (deprecated,
@@ -288,7 +257,7 @@ Where the two carry permission state (source review of 2026-10-19):
   ([`DeepCodyHandler.ts:31-35`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/handlers/DeepCodyHandler.ts#L31-L35),
   [`169-172`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/handlers/DeepCodyHandler.ts#L169-L172)).
 
-## 4. Joins
+## 4. Joins and timestamps
 
 - Account: the outer key; it names the server and the user that owned
   the chat, which is attribution evidence in its own right.
@@ -297,7 +266,7 @@ Where the two carry permission state (source review of 2026-10-19):
 - Tool call to result: `tool_call.id` = `tool_result.id`.
 - No subagents.
 
-## 5. SQLite or binary stores
+## 5. Other stores
 
 VS Code: read `ItemTable` from `state.vscdb` through
 `doubleagent/sqlite_util.py` (WAL sidecars). The value is UTF-8 JSON
@@ -305,6 +274,68 @@ text in a BLOB column. History over 50 MB triggers a size warning
 ([`LocalStorageProvider.ts:40`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L40);
 [`ChatHistoryManager.ts:104`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/ChatHistoryManager.ts#L104)),
 so expect large values.
+
+Other sources of past use and model state (source review of 2026-10-19) follow. No other mirror,
+index, backup or archive of chats exists: the `symf` index holds code, not chats, and export
+writes only where the user saves.
+
+### Legacy JetBrains history
+
+Secondary. Before the plugin ran the
+agent, it kept chats in a project-level persistent component,
+`HistoryService`, stored as `cody_history.xml`
+([`jetbrains/.../history/HistoryService.kt:13-15`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/history/HistoryService.kt#L13-L15)).
+The IntelliJ Platform keeps a project-level component's file in the
+project's `.idea/` directory, so the path is
+`<project>/.idea/cody_history.xml` (platform behaviour, not re-read
+from platform source here). Each `<chat>` has `internalId`,
+`updatedAt`, `messages` of `<message>` with `text` and `speaker`
+(`HUMAN`, `ASSISTANT`), the deprecated `model` and `accountId`, an
+`llm` element (`model`, `title`, `provider`, `tags`, `usage`) and
+`enhancedContext`
+([`history/state/ChatState.kt:13-31`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/history/state/ChatState.kt#L13-L31),
+[`MessageState.kt:10-20`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/history/state/MessageState.kt#L10-L20),
+[`LLMState.kt:10-18`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/history/state/LLMState.kt#L10-L18)).
+The run-once migration `CodyMigrateChatHistory-v2`
+([`config/migration/SettingsMigration.kt:69-71`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/config/migration/SettingsMigration.kt#L69-L71))
+copies it into the agent store through `chat/import` with merge on,
+keyed `<server url>-<account name>` with `updatedAt` as both the chat
+id and `lastInteractionTimestamp`, the chat's `llm.model` on every
+message, and only complete human and assistant pairs
+([`ChatHistoryMigration.kt:17-79`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/config/migration/ChatHistoryMigration.kt#L17-L79)).
+Nothing deletes the XML, so it survives a delete or clear of the
+migrated chat in the agent store, and it is the only record of a
+dropped unpaired message. It names the project by where it sits. It
+joins the primary store on account key, chat id (`updatedAt`) and
+message text.
+
+### cody-model-preferences
+
+A model setting: a global-state key
+(`sourcegraph.cody-ai` row in VS Code, a file of that name under
+`JetBrains-globalState/` for the plugin) holding, per endpoint,
+`defaults` and `selected`, each a map from usage (`chat`, `edit`,
+`autocomplete`, `unlimitedChat`) to model id
+([`LocalStorageProvider.ts:37`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L37),
+[`338-344`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L338-L344);
+[`lib/shared/src/models/modelsService.ts:198-219`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/models/modelsService.ts#L198-L219),
+[`545`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/models/modelsService.ts#L545);
+[`lib/shared/src/models/types.ts:3-8`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/models/types.ts#L3-L8)).
+It records the user's current choice, not when it was made. Deep
+Cody's helper model is chosen at run time and recorded nowhere
+([`DeepCodyHandler.ts:162-167`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/handlers/DeepCodyHandler.ts#L162-L167)).
+
+### cody-chat-memory
+
+Gone: listed as a deprecated key that
+`clearDeprecatedKeys` sets to null whenever the storage is attached at
+activation
+([`LocalStorageProvider.ts:42-46`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L42-L46),
+[`63-72`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L63-L72),
+[`374-384`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L374-L384)).
+Its earlier content is not in the snapshot (no other reference found
+for `cody-chat-memory` or `CODY_CHAT_MEMORY`); a `state.vscdb` from a
+build that predates the cleanup may still hold it.
 
 ## 6. Format versions
 
@@ -316,6 +347,9 @@ the agent migration rewrites them to `toUTCString()` ids and records
 ([`agent/src/global-state/migrations/chat-id-migration-CODY3538.ts:7-41`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/agent/src/global-state/migrations/chat-id-migration-CODY3538.ts#L7-L41)).
 Older VS Code keys (`cody-local-chatHistory` without `-v2`) were not
 traced.
+
+Version drift at the source review of 2026-10-19: none in source (the snapshot is HEAD);
+post-August-2025 builds need a real-install round before any parser change.
 
 ## 7. Secrets
 
@@ -345,13 +379,10 @@ Inputs: the `sourcegraph.cody-ai` row of any collected `state.vscdb`
 | text | `text`; for tool_use the `arguments`; for tool_result its `content` |
 | source_line | 1 (single JSON value) |
 
-Model and permission rows, all `system` (issues 96 and 97):
+### Permission state
 
-- `model: <id>` at the first assistant message of a chat whose `model`
-  is set and `model: <old> -> <new>` on every later assistant message
-  with a different `model`, before that message's rows, at the chat's
-  time. The model is recorded per assistant message, so a change inside
-  a chat shows.
+Permission rows, all `system` (issues 96 and 97):
+
 - `permission decision: <decision> confirmation state=<state>
   error=<error.message> title=<title>` for a
   `processes[]` entry of `type` `confirmation`, which the source
@@ -369,55 +400,43 @@ Model and permission rows, all `system` (issues 96 and 97):
   the step has an `error.message`, and the row does not interpret it
   (issue 169).
 
-Source review of 2026-10-19, one line per class:
+From the source review of 2026-10-19: per-call, the Deep Cody confirmation row above; the agentic
+chat records no per-call decision ([Permission records](#permission-records)). Standing: the
+`settings.json` keys in [Permission records](#permission-records)
+(`cody.agentic.context.experimentalOptions`,
+`cody.agentic.context.experimentalShell`, `cody.chat.agenticContext`,
+`cody.mcpServers.<server>.disabled` and `.disabledTools`) are not read
+by this parser; the editor's `settings.json` is collected under the
+editor's agent, and the JetBrains `cody.xml` and `.idea/.sourcegraph/cody_settings.json` are not
+collected.
 
-- Permission: per-call, the Deep Cody confirmation row above; the agentic
-  chat records no per-call decision. Standing: the `settings.json` keys
-  in [section 3](#3-record-schema) (`cody.agentic.context.experimentalOptions`,
-  `cody.agentic.context.experimentalShell`, `cody.chat.agenticContext`,
-  `cody.mcpServers.<server>.disabled` and `.disabledTools`) are not read
-  by this parser; the editor's `settings.json` is collected under the
-  editor's agent, and the JetBrains `cody.xml` and `.idea/.sourcegraph/cody_settings.json` are not collected.
-- Model: per message, already read. `cody-model-preferences` (selected
-  model per endpoint and usage, no time) and the legacy XML's
-  `llm.model` are not read; a row from the former would carry the
-  file's modification time and say so.
-- Past use: `<project>/.idea/cody_history.xml` is a secondary source the
-  parser should read when it is collected, marking `secondary()` and
-  matching on account key, `updatedAt` and text; neither the collector
-  nor the parser handles it today. Export files are wherever the user
-  saved them.
-- Sync, relay, origin: none recorded locally (below). Also leaving the
-  host without a local mark: `cody.runTerminalCommand` `accepted` and
-  `cody.tool-use` `executed`/`failed` telemetry carry each agentic tool
-  call's arguments in `privateMetadata`
-  ([`tools/shell.ts:58-66`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/shell.ts#L58-L66);
-  [`AgenticHandler.ts:410-444`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/handlers/AgenticHandler.ts#L410-L444)).
-- Scratch directories: none; both shell paths run in the first workspace
-  folder
-  ([`tools/shell.ts:52-55`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/shell.ts#L52-L55), [`67-69`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/shell.ts#L67-L69),
-  [`commands/context/shell.ts:37`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/commands/context/shell.ts#L37)).
-  The only temp directory in the agent is the internal `cody bench`
-  evaluation command's `cody-bench-` worktree
-  ([`agent/src/cli/command-bench/testTypecheck.ts:49-55`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/agent/src/cli/command-bench/testTypecheck.ts#L49-L55)),
-  a developer tool.
-- Deletion: "Delete All Chats" (`cody.chat.history.clear`, with a modal
-  confirmation unless called with `clear-all-no-confirm`) replaces only
-  the signed-in account's entry with `{chat: {}}`, so other accounts'
-  chats stay in the same value; `cody.chat.history.delete` removes one
-  chat key and rewrites the whole value
-  ([`ChatsController.ts:505-531`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/ChatsController.ts#L505-L531);
-  [`LocalStorageProvider.ts:231-241`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L231-L241),
-  [`270-276`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L270-L276)).
-  No tombstone or deletion record is written, so the parser has nothing
-  to yield for a delete; the legacy JetBrains XML is the one local copy
-  that a delete does not reach.
-- Version drift: none in source (the snapshot is HEAD); post-August-2025
-  builds need a real-install round before any parser change.
-- Bad lines: covered; one JSON value per input, recovered chat by chat
-  with one `parser:` row.
+### Model
 
-Sync: Cody records no sync state. The frozen snapshot has no chat
+Model rows, all `system` (issues 96 and 97):
+
+- `model: <id>` at the first assistant message of a chat whose `model`
+  is set and `model: <old> -> <new>` on every later assistant message
+  with a different `model`, before that message's rows, at the chat's
+  time. The model is recorded per assistant message, so a change inside
+  a chat shows.
+
+From the source review of 2026-10-19: per message, already read. `cody-model-preferences`
+(selected model per endpoint and usage, no time; [cody-model-preferences](#cody-model-preferences))
+and the legacy XML's `llm.model` are not read; a row from the former would carry the
+file's modification time and say so.
+
+### Past use and secondary sources
+
+From the source review of 2026-10-19: `<project>/.idea/cody_history.xml`
+([Legacy JetBrains history](#legacy-jetbrains-history)) is a secondary source the
+parser should read when it is collected, marking `secondary()` and
+matching on account key, `updatedAt` and text; neither the collector
+nor the parser handles it today. Export files are wherever the user
+saved them.
+
+### Sync, relay and origin
+
+Cody records no sync state. The frozen snapshot has no chat
 history sync, no share link and no server copy of a chat: history is
 kept only in the local `cody-local-chatHistory-v2` value and deleted
 there
@@ -466,6 +485,37 @@ responder with a sourcegraph.com account in the history key can ask
 Sourcegraph for the events by the chat id; nothing local says they were
 sent, so the parser yields no sync row.
 
+Also leaving the host without a local mark (source review of 2026-10-19):
+`cody.runTerminalCommand` `accepted` and
+`cody.tool-use` `executed`/`failed` telemetry carry each agentic tool
+call's arguments in `privateMetadata`
+([`tools/shell.ts:58-66`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/shell.ts#L58-L66);
+[`AgenticHandler.ts:410-444`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/handlers/AgenticHandler.ts#L410-L444)).
+
+### Scratch directories
+
+None; both shell paths run in the first workspace
+folder
+([`tools/shell.ts:52-55`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/shell.ts#L52-L55), [`67-69`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/shell.ts#L67-L69),
+[`commands/context/shell.ts:37`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/commands/context/shell.ts#L37)).
+The only temp directory in the agent is the internal `cody bench`
+evaluation command's `cody-bench-` worktree
+([`agent/src/cli/command-bench/testTypecheck.ts:49-55`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/agent/src/cli/command-bench/testTypecheck.ts#L49-L55)),
+a developer tool.
+
+### Deletion
+
+No row: no tombstone or deletion record is written, so the parser has nothing
+to yield for a delete; the legacy JetBrains XML is the one local copy
+that a delete does not reach ([What survives a delete](#what-survives-a-delete)).
+
+### Bad lines
+
+Covered; one JSON value per input, recovered chat by chat
+with one `parser:` row. The uncollected legacy XML has no reader to drop lines.
+
+### Fixtures
+
 Fixture (`JetBrains-globalState/cody-local-chatHistory-v2`):
 
 ```json
@@ -478,7 +528,9 @@ Agentic variant of an interaction:
 {"humanMessage":{"speaker":"human","text":"run the tests","intent":"agentic"},"assistantMessage":{"speaker":"assistant","model":"anthropic::2024-10-22::claude-sonnet-4-latest","text":"Running tests.","content":[{"type":"text","text":"Running tests."},{"type":"tool_call","tool_call":{"id":"toolu_01","name":"run_terminal_command","arguments":"{\"command\":\"pytest -q\"}"}}],"processes":[{"type":"tool","id":"toolu_01","title":"run_terminal_command","content":"pytest -q","state":"success"}]}}
 ```
 
-Confidence. High (frozen source): key names, transcript and message
+### Confidence
+
+High (frozen source): key names, transcript and message
 fields, `toUTCString` ids, tool part shapes, the JetBrains file location.
 Medium: the serialised form of `uri` (a VS Code URI's JSON form; field set
 not traced), the tool name `run_terminal_command` and the model string in
