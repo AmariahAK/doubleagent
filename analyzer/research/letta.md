@@ -147,6 +147,30 @@ server id ([agent/agent-id.ts:3-9](https://github.com/letta-ai/letta-code/blob/7
   ([settings-manager.ts:158](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/settings-manager.ts#L158);
   [websocket/listen-register.ts:110-128](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/websocket/listen-register.ts#L110-L128)).
 
+### What survives a delete
+
+Deleting a server agent from the `/agents` selector deletes it on its
+server and touches no local file
+([cli/components/AgentSelector.tsx:486-514](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/components/AgentSelector.tsx#L486-L514)),
+so its `transcripts/` directories, its `sessions.jsonl` lines and the
+settings entries that name it all remain, and nothing local records
+that the server copy is gone. Deleting a local-backend agent removes its
+conversation directories under `lc-local-backend/` (with
+`messages.jsonl`) and leaves `~/.letta/transcripts/` alone
+([local-store.ts:481-517](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/backend/local/local-store.ts#L481-L517)).
+The only callers of `deleteConversation` remove internal fork and
+ephemeral conversations. Letta Code keeps no per-prompt history file.
+Since a server-agent delete touches no local file, the chunk logs (the
+last 5 per agent and session, content cut to 200 characters), the
+interrupted-turn records under `listener-state/`, the input ledger under
+`state/` and the scheduled-task run logs also remain after it; what a
+local-backend delete does to them is not stated. The
+analyzer reads `transcript.jsonl` as a secondary source (see
+[Secondary sources](../docs/output.md#secondary-sources)), so a
+transcript whose `messages.jsonl` was deleted keeps all its rows, and
+reads `sessions.jsonl`; it reads none of the other records
+([section 8](#8-parser-plan)).
+
 ## 3. Record schema
 
 **Reflection transcript** (`transcript.jsonl`). Appended after each completed

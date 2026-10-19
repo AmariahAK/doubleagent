@@ -204,6 +204,28 @@ the transcript stays in Gemini CLI's own store
 equals Gemini CLI's session id was not determined (Zed source review of
 2026-10-19).
 
+### What survives a delete
+
+The CLI's delete command removes a session's chat file, its activity
+log and its tool outputs
+([`core/src/utils/sessionOperations.ts:59-116`](https://github.com/google-gemini/gemini-cli/blob/3be3d4424b3c8a760d793ae1bea6cb5180adf27d/packages/core/src/utils/sessionOperations.ts#L59-L116)).
+Retention removes more without being asked: every start deletes, by
+default, sessions older than 30 days, every `session-*` file it cannot
+read or that has no resumable content, each with its activity log, tool
+outputs and subagent sessions, and the whole tool-checkpoint directory;
+a session that ends with no resumable content deletes its own file. What
+remains of a deleted or expired session is the per-project prompt
+history `logs.json`, which neither the delete command nor the retention
+cleanup touches; `shell_history`, the last 100 shell-mode commands with
+no time or session id; the `/chat save` checkpoints, removed only by
+`/chat delete <tag>`; the shadow git repository under `history/<slug>`;
+`memory/`; and the `bug-report-history-*.json` files from `/bug`. The
+agent writes no deletion marker, and the requests already sent under the
+session's `sessionId` are held server-side by Google. The analyzer reads
+`logs.json` as a secondary source (see
+[Secondary sources](../docs/output.md#secondary-sources)) and none of the
+others ([section 8](#8-parser-plan)).
+
 ## 3. Record schema
 
 Session JSONL ([`services/chatRecordingTypes.ts`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/services/chatRecordingTypes.ts)). Line 1 is

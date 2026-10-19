@@ -174,6 +174,27 @@ Apache-2.0 ([`LICENSE`](https://github.com/continuedev/continue/blob/5522c6f44ca
   no 0.2.0 schema, so `logLocalData` throws and nothing is written for
   it at this commit ([`core/data/log.ts:78-84`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/log.ts#L78-L84)).
 
+### What survives a delete
+
+The extension's delete (`history/delete`) removes one session file and
+its `sessions.json` entry
+([`core/util/history.ts:60-75`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L60-L75)),
+and its clear-all (`history/clear`) removes the whole `sessions/`
+directory, the index with it
+([`core/util/history.ts:87-89`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L87-L89)).
+The CLI has no delete command; editing an earlier message rewrites the
+session with the history cut before it
+([`extensions/cli/src/ui/hooks/useChat.ts:762-777`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/hooks/useChat.ts#L762-L777)).
+Afterwards the CLI's prompt history `input_history.json` remains, with a
+time per prompt but no session id or directory and at most 1000
+entries; so do the `dev_data` lines that carry the session's
+`sessionId`, `logs/cn.log` and any `/share` Markdown export. No command
+deletes the remote copy; a deletion marker is not stated. The
+analyzer reads the `chatInteraction` and `toolUsage` event files and
+`cn.log`; it does not read `input_history.json` or the
+`editInteraction`, `editOutcome` and `chatFeedback` events
+([section 8](#8-parser-plan)).
+
 ## 3. Record schema
 
 Session ([`core/index.d.ts`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/index.d.ts)). `Session` [`:279-290`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/index.d.ts#L279-L290): `sessionId`, `title`,

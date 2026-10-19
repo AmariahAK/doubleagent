@@ -174,6 +174,31 @@ last pass ([`:45-54`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a
 and logs `retention pass complete` with the same counts
 ([`:472`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/session/retention.ts#L472)).
 
+### What survives a delete
+
+Deleting a session asks Kilo's service to delete the remote copy
+(`DELETE /api/session/<id>`) and removes the
+`storage/session_share/<sessionID>.json` marker only when the service
+accepts; signed out, or on a network error or an error status, the
+marker stays, with a `share remove failed` log line in the last two
+cases
+([`kilo-sessions.ts:1687-1718`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilo-sessions/kilo-sessions.ts#L1687-L1718)).
+Which `kilo.db` rows the delete removes is not stated here; the session
+code is OpenCode's ([opencode.md](opencode.md)). The opt-in retention
+pass (`retention.enabled`, off by default) deletes sessions older than
+`retention.maxAgeDays` (default 30) through the same delete, then
+vacuums the database and truncates the WAL, which removes the deleted
+rows' remnants, and records its counts, but no session id, in
+`retention/state.json`. What remains is the TUI's prompt history
+`prompt-history.jsonl`, the last 50 prompts and shell commands with no
+time, session or directory, which survives a delete, the retention pass
+and a removed project. The log files in `<data>/log/` hold the
+`creating session`, `removing share` and `remote session started` lines;
+whether a delete touches them is not stated. The analyzer reads
+the `kilo.db` sessions and the marker files; it reads neither the prompt
+history, the logs nor `retention/state.json`
+([section 8](#8-parser-plan)).
+
 ## 3. Record schema
 
 V1 `message.data` and `part.data` ([`packages/schema/src/v1/session.ts`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/schema/src/v1/session.ts)):

@@ -636,6 +636,33 @@ Other stores:
   logs.
 - `session-state/<id>/vscode.metadata.json`: written by VS Code, not by the CLI. VS Code's Copilot Chat extension can run a Copilot CLI session in a git worktree it creates at `<repo parent>/<repo>.worktrees/<branch>`, unless the git extension's global state holds a `worktreeRoot:<repo>` root ([`extensions/git/src/repository.ts:1952-1970`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/git/src/repository.ts#L1952-L1970), [`chatSessionWorktreeServiceImpl.ts:113`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/copilot/src/extension/chatSessions/vscode-node/chatSessionWorktreeServiceImpl.ts#L113)), and records it in `session-state/<id>/vscode.metadata.json`, whose entries carry `workspaceFolder`, `worktreeProperties` and `additionalWorkspaces` ([`chatSessionMetadataStoreImpl.ts:170-186`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/copilot/src/extension/chatSessions/copilotcli/vscode-node/chatSessionMetadataStoreImpl.ts#L170-L186); source review of microsoft/vscode at [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706), 2026-10-19; not seen on a real install). Such a worktree is a scratch directory of the agent, not the user's project. It sits beside the user's repository, outside every catalog line, so the analyzer's catalog rule does not class it as a scratch directory; the parser does not read the file. The VS Code side is in [`vscode.md`](vscode.md).
 
+### What survives a delete
+
+`/session delete <id>` (with `--remote`, after asking, the synced copy
+on the account as well) removes the session directory whole:
+`events.jsonl`, `workspace.yaml` with the `mc_` keys,
+`rewind-file-snapshots`, `checkpoints/`, `files/` and `research/`, and the
+id from the sidebar file (Windows winget install, 1.0.98, 2026-10-17;
+[section 1](#1-evidence)). A session deleted from the Copilot Desktop
+app goes through the bundled CLI's `sessions.delete` and removes the
+same directory; a `/rewind` prunes the discarded turns' file snapshots.
+What remains: the `sessions`, `turns`, `session_files`, `search_index`
+and `assistant_usage_events` rows of `session-store.db`, for which the
+bundle holds no `DELETE` (on the winget install only the last three of
+six prompts were in `turns`, for a reason not determined); the slash
+commands and prompts in `command-history-state.json`, newest first, at
+most 50 by default, with no time, session or directory; the process
+logs, which record nothing about the delete; `permissions-config.json`;
+and the files the session wrote. With the remote copy deleted too, no
+local file says the session was ever synced, since the `mc_` keys lived
+only in `workspace.yaml`. The
+analyzer reads `session-store.db` and `command-history-state.json` as
+secondary sources (see
+[Secondary sources](../docs/output.md#secondary-sources))
+and rebuilt the deleted session from the store's rows alone; of the
+process logs it reads the sign-in line only, and `search_index` and
+`assistant_usage_events` give no rows ([section 8](#8-parser-plan)).
+
 ## 6. Format versions
 
 `session.start.data.version` 1 and `producer` `copilot-agent` on every

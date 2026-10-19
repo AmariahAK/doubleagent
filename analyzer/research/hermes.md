@@ -270,6 +270,34 @@ The analyzer's catalog rule already classes any path under the Hermes
 home as a scratch directory; a `.worktrees/<name>` path is not under a
 home entry, so it is listed as a project.
 
+### What survives a delete
+
+`hermes sessions delete`, and the dashboard and desktop deletes, remove
+the session, its reset or compression lineage, its delegate children,
+their `messages` rows and the files under `sessions/` named after the id
+([`hermes_state_sessions.py:1701-1770`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_state_sessions.py#L1701-L1770));
+`hermes sessions prune`, and the 90-day sweep when `sessions.auto_prune`
+is turned on (off by default at the 2026-10-19 HEAD), remove ended
+sessions the same way, while archiving only sets `archived = 1` and
+keeps the messages ([section 5](#5-sqlite-specifics)). Every delete
+path first writes a tombstone into `state.db` `state_meta`, the key
+`gateway.retired_session.v1.<session id>` with `retired_at` (and
+`expires` for a sweep): the only record of the id and the time of the
+deletion, with no text. No delete touches `.hermes_history` (every typed
+line with a time but no session or project), the `cron/output/` run
+files, `response_store.db`, the `state-snapshots/` copies of `state.db`
+(the last 20 by default, each a whole older database), the trajectory
+files in the working directory,
+the `conversation_generations` row that names the session's platform
+chat, or a memory provider's copy; sessions Hermes imported from Claude
+Code or Codex CLI stay in `state.db` after their original files are
+gone. The analyzer reads the snapshots and the `sessions/<id>.jsonl`
+diverts as secondary sources (see
+[Secondary sources](../docs/output.md#secondary-sources)) and the
+imported sessions as Hermes sessions; it does not read the tombstones,
+`.hermes_history`, `cron/output/`, `response_store.db` or the trajectory
+files ([section 8](#8-parser-plan)).
+
 ## 3. Record schema
 
 Schema in [`hermes_state_common.py:372-480`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_common.py#L372-L480).

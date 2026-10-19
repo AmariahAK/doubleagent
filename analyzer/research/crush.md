@@ -115,6 +115,25 @@ Other files in the data directory, checked at
 - `init`, an empty flag file marking a project initialised
   ([`internal/config/init.go:15`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/init.go#L15)).
 
+### What survives a delete
+
+`crush session delete` and the TUI's delete remove one session's
+`messages`, `files` and `sessions` rows in one transaction, and its
+`read_files` rows by foreign key, with `secure_delete` zeroing the freed
+pages
+([`internal/session/session.go:144-168`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/session/session.go#L144-L168);
+[`internal/db/connect.go:25`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/db/connect.go#L25)).
+The deleted session's sub-agent sessions stay in `crush.db` with their
+messages, since `parent_session_id` has no foreign key, so a
+`parent_session_id` that names no session is the trace of a deleted
+parent. Crush keeps no per-prompt history file and no second copy of the
+transcript; `logs/crush.log` and the `stats/index.html` snapshot, which
+still counts the deleted session, outlive the delete. The `session
+deleted` telemetry event goes to the vendor without a session id, and
+nothing on disk records it. The analyzer reads the database, the
+sub-agent sessions included, but does not yet flag a missing parent, and
+reads neither the log nor the stats page ([section 8](#8-parser-plan)).
+
 ## 3. Record schema
 
 [`internal/db/migrations/20250424200609_initial.sql`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/db/migrations/20250424200609_initial.sql).
