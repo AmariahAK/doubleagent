@@ -1,38 +1,28 @@
 # zed
 
-Zed is a code editor whose built-in agent panel runs Zed's own agent and drives external agents;
-this document covers where it keeps its state on disk. The transcript schema is in
-[`analyzer/research/zed.md`](../../analyzer/research/zed.md).
-
-Zed is a code editor whose built-in agent panel runs threads with the native Zed Agent and drives
-external agents over ACP, the Agent Client Protocol, the JSON-RPC protocol Zed uses to drive an
-external agent (Claude Agent, Gemini CLI, Codex) as a child process; this document covers the
-panel's threads and was researched together with Goose
-([goose.md](goose.md)). Paths cited are relative to the clone. Paths, credentials and the rest of
-the per-user state are in [`collectors/research/zed.md`](../../collectors/research/zed.md).
-
-<!-- MERGE: dedupe the intro paragraphs above into one -->
+Zed (catalog agent `zed`) is a code editor whose built-in agent panel runs threads with the
+native Zed Agent and drives external agents over ACP, the Agent Client Protocol, the JSON-RPC
+protocol Zed uses to drive an external agent (Claude Agent, Gemini CLI, Codex) as a child process.
+It was researched together with Goose ([`goose.md`](goose.md)). The analyzer parses the panel's
+threads in `threads.db` and the `sidebar_threads` table, from source and fixtures only.
 
 ## 1. Source and evidence
 
-[zed-industries/zed](https://github.com/zed-industries/zed), open source, commit [`a84689073d296dfd39987bc7dd478e43ef76d83a`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a) (blobless partial clone). Platform mapping verified against the `dirs` 6.0.0 crate (`scratchpad/crates/dirs/dirs-6.0.0`, version from `Cargo.lock`). Flatpak sandbox paths are Flatpak documentation level.
+[zed-industries/zed](https://github.com/zed-industries/zed), open source, at
+[`a84689073d296dfd39987bc7dd478e43ef76d83a`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a)
+(blobless partial clone); agent crates GPL-3.0-or-later
+([`crates/agent/Cargo.toml:6`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/Cargo.toml#L6),
+[`crates/agent_ui/Cargo.toml:6`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/Cargo.toml#L6)).
+Rust; sqlez (Zed's own SQLite wrapper), zstd crate, agent-client-protocol-schema 1.9.1. Platform
+mapping verified against the `dirs` 6.0.0 crate (`scratchpad/crates/dirs/dirs-6.0.0`, version from
+`Cargo.lock`). Flatpak sandbox paths are Flatpak documentation level. Paths cited are relative to
+the clone.
 
-[zed-industries/zed](https://github.com/zed-industries/zed) at [`a84689073d296dfd39987bc7dd478e43ef76d83a`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a); agent
-crates GPL-3.0-or-later ([`crates/agent/Cargo.toml:6`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/Cargo.toml#L6),
-[`crates/agent_ui/Cargo.toml:6`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/Cargo.toml#L6)). Rust; sqlez (Zed's own SQLite wrapper),
-zstd crate, agent-client-protocol-schema 1.9.1.
-
-Sync was checked at [`56934ec`](https://github.com/zed-industries/zed/commit/56934ec0560bce8929025497411de7f5322fb6ca)
+Sync was checked at
+[`56934ec`](https://github.com/zed-industries/zed/commit/56934ec0560bce8929025497411de7f5322fb6ca)
 on 2026-10-17; the citations in [Sync, relay and origin](#sync-relay-and-origin-rows), in
 [Telemetry log and crash reports](#telemetry-log-and-crash-reports) and the clipboard sentence in
 [section 11](#11-format-versions) are to that commit.
-
-Confidence. High: DDL, blob and enum shapes, zstd framing, path derivation,
-WAL settings, version handling. Medium: exact `agent_id` strings for
-external agents; `MentionUri` variant encoding; legacy `Role` spelling in
-0.2.0 blobs.
-
-<!-- MERGE: dedupe the section 1 prose above -->
 
 ### Observed
 
@@ -41,57 +31,29 @@ No real install.
 - **Not observed on any real install, source-derived
   ([zed-industries/zed](https://github.com/zed-industries/zed) at
   [`a846890`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a))**:
-  every layout the parser handles, `threads.db`, the thread blob and
-  `sidebar_threads`, rests on source and a synthetic fixture; no Zed
-  install has been surveyed. So do the bad-record rows of issue 168
-  ([Bad lines](#bad-line-rows)).
-
-<!-- MERGE: dedupe the Observed bullets above -->
+  every layout the parser handles, `threads.db`, the thread blob and `sidebar_threads`, rests on
+  source and a synthetic fixture; no Zed install has been surveyed. So do the bad-record rows of
+  issue 168 ([Bad lines](#bad-line-rows)).
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: [zed-industries/zed](https://github.com/zed-industries/zed)
-  at [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
-  (the default branch on 2026-10-19), against
-  [`a846890`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a)
-  cited below. The paths in [section 2](#2-per-user-storage) are
-  unchanged at HEAD (the data, config, logs and database directories,
-  `threads/threads.db` and `db/0-<channel>/db.sqlite`); only line
-  numbers moved by one or two. New for the collector, all from source:
-  - Permission state: `settings.json` (already collected and flagged
-    secret) now carries the standing tool rules `agent.tool_permissions`
-    and the sandbox grants `agent.sandbox_permissions`, both written by
-    Zed on an "Always allow" choice, and `db.sqlite` (collected) holds
-    the trusted project list in table `trusted_worktrees`; details in
-    [Permission state in
-    `analyzer/research/zed.md`](#permission-rows).
-  - Past use: draft prompts, the created-worktree registry, archived
-    worktrees and sidebar terminals are tables or key namespaces inside
-    the collected `db.sqlite`; no new file
-    ([section 10 of `analyzer/research/zed.md`](#10-other-stores)).
-  - Sync, relay and origin: none recorded on disk, as before.
-  - Scratch directories: two, neither collected; see
-    [Scratch directories](#scratch-directories).
-  - Deletion: a thread delete removes its rows and its macOS temp
-    directory; no file records it
-    ([What survives a delete in
-    `analyzer/research/zed.md`](#what-survives-a-delete)).
-  - Credentials, exclusions: nothing new.
-
-- **Source review (2026-10-19)**: [zed-industries/zed](https://github.com/zed-industries/zed)
-  at [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
+- **Source review (2026-10-19)**: [zed-industries/zed](https://github.com/zed-industries/zed) at
+  [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
   (the default branch on 2026-10-19), against the schema research at
   [`a846890`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a)
   and the sync check at
   [`56934ec`](https://github.com/zed-industries/zed/commit/56934ec0560bce8929025497411de7f5322fb6ca).
-  One line per requirement; the plan lines it produced are in
+  The paths in [section 2](#2-per-user-storage) are unchanged at HEAD (the data, config, logs and
+  database directories, `threads/threads.db` and `db/0-<channel>/db.sqlite`); only line numbers
+  moved by one or two. One line per requirement; the plan lines it produced are in
   [section 13](#13-parser-plan):
   - Permission state: found, mostly not parsed. The thread blob's
     `sandbox_grants` and `profile` are read, as before. Not read: the
-    standing rules in `settings.json` under `agent.tool_permissions` and
+    standing rules in `settings.json` (already collected and flagged secret) under
+    `agent.tool_permissions` and
     `agent.sandbox_permissions`, which Zed itself writes when the user
     picks "Always allow" or "Always deny" on a prompt; the per-project
-    trust list in the `trusted_worktrees` table of `db.sqlite`; and each
+    trust list in the `trusted_worktrees` table of `db.sqlite` (collected); and each
     external agent's `agent_servers.<id>.default_mode`. Per call, only a
     denial leaves a trace, as an `is_error` tool result whose text names
     the reason; an approval leaves none
@@ -99,19 +61,20 @@ No real install.
   - Model: already covered. The blob still holds one `model`
     (`provider`, `model`) per thread, overwritten on a switch, and no
     message records a model ([section 8](#8-record-schema)).
-  - Past use beyond the primary store: found. `db.sqlite` also holds
+  - Past use beyond the primary store: found. The collected `db.sqlite` also holds
     unsent draft prompts, the registry of git worktrees Zed created,
     sidebar terminal tabs and, for a thread archived from such a
     worktree, `archived_git_worktrees` rows whose WIP (work in progress)
     commits stay reachable in the main repository under
-    `refs/archived-worktrees/<id>`. None is read
+    `refs/archived-worktrees/<id>`; they are tables or key namespaces, no new file. None is read
     ([section 10](#10-other-stores)).
-  - Sync, relay and origin: no change from `56934ec`; rating a thread is
-    still the only path that sends one, and nothing local records it.
+  - Sync, relay and origin: none recorded on disk, as before; no change from `56934ec`. Rating a
+    thread is still the only path that sends one, and nothing local records it.
     No other upload at HEAD: not found in zed-industries/zed at
     `9cd14da` (grepped for `share_thread`, `ShareThread`, `sync_thread`,
     `upload_thread` and `cloud_thread`). No relay, no origin.
-  - Scratch directories: found, two. On macOS a sandboxed thread gets
+  - Scratch directories: found, two, neither collected
+    ([Scratch directories](#scratch-directories)). On macOS a sandboxed thread gets
     `$TMPDIR/zed-agent-terminal-<random>` (outside the home, recorded in
     the blob as `sandboxed_terminal_temp_dir`), and a thread started in
     a new worktree runs in a linked git worktree (a second checkout made
@@ -123,10 +86,10 @@ No real install.
   - Deletion: found ([What survives a delete](#what-survives-a-delete)). Deleting a thread
     removes its `threads` row and every subagent row under it, its macOS
     temp directory, its `sidebar_threads` row, its draft prompt, and any
-    archived-worktree ref nothing else references; an external agent's
+    archived-worktree ref nothing else references; no file records it. An external agent's
     thread is deleted by the agent itself over ACP when it supports that.
-  - Version drift: none in the shapes the parser reads. The `threads`
-    DDL
+  - Credentials, exclusions: nothing new.
+  - Version drift: none in the shapes the parser reads. The `threads` DDL
     ([`db.rs:446-487`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/db.rs#L446-L487)),
     blob `version` `0.3.0`
     ([`db.rs:189`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/db.rs#L189)),
@@ -141,82 +104,137 @@ No real install.
     [`crates/language_model_core/src/request.rs:68-76`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/language_model_core/src/request.rs#L68-L76))
     and the `sidebar_threads` migrations
     ([`thread_metadata_store.rs:1372-1465`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_metadata_store.rs#L1372-L1465))
-    are unchanged at HEAD and read as at `a846890`; only line numbers
-    moved, by one or two. The external agent ids the confidence note left
-    open are `gemini`, `claude-acp` and `codex-acp`
+    are unchanged at HEAD and read as at `a846890`; only line numbers moved, by one or two. The
+    external agent ids the confidence note left open are `gemini`, `claude-acp` and `codex-acp`
     ([section 7](#7-transcript-stores)).
-  - Bad lines: no file is read line by line, but three paths stay
-    silent: a file that is not SQLite yields nothing, a blob that does
-    not decode yields a row not prefixed `parser:`, and a message or
-    content item of an unknown variant is skipped
-    ([Bad lines](#bad-line-rows), since implemented).
-
-<!-- MERGE: dedupe the Source reviews above -->
+  - Bad lines: no file is read line by line, but the review found three paths that stayed silent: a
+    file that is not SQLite yielded nothing, a blob that did not decode yielded a row not prefixed
+    `parser:`, and a message or content item of an unknown variant was skipped. Each now yields a
+    `parser:` row, except an unknown `User` content object, which stays in the prompt text as JSON
+    (issue 168, [Bad lines](#bad-line-rows)).
 
 ## Collection
 
 ### 2. Per-user storage
 
-`APP_NAME` is `Zed`, lowercased for XDG paths ([`crates/paths/src/paths.rs:18-21`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L18-L21)).
+`APP_NAME` is `Zed`, lowercased for XDG paths
+([`crates/paths/src/paths.rs:18-21`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L18-L21)).
 
-- Config ([`paths.rs:122-139`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L122-L139)): Windows `dirs::config_dir()/Zed` = `%APPDATA%\Zed` ([`dirs/src/win.rs:8`](https://github.com/dirs-dev/dirs-rs/blob/00511bdc252f491a72ac89f6d6a2463406266fb2/src/win.rs#L8)); Linux/FreeBSD `$FLATPAK_XDG_CONFIG_HOME` or `$XDG_CONFIG_HOME`/`~/.config`, then `/zed` ([`dirs/src/lin.rs:9`](https://github.com/dirs-dev/dirs-rs/blob/00511bdc252f491a72ac89f6d6a2463406266fb2/src/lin.rs#L9)); macOS `~/.config/zed`.
-- Data ([`paths.rs:144-165`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L144-L165)): macOS `~/Library/Application Support/Zed`; Linux `$FLATPAK_XDG_DATA_HOME` or `dirs::data_local_dir()` = `$XDG_DATA_HOME` or `~/.local/share`, then `/zed` ([`lin.rs:11-12`](https://github.com/dirs-dev/dirs-rs/blob/00511bdc252f491a72ac89f6d6a2463406266fb2/src/lin.rs#L11-L12)); Windows `dirs::data_local_dir()/Zed` = `%LOCALAPPDATA%\Zed` ([`win.rs:11`](https://github.com/dirs-dev/dirs-rs/blob/00511bdc252f491a72ac89f6d6a2463406266fb2/src/win.rs#L11)).
-- State ([`paths.rs:169-190`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L169-L190)): macOS `~/.local/state/Zed` (capital Z), Linux `~/.local/state/zed`, Windows `%LOCALAPPDATA%\Zed`. No caller outside the paths crate uses it today.
-- Temp/cache ([`paths.rs:193-218`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L193-L218)): macOS `~/Library/Caches/Zed`, Windows `%LOCALAPPDATA%\Zed`, Linux `~/.cache/zed`.
-- Logs ([`paths.rs:228-255`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L228-L255)): macOS `~/Library/Logs/Zed`, elsewhere `<data>/logs`; files `Zed.log`, `Zed.log.old`. macOS crash reports in `~/Library/Logs/DiagnosticReports` ([`:264-268`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L264-L268)).
-- `--user-data-dir <dir>` ([`crates/cli/src/main.rs:524`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/cli/src/main.rs#L524),[`969`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/cli/src/main.rs#L969)) makes `<dir>` the data dir and `<dir>/config` the config dir ([`paths.rs:103-125`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L103-L125)).
-- Flatpak builds use `FLATPAK_XDG_*` ([`paths.rs:131`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L131),[`153`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L153),[`177`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L177),[`209`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L209)); app ids `dev.zed.Zed`, `dev.zed.ZedPreview`, `dev.zed.ZedNightly`, `dev.zed.ZedDev` ([`script/flatpak/bundle-flatpak:15-33`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/script/flatpak/bundle-flatpak#L15-L33)), so sandboxed state is `~/.var/app/dev.zed.Zed*/{config,data,cache}/zed`.
+- Config
+  ([`paths.rs:122-139`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L122-L139)):
+  Windows `dirs::config_dir()/Zed` = `%APPDATA%\Zed`
+  ([`dirs/src/win.rs:8`](https://github.com/dirs-dev/dirs-rs/blob/00511bdc252f491a72ac89f6d6a2463406266fb2/src/win.rs#L8));
+  Linux/FreeBSD `$FLATPAK_XDG_CONFIG_HOME` or `$XDG_CONFIG_HOME`/`~/.config`, then `/zed`
+  ([`dirs/src/lin.rs:9`](https://github.com/dirs-dev/dirs-rs/blob/00511bdc252f491a72ac89f6d6a2463406266fb2/src/lin.rs#L9));
+  macOS `~/.config/zed`.
+- Data
+  ([`paths.rs:144-165`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L144-L165)):
+  macOS `~/Library/Application Support/Zed`; Linux `$FLATPAK_XDG_DATA_HOME` or
+  `dirs::data_local_dir()` = `$XDG_DATA_HOME` or `~/.local/share`, then `/zed`
+  ([`lin.rs:11-12`](https://github.com/dirs-dev/dirs-rs/blob/00511bdc252f491a72ac89f6d6a2463406266fb2/src/lin.rs#L11-L12));
+  Windows `dirs::data_local_dir()/Zed` = `%LOCALAPPDATA%\Zed`
+  ([`win.rs:11`](https://github.com/dirs-dev/dirs-rs/blob/00511bdc252f491a72ac89f6d6a2463406266fb2/src/win.rs#L11)).
+- State
+  ([`paths.rs:169-190`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L169-L190)):
+  macOS `~/.local/state/Zed` (capital Z), Linux `~/.local/state/zed`, Windows `%LOCALAPPDATA%\Zed`.
+  No caller outside the paths crate uses it today.
+- Temp/cache
+  ([`paths.rs:193-218`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L193-L218)):
+  macOS `~/Library/Caches/Zed`, Windows `%LOCALAPPDATA%\Zed`, Linux `~/.cache/zed`.
+- Logs
+  ([`paths.rs:228-255`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L228-L255)):
+  macOS `~/Library/Logs/Zed`, elsewhere `<data>/logs`; files `Zed.log`, `Zed.log.old`. macOS crash
+  reports in `~/Library/Logs/DiagnosticReports`
+  ([`:264-268`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L264-L268)).
+- `--user-data-dir <dir>`
+  ([`crates/cli/src/main.rs:524`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/cli/src/main.rs#L524),[`969`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/cli/src/main.rs#L969))
+  makes `<dir>` the data dir and `<dir>/config` the config dir
+  ([`paths.rs:103-125`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L103-L125)).
+- Flatpak builds use `FLATPAK_XDG_*`
+  ([`paths.rs:131`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L131),[`153`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L153),[`177`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L177),[`209`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L209));
+  app ids `dev.zed.Zed`, `dev.zed.ZedPreview`, `dev.zed.ZedNightly`, `dev.zed.ZedDev`
+  ([`script/flatpak/bundle-flatpak:15-33`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/script/flatpak/bundle-flatpak#L15-L33)),
+  so sandboxed state is `~/.var/app/dev.zed.Zed*/{config,data,cache}/zed`.
 
-Config dir files: `settings.json`, `global_settings.json`, `settings_backup.json`, `keymap.json`, `keymap_backup.json`, `tasks.json`, `debug.json`, `AGENTS.md` ([`paths.rs:278-326`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L278-L326)), `themes/`, `snippets/` ([`:372-380`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L372-L380)), `development_credentials` ([`crates/zed_credentials_provider/src/zed_credentials_provider.rs:116`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L116)), `git/config`. On macOS only, `prompts/` (holding the LMDB `prompts-library-db.0.mdb`, [`crates/prompt_store/src/prompt_store.rs:28`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/prompt_store/src/prompt_store.rs#L28)), `prompt_overrides/` and `embeddings/` sit under config; elsewhere under data ([`paths.rs:386-433`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L386-L433)).
+Config dir files: `settings.json`, `global_settings.json`, `settings_backup.json`, `keymap.json`,
+`keymap_backup.json`, `tasks.json`, `debug.json`, `AGENTS.md`
+([`paths.rs:278-326`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L278-L326)),
+`themes/`, `snippets/`
+([`:372-380`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L372-L380)),
+`development_credentials`
+([`crates/zed_credentials_provider/src/zed_credentials_provider.rs:116`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L116)),
+`git/config`. On macOS only, `prompts/` (holding the LMDB `prompts-library-db.0.mdb`,
+[`crates/prompt_store/src/prompt_store.rs:28`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/prompt_store/src/prompt_store.rs#L28)),
+`prompt_overrides/` and `embeddings/` sit under config; elsewhere under data
+([`paths.rs:386-433`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L386-L433)).
 
-Data dir: `threads/threads.db` agent threads ([`crates/agent/src/db.rs:444-446`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L444-L446)); `db/0-<channel>/db.sqlite` where channel is `dev`, `nightly`, `preview`, `stable` or `global` ([`crates/db/src/db.rs:138`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/db/src/db.rs#L138),[`148-166`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/db/src/db.rs#L148-L166); [`crates/release_channel/src/lib.rs:218-221`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/release_channel/src/lib.rs#L218-L221)); `extensions/`, `remote_extensions/` (with `uploads/`), `languages/`, `debug_adapters/`, `external_agents/`, `copilot/`, `prettier/`, `remote_servers/`, `devcontainer/`, `hang_traces/`, `server_state/` ([`paths.rs:222-242`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L222-L242),[`348-483`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L348-L483)); `node/` runtime ([`crates/node_runtime/src/node_runtime.rs:637`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/node_runtime/src/node_runtime.rs#L637),[`1031`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/node_runtime/src/node_runtime.rs#L1031)); `build_timings/` ([`crates/zed/src/reliability.rs:465`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed/src/reliability.rs#L465)); `zed-<channel>.sock` ([`crates/zed/src/zed/open_listener.rs:413`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed/src/zed/open_listener.rs#L413)); `logs/` on Linux and Windows. No `conversations/` directory exists in current source.
+Data dir: `threads/threads.db` agent threads
+([`crates/agent/src/db.rs:444-446`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L444-L446));
+`db/0-<channel>/db.sqlite` where channel is `dev`, `nightly`, `preview`, `stable` or `global`
+([`crates/db/src/db.rs:138`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/db/src/db.rs#L138),[`148-166`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/db/src/db.rs#L148-L166);
+[`crates/release_channel/src/lib.rs:218-221`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/release_channel/src/lib.rs#L218-L221));
+`extensions/`, `remote_extensions/` (with `uploads/`), `languages/`, `debug_adapters/`,
+`external_agents/`, `copilot/`, `prettier/`, `remote_servers/`, `devcontainer/`, `hang_traces/`,
+`server_state/`
+([`paths.rs:222-242`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L222-L242),[`348-483`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L348-L483));
+`node/` runtime
+([`crates/node_runtime/src/node_runtime.rs:637`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/node_runtime/src/node_runtime.rs#L637),[`1031`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/node_runtime/src/node_runtime.rs#L1031));
+`build_timings/`
+([`crates/zed/src/reliability.rs:465`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed/src/reliability.rs#L465));
+`zed-<channel>.sock`
+([`crates/zed/src/zed/open_listener.rs:413`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed/src/zed/open_listener.rs#L413));
+`logs/` on Linux and Windows. No `conversations/` directory exists in current source.
 
-At [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
-(2026-10-19) `db.sqlite` also holds the tables `trusted_worktrees`,
-`sidebar_terminal_threads`, `archived_git_worktrees` and the key-value
-table `scoped_kv_store`, whose namespaces include `agent_draft_prompts`
-and `created_git_worktrees`; every sqlez domain (Zed's name for one
-group of tables with its migrations) opens the same file
+At
+[`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
+(2026-10-19) `db.sqlite` also holds the tables `trusted_worktrees`, `sidebar_terminal_threads`,
+`archived_git_worktrees` and the key-value table `scoped_kv_store`, whose namespaces include
+`agent_draft_prompts` and `created_git_worktrees`; every sqlez domain (Zed's name for one group of
+tables with its migrations) opens the same file
 ([`crates/db/src/kvp.rs:20-41`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/db/src/kvp.rs#L20-L41);
 [`crates/workspace/src/persistence.rs:986-991`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/workspace/src/persistence.rs#L986-L991)).
-What each holds is in
-[section 10 of `analyzer/research/zed.md`](#10-other-stores).
-Global agent skills are read from `~/.agents/skills/<skill>/SKILL.md`, a
-directory shared with other agents and not created by Zed
+What each holds is in [section 10](#10-other-stores). Global agent skills are read from
+`~/.agents/skills/<skill>/SKILL.md`, a directory shared with other agents and not created by Zed
 ([`crates/agent/src/agent.rs:616-638`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L616-L638)).
 
 #### Scratch directories
 
 Zed has two, and the catalog collects neither:
 
-- On macOS only, a thread whose terminal runs in the OS sandbox gets
-  `tempfile`'s `$TMPDIR/zed-agent-terminal-<random>` (under
-  `/var/folders`, outside the home), kept for the thread's life as its
-  `TMPDIR` and removed when the thread is deleted; the thread blob in
+- On macOS only, a thread whose terminal runs in the OS sandbox gets `tempfile`'s
+  `$TMPDIR/zed-agent-terminal-<random>` (under `/var/folders`, outside the home), kept for the
+  thread's life as its `TMPDIR` and removed when the thread is deleted; the thread blob in
   `threads.db` records it as `sandboxed_terminal_temp_dir`
   ([`crates/agent/src/thread.rs:1540-1566`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/thread.rs#L1540-L1566);
   [`crates/agent/src/db.rs:680-700`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/db.rs#L680-L700)).
   Linux and Windows use the sandbox's private `/tmp` instead.
-- A thread started in a new worktree runs in a linked git worktree (a
-  second checkout made with `git worktree add`) that Zed creates under
-  the `git.worktree_directory` setting, by default `../worktrees`
-  relative to the repository, giving
-  `<project parent>/worktrees/<worktree name>/<project>`; the setting
-  must stay inside the project or its parent
+- A thread started in a new worktree runs in a linked git worktree (a second checkout made with
+  `git worktree add`) that Zed creates under the `git.worktree_directory` setting, by default
+  `../worktrees` relative to the repository, giving
+  `<project parent>/worktrees/<worktree name>/<project>`; the setting must stay inside the project
+  or its parent
   ([`crates/project/src/git_store.rs:6332-6349`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/project/src/git_store.rs#L6332-L6349),
   [`10845-10898`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/project/src/git_store.rs#L10845-L10898)).
-  It is user project content beside the project, so no catalog line can
-  name it; it is recorded in [section 6](#6-where-the-project-path-is-recorded).
+  It is user project content beside the project, so no catalog line can name it; it is recorded in
+  [section 6](#6-where-the-project-path-is-recorded).
 
 ### 3. Credentials
 
-Production builds store credentials only in the OS keychain ([`zed_credentials_provider.rs:56-64`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L56-L64),[`69`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L69)). On the Dev channel, unless `ZED_DEVELOPMENT_USE_KEYCHAIN` is set, they go to `<config>/development_credentials` as JSON ([`:50-62`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L50-L62),[`116-120`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L116-L120)). `settings.json` (and its `settings_backup.json` copy and `global_settings.json`) can embed `api_key` and `custom_headers` for LM Studio style providers ([`crates/settings_content/src/language_model.rs:310-312`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/settings_content/src/language_model.rs#L310-L312)) and `agent_servers` environment. `db.sqlite` and `threads.db` hold no tokens.
+Production builds store credentials only in the OS keychain
+([`zed_credentials_provider.rs:56-64`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L56-L64),[`69`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L69)).
+On the Dev channel, unless `ZED_DEVELOPMENT_USE_KEYCHAIN` is set, they go to
+`<config>/development_credentials` as JSON
+([`:50-62`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L50-L62),[`116-120`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L116-L120)).
+`settings.json` (and its `settings_backup.json` copy and `global_settings.json`) can embed `api_key`
+and `custom_headers` for LM Studio style providers
+([`crates/settings_content/src/language_model.rs:310-312`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/settings_content/src/language_model.rs#L310-L312))
+and `agent_servers` environment. `db.sqlite` and `threads.db` hold no tokens.
 
-At [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
-(2026-10-19) no new credential file: the new `settings.json` keys
-`agent.tool_permissions` and `agent.sandbox_permissions` hold rules and
-paths, not secrets, and `scoped_kv_store` holds no token in the
-namespaces read for this review.
+At
+[`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
+(2026-10-19) no new credential file: the new `settings.json` keys `agent.tool_permissions` and
+`agent.sandbox_permissions` hold rules and paths, not secrets, and `scoped_kv_store` holds no token
+in the namespaces read for this review.
 
 ### 4. Exclusions
 
@@ -227,25 +245,34 @@ temp. `prompts/*.mdb` is the user prompt library, small, keep.
 
 ### 5. Project-local files
 
-`.zed/settings.json`, `.zed/tasks.json`, `.zed/debug.json` ([`paths.rs:487-531`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L487-L531)); rules files read by the agent: `.rules`, `.cursorrules`, `.windsurfrules`, `.clinerules`, `.github/copilot-instructions.md`, `AGENT.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` ([`crates/prompt_store/src/prompts.rs:22-32`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/prompt_store/src/prompts.rs#L22-L32)). No per-project database.
+`.zed/settings.json`, `.zed/tasks.json`, `.zed/debug.json`
+([`paths.rs:487-531`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L487-L531));
+rules files read by the agent: `.rules`, `.cursorrules`, `.windsurfrules`, `.clinerules`,
+`.github/copilot-instructions.md`, `AGENT.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`
+([`crates/prompt_store/src/prompts.rs:22-32`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/prompt_store/src/prompts.rs#L22-L32)).
+No per-project database.
 
 ### 6. Where the project path is recorded
 
-- `threads.db` table `threads` columns `folder_paths`, `folder_paths_order` ([`crates/agent/src/db.rs:469-470`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L469-L470),[`545`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L545)).
-- `db.sqlite` table `sidebar_threads` columns `folder_paths`, `folder_paths_order` ([`crates/agent_ui/src/thread_metadata_store.rs:1375-1383`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_metadata_store.rs#L1375-L1383)) and table `workspaces` columns `local_paths_array`, `local_paths_order_array` ([`crates/workspace/src/persistence.rs:731-733`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/workspace/src/persistence.rs#L731-L733)).
-All SQLite, so left to the analyzer.
+- `threads.db` table `threads` columns `folder_paths`, `folder_paths_order`
+  ([`crates/agent/src/db.rs:469-470`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L469-L470),[`545`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L545)).
+- `db.sqlite` table `sidebar_threads` columns `folder_paths`, `folder_paths_order`
+  ([`crates/agent_ui/src/thread_metadata_store.rs:1375-1383`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_metadata_store.rs#L1375-L1383))
+  and table `workspaces` columns `local_paths_array`, `local_paths_order_array`
+  ([`crates/workspace/src/persistence.rs:731-733`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/workspace/src/persistence.rs#L731-L733)).
+  All SQLite, so left to the analyzer.
 
-At [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
+At
+[`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
 (2026-10-19), also in `db.sqlite`:
 
-- `sidebar_threads.main_worktree_paths` and `main_worktree_paths_order`:
-  the main repository of a thread whose `folder_paths` is a linked
-  worktree ([`crates/agent_ui/src/thread_metadata_store.rs:1387-1388`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_metadata_store.rs#L1387-L1388)).
+- `sidebar_threads.main_worktree_paths` and `main_worktree_paths_order`: the main repository of a
+  thread whose `folder_paths` is a linked worktree
+  ([`crates/agent_ui/src/thread_metadata_store.rs:1387-1388`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_metadata_store.rs#L1387-L1388)).
 - `archived_git_worktrees` columns `worktree_path` and `main_repo_path`
   ([`thread_metadata_store.rs:1390-1398`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_metadata_store.rs#L1390-L1398)).
-- `scoped_kv_store` namespace `created_git_worktrees`, key `local`,
-  a newline, then the worktree path: the worktrees Zed made, which are
-  scratch rather than projects
+- `scoped_kv_store` namespace `created_git_worktrees`, key `local`, a newline, then the worktree
+  path: the worktrees Zed made, which are scratch rather than projects
   ([`crates/git_ui_core/src/created_worktrees.rs:34-50`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/git_ui_core/src/created_worktrees.rs#L34-L50)).
 - `trusted_worktrees.absolute_path`: every project the user trusted
   ([`crates/workspace/src/persistence.rs:986-991`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/workspace/src/persistence.rs#L986-L991)).
@@ -256,8 +283,9 @@ At [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac
 
 ### 7. Transcript stores
 
-`data_dir` is `Library/Application Support/Zed` (macOS), `.local/share/zed`
-(Linux), `AppData/Local/Zed` (Windows) ([`crates/paths/src/paths.rs:144-166`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L144-L166)).
+`data_dir` is `Library/Application Support/Zed` (macOS), `.local/share/zed` (Linux),
+`AppData/Local/Zed` (Windows)
+([`crates/paths/src/paths.rs:144-166`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L144-L166)).
 
 | Store | Path | Unit |
 | --- | --- | --- |
@@ -269,21 +297,19 @@ No separate text-thread or `contexts/*.json` store exists at this commit.
 An external agent's transcript is in no Zed store: Zed asks the agent to replay it over the ACP
 `session/load` request
 ([`agent_servers/src/acp/v2.rs:1173`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_servers/src/acp/v2.rs#L1173)),
-so it lives wherever that agent keeps its sessions. The ids of the three
-built-in external agents, the `sidebar_threads.agent_id` values, are
-`gemini`, `claude-acp` and `codex-acp`
+so it lives wherever that agent keeps its sessions. The ids of the three built-in external agents,
+the `sidebar_threads.agent_id` values, are `gemini`, `claude-acp` and `codex-acp`
 ([`agent_servers/src/custom.rs:17-19`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_servers/src/custom.rs#L17-L19)).
 
 #### What survives a delete
 
-Deleting a thread (the archive view's delete, or the native connection's `delete_session`)
-removes its `threads` row, every subagent row whose `parent_id` chain leads to it and the macOS
-sandbox temp directory its blob names
+Deleting a thread (the archive view's delete, or the native connection's `delete_session`) removes
+its `threads` row, every subagent row whose `parent_id` chain leads to it and the macOS sandbox temp
+directory its blob names
 ([`crates/agent/src/db.rs:680-754`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/db.rs#L680-L754);
 [`agent.rs:3613-3625`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L3613-L3625)),
-then its `sidebar_threads` row and its draft prompt, then the archived-worktree
-rows and their `refs/archived-worktrees/<id>` ref once no other thread
-links to them
+then its `sidebar_threads` row and its draft prompt, then the archived-worktree rows and their
+`refs/archived-worktrees/<id>` ref once no other thread links to them
 ([`crates/agent_ui/src/threads_archive_view.rs:814-854`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/threads_archive_view.rs#L814-L854)).
 The sync check at `56934ec` found the same `threads` and `sidebar_threads` deletes
 ([`db.rs:703-754`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/db.rs#L703-L754);
@@ -295,23 +321,22 @@ and whether the sidebar rows of a thread removed that way outlive it was not det
 Archiving only sets `sidebar_threads.archived`; for a thread in a Zed-created worktree it also
 removes the worktree directory after saving its state as commits
 ([`crates/agent_ui/src/thread_metadata_store.rs:859-878`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_metadata_store.rs#L859-L878)).
-A per-prompt history file is not stated. The `created_git_worktrees`
-entry of a thread's Zed-created worktree survives the deletion, and
-whether a sidebar terminal row does was not determined. An external
-agent's thread lives in that agent's own store, and Zed asks the agent
-to delete it over ACP `session/delete` only when the agent offers it
+A per-prompt history file is not stated. The `created_git_worktrees` entry of a thread's Zed-created
+worktree survives the deletion, and whether a sidebar terminal row does was not determined. An
+external agent's thread lives in that agent's own store, and Zed asks the agent to delete it over
+ACP `session/delete` only when the agent offers it
 ([`crates/agent_servers/src/acp/v1.rs:285-300`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_servers/src/acp/v1.rs#L285-L300)),
 so otherwise it stays there. A copy already sent with a rating stays with Zed
 ([Sync, relay and origin](#sync-relay-and-origin-rows)). Nothing local records a deletion. The
-analyzer reads `threads.db` and the external agents' `sidebar_threads`
-rows, and none of the other `db.sqlite` stores (see
-[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+analyzer reads `threads.db` and the external agents' `sidebar_threads` rows, and none of the other
+`db.sqlite` stores (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### 8. Record schema
 
 #### threads table
 
-`threads.db` ([`crates/agent/src/db.rs:450-485`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L450-L485)):
+`threads.db`
+([`crates/agent/src/db.rs:450-485`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L450-L485)):
 
 ```sql
 CREATE TABLE threads (id TEXT PRIMARY KEY, summary TEXT NOT NULL, updated_at TEXT NOT NULL,
@@ -321,40 +346,40 @@ ALTER TABLE threads ADD COLUMN folder_paths TEXT; ALTER TABLE threads ADD COLUMN
 ALTER TABLE threads ADD COLUMN created_at TEXT;
 ```
 
-`id` is the ACP session id, a UUID v4 string ([`thread.rs:1430`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/thread.rs#L1430);
-`#[serde(transparent)]` newtype, [`agent-client-protocol-schema-1.9.1/src/v1/mod.rs:48-51`](https://github.com/agentclientprotocol/agent-client-protocol/blob/7e87dc205a7325bd07d0249fd20bb7486ee6ba95/agent-client-protocol-schema/src/v1/mod.rs#L48-L51)).
-`parent_id` is the subagent parent ([`db.rs:514-517`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L514-L517)). `summary` is the
-title. `updated_at` and `created_at` are `to_rfc3339()`, for example
-`2026-01-02T03:04:05.123456789+00:00` ([`db.rs:513`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L513),[`542`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L542)). `folder_paths` is
-sorted paths joined by `\n`; `folder_paths_order` is comma-separated display
-indices ([`crates/util/src/path_list.rs:130-146`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/util/src/path_list.rs#L130-L146)). `data_type` is `zstd` or
-`json` ([`db.rs:363-367`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L363-L367)).
+`id` is the ACP session id, a UUID v4 string
+([`thread.rs:1430`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/thread.rs#L1430);
+`#[serde(transparent)]` newtype,
+[`agent-client-protocol-schema-1.9.1/src/v1/mod.rs:48-51`](https://github.com/agentclientprotocol/agent-client-protocol/blob/7e87dc205a7325bd07d0249fd20bb7486ee6ba95/agent-client-protocol-schema/src/v1/mod.rs#L48-L51)).
+`parent_id` is the subagent parent
+([`db.rs:514-517`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L514-L517)).
+`summary` is the title. `updated_at` and `created_at` are `to_rfc3339()`, for example
+`2026-01-02T03:04:05.123456789+00:00`
+([`db.rs:513`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L513),[`542`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L542)).
+`folder_paths` is sorted paths joined by `\n`; `folder_paths_order` is comma-separated display
+indices
+([`crates/util/src/path_list.rs:130-146`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/util/src/path_list.rs#L130-L146)).
+`data_type` is `zstd` or `json`
+([`db.rs:363-367`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L363-L367)).
 
 #### Thread blob
 
 Blob JSON is `DbThread` flattened plus `"version":"0.3.0"`
-([`db.rs:53-89`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L53-L89),[`189`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L189),[`505-510`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L505-L510)): `title, messages[], updated_at (RFC 3339 "Z"),
-detailed_summary, initial_project_snapshot{worktree_snapshots:[{worktree_path,
-git_state:{remote_url, head_sha, current_branch, diff}}], timestamp},
-cumulative_token_usage, request_token_usage{<user_msg_id>:{input_tokens,
-output_tokens, cache_creation_input_tokens, cache_read_input_tokens}},
-model{provider, model}, profile, subagent_context{parent_thread_id, depth},
-speed, thinking_enabled, thinking_effort, draft_prompt, ui_scroll_position,
-sandboxed_terminal_temp_dir, sandbox_grants{write_paths, network_hosts, ...}`
-([`agent.rs:89-93`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/agent.rs#L89-L93); [`project/src/telemetry_snapshot.rs:33-45`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/project/src/telemetry_snapshot.rs#L33-L45);
-[`legacy_thread.rs:45-49`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/legacy_thread.rs#L45-L49); [`language_model_core.rs:525-535`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/language_model_core/src/language_model_core.rs#L525-L535)).
+([`db.rs:53-89`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L53-L89),[`189`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L189),[`505-510`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L505-L510)):
+`title, messages[], updated_at (RFC 3339 "Z"), detailed_summary, initial_project_snapshot{worktree_snapshots:[{worktree_path, git_state:{remote_url, head_sha, current_branch, diff}}], timestamp}, cumulative_token_usage, request_token_usage{<user_msg_id>:{input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens}}, model{provider, model}, profile, subagent_context{parent_thread_id, depth}, speed, thinking_enabled, thinking_effort, draft_prompt, ui_scroll_position, sandboxed_terminal_temp_dir, sandbox_grants{write_paths, network_hosts, ...}`
+([`agent.rs:89-93`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/agent.rs#L89-L93);
+[`project/src/telemetry_snapshot.rs:33-45`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/project/src/telemetry_snapshot.rs#L33-L45);
+[`legacy_thread.rs:45-49`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/legacy_thread.rs#L45-L49);
+[`language_model_core.rs:525-535`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/language_model_core/src/language_model_core.rs#L525-L535)).
 The blob holds one `model` per thread, overwritten on a switch, and no message records a model.
 
-`sandbox_grants` is `DbSandboxGrants`, the sandbox escalations the user
-approved "for the rest of this thread" (the "Allow for this thread" prompt
-option): `write_paths` (granted write paths, each covering its subtree),
-`network_hosts` (host patterns such as `*.npmjs.org`), and the booleans
-`network_any_host`, `allow_fs_write_all`, `unsandboxed` and
-`sandbox_fallback` (commands allowed to run unsandboxed because the OS
-sandbox could not be created), all `#[serde(default)]`
-([`db.rs:84-122`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L84-L122)). A `write_paths`
-entry is a bare path string when no canonical target was resolved (and in
-legacy rows), else an object `{requested, resolved, on_windows_fs?}`
+`sandbox_grants` is `DbSandboxGrants`, the sandbox escalations the user approved "for the rest of
+this thread" (the "Allow for this thread" prompt option): `write_paths` (granted write paths, each
+covering its subtree), `network_hosts` (host patterns such as `*.npmjs.org`), and the booleans
+`network_any_host`, `allow_fs_write_all`, `unsandboxed` and `sandbox_fallback` (commands allowed to
+run unsandboxed because the OS sandbox could not be created), all `#[serde(default)]`
+([`db.rs:84-122`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L84-L122)).
+A `write_paths` entry is a bare path string when no canonical target was resolved (and in legacy
+rows), else an object `{requested, resolved, on_windows_fs?}`
 ([`granted_write_path.rs:64-87`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/settings/src/granted_write_path.rs#L64-L87)).
 `profile` is the agent profile id the thread ran under
 ([`db.rs:69`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L69)).
@@ -366,22 +391,25 @@ legacy rows), else an object `{requested, resolved, on_windows_fs?}`
 
 - `{"User":{"id":"<uuid>","content":[{"Text":"..."},{"Mention":{"uri":...,"content":"..."}},{"Image":{"source":"<base64 png>"}}]}}`
 - `{"Agent":{"content":[{"Text":"..."},{"Thinking":{"text":"...","signature":null}},{"RedactedThinking":"..."},{"ToolUse":{"id":"toolu_1","name":"terminal","raw_input":"{...}","input":{"type":"json","value":{...}},"is_input_complete":true,"thought_signature":null}}],"tool_results":{"toolu_1":{"tool_use_id":"toolu_1","tool_name":"terminal","is_error":false,"content":[{"Text":"..."}],"output":{...}}},"reasoning_details":null}}`
-  ([`language_model_core.rs:592-629`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/language_model_core/src/language_model_core.rs#L592-L629); [`request.rs:67-76`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/language_model_core/src/request.rs#L67-L76),[`148-152`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/language_model_core/src/request.rs#L148-L152); a legacy
-  single-value `content` is accepted, [`request.rs:104-145`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/language_model_core/src/request.rs#L104-L145))
+  ([`language_model_core.rs:592-629`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/language_model_core/src/language_model_core.rs#L592-L629);
+  [`request.rs:67-76`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/language_model_core/src/request.rs#L67-L76),[`148-152`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/language_model_core/src/request.rs#L148-L152);
+  a legacy single-value `content` is accepted,
+  [`request.rs:104-145`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/language_model_core/src/request.rs#L104-L145))
 - `"Resume"`, `{"Compaction":{"Summary":"..."}}` or `{"Compaction":{"ProviderNative":{...}}}`.
 
 #### Tool results of denied calls
 
-At [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
-an approval leaves no record in the thread. A denial fails the tool, and the error text becomes
-the `tool_results` entry with `is_error` true
+At
+[`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
+an approval leaves no record in the thread. A denial fails the tool, and the error text becomes the
+`tool_results` entry with `is_error` true
 ([`thread.rs:3958`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/thread.rs#L3958),
 [`5501-5512`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/thread.rs#L5501-L5512)):
 `Permission to run tool denied by user` for the user's denial
 ([`thread.rs:6905`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/thread.rs#L6905)),
-and for an automatic denial by the rules `Blocked by global default:
-deny`, `Command blocked by security rule for <tool> tool`, `<tool>
-tool is disabled` or the built-in `Blocked by built-in security rule`
+and for an automatic denial by the rules `Blocked by global default: deny`,
+`Command blocked by security rule for <tool> tool`, `<tool> tool is disabled` or the built-in
+`Blocked by built-in security rule`
 ([`crates/agent/src/tool_permissions.rs:12-13`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/tool_permissions.rs#L12-L13),
 [`292-298`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/tool_permissions.rs#L292-L298),
 [`396-430`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/tool_permissions.rs#L396-L430));
@@ -404,12 +432,15 @@ CREATE TABLE thread_archived_worktrees(thread_id BLOB NOT NULL, archived_worktre
   REFERENCES archived_git_worktrees(id), PRIMARY KEY (thread_id, archived_worktree_id)) STRICT;
 ```
 
-`thread_id` is 16 raw UUID bytes ([`sqlez/src/bindable.rs:360-370`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/sqlez/src/bindable.rs#L360-L370));
-`session_id` equals `threads.id`; `agent_id` NULL means the native Zed Agent,
-otherwise an external ACP agent whose transcript is not in `threads.db`
-([`thread_metadata_store.rs:1499-1500`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_metadata_store.rs#L1499-L1500),[`1725-1727`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_metadata_store.rs#L1725-L1727); [`agent.rs:2742`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/agent.rs#L2742)); times are RFC 3339
-([`:1729-1740`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_metadata_store.rs#L1729-L1740)); `remote_connection` is JSON, the SSH, WSL or Docker
-remote-development target, not a cloud id
+`thread_id` is 16 raw UUID bytes
+([`sqlez/src/bindable.rs:360-370`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/sqlez/src/bindable.rs#L360-L370));
+`session_id` equals `threads.id`; `agent_id` NULL means the native Zed Agent, otherwise an external
+ACP agent whose transcript is not in `threads.db`
+([`thread_metadata_store.rs:1499-1500`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_metadata_store.rs#L1499-L1500),[`1725-1727`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_metadata_store.rs#L1725-L1727);
+[`agent.rs:2742`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/agent.rs#L2742));
+times are RFC 3339
+([`:1729-1740`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_metadata_store.rs#L1729-L1740));
+`remote_connection` is JSON, the SSH, WSL or Docker remote-development target, not a cloud id
 ([`remote_client.rs:1361-1367`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/remote/src/remote_client.rs#L1361-L1367));
 `interacted_at` is the last user send.
 
@@ -433,22 +464,24 @@ captured at thread start.
 #### SQLite journals and compression
 
 `db.sqlite`: `PRAGMA journal_mode=WAL; synchronous=NORMAL`
-([`crates/db/src/db.rs:129-133`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/db/src/db.rs#L129-L133); [`sqlez/src/thread_safe_connection.rs:61-62`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/sqlez/src/thread_safe_connection.rs#L61-L62)),
-so collect the `-wal` sidecar. `threads.db` is opened with plain
-`Connection::open_file` and no journal pragma ([`sqlez/src/connection.rs:65`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/sqlez/src/connection.rs#L65)),
-so it uses the default rollback journal and a `threads.db-journal` may exist
-mid-write. Blobs are `zstd::encode_all(json, 3)` / `decode_all`
-([`db.rs:178-184`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L178-L184),[`535`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L535),[`660`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L660)): standard zstd frames, no dictionary, content size
-present. In Python, `zstandard.ZstdDecompressor().decompress(blob)`, falling
-back to `stream_reader` if the size header is missing. Rows with
-`data_type='json'` are raw UTF-8. No encryption.
+([`crates/db/src/db.rs:129-133`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/db/src/db.rs#L129-L133);
+[`sqlez/src/thread_safe_connection.rs:61-62`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/sqlez/src/thread_safe_connection.rs#L61-L62)),
+so collect the `-wal` sidecar. `threads.db` is opened with plain `Connection::open_file` and no
+journal pragma
+([`sqlez/src/connection.rs:65`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/sqlez/src/connection.rs#L65)),
+so it uses the default rollback journal and a `threads.db-journal` may exist mid-write. Blobs are
+`zstd::encode_all(json, 3)` / `decode_all`
+([`db.rs:178-184`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L178-L184),[`535`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L535),[`660`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L660)):
+standard zstd frames, no dictionary, content size present. In Python,
+`zstandard.ZstdDecompressor().decompress(blob)`, falling back to `stream_reader` if the size header
+is missing. Rows with `data_type='json'` are raw UTF-8. No encryption.
 
 #### Other db.sqlite tables
 
 Other per-user stores at
 [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6),
-all in the same `db/0-<channel>/db.sqlite`, since every sqlez domain
-(Zed's name for one group of tables with its migrations) opens that file
+all in the same `db/0-<channel>/db.sqlite`, since every sqlez domain (Zed's name for one group of
+tables with its migrations) opens that file
 ([`crates/db/src/db.rs:138`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/db/src/db.rs#L138),
 [`166`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/db/src/db.rs#L166);
 [`crates/db/src/kvp.rs:41`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/db/src/kvp.rs#L41);
@@ -470,42 +503,37 @@ table of the same file is permission state, not past use
 
 #### Permission settings and project trust
 
-At [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
-the user's `settings.json` (and a project's `.zed/settings.json`; patterns from every layer add
-up) holds `agent.tool_permissions.default` and, per tool name
-(`terminal`, `edit_file`, `fetch`, `mcp:<server>:<tool>` and so on),
-`tools.<tool>.default` and the regex lists `always_allow`,
-`always_deny` and `always_confirm` of `{pattern, case_sensitive}`,
-with the modes `allow`, `deny` and `confirm`
+At
+[`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
+the user's `settings.json` (and a project's `.zed/settings.json`; patterns from every layer add up)
+holds `agent.tool_permissions.default` and, per tool name (`terminal`, `edit_file`, `fetch`,
+`mcp:<server>:<tool>` and so on), `tools.<tool>.default` and the regex lists `always_allow`,
+`always_deny` and `always_confirm` of `{pattern, case_sensitive}`, with the modes `allow`, `deny`
+and `confirm`
 ([`crates/settings_content/src/agent.rs:397-412`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/settings_content/src/agent.rs#L397-L412),
 [`1067-1140`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/settings_content/src/agent.rs#L1067-L1140);
 [`assets/settings/default.json:1235-1275`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/assets/settings/default.json#L1235-L1275)),
-and `agent.sandbox_permissions` holds `allow_all_hosts`,
-`network_hosts[]`, `allow_fs_write_all`, `allow_unsandboxed` and
-`write_paths[]` (a path or `{requested, resolved}`)
+and `agent.sandbox_permissions` holds `allow_all_hosts`, `network_hosts[]`, `allow_fs_write_all`,
+`allow_unsandboxed` and `write_paths[]` (a path or `{requested, resolved}`)
 ([`agent.rs:1013-1065`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/settings_content/src/agent.rs#L1013-L1065)).
 
-Zed writes these itself: an "Always allow" or "Always deny" choice on
-a tool prompt (option ids `always_allow:<tool>`, `always_deny:<tool>`,
-`always_allow_mcp:<tool>`, `always_deny_mcp:<tool>`) appends the
-command's sub-patterns to `always_allow` or `always_deny`, or sets the
-tool's `default`
+Zed writes these itself: an "Always allow" or "Always deny" choice on a tool prompt (option ids
+`always_allow:<tool>`, `always_deny:<tool>`, `always_allow_mcp:<tool>`, `always_deny_mcp:<tool>`)
+appends the command's sub-patterns to `always_allow` or `always_deny`, or sets the tool's `default`
 ([`crates/agent/src/thread.rs:6899-7005`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/thread.rs#L6899-L7005)),
-and "Allow always" on a sandbox escalation writes
-`sandbox_permissions`
+and "Allow always" on a sandbox escalation writes `sandbox_permissions`
 ([`thread.rs:6368-6440`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/thread.rs#L6368-L6440),
 [`6658-6673`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/thread.rs#L6658-L6673)).
 The older boolean `agent.always_allow_tool_actions` is migrated to
 `tool_permissions.default: "allow"` and no longer read
 ([`crates/migrator/src/migrations/m_2026_02_04/settings.rs:7`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/migrator/src/migrations/m_2026_02_04/settings.rs#L7)).
-An external agent's own mode (Claude Agent's permission mode, for
-one) is `agent_servers.<id>.default_mode`
+An external agent's own mode (Claude Agent's permission mode, for one) is
+`agent_servers.<id>.default_mode`
 ([`agent.rs:854-859`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/settings_content/src/agent.rs#L854-L859)).
 
-Project trust, which gates a project's settings, its language and MCP
-servers and its `.agents/skills`, is one `trusted_worktrees` row per
-trusted path, with `user_name` and `host_name` for a remote host, in
-`db.sqlite`, rewritten whole on every change
+Project trust, which gates a project's settings, its language and MCP servers and its
+`.agents/skills`, is one `trusted_worktrees` row per trusted path, with `user_name` and `host_name`
+for a remote host, in `db.sqlite`, rewritten whole on every change
 ([`crates/workspace/src/persistence.rs:986-991`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/workspace/src/persistence.rs#L986-L991),
 [`2590-2632`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/workspace/src/persistence.rs#L2590-L2632);
 [`crates/agent/src/agent.rs:1309-1317`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L1309-L1317)),
@@ -515,51 +543,57 @@ and `session.trust_all_worktrees` (default `false`) skips the check
 #### Telemetry log and crash reports
 
 Telemetry (`telemetry.metrics`, default `true`,
-[`settings_content.rs:610-633`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/settings_content/src/settings_content.rs#L610-L633)) sends events to
-`/telemetry/events` and appends each one to `telemetry.log` in the logs
-directory (`Library/Logs/Zed` or `<data>/logs`, recreated empty at every
-launch, [`telemetry.rs:214-223`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/client/src/telemetry.rs#L214-L223),
-[`284-286`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/client/src/telemetry.rs#L284-L286), [`637-680`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/client/src/telemetry.rs#L637-L680)). The agent panel's
-events carry ids, model, status and token counts, not text, for example
-`Agent Thread Completion` ([`thread.rs:3039-3049`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/thread.rs#L3039-L3049)); the
-inline assistant's `Inline Assistant Rated` event, sent on its thumbs
-buttons, carries the prompt, the completion and the selected text
-([`inline_prompt_editor.rs:640-651`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/inline_prompt_editor.rs#L640-L651)), so a `telemetry.log` from the
-current launch can hold inline-assistant text, never panel-thread text.
+[`settings_content.rs:610-633`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/settings_content/src/settings_content.rs#L610-L633))
+sends events to `/telemetry/events` and appends each one to `telemetry.log` in the logs directory
+(`Library/Logs/Zed` or `<data>/logs`, recreated empty at every launch,
+[`telemetry.rs:214-223`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/client/src/telemetry.rs#L214-L223),
+[`284-286`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/client/src/telemetry.rs#L284-L286),
+[`637-680`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/client/src/telemetry.rs#L637-L680)).
+The agent panel's events carry ids, model, status and token counts, not text, for example
+`Agent Thread Completion`
+([`thread.rs:3039-3049`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/thread.rs#L3039-L3049));
+the inline assistant's `Inline Assistant Rated` event, sent on its thumbs buttons, carries the
+prompt, the completion and the selected text
+([`inline_prompt_editor.rs:640-651`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/inline_prompt_editor.rs#L640-L651)),
+so a `telemetry.log` from the current launch can hold inline-assistant text, never panel-thread
+text.
 
-`telemetry.diagnostics` (default `true`) uploads crash minidumps (a
-process memory snapshot, `*.dmp` beside a `*.json` metadata file in the
-logs directory) to Sentry, the crash service, and deletes both once the
-upload succeeds ([`reliability.rs:51-54`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/zed/src/reliability.rs#L51-L54),
-[`259-295`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/zed/src/reliability.rs#L259-L295)); no thread file is attached, though
-the memory image may hold whatever the panel had loaded.
+`telemetry.diagnostics` (default `true`) uploads crash minidumps (a process memory snapshot, `*.dmp`
+beside a `*.json` metadata file in the logs directory) to Sentry, the crash service, and deletes
+both once the upload succeeds
+([`reliability.rs:51-54`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/zed/src/reliability.rs#L51-L54),
+[`259-295`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/zed/src/reliability.rs#L259-L295));
+no thread file is attached, though the memory image may hold whatever the panel had loaded.
 
 ### 11. Format versions
 
-Blob `version` `"0.3.0"` is current ([`db.rs:189`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L189)); `"0.2.0"` and `"0.1.0"`
-are `SerializedThread {version, summary, updated_at, messages:[{id:int,
-role, segments:[{type:"text",text}|{type:"thinking",text,signature?}|
-{type:"RedactedThinking",data}], tool_uses:[{id,name,input}],
-tool_results:[{tool_use_id,is_error,content,output}], context, creases,
-is_hidden}], initial_project_snapshot, cumulative_token_usage,
-request_token_usage:[...], detailed_summary_state, model{provider,model},
-profile}` ([`legacy_thread.rs:23-164`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/legacy_thread.rs#L23-L164)); no `version` key means
-`LegacySerializedThread` with `messages[].text` ([`:166-205`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/legacy_thread.rs#L166-L205)). Upgrade logic
-[`db.rs:195-330`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L195-L330). Shared and exported threads use `SharedThread` version
-`"1.0.0"` ([`db.rs:130-141`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L130-L141)). `sidebar_threads` is migrated in place
-([`thread_metadata_store.rs:1373-1465`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_metadata_store.rs#L1373-L1465)); cross-channel import copies rows
-between `0-<channel>` databases ([`thread_import.rs`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_import.rs)).
+Blob `version` `"0.3.0"` is current
+([`db.rs:189`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L189));
+`"0.2.0"` and `"0.1.0"` are
+`SerializedThread {version, summary, updated_at, messages:[{id:int, role, segments:[{type:"text",text}|{type:"thinking",text,signature?}| {type:"RedactedThinking",data}], tool_uses:[{id,name,input}], tool_results:[{tool_use_id,is_error,content,output}], context, creases, is_hidden}], initial_project_snapshot, cumulative_token_usage, request_token_usage:[...], detailed_summary_state, model{provider,model}, profile}`
+([`legacy_thread.rs:23-164`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/legacy_thread.rs#L23-L164));
+no `version` key means `LegacySerializedThread` with `messages[].text`
+([`:166-205`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/legacy_thread.rs#L166-L205)).
+Upgrade logic
+[`db.rs:195-330`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L195-L330).
+Shared and exported threads use `SharedThread` version `"1.0.0"`
+([`db.rs:130-141`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L130-L141)).
+`sidebar_threads` is migrated in place
+([`thread_metadata_store.rs:1373-1465`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_metadata_store.rs#L1373-L1465));
+cross-channel import copies rows between `0-<channel>` databases
+([`thread_import.rs`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent_ui/src/thread_import.rs)).
 
-`SharedThread` is used only by the agent panel's two debugging actions,
-`CopyThreadToClipboard` (the thread as base64 JSON on the clipboard) and
-`LoadThreadFromClipboard` ([`agent_ui.rs:332-335`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/agent_ui.rs#L332-L335);
+`SharedThread` is used only by the agent panel's two debugging actions, `CopyThreadToClipboard` (the
+thread as base64 JSON on the clipboard) and `LoadThreadFromClipboard`
+([`agent_ui.rs:332-335`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/agent_ui.rs#L332-L335);
 [`agent_panel.rs:3792-3826`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/agent_panel.rs#L3792-L3826),
-[`3852-3929`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/agent_panel.rs#L3852-L3929)); nothing is sent over
-the network. A thread loaded that way is saved to `threads.db` under a new
-UUID session id ([`agent_panel.rs:3894`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/agent_panel.rs#L3894)), its title
-prefixed `🔗 ` and with no `initial_project_snapshot`, `profile` or
-`sandbox_grants` ([`db.rs:153-172`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/db.rs#L153-L172)), so the prefix marks a
-thread pasted in from elsewhere rather than run on this host.
+[`3852-3929`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/agent_panel.rs#L3852-L3929));
+nothing is sent over the network. A thread loaded that way is saved to `threads.db` under a new UUID
+session id
+([`agent_panel.rs:3894`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/agent_panel.rs#L3894)),
+its title prefixed `🔗 ` and with no `initial_project_snapshot`, `profile` or `sandbox_grants`
+([`db.rs:153-172`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/db.rs#L153-L172)),
+so the prefix marks a thread pasted in from elsewhere rather than run on this host.
 
 ### 12. Secrets
 
@@ -642,71 +676,70 @@ secondary; reading them would show `archived` and `interacted_at`.
 
 #### Sync, relay and origin rows
 
-Zed records no sync state; no thread is synced to the account,
-shared by link or kept on a server as a copy of `threads.db`. Thread text
-does leave the host in one place beyond the model call: rating a thread.
-A thumbs-up or thumbs-down on a native Zed Agent thread (the buttons, or
-the `/helpful` and `/not-helpful` commands in the message box,
-[`completion_provider.rs:205-210`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/completion_provider.rs#L205-L210)) posts the whole
-thread, the `DbThread` that `threads.db` stores, serialised as JSON, with
-the session id, parent session id, rating and organisation id to
-`/client/feedback/agent_thread`; the comment box that follows a
-thumbs-down posts the thread again with the comment to
-`/client/feedback/agent_thread_comments` ([`thread_view.rs:69-123`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L69-L123),
-[`125-165`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L125-L165); [`cloud_api_client.rs:272-297`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_api_client/src/cloud_api_client.rs#L272-L297);
-[`cloud_api_types.rs:107-123`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_api_types/src/cloud_api_types.rs#L107-L123); the payload is
-[`agent.rs:3552-3567`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/agent.rs#L3552-L3567)). The tooltip says
-so: "Rating the thread sends all of your current conversation to the Zed
-team" ([`thread_view.rs:7560`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L7560)).
+Zed records no sync state; no thread is synced to the account, shared by link or kept on a server as
+a copy of `threads.db`. Thread text does leave the host in one place beyond the model call: rating a
+thread. A thumbs-up or thumbs-down on a native Zed Agent thread (the buttons, or the `/helpful` and
+`/not-helpful` commands in the message box,
+[`completion_provider.rs:205-210`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/completion_provider.rs#L205-L210))
+posts the whole thread, the `DbThread` that `threads.db` stores, serialised as JSON, with the
+session id, parent session id, rating and organisation id to `/client/feedback/agent_thread`; the
+comment box that follows a thumbs-down posts the thread again with the comment to
+`/client/feedback/agent_thread_comments`
+([`thread_view.rs:69-123`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L69-L123),
+[`125-165`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L125-L165);
+[`cloud_api_client.rs:272-297`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_api_client/src/cloud_api_client.rs#L272-L297);
+[`cloud_api_types.rs:107-123`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_api_types/src/cloud_api_types.rs#L107-L123);
+the payload is
+[`agent.rs:3552-3567`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/agent.rs#L3552-L3567)).
+The tooltip says so: "Rating the thread sends all of your current conversation to the Zed team"
+([`thread_view.rs:7560`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L7560)).
 
 Rating needs a signed-in Zed account
-([`cloud_api_client.rs:182-194`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_api_client/src/cloud_api_client.rs#L182-L194)), happens only on a click, and is
-offered while the `agent.enable_feedback` setting is `true`, its default
-([`agent.rs:352-355`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/settings_content/src/agent.rs#L352-L355); [`default.json:1294-1295`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/assets/settings/default.json#L1294-L1295)),
-unless the organisation's configuration sets
-`is_agent_thread_feedback_enabled` false ([`thread_view.rs:7650-7663`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L7650-L7663)).
-External ACP agents' threads cannot be rated: only the native connection
-implements the `AgentTelemetry` hook that supplies the thread
-([`agent.rs:3450-3452`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/agent.rs#L3450-L3452)). Nothing on disk records that a thread was
-rated: the rating is held in the view's memory
-([`thread_view.rs:63-66`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L63-L66)), `DbThread` has no field for it
-([`db.rs:53-89`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/db.rs#L53-L89)), and the request bypasses the telemetry queue, so
-it is not in `telemetry.log`
-([Telemetry log and crash reports](#telemetry-log-and-crash-reports)). So this is an upload with
-no local marker, and no row is proposed; a copy already sent with a rating stays with Zed after
-a delete, and nothing local says so.
+([`cloud_api_client.rs:182-194`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_api_client/src/cloud_api_client.rs#L182-L194)),
+happens only on a click, and is offered while the `agent.enable_feedback` setting is `true`, its
+default
+([`agent.rs:352-355`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/settings_content/src/agent.rs#L352-L355);
+[`default.json:1294-1295`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/assets/settings/default.json#L1294-L1295)),
+unless the organisation's configuration sets `is_agent_thread_feedback_enabled` false
+([`thread_view.rs:7650-7663`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L7650-L7663)).
+External ACP agents' threads cannot be rated: only the native connection implements the
+`AgentTelemetry` hook that supplies the thread
+([`agent.rs:3450-3452`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/agent.rs#L3450-L3452)).
+Nothing on disk records that a thread was rated: the rating is held in the view's memory
+([`thread_view.rs:63-66`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent_ui/src/conversation_view/thread_view.rs#L63-L66)),
+`DbThread` has no field for it
+([`db.rs:53-89`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/db.rs#L53-L89)),
+and the request bypasses the telemetry queue, so it is not in `telemetry.log`
+([Telemetry log and crash reports](#telemetry-log-and-crash-reports)). So this is an upload with no
+local marker, and no row is proposed; a copy already sent with a rating stays with Zed after a
+delete, and nothing local says so.
 
 The Zed-hosted model provider receives the thread id with each request
-([`thread.rs:4124`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/thread.rs#L4124); [`cloud_llm_client.rs:220-228`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_llm_client/src/cloud_llm_client.rs#L220-L228)),
-which is the model call, not sync. The collaboration server has a
-`SharedThreadId` type that nothing uses
-([`ids.rs:96-106`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/collab/src/db/ids.rs#L96-L106)), the collaboration protocol has
-no thread message (`crates/proto/proto/ai.proto` carries only agent and
-context-server commands), and the `remote_connection` column of
-`sidebar_threads` is not a cloud id ([sidebar_threads and archived
-worktrees](#sidebar_threads-and-archived-worktrees)).
-The source review of 2026-10-19 found no change: the rating upload is the only one and leaves
-no local mark; the agent records no relay and no origin.
+([`thread.rs:4124`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/thread.rs#L4124);
+[`cloud_llm_client.rs:220-228`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/cloud_llm_client/src/cloud_llm_client.rs#L220-L228)),
+which is the model call, not sync. The collaboration server has a `SharedThreadId` type that nothing
+uses
+([`ids.rs:96-106`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/collab/src/db/ids.rs#L96-L106)),
+the collaboration protocol has no thread message (`crates/proto/proto/ai.proto` carries only agent
+and context-server commands), and the `remote_connection` column of `sidebar_threads` is not a cloud
+id ([sidebar_threads and archived worktrees](#sidebar_threads-and-archived-worktrees)). The source
+review of 2026-10-19 found no change: the rating upload is the only one and leaves no local mark;
+the agent records no relay and no origin.
 
 #### Scratch directory rows
 
-Two, both unmarked today. The macOS
-`$TMPDIR/zed-agent-terminal-<random>` directory, which is the
-terminal's `TMPDIR` and a writable path in the Seatbelt sandbox
-(macOS's per-process sandbox profiles); Linux uses bubblewrap's
-private `/tmp` and Windows the WSL sandbox's, so neither gets one
+Two, both unmarked today. The macOS `$TMPDIR/zed-agent-terminal-<random>` directory, which is the
+terminal's `TMPDIR` and a writable path in the Seatbelt sandbox (macOS's per-process sandbox
+profiles); Linux uses bubblewrap's private `/tmp` and Windows the WSL sandbox's, so neither gets one
 ([`thread.rs:1540-1566`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/thread.rs#L1540-L1566);
 [`agent.rs:3851-3870`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L3851-L3870)).
-It sits outside the home, so no catalog line collects it; the blob
-key `sandboxed_terminal_temp_dir` names it. And the Zed-created
-linked worktree: `git.worktree_directory` (default `../worktrees`,
-relative to the repository) plus the worktree name and the project's
-directory name
+It sits outside the home, so no catalog line collects it; the blob key `sandboxed_terminal_temp_dir`
+names it. And the Zed-created linked worktree: `git.worktree_directory` (default `../worktrees`,
+relative to the repository) plus the worktree name and the project's directory name
 ([`crates/project/src/git_store.rs:6332-6349`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/project/src/git_store.rs#L6332-L6349),
 [`10845-10898`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/project/src/git_store.rs#L10845-L10898);
 [`assets/settings/default.json:1885-1901`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/assets/settings/default.json#L1885-L1901)),
-which becomes the thread's `folder_paths`, so the parser reports the
-worktree as the project.
+which becomes the thread's `folder_paths`, so the parser reports the worktree as the project.
 
 Plan (not read): `scratch directory:
 <sandboxed_terminal_temp_dir> (sandbox temp directory)` per thread
@@ -778,7 +811,14 @@ VALUES (randomblob(16),'ext-claude-code-sess-1','claude-code','External thread',
 
 ## 14. Confidence
 
-High: all paths from `paths.rs` and the `dirs` crate; credential provider behaviour. Medium: Flatpak
-`~/.var/app/<id>/{config,data}` layout (Flatpak convention; Zed only reads the `FLATPAK_XDG_*`
-variables the runtime sets). Not determined: the serialisation format of `folder_paths` (a
-`PathList`), and whether any legacy `conversations/` data survives on old installs.
+Collection. High: all paths from `paths.rs` and the `dirs` crate; credential provider behaviour.
+Medium: Flatpak `~/.var/app/<id>/{config,data}` layout (Flatpak convention; Zed only reads the
+`FLATPAK_XDG_*` variables the runtime sets). Not determined: the serialisation format of
+`folder_paths` (a `PathList`), and whether any legacy `conversations/` data survives on old
+installs.
+
+Parsing. High: DDL, blob and enum shapes, zstd framing, path derivation,
+WAL settings, version handling. Medium: exact `agent_id` strings for
+external agents (the source review of 2026-10-19 found `gemini`, `claude-acp` and `codex-acp`,
+[section 7](#7-transcript-stores)); `MentionUri` variant encoding; legacy `Role` spelling in
+0.2.0 blobs.
