@@ -1669,7 +1669,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `history.jsonl` line | `user` |
 | `state_5.sqlite` `threads` row (secondary) | `system` `thread record: <id> title=<title> rollout=<rollout_path>`, then ` name=`, ` branch=`, ` model=` (the last turn's) and ` archived` when set, at `created_at_ms` (else `created_at`); then `first_user_message` as `user` with no timestamp, `system` `subagent task: ...` in a subagent's thread |
 | `thread_history_1.sqlite` `thread_turns` row (secondary) | `system` `task_started turn=<id>` at `started_at`; `task_complete turn=<id> duration_ms=<n>` at `completed_at` for a completed or failed turn; an interrupted turn has no closing row (its reason is only in the rollout) |
-| `thread_history_1.sqlite` `thread_items` row (secondary) | `userMessage` `user`, `agentMessage` `assistant`, `reasoning` `thinking` (opt-in), at `completed_at_ms`; `hookPrompt`, `contextCompaction` none; any other item renamed to the turn-item form and rendered as the `item_completed` rows above, at `started_at_ms` and `completed_at_ms` (else `created_at_ms`); a bad `item_json` is counted in one `system` row |
+| `thread_history_1.sqlite` `thread_items` row (secondary) | `userMessage` `user`, `agentMessage` `assistant`, `reasoning` `thinking` (opt-in), at `completed_at_ms`; `hookPrompt`, `contextCompaction` none; any other item renamed to the turn-item form and rendered as the `item_completed` rows above, at `started_at_ms` and `completed_at_ms` (else `created_at_ms`); an `item_json` that does not decode to a JSON object is one `system` row per record at the end of the file's rows, `parser: unparseable record <rowid> (<reason>): <item_json as stored>`, `source_line` the rowid, `session_id` and `project_path` the record's thread's (issue 184) |
 | `automations/<slug>/automation.toml` (Codex only) | one `system` row `scheduled task: <id> name=<name> kind=<kind> status=<status> rrule=<rrule> target_thread=<target_thread_id> created=<created_at> updated=<updated_at> (from <file>, file mtime) prompt: <prompt>` at the file's modification time, `session_id` the target thread; an unreadable file is one `system` row (issue 119) |
 | `logs_2.sqlite` `logs` row `codex_core::session::handlers` `op=ExecApproval` or `codex_app_server::outgoing_message` `CommandExecutionRequestApproval` (Codex Desktop) | `system` `permission decision: <decision> exec <item id> turn=<turn id> (from logs_<N>.sqlite logs, ts)` at `ts` from the handlers row (`denied`, `approved` seen), `session_id` the row's thread id, `tool_use_id` the governed item's id (`exec-<uuid>`, [section 5](#5-other-files)); a response row (`Decline`, `Accept`) with no handlers row within two seconds is `permission decision: <decision> request <n> (from logs_<N>.sqlite logs, ts)` with no session (issue 160) |
 | `state_5.sqlite` `remote_control_enrollments` row | `system` `remote control: enabled=<0\|1> server=<server_id> environment=<environment_id> host=<server_name> client=<app_server_client_name> account=<account_id>` at `updated_at`, `session_id` empty (issue 160) |
@@ -1919,10 +1919,12 @@ Source review of 2026-10-19, by class, at
   does not.
 - Drift: the parser keeps working on HEAD's rollouts; `network=` is
   `-` from this version on.
-- Bad lines: `thread_history_1.sqlite` rows with an unreadable
-  `item_json` are one summary row (`parser: <n> thread_items row(s)
-  with unreadable item_json, first at rowid <n>`), not one row per
-  record with the value in full.
+- Bad lines: fixed since. A `thread_history_1.sqlite` row with an
+  unreadable `item_json` was one summary row (`parser: <n>
+  thread_items row(s) with unreadable item_json, first at rowid <n>`);
+  it is now one row per record with the value in full, as the table
+  above gives (issue 184; fixture only, no real install has shown a
+  corrupt row).
 
 Rollouts without content kinds are classified per content block by the
 wrappers Codex itself recognises as injected user-role context

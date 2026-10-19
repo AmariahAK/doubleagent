@@ -1462,11 +1462,13 @@ class CodexTests(ParserBase):
         self.assertNotIn("Listed the home directory.", texts)
         self.assertIn("task_complete turn=t1 duration_ms=7000", texts)
         self.assertEqual(
-            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].timestamp_utc, rows[-1].text),
             (
                 "system",
                 5,
-                "parser: 1 thread_items row(s) with unreadable item_json, first at rowid 5",
+                "",
+                "parser: unparseable record 5 (Unterminated string starting at: line 1"
+                ' column 10 (char 9)): {"type": "agentMe',
             ),
         )
 
@@ -1555,6 +1557,53 @@ class CodexTests(ParserBase):
         path.write_text("not a database", encoding="utf-8")
         rows = self.rows_for(CodexParser(), self.LOGS_REL)
         self.assertEqual([r.text for r in rows], ["parser: not a SQLite database"])
+
+    def test_thread_history_bad_items_are_one_row_each(self):
+        """Issue 184: each `thread_items` row whose `item_json` does not
+        decode to an object is its own row with the stored value in full,
+        under its own thread, and the items before and after still come out."""
+        con = sqlite3.connect(str(self.home / self.THREAD_HISTORY_REL))
+        con.execute("update thread_items set item_json = '[1, 2]' where item_id = 'u9'")
+        broken = '{"type": "agentMessage", "id": "a9", "text": "Removed bu'
+        con.execute("update thread_items set item_json = ? where item_id = 'a9'", (broken,))
+        rowids = dict(con.execute("select item_id, rowid from thread_items"))
+        con.commit()
+        con.close()
+        rows = self.rows_for(CodexParser(), self.THREAD_HISTORY_REL)
+        texts = [r.text for r in rows]
+        self.assertIn("Listed the home directory.", texts)
+        self.assertNotIn("remove the old build artifacts", texts)
+        self.assertNotIn("Removed build/.", texts)
+        self.assertTrue(
+            any(r.tool_use_id == "call_9" and r.session_id == CODEX_ORPHAN for r in rows)
+        )
+        bad = [r for r in rows if r.text.startswith("parser:")]
+        self.assertEqual(rows[-len(bad) :], bad)
+        self.assertEqual(
+            [
+                (r.turn_type, r.source_line, r.timestamp_utc, r.session_id, r.project_path, r.text)
+                for r in bad
+            ],
+            [
+                (
+                    "system",
+                    rowids["u9"],
+                    "",
+                    CODEX_ORPHAN,
+                    "/srv/proj",
+                    "parser: unparseable record %d (not a JSON object): [1, 2]" % rowids["u9"],
+                ),
+                (
+                    "system",
+                    rowids["a9"],
+                    "",
+                    CODEX_ORPHAN,
+                    "/srv/proj",
+                    "parser: unparseable record %d (Unterminated string starting at: line 1"
+                    " column 46 (char 45)): %s" % (rowids["a9"], broken),
+                ),
+            ],
+        )
 
 
 from fixtures import (

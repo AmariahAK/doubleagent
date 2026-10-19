@@ -104,8 +104,11 @@ pairs on the `tool_use_id` both rows carry. A thread's first prompt is in
 `history.jsonl`, in `first_user_message` and in the projection: one of
 the three pairs with the rollout's prompt and `dedup.deduplicate`
 collapses the other two onto it (`research/codex-cli.md` section 8). A
-corrupt `item_json` is counted in one `system` row and the
-other items are still read.
+`thread_items` row whose `item_json` does not decode to a JSON object is
+its own `system` row at the end of the file's rows, `parser:
+unparseable record <rowid> (<reason>): <item_json as stored>` with
+`source_line` the rowid and the thread's `session_id` and
+`project_path`, and the other items are still read (issue 184).
 
 * `logs_<N>.sqlite` (`logs_2.sqlite` at 3e23877, `state/src/sqlite.rs:34`),
   Codex's own tracing log, is not a projection and not a secondary
@@ -521,6 +524,33 @@ def _turn_row(kind: str, turn: dict) -> tuple[object, str] | None:
     return None
 
 
+def _decode_item(
+    rowid: int, value, thread: dict | None, sid: str, item_errors: list
+) -> dict | None:
+    """The `ThreadItem` object in `value`, a `thread_items` row's
+    `item_json`, or None. A value that does not decode to a JSON object
+    goes to `item_errors` as (thread id, its `threads` row, entry), the
+    entry (`rowid`, `unparseable record <rowid> (<reason>)`, the stored
+    value as text, a BLOB decoded as UTF-8 with replacement), so the row
+    is reported in full under its own thread (issue 184)."""
+    if value is None:
+        item_errors.append(
+            (sid, thread, (rowid, "unparseable record %d (no item_json)" % rowid, ""))
+        )
+        return None
+    raw = value.decode("utf-8", "replace") if isinstance(value, bytes) else str(value)
+    try:
+        item = json.loads(raw)
+    except ValueError as e:
+        reason = str(e)
+    else:
+        if isinstance(item, dict):
+            return item
+        reason = "not a JSON object"
+    item_errors.append((sid, thread, (rowid, "unparseable record %d (%s)" % (rowid, reason), raw)))
+    return None
+
+
 def parse_thread_history(parser: RolloutParser, artifact: Artifact, opts: Options) -> Iterator[Row]:
     """Rows of `thread_history_1.sqlite`: turns and their items."""
     if not is_sqlite(artifact.disk_path):
@@ -535,7 +565,7 @@ def parse_thread_history(parser: RolloutParser, artifact: Artifact, opts: Option
         yield _problem(parser, artifact, "parser: SQLite error: %s" % e)
         return
     threads = _sibling_threads(artifact)
-    bad: list[int] = []
+    item_errors: list[tuple[str, dict | None, tuple[int, str, str]]] = []
     tasked: set = set()  # subagent threads whose first prompt was seen
     for sid, _ordinal, _seq, rowid, kind, rec in _events(turns, items):
         thread = threads.get(sid)
@@ -550,13 +580,8 @@ def parse_thread_history(parser: RolloutParser, artifact: Artifact, opts: Option
             row.text = compact(turn[1])
             yield row
             continue
-        try:
-            item = json.loads(rec.get("item_json") or "")
-        except (TypeError, ValueError):
-            bad.append(int(rowid))
-            continue
-        if not isinstance(item, dict):
-            bad.append(int(rowid))
+        item = _decode_item(int(rowid), rec.get("item_json"), thread, sid, item_errors)
+        if item is None:
             continue
         for turn_type, ts, fields, text in thread_item_rows(item, rec):
             if turn_type == "thinking" and not opts.include_thinking:
@@ -574,14 +599,9 @@ def parse_thread_history(parser: RolloutParser, artifact: Artifact, opts: Option
                 tasked.add(sid)
             row.text = compact(text)
             yield row
-    if bad:
-        row = _problem(parser, artifact, "")
-        row.source_line = bad[0]
-        row.text = "parser: %d thread_items row(s) with unreadable item_json, first at rowid %d" % (
-            len(bad),
-            bad[0],
-        )
-        yield row
+    for sid, thread, entry in item_errors:
+        project = str(thread.get("cwd") or "") if thread else ""
+        yield from error_rows(parser, artifact, [entry], sid, project)
 
 
 LOGS_TARGET = "codex_feedback"
