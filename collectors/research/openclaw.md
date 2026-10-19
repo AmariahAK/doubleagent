@@ -1,20 +1,28 @@
-# OpenClaw: on-disk paths
+# openclaw
 
-## 1. Source and evidence level
+OpenClaw (catalog agent `openclaw`, previously named Clawdbot and then Moltbot) runs a persistent
+gateway that takes messages from chat channels (Telegram, WhatsApp, Slack, Signal, iMessage and
+others under `extensions/`), runs agents with shell, browser and file tools, and keeps per-agent
+sessions; it ships as a TypeScript CLI and gateway with a Swift macOS app, and can run in Docker.
+The transcript schema is in [`analyzer/research/openclaw.md`](../../analyzer/research/openclaw.md).
+
+## 1. Source and evidence
 
 [openclaw/openclaw](https://github.com/openclaw/openclaw), commit [`3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9)
 (2026-10-04, package version `2026.9.8`), MIT, open source, TypeScript with a
 Swift macOS app. Every claim is source-level unless it cites `docs/` or
-`CHANGELOG/` in the same checkout. OpenClaw was previously named Clawdbot and
-then Moltbot. It runs a persistent gateway that takes messages from chat
-channels (Telegram, WhatsApp, Slack, Signal, iMessage and others under
-`extensions/`), runs agents with shell, browser and file tools, and keeps
-per-agent sessions. Transcript schema is in [`analyzer/research/openclaw.md`](../../analyzer/research/openclaw.md).
+`CHANGELOG/` in the same checkout.
+
+### Observed
+
+No real install. The source review of 2026-10-19 was source only, with no real install.
+
+### Source reviews
 
 - **Source review (2026-10-19).** [openclaw/openclaw](https://github.com/openclaw/openclaw)
   at [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)
   (version `2026.10.5`), against [`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9)
-  cited elsewhere in this document. Source only; no real install. Per
+  cited elsewhere in this document. Per
   requirement class, for the collector:
   - Permission state: found; every record (`operator_approvals`,
     `exec_approvals_config`, standing grants, channel allow lists) is in
@@ -28,11 +36,11 @@ per-agent sessions. Transcript schema is in [`analyzer/research/openclaw.md`](..
   - Sync, relay and origin: relay records are in the agent database, already
     collected. New: the experimental PostgreSQL engine, which keeps the
     transcripts on a database server and leaves only a SQLite anchor at the
-    usual path ([section 2](#2-per-user-storage)).
+    usual path ([PostgreSQL engine](#postgresql-engine)).
   - Scratch directories: found, all under the state directory and
-    collected or excluded ([section 2](#2-per-user-storage)); one new
+    collected or excluded ([Scratch directories](#scratch-directories)); one new
     excludable subtree, the Gateway's clones under `projects/`
-    ([section 4](#4-exclude)).
+    ([section 4](#4-exclusions)).
   - Deletion: a deleted session leaves its `.jsonl.deleted.*` archive and
     blob, both already collected.
   - Version drift: the paths this document cites are unchanged except two
@@ -57,7 +65,30 @@ There is no platform branch: the same tree is used on Linux, macOS and
 Windows (`%USERPROFILE%\.openclaw`). No XDG directories except one env file
 ([section 3](#3-credentials)).
 
-Contents of the state directory ([`docs/openclaw-agent-runtime.md:49-60`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/openclaw-agent-runtime.md#L49-L60)):
+### Scratch directories
+
+OpenClaw works in directories of its own: the
+default agent workspace `workspace/` and `workspace-<agentId>/` (the
+transcript header `cwd` defaults to it), managed git worktrees in
+`worktrees/`, repositories the Gateway cloned for a project in
+`projects/<16 hex>/<name>`
+([`src/projects/project-clone.ts:276-295`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/projects/project-clone.ts#L276-L295)),
+sandbox workspaces in `sandboxes/`
+([`agents/sandbox/constants.ts:8`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/agents/sandbox/constants.ts#L8)),
+and a cloud worker's `remote_workspace_dir` on another machine. All but the
+last are under the state directory, so the catalog's `.openclaw` line
+collects them (less the `worktrees` exclusion) and the analyzer classes a
+path under them as a scratch directory; `state/openclaw.sqlite` records
+which is which (`projects.source` `registered|cloned`, `worktrees.path`
+and `owner_kind`, [section 6](#6-where-the-project-path-is-recorded)).
+The temp root `/tmp/openclaw` (else a per-user `os.tmpdir()` directory,
+[`infra/tmp-openclaw-dir.ts:4`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/tmp-openclaw-dir.ts#L4))
+is outside the home and holds the rolling logs and Logbook's capture
+directory on the capturing device; no catalog line can collect it.
+
+### Contents of the state directory
+
+From [`docs/openclaw-agent-runtime.md:49-60`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/openclaw-agent-runtime.md#L49-L60):
 
 - `openclaw.json` config, JSON5 ([`config/paths.ts:36-37`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/paths.ts#L36-L37); [`io.read-helpers.ts:262`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/io.read-helpers.ts#L262)), with
   `.bak` rotation, `.clobbered.<ts>` and `.last-good` siblings
@@ -101,7 +132,7 @@ Contents of the state directory ([`docs/openclaw-agent-runtime.md:49-60`](https:
   `delivery-queue-media/` ([`config/paths.ts:367-368`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/paths.ts#L367-L368)), `cron/runs/`, `delivery-queue/`,
   `sandbox/` ([`docs/cli/backup.md:587-594`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L587-L594)), `service-env/` ([section 3](#3-credentials)).
 
-Outside the state directory:
+### Outside the state directory
 
 - Rolling logs `openclaw[-<profile>]-YYYY-MM-DD.log` in `/tmp/openclaw` or a
   per-user `os.tmpdir()` fallback ([`logging/log-file-path.ts:43-56`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/logging/log-file-path.ts#L43-L56); [`infra/tmp-openclaw-dir.ts:4`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/infra/tmp-openclaw-dir.ts#L4)). On Windows that is under `AppData/Local/Temp`.
@@ -112,63 +143,53 @@ Outside the state directory:
   (legacy `clawdbot-gateway`), Windows scheduled task `OpenClaw Gateway` running
   `<state>/gateway.cmd` ([`daemon/constants.ts:5-7`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/daemon/constants.ts#L5-L7),[`29-35`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/daemon/constants.ts#L29-L35); [`launchd-service-files.ts:48`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/daemon/launchd-service-files.ts#L48); [`systemd-service-files.ts:52`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/daemon/systemd-service-files.ts#L52); [`daemon/paths.ts:52-63`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/daemon/paths.ts#L52-L63)).
 
+### PostgreSQL engine
+
 Found in the 2026-10-19 review at
-[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b):
+[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b);
+experimental, new since
+[`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9).
+With `database.engine` `postgres` in `openclaw.json`, the shared state,
+agent databases (transcripts included), Workboard, Logbook and Team
+Reports stores live on a PostgreSQL server named by
+`database.postgres.connection`
+([`docs/reference/database-engines.md:68-73`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L68-L73),
+[`:96-116`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L96-L116)),
+and `state/openclaw.sqlite` and each `openclaw-agent.sqlite` become small
+SQLite anchors holding only `openclaw_engine_anchor (store_id, engine,
+schema)` ([`:591-595`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L591-L595);
+[`src/infra/database-engine/open.ts:149`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/database-engine/open.ts#L149)).
+The collector still gathers the anchors, but the evidence is on the
+database server: a responder who finds an anchor needs the DSN (in
+`openclaw.json` or the environment) and the `schema` value to request
+the server's copy. Daemon runtime pins stay local in
+`control/services.sqlite` on either engine
+([`:20-21`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L20-L21)).
 
-- PostgreSQL engine (experimental, new since
-  [`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9)).
-  With `database.engine` `postgres` in `openclaw.json`, the shared state,
-  agent databases (transcripts included), Workboard, Logbook and Team
-  Reports stores live on a PostgreSQL server named by
-  `database.postgres.connection`
-  ([`docs/reference/database-engines.md:68-73`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L68-L73),
-  [`:96-116`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L96-L116)),
-  and `state/openclaw.sqlite` and each `openclaw-agent.sqlite` become small
-  SQLite anchors holding only `openclaw_engine_anchor (store_id, engine,
-  schema)` ([`:591-595`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L591-L595);
-  [`src/infra/database-engine/open.ts:149`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/database-engine/open.ts#L149)).
-  The collector still gathers the anchors, but the evidence is on the
-  database server: a responder who finds an anchor needs the DSN (in
-  `openclaw.json` or the environment) and the `schema` value to request
-  the server's copy. Daemon runtime pins stay local in
-  `control/services.sqlite` on either engine
-  ([`:20-21`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L20-L21)).
-- Logbook, a plugin off by default that takes periodic screen snapshots
-  from a paired device and summarises them into a timeline, keeps
-  `logbook/logbook.sqlite` and the image files `logbook/frames/`
-  ([`extensions/logbook/openclaw.plugin.json:2-10`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/extensions/logbook/openclaw.plugin.json#L2-L10));
-  present at both commits, collected under `.openclaw`. The frames are
-  screenshots of the user's screen and can be large; they are not
-  excluded.
-- Docker: the compose file bind-mounts `~/.openclaw` and a second host
-  directory, `~/.openclaw-auth-profile-secrets`, at `/home/node/.config/openclaw`
-  ([`docker-compose.yml:46-49`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docker-compose.yml#L46-L49)),
-  which is where `gateway.env` is read
-  ([`infra/dotenv-global-core.ts:206`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/dotenv-global-core.ts#L206)).
-  The catalog line `openclaw|.openclaw-*` collects it as if it were a
-  profile directory; no secret glob flags its contents
-  ([section 3](#3-credentials)).
+### Logbook
 
-**Scratch directories.** OpenClaw works in directories of its own: the
-default agent workspace `workspace/` and `workspace-<agentId>/` (the
-transcript header `cwd` defaults to it), managed git worktrees in
-`worktrees/`, repositories the Gateway cloned for a project in
-`projects/<16 hex>/<name>`
-([`src/projects/project-clone.ts:276-295`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/projects/project-clone.ts#L276-L295)),
-sandbox workspaces in `sandboxes/`
-([`agents/sandbox/constants.ts:8`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/agents/sandbox/constants.ts#L8)),
-and a cloud worker's `remote_workspace_dir` on another machine. All but the
-last are under the state directory, so the catalog's `.openclaw` line
-collects them (less the `worktrees` exclusion) and the analyzer classes a
-path under them as a scratch directory; `state/openclaw.sqlite` records
-which is which (`projects.source` `registered|cloned`, `worktrees.path`
-and `owner_kind`, [section 6](#6-where-the-project-path-is-recorded)).
-The temp root `/tmp/openclaw` (else a per-user `os.tmpdir()` directory,
-[`infra/tmp-openclaw-dir.ts:4`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/tmp-openclaw-dir.ts#L4))
-is outside the home and holds the rolling logs and Logbook's capture
-directory on the capturing device; no catalog line can collect it.
+Found in the 2026-10-19 review. Logbook, a plugin off by default that takes periodic screen
+snapshots from a paired device and summarises them into a timeline, keeps
+`logbook/logbook.sqlite` and the image files `logbook/frames/`
+([`extensions/logbook/openclaw.plugin.json:2-10`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/extensions/logbook/openclaw.plugin.json#L2-L10));
+present at both commits, collected under `.openclaw`. The frames are
+screenshots of the user's screen and can be large; they are not
+excluded.
 
-**Legacy names.** `~/.clawdbot` is still read and `doctor --fix` renames it to
+### Docker
+
+Found in the 2026-10-19 review. The compose file bind-mounts `~/.openclaw` and a second host
+directory, `~/.openclaw-auth-profile-secrets`, at `/home/node/.config/openclaw`
+([`docker-compose.yml:46-49`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docker-compose.yml#L46-L49)),
+which is where `gateway.env` is read
+([`infra/dotenv-global-core.ts:206`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/dotenv-global-core.ts#L206)).
+The catalog line `openclaw|.openclaw-*` collects it as if it were a
+profile directory; no secret glob flags its contents
+([section 3](#3-credentials)).
+
+### Legacy names
+
+`~/.clawdbot` is still read and `doctor --fix` renames it to
 `~/.openclaw`, leaving `~/.clawdbot` as a symlink (Windows junction) to the new
 directory ([`infra/state-migrations.state-dir.ts:186`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/infra/state-migrations.state-dir.ts#L186),[`206`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/infra/state-migrations.state-dir.ts#L206),[`447-459`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/infra/state-migrations.state-dir.ts#L447-L459)). `~/.moltbot` and
 `moltbot.json` detection was removed ([`CHANGELOG/2026.2.13.md:119`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/CHANGELOG/2026.2.13.md#L119), [`CHANGELOG/2026.3.22.md:13`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/CHANGELOG/2026.3.22.md#L13)),
@@ -195,7 +216,8 @@ ignores. `CLAWDBOT_*` and `MOLTBOT_*` environment variables are ignored
   browser relay secret ([`extensions/browser/src/browser/extension-relay/relay-auth.ts:29`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/extensions/browser/src/browser/extension-relay/relay-auth.ts#L29)).
 - `openclaw.json` embeds `gateway.auth.token`/`password`
   ([`config/zod-schema.gateway.ts:307-309`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/zod-schema.gateway.ts#L307-L309)), channel bot tokens and provider `apiKey`
-  values, plaintext or as SecretRefs. The `.bak`/`.clobbered`/`.last-good`
+  values, plaintext or as SecretRefs (references to a value held in the environment or a secret
+  store). The `.bak`/`.clobbered`/`.last-good`
   copies carry the same.
 - `.env` in the state directory, and `~/.config/openclaw/gateway.env` when
   the state directory is the default ([`infra/dotenv-global-core.ts:190-204`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/infra/dotenv-global-core.ts#L190-L204)).
@@ -216,7 +238,7 @@ ignores. `CLAWDBOT_*` and `MOLTBOT_*` environment variables are ignored
     which keeps the token, so a host that has not migrated still has the file;
   - `~/.openclaw-auth-profile-secrets/`, the Docker installs' host directory
     for the container's `~/.config/openclaw` (`gateway.env`)
-    ([section 2](#2-per-user-storage)). The Docker guide states that OAuth
+    ([Docker](#docker)). The Docker guide states that OAuth
     access, refresh and ID tokens are plaintext in SQLite under the state
     directory
     ([`docs/install/docker-vm-runtime.md:46-50`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/install/docker-vm-runtime.md#L46-L50)).
@@ -225,7 +247,7 @@ ignores. `CLAWDBOT_*` and `MOLTBOT_*` environment variables are ignored
     SecretRef ([`docs/reference/database-engines.md:68-73`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L68-L73));
     `openclaw.json` is already flagged.
 
-## 4. Exclude
+## 4. Exclusions
 
 The backup command's own skip list is a good guide
 ([`docs/cli/backup.md:649-653`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L649-L653), [`659-663`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L659-L663)): `dev/`, `git/`, `npm/`,
@@ -287,6 +309,6 @@ holding literal keys (inferred from the doctor migration);
 layout; `.moltbot` layout assumed identical to `.clawdbot` (current source
 no longer reads it). Because `*` in exclusion globs crosses `/`, the
 `.openclaw*/tmp` exclusion also matches a `tmp` directory at any depth under
-the state directory, nested runtime homes included. Not determined: the Windows log location beyond `os.tmpdir()`;
-what the macOS transcript cache stores; whether the iOS and Android apps keep
-transcripts on the phone.
+the state directory, nested runtime homes included. Not determined: the
+Windows log location beyond `os.tmpdir()`; what the macOS transcript cache stores; whether the
+iOS and Android apps keep transcripts on the phone.
