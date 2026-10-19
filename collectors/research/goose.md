@@ -1,71 +1,269 @@
-# Goose: on-disk paths
+# goose
 
-## 1. Source and evidence level
+Catalog agent `goose`, Block's open-source agent: a Rust CLI and an Electron desktop app (`Goose`)
+that share the same Rust config and data directories, with a gateway (a chat-platform front end) and
+roaming (peer-to-peer remote control) beside them. This document gives its on-disk paths; the
+transcript schema is in [`analyzer/research/goose.md`](../../analyzer/research/goose.md).
 
-[block/goose](https://github.com/block/goose), open source, commit [`591edd47cf2cfea4957d720c607cf2a4def8673d`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d). Platform mapping verified against `etcetera` 0.11.0 (`scratchpad/crates/etcetera-0.11.0`, the version in [`Cargo.lock`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/Cargo.lock)). Electron userData locations are Electron documentation level, not goose source. Transcript schema is in [`analyzer/research/goose.md`](../../analyzer/research/goose.md).
+## 1. Source and evidence
 
-- **Source review (2026-10-19).** Reviewed
-  [aaif-goose/goose](https://github.com/aaif-goose/goose) at HEAD
+[block/goose](https://github.com/block/goose), open source, commit
+[`591edd47cf2cfea4957d720c607cf2a4def8673d`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d).
+Platform mapping verified against `etcetera` 0.11.0 (`scratchpad/crates/etcetera-0.11.0`, the
+version in
+[`Cargo.lock`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/Cargo.lock)).
+Electron userData locations are Electron documentation level, not goose source.
+
+### Observed
+
+- No real install.
+
+### Source reviews
+
+- 2026-10-19: reviewed [aaif-goose/goose](https://github.com/aaif-goose/goose) at HEAD
   [`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c);
   this document cites
-  [`591edd4`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d),
-  and `github.com/block/goose` now answers with a 301 redirect to
-  `github.com/aaif-goose/goose`. Permission state: found, the standing
-  grants `permission.yaml` and `roaming_trust.json` in the config
-  directory, both collected under `.config/goose`; `permissions/` has no
-  writer at HEAD. Model: covered by the analyzer document. Past use:
-  `schedule.json` and the new `projects/<slug>.md` in the data
-  directory, collected under `.local/share/goose`. Sync, relay and
-  origin: covered (Telegram gateway only). Scratch directories: found
-  (below). Deletion: no file outside `sessions.db` is removed by a
-  session delete. Version drift: every path in
-  [section 2](#2-per-user-storage) is still written at HEAD; the
-  Hugging Face token cache is now written from
+  [`591edd4`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d), and
+  `github.com/block/goose` now answers with a 301 redirect to `github.com/aaif-goose/goose`.
+  Permission state: found, the standing grants `permission.yaml` and `roaming_trust.json` in the
+  config directory, both collected under `.config/goose`; `permissions/` has no writer at HEAD.
+  Model: covered by the analyzer document. Past use: `schedule.json` and the new
+  `projects/<slug>.md` in the data directory, collected under `.local/share/goose`. Sync, relay and
+  origin: covered (Telegram gateway only). Scratch directories: found ([Scratch
+  directories](#scratch-directories)). Deletion: no file outside `sessions.db` is removed by a
+  session delete ([What survives a
+  delete](../../analyzer/research/goose.md#what-survives-a-delete)). Version drift: every path in
+  [section 2](#2-per-user-storage) is still written at HEAD; the Hugging Face token cache is now
+  written from
   [`crates/goose-local-inference/src/huggingface_auth.rs:33`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-local-inference/src/huggingface_auth.rs#L33)
-  at the same path. Bad lines: not a collector concern. Detail is in
-  [section 2 of `analyzer/research/goose.md`](../../analyzer/research/goose.md#2-transcript-stores)
-  and its section on
-  [permission files](../../analyzer/research/goose.md#permission-files).
+  at the same path. Bad lines: not a collector concern. Detail is in [section 2 of
+  `analyzer/research/goose.md`](../../analyzer/research/goose.md#2-transcript-stores) and its
+  section on [permission files](../../analyzer/research/goose.md#permission-files).
 
 ## 2. Per-user storage
 
-[`crates/goose/src/config/paths.rs:22-36`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L22-L36) uses `etcetera::choose_app_strategy` with author `Block`, app `goose`. [`etcetera/src/app_strategy.rs:157-164`](https://github.com/lunacookies/etcetera/blob/07b3f54999e4f3ff0f027de0144c9349d820ce80/src/app_strategy.rs#L157-L164) picks `Windows` on Windows and `Xdg` everywhere else, including macOS. So:
+[`crates/goose/src/config/paths.rs:22-36`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L22-L36)
+uses `etcetera::choose_app_strategy` with author `Block`, app `goose`.
+[`etcetera/src/app_strategy.rs:157-164`](https://github.com/lunacookies/etcetera/blob/07b3f54999e4f3ff0f027de0144c9349d820ce80/src/app_strategy.rs#L157-L164)
+picks `Windows` on Windows and `Xdg` everywhere else, including macOS. So:
 
-- Linux and macOS: `~/.config/goose`, `~/.local/share/goose`, `~/.local/state/goose` (`XDG_*_HOME` honoured; [`etcetera/src/app_strategy/xdg.rs:37-50`](https://github.com/lunacookies/etcetera/blob/07b3f54999e4f3ff0f027de0144c9349d820ce80/src/app_strategy/xdg.rs#L37-L50)).
-- Windows: `%APPDATA%\Block\goose\config`, `%APPDATA%\Block\goose\data`; no state dir, so state falls back to data ([`paths.rs:32`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L32); [`etcetera/src/app_strategy/windows.rs:141-165`](https://github.com/lunacookies/etcetera/blob/07b3f54999e4f3ff0f027de0144c9349d820ce80/src/app_strategy/windows.rs#L141-L165); [`base_strategy/windows.rs:190-200`](https://github.com/lunacookies/etcetera/blob/07b3f54999e4f3ff0f027de0144c9349d820ce80/src/base_strategy/windows.rs#L190-L200)). Cache would be `%LOCALAPPDATA%\Block\goose\cache` but no caller uses it.
-- `GOOSE_PATH_ROOT` (absolute only) replaces all of it with `<root>/config`, `<root>/data`, `<root>/state`, `<root>/.agents` ([`paths.rs:9-17`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L9-L17),[`40-46`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L40-L46)).
-- The comment at [`paths.rs:19-21`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L19-L21) names `~/Library/Application Support/Block/goose/` as a legacy macOS location; no migration code reads it, so it is historical only.
+- Linux and macOS: `~/.config/goose`, `~/.local/share/goose`, `~/.local/state/goose` (`XDG_*_HOME`
+  honoured;
+  [`etcetera/src/app_strategy/xdg.rs:37-50`](https://github.com/lunacookies/etcetera/blob/07b3f54999e4f3ff0f027de0144c9349d820ce80/src/app_strategy/xdg.rs#L37-L50)).
+- Windows: `%APPDATA%\Block\goose\config`, `%APPDATA%\Block\goose\data`; no state dir, so state
+  falls back to data
+  ([`paths.rs:32`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L32);
+  [`etcetera/src/app_strategy/windows.rs:141-165`](https://github.com/lunacookies/etcetera/blob/07b3f54999e4f3ff0f027de0144c9349d820ce80/src/app_strategy/windows.rs#L141-L165);
+  [`base_strategy/windows.rs:190-200`](https://github.com/lunacookies/etcetera/blob/07b3f54999e4f3ff0f027de0144c9349d820ce80/src/base_strategy/windows.rs#L190-L200)).
+  Cache would be `%LOCALAPPDATA%\Block\goose\cache` but no caller uses it.
+- `GOOSE_PATH_ROOT` (absolute only) replaces all of it with `<root>/config`, `<root>/data`,
+  `<root>/state`, `<root>/.agents`
+  ([`paths.rs:9-17`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L9-L17),[`40-46`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L40-L46)).
+- The comment at
+  [`paths.rs:19-21`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L19-L21)
+  names `~/Library/Application Support/Block/goose/` as a legacy macOS location; no migration code
+  reads it, so it is historical only.
 
-Config dir (`~/.config/goose`): `config.yaml` ([`config/base.rs:34`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L34),[`200`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L200)), `secrets.yaml` ([`base.rs:393-395`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L393-L395)), `custom_providers/` ([`config/declarative_providers.rs:23`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/declarative_providers.rs#L23)), `permissions/` ([`permission/permission_store.rs:41`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/permission/permission_store.rs#L41)), `recipes/` ([`recipe/local_recipes.rs:16`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/recipe/local_recipes.rs#L16)), `skills/` ([`skills/mod.rs:223`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/skills/mod.rs#L223)), `agents/` ([`sources.rs:470`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/sources.rs#L470)), `prompts/` ([`prompt_template.rs:67`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/prompt_template.rs#L67)), `mcp-apps-cache/` ([`goose_apps/cache.rs:35`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/goose_apps/cache.rs#L35)), `adversary.md` ([`security/adversary_inspector.rs:112`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/security/adversary_inspector.rs#L112)), `gateway/<platform>/<user_id>/` ([`gateway/handler.rs:841-845`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/gateway/handler.rs#L841-L845)), `roaming_trust.json`, `roaming_peers.json` ([`goose-cli/src/commands/roam.rs:40-46`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/commands/roam.rs#L40-L46)), `roaming_node_key` ([`goose-roaming/src/identity.rs:17`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-roaming/src/identity.rs#L17),[`114-116`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-roaming/src/identity.rs#L114-L116)), `tls/` ([`acp/transport/tls.rs:88-90`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/acp/transport/tls.rs#L88-L90)), legacy `history.txt` ([`goose-cli/src/session/mod.rs:197`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/session/mod.rs#L197)), and the provider token caches listed in [section 3](#3-credentials). System config: `/etc/goose/config.yaml`, `C:\ProgramData\goose\config.yaml` ([`base.rs:163-169`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L163-L169)).
+### Scratch directories
 
-Data dir (`~/.local/share/goose`): `sessions/sessions.db` ([`session/session_manager.rs:29-30`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L29-L30),[`960-962`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L960-L962)) plus legacy `sessions/*.jsonl` ([`session/legacy.rs:13-19`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/legacy.rs#L13-L19), imported at [`session_manager.rs:1149`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L1149)); `schedule.json`, `scheduled_recipes/` ([`scheduler/common.rs:95-103`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/scheduler/common.rs#L95-L103)); `apps/<name>.html` agent-written apps ([`agents/platform_extensions/apps.rs:57`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/agents/platform_extensions/apps.rs#L57),[`137`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/agents/platform_extensions/apps.rs#L137),[`250`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/agents/platform_extensions/apps.rs#L250)); `models/` whisper weights ([`dictation/whisper.rs:94`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/dictation/whisper.rs#L94)); `model_catalog/` ([`model_catalog.rs:8`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/model_catalog.rs#L8)); `roam/serve.json`, `roam/serve.lock` ([`goose-cli/src/cli.rs:1713`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/cli.rs#L1713), [`roam.rs:616`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/commands/roam.rs#L616)).
+A gateway session (the Telegram bot front end) runs in `gateway/<platform>/<user_id>` under the
+config dir
+([`gateway/handler.rs:304-306`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/gateway/handler.rs#L304-L306),
+[`826-831`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/gateway/handler.rs#L826-L831)),
+so `.config/goose` and `AppData/Roaming/Block/goose` collect it and the analyzer's catalog rule
+classes it as a scratch directory. A GitHub recipe is cloned with `gh repo clone` into the OS temp
+directory, `<temp>/<owner>/<repo>`
+([`goose-cli/src/recipes/github_recipe.rs:187-203`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-cli/src/recipes/github_recipe.rs#L187-L203)),
+outside every home, so no catalog line can collect it; it holds recipe sources, not a session's
+working directory.
 
-State dir (`~/.local/state/goose`): `logs/<component>/<date>/` and `logs/llm_request.<id>.jsonl` full request bodies ([`logging.rs:117-136`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/logging.rs#L117-L136), [`providers/utils.rs:60-125`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/utils.rs#L60-L125)); `history.txt` CLI input history ([`goose-cli/src/session/mod.rs:196`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/session/mod.rs#L196)); `instance_id` ([`instance_id.rs:9`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/instance_id.rs#L9)); `telemetry_installation.json` ([`posthog.rs:114`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/posthog.rs#L114)); `roaming_directory.json` ([`roam.rs:37`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/commands/roam.rs#L37)); `codex/images/` temp ([`providers/codex.rs:121`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/codex.rs#L121)); claude-code system prompt temp files ([`providers/claude_code.rs:397`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/claude_code.rs#L397)).
+The desktop app's default working directory is the home itself
+([`ui/desktop/src/utils/workingDir.ts:55-59`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/ui/desktop/src/utils/workingDir.ts#L55-L59));
+a scheduled job runs in the scheduler process's current directory
+([`scheduler/full.rs:876-882`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/scheduler/full.rs#L876-L882)),
+and `goose roam share` in its `--cwd` or the directory it was started in
+([`commands/roam.rs:652-658`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-cli/src/commands/roam.rs#L652-L658)).
+The agent creates no worktree.
 
-New at HEAD [`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c) (2026-10-19): `permission.yaml` and `permission.yaml.lock` in the config dir, the tool allow, ask and deny lists ([`config/permission.rs:13`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/config/permission.rs#L13), [`18-33`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/config/permission.rs#L18-L33)); `projects/<slug>.md` in the data dir, a project name with a `workingDirs` list ([`sources.rs:69-75`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/sources.rs#L69-L75), [`258-268`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/sources.rs#L258-L268)). `permissions/tool_permissions.json` is no longer written: its store has no caller outside [`permission/permission_store.rs`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/permission/permission_store.rs#L45-L48) (grepped for `record_permission` and `ToolPermissionStore`), so the file is left only by older releases. `roaming_trust.json` is `{"allowed", "revoked_keys"}`, the peer keys allowed to drive this host's agent ([`goose-roaming/src/trust.rs:19-26`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-roaming/src/trust.rs#L19-L26)). All are collected by the existing entries.
+### Config directory
 
-Scratch directories: a gateway session (the Telegram bot front end) runs in `gateway/<platform>/<user_id>` under the config dir ([`gateway/handler.rs:304-306`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/gateway/handler.rs#L304-L306), [`826-831`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/gateway/handler.rs#L826-L831)), so `.config/goose` and `AppData/Roaming/Block/goose` collect it and the analyzer's catalog rule classes it as a scratch directory. A GitHub recipe is cloned with `gh repo clone` into the OS temp directory, `<temp>/<owner>/<repo>` ([`goose-cli/src/recipes/github_recipe.rs:187-203`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-cli/src/recipes/github_recipe.rs#L187-L203)), outside every home, so no catalog line can collect it; it holds recipe sources, not a session's working directory. The desktop app's default working directory is the home itself ([`ui/desktop/src/utils/workingDir.ts:55-59`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/ui/desktop/src/utils/workingDir.ts#L55-L59)); a scheduled job runs in the scheduler process's current directory ([`scheduler/full.rs:876-882`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/scheduler/full.rs#L876-L882)), and `goose roam share` in its `--cwd` or the directory it was started in ([`commands/roam.rs:652-658`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-cli/src/commands/roam.rs#L652-L658)). The agent creates no worktree.
+`~/.config/goose`: `config.yaml`
+([`config/base.rs:34`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L34),[`200`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L200)),
+`secrets.yaml`
+([`base.rs:393-395`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L393-L395)),
+`custom_providers/`
+([`config/declarative_providers.rs:23`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/declarative_providers.rs#L23)),
+`permissions/`
+([`permission/permission_store.rs:41`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/permission/permission_store.rs#L41)),
+`recipes/`
+([`recipe/local_recipes.rs:16`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/recipe/local_recipes.rs#L16)),
+`skills/`
+([`skills/mod.rs:223`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/skills/mod.rs#L223)),
+`agents/`
+([`sources.rs:470`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/sources.rs#L470)),
+`prompts/`
+([`prompt_template.rs:67`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/prompt_template.rs#L67)),
+`mcp-apps-cache/`
+([`goose_apps/cache.rs:35`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/goose_apps/cache.rs#L35)),
+`adversary.md`
+([`security/adversary_inspector.rs:112`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/security/adversary_inspector.rs#L112)),
+`gateway/<platform>/<user_id>/`
+([`gateway/handler.rs:841-845`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/gateway/handler.rs#L841-L845)),
+`roaming_trust.json`, `roaming_peers.json`
+([`goose-cli/src/commands/roam.rs:40-46`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/commands/roam.rs#L40-L46)),
+`roaming_node_key`
+([`goose-roaming/src/identity.rs:17`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-roaming/src/identity.rs#L17),[`114-116`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-roaming/src/identity.rs#L114-L116)),
+`tls/`
+([`acp/transport/tls.rs:88-90`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/acp/transport/tls.rs#L88-L90)),
+legacy `history.txt`
+([`goose-cli/src/session/mod.rs:197`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/session/mod.rs#L197)),
+and the provider token caches listed in [section 3](#3-credentials). System config:
+`/etc/goose/config.yaml`, `C:\ProgramData\goose\config.yaml`
+([`base.rs:163-169`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L163-L169)).
 
-Shared cross-agent dirs read by goose: `~/.agents/plugins`, `~/.agents/agents` ([`paths.rs:33-35`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L33-L35)), `~/.goose/agents`, `~/.claude/agents` ([`sources.rs:467-468`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/sources.rs#L467-L468),[`541-542`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/sources.rs#L541-L542)).
+New at HEAD
+[`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c)
+(2026-10-19): `permission.yaml` and `permission.yaml.lock` in the config dir, the tool allow, ask
+and deny lists
+([`config/permission.rs:13`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/config/permission.rs#L13),
+[`18-33`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/config/permission.rs#L18-L33)).
+`permissions/tool_permissions.json` is no longer written: its store has no caller outside
+[`permission/permission_store.rs`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/permission/permission_store.rs#L45-L48)
+(grepped for `record_permission` and `ToolPermissionStore`), so the file is left only by older
+releases. `roaming_trust.json` is `{"allowed", "revoked_keys"}`, the peer keys allowed to drive this
+host's agent
+([`goose-roaming/src/trust.rs:19-26`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose-roaming/src/trust.rs#L19-L26)).
+These, and the data directory's `projects/<slug>.md` below, are collected by the existing entries.
 
-Electron desktop: `productName` `Goose` ([`ui/desktop/package.json:3`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/package.json#L3)); writes `settings.json`, `logs/startup/`, `logs/main.log`, `recent-dirs.json` under `app.getPath('userData')` ([`ui/desktop/src/main.ts:182-183`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/main.ts#L182-L183), [`utils/logger.ts:6`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/utils/logger.ts#L6), [`utils/recentDirs.ts:5`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/utils/recentDirs.ts#L5)). Electron userData is `~/.config/Goose`, `~/Library/Application Support/Goose`, `%APPDATA%\Goose`. The desktop talks to the same Rust config and data dirs.
+### Data directory
+
+`~/.local/share/goose`: `sessions/sessions.db`
+([`session/session_manager.rs:29-30`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L29-L30),[`960-962`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L960-L962))
+plus legacy `sessions/*.jsonl`
+([`session/legacy.rs:13-19`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/legacy.rs#L13-L19),
+imported at
+[`session_manager.rs:1149`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L1149));
+`schedule.json`, `scheduled_recipes/`
+([`scheduler/common.rs:95-103`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/scheduler/common.rs#L95-L103));
+`apps/<name>.html` agent-written apps
+([`agents/platform_extensions/apps.rs:57`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/agents/platform_extensions/apps.rs#L57),[`137`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/agents/platform_extensions/apps.rs#L137),[`250`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/agents/platform_extensions/apps.rs#L250));
+`models/` whisper weights
+([`dictation/whisper.rs:94`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/dictation/whisper.rs#L94));
+`model_catalog/`
+([`model_catalog.rs:8`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/model_catalog.rs#L8));
+`roam/serve.json`, `roam/serve.lock`
+([`goose-cli/src/cli.rs:1713`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/cli.rs#L1713),
+[`roam.rs:616`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/commands/roam.rs#L616)).
+
+New at HEAD
+[`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c)
+(2026-10-19): `projects/<slug>.md` in the data dir, a project name with a `workingDirs` list
+([`sources.rs:69-75`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/sources.rs#L69-L75),
+[`258-268`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/sources.rs#L258-L268)).
+
+### State directory
+
+`~/.local/state/goose`: `logs/<component>/<date>/` and `logs/llm_request.<id>.jsonl` full request
+bodies
+([`logging.rs:117-136`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/logging.rs#L117-L136),
+[`providers/utils.rs:60-125`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/utils.rs#L60-L125));
+`history.txt` CLI input history
+([`goose-cli/src/session/mod.rs:196`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/session/mod.rs#L196));
+`instance_id`
+([`instance_id.rs:9`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/instance_id.rs#L9));
+`telemetry_installation.json`
+([`posthog.rs:114`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/posthog.rs#L114));
+`roaming_directory.json`
+([`roam.rs:37`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/commands/roam.rs#L37));
+`codex/images/` temp
+([`providers/codex.rs:121`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/codex.rs#L121));
+claude-code system prompt temp files
+([`providers/claude_code.rs:397`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/claude_code.rs#L397)).
+
+### Shared cross-agent directories
+
+Read by goose: `~/.agents/plugins`, `~/.agents/agents`
+([`paths.rs:33-35`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/paths.rs#L33-L35)),
+`~/.goose/agents`, `~/.claude/agents`
+([`sources.rs:467-468`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/sources.rs#L467-L468),[`541-542`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/sources.rs#L541-L542)).
+
+### Electron desktop app
+
+`productName` `Goose`
+([`ui/desktop/package.json:3`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/package.json#L3));
+writes `settings.json`, `logs/startup/`, `logs/main.log`, `recent-dirs.json` under
+`app.getPath('userData')`
+([`ui/desktop/src/main.ts:182-183`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/main.ts#L182-L183),
+[`utils/logger.ts:6`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/utils/logger.ts#L6),
+[`utils/recentDirs.ts:5`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/utils/recentDirs.ts#L5)).
+Electron userData is `~/.config/Goose`, `~/Library/Application Support/Goose`, `%APPDATA%\Goose`.
+The desktop talks to the same Rust config and data dirs.
 
 ## 3. Credentials
 
-Secrets go to the OS keyring (service `goose`, [`base.rs:31`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L31)) unless `GOOSE_DISABLE_KEYRING` is set or the keyring fails, then `~/.config/goose/secrets.yaml` ([`base.rs:85-91`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L85-L91),[`216-220`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L216-L220),[`1163-1185`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L1163-L1185)). `config.yaml` holds non-secret config but `GOOSE_PROVIDER__*` style values can be placed there. Provider token caches are always files under the config dir ([`providers/provider_secrets.rs:109-152`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/provider_secrets.rs#L109-L152)): `githubcopilot/info.json` and `githubcopilot/<host>/info.json` ([`githubcopilot.rs:181-184`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/githubcopilot.rs#L181-L184)), `chatgpt_codex/tokens.json`, `gemini_oauth/tokens.json`, `kimicode/token.json` and `kimicode/device_id`, `muse_code/token.json`, `huggingface/oauth/tokens.json` ([`huggingface_auth.rs:19`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/huggingface_auth.rs#L19)), `databricks/oauth/` ([`providers/oauth.rs:94-96`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/oauth.rs#L94-L96)), `xai_oauth/tokens.json` ([`xai_oauth.rs:106`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/xai_oauth.rs#L106)). Also `roaming_node_key` (private identity key), `tls/` (private key, [`tls.rs:92`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/acp/transport/tls.rs#L92)), and `logs/llm_request.*.jsonl` which contain full prompts.
+Secrets go to the OS keyring (service `goose`,
+[`base.rs:31`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L31))
+unless `GOOSE_DISABLE_KEYRING` is set or the keyring fails, then `~/.config/goose/secrets.yaml`
+([`base.rs:85-91`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L85-L91),[`216-220`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L216-L220),[`1163-1185`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/config/base.rs#L1163-L1185)).
+`config.yaml` holds non-secret config but `GOOSE_PROVIDER__*` style values can be placed there.
+
+Provider token caches are always files under the config dir
+([`providers/provider_secrets.rs:109-152`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/provider_secrets.rs#L109-L152)):
+`githubcopilot/info.json` and `githubcopilot/<host>/info.json`
+([`githubcopilot.rs:181-184`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/githubcopilot.rs#L181-L184)),
+`chatgpt_codex/tokens.json`, `gemini_oauth/tokens.json`, `kimicode/token.json` and
+`kimicode/device_id`, `muse_code/token.json`, `huggingface/oauth/tokens.json`
+([`huggingface_auth.rs:19`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/huggingface_auth.rs#L19)),
+`databricks/oauth/`
+([`providers/oauth.rs:94-96`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/oauth.rs#L94-L96)),
+`xai_oauth/tokens.json`
+([`xai_oauth.rs:106`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/providers/xai_oauth.rs#L106)).
+Also `roaming_node_key` (private identity key), `tls/` (private key,
+[`tls.rs:92`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/acp/transport/tls.rs#L92)),
+and `logs/llm_request.*.jsonl` which contain full prompts.
 
 ## 4. Exclusions
 
-`.local/share/goose/models`, `.local/share/goose/model_catalog`, `.local/state/goose/codex`, `.config/goose/mcp-apps-cache`, `AppData/Roaming/Block/goose/data/models`, `AppData/Roaming/Block/goose/data/model_catalog`, `AppData/Roaming/Block/goose/data/codex`, Electron `*/Goose/Cache`, `Code Cache`, `GPUCache`, `DawnGraphiteCache`, `DawnWebGPUCache`, `blob_storage`. `apps/` is agent output (HTML written by the model), not a binary cache; excluding it is a judgement call.
+`.local/share/goose/models`, `.local/share/goose/model_catalog`, `.local/state/goose/codex`,
+`.config/goose/mcp-apps-cache`, `AppData/Roaming/Block/goose/data/models`,
+`AppData/Roaming/Block/goose/data/model_catalog`, `AppData/Roaming/Block/goose/data/codex`, Electron
+`*/Goose/Cache`, `Code Cache`, `GPUCache`, `DawnGraphiteCache`, `DawnWebGPUCache`, `blob_storage`.
+`apps/` is agent output (HTML written by the model), not a binary cache; excluding it is a judgement
+call.
 
 ## 5. Project-local files
 
-`.goosehints` and `AGENTS.md` walked from cwd upward, overridable with `CONTEXT_FILE_NAMES` ([`hints/load_hints.rs:10-17`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/hints/load_hints.rs#L10-L17)); `.goose/memory/` ([`goose-mcp/src/memory/mod.rs:212`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-mcp/src/memory/mod.rs#L212),[`541`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-mcp/src/memory/mod.rs#L541)), `.goose/recipes` ([`summon.rs:376`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/agents/platform_extensions/summon.rs#L376), [`ui/desktop/src/recipe/recipe_management.ts:80`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/recipe/recipe_management.ts#L80)), `.goose/agents`, `.agents/agents`, `.agents/recipes`, `.claude/agents` ([`sources.rs:534-536`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/sources.rs#L534-L536), [`summon.rs:377`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/agents/platform_extensions/summon.rs#L377)), `.goose/skills` ([`ui/desktop/src/components/skills/SkillsView.tsx:31`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/components/skills/SkillsView.tsx#L31)). No per-project database. `.gooseignore` has no hits in current Rust source.
+`.goosehints` and `AGENTS.md` walked from cwd upward, overridable with `CONTEXT_FILE_NAMES`
+([`hints/load_hints.rs:10-17`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/hints/load_hints.rs#L10-L17));
+`.goose/memory/`
+([`goose-mcp/src/memory/mod.rs:212`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-mcp/src/memory/mod.rs#L212),[`541`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-mcp/src/memory/mod.rs#L541)),
+`.goose/recipes`
+([`summon.rs:376`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/agents/platform_extensions/summon.rs#L376),
+[`ui/desktop/src/recipe/recipe_management.ts:80`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/recipe/recipe_management.ts#L80)),
+`.goose/agents`, `.agents/agents`, `.agents/recipes`, `.claude/agents`
+([`sources.rs:534-536`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/sources.rs#L534-L536),
+[`summon.rs:377`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/agents/platform_extensions/summon.rs#L377)),
+`.goose/skills`
+([`ui/desktop/src/components/skills/SkillsView.tsx:31`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/components/skills/SkillsView.tsx#L31)).
+No per-project database. `.gooseignore` has no hits in current Rust source.
 
 ## 6. Where the project path is recorded
 
-`sessions.db` table `sessions` column `working_dir TEXT NOT NULL` ([`session_manager.rs:1028-1034`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L1028-L1034)); legacy jsonl first line key `working_dir` ([`legacy.rs:74`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/legacy.rs#L74)); data-dir `projects/<slug>.md` front matter key `workingDirs`, a list of paths (at HEAD [`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c), [`sources.rs:258-268`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/sources.rs#L258-L268)); `schedule.json` `recipe_base_dir`, the directory a scheduled recipe came from ([`scheduler/common.rs:182-186`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/scheduler/common.rs#L182-L186)); desktop `recent-dirs.json` ([`recentDirs.ts:5`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/utils/recentDirs.ts#L5)), a plain-text source usable by `discover_projects`.
+- `sessions.db` table `sessions` column `working_dir TEXT NOT NULL`
+  ([`session_manager.rs:1028-1034`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/session_manager.rs#L1028-L1034)).
+- Legacy jsonl first line key `working_dir`
+  ([`legacy.rs:74`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/session/legacy.rs#L74)).
+- Data-dir `projects/<slug>.md` front matter key `workingDirs`, a list of paths (at HEAD
+  [`fb9e3c8`](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c),
+  [`sources.rs:258-268`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/sources.rs#L258-L268)).
+- `schedule.json` `recipe_base_dir`, the directory a scheduled recipe came from
+  ([`scheduler/common.rs:182-186`](https://github.com/aaif-goose/goose/blob/fb9e3c89b2b4670a0eded99e7567e578ac6e502c/crates/goose/src/scheduler/common.rs#L182-L186)).
+- Desktop `recent-dirs.json`
+  ([`recentDirs.ts:5`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/ui/desktop/src/utils/recentDirs.ts#L5)),
+  a plain-text source usable by `discover_projects`.
 
 ## 7. Confidence
 
-High: Rust paths, Windows mapping, credential files. Medium: Electron userData names (convention, no explicit `setPath`); the `Block/goose` legacy macOS dir (comment only). Not determined: `.gooseignore`, whether `.goose` at home is ever written rather than read.
+High: Rust paths, Windows mapping, credential files. Medium: Electron userData names (convention, no
+explicit `setPath`); the `Block/goose` legacy macOS dir (comment only). Not determined:
+`.gooseignore`, whether `.goose` at home is ever written rather than read.
