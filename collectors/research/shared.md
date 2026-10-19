@@ -12,12 +12,14 @@ OpenCode, Crush, Factory Droid, Kilo Code and Copilot CLI (see their
 documents). `~/.agents` and `~/.config/agents` hold cross-tool skill and
 agent definitions adopted by Codex, Copilot CLI and others.
 
+The source reviews of 2026-10-19 add two readers of the skills directories. Zed reads `~/.agents/skills/<skill>/SKILL.md` ([`crates/agent/src/agent.rs:616-638`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L616-L638) at [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)), and Crush reads `~/.config/agents/skills` and `~/.agents/skills`, and also Claude Code's `~/.claude/skills` ([`internal/config/load.go:1312-1322`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1312-L1322) at [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da)); see [`zed.md`](zed.md), [`crush.md`](crush.md) and [`claude-code.md`](claude-code.md).
+
 ## 2. Per-user storage
 
 | Path relative to home | Holds | Readers |
 | --- | --- | --- |
-| `.agents` | skills and agent definitions in the cross-tool "agents" layout (`skills/<name>/SKILL.md`) | Codex CLI, Copilot CLI, Amp, others |
-| `.config/agents` | XDG variant of the same | same |
+| `.agents` | skills and agent definitions in the cross-tool "agents" layout (`skills/<name>/SKILL.md`) | Codex CLI, Copilot CLI, Amp, Zed, Crush, others |
+| `.config/agents` | XDG variant of the same | Codex CLI, Copilot CLI, Amp, Crush, others |
 | `.config/AGENTS.md` | user-level instructions | Codex CLI, Amp, OpenCode |
 
 The layout is identical on every OS because the readers use `homedir()`

@@ -33,7 +33,11 @@ Apache-2.0 ([`LICENSE`](https://github.com/continuedev/continue/blob/5522c6f44ca
     `index/globalContext.json`.
   - Past use: found. `input_history.json` (the CLI's prompt history) and
     the `editInteraction`, `editOutcome` and `chatFeedback` dev data
-    events are not read.
+    events are not read. The PearAI fork logs every chat prompt and
+    completion to a "PearAI" output channel in the editor's `logs/`
+    ([section 1 of `pearai.md`](pearai.md#1-source)); upstream Continue
+    has no such log, since no TypeScript file in this clone outside
+    `node_modules` calls `createOutputChannel`.
   - Sync, relay and origin: already covered; the CLI's remote TUI is
     unused at this commit and no relay exists.
   - Scratch directories: found, the `cn review` worktrees in the system

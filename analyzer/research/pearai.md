@@ -43,8 +43,15 @@ transcripts of its own.
     directory, and the catalog does not collect it.
   - Deletion: already covered for chat; found for agent tasks.
   - Version drift: none; every HEAD is the cited commit.
-  - Bad lines: already covered for the files the parser reads;
-    `dev_data/*.jsonl` would need per-line handling.
+  - Bad lines: `dev_data/*.jsonl` would need per-line handling. Found
+    through the Continue review of the same day: the chat surface's
+    `sessions.json` index is read through the Continue parser's
+    own index reader (`PearAIParser` keeps a `ContinueParser` for it),
+    which drops an unreadable `sessions.json` without a `parser:` row
+    ([section 1 of `continue.md`](continue.md#1-source)), so the sessions
+    lose their timestamps silently. The sharing is visible in the
+    analyzer's code; that a malformed index occurs on a real PearAI
+    install is unverified.
 
 ## 2. Transcript files
 

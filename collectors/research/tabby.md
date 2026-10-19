@@ -97,7 +97,12 @@ requested as a project service
 under an `@Service` annotation that names no level; whether the IDE then
 stores `intellij-tabby-command-history.xml` in `options/`, where the
 catalog line looks, or in the project's `.idea/` is not determined from
-this source (source review 2026-10-19).
+this source (source review 2026-10-19). The same `options/` directory
+holds the settings of every other plugin, among them the Cody plugin's
+`cody.xml` and its siblings
+([section 2 of `cody.md`](cody.md#2-per-user-storage)), which is why the
+catalog lines name Tabby's `intellij-tabby*.xml` files rather than the
+directory.
 
 The VS Code extension's `edit.recentlyCommand` list holds the recent
 inline-edit instructions (default 20) in the same `state.vscdb` row,

@@ -68,6 +68,19 @@ earlier release can still hold the share rows in
     part files and events into one summary row instead of one row per
     record.
 
+Other agents and this store. Letta Code (at
+[`2a46615`](https://github.com/letta-ai/letta-code/commit/2a46615d16babb06cf5450b8e57ecb9bdbf2f436))
+can drive OpenCode as an external coding agent, starting `opencode serve`
+in its working directory
+([src/agent/subagents/index.ts:123-159](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/agent/subagents/index.ts#L123-L159),
+[src/tools/impl/opencode-server.ts:51-66](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/tools/impl/opencode-server.ts#L51-L66)),
+so a session Letta Code started lands in this store like any other
+OpenCode session ([section 1 of `letta.md`](letta.md#1-source)). Kilo
+Code's parser subclasses this one, so the summary row for undecodable
+records above applies to Kilo Code sessions too, and the `session_v2`
+drift would once Kilo Code takes OpenCode's 2.0 store
+([kilo-code.md](kilo-code.md)).
+
 ## 2. Transcript stores
 
 One SQLite file for all projects: `~/.local/share/opencode/opencode.db`

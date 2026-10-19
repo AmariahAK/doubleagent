@@ -53,6 +53,16 @@ source. CLI, TUI and server in `packages/core`; VS Code extension
     `prompt-history.jsonl` is JSON Lines and needs per-line handling when
     it is read.
 
+The `kilo-code` parser subclasses the `opencode` parser, so two findings
+of the OpenCode review of 2026-10-19 reach Kilo Code
+([section 1 of `opencode.md`](opencode.md#1-source)). The OpenCode
+parser counts undecodable database records, part files and events into
+one `parser: <n> record(s) with undecodable data` row instead of one row
+per record, and Kilo Code inherits that row. OpenCode 2.0 moved
+sessions to a `session_v2` table that the parser does not read; no
+`session_v2` table was found in Kilo Code's packages at [`87cc35c`](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22), so
+this applies only once Kilo Code takes that store.
+
 ## 2. Transcript files
 
 XDG with no platform branching ([`packages/core/src/global.ts:3`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L3),[`12`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L12),[`22-26`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L22-L26)):

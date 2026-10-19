@@ -50,7 +50,7 @@ file names to check only those. It exits `1` when any link fails.
 | `cline` | [cline.md](cline.md) | source | `~/.cline/data` shared by VS Code, CLI and JetBrains |
 | `codex-cli` | [codex-cli.md](codex-cli.md) | source, real install (macOS and Windows: desktop app and standalone CLI; Linux: standalone CLI) | rollouts may be zstd-compressed; the ChatGPT desktop app adds `sqlite/codex-dev.db` and `.codex-global-state.json`, which holds ChatGPT resume tokens |
 | `cody` | [cody.md](cody.md) | source (frozen public snapshot, August 2025) | chat history and token are rows in `state.vscdb`; the nested entry claims only the symf index |
-| `continue` | [continue.md](continue.md) | source | `~/.continue` only |
+| `continue` | [continue.md](continue.md) | source | `~/.continue` only; the repository is read-only after the final 2.0.0 release |
 | `copilot` | [copilot.md](copilot.md) | source (vendored language server) | editor OAuth store `github-copilot/apps.json` |
 | `copilot-cli` | [copilot-cli.md](copilot-cli.md) | shipped bundle, docs, real install | migrates XDG state and config dirs into `~/.copilot` |
 | `copilot-desktop` | [copilot-desktop.md](copilot-desktop.md) | shipped binary strings, dirs crate, real installs (Linux, Windows) | Tauri app that shares `~/.copilot` with Copilot CLI; nested entries claim its own store, chat, repository and run files; local WebSocket tokens in `.copilot/run`; WebView2 user data folder in `AppData/Local` on Windows |
@@ -61,10 +61,10 @@ file names to check only those. It exits `1` when any link fails.
 | `factory-droid` | [factory-droid.md](factory-droid.md) | shipped binary strings, docs | `.factory/cache` holds the session index |
 | `flowise` | [flowise.md](flowise.md) | source | `~/.flowise` on every OS; `encryption.key` decrypts the credentials in `database.sqlite` |
 | `gemini-cli` | [gemini-cli.md](gemini-cli.md) | source | slug project dirs; OAuth moved to keyring with encrypted file fallback |
-| `goose` | [goose.md](goose.md) | source, crate sources | XDG on macOS; token caches under the config dir |
+| `goose` | [goose.md](goose.md) | source, crate sources | XDG on macOS; token caches under the config dir; the repository moved to `aaif-goose/goose` (`block/goose` redirects) |
 | `hermes` | [hermes.md](hermes.md) | source | `~/.hermes` or `AppData/Local/hermes`; profiles are full homes; installer checkout `.env` kept |
 | `kilo-code` | [kilo-code.md](kilo-code.md) | source | OpenCode fork; `kilo.db` embeds tokens |
-| `kiro` | [kiro.md](kiro.md) | Amazon Q source, Kiro CLI binary strings, docs, issues | `.kiro/powers` holds MCP configuration, not just binaries |
+| `kiro` | [kiro.md](kiro.md) | Amazon Q source, Kiro CLI binary strings, docs, issues | `.kiro/powers` holds MCP configuration, not just binaries; the Amazon Q Developer CLI repository is frozen |
 | `langflow` | [langflow.md](langflow.md) | source, platformdirs source; Desktop from docs only | config dir is the platformdirs cache dir; the OSS `langflow.db` is in site-packages (manual step); `langflow-data` volume |
 | `letta` | [letta.md](letta.md) | source (Letta Code; retired V1 server) | `.letta/settings.json` secret glob also flags project settings |
 | `little-coder` | [little-coder.md](little-coder.md) | source (little-coder, pi v0.83.0) | launcher for pi; sessions in `~/.pi/agent`, prompt history a nested entry |
@@ -76,7 +76,7 @@ file names to check only those. It exits `1` when any link fails.
 | `ollama` | [ollama.md](ollama.md) | source, real install | desktop app chat database on macOS and Windows; model manifests collected, blobs excluded; `ollama launch chatgpt` writes into `~/.codex` |
 | `open-interpreter` | [open-interpreter.md](open-interpreter.md) | source, 0.4.3 sdist | now a Codex CLI fork with the Codex layout under `~/.openinterpreter`; the legacy Python tool's platformdirs `open-interpreter` and older `Open Interpreter*` dirs collected since 1.10.0 |
 | `openclaw` | [openclaw.md](openclaw.md) | source | formerly Clawdbot and Moltbot; `~/.clawdbot` may be a symlink; JSON5 config |
-| `opencode` | [opencode.md](opencode.md) | source, crate sources | XDG on every OS; binaries moved to `.cache/opencode/bin` |
+| `opencode` | [opencode.md](opencode.md) | source, crate sources | XDG on every OS; binaries moved to `.cache/opencode/bin`; the repository moved to `anomalyco/opencode` (`sst/opencode` redirects) |
 | `openhands` | [openhands.md](openhands.md) | source (OpenHands, software-agent-sdk, OpenHands-CLI) | `agent-canvas/workspaces` excluded; Docker conversations record container paths |
 | `pearai` | [pearai.md](pearai.md) | source (pearai-app, pearai-submodule, PearAI-Roo-Code) | VS Code fork; `~/.pearai` is also its Continue fork home |
 | `pi` | [pi.md](pi.md) | source | same path on every OS; shared with little-coder |

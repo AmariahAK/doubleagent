@@ -192,6 +192,16 @@ rule does not class it as a scratch directory. There is no default
 working directory for a session without a project: the CLI runs in the
 directory it was started in.
 
+Zed's agent panel can run Gemini CLI as an external agent over ACP (the
+Agent Client Protocol, the JSON-RPC protocol Zed uses to drive another
+agent); its threads sidebar then lists the session in `sidebar_threads`
+with `agent_id` `gemini` and the ACP session id in `session_id`, while
+the transcript stays in Gemini CLI's own store
+([`agent_servers/src/custom.rs:17-19`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_servers/src/custom.rs#L17-L19);
+[section 2 of `zed.md`](zed.md#2-transcript-stores)). Whether that id
+equals Gemini CLI's session id was not determined (Zed source review of
+2026-10-19).
+
 ## 3. Record schema
 
 Session JSONL ([`services/chatRecordingTypes.ts`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/services/chatRecordingTypes.ts)). Line 1 is

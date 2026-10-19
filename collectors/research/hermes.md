@@ -114,6 +114,8 @@ the user's repository, not the home
 catalog rule classes any path under the Hermes home as a scratch
 directory.
 
+**Started by another agent** (Agent Zero source review of 2026-10-19, at [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a)). Agent Zero's Orchestrator plugin, which tells that agent how to drive other coding CLIs on the host or in its container, defaults Hermes to `yolo: true` and runs `hermes chat --quiet --source tool -q <task> --yolo`, which bypasses every dangerous-command approval prompt for the run ([`hermes_cli/_parser.py:307-308`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/_parser.py#L307-L308); [`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37), [`plugins/_orchestrator/skills/orchestrator/references/hermes.md:16`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/skills/orchestrator/references/hermes.md#L16)). Such a session is an ordinary session in this home's `state.db`, started by another agent with approvals bypassed; the plugin's permission settings are in [section 8 of `analyzer/research/agent-zero.md`](../../analyzer/research/agent-zero.md#8-parser-plan).
+
 **Desktop app.** Electron `productName` is `Hermes`
 ([`apps/desktop/package.json:3`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/package.json#L3)), so its `userData` is the Electron default
 `Hermes` directory, overridable by `HERMES_DESKTOP_USER_DATA_DIR`
