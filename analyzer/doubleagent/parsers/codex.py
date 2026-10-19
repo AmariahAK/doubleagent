@@ -96,8 +96,14 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
     else `collaboration_mode.settings.model`, and the policy fields but
     not `sandbox_policy`) is written when the user changes a setting,
     with no turn, and before each turn; it feeds the `model:` and
-    `permission mode:` rows above, a policy field it lacks keeping the
-    value last recorded (a resume writes it with fewer keys). In a
+    `permission mode:` rows above with its three thread-level fields
+    (`approval_policy`, `approvals_reviewer`, `active_permission_profile`;
+    a resume writes it with fewer keys), the two turn-level fields
+    (`sandbox_policy`, which it never carries, and `permission_profile`,
+    whose event form lacks the turn's extra roots) staying as the last
+    `turn_context` had them, or `-` once the access level changed until
+    the next `turn_context`; an event before the thread's first
+    `turn_context` is folded into that turn's row. In a
     guardian review thread (`thread_source` `guardian_review` or
     `source.subagent.other` `guardian`, with `parent_thread_id`), the
     desktop app's automatic reviewer of a call, the task_complete's
@@ -474,6 +480,11 @@ POLICY_FIELDS = (
     ("profile_id", "active_permission_profile"),
 )
 POLICY_KEYS = tuple(key for _label, key in POLICY_FIELDS)
+# The fields a `thread_settings_applied` event is the authority for: the
+# thread's approval policy, reviewer and access level. Its `permission_profile`
+# is the thread's, without the roots a turn adds, and it has no
+# `sandbox_policy`; both stay with the last `turn_context`.
+SETTINGS_POLICY_KEYS = ("approval_policy", "approvals_reviewer", "active_permission_profile")
 
 
 def _policy_value(key: str, value) -> object:
@@ -1090,15 +1101,38 @@ class RolloutParser(Parser):
                     settings = payload.get("thread_settings")
                     if not isinstance(settings, dict):
                         continue
-                    state = dict(policy.get(session_id, {}))
-                    state.update({k: settings[k] for k in POLICY_KEYS if k in settings})
-                    policy[session_id] = state
                     new_model = settings_model(settings)
                     model = new_model or model
-                    for text in (
-                        track_change("model", seen_model, session_id, new_model),
-                        track_change("permission mode", seen_mode, session_id, policy_text(state)),
-                    ):
+                    texts = [track_change("model", seen_model, session_id, new_model)]
+                    prev = policy.get(session_id)
+                    if prev is not None:
+                        # Before the thread's first turn_context the event's policy is
+                        # folded into that turn's row. The event is the thread's
+                        # settings, not a turn's: it carries no sandbox_policy, and
+                        # its permission_profile lacks the per-turn roots the
+                        # turn_context adds, so only the three thread-level fields
+                        # come from it; the two turn-level fields are carried over,
+                        # or unknown (`-`) once the access level changed.
+                        state = dict(prev)
+                        for key in SETTINGS_POLICY_KEYS:
+                            if key in settings:
+                                state[key] = settings[key]
+                        old_id = _policy_value(
+                            "active_permission_profile", prev.get("active_permission_profile")
+                        )
+                        new_id = _policy_value(
+                            "active_permission_profile", state.get("active_permission_profile")
+                        )
+                        if new_id != old_id:
+                            state["sandbox_policy"] = None
+                            state["permission_profile"] = None
+                        policy[session_id] = state
+                        texts.append(
+                            track_change(
+                                "permission mode", seen_mode, session_id, policy_text(state)
+                            )
+                        )
+                    for text in texts:
                         if text:
                             yield self._fill(base(), text, opts)
                 elif ptype == "turn_aborted":

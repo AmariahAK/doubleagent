@@ -15,8 +15,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - A secret glob for Codex's shell snapshots, `.codex/shell_snapshots/*`
-  ([#160]). Codex, and Codex Desktop inside the ChatGPT app, writes one
-  `<thread uuid>.<unix ns>.sh` file per live thread with the user's
+  ([#160]). Codex, and Codex Desktop inside the ChatGPT app, writes a
+  `<thread uuid>.<unix ns>.sh` file at each resume and turn of a live
+  thread (the two most recent per thread were kept) with the user's
   exported login-shell environment, so an API key the shell exports is
   copied into it. The files are now flagged `secret: true` and skipped
   with `--no-secrets` (`-NoSecrets`), and `--list` (`-List`) prints the

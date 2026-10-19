@@ -356,9 +356,12 @@ Paths and the rest of the per-user state are in
     (`CommandExecution` `completed`, exit 0). The rollout holds no
     approval or decision event and `turn_context` did not change;
     the decisions are only in `logs_2.sqlite`
-    ([section 5](#5-other-files)): `CommandExecutionRequestApproval`
-    with `decision: Decline` at 19:04:01Z and `decision: Accept` at
-    19:05:00Z. The dialog of build 26.1013.40934 offered no "always
+    ([section 5](#5-other-files)): the app server's response rows
+    `CommandExecutionRequestApproval` with `decision: Decline` at
+    19:04:01Z and `decision: Accept` at 19:05:00Z, and in the same
+    seconds the core's `ExecApproval` rows with `decision: denied` and
+    `decision: approved`, which are the ones still in the database at
+    collection time. The dialog of build 26.1013.40934 offered no "always
     allow" choice for a command, and the approval was one-off: the
     thread's standing permissions in the global state kept one
     writable root. `task_started.turn_attribution` keys: `turn_id`,
@@ -564,8 +567,8 @@ Paths and the rest of the per-user state are in
     the parser reads those records ([section 8](#8-parser-plan-the-existing-parser)):
     `thread_settings_applied` for the model and permission mode, with
     the reviewer and profile id in the composite; the user decisions
-    in `logs_2.sqlite` and the guardian verdicts; the turn trigger on
-    `task_started`; the `remote_control_enrollments` row; and the
+    in `logs_2.sqlite` and the guardian verdicts; a `turn trigger:` row
+    after each `task_started`; the `remote_control_enrollments` row; and the
     global state as a secondary source, which recovers the deleted
     thread's prompts and its deletion.
   - Research notes, no parser change: a `thread-writer-locks` lock can
@@ -1036,7 +1039,13 @@ to the call except its position between the call and its output (local).
     the `id` of the governed `CommandExecution` or `FileChange` item
     (the rollout's `item_completed` line and the `thread_items` row),
     not the rollout's `call_id` (`call_<hex>`), so the join to the
-    call is on the item id. Values seen: `Decline`, `Accept`.
+    call is on the item id. The two rows word one decision differently:
+    `denied` and `approved` on the handlers row, `Decline` and `Accept`
+    on the response row. The response rows, read in the live database
+    at 19:04Z, were no longer in the copy collected at 00:43Z (the
+    `logs` table is pruned: it held 1,000 rows before sign-in and 2,944
+    at collection, the oldest from 18:31:47Z), while both handlers rows
+    were; the handlers row is the one that lasts.
   - An automatic decision in the Approve for me mode (auto-review):
     `codex_guardian_v2::async_scorer::approval` at `DEBUG`,
     `decide_request{approval_id="<uuid>"}: reviewing approval
@@ -1400,7 +1409,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 | first `session_meta` | `system` ("session start: originator version provider cwd", then ` account=<creator_account_id> user=<creator_user_id>` with only the keys present, issue 118); plus `system` `subagent <id> of <parent> [agent_path= agent_role= agent_nickname=]` when `parent_thread_id`, `source.subagent.thread_spawn.parent_thread_id`, or a `session_id` other than `id` on a non-fork names a parent; plus `system` `forked from <id>` for `forked_from_id` |
 | later `session_meta` | `system` `copied from ancestor: session start ... id= cwd=` when its id differs; none when it repeats the file's own |
 | `turn_context` | sets project and model; `system` `model: <model>` at the first one that names a model and `model: <old> -> <new>` at each later one whose `model` differs; `system` `permission mode: approval=<approval_policy> sandbox=<sandbox_policy> profile=<permission_profile> network=<network> reviewer=<approvals_reviewer> profile_id=<active_permission_profile.id>` at the first one with any of the fields and `permission mode: <old> -> <new>` on every change to the composite (a missing field is `-`, an object compact JSON); both at the line's `timestamp`, before the turn's rows, keyed per session |
-| `event_msg` `thread_settings_applied` (Codex Desktop) | the same `model:` and `permission mode:` tracking as `turn_context`, at the event's `timestamp`, so a change the user makes between turns (a model switch, Approve for me, Full access and its revert) is dated when it was made rather than at the next turn; the event carries `model`, `approval_policy`, `approvals_reviewer`, `permission_profile` and `active_permission_profile` but no `sandbox_policy` (issue 160) |
+| `event_msg` `thread_settings_applied` (Codex Desktop) | the same `model:` and `permission mode:` tracking as `turn_context`, at the event's `timestamp`, so a change the user makes between turns (a model switch, Approve for me, Full access and its revert) is dated when it was made rather than at the next turn. The event is the thread's settings, not a turn's: it carries `model`, `approval_policy`, `approvals_reviewer` and `active_permission_profile`, no `sandbox_policy`, and a `permission_profile` without the roots a turn adds, so only the three thread-level fields come from it; `sandbox` and `profile` stay as the last `turn_context` had them, or read `-` once the access level changed until the next `turn_context`, and an event before the thread's first `turn_context` is folded into that turn's row (issue 160) |
 | `response_item` with `metadata.inherited_user_message` | none (copied from the parent thread) |
 | `response_item` `message` user | per `content_item_kinds` run: `user` for `user.*`, `unknown` or empty kinds; `system` `context: <kind>: ...` for any other kind; without a kinds list as long as `content`, per block: `system` `context: <marker name>: ...` for a block that is wholly one of the harness wrappers below, else `user`. In a subagent file the first prompt is `system` `subagent task: ...`; later ones stay `user` (below) |
 | `response_item` `message` assistant / developer | `assistant` / `system` (`developer: ...`); empty text skipped |
@@ -1410,7 +1419,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `response_item` `image_generation_call` | `system` `image generation: <revised_prompt> status=...` |
 | `response_item` `reasoning` | `thinking` with `--include-thinking` when it has text, else skipped |
 | `response_item` `additional_tools`, `compaction`, `context_compaction`, `configuration_update` | skipped (no readable content) |
-| `event_msg` `task_started`, `task_complete` | `system`; `task_started turn=<id> trigger=<turn_trigger>` when `turn_attribution.turn_trigger` is set (values seen in [section 1](#1-evidence): `composer`, `remote_ios`, `remote_android`, `guardian_review`, `scheduled_task_setup`, `automation_heartbeat_run_now`, `automation_heartbeat_scheduled`; a `remote_*` turn came from a paired phone) |
+| `event_msg` `task_started`, `task_complete` | `system`; `task_started turn=<id>` as before (so the `thread_history_1.sqlite` copy still pairs with it), followed by `turn trigger: <turn_trigger> turn=<id>` when `turn_attribution.turn_trigger` is set (values seen in [section 1](#1-evidence): `composer`, `remote_ios`, `remote_android`, `guardian_review`, `scheduled_task_setup`, `automation_heartbeat_run_now`, `automation_heartbeat_scheduled`; a `remote_*` turn came from a paired phone) |
 | `event_msg` `task_complete` of a guardian review thread (`thread_source` `guardian_review`) | `system` `permission decision: <outcome> (auto_review risk_level=<risk_level> user_authorization=<user_authorization>) ...` from the JSON verdict in `last_agent_message`, naming the reviewer thread and carrying the `rationale` in full, at the line's `timestamp`, with `session_id` the governed thread (`session_meta.parent_thread_id`) |
 | `event_msg` `turn_aborted` | `system` `turn aborted: <reason> [error message]` |
 | `event_msg` `thread_rolled_back` | `system` `rolled back <n> turns`; earlier rows are not changed |
@@ -1431,7 +1440,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `thread_history_1.sqlite` `thread_turns` row (secondary) | `system` `task_started turn=<id>` at `started_at`; `task_complete turn=<id> duration_ms=<n>` at `completed_at` for a completed or failed turn; an interrupted turn has no closing row (its reason is only in the rollout) |
 | `thread_history_1.sqlite` `thread_items` row (secondary) | `userMessage` `user`, `agentMessage` `assistant`, `reasoning` `thinking` (opt-in), at `completed_at_ms`; `hookPrompt`, `contextCompaction` none; any other item renamed to the turn-item form and rendered as the `item_completed` rows above, at `started_at_ms` and `completed_at_ms` (else `created_at_ms`); a bad `item_json` is counted in one `system` row |
 | `automations/<slug>/automation.toml` (Codex only) | one `system` row `scheduled task: <id> name=<name> kind=<kind> status=<status> rrule=<rrule> target_thread=<target_thread_id> created=<created_at> updated=<updated_at> (from <file>, file mtime) prompt: <prompt>` at the file's modification time, `session_id` the target thread; an unreadable file is one `system` row (issue 119) |
-| `logs_2.sqlite` `logs` row `codex_core::session::handlers` `op=ExecApproval` or `codex_app_server::outgoing_message` `CommandExecutionRequestApproval` (Codex Desktop) | `system` `permission decision: <Accept\|Decline> exec <item id>` at `ts`, `session_id` the row's thread id, `tool_use_id` the governed item's id (`exec-<uuid>`, [section 5](#5-other-files)) (issue 160) |
+| `logs_2.sqlite` `logs` row `codex_core::session::handlers` `op=ExecApproval` or `codex_app_server::outgoing_message` `CommandExecutionRequestApproval` (Codex Desktop) | `system` `permission decision: <decision> exec <item id> turn=<turn id> (from logs_<N>.sqlite logs, ts)` at `ts` from the handlers row (`denied`, `approved` seen), `session_id` the row's thread id, `tool_use_id` the governed item's id (`exec-<uuid>`, [section 5](#5-other-files)); a response row (`Decline`, `Accept`) with no handlers row within two seconds is `permission decision: <decision> request <n> (from logs_<N>.sqlite logs, ts)` with no session (issue 160) |
 | `state_5.sqlite` `remote_control_enrollments` row | `system` `remote control: enabled=<0\|1> server=<server_id> environment=<environment_id> host=<server_name> client=<app_server_client_name> account=<account_id>` at `updated_at`, `session_id` empty (issue 160) |
 | `.codex-global-state.json` (secondary, Codex Desktop) | `user` for each `prompt-history` entry of a thread, with an empty `timestamp_utc` (matched on text and session), `session_id` the thread id; `system` `session deleted: <id>` for each `codex-writing-block-deleted-thread-v1:<id>` key and `system` `permission mode (standing): ...` for each `heartbeat-thread-permissions-by-id` entry, at the file's modification time; `system` `thread description: ...` for each `thread-descriptions-v1` entry; one `system` `remote control: mobile device connected=<bool> environment=<id>` row from the two top-level keys; a file that does not decode is one `parser:` row (issue 160) |
 
@@ -1577,7 +1586,7 @@ does leave the host, beyond the model API call:
   row of [section 5](#5-other-files), which the parser yields as a
   `remote control:` row, and a per-turn mark, `turn_attribution.turn_trigger`
   `remote_ios` or `remote_android` on a turn sent from a paired phone,
-  which the parser's `task_started ... trigger=` row carries; the
+  which the parser's `turn trigger:` row carries; the
   phone's own connection is in `logs_2.sqlite`. The vendor page
   [Remote connections | ChatGPT Learn](https://learn.chatgpt.com/docs/remote-connections)
   (read 2026-10-18) says "Repository files and local documents come

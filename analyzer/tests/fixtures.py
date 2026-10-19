@@ -1571,7 +1571,7 @@ def codex_desktop_log_rows():
             "codex_core::session::handlers",
             "Submission thread_id=%s submission_id=0d0d0d0d-1111-4222-8333-0000000000f1 "
             'operation="exec_approval" op=ExecApproval { id: "%s", turn_id: Some("t1"), '
-            "decision: Decline }" % (CODEX_DESKTOP, CODEX_DECLINED_ITEM),
+            "decision: denied }" % (CODEX_DESKTOP, CODEX_DECLINED_ITEM),
             CODEX_DESKTOP,
         ),
         (

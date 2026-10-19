@@ -1605,21 +1605,18 @@ class CodexDesktopTests(ParserBase):
             for r in rows
             if r.text.startswith(("model:", "permission mode:"))
         ]
-        first = self.mode("on-request", "-", self.PROFILE, "user", ":workspace")
         workspace = self.mode("on-request", self.WS, self.PROFILE, "user", ":workspace")
         guardian = self.mode("on-request", self.WS, self.PROFILE, "auto_review", ":workspace")
-        full = self.mode("never", self.WS, '{"type":"disabled"}', "user", ":danger-full-access")
+        # The access level changed: the event carries no sandbox, and its
+        # profile is the thread's, so both read `-` until the next turn.
+        full = self.mode("never", "-", "-", "user", ":danger-full-access")
         self.assertEqual(
             got,
             [
-                # The settings event before the first turn names no sandbox.
+                # The settings event before the first turn names the model; its
+                # policy is folded into the first turn_context's row.
                 ("2026-10-18T21:20:01.000Z", "gpt-6.1-sol", "model: gpt-6.1-sol"),
-                ("2026-10-18T21:20:01.000Z", "gpt-6.1-sol", "permission mode: " + first),
-                (
-                    "2026-10-18T21:20:02.000Z",
-                    "gpt-6.1-sol",
-                    "permission mode: %s -> %s" % (first, workspace),
-                ),
+                ("2026-10-18T21:20:02.000Z", "gpt-6.1-sol", "permission mode: " + workspace),
                 # The switches made with no turn are dated when they were made;
                 # the resume's reduced event and the next turn_context add none.
                 (
@@ -1632,7 +1629,8 @@ class CodexDesktopTests(ParserBase):
                     "gpt-5.6-terra",
                     "permission mode: %s -> %s" % (workspace, guardian),
                 ),
-                # Full access, a sandbox the settings event does not carry kept.
+                # Full access: the access level changed, so the turn-level fields
+                # are unknown until the next turn_context.
                 (
                     "2026-10-18T21:52:30.000Z",
                     "gpt-5.6-terra",
@@ -1744,13 +1742,14 @@ class CodexDesktopTests(ParserBase):
             got,
             [
                 # The core's record names the thread and the governed item; the
-                # app server's response that repeats it is left out.
+                # app server's response that repeats it in its own words
+                # (`Decline` for `denied`) is left out.
                 (
                     "2026-10-18T21:20:05.000Z",
                     CODEX_DESKTOP,
                     CODEX_DECLINED_ITEM,
                     5,
-                    "permission decision: Decline exec %s turn=t1 (from logs_2.sqlite logs, ts)"
+                    "permission decision: denied exec %s turn=t1 (from logs_2.sqlite logs, ts)"
                     % CODEX_DECLINED_ITEM,
                 ),
                 # A response with no core record beside it: no thread known.

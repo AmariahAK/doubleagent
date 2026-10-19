@@ -867,9 +867,13 @@ row at the first record with any of those fields and `permission mode:
 `turn_context` and each `thread_settings_applied` event, which the
 ChatGPT desktop app writes the moment the user changes the model, the
 reviewer or the access level, before any turn, so the row is dated when
-the setting changed rather than at the next turn. A settings event does
-not carry the sandbox policy: a field it lacks keeps the value last
-recorded, and reads `-` before the thread's first `turn_context`. A
+the setting changed rather than at the next turn. A settings event
+supplies only the thread-level fields, `approval`, `reviewer` and
+`profile_id`; `sandbox` and `profile` are the turn's, so a row dated at
+a settings event shows them as the last `turn_context` had them, or as
+`-` when the access level (`profile_id`) changed, until the next
+`turn_context` fills them in, and a settings event before the thread's
+first `turn_context` is folded into that turn's row. A
 missing field is `-` and an object field is compact JSON, so a value
 reads `sandbox={"type":"workspace-write"}`. `reviewer` is `user` when
 the user approves each escalated call, and `auto_review` in the desktop
@@ -905,11 +909,13 @@ are written to `logs_<N>.sqlite`: each user decision is one row
 `permission decision: <decision> exec <item id> turn=<turn_id> (from
 logs_<N>.sqlite logs, ts)` at the log row's time, with the thread as
 `session_id` and the governed item's id as `tool_use_id`, which is the
-`tool_use_id` of the call's `tool_use` row; `<decision>` is the app's
-term (`Decline` and `Accept` seen). An app-server response to an
-approval request with no such row beside it is `permission decision:
-<decision> request <request id> (from logs_<N>.sqlite logs, ts)` with no
-session. In the "Approve for me" mode the app spawns a guardian review
+`tool_use_id` of the call's `tool_use` row; `<decision>` is the log's
+own word, `denied` or `approved` on this row. An app-server response to
+an approval request (`Decline` or `Accept`) with no such row within two
+seconds of it is `permission decision: <decision> request <request id>
+(from logs_<N>.sqlite logs, ts)` with no session; on the install
+observed those response rows had left the database before it was
+collected, while the decision rows above remained. In the "Approve for me" mode the app spawns a guardian review
 thread (a rollout with `thread_source` `guardian_review` and the user's
 thread as `parent_thread_id`) whose final answer is the verdict: it is
 one row `permission decision: <outcome> (auto_review

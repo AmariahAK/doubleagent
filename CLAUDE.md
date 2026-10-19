@@ -15,7 +15,8 @@ Claude Code specific notes:
 - A live run against this workstation collects the author's own Claude Code,
   Gemini, Antigravity, Codex and Copilot state. Write it under the scratchpad
   directory and delete it afterwards.
-- This Mac has no dash, busybox, posh, pwsh, shellcheck or shfmt. Its
+- This Mac has `/bin/dash` (macOS 26 ships it; `tests/smoke.sh dash` takes a
+  few minutes) but no busybox, posh, pwsh, shellcheck or shfmt. Its
   `/bin/sh` is bash 3.2, the one shell CI does not run, and the smoke
   test passes under it since collector 1.11.0 (issues 78 and 82): about
   17 minutes with no VM running, far longer while a Parallels VM holds

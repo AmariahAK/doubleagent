@@ -146,10 +146,13 @@ other items are still read.
   with no thread. The first becomes `permission decision: <decision> exec
   <item id> turn=<turn> (from logs_<N>.sqlite logs, ts)` with the thread
   as `session_id` and the item id as `tool_use_id`; the second is left
-  out when a first row of the same decision is within 2 seconds of it,
-  and is otherwise `permission decision: <decision> request <n> (from
-  logs_<N>.sqlite logs, ts)` with no session. Decisions seen: `Decline`,
-  `Accept`. A row of either target holding the marker
+  out when a first row is within 2 seconds of it, and is otherwise
+  `permission decision: <decision> request <n> (from logs_<N>.sqlite
+  logs, ts)` with no session. The decision is the log's own word:
+  `denied` and `approved` on the handlers row, `Decline` and `Accept` on
+  the response row; on the install observed, the response rows seen in
+  the live database were no longer in the copy collected six hours later
+  while the handlers rows were. A row of either target holding the marker
   (`op=ExecApproval {`, `CommandExecutionRequestApproval {`) whose body
   the pattern cannot read is a `parser: unreadable approval log row
   (<target>): <body>` row. `guardian_calls` reads the
@@ -723,9 +726,10 @@ def _approval_match(rec: dict, kind: str, errors: list) -> re.Match | None:
 def _decisions(recs: list[dict], errors: list) -> dict[int, tuple[str, str, str]]:
     """(session id, tool_use_id, text less its source suffix) of each
     approval row, by rowid; a row the patterns cannot read goes to
-    `errors`. A request row whose decision an exec row of the same decision
-    records within 2 seconds is left out, since the exec row names the
-    thread and the governed item."""
+    `errors`. A request row with an exec row within 2 seconds is left out,
+    since the exec row names the thread and the governed item (the two use
+    different words for one decision: `denied` and `approved` on the exec
+    row, `Decline` and `Accept` on the request row)."""
     out: dict[int, tuple[str, str, str]] = {}
     execs: list[list] = []  # [ts, decision, paired]
     for rec in recs:
@@ -743,7 +747,7 @@ def _decisions(recs: list[dict], errors: list) -> dict[int, tuple[str, str, str]
         if not m:
             continue
         twin = next(
-            (e for e in execs if not e[2] and e[1] == m.group(2) and _near(e[0], rec.get("ts"))),
+            (e for e in execs if not e[2] and _near(e[0], rec.get("ts"))),
             None,
         )
         if twin is not None:
