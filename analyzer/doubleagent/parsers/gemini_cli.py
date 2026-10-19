@@ -44,7 +44,10 @@ under `~/.gemini` or the macOS sandbox base `~/.cache/.gemini`:
   removed from the session.
 * `trustedFolders.json` in the `.gemini` directory (`TrustedFoldersFile`
   in `packages/core/src/utils/trust.ts`): a JSON object, read with
-  comments stripped, whose keys are folder paths and whose values are a
+  comments stripped, and also with a leading byte-order mark dropped and
+  trailing commas allowed, as Qwen Code's `parseJsoncObject` reads its
+  copy since QwenLM/qwen-code 5dcf7c7 (`jsonc-parser` with
+  `allowTrailingComma`), whose keys are folder paths and whose values are a
   `TrustLevel` string (`TRUST_FOLDER`, `TRUST_PARENT`, `DO_NOT_TRUST`).
   One `system` row per key,
   `permission setting: trustedFolders.<path>=<value> (from <file>, file mtime)`,
@@ -258,15 +261,59 @@ def strip_json_comments(text: str) -> str:
     return "".join(out)
 
 
+def strip_trailing_commas(text: str) -> str:
+    """`text` with each comma outside strings that is followed, after
+    whitespace only, by `}` or `]` removed, as `jsonc-parser` with
+    `allowTrailingComma` accepts it. Run it after `strip_json_comments`."""
+    out = []
+    i, n = 0, len(text)
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+            out.append(c)
+        elif c == ",":
+            j = i + 1
+            while j < n and text[j] in " \t\r\n":
+                j += 1
+            if j >= n or text[j] not in "}]":
+                out.append(c)
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def parse_jsonc(raw: bytes):
+    """The value of a JSONC document as Qwen Code's `parseJsoncObject` reads
+    it: a leading byte-order mark dropped, `//` and `/* */` comments
+    stripped and trailing commas allowed. Gemini CLI writes plain JSON and
+    strips comments only, so its files read the same. Raises ValueError
+    when the text still does not decode."""
+    text = raw.decode("utf-8", errors="replace")
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    return json.loads(strip_trailing_commas(strip_json_comments(text)))
+
+
 def trusted_folder_rows(parser: Parser, artifact: Artifact) -> Iterator[Row]:
     """One `permission setting: trustedFolders.<path>=<value>` row per key of
     a `trustedFolders.json` (Gemini CLI and Qwen Code), timestamped with the
     file's modification time, or one row saying the file is not a JSON
-    object."""
+    object. The file is read with `parse_jsonc`, so a byte-order mark and
+    trailing commas, which Qwen Code accepts, decode (issue 173)."""
     ts = file_mtime(artifact)
     try:
-        raw = artifact.disk_path.read_bytes().decode("utf-8", errors="replace")
-        doc = json.loads(strip_json_comments(raw))
+        doc = parse_jsonc(artifact.disk_path.read_bytes())
     except (OSError, ValueError):
         doc = None
 

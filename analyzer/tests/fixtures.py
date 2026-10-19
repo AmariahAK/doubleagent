@@ -3776,6 +3776,19 @@ def build_gemini_cli(base: Path) -> None:
     os.utime(trust, (GEMINI_TRUST_MTIME, GEMINI_TRUST_MTIME))
 
 
+# A trustedFolders.json that Qwen Code's `parseJsoncObject` accepts and
+# `json.loads` does not (#173): a byte-order mark, a comment and trailing
+# commas (QwenLM/qwen-code at 5dcf7c7cb162e825d95d531081f67ee60da3c0e1,
+# packages/cli/src/utils/jsonc-editor.ts lines 24 and 92-107). The comma
+# inside the string value must survive.
+TRUST_JSONC = (
+    b"\xef\xbb\xbf{\n  // trust dialog\n"
+    b'  "/srv/a,]": "TRUST_FOLDER",\n'
+    b'  "/srv/b": "DO_NOT_TRUST", /* last */\n'
+    b"}\n"
+)
+
+
 def _wal_db(path: Path, script: str, inserts) -> None:
     """Build a WAL-mode SQLite file whose schema is checkpointed into the main
     file and whose rows live only in the -wal sidecar, as on a host where the

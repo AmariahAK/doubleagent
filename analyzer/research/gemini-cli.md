@@ -45,7 +45,9 @@ Paths, credentials and the rest of the per-user state are in
     `sessionOperations.ts` did not change, and the policy engine
     changed only how it decides, not what it stores.
   - Bad lines: covered for the session file, `logs.json` and
-    `trustedFolders.json`. The sources proposed in
+    `trustedFolders.json`; the shared `trustedFolders.json` reader also
+    accepts the trailing commas and byte-order mark Qwen Code allows
+    (see [section 8](#8-parser-plan)). The sources proposed in
     [section 8](#8-parser-plan) need the same treatment when they are
     parsed.
 
@@ -324,7 +326,18 @@ Model and permission rows (issues 96 and 97):
   ([`utils/trust.ts:18-22`](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/utils/trust.ts#L18-L22),
   [95-96](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/utils/trust.ts#L95-L96)); the CLI writes it with
   `JSON.stringify` ([342](https://github.com/google-gemini/gemini-cli/blob/fb972b2f87fe7d5b06d37eac711490162d98de2c/packages/core/src/utils/trust.ts#L342)). The value is printed as
-  recorded. A file that is not a JSON object is one
+  recorded. The same reader serves Qwen Code's `~/.qwen/trustedFolders.json`,
+  which Qwen now reads as JSONC (JSON with comments) with trailing commas
+  allowed and a leading byte-order mark dropped
+  ([`jsonc-editor.ts:24`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/utils/jsonc-editor.ts#L24),
+  [92-107](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/utils/jsonc-editor.ts#L92-L107)),
+  so the parser drops a byte-order mark, strips comments and drops a
+  comma that only whitespace separates from a closing `}` or `]`, outside
+  strings, before decoding; a Gemini CLI file reads as before. This
+  form is not observed on any real install, source-derived
+  (QwenLM/qwen-code at
+  [`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1)).
+  A file that still does not decode, or is not a JSON object, is one
   `parser: <file> is not a JSON object` row.
 - Not read: `policies/auto-saved.toml` (the saved "always allow"
   policies), `policy_integrity.json`, `trusted_hooks.json` and

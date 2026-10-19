@@ -3436,6 +3436,43 @@ class QwenCodeTests(ParserBase):
             ],
         )
 
+    def test_trusted_folders_jsonc(self):
+        # Issue 173: a byte-order mark, comments and trailing commas, which
+        # Qwen Code's parseJsoncObject accepts, decode; a comma inside a
+        # string is kept. A file still undecodable is the whole-file row.
+        from fixtures import TRUST_JSONC
+
+        rel = ".qwen/trustedFolders.json"
+        path = self.home / rel
+        path.write_bytes(TRUST_JSONC)
+        os.utime(path, (QWEN_TRUST_MTIME, QWEN_TRUST_MTIME))
+        rows = self.rows_for(QwenCodeParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.project_path, r.source_line) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: trustedFolders./srv/a,]=TRUST_FOLDER "
+                    "(from .qwen/trustedFolders.json, file mtime)",
+                    "/srv/a,]",
+                    1,
+                ),
+                (
+                    "system",
+                    "permission setting: trustedFolders./srv/b=DO_NOT_TRUST "
+                    "(from .qwen/trustedFolders.json, file mtime)",
+                    "/srv/b",
+                    1,
+                ),
+            ],
+        )
+        self.assertEqual({r.timestamp_utc for r in rows}, {to_utc(QWEN_TRUST_MTIME)})
+        path.write_bytes(TRUST_JSONC.replace(b'"DO_NOT_TRUST",', b'"DO_NOT_TRUST",,'))
+        self.assertEqual(
+            [(r.turn_type, r.text, r.source_line) for r in self.rows_for(QwenCodeParser(), rel)],
+            [("system", "parser: .qwen/trustedFolders.json is not a JSON object", 1)],
+        )
+
 
 from doubleagent.parsers.kiro import KiroParser, salvage
 from fixtures import KIRO_EXPORT_SESSION, KIRO_SESSION, KIRO_SHELL_SESSION
@@ -3601,7 +3638,7 @@ class KiroTests(ParserBase):
         self.assertEqual(salvage("garbage")[0], None)
 
 
-from fixtures import GEMINI_TRUST_MTIME
+from fixtures import GEMINI_TRUST_MTIME, TRUST_JSONC
 
 
 class GeminiCliTests(ParserBase):
@@ -3908,6 +3945,41 @@ class GeminiCliTests(ParserBase):
         self.assertEqual(
             [(r.source_line, r.turn_type, r.text) for r in rows],
             [(1, "system", "parser: unparseable session file: %s" % reason)],
+        )
+
+    def test_trusted_folders_jsonc(self):
+        # Issue 173: a byte-order mark, comments and trailing commas, which
+        # Qwen Code's parseJsoncObject accepts, decode; a comma inside a
+        # string is kept. A file still undecodable is the whole-file row.
+        rel = ".gemini/trustedFolders.json"
+        path = self.home / rel
+        path.write_bytes(TRUST_JSONC)
+        os.utime(path, (GEMINI_TRUST_MTIME, GEMINI_TRUST_MTIME))
+        rows = self.rows_for(GeminiCliParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.project_path, r.source_line) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: trustedFolders./srv/a,]=TRUST_FOLDER "
+                    "(from .gemini/trustedFolders.json, file mtime)",
+                    "/srv/a,]",
+                    1,
+                ),
+                (
+                    "system",
+                    "permission setting: trustedFolders./srv/b=DO_NOT_TRUST "
+                    "(from .gemini/trustedFolders.json, file mtime)",
+                    "/srv/b",
+                    1,
+                ),
+            ],
+        )
+        self.assertEqual({r.timestamp_utc for r in rows}, {to_utc(GEMINI_TRUST_MTIME)})
+        path.write_bytes(TRUST_JSONC.replace(b'"DO_NOT_TRUST",', b'"DO_NOT_TRUST",,'))
+        self.assertEqual(
+            [(r.turn_type, r.text, r.source_line) for r in self.rows_for(GeminiCliParser(), rel)],
+            [("system", "parser: .gemini/trustedFolders.json is not a JSON object", 1)],
         )
 
 
