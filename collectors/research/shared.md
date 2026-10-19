@@ -1,18 +1,32 @@
-# Shared cross-agent directories
+# shared
 
-Catalog agent: `shared`. Files and directories read by several agents at
-once, so they cannot be attributed to one tool: cross-agent instruction and
-skill directories. Evidence level: the per-agent
-documents in this directory, which cite each reader.
+The catalog agent `shared` is a pseudo-agent for files and directories read by several agents
+at once, so they cannot be attributed to one tool: cross-agent instruction and skill
+directories. It has no analyzer document.
 
-## 1. Source and evidence level
+## 1. Source and evidence
 
-Each path below is justified by at least two agents' source. `AGENTS.md` is read by Codex CLI, Amp,
+Evidence level: the per-agent documents in this directory, which cite each reader. Each path
+below is justified by at least two agents' source. `AGENTS.md` is read by Codex CLI, Amp,
 OpenCode, Crush, Factory Droid, Kilo Code and Copilot CLI (see their
 documents). `~/.agents` and `~/.config/agents` hold cross-tool skill and
 agent definitions adopted by Codex, Copilot CLI and others.
 
-The source reviews of 2026-10-19 add two readers of the skills directories. Zed reads `~/.agents/skills/<skill>/SKILL.md` ([`crates/agent/src/agent.rs:616-638`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L616-L638) at [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)), and Crush reads `~/.config/agents/skills` and `~/.agents/skills`, and also Claude Code's `~/.claude/skills` ([`internal/config/load.go:1312-1322`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1312-L1322) at [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da)); see [`zed.md`](zed.md), [`crush.md`](crush.md) and [`claude-code.md`](claude-code.md).
+### Observed
+
+- No real install: `shared` is not one agent, and the evidence is each reader's document.
+
+### Source reviews
+
+- **Source review (2026-10-19)**: the source reviews of 2026-10-19 add two readers of the skills
+  directories. Zed reads `~/.agents/skills/<skill>/SKILL.md`
+  ([`crates/agent/src/agent.rs:616-638`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L616-L638)
+  at [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)),
+  and Crush reads `~/.config/agents/skills` and `~/.agents/skills`, and also Claude Code's
+  `~/.claude/skills`
+  ([`internal/config/load.go:1312-1322`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1312-L1322)
+  at [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da));
+  see [`zed.md`](zed.md), [`crush.md`](crush.md) and [`claude-code.md`](claude-code.md).
 
 ## 2. Per-user storage
 
@@ -24,6 +38,10 @@ The source reviews of 2026-10-19 add two readers of the skills directories. Zed 
 
 The layout is identical on every OS because the readers use `homedir()`
 without platform branching.
+
+### Scratch directories
+
+None known.
 
 ## 3. Credentials
 
@@ -41,7 +59,7 @@ None; these are small text files.
 
 `AGENTS.md` at the project root, collected through the project catalog.
 
-## 6. Project path discovery
+## 6. Where the project path is recorded
 
 Not applicable.
 
