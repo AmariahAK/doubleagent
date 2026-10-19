@@ -1,16 +1,18 @@
 # metagpt
 
-MetaGPT is a Python multi-agent "software company" framework with the `metagpt` CLI. This
-document came out of the agent framework sweep for
+MetaGPT is a Python multi-agent "software company" framework with the `metagpt` CLI. It came
+into the catalog from the agent framework sweep for
 [issue #64](https://github.com/seanthegeek/doubleagent/issues/64); see
-[`collectors/research/frameworks.md`](frameworks.md) for the frameworks that got no catalog
-line. There is no analyzer document: MetaGPT keeps no transcripts under the home.
+[`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. It is
+collected only, with no parser: MetaGPT keeps no transcripts under the home.
 
 ## 1. Source and evidence
 
-[FoundationAgents/MetaGPT](https://github.com/FoundationAgents/MetaGPT) ([geekan/MetaGPT](https://github.com/geekan/MetaGPT) redirects there), MIT
+[FoundationAgents/MetaGPT](https://github.com/FoundationAgents/MetaGPT)
+([geekan/MetaGPT](https://github.com/geekan/MetaGPT) redirects there), MIT
 ([setup.py:107](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/setup.py#L107)),
-open source, commit [`11cdf466d042aece04fc6cfd13b28e1a70341b1f`](https://github.com/FoundationAgents/MetaGPT/commit/11cdf466d042aece04fc6cfd13b28e1a70341b1f)
+open source, commit
+[`11cdf466d042aece04fc6cfd13b28e1a70341b1f`](https://github.com/FoundationAgents/MetaGPT/commit/11cdf466d042aece04fc6cfd13b28e1a70341b1f)
 (2026-01-21). All claims are from source.
 
 MetaGPT runs shell commands on the host: the `Terminal` tool spawns a
@@ -117,9 +119,12 @@ Nowhere under the home.
 
 ## Parsing
 
-The agent has no analyzer research document: nothing it writes is parsed, or
-its parser is still in the backlog (see the agents page).
-<!-- MERGE: write the one-paragraph parsing status -->
+MetaGPT is `collected` only: the collector gathers its configuration, and there is nothing to
+parse under the home. The records of past use, the serialized team state
+`workspace/storage/team/team.json` and the DEBUG-level run logs `logs/<YYYYMMDD>.txt`, are
+written under `METAGPT_ROOT`, the working directory or the clone ([Workspace](#workspace) and
+the 2026-10-19 source review), under no MetaGPT-specific name, so no catalog line reaches them
+and a parser would have no collected file to read.
 
 ## 14. Confidence
 
