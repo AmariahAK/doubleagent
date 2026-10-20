@@ -513,6 +513,19 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
    locally (a Copilot cloud agent task) is synced, since the vendor holds
    its copy, and also gets a `session origin: remote <service>` row; the
    parser sets `records_origin`, so `origin` reads `remote` or `local`.
+   A source-host integration (GitHub, GitLab, Bitbucket) is evidence of
+   the same kind, because it says which external account the agent acted
+   as and which repositories it could reach: the research document names
+   where the connected account is recorded, where its token or grant
+   lives (a file, the editor's secret storage, the OS keychain, or
+   server-side only, in which case it says so), where the list of
+   reachable repositories is cached if it is, and how a repository-bound
+   remote conversation is stored or cached locally; the parser yields a
+   `system` row `source host: <host> account <login>` at the record's
+   time when the format records the account, treats a cached token like
+   any other credential (flagged, never printed) and the repository list
+   like a project list, and a parser plan with no such line says the
+   agent records no integration.
    A secondary source whose records carry no time of their own yields
    rows with an empty `timestamp_utc`, never an inherited session time,
    so the match is on text alone and the session's time stays on its own
@@ -1072,7 +1085,22 @@ The round, in order:
    model records are on disk for the shape tool to show; a session
    synced to the vendor's account where the agent offers it (a resume, a
    sign-in or a setting may do it without asking), with a listing diff
-   that shows which files mark the synced session; then a session
+   that shows which files mark the synced session; where the agent
+   connects to a source host (GitHub, GitLab, Bitbucket) for cloud or
+   background agents, pull-request review or repository access, the
+   source-host integration as its own steps, each with a listing diff:
+   connect the account through the agent's own integration (and, in an
+   editor, sign in through the editor's own provider as well, since the
+   two store differently), then run a remote agent on a repository with
+   a read-only task ("describe this repository, change nothing, open no
+   pull request") so the lab repository stays as it is for the next
+   agent, then reopen that remote conversation after a relaunch; the
+   round records whether the connected account is named on disk, where
+   its token or grant lives (a file, the editor's secret storage, the
+   OS keychain, or server-side only), whether the list of repositories
+   the agent may reach is cached locally, and whether the conversations
+   bound to a repository are stored or cached locally or fetched each
+   time, using a throwaway account when the host offers one; then a session
    deleted the way a user would (the agent's own delete or clear command,
    or the project directory removed), with a listing diff after it, so
    the round records which traces of past use survive and the parser
@@ -1164,7 +1192,9 @@ catalog agents (the rule is under
 with no bullet is a gap to close, not a note to leave. Within a surface, run every kind of task it offers, each one
 on its own with a listing diff after it: a question with no tool use, a
 coding task that writes files, a scheduled or automated task, a
-third-party integration such as a plugin or an MCP server, a resumed
+third-party integration such as a plugin or an MCP server, the
+source-host integration of step 3 (the connected account, its token, the
+repository list and a repository-bound remote session), a resumed
 session. When every task was run before the first listing, the round
 cannot say which task wrote which file; its document says so, gives
 the modification times, and the mapping waits for the next round.
