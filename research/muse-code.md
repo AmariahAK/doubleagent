@@ -5,7 +5,7 @@ Muse Code is Meta's closed-source coding agent CLI (`muse`, models
 PowerShell on Windows) plus a native binary that the launcher downloads
 from Meta's lookaside host (its download server) and keeps up to date. It
 reads the state of Claude Code, Codex CLI and Grok Build without writing to
-it ([section 14](#14-confidence)). It writes one event-sourced JSONL log
+it ([Other agents' state](#other-agents-state)). It writes one event-sourced JSONL log
 per session, with each subagent in its own log under the session
 directory; no other agent in the catalog shares this format. The agent is
 parsed by the `muse-code` parser.
@@ -80,14 +80,15 @@ best first:
   binary of level B), 2026-10-03 and 2026-10-04: the real install on the
   author's Linux (WSL2) workstation, the research host. Two interactive
   sessions: one failed on a 402 before any model output, one with web
-  search, web fetch, bash and two reminder subagents. 547 envelope lines
-  plus 4 frames and 4 markers in total, every line tabulated by key path.
-  Only names, sizes, JSON key names and SQLite schemas were read; SQLite
-  files were copied with their sidecars before opening. Shapes marked
-  observed were seen there; shapes marked binary were not exercised and
-  rest on field names only.
+  search, web fetch, bash and two reminder subagents. They wrote the data
+  root's session directories, index and prompt history
+  ([section 2](#2-per-user-storage), [section 7](#7-transcript-stores)):
+  547 envelope lines plus 4 frames and 4 markers in total, every line
+  tabulated by key path ([section 8](#8-record-schema)), and the stores of
+  [section 10](#10-other-stores). Shapes marked observed were seen there;
+  shapes marked binary were not exercised and rest on field names only.
 - macOS: no real install; the Mac claims rest on strings only
-  ([section 14](#14-confidence)).
+  ([section 3](#3-credentials), [System-wide locations](#system-wide-locations)).
 - Windows: no real install; the Windows claims rest on the binary's
   strings and the installer and launcher scripts (levels W and S).
 
@@ -182,20 +183,20 @@ Path `~/.local/share/muse/` (I, 6.1 MB in total after two sessions):
 
 - `sessions/YYYY/MM/DD/<session-id>/` (2.1 MB), session ids are UUIDv7 and
   the shard is the local date (K `read-session/SKILL.md:18-28`). Each holds
-  `session.jsonl` (the event log, one JSON record per line),
-  `subagent/<child-session-id>/session.jsonl` (one log per subagent),
-  `tool-outputs/<id>/call_<id>-<tool>[-page].txt` (full tool outputs kept
-  out of line; 208 KB here) with a `.spool/` of in-flight `.tmp` files,
-  `approval-review/<uuid>.jsonl` (approval decisions, same envelope keys as
-  `session.jsonl`), `cron.db` (SQLite, table `cron_jobs` with `prompt`,
-  `cron_expr`, `session_id`, `next_fire_at_ms`; journal mode DELETE, so a
-  `cron.db-journal` can appear, B), `session.peer-history.sqlite3` with
-  `-wal`, `-shm` and `.rebuild.lock` (an index of retained records by line
-  offset and sha256, tables `source_snapshot`, `retained_records`,
-  `stable_ids`), `cli-<uuid>.log` (tracing log of the process that ran the
-  session), `.session.lock` and `.session.jsonl.permission-init`. The
-  binary also names `goals.db` (with `-wal`, `-shm`) and `input-assets/`
-  (attached images and video, mode 0600) in the same directory (B
+  `session.jsonl` (the event log), `subagent/<child-session-id>/session.jsonl`
+  (one log per subagent), `tool-outputs/<id>/call_<id>-<tool>[-page].txt`
+  (full tool outputs kept out of line; 208 KB here) with a `.spool/` of
+  in-flight `.tmp` files, `approval-review/<uuid>.jsonl` (run logs of the
+  automated approval reviewer), `cron.db` (scheduled prompts; a
+  `cron.db-journal` can appear beside it, B),
+  `session.peer-history.sqlite3` with `-wal`, `-shm` and `.rebuild.lock`
+  (a line-offset index into `session.jsonl`), `cli-<uuid>.log` (tracing log
+  of the process that ran the session), `.session.lock` and
+  `.session.jsonl.permission-init`; the records inside each are in
+  [section 7](#7-transcript-stores), [section 8](#8-record-schema) and
+  [section 10](#10-other-stores). The binary also names `goals.db` (with
+  `-wal`, `-shm`) and `input-assets/` (attached images and video, mode
+  0600) in the same directory (B
   `cron.dbinput-assetscron.db-journalcron.db-walcron.db-shmgoals.db-wal`);
   neither was created here. A directory that holds only lock files is
   left by a session that never started a turn (I).
@@ -204,13 +205,13 @@ Path `~/.local/share/muse/` (I, 6.1 MB in total after two sessions):
   `journal-00000000.bin`, `snapshot-<uuid>.json` (I; 264 KB for the larger
   session). Derived from `session.jsonl`.
 - `sessions/.prior-crash-telemetry-markers-v1`: empty marker file (I).
-- `session-index.db`: SQLite in WAL mode, table `sessions`, one row per
-  session (I; schema in [section 6](#6-where-the-project-path-is-recorded)).
+- `session-index.db`: SQLite, one row per session (I; schema in
+  [Session index](#session-index)).
 - `session-name-authority/`: `authority.json` (`schema_version`,
-  `authority_id`) and `session-names.db` (tables `session_name_claims_v2`,
-  `session_name_operations_v2`, `session_name_counters_v2`) (I).
-- `tui-history.jsonl`: prompt history, one JSON string per line holding the
-  prompt text, no cwd and no timestamp (I). `MUSE_SKIP_PROMPT_HISTORY`
+  `authority_id`) and `session-names.db`, the name history per session (I;
+  tables in [Session names](#session-names)).
+- `tui-history.jsonl`: prompt history of the TUI composer (I; shape in
+  [Prompt history](#prompt-history)). `MUSE_SKIP_PROMPT_HISTORY`
   disables it (B). Lock file `tui-history.jsonl.lock`.
 - `local-tracing/bootstrap/cli-<uuid>.log`: process tracing logs written
   before a session directory exists, plain text lines
@@ -309,6 +310,22 @@ only, L:25, S-ps:23; the string does not occur in the Linux binary),
 L:4), `MUSE_INSTALL_DIR` (Windows installer, S-inst:189),
 `MUSE_SKIP_PROMPT_HISTORY` (B).
 
+#### Other agents' state
+
+Muse reads the state of other agents (K `resume-claude`, `resume-codex`,
+`import`, `migrate`; B): Claude Code
+(`${CLAUDE_CONFIG_DIR:-~/.claude}/projects/*/*.jsonl`,
+`projects/*/memory/`, `~/.claude.json` `mcpServers`,
+`.claude/settings*.json`, `.claude/skills`), Codex CLI
+(`${CODEX_HOME:-~/.codex}/sessions`, `memories/`, `memories_1.sqlite`,
+`config.toml`, `skills/`), and Grok Build
+(`${GROK_HOME:-~/.grok}/sessions/<percent-encoded cwd>/<uuid>/` with
+`summary.json`, `events.jsonl`, `chat_history.jsonl`, `updates.jsonl`;
+`import/SKILL.md:122-129`). All are read-only; Muse writes only into its
+own roots (`migrate/SKILL.md:12-14`). Grok Build is not in the catalog.
+Goose has a `muse_code` provider directory (`.config/goose/muse_code/`, a
+secret glob in the catalog), so Goose can drive Muse as a provider.
+
 ### 3. Credentials
 
 - `~/.config/muse/auth.json` (mode 0600, I). Shape:
@@ -362,7 +379,8 @@ Sizes from the host after two sessions (I):
   which can be evidence of what ran.
 - `plugins/marketplaces/` is named in the binary (B) and, by the pattern of
   other agents, likely holds marketplace clones; its contents are not
-  determined, so it is proposed as an exclusion only with low confidence.
+  determined, so its exclusion `.local/share/muse/plugins/marketplaces`
+  rests on that pattern alone.
 - `.msp-view-v1` is small and derived; keeping it is harmless.
 - `<repo>/.muse/worktrees/`: git worktrees that Muse creates inside a
   project for subagents and isolated sessions (B
@@ -370,7 +388,7 @@ Sizes from the host after two sessions (I):
   retained at`). Each is a checkout of the repository, so exclude it
   relative to the collection base, which covers discovered projects.
 - Linux and macOS install directory: `~/.local/bin` holds other tools'
-  binaries, so it cannot be a catalog entry. The proposal is one glob,
+  binaries, so it cannot be a catalog entry. The catalog entry is one glob,
   `.local/bin/.muse-*`, which matches the state files and
   `.muse-launcher.previous` but not `muse-bin-*` (344 MB, no leading
   dot). It also matches the transient `.muse-update.XXXXXX/` directory,
@@ -380,18 +398,11 @@ Sizes from the host after two sessions (I):
 - Windows install directory `AppData/Local/Programs/muse` holds only
   Muse's files, so the whole directory is an entry, and the two binary
   names are excluded: `muse-bin-*.exe` (443 MB for 1.4.2) and the staged
-  `.muse-update.*.exe`. Both collectors apply `EXCLUDES` to files as well
-  as directories: the sh collector prunes any `find -path` match and
-  its `EXCLUDED_PATHS_WORKER` records a file with its `stat` size, and
-  the PowerShell collector's `Add-ExcludedPath` records a file's
-  `Length`; the existing
-  `.continue/index/*.sqlite` exclusion is a file pattern. The excluded
-  binary still leaves a `skipped_excluded` row whose name and size
-  record the installed version.
+  `.muse-update.*.exe`. The binary's file name records the installed
+  version.
 - Windows sandbox scratch `AppData/LocalLow/muse-shell-sandbox-*` is
-  per-session temp; its size is not known. It is proposed as a catalog
-  entry (it can hold files a sandboxed command wrote) and not excluded;
-  revisit if a real install shows it large.
+  per-session temp; its size is not known. It is a catalog entry, not an
+  exclusion, because it can hold files a sandboxed command wrote.
 
 ### 5. Project-local files
 
@@ -427,15 +438,14 @@ Sizes from the host after two sessions (I):
   `"workspace_root":"/..."` and `"cwd":"/..."`, so a grep works. Subagent
   logs under `subagent/<id>/` carry neither key (I).
 - `session-index.db`, table `sessions`: `workspace_root` and
-  `workspace_key` (absolute paths), plus `session_dir`,
-  `session_log_path`, `git_branch`, `title`, `first_user_prompt`,
-  `created_at_us`, `updated_at_us`, `model_id`, `provider_id` (I). WAL
-  mode; the `-wal` sidecar is present while Muse runs.
+  `workspace_key` (absolute paths) (I; full schema in
+  [Session index](#session-index)).
 - `~/.config/muse/trust.json`: keys of `projects` are absolute project
   paths (I). This is the simplest file for `discover_projects` to read,
   but it lists only projects the user trusted, which is a subset of those
   used.
-- `tui-history.jsonl` records no path (I).
+- `tui-history.jsonl`: the object line of each entry carries `project`,
+  the workspace root (I; [Prompt history](#prompt-history)).
 - `~/.muse/projects/<slug>/tracking.json` names coordinator threads and
   worktrees (K); shape not determined.
 
@@ -444,12 +454,9 @@ Sizes from the host after two sessions (I):
 ### 7. Transcript stores
 
 All under `${XDG_DATA_HOME:-$HOME/.local/share}/muse/` (read-session skill;
-binary literal `XDG_DATA_HOME:-$HOME/.local/share}/muse/sessions`). The
-same layout applies on macOS and on Windows: the Windows build
-(`muse-x86-windows.exe` 1.4.2-R4684.1) resolves its data directory from
-`XDG_DATA_HOME`, then `HOME`, then `USERPROFILE`, so a Windows home holds
-`.local\share\muse` too; the path evidence is in
-[section 2](#2-per-user-storage). Relative to the home:
+binary literal `XDG_DATA_HOME:-$HOME/.local/share}/muse/sessions`), the same
+layout on Linux, macOS and Windows ([section 2](#2-per-user-storage)).
+Relative to the home:
 
 | Path | Content | Parse |
 | --- | --- | --- |
@@ -466,19 +473,15 @@ same layout applies on macOS and on Windows: the Windows build
 | `.local/share/muse/session-name-authority/session-names.db` | session name claims | no |
 | `.local/share/muse/tui-history.jsonl` | prompt history of the TUI composer | yes, as history |
 
-The binary also names `goals.db` and `input-assets/` beside `cron.db` in the
-session directory (binary; not observed).
-
 #### What survives a delete
 
 How a Muse Code session is deleted, and what a delete removes, is not
 stated in this document: the real install deleted no session. Outside
-the session directory, four stores hold records of a session: the TUI
-prompt history `tui-history.jsonl` (each prompt with its session id and
-workspace root, no timestamp), the session index `session-index.db` (one
-row per session with its workspace, model, title and first prompt),
-`session-names.db` (the name history per session) and the derived TUI
-view under `sessions/.msp-view-v1/<session id>/`. Whether any of them
+the session directory, four stores hold records of a session
+([section 10](#10-other-stores)): the TUI prompt history
+`tui-history.jsonl`, the session index `session-index.db`,
+`session-names.db` and the derived TUI view under
+`sessions/.msp-view-v1/<session id>/`. Whether any of them
 outlives a deleted session is not stated, and no deletion marker is
 known. The analyzer reads the prompt history, as `user` rows with an
 empty `timestamp_utc` ([section 13](#13-parser-plan)), and none of the
@@ -713,8 +716,9 @@ are complete paragraphs whose join is the committed record. Each
   parent's `subagent_spawn` `call_id`. A sample literal in the binary places
   such a child (`agent.dispatch.researcher`) at
   `subagent/<id>/session.jsonl` too.
-- Project: `runtime.session.metadata` `record.workspace_root` (also
-  `route_facts.record.cwd`). Subagent logs carry none; take the parent's.
+- Project: the workspace root of
+  [section 6](#6-where-the-project-path-is-recorded). Subagent logs carry
+  none; take the parent's.
 - Approval review: `automated_review_started.reviewer_rollout_id` is the
   `approval-review/<id>.jsonl` file name and that log's `stream.id`.
 - `tui-history.jsonl`: `session` = session id, `project` = workspace root.
@@ -738,9 +742,10 @@ was edited (`raw_sha256` per line), not for content.
 
 #### Session index
 
-`session-index.db` (observed, no sidecars at rest): table `sessions`
-with `session_id`, `session_dir`, `session_log_path`, `layout`
-(`session_jsonl`), `workspace_root`, `provider_id`, `model_id`,
+`session-index.db` (observed; WAL mode, the `-wal` sidecar present while
+Muse runs and none at rest): table `sessions` with `session_id`,
+`session_dir`, `session_log_path`, `layout` (`session_jsonl`),
+`workspace_root`, `workspace_key`, `provider_id`, `model_id`,
 `git_branch` (empty even for the git session), `title` and
 `first_user_prompt` (the first prompt), `search_text`, `created_at_us`,
 `updated_at_us`, `prompt_count`, `status`, `session_name`, `msp_*`
@@ -748,16 +753,18 @@ fork columns. A cross-check, not a transcript.
 
 #### Session names
 
-`session-names.db`: `session_name_claims_v2`,
-`session_name_operations_v2` (name history per session).
+`session-names.db` (observed): tables `session_name_claims_v2`,
+`session_name_operations_v2` and `session_name_counters_v2`, the name
+history per session.
 
 #### Scheduled prompts
 
 `cron.db` (observed, empty): `cron_jobs(id, session_id, cron_expr,
 prompt, recurring, agent_id, kind ('user'), created_at_ms,
 next_fire_at_ms, last_fired_at_ms, fire_count, status,
-last_fire_run_id, ...)`. A scheduled prompt is user-authored text that
-fires later as a run.
+last_fire_run_id, ...)`; journal mode DELETE, so a `cron.db-journal` can
+appear (B). A scheduled prompt is user-authored text that fires later as
+a run.
 
 #### TUI view
 
@@ -782,8 +789,8 @@ real times are the parent's `automated_review_started.started_at_ms` and
 #### Prompt history
 
 `tui-history.jsonl` (observed): **two lines per entry**, a JSON string
-(the prompt text as typed) followed by an object `{project, session}`.
-No timestamp.
+(the prompt text as typed) followed by an object `{project, session}`,
+`project` the workspace root and `session` the session id. No timestamp.
 
 ### 11. Format versions
 
@@ -794,7 +801,9 @@ tolerates older names (`tool_results_committed`, `tool_result_committed`,
 `payload.workspace_root`), so earlier builds wrote them. The binary also
 carries the literal `XDG_DATA_HOME:-$HOME/.local/share}/metacode/...` in
 its bundled skill text, an apparent earlier product name; no `metacode`
-directory was present. The `read-session` skill names the export
+directory was present; the only path built from it is in the `import`
+skill's helper lookup (`import/SKILL.md:156-157`), not in either binary.
+The `read-session` skill names the export
 `muse export --session <id> --redacted` with `export_schema_version`,
 `redaction`, `unparseable_lines` and `unknown_payload_kinds` fields
 (binary); exports were not observed.
@@ -1024,64 +1033,43 @@ timestamp `2026-10-01T09:00:00.300Z`. The subagent fixture yields a
 
 ## 14. Confidence
 
-High: the two XDG roots under the home on Linux, macOS and Windows
-(`%USERPROFILE%\.config\muse`, `%USERPROFILE%\.local\share\muse`); the
-three platforms and architectures in the release manifest; the session
-directory layout and file names; `session-index.db` and `cron.db`
-schemas; `auth.json` key names; the install-directory files of both
-launchers and the Windows default `%LOCALAPPDATA%\Programs\muse`;
-`workspace_root` and `cwd` in `session.jsonl`; `trust.json` shape; the
-bundled-copy directories and sizes.
-
-Medium: macOS Keychain with `auth.json` as fallback (strings only, no Mac
-install); MCP OAuth entries in the credential store; `memory/` and
-`crashes/` under the data root (vendor skill text, not created here);
-`.muse/worktrees` and `.muse/hooks.json` inside projects;
-`~/.config/muse/skills/` layout; `goals.db` and `input-assets/` per
-session; the Windows sandbox scratch `AppData/LocalLow/muse-shell-sandbox-*`
-(strings only, no Windows install); macOS enterprise policy under
-`/Library/Application Support/muse/`.
-
-Low: `plugins/marketplaces/` holding clones; `~/.local/share/metacode`
-as a former data root (it appears only in the `import` skill's helper
-lookup, `import/SKILL.md:156-157`, and not as a path either binary
-builds).
-
-Not determined: the layout under `memory/` (how `personal_project` is
-keyed); where the Linux and macOS shell installer and `muse.pkg` place
-the launcher (the bash launcher uses its own directory; `~/.local/bin`
-is observed only); the shape of `tracking.json`; whether the Windows
-sandbox scratch directory is removed at session end and how large it
-gets; the Linux location of the enterprise policy files; whether any
-state is written outside the two roots on macOS (for example a
-`Library/Logs` path; none is named).
-
-Transcript schema: high (observed and confirmed by the read-session skill and
-Meta's script): envelope fields, microsecond `recorded_at`, frame and
-marker shapes, `started`, `assistant_message_committed`,
-`assistant_tool_calls_committed` with string `args`,
-`tool_result_batch_committed`, reasoning records, `call_id` join,
-metadata, branch, model and reminder-subagent linkage, the JSONL being
-complete without the SQLite, the approval-review synthetic clock. Medium
-(field names from the binary, not exercised): `inbox_item_queued`,
-`user_prompt_display`, `tool_result`, `provider_tool_call_*`,
-`user_shell.*`, `subagent.control.*`, compaction events, and where the
-`user_shell` fields sit in the payload. Not determined: argument names of
-tools other than `bash`, `web_search`, `web_fetch`; a native
-`subagent_spawn` child's log (none was spawned); `reference.kind` values
-other than `branch`; a human approval's `decision_source`; whether later
-frames appear after a resume or permission change; `user_prompt_display`'s
-field name.
-
-Other agents whose state Muse reads (K `resume-claude`, `resume-codex`,
-`import`, `migrate`; B): Claude Code (`${CLAUDE_CONFIG_DIR:-~/.claude}/projects/*/*.jsonl`,
-`projects/*/memory/`, `~/.claude.json` `mcpServers`, `.claude/settings*.json`,
-`.claude/skills`), Codex CLI (`${CODEX_HOME:-~/.codex}/sessions`,
-`memories/`, `memories_1.sqlite`, `config.toml`, `skills/`), and Grok
-Build (`${GROK_HOME:-~/.grok}/sessions/<percent-encoded cwd>/<uuid>/`
-with `summary.json`, `events.jsonl`, `chat_history.jsonl`,
-`updates.jsonl`; `import/SKILL.md:122-129`). All are read-only; Muse
-writes only into its own roots (`migrate/SKILL.md:12-14`). Grok Build is
-not in the catalog. Goose has a `muse_code` provider directory
-(`.config/goose/muse_code/`, already a secret glob), so Goose can drive
-Muse as a provider.
+- High: the two XDG roots under the home on Linux, macOS and Windows
+  (`%USERPROFILE%\.config\muse`, `%USERPROFILE%\.local\share\muse`); the
+  three platforms and architectures in the release manifest; the session
+  directory layout and file names; `session-index.db` and `cron.db`
+  schemas; `auth.json` key names; the install-directory files of both
+  launchers and the Windows default `%LOCALAPPDATA%\Programs\muse`;
+  `workspace_root` and `cwd` in `session.jsonl`; `trust.json` shape; the
+  bundled-copy directories and sizes. The transcript schema (observed and
+  confirmed by the read-session skill and Meta's script): envelope fields,
+  microsecond `recorded_at`, frame and marker shapes, `started`,
+  `assistant_message_committed`, `assistant_tool_calls_committed` with
+  string `args`, `tool_result_batch_committed`, reasoning records,
+  `call_id` join, metadata, branch, model and reminder-subagent linkage,
+  the JSONL being complete without the SQLite, the approval-review
+  synthetic clock.
+- Medium: macOS Keychain with `auth.json` as fallback (strings only, no Mac
+  install); MCP OAuth entries in the credential store; `memory/` and
+  `crashes/` under the data root (vendor skill text, not created here);
+  `.muse/worktrees` and `.muse/hooks.json` inside projects;
+  `~/.config/muse/skills/` layout; `goals.db` and `input-assets/` per
+  session; the Windows sandbox scratch `AppData/LocalLow/muse-shell-sandbox-*`
+  (strings only, no Windows install); macOS enterprise policy under
+  `/Library/Application Support/muse/`. Field names from the binary, not
+  exercised: `inbox_item_queued`, `user_prompt_display`, `tool_result`,
+  `provider_tool_call_*`, `user_shell.*`, `subagent.control.*`, compaction
+  events, and where the `user_shell` fields sit in the payload.
+- Low: `plugins/marketplaces/` holding clones; `~/.local/share/metacode`
+  as a former data root ([section 11](#11-format-versions)).
+- Not determined: the layout under `memory/` (how `personal_project` is
+  keyed); where the Linux and macOS shell installer and `muse.pkg` place
+  the launcher (the bash launcher uses its own directory; `~/.local/bin`
+  is observed only); the shape of `tracking.json`; whether the Windows
+  sandbox scratch directory is removed at session end and how large it
+  gets; the Linux location of the enterprise policy files; whether any
+  state is written outside the two roots on macOS (for example a
+  `Library/Logs` path; none is named); argument names of tools other than
+  `bash`, `web_search`, `web_fetch`; a native `subagent_spawn` child's log
+  (none was spawned); `reference.kind` values other than `branch`; a human
+  approval's `decision_source`; whether later frames appear after a resume
+  or permission change; `user_prompt_display`'s field name.

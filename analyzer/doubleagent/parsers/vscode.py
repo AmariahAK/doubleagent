@@ -57,9 +57,10 @@ title=<title>` followed by its message, and a request whose
 which also sent the request) gets `permission decision:
 confirmation=<label>` after its user row.
 
-The Copilot Chat extension is closed source, so `modelId` (the `model`
-column) and `responderUsername` (in the session-start row) are passed
-through as opaque strings; `agent.id` is not used. User rows carry
+The values of `modelId` (the `model` column) and `responderUsername` (in
+the session-start row) have not been checked against the Copilot Chat
+source, so they are passed through as opaque strings; `agent.id` is not
+used. User rows carry
 the request `timestamp`, response rows `responseTimestamp` (falling back to
 the request time). Contiguous markdown and inline references become one
 `assistant` row; each tool invocation becomes a `tool_use` and a

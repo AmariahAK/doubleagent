@@ -8,14 +8,15 @@ It is collected only, with no parser: the server keeps no transcripts.
 
 ## 1. Source and evidence
 
-Source/bundle: [github/copilot.vim](https://github.com/github/copilot.vim), shallow clone at
-`scratchpad/repos/copilot.vim`, HEAD
+Source/bundle: [github/copilot.vim](https://github.com/github/copilot.vim) at
 [a12fd5672110c8aa7e3c8419e28c96943ca179be](https://github.com/github/copilot.vim/commit/a12fd5672110c8aa7e3c8419e28c96943ca179be)
 (2026-01-09). The plugin vendors the closed `@github/copilot-language-server` 1.408.0
 ([`copilot-language-server/package.json`](https://github.com/github/copilot.vim/blob/a12fd5672110c8aa7e3c8419e28c96943ca179be/copilot-language-server/package.json))
 as a minified bundle
 [`copilot-language-server/dist/main.js`](https://github.com/github/copilot.vim/blob/a12fd5672110c8aa7e3c8419e28c96943ca179be/copilot-language-server/dist/main.js)
-(7.2 MB); the token-store code is in that bundle (readable JS, cited by function name).
+(7.2 MB, sha256 `580e594aa8305d73e5af1f6e54124ccfc35f2aed6e5af3cb7b57546049e8b81f`); the
+token-store code is in that bundle (readable JS, cited by function name, and as `@<n>` for a byte
+offset into it). The language server is closed source, so everything here rests on that bundle.
 [`autoload/copilot/client.vim:514-515`](https://github.com/github/copilot.vim/blob/a12fd5672110c8aa7e3c8419e28c96943ca179be/autoload/copilot/client.vim#L514-L515)
 names the bundle.
 
@@ -26,31 +27,13 @@ names the bundle.
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: HEAD of github/copilot.vim is still
+- 2026-10-19: HEAD of github/copilot.vim was still
   [`a12fd56`](https://github.com/github/copilot.vim/commit/a12fd5672110c8aa7e3c8419e28c96943ca179be),
-  vendoring the same language server 1.408.0, so the bundle is the one cited above (`dist/main.js`,
-  sha256 `580e594aa8305d73e5af1f6e54124ccfc35f2aed6e5af3cb7b57546049e8b81f`; offsets below are byte
-  offsets into it). The language server is closed source; everything here rests on that bundle. One
-  line per class:
-  - Permission: none on disk. The terminal, edit and MCP auto-approve rules reach the server as
-    editor configuration (`tools.terminal.autoApprove`, `tools.edit.autoApprove`,
-    `tools.mcp.autoApprove`; `copilot-language-server 1.408.0 dist/main.js`
-    `applyTerminalAutoApproveConfiguration`, `applyEditAutoApproveConfiguration`,
-    `applyMCPAutoApproveConfiguration`) and are not written by it; they live in each editor's own
-    settings.
-  - Model: none on disk from the server.
-  - Past use: none. No quoted `.jsonl` file name and no conversation file occurs in the bundle
-    (grepped for quoted `*.json`, `*.jsonl`, `*.db` and `*.log` names, and for `persistConversation`
-    and `saveConversation`); chat history is the editor's.
-  - Sync, relay and origin: none on disk.
-  - Scratch directories: none. A workspace index lives in a cache directory outside the catalog
-    ([Cache directory](#cache-directory)).
-  - Deletion: the server keeps no session, so there is nothing for a delete to leave behind.
-  - Version drift: none (same commit); the earlier statement that `versions.json` is not written
-    was wrong ([Token store files](#token-store-files)).
-  - Bad lines: not a collector concern.
-
-The "nothing to parse" verdict stands.
+  vendoring the same language server 1.408.0. The review found `versions.json` and `oauth.json`
+  in the token store, correcting the earlier statement that `versions.json` is not written
+  ([Token store files](#token-store-files)), the server's cache directory
+  ([Cache directory](#cache-directory)), and that the server keeps no permission, model, sync or
+  conversation state on disk ([Parsing](#parsing)).
 
 ## Collection
 
@@ -83,7 +66,7 @@ Files written there (same function's caller in
 - `hosts.json`: legacy store keyed by host → `{user, oauth_token}`; on startup entries are copied
   into `apps.json` and `hosts.json` is deleted (`writeFile(join(l,"apps.json"))` then
   `rm(join(l,"hosts.json"),{force:true})`).
-- `versions.json` and `oauth.json` (correction, source review 2026-10-19): the literal
+- `versions.json` and `oauth.json`: the literal
   `versions.json` is not in the bundle, but the store is a `FilePersistenceManager` that writes each
   setting to `<directory>/<setting>.json` (`copilot-language-server 1.408.0 dist/main.js @5030498`
   `static{a(this,"FilePersistenceManager")}`, `@5030696` ``let s=`${this.directory}/${r}.json` ``),
@@ -91,7 +74,7 @@ Files written there (same function's caller in
   (`@6728429` `get(Hn).read("versions",r.name)`), and `oauth`, the OAuth sessions of an
   authentication provider keyed by provider id, `https://github.com/login/oauth` for GitHub
   (`@6928563` `static{this.providerId="https://github.com/login/oauth"}`, `@6928865`
-  `read("oauth",this.id)`). Both match the `*.json` secret glob for this directory.
+  `read("oauth",this.id)`).
 
 #### Cache directory
 
@@ -102,24 +85,29 @@ The server also has a cache root, `$XDG_CACHE_HOME/github-copilot` when that is 
 databases `local-index.db` and `workspace-chunks.db` (`@6181541` `"project-index"`, `@6181570`
 `a(x8e,"getWorkspaceCachePath")`, `@6208330` `"local-index.db"`, `@6182984`
 `"workspace-chunks.db"`). It is a rebuildable code index, not collected; its directory names give a
-workspace's folder name but not its path. When the server builds the index was not determined.
+workspace's folder name but not its path.
 
 #### Other surfaces
 
 The language server also creates `$TMPDIR/github-copilot-<rand>` temp dirs on non-Windows (same
 code), outside home. Logs go to the editor (Vim `:Copilot log`), not to this directory. The same
 store is read by Copilot plugins for Neovim, JetBrains, Xcode and Vim because they embed the same
-language server; the GitHub Copilot CLI does not use it (see
-[`research/copilot-cli.md`](copilot-cli.md)). VS Code's Copilot Chat state lives in
-`User/globalStorage` (covered by the vscode entries) and its token in the VS Code secret store, not
-here.
+language server. VS Code's Copilot Chat state lives in `User/globalStorage` (covered by the vscode
+entries) and its token in the VS Code secret store, not here.
+
+The terminal, edit and MCP (Model Context Protocol, the tool-server interface) auto-approve rules
+reach the server as editor configuration (`tools.terminal.autoApprove`, `tools.edit.autoApprove`,
+`tools.mcp.autoApprove`; `copilot-language-server 1.408.0 dist/main.js`
+`applyTerminalAutoApproveConfiguration`, `applyEditAutoApproveConfiguration`,
+`applyMCPAutoApproveConfiguration`). The server does not write them; they live in each editor's
+own settings.
 
 ### 3. Credentials
 
 `apps.json` and `hosts.json` hold the GitHub OAuth token in plaintext (`oauth_token` field) with the
 GitHub login (`user`). `oauth.json` holds an authentication provider's OAuth sessions ([Token store
-files](#token-store-files)); already flagged by the directory's `*.json` secret glob. No keychain
-use in this path. No config file embeds API keys.
+files](#token-store-files)). All four files, `versions.json` included, match the directory's
+`*.json` secret glob. No keychain use in this path. No config file embeds API keys.
 
 ### 4. Exclusions
 
@@ -139,16 +127,19 @@ Not recorded; the store is per host, not per workspace.
 ## Parsing
 
 `copilot` is `collected` only: there is nothing to parse. The directory is an OAuth token store
-(`apps.json`, `hosts.json`, `oauth.json`) with the `versions.json` setting beside it, the
-language server writes no conversation, history or log file there, and chat history is the
-editor's (2026-10-19 source review). Copilot Chat in VS Code keeps its state in
-`User/globalStorage` and is parsed as `vscode` ([Other surfaces](#other-surfaces)).
+with a version setting beside it ([Token store files](#token-store-files)), and the language
+server writes no conversation, history or log file there: no quoted `.jsonl` file name and no
+conversation file occurs in the bundle (grepped for quoted `*.json`, `*.jsonl`, `*.db` and `*.log`
+names, and for `persistConversation` and `saveConversation`). Chat history is the editor's; Copilot
+Chat in VS Code is parsed as `vscode` ([Other surfaces](#other-surfaces)). The server records no
+model, no permission decision (the auto-approve rules are editor settings) and no sync state, and
+keeps no session, so a delete has nothing to leave behind.
 
 ## 14. Confidence
 
-High: path resolution and both file names with their fields (readable code in the shipped bundle,
-version pinned). Medium: that JetBrains/Xcode plugins use the same store (same language server, but
-their bundles were not inspected). Not determined: whether a terms-acceptance file is written by
-other editor hosts. Before the 2026-10-19 review this also listed `versions.json`, which the
-review found the server writes through its `FilePersistenceManager`
-([Token store files](#token-store-files)).
+- High: path resolution and the four token-store file names with their fields (readable code in
+  the shipped bundle, version pinned).
+- Medium: that JetBrains/Xcode plugins use the same store (same language server, but their bundles
+  were not inspected).
+- Not determined: whether a terms-acceptance file is written by other editor hosts; when the
+  server builds its workspace index ([Cache directory](#cache-directory)).

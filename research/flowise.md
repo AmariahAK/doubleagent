@@ -30,32 +30,10 @@ custom scripts
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: HEAD is still
+- 2026-10-19: HEAD is still
   [`9291856`](https://github.com/FlowiseAI/Flowise/commit/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb),
-  the commit this document already cited, so the review read the same
-  tree for the requirement classes the first pass did not look for. From
-  source only; the detail is in [Database detail](#database-detail).
-  - Permission state: found. Agentflow v2 (the second-generation agent
-    canvas) pauses for a human at a Human Input node and at any Agent-node
-    tool marked "require human input"; the decision (`proceed` or
-    `reject`, with optional feedback) is in `execution.executionData`, and
-    the pending request in `chat_message.action`.
-  - Model: found: each Agent-node step in `execution.executionData`
-    carries the node's inputs, `agentModel` (the provider component) and
-    `agentModelConfig` (with `model` or `modelName`).
-  - Past use beyond the primary store: found: `execution`,
-    `chat_message_feedback`, `upsert_history`, `schedule_record` and
-    `schedule_trigger_log`, all in `database.sqlite`.
-  - Sync: found: a chatflow's `analytic` column (and tracing environment
-    variables) sends every run to third-party tracing services such as
-    LangSmith and Langfuse; no per-run marker is kept locally.
-  - Scratch directories: per-chat upload directories under
-    `.flowise/storage`, collected with the home line; no working directory.
-  - Deletion: found: clearing a chat deletes its messages, feedback and
-    uploads but not its `execution` rows; deleting messages by id deletes
-    their executions too.
-  - Version drift: none (same commit).
-  - Bad lines: no line-oriented file under the home; logs are outside it.
+  re-read from source for permission, model, past-use, sync and deletion records. It added
+  [Database detail](#database-detail) and [Scratch directories](#scratch-directories).
 
 ## Collection
 
@@ -100,8 +78,8 @@ the documented deployment uses a bind mount.
 
 #### Database detail
 
-Detail from the 2026-10-19 review, for a future parser. All
-of it is in `database.sqlite`:
+The records inside `database.sqlite`, at
+[`9291856`](https://github.com/FlowiseAI/Flowise/commit/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb):
 
 - **Per-call decisions.** A Human Input node (`humanInputAgentflow`)
   stops the run and stores the request as `chat_message.action`, JSON
@@ -146,7 +124,9 @@ of it is in `database.sqlite`:
   holds every Agentflow v2 run step by step
   ([Execution.ts:7-46](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/database/entities/Execution.ts#L7-L46),
   [server Interface.ts:23](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/Interface.ts#L23)).
-  `chat_message.executionId` joins it to the chat.
+  `chat_message.executionId` joins it to the chat. Beside `chat_message`, the primary store,
+  `execution`, `chat_message_feedback`, `upsert_history` and the two schedule tables below
+  record past use.
 - **Schedules.** `schedule_record` (`triggerType` `AGENTFLOW`,
   `targetId`, `cronExpression`, `timezone`, `enabled`) and
   `schedule_trigger_log` (`scheduleRecordId`, `executionId`, `status` one
@@ -194,16 +174,10 @@ Nowhere; Flowise has no project concept.
 
 Flowise is `backlog`: its parser is
 [issue 68](https://github.com/seanthegeek/doubleagent/issues/68), and nothing it writes is parsed
-yet. A parser would read `.flowise/database.sqlite`: `chat_message` (`content`, `usedTools`,
-`agentReasoning`, and `action` for a pending human-input request), joined on
-`chat_message.executionId` to `execution.executionData`, which holds every Agentflow v2 run step
-by step with the `proceed` or `reject` decisions and each Agent node's `agentModel` and
-`agentModelConfig`; and, beyond the primary store, `chat_message_feedback`, `upsert_history`,
-`schedule_record` and `schedule_trigger_log`, with `chat_flow.analytic` naming the tracing
-services a chatflow reports to ([Database detail](#database-detail)). The `credential` rows are
-encrypted with `encryption.key` ([section 3](#3-credentials)).
+yet. Everything a parser would read is in `.flowise/database.sqlite`
+([Database detail](#database-detail)); there is no line-oriented file under the home, and the
+logs are outside it ([section 2](#2-per-user-storage)).
 
 ## 14. Confidence
 
-High for every path and table (source). Nothing material was left
-undetermined.
+- High for every path and table (source). Nothing material was left undetermined.

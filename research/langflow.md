@@ -31,45 +31,12 @@ and MCP stdio servers are spawned on the host
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: HEAD
+- 2026-10-19: HEAD
   [`972d56c`](https://github.com/langflow-ai/langflow/commit/972d56c47d3830d17060ee85cfaad152df823041)
-  reviewed against the previously cited
+  against the previously cited
   [`504c02f`](https://github.com/langflow-ai/langflow/commit/504c02fc47e76087b82b0e7cbe4186e9cdd916d4),
-  from source only; the open-source schema is the one the server's
-  `langflow.db` uses, and that Langflow Desktop's `database.db` uses it
-  too is an inference, since Desktop is closed source. Detail in
-  [Database detail](#database-detail).
-  - Permission state: none recorded per call. The Langflow Assistant's
-    canvas edits are proposals the user approves in a UI card, and the
-    approval is not stored
-    ([router.py:435-438](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/agentic/api/router.py#L435-L438));
-    standing governance is in `policy_bundle_revision` and
-    `model_provider_policy` (approved providers, blocked components and
-    models), and `audit_events` logs actions on resources.
-  - Model: found: `span` rows of the native tracer, on by default, carry
-    the model of each LLM call.
-  - Past use beyond the primary store: found: `trace` and `span`,
-    `transaction` (now with `session_id`), `vertex_build`, `flow_version`
-    and `audit_events` all outlive a session delete, which removes only
-    `message` rows.
-  - Sync: found for flows, not sessions: `deployment` rows record a flow
-    pushed to an external provider account under a remote `resource_key`;
-    third-party tracers (LangSmith, Langfuse, LangWatch and others) send
-    runs out when their environment variables are set, with no local
-    marker.
-  - Scratch directories: found ([Scratch directories](#scratch-directories)):
-    `.langflow/fs_tool/fs_sandbox`, the
-    Assistant's file sandbox, already collected by `langflow|.langflow`.
-  - Deletion: found: a session delete removes its `message` rows; a flow
-    delete removes messages, transactions, vertex builds, versions and
-    traces.
-  - Version drift: paths unchanged; `paths.py` lines moved (the config directory validator is now at
-    [paths.py:67-76](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/lfx/src/lfx/services/settings/groups/paths.py#L67-L76)),
-    `AUTO_LOGIN` now defaults to `False` in release packages, and the tables `audit_events`,
-    `trigger` (with `trigger_event`) and `data_subject_request` are new since
-    [`504c02f`](https://github.com/langflow-ai/langflow/commit/504c02fc47e76087b82b0e7cbe4186e9cdd916d4).
-  - Bad lines: no line-oriented file is collected apart from logs; every
-    store is SQLite.
+  from source only. The paths were unchanged; it added
+  [Database detail](#database-detail) and [Scratch directories](#scratch-directories).
 
 ## Collection
 
@@ -77,7 +44,11 @@ and MCP stdio servers are spawned on the host
 
 The config directory is `LANGFLOW_CONFIG_DIR`, otherwise
 `platformdirs.user_cache_dir("langflow", "langflow")`
-([paths.py:55-62](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/services/settings/groups/paths.py#L55-L62)):
+([paths.py:55-62](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/src/lfx/src/lfx/services/settings/groups/paths.py#L55-L62);
+the same at
+[`972d56c`](https://github.com/langflow-ai/langflow/commit/972d56c47d3830d17060ee85cfaad152df823041),
+where the validator is at
+[paths.py:67-76](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/lfx/src/lfx/services/settings/groups/paths.py#L67-L76)):
 
 - Linux: `~/.cache/langflow`, or under `XDG_CACHE_HOME`
   ([unix.py:58-60](https://github.com/tox-dev/platformdirs/blob/960ff632eb575deb6f0d5bf49519d5a2ee2098b6/src/platformdirs/unix.py#L58-L60),
@@ -143,10 +114,13 @@ unmatched. The image home is `/app/data`
 
 #### Database detail
 
-Detail from the 2026-10-19 review, at
-[`972d56c`](https://github.com/langflow-ai/langflow/commit/972d56c47d3830d17060ee85cfaad152df823041),
-for a future parser over Desktop's `database.db` (or a
-server `langflow.db` collected by hand):
+The tables of Desktop's `database.db` and the server's `langflow.db`, at
+[`972d56c`](https://github.com/langflow-ai/langflow/commit/972d56c47d3830d17060ee85cfaad152df823041).
+The tables `audit_events`, `trigger` (with `trigger_event`) and `data_subject_request` are new
+since
+[`504c02f`](https://github.com/langflow-ai/langflow/commit/504c02fc47e76087b82b0e7cbe4186e9cdd916d4),
+and `AUTO_LOGIN` (signing in without a password) now defaults to `False` in release packages.
+`message` holds the chat; the other tables follow.
 
 - **Model.** The native tracer is on unless `LANGFLOW_NATIVE_TRACING` is
   `false`
@@ -167,20 +141,25 @@ server `langflow.db` collected by hand):
   ([transactions/model.py:122-123](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/transactions/model.py#L122-L123)),
   so a component run joins its chat session; `vertex_build` and
   `flow_version` (saved versions of a flow) are per flow; `audit_events`
-  (new) records `action`, `operation`, `event_type`, `result`, the actor
+  records `action`, `operation`, `event_type`, `result`, the actor
   and the resource with a `timestamp` and `details` JSON
   ([audit_event/model.py:68-120](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/audit_event/model.py#L68-L120));
-  `trigger` and `trigger_event` (new) hold scheduled and event-driven flow
+  `trigger` and `trigger_event` hold scheduled and event-driven flow
   runs
   ([trigger/model.py:54-57](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/trigger/model.py#L54-L57),
   [142-145](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/trigger/model.py#L142-L145)).
-- **Standing policy.** `policy_bundle_revision` keeps every revision of
+  All of these outlive a session delete (below).
+- **Permissions and standing policy.** Nothing is recorded per call: the Langflow Assistant's
+  canvas edits are proposals the user approves in a UI card, and the approval is not stored
+  ([router.py:435-438](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/agentic/api/router.py#L435-L438)).
+  `policy_bundle_revision` keeps every revision of
   the deployment policy (`approved_provider_ids`,
   `blocked_component_keys`, `blocked_model_keys`,
   `approved_integration_provider_ids` and others) with `created_by`
   ([policy_bundle/model.py:20-60](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/policy_bundle/model.py#L20-L60)),
   beside `model_provider_policy`
-  ([model_provider_policy/model.py:8-11](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/model_provider_policy/model.py#L8-L11)).
+  ([model_provider_policy/model.py:8-11](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/services/database/models/model_provider_policy/model.py#L8-L11)),
+  and `audit_events` logs actions on resources (above).
 - **Flows pushed out.** `deployment` rows name a flow deployed to an
   external provider account (`deployment_provider_account`) under the
   provider's `resource_key`, with the display name synced from the
@@ -228,17 +207,16 @@ Nowhere; Langflow has no project concept.
 
 Langflow is `backlog`: its parser is
 [issue 141](https://github.com/seanthegeek/doubleagent/issues/141), and nothing it writes is
-parsed yet. A parser would read Langflow Desktop's `database.db` (or a server `langflow.db`
-collected by hand, since the server's database is not under the home and is not collected,
-[OSS database](#oss-database)): `message` rows for the chat, `transaction` (which joins a
-component run to its chat session), `vertex_build` and `flow_version`, the native tracer's
-`trace` and `span` rows for the model of each LLM call, `audit_events`, `trigger` and
-`trigger_event`, `policy_bundle_revision` and `model_provider_policy` for standing policy, and
-`deployment` rows for flows pushed out ([Database detail](#database-detail)). That Desktop's
-`database.db` uses the open-source schema is an inference, since Desktop is closed source.
+parsed yet. It would read Langflow Desktop's `database.db`, or a server `langflow.db` collected by
+hand, since the server's database is not under the home ([OSS database](#oss-database)); the
+tables are in [Database detail](#database-detail). Every store is SQLite, and apart from the logs
+nothing collected is line-oriented.
 
 ## 14. Confidence
 
-High for the OSS paths (source). Medium for Desktop, which rests on docs
-only. Not determined: where Desktop keeps its `secret_key`, and the Desktop
-Linux layout, which the docs do not give.
+- High for the OSS paths and the open-source schema (source).
+- Medium for the Desktop paths, which rest on the documentation only.
+- Medium, an inference: that Desktop's `database.db` uses the open-source schema
+  ([Database detail](#database-detail)), since Desktop is closed source.
+- Not determined: where Desktop keeps its `secret_key`, and the Desktop Linux layout, which the
+  docs do not give.

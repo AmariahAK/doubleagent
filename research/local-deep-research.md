@@ -25,39 +25,12 @@ and that checkout is newer.
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: HEAD
+- 2026-10-19: HEAD
   [`3c9eea9`](https://github.com/LearningCircuit/local-deep-research/commit/3c9eea9ac132a0077ca5918140e94f4d56868c6a)
-  reviewed against the previously cited
+  against the previously cited
   [`3b96543`](https://github.com/LearningCircuit/local-deep-research/commit/3b965431351bb17c523fa38fdcfced4a3f891d49),
-  from source only. Every finding below except the plaintext files is inside the encrypted database;
-  detail in [Database detail](#database-detail).
-  - Permission state: none on disk. LDR runs no host tools that ask for approval; operator approvals
-    of private search-engine origins come from environment variables
-    ([env_definitions/security.py:104](https://github.com/LearningCircuit/local-deep-research/blob/3c9eea9ac132a0077ca5918140e94f4d56868c6a/src/local_deep_research/settings/env_definitions/security.py#L104)),
-    not a file. Not found as a stored decision at
-    [`3c9eea9`](https://github.com/LearningCircuit/local-deep-research/commit/3c9eea9ac132a0077ca5918140e94f4d56868c6a)
-    (grepped for `approv` and `permission` in `database/`: no hit in `database/models`, and the
-    other hits are file-mode hardening).
-  - Model: found, encrypted: `research_history.research_meta.submission` holds `model_provider` and
-    `model` per research, and `token_usage` and `model_usage` hold `model_provider` and `model_name`
-    per call.
-  - Past use beyond the primary store: found: the encrypted backup taken at each login, the opt-in
-    plaintext `research_outputs/` copies, and the opt-in plaintext logs.
-  - Sync, relay and origin: relay found: notifications through Apprise (a library that posts to
-    Discord, Telegram, email and other services) carry the research query and a summary to the
-    configured services.
-  - Scratch directories: none ([Scratch directories](#scratch-directories));
-    `Documents/LocalDeepResearch/Library` is the download library, already collected and excluded by
-    name.
-  - Deletion: found: deleting a research removes its rows and dependents in one transaction and then
-    its report file; the login backup keeps the earlier database.
-  - Version drift: paths unchanged; `paths.py` was reorganised (the data directory resolution is now
-    at
-    [paths.py:16-63](https://github.com/LearningCircuit/local-deep-research/blob/3c9eea9ac132a0077ca5918140e94f4d56868c6a/src/local_deep_research/config/paths.py#L16-L63)),
-    `research_outputs/` is now created with mode 0700, and research deletion moved to the new
-    `database/research_cascade.py`.
-  - Bad lines: the opt-in log files are line-oriented and zip-compressed on rotation; nothing else
-    is.
+  from source only. The paths were unchanged; it added the model, backup, deletion and
+  notification records inside the encrypted database ([Database detail](#database-detail)).
 
 ## Collection
 
@@ -65,7 +38,9 @@ and that checkout is newer.
 
 The data directory is `$LDR_DATA_DIR` if set (absolute path required), otherwise
 `platformdirs.user_data_dir("local-deep-research")`
-([config/paths.py:28-61](https://github.com/LearningCircuit/local-deep-research/blob/3b965431351bb17c523fa38fdcfced4a3f891d49/src/local_deep_research/config/paths.py#L28-L61)):
+([config/paths.py:28-61](https://github.com/LearningCircuit/local-deep-research/blob/3b965431351bb17c523fa38fdcfced4a3f891d49/src/local_deep_research/config/paths.py#L28-L61);
+the same paths at [`3c9eea9`](https://github.com/LearningCircuit/local-deep-research/commit/3c9eea9ac132a0077ca5918140e94f4d56868c6a), where `paths.py` was reorganised and the resolution is at
+[paths.py:16-63](https://github.com/LearningCircuit/local-deep-research/blob/3c9eea9ac132a0077ca5918140e94f4d56868c6a/src/local_deep_research/config/paths.py#L16-L63)):
 
 - Linux: `$XDG_DATA_HOME/local-deep-research`, else `~/.local/share/local-deep-research`
   ([platformdirs unix.py:40-42](https://github.com/tox-dev/platformdirs/blob/960ff632eb575deb6f0d5bf49519d5a2ee2098b6/src/platformdirs/unix.py#L40-L42)).
@@ -105,7 +80,9 @@ Contents, all created on demand
 - `encrypted_databases/backups/<user hash>/ldr_backup_*.db`: encrypted backups
   ([paths.py:211-242](https://github.com/LearningCircuit/local-deep-research/blob/3b965431351bb17c523fa38fdcfced4a3f891d49/src/local_deep_research/config/paths.py#L211-L242),
   [backup_service.py:249](https://github.com/LearningCircuit/local-deep-research/blob/3b965431351bb17c523fa38fdcfced4a3f891d49/src/local_deep_research/database/backup/backup_service.py#L249)).
-- `research_outputs/<research_id>.md` and `<research_id>_metadata.json`: plaintext report copies,
+- `research_outputs/<research_id>.md` and `<research_id>_metadata.json`: plaintext report copies
+  in a directory created with mode 0700 since
+  [`3c9eea9`](https://github.com/LearningCircuit/local-deep-research/commit/3c9eea9ac132a0077ca5918140e94f4d56868c6a),
   written only when `report.enable_file_backup` is on (default `false`)
   ([storage/file.py:32-84](https://github.com/LearningCircuit/local-deep-research/blob/3b965431351bb17c523fa38fdcfced4a3f891d49/src/local_deep_research/storage/file.py#L32-L84),
   [storage/factory.py:36-45](https://github.com/LearningCircuit/local-deep-research/blob/3b965431351bb17c523fa38fdcfced4a3f891d49/src/local_deep_research/storage/factory.py#L36-L45),
@@ -131,7 +108,9 @@ Contents, all created on demand
 #### Scratch directories
 
 None. LDR creates no working directory for the model; `research_outputs/` and the download library
-are its own output stores, collected under the data directory and `Documents/LocalDeepResearch`.
+([Document library](#document-library)) are its own output stores. `research_outputs/` is
+collected with the data directory; the library is under the collected
+`Documents/LocalDeepResearch` but excluded ([section 4](#4-exclusions)).
 
 #### Document library
 
@@ -156,9 +135,15 @@ which is outside any home directory. Since collector 1.5.0 the `DOCKER_VOLUMES` 
 
 #### Database detail
 
-Detail from the 2026-10-19 review, at
+The records inside the encrypted user database, at
 [`3c9eea9`](https://github.com/LearningCircuit/local-deep-research/commit/3c9eea9ac132a0077ca5918140e94f4d56868c6a),
-for a future parser that is given the password:
+readable only with the user's password:
+
+- **Permissions.** None on disk. LDR runs no host tools that ask for approval; operator approvals
+  of private search-engine origins come from environment variables, not a file
+  ([env_definitions/security.py:104](https://github.com/LearningCircuit/local-deep-research/blob/3c9eea9ac132a0077ca5918140e94f4d56868c6a/src/local_deep_research/settings/env_definitions/security.py#L104)).
+  No stored decision exists (grepped for `approv` and `permission` in `database/`: no hit in
+  `database/models`, and the other hits are file-mode hardening).
 
 - **Model.** `research_history.research_meta` keeps `submission` with `model_provider` and `model`
   for each research
@@ -182,15 +167,18 @@ for a future parser that is given the password:
   [865](https://github.com/LearningCircuit/local-deep-research/blob/3c9eea9ac132a0077ca5918140e94f4d56868c6a/src/local_deep_research/database/backup/backup_service.py#L865)).
   The backup is the whole database as it was at the last login, so it still holds a research or chat
   deleted since, under the same password.
-- **Deletion.** Deleting a research deletes it and every table that references it in one transaction
+- **Deletion.** Deleting a research deletes it and every table that references it in one
+  transaction, in `database/research_cascade.py`, a module new since
+  [`3b96543`](https://github.com/LearningCircuit/local-deep-research/commit/3b965431351bb17c523fa38fdcfced4a3f891d49)
   ([research_cascade.py:499-530](https://github.com/LearningCircuit/local-deep-research/blob/3c9eea9ac132a0077ca5918140e94f4d56868c6a/src/local_deep_research/database/research_cascade.py#L499-L530)),
   then unlinks the report file named by `report_path` when it lies inside the reports root
   ([web/routers/research.py:1919-1931](https://github.com/LearningCircuit/local-deep-research/blob/3c9eea9ac132a0077ca5918140e94f4d56868c6a/src/local_deep_research/web/routers/research.py#L1919-L1931),
   [2090-2092](https://github.com/LearningCircuit/local-deep-research/blob/3c9eea9ac132a0077ca5918140e94f4d56868c6a/src/local_deep_research/web/routers/research.py#L2090-L2092)).
   With file backup on, the storage layer also removes `<id>.md` and `<id>_metadata.json`
   ([storage/file.py:209-224](https://github.com/LearningCircuit/local-deep-research/blob/3c9eea9ac132a0077ca5918140e94f4d56868c6a/src/local_deep_research/storage/file.py#L209-L224)).
-- **Notifications.** `notifications.enabled`, `notifications.service_url` (one or more Apprise URLs,
-  which embed the service's credentials) and per-event switches such as
+- **Notifications.** `notifications.enabled`, `notifications.service_url` (one or more URLs for
+  Apprise, a library that posts to Discord, Telegram, email and other services; the URLs embed the
+  service's credentials) and per-event switches such as
   `notifications.on_research_completed` are settings in the encrypted database
   ([default_settings.json:5072-5184](https://github.com/LearningCircuit/local-deep-research/blob/3c9eea9ac132a0077ca5918140e94f4d56868c6a/src/local_deep_research/defaults/default_settings.json#L5072-L5184)).
   The completion message carries the query, a summary and a link to the result
@@ -224,9 +212,10 @@ for a future parser that is given the password:
 
 `cache`, `models`, `journal_data` and `library` under the data directory, and
 `Documents/LocalDeepResearch/Library`. Embedding models, vector indexes, journal datasets and
-downloaded PDFs are large and are not agent state. They are still listed in the manifest, and that
-list of file names records what was researched. Keep `encrypted_databases/backups`: the files are
-encrypted copies, but they show when the database existed.
+downloaded PDFs are large and are not agent state. Each excluded directory is one manifest row
+with its total size, not a list of its files
+([`collectors/docs/output.md`](../collectors/docs/output.md)). Keep `encrypted_databases/backups`:
+the files are encrypted copies, but they show when the database existed.
 
 ### 5. Project-local files
 
@@ -241,23 +230,19 @@ encrypted database.
 
 LDR is `backlog`: its parser is
 [issue 56](https://github.com/seanthegeek/doubleagent/issues/56), and nothing it writes is parsed
-yet. The history and chat are in the per-user SQLCipher database
-`encrypted_databases/ldr_user_<hash>.db` (`research_history`, `chat_sessions`, `chat_messages`,
-with `token_usage` and `model_usage` for the model), whose key derives from the login password
-and the `.salt` file ([section 3](#3-credentials)), so a parser needs that password, or a
-database kept plain with `bootstrap.allow_unencrypted`, or the unencrypted pre-1.0 `ldr.db`.
-Beyond the primary store it would read the login backups under `encrypted_databases/backups/`,
-which still hold a research deleted since the last login, and the opt-in plaintext
-`research_outputs/` report copies and `logs/` ([Database detail](#database-detail)).
-`ldr_auth.db` is plain SQLite and lists the LDR accounts on the host.
+yet. The history and chat are in the per-user SQLCipher database, whose key derives from the login
+password ([section 3](#3-credentials)), so a parser needs that password, a database kept plain
+with `bootstrap.allow_unencrypted`, or the unencrypted pre-1.0 `ldr.db`. The tables, the login
+backups and the plaintext copies are in [section 2](#2-per-user-storage) and
+[Database detail](#database-detail). The opt-in log files are the only line-oriented files, and
+they are zip-compressed on rotation.
 
 ## 14. Confidence
 
-High: data directory resolution on all three OSes, every file name, encryption scheme and key
-storage (source). High: the Windows doubled `local-deep-research` segment, from platformdirs
-`_append_parts` (the pinned 4.5 line was not checked separately). Medium: the pre-1.0 `ldr.db`
-location (docs only, no older tag read). Not determined: contents of `config/config.toml`; whether
-`Documents` is redirected (OneDrive) on Windows, which would move the library. Docker volume
-paths, which no home-relative entry covers, were listed here as not determined before the
-`DOCKER_VOLUMES` table; since collector 1.5.0 the `*ldr_data` volume is collected
-([Docker](#docker)).
+- High: data directory resolution on all three OSes, every file name, the encryption scheme and
+  the key storage (source).
+- High: the Windows doubled `local-deep-research` segment, from platformdirs `_append_parts` (the
+  pinned 4.5 line was not checked separately).
+- Medium: the pre-1.0 `ldr.db` location (docs only, no older tag read).
+- Not determined: the contents of `config/config.toml`, and whether `Documents` is redirected
+  (OneDrive) on Windows, which would move the library.

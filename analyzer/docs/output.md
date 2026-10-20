@@ -1291,7 +1291,7 @@ conversation id as `session_id`, at the row's `source_updated_at`:
 `account conversation: <title> origin=<conversation_origin>
 created=<UTC> updated=<UTC> host=<host_id> (from
 .codex/sqlite/codex-dev.db local_thread_catalog)`, where `host_id` is
-`chatgpt:<workspace uuid>:user-<account id>` and `-` stands for an
+`chatgpt:<workspace uuid>:<user id>` and `-` stands for an
 absent value; `session origin: remote chatgpt.com conversation <id>
 (listed at sign-in; its transcript is server-side)`; and `session
 synced: chatgpt.com holds conversation <id>, no local transcript`. Such

@@ -21,66 +21,27 @@ agrees with it. Read only: nothing was installed or run.
 
 ### Observed
 
-- No real install. Nothing was installed or run for the source review of 2026-10-19 either; no
-  real install of Hermes has been observed.
-- Layouts the parser handles that no install has shown: the
-  model-switch marker rows, a malformed `tool_calls` value and a Hermes
-  home in a Docker or Podman named volume are not observed on any real
-  install, source-derived (NousResearch/hermes-agent at
+- No real install. The model-switch marker rows, a malformed `tool_calls` value and a Hermes home
+  in a Docker or Podman named volume are not observed on any real install, source-derived
+  (NousResearch/hermes-agent at
   [`86fa9e6`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872)
   for the markers,
   [`8b66a51`](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683)
-  for the volume mount point). The `pastes/pending.json` rows are fixture only
-  ([Sync, relay and origin](#sync-relay-and-origin-rows)).
+  for the volume mount point); the `pastes/pending.json` rows are fixture only
+  ([Model-switch markers](#model-switch-markers), [Bad-line rows](#bad-line-rows),
+  [Volume homes](#volume-homes), [Debug-share paste list](#debug-share-paste-list)).
 
 ### Source reviews
 
-- 2026-10-19: at
-  [`86fa9e6ca1de7ee71132d2be0103f3e37d1fa872`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872)
-  (HEAD of 2026-10-19), against the
+- 2026-10-19: HEAD
+  [`86fa9e6ca1de7ee71132d2be0103f3e37d1fa872`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872),
+  against the
   [`8b66a51036c1e20920a17cdd049fdf55c968d683`](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683)
-  (2026-10-04) cited above; every path the catalog names is unchanged at HEAD. Per requirement
-  class (the parser work each class leads to is under [section 13](#13-parser-plan)):
-  - Permission state: found, not parsed. Per-call outcomes are written
-    into the `terminal` tool result (`approval` note, `status`
-    `blocked` or `pending_approval`), and standing grants live in
-    `config.yaml` (`command_allowlist`, `approvals.*`), in
-    `sessions.model_config.yolo_mode` and in the gateway pairing files, whose shape is known
-    ([section 3](#3-credentials),
-    [Permission outcomes and settings](#permission-outcomes-and-settings),
-    [Permission state](#permission-rows)).
-  - Model: covered. `session_model_usage` and `sessions.model` are
-    read, and since issue 180 the durable model-switch marker rows
-    (`display_kind = 'model_switch'`) are `model:` `system` rows rather
-    than user prompts ([Model-switch markers](#model-switch-markers),
-    [Model](#model-rows)).
-  - Past use beyond `state.db`: found, not read. The prompt history
-    `.hermes_history`, the cron run archive `cron/output/` (both under the home and collected,
-    [section 2](#2-per-user-storage)),
-    `response_store.db`, trajectory files, the Bot Mode room log and
-    sessions imported from Claude Code and Codex CLI
-    ([section 10](#10-other-stores)).
-  - Sync, relay and origin: found. Gateway sessions are relays through a
-    messaging platform and the parser writes no `session relayed:` row;
-    `hermes sessions export --format trace --upload` uploads a session to
-    a Hugging Face dataset and leaves no local mark; the desktop app lists
-    sessions of remote, SSH and Hermes Cloud backends
-    ([Sync, relay and origin](#sync-relay-and-origin-rows)).
-  - Scratch directories: found. `cache/scratch/` (collected) and `sandboxes/` (excluded) under the
-    Hermes home, and git worktrees under `<repo>/.worktrees/` (`.worktrees/<name>` inside a
-    project), which `sessions.cwd` records ([Scratch directories](#scratch-directories),
-    [section 6](#6-where-the-project-path-is-recorded),
-    [Scratch directory rows](#scratch-directory-rows)).
-  - Deletion: found, changed since the cited commit. A delete now leaves
-    a tombstone per session id in `state.db` `state_meta`, and automatic
-    pruning is now off by default ([What survives a delete](#what-survives-a-delete)).
-  - Version drift: schema version 31 to 32, three new `sessions`
-    columns and four new tables, a new `local-<sha256>` session id form;
-    every path, table and column the parser reads is unchanged
-    ([section 11](#11-format-versions)).
-  - Bad lines: covered. The divert reader goes through `iter_jsonl`, and
-    since issue 182 a `tool_calls` value that does not decode is a
-    `parser:` row carrying the value ([Bad lines](#bad-line-rows)).
+  of 2026-10-04. Added the permission outcomes and standing settings, the model-switch markers,
+  the sources of past use beyond `state.db` ([section 10](#10-other-stores)), the trace upload
+  and the desktop backends, the scratch directories and worktrees, the deletion tombstones and
+  the prune default, and the schema 32 drift ([section 11](#11-format-versions)); every catalog
+  path is unchanged.
 
 ## Collection
 
@@ -93,7 +54,9 @@ Windows, each with an optional `HERMES_DATA_DIR_SUFFIX` appended
 ([`hermes_constants.py:51-58`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_constants.py#L51-L58)).
 The Windows desktop app keeps using a legacy `~/.hermes` when `%LOCALAPPDATA%\hermes` does not exist
 ([`apps/desktop/electron/data-paths.mjs:26-33`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/electron/data-paths.mjs#L26-L33),[`56-65`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/electron/data-paths.mjs#L56-L65)),
-so both forms occur on Windows. No XDG paths.
+so both forms occur on Windows. No XDG paths. Every path the catalog names is unchanged at the
+2026-10-19 HEAD
+([`86fa9e6`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872)).
 
 #### Scratch directories
 
@@ -105,15 +68,28 @@ it is under the catalog's `.hermes` entry and collected. `sandboxes/` (or `TERMI
 holds the container backends' persistent bind mounts, `sandboxes/docker/<task>` for Docker
 ([`tools/environments/base.py:189-191`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/environments/base.py#L189-L191),
 [`tools/environments/docker.py:856`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/environments/docker.py#L856));
-it is excluded ([section 4](#4-exclusions)). The worktrees the agent creates are inside the user's
-repository, not the home ([section 6](#6-where-the-project-path-is-recorded)). The analyzer's
-catalog rule classes any path under the Hermes home as a scratch directory.
+it is excluded ([section 4](#4-exclusions)).
+
+The git worktrees the agent creates are inside the user's repository, not the home:
+`<repo>/.worktrees/<name>` on branch `hermes/<name>` for `hermes -w`, `.worktrees/subagent-<id>`
+on `hermes-subagent/<name>` for delegated subagents, and `.worktrees/<child id>` for kanban
+children
+([`hermes_cli/worktree_ops.py:435-441`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L435-L441),
+[`tools/subagent_worktree.py:81-96`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/subagent_worktree.py#L81-L96),
+[`hermes_cli/kanban_db_graph.py:181`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/kanban_db_graph.py#L181)).
+A `-w` session runs with its working directory in the worktree
+([`hermes_cli/cli_commands_mixin.py:1189-1197`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/cli_commands_mixin.py#L1189-L1197)),
+so `sessions.cwd` holds the worktree path
+([`hermes_cli/worktree_ops.py:822-825`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L822-L825)),
+and a retained TUI worktree is locked with the reason `hermes session=<id> db=<path>`
+([`hermes_cli/worktree_ops.py:805-815`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L805-L815)).
+The project catalog collects the repository's `.hermes/` files, not `.worktrees/`.
 
 #### Profiles
 
 Named profiles are complete homes under `<root>/profiles/<name>/`
 ([`hermes_cli/profiles.py:287-297`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/profiles.py#L287-L297));
-every path below can also appear one level down under `profiles/*/`.
+every path in this section can also appear one level down under `profiles/*/`.
 
 #### Docker
 
@@ -129,14 +105,10 @@ Relative to the home:
   desktop
   ([`hermes_state.py:176`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state.py#L176)).
 - `sessions/`: `sessions.json` gateway routing index
-  ([`hermes_state_schema.py:1311`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_schema.py#L1311));
-  `<id>.jsonl` fallback transcripts written when `state.db` was replaced under a live process
-  ([`hermes_state.py:429-444`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state.py#L429-L444));
-  legacy `<id>.json` and `session_<id>.json` snapshots, and `request_dump_<id>_*.json` API error
-  dumps
-  ([`hermes_state_sessions.py:1573-1585`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_sessions.py#L1573-L1585),
-  [`agent/agent_runtime_helpers.py:1628`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/agent/agent_runtime_helpers.py#L1628));
-  `saved/hermes_conversation_<ts>.{json,md,html}` from `/save`
+  ([`hermes_state_schema.py:1311`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_schema.py#L1311)),
+  divert transcripts `<id>.jsonl`, legacy snapshots and API error dumps
+  ([section 7](#7-transcript-stores)), and `saved/hermes_conversation_<ts>.{json,md,html}` from
+  `/save`
   ([`hermes_cli/cli_session_mixin.py:677-689`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/cli_session_mixin.py#L677-L689)).
 - `session-exports/`: default output of `hermes sessions export`
   ([`hermes_cli/sessions_cmd.py:74-76`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/sessions_cmd.py#L74-L76)).
@@ -150,39 +122,33 @@ Relative to the home:
 - Other SQLite stores the backup code treats as user data: `cron/jobs.json`, `cron/executions.db`,
   `projects.db`, `response_store.db` (API-server conversation history and tool payloads),
   `memory_store.db`, `verification_evidence.db`, `kanban.db`, `kanban/boards`
-  ([`hermes_cli/backup.py:1061-1072`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1061-L1072));
-  cron output under `cron/output`
-  ([`cron/jobs.py:110`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/cron/jobs.py#L110)).
+  ([`hermes_cli/backup.py:1061-1072`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1061-L1072)).
 - `checkpoints/`: one shared shadow git store; `store/projects/<hash16>.json` records `workdir`
   ([`tools/checkpoint_manager.py:13-25`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/tools/checkpoint_manager.py#L13-L25),[`74`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/tools/checkpoint_manager.py#L74)).
-- `state-snapshots/<id>/` (up to 20 copies of `state.db`, `.env`, `auth.json` and the other stores)
-  and `backups/` (pre-update and pre-migration zips, 5 each)
+- `state-snapshots/<id>/` (quick snapshots of `state.db`, `.env`, `auth.json` and the other
+  stores) and `backups/` (zip backups of the home), described in [section 7](#7-transcript-stores)
   ([`hermes_cli/backup.py:1061-1062`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1061-L1062),[`1079-1084`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1079-L1084),[`1120-1124`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1120-L1124)).
-- `cache/terminal` (spilled tool results, background-process logs) and
-  `cache/scratch` (`TMPDIR` of every child process)
+- `cache/terminal` (spilled tool results, background-process logs) and `cache/scratch`
+  ([Scratch directories](#scratch-directories))
   ([`configuration.md:240-256`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/website/docs/user-guide/configuration.md#L240-L256)).
 - `hermes-agent/`: the installer's git checkout and venv
   ([`scripts/install.sh:79`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/scripts/install.sh#L79),
   [`scripts/install.ps1:23-24`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/scripts/install.ps1#L23-L24)).
-- `.hermes_history`: the prompt history of the CLI and the TUI, every typed line with a timestamp
-  (2026-10-19 HEAD,
-  [`hermes_cli/cli_init_mixin.py:389`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/cli_init_mixin.py#L389),
-  [`ui-tui/src/lib/history.ts:6-7`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/ui-tui/src/lib/history.ts#L6-L7)).
-  Collected; the profile export leaves it out, with `state.db` and `response_store.db`
+- `.hermes_history`: the prompt history of the CLI and the TUI
+  ([Prompt history](#prompt-history)). Collected; the profile export leaves it out, with
+  `state.db` and `response_store.db`
   ([`hermes_cli/profiles.py:241`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/profiles.py#L241)).
-- `cron/output/<job id>/<YYYY-mm-dd_HH-MM-SS>.md`: one Markdown file per cron run with the prompt
-  and the response
-  ([`cron/jobs.py:3384-3395`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/jobs.py#L3384-L3395)).
-  Collected.
+- `cron/output/<job id>/<YYYY-mm-dd_HH-MM-SS>.md`
+  ([`cron/jobs.py:110`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/cron/jobs.py#L110)):
+  one Markdown file per cron run ([Cron run archive](#cron-run-archive)). Collected.
 - `pairing/<platform>-approved.json` and `-pending.json`: the messaging gateway's approved and
-  pending users
-  ([`gateway/pairing.py:353-356`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/pairing.py#L353-L356)),
-  see [section 3](#3-credentials).
+  pending users ([section 3](#3-credentials),
+  [Permission outcomes and settings](#permission-outcomes-and-settings)).
 
 #### Started by another agent
 
-From the Agent Zero source review of 2026-10-19, at
-[`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a):
+At agent0ai/agent-zero
+[`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a),
 Agent Zero's Orchestrator plugin, which tells that agent how to drive other coding CLIs on the
 host or in its container, defaults Hermes to `yolo: true` and runs
 `hermes chat --quiet --source tool -q <task> --yolo`, which bypasses every dangerous-command
@@ -225,14 +191,10 @@ and `backups`, `state-snapshots`. Copies named `auth.json.*` and `.env.bak*` are
 stores
 ([`profiles.py:189-195`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/profiles.py#L189-L195)).
 
-The pairing files are also standing permission state: at the 2026-10-19 HEAD
-`pairing/<platform>-approved.json` is a JSON object keyed by the platform user id, each
-`{user_name, approved_at}` (epoch seconds), the users the bot owner approved to drive the agent from
-that platform
-([`gateway/pairing.py:1-7`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/pairing.py#L1-L7),
-[`gateway/pairing.py:431-437`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/pairing.py#L431-L437));
-the shape is the same at the cited commit. They stay flagged secret, since a pending file holds live
-pairing codes. `hermes sessions export --format trace --upload` takes a Hugging Face token from
+The pairing stores `pairing/<platform>-approved.json` and `-pending.json` stay flagged secret,
+since a pending file holds live pairing codes; they are also standing permission state, whose
+shape is under [Permission outcomes and settings](#permission-outcomes-and-settings).
+`hermes sessions export --format trace --upload` takes a Hugging Face token from
 `HF_TOKEN` or three alternate variable names in the environment
 ([`agent/trace_upload.py:36`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/agent/trace_upload.py#L36),
 [`agent/trace_upload.py:170-172`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/agent/trace_upload.py#L170-L172)),
@@ -246,9 +208,8 @@ so it can hold keys inside an otherwise excluded tree. `config.yaml` is for non-
 ([`configuration.md:62-63`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/website/docs/user-guide/configuration.md#L62-L63)).
 No OS keychain for Hermes' own secrets; secret managers (1Password, command sources) are pluggable.
 
-Tool-call arguments are deliberately not redacted before they reach `state.db`
-([`agent/chat_completion_helpers.py:1640-1649`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/agent/chat_completion_helpers.py#L1640-L1649)),
-so the session database can contain credentials typed into commands. Collect it unflagged.
+`state.db` can contain credentials typed into commands ([section 12](#12-secrets)); it is
+collected unflagged.
 
 ### 4. Exclusions
 
@@ -264,19 +225,12 @@ hundreds of GB",
 ([`tools/environments/base.py:191`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/tools/environments/base.py#L191)).
 Keep `checkpoints/store/projects/*.json` for discovery.
 
-`state-snapshots/` and `backups/` are large but hold older copies of `state.db`. Sessions are pruned
-after 90 days of inactivity by default
-([`hermes_cli/config_defaults.py:2276-2285`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/config_defaults.py#L2276-L2285)),
-so these copies may be the only record of deleted sessions. The catalog excludes them by default;
-use `--full` when deletion is suspected. They also contain `.env` and `auth.json`. `cache/` is not
-excluded: `cache/terminal` holds tool output.
-
-At the 2026-10-19 HEAD automatic pruning is off by default
-([`hermes_cli/config_defaults.py:2279-2289`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/config_defaults.py#L2279-L2289)),
-so on a current install a session is gone from `state.db` only when the user deleted or pruned it,
-and a deleted session leaves a tombstone in `state.db` itself (see
-[What survives a delete](#what-survives-a-delete)). `sandboxes/` stays excluded: a container
-backend's persistent workspace can hold whole repositories, and the commands that ran there are in
+`state-snapshots/` and `backups/` are large but hold older copies of `state.db`, so they may be the
+only record of a deleted or pruned session
+([What survives a delete](#what-survives-a-delete)). The catalog excludes them by default; use
+`--full` when deletion is suspected. They also contain `.env` and `auth.json`. `cache/` is not
+excluded: `cache/terminal` holds tool output. `sandboxes/` stays excluded: a container backend's
+persistent workspace can hold whole repositories, and the commands that ran there are in
 `state.db`.
 
 The installer checkout is excluded entry by entry rather than as one
@@ -319,17 +273,9 @@ they cover profiles and suffixed homes without matching unrelated paths.
 - `projects.db` tables `projects.primary_path` and `project_folders.path`
   ([`hermes_cli/projects_db.py:29-49`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/projects_db.py#L29-L49)).
   SQLite only.
-- Worktrees the agent creates (2026-10-19 HEAD): `<repo>/.worktrees/<name>` on branch
-  `hermes/<name>` for `hermes -w`, and `.worktrees/subagent-<id>` on `hermes-subagent/<name>` for
-  delegated subagents
-  ([`hermes_cli/worktree_ops.py:435-441`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L435-L441),
-  [`tools/subagent_worktree.py:81-96`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/subagent_worktree.py#L81-L96)).
-  The session runs in the worktree, so `sessions.cwd` is the worktree path
-  ([`hermes_cli/worktree_ops.py:822-825`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L822-L825)),
-  and a retained TUI worktree is locked with the reason `hermes session=<id> db=<path>`
-  ([`hermes_cli/worktree_ops.py:805-815`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L805-L815)).
-  These are scratch directories inside a project: the project catalog collects the repository's
-  `.hermes/` files, not `.worktrees/`.
+- Worktrees the agent creates: a worktree session's `sessions.cwd` is the worktree path under
+  `<repo>/.worktrees/`, a scratch directory inside the project
+  ([Scratch directories](#scratch-directories)).
 
 ## Parsing
 
@@ -470,8 +416,7 @@ id; it holds no text. A deleted session's gateway routing entry is
 dropped, but its `conversation_generations` row stays
 ([Conversation generations](#conversation-generations)).
 
-No delete touches `.hermes_history` (every typed
-line with a time but no session or project), the `cron/output/` run
+No delete touches `.hermes_history`, the `cron/output/` run
 files, `response_store.db`, the `state-snapshots/` copies of `state.db`
 (the last 20 by default, each a whole older database), the trajectory
 files in the working directory,
@@ -593,8 +538,9 @@ typed input either: `hidden`, `steer`, `internal_notification`,
 
 #### Permission outcomes and settings
 
-Permission outcomes are in the `terminal` tool's result row, whose
-`content` is JSON. A command that needed approval and got it carries
+Permission outcomes are in the result row of the shell tool, registered as `terminal`
+([`tools/terminal_tool.py:1634`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/tools/terminal_tool.py#L1634)),
+whose `content` is JSON. A command that needed approval and got it carries
 `"approval": "Command required approval (<description>) and was approved
 by the user."` or `"Command was flagged (<description>) and
 auto-approved by smart approval."` (smart approval is Hermes' guardian
@@ -644,7 +590,7 @@ a JSON object keyed by user id with `{user_name, approved_at}`
 ([`gateway/pairing.py:1-7`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/pairing.py#L1-L7),
 [`gateway/pairing.py:353-356`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/pairing.py#L353-L356),
 [`gateway/pairing.py:431-437`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/pairing.py#L431-L437)).
-All of these existed at the cited commit; none was examined then.
+All of these existed at the cited commit, the pairing shape unchanged; none was examined then.
 
 #### Messaging sessions
 
@@ -870,8 +816,9 @@ parser. The behaviour changes are the deletion fences and the prune default
 
 ### 12. Secrets
 
-Tool-call `arguments` are stored unredacted on purpose
-([`agent/chat_completion_helpers.py:1641-1642`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/agent/chat_completion_helpers.py#L1641-L1642));
+Tool-call `arguments` are stored unredacted on purpose, so `state.db` can hold credentials typed
+into commands
+([`agent/chat_completion_helpers.py:1640-1649`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/agent/chat_completion_helpers.py#L1640-L1649));
 tool results, `api_content` and `system_prompts.prompt` (which embeds memory and context files) can
 carry secrets. `request_dump_*` files are redacted before writing
 ([`agent_runtime_helpers.py:1629-1633`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/agent/agent_runtime_helpers.py#L1629-L1633)).
@@ -893,7 +840,7 @@ deduplication (issue 122, see
 | `state-snapshots/<id>/state.db` | secondary | an older copy of `state.db`; read with the same reader after one `system` row `state snapshot <id>: older copy of state.db`, timestamped from the id's UTC time when the id starts with one, else empty; rows pair with the live rows exactly, and the copies several snapshots keep of a pruned session collapse to the first |
 | `sessions/<id>.jsonl` | secondary | a divert of messages `state.db` did not take; `session_id` from the file name, no project path (the match is by session id), each line's own `timestamp` or none |
 | `sessions/<id>.json`, `session_<id>.json` | not read | no writer at the checked commit, shape unknown |
-| `backups/*.zip`, `sessions/saved/*.json`, `response_store.db` | not read | archives and exports; `response_store.db` schema not examined |
+| `backups/*.zip`, `sessions/saved/*.json`, `response_store.db` | not read | archives and exports; `response_store.db` is a secondary source not yet read ([API server response store](#api-server-response-store)) |
 
 Both secondary sources keep the default 2-second tolerance: their times
 are copies of the live ones, not later stamps. Rows: one per message; an assistant row
@@ -915,8 +862,8 @@ evidence of rewound or compacted turns.
 | text | `content` (strip `\x00json:` and join text parts); for tool_use the `command`/`path` key of `arguments`, else the arguments |
 | source_line | `messages.id` |
 
-The subsections below carry the per-class plan from the source review of 2026-10-19 (HEAD
-[`86fa9e6`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872));
+The subsections that follow are written against HEAD
+[`86fa9e6`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872);
 the model-switch rows, the volume homes and the `tool_calls` rows are
 implemented (issues 180, 181 and 182); the rest is not, and every
 proposal rests on source alone, so each change starts with a per-step
@@ -973,7 +920,7 @@ model, the row is `model: <model>` with the provider suffix. A later
 switch sets the marker's `active` to 0, which is no rewind, so the row
 has no `[rewound]` prefix, and a marker is never a `user` row. A marker
 whose text has another form is a `system` row `model_switch: <text>`.
-These rows sit beside the `session_model_usage` rows above, which show
+These rows sit beside the `session_model_usage` rows, which show
 the first API call on each model rather than the switch.
 
 Still proposed (model partly done): every other
@@ -983,8 +930,9 @@ prompts.
 
 #### Past-use rows and secondary sources
 
-Implemented: the snapshots and the diverts are secondary sources (the table above), and imported
-sessions are read as Hermes sessions ([What survives a delete](#what-survives-a-delete)).
+Implemented: the snapshots and the diverts are secondary sources (the source table of this
+section), and imported sessions are read as Hermes sessions
+([What survives a delete](#what-survives-a-delete)).
 
 Proposed (gap), for the stores of [section 10](#10-other-stores): `.hermes_history` (secondary,
 `user` rows with the entry's time and no session; a slash command keeps its own row),
@@ -1008,12 +956,11 @@ session, a transcript or a title to the Nous account: the Nous Portal
 is used for sign-in, inference and the tool gateway
 ([`hermes_cli/portal_cli.py:10-20`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/portal_cli.py#L10-L20)),
 and a grep of the tree for session upload, sync, share and cloud-session
-names found nothing beyond the paths below. `hermes sessions delete`
+names found nothing beyond the trace upload and the paths listed next. `hermes sessions delete`
 removes the rows and the session's files and calls nothing remote
 ([`hermes_state_sessions.py:1606-1650`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_state_sessions.py#L1606-L1650)).
 
-The source review of 2026-10-19 found one session upload the earlier grep missed (the file existed
-at the cited commit): `hermes sessions export
+One command uploads a session, present at the cited commit and at HEAD: `hermes sessions export
 --format trace --upload [--public]` converts a session to Claude Code
 JSONL and uploads it to the user's Hugging Face dataset
 `<user>/hermes-traces` as `sessions/<session id>.jsonl`, private unless
@@ -1086,9 +1033,8 @@ row and leaves `records_sync` off. It reads `pastes/pending.json` and
 yields one `system` row per entry, `debug report uploaded: <url> (from
 pastes/pending.json, expire_at minus 6 hours)`, timestamped `expire_at`
 minus 21600 seconds with an empty `session_id`, which shows that logs
-left the host in the last day and marks no session; a file that is not a
-JSON list is one `parser:` row. Fixture only: no real install has shown
-the file.
+left the host in the last day and marks no session; bad entries are under
+[Bad-line rows](#bad-line-rows). Fixture only: no real install has shown the file.
 
 Relay: a gateway session's messages also live on the messaging platform, which
 is the channel the user typed in, not a sync; `sessions.chat_id`,
@@ -1116,33 +1062,12 @@ mtime)`) is the proposal, after the round shows the file.
 
 #### Scratch directory rows
 
-At the 2026-10-19 HEAD: `cache/scratch/<entry>`
-under the Hermes home, the `TMPDIR` of the agent's child processes,
-reaped when idle
-([`hermes_constants.py:957`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_constants.py#L957),
-[`hermes_constants_scratch.py:1-6`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_constants_scratch.py#L1-L6));
-`sandboxes/` under the Hermes home, the container backends' persistent
-bind mounts (`TERMINAL_SANDBOX_DIR` overrides it)
-([`tools/environments/base.py:189-191`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/environments/base.py#L189-L191),
-[`tools/environments/docker.py:856`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/environments/docker.py#L856));
-and git worktrees the agent creates inside the user's repository,
-`<repo>/.worktrees/<name>` on branch `hermes/<name>` for `hermes -w`,
-`.worktrees/subagent-<id>` on `hermes-subagent/<name>` for delegated
-subagents, and `.worktrees/<child id>` for kanban children
-([`hermes_cli/worktree_ops.py:435-441`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L435-L441),
-[`tools/subagent_worktree.py:81-96`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/subagent_worktree.py#L81-L96),
-[`hermes_cli/kanban_db_graph.py:181`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/kanban_db_graph.py#L181)).
-A `-w` session runs with its working directory in the worktree
-([`hermes_cli/cli_commands_mixin.py:1189-1197`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/cli_commands_mixin.py#L1189-L1197)),
-so `sessions.cwd` holds the worktree path
-([`hermes_cli/worktree_ops.py:822-825`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L822-L825)),
-and a retained TUI worktree is locked with the reason
-`hermes session=<id> db=<path>`
-([`hermes_cli/worktree_ops.py:805-815`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/worktree_ops.py#L805-L815)).
+The scratch directories are `cache/scratch/` and `sandboxes/` under the Hermes home and the git
+worktrees under `<repo>/.worktrees/` ([Scratch directories](#scratch-directories)).
 
 Implemented (partial): `cache/scratch` and `sandboxes` are
 under the catalog's Hermes home, so the analyzer's catalog rule
-already classes any path under it as a scratch directory. A `.worktrees/<name>` path is not under
+classes any path under it as a scratch directory. A `.worktrees/<name>` path is not under
 a home entry, so a session whose `cwd` is one is listed as a project. Proposed: a
 `scratch directory: <cwd> (git worktree the agent created
 under <repo>/.worktrees)` row when `cwd` has that shape and
@@ -1158,8 +1083,9 @@ row per marker, at `retired_at`, with ` sweep` when it has `expires`;
 
 #### Bad-line rows
 
-`sessions/<id>.jsonl` goes through `iter_jsonl` and
-`error_rows`, and `pastes/pending.json` reports each bad entry.
+`sessions/<id>.jsonl` goes through `iter_jsonl` and `error_rows`. In `pastes/pending.json` a file
+that does not parse or is not a JSON list is one `parser:` row, and an entry that is not an object
+with a `url` is its own `parser: unparseable record <N>` row carrying the entry.
 
 Malformed `tool_calls` (issue 182): a value that is not valid JSON, is
 not a list (a lone object is read as a one-call list) or holds an entry
@@ -1171,10 +1097,6 @@ the value as stored, with the message's `session_id` and project path
 and an empty `timestamp_utc`; the entries that are objects still give
 `tool_use` rows. A divert line uses the same rule, with `<N>` the line
 number and the value written as compact JSON when it is not a string.
-Before issue 182, a value
-that was not valid JSON was dropped with no row and one that parsed to
-something other than a list got a row of the parser's own without the
-value.
 
 #### Fixtures
 
@@ -1203,8 +1125,7 @@ INSERT INTO messages (session_id,role,content,tool_call_id,tool_calls,tool_name,
 
 Issue 181: the catalog's `hermes|*hermes*` volume line
 collects a named volume whole with its `_data` directory as the base.
-The container's Hermes home is `/opt/data`
-([`docker-compose.yml:36-37`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/docker-compose.yml#L36-L37)),
+The container's Hermes home is `/opt/data` ([Docker](#docker)),
 so a named volume mounted there holds the Hermes home itself and the
 files arrive as `state.db`, `sessions/<id>.jsonl`,
 `state-snapshots/<id>/state.db`, `pastes/pending.json` and
@@ -1213,22 +1134,21 @@ these as it accepts the home forms, and the rows carry the manifest's `docker` u
 
 ## 14. Confidence
 
-Collection. High: home resolution, profile layout, `state.db` and every file named in
-[section 2](#2-per-user-storage) and [section 3](#3-credentials) (source constants). High: backup
-exclusion list as a guide to size. Medium: the desktop `userData` path, which follows the Electron
-default from `productName` rather than an explicit `setPath` for stable builds
-([`apps/desktop/electron/product-identity.ts:26-47`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/electron/product-identity.ts#L26-L47)).
-The `*hermes*` prefixes first proposed for the exclusion and secret globs were tightened to
-`.hermes*/` and `AppData/Local/hermes*/` at integration. Not determined: the exact sizes of
-`state-snapshots` and `cache/scratch` on a real install; the format of `auth.json` beyond "OAuth
-provider credentials"
-([`configuration.md:25`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/website/docs/user-guide/configuration.md#L25));
-Termux installs, which come from APT
-([`scripts/install.sh:340`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/scripts/install.sh#L340))
-and were not checked.
-
-Parsing. High: table and column names, timestamp unit, content prefix, tool-call shape, joins, WAL.
-Medium: the full set of `role` values (only the four above seen in queries) and `source` values
-beyond the stale-open list. The shell tool is registered as `terminal`
-([`tools/terminal_tool.py:1634`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/tools/terminal_tool.py#L1634)).
-Not determined: `response_store.db` and legacy `session_<id>.json` schemas.
+- High: home resolution, profile layout, `state.db` and every file named in
+  [section 2](#2-per-user-storage) and [section 3](#3-credentials) (source constants).
+- High: the backup exclusion list as a guide to size.
+- High: table and column names, timestamp unit, content prefix, tool-call shape, joins, WAL.
+- Medium: the desktop `userData` path, which follows the Electron default from `productName`
+  rather than an explicit `setPath` for stable builds
+  ([`apps/desktop/electron/product-identity.ts:26-47`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/electron/product-identity.ts#L26-L47)).
+- Medium: the full set of `role` values (only the four of the [Messages table](#messages-table)
+  seen in queries) and of `source` values beyond those listed in the
+  [Sessions table](#sessions-table) and [Messaging sessions](#messaging-sessions).
+- Not determined: the exact sizes of `state-snapshots` and `cache/scratch` on a real install.
+- Not determined: the format of `auth.json` beyond "OAuth provider credentials"
+  ([`configuration.md:25`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/website/docs/user-guide/configuration.md#L25)).
+- Not determined: Termux installs, which come from APT
+  ([`scripts/install.sh:340`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/scripts/install.sh#L340))
+  and were not checked.
+- Not determined: the legacy `session_<id>.json` schema, which nothing at the cited commit writes
+  ([section 7](#7-transcript-stores)).

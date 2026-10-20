@@ -33,15 +33,9 @@ wherever the Python tool was used, so they were researched separately in the age
 for issue #64 (see [frameworks.md](frameworks.md)) and are described under
 [Legacy Python SDK and CLI (0.x)](#legacy-python-sdk-and-cli-0x).
 
-Confidence. High: file locations, line envelope, timestamp format, payload field names (shared
-structs), the ledger's `records` key (no serde rename on the struct), `input_text` content blocks
-([`protocol/src/models.rs:876-880`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/protocol/src/models.rs#L876-L880)).
-Not determined: the exact tool names each emulated harness emits, which vary by harness module.
-
 ### Observed
 
-- No real install. The `session synced:` Sentry feedback row the shared reader yields for the
-  fork is fixture only ([Sync, relay and origin](#sync-relay-and-origin-rows)).
+- No real install.
 
 ### Source reviews
 
@@ -52,57 +46,16 @@ Not determined: the exact tool names each emulated harness emits, which vary by 
   [`codex-rs/Cargo.toml:163`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/Cargo.toml#L163)),
   compared file by file with
   [`2767e5f`](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245)
-  (0.0.55), the commit cited below. Only four files differ: the Codex compatibility profile the fork
-  announces to the model service moved from 0.156.1 to 0.159.0
+  (0.0.55), the commit cited elsewhere in this document. Only four files differ: the Codex
+  compatibility profile the fork announces to the model service moved from 0.156.1 to 0.159.0
   ([`codex-rs/product-info/src/lib.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/product-info/src/lib.rs#L12)),
-  with its tests and the version numbers, so every path below holds at HEAD. The fork has not taken
+  with its tests and the version numbers, so every path holds at `ac1fcc8`. The fork has not taken
   Codex's changes after its snapshot, so the Codex findings of the same day
-  ([Source reviews in `codex-cli.md`](codex-cli.md#source-reviews)) apply only where noted. Source
-  only. By class:
-  - Permission state: the Codex standing-grant files exist here too and are collected, but not
-    read, as in Codex ([Standing grants](#standing-grants)): `rules/default.rules`
-    ([`codex-rs/core/src/exec_policy.rs:54-56`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/exec_policy.rs#L54-L56)),
-    `config.toml` project `trust_level`
-    ([`codex-rs/core/src/config/mod.rs:2373`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/config/mod.rs#L2373))
-    and tool `approval_mode`
-    ([`codex-rs/core/src/mcp_tool_call.rs:2291`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/mcp_tool_call.rs#L2291),
-    [`2334`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/mcp_tool_call.rs#L2334),
-    [`2369`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/mcp_tool_call.rs#L2369)).
-    Differs from Codex: the core logs a submission with its kind only,
-    `operation=exec_approval`, never the decision
-    ([`codex-rs/core/src/session/handlers.rs:421`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/session/handlers.rs#L421)),
-    so the `op=ExecApproval` rows the shared reader turns into
-    `permission decision:` rows cannot occur; the app server's
-    `<- response:` line with the decision is still logged
-    ([`codex-rs/app-server/src/outgoing_message.rs:481`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/app-server/src/outgoing_message.rs#L481)),
-    and the fork has no `guardian_review_feedback` table (its state
-    migrations stop at `0055_thread_attachments.sql`).
-  - Model: covered; unchanged; no new file.
-  - Past use: as in Codex, the memories files (`memories/`, off by default,
-    [`codex-rs/features/src/lib.rs:1148-1150`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/features/src/lib.rs#L1148-L1150))
-    and `db-backups/`
-    ([`codex-rs/state/src/runtime/recovery.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/state/src/runtime/recovery.rs#L12))
-    exist, are collected and are not read; the import ledger is read.
-  - Sync, relay and origin: covered; unchanged; no new file.
-  - Scratch directories: found: thread worktrees in
-    `.openinterpreter/worktrees` unless `[desktop] git-worktree-root`
-    names another path
-    ([`codex-rs/worktree/src/settings.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L12),
-    [`44`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L44)),
-    classed by the analyzer's catalog rule ([Scratch directories](#scratch-directories)).
-  - Deletion: as in Codex ([Deletion in `codex-cli.md`](codex-cli.md#deletion)):
-    `thread/delete` removes the rollouts, the
-    index lines and the thread's rows, `logs_2.sqlite` rows included
-    ([`codex-rs/state/src/runtime/threads.rs:1153`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/state/src/runtime/threads.rs#L1153),
-    [`codex-rs/thread-store/src/local/delete_thread.rs:262`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/thread-store/src/local/delete_thread.rs#L262)),
-    and leaves `history.jsonl` and the import ledger.
-  - Version drift: none in the record shapes; `turn_context` still has
-    `network` here
-    ([`codex-rs/protocol/src/protocol.rs:3318`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/protocol/src/protocol.rs#L3318)),
-    unlike Codex at HEAD.
-  - Bad lines: not a collector concern; the shared reader's gap at the time of the review: a bad
-    `thread_history_1.sqlite` `item_json` was counted, not shown; it is now one row per record
-    ([Bad lines in `codex-cli.md`](codex-cli.md#bad-line-rows)).
+  ([Source reviews in `codex-cli.md`](codex-cli.md#source-reviews)) apply only where noted. It
+  added the standing grants and scratch directories of [section 2](#2-per-user-storage), the delete
+  facts of [What survives a delete](#what-survives-a-delete), the fork's approval logging of
+  [section 10](#10-other-stores) and the `turn_context` difference of
+  [section 11](#11-format-versions).
 
 ## Collection
 
@@ -255,10 +208,10 @@ is not flagged, since that branch was never released to PyPI.
 
 #### Standing grants
 
-From the source review of 2026-10-19 at
-[`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87);
+At
+[`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87)
 the fork keeps Codex's code for these and for the scratch directories, described in
-[Standing grants](codex-cli.md#standing-grants) and
+[Standing grants and approval records](codex-cli.md#standing-grants-and-approval-records) and
 [Scratch directories](codex-cli.md#scratch-directories) in `codex-cli.md`.
 
 `rules/default.rules`, the exec policy file Codex appends "approve and remember" and network rules
@@ -266,21 +219,21 @@ to
 ([`codex-rs/core/src/exec_policy.rs:54-56`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/exec_policy.rs#L54-L56)),
 and `config.toml` project `trust_level` and tool `approval_mode` entries
 ([`codex-rs/core/src/config/mod.rs:2373`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/config/mod.rs#L2373),
-[`codex-rs/core/src/mcp_tool_call.rs:2291`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/mcp_tool_call.rs#L2291)).
+[`codex-rs/core/src/mcp_tool_call.rs:2291`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/mcp_tool_call.rs#L2291),
+[`2334`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/mcp_tool_call.rs#L2334),
+[`2369`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/mcp_tool_call.rs#L2369)).
 Collected by the `open-interpreter|.openinterpreter` line.
 
 #### Scratch directories
 
-From the same review: thread worktrees in `.openinterpreter/worktrees/<4 hex>/<repository name>`, or
+Thread worktrees in `.openinterpreter/worktrees/<4 hex>/<repository name>`, or
 under `config.toml` `[desktop] git-worktree-root`
 ([`codex-rs/worktree/src/settings.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L12),
 [`44`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L44)).
 The default location is excluded ([section 4](#4-exclusions)); project discovery reads
 `.openinterpreter/sessions` and `archived_sessions` and drops no `cwd`, so a thread that ran in a
 worktree has the worktree discovered as a project. The `.zcode/cli/artifacts` spill directory is the
-agent's own output, under the catalog line. A delete works as in Codex
-([Deletion in `codex-cli.md`](codex-cli.md#deletion)); what it leaves is in
-[What survives a delete](#what-survives-a-delete).
+agent's own output, under the catalog line.
 
 ### 3. Credentials
 
@@ -351,11 +304,9 @@ and the threads table in `state_5.sqlite`. The existing Codex discovery (`grep -
 over `sessions/**/*.jsonl`) applies unchanged with `.openinterpreter` in place of `.codex`;
 `.jsonl.zst` rollouts need zstd first.
 
-At
-[`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87)
-(source review of 2026-10-19), a rollout `cwd` under `.openinterpreter/worktrees` (or a configured
-`git-worktree-root`) is a thread worktree the agent made, a scratch directory rather than a project
-([Scratch directories](#scratch-directories)); `config.toml` `[projects."<path>"]` tables name the
+A rollout `cwd` under `.openinterpreter/worktrees` (or a configured `git-worktree-root`) is a
+scratch directory rather than a project ([Scratch directories](#scratch-directories));
+`config.toml` `[projects."<path>"]` tables name the
 projects the user trusted or distrusted.
 
 ## Parsing
@@ -382,7 +333,9 @@ projects the user trusted or distrusted.
 
 #### What survives a delete
 
-As in Codex, `thread/delete` removes the thread's rollouts, its index
+As in Codex
+([What survives a delete in `codex-cli.md`](codex-cli.md#what-survives-a-delete)), `thread/delete`
+removes the thread's rollouts, its index
 lines and its rows in the SQLite stores, `logs_2.sqlite` included, and
 with them the `session synced:` Sentry feedback marker
 ([`codex-rs/state/src/runtime/threads.rs:1153`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/state/src/runtime/threads.rs#L1153),
@@ -391,8 +344,9 @@ It leaves `history.jsonl`, one line per submitted prompt with its session
 id and time, and the import ledger
 `external_agent_session_imports.json`, which names the rollouts imported
 from Claude Code or Cursor. The memories files (off by default) and
-`db-backups/` exist as in Codex ([Source reviews](#source-reviews)); what a delete
-does to them is not stated in this document. No deletion marker is
+`db-backups/` exist as in Codex
+([Memories and database backups](#memories-and-database-backups)); what a delete does to them is
+not stated in this document. No deletion marker is
 written. The analyzer reads `history.jsonl`, `state_5.sqlite` and
 `thread_history_1.sqlite` as secondary sources and the import ledger to
 mark imported rollouts
@@ -488,10 +442,37 @@ there is no `started_at_ms` or `completed_at_ms` on `thread_items`, so
 stamps every item row, and an `agentMessage` row precedes its rollout
 twin by the time the message took to stream.
 
+#### Approval decisions in the logs
+
+At
+[`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87)
+the fork differs from Codex: the core logs a submission with its kind only,
+`operation=exec_approval`, never the decision
+([`codex-rs/core/src/session/handlers.rs:421`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/core/src/session/handlers.rs#L421)),
+so the `op=ExecApproval` rows the shared reader turns into `permission decision:` rows cannot
+occur; the app server's `<- response:` line with the decision is still logged
+([`codex-rs/app-server/src/outgoing_message.rs:481`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/app-server/src/outgoing_message.rs#L481)),
+and the fork has no `guardian_review_feedback` table (its state migrations stop at
+`0055_thread_attachments.sql`).
+
+#### Memories and database backups
+
+As in Codex, the memories files (`memories/`, off by default,
+[`codex-rs/features/src/lib.rs:1148-1150`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/features/src/lib.rs#L1148-L1150))
+and `db-backups/`
+([`codex-rs/state/src/runtime/recovery.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/state/src/runtime/recovery.rs#L12))
+exist at
+[`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87);
+both are collected.
+
 ### 11. Format versions
 
 Tracks upstream Codex; no fork-specific version marker in the records.
-`cli_version` in `session_meta` is the fork's version.
+`cli_version` in `session_meta` is the fork's version. The record shapes are unchanged at
+[`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87);
+`turn_context` still has `network` there
+([`codex-rs/protocol/src/protocol.rs:3318`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/protocol/src/protocol.rs#L3318)),
+unlike Codex at the commit of the same day's review.
 
 ### 12. Secrets
 
@@ -504,10 +485,8 @@ listed in [section 3](#3-credentials).
 
 `OpenInterpreterParser` subclasses the shared `RolloutParser`, as `CodexParser` does, and reads
 `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` rollouts, plain or
-`.jsonl.zst`, and `.openinterpreter/history.jsonl` with agent `open-interpreter`. Before the
-source review of 2026-10-19 this plan said the parser matched only `^\.codex/sessions/` and
-plain `.jsonl`, and that extending it to `archived_sessions/` and `.jsonl.zst` would fix Codex as
-well; that sentence predated the shared `RolloutParser`, which reads both for both agents.
+`.jsonl.zst`, and `.openinterpreter/history.jsonl` with agent `open-interpreter`; the shared
+`RolloutParser` reads `archived_sessions/` and `.jsonl.zst` for both agents.
 
 | Column | Source |
 | --- | --- |
@@ -529,15 +508,14 @@ row: the fork, like Codex, lists the approval request events among the transient
 never stores
 ([`rollout/src/policy.rs:140-204`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/rollout/src/policy.rs#L140-L204)).
 
-From the source review of 2026-10-19 at
-[`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87)
-([Source reviews](#source-reviews)): the standing grants of `rules/default.rules` and `config.toml`
+The standing grants of `rules/default.rules` and `config.toml` ([Standing grants](#standing-grants))
 are not read, as in Codex; per-call decisions can come only from the app server's response lines,
-since the core does not log the decision.
+since the core does not log the decision
+([Approval decisions in the logs](#approval-decisions-in-the-logs)).
 
 #### Model rows
 
-Covered: the model row of the table, from the shared Codex reader.
+The model row of the table, from the shared Codex reader.
 
 #### Past-use rows and secondary sources
 
@@ -546,7 +524,8 @@ The rollouts are the primary store; `history.jsonl`, `state_5.sqlite` and
 ([Past use and secondary sources in
 `codex-cli.md`](codex-cli.md#past-use-rows-and-secondary-sources)).
 Each record of the import ledger becomes a `system` row naming `source_path`. The memories
-files and `db-backups/` are not read, as in Codex.
+files and `db-backups/` ([Memories and database backups](#memories-and-database-backups)) are not
+read, as in Codex.
 
 #### Sync, relay and origin rows
 
@@ -587,8 +566,8 @@ The fork records no relay or origin.
 
 #### Scratch directory rows
 
-Worktrees under `.openinterpreter/worktrees`,
-classed by the catalog rule; no row names them ([Source reviews](#source-reviews)).
+Worktrees under `.openinterpreter/worktrees` ([Scratch directories](#scratch-directories)),
+classed by the catalog rule; no row names them.
 
 #### Deletion rows
 
@@ -598,9 +577,7 @@ No marker; as in Codex ([What survives a delete](#what-survives-a-delete)).
 
 The shared reader's rows: a `thread_history_1.sqlite` row with a bad `item_json` gives one row per
 record with the value in full
-([Bad lines in `codex-cli.md`](codex-cli.md#bad-line-rows)). At the source review of 2026-10-19
-this subsection said a bad `item_json` was counted in one summary row, not shown; the shared
-reader has changed since.
+([Bad lines in `codex-cli.md`](codex-cli.md#bad-line-rows)).
 
 #### Fixtures
 
@@ -620,14 +597,19 @@ The import ledger `external_agent_session_imports.json`:
 
 ## 14. Confidence
 
-High: home resolution, `CODEX_HOME` being ignored, every file name in
-[section 2](#2-per-user-storage) and [section 3](#3-credentials) (constants in the cited files,
-identical to upstream Codex), the Kimi credential file, the import ledger. Medium: `models-cache/`
-as an exclusion (written per provider by the app server, contents not inspected); `.terminus-2`
-landing in the project (depends on whether the env vars reach the tool shell, not traced). Not
-determined: whether `device_id` is sensitive (an identifier sent to Kimi, not a secret, flagged here
-for caution); whether the desktop or IDE surfaces of Open Interpreter exist and write elsewhere
-(none found in this repository). Legacy Python tool: high for 0.4.x (source and the 0.4.3 sdist);
-medium for pre-0.2 installs on macOS, because platformdirs before 3.x put `user_config_dir` under
-`~/Library/Preferences` and that history was not read, so a `Library/Preferences/Open Interpreter*`
-location is unverified and has no catalog line.
+- High: home resolution, `CODEX_HOME` being ignored, every file name in
+  [section 2](#2-per-user-storage) and [section 3](#3-credentials) (constants in the cited files,
+  identical to upstream Codex), the Kimi credential file, the import ledger and its `records` key
+  (no serde rename on the struct); the rollout line envelope, timestamp format, payload field names
+  (shared structs) and `input_text` content blocks
+  ([`protocol/src/models.rs:876-880`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/protocol/src/models.rs#L876-L880)).
+- High: the legacy Python tool's 0.4.x layout (source and the 0.4.3 sdist).
+- Medium: `models-cache/` as an exclusion (written per provider by the app server, contents not
+  inspected); `.terminus-2` landing in the project (depends on whether the env vars reach the tool
+  shell, not traced); pre-0.2 installs of the legacy tool on macOS, because platformdirs before
+  3.x put `user_config_dir` under `~/Library/Preferences` and that history was not read, so a
+  `Library/Preferences/Open Interpreter*` location is unverified and has no catalog line.
+- Not determined: whether `device_id` is sensitive (an identifier sent to Kimi, not a secret,
+  flagged here for caution); whether the desktop or IDE surfaces of Open Interpreter exist and
+  write elsewhere (none found in this repository); the exact tool names each emulated harness
+  emits, which vary by harness module.

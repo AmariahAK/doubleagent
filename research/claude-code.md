@@ -35,11 +35,12 @@ executed. Each claim names its evidence level, best first:
   [Claude Code IAM](https://code.claude.com/docs/en/iam),
   [Claude Code managed settings](https://code.claude.com/docs/en/managed-settings);
   [Claude Desktop data storage](https://claude.com/docs/third-party/claude-desktop/data-storage).
-- **Local**: the author's host ([Observed](#observed)).
+- **Local**: the author's host ([Observed](#observed)). A shape the Parsing part marks observed
+  was seen on the WSL2 install; one marked bundle rests on the binary only.
 - **Vendor text in the bundle**: the built-in "Fewer Permission Prompts" prompt describes the
-  transcript layout for the model itself (cc:489602: "Session transcripts live at
-  `~/.claude/projects/<sanitized-cwd>/*.jsonl`. Each line is a JSON object. Tool calls appear as
-  `assistant` messages with `message.content[]` entries of `type: "tool_use"`").
+  transcript layout for the model itself (2.1.289 strings file, cc:489602: "Session transcripts
+  live at `~/.claude/projects/<sanitized-cwd>/*.jsonl`. Each line is a JSON object. Tool calls
+  appear as `assistant` messages with `message.content[]` entries of `type: "tool_use"`").
 - **Binary 2.1.296** (issue 93): the author's installed CLI,
   `~/.local/share/claude/versions/2.1.296`, a Bun-compiled Mach-O arm64 executable of
   240,664,432 bytes, sha256 `c9b5341637becbd423ddffc5b254afb645682a3868cb708bbc6cc0e7bb419937`,
@@ -55,14 +56,14 @@ executed. Each claim names its evidence level, best first:
 ### Observed
 
 - macOS, CLI 2.1.296, the author's install, 2026-10-13 (issue 93), key names, enum values and counts
-  only: 308 `permission-mode` records across four session files, every one `permissionMode` `auto`;
-  `permissionMode` on every `user` prompt line; `message.model` and `requestedModel` on every
-  `assistant` line, equal on every line seen; a `/model` switch written as a `user` line
-  `<command-name>/model</command-name>` followed by a `user` line holding the command output
-  (below); summary lines with `modelUsage.<model id>.{inputTokens, outputTokens, ...}`. The
-  permission configuration keys of [section 10](#10-other-stores) were seen in `~/.claude.json` and
-  the settings files of the same install, by name only. The command output line:
-  - ``<local-command-stdout>Set model to `<display name>` and saved as your default for new sessions</local-command-stdout>``
+  only: 308 `permission-mode` records across four session files, every one `permissionMode` `auto`
+  ([section 8](#8-record-schema)); `permissionMode` on every `user` prompt line; `message.model` and
+  `requestedModel` on every `assistant` line, equal on every line seen; a `/model` switch written as
+  a `user` line `<command-name>/model</command-name>` followed by a `user` line holding the command
+  output ([section 9](#9-joins-and-timestamps)); summary lines with
+  `modelUsage.<model id>.{inputTokens, outputTokens, ...}`. The permission configuration keys of
+  [Permission configuration](#permission-configuration) were seen in `~/.claude.json` and the
+  settings files of the same install, by name only.
 - macOS, CLI 2.1.295 launched by the Claude Desktop Code tab, 2026-10-11: the CLI cache directory
   `~/Library/Caches/claude-cli-nodejs/` ([CLI cache directory](#cli-cache-directory)) with its
   `claude-cli-nodejs` MCP logs ([section 7](#7-transcript-stores)), and
@@ -77,30 +78,25 @@ executed. Each claim names its evidence level, best first:
   2.1.288 when the layout was checked): the layout was confirmed names-only against `~/.claude`, and
   claims marked **local** rest on it. 95 transcript files (15 session files, 80 subagent files),
   31,116 lines, 0 unparseable, plus 80 subagent `.meta.json` files, 37 persisted tool outputs,
-  `history.jsonl` (162 lines) and `sessions/*.json` (3). Every line was tabulated by key path and
-  value type with throwaway scripts; no value from them is reproduced here. Shapes marked observed
-  were seen there; shapes marked bundle rest on the binary only.
+  `history.jsonl` (162 lines) and `sessions/*.json` (3), read by key path and value type only
+  ([section 8](#8-record-schema) to [section 10](#10-other-stores)).
+- Windows (native): no real install.
 
 ### Source reviews
 
-- 2026-10-19, other agents that read, drive, copy or index Claude Code (not seen on a real install):
-  - Crush reads `~/.claude/skills` as one of its global skills directories, beside
-    `~/.agents/skills`, and a project's `.claude/skills` as a project one
-    ([`internal/config/load.go:1312-1322`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1312-L1322),
-    [`1345-1350`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1345-L1350)),
-    so a skill in the config home or the project may have been loaded by Crush as well as by Claude
-    Code ([`crush.md`](crush.md)).
-  - Agent Zero's Orchestrator plugin, which tells that agent how to drive other coding CLIs on the
-    host or in its container, defaults Claude Code to `permission_mode: bypassPermissions` and, when
-    not running as root, runs
-    `claude -p "$TASK" --output-format json --permission-mode bypassPermissions --allowedTools Bash,Read,Edit`
-    ([`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37),
-    [`plugins/_orchestrator/README.md:96`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/README.md#L96)).
-    Such a session is an ordinary transcript under `projects/`, started by another agent with
-    approvals bypassed; the plugin's permission settings are in
-    [section 13 of `agent-zero.md`](agent-zero.md#13-parser-plan).
-  - Hermes Agent, Cline, Pydantic AI's CLAI (its command-line chat client) and Zed each copy or
-    index these transcripts; see [What survives a delete](#what-survives-a-delete).
+- 2026-10-19: the agents that read, drive, copy or index Claude Code state, at Crush
+  [7f799fb](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da),
+  Agent Zero
+  [ff2a5b9](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a),
+  Hermes Agent
+  [86fa9e6](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872),
+  Cline [41e75ef](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33),
+  Pydantic AI
+  [0ba01f9](https://github.com/pydantic/pydantic-ai/commit/0ba01f92be3fc361f89970502cd6e7dd3611aec3)
+  and Zed
+  [9cd14da](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6).
+  Added [Used by other agents](#used-by-other-agents) and the copies and the Zed index under
+  [What survives a delete](#what-survives-a-delete).
 
 ## Collection
 
@@ -137,10 +133,10 @@ are described in [section 6 of
 
 #### Files that hold evidence
 
-- `projects/<key>/<sessionId>.jsonl`: transcripts. `<key>` = cwd with `[^a-zA-Z0-9]` → `-`,
-  truncated to 200 chars plus a base-36 hash (cc:473017, cc:473728). Subagent transcripts:
-  `projects/<key>/<sessionId>/subagents/agent-<id>.jsonl` (cc:476679). Per-project memory:
-  `projects/<key>/memory/*.md` (cc:489631). Local shows `-home-sean-dev-...` dirs holding
+- `projects/<key>/<sessionId>.jsonl`: transcripts, with `<key>` derived from the cwd (cc:473017,
+  cc:473728); `projects/<key>/<sessionId>/subagents/agent-<id>.jsonl`: subagent transcripts
+  (cc:476679); `projects/<key>/memory/*.md`: per-project memory (cc:489631). The naming and the
+  sidecars are in [section 7](#7-transcript-stores). Local shows `-home-sean-dev-...` dirs holding
   `<uuid>.jsonl`, `<uuid>/`, `memory/`.
 - `history.jsonl`: prompt history, with retention pruning (cc:338013-15, 478233).
 - `debug/<sessionId>.txt`: per-session debug logs (cc:472977); `debug/latest` symlink (local).
@@ -157,23 +153,13 @@ are described in [section 6 of
   path is ``join(process.env.CLAUDE_CONFIG_DIR || homedir(), `.claude${suffix}.json`)`` (cc:473059
   `mar()`, cc:473896 `configPath`; variants `.claude${suffix}.json`, cc:477075); docs: "holds your
   sign-in session, MCP server configurations, per-project state such as trust decisions, and the
-  global config keys" (settings page). Its `projects` object is keyed by project path (cc:474276
-  `e.projects`).
-- Permission configuration (issue 93): the settings files `<config home>/settings.json`,
-  `<config home>/settings.local.json`, and a project's `.claude/settings.json` (shared) and
-  `.claude/settings.local.json` (personal, gitignored) hold the `permissions` object: `allow`,
-  `deny` and `ask` rule lists (a tool name with an optional argument pattern, such as
-  `Bash(npm test:*)`), `defaultMode` (the permission mode: `default`, `acceptEdits`, `plan`,
-  `bypassPermissions`, `dontAsk` or `auto`), `disableBypassPermissionsMode` and
-  `additionalDirectories`; "always allow" answers to a prompt are persisted there. In `.claude.json`
-  each `projects.<path>` object holds `allowedTools`, `hasTrustDialogAccepted` (the folder trust
-  prompt was accepted), `hasClaudeMdExternalIncludesApproved`, `enabledMcpjsonServers`,
-  `disabledMcpjsonServers` and `mcpServers`. These are standing grants: the evidence of what the
-  person authorised for the agent, collected as part of the config home and the project catalog's
-  `.claude` entry (key names and citations to the 2.1.296 binary under
-  [Permission configuration](#permission-configuration), and the rows the analyzer makes of them
-  under [Permission rows](#permission-rows)). From a relocated `.claude-<name>` home only
-  `.claude.json` is collected, not the settings files (below).
+  global config keys" (settings page). Its `projects` object is keyed by project path
+  ([section 6](#6-where-the-project-path-is-recorded)).
+- `settings.json`, `settings.local.json` and, per project, `.claude/settings.json` and
+  `.claude/settings.local.json`: settings, including the standing permission grants, which with
+  the `projects.<path>` grants in `.claude.json` are the evidence of what the person authorised
+  (issue 93). They are collected with the config home and the project catalog's `.claude` entry;
+  their keys are under [Permission configuration](#permission-configuration).
 - `plugins/`: `installed_plugins.json`, `known_marketplaces.json`, `marketplaces/<name>/` git
   clones, `cache/` zip cache (cc plugins ctx); local also `blocklist.json`,
   `plugin-directory-cache-v2.json`, `synced/`.
@@ -257,9 +243,32 @@ claim other tools' directories that share the prefix:
   ([`config.go`](https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/config/config.go#L16),
   [`state.go`](https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/config/state.go#L12-L13)).
 
-Not collected from a relocated home: `settings.json`, `settings.local.json`, `todos/`, `plans/`,
-`tasks/`, `session-env/`, `shell-snapshots/`, `debug/` and the other subdirectories, and any config
-home outside the home directory or not named `.claude-<name>`.
+Not collected from a relocated home: `settings.json`, `settings.local.json`, `sessions/`, `todos/`,
+`plans/`, `tasks/`, `session-env/`, `shell-snapshots/`, `debug/` and the other subdirectories, and
+any config home outside the home directory or not named `.claude-<name>`.
+
+#### Used by other agents
+
+Other agents read this agent's config home or drive the CLI (from source; none seen on a real
+install):
+
+- Crush reads `~/.claude/skills` as one of its global skills directories, beside
+  `~/.agents/skills`, and a project's `.claude/skills` as a project one
+  ([`internal/config/load.go:1312-1322`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1312-L1322),
+  [`1345-1350`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1345-L1350)),
+  so a skill in the config home or the project may have been loaded by Crush as well as by Claude
+  Code ([`crush.md`](crush.md)).
+- Agent Zero's Orchestrator plugin, which tells that agent how to drive other coding CLIs on the
+  host or in its container, defaults Claude Code to `permission_mode: bypassPermissions` and, when
+  not running as root, runs
+  `claude -p "$TASK" --output-format json --permission-mode bypassPermissions --allowedTools Bash,Read,Edit`
+  ([`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37),
+  [`plugins/_orchestrator/README.md:96`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/README.md#L96)).
+  Such a session is an ordinary transcript under `projects/`, started by another agent with
+  approvals bypassed; the plugin's permission settings are in
+  [section 13 of `agent-zero.md`](agent-zero.md#13-parser-plan).
+- Hermes Agent, Cline, Pydantic AI's CLAI (its command-line chat client) and Zed copy or index the
+  transcripts ([What survives a delete](#what-survives-a-delete)).
 
 ### 3. Credentials
 
@@ -270,18 +279,20 @@ home outside the home directory or not named `.claude-<name>`.
   `<config>/.credentials.json` mode 0600 (docs /iam). Local file present.
 - `~/.claude/.device-keys.json` (device key store, file fallback to keychain, cc:477075,
   cc:337890-900). Not moved by `CLAUDE_CONFIG_DIR`.
-- `.claude.json` holds the sign-in session / `oauthAccount` and MCP server `env` blocks (docs;
-  cc:406053 "refusing to write to avoid wiping ~/.claude.json" auth).
+- `.claude.json` holds the sign-in session and MCP server definitions (docs; cc:406053 "refusing
+  to write to avoid wiping ~/.claude.json" auth) and is flagged `secret: true`; its credential
+  fields are in [section 12](#12-secrets).
 - `hfi-auth.json`, `.session_ingress_token`, `remote/.oauth_token`, `remote/.api_key` (cloud/host
   handoff), `CLAUDE_CODE_HOST_CREDS_FILE` path (cc:272494, 276584 region), Claude Desktop
   `host-creds-*.json` (see claude-desktop).
 - `<config>/sessions/<pid>.<sha256>.key` (139 bytes on Linux, 108 bytes on macOS) beside the
   per-process `sessions/<pid>.json`, observed on real installs with CLI 2.1.295 launched from the
   Claude Desktop Code tab on Linux and on macOS, 2026-10-11 (see issue 76 and
-  [`claude-desktop.md`](claude-desktop.md)); flagged `secret: true` since collector 1.11.0
-  (`.claude/sessions/*.key`, `.claude-*/sessions/*.key`). The `<pid>.json` itself is not flagged.
-- Config files that can embed keys: `settings.json` / `settings.local.json` (`apiKeyHelper`,
-  `env.ANTHROPIC_API_KEY`, MCP headers), `.mcp.json`, `managed-mcp.json`. Env: `ANTHROPIC_API_KEY`,
+  [`claude-desktop.md`](claude-desktop.md)); flagged `secret: true` (`.claude/sessions/*.key`,
+  `.claude-*/sessions/*.key`). The `<pid>.json` itself is not flagged
+  ([Remote Control](#remote-control)).
+- Config files that can embed keys: `settings.json` / `settings.local.json`, `.mcp.json`,
+  `managed-mcp.json` (the fields are in [section 12](#12-secrets)). Env: `ANTHROPIC_API_KEY`,
   `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` (docs /iam precedence list). Anthropic profiles
   live outside: `~/.config/anthropic` / `%APPDATA%\Anthropic` (docs /iam).
 
@@ -293,13 +304,11 @@ Patterns are relative to the home: `.claude/plugins/marketplaces` (git clones),
 (flag cache, optional), `.local/share/claude/versions` (~245 MB per version). Project-side:
 `*/.claude/worktrees`, `*/.claude/checkpoints` (gitignore template cc "claude-code-runtime").
 `downloads/`, `uploads/`, `file-transfers/` may be large but are user content; cap by size rather
-than exclude. The CLI cache directory (`claude-cli-nodejs`, [section 2](#2-per-user-storage)) is
-small (16 KB observed on macOS) and its `errors/` subdirectory is not excluded. On Windows the cache
-directory is `%LOCALAPPDATA%\claude-cli-nodejs\Cache\`, and the catalog names its children
-(`AppData/Local/claude-cli-nodejs/Cache/*`) rather than `claude-cli-nodejs`: the PowerShell
-collector matches exclusions without regard to case, so the Claude Desktop exclusion
-`*/Claude*/Cache` would match `AppData/Local/claude-cli-nodejs/Cache` and prune it, while the
-project-slug directories below it match no exclusion.
+than exclude. The [CLI cache directory](#cli-cache-directory) is small and nothing in it, its
+`errors/` subdirectory included, is excluded. On Windows the catalog names the cache directory's
+children (`AppData/Local/claude-cli-nodejs/Cache/*`) rather than the directory, so that the Claude
+Desktop exclusion `*/Claude*/Cache` does not prune it
+([`collectors/docs/coverage.md`](../collectors/docs/coverage.md) says why).
 
 ### 5. Project-local files
 
@@ -313,14 +322,14 @@ template, cc "claude-code-runtime" ctx). No per-project database.
 
 ### 6. Where the project path is recorded
 
-- `~/.claude.json` → `projects` object, keys are absolute cwd paths (cc:474276; docs "per-project
-  state such as trust decisions"). In a relocated home it is `<config home>/.claude.json`;
-  `discover_projects` and `Find-Projects` read `~/.claude-*/.claude.json` and
-  `~/.claude-*/history.jsonl` as well as the default paths.
-- Transcript records: `projects/<key>/<id>.jsonl` lines carry `"cwd"`, `"sessionId"`,
-  `"parentUuid"`, `"isSidechain"`, `"timestamp"`, `"type"` (cc:482870 parser, key counts in
-  cc.strings). The dir key is lossy (dashes), so read `cwd` from the first record.
-- CLI cache directory ([section 2](#2-per-user-storage)): every `mcp-logs-*/<timestamp>.jsonl` line
+- `~/.claude.json` → `projects` object, keys are absolute cwd paths (cc:474276 `e.projects`; docs
+  "per-project state such as trust decisions"). In a relocated home it is
+  `<config home>/.claude.json`; `discover_projects` and `Find-Projects` read
+  `~/.claude-*/.claude.json` and `~/.claude-*/history.jsonl` as well as the default paths.
+- Transcript records: every `projects/<key>/<id>.jsonl` record carries `"cwd"` (cc:482870 parser;
+  the envelope is in [section 8](#8-record-schema)). The directory key is lossy (dashes), so read
+  `cwd` rather than decode the key.
+- [CLI cache directory](#cli-cache-directory): every `mcp-logs-*/<timestamp>.jsonl` line
   carries `cwd`, a project path, and the slug directory above it is the lossy key of the same path.
   `discover_projects` and `Find-Projects` do not read it.
 - Claude Desktop `claude-code-sessions/` records each Code session's working folder (docs
@@ -342,50 +351,44 @@ The config home is `$CLAUDE_CONFIG_DIR`, else `~/.claude`, on every OS
 | `.claude/projects/<key>/<session id>/remote-agents/remote-agent-<id>.meta.json`, `.../mcp-tasks/mcp-task-<id>.meta.json` | sidecars for remote agents and MCP tasks (cc:484010, cc:488428) | no; not observed |
 | `.claude/projects/<key>/memory/*.md` | per-project memory files (observed) | no |
 | `.claude/history.jsonl` | prompt history across sessions, [section 10](#10-other-stores) | yes, as history |
-| `.claude/sessions/<pid>.json` | live-process registry: `pid`, `sessionId`, `cwd`, `startedAt` (epoch ms), `version`, `kind`, `entrypoint`, optionally `name`, `status` (observed) | yes, one `system` row per file, [section 13](#13-parser-plan) |
+| `.claude/sessions/<pid>.json` | live-process registry, one file per running CLI process; its keys are under [Remote Control](#remote-control) | yes, one `system` row per file, [section 13](#13-parser-plan) |
 | `.claude/jobs/<id>/parent-transcript.jsonl` | a copy of the parent transcript handed to a background job (cc:474968) | no; not observed |
 | `.claude/dump-prompts/<session id>.jsonl` | full outgoing prompts, when that debug option is on (cc:487015) | no; not observed |
-| `Library/Caches/claude-cli-nodejs/<key>/mcp-logs-<server>/<timestamp>.jsonl` (macOS; `.cache/claude-cli-nodejs/` on Linux and `AppData/Local/claude-cli-nodejs/Cache/` on Windows, bundle-derived) | MCP server log of the CLI, outside the config home and not moved by `CLAUDE_CONFIG_DIR`: one `{cwd, debug, sessionId, timestamp}` object per line, `<key>` the cwd slug as above, `<server>` the slugged server name; observed on macOS with CLI 2.1.295, 2026-10-11 ([CLI cache directory](#cli-cache-directory), issue 81) | no; a possible source of `system` rows ([section 13](#13-parser-plan)) |
+| `<CLI cache directory>/<key>/mcp-logs-<server>/<timestamp>.jsonl` | MCP server log of the CLI, outside the config home; paths per platform and line shape under [CLI cache directory](#cli-cache-directory) (issue 81) | no; a possible source of `system` rows ([section 13](#13-parser-plan)) |
 
 The parser selects `projects/[^/]+/.*\.jsonl$` and `history.jsonl` under `.claude` or a
 `.claude-<name>` home, so it reads main and subagent transcripts at any depth, ignores the
 `.meta.json` sidecars, and reads a `.txt` sidecar only when a stub names it
 ([section 13](#13-parser-plan) gives every glob). A config home moved with `CLAUDE_CONFIG_DIR` to a
-`.claude-<name>` directory in the home (for example `~/.claude-work`) is collected through the
-Claude-specific names of
-[Relocated config homes](#relocated-config-homes-claude_config_dir) and matched by the
-parser; a config home elsewhere or under another name is neither collected nor parsed. Before the
-catalog gained its `.claude-*` lines this section said such a home was in neither the catalog
-(`.claude`, `.claude.json*`, `.local/share/claude`) nor the parser's globs
-(`^\.claude/projects/[^/]+/.*\.jsonl$`).
+`.claude-<name>` directory in the home (for example `~/.claude-work`) is matched by the parser as
+far as it is collected ([Relocated config homes](#relocated-config-homes-claude_config_dir)); a
+config home elsewhere or under another name is neither collected nor parsed.
 
 #### What survives a delete
 
 Claude Code deletes transcripts older than `cleanupPeriodDays` (default 30) at startup and prunes
 `.claude/history.jsonl` by the same retention (cc:474049 setting description, cc:490770
-`cleanupPeriodDays??`); no other delete command is stated. The history file is the per-prompt
-history: one line per prompt with its text, its time in epoch milliseconds, the project and the
-session id. It usually outlives its transcript and is then the only record of the prompt
-([section 10](#10-other-stores)); long pasted text is in `paste-cache/`, which the collector
-excludes. Beside it in the config home sit the backups of files the agent edited
-(`file-history/<session id>/`), the live-process records of `sessions/<pid>.json`, a background
-job's copy of its parent transcript (`jobs/<id>/parent-transcript.jsonl`, not observed) and the
-project paths in `.claude.json`; whether retention prunes them is not stated. Hermes Agent's
-`state.db`, a Cline session made by the SDK's import and Pydantic AI's CLAI `sessions.db` hold
-copies that outlive the original file (below). No deletion marker is stated. The analyzer reads
-`history.jsonl` as a secondary source and the session records and `.claude.json` for their own rows,
-not `file-history/`, `paste-cache/` or `jobs/`; the other agents' copies are read, if at all, under
-those agents (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+`cleanupPeriodDays??`); no other delete command is stated. The per-prompt history
+([`history.jsonl`](#historyjsonl)) usually outlives its transcript and is then the only record of
+the prompt; long pasted text is in `paste-cache/`, which the collector excludes. Beside it in the
+config home sit the backups of files the agent edited (`file-history/<session id>/`), the
+live-process records of `sessions/<pid>.json`, a background job's copy of its parent transcript
+(`jobs/<id>/parent-transcript.jsonl`, not observed) and the project paths in `.claude.json`; whether
+retention prunes them is not stated. Hermes Agent's `state.db`, a Cline session made by the SDK's
+import and Pydantic AI's CLAI `sessions.db` hold copies that outlive the original file (below). No
+deletion marker is stated. The analyzer reads `history.jsonl` as a secondary source and the session
+records and `.claude.json` for their own rows, not `file-history/`, `paste-cache/` or `jobs/`; the
+other agents' copies are read, if at all, under those agents (see [Secondary
+sources](../analyzer/docs/output.md#secondary-sources)).
 
 - **Copies held by other agents.** Three agents copy these transcripts into stores of their own,
-  where the copy outlives the original file (source reviews of 2026-10-19; none seen on a real
-  install):
+  where the copy outlives the original file (from source; none seen on a real install):
   - Hermes Agent's `hermes_cli/foreign_sessions.py` reads Claude Code's
     `~/.claude/projects/*/*.jsonl` and appends their user and assistant turns to its `state.db` as a
     new session whose `origin_json.imported_from` names the tool, the source path and the foreign
     session id, stamped with the import time
     ([`hermes_cli/foreign_sessions.py:254-260`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/foreign_sessions.py#L254-L260);
-    [section 7 of `hermes.md`](hermes.md#7-transcript-stores)).
+    [Imported sessions in section 10 of `hermes.md`](hermes.md#imported-sessions)).
   - Cline's SDK session import makes an ordinary Cline session with a new id and
     `metadata.importedFrom{tool, sourceSessionId, sourcePath, importedAt, sourceProvider, sourceModel}`;
     at the reviewed commit only Cline's example desktop app calls it
@@ -394,14 +397,14 @@ those agents (see [Secondary sources](../analyzer/docs/output.md#secondary-sourc
   - Pydantic AI's CLAI 2.0 (its command-line chat client) `/resume` copies them into its
     `sessions.db`
     ([`claude_code_sessions.py:41-43`](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/runtime/claude_code_sessions.py#L41-L43);
-    [section 2 of `pydantic-clai.md`](pydantic-clai.md#2-per-user-storage)).
+    [Other agents' sessions in `pydantic-clai.md`](pydantic-clai.md#other-agents-sessions)).
 - **Indexed by Zed.** Zed's agent panel can run this agent as an external agent over ACP (the Agent
   Client Protocol, the JSON-RPC protocol Zed uses to drive another agent); its threads sidebar then
   lists the session in `sidebar_threads` with `agent_id` `claude-acp` and the ACP session id in
   `session_id`, while the transcript stays in this agent's own store
   ([`agent_servers/src/custom.rs:17-19`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_servers/src/custom.rs#L17-L19);
   [section 7 of `zed.md`](zed.md#7-transcript-stores)). Whether that id equals the session id this
-  agent records was not determined (Zed source review of 2026-10-19).
+  agent records was not determined.
 
 ### 8. Record schema
 
@@ -608,17 +611,20 @@ whose text is in no `user` record of the file.
   files and in 3 names an earlier session whose file exists while none of those records' `uuid`s are
   in it; consistent with a resumed or forked session, purpose not determined.
 - **Project path**: `cwd` on every transcript record; can change within a session (4 of 15 session
-  files had more than one) and `relocated` records it (cc:484038). The directory `<key>` is lossy;
-  read `cwd`.
+  files had more than one) and `relocated` records it (cc:484038); the directory `<key>` is lossy
+  ([section 6](#6-where-the-project-path-is-recorded)).
 - **Branch**: `gitBranch` on every transcript record (never empty observed; `HEAD` when detached is
   not determined); changes within a session (2 files).
 - **Model**: `message.model` on `assistant` records (`claude-<family>-N-N` observed, `<synthetic>`
   for local errors); `requestedModel`, the model the request asked for
   (`claude 2.1.296 darwin-arm64 @198072824` `requestedModel:X.model`), equal to `message.model` on
   every 2.1.296 line observed; `model` attachment `identity.modelId`; `cost-state.modelUsage` keys.
-  A `/model` switch leaves a command output line built from `@199593943`
-  `var fle="Set model to ",gne=" and saved as your default for new sessions"` (observed on 2.1.296);
-  the parser keeps it as `command output:` and marks the change itself from `message.model`.
+  A `/model` switch is a `user` line `<command-name>/model</command-name>` followed by a `user`
+  line with the command output, built from `@199593943`
+  `var fle="Set model to ",gne=" and saved as your default for new sessions"`; observed on 2.1.296
+  as
+  ``<local-command-stdout>Set model to `<display name>` and saved as your default for new sessions</local-command-stdout>``.
+  The parser keeps it as `command output:` and marks the change itself from `message.model`.
 - **Subagents**: the parent's `Agent` `tool_use.id` equals the subagent's `.meta.json` `toolUseId`,
   and the parent's `toolUseResult.agentId` equals the file's agent id (76 of 76 non-fork subagents).
   Forked agents (`agentType:"fork"`, 4) have a `toolUseId` that is not in the parent transcript.
@@ -640,9 +646,9 @@ cc:479372. `pastedContents` maps a paste number to `{id, type, content, mediaTyp
 the paste is at most 1,024 characters, else to `{id, type, contentHash, mediaType, filename}` with
 the text stored in `paste-cache/` under its hash (cc:479369 `z8=1024`, cc:479374
 `registerPastedTextForRecall`, cc:479360 `paste-cache`); `display` holds the `[Pasted text #N]`
-placeholder. Every observed `pastedContents` was empty. The collector excludes
-`.claude/paste-cache`, so long pasted text is not collected. History is the only record of a prompt
-whose transcript was deleted by retention.
+placeholder. Every observed `pastedContents` was empty. `paste-cache/` is excluded
+([section 4](#4-exclusions)); what the history outlives is under
+[What survives a delete](#what-survives-a-delete).
 
 #### File-history records
 
@@ -666,23 +672,24 @@ which no other record lists in one place.
 - Their `permissions` object, `@188532304`
   `function ia(e){return u({allow:A(Gi()).optional().describe("List of permission rules for allowed operations"),deny:A(Fo()).optional()...,ask:A(Fo()).optional()...,defaultMode:pa(rh,U([...CH,...Ho(e)])).optional()...,disableBypassPermissionsMode:U(["disable"]).optional()...,blockReadsOutsideWorkingDirectories:H().optional()...,additionalDirectories:A(o()).optional()`,
   holds `allow`, `deny` and `ask` (rule strings, a tool name with an optional argument pattern in
-  parentheses, such as `Bash(npm test:*)`), `defaultMode` (a mode name above),
+  parentheses, such as `Bash(npm test:*)`), `defaultMode` (a mode name of the `permission-mode` row
+  in [section 8](#8-record-schema)),
   `disableBypassPermissionsMode` (only `"disable"`; also a managed-settings key, `@188373224`
   `{path:["permissions","disableBypassPermissionsMode"],restrictive:"disable"}`),
   `blockReadsOutsideWorkingDirectories` (boolean) and `additionalDirectories` (paths outside the
   working directory the agent may use). "Always allow" answers to a prompt are persisted into these
   lists and a mode chosen to keep into `defaultMode` (`@191956974`
-  `permissions:{defaultMode:e.mode}`). The same files hold keys the parser never reads because they
-  can carry credentials (`env`, `apiKeyHelper`, hooks, MCP server settings).
-- In `~/.claude.json` (the global config, flagged `secret: true` by the collector) each
+  `permissions:{defaultMode:e.mode}`). The same files hold keys that can carry credentials, which
+  the parser never reads ([section 12](#12-secrets)).
+- In `~/.claude.json` (the global config, a credential file, [section 3](#3-credentials)) each
   `projects.<path>` object starts from `@189922165`
   `var bue={allowedTools:[],mcpContextUris:[],mcpServers:{},enabledMcpjsonServers:[],disabledMcpjsonServers:[],hasTrustDialogAccepted:!1,hasClaudeMdExternalIncludesApproved:!1,`:
   `allowedTools` (tools allowed for that project), `hasTrustDialogAccepted` (the person accepted the
   folder trust prompt), `hasClaudeMdExternalIncludesApproved` (the person approved `CLAUDE.md`
   imports from outside the project), `enabledMcpjsonServers` and `disabledMcpjsonServers` (approval
   of the project's `.mcp.json` servers) and `mcpServers` (project-scoped server definitions, which
-  can carry headers). The parser reads the rows of [section 13](#13-parser-plan); the MCP lists and
-  definitions are not read.
+  can carry headers). The parser reads the rows of [Permission rows](#permission-rows); the MCP
+  lists and definitions are not read.
 
 #### Remote Control
 
@@ -703,8 +710,10 @@ and the Ubuntu lab install of 2026-10-11 ([Observed](#observed)).
   `messagingSocketPath` is the local peer socket, not the bridge. On macOS (2026-10-11, CLI 2.1.295
   launched from the Code tab) the 612-byte file had the same key set, with `entrypoint`
   `claude-desktop`, `kind` `interactive`, `status` `idle`, `nameSource` `user`, `pidDomain` `darwin`
-  and `hostSessionId` a 42-character `local_<uuid>`; the sibling `.key` was 108 bytes (139 on
-  Linux). While Remote Control is attached the CLI patches `bridgeSessionId` into the same file
+  and `hostSessionId` a 42-character `local_<uuid>`; the sibling `.key` is in
+  [section 3](#3-credentials). On the WSL2 install (2.1.286 to 2.1.289) some files lacked `name`
+  and `status`. While Remote Control is attached the CLI patches `bridgeSessionId` into the same
+  file
   (`@209023561` `async function mHn(e,n){await bn({bridgeSessionId:e},n)}`, the helper that also
   patches `messagingSocketPath`), and the session picker pairs local sessions with the bridge by it
   (`@208451566` `if(s.bridgeSessionId!==void 0)`). So a registry file with `bridgeSessionId` set at
@@ -731,9 +740,10 @@ and the Ubuntu lab install of 2026-10-11 ([Observed](#observed)).
   `CLAUDE_CODE_REMOTE_SESSION_ID` belong to cloud-hosted sessions, where the CLI itself runs
   remotely, as `@206668216`
   `setHasRemoteSessionOrContainerId(Boolean(a.CLAUDE_CODE_REMOTE_SESSION_ID||a.CLAUDE_CODE_CONTAINER_ID))`
-  shows; a different feature, whose files are already secret globs.
+  shows; a different feature, whose files are in [section 3](#3-credentials).
 
-[Section 13](#13-parser-plan) says which rows the parser makes of these fields (issue 80).
+[Sync, relay and origin rows](#sync-relay-and-origin-rows) says which rows the parser makes of
+these fields (issue 80).
 
 ### 11. Format versions
 
@@ -752,16 +762,11 @@ and the Ubuntu lab install of 2026-10-11 ([Observed](#observed)).
 
 ### 12. Secrets
 
-- `~/.claude.json`, the global config, holds the account's OAuth details and is flagged
-  `secret: true` by the collector; its `projects.<path>.mcpServers` definitions can carry headers.
-  The parser reads only its permission keys ([Permission configuration](#permission-configuration),
-  [section 13](#13-parser-plan)).
-- The settings files hold keys that can carry credentials (`env`, `apiKeyHelper`, hooks, MCP server
-  settings); the parser never reads them ([Permission configuration](#permission-configuration)).
-- `sessions/<pid>.<sha256>.key` beside each `sessions/<pid>.json` is a secret and is not read
-  ([Remote Control](#remote-control), [section 13](#13-parser-plan)).
-- `.session_ingress_token` and `remote/.oauth_token` belong to cloud-hosted sessions and are already
-  secret globs ([Remote Control](#remote-control)).
+- `~/.claude.json`, the global config: `oauthAccount` (the sign-in session) and the MCP server
+  definitions' `env` blocks and headers, globally and under `projects.<path>.mcpServers`. The
+  parser reads only its permission keys ([Permission configuration](#permission-configuration)).
+- The settings files: `env` (such as `env.ANTHROPIC_API_KEY`), `apiKeyHelper`, hooks and MCP server
+  settings and headers; the parser never reads them.
 - Identity inside the transcript: the `session_context` attachment carries
   `context{userEmail, gitStatus}`, `credential_org` an `organizationUuid`, and `bridge-session`
   records `ownerAccountUuid` and `ownerOrganizationUuid` ([section 8](#8-record-schema)).
@@ -779,8 +784,8 @@ and the Ubuntu lab install of 2026-10-11 ([Observed](#observed)).
 ^(?:\.claude-[^/]+/)?\.claude\.json$
 ```
 
-The `.claude-<name>` form is a config home moved with `CLAUDE_CONFIG_DIR`; the catalog collects its
-`projects`, `history.jsonl` and `.claude.json` but not its `sessions/` or its settings files. A
+The `.claude-<name>` form is a config home moved with `CLAUDE_CONFIG_DIR`; what the catalog
+collects from one is under [Relocated config homes](#relocated-config-homes-claude_config_dir). A
 project's `.claude/settings.json` and `.claude/settings.local.json` reach the parser as `project`
 artifacts (the collector's project catalog has `project|.claude`), with the project directory as
 their home.
@@ -831,7 +836,7 @@ Coverage. A label is the start of a `system` row's text, `<label>: ` and then th
 | `queue-operation` | `system`, `queue <operation>: <content>`; an `enqueue` whose `content` a `queued_command` attachment or a `user` record of the file delivers is `prompt queued: delivered at line N` at the enqueue's own timestamp, N being the first delivering line after it (else the first), so the typing time is kept and the prompt text appears once, on the delivering row |
 | every other type ([section 8](#8-record-schema) table) | skip |
 | `history.jsonl` line | `user` |
-| `sessions/<pid>.json` | one `system` row at `startedAt` (epoch ms), `claude-code process <pid> <kind> status=<status> entrypoint=<entrypoint> bridge=<bridgeSessionId or none> host_session=<hostSessionId or none>` (`-` for a missing `kind`, `status` or `entrypoint`), `session_id` `sessionId`, `project_path` `cwd`, `source_line` 1; a file that is not a JSON object is one `system` row `parser: session registry file is not a JSON object`. A `bridge=` value means the process was under Remote Control when the collector ran ([section 10](#10-other-stores)); a record can outlive a crashed process, so pair it with the EDR's process list |
+| `sessions/<pid>.json` | one `system` row at `startedAt` (epoch ms), `claude-code process <pid> <kind> status=<status> entrypoint=<entrypoint> bridge=<bridgeSessionId or none> host_session=<hostSessionId or none>` (`-` for a missing `kind`, `status` or `entrypoint`), `session_id` `sessionId`, `project_path` `cwd`, `source_line` 1; a file that is not a JSON object is one `system` row `parser: session registry file is not a JSON object`. A `bridge=` value means the process was under Remote Control when the collector ran ([Remote Control](#remote-control)) |
 | `settings.json`, `settings.local.json` (user, `.claude-<name>`, or a project's) | one `system` row per `permissions.allow`, `deny`, `ask` and `additionalDirectories` entry, then one for `permissions.defaultMode` and `permissions.disableBypassPermissionsMode` when set: `permission setting: permissions.<key>=<value> (from <path relative to the home or project>, file mtime)`, a non-string value as compact JSON; `timestamp_utc` the manifest `mtime`, else the file's own; `session_id` empty; `project_path` the project directory for a `project` artifact, else empty; `source_line` 1; no other key read; a file that is not a JSON object is one `system` row `parser: settings file is not a JSON object` |
 | `.claude.json`, `.claude-<name>/.claude.json` | per `projects.<path>`: one row per `allowedTools` entry, then one each for `hasTrustDialogAccepted` and `hasClaudeMdExternalIncludesApproved` when present, `permission setting: <key>=<value> (from .claude.json, file mtime)`, `project_path` the `<path>` key, times as above; nothing else in the file is read (it holds the account's OAuth details); `.claude.json.backup*` is not wanted |
 
@@ -854,29 +859,25 @@ Not read: `.meta.json` sidecars, the `sessions/<pid>.<sha256>.key` files (secret
 the other `sessions/<pid>.json` keys (`procStart`, `version`, `peerProtocol`, `peerFeatures`,
 `pidDomain`, `messagingSocketPath`, `name`, `nameSource`, `nameSince`, `updatedAt`,
 `statusUpdatedAt`), the 2.1.295 assistant keys (`advisorModel`, `apiBlockIndex`, `effort`,
-`perTurnEffort`, `requestedModel`, `serverClassifierRequest`, `thinkingDurationMs`; `wireToolInputs`
-is read for Bash), `sourceToolAssistantUUID` and `serverClassifierContext`, and the
-`claude-cli-nodejs` MCP logs ([section 7](#7-transcript-stores)). Those logs carry `sessionId`,
-`cwd` and an ISO `timestamp` on every line, so a later reader could turn each `debug` message into a
-`system` row joined to the session.
+`perTurnEffort`, `serverClassifierRequest`, `thinkingDurationMs`; `requestedModel` is read only for
+the model row and `wireToolInputs` only for Bash), `sourceToolAssistantUUID` and
+`serverClassifierContext`, and the `claude-cli-nodejs` MCP logs
+([CLI cache directory](#cli-cache-directory)), whose lines name the session, the project and a
+time, so each `debug` message could become a `system` row joined to the session.
 
 #### Permission rows
 
-A `user` line's `permissionDecision` (2.1.295) gives a `permission decision:` row after the line's
-`tool_result` rows, with the `tool_use_id` of its first `tool_result` block, and `toolDenialKind`
-and `userFeedback` appended to it (issue 97); `permissionMode` on `user` lines and the
-`permission-mode` records give a `permission mode:` row on each change; the settings files and
-`.claude.json` give one `permission setting:` row per standing grant, at the file's modification
-time (issue 93). The coverage table above has the exact texts; the records are in
-[section 8](#8-record-schema) and [Permission configuration](#permission-configuration). The
-`plan_mode`, `plan_mode_exit`, `plan_mode_reentry` and `auto_mode` attachments are not read.
+Per-call decisions are the `permission decision:` rows of `permissionDecision`, `toolDenialKind`
+and `userFeedback` (issue 97), the mode the `permission mode:` rows, and the standing grants the
+`permission setting:` rows of the settings files and `.claude.json` (issue 93); the coverage table
+has the exact texts, [section 8](#8-record-schema) and
+[Permission configuration](#permission-configuration) the records. The `plan_mode`,
+`plan_mode_exit`, `plan_mode_reentry` and `auto_mode` attachments are not read.
 
 #### Model rows
 
-`assistant` `message.model` gives `model: <id>` at the session's first one and
-`model: <old> -> <new>` on each change, with ` requested=<requestedModel>` when that key is set and
-differs; a subagent file has its own tracker. A `/model` switch keeps its own `slash command` and
-`command output` rows, and the change itself is marked from `message.model`
+The `model:` rows come from `message.model` and `requestedModel` (the `assistant` row of the
+coverage table). A `/model` switch keeps its own `slash command` and `command output` rows
 ([section 9](#9-joins-and-timestamps)). The `model` attachment and `cost-state` records are not
 read.
 
@@ -886,7 +887,7 @@ read.
 row per line ([`history.jsonl`](#historyjsonl)); it usually outlives its transcript ([What survives
 a delete](#what-survives-a-delete)). The `sessions/<pid>.json` registry and the permission settings
 yield rows of their own. Not read: `file-history/`, `paste-cache/`, `jobs/`, the `.meta.json`
-sidecars and the `claude-cli-nodejs` MCP logs (above).
+sidecars and the `claude-cli-nodejs` MCP logs.
 
 #### Sync, relay and origin rows
 
@@ -981,34 +982,35 @@ resolved.
 
 ## 14. Confidence
 
-Collection. High: config-dir resolution, directory and file name sets, projects key scheme,
-transcript naming, keychain service construction, `.credentials.json`, managed paths, native
-installer paths (all from bundle literals plus docs, layout confirmed locally). Medium: exact
-keychain service string (built from `"Claude Code"` + `"-credentials"`; not seen as one literal),
-contents of `storage-v2`, `seed-admin`, `remote`, `systemd`, `daemon` (names only). High:
-`.claude.json` inside a relocated config home (bundle, corroborated by claude-mem source), and that
-claude-code-router, claude-mem and claude-squad keep nothing at their roots that the `.claude-*/`
-lines collect (source at the linked commits). Not determined: how common config-home names other
-than `.claude-<name>` are; other `.claude-` prefixed tools beyond the three checked. Not determined:
-whether `.claude.json` suffix variants (`.claude<suffix>.json`) appear on normal installs;
-Windows-only paths beyond `%USERPROFILE%\.claude` (none found); size of `dump-prompts` in practice.
-
-Transcript schema. High (observed and consistent with the bundle): file layout and key scheme, the
-record type list, the transcript envelope, one block per `assistant` record,
-`tool_use`/`tool_result` join, `toolUseResult`, `sourceToolAssistantUUID`,
-`wireToolInputs`/`wireIngestContext` and the stripped `cd` prefix, `user`-record origins and the
-subagent first-line prompt, the subagent join through `.meta.json`, millisecond ISO timestamps,
-epoch-millisecond history, empty thinking with signature, `pr-link` re-append, `queued_command`
-prompts.
-
-Medium (bundle only, not exercised): `compact_boundary` and `isCompactSummary` shapes, `api_error`,
-`memory_saved`, `relocated`, `continued-in`, `ended-by-model`, `content-replacement`, `frame-link`,
-`summary`, `progress`, nested subagent subdirectories, `paste-cache` storage of pasted text.
-
-Not determined: the meaning of a `session_id` that differs from `sessionId`; the shape of
-`api-request*`, `fork-context-ref`, `content-replacement.replacements[]` and `history-suppression`;
-whether `redacted_thinking`, `server_tool_use` or `image` blocks still appear in 2.1.x transcripts;
-`gitBranch` for a detached head or outside a repository; the layout before 2.1.286; the Windows
-transcripts (the Collection part finds the same `~/.claude` layout from the bundle, but none was
-inspected). The macOS transcripts were listed here as well until the macOS installs of 2.1.295 and
-2.1.296 ([Observed](#observed)) were read.
+- High (bundle literals plus docs, layout confirmed locally): config-dir resolution, directory and
+  file name sets, the `projects/` key scheme and transcript naming, keychain service construction,
+  `.credentials.json`, managed paths, native installer paths.
+- High (bundle, corroborated by claude-mem source): `.claude.json` inside a relocated config home;
+  and that claude-code-router, claude-mem and claude-squad keep nothing at their roots that the
+  `.claude-*/` lines collect (source at the linked commits).
+- High (observed and consistent with the bundle): the record type list, the transcript envelope,
+  one block per `assistant` record, the `tool_use`/`tool_result` join, `toolUseResult`,
+  `sourceToolAssistantUUID`, `wireToolInputs`/`wireIngestContext` and the stripped `cd` prefix,
+  `user`-record origins and the subagent first-line prompt, the subagent join through `.meta.json`,
+  millisecond ISO timestamps, epoch-millisecond history, empty thinking with signature, `pr-link`
+  re-append, `queued_command` prompts.
+- High (observed on macOS and Linux with 2.1.295 and 2.1.296): the `sessions/<pid>.json` registry
+  keys, `requestedModel`, and the `permission-mode` records; the permission configuration key
+  names (observed by name only).
+- Medium: the exact keychain service string (built from `"Claude Code"` + `"-credentials"`; not seen
+  as one literal); contents of `storage-v2`, `seed-admin`, `remote`, `systemd`, `daemon` (names
+  only).
+- Medium (bundle only, not exercised): `compact_boundary` and `isCompactSummary` shapes,
+  `api_error`, `memory_saved`, `relocated`, `continued-in`, `ended-by-model`,
+  `content-replacement`, `frame-link`, `summary`, `progress`, nested subagent subdirectories,
+  `paste-cache` storage of pasted text; the CLI cache directory on Linux and Windows.
+- Not determined: how common config-home names other than `.claude-<name>` are; other `.claude-`
+  prefixed tools beyond the three checked; whether `.claude.json` suffix variants
+  (`.claude<suffix>.json`) appear on normal installs; Windows-only paths beyond
+  `%USERPROFILE%\.claude` (none found); size of `dump-prompts` in practice.
+- Not determined: the meaning of a `session_id` that differs from `sessionId`; the shape of
+  `api-request*`, `fork-context-ref`, `content-replacement.replacements[]` and
+  `history-suppression`; whether `redacted_thinking`, `server_tool_use` or `image` blocks still
+  appear in 2.1.x transcripts; `gitBranch` for a detached head or outside a repository; the layout
+  before 2.1.286; the Windows transcripts, which rest on the bundle and docs alone; whether a prompt
+  sent over Remote Control is marked on its transcript line ([Remote Control](#remote-control)).

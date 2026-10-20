@@ -31,71 +31,17 @@ Gist sync command, was read at tag `v0.0.5`,
 [`424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03`](https://github.com/itayinbarr/little-coder/commit/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03),
 for sync only (2026-10-17).
 
-Confidence. High: file locations, header and entry fields, message roles, `lc-*` custom types,
-sub-agents unsaved (source). Medium: that every little-coder session contains an `lc-` entry; with
-injection set to `system` mode and no plan, bg-shell or research use, a session may carry none, and
-then only `provider: "llamacpp"` hints at it. Not determined: the exact `usage` sub-fields beyond
-those shown
-([types.ts:368-380](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L368-L380)).
-
 ### Observed
 
 - No real install.
 
 ### Source reviews
 
-- 2026-10-19: the head of [itayinbarr/little-coder](https://github.com/itayinbarr/little-coder)
-  `main` on 2026-10-19 is still
-  [`89d4fa0`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df),
-  the commit cited throughout, and it still pins pi `^0.83.0`
-  ([package.json:41](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/package.json#L41)),
-  so there is no drift and every path here holds; the review read it again for the requirement
-  classes. Source only. By class:
-  - Permission state: found, not read as decisions. The `permission-gate` extension decides each
-    shell and edit call by the mode in `LITTLE_CODER_PERMISSION_MODE` (`auto`, the default,
-    `accept-all` or `manual`) and the extra allowed prefixes in `LITTLE_CODER_BASH_ALLOW`
-    ([.pi/extensions/permission-gate/index.ts:5-19](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L5-L19),
-    [268-272](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L268-L272));
-    both are environment variables, so no file holds the standing state. In `manual` mode the user
-    is asked per call: edits offer Apply, Deny and "Apply all (this session)", the last kept in
-    memory
-    ([permission-gate/manual-edit-confirm.ts:5-37](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/manual-edit-confirm.ts#L5-L37)),
-    shell commands a yes or no. A refusal blocks the call with a reason, `edit cancelled by user`,
-    `command cancelled by user`, or in `auto` mode a text starting `shell whitelist:`
-    ([index.ts:288](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L288),
-    [303](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L303),
-    [315](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L315),
-    [330](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L330),
-    [354](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L354)),
-    and pi 0.83.0 records a blocked call as a `toolResult` with that reason as its text and
-    `isError` true
-    ([packages/agent/src/agent-loop.ts:636-642](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/agent/src/agent-loop.ts#L636-L642),
-    [756-761](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/agent/src/agent-loop.ts#L756-L761)).
-    An approval leaves no record beyond the call's normal result. The pi parser shows the refusal as
-    an ordinary `tool_result` row.
-  - Model: covered. The `phase-model` extension switches the model at plan and implementation phases
-    through `pi.setModel`
-    ([.pi/extensions/phase-model/index.ts:169](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/phase-model/index.ts#L169)),
-    and pi 0.83.0's `setModel` appends a `model_change` entry
-    ([packages/coding-agent/src/core/agent-session.ts:1578-1586](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/agent-session.ts#L1578-L1586)),
-    which pi's reader turns into a `model:` row.
-  - Past use: covered (the prompt history and the checkpoints); no
-    other store found, and no new file for the model or for sync.
-  - Sync, relay and origin: covered; none in the current releases.
-  - Scratch directories: `/deep-research` runs its research agents in a fresh
-    `<tmpdir>/deep-research-*` directory and removes it when done
-    ([.pi/extensions/deep-research/index.ts:167-176](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L167-L176),
-    [257](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L257));
-    those agents run with `--no-session`, so no record names it. None under the home
-    ([Scratch directories](#scratch-directories)).
-  - Deletion: `/clear` is an alias for pi's new-session command and deletes nothing
-    ([.pi/extensions/clear-command/index.ts:18-23](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/clear-command/index.ts#L18-L23));
-    a session file goes only through pi's own picker
-    ([What survives a delete in `pi.md`](pi.md#what-survives-a-delete)), which leaves the checkpoint
-    directory and the prompt history behind.
-  - Version drift: none.
-  - Bad lines: covered; the prompt history reader reports a bad record. Not a collector
-    concern.
+- 2026-10-19: [`89d4fa0`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df)
+  is still the head of `main` and still pins pi `^0.83.0`, so no path changed. The review added
+  the permission gate and the phase-model switches to [section 8](#8-record-schema), the
+  `/deep-research` directory to [Scratch directories](#scratch-directories) and `/clear` to
+  [What survives a delete](#what-survives-a-delete).
 
 ## Collection
 
@@ -124,10 +70,8 @@ little-coder itself writes:
   ([little-coder.mjs:400-466](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L400-L466));
   a v1.9.0 keybinding is removed from `keybindings.json`
   ([:468-490](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L468-L490)).
-- `little-coder-prompt-history.json`: a JSON array of the last 100 prompts typed, no timestamps
-  ([.pi/extensions/prompt-history/index.ts:23-26](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L23-L26),
-  [38-40](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L38-L40),
-  [52-57](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L52-L57)).
+- `little-coder-prompt-history.json`: the last 100 prompts typed
+  ([section 7](#7-transcript-stores) gives the format).
 
 #### Checkpoints: `~/.little-coder/checkpoints/<session file name>/`
 
@@ -138,7 +82,10 @@ become `_`, last 200 characters), or an empty `<name>.absent` if it did not exis
 [25-58](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/checkpoint/index.ts#L25-L58)).
 The directory is the session file's basename, so it matches a `sessions/` JSONL file
 ([:63-65](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/checkpoint/index.ts#L63-L65)).
-`homedir()` on every OS.
+`homedir()` on every OS. The extension takes the basename by splitting the session path on `/`
+only
+([checkpoint/index.ts:64](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/checkpoint/index.ts#L64)),
+so a Windows session path with backslashes would not be split.
 
 #### Configuration: `~/.config/little-coder/`
 
@@ -172,7 +119,8 @@ None known under the home. little-coder works in the user's cwd. Its one directo
 the research ends
 ([.pi/extensions/deep-research/index.ts:167-176](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L167-L176),
 [257](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L257));
-no catalog line can hold it and nothing records it. `~/.little-coder/checkpoints/` holds copies of
+no catalog line can hold it, and its research agents run with `--no-session`, so no record
+names it. `~/.little-coder/checkpoints/` holds copies of
 project files, not a working directory. What a delete leaves (the checkpoints and the prompt
 history) is in [What survives a delete](#what-survives-a-delete).
 
@@ -187,11 +135,9 @@ history) is in [What survives a delete](#what-survives-a-delete).
   ([config.ts:4-14](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/llama-cpp-provider/config.ts#L4-L14),
   [294-300](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/llama-cpp-provider/config.ts#L294-L300)).
   Flag it.
-- `~/.little-coder/config.json` of the v0.0.x Python releases holds
-  `gist_token`, a GitHub personal access token with the `gist` scope;
-  secret glob `.little-coder/config.json` from collector 1.14.0. Evidence
-  in
-  [section 12](#12-secrets).
+- `~/.little-coder/config.json` of the v0.0.x Python releases holds a GitHub token
+  ([section 12](#12-secrets) names the key); secret glob `.little-coder/config.json` from
+  collector 1.14.0.
 - No keychain use.
 
 ### 4. Exclusions
@@ -226,19 +172,17 @@ and the encoded session directory name. Checkpoint file names encode absolute pa
 ### 7. Transcript stores
 
 - `.pi/agent/sessions/--<encoded cwd>--/<ISO timestamp with - for : and .>_<uuid>.jsonl`, one file
-  per session, appended per entry
-  ([packages/coding-agent/src/core/session-manager.ts:476-481](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/session-manager.ts#L476-L481),
-  [950-953](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/session-manager.ts#L950-L953)).
-  Shared with plain pi.
+  per session, appended per entry, shared with plain pi; the naming, its citations and the
+  override are in [section 2](#shared-with-pi-piagent).
 - `.pi/agent/little-coder-prompt-history.json`: JSON array of up to 100 prompt strings, oldest
   first, no timestamps or session ids
-  ([.pi/extensions/prompt-history/index.ts:26](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L26),
+  ([.pi/extensions/prompt-history/index.ts:23-26](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L23-L26),
   [38-40](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L38-L40),
   [52-57](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L52-L57)).
 - `.little-coder/checkpoints/<session file name>/<mangled path>`: pre-edit file copies, not
   transcripts, but they join to a session by name
-  ([.pi/extensions/checkpoint/index.ts:25-29](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/checkpoint/index.ts#L25-L29),
-  [63-65](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/checkpoint/index.ts#L63-L65)).
+  ([.pi/extensions/checkpoint/index.ts:25-29](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/checkpoint/index.ts#L25-L29);
+  the naming is in [Checkpoints](#checkpoints-little-codercheckpointssession-file-name)).
 
 Sub-agents run pi with `--no-session`, so they leave no file
 ([.pi/extensions/subagent/spawn.ts:14](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/subagent/spawn.ts#L14),
@@ -257,7 +201,8 @@ still joins its pre-edit file copies to the session, and the prompt history
 ([.pi/extensions/prompt-history/index.ts:26](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L26)).
 No deletion marker is written. The analyzer reads both: the prompt history as `user` rows with no
 timestamp and no session ([Past use and secondary sources](#past-use-rows-and-secondary-sources)),
-and the checkpoints, which [Source reviews](#source-reviews) counts as covered past use.
+and each checkpoint directory as one `system` row naming the session and the files
+([section 13](#13-parser-plan)).
 
 ### 8. Record schema
 
@@ -311,6 +256,38 @@ Assistant `provider` is commonly `llamacpp`, little-coder's local provider
 ([.pi/extensions/llama-cpp-provider/index.ts:172](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/llama-cpp-provider/index.ts#L172);
 [models.json:2-4](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/models.json#L2-L4)).
 
+#### Permission gate
+
+The `permission-gate` extension decides each shell and edit call by the mode in
+`LITTLE_CODER_PERMISSION_MODE` (`auto`, the default, `accept-all` or `manual`) and the extra
+allowed command prefixes in `LITTLE_CODER_BASH_ALLOW`
+([.pi/extensions/permission-gate/index.ts:5-19](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L5-L19),
+[268-272](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L268-L272));
+both are environment variables, so no file holds the standing state. In `manual` mode the user
+is asked per call: edits offer Apply, Deny and "Apply all (this session)", the last kept in
+memory
+([permission-gate/manual-edit-confirm.ts:5-37](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/manual-edit-confirm.ts#L5-L37)),
+shell commands a yes or no. A refusal blocks the call with a reason, `edit cancelled by user`,
+`command cancelled by user`, or in `auto` mode a text starting `shell whitelist:`
+([index.ts:288](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L288),
+[303](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L303),
+[315](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L315),
+[330](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L330),
+[354](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/permission-gate/index.ts#L354)),
+and pi 0.83.0 records a blocked call as a `toolResult` with that reason as its text and
+`isError` true
+([packages/agent/src/agent-loop.ts:636-642](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/agent/src/agent-loop.ts#L636-L642),
+[756-761](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/agent/src/agent-loop.ts#L756-L761)).
+An approval leaves no record beyond the call's normal result.
+
+#### Model switches
+
+The `phase-model` extension switches the model at the plan and implementation phases through
+`pi.setModel`
+([.pi/extensions/phase-model/index.ts:169](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/phase-model/index.ts#L169)),
+and pi 0.83.0's `setModel` appends a `model_change` entry
+([packages/coding-agent/src/core/agent-session.ts:1578-1586](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/agent-session.ts#L1578-L1586)).
+
 ### 9. Joins and timestamps
 
 Session id: header `id`, also in the file name. Tree: `parentId` → `id`.
@@ -320,8 +297,8 @@ name = session file basename.
 
 ### 10. Other stores
 
-None besides the prompt history and the checkpoints of [section 7](#7-transcript-stores): no SQLite
-or binary store. Images are base64 inside `image` parts
+little-coder keeps no database, index or log beside the prompt history and the checkpoints of
+[section 7](#7-transcript-stores). Images are base64 inside `image` parts
 ([types.ts:354-358](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L354-L358)).
 
 ### 11. Format versions
@@ -366,17 +343,16 @@ checkpoint directory as one `system` row naming the session and the files.
 
 #### Permission rows
 
-Permission decisions of the `permission-gate`
-extension are on disk as error `toolResult` rows whose text is
-`edit cancelled by user`, `command cancelled by user` or starts
-`shell whitelist:` ([Source reviews](#source-reviews)). The pi parser shows the refusal as an
-ordinary `tool_result` row; a `permission decision: denied (<reason>)` row joined on the
-`toolCallId` would show them as decisions. There is no standing state on disk to read: the mode
-and the allow list are environment variables.
+The refusals of the [permission gate](#permission-gate) are on disk as error `toolResult` rows
+whose text is `edit cancelled by user`, `command cancelled by user` or starts `shell whitelist:`.
+The pi parser shows the refusal as an ordinary `tool_result` row; a
+`permission decision: denied (<reason>)` row joined on the `toolCallId` would show them as
+decisions. There is no standing state on disk to read: the mode and the allow list are
+environment variables.
 
 #### Model rows
 
-Covered through pi's `model_change` rows: the `phase-model` extension's switches become
+Covered through pi's `model_change` rows: the [phase-model switches](#model-switches) become
 `model_change` entries, which pi's reader turns into `model:` rows
 ([Model in `pi.md`](pi.md#model-rows)).
 
@@ -422,7 +398,7 @@ The current releases sync nothing of their own, and no session is relayed or of 
 #### Scratch directory rows
 
 None in the home. `/deep-research`'s `<tmpdir>/deep-research-*` directory is removed when done
-and no record names it ([Source reviews](#source-reviews)).
+and no record names it ([Scratch directories](#scratch-directories)).
 
 #### Deletion rows
 
@@ -449,11 +425,19 @@ Fixture:
 
 ## 14. Confidence
 
-High: every path above, the env overrides, the checkpoint naming, the prompt history format, that
-sessions are pi's (source). High for pi paths at v0.83.0 (source at the tag); a later little-coder
-that moves to pi 1.x may differ. Medium: on Windows the checkpoint directory name, since the
-extension splits the session path on `/` only
-([checkpoint/index.ts:64](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/checkpoint/index.ts#L64))
-and a backslash path would not be split. Not determined: real sizes of `checkpoints/`; whether pi
-project files beyond `.pi/approved-plan.md` are written when `--with-pi-extensions` is used (that is
-pi's behaviour, covered by pi's own research).
+- High (source): every path in [section 2](#2-per-user-storage), the environment overrides,
+  the checkpoint naming, the prompt history format, and that the sessions are pi's, with pi's
+  file locations, header and entry fields and message roles read at its `v0.83.0` tag; a later
+  little-coder that moves to pi 1.x may differ.
+- High (source): the `lc-*` custom types of [little-coder markers](#little-coder-markers), and
+  that sub-agents leave no session file.
+- Medium: that every little-coder session contains an `lc-` entry; with injection set to
+  `system` mode and no plan, bg-shell or research use, a session may carry none, and then only
+  `provider: "llamacpp"` hints at it.
+- Medium: the checkpoint directory name on Windows
+  ([Checkpoints](#checkpoints-little-codercheckpointssession-file-name)).
+- Not determined: the exact `usage` sub-fields beyond those shown
+  ([types.ts:368-380](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L368-L380)).
+- Not determined: real sizes of `checkpoints/`.
+- Not determined: whether pi project files beyond `.pi/approved-plan.md` are written when
+  `--with-pi-extensions` is used; that is pi's behaviour ([pi](pi.md)).

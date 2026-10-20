@@ -22,35 +22,12 @@ history format comes from the upstream prompt_toolkit `history.py`, which is not
 
 ### Source reviews
 
-- **Source review (2026-10-19).** The head of
-  [Aider-AI/aider](https://github.com/Aider-AI/aider) `main` on
-  2026-10-19 is still
+- 2026-10-19: the head of [Aider-AI/aider](https://github.com/Aider-AI/aider) `main` is still
   [`5dc9490`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c),
-  the commit cited throughout, so every path here holds and there is no drift; the review read the
-  writers again for each requirement class. Source only. By class:
-  - Permission state: found, not read as decisions. Every confirmation
-    is written to the chat history as a blockquote line holding the
-    question, its options and the answer
-    ([section 8](#8-record-schema)); the standing grant is `yes-always`
-    in an `.aider.conf.yml` ([section 2](#2-per-user-storage)) or `--yes-always`, under which the
-    answer is
-    written as if typed. "Don't ask again" lasts the run only.
-  - Model: found, not read. The startup announcements written to the
-    chat history name the main, weak and editor models
-    ([section 8](#8-record-schema)), and each `/model`, `/weak-model`
-    or `/editor-model` switch writes them again; there is no separate file. The earlier statement
-    that the files record no model was wrong.
-  - Past use: covered (the input and LLM histories); no other store
-    found and no new file.
-  - Sync, relay and origin: covered; none, and no new file.
-  - Scratch directories: none ([Scratch directories](#scratch-directories)). Aider works in the git
-    root or cwd; the only directory it makes is a system temporary directory for an image pasted
-    with `/paste`
-    ([`commands.py:1295-1298`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L1295-L1298)).
-  - Deletion: covered; `/clear` and `/reset` empty the in-memory chat and leave every file
-    ([`commands.py:439-443`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L439-L443)).
-  - Version drift: none.
-  - Bad lines: not a collector concern; covered by the parser.
+  the commit cited throughout, so there is no drift. Added the confirmation lines and the startup
+  model announcements of the chat history ([section 8](#8-record-schema)), the `yes-always`
+  standing setting, the `/paste` temporary directory and what `/clear` and `/reset` leave
+  ([What survives a delete](#what-survives-a-delete)).
 
 ## Collection
 
@@ -64,7 +41,8 @@ Home-level files, all optional:
 - `~/.aider.conf.yml`: the config search is cwd, git root, home
   ([`aider/main.py:464-477`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/main.py#L464-L477);
   [`aider/args.py:790-796`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L790-L796)),
-  or `--config`.
+  or `--config`. At any level it can set `yes-always: true`, a standing yes to every confirmation
+  ([Confirmations](#aiderchathistorymd)).
 - `~/.aider.model.settings.yml` and `~/.aider.model.metadata.json`: `generate_search_path_list`
   tries home, git root, then cwd or the `--model-settings-file`/`--model-metadata-file` value
   ([`main.py:305-310`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/main.py#L305-L310),[`336-338`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/main.py#L336-L338),[`397-399`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/main.py#L397-L399);
@@ -95,11 +73,6 @@ Home-level files, all optional:
   outside a repository they land in the cwd
   ([`args.py:271-276`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L271-L276)),
   so `~/.aider.chat.history.md` and friends exist only for sessions started in the home directory.
-- At [`5dc9490`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c)
-  (source review of 2026-10-19): `.aider.conf.yml` at any level can set `yes-always: true`, which
-  answers yes to every confirmation without asking
-  ([`aider/args.py:760-764`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L760-L764));
-  collected with the file.
 
 No relocation environment variable; everything is `--option` or config-file driven. `pip`/`uv`
 install directories are out of scope.
@@ -207,7 +180,7 @@ histories as secondary sources on every run (see
   [`:995-999`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L995-L999),
   [`base_coder.py:2334`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L2334),
   [`repo.py:313`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/repo.py#L313)).
-- Startup announcements (source review of 2026-10-19): at the start of each run, and again after a
+- Startup announcements: at the start of each run, and again after a
   `/model`, `/weak-model`, `/editor-model` or `/chat-mode` switch, Aider writes its announcement
   lines as blockquotes
   ([`base_coder.py:550-554`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L550-L554),
@@ -221,7 +194,7 @@ histories as secondary sources on every run (see
   ([`base_coder.py:207-260`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L207-L260)).
   `/model <name>` itself is a `#### /model <name>` user line
   ([`commands.py:87-112`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L87-L112)).
-- Confirmations (source review of 2026-10-19): `confirm_ask` writes one blockquote line `>
+- Confirmations: `confirm_ask` writes one blockquote line `>
   <question> (Y)es/(N)o[/(A)ll][/(S)kip all][/(D)on't ask again] [<default>]: <answer>`, the answer
   as typed (`y`, `n`, `a`, `s`, `d`, or empty for the default), preceded by the subject (the
   command, path or URL) on blockquote lines of its own
@@ -284,8 +257,8 @@ follow the session header.
 ### 10. Other stores
 
 None besides the input and LLM histories of [section 7](#7-transcript-stores), and no SQLite
-store. `.aider.tags.cache.v*` is a repository-map cache, not chat, and is
-excluded by the collector.
+store. `.aider.tags.cache.v*` is a repository-map cache, not chat
+([section 4](#4-exclusions)).
 
 ### 11. Format versions
 
@@ -295,8 +268,7 @@ None; the format has not changed across sessions.
 
 `.aider.llm.history` contains the complete system prompt with every added
 file; `.aider.chat.history.md` contains any pasted secrets. Aider writes no
-keys itself; the collector flags `.aider.conf.yml` and the model settings
-files.
+keys itself. The credential files are in [section 3](#3-credentials).
 
 ### 13. Parser plan
 
@@ -324,8 +296,7 @@ Aider's confirmation prompts are written as `> ` blockquote lines
 rest of the blockquote run as `tool_result` rows; no separate `permission
 decision:` row is derived from them.
 
-From the source review of 2026-10-19 ([Source reviews](#source-reviews)): the confirmation lines
-are decisions on disk; a
+The confirmation lines are decisions on disk; a
 `permission decision: <answer> (<question>)` `system` row beside the
 `tool_result` row would surface them, and a `yes-always` key in a
 collected `.aider.conf.yml` is a standing setting
@@ -336,7 +307,7 @@ collected `.aider.conf.yml` is a standing setting
 The model is in the chat history only as the `> Model:`, `> Main
 model:`, `> Weak model:` and `> Editor model:` announcement lines
 ([section 8](#8-record-schema)); the parser does not read them, so it
-yields no `model:` rows. From the source review of 2026-10-19: the announcement lines give
+yields no `model:` rows. The announcement lines would give
 `model: <name>` at each session
 header and `model: <old> -> <new>` at each later announcement that
 names another; not yet parsed.
@@ -377,10 +348,7 @@ events, in the sense of
   separate options
   ([`args.py:276-287`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L276-L287)).
   These rows are kept.
-- What the input history survives: the chat history being deleted, truncated or redirected. It does
-  not survive the project, since both default to the git root
-  ([`args.py:270-275`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L270-L275));
-  neither is written under the home unless Aider ran there outside any repository.
+- What the input history survives is in [What survives a delete](#what-survives-a-delete).
 - The LLM history's `TO LLM` blocks become `system` rows that no chat row repeats. Its
   `LLM RESPONSE` block is timestamped when the response arrived
   ([`io.py:754-764`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/io.py#L754-L764)),
@@ -452,7 +420,7 @@ No session is relayed or of remote origin.
 
 #### Scratch directory rows
 
-None ([Source reviews](#source-reviews)).
+None ([Scratch directories](#scratch-directories)).
 
 #### Deletion rows
 
@@ -461,7 +429,9 @@ No marker; the files outlive `/clear` and `/reset`
 
 #### Bad-line rows
 
-Covered (source review of 2026-10-19).
+A non-blank input-history or LLM-history line that fits neither format is its own `system` row
+carrying the line in full (`error_rows`); the chat history's markdown has no line that fails to
+parse, since every line is a header, a prompt, a blockquote or assistant text.
 
 #### Fixtures
 
@@ -492,12 +462,8 @@ The other two files:
 
 ## 14. Confidence
 
-Collection. High: all file names and search orders (source). Medium: whether the collector's
-exclusion and secret globs are evaluated against project paths (affects `.aider.tags.cache*` and
-project `.aider.conf.yml`). Not determined: nothing material; aider is the simplest layout of the
-five.
-
-Parsing. High: chat and LLM history formats (read from the writers).
-Medium-high: input history (upstream prompt_toolkit source, not pinned to
-Aider's dependency version). Local-time timestamps need the host time zone
-to convert exactly.
+- High: all file names and search orders (source); chat and LLM history formats (read from the
+  writers).
+- Medium-high: input history (upstream prompt_toolkit source, not pinned to Aider's dependency
+  version). Local-time timestamps need the host time zone to convert exactly.
+- Not determined: nothing material.

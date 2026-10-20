@@ -25,40 +25,10 @@ persistent shell
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: HEAD of FoundationAgents/MetaGPT is
-  still
+- 2026-10-19: HEAD of FoundationAgents/MetaGPT is still
   [`11cdf46`](https://github.com/FoundationAgents/MetaGPT/commit/11cdf466d042aece04fc6cfd13b28e1a70341b1f),
-  the commit cited here. One line per class:
-  - Permission: none on disk. The `Terminal` tool asks nothing before a
-    command (no `approve` or `confirm` in
-    [terminal.py](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/tools/libs/terminal.py));
-    the one question `RoleZero` asks, whether to continue past the
-    action limit, goes to the human through the environment and is not
-    stored
-    ([role_zero.py:328-335](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/roles/di/role_zero.py#L328-L335)).
-  - Model: `llm.model` in `.metagpt/config2.yaml`
-    ([llm_config.py:64](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/configs/llm_config.py#L64)),
-    already collected.
-  - Past use: found, outside the home. Besides `team.json`
-    ([Workspace](#workspace)), every run writes a DEBUG-level
-    log `logs/<YYYYMMDD>.txt` (or `<name>_<YYYYMMDD>.txt`) under
-    `METAGPT_ROOT`
-    ([logs.py:40-51](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/logs.py#L40-L51)),
-    the same root as `workspace`, so it is not under a home-relative
-    name either.
-  - Sync, relay and origin: none (not found in `metagpt/` at `11cdf46`,
-    grepped for `share_url`, `upload_session` and `sync_session`).
-  - Scratch directories: `<METAGPT_ROOT>/workspace` is the agent's own
-    output directory for generated projects
-    ([Scratch directories](#scratch-directories)); it is not recorded anywhere under
-    the home and has no MetaGPT-specific name, so no catalog line or
-    discovery source can find it.
-  - Deletion: nothing to delete; no session store.
-  - Version drift: none (same commit).
-  - Bad lines: no parser.
-
-  The "nothing to parse" verdict stands: the log and `team.json` are
-  outside the home.
+  re-read from source for permission, model, past-use and sync records. It added the run log and
+  the model key ([section 2](#2-per-user-storage)); there is still nothing to parse.
 
 ## Collection
 
@@ -70,13 +40,24 @@ persistent shell
 | `.metagpt/config2.bak` | the previous config, renamed on re-init ([software_company.py:146-148](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/software_company.py#L146-L148)) | on a second `--init-config` |
 
 `CONFIG_ROOT / "config2.yaml"` is the only home path in the package (grep
-for `CONFIG_ROOT`, `Path.home`, `expanduser`, `platformdirs`).
+for `CONFIG_ROOT`, `Path.home`, `expanduser`, `platformdirs`). The model is `llm.model` in
+that file ([llm_config.py:64](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/configs/llm_config.py#L64)).
+
+Nothing records a permission decision: the `Terminal` tool asks nothing before a command (no
+`approve` or `confirm` in [terminal.py](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/tools/libs/terminal.py)), and the one
+question `RoleZero` asks, whether to continue past the action limit, goes to the human through
+the environment and is not stored
+([role_zero.py:328-335](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/roles/di/role_zero.py#L328-L335)). Nothing syncs or relays a
+session (not found in `metagpt/` at
+[`11cdf46`](https://github.com/FoundationAgents/MetaGPT/commit/11cdf466d042aece04fc6cfd13b28e1a70341b1f),
+grepped for `share_url`, `upload_session` and `sync_session`), and there is no session store
+to delete from.
 
 #### Scratch directories
 
-`<METAGPT_ROOT>/workspace`, described under [Workspace](#workspace), is the agent's own output
-directory for generated projects; it is not recorded anywhere under the home and has no
-MetaGPT-specific name, so no catalog line or discovery source can find it.
+`<METAGPT_ROOT>/workspace` ([Workspace](#workspace)) is the agent's own output directory for
+generated projects; nothing under the home records it, so no catalog line or discovery source can
+find it.
 
 #### Workspace
 
@@ -91,6 +72,9 @@ directory
 [team.py:59-65](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/team.py#L59-L65)).
 `team.json` is written when `Team.run` ends in an exception or Ctrl-C
 ([common.py:675-684](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/utils/common.py#L675-L684)).
+Every run also writes a DEBUG-level log, `logs/<YYYYMMDD>.txt` (or `<name>_<YYYYMMDD>.txt`),
+under the same `METAGPT_ROOT`
+([logs.py:40-51](https://github.com/FoundationAgents/MetaGPT/blob/11cdf466d042aece04fc6cfd13b28e1a70341b1f/metagpt/logs.py#L40-L51)).
 These are relative to the working directory or the clone, not the home,
 so they have no catalog line; `workspace` is also too generic a name to
 anchor a glob on. The git tool reads, but does not write,
@@ -120,13 +104,12 @@ Nowhere under the home.
 ## Parsing
 
 MetaGPT is `collected` only: the collector gathers its configuration, and there is nothing to
-parse under the home. The records of past use, the serialized team state
-`workspace/storage/team/team.json` and the DEBUG-level run logs `logs/<YYYYMMDD>.txt`, are
-written under `METAGPT_ROOT`, the working directory or the clone ([Workspace](#workspace) and
-the 2026-10-19 source review), under no MetaGPT-specific name, so no catalog line reaches them
-and a parser would have no collected file to read.
+parse under the home. The team state and the run logs are written under `METAGPT_ROOT`, under no
+MetaGPT-specific name ([Workspace](#workspace)), so no catalog line reaches them and a parser
+would have no collected file to read.
 
 ## 14. Confidence
 
-High (source). Not determined: the workspace location when the working
-directory is the home (then `~/workspace`, too generic for a glob).
+- High for every path (source).
+- Not determined: the workspace location when the working directory is the home (then
+  `~/workspace`, too generic for a glob).

@@ -38,56 +38,20 @@ its own:
 
 ### Observed
 
-No real install.
-
-- Unverified on a real install: whether a malformed `sessions.json` index occurs
-  ([Bad lines](#bad-line-rows)).
+- No real install.
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: the HEADs of all three repositories are still the commits cited
-  here,
+- 2026-10-19: the heads of all three repositories are still the commits cited here,
   [`51eceef`](https://github.com/trypear/pearai-submodule/commit/51eceef62a90c29f712b3a9607ea70a9dca657e9)
   (pearai-submodule),
   [`0b6df73`](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda)
   (PearAI-Roo-Code) and
   [`d930f02`](https://github.com/trypear/pearai-app/commit/d930f0233c14668df9f85c6a78a81828f4251194)
-  (pearai-app), so no path has moved and nothing has drifted; the extension forks have taken no
-  commit since 2026-06-19 and the editor none since 2025-05-15. The Roo fork is Roo Code 3.15.3 and
-  predates every Roo Code change since ([`roo-code.md`](roo-code.md) describes 3.53.0): it has no
-  `history_item.json`, no `isAnswered`, plain-text denials, and a `creatorModeConfig` of its own.
-  One line per requirement class:
-  - Paths: found that the editor's per-session output channel logs hold the chat extension's full
-    prompt log, and that Creator mode makes new projects under `~/Documents/PearAI`
-    ([section 2](#2-per-user-storage), [section 6](#6-where-the-project-path-is-recorded)). No
-    new credential file, exclusion or catalog line is needed.
-  - Permission state: found for the agent surface, not read by the
-    parser: denial and approval texts in the API history, and the
-    `alwaysAllow*` settings and MCP `alwaysAllow` lists. The chat surface
-    has no tool calls and so no permission state.
-  - Model: already covered for chat; the agent surface records none.
-  - Past use beyond the primary store: found, none of it read. The
-    "PearAI" output channel log in the editor's `logs/` directory holds
-    every chat prompt with its context and every completion;
-    `dev_data/chat.jsonl` repeats rated prompts; `/share` exports and
-    `pearai_memories.json` outlive the sessions; the agent surface's
-    `taskHistory` in `state.vscdb` is read for the workspace only.
-  - Sync, relay and origin: already covered, none.
-  - Scratch directories: found. Creator mode makes a new project under
-    `~/Documents/PearAI` by default; it is a project, not a scratch
-    directory, and the catalog does not collect it.
-  - Deletion: already covered for chat; found for agent tasks.
-  - Version drift: none; every HEAD is the cited commit.
-  - Bad lines: `dev_data/*.jsonl` would need per-line handling. Found
-    through the Continue review of the same day: the chat surface's
-    `sessions.json` index is read through the Continue parser's
-    own index reader (`PearAIParser` keeps a `ContinueParser` for it),
-    which then dropped an unreadable `sessions.json` without a `parser:` row
-    ([section 1 of `continue.md`](continue.md#source-reviews)), so the sessions
-    lost their timestamps silently; since issue 170 the reader yields rows for what it loses
-    ([Bad-line rows](#bad-line-rows)). The sharing is visible in the
-    analyzer's code; that a malformed index occurs on a real PearAI
-    install is unverified.
+  (pearai-app): the extension forks have taken no commit since 2026-06-19 and the editor none
+  since 2025-05-15. It added the output channel log and the other records of chat use of
+  [section 10](#10-other-stores), Creator mode's project directory, the agent surface's permission
+  records and the agent-task delete.
 
 ## Collection
 
@@ -103,6 +67,8 @@ project from a description, creates the project directory, by default
 `~/Documents/PearAI/<generated name>`, and opens it as the workspace
 ([`gui/src/pages/creator/index.tsx:106-114`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/gui/src/pages/creator/index.tsx#L106-L114),
 [`extensions/vscode/src/integrations/creator/index.ts:130-160`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/extensions/vscode/src/integrations/creator/index.ts#L130-L160)).
+The path picker's default is `~/pearai-projects/`
+([`gui/src/components/ui/path-select.tsx:19`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/gui/src/components/ui/path-select.tsx#L19)).
 That is the user's new project, reached by project discovery through the task's `workspace`, not a
 scratch directory; no catalog line names `Documents/PearAI`.
 
@@ -210,17 +176,10 @@ which the catalog already collects as `roo-code` and `cline`.
 
 #### Output channel logs
 
-The editor backs every extension output channel with a file under its `logs/` directory,
-`logs/<YYYYMMDDTHHMMSS>/window<N>/exthost/output_logging_<time>/<n>-<channel>.log`, and keeps the
-newest 49 log session directories besides the current one
-([`src/vs/workbench/api/common/extHostOutput.ts:121`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/api/common/extHostOutput.ts#L121),
-[`:160-170`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/api/common/extHostOutput.ts#L160-L170),
-[`src/vs/workbench/contrib/logs/common/logsDataCleaner.ts:24-35`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/contrib/logs/common/logsDataCleaner.ts#L24-L35)).
-The chat extension's `PearAI` channel receives every model request's prompt and completion
-([`extensions/vscode/src/extension/VsCodeExtension.ts:147-155`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/extensions/vscode/src/extension/VsCodeExtension.ts#L147-L155)),
-so `<n>-PearAI.log` files are a prompt log; they are collected by the `.config/PearAI/logs`,
-`Library/Application Support/PearAI/logs` and `AppData/Roaming/PearAI/logs` lines. Record shape:
-[Output channel log](#output-channel-log).
+The editor backs every extension output channel with a file under its `logs/` directory; the chat
+extension's `PearAI` channel, `<n>-PearAI.log`, is a prompt log of every model request
+([Output channel log](#output-channel-log)). The files are collected by the `.config/PearAI/logs`,
+`Library/Application Support/PearAI/logs` and `AppData/Roaming/PearAI/logs` lines.
 
 ### 3. Credentials
 
@@ -250,8 +209,8 @@ so `<n>-PearAI.log` files are a prompt log; they are collected by the `.config/P
 - `.pearai/extensions`: extension binaries, the equivalent of the
   `.cursor/extensions` exclusion, and after a VS Code import a full copy of
   the user's VS Code extensions.
-- `.pearai-server/bin`, `.pearai-server/extensions` (only `data/User` is
-  proposed, so these are never reached).
+- `.pearai-server/bin`, `.pearai-server/extensions` (the catalog collects only
+  `.pearai-server/data/User`, so these are never reached).
 - Continue fork: `.pearai/index/lancedb`, `.pearai/index/*.sqlite`,
   `.pearai/types`, `.pearai/out`, `.pearai/node_modules`, `.pearai/.diffs`,
   `.pearai/.migrations`, `.pearai/dev_data/devdata.sqlite`, mirroring the
@@ -309,11 +268,9 @@ Chat (Continue fork), `~/.pearai` or `$CONTINUE_GLOBAL_DIR`
 - `.pearai/sessions/sessions.json`: index array
   ([`paths.ts:47-53`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/util/paths.ts#L47-L53)).
 
-Agent (Roo fork), `<User>/globalStorage/pearai.pearai-roo-cline/tasks/<taskId>/` or under
-`roo-cline.customStoragePath`
-([`src/shared/storagePathManager.ts:52-57`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/shared/storagePathManager.ts#L52-L57)):
-`api_conversation_history.json`, `ui_messages.json`, `task_metadata.json`
-([`src/shared/globalFileNames.ts:1-7`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/shared/globalFileNames.ts#L1-L7)).
+Agent (Roo fork): `api_conversation_history.json`, `ui_messages.json` and `task_metadata.json` in
+`<User>/globalStorage/pearai.pearai-roo-cline/tasks/<taskId>/` or under
+`roo-cline.customStoragePath` ([Roo Code fork](#roo-code-fork-pearaipearai-roo-cline)).
 
 #### What survives a delete
 
@@ -326,8 +283,7 @@ and its task directory
 A per-prompt history file is not stated for either surface. Neither delete touches the other records
 of chat use in [section 10](#10-other-stores): the `PearAI` output channel log, which holds every
 chat prompt and completion with no session id or per-entry time and lasts until the editor drops its
-log session directory (the newest 49 are kept besides the current one,
-[`logsDataCleaner.ts:24-35`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/contrib/logs/common/logsDataCleaner.ts#L24-L35));
+log session directory ([Output channel log](#output-channel-log));
 `dev_data/chat.jsonl`, the rated prompts with their `sessionId` and no time;
 `dev_data/tokens_generated.jsonl`, which names the models used; the `/share` Markdown exports; and
 `pearai_memories.json`, derived from chats but naming none. PearAI's analytics may hold the ids of
@@ -390,32 +346,30 @@ by the output
 ([`src/schemas/index.ts:868-880`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L868-L880)).
 `task_metadata.json` holds only `files_in_context`
 ([`src/core/context-tracking/FileContextTrackerTypes.ts:23-25`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/core/context-tracking/FileContextTrackerTypes.ts#L23-L25)).
+The `taskHistory` entry (`HistoryItem`) also carries
+`creatorModeConfig{creatorMode, newProjectType, newProjectPath}`
+([`src/schemas/index.ts:327-331`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L327-L331),
+[`:339-352`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L339-L352)),
+set for a task started from PearAI Creator ([Scratch directories](#scratch-directories)).
 
 #### Permission records
 
-Source review of 2026-10-19, agent surface. A denied tool call is answered in the API history with
+On the agent surface, a denied tool call is answered in the API history with
 the plain text `The user denied this operation.`, or
 `The user denied this operation and provided the following feedback:` followed by a `<feedback>`
 block, and an approval with a typed note with
 `The user approved this operation and provided the following context:` and a `<feedback>` block
 ([`src/core/prompts/responses.ts:8-14`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/core/prompts/responses.ts#L8-L14)).
-An approval without a note, by the user or by the auto-approve settings, leaves no mark. The
-`taskHistory` entry (`HistoryItem`) also carries
-`creatorModeConfig{creatorMode, newProjectType, newProjectPath}`
-([`src/schemas/index.ts:327-331`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L327-L331),
-[`:339-352`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L339-L352)),
-set for a task started from PearAI Creator, the mode that builds a new project from a description.
+An approval without a note, by the user or by the auto-approve settings, leaves no mark.
 
 ### 9. Joins and timestamps
 
 - Chat session to project: `workspaceDirectory` in both the session and
   `sessions.json`; time from `sessions.json` `dateCreated`.
 - `dev_data/chat.jsonl` rows carry `sessionId`.
-- Agent task to project: `taskHistory[].workspace` in the editor's `User/globalStorage/state.vscdb`
-  `ItemTable`, key `taskHistory` of the extension's global state
-  ([`src/schemas/index.ts:339-352`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L339-L352);
-  [`ClineProvider.ts:1091`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/core/webview/ClineProvider.ts#L1091)).
-  The task directory name is `HistoryItem.id`.
+- Agent task to project: `taskHistory[].workspace` ([section 6](#6-where-the-project-path-is-recorded)),
+  in the editor's `User/globalStorage/state.vscdb` `ItemTable`, key `taskHistory` of the
+  extension's global state. The task directory name is `HistoryItem.id`.
 - Tool call to result: by position, the assistant XML block followed by the
   next user message's `[tool ...] Result:` block. No ids.
 
@@ -423,9 +377,7 @@ set for a task started from PearAI Creator, the mode that builds a new project f
 
 `dev_data/devdata.sqlite` (token counts, excluded by the collector);
 `index/*.sqlite` (code index, excluded). The agent's `taskHistory` is in
-`state.vscdb`, read through `sqlite_util`.
-
-The other records of chat use below were found in the source review of 2026-10-19.
+`state.vscdb`.
 
 #### Output channel log
 
@@ -475,9 +427,12 @@ carry no time, and survive a session delete.
 
 #### `/share` exports
 
-`/share` writes `<YYYYMMDDTHHMMSS>_session.md` to `~/.pearai` or the
-given directory ([Sync, relay and origin](#sync-relay-and-origin-rows)), a Markdown copy of the
-session that the session delete does not remove.
+`/share` is a default slash command
+([`core/config/default.ts:64`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/config/default.ts#L64))
+that writes `<YYYYMMDDTHHMMSS>_session.md`, a Markdown copy of the session, to `~/.pearai` or the
+given `outputDir`, never to a server
+([`core/commands/slash/share.ts:38-98`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/commands/slash/share.ts#L38-L98)).
+The session delete does not remove it.
 
 #### `pearai_memories.json`
 
@@ -497,8 +452,9 @@ so PearAI writes no Aider state.
 ### 11. Format versions
 
 No version field in either store. The Continue fork predates Continue's
-tool-calling session format; the Roo fork predates Roo's native tool calls
-and `history_item.json`.
+tool-calling session format. The Roo fork is Roo Code 3.15.3 and predates every Roo Code change
+since ([`roo-code.md`](roo-code.md) describes 3.53.0): it has no native tool calls, no
+`history_item.json`, no `isAnswered`, plain-text denials, and a `creatorModeConfig` of its own.
 
 ### 12. Secrets
 
@@ -510,9 +466,7 @@ tokens are written to these files; they are in SecretStorage.
 ### 13. Parser plan
 
 Globs (home-relative): `.pearai/sessions/*.json` (read `sessions.json`
-as the index through the Continue parser's `read_index`; it yields rows
-only for what it loses, with the texts listed under "Bad lines" in
-[section 13 of `continue.md`](continue.md#bad-line-rows), since issue 170),
+as the index through the Continue parser's `read_index`; see [Bad-line rows](#bad-line-rows)),
 `*/User/globalStorage/pearai.pearai-roo-cline/tasks/*/api_conversation_history.json`.
 The Roo fork task files can reuse the Roo Code parser if it accepts
 XML-in-text tool calls; otherwise rows are emitted per message.
@@ -531,7 +485,7 @@ XML-in-text tool calls; otherwise rows are emitted per message.
 
 #### Permission rows
 
-Source review of 2026-10-19 (the parser reads none of it yet), agent surface: a `tool_result` row
+Not read yet. Agent surface: a `tool_result` row
 whose text starts with `The user denied this operation` can be followed by
 `permission decision: denied` (`denied with feedback` when the `<feedback>` block follows), and one
 starting `The user approved this operation` by `permission decision: approved with feedback`, on the
@@ -544,8 +498,7 @@ in the extension's row of `state.vscdb`, and each MCP server's `alwaysAllow` lis
 `settings/pearai_agent_mcp_settings.json` or a project's `.pearai-agent/mcp.json`
 ([`src/services/mcp/McpHub.ts:47`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/services/mcp/McpHub.ts#L47)).
 Each can be one `permission setting:` row at the file's modification time. The chat surface has no
-tools and no permission state. Before that review the plan said permission state was not researched
-for either surface; the parser still reads none of it.
+tools and no permission state.
 
 #### Model rows
 
@@ -559,7 +512,7 @@ writes no `modelInfo` and no `model_usage`).
 
 #### Past-use rows and secondary sources
 
-Source review of 2026-10-19 (the parser reads none of it yet): the `PearAI` output channel log is a
+Not read yet: the `PearAI` output channel log ([Output channel log](#output-channel-log)) is a
 secondary source for chat: one `user` row per logged prompt and one `assistant` row per
 `Completion:`, with no session id, matched to session rows on text, and a `model:` value from its
 `Settings:` block. `dev_data/chat.jsonl` is secondary too, joined on `sessionId` and the prompt
@@ -571,16 +524,12 @@ parser yields from `state/taskHistory.json`, so a task whose directory is gone s
 #### Sync, relay and origin rows
 
 Sync: neither surface records sync state, and neither uploads a session, a transcript or a prompt
-history beyond the model call. The chat fork keeps upstream Continue's local-only paths, described
-under `Sync:` in [section 13 of `continue.md`](continue.md#sync-relay-and-origin-rows), with these
-differences. `/share` is a default slash command
-([`core/config/default.ts:64`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/config/default.ts#L64))
-that writes the same `<YYYYMMDDTHHMMSS>_session.md` Markdown export to `~/.pearai` or the given
-`outputDir`, never to a server
-([`core/commands/slash/share.ts:38-98`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/commands/slash/share.ts#L38-L98)).
-`dev_data` tables are appended locally with no remote destination
-([`core/util/devdata.ts:4-8`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/util/devdata.ts#L4-L8)).
-The fork has no `cn` CLI and so no `serve --id` upload.
+history beyond the model call. The chat fork keeps upstream Continue's local-only paths
+([Sync, relay and origin rows in `continue.md`](continue.md#sync-relay-and-origin-rows)), with these
+differences: `/share` writes a local Markdown export, never to a server
+([`/share` exports](#share-exports)); the `dev_data` tables are appended locally with no remote
+destination ([`dev_data` tables](#dev_data-tables)); and the fork has no `cn` CLI and so no
+`serve --id` upload.
 
 What does leave for PearAI's server (`https://server.trypear.ai/pearai-server-api2`,
 [`core/util/parameters.ts:38`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/util/parameters.ts#L38))
@@ -617,26 +566,23 @@ in both clones' `core/`, `gui/src`, `extensions/vscode/src`, `src/` and `webview
 
 #### Scratch directory rows
 
-None. Creator mode's default parent, `~/Documents/PearAI/<generated name>`
-([`gui/src/pages/creator/index.tsx:106-114`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/gui/src/pages/creator/index.tsx#L106-L114);
-the path picker's default is `~/pearai-projects/`,
-[`gui/src/components/ui/path-select.tsx:19`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/gui/src/components/ui/path-select.tsx#L19)),
-is created and opened as the workspace
-([`extensions/vscode/src/integrations/creator/index.ts:130-160`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/extensions/vscode/src/integrations/creator/index.ts#L130-L160)),
-so it is the user's new project and appears as the task's `workspace` and
-`creatorModeConfig.newProjectPath`. The latter can name the project on a `system` row.
+None. Creator mode's project directory ([Scratch directories](#scratch-directories)) is the user's
+new project and appears as the task's `workspace` and `creatorModeConfig.newProjectPath`
+([section 6](#6-where-the-project-path-is-recorded)). The latter can name the project on a
+`system` row.
 
 #### Deletion rows
 
-Not stated: what each surface's delete removes and what survives it is in
-[What survives a delete](#what-survives-a-delete).
+The agent records no delete, so there is no deletion row; what each surface's delete removes and
+what survives it is in [What survives a delete](#what-survives-a-delete).
 
 #### Bad-line rows
 
-The source review of 2026-10-19 found that `dev_data/*.jsonl` would need per-line handling, and that
-the chat surface's `sessions.json` index, read through the Continue parser's index reader, was
-dropped when unreadable without a `parser:` row ([Source reviews](#source-reviews)); since issue
-170 that reader yields rows for what it loses (the globs at the top of this section).
+`dev_data/*.jsonl` would need per-line handling if read. The chat surface's `sessions.json` index is
+read through the Continue parser's index reader (`PearAIParser` keeps a `ContinueParser` for it),
+which yields rows for what it loses, with the texts of
+[Bad-line rows in `continue.md`](continue.md#bad-line-rows); an unreadable index leaves the
+sessions without their `dateCreated` time.
 
 #### Fixtures
 
@@ -660,21 +606,20 @@ Agent `tasks/1759400100000/api_conversation_history.json`:
 
 ## 14. Confidence
 
-Collection. High: editor directory names and remote server directory (product.json and the path
-resolver); `~/.pearai` layout of the Continue fork; Roo fork storage, file names and renamed project
-files; SecretStorage key names. Medium: that shipped builds use these commits; the app tree pins no
-submodule revision, and the extension repositories took commits after the app's last push. Medium:
-Linux `~/.config/pearai/User` from the import flow; it follows from the lowercase path in source but
-whether a Linux build renames the product was not checked. Not determined: whether `console.log` of
-access tokens in `PearAICredentials`
-([`core/pearaiServer/PearAICredentials.ts:18-21`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/pearaiServer/PearAICredentials.ts#L18-L21))
-or `console.dir(data)` at login
-([`src/extension.ts:110-111`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/extension.ts#L110-L111))
-reaches a file under `logs/`; if it does, extension host logs contain live tokens.
-
-Parsing. High: file locations, session and index fields, absence of tool
-calls in chat sessions, Roo message shape and the result prefix (source).
-Medium: the `<task>` wrapper on the first user message and the model
-string `pearai_model` in the fixture, which are illustrative. Not
-determined: which extension commits a given PearAI build shipped, so older
-installs may differ.
+- High: editor directory names and remote server directory (product.json and the path resolver);
+  the `~/.pearai` layout of the Continue fork; Roo fork storage, file names and renamed project
+  files; SecretStorage key names; the chat session and index fields, the absence of tool calls in
+  chat sessions, the Roo message shape and the result prefix (all source).
+- Medium: Linux `~/.config/pearai/User` from the import flow; it follows from the lowercase path in
+  source but whether a Linux build renames the product was not checked.
+- Medium: the `<task>` wrapper on the first user message and the model string `pearai_model` in the
+  fixture, which are illustrative.
+- Not determined: which extension commits a given PearAI build shipped, so older installs may
+  differ from the shapes here; the app tree pins no submodule revision, and the extension
+  repositories took commits after the app's last push ([section 1](#1-source-and-evidence)).
+- Not determined: whether `console.log` of access tokens in `PearAICredentials`
+  ([`core/pearaiServer/PearAICredentials.ts:18-21`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/pearaiServer/PearAICredentials.ts#L18-L21))
+  or `console.dir(data)` at login
+  ([`src/extension.ts:110-111`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/extension.ts#L110-L111))
+  reaches a file under `logs/`; if it does, extension host logs contain live tokens.
+- Not determined: whether a malformed `sessions.json` index occurs on a real PearAI install.

@@ -26,8 +26,7 @@ were checked at the same commit on 2026-10-17.
 
 ### Observed
 
-- No real install of OpenClaw has been surveyed; the source review of 2026-10-19 was source
-  only, with no real install.
+- No real install of OpenClaw has been surveyed; every review was of source only.
 - The bad-line rows of issue 177 (the legacy `sessions.json` index and JSON lines that are not
   objects) are not observed on any real install, source-derived
   ([openclaw/openclaw](https://github.com/openclaw/openclaw) at
@@ -45,59 +44,11 @@ were checked at the same commit on 2026-10-17.
   [`package.json:17-20`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/package.json#L17-L20)),
   against
   [`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9),
-  which the rest of this document cites (state 20, agent 24). Per requirement class (the parser work
-  each class leads to is under [section 13](#13-parser-plan)):
-  - Permission state: found, not parsed. Per-call decisions are rows of
-    `operator_approvals` and standing settings rows of `exec_approvals_config`
-    and `operator_approval_standing_grants` in `state/openclaw.sqlite`, all
-    present at both commits, with the channel allow lists, and already collected; columns and
-    values in [Permission records](#permission-records). The legacy
-    `exec-approvals.json` holds a socket token and has no secret glob
-    ([section 3](#3-credentials)).
-  - Model: covered for the transcript (`model_change`, `responseModel`,
-    `session_windows.model`); found and not parsed, the session's own
-    override in `session_nodes.entry_json` (`modelOverride`,
-    `providerOverride`, `modelOverrideSource`), in
-    [Model override](#model-override). The agent database and `openclaw.json` that hold them are
-    already collected.
-  - Past use beyond the primary store: found, not parsed: the transcript
-    search index, queued and cancelled prompts, the memory index's session
-    chunks and the raw inbound channel messages, in
-    [Other records of past use](#other-records-of-past-use); all are tables of the two databases
-    already collected ([section 7](#7-transcript-stores)).
-  - Sync, relay and origin: sync already covered (public share, backup
-    upload). Relay found and not parsed: every channel session's
-    `session_windows`, `conversations` and `session_nodes.entry_json`
-    `delivery` name the platform, account and peer
-    ([section 9](#9-joins-and-timestamps)); these records are in the agent database, already
-    collected. Origin: none (no session starts on a vendor
-    server; grepped `origin` and `remote` in `src/config/sessions/`). New
-    since the last review: the experimental PostgreSQL engine, which keeps the transcripts on a
-    database server and leaves only an anchor in `openclaw-agent.sqlite` at the usual path
-    ([PostgreSQL engine](#postgresql-engine)).
-  - Scratch directories: found; the default workspace, managed worktrees,
-    Gateway clones and sandbox workspaces are under the state directory, collected or excluded,
-    so the analyzer's catalog rule classes them; see
-    [Scratch directories](#scratch-directories). One new excludable subtree, the Gateway's clones
-    under `projects/` ([section 4](#4-exclusions)).
-  - Deletion: found: archive (`archivedAt`, `archiveReason`), delete (a
-    `.jsonl.deleted.*` archive unless incognito, which with its blob is already collected) and
-    memory forget (`memory_session_tombstones`); no `session deleted:` row is written
-    today ([Deletion](#deletion-rows)).
-  - Version drift: the paths this document cites are unchanged except two source files that
-    moved (`core-tool-factory-descriptors.ts`, `skills/runtime/refresh-source-roots.ts`). The
-    transcript entry shape, header version 4 and every
-    column the parser reads are unchanged; the file-name patterns moved from
-    `artifacts.ts` to `transcript-file-names.ts` unchanged; agent schemas 25
-    to 31 add navigation and outbox columns the parser does not read
-    ([section 11](#11-format-versions)). New since the last review: the PostgreSQL anchor,
-    `control/services.sqlite`, the Docker auth profile directory
-    `~/.openclaw-auth-profile-secrets` and the Logbook screen captures
-    ([section 2](#2-per-user-storage)). The PostgreSQL engine is the one
-    change that leaves the parser with nothing to read.
-  - Bad lines: two gaps in the parser, the legacy `sessions.json` index and
-    JSON lines that are not objects, both dropped without a row at the review; both now
-    yield a `parser:` row ([Bad lines](#bad-line-rows), issue 177). Not a collector concern.
+  which the rest of this document cites (state 20, agent 24). It added the permission, model
+  override, past-use, relay and deletion records of [section 8](#8-record-schema),
+  [section 9](#9-joins-and-timestamps) and [section 10](#10-other-stores), the PostgreSQL engine,
+  Logbook, Docker and `projects/` paths of [section 2](#2-per-user-storage) and
+  [section 4](#4-exclusions), and the drift notes of [section 11](#11-format-versions).
 
 ## Collection
 
@@ -164,11 +115,10 @@ From
   ([`agents/models-config.ts:259`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/agents/models-config.ts#L259)).
 - `agents/<agentId>/sessions/`
   ([`config/sessions/paths.ts:44-54`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/paths.ts#L44-L54)):
-  legacy `sessions.json` and `<sessionId>.jsonl` transcripts awaiting `doctor --fix` import, plus
-  retained archives `<id>.jsonl.reset.<ts>` and `<id>.jsonl.deleted.<ts>` (optionally `.zst`),
-  `<id>.checkpoint.<uuid>.jsonl`, `<id>.trajectory.jsonl`, and `.migrated` rollback copies
+  legacy `sessions.json` and `<sessionId>.jsonl` transcripts awaiting `doctor --fix` import, and
+  the reset and delete archives, checkpoints, trajectories and rollback copies named in
+  [section 7](#7-transcript-stores)
   ([`config/sessions/artifacts.ts:8-17`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L8-L17),[`101-147`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/artifacts.ts#L101-L147)).
-  `sessions/` at the state root is the single-agent layout of old installs.
 - `workspace/` (default agent) and `workspace-<agentId>/` (others), unless `OPENCLAW_WORKSPACE_DIR`
   or config moves them
   ([`agents/workspace-default-path.ts:14-31`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/agents/workspace-default-path.ts#L14-L31),
@@ -210,6 +160,12 @@ From
   `cron/runs/`, `delivery-queue/`, `sandbox/`
   ([`docs/cli/backup.md:587-594`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/backup.md#L587-L594)),
   `service-env/` ([section 3](#3-credentials)).
+- `control/services.sqlite`: daemon runtime pins, kept locally on either database engine
+  ([`docs/reference/database-engines.md:20-21`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L20-L21),
+  at [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)).
+- With the experimental PostgreSQL engine, `state/openclaw.sqlite` and each `openclaw-agent.sqlite`
+  are small SQLite anchors and the stores they name are on a database server
+  ([PostgreSQL engine](#postgresql-engine)).
 
 #### Outside the state directory
 
@@ -230,45 +186,28 @@ From
   [`systemd-service-files.ts:52`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/daemon/systemd-service-files.ts#L52);
   [`daemon/paths.ts:52-63`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/daemon/paths.ts#L52-L63)).
 
-#### PostgreSQL engine
-
-Found in the 2026-10-19 review at
-[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b);
-experimental, new since
-[`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9).
-With `database.engine` `postgres` in `openclaw.json`, the shared state, agent databases (transcripts
-included), Workboard, Logbook and Team Reports stores live on a PostgreSQL server named by
-`database.postgres.connection`
-([`docs/reference/database-engines.md:68-73`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L68-L73),
-[`:96-116`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L96-L116)),
-and `state/openclaw.sqlite` and each `openclaw-agent.sqlite` become small SQLite anchors holding
-only `openclaw_engine_anchor (store_id, engine, schema)`
-([`:591-595`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L591-L595);
-[`src/infra/database-engine/open.ts:149`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/database-engine/open.ts#L149)).
-The collector still gathers the anchors, but the evidence is on the database server: a responder who
-finds an anchor needs the DSN (in `openclaw.json` or the environment) and the `schema` value to
-request the server's copy. Daemon runtime pins stay local in `control/services.sqlite` on either
-engine
-([`:20-21`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L20-L21)).
-
 #### Logbook
 
-Found in the 2026-10-19 review. Logbook, a plugin off by default that takes periodic screen
+Logbook, a plugin off by default that takes periodic screen
 snapshots from a paired device and summarises them into a timeline, keeps `logbook/logbook.sqlite`
 and the image files `logbook/frames/`
 ([`extensions/logbook/openclaw.plugin.json:2-10`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/extensions/logbook/openclaw.plugin.json#L2-L10));
-present at both commits, collected under `.openclaw`. The frames are screenshots of the user's
+present at both
+[`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9)
+and [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b),
+collected under `.openclaw`. The frames are screenshots of the user's
 screen and can be large; they are not excluded.
 
 #### Docker
 
-Found in the 2026-10-19 review. The compose file bind-mounts `~/.openclaw` and a second host
+At [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)
+the compose file bind-mounts `~/.openclaw` and a second host
 directory, `~/.openclaw-auth-profile-secrets`, at `/home/node/.config/openclaw`
 ([`docker-compose.yml:46-49`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docker-compose.yml#L46-L49)),
 which is where `gateway.env` is read
 ([`infra/dotenv-global-core.ts:206`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/dotenv-global-core.ts#L206)).
-The catalog line `openclaw|.openclaw-*` collects it as if it were a profile directory; no secret
-glob flags its contents ([section 3](#3-credentials)).
+The catalog line `openclaw|.openclaw-*` collects it as if it were a profile directory; its
+contents are credentials ([section 3](#3-credentials)).
 
 #### Legacy names
 
@@ -284,11 +223,9 @@ so a `~/.moltbot` on an old host is orphaned state that the current tool ignores
 
 ### 3. Credentials
 
-- `agents/*/agent/openclaw-agent.sqlite` tables `auth_profile_store` and `auth_profile_state` hold
-  provider API keys and OAuth tokens
-  ([`state/secret-state-tables.ts:31-35`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/secret-state-tables.ts#L31-L35);
-  [`openclaw-agent-schema.sql:742-752`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-agent-schema.sql#L742-L752)).
-  The same file holds every transcript, so collect it unflagged and redact those tables.
+- `agents/*/agent/openclaw-agent.sqlite` holds provider API keys and OAuth tokens in two tables
+  named in [section 12](#12-secrets). The same file holds every transcript, so collect it unflagged
+  and redact those tables.
 - `state/openclaw.sqlite` has 18 credential-bearing tables, among them `device_auth_tokens`,
   `mcp_oauth_stores`, `secret_store_entries`, `worker_environment_credentials`
   ([`secret-state-tables.ts:2-21`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/secret-state-tables.ts#L2-L21)).
@@ -310,8 +247,11 @@ so a `~/.moltbot` on an old host is orphaned state that the current tool ignores
 - `openclaw.json` embeds `gateway.auth.token`/`password`
   ([`config/zod-schema.gateway.ts:307-309`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/zod-schema.gateway.ts#L307-L309)),
   channel bot tokens and provider `apiKey` values, plaintext or as SecretRefs (references to a value
-  held in the environment or a secret store). The `.bak`/`.clobbered`/`.last-good` copies carry the
-  same.
+  held in the environment or a secret store). With the PostgreSQL engine,
+  `database.postgres.connection` may be the DSN itself, password included, rather than a SecretRef
+  ([`docs/reference/database-engines.md:68-73`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L68-L73),
+  at [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)).
+  The `.bak`/`.clobbered`/`.last-good` copies carry the same. A secret glob flags `openclaw.json`.
 - `.env` in the state directory, and `~/.config/openclaw/gateway.env` when the state directory is
   the default
   ([`infra/dotenv-global-core.ts:190-204`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/infra/dotenv-global-core.ts#L190-L204)).
@@ -322,23 +262,18 @@ so a `~/.moltbot` on an old host is orphaned state that the current tool ignores
   `Claude Code-credentials` to reuse that login
   ([`plugin-sdk/provider-auth-claude-compat.ts:13-15`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/plugin-sdk/provider-auth-claude-compat.ts#L13-L15)),
   so a Claude Code token can appear in its auth profiles.
-- Found in the 2026-10-19 review at
-  [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b),
-  the first two flagged by no secret glob today:
-  - the legacy exec approvals file `exec-approvals.json` in the state directory, whose
-    `socket.token` authenticates to the approvals socket
-    ([`infra/exec-approvals-config.ts:95-101`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/exec-approvals-config.ts#L95-L101),
-    [`infra/exec-approvals-core.ts:226-234`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/exec-approvals-core.ts#L226-L234));
-    it is migrated into `state/openclaw.sqlite` `exec_approvals_config.raw_json`, which keeps the
-    token, so a host that has not migrated still has the file;
-  - `~/.openclaw-auth-profile-secrets/`, the Docker installs' host directory for the container's
-    `~/.config/openclaw` (`gateway.env`) ([Docker](#docker)). The Docker guide states that OAuth
-    access, refresh and ID tokens are plaintext in SQLite under the state directory
-    ([`docs/install/docker-vm-runtime.md:46-50`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/install/docker-vm-runtime.md#L46-L50)).
-  - With the PostgreSQL engine, `database.postgres.connection` in `openclaw.json` may be the DSN
-    itself, password included, rather than a SecretRef
-    ([`docs/reference/database-engines.md:68-73`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L68-L73));
-    `openclaw.json` is already flagged.
+- The legacy exec approvals file `exec-approvals.json` in the state directory, whose
+  `socket.token` authenticates to the approvals socket
+  ([`infra/exec-approvals-config.ts:95-101`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/exec-approvals-config.ts#L95-L101),
+  [`infra/exec-approvals-core.ts:226-234`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/exec-approvals-core.ts#L226-L234),
+  at [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)).
+  It is migrated into `state/openclaw.sqlite`, which keeps the token ([section 12](#12-secrets)),
+  so a host that has not migrated still has the file. No secret glob flags it.
+- `~/.openclaw-auth-profile-secrets/`, the Docker installs' host directory for the container's
+  `~/.config/openclaw` (`gateway.env`) ([Docker](#docker)); no secret glob flags it. The Docker
+  guide states that OAuth access, refresh and ID tokens are plaintext in SQLite under the state
+  directory
+  ([`docs/install/docker-vm-runtime.md:46-50`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/install/docker-vm-runtime.md#L46-L50)).
 
 ### 4. Exclusions
 
@@ -352,7 +287,8 @@ runtimes such as signal-cli and sherpa-onnx TTS models), `extensions/*/node_modu
 Chromium cache subtrees under `browser/*/user-data/`. Do not exclude `browser/*/user-data` as a
 whole: its History and Cookies show what the agent browsed.
 
-The 2026-10-19 review adds `projects/`, the full git clones the Gateway makes when a project is
+At [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)
+add `projects/` too, the full git clones the Gateway makes when a project is
 added from a remote URL, `projects/<16 hex>/<name>`
 ([`src/projects/project-clone.ts:276-295`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/projects/project-clone.ts#L276-L295)),
 the same kind of tree as `worktrees/`; which repository each one is stays in `state/openclaw.sqlite`
@@ -384,7 +320,8 @@ No per-project database.
   legacy `.jsonl` files
   ([`config/sessions/transcript-header.ts:20-29`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/transcript-header.ts#L20-L29)).
   Headers are short, so they are stored uncompressed and a byte grep of the database finds them.
-- 2026-10-19 review: `projects.source` (`registered` for a repository the user pointed the Gateway
+- At [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b),
+  `projects.source` (`registered` for a repository the user pointed the Gateway
   at, `cloned` for one it cloned into `projects/`) and `origin_url`, and `worktrees.owner_kind`
   (`manual|workboard|session`), `owner_id`, `removed_at`
   ([`openclaw-state-schema.sql:1854-1870`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-state-schema.sql#L1854-L1870),
@@ -404,8 +341,8 @@ legacy `.clawdbot`:
   database per agent; one `session_windows` row per transcript generation; one `transcript_events`
   row per record
   ([`src/state/openclaw-agent-schema.sql:159-188`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-agent-schema.sql#L159-L188),[`566-604`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-agent-schema.sql#L566-L604)).
-  `agentDir` can be moved by config
-  ([`agents/agent-scope-config.ts:577-588`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/agents/agent-scope-config.ts#L577-L588)).
+  Its directory, `agentDir`, can be moved by config
+  ([Contents of the state directory](#contents-of-the-state-directory)).
 - `.openclaw/agents/<agentId>/sessions/<sessionId>.jsonl`: legacy one-file-per-session transcripts,
   imported into SQLite by `openclaw doctor --fix` and then removed
   ([`docs/cli/doctor/state-migrations.md:60`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/doctor/state-migrations.md#L60));
@@ -422,8 +359,7 @@ legacy `.clawdbot`:
   ([`config/sessions/archive-compression.ts:11-30`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/config/sessions/archive-compression.ts#L11-L30)).
   The canonical copy of each archive is also a blob in `session_transcript_archives`
   ([`openclaw-agent-schema.sql:606-624`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-agent-schema.sql#L606-L624)).
-  Deleting a session keeps a `.deleted` archive unless it was incognito
-  ([`docs/cli/sessions.md:212-217`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/sessions.md#L212-L217)).
+  When a delete or reset keeps one is in [What survives a delete](#what-survives-a-delete).
 - Also there: `<id>.checkpoint.<uuid>.jsonl` compaction checkpoints, `<id>.trajectory.jsonl` runtime
   trajectories, `*.migrated[.N]` and `*.pre-doctor-*-repair-*.bak` rollback copies (which of them
   are copies of a transcript is in
@@ -454,7 +390,9 @@ The parser needs `zstandard`. Cold storage moves old generations into
 `openclaw sessions delete` removes the session row, its generations and bindings and keeps a
 `.jsonl.deleted.<ts>` archive with its `session_transcript_archives` blob (`reason` `deleted`)
 unless the session was incognito, as a reset keeps a `.jsonl.reset.<ts>` one
-([`docs/cli/sessions.md:222-233`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/cli/sessions.md#L222-L233)).
+([`docs/cli/sessions.md:222-233`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/cli/sessions.md#L222-L233);
+at [`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9),
+[`docs/cli/sessions.md:212-217`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/docs/cli/sessions.md#L212-L217)).
 
 The memory index keeps the session's `memory_index_chunks` until `openclaw memory forget`, which
 writes one `memory_session_tombstones` row (`session_id`, `agent_id`, `reason`, default `forgotten`,
@@ -534,9 +472,10 @@ entry
 
 #### Permission records
 
-From the 2026-10-19 review; tables unchanged between the two commits, line numbers at
-[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b),
-all in `state/openclaw.sqlite`:
+All in `state/openclaw.sqlite`; the tables are the same at
+[`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9)
+and [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b),
+and the line numbers are those of the later commit:
 
 - `operator_approvals`, one row per approval request the Gateway raised for an `exec` (shell) call,
   a plugin action or a system agent: `kind` (`exec|plugin|system-agent`), `status`
@@ -580,14 +519,13 @@ all in `state/openclaw.sqlite`:
 
 #### Model override
 
-From the 2026-10-19 review: `session_nodes.entry_json` keeps the session's chosen model apart from
+`session_nodes.entry_json` keeps the session's chosen model apart from
 the transcript, `providerOverride`, `modelOverride`, `modelOverrideSource` (`auto` for a temporary
 runtime fallback, `user` for `/model` or `sessions.patch`, `default`), and
 `modelOverrideFallbackOriginProvider`/`Model` (the model the user had picked when a fallback
 replaced it)
 ([`src/config/sessions/types.ts:502-516`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/types.ts#L502-L516)).
-The assistant message's `responseModel` beside `model` is the resolved id beside the request, as
-before
+The assistant message's `responseModel` beside `model` is the resolved id beside the request
 ([`packages/llm-core/src/types.ts:535`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/packages/llm-core/src/types.ts#L535)).
 
 ### 9. Joins and timestamps
@@ -599,7 +537,7 @@ before
   `agent:<agentId>:<channel>:<peerKind>:<peerId>`, or `agent:<agentId>:main`-style keys
   ([`routing/session-key.ts:206-261`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/routing/session-key.ts#L206-L261)).
   This is how a responder ties a transcript to a Telegram chat or WhatsApp number.
-- Relay (2026-10-19 review, unchanged between the two commits). A session carried through a
+- Relay (the same at [`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9) and [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b); line numbers of the later commit). A session carried through a
   messaging platform is recorded three ways besides its key, each naming the platform's copy of the
   conversation: `session_windows` `channel`, `account_id`, `chat_type` (`direct|group|channel`),
   `primary_conversation_id` and `hook_external_content_source` (`gmail|webhook`, a session started
@@ -637,19 +575,16 @@ before
 
 #### Audit, ingress and debug logs
 
-Not transcripts but useful: `state/openclaw.sqlite` `audit_events`
-([`openclaw-state-schema.sql:149-171`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-state-schema.sql#L149-L171))
-and `channel_ingress_events.payload_json` (raw inbound chat messages,
-[`:1301-1323`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-state-schema.sql#L1301-L1323));
-`logs/raw-stream.jsonl`, `logs/anthropic-payload.jsonl`, `logs/cache-trace.jsonl` debug traces.
+Not transcripts, but they tie actions to sessions: `state/openclaw.sqlite` `audit_events`, one row
+per action (columns in [Permission records](#permission-records)), the raw inbound chat messages of
+`channel_ingress_events.payload_json` ([Other records of past use](#other-records-of-past-use)) and
+the debug traces under `logs/` that hold full prompts. The files and tables are named in
+[Contents of the state directory](#contents-of-the-state-directory).
 
 #### Other records of past use
 
-From the 2026-10-19 review at
-[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)
-(all present at
-[`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9)
-too; none read by the parser):
+Line numbers at [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b); every source is present at
+[`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9) too, and the parser reads none:
 
 | Source | Holds | Survives | Joins on | Plan |
 | --- | --- | --- | --- | --- |
@@ -709,23 +644,25 @@ All in SQLite:
 
 #### PostgreSQL engine
 
-New since
-[`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9),
-which has no PostgreSQL source file; experimental at
-[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b).
-`database.engine: "postgres"` in `openclaw.json`, or `database.families.agent.engine`, moves the
-agent databases, transcripts included, to a PostgreSQL server named by
-`database.postgres.connection` (a DSN string or a SecretRef)
+Experimental at [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b) and absent at [`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9), which has no PostgreSQL source file.
+With `database.engine: "postgres"` in `openclaw.json` the shared state, the agent databases
+(transcripts included), and the Workboard, Logbook and Team Reports stores live on a PostgreSQL
+server named by `database.postgres.connection` (a DSN string or a SecretRef);
+`database.families.agent.engine` moves the agent databases, transcripts included
 ([`docs/reference/database-engines.md:68-73`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L68-L73),
 [`:96-116`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L96-L116)).
-The local `openclaw-agent.sqlite` then is "a small SQLite anchor" holding one table,
-`openclaw_engine_anchor (store_id, engine, schema)` with `engine` `postgres` and `schema` the server
-namespace `<schemaPrefix>_<store>_<uuid-prefix>`
+`state/openclaw.sqlite` and each local `openclaw-agent.sqlite` then are "a small SQLite anchor"
+holding one table, `openclaw_engine_anchor (store_id, engine, schema)` with `engine` `postgres` and
+`schema` the server namespace `<schemaPrefix>_<store>_<uuid-prefix>`
 ([`:591-595`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/reference/database-engines.md#L591-L595);
 [`src/infra/database-engine/open.ts:149`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/database-engine/open.ts#L149)).
 The transcript is then on the database server, wherever the operator runs it, and no local file
-holds it; transcript payloads are plain JSON there, never zstd. The parser opens the anchor, finds
-none of its tables and yields nothing, with no row saying where the store went.
+holds it; transcript payloads are plain JSON there, never zstd. A responder who finds an anchor
+needs the DSN (in `openclaw.json` or the environment, [section 3](#3-credentials)) and the `schema`
+value to request the server's copy. Daemon runtime pins stay local in `control/services.sqlite` on
+either engine ([Contents of the state directory](#contents-of-the-state-directory)). The parser
+opens the anchor, finds none of its tables and yields nothing, with no row saying where the store
+went.
 
 ### 11. Format versions
 
@@ -752,17 +689,23 @@ The archive and checkpoint file-name patterns moved, unchanged, to
 [`config/sessions/transcript-file-names.ts:12-16`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/transcript-file-names.ts#L12-L16);
 the `exec` tool name cited in [section 13](#13-parser-plan) now comes from
 [`agents/lazy-exec-tool.ts:63`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/agents/lazy-exec-tool.ts#L63),
-`core-tool-factory-descriptors.ts` being gone. No other drift changes what the parser reads; the one
-change that defeats the parser is the PostgreSQL engine ([PostgreSQL engine](#postgresql-engine)).
+`core-tool-factory-descriptors.ts` being gone, and `skills/runtime/refresh-source-roots.ts`,
+cited in [Contents of the state directory](#contents-of-the-state-directory), has moved. No other
+drift changes what the parser reads; the one change that defeats the parser is the PostgreSQL
+engine ([PostgreSQL engine](#postgresql-engine)).
 
 ### 12. Secrets
 
-In the same database as the transcripts: `auth_profile_store.store_json`,
-`auth_profile_state.state_json` and `session_suggestions`
-([`state/secret-state-tables.ts:31-35`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/secret-state-tables.ts#L31-L35));
-do not emit them. In records: `thinkingSignature` and `providerReplay.data` are opaque provider
-state; `image.data` is base64 media; `toolResult.content` and `bashExecution.output` are raw tool
-output and may contain anything the agent read, including `.env` files.
+In the same database as the transcripts, `openclaw-agent.sqlite`: `auth_profile_store.store_json`
+and `auth_profile_state.state_json` (provider API keys and OAuth tokens), and `session_suggestions`
+([`state/secret-state-tables.ts:31-35`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/secret-state-tables.ts#L31-L35);
+[`openclaw-agent-schema.sql:742-752`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/src/state/openclaw-agent-schema.sql#L742-L752));
+do not emit them. In `state/openclaw.sqlite`, `exec_approvals_config.raw_json` keeps the approvals
+socket's `socket.token` after the legacy `exec-approvals.json` is migrated
+([Permission records](#permission-records)). In records: `thinkingSignature` and
+`providerReplay.data` are opaque provider state; `image.data` is base64 media;
+`toolResult.content` and `bashExecution.output` are raw tool output and may contain anything the
+agent read, including `.env` files.
 
 The key that encrypts public share tokens is derived from the Gateway's device identity, the
 `device_identities` row of `state/openclaw.sqlite`
@@ -804,9 +747,8 @@ Put `session_key` (channel and peer) into the system row for each session. The s
 `api` values include `anthropic-messages`
 ([`llm-core/src/types.ts:23`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/packages/llm-core/src/types.ts#L23)).
 
-The proposals below come from the source review of 2026-10-19 at
-[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b).
-Every proposal here rests on source alone; [AGENTS.md](../AGENTS.md#real-install-rounds)
+The proposals below rest on source alone, at
+[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b); [AGENTS.md](../AGENTS.md#real-install-rounds)
 requires a per-step real-install round before the parser changes, and OpenClaw has none.
 
 #### Permission rows
@@ -816,8 +758,8 @@ decision; `bashExecution.cancelled` stays on the bash `tool_result` row. The
 `exec_approvals_config`, `operator_approvals` and `audit_events` tables of
 `state/openclaw.sqlite`
 ([Contents of the state directory](#contents-of-the-state-directory))
-hold approvals; their columns were recorded on 2026-10-19
-([Permission records](#permission-records)) and the parser does not read them
+hold approvals; their columns are in
+[Permission records](#permission-records), and the parser does not read them
 yet.
 
 Proposed: one `permission decision: <decision or status>
@@ -1021,10 +963,8 @@ server`, so the gap is visible.
 
 #### Scratch directory rows
 
-The default workspace (`.openclaw/workspace`,
-`workspace-<agentId>`), `worktrees/`, Gateway clones under `projects/`
-and `sandboxes/` are under the state directory, which the analyzer's
-catalog rule already classes as scratch; proposed, a `scratch directory:`
+The [scratch directories](#scratch-directories) are under the state
+directory, which the analyzer's catalog rule classes as scratch; proposed, a `scratch directory:`
 row per `state/openclaw.sqlite` `projects` row whose `source` is `cloned`
 and per `worktrees` row, so a state directory moved by
 `OPENCLAW_STATE_DIR` is classed too.
@@ -1069,23 +1009,16 @@ JSONL form; the SQLite form stores the same strings in `event_json`:
 
 ## 14. Confidence
 
-Collection. High: state directory resolution, profiles, legacy `.clawdbot` migration,
-database file names and schemas, workspace and agentDir defaults, archive
-file naming, credential tables, service names. Medium: the exclusion list
-comes from the backup documentation rather than each writer; `models.json`
-holding literal keys (inferred from the doctor migration);
-`browser/*/user-data/*/Cache` assumes Chromium's usual `Default/` profile
-layout; `.moltbot` layout assumed identical to `.clawdbot` (current source
-no longer reads it). Because `*` in exclusion globs crosses `/`, the
-`.openclaw*/tmp` exclusion also matches a `tmp` directory at any depth under
-the state directory, nested runtime homes included. Not determined: the
-Windows log location beyond `os.tmpdir()`; what the macOS transcript cache stores; whether the
-iOS and Android apps keep transcripts on the phone.
-
-Parsing. High: table and column names, entry and message field names,
-compression rule, archive naming, version constants. Medium: that legacy
-`.jsonl` files are removed after import on every path; `cwd` meaning the
-workspace. Not
-determined: the shapes of `trajectory_runtime_events`,
-`acp_parent_stream_events` and `custom.data` per `customType`; whether
-cold-archived generations keep any `transcript_events` rows.
+- High: state directory resolution, profiles, the legacy `.clawdbot` migration, database file
+  names, table and column names and schemas, workspace and `agentDir` defaults, archive file
+  naming, credential tables, service names; entry and message field names, the compression rule
+  and the version constants.
+- Medium: the exclusion list comes from the backup documentation rather than each writer;
+  `models.json` holding literal keys (inferred from the doctor migration);
+  `browser/*/user-data/*/Cache` assumes Chromium's usual `Default/` profile layout; the `.moltbot`
+  layout is assumed identical to `.clawdbot` ([Legacy names](#legacy-names)); that legacy `.jsonl`
+  files are removed after import on every path; `cwd` meaning the workspace.
+- Not determined: the Windows log location beyond `os.tmpdir()`; what the macOS transcript cache
+  stores; whether the iOS and Android apps keep transcripts on the phone; the shapes of
+  `trajectory_runtime_events`, `acp_parent_stream_events` and `custom.data` per `customType`;
+  whether cold-archived generations keep any `transcript_events` rows.

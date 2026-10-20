@@ -1,24 +1,21 @@
 # factory-droid
 
 Factory Droid is Factory's closed-source coding agent, shipped as the `droid` command-line binary
-for Linux, macOS and Windows. Evidence levels below are **B** (strings from the shipped binary)
-and **D** (vendor documentation). Its parser is in the backlog
+for Linux, macOS and Windows. Its parser is in the backlog
 ([issue 54](https://github.com/seanthegeek/doubleagent/issues/54)).
 
 ## 1. Source and evidence
 
-- Closed source. Installer `https://app.factory.ai/cli` (`scratchpad/factory-install.sh`, read only)
+- Closed source. Installer `https://app.factory.ai/cli` (read only, not run)
   pins `VER="0.233.0"` and downloads
   `https://downloads.factory.ai/factory-cli/releases/0.233.0/<os>/<arch>/droid` into
   `~/.local/bin/droid` (lines 64-66, 106). Windows installer `https://app.factory.ai/cli/windows`
-  (`scratchpad/factory-install.ps1`) fetches `droid.exe` into `%USERPROFILE%\bin` (lines 60-62,
-  105). No npm package.
+  fetches `droid.exe` into `%USERPROFILE%\bin` (lines 60-62, 105). No npm package.
 - Binary: `linux/x64/droid` 0.233.0, 275,543,520 bytes, sha256 `744a5c50…f7ab8` matching the
-  published `.sha256`; bun-compiled ELF. Evidence level **B** = `strings -n 8`
-  (`scratchpad/npm/droid.strings`, 8-bit table holds the minified code) and UTF-16
-  (`droid.strings16`).
-- Evidence level **D** = docs fetched as Markdown from `https://docs.factory.com/<page>.md`
-  (`scratchpad/factory-docs/`, index `https://docs.factory.ai/llms.txt`).
+  published `.sha256`; bun-compiled ELF. Evidence level **B** is strings from this binary:
+  `strings -n 8` (the 8-bit table holds the minified code) and UTF-16 strings.
+- Evidence level **D** is vendor documentation, fetched as Markdown from
+  `https://docs.factory.com/<page>.md` (index `https://docs.factory.ai/llms.txt`).
 - The [Factory-AI/factory](https://github.com/Factory-AI/factory) GitHub repo is docs only (prior
   finding; not re-cloned).
 
@@ -128,20 +125,19 @@ occurs nowhere.
 
 ## Parsing
 
-Factory Droid is `backlog`: its JSONL session transcripts are on disk, and the parser is
-[issue 54](https://github.com/seanthegeek/doubleagent/issues/54). A future parser would read
-`~/.factory/sessions/<projectKey>/<sessionId>.jsonl` (first line `type:"session_start"` with
-`cwd`, see [section 6](#6-where-the-project-path-is-recorded)) with its `.settings.json` sidecar,
-the session index `cache/session-index/index.db`, the prompt history `state/history.json` and the
-`missions/<sessionId>/` files ([section 2](#2-per-user-storage)); the transcript schema beyond the
-first line has not been researched.
+Factory Droid is `backlog`: its JSONL session transcripts are on disk
+([section 2](#2-per-user-storage)), and the parser is
+[issue 54](https://github.com/seanthegeek/doubleagent/issues/54).
 
 ## 14. Confidence
 
-High: `~/.factory` on all OSes, `FACTORY_HOME_OVERRIDE`, session layout and projectKey encoding,
-`index.db` path and columns, `auth.v2.*` and `mcp-oauth.v2.*` names, keyring-with-file-fallback,
-`state/history.json`, log file names, exclusion dirs. Medium: `software-factory` subtree sizes;
-`ide/` contents; `prem-auth` layout (from strings, matches prior finding). Low: whether `auth.json`
-is still written by 0.233.0 (only in cleanup list). Not determined: full transcript JSONL schema
-beyond the first line; Windows keyring backend (keytar → Credential Manager assumed); whether
-`%USERPROFILE%\bin\droid.exe` is the only Windows binary location.
+- High: `~/.factory` on all OSes, `FACTORY_HOME_OVERRIDE`, the session layout and `projectKey`
+  encoding, the `index.db` path and columns, the `auth.v2.*` and `mcp-oauth.v2.*` names, the
+  keyring with its file fallback, `state/history.json`, the log file names and the excluded
+  directories.
+- Medium: the `software-factory` subtree sizes, the `ide/` contents and the `prem-auth` layout
+  (from strings, matching the earlier finding).
+- Low: whether 0.233.0 still writes `auth.json` (it is only in the cleanup list).
+- Not determined: the transcript JSONL schema beyond the first line; the Windows keyring backend
+  (keytar to Credential Manager is assumed); whether `%USERPROFILE%\bin\droid.exe` is the only
+  Windows binary location.

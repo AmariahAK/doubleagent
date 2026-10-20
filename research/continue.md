@@ -13,65 +13,30 @@ events and `cn.log`, from source and fixtures only.
 Open source. [continuedev/continue](https://github.com/continuedev/continue) at
 [`5522c6f44ca0ac3528b37244818fbfa39b5af470`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470),
 Apache-2.0
-([`LICENSE`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/LICENSE))
-(clone `scratchpad/repos/continue`). All claims from source. Paths cited are relative to the clone.
+([`LICENSE`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/LICENSE)).
+All claims from source. Paths cited are relative to the repository root. The default branch
+`main` has not moved since 2026-07-20; the README says the repository "is no longer actively
+maintained and is read-only for all users" after a final 2.0.0 release of the VS
+Code extension, the CLI and the JetBrains plugin
+([`README.md:19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/README.md#L19),
+[`README.md:27-29`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/README.md#L27-L29)),
+so this commit is the last source, and whether development continues elsewhere cannot be told
+from the clone.
 
 ### Observed
 
-No real install.
-
-- **Damaged index**: the `sessions.json` layouts the parser reports since issue 170 (unreadable, not
-  a JSON array, cut inside an entry, an entry with no `sessionId`, data after the array) are not
-  observed on any real install, source-derived (continuedev/continue at
-  [`5522c6f`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470)):
-  the extension rewrites the whole array on every save
-  ([`core/util/history.ts:168-181`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L168-L181)),
-  so a crash or a partial copy can leave it cut.
-- The `cn.log` lines the sync rows come from
-  ([Sync, relay and origin](#sync-relay-and-origin-rows)): fixture only; no real install has shown
-  either line.
+- No real install.
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: reviewed
-  [continuedev/continue](https://github.com/continuedev/continue) at
+- 2026-10-19: [continuedev/continue](https://github.com/continuedev/continue) at
   [`5522c6f`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470),
-  the commit this document already cited. The default branch `main` has not moved since 2026-07-20;
-  the README says the repository "is no longer actively maintained and is read-only for all users"
-  after a final 2.0.0 release of the VS Code extension, the CLI and the JetBrains plugin
-  ([`README.md:19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/README.md#L19),
-  [`README.md:27-29`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/README.md#L27-L29)),
-  so this commit is the last source, and whether development continues elsewhere cannot be told from
-  the clone. One line per requirement class (detail in [section 7](#7-transcript-stores),
-  [section 8](#8-record-schema), [section 10](#10-other-stores) and [section 13](#13-parser-plan)):
-  - Permission state: found. Per-call decisions are covered
-    (`toolUsage.accepted`, `canceled` states); not covered are the CLI's
-    standing grants in `permissions.yaml` (its shape and its "don't ask again" writer, found by
-    this review), the session's `mode`, the
-    reason of a denial (user or security policy) and the extension's
-    policy blocks, which end as `errored`. The extension's tool policies live in the editor's
-    webview storage ([Editor extensions](#editor-extensions)).
-  - Model: covered for extension sessions; found that CLI session files
-    record no model, and that the selected models sit in
-    `index/globalContext.json`.
-  - Past use: found. `input_history.json` (the CLI's prompt history, collected with
-    `.continue`) and the `editInteraction`, `editOutcome` and `chatFeedback` dev data
-    events are not read. The PearAI fork logs every chat prompt and
-    completion to a "PearAI" output channel in the editor's `logs/`
-    ([section 1 of `pearai.md`](pearai.md#1-source-and-evidence)); upstream Continue
-    has no such log, since no TypeScript file in this clone outside
-    `node_modules` calls `createOutputChannel`.
-  - Sync, relay and origin: already covered ([section 13](#13-parser-plan)); the CLI's remote TUI
-    is unused at this commit and no relay exists.
-  - Scratch directories: found, the `cn review` worktrees in the system
-    temp directory ([Scratch directories](#scratch-directories)).
-  - Deletion: found; the extension's clear-all removes the whole
-    `sessions/` directory, and the CLI has no delete command
-    ([What survives a delete](#what-survives-a-delete)).
-  - Version drift: none, same commit; the documents and the parser cite this commit.
-  - Bad lines: found that an unreadable `sessions.json` was dropped
-    silently; since issue 170 the parser yields rows for what the index loses
-    ([Bad-line rows](#bad-line-rows)).
+  the commit this document already cited. It added the CLI's `permissions.yaml` shape and writer,
+  `input_history.json` and the selected models in `index/globalContext.json`
+  ([section 10](#10-other-stores)), the `cn review` worktrees of
+  [Scratch directories](#scratch-directories), the clear-all delete of
+  [What survives a delete](#what-survives-a-delete), and the index bad-line rows of
+  [Bad-line rows](#bad-line-rows).
 
 ## Collection
 
@@ -106,7 +71,8 @@ Under `~/.continue`:
 - `.configs/<hostname>/config.json`, `config.js` for remote configs
   ([`paths.ts:342-375`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L342-L375)).
 - `index/index.sqlite`, `index/lancedb/`, `index/autocompleteCache.sqlite`, `index/docs.sqlite`,
-  `index/globalContext.json`
+  `index/globalContext.json` (selected models and MCP OAuth tokens,
+  [index/globalContext.json](#indexglobalcontextjson))
   ([`paths.ts:86-95`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L86-L95),[`326-340`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L326-L340)).
 - `dev_data/devdata.sqlite`, `dev_data/<schema>/<event>.jsonl` with events `chatInteraction`,
   `chatFeedback`, `toolUsage`, `tokensGenerated`, `autocomplete`, `editInteraction`, `quickEdit`,
@@ -133,36 +99,13 @@ Under `~/.continue`:
   [`core/context/mcp/json/loadJsonMcpConfigs.ts:43`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/context/mcp/json/loadJsonMcpConfigs.ts#L43);
   [`extensions/cli/src/util/loadMarkdownSkills.ts:98`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/loadMarkdownSkills.ts#L98);
   [`extensions/cli/src/systemMessage.ts:93`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/systemMessage.ts#L93)).
-- CLI only: `auth.json`, `input_history.json`, `permissions.yaml`, `.onboarding_complete`
+- CLI only: `auth.json`, `input_history.json` (the TUI's prompt history,
+  [input_history.json](#input_historyjson)), `permissions.yaml` (standing tool grants,
+  [permissions.yaml](#permissionsyaml)), `.onboarding_complete`
   ([`extensions/cli/src/auth/authEnv.ts:5`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/auth/authEnv.ts#L5);
   [`util/inputHistory.ts:6`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/inputHistory.ts#L6);
   [`permissions/permissionsYamlLoader.ts:12`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/permissionsYamlLoader.ts#L12);
   [`onboarding.ts:108`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/onboarding.ts#L108)).
-- `permissions.yaml` (CLI) holds standing tool grants: three optional lists, `allow`, `ask` and
-  `exclude`, of tool patterns written `Tool` or `Tool(<argument pattern>)` such as `Bash(npm*)`, and
-  no other key
-  ([`permissionsYamlLoader.ts:15-19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/permissionsYamlLoader.ts#L15-L19),
-  [`77-117`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/permissionsYamlLoader.ts#L77-L117)).
-  `cn` creates it with three empty lists
-  ([`permissionsYamlLoader.ts:152-179`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/permissionsYamlLoader.ts#L152-L179))
-  and appends a rule to `allow` when the user answers a tool prompt with "Continue + don't ask
-  again": `Bash(<first word of the command>*)` for a shell command, the tool name otherwise
-  ([`policyWriter.ts:18-76`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/policyWriter.ts#L18-L76);
-  [`extensions/cli/src/ui/components/ToolPermissionSelector.tsx:37-55`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/components/ToolPermissionSelector.tsx#L37-L55);
-  [`extensions/cli/src/ui/hooks/useChat.ts:789-823`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/hooks/useChat.ts#L789-L823)).
-  It holds no secret.
-- `input_history.json` (CLI) is the TUI's prompt history: a JSON array of `{text, timestamp}` (epoch
-  milliseconds), newest first, at most 1000 entries, a repeated prompt moved to the front instead of
-  added twice; every prompt and slash command typed in the TUI goes in
-  ([`util/inputHistory.ts:6-12`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/inputHistory.ts#L6-L12),
-  [`53-72`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/inputHistory.ts#L53-L72);
-  [`extensions/cli/src/ui/UserInput.tsx:477`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/UserInput.tsx#L477),
-  [`585`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/UserInput.tsx#L585)).
-- `index/globalContext.json` also holds the selected models,
-  `selectedModelsByProfileId.<profile id>.<role>` for the extension and `cliSelectedModel` for the
-  CLI, and `lastSelectedProfileForWorkspace` keyed by workspace
-  ([`core/util/GlobalContext.ts:18-33`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/GlobalContext.ts#L18-L33);
-  [`extensions/cli/src/util/modelPersistence.ts:7-19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/modelPersistence.ts#L7-L19)).
 
 #### Scratch directories
 
@@ -254,15 +197,16 @@ worktree here ([Scratch directories](#scratch-directories)).
 
 ### 7. Transcript stores
 
-`~/.continue`, overridable by `CONTINUE_GLOBAL_DIR`
-([`core/util/paths.ts:27-35`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L27-L35)):
+Under the global directory of [section 2](#2-per-user-storage):
 
 - `sessions/<sessionId>.json`: one session, pretty-printed JSON
   ([`paths.ts:102-103`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L102-L103),
   [`history.ts:131-134`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L131-L134)).
 - `sessions/sessions.json`: JSON array of session metadata
-  ([`paths.ts:106-112`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L106-L112),
-  [`history.ts:168-181`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L168-L181)).
+  ([`paths.ts:106-112`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L106-L112)).
+  The extension rewrites the whole array on every save
+  ([`core/util/history.ts:168-181`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L168-L181)),
+  so a crash or a partial copy can leave it cut.
 
 The logs, `dev_data` events, prompt history, exports and settings beside them are in
 [section 10](#10-other-stores).
@@ -421,8 +365,7 @@ not by the VS Code extension. Its line format is in [section 8](#8-record-schema
 `dev_data/0.2.0/<eventName>.jsonl`: one JSON object per line per event
 ([`paths.ts:240-249`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L240-L249),
 [`core/data/log.ts:20`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/log.ts#L20),[`73-97`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/log.ts#L73-L97)).
-Events include `chatInteraction`, `chatFeedback`, `toolUsage`, `tokensGenerated`, `autocomplete`,
-`editInteraction`, `quickEdit`
+The events are those named in [section 2](#2-per-user-storage)
 ([`packages/config-yaml/src/schemas/data/`](https://github.com/continuedev/continue/tree/5522c6f44ca0ac3528b37244818fbfa39b5af470/packages/config-yaml/src/schemas/data)).
 Legacy `dev_data/0.1.0/*.jsonl` and pre-version `dev_data/*.jsonl`
 ([`paths.ts:441-460`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L441-L460)).
@@ -451,7 +394,7 @@ schema, so `logLocalData` throws and nothing is written for it at this commit
 [`core/data/devdataSqlite.ts:16-20`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/devdataSqlite.ts#L16-L20)).
 Its shape is `tokens_generated(model, provider, tokens_prompt, tokens_generated, timestamp)`
 ([`devdataSqlite.ts:16-49`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/devdataSqlite.ts#L16-L49)).
-Excluded by the collector as low value.
+Excluded ([section 4](#4-exclusions)).
 
 #### Markdown exports
 
@@ -519,7 +462,7 @@ rewinds the history and a compaction. Secondary.
 #### permissions.yaml
 
 `permissions.yaml` (CLI): standing tool grants, three optional lists `allow`, `ask` and `exclude` of
-`Tool` or `Tool(<argument pattern>)` entries
+`Tool` or `Tool(<argument pattern>)` entries such as `Bash(npm*)`
 ([`extensions/cli/src/permissions/permissionsYamlLoader.ts:15-19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/permissionsYamlLoader.ts#L15-L19),
 [`77-146`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/permissionsYamlLoader.ts#L77-L146)).
 `cn` writes it with empty lists on first use and appends to `allow` on a "Continue + don't ask
@@ -531,16 +474,25 @@ again" answer, `Bash(<first word>*)` for a shell command and the tool name other
 The append also logs `Added policy rule to permissions.yaml: <rule>` at level `info` to
 `logs/cn.log`
 ([`extensions/cli/src/permissions/policyWriter.ts:67`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/policyWriter.ts#L67)),
-the only record of when the grant was made. Primary for permission state.
+the only record of when the grant was made. The file holds no other key and no secret
+([`permissionsYamlLoader.ts:77-117`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/permissions/permissionsYamlLoader.ts#L77-L117)).
+Primary for permission state.
 
 #### index/globalContext.json
 
 `index/globalContext.json`: `selectedModelsByProfileId.<profile id>.<role>` (the extension's
-selected model per role, `chat` among them) and `cliSelectedModel` (the CLI's)
+selected model per role, `chat` among them), `cliSelectedModel` (the CLI's) and
+`lastSelectedProfileForWorkspace` keyed by workspace
 ([`core/util/GlobalContext.ts:18-33`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/GlobalContext.ts#L18-L33);
 [`extensions/cli/src/util/modelPersistence.ts:7-19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/modelPersistence.ts#L7-L19)).
-Standing state with no time but the file's. The file also holds MCP OAuth tokens and is a flagged
-secret.
+Standing state with no time but the file's. The file also holds MCP OAuth tokens
+([section 3](#3-credentials)) and is a flagged secret.
+
+#### Editor output channel
+
+Upstream Continue writes no editor output channel: no TypeScript file in this clone outside
+`node_modules` calls `createOutputChannel`. Its PearAI fork does
+([Output channel log in `pearai.md`](pearai.md#output-channel-log)).
 
 ### 11. Format versions
 
@@ -588,9 +540,6 @@ Rows: one per `history[]` item (user, assistant, thinking, tool), plus one
 | tool_name, tool_use_id | `toolCall.function.name`, `toolCallId` |
 | text | text, `function.arguments`, output `content` |
 
-The "Read" and "Not read" lines in the subsections below are the requirement classes of the
-source review of 2026-10-19.
-
 #### Permission rows
 
 Per-call decision rows, typed `system`:
@@ -615,9 +564,7 @@ output is `Security Policy Violation`, which gets no `permission
 decision:` row today; and the `Added policy rule to permissions.yaml`
 line of `logs/cn.log`, which the log reader skips
 ([Tool call states and denials](#tool-call-states-and-denials);
-[permissions.yaml](#permissionsyaml)). The parser does not read the CLI's `permissions.yaml`, whose
-shape is in [permissions.yaml](#permissionsyaml); before the source review of 2026-10-19 the plan
-recorded no shape for it.
+[permissions.yaml](#permissionsyaml)).
 
 The CLI's permission mode (`normal`, `plan` or `auto`, cycled in the TUI or set by `--auto` and
 `--readonly`, with `--allow`, `--ask` and `--exclude` overrides) is recorded nowhere on disk: the
@@ -700,8 +647,8 @@ names no session, and the line's own time read as if it were UTC, as the
 aider parser reads its host-local headers. The `[metadata] Request body`
 line is never put in a row. Neither row starts `session synced:`: the
 posts are an agent's metadata, not a session's transcript, and name no
-local session, so the parser does not set `records_sync`. Both rest on a fixture alone
-([Observed](#observed)). A deleted session's `cn.log` lines survive, and no command deletes
+local session, so the parser does not set `records_sync`. Both rest on a fixture alone: no real
+install has shown either line. A deleted session's `cn.log` lines survive, and no command deletes
 the remote copy ([What survives a delete](#what-survives-a-delete)).
 
 The other paths that leave the host carry no transcript and leave no per-session marker: `/share`
@@ -721,7 +668,7 @@ Searched `share`, `sync`, `upload`, `remote`, `remoteId`, `storage`, `telemetry`
 `agents/`, `api.continue.dev` and `userToken` in `core/`, `gui/src`, `extensions/vscode/src` and
 `extensions/cli/src`.
 
-The review of 2026-10-19 found no more. The CLI's remote TUI (`startRemoteTUIChat`, which polls a
+The CLI's remote TUI (`startRemoteTUIChat`, which polls a
 `cn serve` `/state` endpoint and skips local persistence) has no caller at this commit
 ([`extensions/cli/src/ui/index.ts:128-131`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/ui/index.ts#L128-L131);
 [`extensions/cli/src/services/ChatHistoryService.ts:66-70`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/services/ChatHistoryService.ts#L66-L70)),
@@ -742,7 +689,8 @@ as projects.
 
 #### Deletion rows
 
-Not stated. What each delete removes and what survives it (`input_history.json`, `dev_data`,
+No deletion row: the source records no deletion marker. What each delete removes and what survives
+it (`input_history.json`, `dev_data`,
 `cn.log` and `/share` exports) is in [What survives a delete](#what-survives-a-delete).
 
 #### Bad-line rows
@@ -760,7 +708,11 @@ still time their sessions), `parser: array cut off after record <N>`,
 <the entry as JSON>` (an entry keyed by the pre-1.0 `session_id` is
 skipped without a row, as the extension filters it) and `parser:
 unparseable data after the JSON array`. A session the index lost
-keeps its rows with an empty `timestamp_utc`.
+keeps its rows with an empty `timestamp_utc`. These damaged-index layouts are not observed on any
+real install, source-derived (continuedev/continue at
+[`5522c6f`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470));
+the index can be cut because the extension rewrites it whole on every save
+([section 7](#7-transcript-stores)).
 
 #### Fixtures
 
@@ -788,13 +740,16 @@ Fixture `sessions/0f1e.json`:
 
 ## 14. Confidence
 
-Collection. High: every `~/.continue` path, `auth.json` fields, `workspaceDirectory`, `.bin` secret
-blobs. Medium: list of project `.continue/<subdir>` names (the loader accepts any subdir passed by
-callers). Not determined: whether the JetBrains plugin writes anything outside `~/.continue` (its
-`binary/` uses the same
-[`core/util/paths.ts`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts)).
-
-Parsing. High: session, `sessions.json` and `dev_data` schemas (typed
-source). Medium: `prompt.log` format (from a doc comment; only the JetBrains
-binary writes it). Not determined: per-message timestamps (absent by
-design).
+- High: every `~/.continue` path, `auth.json` fields, `workspaceDirectory`, the `.bin` secret blobs;
+  the session, `sessions.json` and `dev_data` schemas (typed source).
+- Medium: the list of project `.continue/<subdir>` names (the loader accepts any subdir passed by
+  callers); the `prompt.log` format (from a doc comment; only the JetBrains binary writes it).
+- Not determined: whether the JetBrains plugin writes anything outside `~/.continue` (its
+  `binary/` uses the same
+  [`core/util/paths.ts`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts)).
+- Not determined: where VS Code or a JetBrains IDE keeps the extension webview's local storage on
+  disk ([Editor extensions](#editor-extensions)).
+- Not determined: whether an `editInteraction` or `editOutcome` edit also reaches a session file
+  ([dev_data event files](#dev_data-event-files)).
+- Not determined: whether a model switch in the middle of a session is recorded anywhere beyond a
+  changed `modelTitle` between items ([Model rows](#model-rows)).

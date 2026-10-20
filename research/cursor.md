@@ -1,19 +1,16 @@
 # cursor
 
 Cursor is a closed-source editor forked from VS Code (the Cursor IDE) with a command-line agent, the
-Cursor Agent CLI (`agent`, `cursor-agent`). Evidence levels below are L1 (shipped bundle), L2
-(official docs), L3 (vendor forum) and L4 (third-party write-ups and tools). Its parser is in the
-backlog ([issue 51](https://github.com/seanthegeek/doubleagent/issues/51)), blocked on format
-research because the `state.vscdb` key layout changes between versions.
+Cursor Agent CLI (`agent`, `cursor-agent`). Its parser is in the backlog
+([issue 51](https://github.com/seanthegeek/doubleagent/issues/51)).
 
 ## 1. Source and evidence
 
 Closed source. Evidence, strongest first:
 
 - L1 shipped bundle: Cursor Agent CLI `2026.10.01-e373342`, `agent-cli-package.tar.gz` from
-  `downloads.cursor.com/lab/.../linux/x64/` (URL from `https://cursor.com/install`, saved as
-  `scratchpad/npm/cursor-install.sh:78-131`), extracted to
-  `scratchpad/npm/cursor-agent/dist-package/`. Minified webpack chunks keep module names, so
+  `downloads.cursor.com/lab/.../linux/x64/` (the URL is in the install script
+  `https://cursor.com/install`, lines 78-131). Minified webpack chunks keep module names, so
   citations are `<chunk>.js` plus the original module path.
 - L2 official docs: [Cursor CLI configuration](https://cursor.com/docs/cli/reference/configuration),
   [Cursor rules](https://cursor.com/docs/context/rules),
@@ -54,7 +51,8 @@ Layout is identical on all OSes except the IDE app-data parent and the CLI `auth
 
 #### Cursor IDE
 
-IDE (VS Code fork, see [vscode.md](vscode.md) for the generic layout):
+IDE (VS Code fork; the generic layout is in
+[User data directory of `research/vscode.md`](vscode.md#user-data-directory)):
 `~/Library/Application Support/Cursor/User`, `%APPDATA%\Cursor\User`, `~/.config/Cursor/User` (forum
 2825, 169582; cursaves; extracurricular). Chats and agent runs live in
 `User/globalStorage/state.vscdb` table `cursorDiskKV` (`composerData:<id>`,
@@ -96,10 +94,11 @@ docs cli/reference/configuration). Contents found in the bundle:
 - Enterprise hooks: `/Library/Application Support/Cursor/hooks.json`, `/etc/cursor/hooks.json`,
   `C:\ProgramData\Cursor\hooks.json` (`190.index.js`; docs agent/hooks).
 - CLI binaries: `~/.local/share/cursor-agent/versions/<ver>/`, symlinks
-  `~/.local/bin/{agent,cursor-agent,cursor}` (`cursor-install.sh:78-131`; `2761.index.js`). Worker
+  `~/.local/bin/{agent,cursor-agent,cursor}` (install script lines 78-131; `2761.index.js`). Worker
   mode uses `/opt/cursor` or `~/.local/share/cursor-agent` as `--data-dir`.
 - Remote SSH server `~/.cursor-server/` (serverDataFolderName convention; `2721.index.js` mentions
-  downloading `cursor-server`).
+  downloading `cursor-server`); its `data/User` holds the remote side's editor state, as in
+  [Remote server of `research/vscode.md`](vscode.md#remote-server).
 
 ### 3. Credentials
 
@@ -112,11 +111,13 @@ docs cli/reference/configuration). Contents found in the bundle:
   `cursor-bedrock-*`, account `cursor-user`); every other OS, and macOS with
   `AGENT_CLI_CREDENTIAL_STORE=file`, writes `auth.json` (`accessToken`, `refreshToken`, `apiKey`,
   `bedrockCredentials`) at `$XDG_CONFIG_HOME/cursor/auth.json` or `~/.config/cursor/auth.json` on
-  Linux, `~/.cursor/auth.json` on macOS, `%APPDATA%\Cursor\auth.json` on Windows (mode 0600).
+  Linux, `~/.cursor/auth.json` on macOS, `%APPDATA%\Cursor\auth.json` on Windows (mode 0600). All
+  three paths are flagged.
 - MCP OAuth tokens per project: `~/.cursor/projects/<p>/mcp-auth.json` (`6136.index.js`,
-  `8192.index.js`).
+  `8192.index.js`); flagged.
 - `~/.cursor/mcp.json` and project `.cursor/mcp.json` carry server env blocks that often hold
-  literal keys (docs recommend `${env:...}`).
+  literal keys (docs recommend `${env:...}`); both are flagged, since the secret glob
+  `.cursor/mcp.json` matches in the home and in a collected project.
 - `~/.cursor_info` "holds a Cursor authentication token" (AgentSweep 904-910, L4 only, unverified).
 
 ### 4. Exclusions
@@ -124,7 +125,8 @@ docs cli/reference/configuration). Contents found in the bundle:
 `.cursor/extensions` (extension payloads), `.cursor/worktrees` (git checkouts),
 `.cursor/plugins/marketplaces` (cloned marketplaces),
 `*/Cursor/User/globalStorage/state.vscdb.backup` (stale copy, up to 12 GB per forum 167641),
-`.cursor-server/bin` and `.cursor-server/extensions` if the server dir is added.
+and `.cursor-server/bin` and `.cursor-server/extensions` (the remote server's binaries and
+extensions, beside the collected `.cursor-server/data/User`).
 `~/.local/share/cursor-agent` (557 MB per version) is not in the catalog. `projects/*/agent-tools`
 holds only outputs over 49 MB; leave it to the size cap rather than exclude.
 
@@ -147,21 +149,21 @@ bundle). `.cursorindexingignore` appears in neither the bundle nor current docs.
 
 ## Parsing
 
-Cursor is `backlog`: its chats and agent runs are parseable records on disk, and the parser is
-[issue 51](https://github.com/seanthegeek/doubleagent/issues/51), blocked on format research
-because the `state.vscdb` key layout changes between versions (`composer.composerData` on <=2.6,
-`composer.composerHeaders` on 3.0+, see [Cursor IDE](#cursor-ide)). A future parser would read the
-IDE's `User/globalStorage/state.vscdb` `cursorDiskKV` rows (`composerData:<id>`,
-`bubbleId:<composer>:<bubble>`) and the Agent CLI's `projects/<sanitized cwd>/agent-transcripts/`
-(`*.jsonl`, older `*.txt`) and `chats/<md5(resolved cwd)>/<sessionId>/store.db` with its
-`meta.json` ([section 2](#2-per-user-storage)); no record schema has been researched yet.
+Cursor is `backlog`: the IDE's chats and agent runs and the Agent CLI's transcripts and chat
+stores are parseable records on disk ([section 2](#2-per-user-storage)), and the parser is
+[issue 51](https://github.com/seanthegeek/doubleagent/issues/51). It is blocked on format
+research because the IDE's `state.vscdb` key layout changes between versions
+([Cursor IDE](#cursor-ide)); no record schema has been researched yet.
 
 ## 14. Confidence
 
-High: `~/.cursor` layout, chats/acp-sessions/store.db, projects sanitization, worktrees, hooks,
-ai-tracking, CLI `auth.json` and keychain logic (all L1 bundle); IDE app-data paths and
-`state.vscdb` keys (L3/L4, consistent across sources). Medium: `cursorAuth/*` keys (L4 only),
-`.cursor/extensions` and `.cursor-server` (convention plus L4). Low: `~/.cursor_info` (single L4
-claim). Not determined: `store.db` blob encryption (`blobEncryptionKey` in `meta`, codeburn 986),
-whether Windows CLI uses `%APPDATA%\Cursor\auth.json` or the IDE's dir with the same name, and
-`.cursorindexingignore` status.
+- High (L1 bundle): the `~/.cursor` layout, `chats/` and `acp-sessions/` with `store.db`, the
+  `projects/` name sanitization, worktrees, hooks, `ai-tracking`, and the CLI's `auth.json` and
+  keychain logic.
+- High (L3 and L4, consistent across sources): the IDE app-data paths and the `state.vscdb` keys.
+- Medium: the `cursorAuth/*` keys (L4 only), and `.cursor/extensions` and `.cursor-server`
+  (convention plus L4).
+- Low: `~/.cursor_info` (a single L4 claim).
+- Not determined: whether `store.db` blobs are encrypted (`blobEncryptionKey` in `meta`, codeburn
+  986); whether the Windows CLI uses `%APPDATA%\Cursor\auth.json` or the IDE's directory of the
+  same name; the status of `.cursorindexingignore`.

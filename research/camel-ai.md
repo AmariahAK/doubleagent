@@ -23,53 +23,23 @@ uses `subprocess.Popen`
 
 ### Source reviews
 
-- **Source review (2026-10-19)** at
+- 2026-10-19:
   [`797296a`](https://github.com/camel-ai/camel/commit/797296a718ce856d9c9476e4bb69fedb71ab6382)
-  (package version unchanged, 0.2.91a7), against `24fde60` above. One
-  line per class:
-  - Permission: none on disk. The terminal toolkit's `safe_mode`,
-    `allowed_commands` and `require_approval` callback are constructor
-    arguments of the calling program
-    ([terminal_toolkit.py:143-148](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/terminal_toolkit/terminal_toolkit.py#L143-L148),
-    [200-206](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/terminal_toolkit/terminal_toolkit.py#L200-L206)),
-    and no decision is written anywhere.
-  - Model: none on disk; the model is chosen in code, and model logs are
-    opt-in (`CAMEL_MODEL_LOG_ENABLED`, `CAMEL_LOG_DIR` default
-    `camel_logs` in the working directory,
-    [base_model.py:287-295](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/models/base_model.py#L287-L295)).
-  - Past use: none under the home. New since `24fde60`: `ChatAgent`
-    takes a `tool_log_dir` that saves full tool outputs, a caller-chosen
-    directory with no default
-    ([chat_agent.py:640-644](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/agents/chat_agent.py#L640-L644));
-    `save_memory(path)` and `JsonStorage` write where the caller says
-    ([chat_agent.py:1780](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/agents/chat_agent.py#L1780),
-    [json.py:72](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/storages/key_value_storages/json.py#L72)).
-  - Sync, relay and origin: none (not found in `camel/` at `797296a`,
-    grepped for `share_url`, `upload_trajectory` and `sync_to`). The
-    Gmail token lets an agent read and send mail, which is a tool, not a
-    relay of the session.
-  - Scratch directories ([Scratch directories](#scratch-directories)): `./workspace`
-    (terminal toolkit) and `./camel_working_dir` (file toolkits) in the working directory
-    ([terminal_toolkit.py:185-195](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/terminal_toolkit/terminal_toolkit.py#L185-L195),
-    [file_toolkit.py:73](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/file_toolkit.py#L73)),
-    unrecorded and under no CAMEL-specific name, so no catalog line can
-    find them.
-  - Deletion: nothing to delete; the framework keeps no session.
-  - Version drift: the home paths are unchanged
-    (`.camel/gmail_token.json`,
-    [gmail_toolkit.py:1316](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/gmail_toolkit.py#L1316);
-    `.camel/skills` and `.config/camel/skills`,
-    [skill_toolkit.py:206-207](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/skill_toolkit.py#L206-L207);
-    `.camel/runtimes`,
-    [runtime_utils.py:57](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/terminal_toolkit/runtime_utils.py#L57));
-    line numbers moved.
-  - Bad lines: no parser.
-
-  The "nothing to parse" verdict stands.
+  (package version unchanged, 0.2.91a7) against
+  [`24fde60`](https://github.com/camel-ai/camel/commit/24fde60ad739b4be8f8f533fea9ba54256fbc4a2),
+  from source only. The home paths were unchanged; it added the caller-chosen tool log directory,
+  the terminal toolkit's approval arguments and the absence of any sync
+  ([section 2](#2-per-user-storage)), and confirmed that there is nothing to parse.
 
 ## Collection
 
 ### 2. Per-user storage
+
+The home paths are the same at
+[`797296a`](https://github.com/camel-ai/camel/commit/797296a718ce856d9c9476e4bb69fedb71ab6382)
+([gmail_toolkit.py:1316](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/gmail_toolkit.py#L1316),
+[skill_toolkit.py:206-207](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/skill_toolkit.py#L206-L207),
+[runtime_utils.py:57](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/terminal_toolkit/runtime_utils.py#L57)).
 
 | Path (home-relative, all OSes) | Holds | Default or opt-in |
 | --- | --- | --- |
@@ -84,14 +54,36 @@ the terminal toolkit
 ([file_toolkit.py:69-73](https://github.com/camel-ai/camel/blob/24fde60ad739b4be8f8f533fea9ba54256fbc4a2/camel/toolkits/file_toolkit.py#L69-L73)),
 `./chat_history.json` for `JsonStorage`
 ([json.py:71-73](https://github.com/camel-ai/camel/blob/24fde60ad739b4be8f8f533fea9ba54256fbc4a2/camel/storages/key_value_storages/json.py#L71-L73)),
-and `camel_logs` model logs only with `CAMEL_MODEL_LOG_ENABLED`
-([base_model.py:287-295](https://github.com/camel-ai/camel/blob/24fde60ad739b4be8f8f533fea9ba54256fbc4a2/camel/models/base_model.py#L287-L295)).
-The browser `user_data_dir` is supplied by the caller.
+and model logs only with `CAMEL_MODEL_LOG_ENABLED`, in `CAMEL_LOG_DIR` (default `camel_logs`)
+([base_model.py:287-295](https://github.com/camel-ai/camel/blob/24fde60ad739b4be8f8f533fea9ba54256fbc4a2/camel/models/base_model.py#L287-L295);
+the same at
+[`797296a`](https://github.com/camel-ai/camel/commit/797296a718ce856d9c9476e4bb69fedb71ab6382),
+[base_model.py:287-295](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/models/base_model.py#L287-L295)).
+The browser `user_data_dir` is supplied by the caller; `save_memory(path)` and a `JsonStorage`
+given a path write where the caller says
+([chat_agent.py:1780](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/agents/chat_agent.py#L1780),
+[json.py:72](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/storages/key_value_storages/json.py#L72)); and `ChatAgent` takes a
+`tool_log_dir`, new since
+[`24fde60`](https://github.com/camel-ai/camel/commit/24fde60ad739b4be8f8f533fea9ba54256fbc4a2),
+that saves full tool outputs to a caller-chosen directory with no default
+([chat_agent.py:640-644](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/agents/chat_agent.py#L640-L644)).
+
+Nothing else about a run is recorded. The model is chosen in code. The terminal toolkit's
+`safe_mode`, `allowed_commands` and `require_approval` callback are constructor arguments of
+the calling program
+([terminal_toolkit.py:143-148](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/terminal_toolkit/terminal_toolkit.py#L143-L148),
+[200-206](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/terminal_toolkit/terminal_toolkit.py#L200-L206)), and no approval
+decision is written anywhere. Nothing syncs or relays a session (not found in `camel/` at
+[`797296a`](https://github.com/camel-ai/camel/commit/797296a718ce856d9c9476e4bb69fedb71ab6382),
+grepped for `share_url`, `upload_trajectory` and `sync_to`), and there is no session to
+delete.
 
 #### Scratch directories
 
 The terminal toolkit's `./workspace` and the file toolkits' `./camel_working_dir` are the
-agent's own scratch space, created in the working directory, unrecorded and under no
+agent's own scratch space, created in the working directory
+([terminal_toolkit.py:185-195](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/terminal_toolkit/terminal_toolkit.py#L185-L195),
+[file_toolkit.py:73](https://github.com/camel-ai/camel/blob/797296a718ce856d9c9476e4bb69fedb71ab6382/camel/toolkits/file_toolkit.py#L73)), unrecorded and under no
 CAMEL-specific name, so no catalog line can find them.
 
 #### Name collision
@@ -110,7 +102,8 @@ No compose file or named volume.
 
 ### 3. Credentials
 
-- `.camel/gmail_token.json`: flagged.
+- `.camel/gmail_token.json`: flagged. It is the one catalog line of real value: it shows that a
+  Google account was granted to a CAMEL agent, which can then read and send mail as a tool.
 
 ### 4. Exclusions
 
@@ -119,10 +112,8 @@ is not, so none.
 
 ### 5. Project-local files
 
-The working-directory files in [section 2](#2-per-user-storage) (`workspace/`,
-`camel_working_dir/`, `chat_history.json`) are created wherever the
-application runs, under no CAMEL-specific name, so they are not project
-catalog entries.
+The working-directory files in [section 2](#2-per-user-storage) are created wherever the
+application runs, under no CAMEL-specific name, so they are not project catalog entries.
 
 ### 6. Where the project path is recorded
 
@@ -131,15 +122,10 @@ Nowhere under the home.
 ## Parsing
 
 CAMEL is `collected` only: there is nothing to parse, because it keeps no transcripts under the
-home. What it collects is the Gmail OAuth token and the user-scope skills; the chat history
-(`./chat_history.json` for `JsonStorage`), the opt-in `camel_logs` model logs, the
-caller-chosen `tool_log_dir` and `save_memory(path)` files are all written in the working
-directory or wherever the calling program says ([section 2](#2-per-user-storage) and the
-2026-10-19 source review), so no catalog line reaches them and a parser would have no file to
-read.
+home. Its chat history, model logs, tool logs and saved memory are written in the working
+directory or wherever the calling program says ([section 2](#2-per-user-storage)), so no catalog
+line reaches them and a parser would have no file to read.
 
 ## 14. Confidence
 
-High for every path (source). The catalog lines are of low value apart
-from the OAuth token, which shows that a Google account was granted to a
-CAMEL agent.
+- High for every path (source).

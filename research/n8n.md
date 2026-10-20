@@ -36,41 +36,13 @@ n8n executes tools and shell commands on the host:
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: HEAD
+- 2026-10-19: HEAD
   [`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680)
-  reviewed against the previously cited
+  against the previously cited
   [`0e1c754`](https://github.com/n8n-io/n8n/commit/0e1c7549997f43053fda83534b597875b0310df6),
-  from source only. Two surfaces matter here, Instance AI and Chat Hub. Both store in
-  `database.sqlite`; detail in [Database and gateway detail](#database-and-gateway-detail).
-  - Permission state: found. Per-call: Instance AI's
-    `instance_ai_pending_confirmations` and its `confirmation-request`
-    events, and the gateway log's denial errors. Standing:
-    `instance_ai_thread_grants` ("always allow" within a thread) and
-    `.n8n-gateway/settings.json` (`permissions` per tool group and
-    `resourcePermissionsByOrigin` allow and deny lists).
-  - Model: found: `chat_hub_messages.provider` and `model` per message,
-    the same on `chat_hub_sessions`; Instance AI's model is instance
-    configuration (`N8N_INSTANCE_AI_MODEL`).
-  - Past use beyond the primary store: found: `instance_ai_events` is a
-    sequenced event log of every Instance AI run; the gateway's `log`
-    repeats each tool call with its arguments; `execution_entity` and
-    `execution_data` keep the workflow runs a chat message started.
-  - Sync: found: Instance AI's `run-start` events carry `langsmithRunId`
-    and `langsmithTraceId` when the run is traced to LangSmith (LangChain's
-    hosted tracing service) through n8n's AI proxy.
-  - Scratch directories: none created by n8n; the gateway's working
-    directory is the one the user picks ([Scratch directories](#scratch-directories)).
-  - Deletion: found: deleting an Instance AI thread cascades to its
-    messages, events, checkpoints, grants and pending confirmations, and
-    one upgrade migration emptied the Instance AI tables; deleting a Chat
-    Hub session leaves the workflow executions its messages point to.
-  - Version drift: paths unchanged; the SQLite file name moved to
-    [database.config.ts:127](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/config/src/configs/database.config.ts#L127);
-    computer-use is unchanged apart from its `package.json`. Instance AI's tables existed at
-    [`0e1c754`](https://github.com/n8n-io/n8n/commit/0e1c7549997f43053fda83534b597875b0310df6) and
-    were not in this document.
-  - Bad lines: `.n8n-local-gateway/log` and `.n8n/n8nEventLog*.log` are
-    line-oriented; a parser must report a cut line.
+  from source only. The paths were unchanged; it added the Instance AI tables, the Chat Hub model
+  columns and the gateway's permission and log records
+  ([Database and gateway detail](#database-and-gateway-detail)).
 
 ## Collection
 
@@ -117,9 +89,13 @@ layout at their root, so the `DOCKER_VOLUMES` lines are `*n8n_data` and
 
 #### Database and gateway detail
 
-Detail from the 2026-10-19 review, at
-[`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680),
-for a future parser:
+The records of Instance AI and Chat Hub in `database.sqlite` and of the computer-use gateway, at
+[`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680).
+The paths are unchanged from
+[`0e1c754`](https://github.com/n8n-io/n8n/commit/0e1c7549997f43053fda83534b597875b0310df6),
+where the Instance AI tables already existed; the SQLite file name is now set at
+[database.config.ts:127](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/config/src/configs/database.config.ts#L127),
+and computer-use is unchanged apart from its `package.json`.
 
 - **Gateway permissions** (`.n8n-gateway/settings.json`). `permissions`
   maps each tool group (`filesystemRead`, `filesystemWrite`, `shell`,
@@ -158,7 +134,8 @@ for a future parser:
   [instance-ai-event-log-entry.entity.ts:17-41](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/entities/instance-ai-event-log-entry.entity.ts#L17-L41),
   [instance-ai-thread-grant.entity.ts:7-39](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/entities/instance-ai-thread-grant.entity.ts#L7-L39),
   [instance-ai-pending-confirmation.entity.ts:7-70](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/entities/instance-ai-pending-confirmation.entity.ts#L7-L70)).
-  Event types include `run-start`, `tool-call`, `tool-result`,
+  `instance_ai_events` is a sequenced event log of every Instance AI run. Event types include
+  `run-start`, `tool-call`, `tool-result`,
   `tool-error`, `confirmation-request`, `filesystem-request` and `error`
   ([instance-ai.schema.ts:224-247](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/api-types/src/schemas/instance-ai.schema.ts#L224-L247));
   an approval resumes the tool with `approved`, optional `userInput` and
@@ -169,8 +146,8 @@ for a future parser:
   ([instance-ai.config.ts:12-14](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/config/src/configs/instance-ai.config.ts#L12-L14)).
 - **LangSmith ids.** `run-start` events keep `langsmithRunId` and
   `langsmithTraceId`, "so user feedback can annotate the trace after a
-  restart", when the run was traced through the proxy's `/langsmith`
-  endpoint
+  restart", when the run was traced to LangSmith (LangChain's hosted tracing service) through
+  the `/langsmith` endpoint of n8n's AI proxy
   ([instance-ai.schema.ts:413-430](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/@n8n/api-types/src/schemas/instance-ai.schema.ts#L413-L430),
   [instance-ai.service.ts:1033-1039](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/instance-ai.service.ts#L1033-L1039),
   [4024-4041](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/instance-ai.service.ts#L4024-L4041)).
@@ -180,6 +157,8 @@ for a future parser:
   and `model`
   ([chat-hub-message.entity.ts:55-114](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/chat-hub/chat-hub-message.entity.ts#L55-L114),
   [chat-hub-session.entity.ts:81-90](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/chat-hub/chat-hub-session.entity.ts#L81-L90)).
+  The `executionId` names the workflow run a message started, kept in `execution_entity` and
+  `execution_data`.
 - **Deletion.** Deleting an Instance AI thread deletes it and its sub-agent threads, and the
   message, event, checkpoint, grant and pending confirmation rows go with it by `ON DELETE CASCADE`
   ([instance-ai-memory.service.ts:648-653](https://github.com/n8n-io/n8n/blob/967591041e508802f6cf77a1b1651ec48175f680/packages/cli/src/modules/instance-ai/instance-ai-memory.service.ts#L648-L653),
@@ -229,19 +208,13 @@ Nowhere; n8n has no project concept on disk.
 
 n8n is `backlog`: its parser is
 [issue 67](https://github.com/seanthegeek/doubleagent/issues/67), and nothing it writes is parsed
-yet. A parser would read `.n8n/database.sqlite`: the Chat Hub sessions and messages
-(`chat_hub_sessions`, `chat_hub_messages`, with `provider` and `model` per message), the Instance
-AI threads, messages and sequenced `instance_ai_events` (with the `confirmation-request` events,
-`instance_ai_pending_confirmations` and `instance_ai_thread_grants` for permission, and the
-LangSmith ids on `run-start` events for sync), and `execution_entity` and `execution_data` for the
-workflow runs a chat message started; beside it, the computer-use gateway's line-oriented
-`.n8n-local-gateway/log`, which repeats each tool call with its arguments and records denials as
-errors, and the standing grants in `.n8n-gateway/settings.json`
-([Database and gateway detail](#database-and-gateway-detail)). `.n8n/n8nEventLog*.log` is also
-line-oriented.
+yet. It would read the Chat Hub and Instance AI tables of `.n8n/database.sqlite` and the
+computer-use gateway's log and settings
+([Database and gateway detail](#database-and-gateway-detail)). The gateway log and
+`.n8n/n8nEventLog*.log` are line-oriented, so a parser must report a cut line in either.
 
 ## 14. Confidence
 
-High, apart from the Electron tray paths, which are inferred and have no
-catalog line. Not determined: the tray app's Linux build (none is
-configured).
+- High for the paths and tables (source).
+- Medium for the Electron tray paths, which are inferred and have no catalog line.
+- Not determined: the tray app's Linux build (none is configured).

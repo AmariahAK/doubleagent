@@ -57,49 +57,14 @@ documentation, not from source, and their record shapes remain unverified.
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: HEAD of aws/amazon-q-developer-cli is still
+- 2026-10-19: HEAD of aws/amazon-q-developer-cli is still
   [`15cc8f3`](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a),
-  the commit cited here; the repository is frozen, so the open-source paths have not moved and the
-  review covers the open-source Amazon Q Developer CLI only. Everything this document says about the
-  Kiro CLI itself (`.kiro/sessions/`, `settings/permissions.yaml`, `sandbox-state/`,
-  `workspace-roots/`) still rests on the 2.27.1 binary's strings and kiro.dev documentation, and no
-  source review can change it. One line per class, detail in [section 8](#8-record-schema) and
-  [section 13](#13-parser-plan):
-  - Permission: found. A denied tool call is a `CancelledToolUses` message
-    with a fixed text; a deny-list rejection is a fixed prompt; standing
-    grants are agent configuration files, `.aws/amazonq/cli-agents/*.json` and
-    `.amazonq/cli-agents/*.json` (`allowedTools`, `toolsSettings`), both collected
-    ([section 2](#2-per-user-storage));
-    a `t` answer and `--trust-all-tools` are not persisted
-    ([section 8](#8-record-schema)).
-  - Model: already covered per request and per conversation; found the
-    agent configuration's `model` in the same agent files and the `chat.defaultModel` setting
-    in the data directory's `settings.json`, both collected ([section 13](#13-parser-plan)).
-  - Past use: found. The prompt history `.aws/amazonq/.cli_bash_history`, the checkpoint snapshots
-    and tangent copy inside the conversation blob, the `transcript` array, and the delegate records
-    in `.amazonq/.subagents/` (one `.amazonq/.subagents/<agent>.json` per agent), which record
-    delegated background tasks; the two files are collected ([section 2](#2-per-user-storage),
-    [section 5](#5-project-local-files), [section 7](#7-transcript-stores),
-    [section 10](#10-other-stores)).
-  - Sync, relay and origin: none in the open-source CLI. Each request sends the conversation to the
-    service under its `conversation_id`
-    ([`C/api_client/mod.rs:391-400`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/api_client/mod.rs#L391-L400)),
-    and nothing uploads or marks a session as stored remotely (not found in `crates/chat-cli/src` at
-    `15cc8f3`, grepped for `share_conversation`, `sync_session`, `upload_conversation` and
-    `remote_session`).
-  - Scratch directories: found, the per-conversation shadow repository
-    `.aws/amazonq/cli-checkouts/<conversation_id>`, already excluded and
-    removed when the session ends ([section 2](#2-per-user-storage),
-    [section 10](#10-other-stores)).
-  - Deletion: found. `/clear` empties `history` but keeps `transcript`
-    and the checkpoints; the row is replaced on the next save, and `/clear` and the row
-    replacement leave the prompt history; the shadow repository is deleted when the session ends
-    ([What survives a delete](#what-survives-a-delete)).
-  - Version drift: none in the open-source code (HEAD is the cited
-    commit); the Kiro CLI's drift from it is the binary question above, not assessable without a
-    newer binary.
-  - Bad lines: not a collector concern; the parser reads no line-oriented file today;
-    `.cli_bash_history`, when read, is one.
+  the commit cited here; the repository is frozen, so the open-source paths have not moved. Added
+  the permission records, the prompt history, the delegate records, the shadow checkpoint
+  repository, the copies inside the conversation blob and the absence of any sync
+  ([section 7](#7-transcript-stores), [section 8](#8-record-schema),
+  [section 10](#10-other-stores), [section 13](#13-parser-plan)); the Kiro CLI paths still rest on
+  the 2.27.1 binary's strings and the documentation.
 
 ## Collection
 
@@ -109,13 +74,11 @@ Layout is the same on Linux, macOS and Windows except the platform data dir.
 
 #### Scratch directories
 
-`.aws/amazonq/cli-checkouts/<conversation_id>` is a bare git repository the CLI makes as the
-checkpoint store for the user's working directory, only when checkpoints are on, and deletes when
-the session ends
-([`crates/chat-cli/src/cli/chat/mod.rs:225-226`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/mod.rs#L225-L226),
-[`crates/chat-cli/src/cli/chat/checkpoint.rs:349-364`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/checkpoint.rs#L349-L364)).
-It is excluded ([section 4](#4-exclusions)) and never recorded as a project; the CLI has no working
-directory of its own.
+`.aws/amazonq/cli-checkouts/<conversation_id>` is the CLI's per-conversation checkpoint
+repository, deleted when the session ends
+([Shadow checkpoint repository](#shadow-checkpoint-repository)). It is excluded
+([section 4](#4-exclusions)) and never recorded as a project; the CLI has no working directory of
+its own.
 
 #### Kiro CLI
 
@@ -140,9 +103,14 @@ KIRO_HOME/.kiro/sessions"):
   `~/.aws/amazonq/{cli-agents,prompts,mcp.json,cli-checkouts,.cli_bash_history,global_context.json,profiles,knowledge_bases}`
   (Q
   [`paths.rs:59-66`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/util/paths.rs#L59-L66));
-  the 2.27.1 binary still carries these names and `.aws/amazonq`.
+  the 2.27.1 binary still carries these names and `.aws/amazonq`. `.cli_bash_history` is the chat
+  prompt's history ([Prompt history `.cli_bash_history`](#prompt-history-cli_bash_history)), and
+  `cli-agents/<name>.json` are agent configurations holding the standing tool grants and the
+  agent's `model` ([Permission records](#permission-records)).
 - Platform data dir via `dirs::data_local_dir()`: Linux `~/.local/share/<app>/`, macOS
   `~/Library/Application Support/<app>/`, Windows `%LOCALAPPDATA%\<app>\`, holding `settings.json`
+  (settings such as `chat.defaultModel` and the feature switch `chat.enableCheckpoint`, Q
+  [`crates/chat-cli/src/database/settings.rs:126-134`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/database/settings.rs#L126-L134))
   and `data.sqlite3` (Q
   [`paths.rs:307-331`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/util/paths.rs#L307-L331)).
   `<app>` is `amazon-q` in the Q source; `kiro-cli` per community tools (KiroaaS `:523-526`,
@@ -154,16 +122,6 @@ KIRO_HOME/.kiro/sessions"):
   Windows `%TEMP%\amazon-q\logs`. Outside home.
 - Binaries: `~/.local/bin/{kiro-cli,kiro-cli-chat,kiro-cli-term,q,qchat}` (install.sh), Kiro Crew
   via `download.crew.kiro.dev/cli.sh` (binary).
-- From the source review of 2026-10-19, Amazon Q source only: `.aws/amazonq/.cli_bash_history` is
-  the chat prompt's rustyline history, every prompt line except `y`, `n`, `t` and lines starting
-  with a space, without times
-  ([`crates/chat-cli/src/cli/chat/prompt.rs:575-595`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/prompt.rs#L575-L595),
-  [`input_source.rs:112-140`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/input_source.rs#L112-L140)).
-  `.aws/amazonq/cli-agents/<name>.json` holds `allowedTools`, `toolsSettings` and `model`
-  ([`crates/chat-cli/src/cli/agent/mod.rs:130-179`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/agent/mod.rs#L130-L179)).
-  The data directory's `settings.json` holds `chat.defaultModel` and the feature switches such as
-  `chat.enableCheckpoint`
-  ([`crates/chat-cli/src/database/settings.rs:126-134`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/database/settings.rs#L126-L134)).
 
 #### Kiro IDE
 
@@ -188,8 +146,8 @@ recording, docs reference/settings), `KIRO_TEST_SESSIONS_DIR`, `KIRO_TEST_SETTIN
   deliberately separate from `state` (Q
   [`database/sqlite_migrations/005_auth_table.sql`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/database/sqlite_migrations/005_auth_table.sql);
   [`mod.rs:163`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/database/mod.rs#L163),[`172`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/database/mod.rs#L172);
-  identical migration text in the 2.27.1 binary). Journal files `data.sqlite3-journal`/`-wal` may
-  exist. Flag the whole file.
+  identical migration text in the 2.27.1 binary), so the catalog flags the whole file as a secret.
+  Journal files `data.sqlite3-journal`/`-wal` may exist.
 - MCP OAuth tokens in `~/.aws/sso/cache/*.json` (Q
   [`paths.rs:314-316`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/util/paths.rs#L314-L316);
   binary `~/.aws/sso/cache`); KiroaaS also probes `~/.aws/sso/cache/kiro-auth-token.json` (L4).
@@ -225,11 +183,8 @@ and `AmazonQ.md` (Q
 [`conversation.rs:1285`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/conversation.rs#L1285),
 [`paths.rs:54`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/util/paths.rs#L54)).
 No per-project database. `.amazonq/.subagents/<agent>.json` records the last background task the
-`delegate` tool ran for each agent (task, status, launch and completion times, output, summary,
-`cwd`), and a task for the default agent runs with `--trust-all-tools`
-([`crates/chat-cli/src/cli/chat/tools/delegate.rs:248-291`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/tools/delegate.rs#L248-L291),
-[`:337-345`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/tools/delegate.rs#L337-L345));
-collected through the `.amazonq` project entry (source review 2026-10-19).
+`delegate` tool ran for each agent
+([Delegate records `.amazonq/.subagents`](#delegate-records-amazonqsubagents)).
 
 ### 6. Where the project path is recorded
 
@@ -415,8 +370,6 @@ Note camelCase and lower-case status.
 
 #### Permission records
 
-From the source review of 2026-10-19.
-
 A tool call that needs approval waits for `y`, `n` or `t` at the prompt. `y` runs it; `t` runs it
 and trusts the tool for the rest of the session through `agents.trust_tools`, in memory only, since
 `agents` is `#[serde(skip)]`
@@ -472,7 +425,7 @@ new conversation, never a partial row. No encryption.
 
 #### Prompt history `.cli_bash_history`
 
-From the source review of 2026-10-19. `.cli_bash_history` is the chat prompt's history, not a
+`.cli_bash_history` is the chat prompt's history, not a
 shell's. The rustyline editor (version 15, `with-file-history`,
 [`Cargo.toml:93`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/Cargo.toml#L93))
 loads it at start and appends the session's lines when the input source is dropped
@@ -488,7 +441,7 @@ conversation's prompts. Secondary: it joins the conversation on prompt text only
 
 #### Delegate records `.amazonq/.subagents`
 
-From the source review of 2026-10-19. `.amazonq/.subagents/<agent>.json` in the working directory
+`.amazonq/.subagents/<agent>.json` in the working directory
 ([`C/util/paths.rs:248-250`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/util/paths.rs#L248-L250),
 [`C/cli/chat/tools/delegate.rs:577-590`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/tools/delegate.rs#L577-L590))
 records the last background task run with the `delegate` tool for each agent: `{agent, task, status
@@ -503,7 +456,7 @@ delegated task's record; collected through the `.amazonq` project entry.
 
 #### Shadow checkpoint repository
 
-From the source review of 2026-10-19. The shadow repository
+The shadow repository
 `.aws/amazonq/cli-checkouts/<conversation_id>`
 ([`C/cli/chat/mod.rs:225-226`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/cli/chat/mod.rs#L225-L226))
 is a bare git repository whose work tree is the user's directory, made only when checkpoints are on
@@ -541,10 +494,8 @@ values are JSON with access and refresh tokens and a client secret. `state` key
 also `api.codewhisperer.profile`, `auth.idc.start-url`, `auth.idc.region`, `telemetryClientId`
 ([`mod.rs:57-61`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/database/mod.rs#L57-L61)).
 Inside conversations, `tool_uses[].args` and tool result `content` hold command lines and output,
-and `env_state.environment_variables` can carry environment values. `~/.aws/sso/cache` holds MCP
-OAuth tokens
-([`paths.rs:314-316`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/util/paths.rs#L314-L316)).
-The collector flags `data.sqlite3` as secret.
+and `env_state.environment_variables` can carry environment values. The MCP OAuth token files are in
+[section 3](#3-credentials).
 
 ### 13. Parser plan
 
@@ -571,8 +522,7 @@ Rows: one per user prompt, assistant message, `tool_uses[]` entry and
 | tool_use_id | `id` / `tool_use_id` |
 | text | prompt, content, `json.dumps(args)` or result text, with status appended for results |
 
-Each subsection below marks the additions from the source review of 2026-10-19 (Amazon Q
-Developer CLI source; the Kiro CLI forms remain unverified).
+The plan rests on the Amazon Q Developer CLI source; the Kiro CLI forms remain unverified.
 
 #### Permission rows
 
@@ -582,7 +532,7 @@ A `CancelledToolUses` result stays a `tool_result` prefixed
 [section 2](#2-per-user-storage)) have no
 recorded shape and are not read.
 
-Source review addition: a `permission decision: denied` `system` row beside each
+A `permission decision: denied` `system` row beside each
 `CancelledToolUses` result, joined on `tool_use_id`, with
 `by=user-text` when the prompt is the user's own words and `by=n` for
 the fixed denial text; a `permission decision: denied by deny rule`
@@ -594,7 +544,7 @@ and `--trust-all-tools` leave nothing to read.
 
 #### Model rows
 
-Model rows (issue 96), `system`: `model: <id>` before the rows of the
+`system` rows (issue 96): `model: <id>` before the rows of the
 first history entry and `model: <old> -> <new>` before the rows of each
 entry whose model differs, timestamped like the entry's user row. The
 model is `request_metadata.model_id`; an entry without one falls back to
@@ -602,15 +552,13 @@ model is `request_metadata.model_id`; an entry without one falls back to
 ` source=model_info` or ` source=model`, since those are conversation-level
 fields serialised with the whole state rather than per-request records.
 
-Source review addition: no change for conversations. The agent file's `model` and the
-`chat.defaultModel` key of `settings.json` in the data directory
-([`C/util/paths.rs:307-312`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/util/paths.rs#L307-L312),
-[`C/database/settings.rs:126`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/database/settings.rs#L126))
-are defaults, one `system` row each at the file's modification time.
+The agent file's `model` ([Permission records](#permission-records)) and the `chat.defaultModel`
+key of the data directory's `settings.json` ([section 2](#2-per-user-storage)) are defaults, one
+`system` row each at the file's modification time.
 
 #### Past-use rows and secondary sources
 
-Source review addition, by role: `.aws/amazonq/.cli_bash_history` secondary, one
+By role: `.aws/amazonq/.cli_bash_history` secondary, one
 `user`-text row per entry with an empty timestamp (the line format,
 any header line and the escaping of multi-line entries are the
 rustyline 15 crate's and were not read in this review; check them in
@@ -623,14 +571,19 @@ with status, exit code and summary.
 
 #### Sync, relay and origin rows
 
-The agent records none (see
-[section 1](#1-source-and-evidence), [Source reviews](#source-reviews)).
+The agent records none in the open-source CLI. Each request sends the conversation to the service
+under its `conversation_id`
+([`C/api_client/mod.rs:391-400`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/api_client/mod.rs#L391-L400)),
+and nothing uploads or marks a session as stored remotely (not found in `crates/chat-cli/src` at
+[`15cc8f3`](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a),
+grepped for `share_conversation`, `sync_session`, `upload_conversation` and
+`remote_session`).
 
 #### Scratch directory rows
 
 `.aws/amazonq/cli-checkouts/<conversation_id>`
 ([Shadow checkpoint repository](#shadow-checkpoint-repository)) is never a project and is never
-recorded as one; the row key is always the user's working directory. No change.
+recorded as one; the row key is always the user's working directory.
 
 #### Deletion rows
 
@@ -657,21 +610,19 @@ INSERT INTO auth_kv VALUES ('codewhisperer:odic:token', '{"access_token":"REDACT
 
 ## 14. Confidence
 
-Collection. High: `~/.kiro` subdirectories, `KIRO_HOME`, legacy `~/.aws/amazonq` and
-`~/.aws/sso/cache`, `auth_kv` and `conversations` tables, `amazon-q` data dir, `$TMPDIR/kiro-log`,
-project `.kiro` files, Kiro IDE app dirs and `kiro.kiroagent`. Medium: `kiro-cli` as the current
-data-dir name, `sessions/<hash>/sess_*` and `session-index` layouts (L3/L4, binary confirms
-`sess_<uuid>` only), LanceDB directory name, `.kiro-server`. Low: `~/.kiro/secrets.json`,
-`kiro-auth-token.json`. Not determined: whether the v3 CLI still writes `data.sqlite3` or only
-`~/.kiro/sessions` ("SQLite database in `~/.kiro/`" per docs vs `data.sqlite3` string in the
-binary), the hash function for `workspace-roots` and `sessions` buckets, Windows `KIRO_HOME`
-default, and the `.chat` file schema.
-
-Parsing. High: path, tables, migrations, key = cwd, JSON field names and
-enum tags, chrono RFC 3339 and unix-ms timestamp formats. Medium: the `dirs`
-platform mapping (crate docs, not read); `tangent_start_time` serialisation.
-Unverified: everything specific to Kiro CLI on disk (`kiro-cli` directories,
-`.kiro/sessions`, `workspace-roots`, WAL use, the camelCase `agent` schema
-on disk, token key names after the rebrand). The 2.27.1 binary's strings
-([section 1](#1-source-and-evidence)) name some of these paths but show no record shapes; the
-analyzer review, written without them, said it needed strings from a shipped binary.
+- High: `~/.kiro` subdirectories, `KIRO_HOME`, legacy `~/.aws/amazonq` and `~/.aws/sso/cache`,
+  `auth_kv` and `conversations` tables, `amazon-q` data dir, `$TMPDIR/kiro-log`, project `.kiro`
+  files, Kiro IDE app dirs and `kiro.kiroagent`; the Amazon Q store's path, tables, migrations,
+  key = cwd, JSON field names and enum tags, chrono RFC 3339 and unix-ms timestamp formats.
+- Medium: the Kiro CLI paths `kiro-cli` as the current data-dir name and the
+  `sessions/<hash>/sess_*` and `session-index` layouts (L3/L4, binary confirms `sess_<uuid>`
+  only), LanceDB directory name, `.kiro-server`; the `dirs` platform mapping (crate docs, not
+  read); `tangent_start_time` serialisation.
+- Low: `~/.kiro/secrets.json`, `kiro-auth-token.json`.
+- Unverified: the record shapes of everything specific to Kiro CLI on disk (the `kiro-cli`
+  directories, `.kiro/sessions`, `workspace-roots`), WAL use, the camelCase `agent` schema on
+  disk, token key names after the rebrand.
+- Not determined: whether the v3 CLI still writes `data.sqlite3` or only `~/.kiro/sessions`
+  ("SQLite database in `~/.kiro/`" per docs vs `data.sqlite3` string in the binary), the hash
+  function for `workspace-roots` and `sessions` buckets, Windows `KIRO_HOME` default, and the
+  `.chat` file schema.

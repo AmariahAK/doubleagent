@@ -33,39 +33,14 @@ and an MCP filesystem workbench rooted at the home directory
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: HEAD
+- 2026-10-19: HEAD
   [`004749e`](https://github.com/microsoft/autogen/commit/004749e6b7102c8fd317b9b1499ce5807223c278)
-  reviewed against the previously cited
+  against the previously cited
   [`027ecf0`](https://github.com/microsoft/autogen/commit/027ecf0a379bcc1d09956d46d12d44a3ad9cee14),
-  from source only.
-  - Permission state: none recorded. Studio's gallery code executor runs
-    without an approval function
-    ([builder.py:433-434](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/gallery/builder.py#L433-L434));
-    `approval_func` exists only on AgentChat's `CodeExecutorAgent`
-    ([_code_executor_agent.py:140](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-agentchat/src/autogen_agentchat/agents/_code_executor_agent.py#L140)),
-    and not found in `autogen-studio` at
-    [`004749e`](https://github.com/microsoft/autogen/commit/004749e6b7102c8fd317b9b1499ce5807223c278)
-    (grepped for `approv` and `permission`: only the web auth error class). A human's answer
-    to a `UserProxyAgent` arrives over the web socket and is stored as an ordinary message
-    ([connection.py:201-224](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/web/managers/connection.py#L201-L224)).
-  - Model: found ([Model](#model)): each LLM call is a `message` row whose JSON carries the
-    provider's response, with its `model`; the configured model is in the team's component
-    JSON and the `settings` table's `default_model_client`.
-  - Past use beyond the primary store: none. Everything is in
-    `autogen04203.db`; `run.messages`, `run.team_result` and the `message`
-    rows repeat one another inside it.
-  - Sync, relay and origin: none; not found in `autogen-studio` at
-    [`004749e`](https://github.com/microsoft/autogen/commit/004749e6b7102c8fd317b9b1499ce5807223c278)
-    (grepped for `upload`, `sync` and `share`).
-  - Scratch directories: found ([Scratch directories](#scratch-directories)): the
-    gallery's `.coding` work directory, relative to where Studio started;
-    nothing records it.
-  - Deletion: found ([Deletion](#deletion)): deleting a session removes its runs and their
-    messages.
-  - Version drift: none. `python/packages/autogen-studio` is identical at
-    the two commits (an empty `git diff`), so every citation below still
-    holds.
-  - Bad lines: no line-oriented file; the store is SQLite.
+  from source only. `python/packages/autogen-studio` is identical at the two commits (an empty
+  `git diff`), so every citation still holds. Added the message records, the model, deletion and
+  the `.coding` scratch directory ([section 2](#2-per-user-storage)) and the absence of permission
+  and sync state ([Parsing](#parsing)).
 
 ## Collection
 
@@ -107,9 +82,7 @@ so no `DOCKER_VOLUMES` line.
 
 #### Records
 
-Detail from the 2026-10-19 review, at
-[`004749e`](https://github.com/microsoft/autogen/commit/004749e6b7102c8fd317b9b1499ce5807223c278),
-for a future parser. A run's stream is saved message by message as `message`
+A run's stream is saved message by message as `message`
 rows (`config` JSON, `session_id`, `run_id`) for the types
 `TextMessage`, `MultiModalMessage`, `StopMessage`, `HandoffMessage`,
 `ToolCallRequestEvent`, `ToolCallExecutionEvent` and
@@ -165,8 +138,8 @@ None. The directory is small.
 
 ### 5. Project-local files
 
-None written by Studio itself. The gallery's code executor works in `.coding` relative to the
-directory Studio was started from ([Scratch directories](#scratch-directories)).
+None written by Studio itself; the gallery code executor's `.coding` directory is in
+[Scratch directories](#scratch-directories).
 
 ### 6. Where the project path is recorded
 
@@ -181,12 +154,23 @@ yet. A parser would read the SQLite `autogen04203.db`: the `message` rows of eac
 message types under [Records](#records)), joined through the `session` and `run` tables, with
 the `LLMCallEventMessage` rows for the model ([Model](#model)). `run.messages` and
 `run.team_result` repeat the `message` rows inside the same file, so there is no secondary
-source, and the `settings` table holds credentials ([section 3](#3-credentials)).
+source, and the `settings` table holds credentials ([section 3](#3-credentials)). The store is
+SQLite, so there is no line-oriented file.
+
+Studio records no permission state: the gallery's code executor runs without an approval function
+([builder.py:433-434](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/gallery/builder.py#L433-L434));
+`approval_func` exists only on AgentChat's `CodeExecutorAgent`
+([_code_executor_agent.py:140](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-agentchat/src/autogen_agentchat/agents/_code_executor_agent.py#L140)),
+and is not found in `autogen-studio` at
+[`004749e`](https://github.com/microsoft/autogen/commit/004749e6b7102c8fd317b9b1499ce5807223c278)
+(grepped for `approv` and `permission`: only the web auth error class). A human's answer to a
+`UserProxyAgent` arrives over the web socket and is stored as an ordinary message
+([connection.py:201-224](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/web/managers/connection.py#L201-L224)).
+It records no sync, relay or origin state either (grepped for `upload`, `sync` and `share` in
+`autogen-studio` at the same commit).
 
 ## 14. Confidence
 
-High for the app directory, the database name and tables, and the
-credential locations (source). Not determined: whether older Studio
-releases used another database name (the README mentions
-`database.sqlite`), and whether `.coding` lands under the home when Studio
-is started there.
+- High: the app directory, the database name and tables, and the credential locations (source).
+- Not determined: whether older Studio releases used another database name (the README mentions
+  `database.sqlite`).

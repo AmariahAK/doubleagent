@@ -21,7 +21,7 @@ the `codex-cli` parser, which does not read this database.
   `source_updated_at` (REAL epoch seconds with a fraction),
   `conversation_origin` (empty, or `tpp`, a value the app sets whose
   meaning is not determined), `host_id`
-  (`chatgpt:<workspace uuid>:user-<account id>`) and `source_kind`.
+  (`chatgpt:<workspace uuid>:<user id>`) and `source_kind`.
   Every column is read as possibly NULL; a NULL title, origin, host or
   time prints `-`.
 

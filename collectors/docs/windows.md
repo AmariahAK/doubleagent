@@ -87,6 +87,15 @@ that one with forward slashes too, `//?/C:/...`
 so the link in the archive can differ from the manifest row's `target`,
 which keeps the original string.
 
+An NTFS hard link is not a reparse point, so each of its paths is an
+ordinary file to the collector: every path gets its own `collected` row and
+the bytes are staged and archived once per path. Antigravity's `cli.log`,
+a hard link to the newest file under its `log/` directory, is collected
+twice this way
+([section 2 of `research/antigravity.md`](../../research/antigravity.md#2-per-user-storage)).
+The sh collector does the same on any file system, since `cp` copies each
+path on its own.
+
 ### Creating the link
 
 Creating a symlink on Windows needs the `SeCreateSymbolicLinkPrivilege`

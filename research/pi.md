@@ -21,12 +21,6 @@ open source, TypeScript. Reviewed commit
 ([`845d6ff1f6643aba440341cce877ce1c43ebbc39`](https://github.com/earendil-works/pi/commit/845d6ff1f6643aba440341cce877ce1c43ebbc39)),
 the version little-coder pins, is cited. All claims from source.
 
-Confidence. High: file naming, header, entry types, roles, field names and
-timestamp units (source). Medium: `system`-role persistence on versions
-between 0.83.0 and HEAD (taken from the ai changelog's 0.86.0 note, not
-bisected); that `lc-` markers appear in every little-coder session (see
-[little-coder.md](little-coder.md)). Not determined: the durable SQLite `record` JSON shape.
-
 ### Observed
 
 - No real install: nothing was installed or run. No real install has shown a `pi.bug-report`
@@ -35,64 +29,15 @@ bisected); that `lc-` markers appear in every little-coder session (see
 
 ### Source reviews
 
-- 2026-10-19: [earendil-works/pi](https://github.com/earendil-works/pi) at
-  [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e),
-  the head of `main` on 2026-10-19 (coding-agent 1.3.0,
+- 2026-10-19: [earendil-works/pi](https://github.com/earendil-works/pi) at [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e), the head of
+  `main` (coding-agent 1.3.0,
   [packages/coding-agent/package.json:3](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/package.json#L3)),
-  compared file by file with
-  [`2003871`](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c),
-  the commit cited below. Source only. By class (the parser consequences are under
-  [section 13](#13-parser-plan)):
-  - Permission state: found, not read: one new standing setting, the global setting
-    `defaultProjectTrust` in `settings.json` ([section 2](#2-per-user-storage)) (`ask`, the default,
-    `always` or `never`), which decides an untrusted project's fate when `trust.json` has no entry
-    ([settings-schema.ts:266-271](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/settings-schema.ts#L266-L271),
-    [settings-defaults.ts:30](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/settings-defaults.ts#L30),
-    [project-trust.ts:78](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/project-trust.ts#L78)).
-    `trust.json` is unchanged and already read. pi has no per-call tool approval of its own: the
-    only `--approve` is the per-run project trust override
-    ([cli/args.ts:241-244](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/cli/args.ts#L241-L244),
-    [341-342](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/cli/args.ts#L341-L342)),
-    which writes nothing. An extension that blocks a call makes the agent loop record an error
-    `toolResult` whose text is the extension's reason
-    ([packages/agent/src/agent-loop.ts:745-753](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/agent/src/agent-loop.ts#L745-L753),
-    [912-917](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/agent/src/agent-loop.ts#L912-L917));
-    little-coder's permission gate is such an extension ([little-coder.md](little-coder.md)).
-  - Model: covered; no new file and no model field changed. Assistant messages gained `durationMs`
-    and tool calls `argumentsError`
-    ([packages/ai/src/types.ts:448](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/ai/src/types.ts#L448),
-    [600](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/ai/src/types.ts#L600)).
-  - Past use beyond the session files: found, not read: `pi-debug.log`
-    ([section 2](#2-per-user-storage)), the snapshot `/debug` writes, which ends with the current
-    session's messages as JSONL
-    ([interactive-mode.ts:6959-6982](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L6959-L6982)),
-    and `crashes.json`, the last five crashes of the past seven days with `sessionFile` and `cwd`
-    ([core/crash-log.ts:7-19](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/crash-log.ts#L7-L19)).
-    pi keeps no prompt history file: not found in pi at
-    [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
-    (grepped `packages/coding-agent/src` for `history.jsonl` and `promptHistory`).
-  - Sync, relay and origin: covered. New: one setting, `sessionShareDestination` (`auto`, `gist`,
-    `radius`) chooses where `/share` uploads
-    ([settings-schema.ts:224-230](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/settings-schema.ts#L224-L230),
-    [session-share.ts:69-76](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/modes/interactive/session-share.ts#L69-L76)),
-    still with no local record of a share. The experimental Radius relay is gone
-    ([section 10](#10-other-stores)).
-  - Scratch directories: none under the home ([Scratch directories](#scratch-directories)). Spilled
-    tool output goes to the system temporary directory (`pi-bash-<16 hex>.log` and the like, now
-    mode 0600,
-    [utils/output-files.ts:14-34](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/utils/output-files.ts#L14-L34)),
-    named in a `toolResult`'s `details.fullOutputPath`; no catalog line can hold it.
-  - Deletion: covered; the picker's delete is unchanged
-    ([session-selector.ts:650-680](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/modes/interactive/components/session-selector.ts#L650-L680)).
-    `pi-debug.log` and `crashes.json` survive it.
-  - Version drift: the session writer (`core/session-manager.ts`), `core/trust-manager.ts`,
-    `core/bug-report.ts`, `core/crash-log.ts` and the session picker are byte for byte the same at
-    both commits, so the record shapes the parser reads are unchanged. The experimental durable
-    sessions the parser also reads (`experimental/sessions/<id>/meta.json`) are no longer written:
-    the experimental server, its `experimental/` session stores, vacation sessions included, were
-    removed from the CLI, `~/.pi/server` with them, leaving only `experimental/source-resolver.ts`
-    ([Experimental stores](#experimental-stores)).
-  - Bad lines: covered; every line-by-line reader reports bad lines. Not a collector concern.
+  compared file by file with [`2003871`](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c). The review added `defaultProjectTrust` and `--approve` to
+  [Project trust](#project-trust), `sessionShareDestination` to
+  [Sync, relay and origin rows](#sync-relay-and-origin-rows), the current contents of the debug
+  and crash logs to [section 10](#10-other-stores), `durationMs` and `argumentsError` to
+  [section 11](#11-format-versions), and the experimental server's removal to
+  [Experimental durable sessions](#experimental-durable-sessions).
 
 ## Collection
 
@@ -135,38 +80,20 @@ Under `~/.pi/agent`:
   [`159-180`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/settings-manager.ts#L159-L180)),
   `keybindings.json`
   ([`core/keybindings.ts:379-380`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/keybindings.ts#L379-L380)).
-  At
-  [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
-  `settings.json` gained `defaultProjectTrust` (`ask`, `always`, `never`; global only), the answer
-  for a project `trust.json` does not list, and `sessionShareDestination` (`auto`, `gist`,
-  `radius`), where `/share` uploads
-  ([`core/settings-schema.ts:224-230`](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/settings-schema.ts#L224-L230),
-  [`266-271`](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/settings-schema.ts#L266-L271)).
-  Collected with the file.
+  Since [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e) `settings.json` also holds `defaultProjectTrust` ([Project trust](#project-trust))
+  and `sessionShareDestination`, where `/share` uploads
+  ([Sync, relay and origin rows](#sync-relay-and-origin-rows)).
 - `auth.json`, `models.json`, `models-store.json` (dynamically refreshed provider model catalogs)
   ([`config.ts:580-587`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/config.ts#L580-L587);
   [`core/models-store.ts:52`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/models-store.ts#L52)).
-- `trust.json`: project trust decisions keyed by absolute path
-  ([`core/trust-manager.ts:28`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L28),
-  [`214`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L214),
-  [`232-241`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L232-L241)).
+- `trust.json`: project trust decisions keyed by absolute path ([Project trust](#project-trust)).
 - `mcp.json` (MCP servers), `mcp-auth.json` (MCP OAuth state), `mcp.log`
   ([`extensions/mcp/config.ts:146-148`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/extensions/mcp/config.ts#L146-L148);
   [`extensions/mcp/oauth.ts:137-145`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/extensions/mcp/oauth.ts#L137-L145);
   [`extensions/mcp/index.ts:351`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/extensions/mcp/index.ts#L351)).
   Not present at v0.83.0.
-- `crashes.json`: last five crashes with `timestamp`, `message`, `stack`, `sessionFile`, `cwd`
-  ([`core/crash-log.ts:6-23`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/crash-log.ts#L6-L23)).
-  Not present at v0.83.0.
-- `pi-debug.log`, written by `/debug`
-  ([`config.ts:615-617`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/config.ts#L615-L617)).
-  At
-  [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
-  ([`config.ts:653-656`](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/config.ts#L653-L656))
-  it is rewritten by each `/debug`: the rendered screen lines, then `=== Agent messages (JSONL) ===`
-  and the open session's messages, one JSON object per line
-  ([`modes/interactive/interactive-mode.ts:6959-6982`](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L6959-L6982)),
-  so it can hold a deleted session's turns. Collected.
+- `crashes.json`, the recent crashes, and `pi-debug.log`, written by `/debug`
+  ([Debug log and crash log](#debug-log-and-crash-log)). Neither is present at v0.83.0.
 - User resources: `extensions/`, `skills/`, `prompts/` (formerly `commands/`), `themes/`,
   `AGENTS.md`/`CLAUDE.md` global context, `SYSTEM.md`, `APPEND_SYSTEM.md`
   ([`core/resource-loader.ts:978-982`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/resource-loader.ts#L978-L982),
@@ -217,10 +144,9 @@ directories and Unix sockets
 ([`experimental/server.ts:51-56`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/experimental/server.ts#L51-L56),
 [`85-91`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/experimental/server.ts#L85-L91)).
 
-At [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
-these stores (`experimental/sessions/`, `experimental/vacation-sessions/`, `~/.pi/server`) are
-no longer written: the CLI keeps only `src/experimental/source-resolver.ts`, and
-`packages/server` and `packages/client` are gone. They remain only where an older build ran.
+At [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e) these stores are no longer written
+([Experimental durable sessions](#experimental-durable-sessions)); they remain only where an
+older build ran.
 
 #### Rewrites on open
 
@@ -239,7 +165,8 @@ what survives it, is in [What survives a delete](#what-survives-a-delete).
   ([`core/auth-storage.ts:24-25`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/auth-storage.ts#L24-L25),
   [`52-60`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/auth-storage.ts#L52-L60);
   [`packages/ai/src/auth/types.ts:17-37`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/ai/src/auth/types.ts#L17-L37)).
-  No keychain.
+  No keychain. The code read writes no backup or second copy of the file; the catalog's
+  `.pi/agent/auth.json.*` secret glob guards only against an editor's copy.
 - `~/.pi/agent/mcp-auth.json`: MCP client registrations, tokens and pending PKCE verifiers
   ([`extensions/mcp/oauth.ts:137-145`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/extensions/mcp/oauth.ts#L137-L145)).
 - `~/.pi/agent/models.json`: custom providers may carry `apiKey` and `headers`
@@ -281,7 +208,8 @@ can be large, but they are the transcript.
 ([`trust-manager.ts:30-39`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L30-L39);
 [`resource-loader.ts:984-988`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/resource-loader.ts#L984-L988)).
 Project extensions run with the user's rights once the folder is trusted, so they are evidence.
-little-coder adds `.pi/approved-plan.md`.
+little-coder adds `.pi/approved-plan.md`
+([section 5 of `little-coder.md`](little-coder.md#5-project-local-files)).
 
 Context files read from the cwd up: `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`,
 `CLAUDE.MD`
@@ -300,10 +228,9 @@ No per-project database.
 - Session header (line 1 of each file), key `cwd`
   ([`session-manager.ts:43-50`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-manager.ts#L43-L50));
   the directory name is a lossy copy.
-- `trust.json`: every key is an absolute project path, value `true` or `false`
-  ([`trust-manager.ts:232-241`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L232-L241)).
+- `trust.json`: every key is an absolute project path ([Project trust](#project-trust)).
 - `crashes.json`: `cwd` and `sessionFile` per record
-  ([`crash-log.ts:6-15`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/crash-log.ts#L6-L15)).
+  ([Debug log and crash log](#debug-log-and-crash-log)).
 - `experimental/sessions/*/meta.json`: `cwd`
   ([`session-catalog.ts:6-13`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/experimental/session-catalog.ts#L6-L13)).
 
@@ -312,29 +239,30 @@ No per-project database.
 ### 7. Transcript stores
 
 - `.pi/agent/sessions/--<encoded cwd>--/<ISO time, : and . as ->_<session id>.jsonl`, e.g.
-  `2026-10-01T09-00-00-000Z_0199a1b2-....jsonl`
-  ([session-manager.ts:589-594](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-manager.ts#L589-L594),
-  [1077-1080](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-manager.ts#L1077-L1080)).
-  One file per session; forks and branches get new files.
+  `2026-10-01T09-00-00-000Z_0199a1b2-....jsonl`, named as in [section 2](#2-per-user-storage).
+  One file per session; forks and branches get new files
+  ([session-manager.ts:1077-1080](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-manager.ts#L1077-L1080)).
 - With `--session-dir`, `PI_CODING_AGENT_SESSION_DIR` or the `sessionDir`
-  setting the files sit flat in that directory, anywhere on disk.
+  setting the files sit flat in that directory, anywhere on disk ([section 2](#2-per-user-storage)).
 - Legacy: `.pi/agent/*.jsonl` (v0.30.0 bug, moved on next start).
 - Exports in project directories: `session-<time>.jsonl` (same format,
-  one branch) and `pi-session-*.html`.
+  one branch) and `pi-session-*.html` ([section 5](#5-project-local-files)).
 - Experimental durable sessions are SQLite, [section 10](#10-other-stores).
 
 #### What survives a delete
 
 The session picker's delete runs the `trash` command and falls back to unlinking the session file
-([session-selector.ts:650-680](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/components/session-selector.ts#L650-L680)),
+([session-selector.ts:650-680](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/modes/interactive/components/session-selector.ts#L650-L680);
+unchanged at [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e),
+[session-selector.ts:650-680](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/modes/interactive/components/session-selector.ts#L650-L680)),
 so the file is gone or sits in the user's trash, with any `pi.bug-report` entry inside it; no index
 or log repeats that entry, and pi offers no way to delete the remote copy that `/share` or a bug
-report uploaded. pi keeps no per-prompt history file.
+report uploaded. pi keeps no per-prompt history file (none in pi at [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e): a grep of
+`packages/coding-agent/src` for `history.jsonl` and `promptHistory` finds none).
 
-What remains is `pi-debug.log`, the snapshot `/debug`
-writes, which ends with one session's messages as JSONL and carries no
-session id, and `crashes.json`, the last five crashes of the past seven
-days with each one's `sessionFile` and `cwd`; both survive the delete.
+What remains is `pi-debug.log`, whose last `/debug` snapshot can hold one session's messages, and
+`crashes.json`, with each recent crash's `sessionFile` and `cwd`
+([Debug log and crash log](#debug-log-and-crash-log)); both survive the delete.
 Whether the delete touches the exports a user wrote into project
 directories (`session-<time>.jsonl`, `pi-session-*.html`) is not
 stated. pi writes no deletion marker. The analyzer reads the session
@@ -425,6 +353,11 @@ in Unix milliseconds:
   ([596-610](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/ai/src/types.ts#L596-L610);
   [tools/edit.ts:70-77](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/tools/edit.ts#L70-L77),
   [tools/bash.ts:66-69](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/tools/bash.ts#L66-L69)).
+  An extension that blocks a call makes the agent loop record an error `toolResult` whose text is
+  the extension's reason
+  ([packages/agent/src/agent-loop.ts:745-753](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/agent/src/agent-loop.ts#L745-L753),
+  [912-917](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/agent/src/agent-loop.ts#L912-L917));
+  little-coder's [permission gate](little-coder.md#permission-gate) is such an extension.
 - `system`: `content` (the system prompt on the first one, added instructions later), `sections`,
   `toolsAdded`, `toolsRemoved`
   ([types.ts:524-540](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/ai/src/types.ts#L524-L540)).
@@ -471,9 +404,11 @@ Built-in tool arguments: `bash` `command`, `timeout`
   branching copies the path to the chosen entry
   ([1632-1681](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-manager.ts#L1632-L1681)).
   The same entry therefore appears in several files.
-- little-coder checkpoints: `.little-coder/checkpoints/<session file name>/`
-  ([checkpoint/index.ts:63-65](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/checkpoint/index.ts#L63-L65)).
-- Sub-agents: pi has none built in; little-coder's run with `--no-session`.
+- little-coder checkpoints: a directory named after the session file
+  ([Checkpoints in
+  `little-coder.md`](little-coder.md#checkpoints-little-codercheckpointssession-file-name)).
+- Sub-agents: pi has none built in; little-coder's leave no session file
+  ([section 7 of `little-coder.md`](little-coder.md#7-transcript-stores)).
 
 ### 10. Other stores
 
@@ -491,7 +426,8 @@ Not parsed in this plan; open through `sqlite_util.py` with sidecars when it is.
 
 At [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
 the CLI no longer has the experimental server: `packages/server`, `packages/client` and
-`packages/coding-agent/src/experimental/server.ts` are gone, `coding-agent` no longer depends on
+`packages/coding-agent/src/experimental/server.ts` are gone, leaving only
+`src/experimental/source-resolver.ts` in the CLI, `coding-agent` no longer depends on
 `pi-durable` (grepped its `package.json` and `src` for `durable`, and the tree for `session-relays`
 and `radius-relay`), and `PI_EXPERIMENTAL`
 ([core/experimental.ts:1-3](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/experimental.ts#L1-L3))
@@ -503,10 +439,41 @@ build from before the removal ran.
 
 #### Debug log and crash log
 
-`pi-debug.log` (the `/debug` snapshot ending with one session's messages as JSONL, no session
-id) and `crashes.json` (the last five crashes of the past seven days, each with its own
-`timestamp`, `sessionFile` and `cwd`) sit beside the sessions; their citations are in the
-2026-10-19 entry of [Source reviews](#source-reviews).
+`pi-debug.log`, written by `/debug`
+([config.ts:615-617](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/config.ts#L615-L617);
+at [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
+[config.ts:653-656](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/config.ts#L653-L656)),
+is rewritten by each `/debug`: the rendered screen lines, then `=== Agent messages (JSONL) ===`
+and the open session's messages, one JSON object per line, with no session id
+([modes/interactive/interactive-mode.ts:6959-6982](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L6959-L6982)),
+so it can hold a deleted session's turns.
+
+`crashes.json` holds the last five crashes of the past seven days, each with its own `timestamp`,
+`message`, `stack`, `sessionFile` and `cwd`
+([core/crash-log.ts:6-23](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/crash-log.ts#L6-L23);
+at [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
+[core/crash-log.ts:7-19](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/crash-log.ts#L7-L19)).
+
+#### Project trust
+
+`~/.pi/agent/trust.json` is an object whose keys are absolute project paths and whose values are
+`true` or `false`; a `null` decision deletes the key
+([trust-manager.ts:28](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L28),
+[214](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L214),
+[232-241](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L232-L241));
+v0.83.0, which little-coder pins, writes the same file
+([trust-manager.ts:212](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/trust-manager.ts#L212)).
+Since [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e) the global setting `defaultProjectTrust` in `settings.json` (`ask`, the default,
+`always` or `never`; global only) decides an untrusted project's fate when `trust.json` has no
+entry
+([settings-schema.ts:266-271](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/settings-schema.ts#L266-L271),
+[settings-defaults.ts:30](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/settings-defaults.ts#L30),
+[project-trust.ts:78](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/project-trust.ts#L78)).
+pi has no per-call tool approval of its own: the only `--approve` is the per-run project trust
+override
+([cli/args.ts:241-244](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/cli/args.ts#L241-L244),
+[341-342](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/cli/args.ts#L341-L342)),
+which writes nothing.
 
 ### 11. Format versions
 
@@ -520,9 +487,14 @@ fields were added without a bump: `usage` and `context_edit` entries, `system` r
 [0.83.0 types.ts:391](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L391)).
 A parser must ignore unknown types and fields.
 
-At [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
-there is no drift in the session format; the `meta.json` reader serves only installs from
-before the experimental server's removal.
+At [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e) (coding-agent 1.3.0) the session writer (`core/session-manager.ts`),
+`core/trust-manager.ts`, `core/bug-report.ts`, `core/crash-log.ts` and the session picker are
+byte for byte the same as at [`2003871`](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c), so the record shapes the parser reads are unchanged and no
+model field changed; assistant messages gained `durationMs` and tool calls `argumentsError`
+([packages/ai/src/types.ts:448](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/ai/src/types.ts#L448),
+[600](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/ai/src/types.ts#L600)),
+again without a version bump. The `meta.json` reader serves only installs from before the
+experimental server's removal ([Experimental durable sessions](#experimental-durable-sessions)).
 
 ### 12. Secrets
 
@@ -554,25 +526,16 @@ directory elsewhere on disk are not read; they would be detected by that header 
 #### Permission rows
 
 No entry type or message role in [section 8](#8-record-schema) records a permission decision. The
-standing state is `~/.pi/agent/trust.json` ([section 2](#2-per-user-storage)): an object whose keys
-are project paths and whose values are `true` or `false`; a `null` decision deletes the key
-([trust-manager.ts:28](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L28),
-[214](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L214),
-[232-241](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/trust-manager.ts#L232-L241));
-v0.83.0, which little-coder pins, writes the same file
-([trust-manager.ts:212](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/trust-manager.ts#L212)).
-One `system` row per key,
-`permission setting: <path>=<value> (from .pi/agent/trust.json, file mtime)`, with `project_path`
-the key, `session_id` empty, `source_line` 1 and `timestamp_utc` the file's modification time. A
-file that is not a JSON object is one `system` row
+standing state is `~/.pi/agent/trust.json` ([Project trust](#project-trust)). One `system` row per
+key, `permission setting: <path>=<value> (from .pi/agent/trust.json, file mtime)`, with
+`project_path` the key, `session_id` empty, `source_line` 1 and `timestamp_utc` the file's
+modification time. A file that is not a JSON object is one `system` row
 `parser: .pi/agent/trust.json is not a JSON object`.
 
-One more standing setting (source review of 2026-10-19), `defaultProjectTrust` in
-`~/.pi/agent/settings.json`, is not read; it belongs beside the `trust.json` rows as
-`permission setting: defaultProjectTrust=<value> (from
-.pi/agent/settings.json, file mtime)`. pi records no per-call
-decision; an extension's block is an error `toolResult` with the
-extension's reason as its text.
+The other standing setting, `defaultProjectTrust` in `~/.pi/agent/settings.json`, is not read; it
+belongs beside the `trust.json` rows as `permission setting: defaultProjectTrust=<value> (from
+.pi/agent/settings.json, file mtime)`. pi records no per-call decision; an extension's block is an
+error `toolResult` with the extension's reason as its text ([Message roles](#message-roles)).
 
 #### Model rows
 
@@ -599,7 +562,7 @@ model yields none.
 no session id, joined on text and the file's time) and
 `crashes.json` (secondary: `sessionFile` and `cwd` per crash, with
 its own `timestamp`) are not read ([Debug log and crash log](#debug-log-and-crash-log)).
-pi keeps no prompt history file.
+pi keeps no prompt history file ([What survives a delete](#what-survives-a-delete)).
 
 When a file's `parentSession` parent is also in the collection, drop
 child entries whose `id` and `timestamp` match a parent entry, so a fork
@@ -636,9 +599,14 @@ session out, and only one leaves a mark.
   v0.83.0, which little-coder pins, has the gist path only, the same way
   ([0.83.0 interactive-mode.ts:5523-5608](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L5523-L5608)).
   So a shared session leaves no local marker; the gist is found from the GitHub account, the Radius
-  artifact from the organization. `sessionShareDestination` (source review of 2026-10-19) names the
-  likely destination of a `/share` and could be a `system` row beside the trust rows, but a share
-  leaves no mark of its own.
+  artifact from the organization. Since [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e) the setting
+  `sessionShareDestination` in `settings.json` (`auto`, `gist`, `radius`) chooses where `/share`
+  uploads
+  ([settings-schema.ts:224-230](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/settings-schema.ts#L224-L230),
+  [session-share.ts:69-76](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/modes/interactive/session-share.ts#L69-L76)),
+  still with no local record of a share; it names the likely destination and could be a `system`
+  row beside the trust rows, but a share leaves no mark of its own. The experimental Radius relay
+  below is gone at that commit ([Experimental durable sessions](#experimental-durable-sessions)).
 - `/bug` (HEAD only) asks whether to include the transcript, then uploads `report.json`,
   `diagnostics.json` and, when chosen, `session.jsonl` and a model-written `summary.md` to
   `https://radius.pi.dev/v1/bug-reports`, with no login needed, or writes them to a zip
@@ -677,7 +645,7 @@ telemetry package has no exporter
 #### Scratch directory rows
 
 None in the home. Spilled tool output goes to the system temporary directory and is named in a
-`toolResult`'s `details.fullOutputPath` (see [Source reviews](#source-reviews)).
+`toolResult`'s `details.fullOutputPath` ([Scratch directories](#scratch-directories)).
 
 #### Deletion rows
 
@@ -738,14 +706,17 @@ rests on what the wrapper leaves:
 
 ## 14. Confidence
 
-High: the agent directory, its override, every file name above, the session
-directory encoding and file naming, credential file shapes, project `.pi`
-contents (source). High that the layout is the same on Windows (plain
-`homedir()` join). Medium: `.pi/agent/auth.json.*` (no backup file is
-written by the code read; the glob only guards against editors'
-copies); whether `.pi/mcp.json` holds literal tokens in practice (the
-documented form is `${ENV}` interpolation); exclusion globs inside a
-project `.pi`. Not determined: whether `vacation-sessions` is gated by
-`PI_EXPERIMENTAL`; the contents of `pi-debug.log` beyond the rendered TUI
-lines; whether a rebranded pi build (`piConfig.configDir`) is in use
-anywhere, which would need its own catalog line.
+- High (source): the agent directory, its override, every file name in
+  [section 2](#2-per-user-storage), the session directory encoding and file naming, credential
+  file shapes and project `.pi` contents.
+- High (source): the header, entry types, roles, field names and timestamp units of
+  [section 8](#8-record-schema).
+- High: that the layout is the same on Windows (plain `homedir()` join).
+- Medium: `system`-role persistence on versions between 0.83.0 and HEAD (taken from the ai
+  changelog's 0.86.0 note, not bisected).
+- Medium: whether `.pi/mcp.json` holds literal tokens in practice (the documented form is
+  `${ENV}` interpolation).
+- Not determined: the durable SQLite `record` JSON shape
+  ([Experimental durable sessions](#experimental-durable-sessions)).
+- Not determined: whether a rebranded pi build (`piConfig.configDir`) is in use anywhere, which
+  would need its own catalog line.

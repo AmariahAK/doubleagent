@@ -22,61 +22,15 @@ and only its shared data dir is known. Paths cited are relative to the clone.
 
 No real install.
 
-- Not seen on a real install: the enterprise upload queue `cache/sync-queue.json`
-  ([Enterprise upload queue](#enterprise-upload-queue)) and the local state of Cline Cloud
-  sessions ([Cline Cloud](#cline-cloud)).
-- Fixture only: no real install has shown the `enterprise.blobUpload` key or the upload queue
-  file ([Sync, relay and origin](#sync-relay-and-origin-rows)).
-
 ### Source reviews
 
-- **Source review (2026-10-19)**: [cline/cline](https://github.com/cline/cline) at
-  [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33),
-  against
-  [`39ff235`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c), the
-  commit the rest of this document cites. One line per requirement class; the detail is in
-  [section 2](#2-per-user-storage), [section 7](#7-transcript-stores) and
-  [section 13](#13-parser-plan).
-  - New files: `~/.cline/data/cloud-pending-starts/` and three Cline Cloud keys in
-    `globalState.json` ([section 2](#2-per-user-storage)); `.claude/skills` is now read as a
-    project skill directory ([section 5](#5-project-local-files)). No new credential file,
-    exclusion or catalog line is needed; every new file is under `~/.cline`.
-  - Permission state: found, not read by the parser. Rejected and blocked
-    calls of SDK sessions are `tool_result` text; standing grants are
-    `autoApprovalSettings` and `mode` in `globalState.json`,
-    `toolAutoApprove`, `disabledTools` and `tools` in
-    `settings/global-settings.json`, and per-server `autoApprove` lists in
-    `cline_mcp_settings.json`.
-  - Model: already covered (manifest `model`, message `modelInfo.id`,
-    `task_metadata.json` `model_usage`). An imported session also names its
-    source model in `metadata.importedFrom.sourceModel`.
-  - Past use beyond the primary store: found. `logs/hooks.jsonl`, an
-    append-only audit of every run start, tool call and tool result, is
-    written by default and not read; sessions imported from Claude Code,
-    Codex and OpenCode are copies of another agent's transcripts. Already
-    covered: `session-search.db`, `cache/user_input_history.jsonl`,
-    `state/taskHistory.json`, `sessions.db`.
-  - Sync, relay and origin: found, new since
-    [`39ff235`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c):
-    Cline Cloud sessions, which run on the vendor's servers and are listed locally, leave only ids
-    and statuses in `globalState.json` and a write-ahead file while they start. Already covered: the
-    enterprise prompt upload and its queue. No relay through a messaging platform was found.
-  - Scratch directories: already covered. `~/.cline/data/workspaces/chat`
-    and `~/.cline/worktrees/` are under the catalog entry `.cline`, so the
-    analyzer's catalog rule classes them
-    ([Scratch directories](#scratch-directories)).
-  - Deletion: found. A legacy task delete rewrites `state/taskHistory.json`
-    and removes the task directory; a Cloud session delete asks the vendor
-    to delete it. Already covered: the SDK hub delete.
-  - Version drift: 19 of the 78 files the two Cline documents cite
-    changed and none moved or
-    disappeared. The files whose shapes the parser reads (manifest,
-    messages file, `sessions.db`, `session-search.db`, input history,
-    upload queue) are unchanged. `HistoryItem` gained Cloud fields, and
-    the `task_progress` say type was retired and is dropped on read.
-  - Bad lines: already covered for every file the parser reads.
-    `logs/hooks.jsonl` is JSON Lines and needs the same per-line handling
-    when it is read.
+- 2026-10-19: [cline/cline](https://github.com/cline/cline) at [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33) against
+  [`39ff235`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c). Added Cline Cloud and its local state, imported sessions, the permission
+  records and settings, the hook audit log and the `.claude/skills` project directory
+  ([section 2](#2-per-user-storage), [section 5](#5-project-local-files),
+  [section 7](#7-transcript-stores), [section 10](#10-other-stores),
+  [section 13](#13-parser-plan)). Of the 78 files the document cites, 19 changed and none moved or
+  disappeared; the files whose shapes the parser reads are unchanged.
 
 ## Collection
 
@@ -107,7 +61,9 @@ env `CLINE_DIR`):
   ([`paths.ts:179-185`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L179-L185),
   env `CLINE_DATA_DIR`), shared by CLI, VS Code and JetBrains
   ([`.clinerules/storage.md:3`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/.clinerules/storage.md#L3)):
-  - `globalState.json`, `secrets.json` (mode 0600), `workspaces/<hash>/workspaceState.json`
+  - `globalState.json` (extension state, with the permission settings of
+    [Permission rows](#permission-rows) and the Cline Cloud keys of [Cline Cloud](#cline-cloud)),
+    `secrets.json` (mode 0600), `workspaces/<hash>/workspaceState.json`
     ([`apps/vscode/src/shared/storage/storage-context.ts:108-143`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/storage/storage-context.ts#L108-L143));
     standalone hosts default the workspace dir to `data/workspace` unless `WORKSPACE_STORAGE_DIR` is
     set
@@ -131,7 +87,10 @@ env `CLINE_DIR`):
   - `teams/teams.db`
     ([`paths.ts:195-201`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L195-L201);
     [`services/storage/sqlite-team-store.ts:210`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/services/storage/sqlite-team-store.ts#L210)).
-  - `settings/providers.json`, `global-settings.json`, `cline_mcp_settings.json`,
+  - `cloud-pending-starts/<pid>-<uuid>.json`, the ids of Cline Cloud sandboxes being started
+    ([Cline Cloud](#cline-cloud)).
+  - `settings/providers.json`, `global-settings.json` (permission settings,
+    [Permission rows](#permission-rows)), `cline_mcp_settings.json`,
     `remote-environments.json`, `composio/<sha256>.json`
     ([`paths.ts:424-446`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L424-L446);
     [`remote/remote-environments.ts:209`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/remote/remote-environments.ts#L209);
@@ -139,7 +98,8 @@ env `CLINE_DIR`):
   - `connectors/settings.json`, `connectors/<name>/...`
     ([`paths.ts:203-238`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L203-L238);
     [`apps/cli/src/connectors/base.ts:221`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/connectors/base.ts#L221)).
-  - `logs/hooks.jsonl` (hook audit, env `CLINE_HOOKS_LOG_PATH`), `logs/hub-daemon.log`,
+  - `logs/hooks.jsonl` (hook audit, written by default and only appended to,
+    [Hook audit log](#hook-audit-log); env `CLINE_HOOKS_LOG_PATH`), `logs/hub-daemon.log`,
     `logs/<name>.log`, `logs/connectors/<channel>/<key>.log`, `logs/code.log`
     ([`paths.ts:910-920`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/storage/paths.ts#L910-L920);
     [`hooks/hook-file-hooks.ts:647`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/hooks/hook-file-hooks.ts#L647);
@@ -180,8 +140,10 @@ are shared cross-agent.
 
 #### VS Code extension
 
-VS Code extension `saoudrizwan.claude-dev` globalStorage (still the root for extension tasks:
-[`apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts:25-32`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts#L25-L32)):
+VS Code extension `saoudrizwan.claude-dev` globalStorage, the root of the extension's legacy tasks
+([`apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts:25-32`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts#L25-L32);
+whether the extension still writes new tasks there rather than to the SDK store of
+[section 7](#7-transcript-stores) is not determined):
 `tasks/<id>/{api_conversation_history,ui_messages,context_history,task_metadata,settings}.json`,
 `state/taskHistory.json`, `checkpoints/`, `cache/remote_config_<org>.json`,
 `cache/cline_recommended_models.json`
@@ -189,22 +151,6 @@ VS Code extension `saoudrizwan.claude-dev` globalStorage (still the root for ext
 [`apps/vscode/src/utils/storage.ts:11-12`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/utils/storage.ts#L11-L12)).
 MCP settings for the extension now live in `~/.cline/data/settings/`
 ([`apps/vscode/src/sdk/SdkController.ts:309-312`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/sdk/SdkController.ts#L309-L312)).
-
-#### Cline Cloud and settings added after the cited commit
-
-Added after the cited commit
-([`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33)):
-`~/.cline/data/cloud-pending-starts/<pid>-<uuid>.json`, the ids of Cline Cloud sandboxes being
-started (Cline Cloud runs tasks on the vendor's servers), and the `globalState.json` keys
-`cloudSessionStatuses`, `cloudTaskTarget` and `cloudSessionsEnabled`
-([`apps/vscode/src/sdk/cloud-pending-starts.ts:33-44`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/cloud-pending-starts.ts#L33-L44),
-[`apps/vscode/src/shared/storage/state-keys.ts:99-101`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/shared/storage/state-keys.ts#L99-L101),
-[`:284`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/shared/storage/state-keys.ts#L284)).
-Permission settings live in `globalState.json` (`autoApprovalSettings`, `mode`) and
-`settings/global-settings.json` (`toolAutoApprove`, `planActMode`, `disabledTools`, `tools`)
-([`sdk/packages/core/src/services/global-settings.ts:61-74`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/services/global-settings.ts#L61-L74)).
-`logs/hooks.jsonl` is written by default and only appended to
-([`sdk/packages/core/src/hooks/hook-file-hooks.ts:629-650`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/hooks/hook-file-hooks.ts#L629-L650)).
 
 #### CLI binary
 
@@ -231,10 +177,9 @@ no home-relative binary dir. Hub daemon runs as `cline --cline-hub-daemon`
   `accessKeyId` and `secretAccessKey`, and the LG CNS webhook integration
   (LG CNS is the LG group's IT services company) writes
   `~/Documents/Cline/webhook_config.json` with a bearer `webhook_token`;
-  secret globs
+  the catalog's secret globs
   `*/User/globalStorage/saoudrizwan.claude-dev/cache/remote_config_*.json`
-  and `Documents/Cline/webhook_config.json` from collector 1.14.0.
-  Evidence in [section 12](#12-secrets).
+  and `Documents/Cline/webhook_config.json` flag them. Evidence in [section 12](#12-secrets).
 - VS Code extension: secrets migrated out of `context.secrets` into `secrets.json`
   ([`vscode-to-file-migration.ts:4-15`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts#L4-L15)).
   No keychain use.
@@ -246,17 +191,11 @@ no home-relative binary dir. Hub daemon runs as `cline --cline-hub-daemon`
 `*/User/globalStorage/saoudrizwan.claude-dev/checkpoints`. Keep
 `.cline/data/db/session-search.db*`: a searchable copy of every transcript, not a cache.
 
-The extension's `cache/` directory was excluded before collector 1.14.0 and is collected from it. At
-the commit in [section 1](#1-source-and-evidence) it holds only
-`remote_config_<organization id>.json`, a credential (see [section 3](#3-credentials)), and
-`sync-queue.json`, the queue of task files waiting for, or done with, upload to the organisation's
-Amazon S3 or Cloudflare R2 bucket
-(`items{<id>: {taskId, key, data, timestamp, status, retryCount, lastError}}`, `status`
-`pending|synced|failed`;
-[`shared/services/worker/sync.ts:27-29`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/sync.ts#L27-L29),
-[`shared/services/worker/queue.ts:9-31`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/services/worker/queue.ts#L9-L31),
-[`core/storage/disk.ts:186-188`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L186-L188)),
-which is evidence of what was uploaded; neither is a cache in size or kind.
+The extension's `cache/` directory is not excluded. At the commit in
+[section 1](#1-source-and-evidence) it holds only `remote_config_<organization id>.json`, a
+credential ([section 3](#3-credentials)), and `sync-queue.json`, the enterprise upload queue
+([Enterprise upload queue](#enterprise-upload-queue)), which is evidence of what was uploaded;
+neither is a cache in size or kind.
 `cline_recommended_models.json` is still named in `GlobalFileNames` but nothing at this commit
 writes it.
 
@@ -321,8 +260,7 @@ subagent transcripts in the same directory as `<agentId>.messages.json` or
 Fallback index `sessions/sessions.index.json`
 ([`session/services/file-session-service.ts:63`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/file-session-service.ts#L63)).
 SQLite in `~/.cline/data/db/` ([section 10](#10-other-stores)). Hook audit
-`~/.cline/data/logs/hooks.jsonl`
-([`hooks/hook-file-hooks.ts:647`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/hooks/hook-file-hooks.ts#L647)).
+`~/.cline/data/logs/hooks.jsonl` ([Hook audit log](#hook-audit-log)).
 
 `<sessionId>.compaction.json` is the model-facing view after compaction,
 `{version, updated_at, conversation_id?, source_message_count, source_prefix_hash?, source_last_message_key?, messages, system_prompt?}`
@@ -686,7 +624,8 @@ Three generations coexist on disk: VS Code globalStorage tasks, `~/.cline/data/t
 `state/taskHistory.json`, and `~/.cline/data/sessions/<id>/`. The VS Code to file migration of state
 and secrets uses the sentinel `__migrationVersion`
 ([`hosts/vscode/vscode-to-file-migration.ts:11-31`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts#L11-L31));
-task files are not moved. SDK files carry `version: 1`. Legacy tasks resumed in the SDK get
+task files are not moved. SDK files carry `version: 1`. At [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33) the `task_progress` say
+type of `ui_messages.json` is retired and dropped on read. Legacy tasks resumed in the SDK get
 `metadata.legacyTask: true`. `sessions.db` has ALTER-based column migrations
 ([`sqlite-db.ts:275-340`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/db/sqlite-db.ts#L275-L340)).
 
@@ -746,9 +685,7 @@ Legacy: the first `task_metadata.json` `model_usage[]` entry's `mode` yields a `
 `permission mode: <mode>` and a later entry whose `mode` differs yields `permission mode: <old> ->
 <new>`, so an entry that changes only the mode still has a row ([Model](#model-rows)).
 
-The rest (source review of 2026-10-19 at
-[`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33); the
-parser reads none of it yet):
+The rest, at [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33); the parser reads none of it yet:
 
 - Per call, SDK sessions. A call the policy does not auto-approve asks the host; a call that is not
   run gets a `tool_result` block with `is_error` true and content `{error: <reason>}`
@@ -799,13 +736,12 @@ Each standing entry can be one `permission setting: <key>=<value> (from
 
 #### Model rows
 
-Model rows, all typed `system`:
+All typed `system`:
 
 - Legacy: the task's first `task_metadata.json` `model_usage[]` entry
   yields `model: <model_id> model_provider_id=<model_provider_id>
   mode=<mode>`, and a later entry whose `model_id` differs yields
   `model: <old> -> <new>` with the same pairs, at the entry's `ts`.
-
 - SDK: the manifest `model` and `provider` (or the `sessions.db` row of a
   session whose manifest is gone) yield `model: <model>
   provider=<provider>` at `started_at`, and the session start row no
@@ -868,12 +804,11 @@ record per tool with JSON text, and its records carry no time. In the fixture th
 row is `<task>fix tests</task>` beside the UI row `fix tests | [1 image(s)]`, and its tool rows have
 no UI twin with the same text.
 
-Past use beyond the primary store (2026-10-19): `logs/hooks.jsonl`
-([Hook audit log](#hook-audit-log)) is a secondary source the parser does
+`logs/hooks.jsonl` ([Hook audit log](#hook-audit-log)) is a secondary source the parser does
 not read. Its `tool_call` and `tool_result` lines join a transcript's
 `tool_use` and `tool_result` blocks on the call id and session id, its
 `agent_end` line repeats the final reply, and every line has its own
-time, so it survives a deleted session, a rewind and a removed project.
+time; what it survives is in [What survives a delete](#what-survives-a-delete).
 `<sessionId>.compaction.json` repeats turns the messages file keeps, and
 stays unread. An imported session is read as any SDK session; its
 `metadata.importedFrom` can be one `system` row naming the source agent,
@@ -919,9 +854,9 @@ prints `data` (the file's content) or
 `lastError`. A file that is not a JSON object with an `items` object is
 one `parser:` row. Fixture only: no real install has shown the file.
 
-A delete through the hub removes the manifest, the messages file and the `sessions.db` row
-([`session/services/persistence-service.ts:586-630`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/persistence-service.ts#L586-L630)),
-so no marker survives on disk, and nothing deletes the uploaded object: the bucket adapter has only
+A delete through the hub leaves no marker on disk
+([What survives a delete](#what-survives-a-delete)), and nothing deletes the uploaded object: the
+bucket adapter has only
 `write`
 ([`blob-storage.ts:28-30`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/remote-config/blob-storage.ts#L28-L30)).
 The CLI also reports each upload as a telemetry event `enterprise.prompt_upload_succeeded` or
@@ -959,7 +894,7 @@ The task history (`HistoryItem`) has no share, sync or remote field
 and no share-task feature or `shareUrl` exists at this commit (searched `share`, `shareUrl`,
 `shareTask` in `apps/` and `sdk/`).
 
-Origin (2026-10-19): a Cline Cloud session ([Cline Cloud](#cline-cloud))
+Origin: a Cline Cloud session ([Cline Cloud](#cline-cloud))
 originated on the vendor's servers and has no local transcript. Each
 `cloudSessionStatuses` entry of `globalState.json` can be one `system`
 row, `session origin: remote cline-cloud <ses- id> status <status> (from
@@ -971,8 +906,9 @@ install, so a real-install round of the Cloud surface comes first.
 
 #### Scratch directory rows
 
-Source review of 2026-10-19: `~/.cline/data/workspaces/chat`, the working directory of a session
-started without a project and of an imported session with no recorded directory
+The scratch directories ([Scratch directories](#scratch-directories)) are
+`~/.cline/data/workspaces/chat`, the working directory of a session started without a project and
+of an imported session with no recorded directory
 ([`sdk/packages/shared/src/storage/chat-workspace-paths.ts:2`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/shared/src/storage/chat-workspace-paths.ts#L2)),
 and `~/.cline/worktrees/<task id>/<folder>`, the CLI's task worktrees
 ([`apps/cli/src/utils/worktree.ts:19-21`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/cli/src/utils/worktree.ts#L19-L21),
@@ -982,15 +918,15 @@ so the analyzer's catalog rule classes them and the parser need not write `scrat
 
 #### Deletion rows
 
-Not stated: what each delete removes and what survives it is in
-[What survives a delete](#what-survives-a-delete).
+No delete writes a marker ([What survives a delete](#what-survives-a-delete)), so the parser
+yields no deletion row.
 
 #### Bad-line rows
 
-The source review of 2026-10-19 found bad lines already covered for every file the parser reads;
-`logs/hooks.jsonl` is JSON Lines and needs the same per-line handling when it is read. How a bad
-line changes the history rows and the upload queue rows is under
-[Past use and secondary sources](#past-use-rows-and-secondary-sources) and
+Every file the parser reads is covered; `logs/hooks.jsonl`, which it does not read, is JSON Lines
+and needs the same per-line handling when it is read. How a bad line changes the history rows and
+the upload queue rows is under
+[Past-use rows and secondary sources](#past-use-rows-and-secondary-sources) and
 [Sync, relay and origin](#sync-relay-and-origin-rows).
 
 #### Fixtures
@@ -1009,15 +945,15 @@ Fixtures (invented content, real field names):
 
 ## 14. Confidence
 
-Collection. High: every `~/.cline/data` path, secrets key list, globalStorage layout, discovery
-keys. Medium: whether `Documents/Cline/Agents|Plugins` is written by the extension (the SDK only
-reads them). Low: JetBrains plugin's own storage beyond `~/.cline/data` and `WORKSPACE_STORAGE_DIR`
-([`storage-context.ts:58-63`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/storage/storage-context.ts#L58-L63));
-not determinable without the closed plugin.
-
-Parsing. High: file names, layouts, `ClineMessage`, `HistoryItem`, manifest and
-`MessageWithMetadata` fields, `sessions.db` columns. Medium: exact `metadata` keys in SDK messages
-(collected from call sites, not a schema); whether the VS Code extension now writes new tasks to
-`~/.cline/data/sessions` rather than globalStorage (code reads both; `legacyExtensionStorageDir` is
-the globalStorage path,
-[`SdkController.ts:505`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/sdk/SdkController.ts#L505)).
+- High: every `~/.cline/data` path, secrets key list, globalStorage layout, discovery keys; file
+  names, layouts, `ClineMessage`, `HistoryItem`, manifest and `MessageWithMetadata` fields,
+  `sessions.db` columns.
+- Medium: whether `Documents/Cline/Agents|Plugins` is written by the extension (the SDK only reads
+  them); exact `metadata` keys in SDK messages (collected from call sites, not a schema).
+- Low: JetBrains plugin's own storage beyond `~/.cline/data` and `WORKSPACE_STORAGE_DIR`
+  ([`storage-context.ts:58-63`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/storage/storage-context.ts#L58-L63));
+  not determinable without the closed plugin.
+- Not determined: whether the VS Code extension now writes new tasks to `~/.cline/data/sessions`
+  rather than globalStorage (code reads both; `legacyExtensionStorageDir` is the globalStorage
+  path,
+  [`SdkController.ts:505`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/sdk/SdkController.ts#L505)).

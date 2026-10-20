@@ -22,37 +22,13 @@ No real install.
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code) HEAD
-  is still
+- 2026-10-19: [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code) HEAD is still
   [`b867ec9`](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16)
-  (2026-05-15, "Remove roocode.com web app"), the commit this document cites, so no path has moved
-  and nothing has drifted. Roo Code is a fork of Cline's legacy task layout; its drift from
-  [`cline.md`](cline.md) is listed in [section 8](#8-record-schema). One line per requirement class:
-  - Paths: found the CLI's `--ephemeral` storage under the system temp directory and a fuller key
-    list for `~/.roo/cli-settings.json` ([section 2](#2-per-user-storage)). No new credential
-    file, exclusion or catalog line is needed.
-  - Permission state: found, not read by the parser. Per call, an approved
-    tool ask is marked `isAnswered` in `ui_messages.json` and a denial is a
-    JSON `tool_result` in the API history; standing grants are the
-    `alwaysAllow*`, `allowedCommands` and `deniedCommands` settings, MCP
-    `alwaysAllow` lists, and the CLI's `requireApproval`.
-    See [section 8](#8-record-schema) and [section 13](#13-parser-plan).
-  - Model: already covered (no model per task). Found besides: the CLI's
-    default `model` in `~/.roo/cli-settings.json`, and the provider
-    profile named by `apiConfigName`, whose current model id is in the
-    secret store.
-  - Past use beyond the primary store: already covered
-    (`~/.roo/cli-history.json`). Nothing else found.
-  - Sync, relay and origin: already covered, none.
-  - Scratch directories: found. The suggested worktree root
-    `~/.roo/worktrees/` is under the catalog entry `.roo`; the CLI's
-    `--ephemeral` storage is under the system temp directory and removed
-    on exit ([section 7](#7-transcript-stores)).
-  - Deletion: found ([section 13](#13-parser-plan);
-    [What survives a delete](#what-survives-a-delete)).
-  - Version drift: none; HEAD is the cited commit.
-  - Bad lines: already covered; every file the parser reads is a JSON
-    document or array.
+  (2026-05-15, "Remove roocode.com web app"), the commit this document cites, so nothing has
+  drifted. Added the CLI's `--ephemeral` storage, the full `~/.roo/cli-settings.json` key list, the
+  permission records and settings, the provider-profile model ids, the worktree root and the
+  absence of any Roo Code Cloud client ([section 2](#2-per-user-storage),
+  [section 8](#8-record-schema), [section 13](#13-parser-plan)).
 
 ## Collection
 
@@ -149,10 +125,9 @@ relocates storage.
 
 `roo --ephemeral` keeps the whole CLI storage, tasks included, in
 `<system temp directory>/roo-cli-<epoch ms>-<random>` and removes it on exit
-([`apps/cli/src/lib/storage/ephemeral.ts:5-10`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/ephemeral.ts#L5-L10),
-[`apps/cli/src/agent/extension-host.ts:598-601`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/agent/extension-host.ts#L598-L601)).
-It is outside every home, so the collector cannot reach it with a catalog line; a responder who
-finds a killed `roo --ephemeral` process collects the temp directory by hand.
+([Transcripts in CLI ephemeral storage](#transcripts-in-cli-ephemeral-storage)). It is outside
+every home, so no catalog line reaches it; a responder who finds a killed `roo --ephemeral`
+process collects the temp directory by hand.
 
 ### 3. Credentials
 
@@ -163,7 +138,8 @@ finds a killed `roo --ephemeral` process collects the temp directory by hand.
   ([`src/integrations/openai-codex/oauth.ts:451`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/integrations/openai-codex/oauth.ts#L451)).
   Those land in the editor's `state.vscdb`, collected by the vscode entries.
 - CLI: the same keys serialised to `~/.vscode-mock/global-storage/secrets.json` (mode 0600,
-  [`packages/vscode-shim/src/storage/SecretStorage.ts:10-47`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/storage/SecretStorage.ts#L10-L47)).
+  [`packages/vscode-shim/src/storage/SecretStorage.ts:10-47`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/storage/SecretStorage.ts#L10-L47)),
+  flagged by the catalog's secret glob `.vscode-mock/global-storage/secrets.json`.
 - `settings/mcp_settings.json` and project `.roo/mcp.json` can embed `env`
   and headers. No keychain use.
 
@@ -202,18 +178,11 @@ so `~/.roo/worktrees/<project>-<suffix>` paths appear there.
 
 ### 7. Transcript stores
 
-VS Code: `globalStorage/rooveterinaryinc.roo-cline/tasks/<taskId>/` with
-`api_conversation_history.json`, `ui_messages.json`, `task_metadata.json`, `history_item.json`;
-index `tasks/_index.json`
-([`src/shared/globalFileNames.ts:1-9`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/shared/globalFileNames.ts#L1-L9)).
-The root can be redirected by the setting `roo-cline.customStoragePath`
-([`src/utils/storage.ts:14-48`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/utils/storage.ts#L14-L48)).
-CLI root: `~/.vscode-mock/global-storage/`
+Tasks are one directory per task, `tasks/<taskId>/`, with the files and the `tasks/_index.json`
+index listed in [VS Code extension](#vs-code-extension), under the extension's globalStorage
+`rooveterinaryinc.roo-cline/` in VS Code and under `~/.vscode-mock/global-storage/` for the CLI
 ([`apps/cli/src/lib/task-history/index.ts:8`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/task-history/index.ts#L8);
-[`packages/vscode-shim/src/utils/paths.ts:8`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L8),[`65-66`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L65-L66)),
-plus `~/.vscode-mock/workspace-storage/<hash>/`, `logs/`, and `global-storage/secrets.json`
-([`vscode-shim/src/storage/SecretStorage.ts:47`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/storage/SecretStorage.ts#L47)).
-`~/.roo` holds CLI config and global rules only
+[CLI](#cli)). `~/.roo` holds CLI config and global rules only
 ([`apps/cli/src/lib/storage/config-dir.ts:5`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/lib/storage/config-dir.ts#L5)).
 The legacy transcript name `claude_messages.json` is read and then deleted on upgrade
 ([`src/core/task-persistence/apiMessages.ts:73-91`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/apiMessages.ts#L73-L91)).
@@ -242,7 +211,7 @@ points the whole extension storage, tasks included, at a new
 and removes it when the CLI exits
 ([`:598-601`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/agent/extension-host.ts#L598-L601)).
 Such a task is outside the home, so no catalog line reaches it, and it survives only a CLI that was
-killed before its cleanup ran.
+killed before its cleanup ran ([What survives a delete](#what-survives-a-delete)).
 
 ### 8. Record schema
 
@@ -284,7 +253,7 @@ Timestamps are millisecond epochs. No git branch is recorded.
 
 #### Permission records
 
-Source review of 2026-10-19. Every approval goes through `ask`: the `ask` record is written first,
+Every approval goes through `ask`: the `ask` record is written first,
 then `checkAutoApproval` decides `approve`, `deny`, `timeout` or `ask` from the settings
 ([`src/core/task/Task.ts:1313-1334`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task/Task.ts#L1313-L1334)).
 An approval of a `tool` ask, by the user or automatically, sets `isAnswered: true` on that ask
@@ -361,9 +330,9 @@ A prompt given on the command line rather than typed into the input box does not
 
 ### 12. Secrets
 
-CLI `~/.vscode-mock/global-storage/secrets.json` holds provider profiles
-with API keys and should be a collector `SECRET_GLOBS` entry (tracked in
-issue 23). Transcripts carry file contents and command output.
+The secret `roo_cline_config_api_config` ([section 3](#3-credentials)) holds the provider
+profiles with their API keys, in the editor's `state.vscdb` or the CLI's `secrets.json`; its shape
+is in [Model rows](#model-rows). Transcripts carry file contents and command output.
 
 ### 13. Parser plan
 
@@ -380,7 +349,7 @@ and `model` always empty.
 
 #### Permission rows
 
-Permission state (2026-10-19; the parser reads none of it yet):
+The parser reads none of the permission state yet:
 
 - Per call: the `isAnswered` mark and the denial and approval JSON of
   [section 8](#8-record-schema). A `tool_result` whose JSON `status` is
@@ -422,14 +391,13 @@ Permission state (2026-10-19; the parser reads none of it yet):
 Roo Code records no model in any of these files (`apiConfigName` is a
 profile name, not a model id), so the parser yields no `model:` rows.
 
-Model, found besides (2026-10-19): the provider profiles are stored as one secret,
+The provider profiles are stored as one secret,
 `roo_cline_config_api_config`,
 `{currentApiConfigName, apiConfigs: {<name>: {id, apiProvider, <provider>ModelId or apiModelId, ...}}, modeApiConfigs}`
 ([`src/core/config/ProviderSettingsManager.ts:45-61`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/config/ProviderSettingsManager.ts#L45-L61)),
 in the editor's `state.vscdb` or the CLI's `secrets.json`, so a task's `apiConfigName` names a
 profile whose model id is known only as it is now, not as it was when the task ran. The CLI's
-`~/.roo/cli-settings.json` holds the default `model`, `provider`, `mode` and `reasoningEffort`
-([`apps/cli/src/types/types.ts:55-73`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/types/types.ts#L55-L73)).
+`~/.roo/cli-settings.json` holds the default `model` ([`~/.roo`](#roo)).
 Neither is a per-task record; the parser yields no model row from them.
 
 #### Past-use rows and secondary sources
@@ -474,25 +442,24 @@ were not reviewed, so an install of one of them may hold sync state this documen
 
 #### Scratch directory rows
 
-Source review of 2026-10-19: the worktree dialog suggests `~/.roo/worktrees/<project>-<suffix>`
-([`src/core/webview/worktree/handlers.ts:224-236`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/worktree/handlers.ts#L224-L236)),
-under the catalog entry `.roo`, so a task run there has its `workspace` classed by the analyzer's
-catalog rule; a user-chosen path elsewhere is a project. No default directory for a task without a
-workspace was found (grepped `homedir`, `tmpdir` and `worktrees` in `src/` and `apps/cli/src`).
+A task run in the suggested worktree root ([Scratch directories](#scratch-directories)) has its
+`workspace` classed by the analyzer's catalog rule; a user-chosen path elsewhere is a project. No
+default directory for a task without a workspace was found (grepped `homedir`, `tmpdir` and
+`worktrees` in `src/` and `apps/cli/src`).
 
 #### Deletion rows
 
-Not stated: what a task delete removes and what survives it is in
-[What survives a delete](#what-survives-a-delete).
+No deletion marker is known ([What survives a delete](#what-survives-a-delete)), so the parser
+yields no deletion row.
 
 #### Bad-line rows
 
-The source review of 2026-10-19 found bad lines already covered: every file the parser reads is a
-JSON document or array.
+Every file the parser reads is a JSON document or array. A `cli-history.json` cut mid-write yields
+the entries before the cut and one `system` row for the cut, `parser: unparseable record <N>
+(<reason>): <raw>` or `parser: array cut off after record N`, as the `roo-code` parser's docstring
+states.
 
 #### Fixtures
-
-Fixture:
 
 ```json
 {"_file":"tasks/_index.json","record":{"version":1,"updatedAt":1760000005000,"entries":[{"id":"8f1c2b7e-1","number":1,"ts":1760000000000,"task":"fix tests","tokensIn":1200,"tokensOut":80,"totalCost":0.0041,"workspace":"/home/u/proj","mode":"code","status":"completed"}]}}
@@ -502,11 +469,9 @@ Fixture:
 
 ## 14. Confidence
 
-Collection. High: all globalStorage and `~/.vscode-mock` paths, `_index.json.workspace`, secrets
-locations. Medium: `.roo/worktrees` is only the suggested default offered to the user
-([`handlers.ts:230`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/worktree/handlers.ts#L230)),
-so it may be elsewhere. Not determined: where the CLI stores cloud (Roo account) tokens beyond
-`secrets.json`; `@roo-code/cloud` is an external package not in this clone.
-
-Parsing. High: file names, layouts and type definitions (read from
-source). Not determined: the `checkpoint` object keys.
+- High: all globalStorage and `~/.vscode-mock` paths, `_index.json.workspace`, secrets locations;
+  file names, layouts and type definitions (read from source).
+- Medium: `.roo/worktrees` is only the suggested default offered to the user
+  ([`handlers.ts:230`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/worktree/handlers.ts#L230)),
+  so it may be elsewhere.
+- Not determined: the `checkpoint` object keys.

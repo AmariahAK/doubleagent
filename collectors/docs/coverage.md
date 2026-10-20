@@ -307,7 +307,7 @@ directories in `AppData/Local/Temp`, which have no stable name. The
 evidence is in
 [`research/chatgpt-desktop.md`](../../research/chatgpt-desktop.md).
 
-On macOS the app is the same Electron build (ChatGPT 26.1007.71326,
+On macOS the app is the same build, a Chromium shell hosting an Electron-style web app (ChatGPT 26.1007.71326,
 observed on macOS 26.6.2, October 2026), with the bundle identifier
 `com.openai.codex`; the paths of the former native app
 (`com.openai.chat`) no longer appear, but they are still collected on
@@ -484,8 +484,12 @@ their state must be copied by hand.
 - **ShellGPT** keeps its chat history in the system temp directory (`/tmp`
   on Linux, `/var/folders/.../T` on macOS), which no home-relative catalog
   entry can reach, so on Linux and macOS it is not collected and must be
-  copied by hand. The Windows locations under `AppData/Local/Temp` are
-  collected.
+  copied by hand. On Windows the catalog collects the chat directory
+  `AppData/Local/Temp/chat_cache` and the pre-0.9.0 `AppData/Local/Temp/shell_gpt`;
+  the current response cache, `AppData/Local/Temp/cache`, is not collected
+  because the name is too common in a temp directory, so read `CACHE_PATH`
+  from `.sgptrc` and copy that directory by hand
+  ([Chat history and response cache in `research/shellgpt.md`](../../research/shellgpt.md#chat-history-and-response-cache)).
 - **Muse Code** keeps its launcher state beside the launcher; see below.
 - **OpenClaw, Codex CLI, Continue and Gemini CLI** write backups,
   exports or a log to a directory the user chooses or works in; see

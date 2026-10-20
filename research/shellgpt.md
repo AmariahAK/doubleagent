@@ -24,36 +24,15 @@ All claims from source. The older temp-directory layout is cited from the histor
 
 ### Observed
 
-No real install.
+- No real install.
 
 ### Source reviews
 
-- **Source review (2026-10-19).** HEAD of the default branch is still
+- 2026-10-19: the head of the default branch is still
   [`a082bd5`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6),
-  the commit above, so every path here stands and nothing has drifted. The per-class detail, one
-  line per requirement class, is in the subsections of [section 13](#13-parser-plan).
-  - Permission state: found, collected, not parsed. A function call the model asks for runs with no
-    prompt at all; the auto-execution switches are `.sgptrc` keys and the callable functions are the
-    files in `functions/`, both already collected (`.sgptrc` flagged secret). The `--shell`
-    `[E]xecute, [M]odify, [D]escribe, [A]bort` choice and the REPL's `e` are not recorded. Detail in
-    [Permission state](#permission-rows).
-  - Model: found, collected, not parsed: `DEFAULT_MODEL` in `.sgptrc` is the only
-    record; a `--model` option leaves none.
-  - Past use: found, partly uncollected. The response cache holds the assistant text of
-    chat turns as well as one-shot answers and outlives the chat file;
-    not parsed, and its Windows path since 0.9.0,
-    `AppData/Local/Temp/cache`, is not a catalog line
-    ([section 2](#2-per-user-storage)).
-  - Sync, relay and origin: none.
-  - Scratch directories: none ([section 2](#2-per-user-storage)); sgpt runs in the caller's
-    directory and records none.
-  - Deletion: no delete command. The chat id `temp` is deleted at each
-    use, a chat file keeps only its last 100 messages, the response
-    cache its newest 100 files, and the operating system's temp cleanup,
-    the main loss, removes the rest.
-  - Version drift: none.
-  - Bad lines: not a collector concern; for the parser, covered (a truncated array yields the
-    messages before the cut and one `system` row).
+  the commit above, so every path here stands. It added the finding that the response cache also
+  holds chat answers ([Response cache](#response-cache)) and the permission and model settings of
+  [Settings file and function store](#settings-file-and-function-store).
 
 ## Collection
 
@@ -123,20 +102,17 @@ Read `CHAT_CACHE_PATH` and `CACHE_PATH` from `.sgptrc` to find the real location
   ([`chat_handler.py:65-78`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/chat_handler.py#L65-L78)).
   The id `temp` is deleted at the start of each use
   ([`chat_handler.py:106-108`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/chat_handler.py#L106-L108)).
-- `<cache>/<md5>`: one file per cached one-shot completion holding only the response text; the name
-  is an MD5 of the request arguments, so the prompt is not recoverable from it. The oldest files
-  beyond `CACHE_LENGTH` (100) are deleted
+- `<cache>/<md5>`: one file per cached completion, one-shot prompts and chat answers alike,
+  holding only the response text ([Response cache](#response-cache)); the name is an MD5 of the
+  request arguments, so the prompt is not recoverable from it. The oldest files beyond
+  `CACHE_LENGTH` (100) are deleted
   ([`cache.py:30-61`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L30-L61)).
   Caching is on by default
   ([`app.py:88-91`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/app.py#L88-L91)).
-  The cache is not limited to one-shot completions (source review of 2026-10-19). The chat and REPL
-  handlers share the cached `get_completion`
-  ([`sgpt/handlers/handler.py:102-110`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L102-L110)),
-  so each chat answer without a function call is also written here and outlives the 100-message cut
-  of its chat file. The catalog collects the pre-0.9.0 Windows form under
-  `AppData/Local/Temp/shell_gpt`; the current form, `AppData/Local/Temp/cache`, is not a catalog
-  line, and `cache` is too common a directory name in the temp directory to add as one without
-  collecting other programs' caches. Reading `CACHE_PATH` from `.sgptrc` is the manual step.
+  The catalog collects the pre-0.9.0 Windows form under `AppData/Local/Temp/shell_gpt`; the
+  current form, `AppData/Local/Temp/cache`, is not a catalog line, and `cache` is too common a
+  directory name in the temp directory to add as one without collecting other programs' caches.
+  Reading `CACHE_PATH` from `.sgptrc` is the manual step.
 
 #### One-shot prompts and the shell integration
 
@@ -145,7 +121,7 @@ One-shot prompts without `--chat` are not stored anywhere except as that respons
 [`default_handler.py:17-22`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/default_handler.py#L17-L22)).
 The interactive `[E]xecute` prompt uses an in-memory `PromptSession` with no history file
 ([`app.py:241`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/app.py#L241)).
-The command line itself lands in the shell history, which the collector leaves to the EDR.
+The command line itself lands in the shell history.
 
 `--install-integration` appends a `Shell-GPT integration` block binding Ctrl+L to `sgpt --shell` to
 `~/.zshrc` or `~/.bashrc`
@@ -192,31 +168,26 @@ paths that may point outside the defaults.
 ### 7. Transcript stores
 
 - `<CHAT_CACHE_PATH>/<chat id>`: one file per session started with `--chat <id>` or `--repl <id>`,
-  named exactly as typed, no extension
-  ([`sgpt/handlers/chat_handler.py:65-78`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/chat_handler.py#L65-L78)).
-  `CHAT_CACHE_PATH` defaults to `tempfile.gettempdir()/chat_cache`
-  ([`sgpt/config.py:14`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L14),
-  [`20`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L20));
-  before 0.9.0 it was `gettempdir()/shell_gpt/chat_cache`, and `.sgptrc` keeps whichever value was
-  written at first run. Home-relative globs the catalog can reach: `AppData/Local/Temp/chat_cache/*`
-  and `AppData/Local/Temp/shell_gpt/chat_cache/*` (Windows). On Linux and macOS the files are under
+  named exactly as typed, no extension, in the chat cache directory of
+  [Chat history and response cache](#chat-history-and-response-cache) (by default under the temp
+  directory, `.sgptrc` keeping whichever value was written at first run). Home-relative globs the
+  catalog can reach: `AppData/Local/Temp/chat_cache/*` and
+  `AppData/Local/Temp/shell_gpt/chat_cache/*` (Windows). On Linux and macOS the files are under
   `/tmp` or `/var/folders/*/*/T` and arrive only as loose input.
-- The id `temp` is invalidated at each start, so it holds only the most recent throwaway session
-  ([`chat_handler.py:106-108`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/chat_handler.py#L106-L108)).
+- The id `temp` is invalidated at each start, so it holds only the most recent throwaway session.
 
 #### What survives a delete
 
 ShellGPT has no delete command. What removes chat history is the `temp` chat id, invalidated at each
 start; the cut on every write that keeps the system message and the last 100 other messages
-([`chat_handler.py:75-77`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/chat_handler.py#L75-L77));
-and the operating system's cleanup of its temporary directory, where the chat files live by default.
-A per-prompt history file is not stated. The response cache under `<CACHE_PATH>` keeps the answers
-to chat turns that the cut dropped, and to one-shot prompts that never had a chat file, as text with
-no prompt, time or session, the newest 100 files kept
-([`cache.py:46-61`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L46-L61));
-its Windows path since 0.9.0, `AppData/Local/Temp/cache`, is named by no catalog line. Deletion
-markers are not stated. The analyzer reads the chat files and not the response cache, a secondary
-source joined on text only (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+([section 8](#8-record-schema)); and, the main loss, the operating system's cleanup of its
+temporary directory, where the chat files live by default. A per-prompt history file is not
+stated. The response cache ([Response cache](#response-cache)) keeps the answers to chat turns
+that the cut dropped, and to one-shot prompts that never had a chat file, as text with no prompt,
+time or session, the newest 100 files kept; its current Windows path is named by no catalog line
+([Chat history and response cache](#chat-history-and-response-cache)). Deletion markers are not
+stated. The analyzer reads the chat files and not the response cache, a secondary source joined
+on text only (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### 8. Record schema
 
@@ -249,6 +220,9 @@ Each element is an OpenAI chat message:
   When a function was called it also contains the marker line `` > @FunctionCall `name(k="v")` ``
   and, with `SHOW_FUNCTIONS_OUTPUT=true`, the output in a fenced block
   ([`handler.py:89-95`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L89-L95)).
+  The marker is preceded by a `"\n"`, which is always emitted because the check runs right after
+  the assistant message is appended
+  ([`handler.py:86-87`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L86-L87)).
 
 So a turn with a function call is stored as user, assistant(tool_calls),
 tool, assistant(content), in that order, because the handler mutates the
@@ -279,8 +253,7 @@ No SQLite or binary store.
 
 `<CACHE_PATH>/<md5>` files hold only a response string with no prompt
 ([`sgpt/cache.py:30-41`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L30-L41)).
-Not a transcript, and not parsed: the first review said not to parse it, and the source review of
-2026-10-19 found that it also holds chat answers, which makes it a secondary source
+Not a transcript, and not parsed; because it also holds chat answers it is a secondary source
 ([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources)). `get_completion` of
 every handler, the chat handler included, is wrapped by the cache decorator, which writes the full
 response text to `<CACHE_PATH>/<md5 of the request>` unless it contains a function call
@@ -290,7 +263,6 @@ So the answers to chat turns that the 100-message cut dropped, and to one-shot p
 chat file, survive there as text with no prompt, time or session; they join on text only. The newest
 100 files are kept
 ([`cache.py:46-61`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/cache.py#L46-L61)).
-Its Windows path since 0.9.0 is `AppData/Local/Temp/cache`, which no catalog line names.
 
 #### Settings file and function store
 
@@ -366,7 +338,7 @@ answer is written and records the choice nowhere
 nor does the REPL's `e` in the shell role
 ([`sgpt/handlers/repl_handler.py:56-59`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/repl_handler.py#L56-L59)).
 
-Standing (proposed, not parsed): the `.sgptrc` switches and the function store described in
+Standing: not read. The `.sgptrc` switches and the function store described in
 [Settings file and function store](#settings-file-and-function-store).
 Proposed: one `permission setting: <key>=<value> (from .sgptrc, file
 mtime)` row per key and one `permission setting: function <file name>
@@ -384,9 +356,7 @@ model.
 
 #### Past-use rows and secondary sources
 
-The response cache (secondary, not parsed), described in [Response cache](#response-cache):
-the answers to chat turns that the 100-message cut dropped and to one-shot prompts, as text that
-joins on text only.
+The response cache ([Response cache](#response-cache)) is secondary and not read.
 
 #### Sync, relay and origin rows
 
@@ -421,7 +391,7 @@ Two paths are outside this source: what LiteLLM itself sends when it is enabled 
 
 #### Scratch directory rows
 
-None; sgpt runs in the caller's directory and records none.
+None ([Scratch directories](#scratch-directories)).
 
 #### Deletion rows
 
@@ -431,8 +401,8 @@ for the truncation. The parser yields no deletion rows.
 
 #### Bad-line rows
 
-Covered: a truncated array yields the messages before the cut and one `system` row. The
-response cache, if parsed, is one text per file with nothing to cut.
+A truncated array yields the messages before the cut and one `system` row. The response cache, if
+read, is one text per file with nothing to cut.
 
 #### Fixtures
 
@@ -448,18 +418,14 @@ Fixture (`chat_cache/deploy-check`, shown wrapped; the real file is one line):
 
 ## 14. Confidence
 
-Collection. High: config folder, `.sgptrc` format and key, roles, function store, chat
-and cache layout, the 0.9.0 change of temp path (source and history).
-Medium: that `/tmp` is the effective Linux location; `gettempdir` honours
-`TMPDIR`, `TEMP` and `TMP`, so a user with any of those set writes
-elsewhere. Not determined: how long the chat files survive. `/tmp` is a
-tmpfs cleared at boot on many distributions and macOS purges old
-`/var/folders` content, but this depends on the host and was not checked.
-
-Parsing. High: file location, array shape, message keys, ordering, truncation (source), and the
-leading `"\n"` before the marker, which is always emitted because the check runs right after the
-assistant message is appended
-([`handler.py:86-87`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/handlers/handler.py#L86-L87)).
-Medium: the pre-1.5.0 shape, read from the parent of
-[`4ea2f83`](https://github.com/TheR1D/shell_gpt/commit/4ea2f834cff5dc020dabb25bb02030c630cd2062) in
-history rather than a released package.
+- High (source and history): the config folder, the `.sgptrc` format and key, roles, the function
+  store, the chat and cache layout, the 0.9.0 change of temp path, the chat file location, array
+  shape, message keys, ordering and truncation.
+- Medium: that `/tmp` is the effective Linux location; `gettempdir` honours `TMPDIR`, `TEMP` and
+  `TMP`, so a user with any of those set writes elsewhere.
+- Medium: the pre-1.5.0 shape, read from the parent of
+  [`4ea2f83`](https://github.com/TheR1D/shell_gpt/commit/4ea2f834cff5dc020dabb25bb02030c630cd2062) in
+  history rather than a released package.
+- Not determined: how long the chat files survive. `/tmp` is a tmpfs cleared at boot on many
+  distributions and macOS purges old `/var/folders` content, but this depends on the host and was
+  not checked.

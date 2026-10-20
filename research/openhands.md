@@ -32,23 +32,9 @@ the openhands parser reads the SDK event files with their `meta.json` and `base_
 
 All claims are from source.
 
-Sync and upload were checked on 2026-10-17 at
-[`fd26808`](https://github.com/OpenHands/software-agent-sdk/commit/fd268089e257bee4ad704ce4fdc6466bc756c71c)
-(SDK) and
-[`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
-(CLI), newer than the commits above.
-
-Confidence is high for directory layout, file naming, `kind` discriminator, event field names, the
-naive local `timestamp`, Fernet secrets. Also high: `security_risk` values `UNKNOWN`, `LOW`, ...
-([`security/risk.py:13-21`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-sdk/openhands/sdk/security/risk.py#L13-L21)).
-Medium: the 1.x `v1_conversations` event shape. Not determined: whether any surface writes a
-zone-aware event timestamp, and the full set of action and observation `kind` values, which grows
-with each tool.
-
 ### Observed
 
-- No real install. The 2026-10-19 review used no install, and the cut-file shape is not observed on
-  any real install, source-derived ([Bad lines](#bad-line-rows)).
+- No real install.
 
 ### Source reviews
 
@@ -66,49 +52,18 @@ with each tool.
   [`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
   (previously
   [`954f2ba`](https://github.com/OpenHands/OpenHands-CLI/commit/954f2ba646e8d749261a8f2b2b7e3031fa39be9f);
-  unchanged since 2026-10-09). Every statement below is from source at those commits; no install was
-  used.
-  - Permission state: found. A new `SecurityAnalysisEvent` records the security analyzer's verdict
-    per action, and `base_state.json` holds the standing `confirmation_policy`,
-    `security_analyzer` and `blocked_actions`, with the server default in `settings.json`; both
-    files are collected. An approval leaves no event. The parser reads rejections only
-    ([section 8](#8-record-schema), [section 13](#13-parser-plan)).
-  - Model: found. The agent's own switches leave a `SwitchLLMObservation` or
-    `ClassifyAndSwitchLLMObservation` with `active_model`; a switch through the REST endpoint
-    (Canvas `/model`) leaves only the final model in `base_state.json`; `stats.usage_to_metrics`
-    keeps the model per LLM response. Nothing new to collect. The parser writes one `model:` row
-    per conversation.
-  - Past use beyond the primary store: found. The CLI's `projects/<sha256>/prompt_history.json`
-    (collected) is not read; forks are full copies; Canvas keeps conversation metadata and an
-    archive list in browser storage, its `Local Storage` under the Electron user data directory
-    (collected) ([section 10](#10-other-stores)).
-  - Sync, relay and origin: found for origin, none for relay. Agent Canvas lists conversations from
-    OpenHands Cloud backends and from DigitalOcean Managed Agents sessions (new since
-    [`a6bba78`](https://github.com/OpenHands/OpenHands/commit/a6bba78ffd5a8b31620770f52383b1a2c0477fcd)),
-    whose only local traces are browser-storage entries and a credential store
-    ([section 2](#2-per-user-storage), [section 3](#3-credentials)); the earlier note that the
-    Canvas front end is not in these repositories was wrong. No messaging relay: not found in
-    OpenHands at
-    [`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95),
-    software-agent-sdk at
-    [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)
-    or OpenHands-CLI at
-    [`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
-    (grepped for `telegram`, `slack`, `discord`, `whatsapp` and `jira`; the last is only a cloud
-    feature flag).
-  - Scratch directories: found; see [Scratch directories](#scratch-directories).
-    `agent-canvas/workspaces/<hex>`, `~/.openhands/workspaces` (automation runs) and
-    `/tmp/conversation-worktrees/<dir>` (outside the home) are the agent's own.
-    `~/.openhands/workspaces` is collected whole, unlike `agent-canvas/workspaces`.
-  - Deletion: found. The Agent Server removes the conversation directory and its worktree under
-    `/tmp` but keeps the workspace, branches, children and forks; Canvas archive only hides; the
-    CLI has no delete ([What survives a delete](#what-survives-a-delete)).
-  - Version drift: every path in this document, the event file layout and every field the parser
-    reads are unchanged at the new commits; new are `mars-credentials.json` and one event kind
-    (`SecurityAnalysisEvent`), which falls into the parser's generic `system` row.
-  - Bad lines: no file is read line by line. The review found that a `meta.json` or
-    `base_state.json` that does not decode was dropped without a row; the parser now gives one
-    whole-file `parser:` row for it ([Bad lines](#bad-line-rows)). Not a collector concern.
+  unchanged since 2026-10-09), from source with no install. It added the permission and model
+  records of [section 8](#8-record-schema), the Agent Canvas browser storage of
+  [section 10](#10-other-stores), the DigitalOcean credential store, the scratch directories and the
+  delete behaviour, and corrected an earlier statement that the Canvas front end is not in these
+  repositories.
+- 2026-10-17: SDK at
+  [`fd26808`](https://github.com/OpenHands/software-agent-sdk/commit/fd268089e257bee4ad704ce4fdc6466bc756c71c)
+  and CLI at
+  [`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2),
+  for sync and upload. It added the finding of
+  [Sync, relay and origin rows](#sync-relay-and-origin-rows) that nothing local records a synced
+  conversation.
 
 ## Collection
 
@@ -132,15 +87,22 @@ OpenHands has three, all chosen by the agent rather than the user:
   conversation opened on no project
   ([`scripts/dev-safe.mjs:648-649`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/dev-safe.mjs#L648-L649),
   [`703`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/dev-safe.mjs#L703)).
-  Under the home, excluded by default ([section 4](#4-exclusions)), collected with `--full`.
+  It also holds automation run workspaces when Canvas runs natively
+  ([`dev-safe.mjs:649`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/scripts/dev-safe.mjs#L649);
+  [`scripts/dev-with-automation.mjs:1064-1069`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/scripts/dev-with-automation.mjs#L1064-L1069);
+  [`src/api/agent-server-config.ts:203-211`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/src/api/agent-server-config.ts#L203-L211)).
+  Excluded by default ([section 4](#4-exclusions)).
 - `~/.openhands/workspaces/<run>/`, automation runs under Canvas-in-Docker ([Automation
-  workspaces](#automation-workspaces)). Under the home and collected whole today.
+  workspaces](#automation-workspaces)). Not excluded ([section 4](#4-exclusions)).
 - `/tmp/conversation-worktrees/<dir>/`, the git worktree the Agent Server makes for a conversation
   started with worktree isolation
-  ([`openhands-agent-server/openhands/agent_server/config.py:286-293`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/config.py#L286-L293)).
-  Outside the home, so no catalog line can collect it; the conversation's `meta.json` and
-  `base_state.json` record it as `workspace.working_dir`, and Canvas records the choice as
-  `workspace_mode` `new_worktree` in its localStorage.
+  ([`openhands-agent-server/openhands/agent_server/config.py:286-293`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/config.py#L286-L293);
+  the same default at
+  [`b347047`](https://github.com/OpenHands/software-agent-sdk/commit/b347047e2dcdd8f4b2be810aa8bc6632bc756d41):
+  [`config.py:256-281`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-agent-server/openhands/agent_server/config.py#L256-L281)).
+  Outside the home, so no catalog line can collect it; the conversation records it as
+  `workspace.working_dir` ([section 6](#6-where-the-project-path-is-recorded)), and Canvas records
+  the choice in its browser storage ([section 10](#10-other-stores)).
 
 The first two are under the `.openhands` catalog entry, so the analyzer's catalog rule classes them
 as scratch directories; the third is not.
@@ -163,11 +125,9 @@ the Agent Server with `OH_PERSISTENCE_DIR=~/.openhands` and its own state in
 - `agent-canvas/bash_events/`: commands typed in the Canvas terminal, one file per event named
   `<YYYYMMDDHHMMSSffffff>_<kind>_...`
   ([`openhands-agent-server/openhands/agent_server/bash_service.py:61-72`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-agent-server/openhands/agent_server/bash_service.py#L61-L72)).
-- `agent-canvas/workspaces/<conversation hex>/`: default working directory for conversations not
-  opened on a project, and automation run workspaces
-  ([`dev-safe.mjs:649`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/scripts/dev-safe.mjs#L649),[`703`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/scripts/dev-safe.mjs#L703);
-  [`scripts/dev-with-automation.mjs:1064-1069`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/scripts/dev-with-automation.mjs#L1064-L1069);
-  [`src/api/agent-server-config.ts:203-211`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/src/api/agent-server-config.ts#L203-L211)).
+- `agent-canvas/workspaces/<conversation hex>/`: the scratch working directories of
+  [Scratch directories](#scratch-directories)
+  ([`dev-safe.mjs:703`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/scripts/dev-safe.mjs#L703)).
 - `agent-canvas/logs/agent-canvas.%DATE%.log`
   ([`scripts/logger.mjs:23-26`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/scripts/logger.mjs#L23-L26),[`64`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/scripts/logger.mjs#L64));
   `agent-canvas/storage/`
@@ -221,9 +181,7 @@ so transcripts and the container user's dotfiles land on the host. Only what the
 outside those mounts (container `/tmp`, packages it installs) stays in the container and is lost
 with it. Canvas-in-Docker likewise bind-mounts host `~/.openhands` to `/home/openhands/.openhands`
 ([`README.md:93-101`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/README.md#L93-L101)).
-Git worktrees go to `/tmp/conversation-worktrees` by default
-([`openhands-agent-server/openhands/agent_server/config.py:256-281`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-agent-server/openhands/agent_server/config.py#L256-L281)),
-outside the home.
+Git worktrees go outside the home ([Scratch directories](#scratch-directories)).
 
 #### Electron app
 
@@ -231,14 +189,13 @@ Product name `OpenHands Agent Canvas`
 ([`electron/package.json:3`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/electron/package.json#L3)),
 so Electron's default user data directory (`~/Library/Application Support/OpenHands Agent Canvas`,
 `~/.config/OpenHands Agent Canvas`, `%APPDATA%\OpenHands Agent Canvas`) holds the frontend's
-localStorage; the backend state is the same `~/.openhands`. Since the 2026-10-19 review (Canvas at
-[`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95))
+localStorage; the backend state is the same `~/.openhands`. At Canvas
+[`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95)
 it also holds `mars-credentials.json`, the store of DigitalOcean connections for Managed Agents
 sessions (MARS, DigitalOcean's name for its hosted agent sandboxes: a microVM that runs its own
-Agent Server, so those conversations stay on DigitalOcean)
-([`scripts/mars-credentials.mjs:18`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/mars-credentials.mjs#L18),
-[`77-88`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/mars-credentials.mjs#L77-L88);
-[`electron/main.mjs:773-777`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/electron/main.mjs#L773-L777);
+Agent Server with its own disk and conversations, so those conversations stay on DigitalOcean;
+the file's fields are in [section 3](#3-credentials))
+([`electron/main.mjs:773-777`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/electron/main.mjs#L773-L777);
 [`src/api/mars/AGENTS.md:3`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/mars/AGENTS.md#L3)).
 The localStorage keys that matter (`openhands-backends`, `openhands-last-conversation-by-backend`,
 `openhands-agent-server-conversation-metadata`, `archived-conversations`) are listed in
@@ -250,9 +207,8 @@ The automation service unpacks each run into `AUTOMATION_WORKSPACE_BASE`: `~/.op
 under Canvas-in-Docker, `~/.openhands/agent-canvas/workspaces` natively
 ([`docker/entrypoint.sh:334-336`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/docker/entrypoint.sh#L334-L336);
 [`scripts/dev-with-automation.mjs:1066-1075`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/dev-with-automation.mjs#L1066-L1075)).
-The Docker path was already there at
-[`a6bba78`](https://github.com/OpenHands/OpenHands/commit/a6bba78ffd5a8b31620770f52383b1a2c0477fcd)
-and was missed.
+The Docker path is the same at
+[`a6bba78`](https://github.com/OpenHands/OpenHands/commit/a6bba78ffd5a8b31620770f52383b1a2c0477fcd).
 
 #### CLI
 
@@ -310,16 +266,20 @@ in Canvas-in-Docker, everything except `~/.openhands` and `PROJECTS_PATH`.
   Collecting the key with the stores makes every secret readable.
 - `~/.openhands/agent-canvas/api-key.txt`: the local backend session key
   ([`dev-safe.mjs:80-85`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/scripts/dev-safe.mjs#L80-L85)).
-- `settings.json`, `secrets.json`, `profiles/*.json`, `provider-connections/*`,
-  `auth/<vendor>_oauth.json`
+- `provider-connections/*` and `auth/<vendor>_oauth.json`, beside the stores of the first bullet
   ([`credentials.py:73-75`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-sdk/openhands/sdk/llm/auth/credentials.py#L73-L75)).
 - `runtime-control/<hex>.json`: per-conversation `api_key` and `encryption_key`, themselves
   encrypted with the master key
   ([`provisioning.py:22-45`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-agent-server/openhands/agent_server/docker_runtime/provisioning.py#L22-L45)).
 - CLI: `agent_settings.json` saved with `expose_secrets: True`, so the LLM API key is plaintext
   ([`stores/agent_store.py:474-476`](https://github.com/OpenHands/OpenHands-CLI/blob/954f2ba646e8d749261a8f2b2b7e3031fa39be9f/openhands_cli/stores/agent_store.py#L474-L476));
-  `cloud/api_key.txt`
-  ([`auth/token_storage.py:19-25`](https://github.com/OpenHands/OpenHands-CLI/blob/954f2ba646e8d749261a8f2b2b7e3031fa39be9f/openhands_cli/auth/token_storage.py#L19-L25));
+  `cloud/api_key.txt`, the OpenHands Cloud account key in plain text (mode 0600), written by
+  `openhands login` and read by `openhands cloud` and `openhands acp --cloud`
+  ([`auth/token_storage.py:19-25`](https://github.com/OpenHands/OpenHands-CLI/blob/954f2ba646e8d749261a8f2b2b7e3031fa39be9f/openhands_cli/auth/token_storage.py#L19-L25);
+  [`19-37`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/auth/token_storage.py#L19-L37)
+  at
+  [`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)),
+  flagged by the `.openhands/cloud/*` secret glob;
   `mcp.json` holds MCP server definitions, which may embed keys.
 - Legacy: `.jwt_secret` and `.keys` in the root
   ([`openhands/app_server/utils/encryption_key.py:51-57`](https://github.com/OpenHands/OpenHands/blob/11ca68ab2e15dcd85c21e4d7d3409e7a259369ac/openhands/app_server/utils/encryption_key.py#L51-L57);
@@ -328,23 +288,19 @@ in Canvas-in-Docker, everything except `~/.openhands` and `PROJECTS_PATH`.
   ([`openhands-sdk/openhands/sdk/agent/acp_file_credentials.py:32`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-sdk/openhands/sdk/agent/acp_file_credentials.py#L32),[`65-68`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-sdk/openhands/sdk/agent/acp_file_credentials.py#L65-L68));
   older conversations may hold `acp/codex/auth.json` in their own directory
   ([`event_service.py:338-339`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-agent-server/openhands/agent_server/event_service.py#L338-L339)).
-
-- Agent Canvas Electron app (2026-10-19 review): `<user data directory>/mars-credentials.json`, the
+- Agent Canvas Electron app: `<user data directory>/mars-credentials.json`, the
   DigitalOcean connections (`connections[]` with `kind` `oauth` or `pat`, `label`, `teamName`,
   `expiresAt` and the token, and a `deviceId`); only the token is encrypted, with Electron
   `safeStorage` (the OS keychain), and is written as `null` when the keychain is unavailable, so the
   connection then lasts only for the session; the file is mode 0600
-  ([`scripts/mars-credentials.mjs:42-49`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/mars-credentials.mjs#L42-L49),
+  ([`scripts/mars-credentials.mjs:18`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/mars-credentials.mjs#L18),
+  [`42-49`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/mars-credentials.mjs#L42-L49),
   [`77-88`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/mars-credentials.mjs#L77-L88),
   [`118-135`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/mars-credentials.mjs#L118-L135),
   [`195-210`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/mars-credentials.mjs#L195-L210)).
   No secret glob flags it yet.
-- The Canvas `Local Storage` key `openhands-backends` stores each backend's `apiKey` in plain JSON,
-  an OpenHands Cloud key for a cloud backend
-  ([`src/api/backend-registry/types.ts:4-22`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/backend-registry/types.ts#L4-L22);
-  [`storage.ts:95-101`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/backend-registry/storage.ts#L95-L101)).
-  It shares the LevelDB files with the conversation metadata, so it is collected unflagged and the
-  key is the one to redact.
+- The Canvas `Local Storage` holds each backend's API key in plain JSON
+  ([section 12](#12-secrets)).
 
 No keychain use found, apart from the `safeStorage` encryption above.
 
@@ -359,7 +315,7 @@ collected with `--full`. `.openhands/agent-canvas/tmux` holds sockets only. Keep
 
 `.openhands/workspaces` (automation run workspaces under Canvas-in-Docker,
 [section 2](#2-per-user-storage)) holds the same kind of content as `agent-canvas/workspaces` and is
-not excluded today; an exclusion like the native one would treat both alike (2026-10-19 review).
+not excluded today; an exclusion like the native one would treat both alike.
 
 ### 5. Project-local files
 
@@ -391,8 +347,8 @@ Also read: `.agents/skills/`
   ([`src/api/conversation-metadata-store.ts:4-56`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/conversation-metadata-store.ts#L4-L56)).
   LevelDB, so not grep-able by `discover_projects`.
 - A worktree conversation's `workspace.working_dir` is under `/tmp/conversation-worktrees/` by
-  default, a scratch directory ([section 2](#2-per-user-storage)), not the user's project
-  (2026-10-19 review). Whether the conversation files also name the repository the worktree was made
+  default, a scratch directory ([Scratch directories](#scratch-directories)), not the user's
+  project. Whether the conversation files also name the repository the worktree was made
   from was not traced.
 
 ## Parsing
@@ -427,7 +383,8 @@ Inside
   [`openhands_cli/tui/panels/plan_side_panel.py:107`](https://github.com/OpenHands/OpenHands-CLI/blob/954f2ba646e8d749261a8f2b2b7e3031fa39be9f/openhands_cli/tui/panels/plan_side_panel.py#L107)).
 
 The CLI also keeps `.openhands/projects/<sha256(cwd)>/prompt_history.json`
-([`openhands_cli/locations.py:34-47`](https://github.com/OpenHands/OpenHands-CLI/blob/954f2ba646e8d749261a8f2b2b7e3031fa39be9f/openhands_cli/locations.py#L34-L47)).
+([`openhands_cli/locations.py:34-47`](https://github.com/OpenHands/OpenHands-CLI/blob/954f2ba646e8d749261a8f2b2b7e3031fa39be9f/openhands_cli/locations.py#L34-L47)),
+described in [CLI prompt history](#cli-prompt-history).
 
 #### What survives a delete
 
@@ -445,7 +402,10 @@ the remote conversation; its archive only adds the id to `archived-conversations
 delete; `openhands logout` removes `cloud/api_key.txt`
 ([`auth/token_storage.py:55-61`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/auth/token_storage.py#L55-L61)).
 What remains: the CLI's `prompt_history.json`, the last 100 prompts per working directory with text
-and local time and no conversation; a fork, which is a full copy of its source's events and state;
+and local time and no conversation ([CLI prompt history](#cli-prompt-history)); a fork, which is a
+deep copy of its source's events and state
+([`agent_server/conversation_service.py:1952-1995`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/conversation_service.py#L1952-L1995))
+and joins on `meta.json` `forked_from_conversation_id`;
 the global `agent-canvas/bash_events/` record of terminal commands; and Canvas browser-storage keys
 with no message text, such as `openhands-last-conversation-by-backend`
 ([section 10](#10-other-stores)). Nothing local records a deleted conversation. The analyzer reads a
@@ -530,7 +490,7 @@ indented JSON;
 
 #### Permission records
 
-Added or first described in the 2026-10-19 review, at SDK
+At SDK
 [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360):
 
 - `SecurityAnalysisEvent` (new since
@@ -576,7 +536,7 @@ Added or first described in the 2026-10-19 review, at SDK
 
 #### Model records
 
-Added or first described in the 2026-10-19 review, at SDK
+At SDK
 [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360):
 
 - Model switches. The agent's own `switch_llm` tool loads a saved LLM profile and returns a
@@ -633,11 +593,21 @@ evidence)
 `.openhands/automation/automations.db` is SQLite (automation schedules and runs), outside this
 parser's scope.
 
+#### CLI prompt history
+
+`.openhands/projects/<sha256 of cwd>/prompt_history.json` is a JSON array of the last 100 prompts
+per working directory, `text` and `timestamp` (naive local `datetime.now().isoformat()`), oldest
+first
+([`stores/prompt_history.py:11-15`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/stores/prompt_history.py#L11-L15),
+[`59-95`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/stores/prompt_history.py#L59-L95)).
+It names no conversation, and its project is only a hash of the path; it survives the removal of a
+conversation directory and joins on text and time.
+
 #### Agent Canvas browser storage
 
-Agent Canvas front-end state (2026-10-19 review, Canvas at
-[`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95)).
-The front end keeps its own records in browser `localStorage`: in the Electron app that is the
+At Canvas
+[`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95)
+the front end keeps its own records in browser `localStorage`: in the Electron app that is the
 Chromium `Local Storage/leveldb` directory (LevelDB, the key-value file format Chromium stores it
 in) under the app's user data directory, which the catalog collects; in a browser it is the browser
 profile, outside the catalog. The analyzer has no LevelDB reader for these keys. Each value is JSON:
@@ -656,6 +626,15 @@ workspace choice, archive state and the profile the user picked.
 
 - Current SDK: as above. The 5-digit index is a minimum
   ([`persistence_const.py:6-10`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-sdk/openhands/sdk/conversation/persistence_const.py#L6-L10)).
+  Every path, the event file layout and every field the parser reads are the same at SDK
+  [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360),
+  Canvas
+  [`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95)
+  and CLI
+  [`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
+  as at the earlier commits; new at those commits are `mars-credentials.json`
+  ([section 3](#3-credentials)) and the `SecurityAnalysisEvent` kind
+  ([Permission records](#permission-records)), which the parser writes as a generic `system` row.
 - Legacy 1.x app: `.openhands/[<user_id>/]v1_conversations/<hex>/<event hex>.json`
   ([`openhands/app_server/conversation_paths.py:12`](https://github.com/OpenHands/OpenHands/blob/11ca68ab2e15dcd85c21e4d7d3409e7a259369ac/openhands/app_server/conversation_paths.py#L12);
   [`event/event_service_base.py:89`](https://github.com/OpenHands/OpenHands/blob/11ca68ab2e15dcd85c21e4d7d3409e7a259369ac/openhands/app_server/event/event_service_base.py#L89)),
@@ -680,10 +659,12 @@ and `secret_registry`, and `meta.json` `secrets`, are Fernet ciphertext when the
 `thinking_blocks[].signature`, `responses_reasoning_item.encrypted_content` are opaque blobs.
 Terminal output in observations and bash events can contain pasted tokens.
 
-`.openhands/cloud/api_key.txt` holds the OpenHands Cloud account key in plain text (mode 0600),
-written by `openhands login` and read by `openhands cloud` and `openhands acp --cloud`
-([`openhands_cli/auth/token_storage.py:19-37`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/auth/token_storage.py#L19-L37));
-the collector flags it through the `.openhands/cloud/*` secret glob.
+The Canvas `Local Storage` key `openhands-backends` ([section 10](#10-other-stores)) stores each
+backend's `apiKey` in plain JSON, an OpenHands Cloud key for a cloud backend
+([`src/api/backend-registry/types.ts:4-22`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/backend-registry/types.ts#L4-L22);
+[`storage.ts:95-101`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/backend-registry/storage.ts#L95-L101)).
+It shares the LevelDB files with the conversation metadata, so it is collected unflagged and the
+key is the one to redact.
 
 ### 13. Parser plan
 
@@ -707,72 +688,54 @@ once per conversation. Optional: `bash_events/*`. One row per event; an `ActionE
 
 #### Permission rows
 
-Rows written today (issues 96 and 97):
+Written (issues 96 and 97):
 
 - `permission decision: rejected rejection_source=<rejection_source> <rejection_reason>`: a `system`
   row immediately after the `UserRejectObservation`'s `tool_result` row, with its `tool_name` and
-  `tool_call_id`, from `rejection_source` (`-` when missing) and `rejection_reason`.
+  `tool_call_id`, from `rejection_source` (`user` or `hook`; `-` when missing) and
+  `rejection_reason`.
 - ` security_risk=<value>` at the end of an `ActionEvent`'s `tool_use` text, from `security_risk`.
 
-From the 2026-10-19 review (SDK
-[`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360),
-Canvas
-[`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95),
-CLI
-[`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2);
-evidence in [section 8](#8-record-schema) and [section 10](#10-other-stores)):
+An approval writes nothing, so none can be shown. Not yet written, from the records of
+[Permission records](#permission-records):
 
-- Permission, per call: written, for rejections (`UserRejectObservation`, `rejection_source` `user`
-  or `hook`). Not yet written: the `SecurityAnalysisEvent` verdict, today a generic
-  `SecurityAnalysisEvent: <JSON>` `system` row; proposed as one
-  `permission decision: analyzed risk=<risk> analyzer=<analyzer> policy=<policy>` row per entry of
-  `risks`, joined to the `ActionEvent` whose `id` is the key (its `tool_call_id` as `tool_use_id`).
-  An approval writes nothing, so none can be shown.
-- Permission, standing: not yet written. Proposed: one `permission setting:
-  confirmation_policy=<kind>[ threshold=<threshold>] (from base_state.json, file mtime)` row, one
-  `security_analyzer=<kind>` row, and one `blocked_actions.<action id>=<reason>` row per entry, per
-  conversation, at the file's modification time; the value is the policy at the last write, not its
-  history.
+- The `SecurityAnalysisEvent` verdict, today a generic `SecurityAnalysisEvent: <JSON>` `system`
+  row; proposed as one `permission decision: analyzed risk=<risk> analyzer=<analyzer>
+  policy=<policy>` row per entry of `risks`, joined to the `ActionEvent` whose `id` is the key (its
+  `tool_call_id` as `tool_use_id`).
+- Standing state: one `permission setting: confirmation_policy=<kind>[ threshold=<threshold>]
+  (from base_state.json, file mtime)` row, one `security_analyzer=<kind>` row, and one
+  `blocked_actions.<action id>=<reason>` row per entry, per conversation, at the file's
+  modification time; the value is the policy at the last write, not its history.
 
 #### Model rows
 
-Rows written today (issues 96 and 97):
+Written (issues 96 and 97): `model: <id>`, a `system` row after the conversation's header row, at
+the header's time, from `base_state.json` `agent.llm.model`, once per conversation.
 
-- `model: <id>`: a `system` row after the conversation's header row, at the header's time, from
-  `base_state.json` `agent.llm.model`. No `model: <old> -> <new>` row is written: when the parser
-  was written the research recorded one model per conversation and no event that records a model
-  switch. The 2026-10-19 review found the switch records ([Model records](#model-records)).
-
-From the 2026-10-19 review:
-
-- Model: written once per conversation from `agent.llm.model`. Not yet written:
-  `model: <old> -> <new>` at each `SwitchLLMObservation` or `ClassifyAndSwitchLLMObservation`
-  (`active_model`, with ` profile=<profile_name>`), and the per-response model from
-  `stats.usage_to_metrics.*.token_usages[]` joined on `llm_response_id`, which is the only record of
-  a switch made through the REST endpoints.
+Not yet written, from the records of [Model records](#model-records): `model: <old> -> <new>` at
+each `SwitchLLMObservation` or `ClassifyAndSwitchLLMObservation` (`active_model`, with
+` profile=<profile_name>`), and the per-response model from
+`stats.usage_to_metrics.*.token_usages[]` joined on `llm_response_id`, which is the only record of
+a switch made through the REST endpoints.
 
 #### Past-use rows and secondary sources
 
-From the 2026-10-19 review:
+- `.openhands/projects/<sha256 of cwd>/prompt_history.json` (CLI; secondary,
+  [CLI prompt history](#cli-prompt-history)): not read by the parser.
+- A fork's directory ([What survives a delete](#what-survives-a-delete)): primary, parsed as its
+  own conversation.
+- The Canvas browser-storage keys ([section 10](#10-other-stores)) hold no message text and repeat
+  no event; not read.
+- The global `agent-canvas/bash_events/` (terminal commands typed in Canvas) is a record of its
+  own, not a copy, and is not read.
 
-- Past use beyond the primary store: `.openhands/projects/<sha256 of cwd>/prompt_history.json` (CLI;
-  secondary): a JSON array of the last 100 prompts per working directory, `text` and `timestamp`
-  (naive local `datetime.now().isoformat()`), oldest first
-  ([`stores/prompt_history.py:11-15`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/stores/prompt_history.py#L11-L15),
-  [`59-95`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/stores/prompt_history.py#L59-L95)).
-  It names no conversation, and its project is only a hash of the path; it survives the removal of a
-  conversation directory and joins on text and time. Not read by the parser. A fork's directory is a
-  deep copy of its source's events and state
-  ([`agent_server/conversation_service.py:1952-1995`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/conversation_service.py#L1952-L1995))
-  that survives the source's deletion; it is parsed as its own conversation and joins on `meta.json`
-  `forked_from_conversation_id`. The Canvas browser-storage keys hold no message text. The global
-  `agent-canvas/bash_events/` (terminal commands typed in Canvas) is a record of its own, not a
-  copy, and is not read. The agent keeps no search index or summaries database of conversations: not
-  found in software-agent-sdk at
-  [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)
-  (grepped for `sqlite3`, `fts5` and `search_index`, and for `summar`, whose only hits under
-  `openhands-agent-server/` are profile-store listings; the one `sqlite` hit is a system library in
-  the Docker image).
+The agent keeps no search index or summaries database of conversations: not found in
+software-agent-sdk at
+[`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)
+(grepped for `sqlite3`, `fts5` and `search_index`, and for `summar`, whose only hits under
+`openhands-agent-server/` are profile-store listings; the one `sqlite` hit is a system library in
+the Docker image).
 
 #### Sync, relay and origin rows
 
@@ -808,7 +771,7 @@ own), and neither writes a local file that names the remote conversation:
   this catalog entry.
 
 Both need `openhands login`, which stores the account key in `.openhands/cloud/api_key.txt`
-([section 12](#12-secrets)) and pulls the account's settings down rather than pushing anything up
+([section 3](#3-credentials)) and pulls the account's settings down rather than pushing anything up
 ([`auth/login_command.py:31`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/auth/login_command.py#L31);
 [`auth/api_client.py:307-347`](https://github.com/OpenHands/OpenHands-CLI/blob/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2/openhands_cli/auth/api_client.py#L307-L347)).
 Neither has a local delete: the CLI has no conversation delete command, and the remote copy is
@@ -856,36 +819,38 @@ No `session synced:` row is proposed. Searched: `cloud`, `share`, `upload`, `syn
 `sandbox_id`, `all-hands.dev` in `openhands_cli/`, `openhands-sdk/`, `openhands-agent-server/` and
 `openhands-workspace/`. The OpenHands Cloud server is not in these repositories, so a share or sync
 feature of its own is not covered here. The Agent Canvas front end is in
-[OpenHands/OpenHands](https://github.com/OpenHands/OpenHands) and was reviewed on 2026-10-19 (the
-origin line below).
+[OpenHands/OpenHands](https://github.com/OpenHands/OpenHands); its origin records follow.
 
-From the 2026-10-19 review:
+Origin: not yet written. A Canvas backend of `kind` `cloud` lists OpenHands Cloud conversations,
+and a backend with `marsSessionId` is a DigitalOcean Managed Agents session
+([Electron app](#electron-app))
+([`src/api/mars/AGENTS.md:3`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/mars/AGENTS.md#L3),
+[`13`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/mars/AGENTS.md#L13);
+[`src/api/cloud/conversation-service.api.ts:70-104`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/cloud/conversation-service.api.ts#L70-L104)).
+Their transcripts never reach `~/.openhands`; the only local traces are the `localStorage` keys of
+[section 10](#10-other-stores). A `session origin: remote openhands-cloud` or
+`remote mars session <id>` row would need a LevelDB reader.
 
-- Sync: none, as above. Origin: not yet written. A Canvas backend of `kind` `cloud` lists OpenHands
-  Cloud conversations, and a backend with `marsSessionId` is a DigitalOcean Managed Agents session
-  (MARS, the vendor's name for DigitalOcean's hosted agent sandboxes: a microVM that runs its own
-  Agent Server with its own disk and conversations)
-  ([`src/api/mars/AGENTS.md:3`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/mars/AGENTS.md#L3),
-  [`13`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/mars/AGENTS.md#L13);
-  [`src/api/cloud/conversation-service.api.ts:70-104`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/api/cloud/conversation-service.api.ts#L70-L104)).
-  Their transcripts never reach `~/.openhands`; the only local traces are the `localStorage` keys of
-  [section 10](#10-other-stores). A `session origin: remote openhands-cloud` or
-  `remote mars session <id>` row would need a LevelDB reader. Relay: none (the agent records none;
-  grep evidence in [section 1](#1-source-and-evidence)).
+Relay: the agent records none. No messaging relay was found in OpenHands at
+[`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95),
+software-agent-sdk at
+[`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)
+or OpenHands-CLI at
+[`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
+(grepped for `telegram`, `slack`, `discord`, `whatsapp` and `jira`; the last is only a cloud
+feature flag).
 
 #### Scratch directory rows
 
-From the 2026-10-19 review:
-
-- Scratch directories: not written. The analyzer's catalog rule already classes
-  `.openhands/agent-canvas/workspaces/<hex>` and `.openhands/workspaces/<run>` (both under the
-  `.openhands` entry). A worktree conversation's `workspace.working_dir` is under
-  `/tmp/conversation-worktrees/<dir>` by default, outside every home, so it is listed as a project
-  ([`agent_server/config.py:286-293`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/config.py#L286-L293);
-  [`agent_server/local_storage.py:14-23`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/local_storage.py#L14-L23));
-  a `scratch directory: <working_dir> (conversation worktree)` row for a `working_dir` under that
-  default root is proposed. The root is configurable, so a non-default root cannot be recognised
-  from the conversation's files.
+Not written. The analyzer's catalog rule already classes `.openhands/agent-canvas/workspaces/<hex>`
+and `.openhands/workspaces/<run>` (both under the `.openhands` entry). A worktree conversation's
+`workspace.working_dir` under `/tmp/conversation-worktrees/<dir>`
+([Scratch directories](#scratch-directories);
+[`agent_server/local_storage.py:14-23`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/local_storage.py#L14-L23))
+is outside every home, so it is listed as a project; a
+`scratch directory: <working_dir> (conversation worktree)` row for a `working_dir` under that
+default root is proposed. The root is configurable, so a non-default root cannot be recognised
+from the conversation's files.
 
 #### Deletion rows
 
@@ -894,19 +859,17 @@ conversation ([What survives a delete](#what-survives-a-delete)).
 
 #### Bad-line rows
 
-From the 2026-10-19 review:
-
-- Bad lines: no file is read line by line, and an event file that does not decode gives one
-  `parser: event file could not be decoded (<reason>)` row. A `meta.json` or `base_state.json` that
-  exists but cannot be read, does not decode or is not a JSON object is read as empty and gives one
-  whole-file `system` row on the conversation's first event file, after the header and model rows:
-  `parser: <file name> could not be decoded (<reason>)`,
-  `parser: <file name> could not be read (<reason>)` or `parser: <file name> is not a JSON object`,
-  with an empty timestamp and the session id and `project_path` the other file still gives. The
-  header then lacks what the file held (title, model, time basis). A missing file is not an error,
-  since the CLI writes no `meta.json`. The cut-file shape is not observed on any real install,
-  source-derived (OpenHands/software-agent-sdk at
-  [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)).
+No file is read line by line, and an event file that does not decode gives one
+`parser: event file could not be decoded (<reason>)` row. A `meta.json` or `base_state.json` that
+exists but cannot be read, does not decode or is not a JSON object is read as empty and gives one
+whole-file `system` row on the conversation's first event file, after the header and model rows:
+`parser: <file name> could not be decoded (<reason>)`,
+`parser: <file name> could not be read (<reason>)` or `parser: <file name> is not a JSON object`,
+with an empty timestamp and the session id and `project_path` the other file still gives. The
+header then lacks what the file held (title, model, time basis). A missing file is not an error,
+since the CLI writes no `meta.json`. The cut-file shape is not observed on any real install,
+source-derived (OpenHands/software-agent-sdk at
+[`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)).
 
 #### Fixtures
 
@@ -928,12 +891,18 @@ Fixture (`.openhands/conversations/0f0e0d0c111140008000000000000001/`):
 
 ## 14. Confidence
 
-High: every path in [section 2](#2-per-user-storage) and [section 3](#3-credentials) under
-`~/.openhands` (constants and env defaults in the cited files), the Fernet scheme, the
-Docker-runtime bind mounts, the CLI and legacy layouts at the cited commits. Medium: the Electron
-user data directory (Electron convention from `productName`; the app does not set it explicitly);
-`agent-canvas/storage` contents (created for the automation file store, not traced); whether
-`secrets.json` in the legacy root used the same field names. Not determined: Agent Server file logs
-(`LOG_DIR` defaults to a relative `logs`, so the cwd of the server); the automation service's
-tarballs under `storage/`; whether a Canvas install leaves a uv tool environment worth collecting
-(uv caches are outside this tool's directories).
+- High: every path in [section 2](#2-per-user-storage) and [section 3](#3-credentials) under
+  `~/.openhands` (constants and env defaults in the cited files), the Fernet scheme, the
+  Docker-runtime bind mounts, the CLI and legacy layouts at the cited commits.
+- High: the conversation directory layout, file naming, the `kind` discriminator, the event field
+  names, the naive local `timestamp`, and the `security_risk` values `UNKNOWN`, `LOW`, ...
+  ([`security/risk.py:13-21`](https://github.com/OpenHands/software-agent-sdk/blob/b347047e2dcdd8f4b2be810aa8bc6632bc756d41/openhands-sdk/openhands/sdk/security/risk.py#L13-L21)).
+- Medium: the Electron user data directory (Electron convention from `productName`; the app does
+  not set it explicitly); `agent-canvas/storage` contents (created for the automation file store,
+  not traced); whether `secrets.json` in the legacy root used the same field names; the 1.x
+  `v1_conversations` event shape.
+- Not determined: Agent Server file logs (`LOG_DIR` defaults to a relative `logs`, so the cwd of
+  the server); the automation service's tarballs under `storage/`; whether a Canvas install leaves
+  a uv tool environment worth collecting (uv caches are outside this tool's directories); whether
+  any surface writes a zone-aware event timestamp; the full set of action and observation `kind`
+  values, which grows with each tool.

@@ -38,61 +38,13 @@ and the harness ships a shell toolset
 
 ### Source reviews
 
-- **Source review (2026-10-19)** at
-  [`62b7bf0`](https://github.com/pydantic/pydantic-ai/commit/62b7bf0aeac9a03066263469e650f40957d84cae),
-  against `0ba01f9` above. CLAI 2.0 now also writes under an XDG state
-  directory the catalog does not name ([State directory](#state-directory)).
-  One line per class:
-  - Permission: found. CLAI 2.0 asks for no per-call tool approval: "CLAI
-    runs tools without approval"
-    ([builtin_plugins/google_workspace.py:45](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/google_workspace.py#L45)),
-    and `ApprovalRequired` and `DeferredTool` occur nowhere in
-    `src/pydantic_clai2` (the `approv` matches are plugin approvals,
-    OAuth sign-in prompts and a prompt instruction); a project's plugins
-    stay disabled until approved with `/plugins enable`
-    ([config/project_settings.py:27](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/config/project_settings.py#L27)),
-    and enabled plugins are kept in `config.db` table `plugins(id,
-    declaration)`
-    ([config/settings_store.py:83-84](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/config/settings_store.py#L83-L84));
-    destroying a workspace needs the user's `Destroy <id>` answer to an
-    `ask_user_question` call, which stays in the orchestrator's messages
-    ([builtin_plugins/web/workspace_tools.py:80-102](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/web/workspace_tools.py#L80-L102)).
-  - Model: per conversation in `conversations.metadata.model`, per
-    response in the pydantic-ai messages, saved defaults in `config.db`
-    tables `models`, `model_settings` and `model_chains`
-    ([settings_store.py:83-102](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/config/settings_store.py#L83-L102)),
-    and per workspace in its record's `model`.
-  - Past use: found. `sessions.db` now also holds the step store (runs,
-    events, up to eight message snapshots per run, tool effects); the
-    orchestrator's conversation is a JSON file in the state directory and
-    never in `sessions.db`; workspace session logs; REPL state files
-    ([State directory](#state-directory), [Session store at HEAD](#session-store-at-head)).
-  - Sync, relay and origin: no session sync. The `observability`
-    plugin, on by default, sends run traces to Pydantic Logfire when a
-    token is present (`send_to_logfire` `if-token-present`), without
-    prompt and response content unless `include_content` is turned on
-    ([builtin_plugins/logfire.py:1-14](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/logfire.py#L1-L14),
-    [:70-73](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/logfire.py#L70-L73)).
-    The Slack integration is an MCP sign-in, not a relay
-    ([slack_app.py:1-15](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/slack_app.py#L1-L15)).
-  - Scratch directories: found. The workspaces plugin's clones and
-    worktrees, one of them under the uncatalogued state directory
-    ([Scratch directories](#scratch-directories), [section 4](#4-exclusions)).
-  - Deletion: found. Deleting a session removes its `conversations` row,
-    its runs, events, snapshots and tool effects, and its REPL state;
-    archiving keeps everything and sets `archived_at`
-    ([Session store at HEAD](#session-store-at-head)).
-  - Version drift: found. `sessions.db` and `input-history` are still
-    beside `config.db`, now opened from
-    [runtime/process.py:48](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/runtime/process.py#L48)
-    and
-    [runtime/session_runtime.py:560](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/runtime/session_runtime.py#L560);
-    the `conversations` columns are the same, its `metadata` JSON gained
-    `checkout` and `archived_at`, and the state directory is new.
-  - Bad lines: no parser yet; `input-history` and `prompt-history.txt`
-    are line files and `orchestrator.json` a whole-file JSON document.
-
-  The backlog verdict stands, with more to parse than before.
+- 2026-10-19: [`62b7bf0`](https://github.com/pydantic/pydantic-ai/commit/62b7bf0aeac9a03066263469e650f40957d84cae) against
+  [`0ba01f9`](https://github.com/pydantic/pydantic-ai/commit/0ba01f92be3fc361f89970502cd6e7dd3611aec3).
+  Added CLAI 2.0's XDG state directory, which the catalog does not name, the harness step store
+  and `metadata` keys of `sessions.db`, the saved model defaults in `config.db`, the workspaces
+  plugin's scratch checkouts, and the absence of per-call approval and of session sync
+  ([section 2](#2-per-user-storage), [section 3](#3-credentials), [section 4](#4-exclusions),
+  [section 6](#6-where-the-project-path-is-recorded), [Parsing](#parsing)).
 
 ## Collection
 
@@ -106,8 +58,8 @@ write:
 | --- | --- | --- |
 | `.pydantic-ai/prompt-history.txt` | `clai` v1 prompt_toolkit input history ([_cli/\_\_init\_\_.py:52-58](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/pydantic_ai_slim/pydantic_ai/_cli/__init__.py#L52-L58), [460-463](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/pydantic_ai_slim/pydantic_ai/_cli/__init__.py#L460-L463)) | default for `clai` |
 | `.config/pydantic-clai2/` (`$XDG_CONFIG_HOME` honoured; `~/.config` on macOS and Windows too) | the CLAI 2.0 folder ([settings_store.py:60-70](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/config/settings_store.py#L60-L70)) | default |
-| `.config/pydantic-clai2/config.db` | settings (`settings` table), "never credentials or conversation messages" (same citation; [\_\_main\_\_.py:29](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/__main__.py#L29)) | default |
-| `.config/pydantic-clai2/sessions.db` | table `conversations` (id, metadata JSON including `workspace`, `model`, `title`; `messages`; `updated_at`) ([_app.py:540](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/_app.py#L540), [conversations.py:37-58](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_ai_harness/pydantic_ai_harness/step_persistence/conversations.py#L37-L58), [154-156](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_ai_harness/pydantic_ai_harness/step_persistence/conversations.py#L154-L156)) | default |
+| `.config/pydantic-clai2/config.db` | settings (`settings` table), "never credentials or conversation messages" (same citation; [\_\_main\_\_.py:29](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/__main__.py#L29)); at [`62b7bf0`](https://github.com/pydantic/pydantic-ai/commit/62b7bf0aeac9a03066263469e650f40957d84cae) also the enabled plugins, `plugins(id, declaration)`, and the saved model defaults, tables `models`, `model_settings` and `model_chains` ([config/settings_store.py:83-102](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/config/settings_store.py#L83-L102)) | default |
+| `.config/pydantic-clai2/sessions.db` | the sessions, table `conversations`, and the harness step store (schema in [Session store](#session-store)) ([_app.py:540](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/_app.py#L540), [conversations.py:37-58](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_ai_harness/pydantic_ai_harness/step_persistence/conversations.py#L37-L58), [154-156](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_ai_harness/pydantic_ai_harness/step_persistence/conversations.py#L154-L156)) | default |
 | `.config/pydantic-clai2/input-history` | prompt history ([_app.py:789](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/_app.py#L789)) | default |
 | `.config/pydantic-clai2/credentials-<account>.enc` (the keyring holds the Fernet key, service `pydantic-clai2`) or `credentials-<account>.json` (plaintext, no keyring), with `.lock` sidecars | provider logins, `api-keys`, Copilot ([credential_store.py:1-5](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/config/credential_store.py#L1-L5), [23-42](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/config/credential_store.py#L23-L42), [149-152](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/config/credential_store.py#L149-L152)) | on login |
 | `.config/pydantic-clai2/mcp.json`, `mcp_logs/` | user MCP servers (headers "may be sensitive"), server logs ([mcp/_store.py:70-88](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/mcp/_store.py#L70-L88)) | on `/mcp install` |
@@ -125,7 +77,7 @@ and `checkout.root`.
 
 #### State directory
 
-From the 2026-10-19 source review. CLAI 2.0 keeps state
+At [`62b7bf0`](https://github.com/pydantic/pydantic-ai/commit/62b7bf0aeac9a03066263469e650f40957d84cae) CLAI 2.0 keeps state
 that is not a preference in `$XDG_STATE_HOME/pydantic-clai2` when that
 variable is absolute, else `.local/state/pydantic-clai2`, on every OS
 ([config/settings_store.py:60-69](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/config/settings_store.py#L60-L69)).
@@ -146,10 +98,14 @@ log
 [registry.py:117-119](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/workspaces/registry.py#L117-L119));
 the session the workspace's CLAI saved stays in `sessions.db`.
 
-#### Session store at HEAD
+#### Session store
 
-`sessions.db` still has `conversations(id,
-revision, metadata, messages, search_text, updated_at)`
+`sessions.db` and `input-history` are beside `config.db`, opened at [`62b7bf0`](https://github.com/pydantic/pydantic-ai/commit/62b7bf0aeac9a03066263469e650f40957d84cae) from
+[runtime/process.py:48](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/runtime/process.py#L48)
+and
+[runtime/session_runtime.py:560](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/runtime/session_runtime.py#L560).
+`sessions.db` has `conversations(id, revision, metadata, messages, search_text, updated_at)`, the
+same columns at both commits
 ([step_persistence/conversations.py:174-177](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_ai_harness/pydantic_ai_harness/step_persistence/conversations.py#L174-L177));
 `metadata` gained `checkout` (`repository`, `name`, `root`, `branch` of the
 git checkout, kept so a session can be grouped after its folder is gone)
@@ -197,7 +153,7 @@ None.
   plaintext; with one, the `.enc` form needs the keyring's Fernet key.
 - `.config/pydantic-clai2/logfire/logfire_credentials.json`: flagged.
 - `mcp.json` is collected unflagged although its headers may embed tokens.
-- Source review (2026-10-19): `.local/state/pydantic-clai2/workspaces/registry/<id>/token`
+- `.local/state/pydantic-clai2/workspaces/registry/<id>/token`
   is the access token of a running workspace's local `clai2 --web`
   server, plaintext, owner-only ([State directory](#state-directory)); not
   collected today, and a secret if the state directory is added. Slack
@@ -209,7 +165,7 @@ None.
 ### 4. Exclusions
 
 None under the home in the catalog today, since nothing the catalog collects there needs one.
-Source review (2026-10-19): `.local/state/pydantic-clai2/workspaces/clones`
+`.local/state/pydantic-clai2/workspaces/clones`
 holds full git clones of remote repositories
 ([State directory](#state-directory)); if the state directory is collected,
 the clones need an exclusion.
@@ -235,7 +191,7 @@ cannot read it; a project's `.clai` directory is collected when another
 agent's state or a `-p` option names the project. The analyzer is the
 place to read it.
 
-Source review (2026-10-19): `metadata.checkout.root` holds the git
+`metadata.checkout.root` holds the git
 checkout's top-level folder beside `workspace`, also inside SQLite. A
 workspace's `workspace.json` (plain JSON, keys `path` and `root`, and
 `repo` when that is a local path) names the agent's own checkouts, which
@@ -249,19 +205,40 @@ are scratch directories rather than projects
 yet. A parser would read CLAI 2.0's `.config/pydantic-clai2/sessions.db`: the `conversations`
 table (`metadata` with `workspace`, `model`, `title`, `checkout` and `archived_at`; `messages`)
 and the harness step store in the same file (`runs`, `events`, `snapshots`, `tool_effects`)
-([Session store at HEAD](#session-store-at-head)), with the prompt histories `input-history` and
+([Session store](#session-store)), with the prompt histories `input-history` and
 `clai` v1's `.pydantic-ai/prompt-history.txt`, which keep a deleted session's prompts, and the
 saved model defaults in `config.db`. The orchestrator's `orchestrator.json` and the workspace
 records sit in the state directory, which no catalog line names
 ([State directory](#state-directory)); a session imported from Claude Code or Codex repeats
-that agent's own store ([Other agents' sessions](#other-agents-sessions)).
+that agent's own store ([Other agents' sessions](#other-agents-sessions)). `input-history` and
+`prompt-history.txt` are line files and `orchestrator.json` a whole-file JSON document.
+
+CLAI 2.0 asks for no per-call tool approval: "CLAI runs tools without approval"
+([builtin_plugins/google_workspace.py:45](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/google_workspace.py#L45)),
+and `ApprovalRequired` and `DeferredTool` occur nowhere in `src/pydantic_clai2` at
+[`62b7bf0`](https://github.com/pydantic/pydantic-ai/commit/62b7bf0aeac9a03066263469e650f40957d84cae) (the `approv` matches are plugin approvals, OAuth sign-in prompts and a prompt
+instruction). A project's plugins stay disabled until approved with `/plugins enable`
+([config/project_settings.py:27](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/config/project_settings.py#L27)),
+and enabled plugins are kept in `config.db` ([section 2](#2-per-user-storage)). Destroying a
+workspace needs the user's `Destroy <id>` answer to an `ask_user_question` call, which stays in
+the orchestrator's messages
+([builtin_plugins/web/workspace_tools.py:80-102](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/web/workspace_tools.py#L80-L102)).
+The model is recorded per conversation in `conversations.metadata.model`, per response in the
+pydantic-ai messages, and per workspace in its record's `model`.
+
+No session is synced. The `observability` plugin, on by default, sends run traces to Pydantic
+Logfire when a token is present (`send_to_logfire` `if-token-present`), without prompt and
+response content unless `include_content` is turned on
+([builtin_plugins/logfire.py:1-14](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/logfire.py#L1-L14),
+[:70-73](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/logfire.py#L70-L73)).
+The Slack integration is an MCP sign-in, not a relay
+([slack_app.py:1-15](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/slack_app.py#L1-L15)).
 
 ## 14. Confidence
 
-High (source at the commit). Not determined: whether the
-`credentials-*.lock` files hold anything (the docstring says the SQLite
-lock file holds no secrets,
-[credential_store.py:80](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/config/credential_store.py#L80));
-the full `messages` encoding in `sessions.db` (media externalised to a
-`SqliteMediaStore`), which needs a record-schema study under [Parsing](#parsing) before a
-parser is written.
+- High: everything stated from source at the cited commits.
+- Not determined: whether the `credentials-*.lock` files hold anything (the docstring says the
+  SQLite lock file holds no secrets,
+  [credential_store.py:80](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/config/credential_store.py#L80));
+  the full `messages` encoding in `sessions.db` (media externalised to a `SqliteMediaStore`),
+  which needs a record-schema study under [Parsing](#parsing) before a parser is written.

@@ -19,17 +19,11 @@ agent definitions adopted by Codex, Copilot CLI and others.
 
 ### Source reviews
 
-- **Source review (2026-10-19)**: the source reviews of 2026-10-19 add two readers of the skills
-  directories. Zed reads `~/.agents/skills/<skill>/SKILL.md`
-  ([`crates/agent/src/agent.rs:616-638`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L616-L638)
-  at
-  [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)),
-  and Crush reads `~/.config/agents/skills` and `~/.agents/skills`, and also Claude Code's
-  `~/.claude/skills`
-  ([`internal/config/load.go:1312-1322`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1312-L1322)
-  at
-  [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da));
-  see [`zed.md`](zed.md), [`crush.md`](crush.md) and [`claude-code.md`](claude-code.md).
+- 2026-10-19: the Zed review at
+  [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
+  and the Crush review at
+  [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da)
+  added both as readers of the skills directories ([section 2](#2-per-user-storage)).
 
 ## Collection
 
@@ -43,6 +37,18 @@ agent definitions adopted by Codex, Copilot CLI and others.
 
 The layout is identical on every OS because the readers use `homedir()`
 without platform branching.
+
+Zed reads `~/.agents/skills/<skill>/SKILL.md`
+([`crates/agent/src/agent.rs:616-638`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L616-L638)
+at
+[`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6);
+[section 2 of `research/zed.md`](zed.md#2-per-user-storage)). Crush reads `~/.config/agents/skills`
+and `~/.agents/skills`, and also Claude Code's `~/.claude/skills`
+([`internal/config/load.go:1312-1322`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1312-L1322)
+at
+[`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da);
+[section 2 of `research/crush.md`](crush.md#2-per-user-storage) and
+[section 2 of `research/claude-code.md`](claude-code.md#2-per-user-storage)).
 
 #### Scratch directories
 
@@ -77,5 +83,6 @@ it did. The transcripts of each reader are parsed, where they are, under that ag
 
 ## 14. Confidence
 
-High. The only judgement is attribution: a `shared` match says several agents
-may have read the file, not which one did.
+- High for every path (each reader's source).
+- Attribution is the one judgement: a `shared` match says several agents may have read the file,
+  not which one did.

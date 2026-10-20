@@ -9,9 +9,8 @@ plugin. Its parser is in the backlog
 
 Closed source. Evidence, in order of weight:
 
-1. Shipped bundle `@augmentcode/auggie` 0.36.0 (`npm pack`,
-   `scratchpad/npm/augmentcode-auggie-0.36.0.tgz`, single minified
-   `package/augment.mjs`, 13 MB, 8201 lines). Line numbers are meaningless;
+1. Shipped bundle `@augmentcode/auggie` 0.36.0, fetched with `npm pack`: a single minified
+   `package/augment.mjs`, 13 MB, 8201 lines. Line numbers are meaningless;
    claims cite the literal string found with `grep -a`.
 2. Official docs at docs.augmentcode.com (`/cli/setup-auggie/authentication`,
    `/cli/rules`, `/cli/integrations`, `/cli/custom-commands`,
@@ -113,26 +112,22 @@ your code securely", docs) with only `vfs/` mirrors locally.
 
 `sessions/<id>.json` carries `workspaceRoot` next to `conversationId`
 (bundle `conversationId:n,workspaceRoot:r`; telemetry objects use the same
-pair). Exact JSON key path inside the session file is not verifiable
-without a live file. `daemon/<hash>/state.json` keys the workspace by a
+pair). `daemon/<hash>/state.json` keys the workspace by a
 truncated sha256 and is not reversible.
 
 ## Parsing
 
-Augment is `backlog`: the `auggie` CLI keeps full conversations on disk, and the parser is
-[issue 55](https://github.com/seanthegeek/doubleagent/issues/55). A future parser would read
-`~/.augment/sessions/<conversationId>.json` (full conversations, with `workspaceRoot` next to
-`conversationId`, see [section 6](#6-where-the-project-path-is-recorded)) and the prompt history
-`~/.augment/prompt-history.jsonl` (`{message}` lines, capped at 500;
-[section 2](#2-per-user-storage)); the session file's exact JSON shape has not been verified
-against a live file.
+Augment is `backlog`: the `auggie` CLI keeps full conversations and a prompt history on disk
+([section 2](#2-per-user-storage)), and the parser is
+[issue 55](https://github.com/seanthegeek/doubleagent/issues/55).
 
 ## 14. Confidence
 
-High (bundle literal): `~/.augment` root, `session.json` and its fields,
-`sessions/<id>.json`, `prompt-history.jsonl`, the five large dirs,
-`settings.json`, project dotfiles, env variable names. Medium (bundle
-context only): `sessions/` is the conversation store rather than a cache;
-`workspaceRoot` is persisted in the session file. Low: anything about the
-VS Code extension's globalStorage layout and the JetBrains plugin; the
-`augmentCacheDir` config key's source (settings.json vs flag).
+- High (bundle literal): the `~/.augment` root, `session.json` and its fields,
+  `sessions/<id>.json`, `prompt-history.jsonl`, the six excluded directories, `settings.json`,
+  the project dotfiles and the environment variable names.
+- Medium (bundle context only): that `sessions/` is the conversation store rather than a cache,
+  and that `workspaceRoot` is persisted in the session file; the session file's exact JSON shape
+  and key path cannot be verified without a live file.
+- Low: anything about the VS Code extension's globalStorage layout and the JetBrains plugin, and
+  the source of the `augmentCacheDir` config key (`settings.json` or a flag).

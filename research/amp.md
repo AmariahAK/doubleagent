@@ -2,25 +2,22 @@
 
 Amp is a closed-source coding agent, first published by Sourcegraph as `@sourcegraph/amp` and now as
 `@ampcode/cli`, whose command-line binary `amp` also drives desktop runners and an orb sandbox (the
-binary's name for its sandbox environment). Its thread transcripts are server-side. Evidence levels
-below are **B** (strings from the shipped binary), **D** (vendor documentation) and **S** (the
-install script). Its parser is in the backlog
+binary's name for its sandbox environment). Its parser is in the backlog
 ([issue 53](https://github.com/seanthegeek/doubleagent/issues/53)).
 
 ## 1. Source and evidence
 
 - Closed source. npm `@sourcegraph/amp` is now an alias whose only dependency is `@ampcode/cli`
-  (`scratchpad/npm/amp/package/package.json`, "Renamed to @ampcode/cli"). `@ampcode/cli`
+  (its `package.json` says "Renamed to @ampcode/cli"). `@ampcode/cli`
   0.0.1791060199-g5bacb8 is a wrapper (`install.cjs`, `cli-wrapper.cjs`) over per-platform packages;
   the Linux binary is `@ampcode/cli-linux-x64/amp`, a bun-compiled ELF (128 MB). Evidence level
-  **B** = `strings -n 8` (`scratchpad/npm/amp.strings`) and `strings -el` UTF-16
-  (`scratchpad/npm/amp.strings16`) of that binary; the UTF-16 table holds the minified application
-  code and is where the path joins live.
-- Evidence level **D** = official docs, fetched as Markdown from
-  `https://ampcode.com/docs/markdown/<page>` (saved in `scratchpad/amp-docs/`; index
-  `https://ampcode.com/llms.txt`).
-- Evidence level **S** = install script `https://ampcode.com/install.sh`
-  (`scratchpad/amp-install.sh`).
+  **B** is strings from that binary: `strings -n 8` (cited as `amp.strings`) and `strings -el`
+  UTF-16 (`amp.strings16`); the UTF-16 table holds the minified application code and is where the
+  path joins live.
+- Evidence level **D** is the official docs, fetched as Markdown from
+  `https://ampcode.com/docs/markdown/<page>` (index `https://ampcode.com/llms.txt`).
+- Evidence level **S** is the install script `https://ampcode.com/install.sh`, cited as
+  `amp-install.sh`.
 - Thread transcripts are server-side: the bug-report bundler writes "The full thread is stored
   server-side and can be fetched by a site admin" (`amp.strings` near `thread/full.json`); docs say
   remote MCP definitions and threads are "stored by ampcode.com" (`customize_mcp.md:15,301`). No
@@ -131,7 +128,8 @@ Env relocation: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `AMP_HOME`
 - `~/.local/share/amp/ide/*` IDE connection records include `authToken`. (B)
 - `settings.json` can embed MCP server `env`/headers (`amp.mcpServers`, `customize_mcp.md:244-245`).
   `AMP_API_KEY` env var.
-- `.config/amp/secrets.json` (current catalog) was not found anywhere in the binary.
+- No `secrets.json` under `.config/amp` occurs anywhere in the binary; the file fallback is the
+  data directory's.
 
 ### 4. Exclusions
 
@@ -149,26 +147,26 @@ Env relocation: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `AMP_HOME`
 
 ### 6. Where the project path is recorded
 
-`~/.local/share/amp/history.jsonl`: JSONL, key `cwd` per entry (B, medium).
-`~/.cache/amp/logs/threads/<T-id>.log` lines carry a thread id; cwd content unverified. No local
-thread index.
+`~/.local/share/amp/history.jsonl`: JSONL, key `cwd` per entry (B).
+`~/.cache/amp/logs/threads/<T-id>.log` lines carry a thread id; their cwd content is unverified.
+No local thread index.
 
 ## Parsing
 
 Amp is `backlog`: the parser is [issue 53](https://github.com/seanthegeek/doubleagent/issues/53).
-The full threads are stored server-side by ampcode.com ([section 1](#1-source-and-evidence)), so a
-future parser would read what stays local ([section 2](#2-per-user-storage)): the prompt history
-`~/.local/share/amp/history.jsonl` (`{text, cwd}` entries), the per-thread logs
-`~/.cache/amp/logs/threads/<T-id>.log` and `logs/cli.log`, the terminal tool's shell history
-`~/.cache/amp/terminal/<threadId>/history`, and the Claude Code session files Amp copies into
-`~/.amp/claude-diagnostics/<T-id>/sessions/`; no record schema has been researched yet.
+The full threads are server-side ([section 1](#1-source-and-evidence)), so a parser would read
+what stays local: the prompt history, the per-thread and CLI logs, the terminal tool's shell
+history and the Claude Code session copies ([section 2](#2-per-user-storage)). No record schema
+has been researched yet.
 
 ## 14. Confidence
 
-High: config/data/cache resolution, `settings.json(c)`, `secrets.json`, `accounts.json`,
-`history.jsonl`, `logs/cli.log`, `logs/threads`, `~/.amp/bin`, `~/.amp/oauth`, keyring use,
-server-side threads. Medium: `history.jsonl` `cwd` key (inferred from size accounting and type);
-`accounts/<dir>/secrets.json` naming; `ide/` contents. Low: whether `AppData/Local/amp` ever holds
-anything but `bin`. Not determined: exact JSON schema of `secrets.json`/`accounts.json`; whether
-`claude-diagnostics` is created outside orb sandboxes; Windows keyring behaviour (Credential Manager
-via keyring-rs assumed).
+- High: the config, data and cache resolution, `settings.json(c)`, `secrets.json`,
+  `accounts.json`, `history.jsonl`, `logs/cli.log`, `logs/threads`, `~/.amp/bin`, `~/.amp/oauth`,
+  the keyring use and the server-side threads.
+- Medium: the `history.jsonl` `cwd` key (inferred from size accounting and type), the
+  `accounts/<dir>/secrets.json` naming and the `ide/` contents.
+- Low: whether `AppData/Local/amp` ever holds anything but `bin`.
+- Not determined: the exact JSON schema of `secrets.json` and `accounts.json`; whether
+  `claude-diagnostics` is created outside orb sandboxes; the Windows keyring behaviour
+  (Credential Manager through keyring-rs is assumed).
