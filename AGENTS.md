@@ -575,6 +575,16 @@ source even when their models are not, and the path constants are easy to
 find. The validation for every current entry is recorded in the index table in
 [`research/README.md`](research/README.md).
 
+What counts as one agent is decided before any line is written, by the
+rule under [Research document structure](#research-document-structure):
+a product's surfaces (a CLI, a desktop app, an editor fork, an extension)
+are separate catalog agents only when each has a state directory the
+catalog can attribute on its own, directly or through a nested entry;
+surfaces that write into one shared tree are one catalog agent, one
+`agent|path` set and one document. The name in the `agent|path` lines,
+the document's file name and the `agent` attribute of its parser are the
+same string.
+
 1. Shallow-clone the repository into the scratchpad and grep for `homedir`,
    `XDG`, `APPDATA`, `Application Support`, `.config/`, `.local/share`,
    `sessions`, `history`, `sqlite`, `auth`, `token`, `secrets`, `cache`,
