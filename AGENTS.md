@@ -596,7 +596,19 @@ find. The validation for every current entry is recorded in the index table in
    `Unreleased` in [`analyzer/CHANGELOG.md`](analyzer/CHANGELOG.md), because the analyzer's detection
    changes with the catalog copy.
 4. Add large or irrelevant subtrees to `EXCLUDES` and credential files to
-   `SECRET_GLOBS`. If the tool's README, compose file or installer creates a
+   `SECRET_GLOBS`. The test for an exclusion is whether the agent made the
+   content or copied it: collect what it made, skip what it copied. A git
+   worktree or clone, a plugin marketplace checkout, `node_modules`, a
+   cache, an embedding index, model weights and a downloaded binary are
+   copies of something that exists elsewhere, so they are excluded, and
+   what the agent added to a worktree is recovered from the transcript
+   and the git metadata. A scratch or output directory (Codex's
+   `Documents/Codex/<date>/<slug>/outputs`, Claude Code's temp root) is
+   the agent's own work, exists nowhere else and is the first thing a
+   temp cleaner removes, so it is collected whole, capped by size; when a
+   round shows a large copied subtree inside one, the exclusion names
+   that subtree, never the scratch directory. If the tool's README,
+   compose file or installer creates a
    named Docker volume, add its name pattern to `DOCKER_VOLUMES` with the
    source cited in the comment above it, and add volume-relative forms of
    its exclusions and secret globs (paths relative to the container mount
