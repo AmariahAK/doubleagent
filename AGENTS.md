@@ -811,6 +811,25 @@ agent, `research/<agent>.md`, follows one outline, with the same heading
 names (the name is the anchor the link check and the site derive, so the
 anchors are stable), the same fixed subsections, and
 room for unique subsections under the section that owns the fact.
+
+The document's unit is the catalog agent, and the catalog agent's unit is
+the state directory. A surface (a CLI, a desktop app, an editor fork, an
+extension) is its own catalog agent, with its own document, when its
+state lives in a directory the catalog can attribute on its own, at most
+through a nested entry: `copilot-cli` (`~/.copilot`), `copilot-desktop`
+(the Tauri app's directories) and `copilot` (the token store the editor
+plugins' language server writes) are three agents because they are three
+products with three trees, as `claude-code` and `claude-desktop` are.
+Surfaces that write into one shared tree stay one agent and one document:
+the Cursor IDE embeds the Cursor Agent CLI as its worker and both write
+`~/.cursor/projects/<cwd>/agent-transcripts`, `cli-config.json` and
+`ai-tracking/`, so a split would credit one session's evidence to two
+agents; the Antigravity app and CLI share `~/.gemini` the same way. Such a
+document keeps a `####` subsection per surface under Per-user storage
+and under Transcript stores, states which surface writes each store, and
+carries one Observed bullet per surface-and-platform cell. A surface is
+never split out to make a document shorter, and never merged in to save
+a catalog line: the directory decides.
 `tools/check_research_structure.py` enforces the outline, the split
 phrases and the placement of confidence paragraphs; with
 `--before <dir>` holding the previous copies it also lists every citation,
@@ -1128,9 +1147,11 @@ never parsed until the app itself was exercised (October 2026), because
 the CLI round had been taken as covering the agent. The matrix is
 surfaces times platforms and each cell is its own round: install the
 CLI and exercise it, install the app and exercise it, on macOS, Windows
-and Linux, with one bullet per cell in the Observed subsection of both
-research documents; a cell with no bullet is a gap to close, not a note
-to leave. Within a surface, run every kind of task it offers, each one
+and Linux, with one bullet per cell in the Observed subsection of the
+agent's document, or of each document when the surfaces are separate
+catalog agents (the rule is under
+[Research document structure](#research-document-structure)); a cell
+with no bullet is a gap to close, not a note to leave. Within a surface, run every kind of task it offers, each one
 on its own with a listing diff after it: a question with no tool use, a
 coding task that writes files, a scheduled or automated task, a
 third-party integration such as a plugin or an MCP server, a resumed
