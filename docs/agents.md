@@ -47,7 +47,7 @@ agent name in each row links to its subsection.
 | [`copilot-desktop`](#copilot-desktop) | parsed | shipped app and real installs: Linux, Windows (October 2026) | [research](../research/copilot-desktop.md); [issue 147](https://github.com/seanthegeek/doubleagent/issues/147); [issue 149](https://github.com/seanthegeek/doubleagent/issues/149): the inventory lists the app's own directories as projects |
 | [`crewai`](#crewai) | backlog | Source, appdirs source | [research](../research/crewai.md); [issue 140](https://github.com/seanthegeek/doubleagent/issues/140); `latest_kickoff_task_outputs.db` holds every task's output with its messages |
 | [`crush`](#crush) | parsed | source; fixture only | [research](../research/crush.md) |
-| [`cursor`](#cursor) | parsed | real install: macOS (October 2026); bundle for the CLI | [research](../research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); the Agent CLI's `chats/` and `acp-sessions/` stores are not parsed |
+| [`cursor`](#cursor) | parsed | real installs: macOS, IDE and CLI (October 2026) | [research](../research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); [issue 235](https://github.com/seanthegeek/doubleagent/issues/235); [issue 236](https://github.com/seanthegeek/doubleagent/issues/236); the Agent CLI's own chat store is not parsed yet |
 | [`dify`](#dify) | backlog | Source | [research](../research/dify.md); [issue 142](https://github.com/seanthegeek/doubleagent/issues/142); sandbox `shellctl.db` and job logs hold shell jobs; chats in PostgreSQL |
 | [`factory-droid`](#factory-droid) | backlog | Shipped binary strings, docs | [research](../research/factory-droid.md); [issue 54](https://github.com/seanthegeek/doubleagent/issues/54); JSONL session transcripts under `.factory/sessions` and a prompt history |
 | [`flowise`](#flowise) | backlog | Source | [research](../research/flowise.md); [issue 68](https://github.com/seanthegeek/doubleagent/issues/68); `database.sqlite` with `chat_message` (tool use and agent reasoning) and `execution` |
@@ -512,7 +512,13 @@ rows), `.cursor/cli-config.json` and `.cursor/permissions.json` in the
 home or a project (`permission setting:` rows). Secondary source:
 `.cursor/projects/<sanitized cwd>/agent-transcripts/<composerId>/<composerId>.jsonl`,
 the agent worker's copy of each conversation, which survives a delete
-(one-minute window, since its user lines are stamped to the minute).
+(one-minute window, since its user lines are stamped to the minute). A
+standalone Agent CLI session is read through the files it shares with
+the IDE: its transcript JSONL under `.cursor/projects`, its `source`
+`cli` rows of `ai-code-tracking.db` and `cli-config.json`. Its own chat
+store, `.cursor/chats/<md5 of cwd>/<sessionId>/store.db` with
+`meta.json` and `prompt_history.json`, is not read yet
+({I235}).
 
 Validated against: Real install of the Cursor IDE on macOS 26.6.2
 (builds 3.24.18, 3.25.9 and 3.26.13, 2026-10-19 and 2026-10-20): the
@@ -522,9 +528,12 @@ header chunks, the agent transcripts, `conversation-search.db` and the
 archive and a delete left; synthetic fixture. `permissions.json` and a
 non-local `agentLocation` (bundle-derived) and rows of the
 `conversation_summaries`, `ai_deleted_files` and `scored_commits` tables
-(empty on the install) are fixture only. The shipped Agent CLI bundle, docs, forum and
-write-ups describe the CLI's `chats/` and `acp-sessions/` stores, which
-no real install has shown and the parser does not read.
+(empty on the install) are fixture only. Real install of the
+standalone Cursor Agent CLI on macOS 26.6.2 (2026.10.19-6bbf2c4,
+2026-10-20): its transcript JSONL, its `ai-code-tracking.db` rows and
+the `permissions.allow` entries of `cli-config.json`; its chat store,
+observed on that install, is not parsed. The CLI's `acp-sessions/` store
+rests on the shipped bundle alone, and the parser does not read it.
 
 ### `gemini-cli`
 

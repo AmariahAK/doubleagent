@@ -12,27 +12,31 @@ the `cursor/glass.*` keys); `agentKv` is the key prefix of a content-addressed b
 the IDE's database; `yolo` is Cursor's internal name for auto-run, the setting that runs agent
 tool calls without asking (`yoloCommandAllowlist`); and `toolFormer` is its internal name for a
 tool call's record inside a bubble (`toolFormerData`). The analyzer parses the IDE's
-conversations
-([issue 51](https://github.com/seanthegeek/doubleagent/issues/51)); the Agent CLI's own stores
-are not parsed.
+conversations ([issue 51](https://github.com/seanthegeek/doubleagent/issues/51)) and the files a
+CLI session shares with the IDE; the Agent CLI's own chat store is not parsed yet
+([issue 235](https://github.com/seanthegeek/doubleagent/issues/235)).
 
 ## Source and evidence
 
-Closed source. Evidence, strongest first; the real install is the evidence for the IDE, the
-shipped bundle for the CLI:
+Closed source. Evidence, strongest first; the real installs are the evidence for the IDE and for
+the CLI's macOS layout, the shipped bundle for the CLI features and platforms no install has
+shown:
 
-- Real install: the Cursor IDE on macOS, builds 3.24.18, 3.25.9 and 3.26.13 (2026-10-19 and
-  2026-10-20; [Observed](#observed)). Read for file names, sizes, key, table and column names,
+- Real installs on macOS ([Observed](#observed)): the Cursor IDE, builds 3.24.18, 3.25.9 and
+  3.26.13 (2026-10-19 and 2026-10-20), and the standalone Cursor Agent CLI, build
+  2026.10.19-6bbf2c4 (2026-10-20). Read for file names, sizes, key, table and column names,
   value types and enum values only; no value from the install is reproduced, and account ids are
-  written `u<id>` and `auth0|user_<id>`.
+  written `u<id>` and `auth0|user_<id>`, CLI session ids `<sessionId>`.
 - L1 shipped bundles. The IDE: Cursor 3.25.9 and 3.26.13 for macOS,
   `Cursor.app/Contents/Resources/app/out/vs/workbench/workbench.glass.main.js`, grepped for
   literal strings, cited below as `workbench.glass.main.js` with the snippet (byte offsets were
   not recorded). The CLI: Cursor Agent CLI `2026.10.01-e373342`, `agent-cli-package.tar.gz` from
   `downloads.cursor.com/lab/.../linux/x64/` (the URL is in the install script
   `https://cursor.com/install`, lines 78-131). Minified webpack chunks keep module names, so
-  citations are `<chunk>.js` plus the original module path.
+  citations are `<chunk>.js` plus the original module path. The real install ran the newer
+  2026.10.19-6bbf2c4, the build the IDE's worker directory held.
 - L2 official docs: [Cursor CLI configuration](https://cursor.com/docs/cli/reference/configuration),
+  [Cursor CLI parameters](https://cursor.com/docs/cli/reference/parameters) (fetched 2026-10-20),
   [Cursor rules](https://cursor.com/docs/context/rules),
   [Cursor MCP](https://cursor.com/docs/context/mcp),
   [Cursor hooks](https://cursor.com/docs/agent/hooks),
@@ -90,15 +94,44 @@ shipped bundle for the CLI:
   the editor window (19:04Z) are in [What survives a delete](#what-survives-a-delete). The Agents
   window did not render the replies of 17:39Z and 17:59Z, which the store held whole and the
   editor window showed.
-- Cursor Agent CLI, standalone (`agent`, `cursor-agent`, with its `~/.cursor/chats` and
-  `acp-sessions` stores), any platform: not observed on any real install; bundle-derived
-  ([Cursor Agent CLI](#cursor-agent-cli)).
+- macOS, Cursor Agent CLI 2026.10.19-6bbf2c4, 2026-10-20 ([issue 235](https://github.com/seanthegeek/doubleagent/issues/235)): `agent` and `cursor-agent`,
+  the build the IDE's worker directory held, installed with `curl https://cursor.com/install -fsS
+  | bash` in the same VM reverted to its clean snapshot (no `Cursor.app`), signed in to the IDE
+  round's account (Pro), with the project recreated with one commit. One step per listing, each
+  diffed against the last (times UTC): the install and a first start from the home directory,
+  not signed in (about 20:05Z), wrote the install directory, `cli-config.json` and an empty
+  project entry ([Cursor Agent CLI](#cursor-agent-cli)) and the logs of
+  [Scratch directories](#scratch-directories); `/login` in the CLI (20:12Z) wrote the keychain
+  items and the identity of [Credentials](#credentials), and the user quit at the
+  workspace-trust prompt the CLI showed for the home directory; a start in the project (20:15Z),
+  whose trust prompt the user accepted, wrote the trust record
+  ([CLI session and trust files](#cli-session-and-trust-files)), a session with no conversation
+  and the tracking database; a question with no tool use (20:17Z) wrote a second session with its
+  chat store ([CLI chat store](#cli-chat-store)) and a transcript JSONL
+  ([Agent transcript JSONL](#agent-transcript-jsonl)); a code edit of `calc.py` (20:21Z),
+  applied with no prompt, wrote tool messages and tracking rows
+  ([`ai-code-tracking.db`](#ai-code-trackingdb)); a shell command (20:27Z) waited at a
+  four-option prompt, answered Allow once (20:33Z), then Skip with a typed instruction (20:36Z)
+  and Add to the allow list (20:41Z), the last adding a standing entry
+  ([Permission rows](#permission-rows)); a `/model` switch with no message sent (20:43Z) changed
+  only `cli-config.json`, and a question after it (20:47Z) recorded the new model
+  ([Model rows](#model-rows)); a quit and `agent resume` (20:49Z) wrote nothing to the session
+  ([Joins and timestamps](#joins-and-timestamps)); `agent logout` (20:52Z) and the removal of the
+  project directory (20:53Z) are in [What survives a delete](#what-survives-a-delete). Nothing
+  was written inside the project but the edited file.
+- Cursor Agent CLI features the macOS round did not exercise (the `acp-sessions` store,
+  `agent worker`, worktrees, plans, hooks, MCP servers, print mode `-p`), any platform: not
+  observed on any real install; bundle-derived ([Cursor Agent CLI](#cursor-agent-cli)).
 - Cloud (background) agents and worktree agents, any platform: not observed on any real install.
-- Windows and Linux, IDE and CLI: not observed on any real install; the IDE paths there are the
-  macOS layout under the VS Code user-data-directory convention.
+- Windows and Linux, IDE and CLI: not observed on any real install ([issue 236](https://github.com/seanthegeek/doubleagent/issues/236)); the IDE paths
+  there are the macOS layout under the VS Code user-data-directory convention.
 
 ### Source reviews
 
+- 2026-10-20: the [Cursor CLI parameters](https://cursor.com/docs/cli/reference/parameters)
+  reference (L2), for the CLI's commands. The document gained the command list and the absence of
+  a delete, clear, export or share command, and the CLI's half was rewritten from the real
+  install.
 - 2026-10-20: the IDE bundles 3.25.9 and 3.26.13 for macOS (`workbench.glass.main.js`, the run
   modes, the permission files and the delete commands) and the forum thread
   [How to delete a chat in Agent Window](https://forum.cursor.com/t/how-to-delete-a-chat-in-agent-window/163380/5).
@@ -122,12 +155,18 @@ parents follow the VS Code convention and were not observed.
 Outside the home, under `$TMPDIR` (`/private/var/folders/.../T/` on macOS), which no catalog line
 reaches ([`collectors/docs/coverage.md`](../collectors/docs/coverage.md)):
 
-- `cursor-agent-logs-<uid>/`: the IDE worker's logs, `session-<iso time>-<pid>-1.log` and a
-  `latest.log` symlink. They were gone between 18:11Z and 19:02Z on 2026-10-20 with no user
-  action, so they are not a durable source.
+- `cursor-agent-logs-<uid>/`: the logs of the IDE's worker and of the standalone CLI, one
+  `session-<iso time>-<pid>-<n>.log` per process (mode 0600; the CLI's interactive process and
+  its worker each write one, with a second, often empty, `-2.log` beside it, and every `agent`
+  command such as `agent logout` writes its own) and a `latest.log` symlink to the newest. The
+  IDE's were gone between 18:11Z and 19:02Z on 2026-10-20 with no user action, so they are not a
+  durable source.
 - `cursor-agent-worker-<hash>.sock`: the worker's socket.
 - `<user>-cursor-zsh/`: copies of the user's `.zlogin`, `.zprofile`, `.zshenv` and `.zshrc`
   (0.6 to 10 KB each) for the IDE's zsh shell integration, seen on 2026-10-20.
+
+Outside the home under `/private/tmp`: `cursor-askpass-<hex>-<n>.sock`, the CLI's git askpass
+socket (0 bytes), a new one per start (2026.10.19-6bbf2c4, 2026-10-20).
 
 #### Cursor IDE
 
@@ -203,34 +242,62 @@ of the CLI.
 CLI data root `~/.cursor` (`CURSOR_DATA_DIR` override; `index.js` module
 `../cursor-config/dist/paths.js`, function `c`). Config root for `cli-config.json` is
 `CURSOR_CONFIG_DIR`, else `$XDG_CONFIG_HOME/cursor`, else `~/.cursor` (same module, function `a`;
-docs cli/reference/configuration). Contents found in the bundle:
+docs cli/reference/configuration).
+
+What the macOS install (2026.10.19-6bbf2c4, 2026-10-20) wrote, in the order of its steps
+([Observed](#observed)):
+
+| Path | Holds |
+| --- | --- |
+| `~/.local/share/cursor-agent/versions/<ver>/` | the CLI itself, 614 MB for 2026.10.19-6bbf2c4: webpack chunks `NNNN.index.js`, `node_modules/` and the `cursor-agent` entry point; `.running/<pid>` (0 bytes) while a process of that version runs, one for the interactive process and one for its worker, which can outlive it |
+| `~/.local/bin/agent`, `~/.local/bin/cursor-agent` | symlinks to that version's `cursor-agent`; no `~/.local/bin/cursor` |
+| `~/.cursor/cli-config.json` | the settings, the model selection and its history, the standing allow and deny lists and, while signed in, the account identity; 837 bytes at the first start, 2,549 at most ([`cli-config.json`, `permissions.json` and `sandbox.json`](#cli-configjson-permissionsjson-and-sandboxjson)) |
+| `~/.cursor/statsig-cache.json` | the server's feature-flag cache, 954 KB, from the first start until `agent logout` removed it; excluded |
+| `~/.cursor/projects/<sanitized cwd>/` | one per directory the CLI started in; the home's stayed empty; the project's held `.workspace-trusted` and `repo.json` ([CLI session and trust files](#cli-session-and-trust-files)), `worker.log`, `worker.sock` while the worker ran, and `agent-transcripts/<sessionId>/<sessionId>.jsonl` ([Agent transcript JSONL](#agent-transcript-jsonl)) |
+| `~/Library/Caches/cursor-compile-cache/v26.8.1-arm64-<hash>-<uid>/` | empty |
+| `~/.cursor/agent-cli-state.json` | `{hasClearedLegacyStatsigFields, version}`, 59 bytes, from sign-in |
+| `~/.cursor/chats/<md5 of cwd>/<sessionId>/` | one per start of `agent` in the project (the starts in the home wrote none): `meta.json`, and once a prompt is sent `prompt_history.json` and `store.db` (+`-wal`, `-shm`; a 194 KB WAL after one question, a 200 KB `store.db` once a quit checkpointed it) ([CLI chat store](#cli-chat-store)); a start that sent nothing leaves its `meta.json` alone |
+| `~/.cursor/ai-tracking/ai-code-tracking.db` | the tracking database the IDE also writes, 72 KB ([`ai-code-tracking.db`](#ai-code-trackingdb)) |
+| `~/.cursor/skills-cursor/` | the built-in skills, synced down after sign-in as the IDE does, with `.sync-manifest.json` |
+
+`worker.log` holds the worker's start lines (`[info] runServer socketPath=<projects
+dir>/worker.sock`, `[debug] Starting typescript-language-server ...`, `[info] Skipping codebase
+telemetry sync`), about 570 bytes per start. The install wrote no `~/.config/cursor/` and no
+`~/.cursor/auth.json`, and nothing inside the project but the file the agent edited: no
+`.cursor/` and no `.git/cursor/`.
+
+Contents found in the bundle (2026.10.01-e373342); the entries the macOS install did not write are
+not observed on any real install:
 
 - `projects/<sanitized cwd>/` where the name is the path with every non-alphanumeric run replaced by
   `-` (`../utils/dist/workspace-paths.js` function `s`; `paths.js` function `d` truncates to 84
   chars plus a 7-hex sha256 suffix, falling back to `/tmp/.cursor` when the home path is too long).
-  Inside: `agent-transcripts/` (`*.jsonl`, older `*.txt`), `terminals/` (terminal captures),
+  Inside: `agent-transcripts/` (`*.jsonl`, observed; older `*.txt`), `.workspace-trusted`
+  (observed), and, not written by the CLI on the install, `terminals/` (terminal captures),
   `agent-tools/` (tool outputs over 51,380,224 bytes), `agent-notes/shared` and
-  `agent-notes/<agent>`, `mcps/`, `mcp-auth.json`, `mcp-approvals.json`, `mcp-cache.json`,
-  `.workspace-trusted` (`index.js` ignore list `!projects/*/...`; `./src/mcp/project-paths.ts`;
+  `agent-notes/<agent>`, `mcps/`, `mcp-auth.json`, `mcp-approvals.json`, `mcp-cache.json`
+  (`index.js` ignore list `!projects/*/...`; `./src/mcp/project-paths.ts`;
   `./src/workspace/approval.tsx`).
 - `chats/<md5(resolved cwd)>/<sessionId>/store.db` plus `meta.json` (`7000.index.js`
   `./src/state/index.ts` functions `a`,`i`; `./src/state/chat-session-meta.ts` schema v1 with
   `createdAtMs`, `updatedAtMs`, `cwd`, `hasConversation`, `isSubagent`). `store.db` tables
-  `meta(key,value)` and `blobs(id,data)` (codeburn 986).
-- `acp-sessions/<id>/store.db` and `meta.json` (`6136.index.js`).
+  `meta(key,value)` and `blobs(id,data)` (codeburn 986). Observed, with the differences in
+  [CLI session and trust files](#cli-session-and-trust-files).
+- `acp-sessions/<id>/store.db` and `meta.json` (`6136.index.js`), the sessions of `agent acp`.
 - `worktrees/<repo>/<name>` (`CURSOR_WORKTREES_ROOT`; `index.js` `./src/project/worktree.ts`),
-  `plans/` (`1623.index.js`), `commands/`, `skills/`, `skills-cursor/`, `cloud-skills/`,
-  `plugins/{local,marketplaces,local-marketplaces.json}` (`index.js`
+  `plans/` (`1623.index.js`), `commands/`, `skills/`, `skills-cursor/` (observed),
+  `cloud-skills/`, `plugins/{local,marketplaces,local-marketplaces.json}` (`index.js`
   `../cursor-plugins/dist/index.js`), `sandbox-policies/` (`CURSOR_SANDBOX_POLICY_DIR`),
   `ide_state.json` (recently viewed files), `hooks.json`, `hooks/`,
   `managed/active-team-hooks/hooks.json` (`190.index.js`), `mcp.json` (docs),
-  `ai-tracking/ai-code-tracking.db` (`2734.index.js`), `extensions/` and `argv.json` (dataFolderName
-  convention; AgentSweep 859-872).
+  `ai-tracking/ai-code-tracking.db` (`2734.index.js`; observed), `extensions/` and `argv.json`
+  (dataFolderName convention; AgentSweep 859-872).
 - Enterprise hooks: `/Library/Application Support/Cursor/hooks.json`, `/etc/cursor/hooks.json`,
   `C:\ProgramData\Cursor\hooks.json` (`190.index.js`; docs agent/hooks).
 - CLI binaries: `~/.local/share/cursor-agent/versions/<ver>/`, symlinks
-  `~/.local/bin/{agent,cursor-agent,cursor}` (install script lines 78-131; `2761.index.js`). Worker
-  mode uses `/opt/cursor` or `~/.local/share/cursor-agent` as `--data-dir`.
+  `~/.local/bin/{agent,cursor-agent,cursor}` (install script lines 78-131; `2761.index.js`); the
+  2026-10-20 install made no `cursor` symlink. Worker mode uses `/opt/cursor` or
+  `~/.local/share/cursor-agent` as `--data-dir`.
 - Remote SSH server `~/.cursor-server/` (serverDataFolderName convention; `2721.index.js` mentions
   downloading `cursor-server`); its `data/User` holds the remote side's editor state, as in
   [Remote server of `research/vscode.md`](vscode.md#remote-server).
@@ -272,7 +339,18 @@ docs cli/reference/configuration). Contents found in the bundle:
   `AGENT_CLI_CREDENTIAL_STORE=file`, writes `auth.json` (`accessToken`, `refreshToken`, `apiKey`,
   `bedrockCredentials`) at `$XDG_CONFIG_HOME/cursor/auth.json` or `~/.config/cursor/auth.json` on
   Linux, `~/.cursor/auth.json` on macOS, `%APPDATA%\Cursor\auth.json` on Windows (mode 0600). All
-  three paths are flagged.
+  three paths are flagged. On the macOS install (2026.10.19-6bbf2c4, 2026-10-20) `/login`
+  created two login-keychain items, services `cursor-access-token` and `cursor-refresh-token`
+  for the account `cursor-user`, and no `cursor-api-key` or `cursor-bedrock-*` item and no
+  `auth.json`; `agent logout` ("Logout successful. Authentication tokens removed.") deleted both
+  items. The `auth.json` of Linux and Windows is bundle-derived, not observed on any real install.
+  Over SSH, with no GUI login session, every `agent` invocation, `--help` included, failed with
+  "Your macOS login keychain is locked".
+- CLI identity: while signed in, `~/.cursor/cli-config.json` holds `authInfo{authId,
+  displayName, email, userId}` (`authId` the 37-character `auth0|user_<id>` id, `userId` the
+  numeric id) and `privacyCache{ghostMode, privacyMode, updatedAt}` (macOS install); `agent
+  logout` removed both objects. The file holds no token, so it is an identity file collected
+  unflagged, its identity keys redacted by name ([Secrets](#secrets)).
 - MCP OAuth tokens per project: `~/.cursor/projects/<p>/mcp-auth.json` (`6136.index.js`,
   `8192.index.js`); flagged.
 - `~/.cursor/mcp.json` and project `.cursor/mcp.json` carry server env blocks that often hold
@@ -303,7 +381,8 @@ what exists elsewhere:
 - `.cursor/projects/*/canvases/node_modules`: type declarations, 226 KB per project.
 - `.cursor/statsig-cache.json`: the server's feature flags, 951 KB.
 
-`~/.local/share/cursor-agent` (557 MB per version) is not in the catalog. `projects/*/agent-tools`
+`~/.local/share/cursor-agent` (557 MB per version for the bundle's build, 614 MB for
+2026.10.19-6bbf2c4) is not in the catalog. `projects/*/agent-tools`
 holds only outputs over 49 MB; leave it to the size cap rather than exclude.
 
 ### Project-local files
@@ -329,8 +408,13 @@ postings.bin}`, `metadata.json` holding `{git_revision, version}`. `.git/cursor`
 
 ### Where the project path is recorded
 
-- `~/.cursor/chats/*/*/meta.json` key `cwd` (bundle `chat-session-meta.ts`);
-  `~/.cursor/acp-sessions/*/meta.json` likewise.
+- `~/.cursor/chats/*/*/meta.json` key `cwd` (bundle `chat-session-meta.ts`), the absolute path,
+  observed on the macOS CLI install and kept after the project directory was removed; the
+  `chats/` directory name is the md5 of that path (checked on the install), so it names the
+  project only through `meta.json` or a hash of a known path. `~/.cursor/acp-sessions/*/meta.json`
+  likewise (bundle).
+- `~/.cursor/projects/<sanitized cwd>/.workspace-trusted` key `workspacePath`, the absolute path
+  of a folder the CLI was trusted in (macOS install).
 - `~/.cursor/projects/<name>` is the sanitized cwd (lossy: `/home/u/a-b` and `/home/u/a_b` collide);
   the IDE names it the same way (`~/.cursor/projects/<sanitized cwd>/`, macOS install).
 - IDE: `User/workspaceStorage/<md5>/workspace.json` `folder` (a `file://` URL).
@@ -355,15 +439,18 @@ Relative to the home; the IDE's paths are given for macOS, with `.config/Cursor`
 | Store | Holds | Role |
 | --- | --- | --- |
 | `Library/Application Support/Cursor/User/globalStorage/state.vscdb` (+`-wal`) | every IDE conversation: `cursorDiskKV` rows per composer and per bubble, `composerHeaders` rows, and settings in `ItemTable` | primary |
-| `.cursor/projects/<sanitized cwd>/agent-transcripts/<composerId>/<composerId>.jsonl` | the worker's copy of each conversation: user and assistant text and tool calls, no times, results or decisions | secondary |
-| `.cursor/chats/<md5>/<sessionId>/store.db`, `.cursor/acp-sessions/<id>/store.db` | the standalone CLI's sessions | bundle-derived, not observed on any real install; not in this plan |
+| `.cursor/projects/<sanitized cwd>/agent-transcripts/<id>/<id>.jsonl` | the copy of each IDE conversation the worker writes (the id a `composerId`) and of each CLI session (the id its session id): user and assistant text and tool calls; no results or decisions, and no times but the user lines' tags | secondary |
+| `.cursor/chats/<md5 of cwd>/<sessionId>/store.db` (+`-wal`), with `meta.json` and `prompt_history.json` | each standalone CLI session: the model messages as content-addressed blobs, the session's state, title and model | observed (macOS, 2026.10.19-6bbf2c4); parser pending, [issue 235](https://github.com/seanthegeek/doubleagent/issues/235) |
+| `.cursor/acp-sessions/<id>/store.db` | the sessions of `agent acp` | bundle-derived, not observed on any real install; not in this plan |
 
 A conversation is a `composerData:<composerId>` row plus one `bubbleId:<composerId>:<bubbleId>`
 row per bubble, ordered by the composer's header list
 ([`composerConvHeaders` and the header list](#composerconvheaders-and-the-header-list)); the
 `composerHeaders` table holds one summary row per composer. Opening the app, a window or "new
 chat" creates draft composers (`status` `none`, no headers), so composers outnumber
-conversations: 11 `composerData` rows for 2 conversations by 3.26.13.
+conversations: 11 `composerData` rows for 2 conversations by 3.26.13. Likewise every start of the
+CLI creates a session directory, so a start that sent nothing leaves a session with no
+conversation ([CLI session and trust files](#cli-session-and-trust-files)).
 
 #### What survives a delete
 
@@ -411,10 +498,29 @@ a server copy, and removed rows only, no file:
 - left wherever the user saved it: the exported Markdown ([Exported Markdown](#exported-markdown)).
 
 The other conversation and its records were untouched. Deleting the project directory was not
-exercised. The analyzer reads the surviving header, the transcript JSONL, the `agentKv` blobs
+exercised for the IDE.
+
+The analyzer reads the surviving header, the transcript JSONL, the `agentKv` blobs
 and `ai-code-tracking.db`
 ([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources);
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+
+The Agent CLI has no delete, clear, export or share command: its parameters reference lists `ls`,
+`resume`, `create-chat`, `login`, `logout`, `status`, `about`, `models`, `mcp`, `sandbox`,
+`worker`, `acp` and `update`
+([Cursor CLI parameters](https://cursor.com/docs/cli/reference/parameters), L2, fetched
+2026-10-20), so a user removes a session by deleting its `chats/<md5>/<sessionId>/` directory by
+hand. On the macOS install (2026.10.19-6bbf2c4, 2026-10-20) `agent logout` removed the two
+keychain items, the `authInfo` and `privacyCache` objects of `cli-config.json` and
+`statsig-cache.json`, and left every session (`store.db` with the WAL checkpointed into it,
+`meta.json`, `prompt_history.json`), the project's `projects/<sanitized cwd>/` entry with its
+transcript JSONL, `.workspace-trusted`, `repo.json` and `worker.log`, `ai-code-tracking.db`, the
+standing allow list, the model selection and its history, `agent-cli-state.json` and
+`skills-cursor/`. Removing the project directory afterwards changed nothing under `~/.cursor`: the
+sessions stayed, their `meta.json` `cwd` naming the removed path, and so did the empty session's
+`meta.json`, the `projects/` entry, whose name is the readable sanitized path, and the tracking
+rows. The analyzer reads the transcript JSONL, `ai-code-tracking.db` and `cli-config.json` of such
+a session; the chat store waits for [issue 235](https://github.com/seanthegeek/doubleagent/issues/235).
 
 ### Record schema
 
@@ -684,6 +790,90 @@ turns (one install, 3.25.9 and 3.26.13):
 | `Shell` | `run_terminal_command_v2` |
 | `StrReplace` | `edit_file_v2` |
 
+The standalone CLI writes the same file under the same name, keyed by its session id
+(2026.10.19-6bbf2c4, macOS, 2026-10-20): 3 lines (user, assistant, `turn_ended`) and 311 bytes
+after one question, the same CamelCase tool names (`GetDynamicTools`, `Glob`, `Read`,
+`StrReplace`, `Shell`), and no model. A command the user skipped has the same `tool_use` line as
+one that ran, then the assistant's text and `turn_ended` with `status` `success`.
+
+#### CLI chat store
+
+`~/.cursor/chats/<md5 of cwd>/<sessionId>/store.db` (2026.10.19-6bbf2c4, macOS, 2026-10-20) has
+two tables, `blobs(id TEXT PRIMARY KEY, data BLOB)` and `meta(key TEXT PRIMARY KEY, value TEXT)`.
+
+`meta` holds one row, key `0`, whose value is hex-encoded JSON (678 hex digits for 339 bytes):
+`{agentId, blobEncryptionKey, createdAt, isRunEverything, lastUsedModel, latestRootBlobId, mode,
+name}`, with `agentId` a UUID, `blobEncryptionKey` 64 hex digits, `createdAt` a number,
+`isRunEverything` a boolean (false throughout, after Add to the allow list too),
+`lastUsedModel` the session's model id (`default`, then `grok-4.7` from the first message after
+a switch), `latestRootBlobId` the 64-hex id of the root blob, `mode` (`default`) and `name` the
+session's title (13 characters). The row is rewritten in place and keeps no history.
+
+`blobs` is content-addressed: `id` is 64 hex digits (a sha256) and `data` 15 to 23,561 bytes.
+The session held 11 blobs (4 JSON) after one question, 48 (13) after the edit, 53 (14) with a
+permission prompt pending, then 64 (17), 80 (21), 96 (25) and 107 (29) after the later turns.
+The blobs are not encrypted, although `meta.0` carries `blobEncryptionKey`. The JSON blobs are
+model messages, `{role, content, providerOptions}` with `content` a string or a list of typed
+blocks:
+
+| `role` | `content` | Other keys |
+| --- | --- | --- |
+| `system` | a string, the system prompt (1,954 characters for the first) | `providerOptions.cursor.systemPromptFingerprint{agentType, model, mode, content, featureFlags, mcp, rules, toolNames, promptOptions}`, `agentType` `cli`; a second one was written after the model switch (`model` `grok-4.5` in the first, `grok-4.7` in the second) |
+| `user` | a string, the context prompt (22,821 characters after the first question, about 23 KB) | `providerOptions.cursor{requestContextCompleteness{agentSkills, customSubagents, env, gitRepos, gitStatus, mcp, mcpFileSystem, repositoryInfo, rules}, omitCloudWorkerProcedure, useProjectCoordinatorPrompting, userInfoSummarizationEpoch}` |
+| `user` | `[{type: "text", text}]`, the typed prompt in the wrapper of [Agent transcript JSONL](#agent-transcript-jsonl) (126 characters) | `providerOptions.cursor.requestId` (a UUID) |
+| `assistant` | blocks `{type: "reasoning", text, signature, providerOptions.cursor.modelName}` (`signature` 664 characters, opaque; `modelName` the resolved model id), `{type: "text", text}` and `{type: "tool-call", toolCallId, toolName, args}` (`toolCallId` 85 characters) | `id` (40 characters), `providerOptions.cursor.modelProviderMessageId` |
+| `tool` | `[{type: "tool-result", toolCallId, toolName, result, experimental_content[{type: "text", text}]}]`, `result` a string | `id` (the `toolCallId`), `providerOptions.cursor.highLevelToolCallResult{isError, output}` |
+
+The `tool-call` names are the transcript's CamelCase ones, with their `args`: `Glob`
+(`glob_pattern`), `GetDynamicTools` (`namespace`, `toolName`), `Read` (`path`), `StrReplace`
+(`old_string`, `new_string`, `path`) and `Shell` (`command`, `description`).
+`highLevelToolCallResult.output` holds one of:
+
+- for a file tool that ran, `success{path, content, totalLines, readRange{startLine, endLine},
+  files, totalFiles, diffString, beforeFullFileContent, afterFullFileContent, linesAdded,
+  linesRemoved, fileSize, message}`, an edit's full file text before and after included;
+- for a `Shell` call that ran, `success{command, stdout, interleavedOutput, executionTime,
+  localExecutionTimeMs}`, with `isBackground`, `sandboxPolicy{type}` and `terminalsFolder` beside
+  it in `output` and `isError` false;
+- for a call the user skipped, `rejected{command, reason, workingDirectory}`, with `isError` true
+  and the block's `result` a 17-character string.
+
+No JSON message has a time key. The instruction the user typed after a skip is a `user` text
+message after the tool result. A call waiting at the permission prompt is not yet a message:
+while it waited, only the new user message and four protobuf blobs had been written.
+
+The other blobs are protobuf (first byte `0x0A`) and form a hash tree from `latestRootBlobId`
+down to the message blobs: they name other blobs by raw 32-byte hashes (field 1 repeated, fields
+8 and 10) and hold varints, 36-character ASCII strings (UUIDs) and shorter ASCII strings. One
+message type, with a 1,063-character ASCII field 4 and fields 9, 21, 22, 27 and 38, recurs in
+nodes of 614 and 1,346 bytes; the 614-byte node's field 5 holds a table of name pairs. The larger
+nodes (2.1 to 3.1 KB) are snapshots of the agent's state that embed JSON text, in which occur the
+identifiers `pendingToolCallStartedAtMs`, `pendingToolExecutionContracts`, `allowedToolNames`,
+`toolIdentifier`, `outerToolName`, `isDynamic`, `summarized_conversation`, `system_prompt`,
+`modelName` and `modelProviderMessageId`, the tool names `StrReplace`, `GetDynamicTools`,
+`CallDynamicTool`, `TodoWrite`, `GET_MCP_TOOLS` and `STR_REPLACE`, the local time zone's
+database name and reasoning signatures. No descriptor has been extracted, so the nodes are not
+decoded.
+
+#### CLI session and trust files
+
+Beside `store.db` in `chats/<md5 of cwd>/<sessionId>/` (2026.10.19-6bbf2c4, macOS, 2026-10-20):
+
+- `meta.json`: `{createdAtMs, updatedAtMs, cwd, hasConversation, schemaVersion}` (129 bytes) on
+  a start that sent nothing, `hasConversation` false and no `store.db`; `title` (the automatic
+  title) is added once a prompt is sent (152 bytes), `hasConversation` true. `cwd` is absolute;
+  `updatedAtMs` moves with each turn. The bundle's `isSubagent` key was not seen.
+- `prompt_history.json`: a JSON array of the strings the user typed in the session, one per
+  prompt, the instruction typed after a skip included (6 after six prompts); no times.
+
+In `~/.cursor/projects/<sanitized cwd>/`:
+
+- `.workspace-trusted` (89 bytes): `{trustedAt, workspacePath}`, an ISO 8601 time and the absolute
+  path, written when the user accepted the CLI's workspace-trust prompt; one per project. The CLI
+  asked once per folder: started from the home it asked to trust the home, and in the project it
+  did not ask again after the first acceptance.
+- `repo.json`: `{id}`, a UUID.
+
 ### Joins and timestamps
 
 The `composerId` joins `composerHeaders`, `composerData`, every `bubbleId:`,
@@ -707,6 +897,19 @@ is the last header entry's `startedAtMs` or `completedAtMs`. A resume writes not
 conversation: after a quit, two relaunches and the conversation reopened, the bubbles,
 `status`, `lastUpdatedAt` and headers were unchanged and `lastReadAtMs` stayed the last bubble's
 `startedAtMs`; a relaunch shows only as a `logs/<launch stamp>/` directory and new drafts.
+
+A CLI session's id is its `chats/<md5>/<sessionId>/` directory name, the
+`agent-transcripts/<sessionId>/` directory and file name, and `ai_code_hashes.conversationId`;
+the md5 is of the absolute cwd (checked on the install), which `meta.json` `cwd` names, and the
+transcript's `projects/` directory is the same cwd sanitized. A tool call and its result join on
+`toolCallId`, which is also the `tool` message's `id`. Times: `meta.json` `createdAtMs` and
+`updatedAtMs` and `meta.0.createdAt` per session; no JSON message has a time; the protobuf state
+nodes carry `pendingToolCallStartedAtMs` and varints that may be times; the transcript's user
+lines date each prompt to the minute. Message order is the hash tree's, readable only once the
+nodes are decoded; until then the transcript's order is the one available. A quit and `agent
+resume` wrote nothing to the session (blobs, `meta.json` and `prompt_history.json` unchanged,
+no resume marker); the quit checkpointed the WAL into `store.db` (4 KB to 200 KB, the WAL 1.5 MB
+to 4 KB).
 
 ### Other stores
 
@@ -740,7 +943,11 @@ row, `trackingStartTime`),
 updatedAt)`, `tracked_file_content(gitPath, content, conversationId, model, fileExtension,
 createdAt)` and `ai_deleted_files(gitPath, composerId, conversationId, model, deletedAt)`. Only
 `ai_code_hashes` and `tracking_state` had rows on the install. `ai_code_hashes.timestamp` is
-epoch ms (a 13-digit integer); the unit of `createdAt` was not recorded.
+epoch ms (a 13-digit integer); the unit of `createdAt` was not recorded. The standalone CLI
+writes the same database with the same tables (2026.10.19-6bbf2c4, 2026-10-20): after its edit,
+2 `ai_code_hashes` rows with `source` `cli`, `conversationId` the CLI session id and a model,
+one `tracked_file_content` row and one `tracking_state` row. `source` tells the CLI's rows from
+the IDE's `composer` rows.
 
 #### Retrieval checkpoints
 
@@ -765,12 +972,33 @@ line ranges, addedLines, tokenizedAddedLines}]}`). The composer id is not in it.
 
 #### `cli-config.json`, `permissions.json` and `sandbox.json`
 
-`~/.cursor/cli-config.json`, the CLI's settings, written by the IDE and unchanged by the IDE's
-run-mode switch and Always run: `approvalMode` (`allowlist`), `permissions{allow, deny}` (one
-9-character entry, none), `sandbox{mode, networkAccess}` (`mode` `disabled`),
+`~/.cursor/cli-config.json`, the CLI's settings, written by the IDE, which left it unchanged at
+its run-mode switch and Always run, and by the standalone CLI, which rewrites it at every start.
+Keys at the first start, on both surfaces: `approvalMode` (`allowlist` throughout),
+`permissions{allow, deny}` (`allow` `["Shell(ls)"]`, the 9-character entry; `deny` `[]`),
+`sandbox{mode, networkAccess}` (`disabled`, `user_config_with_defaults`),
 `attribution{attributeCommitsToAgent, attributePRsToAgent}`, `autoAcceptWebSearch`,
 `display{mode}` (`zen`), `exploreSubagentModel` (`default`), `hasChangedDefaultModel`, `rewind`,
-`steering` and `version`.
+`steering` and `version`, and from the CLI also `modelSlashCommands` and
+`runEverythingSettingsPromptStreak`.
+
+What the CLI added (2026.10.19-6bbf2c4, macOS, 2026-10-20): at sign-in `authInfo` and
+`privacyCache` ([Credentials](#credentials)), removed again by `agent logout`; at the first
+start in a project `model{aliases, displayModelId, displayName, displayNameShort, maxMode,
+modelId}` (`modelId` `default` with `aliases` `["auto"]`, the selection the CLI shows as Auto),
+`selectedModel{modelId, parameters[{id, value}]}`, `modelParameters{<modelId>: [{id, value}]}`,
+`modelSelectionHistory` (model ids, most recent first, no times),
+`serverConfigCache{agentUrlConfig{agentUrl, agentnUrl}, authCacheKey, backendUrl,
+cliSandboxDefaultEnabled, serverHttp2Config, updatedAt}` and
+`autoReviewAvailabilityCache{authCacheKey, available, backendUrl, updatedAt}`. Add python3 to the
+allow list appended `Shell(python3)` to `permissions.allow`, an entry of the form
+`Shell(<command name>)`; Allow once and Skip changed nothing. The `/model` switch to "Grok 4.7 256K
+High Fast" set `model.modelId` and `displayModelId` to `grok-4.7`, `aliases` to `[]`,
+`selectedModel.parameters` to `context` `256k`, `reasoning_effort` `high` and `fast` `true`,
+`modelParameters.grok-4.7` to the same three, `modelSelectionHistory` to `["grok-4.7",
+"default"]` and `hasChangedDefaultModel` to true. Sizes: 837 bytes at the first start, 1,101
+signed in, 2,048 after the start in the project, 2,072 after the allow-list entry, 2,549 after the
+switch and 2,285 after `agent logout`.
 
 `permissions.json`, user and project level (bundle-derived, not observed on any real install;
 `workbench.glass.main.js`, 3.25.9): `allowlists{mcp, terminal}`, `approvalMode`, and auto-run
@@ -851,6 +1079,11 @@ cursorAuthDebug.workspaceId-<id>.log, tasks.workspaceId-<id>.log}` and
   3.26.13.
 - `composerData._v` is 18 on every composer of the 3.26.13 install (12 rows);
   `composerRootWriterDiagnostic.version` carries a version whose value was not recorded.
+- Cursor Agent CLI 2026.10.19-6bbf2c4 (observed, macOS, 2026-10-20; the build the IDE's worker
+  directory held): the `store.db` layout of [CLI chat store](#cli-chat-store) and a `meta.json`
+  with `schemaVersion` and `title` and without the bundle's `isSubagent`; the value of
+  `schemaVersion` was not recorded. The bundle of 2026.10.01-e373342 names `chat-session-meta.ts`
+  schema v1 and older `*.txt` transcripts.
 
 ### Secrets
 
@@ -862,6 +1095,15 @@ The tokens, the secret-storage rows and the identity keys of `ItemTable` are lis
 messages: the `agentKv` prompts with their context, the FTS index, the `ofsContent:` and
 `composer.content.*` file texts, the retrieval checkpoints' file copies and
 `tracked_file_content.content`.
+
+The CLI on macOS keeps its tokens in the login keychain ([Credentials](#credentials)).
+`cli-config.json` holds, while signed in, `authInfo` (the email, the display name, the numeric
+user id and the `auth0|user_<id>` id) and the 42-character `authCacheKey` of `serverConfigCache` and
+`autoReviewAvailabilityCache`, whose derivation is not known. In the chat
+store, `meta.0.blobEncryptionKey` (64 hex digits) sits beside blobs that were not encrypted with
+it, and the reasoning blocks' `signature` strings are opaque. User content in the chat store: the
+context prompts, an edit's `beforeFullFileContent` and `afterFullFileContent`, command output,
+and `prompt_history.json`.
 
 ### Parser plan
 
@@ -935,6 +1177,16 @@ entry and `sandbox.mode`. From `permissions.json` (bundle-derived, fixture only)
 `allowlists.mcp` and `allowlists.terminal` entry, `approvalMode`, and each `allowInstructions`
 and `blockInstructions` entry.
 
+The Agent CLI (2026.10.19-6bbf2c4, 2026-10-20) asks with four options, in this order: Allow once,
+Add `<command>` to the allow list, Run everything, and Skip and tell the agent what to do. Its
+chat store records no decision as such: a call that ran has a `tool` message with
+`highLevelToolCallResult.output.success` and `isError` false, a skipped one
+`output.rejected{command, reason, workingDirectory}` and `isError` true, joined to the call on
+`toolCallId` ([CLI chat store](#cli-chat-store)). Allow once and Add to the allow list differ only
+by the new `permissions.allow` entry `Shell(<command>)` in `cli-config.json`, which the standing
+rows above already read. The session's `meta.0.isRunEverything` flag and the folder-trust grant
+`.workspace-trusted` (at `trustedAt`) are standing records for [issue 235](https://github.com/seanthegeek/doubleagent/issues/235).
+
 #### Model rows
 
 Per message the model is the user bubble's `modelInfo.modelName`: `model: <id>` at the first user
@@ -944,6 +1196,16 @@ only at the next message. `composerData.modelConfig` is the current selection wi
 yields no row. The settings blob's `aiSettings.modelLastUsedAt` is the only dated record of a
 switch: one `system` row per entry, `model last used: <id> (from state.vscdb
 aiSettings.modelLastUsedAt)`, at its time, with empty `session_id`.
+
+For the CLI, `meta.0.lastUsedModel` is the session's current model id (`default`, the Auto
+selection, then `grok-4.7`), updated at the first message after a switch; each assistant
+`reasoning` block's `providerOptions.cursor.modelName` is the resolved id per message
+(`cursor-grok-4.5-high` while Auto was selected, `grok-4.7-high-fast` for `grok-4.7` with
+`reasoning_effort` `high` and `fast` `true`); and `cli-config.json` `modelSelectionHistory` lists
+the selections, most recent first, with no times. A `/model` switch with no message sent changed
+only `cli-config.json`. The plan for [issue 235](https://github.com/seanthegeek/doubleagent/issues/235): `model: <resolved>` at the first assistant message
+and `model: <old> -> <new>` on a change, with the selection (`meta.0.lastUsedModel`,
+`selectedModel.modelId`) beside the resolved id when they differ.
 
 #### Past-use rows and secondary sources
 
@@ -980,6 +1242,11 @@ aiSettings.modelLastUsedAt)`, at its time, with empty `session_id`.
 - The surviving `composerHeaders` row of a deleted conversation gives its `conversation deleted`
   row ([Deletion rows](#deletion-rows)).
 
+The CLI keeps `prompt_history.json` per session, the typed prompts with no times, which repeats
+the user messages, and a `meta.json` with no `store.db` for each start that sent nothing
+(`hasConversation` false, no `title`), an empty start rather than a lost session; neither is read
+yet ([issue 235](https://github.com/seanthegeek/doubleagent/issues/235)). Its transcript JSONL and `ai-code-tracking.db` rows are read as above.
+
 The retrieval checkpoints, `AgentStores`, `update-supervisor`, the logs and an exported Markdown
 file yield nothing: no times per turn, or no join to a conversation. The workspace
 `aiService.prompts` key stayed `[]` and is not read.
@@ -993,12 +1260,14 @@ origin: remote <agentLocation.type>` when `agentLocation.type` is not `local` (b
 only `local` was seen) and sets `records_origin`, so a local conversation's `origin` reads
 `local`. `conversation-search.db` `source` `cloud-cache` (a cached cloud conversation,
 bundle-derived) would mark a conversation held by the vendor; none was seen, and no sync row is
-yielded. Relay: the agent records none.
+yielded. Relay: the agent records none. The CLI recorded no sync either (2026.10.19-6bbf2c4,
+2026-10-20): it has no share command, and `agent worker start`, which runs a private cloud worker
+and is the CLI's remote surface, was not exercised.
 
 #### Scratch directory rows
 
-None under the home. The `$TMPDIR` directories of [Scratch directories](#scratch-directories) are
-not collected.
+None under the home. The `$TMPDIR` directories of [Scratch directories](#scratch-directories), the
+CLI's logs among them, and its askpass sockets under `/private/tmp` are not collected.
 
 #### Deletion rows
 
@@ -1009,6 +1278,11 @@ at `lastUpdatedAt`, with `project_path` from the header and `session_id` the com
 archive time is lost, since the delete overwrote `lastUpdatedAt`. What survives a delete is in
 [What survives a delete](#what-survives-a-delete).
 
+The CLI has no delete command and keeps no header row that outlives a session: a session
+directory removed by hand shows only as a transcript JSONL, and tracking rows, whose session id
+has no `chats/*/<sessionId>/` directory. The transcript's rows already carry that session id; no
+deletion row is yielded for it.
+
 #### Bad-line rows
 
 The transcript JSONL is read with `iter_jsonl`, and each bad line becomes its own `system` row
@@ -1016,7 +1290,10 @@ through `error_rows`. A `cursorDiskKV` or `ItemTable` value that is not JSON (wh
 is appended to the errors list with its rowid and key, and a header entry with no bubble row has
 its own row (table above). A database that is not SQLite is one `parser: not a SQLite database`
 row, a SQLite error one `parser: SQLite error: <message>` row. `cli-config.json` or
-`permissions.json` that is not JSON is one `parser:` row.
+`permissions.json` that is not JSON is one `parser:` row. For the CLI parser, a `meta.json`,
+`prompt_history.json` or `.workspace-trusted` that is not JSON, or a `meta.0` value that is not
+hex-encoded JSON, is one `parser:` row for that file, and a blob that is neither JSON nor
+protobuf is appended to the errors list with its `id`.
 
 #### Fixtures
 
@@ -1099,19 +1376,102 @@ the switch; `model last used: grok-4.7`; `c1`'s `ai code:` row; and from `c1`'s 
 bubble's text, a `tool_use` row with `tool_name` `Shell`, then the `parser:` row for the
 truncated line.
 
+For the CLI parser of [issue 235](https://github.com/seanthegeek/doubleagent/issues/235), one CLI session in `/srv/proj`, under
+`.cursor/chats/6da544f59eb1005eef665ccbade87510/s1/` (the directory name the md5 of `/srv/proj`).
+`store.db` `meta` row `0`, the hex encoding of
+`{"agentId":"a1","blobEncryptionKey":"<64 zeros>","createdAt":1790010000000,"isRunEverything":false,"lastUsedModel":"grok-4.7","latestRootBlobId":"<64 hex>","mode":"default","name":"Run python"}`:
+
+```text
+7b226167656e744964223a226131222c22626c6f62456e6372797074696f6e4b6579223a2230303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030222c22637265617465644174223a313739303031303030303030302c22697352756e45766572797468696e67223a66616c73652c226c617374557365644d6f64656c223a2267726f6b2d342e37222c226c6174657374526f6f74426c6f624964223a2261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162616261626162222c226d6f6465223a2264656661756c74222c226e616d65223a2252756e20707974686f6e227d
+```
+
+`blobs`, four JSON rows, each `id` the sha256 of its `data` as the builder computes it, beside one
+protobuf row (`0a 20` and 32 bytes) the parser must skip:
+
+```json
+{"role": "user", "content": [{"type": "text", "text": "<timestamp>Thursday, Oct 1, 2026, 9:00 AM (UTC-4)</timestamp>\n<user_query>Run python3 twice</user_query>"}], "providerOptions": {"cursor": {"requestId": "q1"}}}
+{"role": "assistant", "id": "m1", "content": [{"type": "reasoning", "text": "Run it.", "signature": "sig", "providerOptions": {"cursor": {"modelName": "grok-4.7-high-fast"}}}, {"type": "tool-call", "toolCallId": "tc5", "toolName": "Shell", "args": {"command": "python3 -c 'print(1+1)'", "description": "Add"}}, {"type": "tool-call", "toolCallId": "tc6", "toolName": "Shell", "args": {"command": "python3 -c 'print(1+1)'", "description": "Add again"}}], "providerOptions": {"cursor": {"modelProviderMessageId": "p1"}}}
+{"role": "tool", "id": "tc5", "content": [{"type": "tool-result", "toolCallId": "tc5", "toolName": "Shell", "result": "2", "experimental_content": [{"type": "text", "text": "2"}]}], "providerOptions": {"cursor": {"highLevelToolCallResult": {"isError": false, "output": {"success": {"command": "python3 -c 'print(1+1)'", "stdout": "2\n", "executionTime": 40}, "isBackground": false, "sandboxPolicy": {"type": "none"}}}}}}
+{"role": "tool", "id": "tc6", "content": [{"type": "tool-result", "toolCallId": "tc6", "toolName": "Shell", "result": "User skipped this"}], "providerOptions": {"cursor": {"highLevelToolCallResult": {"isError": true, "output": {"rejected": {"command": "python3 -c 'print(1+1)'", "reason": "skip it", "workingDirectory": "/srv/proj"}}}}}}
+```
+
+`meta.json` of the session, `prompt_history.json` beside it, an empty start's `meta.json` in
+`.cursor/chats/6da544f59eb1005eef665ccbade87510/s0/` (no `store.db`), and
+`.cursor/projects/srv-proj/.workspace-trusted`:
+
+```json
+{"createdAtMs": 1790010000000, "updatedAtMs": 1790010120000, "cwd": "/srv/proj", "hasConversation": true, "schemaVersion": 1, "title": "Run python"}
+["Run python3 twice", "skip it"]
+{"createdAtMs": 1790009900000, "updatedAtMs": 1790009900000, "cwd": "/srv/proj", "hasConversation": false, "schemaVersion": 1}
+{"trustedAt": "2026-10-01T12:58:00.000Z", "workspacePath": "/srv/proj"}
+```
+
+with `cli-config.json` `permissions.allow` `["Shell(ls)", "Shell(python3)"]` and
+`modelSelectionHistory` `["grok-4.7", "default"]`. Expected, by the plan of the issue: a session
+`s1` with `project_path` `/srv/proj` from `meta.json`, `session name: Run python`, `model:
+grok-4.7-high-fast` (with the selection `grok-4.7` beside it), the `user` row with the wrapper
+stripped, a thinking row only with `include_thinking`, two `tool_use` rows (`Shell`, `tc5` and
+`tc6`), a `tool_result` for `tc5` and a `[rejected] ` one for `tc6` with its permission row, a
+standing row for the trust grant at 12:58Z, a standing row for `isRunEverything` false, the
+history's two prompts as secondary `user` rows with empty `timestamp_utc`, nothing for the
+protobuf blob, and `s0` reported as an empty start or not at all.
+
+#### Cursor Agent CLI parser
+
+The `cursor` parser as it stands (analyzer 0.20.0) reads a CLI session through the files the CLI
+shares with the IDE: the transcript JSONL's user lines (timed to the minute by their tags),
+assistant text and `tool_use` blocks with the CamelCase names, every row marked `recovered`,
+since no `state.vscdb` holds the session; the `source` `cli` rows of `ai-code-tracking.db` as `ai
+code:` rows; and the `permission setting:` rows of `cli-config.json` (`approvalMode`, each
+`permissions.allow` entry, `sandbox.mode`). Its `session_id` is the CLI session id, its
+`project_path` is empty because `meta.json` is not read, and its origin is `local`. It does not
+read `store.db`, `meta.json`, `prompt_history.json` or `.workspace-trusted`.
+
+The plan of [issue 235](https://github.com/seanthegeek/doubleagent/issues/235), in order:
+
+1. Session facts: `meta.json` (`project_path` from `cwd`, the session's times), `meta.0`
+   (`model: <lastUsedModel>`, a standing row for `isRunEverything`, the title as `session name:`),
+   `prompt_history.json` as a past-use source and `.workspace-trusted` as a standing permission
+   row at `trustedAt`.
+2. The JSON message blobs: `user`, `assistant`, `thinking`, `tool_use` and `tool_result` rows,
+   `model:` rows from the reasoning blocks' resolved model with the selection from
+   `cli-config.json` beside it, and permission rows from `output.rejected` against
+   `output.success`, joined on `toolCallId`.
+3. Order and per-call times from the protobuf state nodes, which needs their descriptors: the
+   CLI bundle (`~/.local/share/cursor-agent/versions/<ver>/*.index.js`) is JavaScript, so they
+   are in a protobuf-es registry (the JavaScript protobuf runtime's in-code descriptors) rather
+   than a binary, to be extracted with `analyzer/tools/proto_descriptors.py` or a variant that
+   reads JavaScript and decoded with `doubleagent/protobuf.py`. Until then the rows from the JSON
+   blobs take the transcript JSONL's order.
+
+Globs for the CLI files, relative to the home:
+
+```text
+^\.cursor/chats/[0-9a-f]{32}/[^/]+/store\.db$
+^\.cursor/chats/[0-9a-f]{32}/[^/]+/meta\.json$
+^\.cursor/chats/[0-9a-f]{32}/[^/]+/prompt_history\.json$
+^\.cursor/projects/[^/]+/\.workspace-trusted$
+```
+
 ## Confidence
 
 - High, observed on macOS (Cursor IDE 3.24.18 to 3.26.13, one step per listing): the IDE's files
   and key families, the record shapes, the permission and model records, the archive and delete
   results, and the 3.26.13 header chunks.
-- High (L1 bundle): the CLI's `~/.cursor` layout, `chats/` and `acp-sessions/` with `store.db`,
-  the `projects/` name sanitization, worktrees, hooks, `ai-tracking`, and the CLI's `auth.json`
-  and keychain logic; the IDE's run-mode names and delete commands.
+- High, observed on macOS (Cursor Agent CLI 2026.10.19-6bbf2c4, one step per listing): the CLI's
+  files under `~/.cursor` and `~/.local`, the chat store's tables, the `meta.0` keys and the JSON
+  message shapes, the keychain items, and what `agent logout` and the project's removal left.
+- High (L1 bundle): the CLI entries the install did not write (`acp-sessions/`, worktrees, hooks,
+  plans), the `projects/` name truncation, and the CLI's `auth.json` logic on Linux and Windows;
+  the IDE's run-mode names and delete commands.
 - Medium: `.cursor-server` (convention plus L4); the Windows and Linux IDE paths (convention, not
   observed).
 - Low: `~/.cursor_info` (a single L4 claim).
-- Not determined: the standalone CLI's stores on a real install; whether `store.db` blobs are
-  encrypted (`blobEncryptionKey` in `meta`, codeburn 986); whether the Windows CLI uses
+- Not determined: the schema of the CLI chat store's protobuf nodes (no descriptor extracted), so
+  the CLI's message order and per-call times; whether other CLI builds split or encrypt the blobs,
+  which 2026.10.19-6bbf2c4 stored whole and in plaintext beside `blobEncryptionKey` (codeburn
+  986); the `cursor-api-key` and `cursor-bedrock-*` keychain items (bundle only); the derivation
+  of `authCacheKey` and the value of `meta.json` `schemaVersion`; whether the Windows CLI uses
   `%APPDATA%\Cursor\auth.json` or the IDE's directory of the same name; the status of
   `.cursorindexingignore`; the protobuf `agentKv` blobs; the transcript's tool-name mapping beyond
   the five names of one install; the form of a positive UTC offset in the transcript tag, and
@@ -1120,4 +1480,4 @@ truncated line.
   (`isSubagent`, `subagentComposerIds`), cloud
   and worktree agents, and a `cloud-cache` row in `conversation-search.db`; what the editor
   window's Delete does on a conversation that was not archived first, and what deleting the
-  project directory leaves.
+  project directory leaves for the IDE.
