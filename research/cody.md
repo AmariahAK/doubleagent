@@ -13,7 +13,7 @@ it in memory only. Deep Cody is the agentic context mode in which a helper model
 with tools, the terminal included, before the chat model answers. Source is the frozen public
 snapshot, so later releases may differ. The `cody` parser reads the history from both stores.
 
-## 1. Source and evidence
+## Source and evidence
 
 [sourcegraph/cody-public-snapshot](https://github.com/sourcegraph/cody-public-snapshot), commit
 [`8e20ac6c1460c08b0db581c0204658112a246eda`](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda)
@@ -50,7 +50,7 @@ only VS Code checkout read for this document; see [vscode.md](vscode.md) for ups
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 The layout differs by surface: the VS Code extension keeps its state in the editor's own
 storage, the JetBrains plugin and the CLI in an `env-paths` directory, and the JetBrains plugin
@@ -167,9 +167,9 @@ none of which the catalog collects:
 - `cody_accounts_settings.xml`: the pre-agent account list
   ([`auth/deprecated/DeprecatedCodyAccountManager.kt:44-47`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/jetbrains/src/main/kotlin/com/sourcegraph/cody/auth/deprecated/DeprecatedCodyAccountManager.kt#L44-L47)).
 
-The project-level files are in [section 5](#5-project-local-files).
+The project-level files are in [Project-local files](#project-local-files).
 
-### 3. Credentials
+### Credentials
 
 - VS Code: the access token is stored in SecretStorage three times, under the endpoint URL, under
   `cody.access-token`, and the token source under `<endpoint>cody.access-token.source`
@@ -196,7 +196,7 @@ The project-level files are in [section 5](#5-project-local-files).
   and `env` for a stdio one, where MCP (Model Context Protocol) servers usually receive their tokens
   ([`vscode/src/chat/chat-view/tools/MCPManager.ts:31-43`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/tools/MCPManager.ts#L31-L43)).
 
-### 4. Exclusions
+### Exclusions
 
 - The `symf-*` binary in each `symf/` directory.
 - `<config>/dist`: copied extension resources.
@@ -204,7 +204,7 @@ The project-level files are in [section 5](#5-project-local-files).
   the indexed workspace paths, which is evidence, so it is not proposed for
   exclusion until a live collection shows it is large.
 
-### 5. Project-local files
+### Project-local files
 
 `.vscode/cody.json` (VS Code) and `.cody/commands.json` (agent clients) at the first workspace
 folder
@@ -222,7 +222,7 @@ JetBrains project files, neither in the project table:
   settings, permission settings and MCP servers included
   ([JetBrains IDE settings](#jetbrains-ide-settings)).
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - Chat transcripts carry no workspace field; context items carry file URIs
   (`contextFiles[].uri`), from which the project can be inferred.
@@ -233,7 +233,7 @@ JetBrains project files, neither in the project table:
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 - VS Code (and forks): `<User>/globalStorage/state.vscdb`, table `ItemTable`, row `key =
   'sourcegraph.cody-ai'`; `value` is the extension's whole global state as JSON
@@ -258,7 +258,7 @@ JetBrains project files, neither in the project table:
   which is an in-memory database
   ([`AgentGlobalState.ts:23-33`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/agent/src/global-state/AgentGlobalState.ts#L23-L33)).
 
-Other sources of past use and model state are in [section 10](#10-other-stores).
+Other sources of past use and model state are in [Other stores](#other-stores).
 
 #### What survives a delete
 
@@ -275,11 +275,11 @@ copy a delete or clear does not reach is the JetBrains plugin's legacy, project-
 `<project>/.idea/cody_history.xml` ([Legacy JetBrains history](#legacy-jetbrains-history)), which
 the migration copied into the agent store and never deleted; it is also the only record of an
 unpaired message the migration dropped. Cody keeps no per-prompt history file and no other copy of
-its chats ([section 10](#10-other-stores)). The analyzer reads the history value and not the legacy
+its chats ([Other stores](#other-stores)). The analyzer reads the history value and not the legacy
 XML, which the collector does not collect (see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 `AccountKeyedChatHistory`
 ([`lib/shared/src/chat/transcript/messages.ts:193-204`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/lib/shared/src/chat/transcript/messages.ts#L193-L204);
@@ -390,7 +390,7 @@ The two agentic modes record permission state differently:
   ([`DeepCodyHandler.ts:31-35`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/handlers/DeepCodyHandler.ts#L31-L35),
   [`169-172`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/chat/chat-view/handlers/DeepCodyHandler.ts#L169-L172)).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 - Account: the outer key; it names the server and the user that owned
   the chat, which is attribution evidence in its own right.
@@ -399,7 +399,7 @@ The two agentic modes record permission state differently:
 - Tool call to result: `tool_call.id` = `tool_result.id`.
 - No subagents.
 
-### 10. Other stores
+### Other stores
 
 VS Code: read `ItemTable` from `state.vscdb` through `doubleagent/sqlite_util.py` (WAL sidecars).
 The value is UTF-8 JSON text in a BLOB column. History over 50 MB triggers a size warning
@@ -458,7 +458,7 @@ attached at activation
 Its earlier content is not in the snapshot (no other reference found for `cody-chat-memory` or
 `CODY_CHAT_MEMORY`); a `state.vscdb` from a build that predates the cleanup may still hold it.
 
-### 11. Format versions
+### Format versions
 
 The key suffix `-v2` is the version
 ([`LocalStorageProvider.ts:28-29`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L28-L29)).
@@ -472,7 +472,7 @@ No version drift is visible in source, since the snapshot is HEAD: the parser's 
 cited lines. Whether builds after August 2025 still write them cannot be read from source, and
 they need a real-install round before any parser change.
 
-### 12. Secrets
+### Secrets
 
 The access token is not in the history; it is in SecretStorage. Do not treat
 `SOURCEGRAPH_CODY_ENDPOINT` as a secret: it is a URL, and the extension refuses to save a token
@@ -480,7 +480,7 @@ there
 ([`LocalStorageProvider.ts:92-100`](https://github.com/sourcegraph/cody-public-snapshot/blob/8e20ac6c1460c08b0db581c0204658112a246eda/vscode/src/services/LocalStorageProvider.ts#L92-L100)).
 `contextFiles[].content` and `tool_result.content` carry file and command output.
 
-### 13. Parser plan
+### Parser plan
 
 Inputs: the `sourcegraph.cody-ai` row of any collected `state.vscdb`
 (attribute it to `cody` even though the file is under `vscode`), and
@@ -543,7 +543,7 @@ file's modification time and say so.
 `<project>/.idea/cody_history.xml` ([Legacy JetBrains history](#legacy-jetbrains-history)) is a
 secondary source the parser should read when it is collected, marking `secondary()` and matching
 on account key, `updatedAt` and text; neither the collector nor the parser handles it today. No
-other source records past use ([section 10](#10-other-stores)).
+other source records past use ([Other stores](#other-stores)).
 
 #### Sync, relay and origin rows
 
@@ -625,7 +625,7 @@ Agentic variant of an interaction:
 {"humanMessage":{"speaker":"human","text":"run the tests","intent":"agentic"},"assistantMessage":{"speaker":"assistant","model":"anthropic::2024-10-22::claude-sonnet-4-latest","text":"Running tests.","content":[{"type":"text","text":"Running tests."},{"type":"tool_call","tool_call":{"id":"toolu_01","name":"run_terminal_command","arguments":"{\"command\":\"pytest -q\"}"}}],"processes":[{"type":"tool","id":"toolu_01","title":"run_terminal_command","content":"pytest -q","state":"success"}]}}
 ```
 
-## 14. Confidence
+## Confidence
 
 - High (frozen source): the storage keys and row layout, the key names, transcript and message
   fields, `toUTCString` ids and tool part shapes, the `symf` paths, the custom command files, the

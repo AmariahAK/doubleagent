@@ -4,7 +4,7 @@ Factory Droid is Factory's closed-source coding agent, shipped as the `droid` co
 for Linux, macOS and Windows. Its parser is in the backlog
 ([issue 54](https://github.com/seanthegeek/doubleagent/issues/54)).
 
-## 1. Source and evidence
+## Source and evidence
 
 - Closed source. Installer `https://app.factory.ai/cli` (read only, not run)
   pins `VER="0.233.0"` and downloads
@@ -29,7 +29,7 @@ None.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Home resolution (B): `getFactoryHome(){return FACTORY_HOME_OVERRIDE ?? HOME ?? USERPROFILE}`,
 `getFactoryDirName(){return ".factory"}` (`.factory-dev` in dev builds); helper
@@ -75,10 +75,10 @@ Sq=["missions","missionsV2","repl-runs","specs","sessions","logs","cache","artif
 
 The agent's own working space, all listed above: `~/.factory/worktrees/` (the default
 `worktreeDirectory`), `software-factory/workstreams/…/{repos,worktrees,review-sessions}`,
-`repl-runs/<sha256>/` and `temp/` (see [section 3](#3-credentials) on `temp/env`). Exclusions
-for them are in [section 4](#4-exclusions).
+`repl-runs/<sha256>/` and `temp/` (see [Credentials](#credentials) on `temp/env`). Exclusions
+for them are in [Exclusions](#exclusions).
 
-### 3. Credentials
+### Credentials
 
 All under `~/.factory/` (B, class `Ne`, `IH()` maps list `Uf` onto `join(home,".factory")`):
 
@@ -96,14 +96,14 @@ All under `~/.factory/` (B, class `Ne`, `IH()` maps list `Uf` onto `join(home,".
   `FACTORY_API_KEY` env var.
 - `temp/env/*.sh` dumps process environment (may include keys).
 
-### 4. Exclusions
+### Exclusions
 
 `.factory/updates`, `.factory/bin`, `.factory/tools`, `.factory/snapshots`, `.factory/worktrees`,
 `.factory/generated-images`, `.factory/cache/sounds`, `.factory/software-factory/*/*/repos`,
-`.factory/software-factory/*/*/worktrees`, `.factory/temp` (see [section 3](#3-credentials) on
+`.factory/software-factory/*/*/worktrees`, `.factory/temp` (see [Credentials](#credentials) on
 `temp/env`).
 
-### 5. Project-local files
+### Project-local files
 
 `.factory/` at git root and in nested folders (D `hierarchical-settings.md:15-39`): `settings.json`,
 `settings.local.json`, `mcp.json`, `hooks.json` (legacy `hooks/hooks.json`,
@@ -115,7 +115,7 @@ All under `~/.factory/` (B, class `Ne`, `IH()` maps list `Uf` onto `join(home,".
 project configuration surface" (`settings.md:37`) and does not occur in the binary. `DROID.md`
 occurs nowhere.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - Transcript first line: JSON with `type:"session_start"`, `cwd`, optional `lastCwd` (B,
   `a.type!=="session_start"`, `a.lastCwd`).
@@ -126,10 +126,10 @@ occurs nowhere.
 ## Parsing
 
 Factory Droid is `backlog`: its JSONL session transcripts are on disk
-([section 2](#2-per-user-storage)), and the parser is
+([Per-user storage](#per-user-storage)), and the parser is
 [issue 54](https://github.com/seanthegeek/doubleagent/issues/54).
 
-## 14. Confidence
+## Confidence
 
 - High: `~/.factory` on all OSes, `FACTORY_HOME_OVERRIDE`, the session layout and `projectKey`
   encoding, the `index.db` path and columns, the `auth.v2.*` and `mcp-oauth.v2.*` names, the

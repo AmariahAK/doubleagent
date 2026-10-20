@@ -6,7 +6,7 @@ in [`cline.md`](cline.md) apply with the differences listed here; PearAI bundles
 it ([`pearai.md`](pearai.md)). The analyzer parses its tasks and CLI history, from source and
 fixtures only.
 
-## 1. Source and evidence
+## Source and evidence
 
 Open source. [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code) at
 [`b867ec9145750d0ae1ff7f02d35406e9bf2a0b16`](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16),
@@ -27,12 +27,12 @@ No real install.
   (2026-05-15, "Remove roocode.com web app"), the commit this document cites, so nothing has
   drifted. Added the CLI's `--ephemeral` storage, the full `~/.roo/cli-settings.json` key list, the
   permission records and settings, the provider-profile model ids, the worktree root and the
-  absence of any Roo Code Cloud client ([section 2](#2-per-user-storage),
-  [section 8](#8-record-schema), [section 13](#13-parser-plan)).
+  absence of any Roo Code Cloud client ([Per-user storage](#per-user-storage),
+  [Record schema](#record-schema), [Parser plan](#parser-plan)).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 The layouts differ by surface: the VS Code extension, the CLI's VS Code shim, and the
 shared `~/.roo`.
@@ -129,7 +129,7 @@ relocates storage.
 every home, so no catalog line reaches it; a responder who finds a killed `roo --ephemeral`
 process collects the temp directory by hand.
 
-### 3. Credentials
+### Credentials
 
 - Extension: provider profiles with API keys are stored in VS Code `context.secrets` under
   `roo_cline_config_api_config`
@@ -143,7 +143,7 @@ process collects the temp directory by hand.
 - `settings/mcp_settings.json` and project `.roo/mcp.json` can embed `env`
   and headers. No keychain use.
 
-### 4. Exclusions
+### Exclusions
 
 `*/rooveterinaryinc.roo-cline/tasks/*/checkpoints`,
 `*/rooveterinaryinc.roo-cline/checkpoints`, `*/rooveterinaryinc.roo-cline/cache`,
@@ -151,7 +151,7 @@ process collects the temp directory by hand.
 `.vscode-mock/global-storage/checkpoints`, `.roo/worktrees`,
 `.local/share/Roo-Code/MCP`, `AppData/Roaming/Roo-Code/MCP`, `.roo-code/mcp`.
 
-### 5. Project-local files
+### Project-local files
 
 `.roo/rules/`, `.roo/rules-<mode>/`, `.roo/commands/`, `.roo/mcp.json`, `.roo/skills/`
 ([`roo-config/index.ts:68-80`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/roo-config/index.ts#L68-L80);
@@ -165,7 +165,7 @@ process collects the temp directory by hand.
 [`src/core/prompts/sections/custom-instructions.ts:229`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/prompts/sections/custom-instructions.ts#L229));
 `.agents/skills`; `AGENTS.md`. No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 `tasks/_index.json[].workspace` and `tasks/<id>/history_item.json.workspace`
 ([`src/core/task-persistence/taskMetadata.ts:22`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/taskMetadata.ts#L22),[`37`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/taskMetadata.ts#L37),[`111`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/taskMetadata.ts#L111);
@@ -176,7 +176,7 @@ so `~/.roo/worktrees/<project>-<suffix>` paths appear there.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 Tasks are one directory per task, `tasks/<taskId>/`, with the files and the `tasks/_index.json`
 index listed in [VS Code extension](#vs-code-extension), under the extension's globalStorage
@@ -213,7 +213,7 @@ and removes it when the CLI exits
 Such a task is outside the home, so no catalog line reaches it, and it survives only a CLI that was
 killed before its cleanup ran ([What survives a delete](#what-survives-a-delete)).
 
-### 8. Record schema
+### Record schema
 
 #### Task files
 
@@ -270,7 +270,7 @@ in `api_conversation_history.json` whose text is JSON:
 which decides the tool groups the task may use, and `apiConfigName` names the provider profile
 ([`packages/types/src/history.ts:21-22`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/types/src/history.ts#L21-L22)).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 Directory name = `HistoryItem.id`; workspace = `workspace` in
 `history_item.json` or `_index.json`; `rootTaskId` and `parentTaskId` link
@@ -289,7 +289,7 @@ outlives a deleted task directory, a removed workspace and the extension's task-
 since nothing but the 500-entry cap removes an entry; it does not record which task or workspace a
 line went to.
 
-### 10. Other stores
+### Other stores
 
 No SQLite store. The VS Code side keeps secrets in SecretStorage (`state.vscdb`).
 
@@ -321,20 +321,20 @@ CLI commands such as `/new` that the CLI handles itself and never sends to a tas
 ([`apps/cli/src/ui/hooks/useTaskSubmit.ts:56-132`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/hooks/useTaskSubmit.ts#L56-L132)).
 A prompt given on the command line rather than typed into the input box does not pass through it.
 
-### 11. Format versions
+### Format versions
 
 `claude_messages.json` became `api_conversation_history.json` (deleted on read); globalState
 `taskHistory` became `history_item.json` plus `_index.json` with `version: 1`
 ([`TaskHistoryStore.ts:320-360`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/task-persistence/TaskHistoryStore.ts#L320-L360)).
 `.roo-code` has no references in current source and is legacy only.
 
-### 12. Secrets
+### Secrets
 
-The secret `roo_cline_config_api_config` ([section 3](#3-credentials)) holds the provider
+The secret `roo_cline_config_api_config` ([Credentials](#credentials)) holds the provider
 profiles with their API keys, in the editor's `state.vscdb` or the CLI's `secrets.json`; its shape
 is in [Model rows](#model-rows). Transcripts carry file contents and command output.
 
-### 13. Parser plan
+### Parser plan
 
 Globs:
 `<GS>/rooveterinaryinc.roo-cline/tasks/*/{api_conversation_history,ui_messages,history_item}.json`,
@@ -352,7 +352,7 @@ and `model` always empty.
 The parser reads none of the permission state yet:
 
 - Per call: the `isAnswered` mark and the denial and approval JSON of
-  [section 8](#8-record-schema). A `tool_result` whose JSON `status` is
+  [Record schema](#record-schema). A `tool_result` whose JSON `status` is
   `denied` or `approved` can yield `permission decision: <status>`
   (with ` feedback` when the key is present) beside the `tool_result`
   row, joined on `tool_use_id`.
@@ -468,7 +468,7 @@ states.
 {"_file":"api_conversation_history.json","record":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01A","content":"3 passed","is_error":false}],"ts":1760000003000}}
 ```
 
-## 14. Confidence
+## Confidence
 
 - High: all globalStorage and `~/.vscode-mock` paths, `_index.json.workspace`, secrets locations;
   file names, layouts and type definitions (read from source).

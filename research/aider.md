@@ -5,9 +5,9 @@ repository (or the current directory) and keeps its chat and prompt history ther
 files, with a few optional files under the home, so most of its evidence is project-level. It
 shares no storage or format with another agent. Paths cited are relative to the clone. The agent
 is parsed: the `aider` parser reads the chat history as the primary store and the input and LLM
-histories as secondary sources ([section 13](#13-parser-plan)).
+histories as secondary sources ([Parser plan](#parser-plan)).
 
-## 1. Source and evidence
+## Source and evidence
 
 [Aider-AI/aider](https://github.com/Aider-AI/aider), open source, commit
 [`5dc9490bb35f9729ef2c95d00a19ccd30c26339c`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c),
@@ -25,13 +25,13 @@ history format comes from the upstream prompt_toolkit `history.py`, which is not
 - 2026-10-19: the head of [Aider-AI/aider](https://github.com/Aider-AI/aider) `main` is still
   [`5dc9490`](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c),
   the commit cited throughout, so there is no drift. Added the confirmation lines and the startup
-  model announcements of the chat history ([section 8](#8-record-schema)), the `yes-always`
+  model announcements of the chat history ([Record schema](#record-schema)), the `yes-always`
   standing setting, the `/paste` temporary directory and what `/clear` and `/reset` leave
   ([What survives a delete](#what-survives-a-delete)).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Aider has no platform branching; everything is `Path.home()` (`%USERPROFILE%` on Windows), so the
 layout is identical on Linux, macOS and Windows. No `XDG` use.
@@ -69,7 +69,7 @@ Home-level files, all optional:
   ([`aider/versioncheck.py:12`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/versioncheck.py#L12)),
   `help.<version>/` llama-index embedding store
   ([`aider/help.py:93`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/help.py#L93)).
-- History files default to the git root ([section 5](#5-project-local-files)); when aider runs
+- History files default to the git root ([Project-local files](#project-local-files)); when aider runs
   outside a repository they land in the cwd
   ([`args.py:271-276`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L271-L276)),
   so `~/.aider.chat.history.md` and friends exist only for sessions started in the home directory.
@@ -85,7 +85,7 @@ only directory it creates is a system temporary directory for an image pasted wi
 outside every catalog line. `/clear` and `/reset` delete no file; what remains is in
 [What survives a delete](#what-survives-a-delete).
 
-### 3. Credentials
+### Credentials
 
 - `~/.aider/oauth-keys.env`: `OPENROUTER_API_KEY="..."` appended in plaintext
   ([`onboarding.py:365-367`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/onboarding.py#L365-L367)).
@@ -100,13 +100,13 @@ outside every catalog line. `/clear` and `/reset` delete no file; what remains i
 - `.aider.llm.history` contains full request bodies; keys are not logged.
 - No keychain use.
 
-### 4. Exclusions
+### Exclusions
 
 `.aider/caches` (model price tables, embedding store, version stamp). In repositories:
 `.aider.tags.cache.v<N>` tree-sitter tag cache, currently `v3`
 ([`aider/repomap.py:35`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/repomap.py#L35),[`43`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/repomap.py#L43),[`186`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/repomap.py#L186),[`218`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/repomap.py#L218)).
 
-### 5. Project-local files
+### Project-local files
 
 Defaults placed in the git root, or cwd without git
 ([`args.py:271-276`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L271-L276),[`422-426`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L422-L426)):
@@ -126,7 +126,7 @@ not a hard-coded name. Aider adds `.aider*` and `.env` to the repository `.gitig
 ([`main.py:160-168`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/main.py#L160-L168)),
 so git-based enumeration misses all of this; the collector must walk the directory.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Nowhere under home. Aider keeps no index of repositories; `analytics.json` holds only a UUID, and
 the chat history lives inside each repository. Discovery sources for other agents (and shell
@@ -135,7 +135,7 @@ in `.aider.chat.history.md` date the sessions once found.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 In the git root, else the cwd
 ([`aider/args.py:271-275`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/args.py#L271-L275)):
@@ -161,7 +161,7 @@ found. The analyzer reads `.aider.chat.history.md` as the primary store and the 
 histories as secondary sources on every run (see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 #### .aider.chat.history.md
 
@@ -245,32 +245,32 @@ a `-------` separator, then `ROLE <line>` per content line (`SYSTEM`, `USER`, `A
 ([`base_coder.py:1793`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L1793),
 [`:1822-1826`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/coders/base_coder.py#L1822-L1826)).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 The project is the directory containing the files (the git root). There is
 no session id; synthesise one per `# aider chat started at` header. Input
 history timestamps join to `#### ` prompts by order and text. No branch is
 recorded; the model is named only in the startup announcement lines
-([section 8](#8-record-schema)), which carry no time of their own and
+([Record schema](#record-schema)), which carry no time of their own and
 follow the session header.
 
-### 10. Other stores
+### Other stores
 
-None besides the input and LLM histories of [section 7](#7-transcript-stores), and no SQLite
+None besides the input and LLM histories of [Transcript stores](#transcript-stores), and no SQLite
 store. `.aider.tags.cache.v*` is a repository-map cache, not chat
-([section 4](#4-exclusions)).
+([Exclusions](#exclusions)).
 
-### 11. Format versions
+### Format versions
 
 None; the format has not changed across sessions.
 
-### 12. Secrets
+### Secrets
 
 `.aider.llm.history` contains the complete system prompt with every added
 file; `.aider.chat.history.md` contains any pasted secrets. Aider writes no
-keys itself. The credential files are in [section 3](#3-credentials).
+keys itself. The credential files are in [Credentials](#credentials).
 
-### 13. Parser plan
+### Parser plan
 
 Globs: `**/.aider.chat.history.md`, `**/.aider.input.history`,
 `**/.aider.llm.history` (project-level, so they arrive through the
@@ -292,7 +292,7 @@ Rows: one per `#### ` block (user), per assistant run, per `> ` run
 #### Permission rows
 
 Aider's confirmation prompts are written as `> ` blockquote lines
-([section 8](#8-record-schema)), which the parser already emits with the
+([Record schema](#record-schema)), which the parser already emits with the
 rest of the blockquote run as `tool_result` rows; no separate `permission
 decision:` row is derived from them.
 
@@ -306,7 +306,7 @@ collected `.aider.conf.yml` is a standing setting
 
 The model is in the chat history only as the `> Model:`, `> Main
 model:`, `> Weak model:` and `> Editor model:` announcement lines
-([section 8](#8-record-schema)); the parser does not read them, so it
+([Record schema](#record-schema)); the parser does not read them, so it
 yields no `model:` rows. The announcement lines would give
 `model: <name>` at each session
 header and `model: <old> -> <new>` at each later announcement that
@@ -406,7 +406,7 @@ What does leave the host:
   [`report.py:94-151`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/report.py#L94-L151),
   [`commands.py:1555-1567`](https://github.com/Aider-AI/aider/blob/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/commands.py#L1555-L1567)).
 
-The OpenRouter OAuth flow writes `~/.aider/oauth-keys.env` (see [section 3](#3-credentials)) and
+The OpenRouter OAuth flow writes `~/.aider/oauth-keys.env` (see [Credentials](#credentials)) and
 carries no session. Searched for `sync`, `share`, `upload`, `publish`, `cloud`, `remote`, `gist`,
 `paste`, `export`, `backup`, `account`, `team`, `session_id`, `conversation_id`, `remote_id` and
 outbound `requests`/`httpx` calls in `aider/` (the website tree aside); the only hosts contacted are
@@ -460,7 +460,7 @@ The other two files:
 - `.aider.llm.history`: `TO LLM 2026-10-02T12:00:05\n-------\nSYSTEM Act as an expert\n-------\nUSER
   rename foo to bar\nLLM RESPONSE 2026-10-02T12:00:09\nASSISTANT Here is the change:\n`
 
-## 14. Confidence
+## Confidence
 
 - High: all file names and search orders (source); chat and LLM history formats (read from the
   writers).

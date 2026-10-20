@@ -526,10 +526,10 @@ entry can reach these, so copy them by hand when they exist:
 | Gemini CLI | `gemini-conversation-<epoch ms>.json` or `.md` from `/chat share`, and the JSON file `/export-session <path>` writes. | The working directory of the session for `/chat share`; the path given for `/export-session`. |
 
 Details and sources are in
-[section 10 of `research/openclaw.md`](../../research/openclaw.md#10-other-stores),
-[section 13 of `research/codex-cli.md`](../../research/codex-cli.md#13-parser-plan),
-[section 10 of `research/continue.md`](../../research/continue.md#10-other-stores) and
-[section 13 of `research/gemini-cli.md`](../../research/gemini-cli.md#13-parser-plan).
+[Other stores in `research/openclaw.md`](../../research/openclaw.md#other-stores),
+[Parser plan in `research/codex-cli.md`](../../research/codex-cli.md#parser-plan),
+[Other stores in `research/continue.md`](../../research/continue.md#other-stores) and
+[Parser plan in `research/gemini-cli.md`](../../research/gemini-cli.md#parser-plan).
 
 ## Agent frameworks and self-hosted platforms
 

@@ -6,7 +6,7 @@ of its own. Its repository also ships the `twinny-node` peer-to-peer GPU sharing
 `twinny-server` team gateway. The `twinny` parser reads the chats from the editor's state
 database.
 
-## 1. Source and evidence
+## Source and evidence
 
 [twinnydotdev/twinny](https://github.com/twinnydotdev/twinny) at
 [`9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6`](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6),
@@ -40,7 +40,7 @@ and the `twinny-server` team gateway
   (4.3.5). Between the two commits 160 files changed; every path in this document and every key
   and field the parser reads are still used. It added the records new since 4.3.5 (the per-reply
   file-change records, the log channel, the standing grants, the ChatGPT plan keys and the message
-  fields of [section 8](#8-record-schema)) and the `user` row for a step typed mid-reply.
+  fields of [Record schema](#record-schema)) and the `user` row for a step typed mid-reply.
 - 2026-10-17: [twinnydotdev/twinny](https://github.com/twinnydotdev/twinny) at
   [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a),
   for sync. It added the finding of [Sync, relay and origin rows](#sync-relay-and-origin-rows)
@@ -48,7 +48,7 @@ and the `twinny-server` team gateway
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Extension id `rjmacarthy.twinny` (publisher `rjmacarthy`, name `twinny`,
 [package.json:2](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/package.json#L2),
@@ -186,11 +186,11 @@ Since 4.3.5, at
   ([src/gateway/init.ts:19](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/init.ts#L19),
   [150](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/init.ts#L150)).
 
-### 3. Credentials
+### Credentials
 
 - Provider API keys, in plain text: in `state.vscdb` (`rjmacarthy.twinny` →
   `twinny.inference-providers`) or in `globalStorage/rjmacarthy.twinny/twinny-providers.json`; the
-  field is in [section 12](#12-secrets).
+  field is in [Secrets](#secrets).
 - Team gateway tokens: VS Code secret storage, `twinny.gateway-token.<providerId>`
   ([src/extension/providers/credentials.ts:14](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/providers/credentials.ts#L14),
   [59-61](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/providers/credentials.ts#L59-L61));
@@ -225,7 +225,7 @@ Since 4.3.5, at
   [config.ts:58](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/config.ts#L58),
   [237](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/config.ts#L237)).
 
-### 4. Exclusions
+### Exclusions
 
 - `~/.twinny/embeddings/*/chunks.lance`: the LanceDB vector table of source
   chunks; size grows with the indexed workspace. Keep `manifest.json`.
@@ -235,13 +235,13 @@ Since 4.3.5, at
   [290-295](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/plugins/context.ts#L290-L295),
   [336-338](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/gateway/plugins/context.ts#L336-L338)).
 
-### 5. Project-local files
+### Project-local files
 
 None written. Twinny reads each workspace's `.gitignore` to filter files
 ([src/extension/embeddings/indexer.ts:85-94](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/extension/embeddings/indexer.ts#L85-L94))
 and has no rules or instructions file of its own.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - `~/.twinny/embeddings/<workspace>/manifest.json`: `files` is keyed by the absolute path of every
   indexed file
@@ -260,7 +260,7 @@ and has no rules or instructions file of its own.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 - `<editor User dir>/globalStorage/state.vscdb`, `ItemTable` row whose `key` is `rjmacarthy.twinny`.
   Its `value` is one JSON object holding every `globalState` key of the extension
@@ -276,7 +276,7 @@ and has no rules or instructions file of its own.
   `AppData/Roaming/*/User/globalStorage/state.vscdb`,
   `.*-server*/data/User/globalStorage/state.vscdb`, all collected as agent `vscode`.
 - Optional `twinny-server` recordings (`~/.twinny/server/recordings/`), off by
-  default, cover requests from every team member; see [section 10](#10-other-stores).
+  default, cover requests from every team member; see [Other stores](#other-stores).
 
 #### What survives a delete
 
@@ -299,7 +299,7 @@ row: the `agent-changes/` records and the log channel are secondary sources not 
 gateway recordings are not read (see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 `Conversation`
 ([src/common/types.ts:127-135](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/common/types.ts#L127-L135)):
@@ -352,18 +352,19 @@ for every command), both cleared when the step finishes
 `meta.outOfSteps` (the reply used every tool step `twinny.chatToolsMaxSteps` allows) and
 `meta.instructions` (relative paths of the `AGENTS.md` files agent mode followed).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 Conversation `id` is the session. Tool steps are embedded in the assistant message that used them,
 so there is no call/result join. No project path is stored with a conversation; the per-workspace
 state ([VS Code `globalState`](#vs-code-globalstate)) and the `workspace.json` beside it
-([section 6](#6-where-the-project-path-is-recorded)) name the folder, and an `agent-changes/` record
-joins through `changes.id` ([Per-reply file-change records](#per-reply-file-change-records)). The
-conversation list itself is global.
+([Where the project path is recorded](#where-the-project-path-is-recorded)) name the folder, and an
+`agent-changes/` record joins through `changes.id`
+([Per-reply file-change records](#per-reply-file-change-records)). The conversation list itself is
+global.
 
 There is no per-message timestamp; only the conversation's `updatedAt`.
 
-### 10. Other stores
+### Other stores
 
 #### `state.vscdb`
 
@@ -453,14 +454,14 @@ so the list is the only record of it. A team gateway's agent policy (commands as
 paths) is held in memory only
 ([src/common/team-policy.ts:79-89](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/team-policy.ts#L79-L89)).
 
-### 11. Format versions
+### Format versions
 
 No version field on conversations. `updatedAt` is absent on conversations from older builds
 ([types.ts:133-134](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/common/types.ts#L133-L134));
 `contextItems` was previously `contextFiles`
 ([storage.ts:38](https://github.com/twinnydotdev/twinny/blob/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6/src/common/constants/storage.ts#L38)).
 
-### 12. Secrets
+### Secrets
 
 The same `rjmacarthy.twinny` JSON holds `twinny.inference-providers` and the
 `twinny.active-*-provider` objects, each with `apiKey`
@@ -468,7 +469,7 @@ The same `rjmacarthy.twinny` JSON holds `twinny.inference-providers` and the
 Redact `apiKey` wherever it appears in the value. Gateway tokens and P2P seeds are separate
 encrypted `secret://` rows.
 
-### 13. Parser plan
+### Parser plan
 
 Select `state.vscdb` (and `-wal`) under any `User/globalStorage/`, read the
 row `key = 'rjmacarthy.twinny'`, parse JSON, iterate
@@ -511,7 +512,7 @@ Model and permission rows are all `system`
   [Standing permission grants](#standing-permission-grants); the plan is a row per entry, `permission setting: <key>=<value> (from state.vscdb
   rjmacarthy.twinny, file mtime)`.
 - `node/trusted-peers.json`, the `twinny-node` trusted-peer list named in
-  [section 2](#2-per-user-storage),
+  [Per-user storage](#per-user-storage),
   is not read: its shape is not recorded.
 
 #### Model rows
@@ -582,7 +583,7 @@ The extension sends only the workspace name in `X-Twinny-Workspace`
 [252](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/protocol/client.ts#L252)),
 and nothing on the developer's machine says a request was recorded, so the parser yields no sync
 row; the gateway host's `recordings/` directory is the place to look
-([section 10](#10-other-stores)).
+([Other stores](#other-stores)).
 
 #### Scratch directory rows
 
@@ -621,7 +622,7 @@ before the fix for [issue 171](https://github.com/seanthegeek/doubleagent/issues
 observed on any real install, source-derived (twinnydotdev/twinny at
 [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)).
 
-## 14. Confidence
+## Confidence
 
 - High (source): the extension id, the `globalState` key names, the provider file name and
   setting, the `~/.twinny` subpaths, the gateway data directory layout, the secret storage keys,

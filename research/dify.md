@@ -9,7 +9,7 @@ into the catalog from the agent framework sweep for
 parser is in the backlog ([issue 142](https://github.com/seanthegeek/doubleagent/issues/142));
 the chat and run history is in PostgreSQL, which the analyzer cannot read.
 
-## 1. Source and evidence
+## Source and evidence
 
 [langgenius/dify](https://github.com/langgenius/dify), commit
 [`519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e`](https://github.com/langgenius/dify/commit/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e).
@@ -37,12 +37,12 @@ and the agent runs shell jobs in `local_sandbox` through shellctl
   [`519ef8b`](https://github.com/langgenius/dify/commit/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e),
   from source only. Added shellctl's `jobs` columns and retention, the PostgreSQL model and Human
   Input records, the `/workspace` scratch volume and difyctl's `login-pending.yml`
-  ([section 2](#2-per-user-storage), [section 3](#3-credentials)); the compose file's line numbers
-  moved, and shellctl's state paths and schema are unchanged.
+  ([Per-user storage](#per-user-storage), [Credentials](#credentials)); the compose file's line
+  numbers moved, and shellctl's state paths and schema are unchanged.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 The server has no default path under the home.
 
@@ -159,7 +159,7 @@ An explicit delete does the same at once
 A collection therefore holds the jobs of the last few minutes before it ran, plus whatever the
 deleted rows left in the database's free pages; shellctl keeps no other copy of a job.
 
-### 3. Credentials
+### Credentials
 
 - difyctl `tokens.yml`, in all three locations: flagged.
 - difyctl `login-pending.yml`, added after
@@ -180,18 +180,18 @@ deleted rows left in the database's free pages; shellctl keeps no other copy of 
   ([.env.example:159-161](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/docker/.env.example#L159-L161)).
   These keys decrypt the provider API keys held in PostgreSQL.
 
-### 4. Exclusions
+### Exclusions
 
 None under the home or in the two named volumes. In the bind mounts the
 vector-store directories (`volumes/weaviate`, `qdrant`, `milvus` and so
 on) and `volumes/sandbox/dependencies` are large.
 
-### 5. Project-local files
+### Project-local files
 
 None in the sense of the project catalog; the deployment's own
 `docker/` directory is the state ([Compose bind mounts](#compose-bind-mounts)).
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Nowhere under the home.
 
@@ -207,7 +207,7 @@ collection, carry no model, conversation or user, and join a Dify conversation o
 conversations, messages, agent tool calls, models and Human Input forms are in PostgreSQL, which
 the analyzer cannot read without a PostgreSQL server ([Compose bind mounts](#compose-bind-mounts)).
 
-## 14. Confidence
+## Confidence
 
 - High: the named volumes, shellctl's state and the table names (source).
 - Low: the clone location, which is why it has no catalog line.

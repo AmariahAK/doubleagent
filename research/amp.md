@@ -5,7 +5,7 @@ Amp is a closed-source coding agent, first published by Sourcegraph as `@sourceg
 binary's name for its sandbox environment). Its parser is in the backlog
 ([issue 53](https://github.com/seanthegeek/doubleagent/issues/53)).
 
-## 1. Source and evidence
+## Source and evidence
 
 - Closed source. npm `@sourcegraph/amp` is now an alias whose only dependency is `@ampcode/cli`
   (its `package.json` says "Renamed to @ampcode/cli"). `@ampcode/cli`
@@ -22,7 +22,7 @@ binary's name for its sandbox environment). Its parser is in the backlog
   server-side and can be fetched by a site admin" (`amp.strings` near `thread/full.json`); docs say
   remote MCP definitions and threads are "stored by ampcode.com" (`customize_mcp.md:15,301`). No
   local thread transcript store was found in either strings table; only per-thread *logs*
-  ([section 2](#2-per-user-storage)).
+  ([Per-user storage](#per-user-storage)).
 
 ### Observed
 
@@ -34,7 +34,7 @@ None.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Path resolution in the CLI code has no platform branching, so the layout is identical on Linux,
 macOS and Windows (B, `amp.strings16`):
@@ -116,7 +116,7 @@ System-wide (not per-user): `/etc/ampcode/`, `/Library/Application Support/ampco
 Env relocation: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `AMP_HOME`,
 `AMP_SETTINGS_FILE`, `AMP_LOG_FILE`.
 
-### 3. Credentials
+### Credentials
 
 - Primary store is the OS keyring via `@napi-rs/keyring` (keyring-rs 3.6.3; service
   `amp.cli.<kind>`, account `amp.cli.account`). File fallback `~/.local/share/amp/secrets.json`
@@ -131,12 +131,12 @@ Env relocation: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `AMP_HOME`
 - No `secrets.json` under `.config/amp` occurs anywhere in the binary; the file fallback is the
   data directory's.
 
-### 4. Exclusions
+### Exclusions
 
 `.cache/amp/runner-desktop`, `.cache/amp/desktop`, `.cache/amp/bin`, `.cache/amp/obelisk-runs`,
 `.cache/amp/pids`, `.amp/bin`, `AppData/Local/amp/bin`.
 
-### 5. Project-local files
+### Project-local files
 
 `.amp/settings.json` or `.amp/settings.jsonc` searched upward (`join(o,".amp","settings.json")`),
 `.amp/plugins/*.ts`, `.amp/portals/*.json`, `.amp/portal-proxy.mjs`, `.amp/live-sync.pid`,
@@ -145,7 +145,7 @@ Env relocation: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `AMP_HOME`
 (`customize_agents-md.md:36-44`); `.agents/skills/`. Commits carry an `Amp-Thread-ID` trailer
 (`threads.md:136`).
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 `~/.local/share/amp/history.jsonl`: JSONL, key `cwd` per entry (B).
 `~/.cache/amp/logs/threads/<T-id>.log` lines carry a thread id; their cwd content is unverified.
@@ -154,12 +154,12 @@ No local thread index.
 ## Parsing
 
 Amp is `backlog`: the parser is [issue 53](https://github.com/seanthegeek/doubleagent/issues/53).
-The full threads are server-side ([section 1](#1-source-and-evidence)), so a parser would read
-what stays local: the prompt history, the per-thread and CLI logs, the terminal tool's shell
-history and the Claude Code session copies ([section 2](#2-per-user-storage)). No record schema
+The full threads are server-side ([Source and evidence](#source-and-evidence)), so a parser would
+read what stays local: the prompt history, the per-thread and CLI logs, the terminal tool's shell
+history and the Claude Code session copies ([Per-user storage](#per-user-storage)). No record schema
 has been researched yet.
 
-## 14. Confidence
+## Confidence
 
 - High: the config, data and cache resolution, `settings.json(c)`, `secrets.json`,
   `accounts.json`, `history.jsonl`, `logs/cli.log`, `logs/threads`, `~/.amp/bin`, `~/.amp/oauth`,

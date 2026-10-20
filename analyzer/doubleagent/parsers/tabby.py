@@ -54,8 +54,8 @@ Files, relative to the home directory:
   Only the `user` and `assistant` rows pair: the `system` rows name the
   owner as the log's encoded id there and as the account's email in the
   database, so their texts differ and both copies are kept. The evidence
-  is in the "What survives a delete" part of section 7 of the research
-  document.
+  is in the "What survives a delete" part of the research
+  document's Transcript stores.
 
 The database also stores plaintext secrets (`users.auth_token`,
 `users.password_encrypted`, `registration_token`, `refresh_tokens`,

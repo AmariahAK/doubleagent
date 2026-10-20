@@ -14,7 +14,7 @@ inherit when `ui_messages.json` is missing. The API history stays a
 fallback, not a secondary source: it records a turn in other words than
 `ui_messages.json` (the first prompt wrapped in `<task>` tags, tool calls
 as content blocks or XML), so `dedup.deduplicate` could not pair the two
-(section 13 of the research document).
+(the Parser plan of the research document).
 
 * `state/taskHistory.json`: JSON array of `HistoryItem {id, ts, task,
   tokensIn, tokensOut, cacheWrites, cacheReads, totalCost, size,

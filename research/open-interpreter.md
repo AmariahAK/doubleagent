@@ -11,7 +11,7 @@ transcripts are Codex rollouts, byte for byte, so the Codex parser
 tool's `conversations/*.json` files are collected but not parsed yet
 ([issue 70](https://github.com/seanthegeek/doubleagent/issues/70)).
 
-## 1. Source and evidence
+## Source and evidence
 
 [openinterpreter/openinterpreter](https://github.com/openinterpreter/openinterpreter) (the old
 `open-interpreter` URL redirects there), Apache-2.0, open source, commit
@@ -53,14 +53,14 @@ for [issue 64](https://github.com/seanthegeek/doubleagent/issues/64) (see
   with its tests and the version numbers, so every path holds at `ac1fcc8`. The fork has not taken
   Codex's changes after its snapshot, so the Codex findings of the same day
   ([Source reviews in `codex-cli.md`](codex-cli.md#source-reviews)) apply only where noted. It
-  added the standing grants and scratch directories of [section 2](#2-per-user-storage), the delete
-  facts of [What survives a delete](#what-survives-a-delete), the fork's approval logging of
-  [section 10](#10-other-stores) and the `turn_context` difference of
-  [section 11](#11-format-versions).
+  added the standing grants and scratch directories of [Per-user storage](#per-user-storage), the
+  delete facts of [What survives a delete](#what-survives-a-delete), the fork's approval logging of
+  [Other stores](#other-stores) and the `turn_context` difference of
+  [Format versions](#format-versions).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Home resolution
 ([`utils/home-dir/src/lib.rs:5-36`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/utils/home-dir/src/lib.rs#L5-L36),
@@ -231,12 +231,12 @@ Thread worktrees in `.openinterpreter/worktrees/<4 hex>/<repository name>`, or
 under `config.toml` `[desktop] git-worktree-root`
 ([`codex-rs/worktree/src/settings.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L12),
 [`44`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L44)).
-The default location is excluded ([section 4](#4-exclusions)); project discovery reads
+The default location is excluded ([Exclusions](#exclusions)); project discovery reads
 `.openinterpreter/sessions` and `archived_sessions` and drops no `cwd`, so a thread that ran in a
 worktree has the worktree discovered as a project. The `.zcode/cli/artifacts` spill directory is the
 agent's own output, under the catalog line.
 
-### 3. Credentials
+### Credentials
 
 - `auth.json`: OpenAI API key and ChatGPT OAuth tokens
   ([`login/src/auth/storage.rs:155`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/login/src/auth/storage.rs#L155));
@@ -261,7 +261,7 @@ agent's own output, under the catalog line.
 - Legacy Python tool: `profiles/*` in the base directory, and the older
   `Open Interpreter*/config.yaml`, which can hold `llm.api_key`.
 
-### 4. Exclusions
+### Exclusions
 
 Same as Codex: `packages/` (managed binaries), `cache/`, `.tmp/`, `tmp/`, `plugins/cache`
 ([`core-plugins/src/store.rs:26`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/core-plugins/src/store.rs#L26)),
@@ -277,7 +277,7 @@ referenced as a display path for the emulated skill
 nothing writes it. Keep `.zcode/cli/artifacts`: it holds full tool output. For the legacy Python
 tool, `models/` in the base directory (llamafile weights).
 
-### 5. Project-local files
+### Project-local files
 
 - `.openinterpreter/` per project replaces `.codex/` (config, hooks, rules)
   ([`config/src/loader/mod.rs:1121-1126`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/config/src/loader/mod.rs#L1121-L1126)).
@@ -297,7 +297,7 @@ tool, `models/` in the base directory (llamafile weights).
   so in the project directory when neither variable reaches the tool shell.
 - No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 As in Codex: `session_meta` first line of every rollout, `payload.cwd`
 ([`protocol/src/protocol.rs:3117-3141`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/protocol/src/protocol.rs#L3117-L3141)),
@@ -312,7 +312,7 @@ projects the user trusted or distrusted.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 - `.openinterpreter/sessions/YYYY/MM/DD/rollout-<YYYY-MM-DDThh-mm-ss>-<thread uuid>.jsonl`, one file
   per thread, and the same under `.openinterpreter/archived_sessions/`
@@ -327,7 +327,7 @@ projects the user trusted or distrusted.
 - `.openinterpreter/session_index.jsonl`: `{id, thread_name, updated_at}` per rename
   ([`rollout/src/session_index.rs:21-29`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/rollout/src/session_index.rs#L21-L29)).
 - `.openinterpreter/external_agent_session_imports.json`: which rollouts
-  were imported from Claude Code or Cursor ([section 9](#9-joins-and-timestamps)).
+  were imported from Claude Code or Cursor ([Joins and timestamps](#joins-and-timestamps)).
 - `.openinterpreter/.zcode/cli/artifacts/sess_<session id>/<call id>-tool-result-<uuid>.json`: full
   output of a tool call that was too long to inline under the zcode harness
   ([`core/src/tools/handlers/harness_aliases.rs:887-902`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/core/src/tools/handlers/harness_aliases.rs#L887-L902)).
@@ -355,7 +355,7 @@ mark imported rollouts
 the memories files or `db-backups/` (see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 Each line is `RolloutLine`: `timestamp`, optional `ordinal`, and the flattened item
 ([`history/src/lib.rs:277-284`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/history/src/lib.rs#L277-L284)),
@@ -409,7 +409,7 @@ Types: `session_meta`, `response_item`, `inter_agent_communication`,
 `history.jsonl`: `{session_id, ts, text}`, `ts` epoch seconds
 ([`message-history/src/lib.rs:62-66`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/message-history/src/lib.rs#L62-L66),[`128-131`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/message-history/src/lib.rs#L128-L131)).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 Session to project: `session_meta.payload.cwd`, updated per turn by `turn_context.payload.cwd`. Tool
 call to result: `call_id`. Subagent to parent: `session_meta.payload.parent_thread_id` and
@@ -421,7 +421,7 @@ A rollout whose thread id is in that ledger was written by `/import`
 ([`external-agent-sessions/src/export.rs:58-73`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/external-agent-sessions/src/export.rs#L58-L73)),
 so its turns were authored in another agent and their record timestamps are import time.
 
-### 10. Other stores
+### Other stores
 
 Same SQLite set as Codex (`state_5.sqlite`, `logs_2.sqlite`, `thread_history_1.sqlite` and others;
 [`state/src/sqlite.rs:29-34`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/src/sqlite.rs#L29-L34));
@@ -430,7 +430,7 @@ the rollouts are the primary record. zstd for `.jsonl.zst` rollouts.
 `state_5.sqlite` and `thread_history_1.sqlite` are parsed as secondary
 sources by the shared Codex reader
 ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)); their record shapes, joins and
-what they survive are in [section 10 of `codex-cli.md`](codex-cli.md#10-other-stores). The fork's
+what they survive are in [Other stores in `codex-cli.md`](codex-cli.md#other-stores). The fork's
 `threads` migrations that the parser reads match Codex's
 ([`state/migrations/0001_threads.sql:1-19`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/migrations/0001_threads.sql#L1-L19),
 [`0007_threads_first_user_message.sql:1`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/migrations/0007_threads_first_user_message.sql#L1),
@@ -466,7 +466,7 @@ exist at
 [`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87);
 both are collected.
 
-### 11. Format versions
+### Format versions
 
 Tracks upstream Codex; no fork-specific version marker in the records.
 `cli_version` in `session_meta` is the fork's version. The record shapes are unchanged at
@@ -475,14 +475,14 @@ Tracks upstream Codex; no fork-specific version marker in the records.
 ([`codex-rs/protocol/src/protocol.rs:3318`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/protocol/src/protocol.rs#L3318)),
 unlike Codex at the commit of the same day's review.
 
-### 12. Secrets
+### Secrets
 
 Not in rollouts by design, but tool arguments and outputs can carry pasted
 keys. `reasoning.encrypted_content` is an opaque provider blob. The
 credential files (`auth.json`, `credentials/kimi-code.json`, `.env`) are
-listed in [section 3](#3-credentials).
+listed in [Credentials](#credentials).
 
-### 13. Parser plan
+### Parser plan
 
 `OpenInterpreterParser` subclasses the shared `RolloutParser`, as `CodexParser` does, and reads
 `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` rollouts, plain or
@@ -596,10 +596,10 @@ The import ledger `external_agent_session_imports.json`:
 
 - `{"records":[{"source_path":"/home/alice/.claude/projects/-home-alice-proj/5b1c.jsonl","content_sha256":"ab12...","imported_thread_id":"0199a1b2-0000-7000-8000-000000000002","imported_at":1759312800}]}`
 
-## 14. Confidence
+## Confidence
 
 - High: home resolution, `CODEX_HOME` being ignored, every file name in
-  [section 2](#2-per-user-storage) and [section 3](#3-credentials) (constants in the cited files,
+  [Per-user storage](#per-user-storage) and [Credentials](#credentials) (constants in the cited files,
   identical to upstream Codex), the Kimi credential file, the import ledger and its `records` key
   (no serde rename on the struct); the rollout line envelope, timestamp format, payload field names
   (shared structs) and `input_text` content blocks

@@ -9,7 +9,7 @@ agent: `letta`. Parsed: the letta parser reads the reflection transcripts, the l
 `messages.jsonl` files, `sessions.jsonl` and the `sessionsByServer` settings; the V1 `sqlite.db`
 and the chunk logs are not parsed.
 
-## 1. Source and evidence
+## Source and evidence
 
 Both codebases are Apache-2.0 and open source:
 
@@ -54,11 +54,11 @@ from source.
   [package.json:3](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/package.json#L3)),
   compared file by file with [`77faf36`](https://github.com/letta-ai/letta-code/commit/77faf36e34378946c8e69c0bfaa5595a7be4c326) (0.34.2). The review added the permission settings, the
   scheduled-task run logs, the input ledger, channel routing and the OpenCode external agent, and
-  recorded in [section 11](#11-format-versions) that the shapes the parser reads are unchanged.
+  recorded in [Format versions](#format-versions) that the shapes the parser reads are unchanged.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 #### Letta Code
 
@@ -192,7 +192,7 @@ No Letta release reads `~/.memgpt`; a grep of 0.4.1, 0.11.7 and the archive head
 What a delete removes and leaves is in
 [What survives a delete](#what-survives-a-delete).
 
-### 3. Credentials
+### Credentials
 
 - Letta Code stores the Letta API key and refresh token in the OS keychain through `Bun.secrets`,
   service `letta-code`, names `letta-api-key` and `letta-refresh-token`
@@ -227,13 +227,13 @@ What a delete removes and leaves is in
   ([0.11.7 orm/provider.py:30-32](https://github.com/letta-ai/letta/blob/bf9356ceaf8ac4c80f1b418f209ad49b04986885/letta/orm/provider.py#L30-L32));
   collect it unflagged, as with Cursor.
 
-### 4. Exclusions
+### Exclusions
 
 `.letta/bin` (ripgrep and fd binaries), `.letta/mod-cache`. V1: `.letta/tool_execution_dir` (tool
 sandboxes and virtualenvs), `.letta/chroma`, `.memgpt/chroma` (embedding stores). Keep
 `agents/*/memory/.git`: it carries the memory edit history and the credential helper.
 
-### 5. Project-local files
+### Project-local files
 
 `<project>/.letta/settings.json` (checked-in hooks and window title) and
 `.letta/settings.local.json` (permissions, `sessionsByServer`, last agent)
@@ -248,7 +248,7 @@ Both project files, like the user files `~/.letta/settings.json` and
 `~/.config/letta/settings.json`, can hold a `permissions` object with the standing rules
 ([Permission settings](#permission-settings)).
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - `~/.letta/sessions.jsonl` key `project`, which is `process.cwd()`
   ([AppCoordinator.tsx:403](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/cli/app/AppCoordinator.tsx#L403),
@@ -264,7 +264,7 @@ Both project files, like the user files `~/.letta/settings.json` and
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 | Glob (relative to home) | One file per | Mode |
 | --- | --- | --- |
@@ -357,7 +357,7 @@ also remain after it; what a local-backend delete does to them is not stated. Th
 `messages.jsonl` was deleted keeps all its rows, and reads `sessions.jsonl`; it reads none of the
 other records ([Past use and secondary sources](#past-use-rows-and-secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 #### Reflection transcript
 
@@ -432,7 +432,7 @@ has `id` (prefix `letta-msg-`,
 [116-158](https://github.com/letta-ai/letta-code/blob/77faf36e34378946c8e69c0bfaa5595a7be4c326/src/agent/session-history.ts#L116-L158)).
 One line is written at session start and one at exit. Session metadata, not turns.
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 - Reflection transcript: agent and conversation from the two directory names.
   Project path: the `sessions.jsonl` line with the same `agent_id` whose
@@ -462,7 +462,7 @@ One line is written at session start and one at exit. Session metadata, not turn
   matching `toolCall`. Time: the transcript line is later than its `messages.jsonl` entry by up to
   the turn's duration, the prompt by all of it.
 
-### 10. Other stores
+### Other stores
 
 Letta Code keeps no SQLite. None of the stores below is parsed. Channel routing, the scheduled
 tasks, the interrupted turns, the input ledger and the permission settings are cited at [`2a46615`](https://github.com/letta-ai/letta-code/commit/2a46615d16babb06cf5450b8e57ecb9bdbf2f436).
@@ -551,7 +551,7 @@ merged from `~/.config/letta/settings.json`, `~/.letta/settings.json` and a proj
 ([src/cli/app/use-approval-flow.ts:745-756](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/cli/app/use-approval-flow.ts#L745-L756),
 [loader.ts:329-345](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/permissions/loader.ts#L329-L345)).
 
-### 11. Format versions
+### Format versions
 
 Local backend: schema 1 (`pi-ai-message-jsonl`, bare message per line) and schema 2 (session
 entries); `letta local-backend migrate-transcripts` converts 1 to 2 and leaves
@@ -571,13 +571,13 @@ stores are unchanged. The interrupted-turn code moved from `interrupted-turn-rec
 several files, among them `src/websocket/listener/interrupted-turn-storage.ts`, and the channel
 gateway modules were removed.
 
-### 12. Secrets
+### Secrets
 
 `thinkingSignature` and `textSignature` are opaque provider blobs. Tool arguments and results can
 hold pasted keys. V1 `sqlite.db` table `providers` column `api_key`
 ([0.11.7 orm/provider.py:30-32](https://github.com/letta-ai/letta/blob/bf9356ceaf8ac4c80f1b418f209ad49b04986885/letta/orm/provider.py#L30-L32)).
 
-### 13. Parser plan
+### Parser plan
 
 Parse `transcript.jsonl` and `messages.jsonl` always
 ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)), and `sessions.jsonl`.
@@ -595,7 +595,7 @@ Parse `transcript.jsonl` and `messages.jsonl` always
 
 #### Permission rows
 
-None of the record shapes in [section 8](#8-record-schema) records a permission decision. The
+None of the record shapes in [Record schema](#record-schema) records a permission decision. The
 standing rules are the `permissions` object of the four settings files
 ([Permission settings](#permission-settings)). The parser does not read it: it was written
 before the object's shape was recorded, so it reads only `sessionsByServer` from a project's
@@ -623,7 +623,7 @@ In local-backend mode `messages.jsonl` is the store of record, the local backend
 store, with models, tool ids and per-message times; it is primary. `transcript.jsonl` copies each
 completed turn of the same conversation and is a secondary source: its rows are dropped when a
 `messages.jsonl` row of the same conversation has the same turn type and text within one hour, the
-window a turn's end-of-turn stamp needs (see [section 8](#8-record-schema)); a turn longer than an
+window a turn's end-of-turn stamp needs (see [Record schema](#record-schema)); a turn longer than an
 hour leaves its earlier lines shown twice. What only the transcript keeps survives the rule:
 deleting a local-backend agent leaves `~/.letta/transcripts/` alone
 ([What survives a delete](#what-survives-a-delete)),
@@ -634,7 +634,7 @@ primary, one `system` row per line, and gives the transcript's project attributi
 `crons.json` and `runs/*.jsonl` (scheduled tasks and their
 runs, secondary to the conversation they target), `listener-state/`
 (primary for the interrupted turns it holds) and the input ledger
-are not read, and the chunk logs are not parsed into turns ([section 10](#10-other-stores)).
+are not read, and the chunk logs are not parsed into turns ([Other stores](#other-stores)).
 
 #### Sync, relay and origin rows
 
@@ -730,13 +730,13 @@ Covered for the files read; a reader added for
 {"agent_id":"agent-1a2b","session_id":"s-1","timestamp":1759320000000,"project":"/home/alice/repo","model":"claude-sonnet-4-5","provider":"anthropic","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_write_tokens":0,"reasoning_tokens":0,"steps":0},"duration":{"api_ms":0,"wall_ms":0},"cost":{"type":"hosted"}}
 ```
 
-## 14. Confidence
+## Confidence
 
 - High (source): every Letta Code path, the keychain fallback, the credential helper, the
   local-backend layout, the line shapes, field names and timestamp units.
 - High (source): V1 `~/.letta/sqlite.db` at 0.11.7 and `~/.memgpt` at 0.3.25.
 - Medium: pi-ai optional fields at the pinned version, since the pi checkout is newer
-  ([section 1](#1-source-and-evidence)); the `api` value in the fixture is illustrative.
+  ([Source and evidence](#source-and-evidence)); the `api` value in the fixture is illustrative.
 - Medium: the release in which V1 dropped SQLite (between 0.11.7 and the archive head, not
   bisected).
 - Not determined: the V1 `content` and `tool_calls` JSON encodings

@@ -10,7 +10,7 @@ local backend, which writes pi's session format with its own writer into its own
 Catalog agent: `pi`. Parsed: the pi parser reads the session files, `trust.json` and the
 experimental session metadata.
 
-## 1. Source and evidence
+## Source and evidence
 
 [earendil-works/pi](https://github.com/earendil-works/pi) (the monorepo for the `pi` coding agent
 CLI, `@earendil-works/pi-coding-agent` 1.0.2), MIT licence
@@ -35,13 +35,13 @@ the version little-coder pins, is cited. All claims from source.
   compared file by file with [`2003871`](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c). The review added `defaultProjectTrust` and `--approve` to
   [Project trust](#project-trust), `sessionShareDestination` to
   [Sync, relay and origin rows](#sync-relay-and-origin-rows), the current contents of the debug
-  and crash logs to [section 10](#10-other-stores), `durationMs` and `argumentsError` to
-  [section 11](#11-format-versions), and the experimental server's removal to
+  and crash logs to [Other stores](#other-stores), `durationMs` and `argumentsError` to
+  [Format versions](#format-versions), and the experimental server's removal to
   [Experimental durable sessions](#experimental-durable-sessions).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 One layout on every OS. The agent directory is `$PI_CODING_AGENT_DIR` (with `~` expanded) or
 `os.homedir()/.pi/agent`
@@ -158,7 +158,7 @@ and loading a file whose last line has no newline appends one
 Collect before anyone resumes a session on the host. What the session picker's delete removes, and
 what survives it, is in [What survives a delete](#what-survives-a-delete).
 
-### 3. Credentials
+### Credentials
 
 - `~/.pi/agent/auth.json`, created mode 0600 in a 0700 directory: one object per provider,
   `{type:"api_key", key, env}` or `{type:"oauth", refresh, access, expires, ...}`
@@ -186,7 +186,7 @@ what survives it, is in [What survives a delete](#what-survives-a-delete).
   ([`extensions/llama/huggingface.ts:51-55`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/extensions/llama/huggingface.ts#L51-L55));
   they belong to those tools.
 
-### 4. Exclusions
+### Exclusions
 
 `bin/` holds third-party binaries. `npm/node_modules`, the `git/` checkouts and `tmp/` are installed
 extension packages; the package sources stay recorded in `settings.json` `packages` and
@@ -199,7 +199,7 @@ project scope
 Sockets in `~/.pi/server` cannot be copied. Sessions themselves stay: images are inline base64 and
 can be large, but they are the transcript.
 
-### 5. Project-local files
+### Project-local files
 
 `<cwd>/.pi/` holds `settings.json`
 ([`settings-manager.ts:301`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/settings-manager.ts#L301)),
@@ -209,7 +209,7 @@ can be large, but they are the transcript.
 [`resource-loader.ts:984-988`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/resource-loader.ts#L984-L988)).
 Project extensions run with the user's rights once the folder is trusted, so they are evidence.
 little-coder adds `.pi/approved-plan.md`
-([section 5 of `little-coder.md`](little-coder.md#5-project-local-files)).
+([Project-local files in `little-coder.md`](little-coder.md#project-local-files)).
 
 Context files read from the cwd up: `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`,
 `CLAUDE.MD`
@@ -223,7 +223,7 @@ and JSONL as `session-<ISO time>.jsonl`
 ([`core/session-export.ts:37-43`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-export.ts#L37-L43)).
 No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - Session header (line 1 of each file), key `cwd`
   ([`session-manager.ts:43-50`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-manager.ts#L43-L50));
@@ -236,18 +236,19 @@ No per-project database.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 - `.pi/agent/sessions/--<encoded cwd>--/<ISO time, : and . as ->_<session id>.jsonl`, e.g.
-  `2026-10-01T09-00-00-000Z_0199a1b2-....jsonl`, named as in [section 2](#2-per-user-storage).
+  `2026-10-01T09-00-00-000Z_0199a1b2-....jsonl`, named as in [Per-user storage](#per-user-storage).
   One file per session; forks and branches get new files
   ([session-manager.ts:1077-1080](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-manager.ts#L1077-L1080)).
 - With `--session-dir`, `PI_CODING_AGENT_SESSION_DIR` or the `sessionDir`
-  setting the files sit flat in that directory, anywhere on disk ([section 2](#2-per-user-storage)).
+  setting the files sit flat in that directory, anywhere on disk
+  ([Per-user storage](#per-user-storage)).
 - Legacy: `.pi/agent/*.jsonl` (v0.30.0 bug, moved on next start).
 - Exports in project directories: `session-<time>.jsonl` (same format,
-  one branch) and `pi-session-*.html` ([section 5](#5-project-local-files)).
-- Experimental durable sessions are SQLite, [section 10](#10-other-stores).
+  one branch) and `pi-session-*.html` ([Project-local files](#project-local-files)).
+- Experimental durable sessions are SQLite, [Other stores](#other-stores).
 
 #### What survives a delete
 
@@ -270,7 +271,7 @@ files and `trust.json`; `pi-debug.log` and `crashes.json` are planned as
 secondary sources and not read yet (see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 Every line is one JSON object. Malformed lines are skipped by pi
 ([session-manager.ts:616-624](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/session-manager.ts#L616-L624)).
@@ -391,7 +392,7 @@ Built-in tool arguments: `bash` `command`, `timeout`
 `codemode` `code`
 ([extensions/codemode/tool.ts:87-90](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/extensions/codemode/tool.ts#L87-L90)).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 - Session: header `id`, also the file-name suffix. Project: header `cwd`.
 - Tool use to result: `toolCall.id` = `toolResult.toolCallId`.
@@ -408,9 +409,9 @@ Built-in tool arguments: `bash` `command`, `timeout`
   ([Checkpoints in
   `little-coder.md`](little-coder.md#checkpoints-little-codercheckpointssession-file-name)).
 - Sub-agents: pi has none built in; little-coder's leave no session file
-  ([section 7 of `little-coder.md`](little-coder.md#7-transcript-stores)).
+  ([Transcript stores in `little-coder.md`](little-coder.md#transcript-stores)).
 
-### 10. Other stores
+### Other stores
 
 The main format has no SQLite or binary store.
 
@@ -475,7 +476,7 @@ override
 [341-342](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/cli/args.ts#L341-L342)),
 which writes nothing.
 
-### 11. Format versions
+### Format versions
 
 Header `version`: 1 (no field, no ids), 2 (`id`/`parentId` added), 3 (`hookMessage` role renamed
 `custom`)
@@ -496,7 +497,7 @@ model field changed; assistant messages gained `durationMs` and tool calls `argu
 again without a version bump. The `meta.json` reader serves only installs from before the
 experimental server's removal ([Experimental durable sessions](#experimental-durable-sessions)).
 
-### 12. Secrets
+### Secrets
 
 Tool arguments and outputs are stored verbatim (`cat .env`, `write`
 contents, bash output). `system` messages carry the full system prompt,
@@ -505,7 +506,7 @@ including AGENTS.md and skill text. `thinkingSignature`,
 thinking is encrypted there). Credentials are in `auth.json` and
 `mcp-auth.json`, not in sessions.
 
-### 13. Parser plan
+### Parser plan
 
 The parser reads `.pi/agent/sessions/*/*.jsonl` and `.pi/agent/*.jsonl`, takes line 1 as the
 header and skips files whose first record is not `type:"session"`. Files in a custom session
@@ -525,7 +526,7 @@ directory elsewhere on disk are not read; they would be detected by that header 
 
 #### Permission rows
 
-No entry type or message role in [section 8](#8-record-schema) records a permission decision. The
+No entry type or message role in [Record schema](#record-schema) records a permission decision. The
 standing state is `~/.pi/agent/trust.json` ([Project trust](#project-trust)). One `system` row per
 key, `permission setting: <path>=<value> (from .pi/agent/trust.json, file mtime)`, with
 `project_path` the key, `session_id` empty, `source_line` 1 and `timestamp_utc` the file's
@@ -654,7 +655,7 @@ pi writes no deletion marker; the picker's delete removes the session file with 
 
 #### Bad-line rows
 
-pi itself skips malformed lines ([section 8](#8-record-schema)); the parser does not. Each line
+pi itself skips malformed lines ([Record schema](#record-schema)); the parser does not. Each line
 that does not decode is its own `system` row at the end of the session's rows,
 `parser: unparseable line (<decoder reason>): <the line in full>`, with the
 session's id and `cwd`; a file with no header line gives those rows alone,
@@ -704,13 +705,13 @@ rests on what the wrapper leaves:
 - Otherwise `pi`. An SDK embedder or rebranded build is not
   distinguishable from the file alone.
 
-## 14. Confidence
+## Confidence
 
 - High (source): the agent directory, its override, every file name in
-  [section 2](#2-per-user-storage), the session directory encoding and file naming, credential
+  [Per-user storage](#per-user-storage), the session directory encoding and file naming, credential
   file shapes and project `.pi` contents.
 - High (source): the header, entry types, roles, field names and timestamp units of
-  [section 8](#8-record-schema).
+  [Record schema](#record-schema).
 - High: that the layout is the same on Windows (plain `homedir()` join).
 - Medium: `system`-role persistence on versions between 0.83.0 and HEAD (taken from the ai
   changelog's 0.86.0 note, not bisected).

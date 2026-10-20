@@ -8,7 +8,7 @@ core via `binary/`) and the `cn` CLI (`extensions/cli`), which share
 PearAI is a fork of it ([`pearai.md`](pearai.md)). The analyzer parses its sessions, `dev_data`
 events and `cn.log`, from source and fixtures only.
 
-## 1. Source and evidence
+## Source and evidence
 
 Open source. [continuedev/continue](https://github.com/continuedev/continue) at
 [`5522c6f44ca0ac3528b37244818fbfa39b5af470`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470),
@@ -33,14 +33,14 @@ from the clone.
   [`5522c6f`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470),
   the commit this document already cited. It added the CLI's `permissions.yaml` shape and writer,
   `input_history.json` and the selected models in `index/globalContext.json`
-  ([section 10](#10-other-stores)), the `cn review` worktrees of
+  ([Other stores](#other-stores)), the `cn review` worktrees of
   [Scratch directories](#scratch-directories), the clear-all delete of
   [What survives a delete](#what-survives-a-delete), and the index bad-line rows of
   [Bad-line rows](#bad-line-rows).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 One global dir on every OS, `~/.continue`, from `os.homedir()`; env `CONTINUE_GLOBAL_DIR` relocates
 it (relative values resolve against cwd)
@@ -146,7 +146,7 @@ under the key `persist:root`, one JSON string per slice
 Where VS Code or a JetBrains IDE keeps a webview's local storage on disk is outside this source and
 not determined; the catalog's `globalStorage/continue.continue` lines do not cover it.
 
-### 3. Credentials
+### Credentials
 
 - `~/.continue/auth.json` (CLI): `userId`, `userEmail`, `accessToken`, `refreshToken`, `expiresAt`,
   `organizationId`
@@ -162,7 +162,7 @@ not determined; the catalog's `globalStorage/continue.continue` lines do not cov
   decryptable only with the key in the editor's `state.vscdb`.
 - No OS keychain use by the core.
 
-### 4. Exclusions
+### Exclusions
 
 `.continue/index/lancedb`, `.continue/index/*.sqlite`, `.continue/.utils`,
 `.continue/node_modules`, `.continue/out`, `.continue/types`,
@@ -170,7 +170,7 @@ not determined; the catalog's `globalStorage/continue.continue` lines do not cov
 Keep `dev_data/**/*.jsonl` (prompts, tool usage), `logs/prompt.log`,
 `index/globalContext.json`.
 
-### 5. Project-local files
+### Project-local files
 
 `.continue/<subdir>/*.yaml|md` for `rules`, `prompts`, `agents`, `mcpServers`, `skills`, `models`,
 `context`, `docs`, `data`
@@ -186,7 +186,7 @@ Keep `dev_data/**/*.jsonl` (prompts, tool usage), `logs/prompt.log`,
 ([`core/core.ts:1287`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/core.ts#L1287)).
 No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 `sessions/sessions.json[].workspaceDirectory` and `sessions/<id>.json.workspaceDirectory`
 ([`history.ts:105-120`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L105-L120),[`160-172`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L160-L172)).
@@ -195,9 +195,9 @@ worktree here ([Scratch directories](#scratch-directories)).
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
-Under the global directory of [section 2](#2-per-user-storage):
+Under the global directory of [Per-user storage](#per-user-storage):
 
 - `sessions/<sessionId>.json`: one session, pretty-printed JSON
   ([`paths.ts:102-103`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L102-L103),
@@ -209,7 +209,7 @@ Under the global directory of [section 2](#2-per-user-storage):
   so a crash or a partial copy can leave it cut.
 
 The logs, `dev_data` events, prompt history, exports and settings beside them are in
-[section 10](#10-other-stores).
+[Other stores](#other-stores).
 
 #### What survives a delete
 
@@ -235,7 +235,7 @@ analyzer reads the `chatInteraction` and `toolUsage` event files and
 ([Past use and secondary sources](#past-use-rows-and-secondary-sources); see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 #### Session file
 
@@ -337,7 +337,7 @@ CLI drops `system` messages before saving and copies user content into `editorSt
 ([`:19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/llm/logFormatter.ts#L19)).
 No date, no session id.
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 `sessions.json[].sessionId` with `sessions/<sessionId>.json`;
 `workspaceDirectory` is in both. Tool call with result:
@@ -349,7 +349,7 @@ recorded.
 No per-message timestamp exists in session files; the session's time is the `sessions.json`
 `dateCreated` ([sessions.json index](#sessionsjson-index)).
 
-### 10. Other stores
+### Other stores
 
 #### prompt.log
 
@@ -357,7 +357,7 @@ No per-message timestamp exists in session files; the session's time is the `ses
 ([`paths.ts:397-399`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L397-L399)),
 written only by the binary used by JetBrains
 ([`binary/src/index.ts:35-38`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/binary/src/index.ts#L35-L38)),
-not by the VS Code extension. Its line format is in [section 8](#8-record-schema), under
+not by the VS Code extension. Its line format is in [Record schema](#record-schema), under
 [prompt.log](#promptlog).
 
 #### dev_data event files
@@ -365,7 +365,7 @@ not by the VS Code extension. Its line format is in [section 8](#8-record-schema
 `dev_data/0.2.0/<eventName>.jsonl`: one JSON object per line per event
 ([`paths.ts:240-249`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L240-L249),
 [`core/data/log.ts:20`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/log.ts#L20),[`73-97`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/log.ts#L73-L97)).
-The events are those named in [section 2](#2-per-user-storage)
+The events are those named in [Per-user storage](#per-user-storage)
 ([`packages/config-yaml/src/schemas/data/`](https://github.com/continuedev/continue/tree/5522c6f44ca0ac3528b37244818fbfa39b5af470/packages/config-yaml/src/schemas/data)).
 Legacy `dev_data/0.1.0/*.jsonl` and pre-version `dev_data/*.jsonl`
 ([`paths.ts:441-460`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/paths.ts#L441-L460)).
@@ -394,7 +394,7 @@ schema, so `logLocalData` throws and nothing is written for it at this commit
 [`core/data/devdataSqlite.ts:16-20`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/devdataSqlite.ts#L16-L20)).
 Its shape is `tokens_generated(model, provider, tokens_prompt, tokens_generated, timestamp)`
 ([`devdataSqlite.ts:16-49`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/devdataSqlite.ts#L16-L49)).
-Excluded ([section 4](#4-exclusions)).
+Excluded ([Exclusions](#exclusions)).
 
 #### Markdown exports
 
@@ -486,7 +486,7 @@ selected model per role, `chat` among them), `cliSelectedModel` (the CLI's) and
 ([`core/util/GlobalContext.ts:18-33`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/GlobalContext.ts#L18-L33);
 [`extensions/cli/src/util/modelPersistence.ts:7-19`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/util/modelPersistence.ts#L7-L19)).
 Standing state with no time but the file's. The file also holds MCP OAuth tokens
-([section 3](#3-credentials)) and is a flagged secret.
+([Credentials](#credentials)) and is a flagged secret.
 
 #### Editor output channel
 
@@ -494,13 +494,13 @@ Upstream Continue writes no editor output channel: no TypeScript file in this cl
 `node_modules` calls `createOutputChannel`. Its PearAI fork does
 ([Output channel log in `pearai.md`](pearai.md#output-channel-log)).
 
-### 11. Format versions
+### Format versions
 
 `sessions.json` entries with `session_id` are an old format and are filtered
 ([`history.ts:34-36`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts#L34-L36));
 `dev_data` schema `0.1.0` became `0.2.0`; no version field inside session files.
 
-### 12. Secrets
+### Secrets
 
 `promptLogs[].prompt` and `dev_data/*/chatInteraction.jsonl` `prompt` embed full context, possibly
 `.env` contents. `dev_data` `userId` is the Continue hub `userToken`
@@ -518,7 +518,7 @@ but at this commit Hub sign-in is a stub that never saves
 [`86-88`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/auth/workos.ts#L86-L88));
 an older `cn` may have left one, and `.continue/auth*.json` is a secret glob.
 
-### 13. Parser plan
+### Parser plan
 
 Globs: `.continue/sessions/*.json` (`sessions.json` is read for
 `dateCreated` and yields rows only for what it loses, see [Bad lines](#bad-line-rows)),
@@ -597,7 +597,7 @@ so they get no `model:` row; `globalContext.json` `cliSelectedModel` and
 Read: `sessions/`, `chatInteraction`, `toolUsage`,
 `cn.log`. Not read: `input_history.json` (secondary, joins on text
 and time) and `editInteraction`, `editOutcome` and `chatFeedback`
-([section 10](#10-other-stores)).
+([Other stores](#other-stores)).
 
 #### Sync, relay and origin rows
 
@@ -713,7 +713,7 @@ keeps its rows with an empty `timestamp_utc`. These damaged-index layouts are no
 real install, source-derived (continuedev/continue at
 [`5522c6f`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470));
 the index can be cut because the extension rewrites it whole on every save
-([section 7](#7-transcript-stores)).
+([Transcript stores](#transcript-stores)).
 
 #### Fixtures
 
@@ -739,7 +739,7 @@ Fixture `sessions/0f1e.json`:
 {"eventName":"chatInteraction","schema":"0.2.0","timestamp":"2026-10-02T10:00:00.000Z","userId":"","userAgent":"vscode/1.1 (Continue/1.0)","selectedProfileId":"local","prompt":"rename foo","completion":"done","modelName":"gpt-4o","modelTitle":"GPT-4o","modelProvider":"openai","sessionId":"0f1e"}
 ```
 
-## 14. Confidence
+## Confidence
 
 - High: every `~/.continue` path, `auth.json` fields, `workspaceDirectory`, the `.bin` secret blobs;
   the session, `sessions.json` and `dev_data` schemas (typed source).

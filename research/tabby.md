@@ -6,7 +6,7 @@ plugins. The editor plugins talk to the server and keep no transcripts: chat his
 server-side, in the server host's SQLite database and a daily event log. The `tabby` parser
 reads that database, its pre-migration backups and the event log.
 
-## 1. Source and evidence
+## Source and evidence
 
 [TabbyML/tabby](https://github.com/TabbyML/tabby) at
 [`21b29048d7bcf6b94f9f482f2d0fd05efadfd19f`](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f).
@@ -25,19 +25,19 @@ source except the JetBrains settings directory, which is from JetBrains document
 - 2026-10-19: the repository's HEAD is still
   [`21b2904`](https://github.com/TabbyML/tabby/commit/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f),
   the commit this document cites, so every citation holds. It added the AI-written pages and the
-  two editor command histories of [section 10](#10-other-stores), the delete of one question and
+  two editor command histories of [Other stores](#other-stores), the delete of one question and
   answer pair ([What survives a delete](#what-survives-a-delete)) and the configured models of
   [Model rows](#model-rows).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 #### Scratch directories
 
 The clones under `repositories/` ([Server root `~/.tabby`](#server-root-tabby)) are Tabby's own
 working copies of the remote repositories it indexes, not the user's projects; the catalog excludes
-them ([section 4](#4-exclusions)). No session records a local working directory.
+them ([Exclusions](#exclusions)). No session records a local working directory.
 
 #### Server root `~/.tabby`
 
@@ -72,7 +72,7 @@ Contents
   ([ee/tabby-webserver/src/path.rs:5-15](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-webserver/src/path.rs#L5-L15);
   [ee/tabby-db/src/lib.rs:165-176](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/lib.rs#L165-L176)).
   Users, chat threads, AI pages, completion statistics, integrations, OAuth and SMTP settings
-  ([section 7](#7-transcript-stores)).
+  ([Transcript stores](#transcript-stores)).
 - `ee/db.backup-YYYYMMDD.sqlite`: a full copy taken before each schema migration
   ([lib.rs:189-221](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/lib.rs#L189-L221)).
   Older chats can survive here ([Pre-migration backups](#pre-migration-backups)).
@@ -143,20 +143,20 @@ project's `.idea/` is not determined from this source. The same
 `cody.xml` and its siblings ([JetBrains IDE settings in `cody.md`](cody.md#jetbrains-ide-settings)),
 which is why the catalog lines name Tabby's `intellij-tabby*.xml` files rather than the directory.
 
-### 3. Credentials
+### Credentials
 
 - `~/.tabby/config.toml`: `api_key` for each HTTP model backend
   ([config.rs:300-316](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/config.rs#L300-L316)).
 - `~/.tabby-client/agent/config.toml`: `server.token`, the user's Tabby API token
   ([configFile.ts:20-23](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/clients/tabby-agent/src/config/configFile.ts#L20-L23)).
 - `~/.tabby/ee/db.sqlite` (and backups): credential columns in plain text, the password a hash
-  ([section 12](#12-secrets)). The same file holds the chats, so collect it unflagged and redact by
+  ([Secrets](#secrets)). The same file holds the chats, so collect it unflagged and redact by
   column.
 - VS Code: endpoint tokens in `globalState` (`state.vscdb`), see
   [VS Code extension](#vs-code-extension).
 - Keychain: not used by any component.
 
-### 4. Exclusions
+### Exclusions
 
 - `.tabby/models`: GGUF weights, gigabytes.
 - `.tabby/index`: Tantivy index, rebuilt from sources.
@@ -166,12 +166,12 @@ Keep `events/`, `ee/` (database, backups, job logs) and `config.toml`.
 `.tabby-client/agent/logs` is bounded by rotation and records server
 connection and completion request activity; keep it.
 
-### 5. Project-local files
+### Project-local files
 
 None. Neither the server nor `tabby-agent` writes into repositories.
 Repositories to index are named in `config.toml` or in the database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - `~/.tabby/config.toml`: `[[repositories]] git_url`; `file://` URLs are local project directories
   ([config.rs:164-168](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/crates/tabby-common/src/config.rs#L164-L168),
@@ -185,7 +185,7 @@ Repositories to index are named in `config.toml` or in the database.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 - `.tabby/ee/db.sqlite` (`-wal`, `-shm`), and `.tabby/ee/db.backup-YYYYMMDD.sqlite` copies made
   before each migration
@@ -242,7 +242,7 @@ collect `-wal` or lose recent rows. `thread_messages.attachment` is TEXT JSON wr
 ([threads.rs:159-166](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/threads.rs#L159-L166)).
 Migrations are sqlx (`_sqlx_migrations`). The 7-day cleanup of ephemeral threads is above.
 
-### 8. Record schema
+### Record schema
 
 #### threads
 
@@ -324,7 +324,7 @@ to true
 is the only call of `update_thread_ephemeral`). Deleting a thread is in
 [What survives a delete](#what-survives-a-delete).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 `thread_messages.thread_id → threads.id`; `threads.user_id → users.id` (`users.email`, `users.name`
 attribute the chat,
@@ -339,7 +339,7 @@ Timestamps: SQLite columns are `DATETIME('now')` defaults or `%F %X` strings, bo
 ([ee/tabby-db/src/lib.rs:307-310](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/lib.rs#L307-L310);
 [user_events.rs:27-31](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/src/user_events.rs#L27-L31)).
 
-### 10. Other stores
+### Other stores
 
 #### Pages
 
@@ -431,7 +431,7 @@ encoded id in one and by the account's email in the other, and the encoded id ca
 an email without the database, so both copies of a completion's `system` row and of a view, select,
 dismiss or chat-completion event are kept.
 
-### 11. Format versions
+### Format versions
 
 Migrations under `ee/tabby-db/migrations/`; `thread_messages` arrived in `0035`
 ([0035_add-thread-message-table.up.sql](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/migrations/0035_add-thread-message-table.up.sql)),
@@ -441,7 +441,7 @@ deprecated in 0.25 in favour of `attachment`
 and are absent from the current schema. A backup from before 0.25 can carry attachments only in the
 old columns. Event log lines have no version.
 
-### 12. Secrets
+### Secrets
 
 `~/.tabby/ee/db.sqlite` and its backups hold these credentials, plaintext unless noted
 ([ee/tabby-db/schema/schema.sql](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql)):
@@ -461,7 +461,7 @@ old columns. Event log lines have no version.
 ([:249-266](https://github.com/TabbyML/tabby/blob/21b29048d7bcf6b94f9f482f2d0fd05efadfd19f/ee/tabby-db/schema/schema.sql#L249-L266)).
 Redact those columns. Completion prompts and `clipboard` segments can carry pasted secrets.
 
-### 13. Parser plan
+### Parser plan
 
 Globs: `.tabby/ee/db.sqlite`, `.tabby/ee/db.backup-*.sqlite`,
 `.tabby/ee/dev-db.sqlite`, `.tabby/events/*.json`.
@@ -600,7 +600,7 @@ INSERT INTO thread_messages(id,thread_id,role,content,created_at,updated_at,atta
 {"user":"1","ts":1759312801500,"event":{"select":{"completion_id":"cmpl-7f3a","choice_index":0,"view_id":"view-1","elapsed":1377}}}
 ```
 
-## 14. Confidence
+## Confidence
 
 - High (source): the `~/.tabby` layout, env overrides, database file names, WAL, pre-migration
   backups, table and column names, role values, event file naming, fields, JSON shape and `ts`

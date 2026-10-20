@@ -13,8 +13,9 @@ every tracked Markdown file and every untracked one git does not ignore:
   heading whose GitHub anchor equals the fragment (lower case, characters
   other than letters, digits, spaces, hyphens and underscores removed, spaces
   to hyphens, `-1`, `-2` appended to repeated anchors);
-- outside AGENTS.md, no `section <n>` or `sections <n>` appears except as
-  link text, since a section reference must link to the heading;
+- no `section <n>` or `sections <n>` appears, even as link text: the research
+  documents' sections are named, not numbered, and a section reference links
+  to the heading with the heading's name as its text;
 - no `issue <n>`, `issues <n>`, `pull request <n>`, `PR <n>`, `discussion <n>`
   or `#<n>` appears except as link text, since an issue or pull request
   named in a document is a link to it, one link per issue (the link rule
@@ -265,8 +266,6 @@ def main() -> int:
                 "%s:%d: issue reference is not a link: %s" % (rel, line_of(text, m.start()), words)
             )
             bad += 1
-        if f.name == "AGENTS.md" and f.parent == ROOT:
-            continue
         for m in SECTION.finditer(text):
             if any(lo <= m.start() and m.end() <= hi for lo, hi in link_text):
                 continue

@@ -1597,8 +1597,8 @@ when the task's `ui_messages.json` is absent, because the two record different
 texts for the same turn (the API history wraps the first prompt in `<task>`
 tags, and its tool calls are content blocks where the UI messages have one
 JSON record per tool), so the rule could not pair them and the task's turns
-would be shown twice; see [section 13 of
-`research/cline.md`](../../research/cline.md#13-parser-plan).
+would be shown twice; see [Parser plan in
+`research/cline.md`](../../research/cline.md#parser-plan).
 
 ## sessions.jsonl
 

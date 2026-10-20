@@ -5,7 +5,7 @@ Augment is a closed-source coding agent with a command-line surface, the `auggie
 plugin. Its parser is in the backlog
 ([issue 55](https://github.com/seanthegeek/doubleagent/issues/55)).
 
-## 1. Source and evidence
+## Source and evidence
 
 Closed source. Evidence, in order of weight:
 
@@ -31,7 +31,7 @@ None.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 `~/.augment` on every OS: the bundle joins `os.homedir()` with `".augment"`
 (`homedir(),".augment"` appears 20+ times); a config key `augmentCacheDir`
@@ -68,7 +68,7 @@ Logs are not under home: `$TMPDIR/augment-log.txt`, `augment-daemon.txt`,
 #### Scratch directories
 
 The agent's own working space is `~/.augment/worktrees/` (its git worktrees, listed above and
-excluded in [section 4](#4-exclusions)) and, outside the home, `tmpdir()/.augment/...` in the
+excluded in [Exclusions](#exclusions)) and, outside the home, `tmpdir()/.augment/...` in the
 system temp directory.
 
 #### Environment variables
@@ -79,7 +79,7 @@ system temp directory.
 `AUGMENT_OPENAI_API_KEY`, `AUGMENT_FIREWORKS_API_KEY`, `AUGMENT_BEDROCK_API_KEY`
 (all literal in the bundle). Shell histories may carry these.
 
-### 3. Credentials
+### Credentials
 
 - `~/.augment/session.json`: `{accessToken, tenantURL, scopes}`
   (bundle `accessToken:t.accessToken,tenantURL:t.tenantURL,scopes:...`),
@@ -91,13 +91,13 @@ system temp directory.
   `.augment/settings.local.json`: MCP `mcpServers` with env/headers.
 - No OS keychain use found in the bundle (no `keytar`/`security` strings).
 
-### 4. Exclusions
+### Exclusions
 
 `.augment/binaries`, `.augment/vfs`, `.augment/knowledgebase`,
 `.augment/uploads`, `.augment/worktrees`, `.augment/plugins/marketplaces`.
 Keep `daemon/` (small state and locks with workspace hashes).
 
-### 5. Project-local files
+### Project-local files
 
 `.augment/rules/*.md`, `.augment/commands/<name>.md`, `.augment/agents/`,
 `.augment/skills/<name>/SKILL.md`, `.augment/settings.json`,
@@ -108,7 +108,7 @@ Keep `daemon/` (small state and locks with workspace hashes).
 No per-project database; the code index is server-side ("Augment stores
 your code securely", docs) with only `vfs/` mirrors locally.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 `sessions/<id>.json` carries `workspaceRoot` next to `conversationId`
 (bundle `conversationId:n,workspaceRoot:r`; telemetry objects use the same
@@ -118,10 +118,10 @@ truncated sha256 and is not reversible.
 ## Parsing
 
 Augment is `backlog`: the `auggie` CLI keeps full conversations and a prompt history on disk
-([section 2](#2-per-user-storage)), and the parser is
+([Per-user storage](#per-user-storage)), and the parser is
 [issue 55](https://github.com/seanthegeek/doubleagent/issues/55).
 
-## 14. Confidence
+## Confidence
 
 - High (bundle literal): the `~/.augment` root, `session.json` and its fields,
   `sessions/<id>.json`, `prompt-history.jsonl`, the six excluded directories, `settings.json`,

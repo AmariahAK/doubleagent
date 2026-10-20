@@ -8,16 +8,16 @@ Claude-Code-style record stream with `uuid`, `parentUuid`, `cwd` and
 `gitBranch` on every line. What it still shares with Gemini CLI is the per-project
 `tmp/<sha256(cwd)>/` directory, which Gemini CLI has since replaced with slug directories and keeps
 only as a legacy copy
-([section 7 of `gemini-cli.md`](gemini-cli.md#7-transcript-stores)), and in it `logs.json`,
+([Transcript stores in `gemini-cli.md`](gemini-cli.md#transcript-stores)), and in it `logs.json`,
 `shell_history` and the `checkpoint-<tag>.json` files, which Qwen still writes in the raw-array
 shape Gemini CLI has left behind
-([section 11 of `gemini-cli.md`](gemini-cli.md#11-format-versions)). Besides the CLI
+([Format versions in `gemini-cli.md`](gemini-cli.md#format-versions)). Besides the CLI
 it has a Web Shell served by `qwen serve`, Qwen Code Desktop, a Tauri app that wraps that Web
 Shell ([Qwen Code Desktop](#qwen-code-desktop)), and messaging-platform channels. Paths cited are
 relative to the clone. The agent is parsed: the `qwen-code` parser reads the transcripts,
-`logs.json`, `trustedFolders.json` and the channel route files ([section 13](#13-parser-plan)).
+`logs.json`, `trustedFolders.json` and the channel route files ([Parser plan](#parser-plan)).
 
-## 1. Source and evidence
+## Source and evidence
 
 [QwenLM/qwen-code](https://github.com/QwenLM/qwen-code), commit
 [`2c591ecc08a6fa080342f9b1b9f7f43215178cbb`](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb)
@@ -40,12 +40,12 @@ workflows, audits).
   channel runtime had not changed. It added `usage_record.jsonl`, the managed auto-memory, the
   scratch workspaces and worktrees, the delete path, Qwen Code Desktop, the per-call and standing
   permission records, `executionContext` and the record subtypes of
-  [section 11](#11-format-versions), and the reading of `trustedFolders.json` as JSONC (JSON with
+  [Format versions](#format-versions), and the reading of `trustedFolders.json` as JSONC (JSON with
   comments, trailing commas and a byte-order mark allowed).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 `QWEN_DIR = '.qwen'`
 ([`core/src/utils/paths.ts:14`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/utils/paths.ts#L14)).
@@ -177,9 +177,9 @@ documents in [Managed auto-memory](#managed-auto-memory)).
 `~/.qwen/scratch-workspaces/` is the managed scratch root `qwen serve` (the daemon behind the Web
 Shell and the desktop app) prepares for a session that has no workspace
 ([`cli/src/serve/run-qwen-serve.ts:5285-5292`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/serve/run-qwen-serve.ts#L5285-L5292)).
-It is excluded ([section 4](#4-exclusions)), so the files a session made there are not collected,
+It is excluded ([Exclusions](#exclusions)), so the files a session made there are not collected,
 while the transcript that names it is. The per-project worktrees,
-`<project>/.qwen/worktrees/<slug>`, are in [section 5](#5-project-local-files); how the
+`<project>/.qwen/worktrees/<slug>`, are in [Project-local files](#project-local-files); how the
 transcripts record both is in [Scratch workspaces and worktrees](#scratch-workspaces-and-worktrees).
 
 #### Qwen Code Desktop
@@ -197,7 +197,7 @@ shares the live daemon with a phone on the same network
 ([`desktop/README.md:17`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/desktop/README.md#L17));
 whether the app or that setting leaves a local record of a paired device was not determined.
 
-### 3. Credentials
+### Credentials
 
 - `oauth_creds.json` plaintext, mode 0600, plus `oauth_creds.lock`
   ([`core/src/qwen/sharedTokenManager.ts:26-27`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/qwen/sharedTokenManager.ts#L26-L27),[`643`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/qwen/sharedTokenManager.ts#L643);
@@ -235,7 +235,7 @@ whether the app or that setting leaves a local record of a paired device was not
   group conversation ids, not a credential, and no writer exists at this commit. Platform bot tokens
   set in `settings.json` are covered by that file's glob.
 
-### 4. Exclusions
+### Exclusions
 
 `.qwen/updates`, `.qwen/extension-store`, `.qwen/bin`,
 `.qwen/scratch-workspaces`, `.qwen/extensions/*/node_modules`, `.qwen/arena`
@@ -244,7 +244,7 @@ outputs), `.qwen/resources`, `.qwen/startup-perf`, `.qwen/locales` (user locale 
 `.qwen/sandbox` (no writer found at either commit reviewed). Keep `file-history/`
 (pre-edit file copies: evidence), `audits/`, `debug/`, `boards/`.
 
-### 5. Project-local files
+### Project-local files
 
 `QWEN.md`
 ([`core/src/utils/memory-constants.ts:7`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/utils/memory-constants.ts#L7)),
@@ -275,7 +275,7 @@ No exclusion covers it, so the `qwen-code|.qwen` project entry collects each wor
 full. `.qwen/memory/` holds the auto-memory when `QWEN_CODE_MEMORY_LOCAL=1` is set
 ([`core/src/memory/paths.ts:116-148`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/memory/paths.ts#L116-L148)).
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - `projects/<sanitized>/chats/*.jsonl`: first record has `cwd`
   ([`sessionService.ts:154`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/services/sessionService.ts#L154),[`2757`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/services/sessionService.ts#L2757),[`2835`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/services/sessionService.ts#L2835),[`3975`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/services/sessionService.ts#L3975)).
@@ -292,7 +292,7 @@ full. `.qwen/memory/` holds the auto-memory when `QWEN_CODE_MEMORY_LOCAL=1` is s
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 Base directory `~/.qwen`, overridable by `$QWEN_HOME`
 ([`core/src/config/storage.ts:193-202`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/config/storage.ts#L193-L202))
@@ -325,7 +325,7 @@ or the `runtimeOutputDir` setting
   ([`utils/sessionStorageUtils.ts:806-816`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/utils/sessionStorageUtils.ts#L806-L816)).
 - Channel routes: `~/.qwen/channels/sessions.json` and the daemon's
   `~/.qwen/channels/daemon/<workspace hash>/routes.json`; see [Channel routes](#channel-routes).
-- Past use beyond the transcript: see [section 10](#10-other-stores).
+- Past use beyond the transcript: see [Other stores](#other-stores).
 
 #### What survives a delete
 
@@ -359,13 +359,13 @@ checkpoints or the memory documents (see
 - `~/.qwen/scratch-workspaces/` ([Scratch directories](#scratch-directories)): a transcript whose
   `cwd` is under it lies under the home catalog entry `.qwen`, so the analyzer's catalog rule lists
   it under `scratch_directories`.
-- `<project>/.qwen/worktrees/<slug>` ([section 5](#5-project-local-files)): recorded in
+- `<project>/.qwen/worktrees/<slug>` ([Project-local files](#project-local-files)): recorded in
   `chats/<sessionId>.worktree.json` as `{slug, worktreePath, worktreeBranch, originalCwd,
   workspaceCwd?, originalBranch, originalHeadCommit, supersededBy?, supersedes?}`
   ([`core/src/services/worktreeSessionService.ts:38-80`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/worktreeSessionService.ts#L38-L80)).
   Records written inside it carry the worktree as `cwd`. No rule classes it as scratch.
 
-### 8. Record schema
+### Record schema
 
 #### ChatRecord
 
@@ -405,7 +405,7 @@ Base fields are set at
   status values
   [`core/coreToolScheduler.ts:710`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/core/coreToolScheduler.ts#L710),
   the same seven strings as Gemini CLI's `CoreToolCallStatus`,
-  [section 8 of `gemini-cli.md`](gemini-cli.md#8-record-schema))
+  [Record schema in `gemini-cli.md`](gemini-cli.md#record-schema))
   ([2741-2840](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/services/chatRecordingService.ts#L2741-L2840)).
 - system payloads of interest: `ChatCompressionRecordPayload {info, compressedHistory: Content[],
   promptIds?}`
@@ -427,7 +427,7 @@ Base fields are set at
 `checkpoint-<tag>.json` is a raw `Content[]` array
 ([logger.ts:726](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/core/logger.ts#L726)),
 the shape Gemini CLI wrote before it moved to `{history, authType}`
-([section 11 of `gemini-cli.md`](gemini-cli.md#11-format-versions)).
+([Format versions in `gemini-cli.md`](gemini-cli.md#format-versions)).
 
 #### Permission records
 
@@ -457,13 +457,13 @@ Approval mode. Every user prompt record, and every `mid_turn_user_message`, carr
 `approvalMode` one of `plan`, `default`, `auto-edit`, `auto`, `yolo`
 ([`core/src/config/approval-mode.ts:7-13`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/config/approval-mode.ts#L7-L13)).
 `auto`, the AUTO mode in which a model classifier decides each call, is not among Gemini CLI's
-approval modes ([section 10 of `gemini-cli.md`](gemini-cli.md#10-other-stores)).
+approval modes ([Other stores in `gemini-cli.md`](gemini-cli.md#other-stores)).
 A daemon session also writes a `session_approval_mode` record,
 `systemPayload {mode, prePlanMode?, planExecutionMode?}`, whenever the mode changes
 ([CRS 749-754](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L749-L754),
 [3516-3545](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L3516-L3545)).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 Session = file = `sessionId` on every record; `cwd` and `gitBranch` on every record (the lister
 reads the first record,
@@ -472,7 +472,7 @@ Tool call `message.parts[].functionCall.id` joins `tool_result.toolCallResult.ca
 `message.parts[].functionResponse.id`. Turns group by `promptId`, the tree by `parentUuid`,
 subagents by `isSidechain` and `agentId`, forks by `forkedFrom`.
 
-### 10. Other stores
+### Other stores
 
 No SQLite or binary store; all stores are JSON or JSONL text.
 
@@ -514,7 +514,7 @@ sessions.
 #### shell_history and checkpoints
 
 `shell_history`, `checkpoint-<tag>.json` and `checkpoints/` hold what they hold in Gemini CLI
-([section 10 of `gemini-cli.md`](gemini-cli.md#10-other-stores)): the shell-mode commands with no
+([Other stores in `gemini-cli.md`](gemini-cli.md#other-stores)): the shell-mode commands with no
 time or session id, the `/chat save` histories and the tool checkpoints (shell history at
 [`core/src/config/storage.ts:772-774`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/config/storage.ts#L772-L774));
 `checkpoints/` is deleted at start unless an execution sandbox is configured
@@ -579,9 +579,9 @@ the matching file
 ([`core/src/core/permission-helpers.ts:194-243`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/core/permission-helpers.ts#L194-L243);
 [`cli/src/config/config.ts:2624-2636`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/config/config.ts#L2624-L2636)).
 Qwen Code has no `auto-saved.toml` policy file, where Gemini CLI keeps its saved grants
-([section 10 of `gemini-cli.md`](gemini-cli.md#10-other-stores)).
+([Other stores in `gemini-cli.md`](gemini-cli.md#other-stores)).
 
-### 11. Format versions
+### Format versions
 
 `version` on every record is the CLI version. Managed-engine transcripts begin with
 `subtype:'managed_session_header_v1'`
@@ -628,7 +628,7 @@ Between the first commit and
   [`cli/src/config/trustedFolders.ts:172-182`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/config/trustedFolders.ts#L172-L182));
   how the parser reads it is in [Permission rows](#permission-rows).
 
-### 12. Secrets
+### Secrets
 
 `~/.qwen/oauth_creds.json`
 ([storage.ts:16](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/config/storage.ts#L16);
@@ -644,7 +644,7 @@ tool output; `UserPromptRecordPayload.hookContext` is hook stdout. `ipcToken` in
 connection to the running session's socket
 ([`services/session-registry.ts:235`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/core/src/services/session-registry.ts#L235)).
 
-### 13. Parser plan
+### Parser plan
 
 Globs (home-relative): `.qwen/projects/*/chats/*.jsonl`,
 `.qwen/projects/*/chats/archive/*.jsonl`, `.qwen/tmp/*/logs.json`. Exclude
@@ -686,7 +686,7 @@ Permission rows ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96
   keys are folder paths and values a `TrustLevel`: `TRUST_FOLDER`, `TRUST_PARENT` or `DO_NOT_TRUST`
   ([44-48](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/trustedFolders.ts#L44-L48),
   [60-61](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/cli/src/config/trustedFolders.ts#L60-L61)).
-  Qwen now also accepts trailing commas and a byte-order mark ([section 11](#11-format-versions)),
+  Qwen now also accepts trailing commas and a byte-order mark ([Format versions](#format-versions)),
   and the parser reads the file through the `trusted_folder_rows` reader it shares with the
   `gemini-cli` parser, which strips a byte-order mark, comments and trailing commas outside
   strings. The value is printed as recorded. A file that is still not a JSON object is one
@@ -737,14 +737,14 @@ Proposed, not parsed: `usage_record.jsonl` (secondary, joins on `sessionId`;
 one row per record: `session usage: project <project> models
 <ids> tools <name>=<count>... (from usage_record.jsonl)` at
 `startTime`), then `shell_history` and `checkpoint-<tag>.json` as proposed for Gemini CLI
-([section 13 of `gemini-cli.md`](gemini-cli.md#13-parser-plan));
-the auto-memory directory after a real-install round ([section 10](#10-other-stores)).
+([Parser plan in `gemini-cli.md`](gemini-cli.md#parser-plan));
+the auto-memory directory after a real-install round ([Other stores](#other-stores)).
 
 #### Sync, relay and origin rows
 
 The inherited Gemini CLI features are covered in
 [Sync, relay and origin rows of `gemini-cli.md`](gemini-cli.md#sync-relay-and-origin-rows); Qwen
-Code changed them as follows, at the commit in [section 1](#1-source-and-evidence).
+Code changed them as follows, at the commit in [Source and evidence](#source-and-evidence).
 
 - The Clearcut logger and Conseca are gone (neither name occurs in `packages/core/src` or
   `packages/cli/src`). Usage statistics go instead to Alibaba Cloud RUM (Real User Monitoring) at
@@ -844,7 +844,7 @@ Fixture:
 {"uuid":"3c3d3e3f-7777-4000-8000-000000000014","parentUuid":"2b2c2d2e-6666-4000-8000-000000000013","sessionId":"e5f6a7b8-4444-4000-8000-000000000011","timestamp":"2026-10-01T10:00:10.000Z","type":"system","subtype":"custom_title","provenance":"system","cwd":"/home/alice/proj","version":"0.24.7","gitBranch":"main","systemPayload":{"customTitle":"Run tests","titleSource":"auto"}}
 ```
 
-## 14. Confidence
+## Confidence
 
 - High: every `storage.ts`, session, token and settings path; the record field names, status
   values, ISO timestamps and sidecar names.

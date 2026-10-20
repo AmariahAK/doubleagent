@@ -92,7 +92,7 @@ ordinary file to the collector: every path gets its own `collected` row and
 the bytes are staged and archived once per path. Antigravity's `cli.log`,
 a hard link to the newest file under its `log/` directory, is collected
 twice this way
-([section 2 of `research/antigravity.md`](../../research/antigravity.md#2-per-user-storage)).
+([Per-user storage in `research/antigravity.md`](../../research/antigravity.md#per-user-storage)).
 The sh collector does the same on any file system, since `cp` copies each
 path on its own.
 

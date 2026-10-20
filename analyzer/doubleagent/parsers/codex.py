@@ -357,7 +357,7 @@ USER_KINDS = ("", "unknown")
 # Wrappers the harness puts around the user-role context it injects, as
 # (name, start, end); Codex recognises the same blocks with
 # CONTEXTUAL_USER_FRAGMENT_MATCHERS (`core/src/context/contextual_user_message.rs`
-# at 3e23877; citations in research/codex-cli.md section 13). Used only for
+# at 3e23877; citations in research/codex-cli.md, Parser plan). Used only for
 # rollouts without content kinds.
 CONTEXT_MARKERS = (
     ("agents_md_instructions", "# AGENTS.md instructions", "</INSTRUCTIONS>"),
@@ -470,8 +470,8 @@ def _prescan(records: list) -> tuple[set, dict]:
 
 
 # `turn_context` and `thread_settings_applied` policy fields, in the order of
-# the `permission mode:` row, as (label, payload key); research/codex-cli.md
-# section 8. `reviewer` and `profile_id` (Codex Desktop 0.163.0-alpha.10.2)
+# the `permission mode:` row, as (label, payload key); research/codex-cli.md,
+# Record schema. `reviewer` and `profile_id` (Codex Desktop 0.163.0-alpha.10.2)
 # were added at the end in analyzer 0.16.0.
 POLICY_FIELDS = (
     ("approval", "approval_policy"),

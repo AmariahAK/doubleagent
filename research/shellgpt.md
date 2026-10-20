@@ -8,9 +8,9 @@ plug-in. Its configuration lives under the home, but its chat history lives in
 the system temporary directory. It stores a named chat or REPL session as the raw OpenAI `messages`
 array it sends to the API, one JSON file per session, with no timestamps, model or working
 directory. Paths cited are relative to the clone. The agent is parsed: the `shellgpt` parser
-reads the chat files ([section 13](#13-parser-plan)).
+reads the chat files ([Parser plan](#parser-plan)).
 
-## 1. Source and evidence
+## Source and evidence
 
 [TheR1D/shell_gpt](https://github.com/TheR1D/shell_gpt), MIT, open source, commit
 [`a082bd5327ce0c4ef5a0284d9060e833be9444a6`](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6)
@@ -36,7 +36,7 @@ All claims from source. The older temp-directory layout is cited from the histor
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 #### Scratch directories
 
@@ -134,7 +134,7 @@ The command line itself lands in the shell history.
 `CACHE_PATH`, `ROLE_STORAGE_PATH`, `OPENAI_FUNCTIONS_PATH`, `USE_LITELLM`,
 `DEFAULT_MODEL` and the rest of `DEFAULT_CONFIG`.
 
-### 3. Credentials
+### Credentials
 
 - `~/.config/shell_gpt/.sgptrc`: `OPENAI_API_KEY=<key>` in plain text. On first run sgpt prompts for
   the key and writes it, unless `OPENAI_API_KEY` is already in the environment
@@ -146,17 +146,17 @@ The command line itself lands in the shell history.
 - With `USE_LITELLM=true` other providers' keys come from their own
   environment variables; nothing extra is written by sgpt.
 
-### 4. Exclusions
+### Exclusions
 
 Nothing large. The function store and roles are a few KB. The response cache
 is capped at 100 files by default.
 
-### 5. Project-local files
+### Project-local files
 
 None. ShellGPT reads nothing from the working directory and records no
 project.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Nowhere: chat files carry no working directory. For discovery of the
 history location rather than projects, `.sgptrc` keys `CHAT_CACHE_PATH`,
@@ -165,7 +165,7 @@ paths that may point outside the defaults.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 - `<CHAT_CACHE_PATH>/<chat id>`: one file per session started with `--chat <id>` or `--repl <id>`,
   named exactly as typed, no extension, in the chat cache directory of
@@ -180,7 +180,7 @@ paths that may point outside the defaults.
 
 ShellGPT has no delete command. What removes chat history is the `temp` chat id, invalidated at each
 start; the cut on every write that keeps the system message and the last 100 other messages
-([section 8](#8-record-schema)); and, the main loss, the operating system's cleanup of its
+([Record schema](#record-schema)); and, the main loss, the operating system's cleanup of its
 temporary directory, where the chat files live by default. A per-prompt history file is not
 stated. The response cache ([Response cache](#response-cache)) keeps the answers to chat turns
 that the cut dropped, and to one-shot prompts that never had a chat file, as text with no prompt,
@@ -189,7 +189,7 @@ time or session, the newest 100 files kept; its current Windows path is named by
 stated. The analyzer reads the chat files and not the response cache, a secondary source joined
 on text only (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 The file is a single JSON array written by `json.dump` with default settings (one line,
 ASCII-escaped)
@@ -234,7 +234,7 @@ Truncation: on every write the system message is kept and only the last `CHAT_CA
 [`config.py:22`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L22)).
 Older turns of a long session are gone, and a cut can separate a `tool` message from its call.
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 - Session to project: none recorded.
 - Tool call to result: `tool_calls[0].id` equals the next `tool`
@@ -245,7 +245,7 @@ No timestamp, model, temperature or cwd is stored. The only time is the
 file's mtime, which is the last write. The file is rewritten in full each
 turn.
 
-### 10. Other stores
+### Other stores
 
 No SQLite or binary store.
 
@@ -286,7 +286,7 @@ are the `*.py` files in `~/.config/shell_gpt/functions/`, which `--install-funct
 [`config.py:25`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L25))
 is the model used when no `--model` was given; nothing records a per-call choice.
 
-### 11. Format versions
+### Format versions
 
 No version field. Function calls arrived in 1.1.0
 ([`20ff0f2`](https://github.com/TheR1D/shell_gpt/commit/20ff0f2eeb26ee816bfd31d2fd0d67da6f1e861f))
@@ -302,13 +302,13 @@ the parent of the change below). 1.5.0 switched to `tool_calls` and `tool` messa
 preceding `function_call` by position. Before 1.1.0 files hold only system, user and assistant
 messages.
 
-### 12. Secrets
+### Secrets
 
 The API key is never written into chat files; it is in `.sgptrc`
 ([`config.py:63-69`](https://github.com/TheR1D/shell_gpt/blob/a082bd5327ce0c4ef5a0284d9060e833be9444a6/sgpt/config.py#L63-L69)).
 Tool messages contain raw shell output and can contain anything the commands printed.
 
-### 13. Parser plan
+### Parser plan
 
 Detection: any regular file directly under a `chat_cache` directory whose
 content parses as a JSON array of objects with `role`.
@@ -395,8 +395,8 @@ None ([Scratch directories](#scratch-directories)).
 
 #### Deletion rows
 
-No delete command; see [section 7](#7-transcript-stores) and
-[What survives a delete](#what-survives-a-delete) for `temp`, and [section 8](#8-record-schema)
+No delete command; see [Transcript stores](#transcript-stores) and
+[What survives a delete](#what-survives-a-delete) for `temp`, and [Record schema](#record-schema)
 for the truncation. The parser yields no deletion rows.
 
 #### Bad-line rows
@@ -416,7 +416,7 @@ Fixture (`chat_cache/deploy-check`, shown wrapped; the real file is one line):
  {"role": "assistant", "content": "\n> @FunctionCall `execute_shell_command(shell_command=\"ss -ltnp | grep 8080\")` \n\nA python3 process (PID 4242) is listening on 8080."}]
 ```
 
-## 14. Confidence
+## Confidence
 
 - High (source and history): the config folder, the `.sgptrc` format and key, roles, the function
   store, the chat and cache layout, the 0.9.0 change of temp path, the chat file location, array

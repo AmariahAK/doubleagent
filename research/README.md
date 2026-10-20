@@ -258,8 +258,8 @@ What the table shows:
 - A transcript can also survive in another agent's store: Hermes Agent,
   Cline's SDK and CLAI import Claude Code and Codex sessions, and the
   copy outlives the original file
-  ([claude-code.md](claude-code.md#7-transcript-stores),
-  [codex-cli.md](codex-cli.md#7-transcript-stores)).
+  ([claude-code.md](claude-code.md#transcript-stores),
+  [codex-cli.md](codex-cli.md#transcript-stores)).
 - Retention deletes old transcripts with no delete command in Claude
   Code (30 days), Gemini CLI (30 days by default) and Kilo Code (an
   opt-in pass); in each a prompt history outlives what retention

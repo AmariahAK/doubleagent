@@ -3,7 +3,7 @@
 OpenAI's ChatGPT desktop app (catalog agent `chatgpt-desktop`) is a closed-source desktop app: a
 Chromium shell hosting a web interface packaged the way an Electron app is (Electron is the desktop
 framework that runs a web user interface in a bundled Chromium; the evidence is in
-[section 1](#1-source-and-evidence)). On Windows and macOS it bundles Codex, OpenAI's coding agent,
+[Source and evidence](#source-and-evidence)). On Windows and macOS it bundles Codex, OpenAI's coding agent,
 whose state goes to `~/.codex` and is collected as `codex-cli`; that half of the app is described in
 [`codex-cli.md`](codex-cli.md), under
 [Codex Desktop](codex-cli.md#codex-desktop-inside-the-chatgpt-app). The app's prompt box, the
@@ -13,19 +13,19 @@ composer, has a mode dropdown with two entries (build 26.1013.40934 on macOS, 20
 conversations on chatgpt.com, OpenAI's web chat service. A ChatGPT-mode conversation keeps its text
 on OpenAI's servers: on the Windows and macOS installs checked the app keeps no local chat
 transcript, and a reply to a ChatGPT conversation from inside the app (build 26.1013.40934 on
-macOS, 2026-10-18) left none either ([section 7](#7-transcript-stores)). The agent is parsed
+macOS, 2026-10-18) left none either ([Transcript stores](#transcript-stores)). The agent is parsed
 ([Issue 49](https://github.com/seanthegeek/doubleagent/issues/49) tracks the parser): the one local
 trace of the account's ChatGPT conversations, the `chatgpt` rows of the app's own database
 `~/.codex/sqlite/codex-dev.db` `local_thread_catalog`, is what the `chatgpt-desktop` parser turns
 into timeline rows.
 
-## 1. Source and evidence
+## Source and evidence
 
 Closed source, so there are no commit links, and the app's client code is
 not in the Codex repository: a search of the Codex source for
 `codex-dev.db`, `local_thread_catalog`, `conversation_origin` and
 `chatgpt_async_status` finds nothing
-([section 13 of `codex-cli.md`](codex-cli.md#13-parser-plan)).
+([Parser plan in `codex-cli.md`](codex-cli.md#parser-plan)).
 Windows and macOS evidence is a **real install** of each (below); every claim about those
 installs was read for file names, sizes, table and column names, value types, enum values and
 row counts only, and no conversation title or id from an install is reproduced here. The former
@@ -69,7 +69,7 @@ Chrome's own `chrome.dll`, `chrome_elf.dll`, `chrome_proxy.exe`, `chrome_pwa_lau
 `elevation_service.exe` and `notification_helper.exe`, and the macOS framework carries, under the
 app's own name, the Chromium version of the Windows `chrome.dll`. The web layer is an
 Electron-style app hosted in that shell: an `app.asar` archive, `owl-electron-app.json`,
-`[electron-message-handler]` lines in the app log ([section 2](#2-per-user-storage)) and the
+`[electron-message-handler]` lines in the app log ([Per-user storage](#per-user-storage)) and the
 `electron-persisted-atom-state` key of the Codex global state. "owl" is the shell's name in these
 file names; nothing more about it was determined.
 
@@ -84,7 +84,7 @@ file names; nothing more about it was determined.
   Arm, one user, no Python and no Xcode Command Line Tools). Unlike the round of 2026-10-15, the
   user performed one step at a time and a listing of names, sizes and modification times was taken
   and diffed after each. The steps, and what each wrote to the Codex stores under `~/.codex`, are in
-  [section 1 of `codex-cli.md`](codex-cli.md#1-source-and-evidence); what they wrote of the app's
+  [Source and evidence in `codex-cli.md`](codex-cli.md#source-and-evidence); what they wrote of the app's
   own (times UTC): the installer disk image (848,907 B, downloaded 18:15:19Z) and the first launch
   (18:17:26Z) created every `~/Library` entry of [macOS, com.openai.codex](#macos-comopenaicodex)
   before any sign-in; while idle (18:21Z to 18:31Z) Chromium updated its components and Sparkle
@@ -92,13 +92,13 @@ file names; nothing more about it was determined.
   `codex-mcp-app-sandbox%3Ashared` storage partition (Chromium's isolated storage for an embedded
   web view) at 18:32:05Z, filled `executor-plugins/codex-app-tools/` and wrote three
   `local_thread_catalog` rows for the account's ChatGPT conversations
-  ([section 8](#8-record-schema)); adding the project `~/Demo` with the folder picker (18:48:52Z)
+  ([Record schema](#record-schema)); adding the project `~/Demo` with the folder picker (18:48:52Z)
   recorded the folder in `Preferences/com.openai.codex.plist`; the relaunch after a quit
   (21:45:36Z) wrote `browser-sidebar-page-states.json`, and each launch made new sockets and a
   temporary directory ([Scratch directories](#scratch-directories)); a reply in ChatGPT mode to an
   existing chatgpt.com conversation (about 22:02Z to 22:15Z) wrote nothing locally but a composer
-  draft ([section 7](#7-transcript-stores)); and the delete of a Codex-mode thread with the app's
-  own command (2026-10-19 00:36:02Z) removed its catalog row and left the `chatgpt` rows
+  draft ([Transcript stores](#transcript-stores)); and the delete of a Codex-mode thread with the
+  app's own command (2026-10-19 00:36:02Z) removed its catalog row and left the `chatgpt` rows
   ([What survives a delete](#what-survives-a-delete)). The other steps (a plain question and a
   coding task in Codex mode, a declined and an approved tool call, a model switch with the Approve
   for me mode, in which a reviewer model rather than the user answers approval requests, a resume,
@@ -114,15 +114,15 @@ file names; nothing more about it was determined.
   Support/Codex/` (the Chromium user-data directory, the directory holding a Chromium browser's
   profiles), the other `~/Library` entries of [macOS, com.openai.codex](#macos-comopenaicodex) and
   `~/.codex`; a plain chat and an image generation left no local transcript and three `chatgpt` rows
-  in `local_thread_catalog` ([section 10](#10-other-stores)); a task in `~/Demo`, a thread in a
+  in `local_thread_catalog` ([Other stores](#other-stores)); a task in `~/Demo`, a thread in a
   projectless output directory (the working directory the app gives a thread that belongs to no
   project) and a scheduled automation (16:39Z to 16:50Z) wrote Codex rollouts and an automation
-  ([section 1 of `codex-cli.md`](codex-cli.md#1-source-and-evidence)), the automation's minute
-  (16:44Z) also creating the `codex-browser-app` partition; and the standalone Codex CLI (16:55Z to
-  16:56Z) added its own layout to `~/.codex` ([macOS differences in
+  ([Source and evidence in `codex-cli.md`](codex-cli.md#source-and-evidence)), the automation's
+  minute (16:44Z) also creating the `codex-browser-app` partition; and the standalone Codex CLI
+  (16:55Z to 16:56Z) added its own layout to `~/.codex` ([macOS differences in
   `codex-cli.md`](codex-cli.md#macos-differences)). No launchd agent or daemon, no `~/Applications`
-  entry and no login-keychain item with an OpenAI, Codex or ChatGPT identifier appeared ([section
-  3](#3-credentials)).
+  entry and no login-keychain item with an OpenAI, Codex or ChatGPT identifier appeared
+  ([Credentials](#credentials)).
 - Windows, 2026-10-15 ([issue 113](https://github.com/seanthegeek/doubleagent/issues/113),
   [issue 114](https://github.com/seanthegeek/doubleagent/issues/114),
   [issue 115](https://github.com/seanthegeek/doubleagent/issues/115) and
@@ -134,19 +134,20 @@ file names; nothing more about it was determined.
   which file each task wrote is by modification time only (times UTC). Install and first launch
   (14:09Z to 14:12Z) created the package's data directory, `~\.codex`, the binaries under
   `%LOCALAPPDATA%\OpenAI\Codex` and the runtime under `~\.cache\codex-runtimes`
-  ([section 2](#2-per-user-storage)); onboarding (14:24Z to 14:26Z) set up the Codex sandbox
+  ([Per-user storage](#per-user-storage)); onboarding (14:24Z to 14:26Z) set up the Codex sandbox
   ([Codex Desktop in `codex-cli.md`](codex-cli.md#codex-desktop-inside-the-chatgpt-app)) and wrote
-  a note on the Desktop ([section 5](#5-project-local-files)); two local Codex threads (14:26Z, and
-  14:30Z to 14:32Z in `~\Desktop\Demo`, which wrote eleven files into `Desktop\Demo\hello-worlds\`)
-  wrote rollouts ([section 1 of `codex-cli.md`](codex-cli.md#1-source-and-evidence)); a plain chat
-  and an image generation in the ChatGPT chat surface left no local transcript
-  ([section 7](#7-transcript-stores)); and a first attempt at an automation failed with an
-  unspecified error and wrote nothing. After a first survey (14:48Z) the user subscribed the
-  account to ChatGPT Plus (the paid plan; about 15:22Z), which only refreshed `auth.json` and
+  a note on the Desktop ([Project-local files](#project-local-files)); two local Codex threads
+  (14:26Z, and 14:30Z to 14:32Z in `~\Desktop\Demo`, which wrote eleven files into
+  `Desktop\Demo\hello-worlds\`) wrote rollouts
+  ([Source and evidence in `codex-cli.md`](codex-cli.md#source-and-evidence)); a plain chat and an
+  image generation in the ChatGPT chat surface left no local transcript
+  ([Transcript stores](#transcript-stores)); and a first attempt at an automation failed with an
+  unspecified error and wrote nothing. After a first survey (14:48Z) the user subscribed the account
+  to ChatGPT Plus (the paid plan; about 15:22Z), which only refreshed `auth.json` and
   `models_cache.json`; created a scheduled automation (15:25Z to 15:26Z), which wrote Codex's
   automation files and in the package rewrote only the `app://` IndexedDB (a second blob),
   `Local State`, `Network\Cookies` and a few network and Sentry files; and connected a demo GitHub
-  account with no repositories, which wrote nothing locally ([section 3](#3-credentials)). A second
+  account with no repositories, which wrote nothing locally ([Credentials](#credentials)). A second
   survey followed at 15:30Z, and the standalone Codex CLI 0.162.1 was installed beside the app at
   15:38Z ([Standalone CLI on Windows in `codex-cli.md`](codex-cli.md#standalone-cli-on-windows)).
   Not exercised: a resumed thread, a denied tool call, an "allow always" grant, a model switch
@@ -163,7 +164,7 @@ None.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 No environment variable relocates the data on any platform.
 
@@ -179,7 +180,7 @@ profile and package directories of the subsections below:
   ([Scratch directories in `codex-cli.md`](codex-cli.md#scratch-directories)).
 - Windows: `%LOCALAPPDATA%\Temp\` held 42 `.tmp<6 chars>` directories
   (the sandbox's and plugins' scratch), three `<uuid>.tmp.wav` and four
-  `<uuid>.tmp` files; not collected ([section 4](#4-exclusions)).
+  `<uuid>.tmp` files; not collected ([Exclusions](#exclusions)).
 - macOS, outside `~/Library` and `~/.codex` (ChatGPT 26.1013.40934,
   2026-10-18): per-launch sockets under `/private/tmp/codex-app-tools/` and
   `/private/tmp/codex-browser-use/` (two `<uuid>.sock` files there from
@@ -207,7 +208,7 @@ app writes:
 | `Settings\settings.dat` and its `.LOG1`, `.LOG2`, `roaming.lock` | The package's MSIX settings hive (a registry hive Windows keeps per package) | collected |
 
 Elsewhere in the profile (observed, not collected,
-[section 4](#4-exclusions); the output and temporary directories are
+[Exclusions](#exclusions); the output and temporary directories are
 under [Scratch directories](#scratch-directories)):
 
 - `%LOCALAPPDATA%\OpenAI\Codex\` (2,371 files, 600 MB):
@@ -342,7 +343,7 @@ since, in `conversations-v2-{uuid}/`
 [9to5mac.com, 2024-07-03 ChatGPT Mac app report](https://9to5mac.com/2024/07/03)).
 Its catalog line stays for hosts that still have it.
 
-### 3. Credentials
+### Credentials
 
 - Windows, `OpenAI.Codex` (observed): `Network\Cookies` and
   `Cookies-journal` in `Default` and in each partition (the Chromium
@@ -361,7 +362,7 @@ Its catalog line stays for hosts that still have it.
   history) and, on macOS (build 26.1013.40934), the shell snapshots,
   which copy the login shell's exported environment; remote control's
   server token is kept where no search found it. See
-  [section 3 of `codex-cli.md`](codex-cli.md#3-credentials).
+  [Credentials in `codex-cli.md`](codex-cli.md#credentials).
 - Windows, previous package (write-up): `Network\Cookies` with
   `Local State`; `Local Storage\leveldb` holds session identifiers. No
   plaintext token file reported.
@@ -381,7 +382,7 @@ Its catalog line stays for hosts that still have it.
   they are not a credential.
 - `sentry/scope_v3.json` carries the account id and user id
   (`scope.user`) but no token; it is not collected
-  ([section 2](#2-per-user-storage)).
+  ([Per-user storage](#per-user-storage)).
 - Former native macOS app (write-up): the conversation encryption key
   is the Keychain item `com.openai.chat.conversations_v2_cache`
   (pvieito); absent on the 2026 install.
@@ -393,7 +394,7 @@ Its catalog line stays for hosts that still have it.
   lives on the ChatGPT account, so the GitHub access the app had is not
   visible in a collection.
 
-### 4. Exclusions
+### Exclusions
 
 Windows, `OpenAI.Codex`: in `Default` and in every
 `Default\Partitions\<partition>`, the Chromium caches `Cache` (13.7 MB in
@@ -440,7 +441,7 @@ sibling `config.json` is collected. Not catalogued:
   ChatGPT 26.1013.40934) and the sockets under `/private/tmp`.
 
 The sizes of the excluded trees under `~/.codex` on ChatGPT 26.1013.40934
-are in [section 4 of `codex-cli.md`](codex-cli.md#4-exclusions); under
+are in [Exclusions in `codex-cli.md`](codex-cli.md#exclusions); under
 `Library/Application Support/Codex` the excluded profile and partition
 caches present on that install were `blob_storage`, `DawnGraphiteCache`,
 `DawnWebGPUCache`, `GPUCache`, `Service Worker/ScriptCache` and
@@ -450,7 +451,7 @@ Previous Windows package: `*/Roaming/ChatGPT/Cache`, `Code Cache`,
 `GPUCache`, `DawnGraphiteCache`, `DawnWebGPUCache`. Former native macOS
 app: `Library/Caches/com.openai.chat`, which no catalog line names.
 
-### 5. Project-local files
+### Project-local files
 
 The app writes none of its own into a project. The bundled Codex writes
 what Codex writes (see [`codex-cli.md`](codex-cli.md)); the observed
@@ -470,7 +471,7 @@ thread was deleted. An approved write outside the project went to
 (`~/Documents/gpt-models-guide.md`, 5,042 B), not to the Desktop the
 prompt named.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Nothing under the package or `~/Library` records a project path. The bundled Codex records each
 thread's working directory in its rollouts' `session_meta` `cwd`, which project discovery reads,
@@ -478,13 +479,13 @@ and the desktop app records projects in `~/.codex/.codex-global-state.json` (`lo
 `rootPaths`, `thread-workspace-root-hints`, `thread-projectless-output-directories`),
 `~/.codex/state_5.sqlite` `project_roots` and, for a folder added as a project (macOS, ChatGPT
 26.1013.40934, 2026-10-18), a `[projects."<path>"]` table in `~/.codex/config.toml`; see
-[section 6 of `codex-cli.md`](codex-cli.md#6-where-the-project-path-is-recorded), which also
+[Where the project path is recorded in `codex-cli.md`](codex-cli.md#where-the-project-path-is-recorded), which also
 says how discovery treats the projectless output directories. On the Windows install both
 threads' directories appeared in the rollouts.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 Relative to the home.
 
@@ -521,7 +522,7 @@ What else the delete removed and left is in
 deletion of the conversation on chatgpt.com, or a sign-out, does to the
 row was not exercised.
 
-### 8. Record schema
+### Record schema
 
 `local_thread_catalog`, column names from `pragma table_info` on the
 macOS install (build 26.1013.40934, 2026-10-18), in table order:
@@ -542,24 +543,24 @@ Values on the `chatgpt` rows (macOS, 2026-10-18):
 | `display_title` | the conversation's title, set on every row seen (on Windows, 2026-10-15, the plain chat's row had only its title set) |
 | `source_created_at`, `source_updated_at`, `source_recency_at` | REAL epoch seconds with a fraction (not milliseconds) |
 | `source_kind` | `chatgpt` (`vscode` for a Codex thread) |
-| `conversation_origin` | empty or `tpp`; NULL on the 2026-10-15 macOS rows. What `tpp` stands for is not determined; the same token is in the app's `.codex-tpp-local-executor-installation-id` file name on both platforms and in the macOS app log's `[tpp-local-executor]` component ([section 2](#2-per-user-storage)) |
+| `conversation_origin` | empty or `tpp`; NULL on the 2026-10-15 macOS rows. What `tpp` stands for is not determined; the same token is in the app's `.codex-tpp-local-executor-installation-id` file name on both platforms and in the macOS app log's `[tpp-local-executor]` component ([Per-user storage](#per-user-storage)) |
 | `missing_candidate` | 0 |
 | `thread_source`, `model_provider`, `cwd`, `git_branch`, `project_id`, `trial_conversation_type`, `chatgpt_async_status` | NULL |
 | `source_detail`, `observation_sequence`, `pending_observed_title` | not recorded |
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 `thread_id` is the conversation's id on chatgpt.com and joins nothing
 else on disk: no rollout, prompt history or log row carries it, because
 the conversation never reaches the local app server
-([section 7](#7-transcript-stores)). It is the id to name in a request to OpenAI
+([Transcript stores](#transcript-stores)). It is the id to name in a request to OpenAI
 for the conversation's content. `host_id` names the ChatGPT account the
 list was taken from, as `local_thread_catalog_hosts` does.
 
 The times are the server's times for the conversation as of the
 snapshot: `source_created_at` when it was created and
 `source_updated_at` when it last changed, both as of sign-in. A later
-reply from inside the app did not move them ([section 7](#7-transcript-stores)),
+reply from inside the app did not move them ([Transcript stores](#transcript-stores)),
 so `source_updated_at` is a lower bound on the conversation's last use,
 not its last use. When the app wrote the row is the sign-in time, which
 the row does not record. The three rows written at the 2026-10-18 macOS
@@ -567,14 +568,14 @@ sign-in were the account's conversations of the Windows round of
 2026-10-15; those of the 2026-10-15 macOS round were not among them, and
 why was not determined.
 
-### 10. Other stores
+### Other stores
 
 The catalog tables of `codex-dev.db` (macOS, build 26.1013.40934, 2026-10-18, unless a cell says
 otherwise; table and column names only):
 
 | Table | Columns | Rows seen |
 | --- | --- | --- |
-| `local_thread_catalog` | [section 8](#8-record-schema) | 3 `chatgpt` at sign-in, plus one `vscode` per Codex thread; on macOS 2026-10-15, 3 `vscode` and 3 `chatgpt` (two with `conversation_origin` NULL, one `tpp`); on Windows 2026-10-15, 5 (3 `vscode`, 2 `chatgpt`, one with `conversation_origin` empty and one `tpp`) |
+| `local_thread_catalog` | [Record schema](#record-schema) | 3 `chatgpt` at sign-in, plus one `vscode` per Codex thread; on macOS 2026-10-15, 3 `vscode` and 3 `chatgpt` (two with `conversation_origin` NULL, one `tpp`); on Windows 2026-10-15, 5 (3 `vscode`, 2 `chatgpt`, one with `conversation_origin` empty and one `tpp`) |
 | `local_thread_catalog_hosts` | `host_id`, `host_kind` | 2: `local` / `local` and the account's `chatgpt:<workspace uuid>:<user id>` / `chatgpt`; the same two on Windows |
 | `local_thread_catalog_sync_state` | `host_id`, `watermark_updated_at`, `initial_build_complete`, `observation_sequence`, `last_full_reconciled_at` | 2 (`initial_build_complete` 1; `observation_sequence` 5 and 1) |
 | `local_thread_catalog_metadata` | `id`, `catalog_revision` | 1 |
@@ -586,7 +587,7 @@ are Codex Desktop's and are in
 [`sqlite/codex-dev.db` in `codex-cli.md`](codex-cli.md#sqlitecodex-devdb). Only
 `local_thread_catalog` is read by the parser.
 
-### 11. Format versions
+### Format versions
 
 `codex_schema_migrations` (33 rows on the Windows 26.1007.9446.0 and the macOS 26.1013.40934
 installs) carries the app version in `app_version`, with `build_flavor` `prod` on the Windows
@@ -596,15 +597,15 @@ and macOS builds 26.1007.71326 and 26.1013.40934; the `local_thread_catalog_meta
 26.1013.40934 install, which does not show that the earlier builds lacked them. The parser reads
 every column as possibly absent or NULL, so an older table without a column still parses.
 
-### 12. Secrets
+### Secrets
 
 `host_id` carries the ChatGPT workspace id and the user id, and
 `display_title` the conversation's title, which is user content. No
 token is stored in the table. The app's credentials are in
 `~/.codex/auth.json`, flagged `secret: true` by the collector; see
-[section 3](#3-credentials).
+[Credentials](#credentials).
 
-### 13. Parser plan
+### Parser plan
 
 `wants()` by `artifact.rel == ".codex/sqlite/codex-dev.db"`; the
 analyzer offers the file, which the catalog attributes to `codex-cli`,
@@ -645,7 +646,7 @@ None recorded; `model_provider` is NULL on every `chatgpt` row.
 
 None read beyond the primary store. The table is the only local record
 of these conversations; the Windows global state's resume token for the
-ChatGPT chat ([section 7](#7-transcript-stores)) is not read by this
+ChatGPT chat ([Transcript stores](#transcript-stores)) is not read by this
 parser. No secondary source.
 
 #### Sync, relay and origin rows
@@ -682,27 +683,28 @@ without the table one `parser: no local_thread_catalog table` row.
 
 The test fixture (`chatgpt_desktop_records()` in `analyzer/tests/fixtures.py`) builds
 `.codex/sqlite/codex-dev.db` with the `local_thread_catalog` columns of
-[section 8](#8-record-schema) and a `local_thread_catalog_hosts` table, its rows only in the WAL
+[Record schema](#record-schema) and a `local_thread_catalog_hosts` table, its rows only in the WAL
 sidecar as on a running app: one `vscode` row (a Codex thread, which the parser skips), a `chatgpt`
 row with a title, an empty `conversation_origin` and REAL times with a fraction, and a `chatgpt`
 row with no title and `conversation_origin` `tpp`. Expected: three `system` rows for each
 `chatgpt` row, in rowid order, and none for the `vscode` row.
 
-## 14. Confidence
+## Confidence
 
 - High, observed on Windows 11 (ChatGPT 26.1007.9446.0): the package name and layout, the profile
-  and partition stores, caches and credential stores of [section 2](#2-per-user-storage) to
-  [section 4](#4-exclusions), that the chat surface keeps no local transcript, and that the running
+  and partition stores, caches and credential stores of [Per-user storage](#per-user-storage) to
+  [Exclusions](#exclusions), that the chat surface keeps no local transcript, and that the running
   app holds the cookie stores, LevelDB `LOCK` files and settings hive locked.
 - High, observed on macOS 26.6.2 (ChatGPT 26.1007.71326): the bundle id, the app's build and the
   `~/Library` layout, caches and credential stores.
 - High, observed on macOS 26.6.2 (ChatGPT 26.1013.40934, one step per listing): what each step of
-  [section 1](#1-source-and-evidence) wrote of the app's own, and that a ChatGPT-mode reply leaves
+  [Source and evidence](#source-and-evidence) wrote of the app's own, and that a ChatGPT-mode reply leaves
   nothing local.
 - High, write-ups: the former native app's `conversations-v2-*` encryption and the previous Windows
   package's layout.
 - Medium: that the shell is a Chromium build hosting an Electron-style app, read from file names,
-  versions and log components ([section 1](#1-source-and-evidence)), not from the binaries' code.
+  versions and log components ([Source and evidence](#source-and-evidence)), not from the binaries'
+  code.
 - Not determined: where the macOS app keeps its Chromium cookie key; what the `app://` IndexedDB
   blob and `Local Storage` hold; the bundled extension's purpose; what "tpp" and "owl" stand for;
   the app's behaviour on x64 Windows (only ARM64 was observed); which of the user's actions wrote

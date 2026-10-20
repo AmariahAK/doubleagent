@@ -43,7 +43,7 @@ chat history's announcement lines (`> Model:`, `> Main model:`, `> Weak
 model:`, `> Editor model:`), written at startup and again after each
 `/model`, `/weak-model` or `/editor-model` switch; the parser reads them as
 ordinary blockquote lines, part of a `tool_result` row, and yields no
-`model:` row and no `model` value (section 13 of `research/aider.md`, Model
+`model:` row and no `model` value (the Parser plan of `research/aider.md`, Model
 rows). Each `TO LLM` request
 becomes one `system` row naming the message count and the last user
 message; the full prompt is at `source_file:source_line`. A non-blank

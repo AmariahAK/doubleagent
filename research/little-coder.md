@@ -9,7 +9,7 @@ agent `pi` and names little-coder in a `system` row, and the little-coder parser
 little-coder writes itself; this document covers what little-coder adds and how to tell its
 sessions from plain pi sessions, and the full pi record schema is in [`pi.md`](pi.md).
 
-## 1. Source and evidence
+## Source and evidence
 
 [itayinbarr/little-coder](https://github.com/itayinbarr/little-coder) at
 [`89d4fa0af864230527ab75d12604ed0eb320e6df`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df),
@@ -39,13 +39,13 @@ for sync only (2026-10-17).
 
 - 2026-10-19: [`89d4fa0`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df)
   is still the head of `main` and still pins pi `^0.83.0`, so no path changed. The review added
-  the permission gate and the phase-model switches to [section 8](#8-record-schema), the
+  the permission gate and the phase-model switches to [Record schema](#record-schema), the
   `/deep-research` directory to [Scratch directories](#scratch-directories) and `/clear` to
   [What survives a delete](#what-survives-a-delete).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 #### Shared with pi: `~/.pi/agent`
 
@@ -71,7 +71,7 @@ little-coder itself writes:
   a v1.9.0 keybinding is removed from `keybindings.json`
   ([:468-490](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L468-L490)).
 - `little-coder-prompt-history.json`: the last 100 prompts typed
-  ([section 7](#7-transcript-stores) gives the format).
+  ([Transcript stores](#transcript-stores) gives the format).
 
 #### Checkpoints: `~/.little-coder/checkpoints/<session file name>/`
 
@@ -124,7 +124,7 @@ names it. `~/.little-coder/checkpoints/` holds copies of
 project files, not a working directory. What a delete leaves (the checkpoints and the prompt
 history) is in [What survives a delete](#what-survives-a-delete).
 
-### 3. Credentials
+### Credentials
 
 - `~/.pi/agent/auth.json`, pi's credential store, mode 0600
   ([packages/coding-agent/src/core/auth-storage.ts:21](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/auth-storage.ts#L21),
@@ -136,16 +136,16 @@ history) is in [What survives a delete](#what-survives-a-delete).
   [294-300](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/llama-cpp-provider/config.ts#L294-L300)).
   Flag it.
 - `~/.little-coder/config.json` of the v0.0.x Python releases holds a GitHub token
-  ([section 12](#12-secrets) names the key); secret glob `.little-coder/config.json` from
+  ([Secrets](#secrets) names the key); secret glob `.little-coder/config.json` from
   collector 1.14.0.
 - No keychain use.
 
-### 4. Exclusions
+### Exclusions
 
 None. Checkpoints are copies of project files and can be large on a busy
 host, but they are pre-edit evidence; keep them.
 
-### 5. Project-local files
+### Project-local files
 
 - `.pi/approved-plan.md`, written by the plan mode in the session's cwd
   ([.pi/extensions/plan-mode/index.ts:20](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/plan-mode/index.ts#L20),
@@ -159,7 +159,7 @@ host, but they are pre-edit evidence; keep them.
 - `/deep-research` writes its report into the cwd
   ([.pi/extensions/deep-research/index.ts:366-367](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L366-L367)).
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 The pi session header line: `{"type":"session",...,"cwd":...}`
 ([session-manager.ts:32-39](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/session-manager.ts#L32-L39),
@@ -169,11 +169,11 @@ and the encoded session directory name. Checkpoint file names encode absolute pa
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 - `.pi/agent/sessions/--<encoded cwd>--/<ISO timestamp with - for : and .>_<uuid>.jsonl`, one file
   per session, appended per entry, shared with plain pi; the naming, its citations and the
-  override are in [section 2](#shared-with-pi-piagent).
+  override are in [Shared with pi](#shared-with-pi-piagent).
 - `.pi/agent/little-coder-prompt-history.json`: JSON array of up to 100 prompt strings, oldest
   first, no timestamps or session ids
   ([.pi/extensions/prompt-history/index.ts:23-26](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/prompt-history/index.ts#L23-L26),
@@ -202,9 +202,9 @@ still joins its pre-edit file copies to the session, and the prompt history
 No deletion marker is written. The analyzer reads both: the prompt history as `user` rows with no
 timestamp and no session ([Past use and secondary sources](#past-use-rows-and-secondary-sources)),
 and each checkpoint directory as one `system` row naming the session and the files
-([section 13](#13-parser-plan)).
+([Parser plan](#parser-plan)).
 
-### 8. Record schema
+### Record schema
 
 pi session format version 3
 ([session-manager.ts:30](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/session-manager.ts#L30)).
@@ -288,27 +288,27 @@ The `phase-model` extension switches the model at the plan and implementation ph
 and pi 0.83.0's `setModel` appends a `model_change` entry
 ([packages/coding-agent/src/core/agent-session.ts:1578-1586](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/agent-session.ts#L1578-L1586)).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 Session id: header `id`, also in the file name. Tree: `parentId` → `id`.
 Tool use to result: `toolCall.id` = `toolResult.toolCallId`. Project path:
 header `cwd`. Forked sessions: header `parentSession`. Checkpoint directory
 name = session file basename.
 
-### 10. Other stores
+### Other stores
 
 little-coder keeps no database, index or log beside the prompt history and the checkpoints of
-[section 7](#7-transcript-stores). Images are base64 inside `image` parts
+[Transcript stores](#transcript-stores). Images are base64 inside `image` parts
 ([types.ts:354-358](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L354-L358)).
 
-### 11. Format versions
+### Format versions
 
 pi header `version` (absent in v1 files, 3 now,
 [session-manager.ts:30-35](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/session-manager.ts#L30-L35)).
 little-coder pins pi 0.83.x; a release that moves to pi 1.x should be re-checked against pi's
 research.
 
-### 12. Secrets
+### Secrets
 
 Session files store tool inputs and outputs verbatim; `thinkingSignature` and `thoughtSignature` are
 opaque provider blobs
@@ -321,7 +321,7 @@ in `~/.little-coder/config.json`
 [little_coder.py:1371-1384](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1371-L1384),
 [config.py:6-7](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/config.py#L6-L7)).
 
-### 13. Parser plan
+### Parser plan
 
 The pi parser reads `.pi/agent/sessions/*/*.jsonl`; the rows stay agent `pi`, as the manifest
 says, and a session with any `custom_message` whose `customType` starts with `lc-`, an assistant
@@ -359,7 +359,7 @@ Covered through pi's `model_change` rows: the [phase-model switches](#model-swit
 #### Past-use rows and secondary sources
 
 The prompt history is read on every run, as above, and is the one secondary source. The
-checkpoints of [section 7](#7-transcript-stores) are covered past use. No other store found.
+checkpoints of [Transcript stores](#transcript-stores) are covered past use. No other store found.
 
 #### Sync, relay and origin rows
 
@@ -423,9 +423,9 @@ Fixture:
 
 `little-coder-prompt-history.json`: `["fix the failing test","now run lint"]`
 
-## 14. Confidence
+## Confidence
 
-- High (source): every path in [section 2](#2-per-user-storage), the environment overrides,
+- High (source): every path in [Per-user storage](#per-user-storage), the environment overrides,
   the checkpoint naming, the prompt history format, and that the sessions are pi's, with pi's
   file locations, header and entry fields and message roles read at its `v0.83.0` tag; a later
   little-coder that moves to pi 1.x may differ.

@@ -77,8 +77,8 @@ conversation's current model, and the parser takes no model from the
 `SwitchLLMObservation` and `ClassifyAndSwitchLLMObservation` events
 (`active_model`) that record the agent's own switches, so no change row is
 written; a switch through the Agent Server's REST endpoints leaves no event
-(Model records in section 8 of `research/openhands.md`, and Model rows in
-section 13). Thoughts, `reasoning_content` and thinking blocks become
+(Model records in the Record schema of `research/openhands.md`, and Model rows
+in the Parser plan). Thoughts, `reasoning_content` and thinking blocks become
 `thinking` rows with `--include-thinking`. The session id is the directory
 name, `project_path` is `workspace.working_dir` from `meta.json`, else from
 `base_state.json` (a container path under Canvas in Docker), and the model

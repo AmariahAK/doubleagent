@@ -62,9 +62,9 @@ start row, at its time, `model: <preset> (preset)`: the value names a model
 preset of nanobot's configuration, not a model id. A file has one
 metadata line, so it names one preset and no change row is written. No
 permission state is read: neither `pairing.json` (the chat senders the
-operator approved, whose shape section 3 of `research/nanobot.md` now
+operator approved, whose shape the Credentials section of `research/nanobot.md` now
 traces) nor the standing settings of `config.json` become rows yet; the
-plan is under Permission rows in section 13 of that document. `/new`
+plan is under Permission rows in the Parser plan of that document. `/new`
 empties a session file, so earlier turns may survive only in
 `memory/history.jsonl` and the WebUI mirror below.
 

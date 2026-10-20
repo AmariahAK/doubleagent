@@ -17,9 +17,9 @@ SQLite-of-protobuf conversation databases, each into its own data directory
 under `~/.gemini/`. The app runs a scheduled task (an automation) as a
 sidecar, a long-running helper process the language server supervises. The
 CLI and desktop app transcripts are parsed by the `antigravity` parser
-([section 13](#13-parser-plan)).
+([Parser plan](#parser-plan)).
 
-## 1. Source and evidence
+## Source and evidence
 
 Closed source; no public source exists. Evidence levels, tagged per claim:
 
@@ -72,7 +72,7 @@ a real install on the author's WSL workstation (CLI), on the author's Mac
 and in the author's Windows 11 lab VM (CLI and desktop app), October 2026.
 Extraction:
 `tools/proto_descriptors.py extract ~/.local/bin/agy descriptors.json`, then
-`show` on the message names of [section 8](#8-record-schema).
+`show` on the message names of [Record schema](#record-schema).
 
 ### Observed
 
@@ -100,8 +100,8 @@ Extraction:
   surfaces, so the mapping from task to file is by modification time only.
   What 1.3.5 wrote beyond 1.3.4, among it a copy of the app's conversation
   index, is in [CLI data directory](#cli-data-directory), its keyring use in
-  [section 3](#3-credentials) and its project-path spellings in
-  [section 6](#6-where-the-project-path-is-recorded).
+  [Credentials](#credentials) and its project-path spellings in
+  [Where the project path is recorded](#where-the-project-path-is-recorded).
 
 - **Windows, desktop app** ([issue 83](https://github.com/seanthegeek/doubleagent/issues/83),
   [issue 84](https://github.com/seanthegeek/doubleagent/issues/84) and
@@ -131,7 +131,7 @@ Extraction:
   `~/.gemini/config/`, the Electron user-data directory
   `%APPDATA%\Antigravity\` with its `logs\`, and an empty
   `%LOCALAPPDATA%\antigravity\staging\` (23:56:15Z, before the CLI's first
-  run), described in [section 2](#2-per-user-storage). It created no
+  run), described in [Per-user storage](#per-user-storage). It created no
   `~/.gemini/antigravity-ide`, `~/.gemini/antigravity-backup`,
   `~/.antigravity`, `~/.config`, `~/.cache` or `~/.antigravity-server` under
   the profile, and no `%APPDATA%\Antigravity IDE`.
@@ -154,7 +154,7 @@ Extraction:
   were taken after the tasks of both surfaces, so the mapping from task to
   file is by modification time only. What 1.3.4 writes beyond 1.2.x is in
   [CLI data directory](#cli-data-directory), and the file secret store its
-  log names in [section 3](#3-credentials).
+  log names in [Credentials](#credentials).
 
 - **Linux, desktop app** ([issue 83](https://github.com/seanthegeek/doubleagent/issues/83) and
   [issue 91](https://github.com/seanthegeek/doubleagent/issues/91)): version 2.23.1 (`main.log`:
@@ -175,7 +175,7 @@ Extraction:
   `~/.gemini/antigravity/` (56 MB), files in `~/.gemini/config/` (320 KB),
   and the Electron user-data directory `~/.config/Antigravity/` (8.9 MB)
   with its `logs/` inside it, as the bundle says
-  ([section 2](#2-per-user-storage)). It created no `~/.config/antigravity`
+  ([Per-user storage](#per-user-storage)). It created no `~/.config/antigravity`
   (lower case), `~/.antigravity`, `~/.antigravity-server`,
   `~/.gemini/antigravity-ide` or `~/.gemini/antigravity-backup`.
 
@@ -193,7 +193,7 @@ Extraction:
   `CORTEX_TRAJECTORY_SOURCE_CLI` in the descriptor
   `exa.cortex_pb.CortexTrajectorySource`) and `trajectory_type` 4, of 12 and
   8 steps, each with its `brain/<uuid>/` logs
-  ([section 7](#7-transcript-stores)). `agy` 1.3.6
+  ([Transcript stores](#transcript-stores)). `agy` 1.3.6
   (`/Users/sean/.local/bin/agy`, 183,407,440 bytes, sha256
   `827ba22b4aa33557614a57aac2cc13f386e17db6b802febd3932226906ac05ab`),
   observed 2026-10-15: one conversation of 17 steps in a project directory
@@ -201,7 +201,7 @@ Extraction:
   [What survives a delete](#what-survives-a-delete), the mirror's line count
   in [Brain mirror lines](#brain-mirror-lines), and which of the four
   `history.jsonl` lines carry `conversationId` in
-  [section 9](#9-joins-and-timestamps).
+  [Joins and timestamps](#joins-and-timestamps).
 
 - **macOS, desktop app** ([issue 83](https://github.com/seanthegeek/doubleagent/issues/83)):
   `/Applications/Antigravity.app`, `CFBundleShortVersionString` and `CFBundleVersion` both `2.23.0`,
@@ -221,13 +221,13 @@ Extraction:
   `trajectory_type` 4, are 12 steps (modified 18:37), 24 steps (18:43), 43
   steps (18:50) and 31 steps (19:14), each with a `brain/<uuid>/` directory,
   an `annotations/<uuid>.pbtxt` and a row in `conversation_summaries.db`
-  ([section 7](#7-transcript-stores)); the automation's `sidecar.json` is
+  ([Transcript stores](#transcript-stores)); the automation's `sidecar.json` is
   18:41 to 18:42, the plugin's `token.json` 18:46 and the agent's scratch
   document 18:47. No scheduled run fired. The app wrote
   `~/.gemini/antigravity/` (49 MB), files in the shared `~/.gemini/config/`,
   the Electron user-data directory
   `~/Library/Application Support/Antigravity/` (5.3 MB) and
-  `~/Library/Logs/Antigravity/` ([section 2](#2-per-user-storage)); it
+  `~/Library/Logs/Antigravity/` ([Per-user storage](#per-user-storage)); it
   created no `~/.gemini/antigravity-ide`, `~/.gemini/antigravity-backup` or
   `~/.antigravity`, nothing under `~/Library/Caches`, and no LaunchAgent,
   launchd job or cron entry (`~/Library/LaunchAgents` has none).
@@ -238,7 +238,7 @@ None.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Everything the CLI and the app keep per user sits under `~/.gemini/`; the
 Go binary resolves it via `os.UserHomeDir` (binary) so Windows is
@@ -263,7 +263,7 @@ document the agent wrote during a conversation, user-level, not per
 conversation ([desktop app data directory](#desktop-app-data-directory));
 each `brain/<uuid>/scratch/` was an empty directory on every install
 ([brain directories](#brain-directories)). Both are collected
-([section 4](#4-exclusions)).
+([Exclusions](#exclusions)).
 
 #### Program files and install metadata
 
@@ -276,7 +276,7 @@ state, and have no catalog line (observed):
 - macOS, app 2.23.0: `/Applications/Antigravity.app`, an Electron app
   (`Contents/Frameworks/Electron`, 200,443,040 bytes) with
   `Contents/Resources/app.asar` (the **bundle** of
-  [section 1](#1-source-and-evidence)), its backend
+  [Source and evidence](#source-and-evidence)), its backend
   `Contents/Resources/bin/language_server` (Mach-O arm64, 155,290,912 bytes,
   sha256 `c1dd0c9940f712adf2185e756470752d5f5afee15441e32879e4a0f127e18273`)
   and `Contents/Resources/bin/webm_encoder`.
@@ -387,12 +387,12 @@ listed after the table):
 
 | Path | Observed |
 | --- | --- |
-| `conversations/<uuid>.db` x4 (688,128 to 1,409,024 B, no sidecar files) | one SQLite database per conversation, the same schema as the CLI's ([section 8](#8-record-schema)) |
+| `conversations/<uuid>.db` x4 (688,128 to 1,409,024 B, no sidecar files) | one SQLite database per conversation, the same schema as the CLI's ([Record schema](#record-schema)) |
 | `conversation_summaries.db` | the conversation index, the CLI's table plus a full-text search table over titles, workspaces and message bodies ([Summaries database](#summaries-database)) |
 | `brain/<uuid>/` x4 | per-conversation logs and tool output ([Brain directories](#brain-directories)) |
 | `annotations/<uuid>.pbtxt` x4 (94 to 99 B) | pbtxt is the protobuf text format, a human-readable serialisation of a protobuf message; each holds one `title:` field, the conversation title |
 | `scratch/<name>.md` (24,280 B) | a Markdown document the agent wrote during a conversation; user-level, not per conversation |
-| `plugin_data/gdocs/token.json` (1,119 B, mode 0600) | the Google Docs plugin's OAuth credential ([section 3](#3-credentials)) |
+| `plugin_data/gdocs/token.json` (1,119 B, mode 0600) | the Google Docs plugin's OAuth credential ([Credentials](#credentials)) |
 | `plugin_data/gdocs/bin/gdocs-<digits>` (31,938,752 B) | the plugin's binary |
 | `bin/webm_encoder` (12,699,266 B), `bin/agentapi` (100 B), `bin/gdocs` | binaries; `bin/gdocs` is a symlink to `~/.gemini/config/plugins/gdocs/skills/gdocs/scripts/gdocs` |
 | `cache/marketplaces/antigravity-plugins-official/` (207,829 B) | the plugin marketplace cache: `marketplace.json` (17 plugins, each with a name, version and archive URL and sha256), `meta.json` and `plugins/gdocs/0.0.6/`, a copy of the plugin the user installed |
@@ -413,9 +413,9 @@ Added on Linux (observed, app 2.23.1):
   `index.mjs`, `preload.js`, `esm_resolver.js`, `register_loader.js`):
   the sidecar SDK, the JavaScript library the app installs for sidecar
   code; the same five files are in `~/.gemini/config/node_modules/sidecar_sdk/`.
-  Code, not state, and excluded ([section 4](#4-exclusions)).
+  Code, not state, and excluded ([Exclusions](#exclusions)).
 - `brain/<uuid>/.system_generated/steps/<idx>/content.md` in one
-  conversation ([section 7](#7-transcript-stores)).
+  conversation ([Transcript stores](#transcript-stores)).
 - `conversation_summaries.db` (167,936 B) with the macOS schema
   ([Summaries database](#summaries-database)).
 - `scratch/<name>.md` (675 B), `plugin_data/gdocs/token.json` (1,126 B,
@@ -436,7 +436,7 @@ On Windows (observed, app 2.23.1, Windows 11 ARM64 build 26300,
   sidecar when listed.
 - In the brain directories, `messages/undelivered/`, a chunked
   `transcript_full.jsonl` and a 2,682,163 B `content.md`
-  ([section 7](#7-transcript-stores)).
+  ([Transcript stores](#transcript-stores)).
 - Other sizes: `agyhub_summaries_proto.pb` 1,417 B,
   `annotations/<uuid>.pbtxt` x4 93 to 96 B, `antigravity_state.pbtxt`
   812 B, `builtin/.checksum` 72 B, `installation_id` 36 B,
@@ -455,14 +455,14 @@ step mirror (`.system_generated/logs/transcript.jsonl`,
 `transcript_full.jsonl` and their chunks), the output of each tool step,
 and in the app messages addressed to the conversation and background-task
 logs. Its layout and sizes per platform are in
-[section 7](#7-transcript-stores) and its line shapes in
-[section 8](#8-record-schema).
+[Transcript stores](#transcript-stores) and its line shapes in
+[Record schema](#record-schema).
 
 #### CLI data directory
 
 `~/.gemini/antigravity-cli/` (live, observed on macOS, with binary
 literal where noted): `antigravity-oauth-token` (1,670 B, see
-[section 3](#3-credentials)); `bin/webm_encoder` (17 MB on Linux);
+[Credentials](#credentials)); `bin/webm_encoder` (17 MB on Linux);
 `brain/<uuid>/` ([Brain directories](#brain-directories); binary:
 `.system_generated/logs/transcript.jsonl`, `transcript_full.jsonl`);
 `builtin/skills/<name>/`, `builtin/.checksum`, `keep.txt` (bundled skills; binary also names
@@ -495,13 +495,13 @@ New in CLI 1.3.x (observed, Linux, 1.3.4): `annotations/<uuid>.pbtxt`
 (37 B, one `title:` field, as in the app's directory);
 `cache/marketplaces/antigravity-plugins-official/` (`marketplace.json`
 and `meta.json`, 32,768 B, excluded); a `conversationId` key on some
-`history.jsonl` lines ([section 9](#9-joins-and-timestamps)); and
+`history.jsonl` lines ([Joins and timestamps](#joins-and-timestamps)); and
 `settings.json` (156 B) with `permissions` {`allow`, an array of strings}
 beside `trustedWorkspaces` (an array of 1 absolute path)
 ([Permission configuration files](#permission-configuration-files)). The
 log directory holds `log/cli-<YYYYMMDD_HHMMSS>.log` files (22,498 and
 45,442 B) in glog format (glog is Google's logging library) with
-`cli.log` linking to the newest; besides the secret-store line in [section 3](#3-credentials),
+`cli.log` linking to the newest; besides the secret-store line in [Credentials](#credentials),
 they name `~/.gemini/config/config.json`, `~/.gemini/extensions` (Gemini
 CLI's extension directory, absent on this install) and the workspace
 paths.
@@ -510,7 +510,7 @@ Observed on Windows (CLI 1.3.5, Windows 11 ARM64 build 26300,
 2026-10-14), against 1.3.4 on Linux:
 
 - `cache/conversation_metadata.json` (2,671 B), new: an entry for each of
-  the desktop app's four conversations ([section 7](#7-transcript-stores)).
+  the desktop app's four conversations ([Transcript stores](#transcript-stores)).
 - `conversation_summaries.db` (40,960 B, no sidecars) holds a row for each
   of the app's four conversations beside its own: CLI 1.3.5 copies the
   app's conversation index into its own
@@ -524,7 +524,7 @@ Observed on Windows (CLI 1.3.5, Windows 11 ARM64 build 26300,
 - `plugin_data/gdocs/`, an empty directory; the plugin's `token.json` is
   in the app's directory.
 - `history.jsonl` (230 B) has one line, without `conversationId`
-  ([section 9](#9-joins-and-timestamps)).
+  ([Joins and timestamps](#joins-and-timestamps)).
 - `settings.json` (172 B): `permissions` {`allow`} and `trustedWorkspaces`
   (one absolute Windows path)
   ([Permission configuration files](#permission-configuration-files)).
@@ -538,7 +538,7 @@ Observed on Windows (CLI 1.3.5, Windows 11 ARM64 build 26300,
   `jetbox_summaries_proto.pb` (430 B), `jetski_state.pbtxt` (503 B),
   `last_check.timestamp` (0 B), `presence/<uuid>.lock` (0 B), an empty
   `crashes/`, and the same `builtin/` skills. There is no
-  `antigravity-oauth-token` ([section 3](#3-credentials)).
+  `antigravity-oauth-token` ([Credentials](#credentials)).
 
 #### Shared configuration directory
 
@@ -609,7 +609,7 @@ dirs (both superseded). Observed on macOS:
   in [Sidecar logs](#sidecar-logs).
 - `mcp_config.json` and `.migrated`, both empty (also on Windows).
 - `node_modules/sidecar_sdk/` (observed, Linux, 5 files, 17,508 B): a copy
-  of the sidecar SDK, excluded ([section 4](#4-exclusions)). Absent on
+  of the sidecar SDK, excluded ([Exclusions](#exclusions)). Absent on
   Windows.
 
 #### Electron user-data directory
@@ -676,7 +676,7 @@ symlinks, and the caches `Cache` (6,959,104 B), `Code Cache`
 Crashpad being Chromium's crash reporter). New against macOS:
 `Dictionaries/en-US-10-1.bdic` (451,968 B), the spell-check dictionary
 Chromium downloads in its binary `.bdic` format, excluded
-([section 4](#4-exclusions)).
+([Exclusions](#exclusions)).
 
 Observed on Windows (`%APPDATA%\Antigravity\`, created 23:56:11Z, app
 2.23.1, Windows 11 ARM64 build 26300, 2026-10-14): `app_storage.json`
@@ -687,7 +687,7 @@ Observed on Windows (`%APPDATA%\Antigravity\`, created 23:56:11Z, app
 `spellcheck.dictionary`), `Local State` (490 B; `os_crypt`
 {`audit_enabled` (bool), `encrypted_key` (a 380-character string)} and
 `uninstall_metrics` {`installation_date2`}, see
-[section 3](#3-credentials)), `logs\main.log` (4,751 B, 51 lines) and
+[Credentials](#credentials)), `logs\main.log` (4,751 B, 51 lines) and
 `logs\language_server.log` (218,747 B), `Network\Cookies` (20,480 B) and
 `Cookies-journal`, `Network Persistent State` (472 B),
 `NetworkDataMigrated` (0 B), `Network\Trust Tokens` (36,864 B)
@@ -830,7 +830,7 @@ Relocation env vars: none found for the home dir. `ANTIGRAVITY_EXECUTABLE_DATA_D
 `ANTIGRAVITY_CONVERSATION_ID` exist (binary) but their effect on paths is
 unknown.
 
-### 3. Credentials
+### Credentials
 
 - Keyring first: `zalando/go-keyring` with Secret Service, service name
   `jetski-standalone-oauth-token` (binary); docs/cli/install: Apple
@@ -860,7 +860,7 @@ unknown.
   `~/.gemini/antigravity/plugin_data/gdocs/token.json`, 1,119 B on macOS
   and 1,126 B on Linux, both mode 0600, and 1,122 B on Windows, app
   2.23.1), its
-  keys in [section 12](#12-secrets). `*.gemini/antigravity*/plugin_data/*/token.json`
+  keys in [Secrets](#secrets). `*.gemini/antigravity*/plugin_data/*/token.json`
   flags it in every `.gemini/antigravity*` directory
   ([issue 84](https://github.com/seanthegeek/doubleagent/issues/84)).
 - `plugin-secrets.json`, the CLI's file store for plugin secrets when no
@@ -874,7 +874,7 @@ unknown.
   and the binary carries the literal
   `plugin-secrets.json` beside `keychain get %s: %w` and
   `keychain set %s: %w` (observed, `agy` 1.3.4 linux-arm64, sha256 in
-  [section 1](#1-source-and-evidence)). The file did not exist on
+  [Source and evidence](#source-and-evidence)). The file did not exist on
   the install, since nothing was authorised from the CLI, and neither did
   `~/.config/antigravity`. The lower-case directory under `~/.config` is
   Go's `os.UserConfigDir()` on Linux; the macOS and Windows paths,
@@ -912,7 +912,7 @@ unknown.
   is collected unflagged: the rest of the file is install metadata, and
   the key is useless without the user's DPAPI context. Treat
   `encrypted_key` as a key to redact before sharing, as
-  [section 3 of `claude-desktop.md`](claude-desktop.md#3-credentials)
+  [Credentials in `claude-desktop.md`](claude-desktop.md#credentials)
   treats Claude Desktop's `metadata_secret`, not as a secret glob.
   `app_storage.json` holds the signed-in account name
   (`jetski.onboarding.lastLoginUsername`), which identifies the user but
@@ -921,7 +921,7 @@ unknown.
   (`antigravityUnifiedStateSync.trajectorySummaries`, Devilaiger) and, as a
   VS Code fork, probably auth state; collect unflagged.
 
-### 4. Exclusions
+### Exclusions
 
 Sizes are from the macOS install (observed) unless noted; the Linux
 install's are given where they were recorded.
@@ -988,25 +988,25 @@ Kept: `.system_generated/subagents` (sub-conversation data), `scratch/`,
 `builtin/` (bundled skills, 176 KB in the CLI directory) and the Electron
 `Local Storage/`, `Session Storage/` and `DIPS`.
 
-### 5. Project-local files
+### Project-local files
 
 `.agents/` workspace customizations (`.agents/agents/`, binary changelog;
 damadorPL `<project-root>\.agents\`), `.antigravityignore` (binary),
 `.antigravity-plugin` (binary), legacy `.antigravitycli/` (binary, removed
 in favour of `cache/projects.json`). No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - `history.jsonl`: `workspace` per prompt (CLI only; the app writes no
   `history.jsonl`), see
-  [section 7](#7-transcript-stores).
+  [Transcript stores](#transcript-stores).
   On Windows it is the folder as the user typed it, with a lower-case
   `users` (`C:\users\<user>\demo2`, observed, CLI 1.3.5).
 - `settings.json`: `trustedWorkspaces` array (binary json tag; docs/settings).
 - `cache/projects.json`: workspace to project map (binary changelog).
 - `history.jsonl` also carries `conversationId` on some lines from CLI
   1.3.x (observed), which joins a prompt to its conversation
-  ([section 9](#9-joins-and-timestamps)).
+  ([Joins and timestamps](#joins-and-timestamps)).
   The collectors read only `workspace`.
 - `config/projects/<uuid>.json`: `projectResources.resources[].folderUri`,
   a `file://` URL of the project folder (observed on macOS, Linux and
@@ -1031,13 +1031,13 @@ in favour of `cache/projects.json`). No per-project database.
   path `C:\users\<user>\demo2` in the `history.jsonl` `workspace`. The
   lower-case `users` is how the user typed the CLI's working folder. How
   the parser turns them into paths is in
-  [section 9](#9-joins-and-timestamps).
+  [Joins and timestamps](#joins-and-timestamps).
 - `conversation_summaries.db` (`workspace_uris` column) and the
   per-conversation `*.db`: SQLite only, read by the analyzer.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 Conversations can be in any of the four data directories of
 [Data directories under `~/.gemini`](#data-directories-under-gemini):
@@ -1053,14 +1053,14 @@ Stores in each data directory (`<dir>` is one of the four above):
 | --- | --- |
 | `<dir>/conversations/<uuid>.db` (+`-wal`, `-shm`) | one SQLite database per conversation, WAL mode; the app's four had no sidecars when listed on macOS or Linux, nor did the app's four and the CLI's one on Windows (**observed**) |
 | `<dir>/conversation_summaries.db` | one row per conversation; the app's copy adds a full-text search table, and the CLI 1.3.5 copy on Windows also held a row for each of the app's conversations ([Summaries database](#summaries-database)) |
-| `.gemini/antigravity-cli/history.jsonl` | `{display, timestamp (ms), workspace}` per prompt; CLI only, the app writes none (**observed**). From CLI 1.3.x some lines add `conversationId`, the conversation's UUID (**observed**, CLI 1.3.4 on Linux and 1.3.6 on macOS); which lines carry it is in [section 9](#9-joins-and-timestamps) |
+| `.gemini/antigravity-cli/history.jsonl` | `{display, timestamp (ms), workspace}` per prompt; CLI only, the app writes none (**observed**). From CLI 1.3.x some lines add `conversationId`, the conversation's UUID (**observed**, CLI 1.3.4 on Linux and 1.3.6 on macOS); which lines carry it is in [Joins and timestamps](#joins-and-timestamps) |
 | `.gemini/antigravity-cli/cache/conversation_metadata.json` | CLI 1.3.5 (**observed**, Windows, 2,671 B; not seen on macOS with 1.2.16 or Linux with 1.3.4): `conversations` {`<uuid>`: {`is_internal` (bool), `last_modified_time` (ISO 8601 date), `summary` {`AgentName` (empty string), `AppDataDir` (11 characters), `GroupID` (empty string), `ID` (UUID), `Internal` (bool), `Loaded` (bool), `NumSteps` (number), `Preview` (string), `ProjectID` (18 characters), `Title` (string), `UpdatedAt` (ISO 8601 date), `WorkspaceURIs` (null)}}}; its four entries were the desktop app's four conversations, and an 11-character `AppDataDir` is `antigravity`, the app's data directory. The parser does not read it |
 | `.gemini/antigravity-cli/cache/last_conversations.json` | {`<absolute path>`: `<uuid>`} (**observed**, Windows, 70 B): by its name, the last conversation per working folder; the parser does not read it |
 | `.gemini/antigravity-cli/jetbox_summaries_proto.pb` | `jetbox_summaries_pb.SummariesState`, same summaries as the database; the app's counterpart is `.gemini/antigravity/agyhub_summaries_proto.pb` (1,436 B, **observed**; 1,417 B on Windows) |
 | `<dir>/annotations/<uuid>.pbtxt` | seen in the app's directory (**observed**, 94-99 B each on macOS, 93-101 B on Linux, 93-96 B on Windows) and, from CLI 1.3.x, in the CLI's (**observed**, Linux, 37 B; Windows, 46 B): pbtxt ([Desktop app data directory](#desktop-app-data-directory)), `field: value` lines, with a single `title:` field, the conversation title |
 | `<dir>/brain/<uuid>/` | per-conversation artifacts and logs, in the next table |
-| `.gemini/antigravity-cli/antigravity-oauth-token` | credential, flagged secret by the collector; absent on the Windows install, where the CLI kept its token in the OS keyring ([section 3](#3-credentials)) |
-| `.gemini/antigravity/plugin_data/<plugin>/token.json` | a plugin's OAuth credential ([section 12](#12-secrets)) |
+| `.gemini/antigravity-cli/antigravity-oauth-token` | credential, flagged secret by the collector; absent on the Windows install, where the CLI kept its token in the OS keyring ([Credentials](#credentials)) |
+| `.gemini/antigravity/plugin_data/<plugin>/token.json` | a plugin's OAuth credential ([Secrets](#secrets)) |
 | `<dir>/bin/` | binaries, excluded |
 | `.gemini/antigravity/sidecar_data/<name>/logs/sidecar.log`, `sidecar_data/<name>/data/` | the scheduler log of the sidecar `<name>` and an empty `data/` directory (**observed**, Linux; absent on Windows; [Sidecar logs](#sidecar-logs)) |
 
@@ -1077,7 +1077,7 @@ and the app (**observed**, macOS, Linux and Windows):
 | `.system_generated/messages/<uuid>.json`, `messages/read.json` | app only, seen in a 43-step conversation on each platform: three messages addressed to the conversation on macOS, two of them tied to a `run_command` tool call; two on Linux, one of them tied to `run_command`; two on Windows (1,400 and 2,010 B, with an 89 B `read.json`), in the conversation that by modification time was the research task; keys in [Brain message files](#brain-message-files) |
 | `.system_generated/messages/undelivered/` | an empty directory in that Windows conversation (**observed**, Windows only); by its name, messages not yet delivered to the conversation |
 | `.system_generated/tasks/task-<idx>.log` | app only, same conversations: plain-text output of a background task started by step `<idx>` (two on macOS; one on Linux, `task-10.log`, 996 B; one on Windows, `task-7.log`, 988 B); the CLI's brain directories have no `messages/` or `tasks/` |
-| `.system_generated/worktrees`, `.system_generated/subagents` | named by the binary (binary): git worktrees of the project, excluded, and sub-conversation data, kept ([section 4](#4-exclusions)) |
+| `.system_generated/worktrees`, `.system_generated/subagents` | named by the binary (binary): git worktrees of the project, excluded, and sub-conversation data, kept ([Exclusions](#exclusions)) |
 | `scratch/`, `.user_uploaded/` | empty directories on every install so far |
 
 #### What survives a delete
@@ -1117,7 +1117,7 @@ database before the brain directory (not observed). The chunked copies
 keep the transcript when `transcript_full.jsonl` itself was skipped for
 size.
 
-### 8. Record schema
+### Record schema
 
 #### Conversation database
 
@@ -1137,7 +1137,7 @@ The tables mirror `gemini_coder.Trajectory`: `steps` (field 2),
 `generator_metadata` (3), `trajectory_type` (4), `parent_references` (5),
 `cascade_id` (6), `metadata` (7), `source` (8), `executor_metadatas` (9),
 `battle_mode_infos` (10). `cascade_id` equals the conversation id and the
-file name. `source` is a `CortexTrajectorySource` ([section 9](#9-joins-and-timestamps));
+file name. `source` is a `CortexTrajectorySource` ([Joins and timestamps](#joins-and-timestamps));
 `trajectory_type` 4 is `CORTEX_TRAJECTORY_TYPE_CASCADE`.
 
 `steps.step_payload` is a serialized `gemini_coder.Step`:
@@ -1334,7 +1334,7 @@ read with `strings` and `grep -b`, never run):
 A `GENERIC` line carries no tool name or call id: its `content` is the
 tool's output. The database's tool steps on every real install so far were
 `generic` steps whose `metadata.tool_call` names the call
-([section 9](#9-joins-and-timestamps)); a planner step's calls are run as the
+([Joins and timestamps](#joins-and-timestamps)); a planner step's calls are run as the
 steps after it.
 
 #### Brain message files
@@ -1349,7 +1349,7 @@ containing a UUID), `timestamp` (ISO date), and on two of three
 {`<uuid>`: bool} per message. On Linux the two messages had the same keys,
 `sender` 44 characters.
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 Conversation id = `cascade_id` = file name = `conversation_summaries.
 conversation_id` = the `brain/<uuid>/` and `annotations/<uuid>.pbtxt`
@@ -1374,7 +1374,7 @@ workspace only, and its conversation is the database whose first
 `USER_INPUT` step has the same text and a timestamp within a second.
 
 On Windows one folder can reach the parser under several spellings
-([section 6](#6-where-the-project-path-is-recorded)), since the parser
+([Where the project path is recorded](#where-the-project-path-is-recorded)), since the parser
 passes a plain path through unchanged and turns a `file:` URI into a path
 with `uri_to_path`, which keeps the drive letter's case and uses forward
 slashes: on the Windows install (**observed**, CLI 1.3.5 and app 2.23.1,
@@ -1414,7 +1414,7 @@ CLI's read `source=cli`, `data_dir=antigravity-cli` and
 `project_id=default-cli-project`. The conversation title is in `conversation_summaries.title` and
 in `annotations/<uuid>.pbtxt` (`title:`); the parser reads the former.
 
-The brain mirror ([section 7](#7-transcript-stores)) joins the
+The brain mirror ([Transcript stores](#transcript-stores)) joins the
 database by conversation id: the `<uuid>` of `brain/<uuid>/` is the
 database's `cascade_id`, and the parser puts it in `session_id` for both.
 A mirror line repeats one database step, and the timeline pairs the two
@@ -1445,7 +1445,7 @@ row first, and the mirror's row, matched by session, then finds the
 history row under the broader scope `dedup.deduplicate` tries among
 secondary rows, so the prompt is shown once.
 
-### 10. Other stores
+### Other stores
 
 #### Summaries database
 
@@ -1502,7 +1502,7 @@ database had a `-wal` or `-shm` sidecar: the app's was 159,744 B, the
 CLI's 40,960 B. The CLI's held five rows, its own conversation's and one
 for each of the app's four, which carry `app_data_dir` `antigravity`; the
 CLI's `cache/conversation_metadata.json` lists the same four
-([section 7](#7-transcript-stores)), and its `cli.log` has a line
+([Transcript stores](#transcript-stores)), and its `cli.log` has a line
 from `reconcile_summaries.go` and one from `project_uris_migration.go`.
 The parser reads every row of both databases, so each app conversation
 yields two `conversation summary` rows, one from each database (9 for 5
@@ -1574,11 +1574,11 @@ sidecar_sdk.go:NN] Using bundled agy-node
 Whether the sidecar ever started on Windows, and where its log would go
 there, is not determined.
 
-### 11. Format versions
+### Format versions
 
 The builds observed differ in which files and keys they write; the
 protobuf schemas were compared only between the Linux (WSL) build of
-[section 1](#1-source-and-evidence) and the macOS CLI 1.2.16 and app
+[Source and evidence](#source-and-evidence) and the macOS CLI 1.2.16 and app
 2.23.0, and the descriptors of CLI 1.3.4 and 1.3.5 and app 2.23.1 were not
 extracted.
 
@@ -1586,9 +1586,9 @@ extracted.
   1.3.x a prompt typed into a running conversation carries
   `conversationId` and a conversation's opening prompt does not (CLI
   1.3.4 on Linux, 1.3.5 on Windows, 1.3.6 on macOS;
-  [section 9](#9-joins-and-timestamps)).
+  [Joins and timestamps](#joins-and-timestamps)).
 - `annotations/<uuid>.pbtxt` appears in the CLI's directory from CLI
-  1.3.x, as in the app's ([section 7](#7-transcript-stores)), and the
+  1.3.x, as in the app's ([Transcript stores](#transcript-stores)), and the
   CLI's `settings.json` has `permissions.allow[]` from CLI 1.3.x
   ([Permission configuration files](#permission-configuration-files)).
 - CLI 1.3.5 on Windows wrote `cache/conversation_metadata.json` and a
@@ -1600,26 +1600,26 @@ extracted.
   `ERROR_MESSAGE` lines ([Brain mirror lines](#brain-mirror-lines)).
 - Before 2.0 the VS Code-fork IDE wrote `.gemini/antigravity/`, the
   directory the desktop app 2.x now uses; the separately installed IDE's
-  directory is `.gemini/antigravity-ide/` ([section 7](#7-transcript-stores)).
+  directory is `.gemini/antigravity-ide/` ([Transcript stores](#transcript-stores)).
 
 The descriptor comparison: `tools/proto_descriptors.py extract` (after the
 fix for [issue 86](https://github.com/seanthegeek/doubleagent/issues/86)) found 271 descriptor files
 in `agy` 1.2.16 and 484 in `language_server` 2.23.0; the difference from the Linux count in
-[section 1](#1-source-and-evidence) was not investigated.
+[Source and evidence](#source-and-evidence) was not investigated.
 `exa.cortex_pb.CortexStepType` (118 values), `CortexStepStatus`,
 `CortexTrajectorySource`, `gemini_coder.Step`, `gemini_coder.Trajectory` and
 every message in the parser's `SCHEMA` were diffed against the parser's
 tables, which were built from the Linux descriptors: field numbers, names
 and types match in both macOS binaries, and the two define
-`CortexTrajectorySource` identically ([section 9](#9-joins-and-timestamps)).
+`CortexTrajectorySource` identically ([Joins and timestamps](#joins-and-timestamps)).
 Nothing the parser reads drifted. The diff did find one error in the tables
 themselves, the `delete_file` layout ([Conversation database](#conversation-database)).
 
-### 12. Secrets
+### Secrets
 
 `antigravity-oauth-token` (collector secret glob).
 `plugin_data/<plugin>/token.json` under the desktop app's data directory
-([section 3](#3-credentials)) is the Google Docs plugin's OAuth credential
+([Credentials](#credentials)) is the Google Docs plugin's OAuth credential
 (**observed**): keys `client_id`, `client_secret`, `email`, `scopes` (an
 array of 8 URLs), `token` {`access_token`, `expiry` (ISO date),
 `refresh_token`, `token_type`} and `updated_at`. `client_secret` and the
@@ -1634,9 +1634,9 @@ FTS5 table's `user_body` and `agent_body`.
 
 The Windows Credential Manager entry of CLI 1.3.5 and the
 `os_crypt.encrypted_key` in the desktop app's Windows `Local State` file
-are described in [section 3](#3-credentials); the parser reads neither.
+are described in [Credentials](#credentials); the parser reads neither.
 
-### 13. Parser plan
+### Parser plan
 
 Every source below is read on every run; a secondary source is one whose
 rows the timeline drops when the primary store yields the same event
@@ -1646,8 +1646,8 @@ rows the timeline drops when the primary store yields the same event
 | --- | --- | --- |
 | `<dir>/conversations/<uuid>.db` | primary: the store of record, every step with its payload, model, permissions and both times | session start, user, assistant, tool_use, tool_result, thinking, system, model and permission rows ([Conversation database](#conversation-database)) |
 | `<dir>/conversation_summaries.db` | primary: a summary per conversation, not a copy of its events | one `conversation summary` `system` row per conversation ([Summaries database](#summaries-database)) |
-| `.gemini/antigravity-cli/history.jsonl` | secondary (2 seconds): the prompts the database also records | one `user` row per line ([section 9](#9-joins-and-timestamps)) |
-| `<dir>/brain/<uuid>/.system_generated/logs/transcript_full.jsonl`, else `chunks/transcript_full/*.jsonl` concatenated, else `transcript.jsonl`, else `chunks/transcript/*.jsonl` | secondary (600 seconds): one copy of the database's steps, read in that order of preference, one copy per conversation | user, assistant, tool_use, tool_result, thinking and system rows, as the database reader renders the same step kinds ([section 7](#7-transcript-stores)) |
+| `.gemini/antigravity-cli/history.jsonl` | secondary (2 seconds): the prompts the database also records | one `user` row per line ([Joins and timestamps](#joins-and-timestamps)) |
+| `<dir>/brain/<uuid>/.system_generated/logs/transcript_full.jsonl`, else `chunks/transcript_full/*.jsonl` concatenated, else `transcript.jsonl`, else `chunks/transcript/*.jsonl` | secondary (600 seconds): one copy of the database's steps, read in that order of preference, one copy per conversation | user, assistant, tool_use, tool_result, thinking and system rows, as the database reader renders the same step kinds ([Transcript stores](#transcript-stores)) |
 | the standing permission files | primary: no other copy | `permission setting` rows ([Permission configuration files](#permission-configuration-files)) |
 
 The four mirror files are copies of one transcript, not four sources: the
@@ -1726,7 +1726,7 @@ conversation that CLI 1.3.5 also summarises yields two
 ([Summaries database](#summaries-database)). What each copy survives is in
 [What survives a delete](#what-survives-a-delete); how history and mirror
 rows pair with the database's, and which rows do not pair, is in
-[section 9](#9-joins-and-timestamps).
+[Joins and timestamps](#joins-and-timestamps).
 
 #### Sync, relay and origin rows
 
@@ -1749,7 +1749,7 @@ A `steps.permissions` blob that does not decode is one `system` row,
 step's other rows stand ([issue 92](https://github.com/seanthegeek/doubleagent/issues/92)). Each
 `history.jsonl` and brain mirror line that does not decode is its own `system` row carrying the
 line, and the lines around it are still read; a brain chunk can cut a line at a
-chunk boundary ([section 7](#7-transcript-stores)).
+chunk boundary ([Transcript stores](#transcript-stores)).
 
 #### Fixtures
 
@@ -1764,7 +1764,7 @@ the keys of a mirror line's `tool_calls` elements
 ([Brain mirror lines](#brain-mirror-lines)) and a `deny[]` permission list
 ([Permission rows](#permission-rows)).
 
-## 14. Confidence
+## Confidence
 
 - High: the CLI layout (live, observed and binary literals); the desktop
   app's data directory `~/.gemini/antigravity` and its contents (bundle and
@@ -1784,7 +1784,7 @@ the keys of a mirror line's `tool_calls` elements
 - High: the conversation database and summaries database schemas (observed
   on every install); the protobuf tables the parser reads (descriptors of
   `agy` 1.2.16 and `language_server` 2.23.0, diffed against the parser's
-  tables, [section 11](#11-format-versions)); the five step kinds of
+  tables, [Format versions](#format-versions)); the five step kinds of
   [Conversation database](#conversation-database), the brain mirror's line
   keys and the `history.jsonl` keys, including which lines carry
   `conversationId` (observed on all three platforms).
@@ -1821,4 +1821,4 @@ the keys of a mirror line's `tool_calls` elements
   conversation (none observed, [Model rows](#model-rows)); the descriptors
   of CLI 1.3.4 and 1.3.5 and app 2.23.1, which were not extracted, and why
   the Linux binary's descriptor count differs from the macOS ones
-  ([section 11](#11-format-versions)).
+  ([Format versions](#format-versions)).

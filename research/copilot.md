@@ -6,7 +6,7 @@ JetBrains and Xcode embed writes it. The GitHub Copilot CLI does not use it (see
 [`research/copilot-cli.md`](copilot-cli.md)), and Copilot Chat in VS Code is parsed as `vscode`.
 It is collected only, with no parser: the server keeps no transcripts.
 
-## 1. Source and evidence
+## Source and evidence
 
 Source/bundle: [github/copilot.vim](https://github.com/github/copilot.vim) at
 [a12fd5672110c8aa7e3c8419e28c96943ca179be](https://github.com/github/copilot.vim/commit/a12fd5672110c8aa7e3c8419e28c96943ca179be)
@@ -37,7 +37,7 @@ names the bundle.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 [`main.js`](https://github.com/github/copilot.vim/blob/a12fd5672110c8aa7e3c8419e28c96943ca179be/copilot-language-server/dist/main.js)
 `function Alt()` ("getXdgConfigPath"):
@@ -102,25 +102,25 @@ reach the server as editor configuration (`tools.terminal.autoApprove`, `tools.e
 `applyMCPAutoApproveConfiguration`). The server does not write them; they live in each editor's
 own settings.
 
-### 3. Credentials
+### Credentials
 
 `apps.json` and `hosts.json` hold the GitHub OAuth token in plaintext (`oauth_token` field) with the
 GitHub login (`user`). `oauth.json` holds an authentication provider's OAuth sessions ([Token store
 files](#token-store-files)). All four files, `versions.json` included, match the directory's
 `*.json` secret glob. No keychain use in this path. No config file embeds API keys.
 
-### 4. Exclusions
+### Exclusions
 
 None; the directory holds only small JSON files.
 
-### 5. Project-local files
+### Project-local files
 
 Read only: `.github/copilot-instructions.md`, `.github/git-commit-instructions.md`,
 `.github/instructions/`
 ([`main.js`](https://github.com/github/copilot.vim/blob/a12fd5672110c8aa7e3c8419e28c96943ca179be/copilot-language-server/dist/main.js)
 constants `QNi`, `jNi`, `Ckr`). Nothing written.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Not recorded; the store is per host, not per workspace.
 
@@ -135,7 +135,7 @@ Chat in VS Code is parsed as `vscode` ([Other surfaces](#other-surfaces)). The s
 model, no permission decision (the auto-approve rules are editor settings) and no sync state, and
 keeps no session, so a delete has nothing to leave behind.
 
-## 14. Confidence
+## Confidence
 
 - High: path resolution and the four token-store file names with their fields (readable code in
   the shipped bundle, version pinned).

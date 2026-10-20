@@ -5,7 +5,7 @@ being renamed Devin Desktop. The same vendor's Codeium plugins (JetBrains, Eclip
 its `~/.codeium` directory, and the Devin CLI is its command-line agent. Its parser is in the
 backlog ([issue 52](https://github.com/seanthegeek/doubleagent/issues/52)).
 
-## 1. Source and evidence
+## Source and evidence
 
 Closed source. docs.windsurf.com now 307-redirects to docs.devin.ai (observed on
 `/windsurf/cascade/mcp` and `/troubleshooting/windsurf-common-issues`).
@@ -34,7 +34,7 @@ None.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 #### Scratch directories
 
@@ -107,7 +107,7 @@ hooks).
 
 Env: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `WINDSURF_API_KEY` (docs).
 
-### 3. Credentials
+### Credentials
 
 - IDE: `User/globalStorage/state.vscdb` `ItemTable` key `windsurfAuthStatus` with JSON `apiKey`,
   `email` (codenotch `:16-20, 73-83`; cockpit-tools `:1133-1148`); multi-account keys
@@ -120,7 +120,7 @@ Env: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `WINDSURF_API_KEY` (docs).
 - `mcp_config.json` files (all three locations) embed server env and support
   `${file:~/.secrets/...}` indirection (docs cascade/mcp).
 
-### 4. Exclusions
+### Exclusions
 
 `.codeium/windsurf/bin`, `.codeium/bin`, `.codeium/*/bin` (binaries, FAQ), `.codeium/ws-browser`,
 `.codeium/ws-browser-profile` (embedded Chromium, AgentSweep 1078-1085),
@@ -129,7 +129,7 @@ unclassified), `.windsurf/extensions`, `.devin/extensions`, `AppData/Local/devin
 top-level `.codeium/implicit`, which AgentSweep also lists, is not excluded and is collected with
 `.codeium`. Keep `database`, `code_tracker`, `codemaps`, `brain`, `memories`, `cascade`.
 
-### 5. Project-local files
+### Project-local files
 
 `.devin/rules/*.md` preferred, `.windsurf/rules/*.md` fallback, legacy `.windsurfrules`;
 `.devin/workflows/*.md`, `.windsurf/workflows/*.md`; `.devin/skills/`, `.windsurf/skills/`;
@@ -137,7 +137,7 @@ top-level `.codeium/implicit`, which AgentSweep also lists, is not excluded and 
 `.devin/hooks.v1.json`; ignore files `.devinignore`, `.windsurfignore`, `.codeiumignore` (FAQ
 workspace table; docs memories, workflows, hooks; cli commands). No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Not determinable from available evidence. Memories are "associated with the workspace they were
 created in" (docs memories) but the key is inside the files, and neither the Cascade `.pb` files
@@ -147,12 +147,12 @@ to `User/workspaceStorage/*/workspace.json` in the Windsurf and Devin data dirs.
 
 ## Parsing
 
-Windsurf is `backlog`: Cascade's history is on disk ([section 2](#2-per-user-storage)), and the
+Windsurf is `backlog`: Cascade's history is on disk ([Per-user storage](#per-user-storage)), and the
 parser is [issue 52](https://github.com/seanthegeek/doubleagent/issues/52), blocked on format
 research because the Cascade `.pb` protobuf files have no published schema; no record schema has
 been researched yet.
 
-## 14. Confidence
+## Confidence
 
 - High (L2, or two independent L4 sources): the IDE data dirs old and new, the extensions dirs,
   `~/.codeium/windsurf/{cascade,memories,global_workflows,mcp_config.json,hooks.json,bin}`,

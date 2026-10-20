@@ -8,7 +8,7 @@ the agent framework sweep for [issue #64](https://github.com/seanthegeek/doublea
 see [`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. Its
 parser is in the backlog ([issue 67](https://github.com/seanthegeek/doubleagent/issues/67)).
 
-## 1. Source and evidence
+## Source and evidence
 
 [n8n-io/n8n](https://github.com/n8n-io/n8n), commit
 [`0e1c7549997f43053fda83534b597875b0310df6`](https://github.com/n8n-io/n8n/commit/0e1c7549997f43053fda83534b597875b0310df6).
@@ -46,7 +46,7 @@ n8n executes tools and shell commands on the host:
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 The n8n folder is `N8N_USER_FOLDER`, otherwise `HOME` (or `USERPROFILE`
 on Windows), with `.n8n` appended: `~/.n8n` on every OS
@@ -176,7 +176,7 @@ and computer-use is unchanged apart from its `package.json`.
   [`9675910`](https://github.com/n8n-io/n8n/commit/967591041e508802f6cf77a1b1651ec48175f680):
   grepped for `truncate` and `unlink`).
 
-### 3. Credentials
+### Credentials
 
 - `.n8n/config` (`encryptionKey`) and `.n8n/ssh/*`: flagged, and in a
   volume the volume-relative `config` and `ssh/*`. The bare `config` glob
@@ -190,17 +190,17 @@ and computer-use is unchanged apart from its `package.json`.
   so it is collected unflagged; with `config` the `credentials_entity`
   rows can be decrypted.
 
-### 4. Exclusions
+### Exclusions
 
 `.n8n/nodes/node_modules`, `.n8n/custom/node_modules`,
 `.n8n/node-definitions`, `.n8n/n8n-sdk-templates`, and the volume-relative
 `nodes/node_modules`, `node-definitions` and `n8n-sdk-templates`.
 
-### 5. Project-local files
+### Project-local files
 
 None. Workflows are rows in the database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Nowhere; n8n has no project concept on disk.
 
@@ -213,7 +213,7 @@ computer-use gateway's log and settings
 ([Database and gateway detail](#database-and-gateway-detail)). The gateway log and
 `.n8n/n8nEventLog*.log` are line-oriented, so a parser must report a cut line in either.
 
-## 14. Confidence
+## Confidence
 
 - High for the paths and tables (source).
 - Medium for the Electron tray paths, which are inferred and have no catalog line.

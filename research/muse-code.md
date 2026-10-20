@@ -10,7 +10,7 @@ per session, with each subagent in its own log under the session
 directory; no other agent in the catalog shares this format. The agent is
 parsed by the `muse-code` parser.
 
-## 1. Source and evidence
+## Source and evidence
 
 Closed source, no public repository, so there are no commit links. The
 binary was never executed. The evidence levels, cited by letter throughout,
@@ -82,13 +82,13 @@ best first:
   sessions: one failed on a 402 before any model output, one with web
   search, web fetch, bash and two reminder subagents. They wrote the data
   root's session directories, index and prompt history
-  ([section 2](#2-per-user-storage), [section 7](#7-transcript-stores)):
+  ([Per-user storage](#per-user-storage), [Transcript stores](#transcript-stores)):
   547 envelope lines plus 4 frames and 4 markers in total, every line
-  tabulated by key path ([section 8](#8-record-schema)), and the stores of
-  [section 10](#10-other-stores). Shapes marked observed were seen there;
+  tabulated by key path ([Record schema](#record-schema)), and the stores of
+  [Other stores](#other-stores). Shapes marked observed were seen there;
   shapes marked binary were not exercised and rest on field names only.
 - macOS: no real install; the Mac claims rest on strings only
-  ([section 3](#3-credentials), [System-wide locations](#system-wide-locations)).
+  ([Credentials](#credentials), [System-wide locations](#system-wide-locations)).
 - Windows: no real install; the Windows claims rest on the binary's
   strings and the installer and launcher scripts (levels W and S).
 
@@ -98,7 +98,7 @@ None.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Platforms: Linux, macOS and Windows, each on x86-64 and arm64 (M). The
 bash launcher covers Linux and macOS (`detect_platform`, L:91-99); a
@@ -154,7 +154,7 @@ the crate's generic table.
 - Remote-machine forwards `/tmp/fleet-manager-<uid>/` (K): outside the
   home, not collectable by a catalog line.
 - Git worktrees Muse creates inside a project: `.muse/worktrees/`
-  ([section 4](#4-exclusions)).
+  ([Exclusions](#exclusions)).
 
 #### Config root
 
@@ -162,7 +162,7 @@ Path `~/.config/muse/` (I unless stated):
 
 - `settings.json`: `schema_version`, `provider`, `model`; also `mcpServers`
   (K `migrate/SKILL.md:144-152`). Lock file `.settings.json.lock`.
-- `auth.json`: credentials ([section 3](#3-credentials)). Lock file `.auth.json.lock`.
+- `auth.json`: credentials ([Credentials](#credentials)). Lock file `.auth.json.lock`.
 - `trust.json`: `{"schema_version": int, "projects": {"<absolute project
   path>": {"decision": "trusted"}}}` (I, two entries). Lock file
   `.trust.json.lock`.
@@ -193,8 +193,8 @@ Path `~/.local/share/muse/` (I, 6.1 MB in total after two sessions):
   (a line-offset index into `session.jsonl`), `cli-<uuid>.log` (tracing log
   of the process that ran the session), `.session.lock` and
   `.session.jsonl.permission-init`; the records inside each are in
-  [section 7](#7-transcript-stores), [section 8](#8-record-schema) and
-  [section 10](#10-other-stores). The binary also names `goals.db` (with
+  [Transcript stores](#transcript-stores), [Record schema](#record-schema) and
+  [Other stores](#other-stores). The binary also names `goals.db` (with
   `-wal`, `-shm`) and `input-assets/` (attached images and video, mode
   0600) in the same directory (B
   `cron.dbinput-assetscron.db-journalcron.db-walcron.db-shmgoals.db-wal`);
@@ -326,7 +326,7 @@ own roots (`migrate/SKILL.md:12-14`). Grok Build is not in the catalog.
 Goose has a `muse_code` provider directory (`.config/goose/muse_code/`, a
 secret glob in the catalog), so Goose can drive Muse as a provider.
 
-### 3. Credentials
+### Credentials
 
 - `~/.config/muse/auth.json` (mode 0600, I). Shape:
   `{"schema_version", "providers": {"meta": {"mechanism", "obtained_via",
@@ -361,7 +361,7 @@ secret glob in the catalog), so Goose can drive Muse as a provider.
 - Session logs can contain the tool outputs of anything the agent read,
   as in every agent's transcript; nothing Muse-specific there.
 
-### 4. Exclusions
+### Exclusions
 
 Sizes from the host after two sessions (I):
 
@@ -404,7 +404,7 @@ Sizes from the host after two sessions (I):
   per-session temp; its size is not known. It is a catalog entry, not an
   exclusion, because it can hold files a sandboxed command wrote.
 
-### 5. Project-local files
+### Project-local files
 
 - `AGENTS.md`, with `CLAUDE.md` as the fallback when `AGENTS.md` is absent
   (B: "Directly probe the active workspace's `AGENTS.md`; only when it is
@@ -413,7 +413,7 @@ Sizes from the host after two sessions (I):
   `## Code Map`), and `muse init` generates one headed "Muse Code reads
   this file as project rules when it runs in this directory" (W:351576-351578).
   `MUSE.md` occurs nowhere in either binary.
-- `.muse/worktrees/` ([section 4](#4-exclusions)), added to `.git/info/exclude` (B).
+- `.muse/worktrees/` ([Exclusions](#exclusions)), added to `.git/info/exclude` (B).
 - `.muse/hooks.json`: the strings `.muse` and `hooks.json` are adjacent
   constants in both binaries (B and W:352591 `.musehooks.json`, the line
   before the enterprise file names), read as the project hooks file
@@ -429,7 +429,7 @@ Sizes from the host after two sessions (I):
 - No per-project database. Sessions are always under the data root
   (K `read-session/SKILL.md:30-33`).
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - `session.jsonl`: the `runtime.session.metadata` record carries
   `payload.record.workspace_root` (absolute path), and
@@ -451,25 +451,25 @@ Sizes from the host after two sessions (I):
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 All under `${XDG_DATA_HOME:-$HOME/.local/share}/muse/` (read-session skill;
 binary literal `XDG_DATA_HOME:-$HOME/.local/share}/muse/sessions`), the same
-layout on Linux, macOS and Windows ([section 2](#2-per-user-storage)).
+layout on Linux, macOS and Windows ([Per-user storage](#per-user-storage)).
 Relative to the home:
 
 | Path | Content | Parse |
 | --- | --- | --- |
 | `.local/share/muse/sessions/YYYY/MM/DD/<session id>/session.jsonl` | the session event log; date is local time of creation; id is a UUIDv7 (observed `01a1040f-aa0d-7d82-...`) | yes |
 | `.../<session id>/subagent/<child id>/session.jsonl` | one log per subagent, same format; the session-evidence script walks `subagent/` recursively, so nesting is possible | yes |
-| `.../<session id>/tool-outputs/<task id>/<call id>-<kind>.txt` | full output of a tool call whose inline result was cut (observed kind `web_fetch-page`); `.spool/<call id>-bash.txt.tmp` while running | no, [section 9](#9-joins-and-timestamps) |
-| `.../<session id>/approval-review/<reviewer rollout id>.jsonl` | the automated approval reviewer's own run log, same envelope, synthetic clock | no, [section 10](#10-other-stores) |
+| `.../<session id>/tool-outputs/<task id>/<call id>-<kind>.txt` | full output of a tool call whose inline result was cut (observed kind `web_fetch-page`); `.spool/<call id>-bash.txt.tmp` while running | no, [Joins and timestamps](#joins-and-timestamps) |
+| `.../<session id>/approval-review/<reviewer rollout id>.jsonl` | the automated approval reviewer's own run log, same envelope, synthetic clock | no, [Other stores](#other-stores) |
 | `.../<session id>/session.peer-history.sqlite3` (+`-wal`, `-shm`) | byte-offset index into `session.jsonl`, no content | no |
 | `.../<session id>/cron.db` | scheduled prompts (`cron_jobs`) | optional |
 | `.../<session id>/cli-<uuid>.log` | text tracing log (`2026-10-04T20:20:31.242428Z INFO <target> <file:line> event="..." key=value`) | no |
 | `.../<session id>/.session.jsonl.permission-init` | the first `retained_frame` line, staged before `session.jsonl` exists; a directory with only this and `.session.lock` is a session that never started (observed) | no |
-| `.local/share/muse/sessions/.msp-view-v1/<session id>/` | `HEAD.json`, `snapshot-<uuid>.json`, `journal-NNNNNNNN.bin`, `index-NNNNNNNN.bin`: a derived TUI view rebuilt from `session.jsonl` | no, [section 10](#10-other-stores) |
-| `.local/share/muse/session-index.db` | one row per session: workspace, model, title, first prompt | no, [section 10](#10-other-stores) |
+| `.local/share/muse/sessions/.msp-view-v1/<session id>/` | `HEAD.json`, `snapshot-<uuid>.json`, `journal-NNNNNNNN.bin`, `index-NNNNNNNN.bin`: a derived TUI view rebuilt from `session.jsonl` | no, [Other stores](#other-stores) |
+| `.local/share/muse/session-index.db` | one row per session: workspace, model, title, first prompt | no, [Other stores](#other-stores) |
 | `.local/share/muse/session-name-authority/session-names.db` | session name claims | no |
 | `.local/share/muse/tui-history.jsonl` | prompt history of the TUI composer | yes, as history |
 
@@ -478,16 +478,16 @@ Relative to the home:
 How a Muse Code session is deleted, and what a delete removes, is not
 stated in this document: the real install deleted no session. Outside
 the session directory, four stores hold records of a session
-([section 10](#10-other-stores)): the TUI prompt history
+([Other stores](#other-stores)): the TUI prompt history
 `tui-history.jsonl`, the session index `session-index.db`,
 `session-names.db` and the derived TUI view under
 `sessions/.msp-view-v1/<session id>/`. Whether any of them
 outlives a deleted session is not stated, and no deletion marker is
 known. The analyzer reads the prompt history, as `user` rows with an
-empty `timestamp_utc` ([section 13](#13-parser-plan)), and none of the
+empty `timestamp_utc` ([Parser plan](#parser-plan)), and none of the
 other three.
 
-### 8. Record schema
+### Record schema
 
 #### Line kinds
 
@@ -576,7 +576,7 @@ Two payload layouts occur (observed):
 | `started` | `prompt` (string); binary also `video` | start of a run (one agent turn); in a top-level log the text the user submitted (read-session skill: "every submitted prompt is recorded here"); in a subagent log the task the runtime gave the child |
 | `user_prompt_display` (binary, skill) | one field, name undetermined | follows `started` only when the user-facing form differs (attachment placeholder `[Image 1]`) |
 | `model_request_configured` | `base_instructions` (full system prompt), `base_instructions_source`, `toolset{active_tools[], mode, source}`, `run_context_messages[{id, role:"developer", source, lifecycle, order, text}]`, `reminder_roster` | the request setup; `run_context_messages` hold the injected AGENTS.md/rules file, workspace identity, sandbox policy, skills catalog, memory snapshot |
-| `provider_request_options_configured`, `model_input_trace_recorded`, `context_block_diagnostic`, `goal_usage_attribution`, `resource_usage_sampled`, `task_stream_linked`, `reminder_proposal`, `reminder_reconciler_outcome`, `skill_reminder_decision`, `memory_reminder_child_session_linked` | bookkeeping | sizes, digests, usage, subagent links ([section 9](#9-joins-and-timestamps)) |
+| `provider_request_options_configured`, `model_input_trace_recorded`, `context_block_diagnostic`, `goal_usage_attribution`, `resource_usage_sampled`, `task_stream_linked`, `reminder_proposal`, `reminder_reconciler_outcome`, `skill_reminder_decision`, `memory_reminder_child_session_linked` | bookkeeping | sizes, digests, usage, subagent links ([Joins and timestamps](#joins-and-timestamps)) |
 | `model_response_created` | `response_id` | provider response opened |
 | `reasoning_summary_delta` | `message_id`, `summary_index`, `text` | one summary paragraph, durable, written before the committed record |
 | `reasoning_summary_committed` | `message_id`, `provider_item_id`, `response_id`, `text` | the readable reasoning summary; `text` equals the deltas of the same `message_id` joined by `\n\n` (5 of 5 observed) |
@@ -678,7 +678,7 @@ output_ref}` record a shell command the user ran from the TUI (binary,
 #### Completeness and streaming
 
 The JSONL is complete on its own. `session.peer-history.sqlite3` holds no
-content ([section 10](#10-other-stores)); the only content outside the log is the full tool
+content ([Other stores](#other-stores)); the only content outside the log is the full tool
 output in `tool-outputs/`, whose cut-down form is already in the result
 `text`. Streaming deltas are not reassembled: `text_delta` and
 `reasoning_delta` never reach the durable log, ephemeral tool progress is
@@ -686,7 +686,7 @@ replaced by `retained_marker` lines, and `reasoning_summary_delta` records
 are complete paragraphs whose join is the committed record. Each
 `*_committed` record carries the full text.
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 - Session id: envelope `stream.id`; equals the directory name. A subagent
   log's `stream.id` is the subagent id (its directory name), and its runs
@@ -717,7 +717,7 @@ are complete paragraphs whose join is the committed record. Each
   such a child (`agent.dispatch.researcher`) at
   `subagent/<id>/session.jsonl` too.
 - Project: the workspace root of
-  [section 6](#6-where-the-project-path-is-recorded). Subagent logs carry
+  [Where the project path is recorded](#where-the-project-path-is-recorded). Subagent logs carry
   none; take the parent's.
 - Approval review: `automated_review_started.reviewer_rollout_id` is the
   `approval-review/<id>.jsonl` file name and that log's `stream.id`.
@@ -727,7 +727,7 @@ are complete paragraphs whose join is the committed record. Each
   `recorded_at` is a synthetic clock
   ([Approval review logs](#approval-review-logs)).
 
-### 10. Other stores
+### Other stores
 
 #### Peer history index
 
@@ -792,7 +792,7 @@ real times are the parent's `automated_review_started.started_at_ms` and
 (the prompt text as typed) followed by an object `{project, session}`,
 `project` the workspace root and `session` the session id. No timestamp.
 
-### 11. Format versions
+### Format versions
 
 Envelope `schema_version` 1 and frame `frame_schema_version` 1 only.
 `payload_schema_version` differs per type (1 to 3 observed) and is bumped
@@ -808,7 +808,7 @@ The `read-session` skill names the export
 `redaction`, `unparseable_lines` and `unknown_payload_kinds` fields
 (binary); exports were not observed.
 
-### 12. Secrets
+### Secrets
 
 `model_request_configured.base_instructions` and `run_context_messages`
 hold the full system prompt, the project's rules file, and the memory
@@ -818,13 +818,13 @@ opaque provider blob. `approval/requested.raw_args` and
 `automated_review_started.exact_action` repeat the command or URL under
 review. No credential was found in any session file; the token is in
 `~/.config/muse/auth.json`
-([section 3](#3-credentials)). Meta's own export
+([Credentials](#credentials)). Meta's own export
 redacts keys matching `api.?key|authorization|bearer|cookie|credential|
 password|secret|token` and `sk-`, `ghp_`, `AKIA`, `AIza`, `xox`, JWT
 shapes (session-evidence.py `SENSITIVE_KEY`, `STANDALONE_SECRET`), which is
 a reasonable list of what tool output can contain.
 
-### 13. Parser plan
+### Parser plan
 
 `wants()` by `artifact.rel`:
 
@@ -1031,7 +1031,7 @@ timestamp `2026-10-01T09:00:00.300Z`. The subagent fixture yields a
 `submit_reminder_decision`, and a `tool_result`, with `session_id`
 `0f3c2b1a-...` and `project_path` `/srv/proj` from the parent.
 
-## 14. Confidence
+## Confidence
 
 - High: the two XDG roots under the home on Linux, macOS and Windows
   (`%USERPROFILE%\.config\muse`, `%USERPROFILE%\.local\share\muse`); the
@@ -1060,7 +1060,7 @@ timestamp `2026-10-01T09:00:00.300Z`. The subagent fixture yields a
   `provider_tool_call_*`, `user_shell.*`, `subagent.control.*`, compaction
   events, and where the `user_shell` fields sit in the payload.
 - Low: `plugins/marketplaces/` holding clones; `~/.local/share/metacode`
-  as a former data root ([section 11](#11-format-versions)).
+  as a former data root ([Format versions](#format-versions)).
 - Not determined: the layout under `memory/` (how `personal_project` is
   keyed); where the Linux and macOS shell installer and `muse.pkg` place
   the launcher (the bash launcher uses its own directory; `~/.local/bin`

@@ -4,21 +4,21 @@
 Every agent's document under `research/` (not `research/README.md` and not
 `research/frameworks.md`) has one H1 equal to the agent's catalog name, one
 unheaded intro paragraph, then the outline of the "Research document
-structure" subsection of AGENTS.md: `## 1. Source and evidence` with
+structure" subsection of AGENTS.md: `## Source and evidence` with
 `### Observed` and `### Source reviews`; `## Collection` holding
-`### 2. Per-user storage` (with `#### Scratch directories`),
-`### 3. Credentials`, `### 4. Exclusions`, `### 5. Project-local files` and
-`### 6. Where the project path is recorded`; `## Parsing` holding
-`### 7. Transcript stores` (with `#### What survives a delete`),
-`### 8. Record schema`, `### 9. Joins and timestamps`, `### 10. Other
-stores`, `### 11. Format versions`, `### 12. Secrets` and `### 13. Parser
+`### Per-user storage` (with `#### Scratch directories`),
+`### Credentials`, `### Exclusions`, `### Project-local files` and
+`### Where the project path is recorded`; `## Parsing` holding
+`### Transcript stores` (with `#### What survives a delete`),
+`### Record schema`, `### Joins and timestamps`, `### Other
+stores`, `### Format versions`, `### Secrets` and `### Parser
 plan` (with the eight fixed `####` row subsections, in order, before any
 other), or for an agent with nothing to parse one paragraph and no `###`;
-then `## 14. Confidence`. This checks, for each such file:
+then `## Confidence`. This checks, for each such file:
 
 - the H1 is `# <agent>` where `<agent>` is the file's stem;
-- the H2 headings are exactly `1. Source and evidence`, `Collection`,
-  `Parsing`, `14. Confidence`, in order;
+- the H2 headings are exactly `Source and evidence`, `Collection`,
+  `Parsing`, `Confidence`, in order;
 - the `###` headings under Collection and Parsing are exactly the numbered
   sections above, in order (Parsing may instead hold prose and no `###`);
 - the fixed `###` and `####` subsections sit under the right heading;
@@ -29,7 +29,7 @@ then `## 14. Confidence`. This checks, for each such file:
   October 2026 ("the collector document", "the analyzer review", "the two
   X documents", "collector concern");
 - no confidence paragraph or bullet (`Confidence.`, `**Confidence:**`)
-  stands outside `## 14. Confidence`;
+  stands outside `## Confidence`;
 - no prose line is longer than `--width` characters (default 100) unless
   it carries a URL or is a single code span (delimited by a backtick run
   of any length, and optionally followed by closing parentheses and `.`,
@@ -61,22 +61,22 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 RESEARCH = ROOT / "research"
 SKIP = {"README.md", "frameworks.md"}
 
-H2 = ("1. Source and evidence", "Collection", "Parsing", "14. Confidence")
+H2 = ("Source and evidence", "Collection", "Parsing", "Confidence")
 COLLECTION_H3 = (
-    "2. Per-user storage",
-    "3. Credentials",
-    "4. Exclusions",
-    "5. Project-local files",
-    "6. Where the project path is recorded",
+    "Per-user storage",
+    "Credentials",
+    "Exclusions",
+    "Project-local files",
+    "Where the project path is recorded",
 )
 PARSING_H3 = (
-    "7. Transcript stores",
-    "8. Record schema",
-    "9. Joins and timestamps",
-    "10. Other stores",
-    "11. Format versions",
-    "12. Secrets",
-    "13. Parser plan",
+    "Transcript stores",
+    "Record schema",
+    "Joins and timestamps",
+    "Other stores",
+    "Format versions",
+    "Secrets",
+    "Parser plan",
 )
 PLAN_H4 = (
     "Permission rows",
@@ -90,10 +90,10 @@ PLAN_H4 = (
 )
 # Fixed subsections, keyed by the heading they sit under.
 FIXED = {
-    "1. Source and evidence": ("Observed", "Source reviews"),
-    "2. Per-user storage": ("Scratch directories",),
-    "7. Transcript stores": ("What survives a delete",),
-    "13. Parser plan": PLAN_H4,
+    "Source and evidence": ("Observed", "Source reviews"),
+    "Per-user storage": ("Scratch directories",),
+    "Transcript stores": ("What survives a delete",),
+    "Parser plan": PLAN_H4,
 }
 
 ATX = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
@@ -110,7 +110,7 @@ SPLIT_PHRASE = re.compile(
     r"|\bcollector (?:concern|class)\b",
     re.I,
 )
-# A confidence paragraph or bullet; it belongs in `## 14. Confidence` only.
+# A confidence paragraph or bullet; it belongs in `## Confidence` only.
 CONFIDENCE_LEAD = re.compile(r"^\s*(?:[-*]\s+)?(?:\*\*)?Confidence(?:\*\*)?\s*[.:]")
 
 
@@ -173,8 +173,8 @@ def check_outline(rel, owner: dict[str, list[str]], h2: list[str]) -> list[str]:
             "%s: Parsing must hold, in order: %s (or prose with no ###); found: %s"
             % (rel, " | ".join(PARSING_H3), " | ".join(parsing))
         )
-    if owner.get("14. Confidence"):
-        problems.append("%s: section 14 takes no subheadings" % rel)
+    if owner.get("Confidence"):
+        problems.append("%s: `Confidence` takes no subheadings" % rel)
     return problems
 
 
@@ -195,10 +195,9 @@ def check_fixed(rel, owner: dict[str, list[str]], present: set[str]) -> list[str
                 "%s: `%s` fixed subsections out of order; want %s"
                 % (rel, section, ", ".join(fixed))
             )
-        if section == "13. Parser plan" and have[: len(fixed)] != list(fixed):
+        if section == "Parser plan" and have[: len(fixed)] != list(fixed):
             problems.append(
-                "%s: the eight fixed row subsections of `13. Parser plan` come before any other"
-                % rel
+                "%s: the eight fixed row subsections of `Parser plan` come before any other" % rel
             )
     return problems
 
@@ -233,7 +232,7 @@ def check_structure(path: pathlib.Path, text: str, width: int, link_check) -> li
             )
         if section != H2[3] and CONFIDENCE_LEAD.match(line):
             problems.append(
-                "%s:%d: confidence statement outside `## 14. Confidence`; move it there" % (rel, n)
+                "%s:%d: confidence statement outside `## Confidence`; move it there" % (rel, n)
             )
         long = in_prose and not line.lstrip()[:2].rstrip(".").isdigit() and len(line) > width
         if long and not URL.search(line) and not ONLY_CODE_SPAN.match(line):
@@ -243,7 +242,9 @@ def check_structure(path: pathlib.Path, text: str, width: int, link_check) -> li
     if first_h2 is not None and h1:
         intro = [x for x in lines[h1[0][0] : first_h2 - 1] if x.strip()]
         if not intro:
-            problems.append("%s: no intro paragraph between the H1 and section 1" % rel)
+            problems.append(
+                "%s: no intro paragraph between the H1 and `## Source and evidence`" % rel
+            )
     return problems
 
 

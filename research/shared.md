@@ -5,7 +5,7 @@ at once, so they cannot be attributed to one tool: cross-agent instruction and s
 directories. It is collected only, with no parser: these are instruction and skill files, not
 transcripts.
 
-## 1. Source and evidence
+## Source and evidence
 
 Evidence level: the per-agent documents in this directory, which cite each reader. Each path
 below is justified by at least two agents' source. `AGENTS.md` is read by Codex CLI, Amp,
@@ -23,11 +23,11 @@ agent definitions adopted by Codex, Copilot CLI and others.
   [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
   and the Crush review at
   [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da)
-  added both as readers of the skills directories ([section 2](#2-per-user-storage)).
+  added both as readers of the skills directories ([Per-user storage](#per-user-storage)).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 | Path relative to home | Holds | Readers |
 | --- | --- | --- |
@@ -42,19 +42,19 @@ Zed reads `~/.agents/skills/<skill>/SKILL.md`
 ([`crates/agent/src/agent.rs:616-638`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/agent.rs#L616-L638)
 at
 [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6);
-[section 2 of `research/zed.md`](zed.md#2-per-user-storage)). Crush reads `~/.config/agents/skills`
+[Per-user storage in `research/zed.md`](zed.md#per-user-storage)). Crush reads `~/.config/agents/skills`
 and `~/.agents/skills`, and also Claude Code's `~/.claude/skills`
 ([`internal/config/load.go:1312-1322`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/load.go#L1312-L1322)
 at
 [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da);
-[section 2 of `research/crush.md`](crush.md#2-per-user-storage) and
-[section 2 of `research/claude-code.md`](claude-code.md#2-per-user-storage)).
+[Per-user storage in `research/crush.md`](crush.md#per-user-storage) and
+[Per-user storage in `research/claude-code.md`](claude-code.md#per-user-storage)).
 
 #### Scratch directories
 
 None known.
 
-### 3. Credentials
+### Credentials
 
 None. The home-level and project-level `.env` files that Aider, Gemini
 CLI, Qwen Code and Continue read for API keys are general-purpose
@@ -62,15 +62,15 @@ environment files and are not collected (collector 1.7.0); they are left to
 the EDR. Agent-specific `.env` files inside an agent's own directory, such
 as `.gemini/.env` and `.qwen/.env`, are collected under that agent.
 
-### 4. Exclusions
+### Exclusions
 
 None; these are small text files.
 
-### 5. Project-local files
+### Project-local files
 
 `AGENTS.md` at the project root, collected through the project catalog.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Not applicable.
 
@@ -81,7 +81,7 @@ and skill directories (`.agents`, `.config/agents`, `.config/AGENTS.md`) with no
 written by the user and read by several agents, so they record what an agent was told, not what
 it did. The transcripts of each reader are parsed, where they are, under that agent.
 
-## 14. Confidence
+## Confidence
 
 - High for every path (each reader's source).
 - Attribution is the one judgement: a `shared` match says several agents may have read the file,

@@ -6,7 +6,7 @@ protocol Zed uses to drive an external agent (Claude Agent, Gemini CLI, Codex) a
 It was researched together with Goose ([`goose.md`](goose.md)). The analyzer parses the panel's
 threads in `threads.db` and the `sidebar_threads` table, from source and fixtures only.
 
-## 1. Source and evidence
+## Source and evidence
 
 [zed-industries/zed](https://github.com/zed-industries/zed), open source, at
 [`a84689073d296dfd39987bc7dd478e43ef76d83a`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a)
@@ -20,7 +20,7 @@ paths are Flatpak documentation level. Paths cited are relative to the clone.
 ### Observed
 
 No real install. Every layout the parser handles (`threads.db`, the thread blob of
-[section 8](#8-record-schema) and `sidebar_threads`) and the bad-record rows of
+[Record schema](#record-schema) and `sidebar_threads`) and the bad-record rows of
 [Bad-line rows](#bad-line-rows) rest on source at
 [`a846890`](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a)
 and [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
@@ -30,22 +30,22 @@ and on a synthetic fixture.
 
 - 2026-10-19, [zed-industries/zed](https://github.com/zed-industries/zed) at
   [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
-  (the default branch that day): the paths of [section 2](#2-per-user-storage) and the shapes the
-  parser reads were unchanged, with line numbers moved by one or two
-  ([section 11](#11-format-versions)). The review added the permission settings and project trust,
+  (the default branch that day): the paths of [Per-user storage](#per-user-storage) and the shapes
+  the parser reads were unchanged, with line numbers moved by one or two
+  ([Format versions](#format-versions)). The review added the permission settings and project trust,
   the denied-call results, the other `db.sqlite` tables, the scratch directories, the delete
-  behaviour and the external agents' ids, with the plan lines of [section 13](#13-parser-plan)
+  behaviour and the external agents' ids, with the plan lines of [Parser plan](#parser-plan)
   that read them, and the bad-record rows the parser now yields
   ([issue 168](https://github.com/seanthegeek/doubleagent/issues/168)).
 - 2026-10-17, [zed-industries/zed](https://github.com/zed-industries/zed) at
   [`56934ec`](https://github.com/zed-industries/zed/commit/56934ec0560bce8929025497411de7f5322fb6ca):
   a sync check that added [Sync, relay and origin rows](#sync-relay-and-origin-rows),
   [Telemetry log and crash reports](#telemetry-log-and-crash-reports) and the clipboard actions of
-  [section 11](#11-format-versions), whose citations are to that commit.
+  [Format versions](#format-versions), whose citations are to that commit.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 `APP_NAME` is `Zed`, lowercased for XDG paths
 ([`crates/paths/src/paths.rs:18-21`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L18-L21)).
@@ -144,9 +144,9 @@ Zed has two, and the catalog collects neither:
   The worktree path becomes the thread's `folder_paths`, with the real project in
   `sidebar_threads.main_worktree_paths`. It is user project content beside the project, so no
   catalog line can name it; where it is recorded is in
-  [section 6](#6-where-the-project-path-is-recorded).
+  [Where the project path is recorded](#where-the-project-path-is-recorded).
 
-### 3. Credentials
+### Credentials
 
 Production builds store credentials only in the OS keychain
 ([`zed_credentials_provider.rs:56-64`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L56-L64),[`69`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/zed_credentials_provider/src/zed_credentials_provider.rs#L69)).
@@ -162,14 +162,14 @@ The `settings.json` keys `agent.tool_permissions` and `agent.sandbox_permissions
 paths, not secrets, and the `scoped_kv_store` namespaces read at
 [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6) hold no token.
 
-### 4. Exclusions
+### Exclusions
 
 Under either data root: `extensions`, `remote_extensions`, `node`, `languages`, `copilot`,
 `debug_adapters`, `external_agents`, `prettier`, `remote_servers`, `devcontainer`, `embeddings`,
 `server_state`, `hang_traces`, plus `build_timings`. `~/.cache/zed` and `~/Library/Caches/Zed` are
 temp. `prompts/*.mdb` is the user prompt library, small, keep.
 
-### 5. Project-local files
+### Project-local files
 
 `.zed/settings.json`, `.zed/tasks.json`, `.zed/debug.json`
 ([`paths.rs:487-531`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/paths/src/paths.rs#L487-L531));
@@ -178,7 +178,7 @@ rules files read by the agent: `.rules`, `.cursorrules`, `.windsurfrules`, `.cli
 ([`crates/prompt_store/src/prompts.rs:22-32`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/prompt_store/src/prompts.rs#L22-L32)).
 No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - `threads.db` table `threads` columns `folder_paths`, `folder_paths_order`
   ([`crates/agent/src/db.rs:469-470`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L469-L470),[`545`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L545)).
@@ -204,9 +204,9 @@ project discovery does not read.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
-`<data>` is the data directory of [section 2](#2-per-user-storage).
+`<data>` is the data directory of [Per-user storage](#per-user-storage).
 
 | Store | Path | Unit |
 | --- | --- | --- |
@@ -249,7 +249,7 @@ so otherwise it stays there. A copy already sent with a rating stays with Zed
 analyzer reads `threads.db` and the external agents' `sidebar_threads` rows, and none of the other
 `db.sqlite` stores (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 #### threads table
 
@@ -362,7 +362,7 @@ times are RFC 3339
 ([`remote_client.rs:1361-1367`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/remote/src/remote_client.rs#L1361-L1367));
 `interacted_at` is the last user send.
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 `sidebar_threads.session_id = threads.id` (plus `threads.parent_id` for
 subagents). Tool pairing inside one `Agent` message: `content[].ToolUse.id`
@@ -377,7 +377,7 @@ There are no per-message timestamps, only the thread's `updated_at` and
 `initial_project_snapshot.worktree_snapshots[].git_state.current_branch`,
 captured at thread start.
 
-### 10. Other stores
+### Other stores
 
 #### SQLite journals and compression
 
@@ -414,9 +414,9 @@ and the key-value table `scoped_kv_store`, whose namespaces include `agent_draft
 | --- | --- | --- | --- | --- | --- |
 | Draft prompts | `scoped_kv_store(namespace, key, value)`, namespace `agent_draft_prompts`, key the sidebar `thread_id` ([`kvp.rs:31-36`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/db/src/kvp.rs#L31-L36); [`agent_ui/src/draft_prompt_store.rs:25-58`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/draft_prompt_store.rs#L25-L58)) | the unsent prompt of a draft thread, a JSON array of ACP content blocks; a draft is a `sidebar_threads` row with `session_id` NULL ([`draft_prompt_store.rs:1-5`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/draft_prompt_store.rs#L1-L5)) | nothing: deleted with the sidebar row ([`thread_metadata_store.rs:1141-1164`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_metadata_store.rs#L1141-L1164)) | `key` to `sidebar_threads.thread_id` | primary: text no other store holds |
 | Zed-created worktrees | `scoped_kv_store` namespace `created_git_worktrees`, key `<host>` newline `<worktree path>` (`local` for this machine), value `{created_at_seconds, created_at_subsec_nanos}` ([`git_ui_core/src/created_worktrees.rs:34-73`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/git_ui_core/src/created_worktrees.rs#L34-L73)) | each linked git worktree Zed made for a thread, with its creation time | the thread's deletion; removed only by `forget_created_worktree` ([`created_worktrees.rs:142`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/git_ui_core/src/created_worktrees.rs#L142)) | worktree path to `sidebar_threads.folder_paths` | primary: the scratch marker |
-| Archived worktrees | `archived_git_worktrees`, `thread_archived_worktrees` ([section 8](#8-record-schema)) | for a thread archived from a Zed-created worktree: the worktree and main repository paths, the branch, and the staged, unstaged and original commit ids; the worktree directory is removed and the WIP commits stay in the main repository under `refs/archived-worktrees/<id>` ([`agent_ui/src/thread_worktree_archive.rs:77-79`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L77-L79), [`499-607`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L499-L607)) | the worktree's removal; dropped with the ref when the last thread linked to it is deleted ([`thread_worktree_archive.rs:823-912`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L823-L912)) | `thread_archived_worktrees.thread_id` to `sidebar_threads.thread_id` | primary |
+| Archived worktrees | `archived_git_worktrees`, `thread_archived_worktrees` ([Record schema](#record-schema)) | for a thread archived from a Zed-created worktree: the worktree and main repository paths, the branch, and the staged, unstaged and original commit ids; the worktree directory is removed and the WIP commits stay in the main repository under `refs/archived-worktrees/<id>` ([`agent_ui/src/thread_worktree_archive.rs:77-79`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L77-L79), [`499-607`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L499-L607)) | the worktree's removal; dropped with the ref when the last thread linked to it is deleted ([`thread_worktree_archive.rs:823-912`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L823-L912)) | `thread_archived_worktrees.thread_id` to `sidebar_threads.thread_id` | primary |
 | Sidebar terminals | `sidebar_terminal_threads(terminal_id, title, custom_title, created_at, working_directory, folder_paths, folder_paths_order, main_worktree_paths, main_worktree_paths_order, remote_connection)` ([`agent_ui/src/terminal_thread_metadata_store.rs:483-500`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/terminal_thread_metadata_store.rs#L483-L500)) | a terminal tab opened in the threads sidebar: title, start time and working directory, no output | not determined | `folder_paths` | primary, metadata only |
-| Native sidebar rows | `sidebar_threads` rows with `agent_id` NULL ([section 8](#8-record-schema)) | title, `title_override`, `archived`, `interacted_at` and `main_worktree_paths` of a native thread | deleted with the thread | `session_id` to `threads.id` | secondary; skipped today, so `archived`, `interacted_at` and `main_worktree_paths` are never shown |
+| Native sidebar rows | `sidebar_threads` rows with `agent_id` NULL ([Record schema](#record-schema)) | title, `title_override`, `archived`, `interacted_at` and `main_worktree_paths` of a native thread | deleted with the thread | `session_id` to `threads.id` | secondary; skipped today, so `archived`, `interacted_at` and `main_worktree_paths` are never shown |
 
 The `trusted_worktrees(trust_id, absolute_path, user_name, host_name)`
 table of the same file is permission state, not past use
@@ -486,7 +486,7 @@ both once the upload succeeds
 [`259-295`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/zed/src/reliability.rs#L259-L295));
 no thread file is attached, though the memory image may hold whatever the panel had loaded.
 
-### 11. Format versions
+### Format versions
 
 Blob `version` `"0.3.0"` is current
 ([`db.rs:189`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/agent/src/db.rs#L189));
@@ -533,15 +533,15 @@ its title prefixed `🔗 ` and with no `initial_project_snapshot`, `profile` or 
 ([`db.rs:153-172`](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/agent/src/db.rs#L153-L172)),
 so the prefix marks a thread pasted in from elsewhere rather than run on this host.
 
-### 12. Secrets
+### Secrets
 
 Blob fields `sandbox_grants.write_paths`/`network_hosts`, `draft_prompt`,
 `Mention.content` (inlined file contents), `initial_project_snapshot.git_state.diff`
 (full diff), and `remote_connection` (host and user) in `sidebar_threads`. No
 API keys were found in thread storage; the settings files that can hold them are in
-[section 3](#3-credentials).
+[Credentials](#credentials).
 
-### 13. Parser plan
+### Parser plan
 
 Globs: `{Library/Application Support/Zed,.local/share/zed,AppData/Local/Zed}/threads/threads.db*`
 and `.../db/0-*/db.sqlite*`. Requires the `zstandard` package.
@@ -738,7 +738,7 @@ INSERT INTO sidebar_threads(thread_id,session_id,agent_id,title,updated_at,folde
 VALUES (randomblob(16),'ext-claude-code-sess-1','claude-code','External thread','2026-03-01T10:00:00+00:00','/home/alice/proj','0');
 ```
 
-## 14. Confidence
+## Confidence
 
 - High: every path from `paths.rs` and the `dirs` crate; the credential provider's behaviour; the
   DDL, blob and enum shapes, zstd framing, path derivation, WAL settings and version handling, all

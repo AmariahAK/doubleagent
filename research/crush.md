@@ -10,7 +10,7 @@ message ([OpenCode's messages](opencode.md#message-and-part)), and file history 
 instead of git snapshots. Hyper is Charm's hosted model gateway, and its Prism router picks a model
 per request. The analyzer parses the per-project `crush.db`, from source and fixtures only.
 
-## 1. Source and evidence
+## Source and evidence
 
 [charmbracelet/crush](https://github.com/charmbracelet/crush), open source, at
 [`ca6ae26ce016b980407ce32f012a467ec10c1e2f`](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f),
@@ -31,8 +31,8 @@ No real install.
   [`ca6ae26`](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f).
   Paths, migrations, columns and part keys were unchanged; the review added the permission
   outcomes, synthetic results, model columns, channels, sub-agent ids
-  and MCP overrides in [section 8](#8-record-schema), the data-directory files of
-  [section 10](#10-other-stores), the scratch directories and the parser plan's requirement
+  and MCP overrides in [Record schema](#record-schema), the data-directory files of
+  [Other stores](#other-stores), the scratch directories and the parser plan's requirement
   subsections.
 - 2026-10-17:
   [`12f96b4`](https://github.com/charmbracelet/crush/commit/12f96b4acd8f36312befbbf6fe7459da9ca07a72),
@@ -42,7 +42,7 @@ No real install.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Home comes from `os.UserHomeDir()` and the config root is `XDG_CONFIG_HOME` or `~/.config` on every
 OS, Windows included
@@ -115,7 +115,7 @@ which no catalog line reaches; every caller found passes the data directory. Ses
 working directory, so none of these can be mistaken for a project
 ([Scratch directory rows](#scratch-directory-rows)).
 
-### 3. Credentials
+### Credentials
 
 - `~/.local/share/crush/crush.json` (Windows `%LOCALAPPDATA%\crush\crush.json`): the TUI writes
   provider keys and OAuth tokens here. `SetProviderAPIKey`
@@ -148,7 +148,7 @@ working directory, so none of these can be mistaken for a project
   The project lock file `.crush/crush.lock` is not one
   ([Data directory files](#data-directory-files)).
 
-### 4. Exclusions
+### Exclusions
 
 Nothing large under home. In projects, `.crush/crush-fetch-*` are temporary fetch directories
 ([`internal/agent/agentic_fetch_tool.go:102`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/agent/agentic_fetch_tool.go#L102))
@@ -159,7 +159,7 @@ evidence of what the agent fetched and ran, so neither is an exclusion. `~/.cach
 the client-server log, and `stats/index.html` is one small page. Nothing new to exclude at
 [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da).
 
-### 5. Project-local files
+### Project-local files
 
 Data dir is the closest `.crush` between cwd and the git root, else `<cwd>/.crush`
 ([`config.go:25`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/config/config.go#L25),
@@ -198,7 +198,7 @@ their contents are in [Data directory files](#data-directory-files). The log is 
 Ignore file `.crushignore`
 ([`internal/fsext/ls.go:141`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/fsext/ls.go#L141),[`168`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/fsext/ls.go#L168)).
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 `projects.json` next to the data `crush.json` (`~/.local/share/crush/projects.json`, Windows
 `%LOCALAPPDATA%\crush\projects.json`): `projects[].path`, `projects[].data_dir`,
@@ -219,7 +219,7 @@ confirming the layout.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 Per project: `<project>/.crush/crush.db`
 ([`internal/config/config.go:25`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/config/config.go#L25)
@@ -230,8 +230,8 @@ default `.crush`;
 and can be overridden by `data_directory`
 ([`config.go:470`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/config/config.go#L470)).
 The global registry `projects.json` maps each project to its data directory
-([section 6](#6-where-the-project-path-is-recorded)). One `messages` row per message; parts are a
-JSON array in the `parts` column.
+([Where the project path is recorded](#where-the-project-path-is-recorded)). One `messages` row per
+message; parts are a JSON array in the `parts` column.
 
 #### What survives a delete
 
@@ -258,7 +258,7 @@ and nothing on disk records it. The analyzer reads the database, the sub-agent s
 but does not yet flag a missing parent, and reads neither the log nor the stats page
 ([Deletion](#deletion-rows); see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 [`internal/db/migrations/20250424200609_initial.sql`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/db/migrations/20250424200609_initial.sql).
 
@@ -342,7 +342,7 @@ in its `metadata`, `decision` being `allow`, `deny` or `none`
 [`:56-65`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/hooks/hooks.go#L56-L65)).
 Whether the `hook` object reaches the stored result is not confirmed: the copy from the tool
 response's `Metadata` to the stored `ClientMetadata` happens in the `fantasy` library, which was not
-cloned ([section 14](#14-confidence)).
+cloned ([Confidence](#confidence)).
 
 #### Synthetic results
 
@@ -408,7 +408,7 @@ on or off for this project, overriding `crush.json`
 ([`20260928000000_add_mcp_disabled_servers.sql:3-5`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/db/migrations/20260928000000_add_mcp_disabled_servers.sql#L3-L5);
 [`internal/session/session.go:403-415`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/session/session.go#L403-L415)).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 `messages.session_id → sessions.id`; `sessions.parent_session_id` for sub-agents. `tool_call` parts
 live in the assistant message; the result is a separate `role='tool'` message with a `tool_result`
@@ -417,7 +417,7 @@ part
 joined on `tool_result.data.tool_call_id = tool_call.data.id`. Project path is the parent directory
 of the `.crush` holding the database, or `projects.json` `projects[].path` / `data_dir`.
 
-### 10. Other stores
+### Other stores
 
 #### SQLite journal and deletes
 
@@ -447,7 +447,7 @@ Other files in the data directory, at
   ([`internal/shellconfig/permissions.go:56`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/shellconfig/permissions.go#L56),
   [`:76`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/shellconfig/permissions.go#L76)).
   Not parsed; it survives a session delete.
-- `stats/index.html`, written by `crush stats` ([section 5](#5-project-local-files)): totals,
+- `stats/index.html`, written by `crush stats` ([Project-local files](#project-local-files)): totals,
   usage by day, model, hour and tool, never message text
   ([`internal/cmd/stats.go:62-73`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/cmd/stats.go#L62-L73)).
   A snapshot at generation time, so it still counts sessions deleted since.
@@ -484,20 +484,20 @@ five `recent_models` per type
 [`internal/config/store.go:521-547`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/store.go#L521-L547)),
 a preference, not a per-session record.
 
-### 11. Format versions
+### Format versions
 
 Goose migrations only (12 files, the same set at [`ca6ae26`](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f) and [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da)); no JSON era, no version
 field; `goose_db_version` table. The one record shape added between those commits is the
 [synthetic result](#synthetic-results).
 
-### 12. Secrets
+### Secrets
 
 `crush.json` `providers.<name>.api_key`
 ([`config.go:102`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/config/config.go#L102))
 at `~/.config/crush/`, `~/.local/share/crush/` and `<project>/.crush/`. `reasoning.signature` and
 `thought_signature` are opaque provider blobs. Tool input and output can contain pasted tokens.
 
-### 13. Parser plan
+### Parser plan
 
 Globs: `.local/share/crush/projects.json`,
 `AppData/Local/crush/projects.json`, project-level `.crush/crush.db{,-wal,-shm}`.
@@ -679,7 +679,7 @@ INSERT INTO messages(id,session_id,role,parts,model,provider,created_at,updated_
 {"projects":[{"path":"/home/u/repo","data_dir":"/home/u/repo/.crush","last_accessed":"2026-10-01T12:00:00Z"}]}
 ```
 
-## 14. Confidence
+## Confidence
 
 - High: all paths and file names, the table columns, the part JSON field names, the timestamp units,
   WAL, the tool result as a separate message and the absence of a git branch (source).

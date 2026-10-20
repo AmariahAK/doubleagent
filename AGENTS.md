@@ -373,7 +373,7 @@ rules are different from the collectors'.
   against" cell names the evidence class and platforms in a few words
   (`real installs: macOS, Windows (October 2026)`,
   `source; fixture only`); the Observed subsection of the research
-  document's section 1 carries one bullet per platform (see "Real-install
+  document carries one bullet per platform (see "Real-install
   rounds" and [Research document structure](#research-document-structure)).
 - **The outputs are interfaces.** The `timeline.jsonl` and `sessions.jsonl`
   fields, their order and their JSON types are documented in
@@ -397,8 +397,8 @@ rules are different from the collectors'.
 ## Adding a parser
 
 The research is already done for every agent in the parser backlog: start
-from the Parsing part of `research/<agent>.md`, whose section 13 (Parser
-plan) is mapped to the timeline columns, one fixed subsection per requirement class, and
+from the Parsing part of `research/<agent>.md`, whose Parser plan section
+is mapped to the timeline columns, one fixed subsection per requirement class, and
 whose Fixtures subsection holds the sample records that become the test
 fixture (the outline is [Research document structure](#research-document-structure)).
 Do not redo the research. The citations link to the commit that was
@@ -523,8 +523,8 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
    [survival table of `research/README.md`](research/README.md#where-transcripts-live-and-what-survives)
    is updated in the same commit, and the facts behind it live in the
    document, not the table: every research document with a Parsing part
-   carries a `#### What survives a delete` subsection under section 7
-   (Transcript stores) that says what the agent's own
+   carries a `#### What survives a delete` subsection under Transcript
+   stores that says what the agent's own
    delete, clear, archive or retention removes, what remains (the history
    file, second copies, deletion markers, copies held by other agents,
    project-local traces) and what the analyzer reads, with a link to
@@ -799,8 +799,8 @@ its document, the parser from the Parsing part, and the agents page, the
 docs pages and the parser docstrings state a fact about an agent by linking
 the section that holds it rather than restating it. One document per
 agent, `research/<agent>.md`, follows one outline, with the same heading
-names and numbers (the number is part of the anchor the link check and the
-site derive, so the anchors are stable), the same fixed subsections, and
+names (the name is the anchor the link check and the site derive, so the
+anchors are stable), the same fixed subsections, and
 room for unique subsections under the section that owns the fact.
 `tools/check_research_structure.py` enforces the outline, the split
 phrases and the placement of confidence paragraphs; with
@@ -811,16 +811,16 @@ restructure never loses a fact.
 The document opens with `# <agent>` (the catalog name) and one unheaded
 intro paragraph: what the agent is and which surfaces it has, its lineage
 (a fork of, a wrapper around, bundled with), and the one-sentence state of
-its parser. Nothing else precedes `## 1.`. A bold label never stands in for
+its parser. Nothing else precedes `## Source and evidence`. A bold label never stands in for
 a heading; prose lines wrap at 100 characters, a citation link or a lone
 code span excepted; tables stay tables.
 
-1. `## 1. Source and evidence`: the repository and commit (or bundle,
+1. `## Source and evidence`: the repository and commit (or bundle,
    binary, documentation), the evidence level per claim, then
    `### Observed` and `### Source reviews`. An Observed bullet is one
    platform and surface: build, date, the steps run and what each wrote,
    in one paragraph; the facts the round found (paths, keys, sizes,
-   shapes, what a delete left) are stated once in the numbered section
+   shapes, what a delete left) are stated once in the section
    that owns them and linked from the bullet, not repeated in it; "No
    real install." when none. What the collector or the analyzer did
    during the round (row counts, archive sizes, error rows, a bug found,
@@ -828,62 +828,62 @@ code span excepted; tables stay tables.
    collector or analyzer docs page it concerns or to an issue, never into
    the document. A Source reviews entry is the date, the commit or build
    reviewed, and one or two sentences on what changed in the document
-   because of it, newest first; the facts it found go into the numbered
-   sections, which never cite the entry; "None." when none.
+   because of it, newest first; the facts it found go into the
+   sections that own them, which never cite the entry; "None." when none.
 2. `## Collection`, the collector's half:
-   - `### 2. Per-user storage`: every directory and file under the home per
+   - `### Per-user storage`: every directory and file under the home per
      platform, what each holds, sizes where observed; `####` subsections
      per platform or product when layouts differ; the fixed
      `#### Scratch directories` ("None known." when none).
-   - `### 3. Credentials`: credential files by exact name, keychain use and
+   - `### Credentials`: credential files by exact name, keychain use and
      its file fallback, config files that can embed keys, identity values
      to redact.
-   - `### 4. Exclusions`: large or low-value subtrees as exact patterns.
-   - `### 5. Project-local files`: files written or read inside
+   - `### Exclusions`: large or low-value subtrees as exact patterns.
+   - `### Project-local files`: files written or read inside
      repositories.
-   - `### 6. Where the project path is recorded`: file and key, or table
+   - `### Where the project path is recorded`: file and key, or table
      and column, that discovery or the analyzer reads.
 3. `## Parsing`, the analyzer's half; an agent with nothing to parse has
    one paragraph here (collected only, or the parser issue) and no
-   numbered sections:
-   - `### 7. Transcript stores`: where the transcripts live and how they are
+   `###` sections:
+   - `### Transcript stores`: where the transcripts live and how they are
      named, per surface; the fixed `#### What survives a delete` (what the
      agent's own delete, clear, archive or retention removes; what
      remains; what the analyzer reads, linking
      [Secondary sources](analyzer/docs/output.md#secondary-sources)).
-   - `### 8. Record schema`: line or row types and their key sets, `####`
+   - `### Record schema`: line or row types and their key sets, `####`
      per store or record family; the field names the parser depends on.
-   - `### 9. Joins and timestamps`: session id, project path, tool-call
+   - `### Joins and timestamps`: session id, project path, tool-call
      ids, the time basis and precision, what cannot be joined.
-   - `### 10. Other stores`: databases, indexes, histories, logs, mirrors
+   - `### Other stores`: databases, indexes, histories, logs, mirrors
      and backups beside the transcript store, `####` per store.
-   - `### 11. Format versions`: how the shapes changed between versions and
+   - `### Format versions`: how the shapes changed between versions and
      which build writes which.
-   - `### 12. Secrets`: what inside the stores is a credential or an
+   - `### Secrets`: what inside the stores is a credential or an
      identity.
-   - `### 13. Parser plan`: the row table and the globs, then the fixed
+   - `### Parser plan`: the row table and the globs, then the fixed
      `####` subsections in this order, each present and saying "The agent
      records none." or "Not stated." when that is the fact:
      `Permission rows`, `Model rows`, `Past-use rows and secondary sources`,
      `Sync, relay and origin rows`, `Scratch directory rows`,
      `Deletion rows`, `Bad-line rows`, `Fixtures`; unique subsections
      follow them.
-4. `## 14. Confidence`: one list for both halves, confidence per item and
+4. `## Confidence`: one list for both halves, confidence per item and
    what could not be determined. It holds no fact the body states and no
    item the body has since answered: a change to the body that settles an
    item removes it here, and a confidence paragraph anywhere else in the
    document is a defect.
 
-One home per fact. Section 2 names each file and says in a line what it
-holds; sections 7 to 10 describe the records inside it; section 3 names a
-credential file and section 12 says which stored field is one; every other
-section links the home rather than restating it. A fact stated in two
+One home per fact. Per-user storage names each file and says in a line what
+it holds; Transcript stores to Other stores describe the records inside it;
+Credentials names a credential file and Secrets says which stored field is
+one; every other section links the home rather than restating it. A fact stated in two
 sections is a defect even when the copies agree, because they drift apart
 (the merge of October 2026 left one file described two incompatible ways
 and a table both present and absent in the same document). The document
 speaks as one: nothing in it refers to "the collector document", "the
 analyzer review", "the two documents" or a "collector concern", a dated
-subsection inside a numbered section ("Found in the review of ...") is
+subsection inside a section ("Found in the review of ...") is
 folded into the topic it belongs to, and a section link is checked to
 point at the topic it names, not only at a heading that exists.
 
@@ -1057,7 +1057,7 @@ The round, in order:
    unreadable file. A parser update starts the same way: run the shape
    tool over the new version's transcripts and diff the line types and
    key sets against the lists in the research document.
-5. **Write it down the same day.** The Observed subsection of section 1
+5. **Write it down the same day.** The Observed subsection
    of the research document gets a bullet per platform with the version, build,
    date, what was exercised and what each surface wrote; a layout the
    parser handles that no real install has shown is marked "not observed
@@ -1428,12 +1428,12 @@ the start of this section).
   link, never a bare path or code span: a file is written
   ``[`collectors/docs/coverage.md`](collectors/docs/coverage.md)`` with
   the path relative to the citing file, and a section is written
-  `[section 5](#5-project-local-files)` or, in another document,
-  ``[section 7 of `research/claude-desktop.md`](../research/claude-desktop.md#7-transcript-stores)``,
+  `[Project-local files](#project-local-files)` or, in another document,
+  ``[Transcript stores in `research/claude-desktop.md`](../research/claude-desktop.md#transcript-stores)``,
   with the fragment GitHub derives from the heading (lower case,
   punctuation other than hyphens removed, spaces to hyphens). A reference
   to several sections is one link per section. The exception is this
-  file's references to the numbered sections of
+  file's references by name to the sections of
   [Research document structure](#research-document-structure)
   (`<agent>.md`), which describe every research document at once and
   have no single target. A template path with a placeholder
@@ -1468,8 +1468,8 @@ the start of this section).
   are the exception, and an issue number inside a code span is a literal,
   not a reference.
   `tools/check_doc_links.py`, run by the CI lint job, fails on a relative
-  link whose file or heading does not exist, on a `section <n>` that is
-  not link text, on an `issue <n>`, `pull request <n>`, `PR <n>` or `#<n>`
+  link whose file or heading does not exist, on a `section <n>` (the
+  research sections are named, not numbered), on an `issue <n>`, `pull request <n>`, `PR <n>` or `#<n>`
   that is not link text, on a URL or scheme-less host path
   (`github.com/...`) outside a link target, and on a bare commit hash
   after `at `, `commit ` or `@`; run it before pushing a documentation

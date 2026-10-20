@@ -7,7 +7,7 @@ the catalog from the agent framework sweep for
 [`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. Its
 parser is in the backlog ([issue 141](https://github.com/seanthegeek/doubleagent/issues/141)).
 
-## 1. Source and evidence
+## Source and evidence
 
 [langflow-ai/langflow](https://github.com/langflow-ai/langflow), MIT
 ([LICENSE:1-3](https://github.com/langflow-ai/langflow/blob/504c02fc47e76087b82b0e7cbe4186e9cdd916d4/LICENSE#L1-L3)),
@@ -40,7 +40,7 @@ and MCP stdio servers are spawned on the host
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 The config directory is `LANGFLOW_CONFIG_DIR`, otherwise
 `platformdirs.user_cache_dir("langflow", "langflow")`
@@ -180,7 +180,7 @@ and `AUTO_LOGIN` (signing in without a password) now defaults to `False` in rele
   builds, versions, traces and spans
   ([flow_utils.py:124-185](https://github.com/langflow-ai/langflow/blob/972d56c47d3830d17060ee85cfaad152df823041/src/backend/base/langflow/api/utils/flow_utils.py#L124-L185)).
 
-### 3. Credentials
+### Credentials
 
 - `secret_key` and `cache_secret_key` in the config directory, in each
   OS's location and at the root of a `*langflow-data` volume: flagged.
@@ -189,17 +189,17 @@ and `AUTO_LOGIN` (signing in without a password) now defaults to `False` in rele
 - `_mcp_servers_*.json` may embed environment values for MCP servers; not
   flagged.
 
-### 4. Exclusions
+### Exclusions
 
 `.langflow/knowledge_bases`, the Desktop `knowledge_bases`, `venv`,
 `python_env` and `cache` directories, and `profile_pictures` in the config
 directory (home-relative in each OS's location, and volume-relative).
 
-### 5. Project-local files
+### Project-local files
 
 None. Flows are rows in the database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Nowhere; Langflow has no project concept.
 
@@ -212,7 +212,7 @@ hand, since the server's database is not under the home ([OSS database](#oss-dat
 tables are in [Database detail](#database-detail). Every store is SQLite, and apart from the logs
 nothing collected is line-oriented.
 
-## 14. Confidence
+## Confidence
 
 - High for the OSS paths and the open-source schema (source).
 - Medium for the Desktop paths, which rest on the documentation only.

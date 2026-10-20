@@ -12,7 +12,7 @@ differs), and Ollama's `ollama launch` writes files into `~/.codex`
 `doubleagent/parsers/codex.py` (`CodexParser`, built on the shared `RolloutParser`). The TUI is the
 CLI's terminal user interface.
 
-## 1. Source and evidence
+## Source and evidence
 
 [openai/codex](https://github.com/openai/codex), Apache-2.0, open source, shallow clone at
 `scratchpad/repos/codex`, HEAD
@@ -58,22 +58,22 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
   reviewer allowed in a thread of its own ([Guardian review threads](#guardian-review-threads)), the
   file going to `~/Documents` rather than the Desktop the prompt named; a quit (about 21:38Z),
   relaunch (21:45:36Z) and resume of the Demo thread (21:46:06Z) with one prompt (21:47:36Z to
-  21:47:45Z), which appended to the same rollout ([section 9](#9-joins-and-timestamps)); a turn in
+  21:47:45Z), which appended to the same rollout ([Joins and timestamps](#joins-and-timestamps)); a turn in
   **Full access**, the access level that runs commands with no sandbox and no approvals (set
   21:52:30Z, turn 21:53:27Z, set back by hand at 21:53:38Z); a reply in ChatGPT mode to an existing
-  ChatGPT conversation (about 22:02Z to 22:15Z), which wrote nothing under `~/.codex` ([section 7 of
-  `chatgpt-desktop.md`](chatgpt-desktop.md#7-transcript-stores)); a scheduled task of the kind the
-  app calls a heartbeat (each run ends with the model deciding whether to notify the user), created
-  at 23:18:38Z, run with Run now (23:19:26Z to 23:19:30Z) and once on schedule (23:45:49Z to
-  23:45:53Z) ([Automations](#automations)); remote control, which pairs a phone with the desktop's
-  app server (Codex's local service that owns the threads), enabled at 23:50:17Z, with a prompt from
-  an iPhone (23:59:14Z to 23:59:31Z), connections turned off (00:05:42Z) and on (00:09:25Z), the
-  iPhone revoked (00:14:36Z), an Android phone paired (00:23:10Z) and a prompt from it (00:29:14Z to
-  00:29:16Z) ([`state_5.sqlite` remote control
+  ChatGPT conversation (about 22:02Z to 22:15Z), which wrote nothing under `~/.codex`
+  ([Transcript stores in `chatgpt-desktop.md`](chatgpt-desktop.md#transcript-stores)); a scheduled
+  task of the kind the app calls a heartbeat (each run ends with the model deciding whether to
+  notify the user), created at 23:18:38Z, run with Run now (23:19:26Z to 23:19:30Z) and once on
+  schedule (23:45:49Z to 23:45:53Z) ([Automations](#automations)); remote control, which pairs a
+  phone with the desktop's app server (Codex's local service that owns the threads), enabled at
+  23:50:17Z, with a prompt from an iPhone (23:59:14Z to 23:59:31Z), connections turned off
+  (00:05:42Z) and on (00:09:25Z), the iPhone revoked (00:14:36Z), an Android phone paired
+  (00:23:10Z) and a prompt from it (00:29:14Z to 00:29:16Z) ([`state_5.sqlite` remote control
   enrollments](#state_5sqlite-remote-control-enrollments)); and the plain question's thread deleted
   with the app's own command at 00:36:02Z ([What survives a delete](#what-survives-a-delete)). The
   rollouts are in [Observed rollouts](#observed-rollouts) and the record shapes they showed in
-  [section 8](#8-record-schema) and [section 10](#10-other-stores). Exercised here for the first
+  [Record schema](#record-schema) and [Other stores](#other-stores). Exercised here for the first
   time on any platform: a resumed thread, a denied and an approved tool call, a model switch within
   a thread, an automatic approval, scheduled-task runs, remote control and a delete. Not exercised:
   an "always allow" grant (the dialog of build 26.1013.40934 offered none for a command), a subagent
@@ -87,7 +87,7 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
   package of Codex, and no ChatGPT app, which has no Linux build), read for file names, sizes, key
   names, value types and line counts only. The CLI was installed with its shell installer, logged
   in through the browser flow, which wrote `auth.json` and `log/codex-login.log`
-  ([section 3](#3-credentials)), and given two turns in `~/demo`, which wrote seven files there, one
+  ([Credentials](#credentials)), and given two turns in `~/demo`, which wrote seven files there, one
   rollout ([Observed rollouts](#observed-rollouts)) and two `history.jsonl` lines. The tree holds
   none of the desktop app's files ([Standalone CLI on Linux](#standalone-cli-on-linux)).
 - macOS, Codex Desktop inside ChatGPT 26.1007.71326 and standalone CLI
@@ -95,8 +95,8 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
   [issue 118](https://github.com/seanthegeek/doubleagent/issues/118),
   [issue 120](https://github.com/seanthegeek/doubleagent/issues/120) and
   [issue 121](https://github.com/seanthegeek/doubleagent/issues/121)): ChatGPT `26.1007.71326`
-  (bundle id `com.openai.codex`; the app's build is in [section 1 of
-  `chatgpt-desktop.md`](chatgpt-desktop.md#1-source-and-evidence)) with the bundled Codex
+  (bundle id `com.openai.codex`; the app's build is in [Source and evidence in
+  `chatgpt-desktop.md`](chatgpt-desktop.md#source-and-evidence)) with the bundled Codex
   `0.162.0-alpha.17.2` (`originator` `Codex Desktop`), then Codex CLI `0.162.1` (`originator`
   `codex-tui`) from its shell installer, 2026-10-15 (16:25Z to 17:05Z, UTC), in the author's macOS
   lab VM, macOS 26.6.2 build 25G83, arm64, one user. The user repeated the Windows round with no
@@ -107,8 +107,8 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
   projectless output directory `~/Documents/Codex/2026-10-15/e` (16:50Z, with a
   `codex_app.load_workspace_dependencies` tool call; which user action it was is not determined);
   and the CLI's one prompt in `~/demo2` (16:55Z to 16:56Z), which the CLI also wrote to
-  `history.jsonl`. A plain chat and an image generation left no rollout ([section 7 of
-  `chatgpt-desktop.md`](chatgpt-desktop.md#7-transcript-stores)). The `~/.codex` tree is the Windows
+  `history.jsonl`. A plain chat and an image generation left no rollout ([Transcript stores in
+  `chatgpt-desktop.md`](chatgpt-desktop.md#transcript-stores)). The `~/.codex` tree is the Windows
   one with the differences in [macOS differences](#macos-differences).
 - Windows, standalone CLI ([issue 113](https://github.com/seanthegeek/doubleagent/issues/113) and
   [issue 120](https://github.com/seanthegeek/doubleagent/issues/120)): Codex CLI `0.162.1`
@@ -119,14 +119,15 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
   folder, `C:\users\<user>\demo-cli` (`~\demo-cli`, typed in lower case). The CLI shared the
   desktop app's `~\.codex` and its login: `auth.json` was not rewritten, no login was asked for and
   no second credential file appeared. It wrote one rollout, whose `source` is `vscode` like the
-  desktop app's ([Observed rollouts](#observed-rollouts), [section 9](#9-joins-and-timestamps)),
-  one `history.jsonl` line, which the desktop app had not written, and the files in
-  [Standalone CLI on Windows](#standalone-cli-on-windows). The sandbox failed to start a process
-  during the run (`.sandbox/setup_error.json` `code` `helper_unknown_error`; the daemon's stderr
-  log records a failed process creation and a failed file write in the project folder), so some
-  tool calls failed; what the folder ended up holding was not surveyed. The console's own command
-  history is in PSReadLine's `ConsoleHost_history.txt`, which is shell history, the job of the EDR
-  (the endpoint detection and response tool), and not collected.
+  desktop app's ([Observed rollouts](#observed-rollouts),
+  [Joins and timestamps](#joins-and-timestamps)), one `history.jsonl` line, which the desktop app
+  had not written, and the files in [Standalone CLI on Windows](#standalone-cli-on-windows). The
+  sandbox failed to start a process during the run (`.sandbox/setup_error.json` `code`
+  `helper_unknown_error`; the daemon's stderr log records a failed process creation and a failed
+  file write in the project folder), so some tool calls failed; what the folder ended up holding was
+  not surveyed. The console's own command history is in PSReadLine's `ConsoleHost_history.txt`,
+  which is shell history, the job of the EDR (the endpoint detection and response tool), and not
+  collected.
 - Windows, Codex Desktop inside ChatGPT 26.1007.9446.0
   ([issue 113](https://github.com/seanthegeek/doubleagent/issues/113),
   [issue 114](https://github.com/seanthegeek/doubleagent/issues/114),
@@ -147,7 +148,7 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
   `~\Documents\Codex\2026-10-15\d` (14:26:37Z to 14:27:19Z), and one in a project folder on the
   Desktop (14:30:05Z to 14:32:47Z), which wrote eleven files there; a ChatGPT chat with an image
   generation, which left no rollout
-  ([section 7 of `chatgpt-desktop.md`](chatgpt-desktop.md#7-transcript-stores)); and a first
+  ([Transcript stores in `chatgpt-desktop.md`](chatgpt-desktop.md#transcript-stores)); and a first
   attempt at a scheduled automation, which failed in the app and wrote nothing. Later the same day
   (survey at 15:30Z) the user subscribed the account to ChatGPT Plus (the paid plan), which only
   refreshed the token in `auth.json` and grew `models_cache.json` from 5 to 9 models; created a
@@ -176,11 +177,11 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
   goals and backup stores ([Other past-use stores](#other-past-use-stores)), the thread worktrees
   as scratch directories ([Scratch directories](#scratch-directories)) and the reach of
   `thread/delete` ([What survives a delete](#what-survives-a-delete)), and recorded the format
-  drift in [section 11](#11-format-versions), which the parser handles.
+  drift in [Format versions](#format-versions), which the parser handles.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Home resolution: `CODEX_HOME` if set (must exist, canonicalised) else `dirs::home_dir()/.codex`
 ([utils/home-dir/src/lib.rs:13-56](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/utils/home-dir/src/lib.rs#L13-L56)).
@@ -282,9 +283,9 @@ Inside `$CODEX_HOME`:
   files the agent wrote for the user. Collected whole by the `codex-cli|Documents/Codex` catalog
   line ([issue 149](https://github.com/seanthegeek/doubleagent/issues/149)); project discovery drops
   a rollout `cwd` in it
-  ([section 6](#6-where-the-project-path-is-recorded)). Observed on Windows (ChatGPT
-  26.1007.9446.0, 2026-10-15;
-  [section 2 of `chatgpt-desktop.md`](chatgpt-desktop.md#2-per-user-storage)) and on macOS
+  ([Where the project path is recorded](#where-the-project-path-is-recorded)). Observed on Windows
+  (ChatGPT 26.1007.9446.0, 2026-10-15;
+  [Per-user storage in `chatgpt-desktop.md`](chatgpt-desktop.md#per-user-storage)) and on macOS
   (2026-10-15 and 2026-10-18; [Observed](#observed)); not seen on the Ubuntu install, which ran the
   standalone CLI only. The Windows install has not yet had a per-step round, so which action creates
   the directory is known only from the macOS listings.
@@ -311,8 +312,8 @@ Inside `$CODEX_HOME`:
 
 Written by Ollama, not by Codex (Ollama source at `v0.35.1`, commit
 [`b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce`](https://github.com/ollama/ollama/commit/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce);
-detail in [ollama.md](ollama.md) [section 5](ollama.md#5-project-local-files)). Ollama always uses
-`<home>/.codex` and ignores `CODEX_HOME`
+detail in [ollama.md](ollama.md), [Project-local files](ollama.md#project-local-files)). Ollama
+always uses `<home>/.codex` and ignores `CODEX_HOME`
 ([`cmd/launch/codex.go:234-240`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex.go#L234-L240)).
 
 - `ollama launch chatgpt` (the ChatGPT desktop app's Codex, macOS and Windows) writes
@@ -323,7 +324,7 @@ detail in [ollama.md](ollama.md) [section 5](ollama.md#5-project-local-files)). 
   `<ollama host>/api/codex/v1`; `profile` and `model_provider` removed; `[desktop]` reasoning
   efforts extended,
   [`codex_app.go:312-354`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/cmd/launch/codex_app.go#L312-L354)),
-  and creates `auth.json` when none exists ([section 3](#3-credentials)). The previous `config.toml`
+  and creates `auth.json` when none exists ([Credentials](#credentials)). The previous `config.toml`
   and catalogs are copied to `~/.ollama/backup/codex-app/`, which the `ollama` catalog line
   collects.
 - `ollama launch codex` (the CLI) writes `model.json` and `ollama-launch.config.toml` and leaves
@@ -334,8 +335,8 @@ All of these sit under `.codex` and are collected by the `codex-cli|.codex` line
 
 #### Codex Desktop inside the ChatGPT app
 
-Observed on the Windows install of [section 1](#1-source-and-evidence) (ChatGPT 26.1007.9446.0,
-2026-10-15), not in the source at
+Observed on the Windows install of [Source and evidence](#source-and-evidence) (ChatGPT
+26.1007.9446.0, 2026-10-15), not in the source at
 [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524) unless a
 citation says otherwise. Names, types and counts only; no value from the install is recorded.
 `~\.codex` held 9,155 files, most of them plugin and skill copies under `.tmp\`, `plugins\cache\`
@@ -349,12 +350,12 @@ and `skills\.system\`. The desktop app adds:
   Plus subscription and an automation): the desktop app's interface and account state, with the
   user's prompts, each thread's standing permissions and ChatGPT conversation resume tokens
   ([`.codex-global-state.json`](#codex-global-statejson)). Flagged secret
-  ([section 3](#3-credentials)).
+  ([Credentials](#credentials)).
 - `sqlite/codex-dev.db` with a WAL sidecar (write-ahead log, where SQLite holds recent writes): the
   desktop app's own thread catalog and automation store
   ([`sqlite/codex-dev.db`](#sqlitecodex-devdb)). Collected.
 - `state_5.sqlite`, `thread_history_1.sqlite` and `logs_2.sqlite`, the source-described stores, with
-  the tables and columns this build adds ([section 10](#10-other-stores)).
+  the tables and columns this build adds ([Other stores](#other-stores)).
 - `plugins/.plugin-appserver/` (`codex.exe`, 282,678,064 B, and `codex-code-mode-host.exe`,
   `codex-command-runner.exe`, `codex-windows-sandbox-setup.exe`, 7 to 70 MB): copies of the
   package's binaries, excluded ([issue 116](https://github.com/seanthegeek/doubleagent/issues/116)).
@@ -382,7 +383,7 @@ and `skills\.system\`. The desktop app adds:
   `pets/` (empty).
 - `.sandbox/` (`deny_read_acl_state.json`, `sandbox.<date>.log`, `sandbox-<16 hex>.log`,
   `setup_marker.json`, excluded), `.sandbox-bin/` (empty, excluded) and
-  `.sandbox-secrets/sandbox_users.json` ([section 3](#3-credentials)), and
+  `.sandbox-secrets/sandbox_users.json` ([Credentials](#credentials)), and
   `tmp/arg0/codex-arg0<6 chars>/` (`apply_patch.bat`, `applypatch.bat`, excluded).
 - `config.toml` as the app writes it: `notify`, a `[desktop]` table (`followUpQueueMode`,
   `conversationDetailMode`, `ambient-suggestions-enabled`), `marketplaces.openai-bundled` and
@@ -398,13 +399,13 @@ runs a service `CodexSandboxService.OpenAI.Codex`. The accounts and the service 
 and are not collected.
 
 Outside `~/.codex` the app keeps copies of the binaries in `%LOCALAPPDATA%\OpenAI\Codex` and a
-1.27 GB runtime in `~/.cache/codex-runtimes`, neither collected; see [section 4 of
-`chatgpt-desktop.md`](chatgpt-desktop.md#4-exclusions).
+1.27 GB runtime in `~/.cache/codex-runtimes`, neither collected; see [Exclusions in
+`chatgpt-desktop.md`](chatgpt-desktop.md#exclusions).
 
 #### Standalone CLI on Windows
 
-Observed with Codex CLI 0.162.1 from the PowerShell installer ([section 1](#1-source-and-evidence));
-names, types and sizes only.
+Observed with Codex CLI 0.162.1 from the PowerShell installer
+([Source and evidence](#source-and-evidence)); names, types and sizes only.
 
 - `~\.codex\packages\standalone\`: `install.lock` (0 B), `auto-update-version` (31 B, one token),
   `current` (an NTFS junction, a directory reparse point, to
@@ -451,8 +452,9 @@ names, types and sizes only.
 
 #### macOS differences
 
-Observed on the macOS install of [section 1](#1-source-and-evidence); names, types and sizes only.
-Everything else in [Codex Desktop inside the ChatGPT app](#codex-desktop-inside-the-chatgpt-app) and
+Observed on the macOS install of [Source and evidence](#source-and-evidence); names, types and sizes
+only. Everything else in
+[Codex Desktop inside the ChatGPT app](#codex-desktop-inside-the-chatgpt-app) and
 [Standalone CLI on Windows](#standalone-cli-on-windows) was present in the same form (`auth.json`,
 `config.toml`, `.codex-global-state.json`, the SQLite stores, `sqlite/codex-dev.db`, `automations/`,
 `ambient-suggestions/`, `vendor_imports`, `history.jsonl`, `version.json`, `app-server-daemon/`,
@@ -462,7 +464,7 @@ Everything else in [Codex Desktop inside the ChatGPT app](#codex-desktop-inside-
   `codex-cli` subdirectory; the `.codex/plugins/.plugin-appserver` exclusion covers it.
 - `computer-use/Codex Computer Use.app` (bundle id `com.openai.sky.CUAService`, version
   26.1005.1001425, 168 files, 76,615,353 B), the computer-use agent's app, beside
-  `computer-use/config.json`, excluded ([section 4](#4-exclusions)).
+  `computer-use/config.json`, excluded ([Exclusions](#exclusions)).
 - `ipc/ipc.sock` (a Unix domain socket) and an empty `shell_snapshots/` (2026-10-15; on 2026-10-18
   it held the two most recent snapshots of each live thread, see
   [macOS, ChatGPT 26.1013.40934](#macos-chatgpt-26101340934)), macOS only.
@@ -487,10 +489,10 @@ Everything else in [Codex Desktop inside the ChatGPT app](#codex-desktop-inside-
 
 #### macOS, ChatGPT 26.1013.40934
 
-Observed on the macOS install of 2026-10-18 ([section 1](#1-source-and-evidence)), bundled Codex
-`0.163.0-alpha.10.2`; names, types and sizes only. Everything in [Codex Desktop inside the ChatGPT
-app](#codex-desktop-inside-the-chatgpt-app) and [macOS differences](#macos-differences) was present,
-with these additions and observations:
+Observed on the macOS install of 2026-10-18 ([Source and evidence](#source-and-evidence)), bundled
+Codex `0.163.0-alpha.10.2`; names, types and sizes only. Everything in
+[Codex Desktop inside the ChatGPT app](#codex-desktop-inside-the-chatgpt-app) and
+[macOS differences](#macos-differences) was present, with these additions and observations:
 
 - Before sign-in `~/.codex` already held `.codex-global-state.json` (1,282 B), `config.toml`
   (2,114 B), `installation_id` (36 B), `.sqlite-maintenance.lock`, `ipc/ipc.sock`,
@@ -508,7 +510,7 @@ with these additions and observations:
   environment replayed for the sandbox, written by the source's
   [core/src/shell_snapshot.rs:107](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/shell_snapshot.rs#L107)
   ([Thread locks and shell snapshots](#thread-locks-and-shell-snapshots)). Flagged secret
-  ([section 3](#3-credentials)).
+  ([Credentials](#credentials)).
 - `thread-writer-locks/<uuid>.lock`, also for prewarmed reviewer sessions that never wrote anything
   ([Thread locks and shell snapshots](#thread-locks-and-shell-snapshots)).
 - `automations/.run-jitter-salt` (37 B) and `automations/<slug>/automation.toml` (356 B; the slug is
@@ -533,7 +535,8 @@ with these additions and observations:
 
 #### Standalone CLI on Linux
 
-Observed on the Ubuntu install of [section 1](#1-source-and-evidence); names, types and sizes only.
+Observed on the Ubuntu install of [Source and evidence](#source-and-evidence); names, types and
+sizes only.
 
 - `~/.codex/packages/standalone/` and `~/.codex/packages/app-server-daemon/` (816,297,770 B
   together, under the `.codex/packages` exclusion): `install.lock`, `auto-update-version` (34 B), a
@@ -571,7 +574,7 @@ Observed on the Ubuntu install of [section 1](#1-source-and-evidence); names, ty
   `computer-use`, `visualizations`, `vendor_imports`, `plugins/.plugin-appserver`, `.tmp`,
   `cap_sid`, `node_repl` or `.sandbox*`.
 
-### 3. Credentials
+### Credentials
 
 - `auth.json` with `OPENAI_API_KEY` and OAuth tokens
   ([login/src/auth/storage.rs:47-53](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/login/src/auth/storage.rs#L47-L53),[163](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/login/src/auth/storage.rs#L163)).
@@ -608,7 +611,7 @@ Observed on the Ubuntu install of [section 1](#1-source-and-evidence); names, ty
   each `{username, password}`, and `version`: the passwords of the two sandbox accounts. Flagged by
   `.codex/.sandbox-secrets/*`.
 - `.codex-global-state.json` and its `.bak` (observed, Codex Desktop only): ChatGPT conversation
-  resume tokens, the account's ids and the user's prompts ([section 12](#12-secrets)). Flagged by
+  resume tokens, the account's ids and the user's prompts ([Secrets](#secrets)). Flagged by
   `.codex/.codex-global-state.json*`
   ([issue 115](https://github.com/seanthegeek/doubleagent/issues/115)).
 - `shell_snapshots/<thread uuid>.<unix ns>.sh` (observed on macOS, Codex Desktop 0.163.0-alpha.10.2
@@ -635,14 +638,14 @@ Observed on the Ubuntu install of [section 1](#1-source-and-evidence); names, ty
   and removes it when the command finishes
   ([`cmd/launch/codex_app.go:1480-1495`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/codex_app.go#L1480-L1495)).
   A crash leaves that copy of the Codex credential in the temp directory, which no catalog line
-  covers; see [section 2 of `ollama.md`](ollama.md#2-per-user-storage).
+  covers; see [Per-user storage in `ollama.md`](ollama.md#per-user-storage).
 
 At `4e7b9e2` no new credential file was found: the quoted file names ending `.age`, `.json`,
 `.lock`, `.toml` or `.env` in `codex-rs/login`, `codex-rs/secrets`, `codex-rs/rmcp-client` and
 `codex-rs/cli` differ between the two commits only by a configuration file name, not a credential
 store.
 
-### 4. Exclusions
+### Exclusions
 
 `.codex/packages`, `.codex/cache`, `.codex/.tmp`, `.codex/tmp`, `.codex/plugins/cache`,
 `.codex/plugins/.plugin-appserver` and `.codex/plugins/.remote-plugin-install-staging` (Codex
@@ -670,7 +673,7 @@ beside the small `plugins/.remote-plugin-install-staging`, `skills/.system`, `tm
 Support/com.openai.codex` is updater state only, collected as `chatgpt-desktop`
 ([issue 121](https://github.com/seanthegeek/doubleagent/issues/121)).
 
-### 5. Project-local files
+### Project-local files
 
 `AGENTS.md`, `AGENTS.override.md`
 ([core/src/agents_md.rs:43-45](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/agents_md.rs#L43-L45)),
@@ -685,7 +688,7 @@ Support/com.openai.codex` is updater state only, collected as `chatgpt-desktop`
 ([ext/image-generation/src/tool.rs:332](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/ext/image-generation/src/tool.rs#L332)).
 No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - First line of every rollout: `SessionMeta` with `cwd: PathBuf`, `timestamp`, `id`, `originator`,
   `cli_version`, `source`, `runtime_workspace_roots`
@@ -708,7 +711,7 @@ No per-project database.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 Paths relative to the home; `$CODEX_HOME` replaces `.codex` when set.
 
@@ -738,12 +741,12 @@ Paths relative to the home; `$CODEX_HOME` replaces `.codex` when set.
   [core/src/thread_manager.rs:461-503](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/thread_manager.rs#L461-L503)).
   **Parser reads** (needs `zstandard`).
 - `.codex/history.jsonl`: one line per submitted prompt, all threads
-  ([section 10](#10-other-stores)). **Parser reads.**
-- `.codex/session_index.jsonl`: thread renames ([section 10](#10-other-stores)). Not read.
+  ([Other stores](#other-stores)). **Parser reads.**
+- `.codex/session_index.jsonl`: thread renames ([Other stores](#other-stores)). Not read.
 - `.codex/automations/<slug>/automation.toml`: a scheduled automation of
-  the ChatGPT desktop app ([section 10](#10-other-stores)). **Parser reads.**
+  the ChatGPT desktop app ([Other stores](#other-stores)). **Parser reads.**
 - `.codex/state_5.sqlite`, `.codex/thread_history_1.sqlite`: thread metadata
-  and a projection of paginated rollouts ([section 10](#10-other-stores)).
+  and a projection of paginated rollouts ([Other stores](#other-stores)).
   **Parser reads**, as secondary sources
   ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)).
 - **Copies held by other agents.** Three agents copy these transcripts into stores of their own,
@@ -754,12 +757,12 @@ Paths relative to the home; `$CODEX_HOME` replaces `.codex` when set.
     `state.db` as a new session whose `origin_json.imported_from` names the tool, the source path
     and the foreign session id, stamped with the import time
     ([`hermes_cli/foreign_sessions.py:254-260`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/foreign_sessions.py#L254-L260);
-    [section 7 of `hermes.md`](hermes.md#7-transcript-stores)).
+    [Transcript stores in `hermes.md`](hermes.md#transcript-stores)).
   - Cline's SDK session import makes an ordinary Cline session with a new id and
     `metadata.importedFrom{tool, sourceSessionId, sourcePath, importedAt, sourceProvider, sourceModel}`;
     at the reviewed commit only Cline's example desktop app calls it
     ([`sdk/packages/core/src/services/session-import/service.ts:349-366`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/sdk/packages/core/src/services/session-import/service.ts#L349-L366);
-    [section 7 of `cline.md`](cline.md#7-transcript-stores)).
+    [Transcript stores in `cline.md`](cline.md#transcript-stores)).
   - Pydantic AI's CLAI 2.0 (its command-line chat client) `/resume` copies them into its
     `sessions.db`
     ([`codex_sessions.py:35-37`](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/runtime/codex_sessions.py#L35-L37);
@@ -769,13 +772,13 @@ Paths relative to the home; `$CODEX_HOME` replaces `.codex` when set.
   lists the session in `sidebar_threads` with `agent_id` `codex-acp` and the ACP session id in
   `session_id`, while the transcript stays in this agent's own store
   ([`agent_servers/src/custom.rs:17-19`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_servers/src/custom.rs#L17-L19);
-  [section 7 of `zed.md`](zed.md#7-transcript-stores)). Whether that id equals the session id this
+  [Transcript stores in `zed.md`](zed.md#transcript-stores)). Whether that id equals the session id this
   agent records was not determined.
 
 #### Observed rollouts
 
-The rollouts of the real installs of [section 1](#1-source-and-evidence), by line type; none had a
-bad line, and every one was `history_mode` `paginated`.
+The rollouts of the real installs of [Source and evidence](#source-and-evidence), by line type; none
+had a bad line, and every one was `history_mode` `paginated`.
 
 | Install | Thread | Size, lines | Line types |
 | --- | --- | --- | --- |
@@ -789,7 +792,7 @@ bad line, and every one was `history_mode` `paginated`.
 | Windows, Codex Desktop 0.162.0-alpha.17.2, 2026-10-15 | projectless thread | 37 lines | `session_meta` 1, `turn_context` 1, `world_state` 1, `response_item` 17, `event_msg` 13, `token_usage_record` 4 |
 | same | project task on the Desktop | 32 lines | `session_meta` 1, `turn_context` 1, `world_state` 1, `response_item` 15, `event_msg` 11, `token_usage_record` 3 |
 | same | automation's target thread | 83,579 B | one user turn, one assistant message, no tool call ([Automations](#automations)) |
-| development host, Codex 0.160.0 | one thread | 20 lines | tabulated by type only ([section 8](#8-record-schema)) |
+| development host, Codex 0.160.0 | one thread | 20 lines | tabulated by type only ([Record schema](#record-schema)) |
 
 The models seen were `gpt-6.1-sol` (the 2026-10-18 macOS threads before the switch, the Ubuntu and
 Windows CLI threads and the three 2026-10-15 macOS threads other than the automation's),
@@ -847,12 +850,12 @@ column matches, so which rows survived (rows with the id only in their message t
 after the delete, or a build that did not yet delete log rows) was not determined.
 
 Hermes Agent, Cline's SDK and Pydantic AI's CLAI hold copies that outlive the original rollout
-([section 7](#7-transcript-stores)). The analyzer reads the archived rollouts as primary,
+([Transcript stores](#transcript-stores)). The analyzer reads the archived rollouts as primary,
 `history.jsonl` and the global state as secondary sources (the marker as a `session deleted:`
 row), and neither the memories files nor `db-backups/` (see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 Each line is a `RolloutLine`: `timestamp`, optional `ordinal`, and the item
 flattened beside them
@@ -956,7 +959,7 @@ above from [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde
 `disabled_plugin_ids` (empty), `approvals_reviewer` `user`, `active_permission_profile` (`id`
 `:workspace`), `file_system_sandbox_policy` (`kind` `restricted`, 13 `entries` on Windows, 18 on
 macOS), `comp_hash`, `multi_agent_version` `v2`, `realtime_active` and `cyber_access_program`
-`standard`; the drift to `4e7b9e2` in [section 11](#11-format-versions) lists those the struct has
+`standard`; the drift to `4e7b9e2` in [Format versions](#format-versions) lists those the struct has
 there. Full access and the guardian thread give other values
 ([`event_msg`](#event_msg), [Guardian review threads](#guardian-review-threads)).
 
@@ -972,7 +975,7 @@ The keys observed on Codex Desktop (macOS, 0.163.0-alpha.10.2, 2026-10-18): `too
 `mcp__cua_repl.*`), `permissions` (`approved_command_prefixes`, `instructions`), `environments`
 (`current_date`, `timezone`, `filesystem`), `host_skills`, `multi_agent_mode` (`mode`
 `explicitRequestOnly`) and `git_attribution`. The parser skips the line
-([section 13](#13-parser-plan)).
+([Parser plan](#parser-plan)).
 
 #### `event_msg`
 
@@ -1034,7 +1037,7 @@ Observed on Codex Desktop (macOS, 0.163.0-alpha.10.2, 2026-10-18):
   `id`, `kind`, `query`, `results`, `type`); `Reasoning` (`id`, `raw_content`, `summary_text`).
 - `task_started.turn_attribution`: `turn_id`, `turn_trigger`, `parent_turn_id`,
   `initiating_agent_path` and `root_turn_id` (in source from `4e7b9e2`,
-  [section 11](#11-format-versions)). The `turn_trigger` values of this build: `composer` (a prompt
+  [Format versions](#format-versions)). The `turn_trigger` values of this build: `composer` (a prompt
   typed in the app), `remote_ios` and `remote_android` (a prompt from a paired phone, whose
   `turn_context` has the shape of a composer turn; the trigger is the only mark in the rollout that
   a turn came from a phone), `guardian_review`, `scheduled_task_setup`,
@@ -1049,19 +1052,19 @@ Observed on Codex Desktop (macOS, 0.163.0-alpha.10.2, 2026-10-18):
   `disabled_plugin_ids`, `model`, `model_provider_id`, `permission_profile`, `personality`,
   `reasoning_effort`, `reasoning_summary`, `runtime_workspace_roots` and `service_tier`, and no
   `sandbox_policy`. Opening a thread after a restart appends one with 11 keys (the 14 less
-  `personality`, `reasoning_summary` and `service_tier`; [section 9](#9-joins-and-timestamps)). The
-  model switch set `thread_settings.model` to `gpt-5.6-terra` (the three earlier events said
-  `gpt-6.1-sol`), and the next `turn_context` followed. Approve for me set `approvals_reviewer`
-  `user` -> `auto_review`, with `approval_policy` still `on-request`, `permission_profile` `managed`
-  and `active_permission_profile` `id` `:workspace`; a third, identical event preceded the turn.
-  Full access set `approval_policy` `never`, `approvals_reviewer` `user`,
-  `active_permission_profile` `id` `:danger-full-access` and `permission_profile` `{"type":
-  "disabled"}`, and the turn's `turn_context` added `sandbox_policy` `danger-full-access` and
-  `file_system_sandbox_policy` null; setting it back appended an event with the earlier values
-  (`on-request`, `auto_review`, `:workspace`, `managed`). The app does not turn Full access off by
-  itself: it stays a thread setting until changed. `state_5.sqlite` `threads` (`model`,
-  `approval_mode`) and the global state keep only the latest values, so a model switch and a
-  full-access turn are recorded only in the rollout and `logs_2.sqlite`.
+  `personality`, `reasoning_summary` and `service_tier`;
+  [Joins and timestamps](#joins-and-timestamps)). The model switch set `thread_settings.model` to
+  `gpt-5.6-terra` (the three earlier events said `gpt-6.1-sol`), and the next `turn_context`
+  followed. Approve for me set `approvals_reviewer` `user` -> `auto_review`, with `approval_policy`
+  still `on-request`, `permission_profile` `managed` and `active_permission_profile` `id`
+  `:workspace`; a third, identical event preceded the turn. Full access set `approval_policy`
+  `never`, `approvals_reviewer` `user`, `active_permission_profile` `id` `:danger-full-access` and
+  `permission_profile` `{"type": "disabled"}`, and the turn's `turn_context` added `sandbox_policy`
+  `danger-full-access` and `file_system_sandbox_policy` null; setting it back appended an event with
+  the earlier values (`on-request`, `auto_review`, `:workspace`, `managed`). The app does not turn
+  Full access off by itself: it stays a thread setting until changed. `state_5.sqlite` `threads`
+  (`model`, `approval_mode`) and the global state keep only the latest values, so a model switch and
+  a full-access turn are recorded only in the rollout and `logs_2.sqlite`.
 - No approval event. A write inside the workspace ran in the sandbox with no request, and a declined
   or approved call left only its `CommandExecution` (`failed` or `completed`) and no change to
   `turn_context`; the decisions are in [`logs_2.sqlite`](#logs_2sqlite). The declined call's output
@@ -1181,7 +1184,7 @@ two ([`logs_2.sqlite`](#logs_2sqlite)). The reviewer thread has a `state_5.sqlit
 `Guardian review`, but no `thread_spawn_edges` row. The app also prewarms reviewer sessions that
 write no rollout ([Thread locks and shell snapshots](#thread-locks-and-shell-snapshots)).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 - **Timestamps.** Line `timestamp` and `session_meta.payload.timestamp`: UTC
   `YYYY-MM-DDThh:mm:ss.mmmZ`, the line one taken at write time
@@ -1207,7 +1210,7 @@ write no rollout ([Thread locks and shell snapshots](#thread-locks-and-shell-sna
   2026-10-15). The same pair is in the `state_5.sqlite` `threads`
   columns of the same names, and the user id, with the ChatGPT workspace
   id, in the `codex-dev.db` `local_thread_catalog_hosts` host id
-  `chatgpt:<workspace uuid>:<user id>` ([section 10](#10-other-stores)).
+  `chatgpt:<workspace uuid>:<user id>` ([Other stores](#other-stores)).
 - **Project.** `session_meta.payload.cwd`, updated per turn by
   `turn_context.payload.cwd`; `workspace_roots` lists extra roots.
 - **Branch.** `session_meta.payload.git.branch`, set once at thread
@@ -1251,7 +1254,7 @@ write no rollout ([Thread locks and shell snapshots](#thread-locks-and-shell-sna
   `web.search`) has its own id, not the call's `call_id`, so nothing joins it
   to the call except its position between the call and its output (local).
 
-### 10. Other stores
+### Other stores
 
 #### `history.jsonl`
 
@@ -1276,7 +1279,7 @@ UTC with nanoseconds
 ([rollout/src/session_index.rs:24-48](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/session_index.rs#L24-L48)).
 Titles only; local shape matches. Codex Desktop also lists the guardian review thread, as
 `Guardian review`, and a scheduled task's thread, under the task's name (macOS, build 26.1013.40934,
-2026-10-18; [section 1](#1-source-and-evidence)).
+2026-10-18; [Source and evidence](#source-and-evidence)).
 
 #### `state_5.sqlite` threads
 
@@ -1354,7 +1357,7 @@ A projection of paginated rollouts; local item types were `userMessage`,
 `webSearch`, `agentMessage`, the same three items as the rollout's
 `item_completed` lines. Nothing found that is not in the rollout.
 Codex Desktop on Windows (observed 2026-10-15,
-[section 1](#1-source-and-evidence)) added `reasoning`, `commandExecution` and
+[Source and evidence](#source-and-evidence)) added `reasoning`, `commandExecution` and
 `fileChange` items, also all in its rollouts: `thread_items` held 13 rows
 (`agentMessage` 4, `commandExecution` 2, `fileChange` 1, `reasoning` 2,
 `userMessage` 2, `webSearch` 2) and `thread_turns` 2 rows, both `completed`.
@@ -1458,14 +1461,14 @@ sent, whether or not the user agreed to upload logs, so
 ([tui/src/startup_orchestration.rs:817-820](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/tui/src/startup_orchestration.rs#L817-L820)).
 The parser reads this row and the approval rows below, and no other
 row of the database
-([section 13](#13-parser-plan)); a body field may
+([Parser plan](#parser-plan)); a body field may
 come in any order, and the first logs migration named the body column
 `message`. Not seen on a real install: the feedback row is read from
 a synthetic fixture only.
 
 Codex Desktop writes the per-call permission decisions here and
 nowhere else (macOS, build 26.1013.40934, 2026-10-18;
-[section 1](#1-source-and-evidence)); `ts` was integer epoch seconds. On Windows (2026-10-15) the
+[Source and evidence](#source-and-evidence)); `ts` was integer epoch seconds. On Windows (2026-10-15) the
 `logs` table held 2,156 rows from the app server.
 
 - A user's decision in the approval dialog:
@@ -1529,7 +1532,7 @@ migration 0037;
 [state/migrations/0024_remote_control_enrollments.sql:1-10](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0024_remote_control_enrollments.sql#L1-L10),
 [0037_remote_control_enrollments_enabled.sql:1-2](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/migrations/0037_remote_control_enrollments_enabled.sql#L1-L2)).
 It names the host's enrollment, not a thread. Empty on the Windows
-install of [section 1](#1-source-and-evidence). On macOS (build 26.1013.40934,
+install of [Source and evidence](#source-and-evidence). On macOS (build 26.1013.40934,
 2026-10-18 and 2026-10-19) enabling remote control in the app
 (Settings > Connections > Control this Mac or PC) wrote one row:
 `websocket_url` the relay's websocket address on the chatgpt.com
@@ -1542,7 +1545,7 @@ row and set `remote_control_enabled` to 0 with a new `updated_at`;
 turning it on again reused the row, same ids, with 1. Revoking a
 paired phone and pairing a second phone changed nothing in it: the
 list of paired devices is held on the server. The row holds no
-token ([section 3](#3-credentials)). The log rows (targets
+token ([Credentials](#credentials)). The log rows (targets
 `codex_app_server_transport::transport::remote_control::enroll`,
 `::websocket` and `::client_tracker`, and the app-server requests):
 `remoteControl/enable`, `persisted remote control enrollment: ...`,
@@ -1556,7 +1559,7 @@ while the Connections page is open), `remoteControl/client/revoke`
 `client_tracker` `... connection closed` when it leaves. The first
 pairing also wrote two top-level keys of `.codex-global-state.json`
 ([`.codex-global-state.json`](#codex-global-statejson)). **Parser reads** the row
-([section 13](#13-parser-plan)).
+([Parser plan](#parser-plan)).
 
 #### `sqlite/codex-dev.db`
 
@@ -1574,8 +1577,8 @@ and automation store. The collector gathers it through the `codex-cli|.codex` ca
   account's ChatGPT conversations are rows with `source_kind` `chatgpt` and the host id
   `chatgpt:<workspace uuid>:<user id>` (the user id is the 29-character ChatGPT user id, which
   begins `user-`). Their columns, values and the other catalog tables are in
-  [section 8 of `chatgpt-desktop.md`](chatgpt-desktop.md#8-record-schema) and
-  [section 10 of `chatgpt-desktop.md`](chatgpt-desktop.md#10-other-stores). Each Codex-mode thread
+  [Record schema in `chatgpt-desktop.md`](chatgpt-desktop.md#record-schema) and
+  [Other stores in `chatgpt-desktop.md`](chatgpt-desktop.md#other-stores). Each Codex-mode thread
   added a `vscode` row, and the app's delete removed the deleted thread's row. The
   `chatgpt-desktop` parser reads the `chatgpt` rows (since analyzer 0.17.0). The `codex-cli`
   parser does not read the file: the automation is read from `automation.toml`, and a run would be
@@ -1597,7 +1600,7 @@ and automation store. The collector gathers it through the `codex-cli|.codex` ca
 The chat's text is not in it. Neither `conversation_origin` nor `chatgpt_async_status` appears in
 the Codex source; `conversation_origin` `tpp` shares its token with the package's
 `.codex-tpp-local-executor-installation-id` file name, and what it denotes is not determined
-([section 8 of `chatgpt-desktop.md`](chatgpt-desktop.md#8-record-schema)).
+([Record schema in `chatgpt-desktop.md`](chatgpt-desktop.md#record-schema)).
 
 #### Automations
 
@@ -1723,7 +1726,7 @@ The ChatGPT account's user id appears inside key names: the resume tokens' keys,
 `new-task-execution-by-account-project` (`{kind: "cloud"}`). The file outlives a deleted thread
 with its prompts ([What survives a delete](#what-survives-a-delete)). The collector flags it
 `secret: true` and collects it by default. **Parser reads**, as a secondary source
-([section 13](#13-parser-plan)).
+([Parser plan](#parser-plan)).
 
 #### Thread locks and shell snapshots
 
@@ -1743,7 +1746,7 @@ quit removed every snapshot of threads not reopened. The exported names on the c
 included `BROWSER_USE_ACCESS_VERIFYING_IDENTITY`, `CODEX_TASK_WORKSPACE_VERIFYING_IDENTITY`,
 `CODEX_APP_TOOLS_PIPE_PATH`, `SSH_AUTH_SOCK`, `HOME`, `USER` and `TMPDIR`, and no key-like name; on
 a workstation an API key the login shell exports is copied here, and the collector flags the files
-`secret: true` ([section 3](#3-credentials)). The parser reads neither.
+`secret: true` ([Credentials](#credentials)). The parser reads neither.
 
 #### Standing grants and approval records
 
@@ -1773,7 +1776,7 @@ the parser reads none of them.
   loaded too
   ([exec_policy.rs:681](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/exec_policy.rs#L681)).
   The file holds no credential. The same `rules/` directory in a project's `.codex/` is a project
-  file ([section 5](#5-project-local-files)).
+  file ([Project-local files](#project-local-files)).
 - `config.toml`: the standing policy keys `approval_policy`,
   `approvals_reviewer`, `sandbox_mode` and `default_permissions`
   ([config/src/config_toml.rs:195](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/config/src/config_toml.rs#L195),
@@ -1815,7 +1818,7 @@ the parser reads none of them.
   feedback is turned off or the thread is ephemeral. The row outlives
   the reviewer thread; its `thread_id` references `threads(id)` with
   `ON DELETE CASCADE`, so it is meant to go with the reviewed thread. The table was present, with no
-  row read, on the macOS install of 2026-10-18 ([section 1](#1-source-and-evidence)).
+  row read, on the macOS install of 2026-10-18 ([Source and evidence](#source-and-evidence)).
 - Log lines of answers the parser does not read: beside
   `op=ExecApproval`, the core's `Submission` debug line
   ([core/src/session/handlers.rs:487-495](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/session/handlers.rs#L487-L495))
@@ -1832,7 +1835,7 @@ the parser reads none of them.
   ([`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37),
   [`plugins/_orchestrator/README.md:86`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/README.md#L86)).
   Such a thread is an ordinary rollout in Codex's own store; the plugin's permission settings are in
-  [section 13 of `agent-zero.md`](agent-zero.md#13-parser-plan).
+  [Parser plan in `agent-zero.md`](agent-zero.md#parser-plan).
 
 #### Other past-use stores
 
@@ -1886,7 +1889,7 @@ seen on a real install beyond the `goals_1.sqlite` and `memories_1.sqlite` files
   deleted threads included; the parser wants only
   `.codex/state_5.sqlite` itself.
 
-### 11. Format versions
+### Format versions
 
 - **History mode.** `session_meta.history_mode` (`legacy` default, `paginated`;
   [protocol.rs:775-782](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L775-L782)).
@@ -1898,8 +1901,8 @@ seen on a real install beyond the `goals_1.sqlite` and `memories_1.sqlite` files
   ([features/src/lib.rs:1224-1229](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/features/src/lib.rs#L1224-L1229),
   [thread-store/src/local/rollout_migration.rs:1-9](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/local/rollout_migration.rs#L1-L9)).
 - **Compression and archive.** `.jsonl.zst` and `archived_sessions/`
-  ([section 7](#7-transcript-stores)); Codex materialises a compressed file back to `.jsonl` before
-  appending to it
+  ([Transcript stores](#transcript-stores)); Codex materialises a compressed file back to `.jsonl`
+  before appending to it
   ([compression.rs:104-105](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/compression.rs#L104-L105)),
   so either form may be present.
 - **Flat layout.** Older releases wrote `sessions/rollout-<time>-<uuid>.jsonl` without date
@@ -1958,23 +1961,23 @@ seen on a real install beyond the `goals_1.sqlite` and `memories_1.sqlite` files
     ... }`). The parser's pattern takes the first word either way.
   - `event_msg` `elicitation_abandoned` is new and transient
     ([rollout/src/policy.rs:199](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/rollout/src/policy.rs#L199)).
-  - New tables: `guardian_review_feedback` ([section 10](#10-other-stores)),
+  - New tables: `guardian_review_feedback` ([Other stores](#other-stores)),
     `thread_read_receipts`
     ([state/migrations/0061_thread_read_state.sql:1-8](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/migrations/0061_thread_read_state.sql#L1-L8)),
     and `thread_turns.root_turn_id`
     ([state/thread_history_migrations/0008_thread_turn_root.sql:1](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/thread_history_migrations/0008_thread_turn_root.sql#L1)).
     No column the parser selects was removed.
 
-### 12. Secrets
+### Secrets
 
 The credential files under `~/.codex` (`auth.json`, `.credentials.json`, `secrets/`,
-`.sandbox-secrets/`) are listed in [section 3](#3-credentials). Inside
+`.sandbox-secrets/`) are listed in [Credentials](#credentials). Inside
 the stores this document describes:
 
 - `session_meta.payload.creator_account_id` and `creator_user_id`, and the `state_5.sqlite`
   `threads` columns of the same names, name the ChatGPT account and user
-  ([section 9](#9-joins-and-timestamps)); `token_count.rate_limits` names the account's plan
-  ([`event_msg`](#event_msg)).
+  ([Joins and timestamps](#joins-and-timestamps)); `token_count.rate_limits` names the account's
+  plan ([`event_msg`](#event_msg)).
 - `.codex-global-state.json`: `chatgpt-conversation-resume-tokens-v1`, the ChatGPT conversation
   resume tokens (a credential); the user's prompts in `prompt-history`; and the account's ids, in
   values (`cloud-pet-artwork-cache` `accountId` and `userId`) and inside key names (the resume
@@ -1982,10 +1985,10 @@ the stores this document describes:
   `new-task-execution-by-account-project`)
   ([`.codex-global-state.json`](#codex-global-statejson)).
 - `shell_snapshots/<thread id>.<unix ns>.sh` and remote control's server token are in
-  [section 3](#3-credentials); `state_5.sqlite` `remote_control_enrollments` holds no token, only
+  [Credentials](#credentials); `state_5.sqlite` `remote_control_enrollments` holds no token, only
   the account id and the host name.
 
-### 13. Parser plan
+### Parser plan
 
 `CodexParser` wants
 `^\.codex/(?:archived_)?sessions/(?:.*/)?rollout-[^/]*\.jsonl(?:\.zst)?$`
@@ -2043,7 +2046,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `thread_history_1.sqlite` `thread_turns` row (secondary) | `system` `task_started turn=<id>` at `started_at`; `task_complete turn=<id> duration_ms=<n>` at `completed_at` for a completed or failed turn; an interrupted turn has no closing row (its reason is only in the rollout) |
 | `thread_history_1.sqlite` `thread_items` row (secondary) | `userMessage` `user`, `agentMessage` `assistant`, `reasoning` `thinking` (opt-in), at `completed_at_ms`; `hookPrompt`, `contextCompaction` none; any other item renamed to the turn-item form and rendered as the `item_completed` rows above, at `started_at_ms` and `completed_at_ms` (else `created_at_ms`); an `item_json` that does not decode to a JSON object is one `system` row per record at the end of the file's rows, `parser: unparseable record <rowid> (<reason>): <item_json as stored>`, `source_line` the rowid, `session_id` and `project_path` the record's thread's ([issue 184](https://github.com/seanthegeek/doubleagent/issues/184)) |
 | `automations/<slug>/automation.toml` (Codex only) | one `system` row `scheduled task: <id> name=<name> kind=<kind> status=<status> rrule=<rrule> target_thread=<target_thread_id> created=<created_at> updated=<updated_at> (from <file>, file mtime) prompt: <prompt>` at the file's modification time, `session_id` the target thread; an unreadable file is one `system` row ([issue 119](https://github.com/seanthegeek/doubleagent/issues/119)) |
-| `logs_2.sqlite` `logs` row `codex_core::session::handlers` `op=ExecApproval` or `codex_app_server::outgoing_message` `CommandExecutionRequestApproval` (Codex Desktop) | `system` `permission decision: <decision> exec <item id> turn=<turn id> (from logs_<N>.sqlite logs, ts)` at `ts` from the handlers row (`denied`, `approved` seen), `session_id` the row's thread id, `tool_use_id` the governed item's id (`exec-<uuid>`, [section 10](#10-other-stores)); a response row (`Decline`, `Accept`) with no handlers row within two seconds is `permission decision: <decision> request <n> (from logs_<N>.sqlite logs, ts)` with no session ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
+| `logs_2.sqlite` `logs` row `codex_core::session::handlers` `op=ExecApproval` or `codex_app_server::outgoing_message` `CommandExecutionRequestApproval` (Codex Desktop) | `system` `permission decision: <decision> exec <item id> turn=<turn id> (from logs_<N>.sqlite logs, ts)` at `ts` from the handlers row (`denied`, `approved` seen), `session_id` the row's thread id, `tool_use_id` the governed item's id (`exec-<uuid>`, [Other stores](#other-stores)); a response row (`Decline`, `Accept`) with no handlers row within two seconds is `permission decision: <decision> request <n> (from logs_<N>.sqlite logs, ts)` with no session ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
 | `state_5.sqlite` `remote_control_enrollments` row | `system` `remote control: enabled=<0\|1> server=<server_id> environment=<environment_id> host=<server_name> client=<app_server_client_name> account=<account_id>` at `updated_at`, `session_id` empty ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
 | `.codex-global-state.json` (secondary, Codex Desktop) | `user` for each `prompt-history` entry of a thread, with an empty `timestamp_utc` (matched on text and session), `session_id` the thread id; `system` `session deleted: <id>` for each `codex-writing-block-deleted-thread-v1:<id>` key and `system` `permission mode (standing): ...` for each `heartbeat-thread-permissions-by-id` entry, at the file's modification time; `system` `thread description: ...` for each `thread-descriptions-v1` entry; one `system` `remote control: mobile device connected=<bool> environment=<id>` row from the two top-level keys; one `system` `scratch directory: <path> (projectless thread <id>) (from <file> thread-projectless-output-directories, file mtime)` row for each `thread-projectless-output-directories` entry, `session_id` the thread id and `project_path` the path itself, so inventory.json lists the directory under `scratch_directories` ([issue 149](https://github.com/seanthegeek/doubleagent/issues/149)); a file that does not decode is one `parser:` row ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
 
@@ -2056,7 +2059,7 @@ that the rollout never stores
 ([policy.rs:160-223](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/rollout/src/policy.rs#L160-L223)),
 so a rollout shows what the policy allowed, not what the user approved. Codex Desktop logs the
 user's answers in `logs_2.sqlite` and records an automatic answer as the verdict of a guardian
-review thread (macOS, build 26.1013.40934, 2026-10-18; [section 10](#10-other-stores)); the parser
+review thread (macOS, build 26.1013.40934, 2026-10-18; [Other stores](#other-stores)); the parser
 yields a `permission decision:` row from each, joined to the governed call on its item id. The
 approval dialog of that build offered no standing "always allow" grant for a command.
 
@@ -2128,7 +2131,7 @@ and SQLite) and `InMemory`
 ([core/src/config/mod.rs:599-607](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L599-L607)),
 and the old `experimental_thread_store_endpoint` for a remote store is now refused at load
 ([3251-3254](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L3251-L3254)).
-The thread metadata sync of [section 9](#9-joins-and-timestamps) copies rollout facts into
+The thread metadata sync of [Joins and timestamps](#joins-and-timestamps) copies rollout facts into
 `state_5.sqlite` and calls no server
 ([thread-store/src/thread_metadata_sync.rs:34-38](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/thread-store/src/thread_metadata_sync.rs#L34-L38)).
 `codex resume` reopens a local rollout
@@ -2160,7 +2163,7 @@ beyond the model API call:
   ([config/src/types.rs:233-236](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/config/src/types.rs#L233-L236),
   [core/src/config/mod.rs:4498-4502](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/core/src/config/mod.rs#L4498-L4502),
   [feedback_processor.rs:62-66](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/app-server/src/request_processors/feedback_processor.rs#L62-L66)).
-  The marker is the `logs_2.sqlite` row of [section 10](#10-other-stores). The parser yields one
+  The marker is the `logs_2.sqlite` row of [Other stores](#other-stores). The parser yields one
   `system` row per such log row (`target` `codex_feedback` and the message
   `feedback event uploaded to Sentry`; the other `codex_feedback` rows report attachment failures
   and are not uploads),
@@ -2200,9 +2203,9 @@ beyond the model API call:
   the local store and the remote client reads them live through the
   app server. Observed with the ChatGPT app's remote connections
   (Settings > Connections > Control this Mac or PC; build
-  26.1013.40934, 2026-10-18 and 2026-10-19, [section 1](#1-source-and-evidence)),
+  26.1013.40934, 2026-10-18 and 2026-10-19, [Source and evidence](#source-and-evidence)),
   it leaves two records: the host-level `remote_control_enrollments`
-  row of [section 10](#10-other-stores), which the parser yields as a
+  row of [Other stores](#other-stores), which the parser yields as a
   `remote control:` row, and a per-turn mark, `turn_attribution.turn_trigger`
   `remote_ios` or `remote_android` on a turn sent from a paired phone,
   which the parser's `turn trigger:` row carries; the
@@ -2244,7 +2247,7 @@ clone; the only matches are unrelated token-usage replay code). The
 resume tokens in `.codex-global-state.json` are the app's index of
 ChatGPT conversations that live on the server, copied one way, account
 to app, as a sign-in snapshot; the `chatgpt-desktop` parser reads them
-([section 13 of `chatgpt-desktop.md`](chatgpt-desktop.md#13-parser-plan)).
+([Parser plan in `chatgpt-desktop.md`](chatgpt-desktop.md#parser-plan)).
 Whether a local Codex thread is ever uploaded as a ChatGPT conversation
 was not determined from source; on macOS (build 26.1013.40934,
 2026-10-18) it was not: the app's Codex-mode threads did not appear in
@@ -2367,10 +2370,10 @@ A copied fork has no boundary beyond the ancestor's `session_meta` and the
 per-message `inherited_user_message` flag, so the other copied records stay
 in the fork's file under the fork's session id.
 
-## 14. Confidence
+## Confidence
 
-- High: everything in [section 2](#2-per-user-storage) to
-  [section 6](#6-where-the-project-path-is-recorded) cited to source, which the local listing
+- High: everything in [Per-user storage](#per-user-storage) to
+  [Where the project path is recorded](#where-the-project-path-is-recorded) cited to source, which the local listing
   matches; the file layout and naming, the envelope, the written type set and the legacy and
   paginated split, the `session_meta`, `turn_context` and `ResponseItem` field names, timestamp
   formats and units, and the `history.jsonl` and `session_index.jsonl` shapes (source, and the
@@ -2385,7 +2388,7 @@ in the fork's file under the fork's session id.
   [macOS differences](#macos-differences) (macOS 26.6.2, Codex Desktop and Codex CLI 0.162.1); the
   layout in [Standalone CLI on Windows](#standalone-cli-on-windows) (Codex CLI 0.162.1); and
   [macOS, ChatGPT 26.1013.40934](#macos-chatgpt-26101340934) with the records of
-  [section 8](#8-record-schema) and [section 10](#10-other-stores) it showed (Codex Desktop
+  [Record schema](#record-schema) and [Other stores](#other-stores) it showed (Codex Desktop
   0.163.0-alpha.10.2, one step per listing).
 - Medium: that copied forks can contain an ancestor's `session_meta` (inferred from the metadata
   sync guard, not from a file); the exact payload of `item_completed` for item kinds not seen

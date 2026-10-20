@@ -8,7 +8,7 @@ itself and Logfire (Pydantic's hosted tracing service), which got no catalog lin
 in [`research/frameworks.md`](frameworks.md). Its parser is in the backlog
 ([issue 66](https://github.com/seanthegeek/doubleagent/issues/66)).
 
-## 1. Source and evidence
+## Source and evidence
 
 [pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai), MIT, open source, commit
 [`0ba01f92be3fc361f89970502cd6e7dd3611aec3`](https://github.com/pydantic/pydantic-ai/commit/0ba01f92be3fc361f89970502cd6e7dd3611aec3).
@@ -43,12 +43,12 @@ and the harness ships a shell toolset
   Added CLAI 2.0's XDG state directory, which the catalog does not name, the harness step store
   and `metadata` keys of `sessions.db`, the saved model defaults in `config.db`, the workspaces
   plugin's scratch checkouts, and the absence of per-call approval and of session sync
-  ([section 2](#2-per-user-storage), [section 3](#3-credentials), [section 4](#4-exclusions),
-  [section 6](#6-where-the-project-path-is-recorded), [Parsing](#parsing)).
+  ([Per-user storage](#per-user-storage), [Credentials](#credentials), [Exclusions](#exclusions),
+  [Where the project path is recorded](#where-the-project-path-is-recorded), [Parsing](#parsing)).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 The library has no default path under the home; message history is
 returned to the caller (see [`research/frameworks.md`](frameworks.md)). The CLIs
@@ -146,7 +146,7 @@ well as in its own; see [`research/claude-code.md`](claude-code.md) and
 
 None.
 
-### 3. Credentials
+### Credentials
 
 - `.config/pydantic-clai2/credentials-*` (the `.enc` and `.json` forms and
   their `.lock` sidecars): flagged. Without a keyring the `.json` form is
@@ -162,7 +162,7 @@ None.
   ([slack_app.py:15](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/slack_app.py#L15)),
   so a `credentials-slack-oauth.*` file is already flagged.
 
-### 4. Exclusions
+### Exclusions
 
 None under the home in the catalog today, since nothing the catalog collects there needs one.
 `.local/state/pydantic-clai2/workspaces/clones`
@@ -176,14 +176,14 @@ CLAI 2.0 puts git worktrees at
 `.worktrees` is not a project catalog entry, and it is too generic a name
 to exclude.
 
-### 5. Project-local files
+### Project-local files
 
 `.clai/settings.json` and `.clai/mcp_servers.json`
 ([project_settings.py:10](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/config/project_settings.py#L10),
 [mcp/_store.py:25](https://github.com/pydantic/pydantic-ai/blob/0ba01f92be3fc361f89970502cd6e7dd3611aec3/src/pydantic_clai2/pydantic_clai2/mcp/_store.py#L25)),
 collected through the `pydantic-clai|.clai` project catalog entry.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 `sessions.db`, `conversations.metadata`, JSON key `workspace`. It is
 recorded only inside SQLite, so `discover_projects` and `Find-Projects`
@@ -219,7 +219,7 @@ and `ApprovalRequired` and `DeferredTool` occur nowhere in `src/pydantic_clai2` 
 [`62b7bf0`](https://github.com/pydantic/pydantic-ai/commit/62b7bf0aeac9a03066263469e650f40957d84cae) (the `approv` matches are plugin approvals, OAuth sign-in prompts and a prompt
 instruction). A project's plugins stay disabled until approved with `/plugins enable`
 ([config/project_settings.py:27](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/config/project_settings.py#L27)),
-and enabled plugins are kept in `config.db` ([section 2](#2-per-user-storage)). Destroying a
+and enabled plugins are kept in `config.db` ([Per-user storage](#per-user-storage)). Destroying a
 workspace needs the user's `Destroy <id>` answer to an `ask_user_question` call, which stays in
 the orchestrator's messages
 ([builtin_plugins/web/workspace_tools.py:80-102](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/web/workspace_tools.py#L80-L102)).
@@ -234,7 +234,7 @@ response content unless `include_content` is turned on
 The Slack integration is an MCP sign-in, not a relay
 ([slack_app.py:1-15](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/slack_app.py#L1-L15)).
 
-## 14. Confidence
+## Confidence
 
 - High: everything stated from source at the cited commits.
 - Not determined: whether the `credentials-*.lock` files hold anything (the docstring says the

@@ -4,7 +4,7 @@ Cursor is a closed-source editor forked from VS Code (the Cursor IDE) with a com
 Cursor Agent CLI (`agent`, `cursor-agent`). Its parser is in the backlog
 ([issue 51](https://github.com/seanthegeek/doubleagent/issues/51)).
 
-## 1. Source and evidence
+## Source and evidence
 
 Closed source. Evidence, strongest first:
 
@@ -39,15 +39,15 @@ None.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Layout is identical on all OSes except the IDE app-data parent and the CLI `auth.json` location
-([section 3](#3-credentials)).
+([Credentials](#credentials)).
 
 #### Scratch directories
 
 `~/.cursor/worktrees/<repo>/<name>`, the CLI's git worktrees (see
-[Cursor Agent CLI](#cursor-agent-cli); excluded in [section 4](#4-exclusions)).
+[Cursor Agent CLI](#cursor-agent-cli); excluded in [Exclusions](#exclusions)).
 
 #### Cursor IDE
 
@@ -100,7 +100,7 @@ docs cli/reference/configuration). Contents found in the bundle:
   downloading `cursor-server`); its `data/User` holds the remote side's editor state, as in
   [Remote server of `research/vscode.md`](vscode.md#remote-server).
 
-### 3. Credentials
+### Credentials
 
 - IDE: `User/globalStorage/state.vscdb` `ItemTable` keys `cursorAuth/accessToken`,
   `cursorAuth/refreshToken` (JWTs), plus user id
@@ -120,7 +120,7 @@ docs cli/reference/configuration). Contents found in the bundle:
   `.cursor/mcp.json` matches in the home and in a collected project.
 - `~/.cursor_info` "holds a Cursor authentication token" (AgentSweep 904-910, L4 only, unverified).
 
-### 4. Exclusions
+### Exclusions
 
 `.cursor/extensions` (extension payloads), `.cursor/worktrees` (git checkouts),
 `.cursor/plugins/marketplaces` (cloned marketplaces),
@@ -130,7 +130,7 @@ extensions, beside the collected `.cursor-server/data/User`).
 `~/.local/share/cursor-agent` (557 MB per version) is not in the catalog. `projects/*/agent-tools`
 holds only outputs over 49 MB; leave it to the size cap rather than exclude.
 
-### 5. Project-local files
+### Project-local files
 
 `.cursor/rules/**/*.mdc`, `.cursorrules`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md` (`index.js`
 `LocalCursorRulesService`; docs context/rules), `.cursor/mcp.json`, `.cursor/hooks.json`,
@@ -139,7 +139,7 @@ holds only outputs over 49 MB; leave it to the size cap rather than exclude.
 bundle). `.cursorindexingignore` appears in neither the bundle nor current docs.
 `.cursor-plugin/marketplace.json` marks a plugin marketplace repo (docs). No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - `~/.cursor/chats/*/*/meta.json` key `cwd` (bundle `chat-session-meta.ts`);
   `~/.cursor/acp-sessions/*/meta.json` likewise.
@@ -150,12 +150,12 @@ bundle). `.cursorindexingignore` appears in neither the bundle nor current docs.
 ## Parsing
 
 Cursor is `backlog`: the IDE's chats and agent runs and the Agent CLI's transcripts and chat
-stores are parseable records on disk ([section 2](#2-per-user-storage)), and the parser is
+stores are parseable records on disk ([Per-user storage](#per-user-storage)), and the parser is
 [issue 51](https://github.com/seanthegeek/doubleagent/issues/51). It is blocked on format
 research because the IDE's `state.vscdb` key layout changes between versions
 ([Cursor IDE](#cursor-ide)); no record schema has been researched yet.
 
-## 14. Confidence
+## Confidence
 
 - High (L1 bundle): the `~/.cursor` layout, `chats/` and `acp-sessions/` with `store.db`, the
   `projects/` name sanitization, worktrees, hooks, `ai-tracking`, and the CLI's `auth.json` and

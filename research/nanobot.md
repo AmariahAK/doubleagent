@@ -8,7 +8,7 @@ metadata line, rewritten whole on every save, and at the 2026-10-19 commit in a 
 database ([Session database](#session-database)). Parsed: the nanobot parser reads the session
 database, the session JSONL files, the memory journal, the WebUI transcript and the CLI history.
 
-## 1. Source and evidence
+## Source and evidence
 
 [HKUDS/nanobot](https://github.com/HKUDS/nanobot), commit
 [`acdae3d0ae2714b6dde672428e921dbf705c096f`](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f)
@@ -29,7 +29,7 @@ so the database may not be in a release yet.
 - No real install. The session database `sessions/<workspace-id>/sessions.sqlite3`, the frozen
   namespace JSONL and `jsonl-backup/` copies beside it, and `history/cli_history` under any
   `.nanobot*` state directory are not observed on any real install, source-derived
-  ([SQLite session store](#sqlite-session-store), [section 7](#7-transcript-stores)).
+  ([SQLite session store](#sqlite-session-store), [Transcript stores](#transcript-stores)).
 
 ### Source reviews
 
@@ -37,13 +37,13 @@ so the database may not be in a release yet.
   only. The review added the SQLite session store and its JSONL import
   ([SQLite session store](#sqlite-session-store), [Session database](#session-database)), the
   `--home` option, the cron and trigger run records and the WebUI sidebar cache
-  ([section 10](#10-other-stores)), the `pairing.json` shape, the SQLite delete behaviour in
+  ([Other stores](#other-stores)), the `pairing.json` shape, the SQLite delete behaviour in
   [What survives a delete](#what-survives-a-delete), and the permission, model and relay plans of
-  [section 13](#13-parser-plan).
+  [Parser plan](#parser-plan).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 All paths derive from `Path.home()`, so the layout is `~/.nanobot` on Linux and macOS and
 `%USERPROFILE%\.nanobot` on Windows; there is no XDG, Library or AppData branch. The config file is
@@ -67,12 +67,12 @@ which the `.nanobot*` entry covers; any other directory is missed.
 
 Under the data directory:
 
-- `config.json`: providers, channels, MCP servers, agent defaults ([section 3](#3-credentials)).
+- `config.json`: providers, channels, MCP servers, agent defaults ([Credentials](#credentials)).
 - `sessions/<workspace-id>/`: one directory per workspace, named by a 32-hex id, holding a
   `.workspace` marker file with the workspace path, `<base64url(session key)>.jsonl` transcripts,
   `<...>.checkpoint.json` runtime overlays, `.session-files.lock` and `.migration-conflicts/`
   ([`nanobot/session/manager.py:58-76`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L58-L76),[`448-477`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L448-L477),[`606-607`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L606-L607),[`777-779`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L777-L779),[`903-927`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L903-L927);
-  naming in [section 7](#7-transcript-stores)). Since [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) the directory also holds the
+  naming in [Transcript stores](#transcript-stores)). Since [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) the directory also holds the
   session database `sessions.sqlite3` with its `-wal` and `-shm` sidecars and the `jsonl-backup/`
   copies ([SQLite session store](#sqlite-session-store)) and the WebUI sidebar cache
   `.webui_session_index.json` ([WebUI sidebar cache](#webui-sidebar-cache)), and the `sessions/`
@@ -90,7 +90,7 @@ Under the data directory:
 - `llm_usage.sqlite3`: provider, model and time of every model call ([Usage database](#usage-database)).
 - `pairing.json`: approved chat senders
   ([`nanobot/pairing/store.py:3`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/pairing/store.py#L3),[`33`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/pairing/store.py#L33)).
-- `auth/xai.json`, `auth/mcp.json` ([section 3](#3-credentials)), `whatsapp-auth/neonize.db`,
+- `auth/xai.json`, `auth/mcp.json` ([Credentials](#credentials)), `whatsapp-auth/neonize.db`,
   `matrix-store/`, `weixin/`, `mochat/`, `linear/state.sqlite3` channel state
   ([`channels/whatsapp/runtime.py:75`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/whatsapp/runtime.py#L75);
   [`channels/matrix/runtime.py:354`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/channels/matrix/runtime.py#L354);
@@ -101,7 +101,7 @@ Under the data directory:
   ([`webui/mcp_presets_api.py:563`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/mcp_presets_api.py#L563)),
   `cli-apps/`
   ([`apps/cli/service.py:428`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/apps/cli/service.py#L428)).
-- `cache/tiktoken/`, `bin/tui/<version>/`, `run/executables/` ([section 4](#4-exclusions)).
+- `cache/tiktoken/`, `bin/tui/<version>/`, `run/executables/` ([Exclusions](#exclusions)).
 
 Always under `~/.nanobot` regardless of `--config` (under the `--home` root when it is given):
 `history/cli_history` (prompt_toolkit input
@@ -151,7 +151,8 @@ Older releases kept `sessions/*.jsonl` inside the workspace; they are copied to 
 and removed
 ([`session/manager.py:806-855`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L806-L855)).
 A workspace other than the default is a project path
-([section 6](#6-where-the-project-path-is-recorded)), collected only as a project.
+([Where the project path is recorded](#where-the-project-path-is-recorded)), collected only as a
+project.
 
 #### Persistence
 
@@ -167,7 +168,7 @@ a named volume, and the API service's workspace is `~/.nanobot/api-workspace`
 ([`docker-compose.yml:13-14`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/docker-compose.yml#L13-L14),[`48-49`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/docker-compose.yml#L48-L49)),
 so the home entry collects both and no `DOCKER_VOLUMES` line is needed.
 
-### 3. Credentials
+### Credentials
 
 - `config.json`: `providers.<name>.apiKey`
   ([`config/schema.py:194-202`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/schema.py#L194-L202)),
@@ -197,7 +198,7 @@ so the home entry collects both and no `DOCKER_VOLUMES` line is needed.
   `request`, `receipt` and `ssh_route` files beside them and
   `webui/remote-instances.json` stay unflagged.
   Evidence in
-  [section 12](#12-secrets).
+  [Secrets](#secrets).
 - No keychain use found.
 - `pairing.json`, the approved chat senders, is at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9)
   `{"approved": {<channel>: [<sender_id>...]}, "pending": {<code>: {channel, sender_id, created_at, expires_at, delivery_status}}}`,
@@ -205,7 +206,7 @@ so the home entry collects both and no `DOCKER_VOLUMES` line is needed.
   ([`pairing/store.py:27-33`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L27-L33),[`73-85`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L73-L85),[`130-138`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/pairing/store.py#L130-L138)).
   It is permission evidence, not a credential, and stays unflagged.
 
-### 4. Exclusions
+### Exclusions
 
 `bin/tui` (downloaded TUI binaries,
 [`cli/tui_launcher.py:261`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/cli/tui_launcher.py#L261)),
@@ -215,15 +216,15 @@ so the home entry collects both and no `DOCKER_VOLUMES` line is needed.
 ([`utils/token_encoding.py:20`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/utils/token_encoding.py#L20)).
 Nothing else is large by design; `media/` can grow but is evidence.
 
-### 5. Project-local files
+### Project-local files
 
 A user can point `--workspace` at a repository, which then receives the workspace files of
-[section 2](#2-per-user-storage), notably `.nanobot/` and `memory/`. `AGENTS.md` is read from the
+[Per-user storage](#per-user-storage), notably `.nanobot/` and `memory/`. `AGENTS.md` is read from the
 active workspace, `SOUL.md` and `USER.md` from the configured one
 ([`agent/context.py:194-202`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/context.py#L194-L202)).
 No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - `sessions/<workspace-id>/.workspace`: absolute workspace path, one line
   ([`session/manager.py:606-607`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L606-L607)).
@@ -240,7 +241,7 @@ No per-project database.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 Home-relative; `.nanobot` may be `.nanobot-<instance>` when `--config` points elsewhere
 ([`nanobot/config/paths.py:20-27`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/paths.py#L20-L27)).
@@ -268,14 +269,14 @@ Home-relative; `.nanobot` may be `.nanobot-<instance>` when `--config` points el
   ([`webui/transcript.py:1`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L1),[`31-39`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L31-L39),[`172-188`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L172-L188)).
   The directory is the instance's data directory, so `.nanobot-<instance>/webui/` for an instance
   ([`config/paths.py:20-27`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/paths.py#L20-L27),[`46-48`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/paths.py#L46-L48)).
-  Read as a secondary source; record shape in [section 8](#8-record-schema).
+  Read as a secondary source; record shape in [Record schema](#record-schema).
   The legacy `<safe key>.json` snapshot beside it
   ([`webui/transcript.py:186-188`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/transcript.py#L186-L188))
   is not read: its shape was not traced.
 - `.nanobot/history/cli_history`: prompt_toolkit input history, user prompts only
   ([`config/paths.py:64-66`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/config/paths.py#L64-L66)),
   always under `~/.nanobot` whatever instance runs unless `--home` moves it with the instance root
-  ([section 2](#2-per-user-storage)), so an instance run as `--home ~/.nanobot-work` writes
+  ([Per-user storage](#per-user-storage)), so an instance run as `--home ~/.nanobot-work` writes
   `.nanobot-work/history/cli_history`. Read as a secondary source; the parser selects
   `history/cli_history` under any `.nanobot*` state directory
   ([issue 179](https://github.com/seanthegeek/doubleagent/issues/179)).
@@ -353,7 +354,7 @@ parsed ([issue 178](https://github.com/seanthegeek/doubleagent/issues/178)):
   database. The file name is the older workspace form, the key with `:` as `_`, so the session id
   comes from its metadata line.
 
-### 8. Record schema
+### Record schema
 
 Line 1 is metadata
 ([`session/manager.py:1207-1220`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L1207-L1220)):
@@ -502,7 +503,7 @@ or, when summarising fails, a `[RAW] <n> messages` block of several formatted me
 stamped to the minute
 ([`:311-324`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/agent/memory.py#L311-L324)).
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 - Session: file = metadata `key`. Keys are `<channel>:<chat_id>`, or `unified:default`, `heartbeat`,
   `cli:direct`
@@ -537,10 +538,10 @@ stamped to the minute
   and the file records neither. The entry is written when the prompt is submitted and the session
   user message at the start of the turn, both in local time.
 - Time basis: message and metadata times are naive host local time
-  ([section 8](#8-record-schema)), the WebUI's `created_at_ms` true UTC; the parser's
-  convention is under [section 13](#13-parser-plan).
+  ([Record schema](#record-schema)), the WebUI's `created_at_ms` true UTC; the parser's
+  convention is under [Parser plan](#parser-plan).
 
-### 10. Other stores
+### Other stores
 
 None of these stores is read by the parser. The WebUI sidebar cache and the cron and trigger
 run records are cited at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9).
@@ -590,19 +591,19 @@ records with the content and the `response`
 [`triggers/local_types.py:121-158`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/triggers/local_types.py#L121-L158)).
 Secondary, as for the cron runs; the directory exists at [`acdae3d`](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f) as well.
 
-### 11. Format versions
+### Format versions
 
 No version field in session files. The metadata line writes both `last_archived` and the older
 `last_consolidated` for downgrade compatibility
 ([`session/manager.py:1215-1218`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/session/manager.py#L1215-L1218)).
-Legacy file names differ ([section 7](#7-transcript-stores)). At [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) the session store
+Legacy file names differ ([Transcript stores](#transcript-stores)). At [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) the session store
 moved from JSONL to SQLite ([Session database](#session-database)), `.migration-conflicts/` and the
 import of the global pre-namespace `sessions/*.jsonl` are gone
 ([SQLite session store](#sqlite-session-store)), and the message, metadata and WebUI record shapes
 are unchanged; what `Session.clear()` and a `/new` erase is under
 [What survives a delete](#what-survives-a-delete).
 
-### 12. Secrets
+### Secrets
 
 `provider_state.state` is opaque provider conversation state. Tool `content`
 holds raw tool output. `tool_calls[].function.arguments` can contain whatever
@@ -623,9 +624,9 @@ private key), `request`, `receipt` and `ssh_route`
 beside `remote-origin-ports.json` and per-server pinned host keys in `remote-hosts/<uuid>`
 ([`remote_instances.py:70-71`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_instances.py#L70-L71),[`105-125`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_instances.py#L105-L125)).
 The catalog collects all of them under `.nanobot*`, and the two private keys are flagged by the
-secret globs named in [section 3](#3-credentials).
+secret globs named in [Credentials](#credentials).
 
-### 13. Parser plan
+### Parser plan
 
 Globs (home-relative): `.nanobot*/sessions/*/sessions.sqlite3`,
 `.nanobot*/sessions/*/*.jsonl`, `.nanobot*/sessions/*.jsonl`,
@@ -646,8 +647,8 @@ Read `.workspace` from the namespace directory.
 | text | `content` text; for tool_use the `command`/`path`/`url` key of the parsed `arguments`, else the arguments string |
 | source_line | line number |
 
-Timestamps are host local time ([section 9](#9-joins-and-timestamps)). The collector does not
-record the host zone, so the parser follows the aider parser's documented convention (local time
+Timestamps are host local time ([Joins and timestamps](#joins-and-timestamps)). The collector does
+not record the host zone, so the parser follows the aider parser's documented convention (local time
 emitted as if UTC, stated in its [subsection of the agents page](../docs/agents.md#aider)) and
 lets the analyst correct it; `llm_usage.sqlite3` gives true UTC for the same calls to derive the
 offset.
@@ -662,7 +663,7 @@ else is.
 No permission state is read by the parser
 ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
 [issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), `pairing.json` (the chat senders
-the operator approved, shape in [section 3](#3-credentials)) included.
+the operator approved, shape in [Credentials](#credentials)) included.
 
 Plan, at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) (not yet in the parser): one `system` row per standing setting at the
 file's modification time, `permission setting: <key>=<value> (from config.json, file mtime)`, for
@@ -683,8 +684,8 @@ and after the session start row,
 `metadata.workspace_scope`, which the WebUI writes on every message it accepts
 ([`security/workspace_access.py:11-12`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/security/workspace_access.py#L11-L12),[`80-84`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/security/workspace_access.py#L80-L84),[`212-213`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/security/workspace_access.py#L212-L213);
 [`webui/inbound_commands.py:694`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/webui/inbound_commands.py#L694)).
-The key was already written at the [section 1](#1-source-and-evidence) commit. Per-call decisions:
-the agent records none. The exec tool's refusals are tool results such as
+The key was already written at the [Source and evidence](#source-and-evidence) commit. Per-call
+decisions: the agent records none. The exec tool's refusals are tool results such as
 `Error: Command blocked by deny pattern filter`
 ([`agent/tools/shell.py:825-835`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/agent/tools/shell.py#L825-L835)),
 already `tool_result` rows; no approval prompt exists (not found at `909b277`; grepped for `approv`
@@ -764,21 +765,21 @@ secondary sources
 `response`, at `updated_at_ms`, `session_id` from `session_key` or the
 trigger's), and the WebUI sidebar cache as a secondary source of one
 `system` row per entry naming the title and preview; see
-[section 10](#10-other-stores).
+[Other stores](#other-stores).
 
 #### Sync, relay and origin rows
 
 Sync: nanobot records no sync state, because it uploads no session to a vendor or share service. The
 session, the WebUI transcript, the memory journal and the CLI history are written only under the
-home and the workspace ([section 7](#7-transcript-stores)), and the project's own privacy notes say
-chat history is stored locally and that the model provider sees the prompts
+home and the workspace ([Transcript stores](#transcript-stores)), and the project's own privacy
+notes say chat history is stored locally and that the model provider sees the prompts
 ([`SECURITY.md:208-212`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/SECURITY.md#L208-L212)).
 A channel (Telegram, Slack and the other chat services nanobot answers through) keeps its own copy
 of the messages it carried, on the channel's servers, as the model provider sees the prompts;
-neither is sync. Searched at the [section 1](#1-source-and-evidence) commit: `sync`, `share`,
-`upload`, `cloud`, `telemetry`, `analytics`, `backup`, `export`, `remote`, every `https://` host
-outside the provider and channel modules, and the WebUI and TUI front ends for analytics libraries
-(none). The paths found and read, none of which carries session content to a vendor:
+neither is sync. Searched at the [Source and evidence](#source-and-evidence) commit: `sync`,
+`share`, `upload`, `cloud`, `telemetry`, `analytics`, `backup`, `export`, `remote`, every `https://`
+host outside the provider and channel modules, and the WebUI and TUI front ends for analytics
+libraries (none). The paths found and read, none of which carries session content to a vendor:
 
 - Langfuse tracing, an LLM-observability service, is opt-in: with the `langfuse` extra installed
   (`nanobot plugins enable langfuse`) and `LANGFUSE_SECRET_KEY` set in the environment, the
@@ -798,7 +799,7 @@ outside the provider and channel modules, and the WebUI and TUI front ends for a
   [`providers/openai_compat_provider.py:595-601`](https://github.com/HKUDS/nanobot/blob/909b277e7a5a7ecd2aebdba9611e5febe86988d9/nanobot/providers/openai_compat_provider.py#L595-L601)).
 - Remote WebUI pairing connects the local WebUI over SSH to a nanobot gateway on another host the
   user runs; that host's sessions stay on it, in its own `.nanobot`, and the local side keeps only
-  the server list and the pairing keys ([section 12](#12-secrets)). "Forget" removes a pairing's
+  the server list and the pairing keys ([Secrets](#secrets)). "Forget" removes a pairing's
   files
   ([`webui/remote_pairing.py:330-339`](https://github.com/HKUDS/nanobot/blob/acdae3d0ae2714b6dde672428e921dbf705c096f/nanobot/webui/remote_pairing.py#L330-L339))
   and leaves the append-only `remote-origin-ports.json` ledger
@@ -868,12 +869,12 @@ with `.workspace` containing `/home/alice/.nanobot/workspace`:
 {"role":"assistant","content":"python3 (pid 4242) is listening on 8080.","timestamp":"2026-10-01T10:15:09.400000"}
 ```
 
-## 14. Confidence
+## Confidence
 
-- High (source): every path in [section 2](#2-per-user-storage) to
-  [section 6](#6-where-the-project-path-is-recorded), read from constants in the cited files.
+- High (source): every path in [Per-user storage](#per-user-storage) to
+  [Where the project path is recorded](#where-the-project-path-is-recorded), read from constants in the cited files.
 - High (source): file naming, metadata and message field names, naive local timestamps and the
-  tool call shape of [section 8](#8-record-schema); the WebUI transcript record shape and layout.
+  tool call shape of [Record schema](#record-schema); the WebUI transcript record shape and layout.
 - Medium: that `matrix-store/` holds credentials (inferred from its role; not read).
 - Medium: `.nanobot-*` as an instance naming convention comes from docs, and any other
   `--config` location is missed.

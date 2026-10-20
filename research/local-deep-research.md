@@ -3,10 +3,10 @@
 Local Deep Research (LDR) is a research agent with a web UI, written in Python. Its parser is in
 the backlog ([issue 56](https://github.com/seanthegeek/doubleagent/issues/56)): research history
 and chat live in a per-user SQLCipher (encrypted SQLite) database encrypted with the user's
-login password ([section 3](#3-credentials)), so the analyzer cannot parse them without that
+login password ([Credentials](#credentials)), so the analyzer cannot parse them without that
 password.
 
-## 1. Source and evidence
+## Source and evidence
 
 [LearningCircuit/local-deep-research](https://github.com/LearningCircuit/local-deep-research) (LDR),
 MIT, open source, Python, commit
@@ -34,7 +34,7 @@ and that checkout is newer.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 The data directory is `$LDR_DATA_DIR` if set (absolute path required), otherwise
 `platformdirs.user_data_dir("local-deep-research")`
@@ -110,7 +110,7 @@ Contents, all created on demand
 None. LDR creates no working directory for the model; `research_outputs/` and the download library
 ([Document library](#document-library)) are its own output stores. `research_outputs/` is
 collected with the data directory; the library is under the collected
-`Documents/LocalDeepResearch` but excluded ([section 4](#4-exclusions)).
+`Documents/LocalDeepResearch` but excluded ([Exclusions](#exclusions)).
 
 #### Document library
 
@@ -186,7 +186,7 @@ readable only with the user's password:
   so a copy of each research's question and summary sits in the destination service, outside the
   host.
 
-### 3. Credentials
+### Credentials
 
 - Provider API keys are kept in the `api_keys` and `settings` tables inside the encrypted user
   database
@@ -208,7 +208,7 @@ readable only with the user's password:
 - The pre-1.0 `ldr.db` is unencrypted, so it holds settings and keys in plaintext. Collect it
   unflagged as evidence.
 
-### 4. Exclusions
+### Exclusions
 
 `cache`, `models`, `journal_data` and `library` under the data directory, and
 `Documents/LocalDeepResearch/Library`. Embedding models, vector indexes, journal datasets and
@@ -217,11 +217,11 @@ with its total size, not a list of its files
 ([`collectors/docs/output.md`](../collectors/docs/output.md)). Keep `encrypted_databases/backups`:
 the files are encrypted copies, but they show when the database existed.
 
-### 5. Project-local files
+### Project-local files
 
 None. LDR is not a coding agent and does not write into repositories.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Nowhere. LDR has no project concept. The research query (`research_history.query`) is inside the
 encrypted database.
@@ -231,13 +231,13 @@ encrypted database.
 LDR is `backlog`: its parser is
 [issue 56](https://github.com/seanthegeek/doubleagent/issues/56), and nothing it writes is parsed
 yet. The history and chat are in the per-user SQLCipher database, whose key derives from the login
-password ([section 3](#3-credentials)), so a parser needs that password, a database kept plain
+password ([Credentials](#credentials)), so a parser needs that password, a database kept plain
 with `bootstrap.allow_unencrypted`, or the unencrypted pre-1.0 `ldr.db`. The tables, the login
-backups and the plaintext copies are in [section 2](#2-per-user-storage) and
+backups and the plaintext copies are in [Per-user storage](#per-user-storage) and
 [Database detail](#database-detail). The opt-in log files are the only line-oriented files, and
 they are zip-compressed on rotation.
 
-## 14. Confidence
+## Confidence
 
 - High: data directory resolution on all three OSes, every file name, the encryption scheme and
   the key storage (source).

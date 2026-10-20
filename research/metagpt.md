@@ -6,7 +6,7 @@ into the catalog from the agent framework sweep for
 [`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. It is
 collected only, with no parser: MetaGPT keeps no transcripts under the home.
 
-## 1. Source and evidence
+## Source and evidence
 
 [FoundationAgents/MetaGPT](https://github.com/FoundationAgents/MetaGPT)
 ([geekan/MetaGPT](https://github.com/geekan/MetaGPT) redirects there), MIT
@@ -28,11 +28,11 @@ persistent shell
 - 2026-10-19: HEAD of FoundationAgents/MetaGPT is still
   [`11cdf46`](https://github.com/FoundationAgents/MetaGPT/commit/11cdf466d042aece04fc6cfd13b28e1a70341b1f),
   re-read from source for permission, model, past-use and sync records. It added the run log and
-  the model key ([section 2](#2-per-user-storage)); there is still nothing to parse.
+  the model key ([Per-user storage](#per-user-storage)); there is still nothing to parse.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 | Path (home-relative, all OSes) | Holds | Default or opt-in |
 | --- | --- | --- |
@@ -85,19 +85,19 @@ anchor a glob on. The git tool reads, but does not write,
 
 No named volume.
 
-### 3. Credentials
+### Credentials
 
 - `.metagpt/config2.yaml` and `.metagpt/config2.bak`: flagged.
 
-### 4. Exclusions
+### Exclusions
 
 None.
 
-### 5. Project-local files
+### Project-local files
 
 The `workspace/` tree in [Workspace](#workspace), under no MetaGPT-specific name.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Nowhere under the home.
 
@@ -108,7 +108,7 @@ parse under the home. The team state and the run logs are written under `METAGPT
 MetaGPT-specific name ([Workspace](#workspace)), so no catalog line reaches them and a parser
 would have no collected file to read.
 
-## 14. Confidence
+## Confidence
 
 - High for every path (source).
 - Not determined: the workspace location when the working directory is the home (then

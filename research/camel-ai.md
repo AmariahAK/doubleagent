@@ -6,7 +6,7 @@ browser, Gmail and files. It came into the catalog from the agent framework swee
 [`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. It is
 collected only, with no parser: CAMEL keeps no transcripts under the home.
 
-## 1. Source and evidence
+## Source and evidence
 
 [camel-ai/camel](https://github.com/camel-ai/camel), Apache-2.0, open source, commit
 [`24fde60ad739b4be8f8f533fea9ba54256fbc4a2`](https://github.com/camel-ai/camel/commit/24fde60ad739b4be8f8f533fea9ba54256fbc4a2)
@@ -29,11 +29,11 @@ uses `subprocess.Popen`
   [`24fde60`](https://github.com/camel-ai/camel/commit/24fde60ad739b4be8f8f533fea9ba54256fbc4a2),
   from source only. The home paths were unchanged; it added the caller-chosen tool log directory,
   the terminal toolkit's approval arguments and the absence of any sync
-  ([section 2](#2-per-user-storage)), and confirmed that there is nothing to parse.
+  ([Per-user storage](#per-user-storage)), and confirmed that there is nothing to parse.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 The home paths are the same at
 [`797296a`](https://github.com/camel-ai/camel/commit/797296a718ce856d9c9476e4bb69fedb71ab6382)
@@ -100,22 +100,22 @@ CAMEL-only `.config/camel`.
 
 No compose file or named volume.
 
-### 3. Credentials
+### Credentials
 
 - `.camel/gmail_token.json`: flagged. It is the one catalog line of real value: it shows that a
   Google account was granted to a CAMEL agent, which can then read and send mail as a tool.
 
-### 4. Exclusions
+### Exclusions
 
 `.camel/runtimes` would need one only if `.camel` were collected whole; it
 is not, so none.
 
-### 5. Project-local files
+### Project-local files
 
-The working-directory files in [section 2](#2-per-user-storage) are created wherever the
+The working-directory files in [Per-user storage](#per-user-storage) are created wherever the
 application runs, under no CAMEL-specific name, so they are not project catalog entries.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Nowhere under the home.
 
@@ -123,9 +123,9 @@ Nowhere under the home.
 
 CAMEL is `collected` only: there is nothing to parse, because it keeps no transcripts under the
 home. Its chat history, model logs, tool logs and saved memory are written in the working
-directory or wherever the calling program says ([section 2](#2-per-user-storage)), so no catalog
-line reaches them and a parser would have no file to read.
+directory or wherever the calling program says ([Per-user storage](#per-user-storage)), so no
+catalog line reaches them and a parser would have no file to read.
 
-## 14. Confidence
+## Confidence
 
 - High for every path (source).

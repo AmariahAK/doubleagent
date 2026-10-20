@@ -2,21 +2,21 @@
 
 OpenCode (catalog agent `opencode`) is an open-source coding agent with a terminal UI, a background
 server and, on the 2.0 line, an Electron desktop app; its repository moved from `sst/opencode` to
-`anomalyco/opencode` ([section 1](#1-source-and-evidence)). It was researched together with Crush,
-which began as an OpenCode fork but no longer shares any storage code ([`crush.md`](crush.md)); Kilo
-Code's current store is an OpenCode fork and shares this schema ([`kilo-code.md`](kilo-code.md)),
-and Kilo Code's parser subclasses this one, so the per-record error rows and the `session_v2`
-reading apply to Kilo Code's database too, should Kilo Code take OpenCode's 2.0 store. Letta Code
-(at
+`anomalyco/opencode` ([Source and evidence](#source-and-evidence)). It was researched together with
+Crush, which began as an OpenCode fork but no longer shares any storage code
+([`crush.md`](crush.md)); Kilo Code's current store is an OpenCode fork and shares this schema
+([`kilo-code.md`](kilo-code.md)), and Kilo Code's parser subclasses this one, so the per-record
+error rows and the `session_v2` reading apply to Kilo Code's database too, should Kilo Code take
+OpenCode's 2.0 store. Letta Code (at
 [`2a46615`](https://github.com/letta-ai/letta-code/commit/2a46615d16babb06cf5450b8e57ecb9bdbf2f436))
 can drive OpenCode as an external coding agent, starting `opencode serve` in its working directory
 ([src/agent/subagents/index.ts:123-159](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/agent/subagents/index.ts#L123-L159),
 [src/tools/impl/opencode-server.ts:51-66](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/tools/impl/opencode-server.ts#L51-L66)),
 so a session Letta Code started lands in this store like any other OpenCode session
-([section 1 of `letta.md`](letta.md#1-source-and-evidence)). The analyzer parses the 1.x and 2.0
-database layouts, from source and fixtures only.
+([Source and evidence in `letta.md`](letta.md#source-and-evidence)). The analyzer parses the 1.x and
+2.0 database layouts, from source and fixtures only.
 
-## 1. Source and evidence
+## Source and evidence
 
 [sst/opencode](https://github.com/sst/opencode), open source, MIT. Every claim is from source.
 The repository has moved to [anomalyco/opencode](https://github.com/anomalyco/opencode)
@@ -25,17 +25,17 @@ The repository has moved to [anomalyco/opencode](https://github.com/anomalyco/op
 - [`907b3bc`](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c),
   the 1.x line. The newest tagged release, v1.19.3 of 2026-10-16, is 52 commits after it on a
   branch other than `dev` and still keeps the 1.x layout (its `session` table is `session`,
-  beside the `message` and `part` tables of [section 8](#8-record-schema)).
+  beside the `message` and `part` tables of [Record schema](#record-schema)).
 - [`cb07c55`](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e),
   the `dev` head, the 2.0 line, whose CLI package is version 2.0.32
   ([`packages/cli/package.json:4`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/cli/package.json#L4))
   and which npm publishes under the `dev` tag only. It is 4742 commits after `907b3bc`.
 
 Unless a sentence says "on the 2.0 line" or cites `cb07c55`, the paths in
-[section 2](#2-per-user-storage), [section 3](#3-credentials), [section 4](#4-exclusions),
-[section 5](#5-project-local-files) and [section 6](#6-where-the-project-path-is-recorded), and
+[Per-user storage](#per-user-storage), [Credentials](#credentials), [Exclusions](#exclusions),
+[Project-local files](#project-local-files) and [Where the project path is recorded](#where-the-project-path-is-recorded), and
 the record sections, describe the shipped 1.x release at `907b3bc`;
-[section 11](#11-format-versions) lists what the 2.0 line changes. At `907b3bc` the schema has
+[Format versions](#format-versions) lists what the 2.0 line changes. At `907b3bc` the schema has
 moved out of `packages/opencode` into `packages/core` (tables) and `packages/schema` (JSON
 shapes); the 2.0 line moves the code again, to `packages/core`, `packages/cli`, `packages/tui` and
 `packages/util`. Paths cited are relative to the repository root. The platform mapping was verified
@@ -59,9 +59,9 @@ No real install.
 - 2026-10-19, `dev` at
   [`cb07c55`](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e)
   (2.0.32): added the 2.0 line throughout: the TUI state files and other records of use
-  ([section 10](#10-other-stores)), the desktop app, the background server's `service.json`
-  ([section 3](#3-credentials)), the permission records, the temp root and worktrees, the 2.0
-  delete and the `session_v2` layout ([section 11](#11-format-versions)) that the parser has read
+  ([Other stores](#other-stores)), the desktop app, the background server's `service.json`
+  ([Credentials](#credentials)), the permission records, the temp root and worktrees, the 2.0
+  delete and the `session_v2` layout ([Format versions](#format-versions)) that the parser has read
   since [issue 165](https://github.com/seanthegeek/doubleagent/issues/165).
 - 2026-10-17, session sharing at
   [`907b3bc`](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c) and
@@ -72,7 +72,7 @@ No real install.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 [`packages/core/src/global.ts:3`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/global.ts#L3),[`10-15`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/global.ts#L10-L15)
 builds data, cache, config and state as `xdg*/opencode`.
@@ -112,7 +112,7 @@ project are scratch directories inside the data directory (`worktree/` under
 
 - `opencode.db` with `-wal`/`-shm`, or `opencode-<channel>.db`: every session, project, standing
   permission grant and stored credential, in one SQLite database
-  ([section 7](#7-transcript-stores), [section 3](#3-credentials)).
+  ([Transcript stores](#transcript-stores), [Credentials](#credentials)).
 - `opencode-next.db`, on the 2.0 line: the database of the pre-release 2.0 builds, imported into
   `opencode.db` and left in place ([Other records of use](#other-records-of-use)).
 - `storage/` legacy JSON tree: `project/<id>.json`, `session/<projectID>/`, `message/<sessionID>/`,
@@ -191,7 +191,7 @@ recognised at
   ([`packages/cli/src/services/service-config.ts:39-42`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/cli/src/services/service-config.ts#L39-L42),
   [`:115-130`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/cli/src/services/service-config.ts#L115-L130);
   [`packages/client/src/effect/service.ts:142-148`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/client/src/effect/service.ts#L142-L148));
-  `~/.config/opencode/service.json` holds its settings ([section 3](#3-credentials)).
+  `~/.config/opencode/service.json` holds its settings ([Credentials](#credentials)).
 
 #### Cache directory
 
@@ -228,7 +228,7 @@ System-wide managed config, outside home: `/Library/Application Support/opencode
 `%ProgramData%\opencode`, `/etc/opencode`
 ([`config/managed.ts:23-27`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/config/managed.ts#L23-L27)).
 
-### 3. Credentials
+### Credentials
 
 - `~/.local/share/opencode/auth.json`, mode 0600: per provider
   `{type:"oauth",refresh,access,expires}` or `{type:"api",key}` or `{type:"wellknown",key,token}`
@@ -252,7 +252,7 @@ System-wide managed config, outside home: `/Library/Application Support/opencode
   [`:164-175`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/cli/src/services/service-config.ts#L164-L175),
   [`:177-186`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/cli/src/services/service-config.ts#L177-L186)).
   The registration copy `~/.local/state/opencode/service.json` carries the same `password`
-  ([section 2](#2-per-user-storage)). Neither file matches a secret glob today. Remote access
+  ([Per-user storage](#per-user-storage)). Neither file matches a secret glob today. Remote access
   exposes the server through an OpenTunnel tunnel (a third-party tunnelling client library,
   `@opentunnel/client`) at `https://<route>.<tunnel hostname>`, turned on with
   `opencode service set remote true` or `opencode pair --remote`
@@ -266,7 +266,7 @@ System-wide managed config, outside home: `/Library/Application Support/opencode
   [`:46-50`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/migration/20260805200742_import_legacy_credentials.ts#L46-L50)),
   so both copies stay on disk.
 
-### 4. Exclusions
+### Exclusions
 
 Relative to the home:
 
@@ -274,13 +274,13 @@ Relative to the home:
 `.local/share/opencode/tool-output`, `.config/opencode/node_modules`, `.opencode/node_modules`,
 `.opencode/bin`, `.cache/opencode` (entire dir is binaries, package installs and skill clones;
 `models.json` is public data), and `.local/share/opencode/bin`, which neither reviewed commit
-writes ([Data directory](#data-directory), [section 14](#14-confidence)).
+writes ([Data directory](#data-directory), [Confidence](#confidence)).
 
 The 2.0 line adds no excludable subtree under these directories; `worktree` and `snapshot` stay
 where the exclusions point. The desktop app's `compile-cache` directory
 ([OpenCode desktop app](#opencode-desktop-app)) is low-value.
 
-### 5. Project-local files
+### Project-local files
 
 `.opencode/` directories from cwd up to the worktree root
 ([`config/paths.ts:26-31`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/config/paths.ts#L26-L31))
@@ -291,7 +291,7 @@ holding `opencode.json(c)`, `agents/`, `plugins/`, `themes/`, `skills/`, and the
 ([`session/instruction.ts:65-67`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/session/instruction.ts#L65-L67)).
 No per-project database; sessions live in the home DB.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - SQLite table `project`: `worktree` (absolute), `sandboxes` (array), and table `project_directory`
   `directory` with `type` main/root/git_worktree
@@ -314,7 +314,7 @@ No per-project database; sessions live in the home DB.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 One SQLite file for all projects: `~/.local/share/opencode/opencode.db`
 ([`packages/core/src/global.ts:3`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/global.ts#L3),[`11`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/global.ts#L11)
@@ -332,7 +332,7 @@ value is joined to the data directory
 One `message` row per message, one `part` row per content part. A legacy JSON tree
 `~/.local/share/opencode/storage/`
 ([`packages/opencode/src/storage/storage.ts:224`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/storage/storage.ts#L224))
-still exists ([section 11](#11-format-versions)).
+still exists ([Format versions](#format-versions)).
 
 `journal_mode=WAL`
 ([`database.ts:27`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/database/database.ts#L27),
@@ -343,7 +343,7 @@ also at open
 Rows written since the last checkpoint live only in `opencode.db-wal`, so a copy without the sidecar
 loses recent messages. No encryption or compression.
 
-Other records of use, beside this store, are in [section 10](#10-other-stores), under
+Other records of use, beside this store, are in [Other stores](#other-stores), under
 [Other records of use](#other-records-of-use).
 
 #### What survives a delete
@@ -379,7 +379,7 @@ the legacy V1 tables, for a session `session_message` does not hold, and `openco
 secondary sources, and does not read the `~/.local/state/opencode` files or the log; `tool-output/`
 is excluded from collection (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 Git branch is not recorded anywhere. Role: `message.data.role`. Project
 path: `project.worktree`; cwd: `session.directory` or assistant
@@ -478,7 +478,7 @@ Migration
 wipes `session_message`, `session_input` and `event` on upgrade, so in a 1.x database (one with no
 `session_v2` table) `message`/`part` are the durable transcript and `session_message` is
 supplementary; in a 2.0 database `session_message` is the transcript
-([section 11](#11-format-versions)). The two switch records carry the common base
+([Format versions](#format-versions)). The two switch records carry the common base
 `id`, `metadata?` and `time.created`
 ([`session-message.ts:24-28`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/session-message.ts#L24-L28))
 plus `agent` (a string) for `agent-switched`
@@ -501,7 +501,7 @@ so `data` is `{time, agent}` or `{time, model}`.
 ([`core/src/event.ts:336-348`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/core/src/event.ts#L336-L348)).
 Also wiped by the reset migration.
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 `session.project_id → project.id` (worktree); `message.session_id → session.id`;
 `part.message_id → message.id` (`part.session_id` is denormalised). Order parts by `part.id` (ids
@@ -509,9 +509,9 @@ are time-ordered,
 [`v1/session.ts:17-27`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/v1/session.ts#L17-L27))
 or `time_created`. Tool call and result are one `part` row; assistant → user through
 `data.parentID`. `session_message` joins on `session_id`, ordered by `seq`. Times are epoch
-milliseconds ([section 8](#8-record-schema)).
+milliseconds ([Record schema](#record-schema)).
 
-### 10. Other stores
+### Other stores
 
 #### Other records of use
 
@@ -525,7 +525,7 @@ What the parser reads of them is under
 | `~/.local/state/opencode/prompt-history.jsonl` ([`packages/tui/src/prompt/history.tsx:20-23`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L20-L23), [`:60-75`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L60-L75), [`:93-100`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L93-L100), [`:139`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L139)) | the last 50 TUI prompts, one JSON object per line, `{text, files, agents, skills, pasted, mode?}` with `mode` `normal` or `shell`; no session id, project or time | session delete, project removal; trimmed to 50 and rewritten at each start, dropping lines that do not parse | text only | not read; secondary when read, empty `timestamp_utc` |
 | `~/.local/state/opencode/prompt-stash.jsonl` ([`packages/tui/src/prompt/stash.tsx:9-14`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L9-L14), [`:40`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L40)) | up to 50 prompts set aside unsent, `{prompt, timestamp}` (epoch ms) | everything; a stashed prompt may never reach a transcript | none (text and time when it was later sent) | not read; primary for what it holds (unsent prompts), `system` rows |
 | `~/.local/state/opencode/session.json` ([`packages/tui/src/context/local.tsx:517-530`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/context/local.tsx#L517-L530)) | `{pinned: [<session id>...]}`, ids of sessions the user pinned | session delete (the id stays until the user unpins it) | session id | not read; secondary: a pinned id with no session left is a trace of a deleted session |
-| Legacy `session`, `message`, `part` tables in a database migrated to 2.0 ([section 11](#11-format-versions)) | the 1.x transcript, copied into `session_message` by the migration | deletion of the session in 2.0, which removes only the `session_v2` row and what cascades from it | session id, message id (the copy keeps the V1 ids, [`v1-migration.bun.ts:353`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L353), [`:404`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L404)) | secondary: read only for a session `session_message` does not hold, its event rows marked `recovered` by the parser |
+| Legacy `session`, `message`, `part` tables in a database migrated to 2.0 ([Format versions](#format-versions)) | the 1.x transcript, copied into `session_message` by the migration | deletion of the session in 2.0, which removes only the `session_v2` row and what cascades from it | session id, message id (the copy keeps the V1 ids, [`v1-migration.bun.ts:353`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L353), [`:404`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L404)) | secondary: read only for a session `session_message` does not hold, its event rows marked `recovered` by the parser |
 | `~/.local/share/opencode/opencode-next.db` ([`packages/core/src/database/v1-migration.bun.ts:702-706`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L702-L706), [`:846`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L846)) | a pre-release 2.0 database (`project`, `session`, `session_message`), imported read-only and left in place | everything after the import | session id | secondary (`secondary()`), so a session it shares with `opencode.db` is shown once |
 | `~/.local/share/opencode/tool-output/tool_<id>` ([`packages/core/src/tool-output.ts:13-18`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/tool-output.ts#L13-L18), [`:86-90`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/tool-output.ts#L86-L90)) | full text of a tool result the transcript cut at 2000 lines or 50 KiB, kept seven days | session delete within the seven days | the path in the transcript marker `[showing lines 1-<n> of <m>; full output saved to <file>]` | secondary; not collected (catalog exclusion) |
 | desktop app `drafts.sqlite` in `<appData>/ai.opencode.desktop*` ([`packages/desktop/src/main/storage/schema.ts:3-29`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/desktop/src/main/storage/schema.ts#L3-L29)) | prompt drafts and history, `document(key, value)` | not determined | not determined | not collected; needs a real-install round |
@@ -537,7 +537,7 @@ What the parser reads of them is under
 [`:42`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/frecency.tsx#L42),
 [`:61`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/frecency.tsx#L61));
 it has no session id and records files, not prompts
-([section 6](#6-where-the-project-path-is-recorded)).
+([Where the project path is recorded](#where-the-project-path-is-recorded)).
 
 The 2.0 runtime keeps no other mirror: the `event` table holds payloads
 only on the hosted (workerd) server, never in the CLI
@@ -644,7 +644,7 @@ The `event` table keeps payloads only when the bus is configured to persist them
 and the 2.0 upgrade deletes every existing `event` row
 ([`v1-migration.bun.ts:549-566`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L549-L566)).
 
-### 11. Format versions
+### Format versions
 
 Legacy JSON under `~/.local/share/opencode/storage/`, one file per key: `project/<projectID>.json`
 (`{id, vcs, worktree, time}`), `session/<projectID>/<sessionID>.json`,
@@ -690,7 +690,7 @@ What changes for the parser:
 - `session_message` is the only transcript for new sessions. Its `type` adds `location-switched`
   (`location.{directory, workspaceID}`, `projectID`, `subpath`, `previous`), `skill` (`skill`,
   `name`, `text`) and `idle` (`outcome` in `succeeded|failed|interrupted`, `error`) to the types in
-  [section 8](#8-record-schema); `agent-switched` and `model-switched` gain `previous`; `shell` is
+  [Record schema](#record-schema); `agent-switched` and `model-switched` gain `previous`; `shell` is
   now `shellID`, `command`, `status` (`running|exited|timeout|killed`), `exit` and `output`, an
   object `{output, cursor, size, truncated}`; tool items gain `executed` and the `streaming` status;
   assistant gains `snapshot`, `finish`, `retry`, `time.streamed`
@@ -705,14 +705,15 @@ What changes for the parser:
   ([`packages/tui/src/config/keybind.ts:125-127`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/config/keybind.ts#L125-L127));
   `session_v2.share_url` remains as a column and is copied from 1.x sessions.
 - New tables: `permission` ([Permission records](#permission-records)), `worktree` (one row per
-  worktree OpenCode made, [section 6](#6-where-the-project-path-is-recorded)), `kv`,
+  worktree OpenCode made,
+  [Where the project path is recorded](#where-the-project-path-is-recorded)), `kv`,
   `session_pending`, `session_inbox`, `instruction_*`, and `project.time_archived`.
 - A session imported with `opencode session import <file or URL>` is written as a new session with
   the local version and the import time as `time_updated`, and no field records where it came from
   ([`packages/cli/src/commands/handlers/session/import.ts:15-22`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/cli/src/commands/handlers/session/import.ts#L15-L22);
   [`packages/core/src/session/transfer.ts:64-126`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/transfer.ts#L64-L126)).
 
-### 12. Secrets
+### Secrets
 
 `credential.value` JSON (`{type:"oauth", access, refresh}` or `{type:"key", key}`,
 [`schema/src/credential.ts:16-34`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/schema/src/credential.ts#L16-L34)),
@@ -722,7 +723,7 @@ service's per-share secret that authorises sync to and deletion of the public co
 ([`auth/index.ts:10`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/auth/index.ts#L10),[`14-35`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/auth/index.ts#L14-L35))
 and `mcp-auth.json`. Tool `input` and `output` text can contain pasted tokens.
 
-### 13. Parser plan
+### Parser plan
 
 Globs: `.local/share/opencode/opencode*.db{,-wal,-shm}`,
 `.local/share/opencode/storage/{session,message,part,project}/**/*.json`,
@@ -742,8 +743,8 @@ Rows: one per `part`, plus a `user` row per user message.
 | text | text, input JSON, output or error |
 
 Per requirement class, the subsections that follow say what the parser does today and what is
-planned (detail in [section 7](#7-transcript-stores), [section 10](#10-other-stores) and
-[section 11](#11-format-versions)).
+planned (detail in [Transcript stores](#transcript-stores), [Other stores](#other-stores) and
+[Format versions](#format-versions)).
 
 #### Permission rows
 
@@ -854,7 +855,7 @@ On the default branch at
 2026-10-17) the `share/` modules are gone and the share and unshare keybindings read "Deprecated:
 session sharing was removed"
 ([`packages/tui/src/config/v1/keybind.ts:101-102`](https://github.com/sst/opencode/blob/797d2afdbf8f0b4f189748373ff1a69bde9e0ff7/packages/tui/src/config/v1/keybind.ts#L101-L102)),
-as at `cb07c55` ([section 11](#11-format-versions)); no migration in that tree drops
+as at `cb07c55` ([Format versions](#format-versions)); no migration in that tree drops
 `session_share`, so a database created by an earlier release can still hold the share rows in
 [Share records](#share-records). The 2.0 CLI keeps no event payloads
 ([Event payloads in 2.0](#event-payloads-in-20)), so the event-based share rows can no longer
@@ -928,15 +929,15 @@ text, and a compaction row adds its `status` and error. A 2.0 tool
 error shows its `error.type` before the message (`[error] aborted The
 user declined this tool call`).
 
-## 14. Confidence
+## Confidence
 
 - High: every path, table column, JSON field name, timestamp unit and part type, the WAL mode and
   the absence of a git branch, all from source at the cited commits.
-- Medium: the 2.0 layout ([section 11](#11-format-versions)) rests on the `dev` branch, not a
+- Medium: the 2.0 layout ([Format versions](#format-versions)) rests on the `dev` branch, not a
   tagged release, and on source alone ([Observed](#observed)).
 - Not determined: whether older releases wrote `bin/` under the data directory; the catalog
   excludes `.local/share/opencode/bin`, and neither reviewed commit writes it
-  ([section 4](#4-exclusions)).
+  ([Exclusions](#exclusions)).
 - Not determined: the exact byte layout of `session_message.data` for every type on a real install.
 - Not determined: whether an intermediate release had a startup importer from the `storage/` JSON
   tree into SQLite.

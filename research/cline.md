@@ -8,7 +8,7 @@ still shares its task layout ([`roo-code.md`](roo-code.md)), PearAI bundles a fo
 ([`kilo-code.md`](kilo-code.md)). The analyzer parses Cline's legacy tasks, its SDK sessions and
 their secondary stores, from source and fixtures only.
 
-## 1. Source and evidence
+## Source and evidence
 
 Open source. [cline/cline](https://github.com/cline/cline) at
 [`39ff2359f7e08231281539696e48a166ce49270c`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c),
@@ -27,14 +27,14 @@ No real install.
 - 2026-10-19: [cline/cline](https://github.com/cline/cline) at [`41e75ef`](https://github.com/cline/cline/commit/41e75efc53e7abbcb76564b89e6de57f78659b33) against
   [`39ff235`](https://github.com/cline/cline/commit/39ff2359f7e08231281539696e48a166ce49270c). Added Cline Cloud and its local state, imported sessions, the permission
   records and settings, the hook audit log and the `.claude/skills` project directory
-  ([section 2](#2-per-user-storage), [section 5](#5-project-local-files),
-  [section 7](#7-transcript-stores), [section 10](#10-other-stores),
-  [section 13](#13-parser-plan)). Of the 78 files the document cites, 19 changed and none moved or
+  ([Per-user storage](#per-user-storage), [Project-local files](#project-local-files),
+  [Transcript stores](#transcript-stores), [Other stores](#other-stores),
+  [Parser plan](#parser-plan)). Of the 78 files the document cites, 19 changed and none moved or
   disappeared; the files whose shapes the parser reads are unchanged.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 One layout on every OS; home is `$HOME`, else `%USERPROFILE%`, else `%HOMEDRIVE%%HOMEPATH%`, else
 `os.homedir()`
@@ -143,7 +143,7 @@ are shared cross-agent.
 VS Code extension `saoudrizwan.claude-dev` globalStorage, the root of the extension's legacy tasks
 ([`apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts:25-32`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts#L25-L32);
 whether the extension still writes new tasks there rather than to the SDK store of
-[section 7](#7-transcript-stores) is not determined):
+[Transcript stores](#transcript-stores) is not determined):
 `tasks/<id>/{api_conversation_history,ui_messages,context_history,task_metadata,settings}.json`,
 `state/taskHistory.json`, `checkpoints/`, `cache/remote_config_<org>.json`,
 `cache/cline_recommended_models.json`
@@ -159,7 +159,7 @@ CLI binary: `npm install -g cline` platform package, `bin/cline`
 no home-relative binary dir. Hub daemon runs as `cline --cline-hub-daemon`
 ([`apps/cli/src/commands/doctor.test.ts:218`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/cli/src/commands/doctor.test.ts#L218)).
 
-### 3. Credentials
+### Credentials
 
 - `~/.cline/data/settings/providers.json`: `apiKey`, `auth.apiKey`, `auth.accessToken`,
   `auth.refreshToken` per provider
@@ -179,12 +179,12 @@ no home-relative binary dir. Hub daemon runs as `cline --cline-hub-daemon`
   `~/Documents/Cline/webhook_config.json` with a bearer `webhook_token`;
   the catalog's secret globs
   `*/User/globalStorage/saoudrizwan.claude-dev/cache/remote_config_*.json`
-  and `Documents/Cline/webhook_config.json` flag them. Evidence in [section 12](#12-secrets).
+  and `Documents/Cline/webhook_config.json` flag them. Evidence in [Secrets](#secrets).
 - VS Code extension: secrets migrated out of `context.secrets` into `secrets.json`
   ([`vscode-to-file-migration.ts:4-15`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/hosts/vscode/vscode-to-file-migration.ts#L4-L15)).
   No keychain use.
 
-### 4. Exclusions
+### Exclusions
 
 `.cline/data/checkpoint-scratch`, `.cline/worktrees`, `.cline/data/workspaces/chat`
 (agent working tree), `.cline/data/agent-plugins`, `.cline/plugins`,
@@ -192,14 +192,14 @@ no home-relative binary dir. Hub daemon runs as `cline --cline-hub-daemon`
 `.cline/data/db/session-search.db*`: a searchable copy of every transcript, not a cache.
 
 The extension's `cache/` directory is not excluded. At the commit in
-[section 1](#1-source-and-evidence) it holds only `remote_config_<organization id>.json`, a
-credential ([section 3](#3-credentials)), and `sync-queue.json`, the enterprise upload queue
+[Source and evidence](#source-and-evidence) it holds only `remote_config_<organization id>.json`, a
+credential ([Credentials](#credentials)), and `sync-queue.json`, the enterprise upload queue
 ([Enterprise upload queue](#enterprise-upload-queue)), which is evidence of what was uploaded;
 neither is a cache in size or kind.
 `cline_recommended_models.json` is still named in `GlobalFileNames` but nothing at this commit
 writes it.
 
-### 5. Project-local files
+### Project-local files
 
 `.clinerules` (file or dir) with `workflows/`, `hooks/`, `skills/`;
 `.cline/{rules,skills,workflows,plugins,tasks,cron,<remote-config plugin>}`; `.clineignore`;
@@ -215,7 +215,7 @@ among the project skill directories from
 [`apps/vscode/src/core/ignore/ClineIgnoreController.ts:41`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/ignore/ClineIgnoreController.ts#L41)).
 No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 - Legacy: `state/taskHistory.json[].cwdOnTaskInitialization`
   ([`apps/vscode/src/shared/HistoryItem.ts:13`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/HistoryItem.ts#L13)),
@@ -233,7 +233,7 @@ No per-project database.
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 Legacy task layout, one directory per task. Root is VS Code `globalStorage/saoudrizwan.claude-dev/`
 for the extension
@@ -259,7 +259,7 @@ subagent transcripts in the same directory as `<agentId>.messages.json` or
 ([`session/services/persistence-service.ts:109`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/persistence-service.ts#L109)).
 Fallback index `sessions/sessions.index.json`
 ([`session/services/file-session-service.ts:63`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/core/src/session/services/file-session-service.ts#L63)).
-SQLite in `~/.cline/data/db/` ([section 10](#10-other-stores)). Hook audit
+SQLite in `~/.cline/data/db/` ([Other stores](#other-stores)). Hook audit
 `~/.cline/data/logs/hooks.jsonl` ([Hook audit log](#hook-audit-log)).
 
 `<sessionId>.compaction.json` is the model-facing view after compaction,
@@ -353,7 +353,7 @@ are filled from that listing, not stored. What is stored locally:
   [`:103-111`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/cloud-pending-starts.ts#L103-L111);
   [`apps/vscode/src/sdk/SdkController.ts:730`](https://github.com/cline/cline/blob/41e75efc53e7abbcb76564b89e6de57f78659b33/apps/vscode/src/sdk/SdkController.ts#L730)).
 
-### 8. Record schema
+### Record schema
 
 #### Legacy task files
 
@@ -463,7 +463,7 @@ Blocks
 Timestamps are millisecond epochs except the SDK manifest and payload
 (`started_at`, `updated_at` ISO). No git branch is recorded.
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 Legacy: directory name = `HistoryItem.id`; workspace = `cwdOnTaskInitialization` in
 `state/taskHistory.json`; `ClineMessage.conversationHistoryIndex` indexes into
@@ -477,7 +477,7 @@ message's 0-based position in the lead `<sessionId>.messages.json`
 ([`apps/vscode/src/sdk/sdk-task-history.ts:413-424`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/sdk/sdk-task-history.ts#L413-L424)),
 stamping `metadata.legacyTask`.
 
-### 10. Other stores
+### Other stores
 
 #### `sessions.db` and `teams.db`
 
@@ -618,7 +618,7 @@ No code in `hook-file-hooks.ts` truncates, rotates or deletes the file, and no s
 ([What survives a delete](#what-survives-a-delete)) touches it, so it keeps the tool calls, their
 inputs and outputs and the final reply of sessions whose transcripts are gone.
 
-### 11. Format versions
+### Format versions
 
 Three generations coexist on disk: VS Code globalStorage tasks, `~/.cline/data/tasks` with
 `state/taskHistory.json`, and `~/.cline/data/sessions/<id>/`. The VS Code to file migration of state
@@ -629,7 +629,7 @@ type of `ui_messages.json` is retired and dropped on read. Legacy tasks resumed 
 `metadata.legacyTask: true`. `sessions.db` has ALTER-based column migrations
 ([`sqlite-db.ts:275-340`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/sdk/packages/shared/src/db/sqlite-db.ts#L275-L340)).
 
-### 12. Secrets
+### Secrets
 
 `secrets.json` keys
 ([`apps/vscode/src/shared/storage/state-keys.ts`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/shared/storage/state-keys.ts)
@@ -654,7 +654,7 @@ directory `lg-cns-integration`) writes `~/Documents/Cline/webhook_config.json` w
 `webhook_token` (a bearer token) and `created_at`
 ([`apps/vscode/src/services/lg-cns-integration/webhook-hooks.ts:11-30`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/services/lg-cns-integration/webhook-hooks.ts#L11-L30)).
 
-### 13. Parser plan
+### Parser plan
 
 Globs (home-relative; `<GS>` is each VS Code `User/globalStorage`):
 `<GS>/saoudrizwan.claude-dev/tasks/*/{api_conversation_history,ui_messages,task_metadata}.json`,
@@ -869,7 +869,7 @@ Other paths by which session content leaves the host record nothing the parser c
 webhook is installed by opening a `vscode://` link to the extension's `/lg-task` path with
 `prompt-file`, `webhook-url` and `webhook-token`
 ([`apps/vscode/src/services/uri/SharedUriHandler.ts:98-121`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/services/uri/SharedUriHandler.ts#L98-L121));
-it writes `webhook_config.json` ([section 12](#12-secrets)) and three hook scripts, `TaskStart`,
+it writes `webhook_config.json` ([Secrets](#secrets)) and three hook scripts, `TaskStart`,
 `PostToolUse` and `TaskComplete` (`.ps1` on Windows), into `~/Documents/Cline/Hooks/`
 ([`:32-59`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/services/lg-cns-integration/webhook-hooks.ts#L32-L59),
 [`apps/vscode/src/core/storage/disk.ts:88-97`](https://github.com/cline/cline/blob/39ff2359f7e08231281539696e48a166ce49270c/apps/vscode/src/core/storage/disk.ts#L88-L97)),
@@ -944,7 +944,7 @@ Fixtures (invented content, real field names):
 {"_file":"sessions/<id>/<id>.messages.json","record":{"version":1,"updated_at":"2026-10-03T09:00:05.000Z","agent":"lead","sessionId":"1760000000000_k3x9q","origin":{"source":"cli","mode":"user","sessionId":"1760000000000_k3x9q"},"messages":[{"id":"m1","role":"user","content":"fix tests","ts":1760000000000},{"id":"m2","role":"assistant","content":[{"type":"thinking","thinking":"run the suite"},{"type":"tool_use","id":"call_1","name":"bash","input":{"command":"pytest -q"}}],"modelInfo":{"id":"claude-sonnet-4-5","provider":"anthropic"},"metrics":{"inputTokens":1200,"outputTokens":80,"cost":0.0041},"ts":1760000002000},{"id":"m3","role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","name":"bash","content":"3 passed","is_error":false}],"ts":1760000003000}]}}
 ```
 
-## 14. Confidence
+## Confidence
 
 - High: every `~/.cline/data` path, secrets key list, globalStorage layout, discovery keys; file
   names, layouts, `ClineMessage`, `HistoryItem`, manifest and `MessageWithMetadata` fields,

@@ -12,7 +12,7 @@ Copilot Chat extension ([`vscode.md`](vscode.md)) or the `copilot` catalog agent
 `copilot-cli` parser reads the event logs, the database, the prompt history and the CLI-written
 Copilot Desktop sessions.
 
-## 1. Source and evidence
+## Source and evidence
 
 Closed source: `github/copilot-cli` holds issues and a changelog only, so there are no commit links.
 Evidence is the **shipped bundle**; each claim names its evidence level:
@@ -77,7 +77,7 @@ Evidence is the **shipped bundle**; each claim names its evidence level:
   github.com in a browser), completing at 21:48:02; while the code was pending the process log
   looped, about 280,000 lines in 74 seconds and four rotations at 10 MB ([Process
   logs](#process-logs)). The login rewrote `config.json` (418 bytes), stored the token in Windows
-  Credential Manager (Windows' per-user credential store; [section 3](#3-credentials)), created the
+  Credential Manager (Windows' per-user credential store; [Credentials](#credentials)), created the
   registry device id ([Outside the
   catalog](#outside-the-catalog)) and wrote in `AppData\Local\copilot\` `copilot-user-cache.json`
   (3,309 bytes), `exp-cache.json` (10,904 bytes), `memory-enablement-cache-config.json` (351 bytes),
@@ -122,35 +122,37 @@ Evidence is the **shipped bundle**; each claim names its evidence level:
   `AppData\Local\github-copilot-sdk\cli\1.0.99-2\copilot.exe` (158,577,952 bytes, sha256
   `b7bc340acf1c82228de2e3504444847f8e18beec1f07f72f260f1bbeb4c3a9b2`), on a Windows 11 ARM64
   Parallels VM (build 10.0.26300.9550, home `C:\Users\sean`); names, sizes, key names and types
-  only; the round is in [section 1 of
-  `copilot-desktop.md`](copilot-desktop.md#1-source-and-evidence). The CLI wrote the Linux layout
-  under `C:\Users\sean\.copilot` ([section 2](#2-per-user-storage)): `config.json` (131 bytes, one
-  key; [section 3](#3-credentials)), `session-store.db` (4096 bytes, `-wal` 609,792 then 704,552
+  only; the round is in [Source and evidence in
+  `copilot-desktop.md`](copilot-desktop.md#source-and-evidence). The CLI wrote the Linux layout
+  under `C:\Users\sean\.copilot` ([Per-user storage](#per-user-storage)): `config.json` (131 bytes,
+  one key; [Credentials](#credentials)), `session-store.db` (4096 bytes, `-wal` 609,792 then 704,552
   bytes, `-shm`), `logs/.copilot-log.lock` and 17 `logs/process-<epoch ms>-<pid>.log` (1.7 KB to 47
   KB), `session-state/`, empty `extensions/` and empty `installed-plugins/`. Adding three MCP
   servers (Model Context Protocol servers, programs that offer the agent extra tools) from the app
   wrote `mcp-config.json` (725 bytes), `.mcp-writer.binding` (157 bytes) and `.mcp-writer.lock` (0
-  bytes) ([section 7](#7-transcript-stores); one server's `env` held a token, [section
-  3](#3-credentials)); the two servers whose commands were not installed failed to spawn, six and
-  five times ([Process logs](#process-logs)), and the one that connected left one tool cache per
-  session in `AppData\Local\copilot\mcp-tools\`. The cache directory `AppData\Local\copilot` also
-  held `copilot-user-cache.json` (3,309 bytes), `managed-settings/<sha256>.json` (252 bytes),
+  bytes) ([Transcript stores](#transcript-stores); one server's `env` held a token,
+  [Credentials](#credentials)); the two servers whose commands were not installed failed to spawn,
+  six and five times ([Process logs](#process-logs)), and the one that connected left one tool cache
+  per session in `AppData\Local\copilot\mcp-tools\`. The cache directory `AppData\Local\copilot`
+  also held `copilot-user-cache.json` (3,309 bytes), `managed-settings/<sha256>.json` (252 bytes),
   `tgrep-serve.lock`, the marketplace clone (4,560 files, 263,616,505 bytes) and the package
-  `pkg/win32-arm64/1.0.99-2/` (255 files, 191,966,761 bytes) ([Package and cache
-  directory](#package-and-cache-directory)). The general chat's `events.jsonl` (115 lines) held 3
-  `user.message`, 8 `assistant.message`, 9 tool calls (`powershell` and `create`), 27 `hook.start`
-  and `hook.end` pairs, 8 `session.usage_record`, 3 `session.usage_checkpoint`, 1 `system.message`
-  and 1 `session.shutdown`; the project session's (30 lines) one prompt, one `powershell` call, 7
-  hook pairs and a `session.shutdown` ([Event types](#event-types)). Three `create` calls failed
-  ("Parent directory does not exist") and the first `powershell` call exited 1 because Windows
-  PowerShell's execution policy refused `npm.ps1`; both are ordinary failed tool results.
-  `session-store.db` had 17 tables at `schema_version` 8: `sessions` 2, `turns` 4 (3 for the chat, 1
-  for the project session), `session_files` 3 (`tool_name` `create`), `search_index` 4
-  (`source_type` `turn`) and `assistant_usage_events` 10 (`model` `claude-sonnet-5.5`, `initiator`
-  `user` and `agent`, `api_endpoint` `/v1/messages`, `reasoning_effort` `medium`, `finish_reason`
-  `stop` and `tool_calls`), with `checkpoints`, `dynamic_context_items`, `forge_skill_proposals`,
+  `pkg/win32-arm64/1.0.99-2/` (255 files, 191,966,761 bytes)
+  ([Package and cache directory](#package-and-cache-directory)). The general chat's `events.jsonl`
+  (115 lines) held 3 `user.message`, 8 `assistant.message`, 9 tool calls (`powershell` and
+  `create`), 27 `hook.start` and `hook.end` pairs, 8 `session.usage_record`, 3
+  `session.usage_checkpoint`, 1 `system.message` and 1 `session.shutdown`; the project session's (30
+  lines) one prompt, one `powershell` call, 7 hook pairs and a `session.shutdown`
+  ([Event types](#event-types)). Three `create` calls failed ("Parent directory does not exist") and
+  the first `powershell` call exited 1 because Windows PowerShell's execution policy refused
+  `npm.ps1`; both are ordinary failed tool results. `session-store.db` had 17 tables at
+  `schema_version` 8: `sessions` 2, `turns` 4 (3 for the chat, 1 for the project session),
+  `session_files` 3 (`tool_name` `create`), `search_index` 4 (`source_type` `turn`) and
+  `assistant_usage_events` 10 (`model` `claude-sonnet-5.5`, `initiator` `user` and `agent`,
+  `api_endpoint` `/v1/messages`, `reasoning_effort` `medium`, `finish_reason` `stop` and
+  `tool_calls`), with `checkpoints`, `dynamic_context_items`, `forge_skill_proposals`,
   `forge_trajectory_events` and `session_refs` empty ([`session-store.db`](#session-storedb)). The
-  app also created seven sessions that were never prompted ([section 7](#7-transcript-stores)).
+  app also created seven sessions that were never prompted
+  ([Transcript stores](#transcript-stores)).
 - Linux, npm, 1.0.98, 2026-10-16: installed with `sudo npm install -g @github/copilot` on an Ubuntu
   26.04.1 arm64 Parallels VM (kernel 7.0.0-38-generic, home `/home/sean`); names, sizes, key names
   and types only, read with `analyzer/tools/shape.py`. Exercised: `copilot login`, then two
@@ -160,13 +162,13 @@ Evidence is the **shipped bundle**; each claim names its evidence level:
   removed the project with `rm -r secret/`. Every action ran before the first listing, so no
   per-action listing diff exists; the times above and the files' modification times are the only
   mapping from action to file. `copilot login` wrote a process log (105 bytes) and put the token in
-  the GNOME keyring ([section 3](#3-credentials)); the first session start wrote one file outside
+  the GNOME keyring ([Credentials](#credentials)); the first session start wrote one file outside
   the catalog ([Outside the catalog](#outside-the-catalog)); each session wrote its
   `session-state/<uuid>/` directory, a process log (16 KB and 15 KB), `session-store.db` rows (in a
   1.37 MB WAL beside a 4096-byte main file), a `sidebar-sessions-state` file and its prompts in
   `command-history-state.json`. `~/.copilot` held the macOS file set except `settings.json`, which
   was not written, and `~/.cache/copilot` the names macOS keeps in `~/Library/Caches/copilot`, with
-  the package under `pkg/linux-arm64/1.0.98/` ([section 2](#2-per-user-storage)); there was no
+  the package under `pkg/linux-arm64/1.0.98/` ([Per-user storage](#per-user-storage)); there was no
   `~/.config/.copilot` or `~/.local/state/.copilot`. Session 1 called `bash` 2 times, `apply_patch`
   2 (11 files, then 1), `view` 3, `glob` 1, `web_fetch` 18, `web_search` 7 and
   `fetch_copilot_cli_documentation` 1, with 20 permission requests (`kind` `shell` 2, `url` 17,
@@ -183,8 +185,8 @@ Evidence is the **shipped bundle**; each claim names its evidence level:
   `web_fetch`, `web_search` (an MCP tool), `ask_user` and `fetch_copilot_cli_documentation` calls;
   17 permission prompts approved once (`approved`) or for the project (`approved-for-location`, a
   command and a write approval); one automatic model resolution per session; three normal shutdowns;
-  one session whose `turns` rows were re-indexed ([section 10](#10-other-stores)). They wrote the
-  `~/.copilot` file set of [section 2](#2-per-user-storage), `settings.json` and
+  one session whose `turns` rows were re-indexed ([Other stores](#other-stores)). They wrote the
+  `~/.copilot` file set of [Per-user storage](#per-user-storage), `settings.json` and
   `permissions-config.json` included, the session store's rows in a 1.7 MB `-wal` beside a 4 KB main
   file, and `~/Library/Caches/copilot` with the package `pkg/darwin-arm64/1.0.98/`; there was no
   `~/.config/.copilot`, `~/.local/state/.copilot` or `~/.cache/copilot`. Not exercised: a denial, a
@@ -197,11 +199,12 @@ Evidence is the **shipped bundle**; each claim names its evidence level:
   [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706),
   for the Copilot CLI sessions that VS Code's Copilot Chat extension runs in a git worktree; added
   the worktree to [Scratch directories](#scratch-directories) and the `vscode.metadata.json` file VS
-  Code writes into the session directory to [section 10](#vscodemetadatajson).
+  Code writes into the session directory to
+  [its subsection under Other stores](#vscodemetadatajson).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Config home: `configDir ?? process.env.COPILOT_HOME ?? join(homedir(), ".copilot")` (app.js
 `function dot(e)`, `dQe`; native: "Set the configuration directory (default: ~/.copilot).
@@ -280,7 +283,7 @@ The bundle
 - `logs/` process logs (native: "Set log file directory (default: ~/.copilot/logs/)"); local
   `logs/process-<epoch>-<pid>.log` and `logs/.copilot-log.lock`, rotated at 10 MB; a login left
   pending on Windows 1.0.98 wrote about 45 MB of them ([Process logs](#process-logs)). The logs
-  stay collected and are not excluded ([section 4](#4-exclusions)), because the sign-in lines that
+  stay collected and are not excluded ([Exclusions](#exclusions)), because the sign-in lines that
   name the account are in them. `ide/<uuid>.lock` IDE discovery lock files (app.js `QB` scans
   `Gi(e,"state")/ide` for `.lock`; local `ide/`). `state/` for the session store default path
   (app.js `sessionStoreDefaultPath(Gi(e,"state"))`).
@@ -341,7 +344,7 @@ The bundle
   Windows (CLI 1.0.99-2, bundled with Copilot Desktop) the same directory held `freshness.json`
   (98 bytes), `github-awesome-copilot.lock` (0 bytes) and `github-awesome-copilot/`, a shallow git
   clone of the awesome-copilot plugin marketplace (4,533 files and 160 MB outside its `.git`),
-  263 MB in all; it is excluded from collector 1.13.0 ([section 4](#4-exclusions), [issue
+  263 MB in all; it is excluded from collector 1.13.0 ([Exclusions](#exclusions), [issue
   131](https://github.com/seanthegeek/doubleagent/issues/131)).
 - Also on Windows (bundled 1.0.99-2): `tgrep-serve.lock`, and `mcp-tools/<sha256>.json`, one file
   per MCP server that connected in a session (two files of 20,383 and 20,384 bytes, written at
@@ -372,7 +375,7 @@ The bundle
 - System policy: `/etc/github-copilot/managed-settings.json`, `/etc/github-copilot/policy.d`
   (runtime).
 
-### 3. Credentials
+### Credentials
 
 - GitHub token: OS keyring by default (runtime vendors `keyring-core` and
   `zbus-secret-service-keyring-store`; env `COPILOT_DISABLE_KEYTAR`), with `storeTokenPlaintext`
@@ -408,7 +411,7 @@ The bundle
 - The CLI does not use `~/.config/github-copilot/{hosts,apps}.json` (no hit in app.js, native or
   runtime).
 
-### 4. Exclusions
+### Exclusions
 
 `.copilot/pkg`, `.cache/copilot/pkg`, `Library/Caches/copilot/pkg`, `AppData/Local/copilot/pkg`
 (extracted ~180 MB packages per version; 192 MB for `win32-arm64/1.0.99-2`),
@@ -422,7 +425,7 @@ and 4,560 files on the Windows install;
 keeps the directory's size, but which marketplaces were cloned, and when, is inside it and is lost;
 `--full` collects it.
 
-### 5. Project-local files
+### Project-local files
 
 `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`,
 `.github/git-commit-instructions.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/rules/**/*.md`
@@ -430,7 +433,7 @@ keeps the directory's size, but which marketplaces were cloned, and when, is ins
 (app.js `LO`), `.mcp.json`, `.github/mcp.json` (native help), `.github/lsp.json`, `.github/hooks/`,
 `.github/skills/`, `.github/agents/` (app.js). No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 `session-state/<id>/workspace.yaml` `cwd`, the persisted session cwd (app.js
 `workspaceLoadPersistedSessionCwd(FP(Wp(e,t),"workspace.yaml"))`; the key name is not visible in
@@ -443,17 +446,17 @@ project paths, the git root or cwd ([`permissions-config.json`](#permissions-con
 `sidebar-sessions-state/*.json` `cwd` maps a project path to its session ids, and outlives the
 project: the removed `~/secret` kept its file on Linux. `events.jsonl` `session.start`
 `data.context.cwd` and `session-store.db` `sessions.cwd` carry it too
-([section 9](#9-joins-and-timestamps)).
+([Joins and timestamps](#joins-and-timestamps)).
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 Relative to the home; `~/.copilot` unless `COPILOT_HOME` moves it.
 Installs that predate the XDG migration keep the same names under
 `.local/state/.copilot` (session state, store, history) and
 `.config/.copilot` (config, permissions)
-([section 2](#2-per-user-storage)).
+([Per-user storage](#per-user-storage)).
 
 | Path | Content | Parse |
 | --- | --- | --- |
@@ -464,7 +467,7 @@ Installs that predate the XDG migration keep the same names under
 | `.copilot/session-state/<uuid>/checkpoints/index.md` | Markdown table of compaction checkpoints | no |
 | `.copilot/session-state/<uuid>/session.db` | per-session SQLite of the agent's own todo tables (bundle; not observed) | no |
 | `.copilot/session-state/<uuid>/files/`, `research/`, `plan.md` | agent artifacts (empty on every install) | no |
-| `.copilot/session-state/<uuid>.jsonl` | legacy flat transcript, refused by 1.0.98 | no, [section 11](#11-format-versions) |
+| `.copilot/session-state/<uuid>.jsonl` | legacy flat transcript, refused by 1.0.98 | no, [Format versions](#format-versions) |
 | `.copilot/session-store.db` (+`-wal`, `-shm`) | cross-session SQLite ("chronicle" store) | yes, secondary |
 | `.copilot/command-history-state.json` | prompt history for Ctrl+R | yes, secondary |
 | `.copilot/permissions-config.json` | standing approvals per project | yes |
@@ -539,9 +542,9 @@ The analyzer reads `session-store.db`, `command-history-state.json` and
 `rewind-file-snapshots/index.json` as secondary sources (see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)), so a session whose directory
 was deleted still yields its store rows; of the process logs it reads the sign-in line only, and
-`search_index` and `assistant_usage_events` give no rows ([section 13](#13-parser-plan)).
+`search_index` and `assistant_usage_events` give no rows ([Parser plan](#parser-plan)).
 
-### 8. Record schema
+### Record schema
 
 #### Envelope
 
@@ -562,7 +565,7 @@ are ephemeral events, which take a place in the chain but are not
 written; the `model.*` events come from the Rust runtime's own publisher
 (`runtime.node@80033248` `Failed to publish native model event`) and start
 a chain of their own. A rewind truncates the file instead of branching it
-([section 9](#9-joins-and-timestamps)), so the chain carries no tree and a
+([Joins and timestamps](#joins-and-timestamps)), so the chain carries no tree and a
 parser ignores it.
 
 #### Event types
@@ -675,7 +678,7 @@ the service choose), `session.task_complete` (`summary`), `session.handoff`,
 `hookType` `sessionStart`, `userPromptSubmitted`, `userPromptTransformed`, `preToolUse`,
 `postToolUse`, `postToolUseFailure` (not seen on Linux), `agentStop` and `sessionEnd`.
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 - Session: `session.start.data.sessionId` = the directory name = `turns`,
   `sessions.id`, `sidebar-sessions-state` `sessionIds[]` and
@@ -696,7 +699,7 @@ the service choose), `session.task_complete` (`summary`), `session.handoff`,
   specific event", `runtime.node@83147234`; restore and truncation are
   "Not crash-atomic", `@83147760`), so discarded turns are gone from the
   log and survive only in the stores of
-  [section 10](#10-other-stores).
+  [Other stores](#other-stores).
 - Project: `session.start.data.context.cwd`, updated by
   `session.context_changed` and `session.resume`; `workspace.yaml` `cwd`;
   `sessions.cwd`; `sidebar-sessions-state` `cwd`, whose file name is the
@@ -710,7 +713,7 @@ was not determined.
 Every timestamp in the log is UTC with `Z`. `session.shutdown.sessionStartTime`
 is epoch milliseconds; `timestampMs` on native model events likewise.
 
-### 10. Other stores
+### Other stores
 
 #### `session-store.db`
 
@@ -718,11 +721,11 @@ is epoch milliseconds; `timestampMs` on native model events likewise.
 macOS install the data was in the 1.7 MB WAL and the main file was 4 KB (1.37 MB and 4096 bytes on
 Linux, 609,792 then 704,552 bytes beside 4096 on Windows through Copilot Desktop),
 so the WAL must be read. `schema_version` 38 observed on macOS and 8 on Linux, both on 1.0.98, and 8
-on Windows with the Copilot Desktop app's bundled 1.0.99-2 ([section 11](#11-format-versions)). The
-runtime writes it as each turn ends and rebuilds it from `events.jsonl` with `/chronicle reindex`
-("chronicle" is the CLI's name for its session-history commands: `standup`, `reindex`, `skills`,
-`tips`; `runtime.node@80541016` `src/runtime/src/session/store_reindex.rs`). Column meanings come
-from the runtime's own description for its SQL tool (`runtime.node@80212161`):
+on Windows with the Copilot Desktop app's bundled 1.0.99-2 ([Format versions](#format-versions)).
+The runtime writes it as each turn ends and rebuilds it from `events.jsonl` with
+`/chronicle reindex` ("chronicle" is the CLI's name for its session-history commands: `standup`,
+`reindex`, `skills`, `tips`; `runtime.node@80541016` `src/runtime/src/session/store_reindex.rs`).
+Column meanings come from the runtime's own description for its SQL tool (`runtime.node@80212161`):
 
 | Table | Written by | Meaning |
 | --- | --- | --- |
@@ -885,7 +888,7 @@ Through Copilot Desktop's bundled 1.0.99-2 on Windows the logs also hold `MCP se
 failed {"server_name":"<name>","raw_error":"failed to spawn MCP server process: program not
 found"}` for a configured server whose command is not installed, and `Best-effort plugin
 preparation skipped 1 item.`
-The parser's pattern (`process-\d+-\d+\.log`, [section 13](#13-parser-plan))
+The parser's pattern (`process-\d+-\d+\.log`, [Parser plan](#parser-plan))
 does not select the rotated files, so a sign-in line that rotated out
 would not be read ([issue 152](https://github.com/seanthegeek/doubleagent/issues/152));
 on that install every sign-in line was in an unrotated log.
@@ -901,7 +904,7 @@ microsoft/vscode at
 [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706));
 not seen on a real install. The VS Code side is in [`vscode.md`](vscode.md).
 
-### 11. Format versions
+### Format versions
 
 `session.start.data.version` 1 and `producer` `copilot-agent` on every
 observed log. Several fields are "Absent on historical events"
@@ -916,12 +919,12 @@ record shape is not in this bundle. The schema allows no extra keys
 `allowMatchIdentifier`, so the file is a superset of the published
 schema. `session-store.db` migrates through `schema_version`: 38 on
 the macOS install and 8 on the Linux install, both 1.0.98 and both with
-the tables of [section 10](#10-other-stores); neither number is
+the tables of [Other stores](#other-stores); neither number is
 explained (the Windows install's bundled 1.0.99-2 also had 8);
 `rewind-file-snapshots` and `sidebar-sessions-state` carry
 their own `schema` and `schemaVersion` numbers.
 
-### 12. Secrets
+### Secrets
 
 `system.message.content` is the full system prompt with the user's custom
 instructions; `transformedContent` repeats each prompt with injected
@@ -935,10 +938,10 @@ characters observed) is the provider's response id, and `usageId`,
 `model_call_success.quotaSnapshots` records the account's plan
 entitlements. The log's sign-in line names the GitHub login. No token was
 seen in a session file; where the token is kept, and the `mcpServers.<name>.env` values of
-`mcp-config.json` that can hold one in plain text, are in [section 3](#3-credentials). The parser
+`mcp-config.json` that can hold one in plain text, are in [Credentials](#credentials). The parser
 reads neither `config.json` nor `mcp-config.json`.
 
-### 13. Parser plan
+### Parser plan
 
 `wants()` by `artifact.rel`, with `(?:\.copilot|\.local/state/\.copilot|\.config/\.copilot)`
 written `<home>`:
@@ -1264,7 +1267,7 @@ The configured servers (`mcp-config.json`), their failed spawns (the process log
 (`AppData/Local/copilot/mcp-tools/<sha256>.json`) are recorded on disk (Windows install) and not yet
 in the timeline ([issue 150](https://github.com/seanthegeek/doubleagent/issues/150)).
 
-## 14. Confidence
+## Confidence
 
 - High, from the docs and the bundle with real installs on macOS and Linux (1.0.98) and Windows
   (winget 1.0.98 and Copilot Desktop's bundled 1.0.99-2): the config home and `COPILOT_HOME`, the

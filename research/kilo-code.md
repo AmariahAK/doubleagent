@@ -9,7 +9,7 @@ task directories that pre-fork installs left, for import
 The analyzer parses its `kilo.db` sessions and the cloud session marker, from source and fixtures
 only.
 
-## 1. Source and evidence
+## Source and evidence
 
 Open source. [Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode) at
 [`76bcfd40be616a72f4697b3041565f322245b462`](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462),
@@ -33,15 +33,15 @@ No real install.
   [`76bcfd4`](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462).
   Added the sandbox policy and preference files, the TUI prompt history, the retention pass,
   remote control, cloud session import, the permission records and the project worktrees
-  ([section 2](#2-per-user-storage), [section 6](#6-where-the-project-path-is-recorded),
-  [section 7](#7-transcript-stores), [section 10](#10-other-stores),
-  [section 13](#13-parser-plan)). Of the
-  58 files the document and the parser cite, 9 changed and none moved or disappeared; the schema,
-  SQL and projector files the parser depends on are unchanged.
+  ([Per-user storage](#per-user-storage),
+  [Where the project path is recorded](#where-the-project-path-is-recorded),
+  [Transcript stores](#transcript-stores), [Other stores](#other-stores),
+  [Parser plan](#parser-plan)). Of the 58 files the document and the parser cite, 9 changed and none
+  moved or disappeared; the schema, SQL and projector files the parser depends on are unchanged.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 `xdg-basedir` with no platform branching
 ([`packages/core/src/global.ts:3`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L3),[`12`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L12),[`22-26`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/global.ts#L22-L26)),
@@ -61,9 +61,10 @@ All three roots are tagged no-index for Spotlight
   catalog rule classes it.
 - `<project>/.kilo/worktrees/<name>`, the agent manager's and the TUI's worktrees
   ([`packages/opencode/src/kilocode/cli/cmd/tui-worktree.ts:14-17`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/cli/cmd/tui-worktree.ts#L14-L17);
-  [section 5](#5-project-local-files)), is the agent's own worktree inside the user's project; it
+  [Project-local files](#project-local-files)), is the agent's own worktree inside the user's project; it
   is in `EXCLUDES` but under no home catalog entry, so the analyzer counts each as a project of
-  its own. [Section 6](#6-where-the-project-path-is-recorded) says which `kilo.db` rows name them.
+  its own. [Where the project path is recorded](#where-the-project-path-is-recorded) says which
+  `kilo.db` rows name them.
 - `<system temp directory>/kilo/remote-attachments/<base64url session id>/`, files sent from Kilo
   Cloud over remote control, removed when the session's remote handling ends
   ([`packages/opencode/src/kilocode/remote-attachments.ts:272-287`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/opencode/src/kilocode/remote-attachments.ts#L272-L287);
@@ -183,7 +184,7 @@ and reads legacy Roo-style `tasks/_index.json` for import
 ([`packages/kilo-vscode/src/legacy-migration/task-store.ts:136`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-vscode/src/legacy-migration/task-store.ts#L136)).
 Pre-fork installs leave `tasks/`, `checkpoints/`, `cache/` there.
 
-### 3. Credentials
+### Credentials
 
 - `~/.local/share/kilo/auth.json`, mode 0600: per provider `{type:"api", key}` or
   `{type:"oauth", refresh, access, accountId?, enterpriseUrl?, baseURL?}`
@@ -193,12 +194,12 @@ Pre-fork installs leave `tasks/`, `checkpoints/`, `cache/` there.
 - `~/.kilocode/cli/config.json`: legacy Kilo token, migrated into `auth.json`
   ([`packages/kilo-gateway/src/auth/legacy-migration.ts:5-11`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/kilo-gateway/src/auth/legacy-migration.ts#L5-L11)).
 - `kilo.db` holds credentials in its `credential` and `account` tables
-  ([`kilo.db`](#kilodb); the fields in [section 12](#12-secrets)).
+  ([`kilo.db`](#kilodb); the fields in [Secrets](#secrets)).
 - `kilo.json*` and `config.json` can embed `{env:...}` provider keys and MCP headers.
 - No keychain use. `KILO_SERVER_PASSWORD` is env only
   ([`flag.ts:68`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/flag/flag.ts#L68)).
 
-### 4. Exclusions
+### Exclusions
 
 `.local/share/kilo/snapshot`, `/worktree`, `/repos`, `/tool-output`,
 `.local/state/kilo/indexing`, `.local/share/kilo/state/indexing`,
@@ -207,7 +208,7 @@ Pre-fork installs leave `tasks/`, `checkpoints/`, `cache/` there.
 holds the only local record of a session deletion whose remote delete failed
 ([Logs](#logs), [What survives a delete](#what-survives-a-delete)).
 
-### 5. Project-local files
+### Project-local files
 
 `.kilo/` and legacy `.kilocode/` at any depth
 ([`kilocode/permission/config-paths.ts:9-11`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/permission/config-paths.ts#L9-L11);
@@ -228,7 +229,7 @@ added to `.git/info/exclude`); `kilo.json`, `kilo.jsonc`, `opencode.json(c)`
 ([`rules-migrator.ts:7`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/kilocode/rules-migrator.ts#L7)),
 `AGENTS.md`. No per-project database.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 `kilo.db` table `project`: `worktree` (absolute), `vcs`, `name`, `sandboxes[]`; table
 `project_directory`: `directory`, `type` (`main|root|git_worktree`)
@@ -244,9 +245,9 @@ at
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
-`<data>` below is `~/.local/share/kilo` ([section 2](#2-per-user-storage)). Transcripts are
+`<data>` below is `~/.local/share/kilo` ([Per-user storage](#per-user-storage)). Transcripts are
 SQLite, `<data>/kilo.db` or one of the channel names of
 [`~/.local/share/kilo`](#localsharekilo) (tables in [`kilo.db`](#kilodb)).
 Legacy JSON store `<data>/storage/session/<projectID>/<sesID>.json`,
@@ -274,7 +275,7 @@ or directory and survives a delete, the retention pass and a removed project. Th
 ([Logs](#logs)) hold the `creating session`, `removing share` and `remote session started` lines;
 whether a delete touches them is not stated. The analyzer reads the `kilo.db` sessions and the
 marker files; it reads neither the prompt history, the logs nor `retention/state.json`
-([section 13](#13-parser-plan)).
+([Parser plan](#parser-plan)).
 
 #### Remote control
 
@@ -317,7 +318,7 @@ and no log line names the cloud id (grepped `log.info` and `cloud` in
 `packages/opencode/src/kilocode/server`). A cloned session therefore cannot be told from a local
 one.
 
-### 8. Record schema
+### Record schema
 
 #### V1 messages and parts
 
@@ -368,14 +369,14 @@ so `data` is `{time, agent}` or `{time, model}`.
 
 No git branch is recorded; `snapshot` holds commit hashes.
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 `session.id` ← `message.session_id` ← `part.message_id`; `session.directory` is the cwd and
 `session.project_id` → `project.worktree`
 ([`project/sql.ts:8`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/core/src/project/sql.ts#L8)).
 A V1 `tool` part carries both call and result in `state`; V2 `assistant.content[].tool.id` likewise.
 
-### 10. Other stores
+### Other stores
 
 #### `kilo.db`
 
@@ -430,8 +431,8 @@ carries no time of its own.
 
 #### TUI prompt history
 
-The terminal UI keeps the prompts typed into it in
-`~/.local/state/kilo/prompt-history.jsonl`, the state directory of [section 2](#2-per-user-storage)
+The terminal UI keeps the prompts typed into it in `~/.local/state/kilo/prompt-history.jsonl`, the
+state directory of [Per-user storage](#per-user-storage)
 ([`packages/tui/src/app.tsx:267-273`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/tui/src/app.tsx#L267-L273),
 [`packages/tui/src/prompt/history.tsx:53`](https://github.com/Kilo-Org/kilocode/blob/87cc35ce6904465a0eed507a8c75c79185863a22/packages/tui/src/prompt/history.tsx#L53)).
 Each line is `{input, mode?: "normal"|"shell", parts[]}`, the typed text, whether it was a shell
@@ -482,7 +483,7 @@ session`, `sharing`, `unsharing` and `removing share`
 remote control writes the lines of [Remote control](#remote-control), and the retention pass
 writes `retention pass complete` ([Retention](#retention)).
 
-### 11. Format versions
+### Format versions
 
 JSON `storage/` (two internal migrations,
 [`storage.ts:83-200`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/storage/storage.ts#L83-L200))
@@ -498,20 +499,20 @@ Id prefixes: session `ses`, message `msg`/`msg_`, part `prt`
 
 OpenCode 2.0 moved sessions to a `session_v2` table; no `session_v2` table was found in Kilo Code's
 packages at [`87cc35c`](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22), so OpenCode's reading of it
-([section 11 of `opencode.md`](opencode.md#11-format-versions)) applies only once Kilo Code takes
+([Format versions in `opencode.md`](opencode.md#format-versions)) applies only once Kilo Code takes
 that store.
 
-### 12. Secrets
+### Secrets
 
 `auth.json`
 ([`packages/opencode/src/auth/index.ts:11`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/auth/index.ts#L11)),
 `credential.value`, `account.access_token`/`refresh_token`, `control_account`, and
 `session.share_url`. The `storage/session_share/*.json` files hold no credential: the ingest service
-authenticates with the Kilo token from `auth.json` ([section 13](#13-parser-plan)). The database is
+authenticates with the Kilo token from `auth.json` ([Parser plan](#parser-plan)). The database is
 collected unflagged like Cursor's `state.vscdb`; the tables above are the redaction targets
 ([issue 23](https://github.com/seanthegeek/doubleagent/issues/23)).
 
-### 13. Parser plan
+### Parser plan
 
 Globs: `.local/share/kilo/kilo*.db`, `.local/share/kilo/opencode-*.db`,
 `.local/share/kilo/storage/{session,message,part}/**/*.json`; also
@@ -540,9 +541,9 @@ a mode that carries its own permission ruleset (the agent's `permission: Permiss
 [`packages/opencode/src/agent/agent.ts:54`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/agent/agent.ts#L54)).
 The parser reads nothing else of the permission state
 ([issue 98](https://github.com/seanthegeek/doubleagent/issues/98)): not the session's `permission`
-JSON or the project's `sandboxes` array ([section 10](#10-other-stores)), not the `.kilo/` and
-`.kilocode/` permission configuration files ([section 5](#5-project-local-files)), and not the
-per-call records below; the session column's shape is in
+JSON or the project's `sandboxes` array ([Other stores](#other-stores)), not the `.kilo/` and
+`.kilocode/` permission configuration files ([Project-local files](#project-local-files)), and not
+the per-call records below; the session column's shape is in
 [Permission tables and columns](#permission-tables-and-columns).
 
 The parser reads none of the following yet; the code is OpenCode's with Kilo's changes, so a reader
@@ -578,8 +579,8 @@ belongs in the shared OpenCode parser:
   The global config therefore records every standing grant the user gave, with the file's
   modification time as the only time.
 - Standing, other: the `permission` table and `session.permission`
-  column of [section 10](#10-other-stores); the sandbox policy files of
-  [section 2](#2-per-user-storage);
+  column of [Other stores](#other-stores); the sandbox policy files of
+  [Per-user storage](#per-user-storage);
   and project `kilo.json` and `.kilo/` permission keys.
 
 Each standing entry can be one `permission setting: <key>=<value> (from
@@ -678,8 +679,9 @@ session records nothing of its origin ([Cloud session import](#cloud-session-imp
 
 The agent's worktrees ([Scratch directories](#scratch-directories)) are named by the
 `project_directory` rows of type `git_worktree` and by `project.sandboxes`
-([section 6](#6-where-the-project-path-is-recorded)), which could yield `scratch directory:` rows;
-the parser yields none. Remote attachments go to a temp root outside the home.
+([Where the project path is recorded](#where-the-project-path-is-recorded)), which could yield
+`scratch directory:` rows; the parser yields none. Remote attachments go to a temp root outside the
+home.
 
 #### Deletion rows
 
@@ -703,7 +705,7 @@ parser counted undecodable database records, part files and events into one
 and event is its own `parser: unparseable record <rowid> (<table>.data: <reason>): <data>` or
 `parser: unparseable part <partID> (<reason>): <text>` row carrying it in full
 ([issue 139](https://github.com/seanthegeek/doubleagent/issues/139)), and a database with
-`session_v2` ([section 11](#11-format-versions)) is read from it, its `session_message` transcript
+`session_v2` ([Format versions](#format-versions)) is read from it, its `session_message` transcript
 and the 1.x tables only for a session that `session_message` lacks
 ([issue 165](https://github.com/seanthegeek/doubleagent/issues/165)). Both reach Kilo Code through
 the subclass.
@@ -717,7 +719,7 @@ the subclass.
 {"_table":"session_message","record":{"id":"msg_01JAXB","session_id":"ses_01JAX","type":"assistant","seq":4,"time_created":1760000002000,"data":"{\"agent\":\"build\",\"model\":{\"providerID\":\"anthropic\",\"modelID\":\"claude-sonnet-4-5\"},\"content\":[{\"type\":\"tool\",\"id\":\"call_1\",\"name\":\"bash\",\"state\":{\"status\":\"completed\",\"input\":{\"command\":\"pytest -q\"},\"content\":[{\"type\":\"text\",\"text\":\"3 passed\"}],\"structured\":{}},\"time\":{\"created\":1760000002500,\"completed\":1760000003000}}],\"time\":{\"created\":1760000002000,\"completed\":1760000003000}}"}}
 ```
 
-## 14. Confidence
+## Confidence
 
 - High: XDG roots, db names, auth files, project table columns, project dotfiles; drizzle columns
   and V1/V2 struct fields (read from source).

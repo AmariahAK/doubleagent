@@ -7,7 +7,7 @@ Microsoft Agent Framework, which write nothing under the home by default, are co
 [`research/frameworks.md`](frameworks.md). Its parser is in the backlog
 ([issue 69](https://github.com/seanthegeek/doubleagent/issues/69)).
 
-## 1. Source and evidence
+## Source and evidence
 
 [microsoft/autogen](https://github.com/microsoft/autogen), commit
 [`027ecf0a379bcc1d09956d46d12d44a3ad9cee14`](https://github.com/microsoft/autogen/commit/027ecf0a379bcc1d09956d46d12d44a3ad9cee14).
@@ -39,12 +39,12 @@ and an MCP filesystem workbench rooted at the home directory
   [`027ecf0`](https://github.com/microsoft/autogen/commit/027ecf0a379bcc1d09956d46d12d44a3ad9cee14),
   from source only. `python/packages/autogen-studio` is identical at the two commits (an empty
   `git diff`), so every citation still holds. Added the message records, the model, deletion and
-  the `.coding` scratch directory ([section 2](#2-per-user-storage)) and the absence of permission
-  and sync state ([Parsing](#parsing)).
+  the `.coding` scratch directory ([Per-user storage](#per-user-storage)) and the absence of
+  permission and sync state ([Parsing](#parsing)).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 The app directory is `~/.autogenstudio` (`Path.home()`) on every OS, unless
 `AUTOGENSTUDIO_APPDIR` or `--appdir` is set
@@ -119,7 +119,7 @@ keys on, and `run` (`ondelete="CASCADE"` on `session_id`) and `message`
 [96](https://github.com/microsoft/autogen/blob/004749e6b7102c8fd317b9b1499ce5807223c278/python/packages/autogen-studio/autogenstudio/datamodel/db.py#L96)).
 No other file keeps a copy.
 
-### 3. Credentials
+### Credentials
 
 - `.autogenstudio/.env`: secret glob.
 - `.autogenstudio/temp_env_vars.env`: secret glob; its database URI can
@@ -132,16 +132,16 @@ No other file keeps a copy.
   as the catalog does for Cursor's `state.vscdb`; redact the `settings`
   table before sharing.
 
-### 4. Exclusions
+### Exclusions
 
 None. The directory is small.
 
-### 5. Project-local files
+### Project-local files
 
 None written by Studio itself; the gallery code executor's `.coding` directory is in
 [Scratch directories](#scratch-directories).
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Nowhere. Studio has no project concept; teams and sessions are rows in
 `autogen04203.db`.
@@ -154,7 +154,7 @@ yet. A parser would read the SQLite `autogen04203.db`: the `message` rows of eac
 message types under [Records](#records)), joined through the `session` and `run` tables, with
 the `LLMCallEventMessage` rows for the model ([Model](#model)). `run.messages` and
 `run.team_result` repeat the `message` rows inside the same file, so there is no secondary
-source, and the `settings` table holds credentials ([section 3](#3-credentials)). The store is
+source, and the `settings` table holds credentials ([Credentials](#credentials)). The store is
 SQLite, so there is no line-oriented file.
 
 Studio records no permission state: the gallery's code executor runs without an approval function
@@ -169,7 +169,7 @@ and is not found in `autogen-studio` at
 It records no sync, relay or origin state either (grepped for `upload`, `sync` and `share` in
 `autogen-studio` at the same commit).
 
-## 14. Confidence
+## Confidence
 
 - High: the app directory, the database name and tables, and the credential locations (source).
 - Not determined: whether older Studio releases used another database name (the README mentions

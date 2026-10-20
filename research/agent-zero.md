@@ -10,7 +10,7 @@ chat holds two parallel records of the conversation: the UI log (timestamped, tr
 items) and each agent's LLM history (full text, no timestamps, compressed over time). Parsed: the
 agent-zero parser reads `chat.json`, its `messages/` files and the legacy per-chat JSON.
 
-## 1. Source and evidence
+## Source and evidence
 
 [agent0ai/agent-zero](https://github.com/agent0ai/agent-zero) at commit
 [`e3051fb584b1a36be2b0a0c90606f1c2c2d356ec`](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec).
@@ -34,7 +34,7 @@ All claims are from source or the in-repo docs, read only, not run.
 
 - No real install: nothing was installed or run.
 - The Docker volume layout of chats (`chats/<ctxid>/chat.json` at the volume base,
-  [section 7](#7-transcript-stores)) is not observed on any real install, source-derived.
+  [Transcript stores](#transcript-stores)) is not observed on any real install, source-derived.
 - The `session synced:` and `session relayed:` rows are fixture only
   ([Sync, relay and origin](#sync-relay-and-origin-rows)).
 
@@ -57,11 +57,11 @@ All claims are from source or the in-repo docs, read only, not run.
   The review added the permission records, the per-chat model override, the editor-session keys
   and the host path they record, the records of past use and what a delete leaves, the WhatsApp
   login state, the launcher's own WSL distribution and the connector's screenshots, and recorded
-  the small format drift in [section 11](#11-format-versions).
+  the small format drift in [Format versions](#format-versions).
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 Agent Zero itself never resolves a home directory. Every path is relative to the install directory,
 the parent of `helpers/`
@@ -156,7 +156,7 @@ Also under `usr/`, cited at [`ff2a5b9`](https://github.com/agent0ai/agent-zero/c
   the WhatsApp bridge
   ([`plugins/_whatsapp_integration/helpers/handler.py:31`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/helpers/handler.py#L31),
   [`plugins/_whatsapp_integration/helpers/storage_paths.py:6-11`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/helpers/storage_paths.py#L6-L11));
-  the session directory is the bridge's login state ([section 3](#3-credentials)).
+  the session directory is the bridge's login state ([Credentials](#credentials)).
   `tmp/` is beside `usr/` only in a native run or a whole-`/a0` mount; the installer, the launcher
   and the README volume mount `usr` alone, so `tmp/` stays inside the container.
 
@@ -201,7 +201,7 @@ These are home-relative:
   The system temp directory is `/tmp` or `$TMPDIR` on Linux and macOS, outside the home, and
   `AppData/Local/Temp` on Windows, inside it; no catalog line names it.
 
-### 3. Credentials
+### Credentials
 
 - `usr/.env`: provider keys as `API_KEY_<PROVIDER>`, `AUTH_LOGIN`, `AUTH_PASSWORD`, `RFC_PASSWORD`,
   `ROOT_PASSWORD`; settings strip these before writing `settings.json`
@@ -230,7 +230,7 @@ These are home-relative:
   (the `a0_usr` volume's base is `usr` itself) and `usr/plugins/*/config.json` from collector
   1.14.0. No other `DOCKER_VOLUMES` layout has a `plugins/<name>/config.json`. A per-project copy
   under `.a0proj/` or an agent profile's directory is not flagged. Each Telegram chat's
-  `chat.json` repeats the values ([section 12](#12-secrets)).
+  `chat.json` repeats the values ([Secrets](#secrets)).
 - Host side: `~/.agent-zero/session_cookies.json` (login cookies per host,
   [`config.py:123-146`](https://github.com/agent0ai/a0-connector/blob/76e834f20e50f6e47954c89ee39dd4c5b50d81b7/src/agent_zero_cli/config.py#L123-L146));
   the launcher's `state.json` stores instance passwords encrypted with Electron `safeStorage`, i.e.
@@ -247,7 +247,7 @@ These are home-relative:
   ([`config.py:22`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/config.py#L22)),
   already covered by the `.agent-zero/.env` glob.
 
-### 4. Exclusions
+### Exclusions
 
 `tmp/memory/embeddings` is an embedding cache
 ([`memory.py:145-147`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_memory/helpers/memory.py#L145-L147)),
@@ -263,7 +263,7 @@ a chat delete ([Records of past use](#records-of-past-use)).
 Its size was not measured. The launcher's WSL directory on Windows is a whole Linux disk and is not
 a candidate for collection by default.
 
-### 5. Project-local files
+### Project-local files
 
 Agent Zero "projects" are directories it owns under `usr/projects/<name>` (git clones are made
 there,
@@ -274,7 +274,7 @@ containerised agent reads and writes files and runs commands in the host's curre
 [`session.py:119`](https://github.com/agent0ai/a0-connector/blob/76e834f20e50f6e47954c89ee39dd4c5b50d81b7/src/agent_zero_cli/session.py#L119))
 but writes no Agent Zero state file there.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 `usr/chats/<ctxid>/chat.json` key `data.project` holds the project name
 ([`projects.py:27`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/projects.py#L27),[`457`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/projects.py#L457));
@@ -294,7 +294,7 @@ no key for it was found in agent-zero's `plugins/_a0_connector` at [`ff2a5b9`](h
 
 ## Parsing
 
-### 7. Transcript stores
+### Transcript stores
 
 Relative to the install directory (`/a0` in Docker; on the host usually
 `~/agent-zero/<instance>/` for installer and launcher setups):
@@ -319,7 +319,7 @@ The catalog globs are therefore `agent-zero/*/usr/chats/*/chat.json`,
 so its chats are `chats/<ctxid>/chat.json` relative to that base
 ([`README.md:92`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/README.md#L92),
 [`shell/docker_manager/index.js:948-951`](https://github.com/agent0ai/a0-launcher/blob/b0333d80b5abf38d8481f55b667b0cf23d805bbb/shell/docker_manager/index.js#L948-L951)).
-The parser selects both forms ([section 13](#13-parser-plan)). The volume layout has no real
+The parser selects both forms ([Parser plan](#parser-plan)). The volume layout has no real
 install behind it ([Observed](#observed)).
 
 #### What survives a delete
@@ -340,7 +340,7 @@ still maps the Telegram user and chat to the old `ctxid` until that
 user writes again, so an entry with no `chat.json` is a deleted
 Telegram chat, the only deletion marker. The scheduler's `tasks.json`
 outlives a reset of a task's chat but not a delete
-([section 10](#10-other-stores)). Whether Agent Zero
+([Other stores](#other-stores)). Whether Agent Zero
 keeps a per-prompt history file is not stated.
 
 The analyzer reads none
@@ -350,7 +350,7 @@ Telegram rows of [Past use and secondary sources](#past-use-rows-and-secondary-s
 proposed, not written
 (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-### 8. Record schema
+### Record schema
 
 `chat.json` top level
 ([`persist_chat.py:179-219`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/persist_chat.py#L179-L219)):
@@ -498,13 +498,13 @@ the connector's model switcher writes the same key
 Only the latest choice is kept, so the history of switches is the per-message `provider_model_key`.
 Whether a custom configuration can carry an API key was not traced.
 
-### 9. Joins and timestamps
+### Joins and timestamps
 
 - Chat to project: `data.project` is a project name; path `/a0/usr/projects/<name>`
   ([`helpers/projects.py:457`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/projects.py#L457)).
   Without a project the working directory is `usr/workdir`.
 - Log to history: `log.logs[].id` equals the history `Message.id` for user
-  messages and tool results ([section 8](#8-record-schema)).
+  messages and tool results ([Record schema](#record-schema)).
 - Tool use to result: one `tool` log item holds both; in history the
   assistant message's `tool_name` and the next tool-result message.
 - Parent to subordinate: `agents[n]` is the subordinate of `agents[n-1]`
@@ -514,7 +514,7 @@ Whether a custom configuration can carry an API key was not traced.
   `last_message` are ISO 8601 with the user's UTC offset ([Log](#log),
   [Agent history](#agent-history)).
 
-### 10. Other stores
+### Other stores
 
 Beside `chat.json`, the transcript store, Agent Zero keeps the stores below. Memory is a FAISS
 index plus a pickled LangChain docstore (`usr/memory/<subdir>/index.pkl`); reading it means
@@ -539,7 +539,7 @@ install directory.
 The WhatsApp bridge keeps no message store: its only file writes are media
 ([`plugins/_whatsapp_integration/whatsapp-bridge/bridge.js:311`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/whatsapp-bridge/bridge.js#L311),[`323`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/whatsapp-bridge/bridge.js#L323)),
 and its session directory `tmp/whatsapp/session/` is the linked device's login state
-([section 3](#3-credentials)).
+([Credentials](#credentials)).
 
 #### Telegram chat map
 
@@ -549,13 +549,14 @@ creates a chat
 ([`plugins/_telegram_integration/helpers/constants.py:3`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/constants.py#L3),
 [`plugins/_telegram_integration/helpers/handler.py:57-64`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L57-L64),[`405-410`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L405-L410)).
 
-### 11. Format versions
+### Format versions
 
 No version field. History compression summarises topics into bulks and drops the oldest bulk when
 merging fails
 ([`history.py:600-607`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/helpers/history.py#L600-L607)),
 so early turns may survive only as summaries in history and only in the log while it is under 1000
-items. Older chats used `chat.json`-less `<ctxid>.json` files ([section 7](#7-transcript-stores)).
+items. Older chats used `chat.json`-less `<ctxid>.json` files
+([Transcript stores](#transcript-stores)).
 
 Between [`e3051fb`](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec) and [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a) the drift is small: the `usr/` layout is unchanged, the `chat.json` writer is
 unchanged and six lines lower in `helpers/persist_chat.py` (`_serialize_context` at
@@ -563,10 +564,10 @@ unchanged and six lines lower in `helpers/persist_chat.py` (`_serialize_context`
 `metadata.responses` gains an optional `history_extras` string
 ([`helpers/llm_result.py:249`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/llm_result.py#L249)),
 and the scheduler may keep `tasks.yaml` instead of `tasks.json`
-([section 2](#2-per-user-storage)). The log, history and tool-result files the parser reads are
+([Per-user storage](#per-user-storage)). The log, history and tool-result files the parser reads are
 the same.
 
-### 12. Secrets
+### Secrets
 
 Values from `secrets.env` are masked in history content and log items before storage
 ([`extensions/python/hist_add_before/_10_mask_content.py:20-28`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/extensions/python/hist_add_before/_10_mask_content.py#L20-L28),
@@ -580,12 +581,12 @@ so it carries the bot `token` and, in webhook mode, `webhook_secret`, in clear t
 [`plugins/_telegram_integration/default_config.yaml:2-9`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/default_config.yaml#L2-L9)).
 The transcript cannot be flagged, so `token` and `webhook_secret` are the keys to redact before
 sharing a `chat.json`. The same values are in the plugin's configuration file
-([section 3](#3-credentials)).
+([Credentials](#credentials)).
 
 The WhatsApp bridge's login state is a credential directory, not a field of a store
-([section 3](#3-credentials)).
+([Credentials](#credentials)).
 
-### 13. Parser plan
+### Parser plan
 
 Rows from `log.logs` (timestamped); when `len(log.logs) == 1000`, also emit
 history messages that have no matching log id, with an empty timestamp and
@@ -595,7 +596,7 @@ Paths: `chat.json`, its `messages/<n>.txt` and the legacy `<ctxid>.json`
 under `<a0>/usr/chats` or `<a0>/tmp/chats` of a home install, and under
 `chats/` at the base of a Docker volume mounted at `/a0/usr`
 ([issue 175](https://github.com/seanthegeek/doubleagent/issues/175),
-[section 7](#7-transcript-stores)); the rows are the same in both forms.
+[Transcript stores](#transcript-stores)); the rows are the same in both forms.
 
 | Column | Source |
 | --- | --- |
@@ -736,7 +737,7 @@ chat on a third party's server, and `chat.json` records each
   or
   `session relayed: email thread <email_thread_id or -> from <email_sender or -> (from chat.json data, file mtime)`,
   timestamped by the file's modification time, and never prints `telegram_bot_cfg` (it holds the bot
-  token, [section 12](#12-secrets)). Fixture only. Deleting the chat removes the folder, but
+  token, [Secrets](#secrets)). Fixture only. Deleting the chat removes the folder, but
   Telegram's `state.json` still maps the user and chat to the old `ctxid` until that user writes
   again
   ([`plugins/_telegram_integration/helpers/handler.py:376-387`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L376-L387)),
@@ -790,7 +791,7 @@ Fixture `usr/chats/AbCd1234/chat.json`:
   {"no":2,"id":"t1","type":"tool","heading":"A0: Using tool 'code_execution_tool'","content":"a.txt","kvps":{"runtime":"terminal","code":"ls","_tool_name":"code_execution_tool"},"timestamp":1759320003.0,"agentno":0}]}}
 ```
 
-## 14. Confidence
+## Confidence
 
 - High (source): every path under the install directory and its `usr/` layout (constants), the
   installer and launcher defaults, the connector files.

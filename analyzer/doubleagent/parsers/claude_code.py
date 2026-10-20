@@ -198,7 +198,7 @@ REGISTRY_RX = re.compile(r"^\.claude(?:-[^/]+)?/sessions/\d+\.json$")
 SETTINGS_RX = re.compile(r"^\.claude(?:-[^/]+)?/settings(?:\.local)?\.json$")
 GLOBAL_CONFIG_RX = re.compile(r"^(?:\.claude-[^/]+/)?\.claude\.json$")
 # Settings `permissions` keys read, the lists first (claude 2.1.296 settings
-# schema, research/claude-code.md section 10).
+# schema, research/claude-code.md, Other stores).
 PERMISSION_LISTS = ("allow", "deny", "ask", "additionalDirectories")
 PERMISSION_SCALARS = ("defaultMode", "disableBypassPermissionsMode")
 # `.claude.json` `projects.<path>` flags read beside `allowedTools`.
@@ -274,7 +274,7 @@ SYSTEM_ENVELOPE = frozenset(
 TRANSCRIPT_TYPES = ("user", "assistant", "system", "attachment")
 
 # `user` record keys appended to the `permission decision:` row, in this
-# order; `userFeedback` is free text, so it comes last (research section 8).
+# order; `userFeedback` is free text, so it comes last (the research document's Record schema).
 DENIAL_KEYS = ("toolDenialKind", "userFeedback")
 
 

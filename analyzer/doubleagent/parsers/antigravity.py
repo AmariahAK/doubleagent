@@ -103,7 +103,7 @@ Files, relative to the home directory, under each of those directories
   takes the first of the three it finds), `error` (an object with
   `short_error`, `user_error_message`, `full_error`, or a string) and
   `truncated_fields`. The key names are from the real installs
-  (`research/antigravity.md` section 8); the value forms of
+  (`research/antigravity.md`, Record schema); the value forms of
   `source`, `status`, `created_at` and `truncated_fields` are from the
   format description embedded in `agy` 1.3.6 (macOS arm64). Not read:
   `step_index`, `media`, the token counts, and the brain directory's

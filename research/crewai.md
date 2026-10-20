@@ -6,7 +6,7 @@ agent framework sweep for [issue #64](https://github.com/seanthegeek/doubleagent
 [`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. Its
 parser is in the backlog ([issue 140](https://github.com/seanthegeek/doubleagent/issues/140)).
 
-## 1. Source and evidence
+## Source and evidence
 
 [crewAIInc/crewAI](https://github.com/crewAIInc/crewAI), MIT, open source, commit
 [`e836a191cfe524feb519c6952a458c9f1e1ff0ef`](https://github.com/crewAIInc/crewAI/commit/e836a191cfe524feb519c6952a458c9f1e1ff0ef).
@@ -46,11 +46,11 @@ The built-in CodeInterpreterTool is gone
   [`e836a19`](https://github.com/crewAIInc/crewAI/commit/e836a191cfe524feb519c6952a458c9f1e1ff0ef),
   from source only. It added the records inside the run data directory
   ([Run data directory detail](#run-data-directory-detail)) and the project-local AMP and
-  checkpoint files ([section 5](#5-project-local-files)); the paths were unchanged.
+  checkpoint files ([Project-local files](#project-local-files)); the paths were unchanged.
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 The run data directory comes from `db_storage_path()`:
 `appdirs.user_data_dir(<CREWAI_STORAGE_DIR or the basename of the working directory>, "CrewAI")`
@@ -136,7 +136,7 @@ apart from line shifts in `flow/persistence/sqlite.py`:
   ([cli.py:478-482](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/cli.py#L478-L482),
   [crew.py:2486-2490](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/crewai/src/crewai/crew.py#L2486-L2490))
   and leaves the project's `.crewai/last_run.json`, the checkpoints
-  ([section 5](#5-project-local-files)) and the remote trace.
+  ([Project-local files](#project-local-files)) and the remote trace.
 - The `eval-awaiting/<token>` files are JSON (`trusted_amp_origins`,
   `tracing_turned_on`) that live while `crewai eval` waits for a run
   ([crew_run_tui.py:409-420](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/crew_run_tui.py#L409-L420)).
@@ -158,23 +158,23 @@ directory is collected.
 
 No compose file or named volume.
 
-### 3. Credentials
+### Credentials
 
 - `credentials/secret.key` and `credentials/tokens.enc`: the key decrypts
   the token, so both are flagged.
 - `.config/crewai/settings.json`: flagged; it can hold
   `tool_repository_password` in plaintext.
 
-### 4. Exclusions
+### Exclusions
 
 None at default. The opt-in Chroma and LanceDB stores can be large, but
 they are agent memory, and on Linux and macOS they are not collected
 anyway ([Memory gap](#memory-gap)).
 
-### 5. Project-local files
+### Project-local files
 
 A CrewAI project is ordinary Python code, and the run directory is per
-project but lives under the home ([section 2](#2-per-user-storage)). At
+project but lives under the home ([Per-user storage](#per-user-storage)). At
 [`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2)
 CrewAI writes these files inside the project directory (the working directory of the run);
 none is in `PROJECT_CATALOG`:
@@ -226,12 +226,12 @@ The `crewai create` template excludes `.crewai/` from the first commit
 ([git.py:8-9](https://github.com/crewAIInc/crewAI/blob/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2/lib/cli/src/crewai_cli/git.py#L8-L9)),
 so git is no index of these files.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Only indirectly: the run data directory is named after the project
 folder's basename, not its full path. Nothing records the full path, so
 `discover_projects` has nothing to read. The project-local files in
-[section 5](#5-project-local-files) hold no path either: at
+[Project-local files](#project-local-files) hold no path either: at
 [`65cdd70`](https://github.com/crewAIInc/crewAI/commit/65cdd70ac0fc0ba93c553fa30d3dd13a498559e2)
 `last_run.py` and `eval_crew.py` use the working directory only to locate the files (grepped for
 `cwd` and `project_dir`), and `eval_project_state.json` keeps paths relative to it.
@@ -243,10 +243,10 @@ CrewAI is `backlog`: its parser is
 parsed yet. The stores it would read are the run database, the opt-in Flow database and the
 consent file ([Run data directory detail](#run-data-directory-detail)), and the project-local
 AMP sync marker and checkpoints, which are not in `PROJECT_CATALOG`
-([section 5](#5-project-local-files)); every one is SQLite or a JSON document, none
+([Project-local files](#project-local-files)); every one is SQLite or a JSON document, none
 line-oriented.
 
-## 14. Confidence
+## Confidence
 
 - High for the paths and the default or opt-in status of each store (source).
 - Medium for the Windows directory spellings (`crewai` for the credentials, `CrewAI` for the run

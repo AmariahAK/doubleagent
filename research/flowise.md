@@ -6,7 +6,7 @@ framework sweep for [issue #64](https://github.com/seanthegeek/doubleagent/issue
 [`research/frameworks.md`](frameworks.md) for the frameworks that got no catalog line. Its
 parser is in the backlog ([issue 68](https://github.com/seanthegeek/doubleagent/issues/68)).
 
-## 1. Source and evidence
+## Source and evidence
 
 [FlowiseAI/Flowise](https://github.com/FlowiseAI/Flowise), commit
 [`9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb`](https://github.com/FlowiseAI/Flowise/commit/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb).
@@ -37,7 +37,7 @@ custom scripts
 
 ## Collection
 
-### 2. Per-user storage
+### Per-user storage
 
 The home is `HOME`, or `USERPROFILE` on Windows
 ([server utils/index.ts:114-125](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/utils/index.ts#L114-L125)),
@@ -107,7 +107,7 @@ The records inside `database.sqlite`, at
   [2241-2268](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/agentflow/Agent/Agent.ts#L2241-L2268),
   [2631-2642](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/components/nodes/agentflow/Agent/Agent.ts#L2631-L2642)).
   No standing allow list exists apart from the MCP custom-script allow
-  list cited in [section 1](#1-source-and-evidence), which is
+  list cited in [Source and evidence](#source-and-evidence), which is
   server configuration.
 - **Model.** An Agent node's step in `execution.executionData` keeps the
   node's inputs, among them `agentModel` and `agentModelConfig`, whose
@@ -151,22 +151,22 @@ The records inside `database.sqlite`, at
   Deleting a chatflow removes its messages, feedback and upsert history
   ([chatflows/index.ts:135-147](https://github.com/FlowiseAI/Flowise/blob/9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb/packages/server/src/services/chatflows/index.ts#L135-L147)).
 
-### 3. Credentials
+### Credentials
 
 - `.flowise/encryption.key` and the four `*_secret.key` files: flagged.
 - `database.sqlite` holds encrypted credentials and the chat history
   together, so it is collected unflagged; with `encryption.key` the
   `credential` rows can be decrypted.
 
-### 4. Exclusions
+### Exclusions
 
 `.flowise/vectorstore`.
 
-### 5. Project-local files
+### Project-local files
 
 None. Flows are rows in `database.sqlite`.
 
-### 6. Where the project path is recorded
+### Where the project path is recorded
 
 Nowhere; Flowise has no project concept.
 
@@ -176,8 +176,8 @@ Flowise is `backlog`: its parser is
 [issue 68](https://github.com/seanthegeek/doubleagent/issues/68), and nothing it writes is parsed
 yet. Everything a parser would read is in `.flowise/database.sqlite`
 ([Database detail](#database-detail)); there is no line-oriented file under the home, and the
-logs are outside it ([section 2](#2-per-user-storage)).
+logs are outside it ([Per-user storage](#per-user-storage)).
 
-## 14. Confidence
+## Confidence
 
 - High for every path and table (source). Nothing material was left undetermined.
