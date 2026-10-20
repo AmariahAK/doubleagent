@@ -25,6 +25,11 @@ then `## 14. Confidence`. This checks, for each such file:
 - no bold label stands in for a heading: a paragraph may not open with
   `**Label**`, `**Label.**` or `**Label:**` followed by prose (a list item
   or table row may);
+- no line assumes the two documents each agent had before the merge of
+  October 2026 ("the collector document", "the analyzer review", "the two
+  X documents", "collector concern");
+- no confidence paragraph or bullet (`Confidence.`, `**Confidence:**`)
+  stands outside `## 14. Confidence`;
 - no prose line is longer than `--width` characters (default 100) unless
   it carries a URL or is a single code span (delimited by a backtick run
   of any length, and optionally followed by closing parentheses and `.`,
@@ -98,6 +103,15 @@ CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)
 ONLY_CODE_SPAN = re.compile(r"^\s*(`+)(?!`)(?:[^`]|(?!\1(?!`))`+(?!`))+\1(?!`)[).,;:]*\s*$")
 BOLD = re.compile(r"\*\*([^*\n]+)\*\*")
 NUMBER = re.compile(r"(?<![\w/.-])\d[\d,.]*(?:\s?(?:[KMGT]i?B|B|bytes|ms|s|%))?(?![\w/.-])")
+# Wording that assumes the two documents each agent had before the merge.
+SPLIT_PHRASE = re.compile(
+    r"\b(?:the )?(?:collectors?|analyzer|parser) (?:document|review|research document)s?\b"
+    r"|\bthe two [\w-]+ documents\b"
+    r"|\bcollector (?:concern|class)\b",
+    re.I,
+)
+# A confidence paragraph or bullet; it belongs in `## 14. Confidence` only.
+CONFIDENCE_LEAD = re.compile(r"^\s*(?:[-*]\s+)?(?:\*\*)?Confidence(?:\*\*)?\s*[.:]")
 
 
 def load_link_check():
@@ -204,10 +218,23 @@ def check_structure(path: pathlib.Path, text: str, width: int, link_check) -> li
     problems += check_fixed(rel, owner, {h[2] for h in heads})
     lines = stripped.split("\n")
     prev_blank = True
+    section = ""
     for n, line in enumerate(lines, 1):
+        if line.startswith("## "):
+            section = line[3:].strip()
         in_prose = line.strip() and not line.lstrip().startswith(("|", "-", "*", ">", "#", "["))
         if prev_blank and in_prose and BOLD_LEAD.match(line):
             problems.append("%s:%d: bold label used as a heading; make it a heading" % (rel, n))
+        split = SPLIT_PHRASE.search(line)
+        if split:
+            problems.append(
+                '%s:%d: "%s" assumes two documents; the document speaks as one'
+                % (rel, n, split.group(0))
+            )
+        if section != H2[3] and CONFIDENCE_LEAD.match(line):
+            problems.append(
+                "%s:%d: confidence statement outside `## 14. Confidence`; move it there" % (rel, n)
+            )
         long = in_prose and not line.lstrip()[:2].rstrip(".").isdigit() and len(line) > width
         if long and not URL.search(line) and not ONLY_CODE_SPAN.match(line):
             problems.append("%s:%d: prose line longer than %d characters" % (rel, n, width))

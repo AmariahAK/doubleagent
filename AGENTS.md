@@ -790,7 +790,8 @@ agent, `research/<agent>.md`, follows one outline, with the same heading
 names and numbers (the number is part of the anchor the link check and the
 site derive, so the anchors are stable), the same fixed subsections, and
 room for unique subsections under the section that owns the fact.
-`tools/check_research_structure.py` enforces the outline; with
+`tools/check_research_structure.py` enforces the outline, the split
+phrases and the placement of confidence paragraphs; with
 `--before <dir>` holding the previous copies it also lists every citation,
 code span, fenced line, number and label a rewrite dropped, so a
 restructure never loses a fact.
@@ -804,10 +805,19 @@ code span excepted; tables stay tables.
 
 1. `## 1. Source and evidence`: the repository and commit (or bundle,
    binary, documentation), the evidence level per claim, then
-   `### Observed` (one bullet per platform and surface: build, date, what
-   was exercised and what each surface wrote; "No real install." when
-   none) and `### Source reviews` (dated entries, newest first; "None."
-   when none).
+   `### Observed` and `### Source reviews`. An Observed bullet is one
+   platform and surface: build, date, the steps run and what each wrote,
+   in one paragraph; the facts the round found (paths, keys, sizes,
+   shapes, what a delete left) are stated once in the numbered section
+   that owns them and linked from the bullet, not repeated in it; "No
+   real install." when none. What the collector or the analyzer did
+   during the round (row counts, archive sizes, error rows, a bug found,
+   file-system behaviour) is not a fact about the agent: it goes to the
+   collector or analyzer docs page it concerns or to an issue, never into
+   the document. A Source reviews entry is the date, the commit or build
+   reviewed, and one or two sentences on what changed in the document
+   because of it, newest first; the facts it found go into the numbered
+   sections, which never cite the entry; "None." when none.
 2. `## Collection`, the collector's half:
    - `### 2. Per-user storage`: every directory and file under the home per
      platform, what each holds, sizes where observed; `####` subsections
@@ -846,8 +856,24 @@ code span excepted; tables stay tables.
      `Sync, relay and origin rows`, `Scratch directory rows`,
      `Deletion rows`, `Bad-line rows`, `Fixtures`; unique subsections
      follow them.
-4. `## 14. Confidence`: confidence per item and what could not be
-   determined, for both halves.
+4. `## 14. Confidence`: one list for both halves, confidence per item and
+   what could not be determined. It holds no fact the body states and no
+   item the body has since answered: a change to the body that settles an
+   item removes it here, and a confidence paragraph anywhere else in the
+   document is a defect.
+
+One home per fact. Section 2 names each file and says in a line what it
+holds; sections 7 to 10 describe the records inside it; section 3 names a
+credential file and section 12 says which stored field is one; every other
+section links the home rather than restating it. A fact stated in two
+sections is a defect even when the copies agree, because they drift apart
+(the merge of October 2026 left one file described two incompatible ways
+and a table both present and absent in the same document). The document
+speaks as one: nothing in it refers to "the collector document", "the
+analyzer review", "the two documents" or a "collector concern", a dated
+subsection inside a numbered section ("Found in the review of ...") is
+folded into the topic it belongs to, and a section link is checked to
+point at the topic it names, not only at a heading that exists.
 
 `research/README.md` is the index (the evidence level and parse status per
 agent, and the survival table) and `research/frameworks.md` (the framework
@@ -1028,8 +1054,14 @@ The round, in order:
    surfaces change between releases and training-era knowledge of the UI
    is stale. What the delete step left and removed goes into the
    document's `#### What survives a delete` subsection (and its Parser
-   plan's `#### Deletion rows`) as well as the Observed bullet, so the dated
-   bullet records the round and the subsections stay the reader's answer. Catalog, exclusion, secret-glob
+   plan's `#### Deletion rows`), and the Observed bullet links them, so the
+   dated bullet records the round and the subsections stay the reader's
+   answer. The collector and analyzer runs of step 4 are recorded where
+   they matter: a stale manifest value, an error row or a locked file in
+   an issue or on the collector docs page that covers it, a parser gap in
+   its issue; the research document keeps only what the runs showed about
+   the agent's files, and never the row counts, archive sizes or
+   file-system behaviour of the run itself. Catalog, exclusion, secret-glob
    and parser changes follow the usual checklists, under the pending
    version.
 6. **Clean up, after the main session says so.** Delete the collections
