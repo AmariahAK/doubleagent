@@ -76,7 +76,7 @@ param(
 
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Continue'
-$ToolVersion = '1.16.0'
+$ToolVersion = '1.17.0'
 $TOOL = 'collect-agent-artifacts'
 
 # ===========================================================================
@@ -303,10 +303,16 @@ cursor|AppData/Roaming/Cursor/auth.json
 cursor|.cursor-server/data/User
 cursor|Library/Application Support/Cursor/User
 cursor|Library/Application Support/Cursor/logs
+cursor|Library/Application Support/Cursor/AgentStores
+cursor|Library/Application Support/Cursor/update-supervisor
 cursor|.config/Cursor/User
 cursor|.config/Cursor/logs
+cursor|.config/Cursor/AgentStores
+cursor|.config/Cursor/update-supervisor
 cursor|AppData/Roaming/Cursor/User
 cursor|AppData/Roaming/Cursor/logs
+cursor|AppData/Roaming/Cursor/AgentStores
+cursor|AppData/Roaming/Cursor/update-supervisor
 # VS Code and VSCodium: globalStorage holds Copilot Chat, Cline, Roo, Kilo, Continue, Augment state
 vscode|.vscode*/extensions/extensions.json
 vscode|Library/Application Support/Code*/User
@@ -901,6 +907,10 @@ AppData/Local/com.github.githubapp/EBWebView/BrowserMetrics-spare.pma
 .cursor-server/bin
 .cursor-server/extensions
 */Cursor/User/globalStorage/state.vscdb.backup
+*/User/globalStorage/anysphere.cursor-agent-worker/agent-cli
+*/Cursor/update-supervisor/*/cursor-update-supervisor
+.cursor/projects/*/canvases/node_modules
+.cursor/statsig-cache.json
 .codeium/windsurf/implicit
 .codeium/*/bin
 .codeium/bin

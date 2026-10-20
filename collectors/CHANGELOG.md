@@ -10,6 +10,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-10-20
+
+### Added
+
+- Catalog lines for two more Cursor directories in the editor's
+  user-data directory (`Library/Application Support/Cursor`,
+  `.config/Cursor` and `AppData/Roaming/Cursor`), collected as `cursor`:
+  `AgentStores`, the sync stores of the agent's files per account and per
+  conversation, with the pins of the open conversations, and
+  `update-supervisor`, one directory per in-app update whose
+  `events.jsonl`, `result.json` and `app-ready.json` record which build
+  ran from when. `--list` (`-List`) prints the six lines ([#6]).
+
+### Changed
+
+- Four Cursor subtrees are excluded by default and recorded as
+  `skipped_excluded` with their size, where they were collected before:
+  the copy of the Cursor Agent CLI that the IDE's agent worker runs,
+  `*/User/globalStorage/anysphere.cursor-agent-worker/agent-cli` (608 MB
+  on a macOS install, almost all of that install's collected bytes), the
+  update supervisor binary
+  `*/Cursor/update-supervisor/*/cursor-update-supervisor`, the canvas type
+  declarations `.cursor/projects/*/canvases/node_modules` and the
+  feature-flag cache `.cursor/statsig-cache.json`. `--full` (`-Full`)
+  still collects them ([#6]).
+
 ## [1.16.0] - 2026-10-19
 
 ### Added
@@ -912,7 +938,8 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
   overridden by `--full`; credential files collected and flagged
   `secret: true` by default.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.16.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.17.0...HEAD
+[1.17.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.16.0...collector-v1.17.0
 [1.16.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.15.0...collector-v1.16.0
 [1.15.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.14.0...collector-v1.15.0
 [1.14.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.13.0...collector-v1.14.0
@@ -978,3 +1005,4 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [#30]: https://github.com/seanthegeek/doubleagent/issues/30
 [#29]: https://github.com/seanthegeek/doubleagent/issues/29
 [#28]: https://github.com/seanthegeek/doubleagent/issues/28
+[#6]: https://github.com/seanthegeek/doubleagent/issues/6

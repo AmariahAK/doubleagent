@@ -730,8 +730,17 @@ tarball or binary (`npm pack`, then grep or `strings`; minified bundles keep
 literal path strings), official docs, vendor forums and issue trackers, then
 published DFIR or reverse-engineering write-ups. The report must say which
 level each claim came from, and the index table in
-[`research/README.md`](research/README.md) records it. Two habits for minified
-bundles and compiled binaries:
+[`research/README.md`](research/README.md) records it. The hierarchy ranks
+evidence, not effort: a question about the product's surface (where a menu
+item lives, how a chat is deleted, which window offers an export) is
+answered by a web search of the vendor's documentation and forum first,
+cited as the L2 or L3 source it is, and the bundle is grepped only for
+what the bundle alone can show (key names, enum values, record shapes,
+path strings) or to confirm a string the page names. A grep over a
+minified bundle for a UI label costs minutes per pattern and still does
+not say where the control sits (the Cursor round of 2026-10-20 spent
+three such greps on a question one forum thread answered). Two habits for
+minified bundles and compiled binaries:
 
 - Grep for the stable fragment of a message, never the whole sentence.
   Log lines are usually template literals

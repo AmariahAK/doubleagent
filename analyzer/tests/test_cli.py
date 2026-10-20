@@ -44,6 +44,7 @@ from fixtures import (
     COPILOT_EVENT_LINES,
     COPILOT_SESSION,
     COPILOT_WORKSPACE_YAML,
+    CURSOR_LIVE,
     GOOSE_GATEWAY_SESSION,
     GOOSE_SESSION,
     HERMES_SESSION,
@@ -124,22 +125,22 @@ class AgentsSummaryTests(unittest.TestCase):
             + "\n",
         )
 
-    def cursor_state(self) -> None:
-        self.write(".cursor/mcp.json", "{}")
+    def windsurf_state(self) -> None:
+        self.write(".windsurf/mcp.json", "{}")
 
     def test_text(self):
         summary = cli.agents_summary
         self.assertEqual(
-            summary(True, ["claude-code", "antigravity"], ["cursor", "cursor"], []),
-            "parsed: antigravity, claude-code; detected but not parsed: cursor",
+            summary(True, ["claude-code", "antigravity"], ["windsurf", "windsurf"], []),
+            "parsed: antigravity, claude-code; detected but not parsed: windsurf",
         )
         self.assertEqual(
             summary(True, ["claude-code"], [], []),
             "parsed: claude-code; detected but not parsed: none",
         )
         self.assertEqual(
-            summary(True, [], ["cursor"], []),
-            "parsed: none; detected but not parsed: cursor",
+            summary(True, [], ["windsurf"], []),
+            "parsed: none; detected but not parsed: windsurf",
         )
         self.assertEqual(
             summary(True, [], [], ["antigravity"]),
@@ -147,8 +148,8 @@ class AgentsSummaryTests(unittest.TestCase):
         )
         self.assertEqual(summary(False, [], [], []), "none were found")
         self.assertEqual(
-            summary(True, [], ["cursor"], [], ["copilot", "copilot", "shared"]),
-            "parsed: none; detected but not parsed: cursor; collected only: copilot, shared",
+            summary(True, [], ["windsurf"], [], ["copilot", "copilot", "shared"]),
+            "parsed: none; detected but not parsed: windsurf; collected only: copilot, shared",
         )
         self.assertEqual(
             summary(True, [], [], ["antigravity"], ["copilot"]),
@@ -158,24 +159,24 @@ class AgentsSummaryTests(unittest.TestCase):
 
     def test_both_lists(self):
         self.claude_history()
-        self.cursor_state()
+        self.windsurf_state()
         rc, out = run_timeline(self.tmp / "home", self.tmp / "out")
         self.assertEqual(rc, 0, out)
         self.assertEqual(
             agents_line(out),
-            "agents:    parsed: claude-code; detected but not parsed: cursor",
+            "agents:    parsed: claude-code; detected but not parsed: windsurf",
         )
 
     def test_collected_only(self):
         # copilot is in NO_TRANSCRIPTS: detected, no parser, not a backlog.
         self.claude_history()
-        self.cursor_state()
+        self.windsurf_state()
         self.write(".config/github-copilot/apps.json", "{}")
         rc, out = run_timeline(self.tmp / "home", self.tmp / "out")
         self.assertEqual(rc, 0, out)
         self.assertEqual(
             agents_line(out),
-            "agents:    parsed: claude-code; detected but not parsed: cursor;"
+            "agents:    parsed: claude-code; detected but not parsed: windsurf;"
             " collected only: copilot",
         )
 
@@ -190,12 +191,12 @@ class AgentsSummaryTests(unittest.TestCase):
         self.assertNotIn("only none", out)
 
     def test_nothing_parsed(self):
-        self.cursor_state()
+        self.windsurf_state()
         rc, out = run_timeline(self.tmp / "home", self.tmp / "out")
         self.assertEqual(rc, 1, out)  # no rows
         self.assertEqual(
             agents_line(out),
-            "agents:    parsed: none; detected but not parsed: cursor",
+            "agents:    parsed: none; detected but not parsed: windsurf",
         )
 
     def test_parser_found_no_rows(self):
@@ -203,12 +204,12 @@ class AgentsSummaryTests(unittest.TestCase):
         # an empty summaries database and an empty conversations directory.
         self.write(".gemini/antigravity-cli/conversation_summaries.db", "")
         (self.home / ".gemini/antigravity-cli/conversations").mkdir()
-        self.cursor_state()
+        self.windsurf_state()
         rc, out = run_timeline(self.tmp / "home", self.tmp / "out")
         self.assertEqual(rc, 1, out)  # no rows
         self.assertEqual(
             agents_line(out),
-            "agents:    parsed: none; detected but not parsed: cursor;"
+            "agents:    parsed: none; detected but not parsed: windsurf;"
             " parser found no rows: antigravity",
         )
         self.assertNotIn("none were found", out)
@@ -293,15 +294,15 @@ class InventoryJsonTests(unittest.TestCase):
     def test_full_fixture(self):
         home = self.tmp / "home" / "alice"
         build_home(home)
-        (home / ".cursor").mkdir(exist_ok=True)
-        (home / ".cursor/mcp.json").write_text("{}", encoding="utf-8")
+        (home / ".windsurf").mkdir(exist_ok=True)
+        (home / ".windsurf/mcp.json").write_text("{}", encoding="utf-8")
         rc, out, path = self.timeline(self.tmp / "home")
         self.assertEqual(rc, 0, out)
         inv = self.check_totals(path)
         self.assertIn("/srv/proj", inv["projects"])
         self.assertIn("claude-code", inv["projects"]["/srv/proj"]["agents"])
         self.assertIn("claude-code", inv["parsed"])
-        self.assertIn("cursor", inv["detected_not_parsed"])
+        self.assertIn("windsurf", inv["detected_not_parsed"])
         self.assertEqual(inv["detected_not_parsed"], sorted(inv["detected_not_parsed"]))
         # build_home has the Copilot token store, a NO_TRANSCRIPTS agent.
         self.assertIn("copilot", inv["collected_only"])
@@ -703,6 +704,7 @@ FIXTURE_DEDUPLICATED = {
     "cline": 2,  # session-search.db and user_input_history.jsonl "fix tests"
     "codex-cli": 11,  # history.jsonl 1, thread_history_1.sqlite 8, state_5.sqlite 2
     "copilot-cli": 6,  # session-store.db 3, rewind snapshot 1, command history 2
+    "cursor": 3,  # agent transcript: two prompts and a reply the bubbles hold
     "gemini-cli": 1,  # "list files in src"
     "goose": 1,  # "run the tests", no timestamp
     "hermes": 11,  # snapshot copies and the divert's screenshot prompt
@@ -809,12 +811,13 @@ class SyncedSessionTests(unittest.TestCase):
             (("vscode", VSCODE_SESSION), "local"),
             (("chatgpt-desktop", CHATGPT_CONVERSATION), "remote"),
             (("chatgpt-desktop", CHATGPT_TPP_CONVERSATION), "remote"),
+            (("cursor", CURSOR_LIVE), "local"),
             (("copilot-cli", COPILOT_SESSION), ""),
             (("claude-code", CLAUDE_SESSION), ""),
         ):
             self.assertEqual(by_id[key], want, key)
         origin_agents = {p.agent for p in ALL if p.records_origin}
-        self.assertEqual(origin_agents, {"vscode", "chatgpt-desktop"})
+        self.assertEqual(origin_agents, {"vscode", "chatgpt-desktop", "cursor"})
         self.assertEqual({v for (agent, _), v in by_id.items() if agent not in origin_agents}, {""})
         self.assertEqual(
             {v for (agent, _), v in by_id.items() if agent == "vscode"}, {"remote", "local"}
@@ -1672,7 +1675,7 @@ class ProjectAgentsTests(unittest.TestCase):
             ".claude/history.jsonl",
             "".join(json.dumps(x) + "\n" for x in history),
         )
-        c.add("alice", "/srv/proj", "cursor", ".cursor/rules/x.mdc", "x\n")
+        c.add("alice", "/srv/proj", "windsurf", ".windsurf/rules/x.md", "x\n")
         c.add("alice", "/srv/proj", "project", "AGENTS.md", "# x\n")
         c.add("alice", "/srv/shared", "project", "AGENTS.md", "# y\n")
         inv = self.timeline_inventory(c.write())
@@ -1733,7 +1736,7 @@ class ProjectAgentsTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            proj["agents"]["cursor"],
+            proj["agents"]["windsurf"],
             {
                 "rows": 0,
                 "sessions": 0,
@@ -1780,8 +1783,8 @@ class ProjectAgentsTests(unittest.TestCase):
             },
         )
         self.assertEqual(inv["outside_projects"], EMPTY_OUTSIDE)
-        # cursor is in no home, only in a project: still detected.
-        self.assertEqual(inv["detected_not_parsed"], ["cursor"])
+        # windsurf is in no home, only in a project: still detected.
+        self.assertEqual(inv["detected_not_parsed"], ["windsurf"])
         # A history file and no transcript: nothing to drop.
         self.assertEqual(inv["deduplicated"], {})
 
@@ -1818,11 +1821,11 @@ class ProjectAgentsTests(unittest.TestCase):
             "projects": ["/mnt/image/srv/proj"],
         }
         (c.root / "collection.json").write_text(json.dumps(summary), encoding="utf-8")
-        c.add("alice", "/mnt/image/srv/proj", "cursor", ".cursor/rules/x.mdc", "x\n")
+        c.add("alice", "/mnt/image/srv/proj", "windsurf", ".windsurf/rules/x.md", "x\n")
         inv = self.timeline_inventory(c.write(), want_rc=1)  # no rows
         self.assertEqual(list(inv["projects"]), ["/srv/proj"])
         self.assertEqual(
-            inv["projects"]["/srv/proj"]["agents"]["cursor"],
+            inv["projects"]["/srv/proj"]["agents"]["windsurf"],
             {
                 "rows": 0,
                 "sessions": 0,

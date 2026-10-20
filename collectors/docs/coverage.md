@@ -346,6 +346,54 @@ whole as `codex-cli`, so the files the agent wrote for the user are in
 the archive, and project discovery no longer takes a thread's working
 directory there for a project.
 
+## Cursor data directories
+
+The Cursor IDE, an editor forked from VS Code with an agent pane, keeps
+its editor state in a user-data directory, `<data>`:
+`Library/Application Support/Cursor` on macOS, `.config/Cursor` on Linux
+and `AppData/Roaming/Cursor` on Windows. Its agent also writes to
+`~/.cursor`, which is collected whole less the exclusions below. Collected
+as `cursor`:
+
+| Location | What it holds |
+| --- | --- |
+| `<data>/User` | The editor's settings, `globalStorage/state.vscdb`, which holds the agent conversations and the sign-in tokens (see [Credentials](#credentials)), the per-workspace `workspaceStorage`, and the `globalStorage` of Cursor's built-in extensions. |
+| `<data>/logs` | One directory of logs per launch. |
+| `<data>/AgentStores` | From collector 1.17.0. The sync stores of the agent's files, one per account and one per conversation (`cursor_agent_stores/<id>/.sync/index.sqlite` with `root-id`, `mount.json` and `sync.lock`), and the pins of the open conversations (`.control/<id>/pins/`). The directory names carry the numeric account id. |
+| `<data>/update-supervisor` | From collector 1.17.0. One directory per in-app update, with `events.jsonl`, `result.json` and `app-ready.json`, which record which build ran from when. |
+
+The `AgentStores` and `update-supervisor` directories were seen on macOS
+(Cursor 3.25.9 and 3.26.13, October 2026); the Linux and Windows lines
+follow the same user-data directory and were not observed.
+
+Excluded from collector 1.17.0, each recorded as `skipped_excluded` with
+its size:
+
+| Pattern | What it is |
+| --- | --- |
+| `*/User/globalStorage/anysphere.cursor-agent-worker/agent-cli` | A copy of the Cursor Agent CLI that the IDE's agent worker runs, 608 MB on the macOS install. The worker's own files beside it (`cursor-agent-worker-<id>.log` and its `.owner.json`, `.restart.json` and `.spec` siblings, and `worker-data/`) are collected. |
+| `*/Cursor/update-supervisor/*/cursor-update-supervisor` | The update supervisor binary, 484 KB, in each update directory. |
+| `.cursor/projects/*/canvases/node_modules` | TypeScript type declarations for Cursor's canvas feature, about 226 KB per project. The project's `agent-transcripts/` and `mcps/` beside it are collected. |
+| `.cursor/statsig-cache.json` | A feature-flag cache downloaded from Cursor's servers, 932 KB. |
+
+`<data>/process-monitor`, Cursor's logs of the processes it runs, one
+file every four hours, is not collected: process activity is the EDR's to
+record (see [Host state is not collected](#host-state-is-not-collected)).
+Neither are `<data>/sentry` (crash-reporting state), `<data>/CachedData`,
+`<data>/CachedProfilesData` and the Chromium caches; none of them is named
+by a catalog line, so they get no manifest row.
+
+Two directories in the per-user temp directory (`$TMPDIR`, under
+`/private/var/folders/.../T/` on macOS) are outside every home and are not
+collected; copy them by hand when they exist:
+
+| Directory | What it holds |
+| --- | --- |
+| `cursor-agent-logs-<uid>/` | The agent worker's session logs, `session-<time>-<pid>-1.log`, and a `latest.log` symlink. The worker rotates or removes them: on the macOS install they were gone within an hour. |
+| `<user>-cursor-zsh/` | Copies of the user's `.zshrc`, `.zshenv`, `.zprofile` and `.zlogin` that the IDE's terminal uses for shell integration. Like Codex's shell snapshots, they can hold any API key the login shell exports. |
+
+The evidence is in [`research/cursor.md`](../../research/cursor.md).
+
 ## Home directory discovery
 
 The collectors discover home directories rather than copy them: each
@@ -491,6 +539,9 @@ their state must be copied by hand.
   from `.sgptrc` and copy that directory by hand
   ([Chat history and response cache in `research/shellgpt.md`](../../research/shellgpt.md#chat-history-and-response-cache)).
 - **Muse Code** keeps its launcher state beside the launcher; see below.
+- **Cursor** writes its agent worker's logs and copies of the user's zsh
+  startup files to the temp directory; see
+  [Cursor data directories](#cursor-data-directories).
 - **OpenClaw, Codex CLI, Continue and Gemini CLI** write backups,
   exports or a log to a directory the user chooses or works in; see
   [Files written where the user chooses](#files-written-where-the-user-chooses).
@@ -622,7 +673,9 @@ the full pattern list.
 
 Cursor and Windsurf keep their auth tokens inside the same `state.vscdb`
 that holds the chat history, so that file is collected unflagged; the keys
-to redact are `cursorAuth/*` and `windsurfAuthStatus`.
+to redact are `cursorAuth/*` and `windsurfAuthStatus`, and in Cursor's
+`ItemTable` also the `secret://` entries, the editor's secret storage,
+which holds the agent worker's API key.
 Agent Zero copies a Telegram bot's configuration into each Telegram
 chat's `chat.json`, which is collected unflagged; the keys to redact are
 `data.telegram_bot_cfg.token` and `data.telegram_bot_cfg.webhook_secret`.

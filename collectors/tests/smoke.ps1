@@ -1025,6 +1025,30 @@ Mk 'home/bob/.codex/sessions/2026/10/03/rollout-2.jsonl' '{"type":"session_meta"
 Mk "$w149/outputs/report.md" "# report`n"
 Mk "$w149/work/notes.txt" "notes`n"
 
+# 2026-10-20 Cursor IDE round on macOS (#6)
+# Cursor 3.25.9 and 3.26.13 (macOS, 2026-10-19 and 2026-10-20) keep
+# per-account and per-conversation sync stores under AgentStores and one
+# directory per in-app update under update-supervisor (events.jsonl, the
+# build that ran when, beside the 484 KB supervisor binary). The IDE's
+# agent worker embeds a copy of the Agent CLI under agent-cli in
+# globalStorage, and ~/.cursor holds canvas type declarations under
+# node_modules and a feature-flag cache copied from the server: those are
+# excluded; the worker's own files and the agent transcripts stay collected.
+# Checks follow the default run below; the same files are in smoke.sh
+# under bob.
+$c6 = 'Users/alice/Library/Application Support/Cursor'
+$w6 = "$c6/User/globalStorage/anysphere.cursor-agent-worker"
+$u6 = "$c6/update-supervisor/33333333-3333-4333-8333-333333333333"
+Mk "$c6/AgentStores/cursor_agent_stores/u1/.sync/index.sqlite" "sqlite`n"
+Mk "$c6/AgentStores/cursor_agent_stores/.control/u1/pins/1-x.json" "{`"purpose`":`"foreground`"}`n"
+Mk "$u6/events.jsonl" "{`"type`":`"supervisor_started`"}`n"
+Mk "$u6/cursor-update-supervisor" "binary`n"
+Mk "$w6/agent-cli/.local/share/x" "cli`n"
+Mk "$w6/cursor-agent-worker-1.log" "worker log`n"
+Mk 'Users/alice/.cursor/projects/p/canvases/node_modules/x.d.ts' "declare const x: number;`n"
+Mk 'Users/alice/.cursor/projects/p/agent-transcripts/u/u.jsonl' "{`"type`":`"turn_ended`",`"status`":`"success`"}`n"
+Mk 'Users/alice/.cursor/statsig-cache.json' "{}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1541,6 +1565,19 @@ Check '#160 Codex shell snapshot flagged secret' { Is113 $s160 'codex-cli' $true
 Check '#149 Codex projectless output collected' { (Is113 "$w149/outputs/report.md" 'codex-cli' $false) -and ((Row "$w149/outputs/report.md").home -replace '\\', '/') -like '*/home/bob' }
 Check '#149 Codex projectless dir not a project' { -not (@($sum.projects) | Where-Object { $_ -match 'Documents[\\/]Codex' }) -and -not ($script:Rows | Where-Object { $_.home -match 'Documents[\\/]Codex' }) -and $log147 -notmatch 'Project .*Documents[\\/]Codex' }
 Check '#149 Codex rollout cwd still a project' { @($sum.projects | Where-Object { ($_ -replace '\\', '/') -like '*/Users/alice/Documents/app' }).Count -eq 1 }
+
+# 2026-10-20 Cursor IDE round on macOS (#6)
+function Is6([string]$rel) { $r = Row $rel; return ($r -and $r.agent -eq 'cursor' -and $r.status -eq 'collected') }
+function NoRow6([string]$tail) { return (@($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like "*/$tail" }).Count -eq 0) }
+Check '#6 Cursor AgentStores sync index collected' { Is6 "$c6/AgentStores/cursor_agent_stores/u1/.sync/index.sqlite" }
+Check '#6 Cursor AgentStores pin collected' { Is6 "$c6/AgentStores/cursor_agent_stores/.control/u1/pins/1-x.json" }
+Check '#6 Cursor update-supervisor events collected' { Is6 "$u6/events.jsonl" }
+Check '#6 Cursor update-supervisor binary excluded' { (StatusOf "$u6/cursor-update-supervisor") -eq 'skipped_excluded' }
+Check '#6 Cursor embedded agent CLI excluded' { (StatusOf "$w6/agent-cli") -eq 'skipped_excluded' -and (NoRow6 'agent-cli/.local/share/x') }
+Check '#6 Cursor agent worker log collected' { Is6 "$w6/cursor-agent-worker-1.log" }
+Check '#6 Cursor canvases node_modules excluded' { (StatusOf 'Users/alice/.cursor/projects/p/canvases/node_modules') -eq 'skipped_excluded' -and (NoRow6 'node_modules/x.d.ts') }
+Check '#6 Cursor agent transcript collected' { Is6 'Users/alice/.cursor/projects/p/agent-transcripts/u/u.jsonl' }
+Check '#6 Cursor statsig cache excluded' { (StatusOf 'Users/alice/.cursor/statsig-cache.json') -eq 'skipped_excluded' }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

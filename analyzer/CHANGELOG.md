@@ -9,6 +9,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-20
+
+### Added
+
+- A `cursor` parser for the Cursor IDE's agent conversations: the
+  composers and bubbles of the editor's `User/globalStorage/state.vscdb`
+  (`user`, `assistant`, `thinking` with `--include-thinking`, `tool_use`
+  and `tool_result` rows, in both the 3.25.9 inline header list and the
+  3.26.13 `composerConvHeaders` chunks), with `session name:`,
+  `conversation archived` and `unsent draft:` rows; `model:` rows from
+  each user message's model; a `permission decision:` row for each
+  command the user was asked about, with the outcome, the reason and the
+  commands an Always run added; `permission setting:` rows for the run
+  mode of each agent mode, the command, domain and mode-transition lists
+  and the auto-run switches, and for `.cursor/cli-config.json` and
+  `.cursor/permissions.json`; and `model last used:` rows ([#51]).
+- The `cursor` parser recovers a conversation deleted in the editor: its
+  surviving `composerHeaders` row gives a `conversation deleted` row, the
+  JSON `agentKv` prompt blobs that name it give `user` rows marked
+  `recovered`, and the agent worker's transcript copy under
+  `.cursor/projects/<project>/agent-transcripts/`, a secondary source
+  read on every run, gives its prompts (at the minute the transcript
+  records), replies and tool calls. `conversation-search.db` and
+  `.cursor/ai-tracking/ai-code-tracking.db` give `conversation index:`,
+  `ai code:`, `conversation summary:`, `file deleted by agent:` and
+  `scored commit:` rows. Cursor sessions read `origin` `local`, or
+  `remote` for a conversation whose header names a non-local agent
+  location, and `recovered` `no`, `yes` or `partial` in `sessions.jsonl`
+  and the inventory; `cursor` moves from `detected but not parsed` to
+  `parsed` ([#51]).
+- The bundled catalog copy follows collector 1.17.0: it gains Cursor's
+  `AgentStores` and `update-supervisor` directories in the editor's
+  user-data directory, so files there are detected as `cursor`, and its
+  exclusion section gains Cursor's embedded Agent CLI, update supervisor
+  binary, canvas `node_modules` and `statsig-cache.json`, which detection
+  does not read ([#6]).
+
 ## [0.19.0] - 2026-10-19
 
 ### Changed
@@ -1465,7 +1502,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--summary-length` (default 400), `--include-thinking` and `--agent`;
   `detect --json` and `--files`; `catalog --agents`.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.19.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.20.0...HEAD
+[0.20.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.19.0...analyzer-v0.20.0
 [0.19.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.18.0...analyzer-v0.19.0
 [0.18.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.17.0...analyzer-v0.18.0
 [0.17.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.16.0...analyzer-v0.17.0
@@ -1548,6 +1586,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [#75]: https://github.com/seanthegeek/doubleagent/issues/75
 [#73]: https://github.com/seanthegeek/doubleagent/issues/73
 [#64]: https://github.com/seanthegeek/doubleagent/issues/64
+[#51]: https://github.com/seanthegeek/doubleagent/issues/51
 [#50]: https://github.com/seanthegeek/doubleagent/issues/50
 [#49]: https://github.com/seanthegeek/doubleagent/issues/49
 [#48]: https://github.com/seanthegeek/doubleagent/issues/48
@@ -1558,3 +1597,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [#41]: https://github.com/seanthegeek/doubleagent/issues/41
 [#37]: https://github.com/seanthegeek/doubleagent/issues/37
 [#34]: https://github.com/seanthegeek/doubleagent/issues/34
+[#6]: https://github.com/seanthegeek/doubleagent/issues/6

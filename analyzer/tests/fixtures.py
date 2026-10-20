@@ -2170,6 +2170,7 @@ def build_home(home: Path, with_noise: bool = True) -> Path:
     build_copilot_cli(home)
     build_copilot_desktop(home)
     build_chatgpt_desktop(home)
+    build_cursor(home)
     # A NO_TRANSCRIPTS agent: the Copilot language server's token store, which
     # is detected as `copilot`, wanted by no parser and reported collected only.
     _json_file(
@@ -11557,3 +11558,566 @@ def build_chatgpt_desktop(home: Path) -> None:
     prefs = home / "Library/Preferences/com.openai.codex.plist"
     prefs.parent.mkdir(parents=True, exist_ok=True)
     prefs.write_bytes(b"bplist00not a real plist")
+
+
+# Cursor IDE (issue 51, research/cursor.md, Fixtures). Composer ids are
+# invented UUIDs: a live conversation with the 3.25.9 inline header list,
+# an archived one with 3.26.13 header chunks, a deleted one that only its
+# header row, an agentKv blob, its transcript and ai-tracking row still
+# name, a draft with an unsent message and a header-only draft.
+CURSOR_LIVE = "c0000001-0000-4000-8000-000000000001"
+CURSOR_ARCHIVED = "c0000002-0000-4000-8000-000000000002"
+CURSOR_DELETED = "c0000003-0000-4000-8000-000000000003"
+CURSOR_DRAFT = "d0000001-0000-4000-8000-000000000001"
+CURSOR_EMPTY_HEAD = "d0000002-0000-4000-8000-000000000002"
+CURSOR_WORKSPACE = "0123456789abcdef0123456789abcdef"
+CURSOR_T0 = 1790848800000  # 2026-10-01T10:00:00Z, epoch ms
+CURSOR_MTIME = 1790863200  # 2026-10-01T14:00:00Z, the settings files' mtime
+CURSOR_STATE_REL = "Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+CURSOR_SEARCH_REL = "Library/Application Support/Cursor/User/globalStorage/conversation-search.db"
+CURSOR_TRANSCRIPT_REL = ".cursor/projects/srv-proj/agent-transcripts/%s/%s.jsonl" % (
+    CURSOR_LIVE,
+    CURSOR_LIVE,
+)
+CURSOR_DELETED_TRANSCRIPT_REL = ".cursor/projects/srv-proj/agent-transcripts/%s/%s.jsonl" % (
+    CURSOR_DELETED,
+    CURSOR_DELETED,
+)
+CURSOR_TRACKING_REL = ".cursor/ai-tracking/ai-code-tracking.db"
+CURSOR_SETTINGS_KEY = (
+    "src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl"
+    ".persistentStorage.applicationUser"
+)
+CURSOR_STATE_SCHEMA = """
+CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB);
+CREATE TABLE cursorDiskKV (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB);
+CREATE TABLE composerHeaders (composerId TEXT PRIMARY KEY, workspaceId TEXT, createdAt INTEGER,
+  lastUpdatedAt INTEGER, isArchived INTEGER, isSubagent INTEGER, recency INTEGER,
+  checkpointAt INTEGER, subagentTypeName TEXT, value TEXT);
+"""
+
+
+def _cursor_iso(offset_ms: int) -> str:
+    """ISO 8601 with milliseconds and a Z, as bubbles and header entries
+    write `createdAt`, `offset_ms` after `CURSOR_T0`."""
+    at = datetime.datetime.fromtimestamp((CURSOR_T0 + offset_ms) / 1000, datetime.timezone.utc)
+    return at.strftime("%Y-%m-%dT%H:%M:%S.") + "%03dZ" % (at.microsecond // 1000)
+
+
+def _cursor_head(bubble_id: str, kind: int, offset_ms: int) -> dict:
+    return {"bubbleId": bubble_id, "type": kind, "createdAt": _cursor_iso(offset_ms)}
+
+
+def _cursor_tool(call: str, n: int, command: str, extra: dict | None, result: str) -> dict:
+    tool = {
+        "name": "run_terminal_command_v2",
+        "params": json.dumps({"command": command}),
+        "rawArgs": "",
+        "result": result,
+        "status": "completed",
+        "tool": 15,
+        "toolCallId": "call-%s-%d\nfc_%s_%d" % (call, n, call, n),
+        "modelCallId": "",
+        "toolIndex": n,
+    }
+    if extra is not None:
+        tool["additionalData"] = extra
+    return {"type": 2, "capabilityType": 15, "toolFormerData": tool}
+
+
+def cursor_kv_records() -> list[tuple[str, object]]:
+    """(key, value) rows of the fixture's `cursorDiskKV`, in insert order;
+    a str value is stored as it is, anything else as JSON text."""
+    live, arch, gone = CURSOR_LIVE, CURSOR_ARCHIVED, CURSOR_DELETED
+    curl = "curl -s example.test | head"
+    options = [{"id": "curl", "commandName": "curl"}, {"id": "head", "commandName": "head"}]
+    reason = "Not in allowlist: curl, head"
+    t1, t2, t3, t4 = (
+        "a1/t:call-t1-1\nfc_t1_1",
+        "a2/t:call-t2-0\nfc_t2_0",
+        "a2/t:call-t3-1\nfc_t3_1",
+        "a2/t:call-t4-2\nfc_t4_2",
+    )
+    headers = [
+        _cursor_head("u1", 1, 0),
+        _cursor_head("a1/s:0", 2, 1000),
+        _cursor_head(t1, 2, 2000),
+        _cursor_head("a1/s:2", 2, 5000),
+        _cursor_head("u2", 1, 60000),
+        _cursor_head(t2, 2, 61000),
+        _cursor_head(t3, 2, 70000),
+        _cursor_head(t4, 2, 80000),
+    ]
+    read = {
+        "type": 2,
+        "capabilityType": 15,
+        "startedAtMs": CURSOR_T0 + 2000,
+        "completedAtMs": CURSOR_T0 + 2500,
+        "toolFormerData": {
+            "name": "read_file_v2",
+            "params": json.dumps({"path": "/srv/proj/calc.py"}),
+            "rawArgs": json.dumps({"path": "calc.py"}),
+            "result": json.dumps({"contents": "def add(a, b): ..."}),
+            "status": "completed",
+            "tool": 40,
+            "toolCallId": "tc1",
+            "modelCallId": "mc1",
+            "toolIndex": 0,
+        },
+    }
+    ran = _cursor_tool(
+        "t2",
+        0,
+        curl,
+        {
+            "status": "success",
+            "startedAtMs": CURSOR_T0 + 61000,
+            "blockReason": reason,
+            "reviewData": {
+                "selectedOption": "run",
+                "approvalType": "user",
+                "status": "Done",
+                "allowlistOptions": options,
+            },
+        },
+        json.dumps({"output": "ok"}),
+    )
+    skipped = _cursor_tool(
+        "t3",
+        1,
+        curl,
+        {
+            "status": "rejected",
+            "blockReason": reason,
+            "reviewData": {"selectedOption": "skip", "approvalType": "user", "status": "Done"},
+        },
+        json.dumps({"error": "skipped"}),
+    )
+    always = _cursor_tool(
+        "t4",
+        2,
+        curl,
+        {
+            "status": "success",
+            "startedAtMs": CURSOR_T0 + 80000,
+            "blockReason": reason,
+            "reviewData": {
+                "selectedOption": "allowlistCommands",
+                "approvalType": "user",
+                "status": "Done",
+                "allowlistOptions": options,
+                "appliedAllowlistOptionIds": ["curl", "head"],
+            },
+        },
+        json.dumps({"output": "ok"}),
+    )
+    workspace = {"id": CURSOR_WORKSPACE, "uri": {"fsPath": "/srv/proj"}}
+    return [
+        (
+            "composerData:" + live,
+            {
+                "_v": 18,
+                "composerId": live,
+                "status": "completed",
+                "name": "Add subtract",
+                "createdAt": CURSOR_T0 - 60000,
+                "lastUpdatedAt": CURSOR_T0 + 300000,
+                "isArchived": None,
+                "modelConfig": {
+                    "modelName": "grok-4.7",
+                    "maxMode": False,
+                    "selectedModels": [
+                        {"modelId": "grok-4.7", "parameters": [{"id": "context", "value": "256k"}]}
+                    ],
+                },
+                "workspaceIdentifier": workspace,
+                "trackedGitRepos": [{"repoPath": "/srv/proj", "branches": []}],
+                "fullConversationHeadersOnly": headers,
+            },
+        ),
+        (
+            "bubbleId:%s:u1" % live,
+            {
+                "type": 1,
+                "text": "Add a subtract function",
+                "createdAt": _cursor_iso(0),
+                "startedAtMs": CURSOR_T0,
+                "completedAtMs": CURSOR_T0 + 5000,
+                "requestId": "r1",
+                "checkpointId": "k1",
+                "modelInfo": {"modelName": "grok-4.6"},
+            },
+        ),
+        (
+            "bubbleId:%s:a1/s:0" % live,
+            {
+                "type": 2,
+                "bubbleId": "a1/s:0",
+                "capabilityType": 30,
+                "text": "",
+                "createdAt": _cursor_iso(1000),
+                "thinking": {"text": "Read calc.py first.", "signature": "sig"},
+            },
+        ),
+        ("bubbleId:%s:%s" % (live, t1), read),
+        (
+            "bubbleId:%s:a1/s:2" % live,
+            {
+                "type": 2,
+                "capabilityType": None,
+                "text": "Added subtract().",
+                "startedAtMs": CURSOR_T0 + 5000,
+                "turnDurationMs": 5000,
+            },
+        ),
+        (
+            "bubbleId:%s:u2" % live,
+            {
+                "type": 1,
+                "text": "Fetch the page with curl",
+                "createdAt": _cursor_iso(60000),
+                "modelInfo": {"modelName": "grok-4.7"},
+            },
+        ),
+        ("bubbleId:%s:%s" % (live, t2), ran),
+        ("bubbleId:%s:%s" % (live, t3), skipped),
+        ("bubbleId:%s:%s" % (live, t4), always),
+        (
+            "composerData:" + arch,
+            {
+                "_v": 18,
+                "composerId": arch,
+                "status": "completed",
+                "name": "Read the README",
+                "createdAt": CURSOR_T0 + 1200000,
+                "lastUpdatedAt": CURSOR_T0 + 1300000,
+                "isArchived": None,
+                "workspaceIdentifier": workspace,
+                "fullConversationHeadersOnly": [],
+            },
+        ),
+        # The second chunk first, so the suffix, not the rowid, orders them.
+        (
+            "composerConvHeaders:%s:000001" % arch,
+            [_cursor_head("u4", 1, 1260000), _cursor_head("a4/s:0", 2, 1262000)],
+        ),
+        (
+            "composerConvHeaders:%s:000000" % arch,
+            [_cursor_head("u3", 1, 1200000), _cursor_head("a3/s:0", 2, 1202000)],
+        ),
+        (
+            "bubbleId:%s:u3" % arch,
+            {
+                "type": 1,
+                "text": "What does the README say?",
+                "modelInfo": {"modelName": "grok-4.7"},
+            },
+        ),
+        ("bubbleId:%s:a3/s:0" % arch, {"type": 2, "text": "It describes calc.py."}),
+        (
+            "bubbleId:%s:u4" % arch,
+            {"type": 1, "text": "And the LICENSE?", "modelInfo": {"modelName": "grok-4.7"}},
+        ),
+        ("bubbleId:%s:a4/s:0" % arch, {"type": 2, "text": "There is none."}),
+        (
+            "composerData:" + CURSOR_DRAFT,
+            {
+                "_v": 18,
+                "composerId": CURSOR_DRAFT,
+                "status": "none",
+                "createdAt": CURSOR_T0 + 9000000,
+                "fullConversationHeadersOnly": [],
+            },
+        ),
+        ("composerDraft:" + CURSOR_DRAFT, {"richText": "{}", "text": "draft not sent"}),
+        (
+            "agentKv:blob:" + "00ff" * 16,
+            {
+                "role": "user",
+                "providerOptions": {},
+                "content": "<context>conversation %s</context>\n"
+                "<user_query>c3 deleted question</user_query>" % gone,
+            },
+        ),
+        (
+            "agentKv:blob:" + "11ee" * 16,
+            {
+                "role": "user",
+                "providerOptions": {},
+                "content": [{"type": "text", "text": "<context>%s</context> live" % live}],
+            },
+        ),
+        ("agentKv:blob:" + "22dd" * 16, {"role": "system", "content": "You are an agent."}),
+        # Protobuf: not JSON, though its bytes name the deleted composer.
+        ("agentKv:blob:" + "0a0b" * 16, b"\x0a\x24" + gone.encode("ascii") + b"\x1a\x00"),
+        ("composerTranscriptHeightTail:" + gone, {"height": 120}),
+    ]
+
+
+def cursor_header_rows() -> list[tuple]:
+    """The fixture's `composerHeaders` rows: (composerId, workspaceId,
+    createdAt, lastUpdatedAt, isArchived, value)."""
+    workspace = {"id": CURSOR_WORKSPACE, "uri": {"fsPath": "/srv/proj"}}
+    location = {"type": "local", "status": "active"}
+
+    def head(cid, created, updated, archived, **extra):
+        value = {
+            "type": "head",
+            "composerId": cid,
+            "createdAt": created,
+            "lastUpdatedAt": updated,
+            "isArchived": bool(archived),
+            **extra,
+        }
+        return (cid, CURSOR_WORKSPACE, created, updated, archived, json.dumps(value))
+
+    history = [{"id": "l1", "reason": "created", "timestamp": CURSOR_T0}]
+    return [
+        head(
+            CURSOR_LIVE,
+            CURSOR_T0 - 60000,
+            CURSOR_T0 + 300000,
+            0,
+            name="Add subtract",
+            workspaceIdentifier=workspace,
+            agentLocation=location,
+            agentLocationHistory=history,
+        ),
+        head(
+            CURSOR_ARCHIVED,
+            CURSOR_T0 + 1200000,
+            CURSOR_T0 + 7200000,
+            1,
+            name="Read the README",
+            workspaceIdentifier=workspace,
+            agentLocation=location,
+            agentLocationHistory=history,
+        ),
+        # Deleted: the header keeps its times, location and workspace, and
+        # loses `name` and `subtitle`.
+        head(
+            CURSOR_DELETED,
+            CURSOR_T0 - 30600000,
+            CURSOR_T0 + 10800000,
+            1,
+            workspaceIdentifier=workspace,
+            agentLocation=location,
+            agentLocationHistory=history,
+            totalLinesAdded=0,
+            totalLinesRemoved=0,
+        ),
+        head(CURSOR_DRAFT, CURSOR_T0 + 9000000, CURSOR_T0 + 9000000, 0, isDraft=True),
+        # A pre-login draft whose composerData is gone: no location
+        # history, not archived, so not a deleted conversation.
+        head(CURSOR_EMPTY_HEAD, CURSOR_T0 - 90000000, CURSOR_T0 - 90000000, 0, isDraft=True),
+    ]
+
+
+def cursor_settings() -> dict:
+    """The `ItemTable` settings blob (`composerState`, `aiSettings`)."""
+    return {
+        "composerState": {
+            "modes4": [
+                {"id": "agent", "autoRun": True, "smartModeAutoRun": False, "fullAutoRun": False},
+                {"id": "plan", "autoRun": False, "smartModeAutoRun": False, "fullAutoRun": False},
+            ],
+            "yoloCommandAllowlist": ["curl", "head"],
+            "yoloCommandDenylist": [],
+            "smartAllowlistDenylist": [],
+            "webFetchDomainAllowlist": [],
+            "autoApprovedModeTransitions": [],
+            "yoloOutsideWorkspaceDisabled": True,
+        },
+        "aiSettings": {
+            "modelConfig": {"composer": {"modelName": "grok-4.7", "maxMode": False}},
+            "modelLastUsedAt": {"grok-4.7": "2026-10-01T10:00:30.000Z"},
+        },
+        "membershipType": "premium",
+    }
+
+
+def write_cursor_state(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(path))
+    con.executescript(CURSOR_STATE_SCHEMA)
+    for key, value in cursor_kv_records():
+        stored = value if isinstance(value, (str, bytes)) else json.dumps(value)
+        con.execute("INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)", (key, stored))
+    for row in cursor_header_rows():
+        con.execute(
+            "INSERT INTO composerHeaders (composerId, workspaceId, createdAt, lastUpdatedAt,"
+            " isArchived, isSubagent, value) VALUES (?, ?, ?, ?, ?, 0, ?)",
+            row,
+        )
+    for key, value in (
+        (CURSOR_SETTINGS_KEY, json.dumps(cursor_settings())),
+        ("cursor/sandboxAutoRunSettingEnabled", "true"),
+        ("cursor/sandboxSupported", "true"),
+    ):
+        con.execute(
+            "INSERT INTO ItemTable (key, value) VALUES (?, ?)", (key, value.encode("utf-8"))
+        )
+    con.commit()
+    con.close()
+    os.utime(path, (CURSOR_MTIME, CURSOR_MTIME))
+
+
+def cursor_transcript_records() -> list[dict]:
+    """The live conversation's transcript, written at UTC-4: its user lines
+    are the bubbles u1 and u2 (10:00Z and 10:01Z)."""
+
+    def user(tag: str, query: str) -> dict:
+        text = "<timestamp>%s</timestamp>\n<user_query>%s</user_query>" % (tag, query)
+        return {"role": "user", "message": {"content": [{"type": "text", "text": text}]}}
+
+    shell = {
+        "command": "curl -s example.test | head",
+        "description": "Fetch the page",
+        "required_permissions": ["full_network"],
+    }
+    return [
+        user("Thursday, Oct 1, 2026, 6:00 AM (UTC-4)", "Add a subtract function"),
+        {
+            "role": "assistant",
+            "message": {"content": [{"type": "text", "text": "Added subtract()."}]},
+        },
+        {"type": "turn_ended", "status": "success"},
+        user("Thursday, Oct 1, 2026, 6:01 AM (UTC-4)", "Fetch the page with curl"),
+        {
+            "role": "assistant",
+            "message": {"content": [{"type": "tool_use", "name": "Shell", "input": shell}]},
+        },
+        {"type": "turn_ended", "status": "success"},
+    ]
+
+
+def cursor_deleted_transcript_records() -> list[dict]:
+    """The deleted conversation's transcript, which the delete left."""
+    text = (
+        "<timestamp>Wednesday, Sep 30, 2026, 9:30 PM (UTC-4)</timestamp>\n"
+        "<user_query>c3 deleted question</user_query>"
+    )
+    return [
+        {"role": "user", "message": {"content": [{"type": "text", "text": text}]}},
+        {
+            "role": "assistant",
+            "message": {"content": [{"type": "text", "text": "Answer kept only here."}]},
+        },
+        {"type": "turn_ended", "status": "success"},
+    ]
+
+
+CURSOR_TRACKING_SCHEMA = """
+CREATE TABLE ai_code_hashes (hash TEXT PRIMARY KEY, source TEXT, fileExtension TEXT,
+  fileName TEXT, requestId TEXT, conversationId TEXT, timestamp INTEGER, model TEXT,
+  createdAt INTEGER);
+CREATE TABLE scored_commits (commitHash TEXT, branchName TEXT, scoredAt INTEGER,
+  linesAdded INTEGER, linesDeleted INTEGER, tabLinesAdded INTEGER, tabLinesDeleted INTEGER,
+  composerLinesAdded INTEGER, composerLinesDeleted INTEGER, humanLinesAdded INTEGER,
+  humanLinesDeleted INTEGER, blankLinesAdded INTEGER, blankLinesDeleted INTEGER,
+  commitMessage TEXT, commitDate TEXT, v1AiPercentage TEXT, v2AiPercentage TEXT);
+CREATE TABLE tracking_state (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE conversation_summaries (conversationId TEXT, title TEXT, tldr TEXT, overview TEXT,
+  summaryBullets TEXT, model TEXT, mode TEXT, updatedAt INTEGER);
+CREATE TABLE tracked_file_content (gitPath TEXT, content TEXT, conversationId TEXT, model TEXT,
+  fileExtension TEXT, createdAt INTEGER);
+CREATE TABLE ai_deleted_files (gitPath TEXT, composerId TEXT, conversationId TEXT, model TEXT,
+  deletedAt INTEGER);
+"""
+
+
+def write_cursor_tracking(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(path))
+    con.executescript(CURSOR_TRACKING_SCHEMA)
+    for row in (
+        ("h1", "composer", "py", "/srv/proj/calc.py", "r1", CURSOR_LIVE, CURSOR_T0 + 3000),
+        ("h2", "composer", "py", "/srv/proj/calc.py", "r9", CURSOR_DELETED, CURSOR_T0 - 30540000),
+    ):
+        con.execute(
+            "INSERT INTO ai_code_hashes VALUES (?, ?, ?, ?, ?, ?, ?, 'grok-4.6', ?)", (*row, 0)
+        )
+    con.execute("INSERT INTO tracking_state VALUES ('trackingStartTime', '1790800000000')")
+    # Unpopulated on the real install; shapes from the table definitions.
+    con.execute(
+        "INSERT INTO conversation_summaries VALUES (?, 'Add subtract', 'Added subtract().',"
+        " '', '[]', 'grok-4.6', 'agent', ?)",
+        (CURSOR_LIVE, CURSOR_T0 + 6000),
+    )
+    con.execute(
+        "INSERT INTO ai_deleted_files VALUES ('old.py', ?, ?, 'grok-4.7', ?)",
+        (CURSOR_LIVE, CURSOR_LIVE, CURSOR_T0 + 90000),
+    )
+    con.execute(
+        "INSERT INTO scored_commits (commitHash, branchName, scoredAt, linesAdded, linesDeleted)"
+        " VALUES ('abc1234', 'main', ?, 4, 0)",
+        (CURSOR_T0 + 400000,),
+    )
+    con.commit()
+    con.close()
+
+
+CURSOR_SEARCH_SCHEMA = """
+CREATE TABLE conversations (fts_rowid INTEGER PRIMARY KEY, source TEXT NOT NULL
+  CHECK (source IN ('local', 'cloud-cache')), scope TEXT, id TEXT, title TEXT, branches TEXT,
+  updated_at INTEGER, is_archived INTEGER, root_fingerprint TEXT, cache_fingerprint TEXT);
+CREATE TABLE conversation_search_settings (effective_conversation_cap INTEGER);
+"""
+
+
+def write_cursor_search(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(path))
+    con.executescript(CURSOR_SEARCH_SCHEMA)
+    for row in (
+        ("local", CURSOR_LIVE, "Add subtract", CURSOR_T0 + 300000, 0),
+        ("local", CURSOR_ARCHIVED, "Read the README", CURSOR_T0 + 7200000, 1),
+        ("local", CURSOR_DRAFT, "", CURSOR_T0 + 9000000, 0),
+    ):
+        con.execute(
+            "INSERT INTO conversations (source, scope, id, title, branches, updated_at,"
+            " is_archived) VALUES (?, 'workspace', ?, ?, '[]', ?, ?)",
+            row,
+        )
+    con.execute("INSERT INTO conversation_search_settings VALUES (10000)")
+    con.commit()
+    con.close()
+
+
+def build_cursor(home: Path) -> None:
+    write_cursor_state(home / CURSOR_STATE_REL)
+    write_cursor_search(home / CURSOR_SEARCH_REL)
+    write_cursor_tracking(home / CURSOR_TRACKING_REL)
+    _jsonl(home / CURSOR_TRANSCRIPT_REL, cursor_transcript_records())
+    write_bad_line(home / CURSOR_TRANSCRIPT_REL)
+    _jsonl(home / CURSOR_DELETED_TRANSCRIPT_REL, cursor_deleted_transcript_records())
+    for rel, doc in (
+        (
+            ".cursor/cli-config.json",
+            {
+                "version": 1,
+                "approvalMode": "allowlist",
+                "permissions": {"allow": ["Shell(ls)"], "deny": []},
+                "sandbox": {"mode": "disabled", "networkAccess": "allowlist"},
+                "display": {"mode": "zen"},
+            },
+        ),
+        (
+            ".cursor/permissions.json",
+            {
+                "approvalMode": "allowlist",
+                "allowlists": {"mcp": ["github:list_issues"], "terminal": ["git status"]},
+                "allowInstructions": ["read-only git commands"],
+                "blockInstructions": ["anything that pushes"],
+            },
+        ),
+    ):
+        _json_file(home / rel, doc)
+        os.utime(home / rel, (CURSOR_MTIME, CURSOR_MTIME))
+    # Noise the parser must not want.
+    _json_file(home / ".cursor/statsig-cache.json", {"flags": {}})
+    _json_file(
+        home / ".cursor/projects/srv-proj/mcps/cursor-ide-browser/SERVER_METADATA.json",
+        {"name": "cursor-ide-browser"},
+    )
+    _json_file(home / ".cursor/mcp.json", {"mcpServers": {}})

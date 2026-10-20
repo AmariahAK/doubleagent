@@ -11225,8 +11225,9 @@ class ReadsAgentsRoutingTests(ParserBase):
         from_vscdb = {
             r.agent for r in rows if r.source_file.endswith("/User/globalStorage/state.vscdb")
         }
-        # `vscode` rows come from the Copilot Chat cloud agent tasks (issue 153).
-        self.assertEqual(from_vscdb, {"cody", "twinny", "vscode"})
+        # `vscode` rows come from the Copilot Chat cloud agent tasks (issue 153),
+        # `cursor` rows from Cursor's own state.vscdb (issue 51).
+        self.assertEqual(from_vscdb, {"cody", "cursor", "twinny", "vscode"})
         rows, _, _, _ = cli.collect_rows(self.col, Options(), ["twinny"])
         self.assertEqual({r.agent for r in rows}, {"twinny"})
 
@@ -14597,4 +14598,526 @@ class ChatGptDesktopTests(ParserBase):
         self.assertEqual(len(rows), 6)
         self.assertEqual(
             rows[-1].text, "session synced: chatgpt.com holds conversation -, no local transcript"
+        )
+
+
+from doubleagent.parsers.cursor import CursorParser, run_mode, tag_time, unwrap_query
+from fixtures import (
+    CURSOR_ARCHIVED,
+    CURSOR_DELETED,
+    CURSOR_DELETED_TRANSCRIPT_REL,
+    CURSOR_DRAFT,
+    CURSOR_EMPTY_HEAD,
+    CURSOR_LIVE,
+    CURSOR_SEARCH_REL,
+    CURSOR_STATE_REL,
+    CURSOR_TRACKING_REL,
+    CURSOR_TRANSCRIPT_REL,
+)
+
+
+class CursorTests(ParserBase):
+    """Cursor IDE conversations (issue 51, research/cursor.md, Parser plan)."""
+
+    COMPOSER = "(from state.vscdb composerState, file mtime)"
+    REASON = "reason=Not in allowlist: curl, head"
+    DELETED = "conversation deleted (header kept; time is the header's lastUpdatedAt)"
+    CALL = "call-t%d-%d\nfc_t%d_%d"
+    CURL = '{"command": "curl -s example.test | head"}'
+    # (timestamp_utc, session_id, turn_type, text) of every state.vscdb row
+    # without --include-thinking, in the order the parser yields them.
+    EXPECTED: ClassVar[list[tuple[str, str, str, str]]] = [
+        ("2026-10-01T09:59:00.000Z", CURSOR_LIVE, "system", "session name: Add subtract"),
+        ("2026-10-01T10:00:00.000Z", CURSOR_LIVE, "system", "model: grok-4.6"),
+        ("2026-10-01T10:00:00.000Z", CURSOR_LIVE, "user", "Add a subtract function"),
+        ("2026-10-01T10:00:02.000Z", CURSOR_LIVE, "tool_use", '{"path": "/srv/proj/calc.py"}'),
+        (
+            "2026-10-01T10:00:02.500Z",
+            CURSOR_LIVE,
+            "tool_result",
+            '{"contents": "def add(a, b): ..."}',
+        ),
+        ("2026-10-01T10:00:05.000Z", CURSOR_LIVE, "assistant", "Added subtract()."),
+        ("2026-10-01T10:01:00.000Z", CURSOR_LIVE, "system", "model: grok-4.6 -> grok-4.7"),
+        ("2026-10-01T10:01:00.000Z", CURSOR_LIVE, "user", "Fetch the page with curl"),
+        ("2026-10-01T10:01:01.000Z", CURSOR_LIVE, "tool_use", CURL),
+        (
+            "2026-10-01T10:01:01.000Z",
+            CURSOR_LIVE,
+            "system",
+            "permission decision: run outcome=success approval=user " + REASON,
+        ),
+        ("2026-10-01T10:01:01.000Z", CURSOR_LIVE, "tool_result", '{"output": "ok"}'),
+        ("2026-10-01T10:01:10.000Z", CURSOR_LIVE, "tool_use", CURL),
+        (
+            "2026-10-01T10:01:10.000Z",
+            CURSOR_LIVE,
+            "system",
+            "permission decision: skip outcome=rejected approval=user " + REASON,
+        ),
+        (
+            "2026-10-01T10:01:10.000Z",
+            CURSOR_LIVE,
+            "tool_result",
+            '[rejected] {"error": "skipped"}',
+        ),
+        ("2026-10-01T10:01:20.000Z", CURSOR_LIVE, "tool_use", CURL),
+        (
+            "2026-10-01T10:01:20.000Z",
+            CURSOR_LIVE,
+            "system",
+            "permission decision: allowlistCommands outcome=success approval=user "
+            + REASON
+            + " allowlisted=curl,head",
+        ),
+        ("2026-10-01T10:01:20.000Z", CURSOR_LIVE, "tool_result", '{"output": "ok"}'),
+        ("2026-10-01T10:20:00.000Z", CURSOR_ARCHIVED, "system", "session name: Read the README"),
+        ("2026-10-01T10:20:00.000Z", CURSOR_ARCHIVED, "system", "model: grok-4.7"),
+        ("2026-10-01T10:20:00.000Z", CURSOR_ARCHIVED, "user", "What does the README say?"),
+        ("2026-10-01T10:20:02.000Z", CURSOR_ARCHIVED, "assistant", "It describes calc.py."),
+        ("2026-10-01T10:21:00.000Z", CURSOR_ARCHIVED, "user", "And the LICENSE?"),
+        ("2026-10-01T10:21:02.000Z", CURSOR_ARCHIVED, "assistant", "There is none."),
+        ("2026-10-01T12:00:00.000Z", CURSOR_ARCHIVED, "system", "conversation archived"),
+        ("2026-10-01T12:30:00.000Z", CURSOR_DRAFT, "system", "unsent draft: draft not sent"),
+        ("2026-10-01T13:00:00.000Z", CURSOR_DELETED, "system", DELETED),
+        (
+            "",
+            CURSOR_DELETED,
+            "user",
+            "<context>conversation %s</context>\n<user_query>c3 deleted question</user_query>"
+            % CURSOR_DELETED,
+        ),
+        (
+            "2026-10-01T14:00:00.000Z",
+            "",
+            "system",
+            "permission setting: yoloCommandAllowlist=curl " + COMPOSER,
+        ),
+        (
+            "2026-10-01T14:00:00.000Z",
+            "",
+            "system",
+            "permission setting: yoloCommandAllowlist=head " + COMPOSER,
+        ),
+        (
+            "2026-10-01T14:00:00.000Z",
+            "",
+            "system",
+            "permission setting: run mode agent=Allowlist (with Sandbox) autoRun=true"
+            " smartModeAutoRun=false fullAutoRun=false sandbox=true " + COMPOSER,
+        ),
+        (
+            "2026-10-01T14:00:00.000Z",
+            "",
+            "system",
+            "permission setting: run mode plan=Ask Every Time autoRun=false"
+            " smartModeAutoRun=false fullAutoRun=false sandbox=true " + COMPOSER,
+        ),
+        (
+            "2026-10-01T14:00:00.000Z",
+            "",
+            "system",
+            "permission setting: yoloOutsideWorkspaceDisabled=true " + COMPOSER,
+        ),
+        (
+            "2026-10-01T10:00:30.000Z",
+            "",
+            "system",
+            "model last used: grok-4.7 (from state.vscdb aiSettings.modelLastUsedAt)",
+        ),
+    ]
+
+    def state_rows(self, **kw):
+        return self.rows_for(CursorParser(), CURSOR_STATE_REL, **kw)
+
+    def kv(self, sql: str, params=()) -> None:
+        con = sqlite3.connect(str(self.home / CURSOR_STATE_REL))
+        con.execute(sql, params)
+        con.commit()
+        con.close()
+
+    def test_rows(self):
+        rows = self.state_rows()
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.turn_type, r.text) for r in rows], self.EXPECTED
+        )
+        for r in rows:
+            self.assertEqual((r.host, r.user, r.agent), ("h1", "alice", "cursor"))
+            self.assertEqual(r.source_file, "/alice/" + CURSOR_STATE_REL)
+            self.assertEqual(r.project_path, "/srv/proj" if r.session_id[:1] == "c" else "")
+            self.assertEqual(r.git_branch, "")
+            self.assertEqual(
+                r.recovered, "yes" if r.turn_type == "user" and not r.timestamp_utc else ""
+            )
+
+    def test_model_column_and_tool_ids(self):
+        rows = [r for r in self.state_rows() if r.session_id == CURSOR_LIVE]
+        # The tracked model of the turn's user bubble; the session name
+        # comes before the first.
+        self.assertEqual([r.model for r in rows], [""] + ["grok-4.6"] * 5 + ["grok-4.7"] * 11)
+        tools = [r for r in rows if r.tool_use_id]
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.tool_use_id) for r in tools[:2]],
+            [("tool_use", "read_file_v2", "tc1"), ("tool_result", "read_file_v2", "tc1")],
+        )
+        # Each reviewed command: tool_use, its decision and its result, on
+        # the call id; the auto-run read has no decision row.
+        for k, (n, i) in enumerate(((2, 0), (3, 1), (4, 2))):
+            group = tools[2 + 3 * k : 5 + 3 * k]
+            self.assertEqual(
+                [(r.turn_type, r.tool_name) for r in group],
+                [
+                    ("tool_use", "run_terminal_command_v2"),
+                    ("system", "run_terminal_command_v2"),
+                    ("tool_result", "run_terminal_command_v2"),
+                ],
+            )
+            self.assertEqual({r.tool_use_id for r in group}, {self.CALL % (n, i, n, i)})
+        self.assertEqual(len(tools), 11)
+
+    def test_thinking_opt_in(self):
+        self.assertNotIn("thinking", {r.turn_type for r in self.state_rows()})
+        rows = self.state_rows(include_thinking=True)
+        thinking = [r for r in rows if r.turn_type == "thinking"]
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.text, r.model) for r in thinking],
+            [("2026-10-01T10:00:01.000Z", CURSOR_LIVE, "Read calc.py first.", "grok-4.6")],
+        )
+        self.assertEqual([r for r in rows if r.turn_type != "thinking"][3].turn_type, "tool_use")
+        self.assertEqual(len(rows), len(self.EXPECTED) + 1)
+
+    def test_drafts_and_deleted(self):
+        rows = self.state_rows()
+        by_session = {}
+        for r in rows:
+            by_session.setdefault(r.session_id, []).append(r.text)
+        # A draft yields only its unsent text; a header-only draft (no
+        # location history, not archived) is not a deleted conversation.
+        self.assertEqual(by_session[CURSOR_DRAFT], ["unsent draft: draft not sent"])
+        self.assertNotIn(CURSOR_EMPTY_HEAD, by_session)
+        # The deleted conversation: its header and the JSON blob that names
+        # it; the protobuf blob and the live conversation's blob give nothing.
+        self.assertEqual(len(by_session[CURSOR_DELETED]), 2)
+        self.assertEqual(sum("live" in t for t in by_session[CURSOR_LIVE]), 0)
+        self.assertFalse(any("You are an agent" in r.text for r in rows))
+
+    def test_transcript(self):
+        p = CursorParser()
+        art = self.artifact(CURSOR_TRANSCRIPT_REL)
+        self.assertTrue(p.secondary(art))
+        self.assertEqual(p.secondary_tolerance(art), 60.0)
+        rows = list(p.parse(art, Options(include_thinking=True)))
+        self.assertEqual(
+            [(r.timestamp_utc, r.turn_type, r.tool_name, r.text, r.source_line) for r in rows],
+            [
+                ("2026-10-01T10:00:00.000Z", "user", "", "Add a subtract function", 1),
+                ("", "assistant", "", "Added subtract().", 2),
+                ("2026-10-01T10:01:00.000Z", "user", "", "Fetch the page with curl", 4),
+                (
+                    "",
+                    "tool_use",
+                    "Shell",
+                    '{"command":"curl -s example.test | head","description":"Fetch the page",'
+                    '"required_permissions":["full_network"]}',
+                    5,
+                ),
+                ("", "system", "", bad_line_text(), 7),
+            ],
+        )
+        for r in rows:
+            self.assertEqual((r.session_id, r.project_path), (CURSOR_LIVE, "/srv/proj"))
+            self.assertEqual((r.model, r.tool_use_id), ("", ""))
+
+    def test_truncated_line(self):
+        rel = CURSOR_TRANSCRIPT_REL
+        after = {"role": "user", "message": {"content": [{"type": "text", "text": "after"}]}}
+        with open(self.home / rel, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(after) + "\n")
+        rows = self.rows_for(CursorParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows][-3:],
+            [
+                ("tool_use", rows[3].text),
+                ("user", "after"),
+                ("system", bad_line_text()),
+            ],
+        )
+        self.assertEqual(rows[0].text, "Add a subtract function")
+        bad = rows[-1]
+        self.assertEqual(
+            (bad.session_id, bad.project_path, bad.timestamp_utc), (CURSOR_LIVE, "/srv/proj", "")
+        )
+        # A wrapper that does not parse keeps the whole text, with no time.
+        self.assertEqual(rows[-2].timestamp_utc, "")
+
+    def test_tag_time(self):
+        self.assertEqual(
+            tag_time("Thursday, Oct 1, 2026, 6:00 AM (UTC-4)"), "2026-10-01T10:00:00.000Z"
+        )
+        self.assertEqual(
+            tag_time("Thursday, Oct 1, 2026, 12:05 AM (UTC)"), "2026-10-01T00:05:00.000Z"
+        )
+        self.assertEqual(
+            tag_time("Thursday, Oct 1, 2026, 12:05 PM (UTC+5:30)"), "2026-10-01T06:35:00.000Z"
+        )
+        self.assertEqual(
+            tag_time("Wednesday, Sep 30, 2026, 9:30 PM (UTC-4)"), "2026-10-01T01:30:00.000Z"
+        )
+        self.assertEqual(tag_time("yesterday"), "")
+        self.assertEqual(tag_time("Thursday, Foo 1, 2026, 6:00 AM (UTC-4)"), "")
+        self.assertEqual(
+            unwrap_query(
+                "<timestamp>Thursday, Oct 1, 2026, 6:00 AM (UTC-4)</timestamp>\n<user_query>a\nb</user_query>"
+            ),
+            ("a\nb", "2026-10-01T10:00:00.000Z"),
+        )
+        wrapped = "<timestamp>soon</timestamp>\n<user_query>q</user_query>"
+        self.assertEqual(unwrap_query(wrapped), (wrapped, ""))
+
+    def test_run_mode(self):
+        on = {"autoRun": True}
+        self.assertEqual(run_mode({"autoRun": False}, True), "Ask Every Time")
+        self.assertEqual(run_mode(on, False), "Allowlist")
+        self.assertEqual(run_mode(on, True), "Allowlist (with Sandbox)")
+        self.assertEqual(run_mode({**on, "smartModeAutoRun": True}, False), "Auto-review")
+        self.assertEqual(
+            run_mode({**on, "smartModeAutoRun": True}, True), "Auto-review (with Sandbox)"
+        )
+        self.assertEqual(run_mode({"autoRun": False, "fullAutoRun": True}, True), "Run Everything")
+
+    def test_deduplication_and_recovery(self):
+        rows, _, problems, dropped = cli.collect_rows(self.col, Options(), ["cursor"])
+        self.assertEqual(problems, [])
+        # The transcript's two prompts and its reply repeat the bubbles.
+        self.assertEqual(dropped["cursor"], 3)
+        transcript = [r for r in rows if r.source_file.endswith(CURSOR_TRANSCRIPT_REL)]
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.recovered) for r in transcript],
+            [("tool_use", "Shell", "yes"), ("system", "", "")],
+        )
+        gone = [r for r in rows if r.session_id == CURSOR_DELETED]
+        self.assertEqual(
+            [(r.timestamp_utc, r.turn_type, r.text[:22], r.recovered) for r in gone],
+            [
+                ("2026-10-01T01:30:00.000Z", "user", "c3 deleted question", "yes"),
+                (
+                    "2026-10-01T01:31:00.000Z",
+                    "system",
+                    "ai code: /srv/proj/cal",
+                    "",
+                ),
+                ("2026-10-01T13:00:00.000Z", "system", self.DELETED[:22], ""),
+                ("", "assistant", "Answer kept only here.", "yes"),
+                ("", "user", "<context>conversation ", "yes"),
+            ],
+        )
+        self.assertEqual({r.project_path for r in gone}, {"/srv/proj"})
+        self.assertEqual(
+            {r.source_file.rsplit("/", 1)[-1] for r in gone},
+            {
+                "state.vscdb",
+                "ai-code-tracking.db",
+                CURSOR_DELETED_TRANSCRIPT_REL.rsplit("/", 1)[-1],
+            },
+        )
+
+    def test_sessions(self):
+        rows, _, _, _ = cli.collect_rows(self.col, Options(), ["cursor"])
+        sessions = summarise(
+            rows, cli.SYNC_AGENTS, cli.RELAY_AGENTS, cli.ORIGIN_AGENTS, cli.SECONDARY_AGENTS
+        )
+        got = {
+            s.session_id: (s.origin, s.recovered, s.synced, s.user_turns, s.tool_calls)
+            for s in sessions
+            if s.agent == "cursor"
+        }
+        self.assertEqual(got[CURSOR_LIVE], ("local", "partial", "", 2, 5))
+        self.assertEqual(got[CURSOR_ARCHIVED], ("local", "no", "", 2, 0))
+        # Every event row of the deleted conversation is recovered; its
+        # system rows (the header, the ai-tracking row) are not counted.
+        self.assertEqual(got[CURSOR_DELETED][:2], ("local", "yes"))
+        self.assertEqual(got[CURSOR_DELETED][3], 2)
+
+    def test_side_databases(self):
+        rows = self.rows_for(CursorParser(), CURSOR_TRACKING_REL)
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.model, r.git_branch, r.text) for r in rows],
+            [
+                (
+                    "2026-10-01T10:00:03.000Z",
+                    CURSOR_LIVE,
+                    "grok-4.6",
+                    "",
+                    "ai code: /srv/proj/calc.py source=composer model=grok-4.6 request=r1",
+                ),
+                (
+                    "2026-10-01T01:31:00.000Z",
+                    CURSOR_DELETED,
+                    "grok-4.6",
+                    "",
+                    "ai code: /srv/proj/calc.py source=composer model=grok-4.6 request=r9",
+                ),
+                (
+                    "2026-10-01T10:00:06.000Z",
+                    CURSOR_LIVE,
+                    "grok-4.6",
+                    "",
+                    "conversation summary: Add subtract: Added subtract().",
+                ),
+                (
+                    "2026-10-01T10:01:30.000Z",
+                    CURSOR_LIVE,
+                    "grok-4.7",
+                    "",
+                    "file deleted by agent: old.py model=grok-4.7",
+                ),
+                (
+                    "2026-10-01T10:06:40.000Z",
+                    "",
+                    "",
+                    "main",
+                    "scored commit: abc1234 branch=main +4 -0",
+                ),
+            ],
+        )
+        self.assertEqual([r.project_path for r in rows], ["/srv/proj"] * 4 + [""])
+        rows = self.rows_for(CursorParser(), CURSOR_SEARCH_REL)
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.project_path, r.text) for r in rows],
+            [
+                (
+                    "2026-10-01T10:05:00.000Z",
+                    CURSOR_LIVE,
+                    "/srv/proj",
+                    "conversation index: Add subtract source=local archived=0",
+                ),
+                (
+                    "2026-10-01T12:00:00.000Z",
+                    CURSOR_ARCHIVED,
+                    "/srv/proj",
+                    "conversation index: Read the README source=local archived=1",
+                ),
+            ],
+        )
+        self.assertFalse(CursorParser().secondary(self.artifact(CURSOR_SEARCH_REL)))
+
+    def test_settings_files(self):
+        texts = [r.text for r in self.rows_for(CursorParser(), ".cursor/cli-config.json")]
+        source = "(from .cursor/cli-config.json, file mtime)"
+        self.assertEqual(
+            texts,
+            [
+                "permission setting: approvalMode=allowlist " + source,
+                "permission setting: permissions.allow=Shell(ls) " + source,
+                "permission setting: sandbox.mode=disabled " + source,
+            ],
+        )
+        rows = self.rows_for(CursorParser(), ".cursor/permissions.json")
+        source = "(from .cursor/permissions.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: allowlists.mcp=github:list_issues " + source,
+                "permission setting: allowlists.terminal=git status " + source,
+                "permission setting: approvalMode=allowlist " + source,
+                "permission setting: allowInstructions=read-only git commands " + source,
+                "permission setting: blockInstructions=anything that pushes " + source,
+            ],
+        )
+        self.assertEqual({r.timestamp_utc for r in rows}, {"2026-10-01T14:00:00.000Z"})
+        (self.home / ".cursor/cli-config.json").write_text("{not json", encoding="utf-8")
+        rows = self.rows_for(CursorParser(), ".cursor/cli-config.json")
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(
+            rows[0].text.startswith("parser: unreadable .cursor/cli-config.json: "), rows[0].text
+        )
+        (self.home / ".cursor/permissions.json").write_text("[]", encoding="utf-8")
+        rows = self.rows_for(CursorParser(), ".cursor/permissions.json")
+        self.assertEqual(
+            [r.text for r in rows], ["parser: .cursor/permissions.json is not a JSON object"]
+        )
+
+    def test_not_wanted(self):
+        p = CursorParser()
+        for rel in (
+            ".cursor/statsig-cache.json",
+            ".cursor/mcp.json",
+            ".cursor/projects/srv-proj/mcps/cursor-ide-browser/SERVER_METADATA.json",
+        ):
+            self.assertFalse(p.wants(self.artifact(rel)), rel)
+            self.assertEqual(self.artifact(rel).agent, "cursor")
+        for rel in (
+            CURSOR_STATE_REL + "-wal",
+            ".config/Cursor/User/workspaceStorage/0123/state.vscdb",
+            ".config/cursor/User/globalStorage/state.vscdb",
+            ".config/Code/User/globalStorage/state.vscdb",
+            ".cursor/chats/ab/s1/store.db",
+            ".cursor/projects/p/agent-transcripts/c.jsonl",
+        ):
+            self.assertFalse(p.wants(rel_only(rel)), rel)
+        for rel in (
+            ".config/Cursor/User/globalStorage/state.vscdb",
+            "AppData/Roaming/Cursor/User/globalStorage/conversation-search.db",
+            ".cursor/projects/p/agent-transcripts/c/c.jsonl",
+        ):
+            self.assertTrue(p.wants(rel_only(rel)), rel)
+
+    def test_missing_bubble_and_bad_values(self):
+        self.kv("DELETE FROM cursorDiskKV WHERE key = ?", ("bubbleId:%s:u4" % CURSOR_ARCHIVED,))
+        self.kv(
+            "UPDATE cursorDiskKV SET value = ? WHERE key = ?",
+            ("{cut", "bubbleId:%s:a3/s:0" % CURSOR_ARCHIVED),
+        )
+        rows = [r for r in self.state_rows() if r.session_id == CURSOR_ARCHIVED]
+        texts = [r.text for r in rows]
+        self.assertIn("parser: missing bubble u4", texts)
+        self.assertNotIn("It describes calc.py.", texts)
+        self.assertIn("There is none.", texts)
+        bad = rows[-1]
+        self.assertTrue(
+            bad.text.startswith(
+                "parser: unparseable record 14 (bubbleId:%s:a3/s:0: " % CURSOR_ARCHIVED
+            ),
+            bad.text,
+        )
+        self.assertTrue(bad.text.endswith("): {cut"), bad.text)
+        self.assertEqual((bad.source_line, bad.project_path), (14, "/srv/proj"))
+
+    def test_remote_origin(self):
+        con = sqlite3.connect(str(self.home / CURSOR_STATE_REL))
+        (value,) = con.execute(
+            "SELECT value FROM composerHeaders WHERE composerId = ?", (CURSOR_ARCHIVED,)
+        ).fetchone()
+        head = json.loads(value)
+        head["agentLocation"]["type"] = "cloud"
+        con.execute(
+            "UPDATE composerHeaders SET value = ? WHERE composerId = ?",
+            (json.dumps(head), CURSOR_ARCHIVED),
+        )
+        con.commit()
+        con.close()
+        rows = [r for r in self.state_rows() if r.session_id == CURSOR_ARCHIVED]
+        self.assertEqual(
+            (rows[1].timestamp_utc, rows[1].text),
+            ("2026-10-01T10:20:00.000Z", "session origin: remote cloud"),
+        )
+
+    def test_unreadable_database(self):
+        db = self.home / CURSOR_STATE_REL
+        db.write_text("not sqlite", encoding="utf-8")
+        rows = self.state_rows()
+        self.assertEqual(
+            [(r.turn_type, r.text, r.session_id) for r in rows],
+            [("system", "parser: not a SQLite database", "")],
+        )
+        db.write_bytes(b"SQLite format 3\x00" + b"\xff" * 200)
+        rows = self.state_rows()
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: SQLite error: "), rows[0].text)
+        # Without the state database the transcript still parses, with no
+        # project path.
+        db.unlink()
+        rows = self.rows_for(CursorParser(), CURSOR_DELETED_TRANSCRIPT_REL)
+        self.assertEqual(
+            [(r.turn_type, r.project_path) for r in rows], [("user", ""), ("assistant", "")]
         )

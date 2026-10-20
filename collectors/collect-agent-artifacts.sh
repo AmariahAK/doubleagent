@@ -81,7 +81,7 @@
 # Maintainer documentation, with the table of sh and PowerShell function
 # pairs: collectors/docs/internals.md.
 
-VERSION="1.16.0"
+VERSION="1.17.0"
 TOOL="collect-agent-artifacts"
 
 # Settings every later line relies on: the C locale for byte-wise matching
@@ -257,10 +257,16 @@ cursor|AppData/Roaming/Cursor/auth.json
 cursor|.cursor-server/data/User
 cursor|Library/Application Support/Cursor/User
 cursor|Library/Application Support/Cursor/logs
+cursor|Library/Application Support/Cursor/AgentStores
+cursor|Library/Application Support/Cursor/update-supervisor
 cursor|.config/Cursor/User
 cursor|.config/Cursor/logs
+cursor|.config/Cursor/AgentStores
+cursor|.config/Cursor/update-supervisor
 cursor|AppData/Roaming/Cursor/User
 cursor|AppData/Roaming/Cursor/logs
+cursor|AppData/Roaming/Cursor/AgentStores
+cursor|AppData/Roaming/Cursor/update-supervisor
 # VS Code and VSCodium: globalStorage holds Copilot Chat, Cline, Roo, Kilo, Continue, Augment state
 vscode|.vscode*/extensions/extensions.json
 vscode|Library/Application Support/Code*/User
@@ -861,6 +867,10 @@ AppData/Local/com.github.githubapp/EBWebView/BrowserMetrics-spare.pma
 .cursor-server/bin
 .cursor-server/extensions
 */Cursor/User/globalStorage/state.vscdb.backup
+*/User/globalStorage/anysphere.cursor-agent-worker/agent-cli
+*/Cursor/update-supervisor/*/cursor-update-supervisor
+.cursor/projects/*/canvases/node_modules
+.cursor/statsig-cache.json
 .codeium/windsurf/implicit
 .codeium/*/bin
 .codeium/bin

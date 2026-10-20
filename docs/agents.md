@@ -11,9 +11,9 @@ DoubleAgent does with its files. The status is one of three words:
   subsection under [Parsed agents](#parsed-agents) lists the files the
   parser reads and the installs on which they were seen.
 - `backlog`: the collector gathers transcripts or other parseable records,
-  and a parser is wanted; the row links the issue. Cursor and Windsurf are
-  blocked on format research: their record formats are not known well
-  enough to write one.
+  and a parser is wanted; the row links the issue. Windsurf is blocked on
+  format research: its record format is not known well enough to write
+  one.
 - `collected`: the files are collected and detected but hold nothing to
   parse: a token store, configuration only, or a surface that left no
   local transcript on the installs checked. The analyzer's `timeline`
@@ -47,7 +47,7 @@ agent name in each row links to its subsection.
 | [`copilot-desktop`](#copilot-desktop) | parsed | shipped app and real installs: Linux, Windows (October 2026) | [research](../research/copilot-desktop.md); [issue 147](https://github.com/seanthegeek/doubleagent/issues/147); [issue 149](https://github.com/seanthegeek/doubleagent/issues/149): the inventory lists the app's own directories as projects |
 | [`crewai`](#crewai) | backlog | Source, appdirs source | [research](../research/crewai.md); [issue 140](https://github.com/seanthegeek/doubleagent/issues/140); `latest_kickoff_task_outputs.db` holds every task's output with its messages |
 | [`crush`](#crush) | parsed | source; fixture only | [research](../research/crush.md) |
-| [`cursor`](#cursor) | backlog | Shipped Agent CLI bundle, docs, forum, write-ups | [research](../research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); blocked on format research: the `state.vscdb` key layout varies by version |
+| [`cursor`](#cursor) | parsed | real install: macOS (October 2026); bundle for the CLI | [research](../research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); the Agent CLI's `chats/` and `acp-sessions/` stores are not parsed |
 | [`dify`](#dify) | backlog | Source | [research](../research/dify.md); [issue 142](https://github.com/seanthegeek/doubleagent/issues/142); sandbox `shellctl.db` and job logs hold shell jobs; chats in PostgreSQL |
 | [`factory-droid`](#factory-droid) | backlog | Shipped binary strings, docs | [research](../research/factory-droid.md); [issue 54](https://github.com/seanthegeek/doubleagent/issues/54); JSONL session transcripts under `.factory/sessions` and a prompt history |
 | [`flowise`](#flowise) | backlog | Source | [research](../research/flowise.md); [issue 68](https://github.com/seanthegeek/doubleagent/issues/68); `database.sqlite` with `chat_message` (tool use and agent reasoning) and `execution` |
@@ -486,6 +486,46 @@ as a project artifact, or under a home when Crush ran in `~`),
 
 Validated against: Source at [ca6ae26](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f), synthetic fixture.
 
+### `cursor`
+
+Files read: `User/globalStorage/state.vscdb` under the editor's data
+directory (`Library/Application Support/Cursor`, `.config/Cursor` or
+`AppData/Roaming/Cursor`; SQLite with WAL sidecars): the
+`cursorDiskKV` composer rows (`composerData:<composerId>`, the header
+list inline or in `composerConvHeaders:<composerId>:<NNNNNN>` chunks,
+and one `bubbleId:<composerId>:<bubbleId>` row per user message,
+reasoning or reply sub-bubble and tool call), giving `user`,
+`assistant`, `thinking`, `tool_use` and `tool_result` rows, a
+`permission decision:` row for each command the user was asked about
+(Run, Skip or Always run, joined on the call id), `model:` rows from
+each user message's model, `session name:`, `conversation archived` and
+`unsent draft:` rows; the `composerHeaders` table, whose row outlives a
+deleted conversation and gives its `conversation deleted` row, with the
+JSON `agentKv:blob:*` prompts that name the deleted composer recovered
+as `user` and `assistant` rows; and the `ItemTable` settings blob, one
+`permission setting:` row per run mode, allowlist or denylist entry and
+switch, at the file's modification time, and one `model last used:` row
+per model. `User/globalStorage/conversation-search.db` (`conversation
+index:` rows), `.cursor/ai-tracking/ai-code-tracking.db` (`ai code:`,
+`conversation summary:`, `file deleted by agent:` and `scored commit:`
+rows), `.cursor/cli-config.json` and `.cursor/permissions.json` in the
+home or a project (`permission setting:` rows). Secondary source:
+`.cursor/projects/<sanitized cwd>/agent-transcripts/<composerId>/<composerId>.jsonl`,
+the agent worker's copy of each conversation, which survives a delete
+(one-minute window, since its user lines are stamped to the minute).
+
+Validated against: Real install of the Cursor IDE on macOS 26.6.2
+(builds 3.24.18, 3.25.9 and 3.26.13, 2026-10-19 and 2026-10-20): the
+`state.vscdb` composer, bubble, header and settings records, the 3.26.13
+header chunks, the agent transcripts, `conversation-search.db` and the
+`ai_code_hashes` rows of `ai-code-tracking.db`, and the records an
+archive and a delete left; synthetic fixture. `permissions.json` and a
+non-local `agentLocation` (bundle-derived) and rows of the
+`conversation_summaries`, `ai_deleted_files` and `scored_commits` tables
+(empty on the install) are fixture only. The shipped Agent CLI bundle, docs, forum and
+write-ups describe the CLI's `chats/` and `acp-sessions/` stores, which
+no real install has shown and the parser does not read.
+
 ### `gemini-cli`
 
 Files read: `.gemini/tmp/<slug>/chats/**/*.jsonl` (with `$set`, `$patch`
@@ -881,20 +921,6 @@ task's output with its messages), `flow_states.db` and
 `crewai/credentials/` key and encrypted token, and `.crewai` skills.
 
 Validated against: Source, appdirs source.
-
-### `cursor`
-
-Files collected: The editor's `User/` and `logs` directories, whose
-`User/globalStorage/state.vscdb` holds the chats as `cursorDiskKV` rows
-(`composerData:<id>`, `bubbleId:<composer>:<bubble>`); the Cursor Agent
-CLI's `.cursor` (`projects/*/agent-transcripts/`, `chats/*/*/store.db`
-with `meta.json`, `acp-sessions/`, `ai-tracking/`), `.config/cursor` and
-`auth.json`.
-
-Validated against: Shipped Agent CLI bundle, docs, forum, write-ups.
-
-Notes in full: chats in `state.vscdb` and Agent CLI transcripts; blocked
-on format research, the key layout changes between versions.
 
 ### `dify`
 

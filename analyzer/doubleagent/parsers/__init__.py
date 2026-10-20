@@ -16,6 +16,7 @@ from .continue_dev import ContinueParser
 from .copilot_cli import CopilotCliParser
 from .copilot_desktop import CopilotDesktopParser
 from .crush import CrushParser
+from .cursor import CursorParser
 from .gemini_cli import GeminiCliParser
 from .goose import GooseParser
 from .hermes import HermesParser
@@ -77,6 +78,7 @@ ALL: list[Parser] = [
     CopilotCliParser(),
     CopilotDesktopParser(),
     ChatGptDesktopParser(),
+    CursorParser(),
 ]
 
 

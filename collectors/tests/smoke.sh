@@ -1087,6 +1087,37 @@ printf '{"cwd":"/Users/bob/Documents/Codex/2026-10-18/w"}\n' \
 printf '# report\n' >"$W149/outputs/report.md"
 printf 'notes\n' >"$W149/work/notes.txt"
 
+# 2026-10-20 Cursor IDE round on macOS (#6)
+# Cursor 3.25.9 and 3.26.13 (macOS, 2026-10-19 and 2026-10-20) keep
+# per-account and per-conversation sync stores under AgentStores and one
+# directory per in-app update under update-supervisor (events.jsonl, the
+# build that ran when, beside the 484 KB supervisor binary). The IDE's
+# agent worker embeds a copy of the Agent CLI under agent-cli in
+# globalStorage, and ~/.cursor holds canvas type declarations under
+# node_modules and a feature-flag cache copied from the server: those are
+# excluded; the worker's own files and the agent transcripts stay collected.
+# Checks follow the default run below; the same files are in smoke.ps1
+# under alice.
+C6="$B/Library/Application Support/Cursor"
+W6="$C6/User/globalStorage/anysphere.cursor-agent-worker"
+mkdir -p "$C6/AgentStores/cursor_agent_stores/u1/.sync" \
+  "$C6/AgentStores/cursor_agent_stores/.control/u1/pins" \
+  "$C6/update-supervisor/33333333-3333-4333-8333-333333333333" \
+  "$W6/agent-cli/.local/share" "$B/.cursor/projects/p/canvases/node_modules" \
+  "$B/.cursor/projects/p/agent-transcripts/u"
+printf 'sqlite\n' >"$C6/AgentStores/cursor_agent_stores/u1/.sync/index.sqlite"
+printf '{"purpose":"foreground"}\n' >"$C6/AgentStores/cursor_agent_stores/.control/u1/pins/1-x.json"
+printf '{"type":"supervisor_started"}\n' \
+  >"$C6/update-supervisor/33333333-3333-4333-8333-333333333333/events.jsonl"
+printf 'binary\n' \
+  >"$C6/update-supervisor/33333333-3333-4333-8333-333333333333/cursor-update-supervisor"
+printf 'cli\n' >"$W6/agent-cli/.local/share/x"
+printf 'worker log\n' >"$W6/cursor-agent-worker-1.log"
+printf 'declare const x: number;\n' >"$B/.cursor/projects/p/canvases/node_modules/x.d.ts"
+printf '{"type":"turn_ended","status":"success"}\n' \
+  >"$B/.cursor/projects/p/agent-transcripts/u/u.jsonl"
+printf '{}\n' >"$B/.cursor/statsig-cache.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1446,6 +1477,17 @@ check "#160 Codex shell snapshot flagged secret" "row \"$S160\" | grep -q '\"age
 check "#149 Codex projectless output collected" "row \"$W149/outputs/report.md\" | grep -q '\"home\":\"$B\",\"agent\":\"codex-cli\".*\"status\":\"collected\"'"
 check "#149 Codex projectless dir not a project" "! grep '^  \"projects\"' \"\$S\" | grep -q 'Documents/Codex' && ! grep -q '\"home\":\"$B/Documents/Codex' \"\$M\" && ! grep -q 'Project .*/Documents/Codex' \"$OUT\"/default/*.log"
 check "#149 Codex rollout cwd still a project" "grep '^  \"projects\"' \"\$S\" | grep -qF '\"$B/Documents/app\"'"
+
+# 2026-10-20 Cursor IDE round on macOS (#6)
+check "#6 Cursor AgentStores sync index collected" "row \"$C6/AgentStores/cursor_agent_stores/u1/.sync/index.sqlite\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+check "#6 Cursor AgentStores pin collected" "row \"$C6/AgentStores/cursor_agent_stores/.control/u1/pins/1-x.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+check "#6 Cursor update-supervisor events collected" "row \"$C6/update-supervisor/33333333-3333-4333-8333-333333333333/events.jsonl\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+check "#6 Cursor update-supervisor binary excluded" "[ \"\$(status_of \"$C6/update-supervisor/33333333-3333-4333-8333-333333333333/cursor-update-supervisor\")\" = skipped_excluded ]"
+check "#6 Cursor embedded agent CLI excluded" "[ \"\$(status_of \"$W6/agent-cli\")\" = skipped_excluded ] && ! grep -qF 'agent-cli/.local/share/x' \"\$M\""
+check "#6 Cursor agent worker log collected" "row \"$W6/cursor-agent-worker-1.log\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+check "#6 Cursor canvases node_modules excluded" "[ \"\$(status_of \"$B/.cursor/projects/p/canvases/node_modules\")\" = skipped_excluded ] && ! grep -qF 'node_modules/x.d.ts' \"\$M\""
+check "#6 Cursor agent transcript collected" "row \"$B/.cursor/projects/p/agent-transcripts/u/u.jsonl\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+check "#6 Cursor statsig cache excluded" "[ \"\$(status_of \"$B/.cursor/statsig-cache.json\")\" = skipped_excluded ]"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
