@@ -1,19 +1,20 @@
 # cursor
 
-Cursor is a closed-source editor forked from VS Code (the Cursor IDE) with a command-line agent,
-the Cursor Agent CLI (`agent`, `cursor-agent`), a copy of which the IDE embeds and runs as its
-agent worker. The document uses Cursor's own names: a composer is one conversation, identified by
-its `composerId` (a UUID); a bubble is one message, reasoning block or tool call inside a composer,
-identified by its `bubbleId`; the Agents window is the IDE's window given over to agent
-conversations, and the editor window is the VS Code-style window with its own chat pane and chat
-history (on 3.26.13, 2026-10-20, only the editor window offered Export and Delete); `glass` is the
-name the IDE's bundle and storage keys give that agent user interface (`workbench.glass.main.js`,
-the `cursor/glass.*` keys); `agentKv` is the key prefix of a content-addressed blob store inside
-the IDE's database; `yolo` is Cursor's internal name for auto-run, the setting that runs agent
-tool calls without asking (`yoloCommandAllowlist`); and `toolFormer` is its internal name for a
-tool call's record inside a bubble (`toolFormerData`). The analyzer parses the IDE's
-conversations ([issue 51](https://github.com/seanthegeek/doubleagent/issues/51)) and the files a
-CLI session shares with the IDE; the Agent CLI's own chat store is not parsed yet
+Cursor is a closed-source editor forked from VS Code (the Cursor IDE) with a command-line agent, the
+Cursor Agent CLI (`agent`, `cursor-agent`), a copy of which the IDE embeds and runs as its agent
+worker (on Linux downloaded only when a cloud or remote-host feature is first used). The document
+uses Cursor's own names: a composer is one conversation, identified by its `composerId` (a UUID); a
+bubble is one message, reasoning block or tool call inside a composer, identified by its `bubbleId`;
+the Agents window is the IDE's window given over to agent conversations, and the editor window is
+the VS Code-style window with its own chat pane and chat history (on 3.26.13, 2026-10-20, only the
+editor window offered Export and Delete); `glass` is the name the IDE's bundle and storage keys give
+that agent user interface (`workbench.glass.main.js`, the `cursor/glass.*` keys); `agentKv` is the
+key prefix of a content-addressed blob store inside the IDE's database; `yolo` is Cursor's internal
+name for auto-run, the setting that runs agent tool calls without asking (`yoloCommandAllowlist`);
+and `toolFormer` is its internal name for a tool call's record inside a bubble (`toolFormerData`).
+The analyzer parses the IDE's conversations
+([issue 51](https://github.com/seanthegeek/doubleagent/issues/51)) and the files a CLI session
+shares with the IDE; the Agent CLI's own chat store is not parsed yet
 ([issue 235](https://github.com/seanthegeek/doubleagent/issues/235)).
 
 ## Source and evidence
@@ -22,9 +23,10 @@ Closed source. Evidence, strongest first; the real installs are the evidence for
 the CLI's macOS layout, the shipped bundle for the CLI features and platforms no install has
 shown:
 
-- Real installs on macOS ([Observed](#observed)): the Cursor IDE, builds 3.24.18, 3.25.9 and
-  3.26.13 (2026-10-19 and 2026-10-20), and the standalone Cursor Agent CLI, build
-  2026.10.19-6bbf2c4 (2026-10-20). Read for file names, sizes, key, table and column names,
+- Real installs ([Observed](#observed)): the Cursor IDE on macOS, builds 3.24.18, 3.25.9 and
+  3.26.13 (2026-10-19 and 2026-10-20), and on Ubuntu (arm64), builds 3.24.18 and 3.25.9 of the
+  deb package (2026-10-20); the standalone Cursor Agent CLI on macOS, build 2026.10.19-6bbf2c4
+  (2026-10-20). Read for file names, sizes, key, table and column names,
   value types and enum values only; no value from the install is reproduced, and account ids are
   written `u<id>` and `auth0|user_<id>`, CLI session ids `<sessionId>`.
 - L1 shipped bundles. The IDE: Cursor 3.25.9 and 3.26.13 for macOS,
@@ -119,12 +121,59 @@ shown:
   ([Joins and timestamps](#joins-and-timestamps)); `agent logout` (20:52Z) and the removal of the
   project directory (20:53Z) are in [What survives a delete](#what-survives-a-delete). Nothing
   was written inside the project but the edited file.
+- Linux, Cursor IDE, 2026-10-20 ([issue 236](https://github.com/seanthegeek/doubleagent/issues/236)):
+  the `cursor` arm64 deb package `3.24.18-1791917266`, upgraded through apt to
+  `3.25.9-1792103615`, in the author's Ubuntu 26.x lab VM (Linux 7.0, aarch64, GNOME), one user,
+  the macOS round's project (a git repository with one commit, `README.md` and `calc.py`), the
+  agent pane of the editor window; the Agents window was not used. One step per listing, each
+  diffed against the last (times UTC, the listing's): installing the package (21:19Z) wrote the
+  host-level files of [Cursor IDE on Linux](#cursor-ide-on-linux) and nothing under the home;
+  the first launch, not signed in (21:25Z), wrote `~/.config/Cursor`, the `~/.cursor` entries
+  and the GNOME keyring file; sign-in through the browser (21:32Z), with no keyring prompt, wrote
+  the plaintext tokens of [Credentials](#credentials) and the account's sync store under
+  `~/.local/state` ([AgentStores](#agentstores)); opening the project folder (with no
+  workspace-trust prompt) and the apt upgrade with a relaunch fell in one listing (21:38Z) and
+  were split by modification time: the workspace state, the `projects/` entries of
+  [`~/.cursor` as the IDE writes it](#cursor-as-the-ide-writes-it) and the repository's code
+  index ([Project-local files](#project-local-files)), and no `update-supervisor` directory; a
+  question with no tool use (21:42Z) wrote the first composer with its header list inline, its
+  transcript JSONL and its sync store, and no Agent CLI copy ([Exclusions](#exclusions)); a
+  code edit of `calc.py` (21:44Z), applied with no prompt, wrote a shadow copy under another
+  extension directory than on macOS ([Retrieval checkpoints](#retrieval-checkpoints)); a shell
+  command (21:47Z) ran with no prompt under the Auto-review default; switching the run mode to
+  Allowlist, which has no sandbox variant on Linux
+  ([Run mode and standing lists](#run-mode-and-standing-lists)), and sending a command (21:54Z)
+  left the call waiting at its prompt with its record already on disk
+  ([Tool bubbles](#tool-bubbles)); the prompt was answered Run (21:56Z), and two more commands
+  Skip (21:58Z) and "add python3 to the allow list" (22:01Z), the last never reaching the
+  standing list; a model switch from Auto to `grok-4.6` and a question (22:07Z) recorded the
+  model on the user bubble ([Model rows](#model-rows)); a quit, a relaunch and the conversation
+  reopened (22:25Z) wrote nothing to the conversation
+  ([Joins and timestamps](#joins-and-timestamps)); adding `python3` in Settings > Agent and
+  running the command again (22:31Z) stored the standing entry; archiving (22:36Z), exporting to
+  Markdown (22:40Z) and deleting (22:46Z), all from the editor window's chat history, are in
+  [What survives a delete](#what-survives-a-delete). Connecting Cursor's GitHub integration to a
+  throwaway GitHub account, its GitHub app installed with access to the account's repositories
+  (23:09Z), wrote the keys of [Source-host integration](#source-host-integration) and named no
+  account; the editor's own GitHub sign-in, through Welcome > Clone from GitHub with the clone
+  cancelled (23:20Z; Cursor's Accounts menu has no GitHub entry), named the account in key names
+  and stored its encrypted token ([Secrets](#secrets)), and the same listing showed the machine
+  enrolled as a remote agent host, written at a time between the two listings that is not known;
+  a cloud agent attempted (23:40Z) found no repository in its picker, although the app had access
+  to all of them and making the repository public changed nothing, so no cloud conversation was
+  created, and it started a download of the Agent CLI copy that was left as two partial tarballs
+  ([Cursor IDE on Linux](#cursor-ide-on-linux)). The repository-bound remote session was
+  therefore not observed; it is left for the Windows round or a newer macOS round
+  ([issue 236](https://github.com/seanthegeek/doubleagent/issues/236)).
 - Cursor Agent CLI features the macOS round did not exercise (the `acp-sessions` store,
   `agent worker`, worktrees, plans, hooks, MCP servers, print mode `-p`), any platform: not
   observed on any real install; bundle-derived ([Cursor Agent CLI](#cursor-agent-cli)).
-- Cloud (background) agents and worktree agents, any platform: not observed on any real install.
-- Windows and Linux, IDE and CLI: not observed on any real install ([issue 236](https://github.com/seanthegeek/doubleagent/issues/236)); the IDE paths
-  there are the macOS layout under the VS Code user-data-directory convention.
+- Cloud (background) agents and worktree agents, any platform: not observed on any real install
+  (a cloud agent was attempted on Linux and offered no repository).
+- Windows, IDE and CLI, and the Agent CLI on Linux: not observed on any real install
+  ([issue 236](https://github.com/seanthegeek/doubleagent/issues/236)); the Windows IDE paths
+  are the macOS layout under the VS Code user-data-directory convention. The RPM and AppImage
+  builds for Linux, and the x64 deb, were not installed.
 
 ### Source reviews
 
@@ -142,10 +191,10 @@ shown:
 
 ### Per-user storage
 
-Layout is identical on all OSes except the IDE app-data parent and the CLI `auth.json` location
-([Credentials](#credentials)). The IDE layout below is the macOS install's
-([Observed](#observed)); the Windows (`AppData/Roaming/Cursor`) and Linux (`.config/Cursor`)
-parents follow the VS Code convention and were not observed.
+The IDE layout below is the macOS install's ([Observed](#observed)); the Linux install's
+differs in the places listed in [Cursor IDE on Linux](#cursor-ide-on-linux); the Windows parent
+(`AppData/Roaming/Cursor`) follows the VS Code convention and was not observed. The CLI's
+`auth.json` location differs per OS ([Credentials](#credentials)).
 
 #### Scratch directories
 
@@ -167,6 +216,10 @@ reaches ([`collectors/docs/coverage.md`](../collectors/docs/coverage.md)):
 
 Outside the home under `/private/tmp`: `cursor-askpass-<hex>-<n>.sock`, the CLI's git askpass
 socket (0 bytes), a new one per start (2026.10.19-6bbf2c4, 2026-10-20).
+
+The Linux IDE install (3.25.9, 2026-10-20) wrote none of these under `/tmp`: no
+`cursor-agent-logs-<uid>/`, since no worker ran, and no copies of the
+shell's rc files (the VM's shell was bash, and no bash counterpart of the zsh copies appeared).
 
 #### Cursor IDE
 
@@ -211,6 +264,60 @@ in its `shipit_*` event types; macOS's recent-documents list for the app,
 exported file ([Exported Markdown](#exported-markdown)); and a TCC (macOS's privacy permission
 database) microphone grant to the bundle id.
 
+#### Cursor IDE on Linux
+
+Cursor's downloads page (fetched 2026-10-20) offers Linux builds for x64 and arm64 as a deb
+package, an RPM package and an AppImage, from
+`https://api2.cursor.sh/updates/download/golden/<platform>/cursor/<version>` with `<platform>`
+one of `linux-arm64-deb`, `linux-x64-deb`, `linux-arm64-rpm`, `linux-x64-rpm`, `linux-arm64`
+and `linux-x64`; an x64 deb refuses to install on arm64. The arm64 deb (3.24.18, then 3.25.9
+through apt, 2026-10-20) wrote the tree of [Cursor IDE](#cursor-ide) under `~/.config/Cursor/`:
+`User/` with `globalStorage/` (`state.vscdb` and `conversation-search.db` with their sidecars,
+`storage.json`, `anysphere.cursor-agent-host/data.sqlite`), `workspaceStorage/`, `History/`
+and `snippets/`; `logs/<launch stamp>/` with the macOS log names; `process-monitor/<epoch
+ms>.log` from sign-in; `sentry/`; and the Chromium profile (`Backups`, `Cache`, `Cookies`,
+`DIPS`, `Trust Tokens`, `Local State`, `Preferences`, `Network Persistent State`,
+`SharedStorage`). It also wrote the `~/.cursor` entries of
+[`~/.cursor` as the IDE writes it](#cursor-as-the-ide-writes-it). It differs from the macOS
+install in these places:
+
+- The account's and the conversations' sync stores are under the XDG state directory,
+  `~/.local/state/cursor/agent-stores/cursor_agent_stores/`, not under `~/.config/Cursor`
+  ([AgentStores](#agentstores)).
+- The Agent CLI copy is not installed at the folder's opening or for local agent turns:
+  `User/globalStorage/anysphere.cursor-agent-worker/` did not exist through the local steps,
+  where macOS held the 608 MB `agent-cli/` from the folder's opening. It appeared when a cloud
+  agent was first attempted (3.25.9, 2026-10-20) with two partial tarballs,
+  `agent-cli/cursor-agent-2026.10.19-6bbf2c4-<pid>-<epoch ms>.tar.gz` of 88.6 MB and 35.1 MB,
+  not growing after 20 seconds (stalled or abandoned downloads), an empty
+  `.local/share/cursor-agent/versions/` tree and no worker control files, logs or pid files
+  ([Exclusions](#exclusions)). No worker ran, so there is no `secret://` row for the worker's
+  key ([Credentials](#credentials)).
+- No `update-supervisor/`: the package updates through apt from the repository its
+  post-install step adds, and the upgrade to 3.25.9 rewrote that repository file
+  ([`update-supervisor`](#update-supervisor)).
+- The shadow copies of edited files are under `User/globalStorage/anysphere.cursor-commits/`
+  ([Retrieval checkpoints](#retrieval-checkpoints)).
+- The GNOME keyring file `~/.local/share/keyrings/login.keyring` (891 bytes) was created at the
+  first launch, before sign-in ([Credentials](#credentials)).
+- No sandbox is offered ([Run mode and standing lists](#run-mode-and-standing-lists)).
+
+Outside every home, none of it collected and none of it reachable by a catalog line, the
+package's own files (`dpkg -L cursor` lists 18,419 paths): `/usr/share/cursor/` (986 MB: the
+212 MB Electron binary `cursor`, `resources/app/` with the bundle `workbench.glass.main.js`,
+`bin/{cursor,code-tunnel,cursor-tunnel}`, `locales/`, `chrome-sandbox`,
+`chrome_crashpad_handler` and `resources/completions/{bash,zsh}`),
+`/usr/share/applications/{cursor.desktop,cursor-url-handler.desktop}`,
+`/usr/share/appdata/cursor.appdata.xml`, `/usr/share/bash-completion/completions/cursor`,
+`/etc/apparmor.d/cursor-sandbox` (an AppArmor profile for the Chromium sandbox, replaced by the
+upgrade), `/etc/sysctl.d/50-cursor.conf` and `/etc/apt/sources.list.d/cursor.sources`, the apt
+repository the post-install step adds. They are install evidence, not per-user state. Under
+`/run/user/<uid>/` the running app shows only as systemd transient scopes
+(`app-cursor-<pid>.scope`, `app-gnome-cursor-<pid>.scope`), process state that is the EDR's.
+Elsewhere under the home, not collected: GNOME's recent-files list
+`~/.local/share/recently-used.xbel`, which named the exported file
+([Exported Markdown](#exported-markdown)).
+
 #### `~/.cursor` as the IDE writes it
 
 The IDE writes the CLI's data root (macOS install, 3.24.18 to 3.26.13; final sizes):
@@ -226,16 +333,20 @@ The IDE writes the CLI's data root (macOS install, 3.24.18 to 3.26.13; final siz
 | `projects/<name>/mcps/<server>/{INSTRUCTIONS.md,SERVER_METADATA.json,tools/<tool>.json}` | the built-in MCP servers' tool manifests (`cursor-app-control`, `cursor-ide-browser`, `cursor-origin`, `cursor-subscriptions`), Cursor's own, rewritten at every launch, 44 KB |
 | `projects/<name>/canvases/node_modules/` | type declarations (`@types/react`, `cursor/canvas`, `grok/canvas`), 226 KB per project; excluded |
 | `projects/empty-window/` | the same for the window with no folder |
-| `projects/.agent-data-cleanup-<date>` | an empty marker file |
+| `projects/<epoch ms>/`, `projects/tmp-<uuid>/` | `<epoch ms>/` holds `canvases/` (one also `terminals/`) and `tmp-<uuid>/` `canvases/` and `mcps/`; an `<epoch ms>` directory pairs with `User/workspaceStorage/<same epoch ms>/`, VS Code's id for an untitled window, and `tmp-<uuid>` is a temporary workspace a relaunch created (Linux install, 3.24.18 and 3.25.9) |
+| `projects/.agent-data-cleanup-<YYYY-MM-DD>` | an empty marker, written at the first launch, named for a daily cleanup of agent data under `projects/` ([What survives a delete](#what-survives-a-delete)) |
 | `skills-cursor/` | 26 built-in skills written at sign-in (automate, autopilot, canvas, create-hook, create-rule, create-skill, create-subagent, deploy-with-vercel, goal, loop, migrate-to-skills, new-repo, onboard, origin, rename-chat, review, review-bugbot, review-security, sdk, share, shell, split-to-prs, statusline, update-cli-config, update-cursor-settings, visualize), 392 KB |
 | `statsig-cache.json` | a feature-flag cache from the server, 951 KB; excluded |
 | `cli-config.json` | the CLI's settings, 837 bytes, written when the folder was opened ([`cli-config.json`, `permissions.json` and `sandbox.json`](#cli-configjson-permissionsjson-and-sandboxjson)) |
 | `agent-cli-state.json` | `{version, workerIdsByDisplayName}`, the worker id per `<cwd> @ <hostname>` |
-| `sandbox-policies/` | empty; created about 01:30Z on 2026-10-19 |
+| `sandbox-policies/` | empty; created about 01:30Z on 2026-10-19; on Linux its modification time moved with a shell command |
 
-An IDE-run shell command left no `terminals/` capture under `projects/<sanitized cwd>/`, and
-`~/.local/share/cursor-agent` and `~/.local/bin` stayed absent: the IDE's worker is its own copy
-of the CLI.
+On Linux the first launch wrote `.gitignore`, `agents/`, `ai-tracking/ai-code-tracking.db`,
+`argv.json` (798 bytes, JSON with comments), `extensions/anysphere.remote-ssh-1.1.16/`,
+`plugins/local/`, `sandbox-policies/` and `projects/`, sign-in `skills-cursor/`, and opening the
+folder the project's entry, named after the sanitized cwd as on macOS. An IDE-run shell command left
+no `terminals/` capture under `projects/<sanitized cwd>/`, and `~/.local/share/cursor-agent` and
+`~/.local/bin` stayed absent: the IDE's worker is its own copy of the CLI.
 
 #### Cursor Agent CLI
 
@@ -307,17 +418,28 @@ not observed on any real install:
 - IDE: `User/globalStorage/state.vscdb` `ItemTable`, the same file as the chats, so it is
   collected unflagged and redacted by key
   ([ShayGus/quota PR 20](https://github.com/ShayGus/quota/pull/20), L4, confirmed on the macOS
-  install, 3.24.18 to 3.26.13):
+  install, 3.24.18 to 3.26.13, and on the Linux install, 3.24.18 and 3.25.9):
   - tokens: `cursorAuth/accessToken` and `cursorAuth/refreshToken`, 413 bytes each, plaintext
     JWT-shaped text (JSON Web Tokens, the signed bearer-token format); still plaintext on
     3.26.13, although the key `cursor.storage.authTokenEncryptionAtRest` (5 bytes) has existed since 3.25.9;
+    plaintext on Linux too (3.24.18 at sign-in, 2026-10-20), where `ItemTable` also holds, from
+    the first launch, `encryption.migratedToGnomeLibsecret` (4 bytes, a boolean), VS Code's
+    marker for moving its secret storage to libsecret (the Linux secret-service library the
+    GNOME keyring serves);
   - VS Code secret storage, one row per secret, keys beginning `secret://`:
     `secret://{"extensionId":"anysphere.cursor-agent-worker","key":"cursor-agent-worker.apiKey"}`
     (311 bytes, reissued at 323 bytes by the plan change), the matching `...apiKeyAuthId` row (207
     bytes), and `secret://{"extensionId":"vscode.git","key":"git-ipc-auth-token:<path>"}`, whose
     key holds the workspace-storage path; the values are encrypted with the Electron safeStorage
     key (Electron's keychain-held encryption key for app secrets), the login-keychain item
-    `Cursor Safe Storage` / `Cursor Key`; redact every key with the prefix `secret://`;
+    `Cursor Safe Storage` / `Cursor Key`; redact every key with the prefix `secret://`; on Linux
+    (3.25.9) the rows were `secret://remoteAgentHost.computerKey.auth0|user_<id>` (the
+    credential of the machine's enrolment as a remote agent host; not seen on macOS) and
+    `secret://{"extensionId":"vscode.git","key":"git-ipc-auth-token:<workspaceStorage path>"}`
+    from the first agent turn, and, after the editor's GitHub sign-in,
+    `secret://{"extensionId":"vscode.github-authentication","key":"github.auth"}`, the GitHub
+    token; no `cursor-agent-worker` rows, since no worker ran; their values are ciphertext
+    ([Secrets](#secrets));
   - account identity: `cursorAuth/cachedEmail`, `cursorAuth/cachedScopedProfile` (JSON
     `{authId, displayName}`), `cursorAuth/cachedSignUpType`, `cursorAuth/stripeMembershipAuthId`
     (37 bytes), `cursorAuth/stripeMembershipType` (plain text: `free`, then `premium` for the
@@ -330,7 +452,13 @@ not observed on any real install:
     `dashboardUserId` of the settings blob ([`ItemTable` keys](#itemtable-keys)) and the
     `u<id>` directory names of [AgentStores](#agentstores). The account merge at the plan change
     added a second numeric id and kept the `auth0|user_<id>` id.
-- The IDE's sign-in on macOS added no keychain item.
+- The IDE's sign-in on macOS added no keychain item. On Linux the sign-in (3.24.18, 2026-10-20,
+  through the browser) showed no keyring prompt; the GNOME keyring file
+  `~/.local/share/keyrings/login.keyring` had been created at the first launch, before sign-in,
+  so by its timing it holds Electron's safeStorage key and not the tokens; its item labels were
+  not listed (`secret-tool` was not installed).
+- `ItemTable` `glass.lastSignedInAuthId`, present before sign-in on the Linux install, is by its
+  name the last signed-in account's id; its value was not read.
 - IDE device identifiers: `User/globalStorage/storage.json` `telemetry.devDeviceId` (a UUID),
   `telemetry.machineId` and `telemetry.macMachineId` (64 hex digits each).
 - CLI (`index.js` `../cli-credentials/dist/index.js`, factory `d`): macOS uses the login keychain
@@ -377,7 +505,11 @@ what exists elsewhere:
 
 - `*/User/globalStorage/anysphere.cursor-agent-worker/agent-cli`: the embedded Agent CLI, 608 MB
   of the install's 610 MB; the worker's control files and `worker-data/` beside it stay collected.
-- `*/Cursor/update-supervisor/*/cursor-update-supervisor`: the 484 KB update helper binary.
+  It applies on Linux too, where the copy is downloaded only when a cloud or remote-host feature
+  is first used, and partial tarballs remain when the download does not complete
+  ([Cursor IDE on Linux](#cursor-ide-on-linux)).
+- `*/Cursor/update-supervisor/*/cursor-update-supervisor`: the 484 KB update helper binary
+  (macOS; the Linux deb has no `update-supervisor`).
 - `.cursor/projects/*/canvases/node_modules`: type declarations, 226 KB per project.
 - `.cursor/statsig-cache.json`: the server's feature flags, 951 KB.
 
@@ -401,7 +533,8 @@ named `~/.cursor/sandbox.json` (absent; the log's error code `ENOPRO`); the inst
 of the three. Their fields are in [`cli-config.json`, `permissions.json` and
 `sandbox.json`](#cli-configjson-permissionsjson-and-sandboxjson).
 
-Opening the folder (3.25.9, 2026-10-19) wrote a code index inside the repository's git directory:
+Opening the folder (3.25.9, 2026-10-19; on Linux 3.24.18, 2026-10-20) wrote a code index inside
+the repository's git directory:
 `.git/cursor/crepe/build.lock` and `.git/cursor/crepe/<HEAD sha>/{index.bin, metadata.json,
 postings.bin}`, `metadata.json` holding `{git_revision, version}`. `.git/cursor` is not in
 `PROJECT_CATALOG`.
@@ -416,7 +549,9 @@ postings.bin}`, `metadata.json` holding `{git_revision, version}`. `.git/cursor`
 - `~/.cursor/projects/<sanitized cwd>/.workspace-trusted` key `workspacePath`, the absolute path
   of a folder the CLI was trusted in (macOS install).
 - `~/.cursor/projects/<name>` is the sanitized cwd (lossy: `/home/u/a-b` and `/home/u/a_b` collide);
-  the IDE names it the same way (`~/.cursor/projects/<sanitized cwd>/`, macOS install).
+  the IDE names it the same way (`~/.cursor/projects/<sanitized cwd>/`, macOS and Linux
+  installs). Its `<epoch ms>` and `tmp-<uuid>` names hold no path
+  ([`~/.cursor` as the IDE writes it](#cursor-as-the-ide-writes-it)).
 - IDE: `User/workspaceStorage/<md5>/workspace.json` `folder` (a `file://` URL).
 - IDE, per conversation: `composerHeaders.value.workspaceIdentifier{id, uri{fsPath}}` and the
   same key in `composerData` (`id` is the `User/workspaceStorage/<id>/` directory name, checked on
@@ -428,13 +563,19 @@ postings.bin}`, `metadata.json` holding `{git_revision, version}`. `.git/cursor`
   (`glass.localRepoBranchRecency.<abs path>`, `ofsContent:<composerId>:file://<path>`,
   `composer.autoAccept.lastSeenHeadSha` keys); the worker's `restart.json` `roots` and
   `agent-cli-state.json` display names (`<cwd> @ <hostname>`).
+- IDE, repository list: `ItemTable` `cloudEnvironmentTemplate.githubRepos`, the cache of the
+  repositories a cloud agent may use, and `cloudAgentRepository.agents.auth0|user_<id>`, the
+  cloud-agent list, both `[]` on the Linux install, whose picker listed no repository; and
+  `vscode.github`, which names the open repository by its file URI. The GitHub account is named
+  only by the editor's sign-in keys; Cursor's GitHub app connection names none locally
+  ([`ItemTable` keys](#itemtable-keys)).
 
 ## Parsing
 
 ### Transcript stores
 
-Relative to the home; the IDE's paths are given for macOS, with `.config/Cursor` and
-`AppData/Roaming/Cursor` as the other platforms' parents.
+Relative to the home; the IDE's paths are given for macOS, with `.config/Cursor` (observed on
+Linux) and `AppData/Roaming/Cursor` (convention) as the other platforms' parents.
 
 | Store | Holds | Role |
 | --- | --- | --- |
@@ -500,6 +641,27 @@ a server copy, and removed rows only, no file:
 The other conversation and its records were untouched. Deleting the project directory was not
 exercised for the IDE.
 
+The editor window on Linux (3.25.9, 2026-10-20) did the same. Archive wrote no file and removed
+nothing: it set `composerHeaders.isArchived` to 1 and `isArchived` true in the row's `value`,
+moved the row's `lastUpdatedAt` to the archive time and set `is_archived` 1 in
+`conversation-search.db`, and left `composerData` untouched (`isArchived` null, `lastUpdatedAt`
+the last turn's, the header list inline), so the rewrite of `composerData` at the macOS archive
+was the 3.26.13 header migration, not the archive. Export recorded nothing in the app's stores
+([Exported Markdown](#exported-markdown)). Delete, with no confirmation, removed rows only and no
+file: `composerData:<composerId>`, every `bubbleId:<composerId>:*` row (40), the
+`checkpointId:<composerId>:*` rows and the composer's `conversation-search.db` row. It left the
+`composerHeaders` row (`isArchived` 1, `lastUpdatedAt` the delete time, `name` dropped from
+`value`), `composerTranscriptHeightTailIde:<composerId>`, 8 `agentKv` blobs naming the composer,
+the transcript JSONL under `~/.cursor/projects/<sanitized cwd>/agent-transcripts/<composerId>/`,
+2 `ai_code_hashes` rows, the store directory
+`~/.local/state/cursor/agent-stores/cursor_agent_stores/<composerId>/`, the edit's shadow copy
+under `anysphere.cursor-commits/checkpoints/<requestId>/`, now unattributed, and the exported
+file.
+
+Retention: `~/.cursor/projects/.agent-data-cleanup-<YYYY-MM-DD>`, an empty file written at the
+first launch, is named for a daily cleanup of agent data under `projects/`; what that cleanup
+removes, and whether it reaches the transcript JSONL, was not observed.
+
 The analyzer reads the surviving header, the transcript JSONL, the `agentKv` blobs
 and `ai-code-tracking.db`
 ([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources);
@@ -542,7 +704,7 @@ recency)` and `(recency, composerId)`. Values are JSON text unless a row says ot
 | `agentKv:blob:<sha256>` | a content-addressed blob ([`agentKv` blobs](#agentkv-blobs)) |
 | `composerDraft:<composerId>` | `{richText, text}`, an unsent draft (3.26.13; 35 characters on the install) |
 | `composerRootWriterDiagnostic:<composerId>` | `{version, writerInstanceId, rendererRootBlobIdHex, previousRendererRootBlobIdHex, throughWriterSequence, writtenAtMs, writers, writersOmitted, predecessorVerified}`; `rendererRootBlobIdHex` (64 hex) names an `agentKv` blob |
-| `composerTranscriptHeightTail:<composerId>`, `composerVirtualRowHeights:_recentIds`, `slashMenuItems/v7/local.glass.<workspace>`, `model-nudge.startup-trigger-session`, `model-nudge.startup-session`, `composer.composerHeaders.migratedToTable` | layout, menu and migration state, no conversation content |
+| `composerTranscriptHeightTail:<composerId>` (`composerTranscriptHeightTailIde:<composerId>` for the editor window's conversation, 3.25.9 on Linux), `composerVirtualRowHeights:_recentIds`, `slashMenuItems/v7/local.glass.<workspace>`, `model-nudge.startup-trigger-session`, `model-nudge.startup-session`, `composer.composerHeaders.migratedToTable` | layout, menu and migration state, no conversation content |
 
 #### `composerHeaders`
 
@@ -626,33 +788,53 @@ of a turn, `turnDurationMs`. Assistant records have no `modelInfo`.
 
 #### Tool bubbles
 
-A tool bubble has `capabilityType` 15, `createdAt`, `startedAtMs`, `completedAtMs`, `tokenCount`
-and `toolFormerData` with the keys `name`, `params` (a JSON string), `rawArgs` (a JSON string,
-empty or absent on `edit_file_v2` and on a terminal command), `result` (a JSON string, 22 to 1,643
-characters seen; an error object when the call was refused), `status` (`completed`, even for a
-refused call), `tool` (a number), `toolCallId` (85 characters), `modelCallId` (85 characters, or
-empty), `toolCallBinary` (base64), `toolIndex` and `additionalData`. Names seen:
-`glob_file_search`, `get_mcp_tools`, `read_file_v2`, `edit_file_v2` and
-`run_terminal_command_v2`. One bubble holds both the call and its result.
+A tool bubble has `capabilityType` 15, `createdAt`, `startedAtMs`, `completedAtMs`, `tokenCount` and
+`toolFormerData` with the keys `name`, `params` (a JSON string), `rawArgs` (a JSON string, empty or
+absent on `edit_file_v2` and on a terminal command), `result` (a JSON string, 22 to 1,643 characters
+seen; an error object when the call was refused), `status` (`completed`, even for a refused call;
+`loading` while the call waits at its prompt), `tool` (a number), `toolCallId` (85 characters),
+`modelCallId` (85 characters, or empty), `toolCallBinary` (base64), `toolIndex` and
+`additionalData`. Names seen: `glob_file_search`, `get_mcp_tools`, `read_file_v2`, `edit_file_v2`
+and `run_terminal_command_v2`. One bubble holds both the call and its result.
 
 `additionalData` is absent on a call that ran with no review (a file read); a terminal command
-that ran under auto-run has `{status, startedAtMs}`; a command the user was asked about has:
+that ran under auto-run has `{status, startedAtMs}`, and so has one that ran because the
+standing allow list held it (Linux, 3.25.9, 2026-10-20), which leaves no per-call decision; a
+command the user was asked about has:
 
 | Key | Values seen |
 | --- | --- |
 | `status` | `success` (ran), `rejected` (skipped) |
 | `startedAtMs` | present when the command ran |
 | `blockReason` | why it was held, e.g. `Not in allowlist: curl, head` |
-| `reviewData.selectedOption` | `run` (Run), `skip` (Skip), `allowlistCommands` (Always run) |
+| `reviewData.selectedOption` | `run` (Run, and the editor window's add-to-allow-list), `skip` (Skip), `allowlistCommands` (the Agents window's Always run), `rejectAndTellWhatToDoDifferently` (the preset while the prompt is open: the skip-and-tell option, never seen chosen) |
 | `reviewData.approvalType` | `user` |
-| `reviewData.status` | `Done` |
+| `reviewData.status` | `Requested` (the prompt open), `Done` (answered) |
 | `reviewData.allowlistOptions` | `[{id, label, value, commandName, ancestorIds, tokens, tokenCount, indentLevel}]`, one per command in the line |
 | `reviewData.candidatesForAllowlist`, `defaultAllowlistOptionIds`, `selectedAllowlistOptionIds` | the commands offered and preselected (`curl`, `head`) |
-| `reviewData.appliedAllowlistOptionIds` | only after Always run: the entries added to the allowlist |
+| `reviewData.appliedAllowlistOptionIds` | only after an allow-always choice, with either `selectedOption`: the entries the choice named |
 | `reviewData.hasClassifierSuggestions`, `reviewData.isShowingInput` | booleans |
 
-The prompt the user answered offered Skip, Always run and Run (Allowlist (with Sandbox), 3.25.9,
-2026-10-19).
+The prompt the user answered in the Agents window on macOS offered Skip, Always run and Run
+(Allowlist (with Sandbox), 3.25.9, 2026-10-19); the editor window's prompt on Linux offered Run,
+Skip, a change of run mode and "add python3 to the allow list", naming the command (Allowlist,
+3.25.9, 2026-10-20). The decision records were the same on both: Run wrote `selectedOption`
+`run`, `approvalType` `user`, `additionalData.status` `success` and `startedAtMs`; Skip wrote
+`skip`, no `startedAtMs` and a refusal object in `result` (70 characters on Linux).
+
+A call waiting at its prompt is on disk before any answer (Linux, 3.25.9, editor window,
+2026-10-20): `toolFormerData.status` `loading`, and `additionalData{status, blockReason,
+reviewData}` with `reviewData{status: "Requested", selectedOption:
+"rejectAndTellWhatToDoDifferently", isShowingInput: false, allowlistOptions}`. Its
+`selectedOption` is a preset, not an answer; when the user chose Run the same bubble became
+`completed` with `reviewData.status` `Done`. The transcript JSONL already held the call's
+`tool_use` line.
+
+The allow-always choice has two forms: the Agents window's Always run wrote `selectedOption`
+`allowlistCommands` with `appliedAllowlistOptionIds` (macOS, 3.25.9), and the editor window's
+"add python3 to the allow list" wrote `selectedOption` `run` with
+`candidatesForAllowlist` and `appliedAllowlistOptionIds` both `[<command>]` and
+`additionalData.status` `success` (Linux, 3.25.9).
 
 #### File-state rows
 
@@ -691,13 +873,19 @@ Keys that hold conversation, permission and model evidence (macOS install):
   .<surface>{modelName, maxMode, selectedModels}` for the surfaces `composer`, `cmd-k`,
   `background-composer`, `plan-execution`, `quick-agent`, `spec`, `deep-search` and
   `composer-ensemble`; `aiSettings.modelLastUsedAt{<model id>: <ISO time>}` (9 ids, among them
-  `grok-4.6` and `grok-4.7`, moved by a relaunch and by the switch);
+  `grok-4.6` and `grok-4.7`, moved by a relaunch and by the switch on macOS);
   `availableDefaultModels2[{name, serverModelName, idAliases, supports*}]` (46);
   `cursorCreds{backendUrl, agentBackendUrl*, authClientId, authDomain}` (URLs and client ids, no
   secret); `dashboardUserId`; `membershipType` (`free`, then `premium`); `serverPrivacyMode`;
   `teamAdminSettings`; `teamBlocklist`; `mcpServers`; `mcpDisabledTools`;
   `cliDetectionStatus{agentStatus, claudeStatus, codexStatus}` (Cursor checks for other agents'
-  CLIs); `authenticationSettings{githubLoggedIn}`; `backgroundComposerState`.
+  CLIs); `authenticationSettings{githubLoggedIn}`; `backgroundComposerState`. The app writes the
+  blob late: on Linux (3.25.9, 2026-10-20) `modelLastUsedAt` gained its `grok-4.6` entry at
+  22:33:30Z, at a command run after a relaunch, not at the switch (about 22:05Z) or at the
+  question sent after it (about 22:06Z), its other entries all carrying the sign-in time; and the
+  standing allow list did not show an addition made from the prompt
+  ([Run mode and standing lists](#run-mode-and-standing-lists)). A time in the blob, and the
+  file's modification time, can therefore follow the action they record by many minutes.
 - `glass.agentConversationPanes.<id>` (`{activeTabId, tabAgentIds, version}`),
   `cursor/glass.selectedAgent`, `cursor/glass.lastRealAgent`,
   `glass/cursor.editorPanelVisibility.agent/<id>`, `cursor/glass.editorPanelFullscreen/<id>`:
@@ -710,8 +898,35 @@ Keys that hold conversation, permission and model evidence (macOS install):
 - `cursorai/donotchange/{newPrivacyMode2, privacyMode, partnerDataShare,
   newPrivacyModeHoursRemainingInGracePeriod}` and `cursorai/serverConfig` (60 KB of server
   configuration); `adminSettings.cached` (792 bytes before sign-in).
+- Written by the editor's own GitHub sign-in (Linux, 3.25.9, 2026-10-20; VS Code's GitHub
+  authentication): `github-<login>` (55 bytes, `[{id, name, allowed}]`, the extensions allowed
+  to use the GitHub account, the login in the key name), `github-<login>-usages` (137 bytes,
+  `[{extensionId, extensionName, lastUsed, scopes}]`: which extension used the account, when as a
+  number, and with which scopes), `vscode.github-github` (13 bytes of opaque text that contains
+  the login) and `vscode.github-github-repo workflow user:email read:user` (16 bytes of hex; the
+  granted scopes in the key name).
+- Written by connecting Cursor's GitHub integration (Linux, 3.25.9):
+  `cursor/glass.githubConnect.pendingFlow` (273 bytes, `{flowId, state, verifier, expiresAtMs,
+  shouldInstall, source}`, `flowId` 32 hex digits, `source` `cloud-agent`), the connect flow's
+  record, present at the listing after the connection (23:09Z) and gone by 23:40Z;
+  `cloudEnvironmentTemplate.githubRepos` (`[]`, the cache of repositories a cloud agent may use),
+  `cloudEnvironmentTemplate.scmTruncatedInstallations` and
+  `cloudEnvironmentTemplate.scmBitbucketServerHosts` (both `{}`); `vscode.github`
+  (`{branchProtection:<file URI of the open repository>: []}`, VS Code's GitHub extension state
+  per repository); `cursor.startupConnectTransport.gate` and
+  `cursor.tray.mainProcessCloudRefreshEnabled`. Present before it and still empty:
+  `cloudAgentRepository.agents.auth0|user_<id>` (`[]`, the cloud-agent list),
+  `cloudAgentRepository.serverPinnedBcIds.auth0|user_<id>` (`[]`) and
+  `cursor/glass.runningSessionCloudSetupCta.multiRepoOwnerUserId.auth0|user_<id>` (a number).
+- `remoteAgentHost.enrolled.auth0|user_<id>` (a boolean), `remoteAgentHost.displayName.auth0|user_<id>`
+  (6 bytes) and `remoteAgentHost.targetId` (a UUID): the machine's enrolment as a remote agent
+  host for the account, whose credential is `secret://remoteAgentHost.computerKey.auth0|user_<id>`
+  ([Credentials](#credentials)); first seen after the editor's GitHub sign-in (Linux, 3.25.9).
 - `cursor/agentAutorunBrandNewDefaultAttempted` (true, set before sign-in),
-  `cursor/sandboxSupported`, `cursor/sandboxAutoRunSettingEnabled`.
+  `cursor/sandboxSupported`, `cursor/sandboxAutoRunSettingEnabled` (on Linux the first absent
+  throughout and the second absent until the run-mode switch wrote it false).
+- `cursor.update.sendAuthHeaders` (before sign-in), `cursor.storage.disableSqliteStorageBackup`
+  and `cursor.storage.sqliteIncrementalAutoVacuumOnClose`: seen on the Linux install.
 
 #### Run mode and standing lists
 
@@ -722,14 +937,17 @@ shouldAutoApplyIfNoEditTool, thinkingLevel, actionId, description, enabledMcpSer
 `agent`, `triage` and `multitask` had `autoRun` true. No run-mode string is stored: the mode is
 derived from the three flags and the `ItemTable` key `cursor/sandboxAutoRunSettingEnabled`
 (true after the switch to Allowlist (with Sandbox); `cursor/sandboxSupported` true since the
-folder opened):
+folder opened). On Linux (3.25.9, 2026-10-20) no sandbox is offered: `cursor/sandboxSupported`
+was absent throughout, the new install's default was again Auto-review (`agent` `autoRun` and
+`smartModeAutoRun` true, `triage` and `multitask` `autoRun` true), and the switch to Allowlist
+set `smartModeAutoRun` false and wrote `cursor/sandboxAutoRunSettingEnabled` false:
 
 | `autoRun` | `smartModeAutoRun` | `fullAutoRun` | sandbox key | Run mode (UI label) | Seen |
 | --- | --- | --- | --- | --- | --- |
 | false | any | false | any | Ask Every Time | bundle |
-| true | false | false | absent or false | Allowlist | bundle |
+| true | false | false | absent or false | Allowlist | after the switch on Linux |
 | true | false | false | true | Allowlist (with Sandbox) | after the switch |
-| true | true | false | absent or false | Auto-review | the new-install default |
+| true | true | false | absent or false | Auto-review | the new-install default (macOS and Linux) |
 | true | true | false | true | Auto-review (with Sandbox) | bundle |
 | any | any | true | any | Run Everything | bundle |
 
@@ -754,6 +972,18 @@ after Always run, `[]` before), `yoloCommandDenylist`, `smartAllowlistDenylist`,
 `autoAcceptWebSearchTool` (false), `autoApplyFilesOutsideContext` (true),
 `doNotShowYoloModeWarningAgain`, `doNotShowFullYoloModeWarningAgain`, `useLegacyTerminalTool`,
 `playwrightProtection` and `mcpAuthBlocking`. Always run wrote only this list: no file changed.
+
+On Linux (3.25.9, 2026-10-20) the editor window's "add python3 to the allow list" never reached
+the list: `yoloCommandAllowlist` stayed `[]` from the choice (22:01Z) through a quit and a
+relaunch (22:25Z), no other path in the blob and no other global or workspace `ItemTable` key
+named the command, no `permissions.json` or project `.cursor/` held it, and
+`yoloCommandDenylist`, `smartAllowlistDenylist` and `webFetchDomainAllowlist` stayed `[]`; the
+call's `appliedAllowlistOptionIds` ([Tool bubbles](#tool-bubbles)) was its only record. Whether
+the shortcut is held in memory for the session or was lost at the quit before the blob was
+written is not known. Adding `python3` in Settings > Agent then stored `["python3"]`. The list
+holds the user's own entries only: `ls`, which the settings page showed as a default entry, is
+built in and not stored, as `cli-config.json` ships `Shell(ls)`. `User/settings.json` held only
+`window.autoDetectColorScheme`: the list is not a VS Code setting.
 
 #### Agent transcript JSONL
 
@@ -892,11 +1122,15 @@ the user bubble's `createdAt` has milliseconds; assistant and `turn_ended` lines
 Times: header entries and bubbles have `createdAt` (ISO 8601 with milliseconds) and `startedAtMs`
 and `completedAtMs` (epoch ms); `composerData` and `composerHeaders` have `createdAt` and
 `lastUpdatedAt` as epoch ms. `lastUpdatedAt` is the last time the composer was touched, not its
-last message: an archive and a delete moved it, a model switch did not. The last message's time
+last message: on the header row an archive and a delete moved it, a model switch did not; the
+3.25.9 archive on Linux left `composerData.lastUpdatedAt` at the last turn, so there the archive
+time is on the header row only. The last message's time
 is the last header entry's `startedAtMs` or `completedAtMs`. A resume writes nothing to the
 conversation: after a quit, two relaunches and the conversation reopened, the bubbles,
 `status`, `lastUpdatedAt` and headers were unchanged and `lastReadAtMs` stayed the last bubble's
-`startedAtMs`; a relaunch shows only as a `logs/<launch stamp>/` directory and new drafts.
+`startedAtMs`; a relaunch shows only as a `logs/<launch stamp>/` directory and new drafts. The
+same held on Linux (3.25.9), where the quit also checkpointed the WAL into `state.vscdb` (3.0 MB)
+and removed the `workspaceStorage/<epoch ms>/` of an earlier untitled window.
 
 A CLI session's id is its `chats/<md5>/<sessionId>/` directory name, the
 `agent-transcripts/<sessionId>/` directory and file name, and `ai_code_hashes.conversationId`;
@@ -951,13 +1185,15 @@ the IDE's `composer` rows.
 
 #### Retrieval checkpoints
 
-`User/globalStorage/anysphere.cursor-retrieval/checkpoints/<requestId>/`, one per agent request
-that edited a file: `metadata.json` (`{agentRequestId, workspaceId,
-startTrackingDateUnixMilliseconds, fileSizeBytes, requestFiles[{fileUuid, fsPath,
-gitInfo{gitInfo{branch, commitHash, gitRoot}}}],
+`User/globalStorage/anysphere.cursor-retrieval/checkpoints/<requestId>/` on the macOS install
+(3.25.9) and `User/globalStorage/anysphere.cursor-commits/checkpoints/<requestId>/` on the Linux
+install (3.25.9; `metadata.json` 562 bytes, a 32-byte file copy and a 567-byte diff for a
+one-function edit), with the same layout, one per agent request that edited a file: `metadata.json`
+(`{agentRequestId, workspaceId, startTrackingDateUnixMilliseconds, fileSizeBytes,
+requestFiles[{fileUuid, fsPath, gitInfo{gitInfo{branch, commitHash, gitRoot}}}],
 deduplicatedGitInfos}`), `files/<fileUuid>` (the file before the edit) and `diffs/<fileUuid>`
-(`{fsPath, fileUuid, kind, numLines, fileSizeBytes, gitInfo, diffChanges[{original and modified
-line ranges, addedLines, tokenizedAddedLines}]}`). The composer id is not in it.
+(`{fsPath, fileUuid, kind, numLines, fileSizeBytes, gitInfo, diffChanges[{original and modified line
+ranges, addedLines, tokenizedAddedLines}]}`). The composer id is not in it.
 
 #### Workspace `state.vscdb`
 
@@ -1007,23 +1243,24 @@ and `approvalMode` as field sources. `sandbox.json`: name only, from the rendere
 
 #### AgentStores
 
-`AgentStores/cursor_agent_stores/` holds file-sync stores for agent assets such as skills, one per
-account (`u<id>/`, from sign-in; a second after the account merge) and one per conversation
-(`<composerId>/`, from the first edit): `.sync/index.sqlite`, `.sync/root-id` (36 bytes),
-`.sync/root-id.lock`, `.sync/sync.lock` (`{acquiredAt, hostname, kind, pid, uid, windowId}`,
-`kind` `ide`), `.sync/mount.json` on a conversation's store (`{kind, mountKey, readOnly,
-version}`, `kind` `self`), `.sync/tmp/` and `files/` (`files/skills/` on the account's).
-`index.sqlite` has `meta(key, value)` (`deletion_armed`, `files_root_birthtime_ms`,
-`files_root_dev`, `files_root_ino`, `index_created_ms`, `last_complete_round_ms`,
-`last_listing_applied_ms`, `remote_version`, `remote_version_listed_ms`, `root_id`,
-`schema_version`, `tombstone_cursor_ms`, `tombstone_last_include_ms`,
-`tombstone_rounds_since_include`), `files(rel_path, last_synced_sha, last_seen_etag, size,
-last_synced_ms, direction, state, tombstone_etag, deleted_at_ms, stat_*)` (`direction` `pulled`
-or `pushed`, `state` `live` or `tombstoned`), `pending_deletes` and `pending_rmdirs`. Every
-`files` table stayed empty through the round.
-`.control/<u<id> or composerId>/pins/<pid>-<uuid>.json`
-(`{createdAtMs, hostname, pid, purpose, uid, version, windowId}`, `purpose` `foreground`) pins a
-store per open window or conversation, and `.store-eviction-last-run` holds a number.
+`AgentStores/cursor_agent_stores/` in the app-data directory on macOS, and
+`~/.local/state/cursor/agent-stores/cursor_agent_stores/` on Linux (3.24.18 and 3.25.9, 2026-10-20),
+holds file-sync stores for agent assets such as skills, one per account (`u<id>/`, from sign-in; a
+second after the account merge) and one per conversation (`<composerId>/`, from the first edit on
+macOS and from the first question on Linux): `.sync/index.sqlite`, `.sync/root-id` (36 bytes),
+`.sync/root-id.lock`, `.sync/sync.lock` (`{acquiredAt, hostname, kind, pid, uid, windowId}`, `kind`
+`ide`), `.sync/mount.json` on a conversation's store (`{kind, mountKey, readOnly, version}`, `kind`
+`self`), `.sync/tmp/` and `files/` (`files/skills/` on the account's). `index.sqlite` has `meta(key,
+value)` (`deletion_armed`, `files_root_birthtime_ms`, `files_root_dev`, `files_root_ino`,
+`index_created_ms`, `last_complete_round_ms`, `last_listing_applied_ms`, `remote_version`,
+`remote_version_listed_ms`, `root_id`, `schema_version`, `tombstone_cursor_ms`,
+`tombstone_last_include_ms`, `tombstone_rounds_since_include`), `files(rel_path, last_synced_sha,
+last_seen_etag, size, last_synced_ms, direction, state, tombstone_etag, deleted_at_ms, stat_*)`
+(`direction` `pulled` or `pushed`, `state` `live` or `tombstoned`), `pending_deletes` and
+`pending_rmdirs`. Every `files` table stayed empty through the macOS round. `.control/<u<id> or
+composerId>/pins/<pid>-<uuid>.json` (`{createdAtMs, hostname, pid, purpose, uid, version,
+windowId}`, `purpose` `foreground`; 166 bytes on Linux) pins a store per open window or
+conversation, and `.store-eviction-last-run` holds a number.
 
 #### `update-supervisor`
 
@@ -1036,7 +1273,7 @@ reason}`, `shipit_state_changed`, `shipit_launchd_changed`, `shipit_install_star
 (`{completedAt, details{currentVersion, elapsedMs}, finalPhase, installationId, schemaVersion,
 status}`, `finalPhase` `confirmed`, `status` `success`), `app-ready.json` (`{currentVersion, pid,
 readyAt}`) and the `cursor-update-supervisor` binary. Together they date each build the install
-ran.
+ran. The Linux deb has none ([Cursor IDE on Linux](#cursor-ide-on-linux)).
 
 #### Exported Markdown
 
@@ -1044,8 +1281,24 @@ Export (editor window, 3.26.13, 2026-10-20) writes one Markdown file where the u
 default name `export.md` (1,194 bytes and 89 lines for seven turns): `# <conversation title>`, a
 line `_Exported on <M/D/YYYY at HH:MM:SS> <time zone> from Cursor (3.26.13)_`, then alternating
 `**User**` and `**Cursor**` blocks separated by `---`. It has no per-turn time, tool call, tool
-name, code fence, model or composer id: the prose only. Nothing in the app's stores records an
-export; the app's recent-documents list names the file ([Cursor IDE](#cursor-ide)).
+name, code fence, model or composer id: the prose only. The Linux export (editor window, 3.25.9,
+2026-10-20) had the same shape, its line naming `Cursor (3.25.9)` (1,243 bytes and 101 lines for
+eight turns, 16 `---` separators). Nothing in the app's stores records an export; macOS's
+recent-documents list ([Cursor IDE](#cursor-ide)) and GNOME's recent-files list
+([Cursor IDE on Linux](#cursor-ide-on-linux)) named the file.
+
+#### Source-host integration
+
+Cursor connects to GitHub in two ways that store differently (Linux, 3.25.9, 2026-10-20).
+Cursor's own GitHub integration installs the Cursor GitHub app on the account for cloud agents and
+keeps the grant on the server: connecting it wrote the connect flow's record and empty
+repository and agent caches, and named no account and added no `secret://` row. The editor's own
+GitHub sign-in (VS Code's GitHub authentication) names the account in key names, records the
+scopes and the extensions that used it, and stores an encrypted token. The keys are in
+[`ItemTable` keys](#itemtable-keys), the secrets in [Secrets](#secrets) and the repository list
+in [Where the project path is recorded](#where-the-project-path-is-recorded). A
+repository-bound cloud conversation was not observed: the cloud agent's picker listed no
+repository.
 
 #### Logs
 
@@ -1071,6 +1324,10 @@ cursorAuthDebug.workspaceId-<id>.log, tasks.workspaceId-<id>.log}` and
   `composer.composerHeaders.migratedToTable`, `ItemTable` `composer.composerHeaders.version`), the
   header list inline in `composerData.fullConversationHeadersOnly`. 3.25.9 added
   `anysphere.cursor-agent-host/data.sqlite` and `cursor.storage.authTokenEncryptionAtRest`.
+  3.25.9 on Linux (deb, 2026-10-20) wrote the same records as 3.25.9 on macOS: the header list
+  inline, no `composerConvHeaders:` row, tool names with `_v2`; its editor window's conversation
+  had `composerTranscriptHeightTailIde:<composerId>`. The apt repository served 3.25.9 on
+  2026-10-20, the day the macOS updater served 3.26.13, so the deb channel lags.
 - 3.26.13 (observed): a new conversation's header list is in
   `composerConvHeaders:<composerId>:<NNNNNN>` chunks, with `fullConversationHeadersOnly` `[]`; an
   older conversation keeps its inline list until the composer is rewritten, and archiving the
@@ -1095,6 +1352,19 @@ The tokens, the secret-storage rows and the identity keys of `ItemTable` are lis
 messages: the `agentKv` prompts with their context, the FTS index, the `ofsContent:` and
 `composer.content.*` file texts, the retrieval checkpoints' file copies and
 `tracked_file_content.content`.
+
+On Linux (3.25.9, 2026-10-20) the `secret://` values are VS Code's secret storage encrypted with
+the Electron safeStorage key, stored as JSON `{type: "Buffer", data: [...]}`: the editor's GitHub
+token `secret://{"extensionId":"vscode.github-authentication","key":"github.auth"}` (743 bytes,
+195 data bytes), `secret://remoteAgentHost.computerKey.auth0|user_<id>` (727 bytes, 195 data
+bytes) and the `vscode.git` row (318 bytes, 83 data bytes). So the editor's provider tokens are
+ciphertext while Cursor's own `cursorAuth/*` JWTs beside them are plaintext. The macOS
+`secret://` values were not shaped. `cursor/glass.githubConnect.pendingFlow`'s `state` (88
+characters) and `verifier` (43 characters) are the one-time secrets of the GitHub connect flow
+(OAuth with PKCE, the proof-key form of the authorization-code flow), present only while the flow
+runs. Cursor's GitHub app grant has no local token. The GitHub login is an identity value in the
+key names `github-<login>` and `github-<login>-usages` and in the value of `vscode.github-github`
+([`ItemTable` keys](#itemtable-keys)).
 
 The CLI on macOS keeps its tokens in the login keychain ([Credentials](#credentials)).
 `cli-config.json` holds, while signed in, `authInfo` (the email, the display name, the numeric
@@ -1156,26 +1426,36 @@ Columns:
 
 #### Permission rows
 
-Per call: a tool bubble whose `additionalData.reviewData` is present yields, after its `tool_use`
-row, a `system` row `permission decision: <selectedOption> outcome=<additionalData.status>
-approval=<approvalType> reason=<blockReason>`, then ` allowlisted=<entries>` when
-`appliedAllowlistOptionIds` is present (the `commandName` of each matching `allowlistOptions`
-entry, else the ids), with the call's `tool_use_id` and `tool_name`. A call that ran under
+Per call: a tool bubble whose `additionalData.reviewData` is present and answered yields, after
+its `tool_use` row, a `system` row `permission decision: <selectedOption>
+outcome=<additionalData.status> approval=<approvalType> reason=<blockReason>`, then
+` allowlisted=<entries>` when `appliedAllowlistOptionIds` is non-empty (the `commandName` of each
+matching `allowlistOptions` entry, else the ids), with the call's `tool_use_id` and `tool_name`.
+The `allowlisted=` suffix marks an allow-always choice whatever `selectedOption` says, since the
+Agents window writes `allowlistCommands` and the editor window `run` for it, and it is the
+durable record of that choice: on Linux the standing list never gained the entry
+([Run mode and standing lists](#run-mode-and-standing-lists)). A bubble whose
+`reviewData.status` is not `Done`, or whose `toolFormerData.status` is `loading`, is a call
+still waiting at its prompt when the store was copied: its `selectedOption` is the preset
+`rejectAndTellWhatToDoDifferently`, so it yields no decision but `permission prompt pending:
+<tool_name> reason=<blockReason> options=<allowlistOptions ids>`, joined on `tool_use_id`, and
+no `tool_result` row unless its `result` is non-empty
+([issue 237](https://github.com/seanthegeek/doubleagent/issues/237)). A call that ran under
 auto-run (`additionalData` without `reviewData`) or with no `additionalData` yields no permission
 row; the run mode then in force is the standing row below. The record shapes are in
 [Tool bubbles](#tool-bubbles).
 
-Standing, at the modification time of the file, saying so in the text, with empty `session_id`:
-from `state.vscdb`'s settings blob, one row per entry of `yoloCommandAllowlist`,
-`yoloCommandDenylist`, `smartAllowlistDenylist`, `webFetchDomainAllowlist` and
-`autoApprovedModeTransitions`, `permission setting: <list>=<entry> (from state.vscdb
-composerState, file mtime)`; one per `modes4` entry, `permission setting: run mode <id>=<mode>
-autoRun=<b> smartModeAutoRun=<b> fullAutoRun=<b> sandbox=<b>`, the mode derived as in
-[Run mode and standing lists](#run-mode-and-standing-lists); and one per boolean switch of that
-section. From `cli-config.json`: `approvalMode`, each `permissions.allow` and `permissions.deny`
-entry and `sandbox.mode`. From `permissions.json` (bundle-derived, fixture only): each
-`allowlists.mcp` and `allowlists.terminal` entry, `approvalMode`, and each `allowInstructions`
-and `blockInstructions` entry.
+Standing, at the modification time of the file, saying so in the text, with empty `session_id`: from
+`state.vscdb`'s settings blob, which the app writes late ([`ItemTable` keys](#itemtable-keys)), one
+row per entry of `yoloCommandAllowlist`, `yoloCommandDenylist`, `smartAllowlistDenylist`,
+`webFetchDomainAllowlist` and `autoApprovedModeTransitions`, `permission setting: <list>=<entry>
+(from state.vscdb composerState, file mtime, written late by the app)`; one per `modes4` entry,
+`permission setting: run mode <id>=<mode> autoRun=<b> smartModeAutoRun=<b> fullAutoRun=<b>
+sandbox=<b>`, the mode derived as in [Run mode and standing lists](#run-mode-and-standing-lists);
+and one per boolean switch of that section. From `cli-config.json`: `approvalMode`, each
+`permissions.allow` and `permissions.deny` entry and `sandbox.mode`. From `permissions.json`
+(bundle-derived, fixture only): each `allowlists.mcp` and `allowlists.terminal` entry,
+`approvalMode`, and each `allowInstructions` and `blockInstructions` entry.
 
 The Agent CLI (2026.10.19-6bbf2c4, 2026-10-20) asks with four options, in this order: Allow once,
 Add `<command>` to the allow list, Run everything, and Skip and tell the agent what to do. Its
@@ -1194,8 +1474,11 @@ bubble that names one, `model: <old> -> <new>` at each later user bubble whose m
 assistant and tool rows take the tracked model. A switch in the UI writes no bubble, so it shows
 only at the next message. `composerData.modelConfig` is the current selection with no history and
 yields no row. The settings blob's `aiSettings.modelLastUsedAt` is the only dated record of a
-switch: one `system` row per entry, `model last used: <id> (from state.vscdb
-aiSettings.modelLastUsedAt)`, at its time, with empty `session_id`.
+switch beside the next user bubble, and it is written late: on Linux its entry for the new model
+was dated 27 minutes after the switch, at a later command ([`ItemTable` keys](#itemtable-keys)),
+so its time is when the app wrote the blob, at or after the switch. One `system` row per entry,
+`model last used: <id> (from state.vscdb aiSettings.modelLastUsedAt, written late by the app)`,
+at its time, with empty `session_id`.
 
 For the CLI, `meta.0.lastUsedModel` is the session's current model id (`default`, the Auto
 selection, then `grok-4.7`), updated at the first message after a switch; each assistant
@@ -1264,6 +1547,18 @@ yielded. Relay: the agent records none. The CLI recorded no sync either (2026.10
 2026-10-20): it has no share command, and `agent worker start`, which runs a private cloud worker
 and is the CLI's remote surface, was not exercised.
 
+Source host ([Source-host integration](#source-host-integration)): one `system` row per
+`github-<login>` key of the editor's GitHub sign-in, `source host: github account <login>
+scopes=<scopes> (from state.vscdb key github-<login>)`, the login from the key name and the
+scopes from the `-usages` entries, at their latest `lastUsed`, else the file's modification time;
+and `remote agent host enrolled: <displayName> (from state.vscdb
+remoteAgentHost.enrolled.<account>, file mtime)` when `remoteAgentHost.enrolled.<account>` is
+true, the name from `remoteAgentHost.displayName.<account>`. Both have an empty `session_id` and
+are added in analyzer 0.20.1. Only these keys are read: the cached GitHub token and the computer
+key are never read. The repository list `cloudEnvironmentTemplate.githubRepos` would be read like
+a project list, but it was empty on the install, so no repository row is planned from it; the
+Cursor GitHub app connection records nothing to yield.
+
 #### Scratch directory rows
 
 None under the home. The `$TMPDIR` directories of [Scratch directories](#scratch-directories), the
@@ -1300,7 +1595,7 @@ protobuf is appended to the errors list with its `id`.
 Synthetic records in the shapes above, invented values. `state.vscdb`, `cursorDiskKV`:
 
 ```json
-{"key": "composerData:c1", "value": {"_v": 18, "composerId": "c1", "status": "completed", "name": "Add subtract", "createdAt": 1790000000000, "lastUpdatedAt": 1790000300000, "modelConfig": {"modelName": "grok-4.7", "maxMode": false, "selectedModels": [{"modelId": "grok-4.7", "parameters": [{"id": "context", "value": "256k"}]}]}, "workspaceIdentifier": {"id": "0123456789abcdef0123456789abcdef", "uri": {"fsPath": "/srv/proj"}}, "trackedGitRepos": [{"repoPath": "/srv/proj", "branches": []}], "fullConversationHeadersOnly": [{"bubbleId": "u1", "type": 1, "createdAt": "2026-10-01T10:00:00.000Z", "startedAtMs": 1790000000000, "completedAtMs": 1790000001000}, {"bubbleId": "a1/s:0", "type": 2, "createdAt": "2026-10-01T10:00:01.000Z"}, {"bubbleId": "a1/t:call-t1-1\nfc_t1_1", "type": 2, "createdAt": "2026-10-01T10:00:02.000Z"}, {"bubbleId": "a1/s:2", "type": 2, "createdAt": "2026-10-01T10:00:05.000Z"}, {"bubbleId": "u2", "type": 1, "createdAt": "2026-10-01T10:01:00.000Z"}, {"bubbleId": "a2/t:call-t2-0\nfc_t2_0", "type": 2, "createdAt": "2026-10-01T10:01:01.000Z"}, {"bubbleId": "a2/t:call-t3-1\nfc_t3_1", "type": 2, "createdAt": "2026-10-01T10:01:10.000Z"}, {"bubbleId": "a2/t:call-t4-2\nfc_t4_2", "type": 2, "createdAt": "2026-10-01T10:01:20.000Z"}]}}
+{"key": "composerData:c1", "value": {"_v": 18, "composerId": "c1", "status": "completed", "name": "Add subtract", "createdAt": 1790000000000, "lastUpdatedAt": 1790000300000, "modelConfig": {"modelName": "grok-4.7", "maxMode": false, "selectedModels": [{"modelId": "grok-4.7", "parameters": [{"id": "context", "value": "256k"}]}]}, "workspaceIdentifier": {"id": "0123456789abcdef0123456789abcdef", "uri": {"fsPath": "/srv/proj"}}, "trackedGitRepos": [{"repoPath": "/srv/proj", "branches": []}], "fullConversationHeadersOnly": [{"bubbleId": "u1", "type": 1, "createdAt": "2026-10-01T10:00:00.000Z", "startedAtMs": 1790000000000, "completedAtMs": 1790000001000}, {"bubbleId": "a1/s:0", "type": 2, "createdAt": "2026-10-01T10:00:01.000Z"}, {"bubbleId": "a1/t:call-t1-1\nfc_t1_1", "type": 2, "createdAt": "2026-10-01T10:00:02.000Z"}, {"bubbleId": "a1/s:2", "type": 2, "createdAt": "2026-10-01T10:00:05.000Z"}, {"bubbleId": "u2", "type": 1, "createdAt": "2026-10-01T10:01:00.000Z"}, {"bubbleId": "a2/t:call-t2-0\nfc_t2_0", "type": 2, "createdAt": "2026-10-01T10:01:01.000Z"}, {"bubbleId": "a2/t:call-t3-1\nfc_t3_1", "type": 2, "createdAt": "2026-10-01T10:01:10.000Z"}, {"bubbleId": "a2/t:call-t4-2\nfc_t4_2", "type": 2, "createdAt": "2026-10-01T10:01:20.000Z"}, {"bubbleId": "a2/t:call-t7-3\nfc_t7_3", "type": 2, "createdAt": "2026-10-01T10:01:40.000Z"}, {"bubbleId": "a2/t:call-t8-4\nfc_t8_4", "type": 2, "createdAt": "2026-10-01T10:01:50.000Z"}]}}
 {"key": "bubbleId:c1:u1", "value": {"type": 1, "text": "Add a subtract function", "createdAt": "2026-10-01T10:00:00.000Z", "requestId": "r1", "checkpointId": "k1", "modelInfo": {"modelName": "grok-4.6"}}}
 {"key": "bubbleId:c1:a1/s:0", "value": {"type": 2, "bubbleId": "a1/s:0", "capabilityType": 30, "text": "", "thinking": {"text": "Read calc.py first.", "signature": "sig"}}}
 {"key": "bubbleId:c1:a1/t:call-t1-1\nfc_t1_1", "value": {"type": 2, "capabilityType": 15, "startedAtMs": 1790000002000, "completedAtMs": 1790000002500, "toolFormerData": {"name": "read_file_v2", "params": "{\"path\":\"/srv/proj/calc.py\"}", "rawArgs": "{\"path\":\"calc.py\"}", "result": "{\"contents\":\"def add(a, b): ...\"}", "status": "completed", "tool": 40, "toolCallId": "tc1", "modelCallId": "mc1", "toolIndex": 0}}}
@@ -1309,6 +1604,8 @@ Synthetic records in the shapes above, invented values. `state.vscdb`, `cursorDi
 {"key": "bubbleId:c1:a2/t:call-t2-0\nfc_t2_0", "value": {"type": 2, "capabilityType": 15, "toolFormerData": {"name": "run_terminal_command_v2", "params": "{\"command\":\"curl -s example.test | head\"}", "rawArgs": "", "result": "{\"output\":\"ok\"}", "status": "completed", "toolCallId": "tc2", "additionalData": {"status": "success", "startedAtMs": 1790000061000, "blockReason": "Not in allowlist: curl, head", "reviewData": {"selectedOption": "run", "approvalType": "user", "status": "Done", "allowlistOptions": [{"id": "curl", "commandName": "curl"}, {"id": "head", "commandName": "head"}]}}}}}
 {"key": "bubbleId:c1:a2/t:call-t3-1\nfc_t3_1", "value": {"type": 2, "capabilityType": 15, "toolFormerData": {"name": "run_terminal_command_v2", "params": "{\"command\":\"curl -s example.test | head\"}", "result": "{\"error\":\"skipped\"}", "status": "completed", "toolCallId": "tc3", "additionalData": {"status": "rejected", "blockReason": "Not in allowlist: curl, head", "reviewData": {"selectedOption": "skip", "approvalType": "user", "status": "Done"}}}}}
 {"key": "bubbleId:c1:a2/t:call-t4-2\nfc_t4_2", "value": {"type": 2, "capabilityType": 15, "toolFormerData": {"name": "run_terminal_command_v2", "params": "{\"command\":\"curl -s example.test | head\"}", "result": "{\"output\":\"ok\"}", "status": "completed", "toolCallId": "tc4", "additionalData": {"status": "success", "startedAtMs": 1790000080000, "blockReason": "Not in allowlist: curl, head", "reviewData": {"selectedOption": "allowlistCommands", "approvalType": "user", "status": "Done", "allowlistOptions": [{"id": "curl", "commandName": "curl"}, {"id": "head", "commandName": "head"}], "appliedAllowlistOptionIds": ["curl", "head"]}}}}}
+{"key": "bubbleId:c1:a2/t:call-t7-3\nfc_t7_3", "value": {"type": 2, "capabilityType": 15, "toolFormerData": {"name": "run_terminal_command_v2", "params": "{\"command\":\"python3 -c 'print(1+1)'\"}", "result": "{\"output\":\"2\"}", "status": "completed", "toolCallId": "tc7", "additionalData": {"status": "success", "startedAtMs": 1790000100000, "blockReason": "Not in allowlist: python3", "reviewData": {"selectedOption": "run", "status": "Done", "allowlistOptions": [{"id": "python3", "commandName": "python3"}], "candidatesForAllowlist": ["python3"], "appliedAllowlistOptionIds": ["python3"]}}}}}
+{"key": "bubbleId:c1:a2/t:call-t8-4\nfc_t8_4", "value": {"type": 2, "capabilityType": 15, "toolFormerData": {"name": "run_terminal_command_v2", "params": "{\"command\":\"python3 -c 'print(2+2)'\"}", "result": "", "status": "loading", "toolCallId": "tc8", "additionalData": {"blockReason": "Not in allowlist: python3", "reviewData": {"status": "Requested", "selectedOption": "rejectAndTellWhatToDoDifferently", "isShowingInput": false, "allowlistOptions": [{"id": "python3", "commandName": "python3"}]}}}}}
 {"key": "composerData:c2", "value": {"composerId": "c2", "status": "completed", "name": "Read the README", "createdAt": 1790001000000, "fullConversationHeadersOnly": []}}
 {"key": "composerConvHeaders:c2:000000", "value": [{"bubbleId": "u3", "type": 1, "createdAt": "2026-10-01T10:20:00.000Z"}, {"bubbleId": "a3/s:0", "type": 2, "createdAt": "2026-10-01T10:20:02.000Z"}]}
 {"key": "bubbleId:c2:u3", "value": {"type": 1, "text": "What does the README say?", "modelInfo": {"modelName": "grok-4.7"}}}
@@ -1363,9 +1660,13 @@ the parser must not want: `.cursor/statsig-cache.json` and
 `.cursor/projects/srv-proj/mcps/cursor-ide-browser/SERVER_METADATA.json`. Expected: for `c1`, a
 `session name:` row, `model: grok-4.6`, the user row, a thinking row only with `include_thinking`,
 the read's `tool_use` and `tool_result` with no permission row, the assistant row, `model:
-grok-4.6 -> grok-4.7`, and three commands each with `tool_use`, a `permission decision:` row
+grok-4.6 -> grok-4.7`, three commands each with `tool_use`, a `permission decision:` row
 (`run`, `skip` with a `[rejected] ` result, `allowlistCommands` with `allowlisted=curl,head`)
-and `tool_result`; for `c2`, rows from the chunk and `conversation archived`; for `c3`,
+and `tool_result`, the editor window's allow-always command (`tc7`) with `tool_use`, a
+`permission decision: run` row ending `allowlisted=python3` and `tool_result`, and the pending
+command (`tc8`) with `tool_use` and `permission prompt pending: run_terminal_command_v2
+reason=Not in allowlist: python3 options=python3`, and no `permission decision:` or
+`tool_result` row; for `c2`, rows from the chunk and `conversation archived`; for `c3`,
 `conversation deleted`, the JSON blob's `user` row (the protobuf blob yields nothing), the
 transcript's `user` row (`c3 deleted question` at 2026-10-01T01:30:00.000Z) and `assistant` row,
 and its `ai code:` row; for `d1`, `unsent draft: draft not sent`;
@@ -1458,13 +1759,18 @@ Globs for the CLI files, relative to the home:
 - High, observed on macOS (Cursor IDE 3.24.18 to 3.26.13, one step per listing): the IDE's files
   and key families, the record shapes, the permission and model records, the archive and delete
   results, and the 3.26.13 header chunks.
+- High, observed on Linux (Cursor IDE deb 3.24.18 and 3.25.9, one step per listing): the
+  `~/.config/Cursor` and `~/.local/state/cursor/agent-stores` layout, the absence of the
+  Agent CLI copy until a cloud feature is used, the absence of `update-supervisor`, the plaintext
+  tokens beside the encrypted `secret://` values, the source-host keys, the pending-prompt and
+  editor-window allow-always records, and the archive and delete results.
 - High, observed on macOS (Cursor Agent CLI 2026.10.19-6bbf2c4, one step per listing): the CLI's
   files under `~/.cursor` and `~/.local`, the chat store's tables, the `meta.0` keys and the JSON
   message shapes, the keychain items, and what `agent logout` and the project's removal left.
 - High (L1 bundle): the CLI entries the install did not write (`acp-sessions/`, worktrees, hooks,
   plans), the `projects/` name truncation, and the CLI's `auth.json` logic on Linux and Windows;
   the IDE's run-mode names and delete commands.
-- Medium: `.cursor-server` (convention plus L4); the Windows and Linux IDE paths (convention, not
+- Medium: `.cursor-server` (convention plus L4); the Windows IDE paths (convention, not
   observed).
 - Low: `~/.cursor_info` (a single L4 claim).
 - Not determined: the schema of the CLI chat store's protobuf nodes (no descriptor extracted), so
@@ -1480,4 +1786,9 @@ Globs for the CLI files, relative to the home:
   (`isSubagent`, `subagentComposerIds`), cloud
   and worktree agents, and a `cloud-cache` row in `conversation-search.db`; what the editor
   window's Delete does on a conversation that was not archived first, and what deleting the
-  project directory leaves for the IDE.
+  project directory leaves for the IDE; whether the editor window's add-to-allow-list shortcut
+  is kept in memory for the session or was lost at the quit, and whether other builds persist
+  it; what the daily `projects/` cleanup removes; whether the Linux `secret://` values are
+  encrypted through libsecret, and what the GNOME keyring item holds; the Agents window, the RPM
+  and AppImage builds and the x64 deb on Linux; and where `update-supervisor` and the sync stores
+  live on Windows; a repository-bound cloud conversation and how it is stored locally.

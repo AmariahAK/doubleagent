@@ -10,6 +10,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-10-20
+
+### Changed
+
+- The Linux catalog line for Cursor's agent sync stores now names where
+  the Cursor IDE writes them, the XDG state directory
+  `.local/state/cursor/agent-stores` (the per-account and
+  per-conversation `cursor_agent_stores/<id>/` stores and the
+  `.control/<id>/pins/` of the open conversations), in place of
+  `.config/Cursor/AgentStores`, which matched nothing. Cursor 3.25.9 from
+  the Ubuntu deb (October 2026) wrote the stores there, so collector
+  1.17.0 left them out on Linux. `--list` (`-List`) prints the new line
+  ([#236]).
+
 ## [1.17.0] - 2026-10-20
 
 ### Added
@@ -938,7 +952,8 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
   overridden by `--full`; credential files collected and flagged
   `secret: true` by default.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.17.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.18.0...HEAD
+[1.18.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.17.0...collector-v1.18.0
 [1.17.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.16.0...collector-v1.17.0
 [1.16.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.15.0...collector-v1.16.0
 [1.15.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.14.0...collector-v1.15.0
@@ -962,6 +977,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#236]: https://github.com/seanthegeek/doubleagent/issues/236
 [#160]: https://github.com/seanthegeek/doubleagent/issues/160
 [#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#149]: https://github.com/seanthegeek/doubleagent/issues/149

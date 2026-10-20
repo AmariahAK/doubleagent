@@ -1118,6 +1118,16 @@ printf '{"type":"turn_ended","status":"success"}\n' \
   >"$B/.cursor/projects/p/agent-transcripts/u/u.jsonl"
 printf '{}\n' >"$B/.cursor/statsig-cache.json"
 
+# 2026-10-20 Cursor IDE round on Ubuntu (#236)
+# Cursor 3.25.9 (Ubuntu arm64 deb, 2026-10-20) keeps the same sync stores
+# under the XDG state directory, .local/state/cursor/agent-stores, not under
+# .config/Cursor. Checks follow the default run below; the same files are in
+# smoke.ps1 under bob.
+L236="$H/.local/state/cursor/agent-stores/cursor_agent_stores"
+mkdir -p "$L236/u1/.sync" "$L236/.control/u1/pins"
+printf 'sqlite\n' >"$L236/u1/.sync/index.sqlite"
+printf '{"purpose":"foreground"}\n' >"$L236/.control/u1/pins/1-x.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1488,6 +1498,9 @@ check "#6 Cursor agent worker log collected" "row \"$W6/cursor-agent-worker-1.lo
 check "#6 Cursor canvases node_modules excluded" "[ \"\$(status_of \"$B/.cursor/projects/p/canvases/node_modules\")\" = skipped_excluded ] && ! grep -qF 'node_modules/x.d.ts' \"\$M\""
 check "#6 Cursor agent transcript collected" "row \"$B/.cursor/projects/p/agent-transcripts/u/u.jsonl\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 check "#6 Cursor statsig cache excluded" "[ \"\$(status_of \"$B/.cursor/statsig-cache.json\")\" = skipped_excluded ]"
+
+# 2026-10-20 Cursor IDE round on Ubuntu (#236)
+check "#236 Cursor Linux agent-stores collected" "row \"$L236/u1/.sync/index.sqlite\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$L236/.control/u1/pins/1-x.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

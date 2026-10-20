@@ -44,17 +44,30 @@ install has shown them. The IDE's paths are under `<ide>`, which is
     `toolCallId`, `additionalData.status`, `.startedAtMs`, `.blockReason`,
     `.reviewData.selectedOption`, `.approvalType`, `.allowlistOptions[]
     {id, commandName}`, `.appliedAllowlistOptionIds`; the bubble's
-    `startedAtMs` and `completedAtMs`): a `tool_use` row, `params`, else
-    `rawArgs`, at `startedAtMs`; when `reviewData` is present a `system`
-    row `permission decision: <selectedOption> outcome=<status>
-    approval=<approvalType> reason=<blockReason>`, with ` allowlisted=<the
-    commandName of each applied option, else its id>` when
-    `appliedAllowlistOptionIds` is present (`-` for a missing value); then
-    a `tool_result` row, `result`, prefixed `[rejected] ` when
-    `additionalData.status` is `rejected`, at `completedAtMs`. `tool_name`
-    is `toolFormerData.name` and `tool_use_id` `toolCallId` on all three.
-    A call that ran under auto-run has no `reviewData` and gets no
-    permission row; the run mode in force is a standing row.
+    `startedAtMs` and `completedAtMs`; `.reviewData.status` and
+    `toolFormerData.status`): a `tool_use` row, `params`, else `rawArgs`,
+    at `startedAtMs`; when `reviewData` is present and answered
+    (`reviewData.status` `Done` and `toolFormerData.status` not
+    `loading`) a `system` row `permission decision: <selectedOption>
+    outcome=<status> approval=<approvalType> reason=<blockReason>`, with `
+    allowlisted=<the commandName of each applied option, else its id>`
+    when `appliedAllowlistOptionIds` is not empty, whatever
+    `selectedOption` says (the macOS 3.25.9 Agents window's "Always run"
+    writes `allowlistCommands`, the Linux 3.25.9 editor window's "add ...
+    to the allow list" writes `run`) (`-` for a missing value); when
+    `reviewData` is present but unanswered (any other `reviewData.status`,
+    `Requested` seen on 3.25.9 Linux, or `toolFormerData.status`
+    `loading`), the prompt was still open when the store was copied and
+    `selectedOption` holds a preset (`rejectAndTellWhatToDoDifferently`),
+    so the row is `permission prompt pending: <tool_name>
+    reason=<blockReason> options=<allowlistOptions ids>` instead; then a
+    `tool_result` row, `result`, prefixed `[rejected] ` when
+    `additionalData.status` is `rejected` and the prompt was answered, at
+    `completedAtMs`, and none for a pending call with no `result`.
+    `tool_name` is `toolFormerData.name` and `tool_use_id` `toolCallId` on
+    all three. A call that ran under auto-run or a standing allowlist
+    entry has no `reviewData` and gets no permission row; the run mode and
+    the list in force are standing rows.
   - `composerHeaders` table (`composerId`, `createdAt`, `lastUpdatedAt`,
     `isArchived`, and `value`: `name`, `isArchived`,
     `workspaceIdentifier.uri.fsPath`, `trackedGitRepos[]`,
@@ -87,7 +100,8 @@ install has shown them. The IDE's paths are under `<ide>`, which is
     `src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl
     .persistentStorage.applicationUser` and
     `cursor/sandboxAutoRunSettingEnabled`: `permission setting:
-    <list>=<entry> (from state.vscdb composerState, file mtime)` per entry
+    <list>=<entry> (from state.vscdb composerState, file mtime, written
+    late by the app)` per entry
     of `composerState.yoloCommandAllowlist`, `yoloCommandDenylist`,
     `smartAllowlistDenylist`, `webFetchDomainAllowlist` and
     `autoApprovedModeTransitions`; `permission setting: run mode <id>=<mode>
@@ -95,8 +109,29 @@ install has shown them. The IDE's paths are under `<ide>`, which is
     per `composerState.modes4` entry, the mode derived from the flags and
     the sandbox key (`RUN_MODES`); `permission setting: <switch>=<value>
     (from ...)` per boolean switch in `SWITCHES`; and `model last used:
-    <id> (from state.vscdb aiSettings.modelLastUsedAt)` per entry of
-    `aiSettings.modelLastUsedAt`, at its own time.
+    <id> (from state.vscdb aiSettings.modelLastUsedAt, written late by the
+    app)` per entry of `aiSettings.modelLastUsedAt`, at its own time. The
+    app flushes this blob late (3.25.9 Linux: a list entry added from a
+    prompt was not written by the next quit, and a switched model's entry
+    appeared only at its next use), so neither time is the event's.
+  - Source-host and remote-host rows from `ItemTable`, with an empty
+    `session_id` (3.25.9 Linux, 2026-10-20): the editor's own GitHub
+    sign-in writes `github-<login>` (a JSON list of `{id, name,
+    allowed}`, the extensions allowed to use the account) and
+    `github-<login>-usages` (`[{extensionId, extensionName, lastUsed,
+    scopes[]}]`), which give `source host: github account <login>
+    scopes=<the usages' scopes, deduplicated, else -> (from state.vscdb
+    key github-<login>)` at the latest `lastUsed` (epoch ms), else the
+    file's modification time; a `github-` key whose value is not a list
+    is another extension's and is skipped. Cursor's own GitHub app
+    connection names no account locally. `remoteAgentHost.enrolled.
+    <account>` true gives `remote agent host enrolled: <displayName>
+    (from state.vscdb remoteAgentHost.enrolled.<account>, file mtime)`,
+    `<displayName>` from `remoteAgentHost.displayName.<account>` (JSON or
+    plain text), else `-`. Only the `github-` and `remoteAgentHost.` keys
+    are selected: the `secret://` values beside them (the GitHub token,
+    `remoteAgentHost.computerKey.<account>`) are never read. Nothing
+    marks a session synced, so `records_sync` stays unset.
 * `.cursor/projects/<sanitized cwd>/agent-transcripts/<composerId>/
   <composerId>.jsonl`, the agent worker's copy, a secondary source
   (`secondary()`): `{role, message{content[{type text|tool_use, text,
@@ -190,6 +225,11 @@ SETTINGS_KEY = (
     ".persistentStorage.applicationUser"
 )
 SANDBOX_KEY = "cursor/sandboxAutoRunSettingEnabled"
+# The editor's enrolment of this machine as a remote agent host for an
+# account; `secret://remoteAgentHost.computerKey.<account>` beside them is
+# its credential and is never read.
+ENROLLED_PREFIX = "remoteAgentHost.enrolled."
+DISPLAY_PREFIX = "remoteAgentHost.displayName."
 STANDING_LISTS = (
     "yoloCommandAllowlist",
     "yoloCommandDenylist",
@@ -211,7 +251,9 @@ SWITCHES = (
     "playwrightProtection",
     "mcpAuthBlocking",
 )
-COMPOSER_SOURCE = "(from state.vscdb composerState, file mtime)"
+# The settings blob is flushed late by the app, so its rows say so.
+COMPOSER_SOURCE = "(from state.vscdb composerState, file mtime, written late by the app)"
+MODEL_USED_SOURCE = "(from state.vscdb aiSettings.modelLastUsedAt, written late by the app)"
 DELETED_TEXT = "conversation deleted (header kept; time is the header's lastUpdatedAt)"
 
 # `<timestamp>Thursday, Oct 1, 2026, 6:00 AM (UTC-4)</timestamp>` LF
@@ -559,6 +601,7 @@ class CursorParser(Parser):
         if deleted and kv:
             yield from self._blobs(artifact, con, deleted)
         yield from self._standing(artifact, con, errors)
+        yield from self._integrations(artifact, con, errors)
         yield from error_rows(self, artifact, errors)
 
     def _stamper(self, artifact: Artifact, c: _Composer):
@@ -670,13 +713,16 @@ class CursorParser(Parser):
 
         yield row("tool_use", compact(args_text), started)
         review = extra.get("reviewData")
+        pending = False
         if isinstance(review, dict):
-            yield row("system", permission_text(extra, review), started)
+            pending = review.get("status") != "Done" or tool.get("status") == "loading"
+            text = pending_text(name, extra, review) if pending else permission_text(extra, review)
+            yield row("system", text, started)
         result = tool.get("result")
         result_text = ""
         if result not in (None, ""):
             result_text = compact(result if isinstance(result, str) else compact_json(result))
-        rejected = extra.get("status") == "rejected"
+        rejected = extra.get("status") == "rejected" and not pending
         if result_text or rejected:
             text = ("[rejected] " if rejected else "") + result_text
             yield row("tool_result", compact(text), bubble.get("completedAtMs") or started)
@@ -743,8 +789,58 @@ class CursorParser(Parser):
             yield self._row(artifact, "system", text, mtime, rowid)
         used = _object(_object(settings.get("aiSettings")).get("modelLastUsedAt"))
         for model_id, when in used.items():
-            text = "model last used: %s (from state.vscdb aiSettings.modelLastUsedAt)" % model_id
+            text = "model last used: %s %s" % (model_id, MODEL_USED_SOURCE)
             yield self._row(artifact, "system", text, when, rowid)
+
+    def _integrations(
+        self, artifact: Artifact, con: sqlite3.Connection, errors: list
+    ) -> Iterator[Row]:
+        """`source host:` rows from the editor's own GitHub sign-in and
+        `remote agent host enrolled:` rows. Only the `github-*` and
+        `remoteAgentHost.*` keys are selected, so no `secret://` value is
+        ever read."""
+        if "ItemTable" not in table_names(con):
+            return
+        sql = (
+            "select rowid, key, value from ItemTable"
+            " where substr(key, 1, 7) = 'github-' or substr(key, 1, 16) = 'remoteAgentHost.'"
+        )
+        items = {_as_text(key): (int(rowid), value) for rowid, key, value in con.execute(sql)}
+        mtime = file_mtime(artifact)
+        for key in sorted(items):
+            rowid, value = items[key]
+            if key.startswith("github-") and not key.endswith("-usages"):
+                login = key[len("github-") :]
+                # Another extension's `github-` key that is not the account
+                # list is skipped; a cut account list is a bad record.
+                if not login or not isinstance(_plain(value), list):
+                    if _as_text(value).startswith("["):
+                        _decode(rowid, key, value, errors)
+                    continue
+                usages = []
+                if key + "-usages" in items:
+                    u_rowid, u_value = items[key + "-usages"]
+                    found = _decode(u_rowid, key + "-usages", u_value, errors)
+                    usages = (
+                        [u for u in found if isinstance(u, dict)] if isinstance(found, list) else []
+                    )
+                yield self._row(
+                    artifact,
+                    "system",
+                    github_text(login, key, usages),
+                    last_used(usages) or mtime,
+                    rowid,
+                )
+            elif key.startswith(ENROLLED_PREFIX) and _plain(value) is True:
+                account = key[len(ENROLLED_PREFIX) :]
+                raw = items.get(DISPLAY_PREFIX + account, (0, None))[1]
+                name = _plain(raw)
+                name = compact(name if isinstance(name, str) else _as_text(raw)) or "-"
+                text = "remote agent host enrolled: %s (from state.vscdb %s, file mtime)" % (
+                    name,
+                    key,
+                )
+                yield self._row(artifact, "system", text, mtime, rowid)
 
     # -- side databases --------------------------------------------------
 
@@ -868,10 +964,27 @@ def _role_label(role: str) -> str:
     return "system prompt" if role == "system" else "%s message" % (role or "-")
 
 
+def pending_text(name: str, extra: dict, review: dict) -> str:
+    """`permission prompt pending: <tool_name> reason=<blockReason>
+    options=<allowlistOptions ids>` for a prompt still open when the store
+    was copied; its `selectedOption` is a preset, not a decision."""
+    ids = [
+        _as_text(option.get("id"))
+        for option in review.get("allowlistOptions") or []
+        if isinstance(option, dict) and option.get("id") is not None
+    ]
+    return "permission prompt pending: %s reason=%s options=%s" % (
+        _field(name),
+        _field(extra.get("blockReason")),
+        ",".join(ids) or "-",
+    )
+
+
 def permission_text(extra: dict, review: dict) -> str:
     """`permission decision: <selectedOption> outcome=<status>
     approval=<approvalType> reason=<blockReason>`, then ` allowlisted=` with
-    the applied allowlist entries when there are any."""
+    the applied allowlist entries when there are any, which marks an
+    allow-always decision whatever `selectedOption` says."""
     text = "permission decision: %s outcome=%s approval=%s reason=%s" % (
         _field(review.get("selectedOption")),
         _field(extra.get("status")),
@@ -879,7 +992,7 @@ def permission_text(extra: dict, review: dict) -> str:
         _field(extra.get("blockReason")),
     )
     applied = review.get("appliedAllowlistOptionIds")
-    if isinstance(applied, list):
+    if isinstance(applied, list) and applied:
         names = {}
         for option in review.get("allowlistOptions") or []:
             if isinstance(option, dict) and option.get("id") is not None:
@@ -912,6 +1025,38 @@ def standing_texts(state: dict, sandbox: bool) -> Iterator[str]:
     for key in SWITCHES:
         if key in state:
             yield "permission setting: %s=%s %s" % (key, setting_value(state[key]), COMPOSER_SOURCE)
+
+
+def _plain(value):
+    """A short ItemTable value: its JSON value when it decodes, else its
+    text (`remoteAgentHost.displayName.<account>` may be either)."""
+    text = _as_text(value)
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+
+def last_used(usages: list[dict]):
+    """The latest `lastUsed` (epoch ms) of a `github-<login>-usages` list,
+    or None."""
+    times = [u["lastUsed"] for u in usages if isinstance(u.get("lastUsed"), (int, float))]
+    return max(times) if times else None
+
+
+def github_text(login: str, key: str, usages: list[dict]) -> str:
+    """`source host: github account <login> scopes=<scopes> (from state.vscdb
+    key <key>)`, the scopes deduplicated from the usages' `scopes` lists."""
+    scopes: list[str] = []
+    for usage in usages:
+        for scope in usage.get("scopes") or [] if isinstance(usage.get("scopes"), list) else []:
+            if str(scope) not in scopes:
+                scopes.append(str(scope))
+    return "source host: github account %s scopes=%s (from state.vscdb key %s)" % (
+        login,
+        ",".join(scopes) or "-",
+        key,
+    )
 
 
 def _entries(value) -> list:

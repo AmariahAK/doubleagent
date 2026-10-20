@@ -47,7 +47,7 @@ agent name in each row links to its subsection.
 | [`copilot-desktop`](#copilot-desktop) | parsed | shipped app and real installs: Linux, Windows (October 2026) | [research](../research/copilot-desktop.md); [issue 147](https://github.com/seanthegeek/doubleagent/issues/147); [issue 149](https://github.com/seanthegeek/doubleagent/issues/149): the inventory lists the app's own directories as projects |
 | [`crewai`](#crewai) | backlog | Source, appdirs source | [research](../research/crewai.md); [issue 140](https://github.com/seanthegeek/doubleagent/issues/140); `latest_kickoff_task_outputs.db` holds every task's output with its messages |
 | [`crush`](#crush) | parsed | source; fixture only | [research](../research/crush.md) |
-| [`cursor`](#cursor) | parsed | real installs: macOS, IDE and CLI (October 2026) | [research](../research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); [issue 235](https://github.com/seanthegeek/doubleagent/issues/235); [issue 236](https://github.com/seanthegeek/doubleagent/issues/236); the Agent CLI's own chat store is not parsed yet |
+| [`cursor`](#cursor) | parsed | real installs: macOS IDE and CLI, Linux IDE (October 2026) | [research](../research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); [issue 235](https://github.com/seanthegeek/doubleagent/issues/235); [issue 236](https://github.com/seanthegeek/doubleagent/issues/236); [issue 237](https://github.com/seanthegeek/doubleagent/issues/237); the Agent CLI's own chat store is not parsed yet |
 | [`dify`](#dify) | backlog | Source | [research](../research/dify.md); [issue 142](https://github.com/seanthegeek/doubleagent/issues/142); sandbox `shellctl.db` and job logs hold shell jobs; chats in PostgreSQL |
 | [`factory-droid`](#factory-droid) | backlog | Shipped binary strings, docs | [research](../research/factory-droid.md); [issue 54](https://github.com/seanthegeek/doubleagent/issues/54); JSONL session transcripts under `.factory/sessions` and a prompt history |
 | [`flowise`](#flowise) | backlog | Source | [research](../research/flowise.md); [issue 68](https://github.com/seanthegeek/doubleagent/issues/68); `database.sqlite` with `chat_message` (tool use and agent reasoning) and `execution` |
@@ -497,15 +497,19 @@ and one `bubbleId:<composerId>:<bubbleId>` row per user message,
 reasoning or reply sub-bubble and tool call), giving `user`,
 `assistant`, `thinking`, `tool_use` and `tool_result` rows, a
 `permission decision:` row for each command the user was asked about
-(Run, Skip or Always run, joined on the call id), `model:` rows from
+(Run, Skip or Always run, joined on the call id), a `permission prompt
+pending:` row for a call still waiting at its prompt, `model:` rows from
 each user message's model, `session name:`, `conversation archived` and
 `unsent draft:` rows; the `composerHeaders` table, whose row outlives a
 deleted conversation and gives its `conversation deleted` row, with the
 JSON `agentKv:blob:*` prompts that name the deleted composer recovered
 as `user` and `assistant` rows; and the `ItemTable` settings blob, one
 `permission setting:` row per run mode, allowlist or denylist entry and
-switch, at the file's modification time, and one `model last used:` row
-per model. `User/globalStorage/conversation-search.db` (`conversation
+switch, at the file's modification time, one `model last used:` row
+per model, a `source host: github account <login>` row from the
+editor's own GitHub sign-in (`github-<login>` keys, at their last use)
+and a `remote agent host enrolled:` row when the machine is enrolled as
+a remote agent host; the cached GitHub token is never read. `User/globalStorage/conversation-search.db` (`conversation
 index:` rows), `.cursor/ai-tracking/ai-code-tracking.db` (`ai code:`,
 `conversation summary:`, `file deleted by agent:` and `scored commit:`
 rows), `.cursor/cli-config.json` and `.cursor/permissions.json` in the
@@ -518,7 +522,7 @@ the IDE: its transcript JSONL under `.cursor/projects`, its `source`
 `cli` rows of `ai-code-tracking.db` and `cli-config.json`. Its own chat
 store, `.cursor/chats/<md5 of cwd>/<sessionId>/store.db` with
 `meta.json` and `prompt_history.json`, is not read yet
-({I235}).
+([issue 235](https://github.com/seanthegeek/doubleagent/issues/235)).
 
 Validated against: Real install of the Cursor IDE on macOS 26.6.2
 (builds 3.24.18, 3.25.9 and 3.26.13, 2026-10-19 and 2026-10-20): the
@@ -532,8 +536,19 @@ non-local `agentLocation` (bundle-derived) and rows of the
 standalone Cursor Agent CLI on macOS 26.6.2 (2026.10.19-6bbf2c4,
 2026-10-20): its transcript JSONL, its `ai-code-tracking.db` rows and
 the `permissions.allow` entries of `cli-config.json`; its chat store,
-observed on that install, is not parsed. The CLI's `acp-sessions/` store
-rests on the shipped bundle alone, and the parser does not read it.
+observed on that install, is not parsed. Real install of the Cursor IDE
+on Ubuntu 26.x arm64 (the deb package 3.24.18, upgraded through apt to
+3.25.9, 2026-10-20): `state.vscdb` under `.config/Cursor` with the same
+composer, bubble, header and settings records as macOS 3.25.9, a tool
+call left waiting at its permission prompt, the editor window's
+allow-always form (`selectedOption` `run` with
+`appliedAllowlistOptionIds`), the agent transcripts, `ai_code_hashes`
+rows, the records an archive and a delete left, and the keys of the
+editor's GitHub sign-in and of the remote agent host enrolment; a
+repository-bound cloud conversation was not observed. The Agent CLI on
+Linux and Windows, and the IDE on Windows, are not observed. The CLI's
+`acp-sessions/` store rests on the shipped bundle alone, and the parser
+does not read it.
 
 ### `gemini-cli`
 

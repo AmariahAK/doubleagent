@@ -14609,21 +14609,32 @@ from fixtures import (
     CURSOR_DRAFT,
     CURSOR_EMPTY_HEAD,
     CURSOR_LIVE,
+    CURSOR_MTIME,
     CURSOR_SEARCH_REL,
+    CURSOR_SECRET,
     CURSOR_STATE_REL,
     CURSOR_TRACKING_REL,
     CURSOR_TRANSCRIPT_REL,
+    cursor_review_bubbles,
 )
 
 
 class CursorTests(ParserBase):
     """Cursor IDE conversations (issue 51, research/cursor.md, Parser plan)."""
 
-    COMPOSER = "(from state.vscdb composerState, file mtime)"
+    COMPOSER = "(from state.vscdb composerState, file mtime, written late by the app)"
     REASON = "reason=Not in allowlist: curl, head"
     DELETED = "conversation deleted (header kept; time is the header's lastUpdatedAt)"
     CALL = "call-t%d-%d\nfc_t%d_%d"
     CURL = '{"command": "curl -s example.test | head"}'
+    GITHUB = (
+        "source host: github account alice-gh scopes=repo,workflow,user:email,read:user"
+        " (from state.vscdb key github-alice-gh)"
+    )
+    ENROLLED = (
+        "remote agent host enrolled: lab-vm"
+        " (from state.vscdb remoteAgentHost.enrolled.auth0|user_01, file mtime)"
+    )
     # (timestamp_utc, session_id, turn_type, text) of every state.vscdb row
     # without --include-thinking, in the order the parser yields them.
     EXPECTED: ClassVar[list[tuple[str, str, str, str]]] = [
@@ -14723,8 +14734,11 @@ class CursorTests(ParserBase):
             "2026-10-01T10:00:30.000Z",
             "",
             "system",
-            "model last used: grok-4.7 (from state.vscdb aiSettings.modelLastUsedAt)",
+            "model last used: grok-4.7"
+            " (from state.vscdb aiSettings.modelLastUsedAt, written late by the app)",
         ),
+        ("2026-10-01T10:06:40.000Z", "", "system", GITHUB),
+        ("2026-10-01T14:00:00.000Z", "", "system", ENROLLED),
     ]
 
     def state_rows(self, **kw):
@@ -15061,6 +15075,98 @@ class CursorTests(ParserBase):
             ".cursor/projects/p/agent-transcripts/c/c.jsonl",
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
+
+    def test_pending_prompt_and_editor_allowlist(self):
+        """A prompt still open when the store was copied is not a decision;
+        the editor window's allow-list add (`selectedOption` `run`) is an
+        allow-always decision by its `appliedAllowlistOptionIds` (issue 237)."""
+        con = sqlite3.connect(str(self.home / CURSOR_STATE_REL))
+        key = "composerData:" + CURSOR_LIVE
+        data = json.loads(
+            con.execute("SELECT value FROM cursorDiskKV WHERE key = ?", (key,)).fetchone()[0]
+        )
+        for head, bubble in cursor_review_bubbles():
+            data["fullConversationHeadersOnly"].append(head)
+            con.execute(
+                "INSERT INTO cursorDiskKV VALUES (?, ?)",
+                ("bubbleId:%s:%s" % (CURSOR_LIVE, head["bubbleId"]), json.dumps(bubble)),
+            )
+        con.execute("UPDATE cursorDiskKV SET value = ? WHERE key = ?", (json.dumps(data), key))
+        con.commit()
+        con.close()
+        rows = [r for r in self.state_rows() if r.session_id == CURSOR_LIVE]
+        pending = [r for r in rows if r.tool_use_id == self.CALL % (5, 3, 5, 3)]
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in pending],
+            [
+                ("tool_use", '{"command": "python3 -c \'print(1 + 1)\'"}'),
+                (
+                    "system",
+                    "permission prompt pending: run_terminal_command_v2"
+                    " reason=Not in allowlist: python3 options=python3",
+                ),
+            ],
+        )
+        self.assertEqual(pending[1].timestamp_utc, "2026-10-01T10:01:30.000Z")
+        self.assertFalse(
+            [r for r in pending if r.text.startswith("permission decision:")],
+            "a pending prompt's preset selectedOption is not a decision",
+        )
+        added = [r for r in rows if r.tool_use_id == self.CALL % (6, 4, 6, 4)]
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in added[1:]],
+            [
+                (
+                    "system",
+                    "permission decision: run outcome=success approval=-"
+                    " reason=Not in allowlist: python3 allowlisted=python3",
+                ),
+                ("tool_result", '{"output": "2"}'),
+            ],
+        )
+
+    def test_source_host_and_remote_agent_host(self):
+        """The editor's GitHub sign-in names the account in a key, its time
+        is the latest usage; the remote agent host enrolment is at the file
+        time; no `secret://` value reaches any row (issue 236)."""
+        rows = self.state_rows()
+        hosts = [r for r in rows if r.text.startswith(("source host:", "remote agent host"))]
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.project_path, r.text) for r in hosts],
+            [
+                ("2026-10-01T10:06:40.000Z", "", "", self.GITHUB),
+                ("2026-10-01T14:00:00.000Z", "", "", self.ENROLLED),
+            ],
+        )
+        for r in self.state_rows(include_thinking=True):
+            self.assertNotIn(CURSOR_SECRET, r.text)
+            self.assertNotIn("computerKey", r.text)
+            self.assertNotIn("github.auth", r.text)
+        # No usages: no scopes and the file time; not enrolled: no row; a
+        # `github-` key that is not an account list is skipped.
+        self.kv("DELETE FROM ItemTable WHERE key = ?", ("github-alice-gh-usages",))
+        self.kv(
+            "UPDATE ItemTable SET value = ? WHERE key = ?",
+            (b"false", "remoteAgentHost.enrolled.auth0|user_01"),
+        )
+        self.kv("INSERT INTO ItemTable VALUES (?, ?)", ("github-other.setting", b"1"))
+        state = self.home / CURSOR_STATE_REL
+        os.utime(state, (CURSOR_MTIME, CURSOR_MTIME))
+        hosts = [
+            (r.timestamp_utc, r.text)
+            for r in self.state_rows()
+            if r.text.startswith(("source host:", "remote agent host", "parser:"))
+        ]
+        self.assertEqual(
+            hosts,
+            [
+                (
+                    "2026-10-01T14:00:00.000Z",
+                    "source host: github account alice-gh scopes=-"
+                    " (from state.vscdb key github-alice-gh)",
+                )
+            ],
+        )
 
     def test_missing_bubble_and_bad_values(self):
         self.kv("DELETE FROM cursorDiskKV WHERE key = ?", ("bubbleId:%s:u4" % CURSOR_ARCHIVED,))

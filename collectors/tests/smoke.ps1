@@ -1049,6 +1049,15 @@ Mk 'Users/alice/.cursor/projects/p/canvases/node_modules/x.d.ts' "declare const 
 Mk 'Users/alice/.cursor/projects/p/agent-transcripts/u/u.jsonl' "{`"type`":`"turn_ended`",`"status`":`"success`"}`n"
 Mk 'Users/alice/.cursor/statsig-cache.json' "{}`n"
 
+# 2026-10-20 Cursor IDE round on Ubuntu (#236)
+# Cursor 3.25.9 (Ubuntu arm64 deb, 2026-10-20) keeps the same sync stores
+# under the XDG state directory, .local/state/cursor/agent-stores, not under
+# .config/Cursor. Checks follow the default run below; the same files are in
+# smoke.sh under alice.
+$l236 = 'home/bob/.local/state/cursor/agent-stores/cursor_agent_stores'
+Mk "$l236/u1/.sync/index.sqlite" "sqlite`n"
+Mk "$l236/.control/u1/pins/1-x.json" "{`"purpose`":`"foreground`"}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1578,6 +1587,9 @@ Check '#6 Cursor agent worker log collected' { Is6 "$w6/cursor-agent-worker-1.lo
 Check '#6 Cursor canvases node_modules excluded' { (StatusOf 'Users/alice/.cursor/projects/p/canvases/node_modules') -eq 'skipped_excluded' -and (NoRow6 'node_modules/x.d.ts') }
 Check '#6 Cursor agent transcript collected' { Is6 'Users/alice/.cursor/projects/p/agent-transcripts/u/u.jsonl' }
 Check '#6 Cursor statsig cache excluded' { (StatusOf 'Users/alice/.cursor/statsig-cache.json') -eq 'skipped_excluded' }
+
+# 2026-10-20 Cursor IDE round on Ubuntu (#236)
+Check '#236 Cursor Linux agent-stores collected' { (Is6 "$l236/u1/.sync/index.sqlite") -and (Is6 "$l236/.control/u1/pins/1-x.json") }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

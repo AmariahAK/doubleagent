@@ -81,7 +81,7 @@
 # Maintainer documentation, with the table of sh and PowerShell function
 # pairs: collectors/docs/internals.md.
 
-VERSION="1.17.0"
+VERSION="1.18.0"
 TOOL="collect-agent-artifacts"
 
 # Settings every later line relies on: the C locale for byte-wise matching
@@ -261,7 +261,7 @@ cursor|Library/Application Support/Cursor/AgentStores
 cursor|Library/Application Support/Cursor/update-supervisor
 cursor|.config/Cursor/User
 cursor|.config/Cursor/logs
-cursor|.config/Cursor/AgentStores
+cursor|.local/state/cursor/agent-stores
 cursor|.config/Cursor/update-supervisor
 cursor|AppData/Roaming/Cursor/User
 cursor|AppData/Roaming/Cursor/logs

@@ -11913,6 +11913,57 @@ def cursor_header_rows() -> list[tuple]:
     ]
 
 
+def cursor_review_bubbles() -> list[tuple[dict, dict]]:
+    """(header entry, bubble) pairs that a test appends to the live
+    conversation, from the Linux round (3.25.9 editor window, issue 237):
+    a command whose prompt was still open when the store was copied
+    (`toolFormerData.status` `loading`, `reviewData.status` `Requested`
+    and the preset `selectedOption`), and the editor window's "add python3
+    to the allow list", stored as `selectedOption` `run` with
+    `appliedAllowlistOptionIds`."""
+    command = "python3 -c 'print(1 + 1)'"
+    options = [{"id": "python3", "commandName": "python3"}]
+    reason = "Not in allowlist: python3"
+    pending = _cursor_tool(
+        "t5",
+        3,
+        command,
+        {
+            "blockReason": reason,
+            "reviewData": {
+                "status": "Requested",
+                "selectedOption": "rejectAndTellWhatToDoDifferently",
+                "isShowingInput": False,
+                "allowlistOptions": options,
+            },
+        },
+        "",
+    )
+    pending["toolFormerData"]["status"] = "loading"
+    added = _cursor_tool(
+        "t6",
+        4,
+        command,
+        {
+            "status": "success",
+            "startedAtMs": CURSOR_T0 + 100000,
+            "blockReason": reason,
+            "reviewData": {
+                "status": "Done",
+                "selectedOption": "run",
+                "allowlistOptions": options,
+                "candidatesForAllowlist": ["python3"],
+                "appliedAllowlistOptionIds": ["python3"],
+            },
+        },
+        json.dumps({"output": "2"}),
+    )
+    return [
+        (_cursor_head("a2/t:call-t5-3\nfc_t5_3", 2, 90000), pending),
+        (_cursor_head("a2/t:call-t6-4\nfc_t6_4", 2, 100000), added),
+    ]
+
+
 def cursor_settings() -> dict:
     """The `ItemTable` settings blob (`composerState`, `aiSettings`)."""
     return {
@@ -11936,6 +11987,50 @@ def cursor_settings() -> dict:
     }
 
 
+CURSOR_GITHUB_LOGIN = "alice-gh"
+CURSOR_ACCOUNT = "auth0|user_01"
+CURSOR_SECRET = "CURSOR-SECRET-SENTINEL"
+
+
+def cursor_integration_items() -> list[tuple[str, str]]:
+    """ItemTable rows of the editor's own GitHub sign-in and the remote
+    agent host enrolment (3.25.9 Linux, 2026-10-20, issue 236), with two
+    `secret://` rows whose values the parser must never read."""
+    login, account = CURSOR_GITHUB_LOGIN, CURSOR_ACCOUNT
+    scopes = ["repo", "workflow", "user:email", "read:user"]
+    usages = [
+        {
+            "extensionId": "vscode.github",
+            "extensionName": "GitHub",
+            "lastUsed": CURSOR_T0 + 400000,
+            "scopes": scopes,
+        },
+        {
+            "extensionId": "vscode.git",
+            "extensionName": "Git",
+            "lastUsed": CURSOR_T0 + 300000,
+            "scopes": ["repo", "read:user"],
+        },
+    ]
+    buffer = {"type": "Buffer", "data": [ord(c) for c in CURSOR_SECRET]}
+    return [
+        (
+            "github-" + login,
+            json.dumps([{"id": "vscode.github", "name": "GitHub", "allowed": True}]),
+        ),
+        ("github-%s-usages" % login, json.dumps(usages)),
+        ("vscode.github-github-" + " ".join(scopes), "0123456789abcdef"),
+        ("remoteAgentHost.enrolled." + account, "true"),
+        ("remoteAgentHost.displayName." + account, "lab-vm"),
+        ("remoteAgentHost.targetId", "e0000001-0000-4000-8000-000000000001"),
+        ("secret://remoteAgentHost.computerKey." + account, CURSOR_SECRET),
+        (
+            'secret://{"extensionId":"vscode.github-authentication","key":"github.auth"}',
+            json.dumps(buffer),
+        ),
+    ]
+
+
 def write_cursor_state(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(path))
@@ -11953,6 +12048,7 @@ def write_cursor_state(path: Path) -> None:
         (CURSOR_SETTINGS_KEY, json.dumps(cursor_settings())),
         ("cursor/sandboxAutoRunSettingEnabled", "true"),
         ("cursor/sandboxSupported", "true"),
+        *cursor_integration_items(),
     ):
         con.execute(
             "INSERT INTO ItemTable (key, value) VALUES (?, ?)", (key, value.encode("utf-8"))

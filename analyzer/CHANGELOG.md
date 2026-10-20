@@ -9,6 +9,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-10-20
+
+### Added
+
+- The `cursor` parser yields `source host: github account <login>
+  scopes=<scopes>` for the editor's own GitHub sign-in (the
+  `github-<login>` and `github-<login>-usages` keys of `state.vscdb`), at
+  the account's last use, and `remote agent host enrolled: <name>` when
+  the editor has enrolled the machine as a remote agent host for the
+  Cursor account, at the file's modification time. Neither reads the
+  encrypted `secret://` values beside them ([#236]).
+
+### Changed
+
+- The bundled catalog copy follows the collector: the Linux sync-store
+  line `.local/state/cursor/agent-stores` replaces
+  `.config/Cursor/AgentStores` ([#236]).
+- The `cursor` parser's `permission setting:` rows from the editor's
+  settings blob now end `(from state.vscdb composerState, file mtime,
+  written late by the app)` and its `model last used:` rows `(from
+  state.vscdb aiSettings.modelLastUsedAt, written late by the app)`: the
+  editor writes that blob some time after the change, so neither time is
+  the time of the change ([#237]).
+
+### Fixed
+
+- The `cursor` parser no longer reads a permission prompt that was still
+  open when the editor's database was copied as a decision: such a call
+  (`reviewData.status` other than `Done`, or `toolFormerData.status`
+  `loading`) yields `permission prompt pending: <tool> reason=<reason>
+  options=<allowlist options>` instead of a `permission decision:` row
+  carrying the prompt's preset option ([#237]).
+- The `cursor` parser's `permission decision:` row ends `allowlisted=`
+  for the editor window's "add ... to the allow list", which stores the
+  decision as `run` with the added commands, as it does for the Agents
+  window's Always run ([#237]).
+
 ## [0.20.0] - 2026-10-20
 
 ### Added
@@ -1502,7 +1539,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--summary-length` (default 400), `--include-thinking` and `--agent`;
   `detect --json` and `--files`; `catalog --agents`.
 
-[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.20.0...HEAD
+[Unreleased]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.20.1...HEAD
+[0.20.1]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.20.0...analyzer-v0.20.1
 [0.20.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.19.0...analyzer-v0.20.0
 [0.19.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.18.0...analyzer-v0.19.0
 [0.18.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.17.0...analyzer-v0.18.0
@@ -1526,6 +1564,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [0.2.0]: https://github.com/seanthegeek/doubleagent/compare/analyzer-v0.1.0...analyzer-v0.2.0
 [0.1.0]: https://github.com/seanthegeek/doubleagent/releases/tag/analyzer-v0.1.0
 
+[#237]: https://github.com/seanthegeek/doubleagent/issues/237
+[#236]: https://github.com/seanthegeek/doubleagent/issues/236
 [#228]: https://github.com/seanthegeek/doubleagent/issues/228
 [#185]: https://github.com/seanthegeek/doubleagent/issues/185
 [#184]: https://github.com/seanthegeek/doubleagent/issues/184

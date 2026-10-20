@@ -76,7 +76,7 @@ param(
 
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Continue'
-$ToolVersion = '1.17.0'
+$ToolVersion = '1.18.0'
 $TOOL = 'collect-agent-artifacts'
 
 # ===========================================================================
@@ -307,7 +307,7 @@ cursor|Library/Application Support/Cursor/AgentStores
 cursor|Library/Application Support/Cursor/update-supervisor
 cursor|.config/Cursor/User
 cursor|.config/Cursor/logs
-cursor|.config/Cursor/AgentStores
+cursor|.local/state/cursor/agent-stores
 cursor|.config/Cursor/update-supervisor
 cursor|AppData/Roaming/Cursor/User
 cursor|AppData/Roaming/Cursor/logs

@@ -359,12 +359,24 @@ as `cursor`:
 | --- | --- |
 | `<data>/User` | The editor's settings, `globalStorage/state.vscdb`, which holds the agent conversations and the sign-in tokens (see [Credentials](#credentials)), the per-workspace `workspaceStorage`, and the `globalStorage` of Cursor's built-in extensions. |
 | `<data>/logs` | One directory of logs per launch. |
-| `<data>/AgentStores` | From collector 1.17.0. The sync stores of the agent's files, one per account and one per conversation (`cursor_agent_stores/<id>/.sync/index.sqlite` with `root-id`, `mount.json` and `sync.lock`), and the pins of the open conversations (`.control/<id>/pins/`). The directory names carry the numeric account id. |
+| `<data>/AgentStores`, on Linux `.local/state/cursor/agent-stores` | From collector 1.17.0; the Linux location from collector 1.18.0. The sync stores of the agent's files, one per account and one per conversation (`cursor_agent_stores/<id>/.sync/index.sqlite` with `root-id`, `mount.json` and `sync.lock`), and the pins of the open conversations (`.control/<id>/pins/`). The directory names carry the numeric account id. |
 | `<data>/update-supervisor` | From collector 1.17.0. One directory per in-app update, with `events.jsonl`, `result.json` and `app-ready.json`, which record which build ran from when. |
 
 The `AgentStores` and `update-supervisor` directories were seen on macOS
-(Cursor 3.25.9 and 3.26.13, October 2026); the Linux and Windows lines
-follow the same user-data directory and were not observed.
+(Cursor 3.25.9 and 3.26.13, October 2026). On Linux (Cursor 3.25.9 from
+the Ubuntu deb, October 2026) the sync stores were in the XDG state
+directory, `~/.local/state/cursor/agent-stores/cursor_agent_stores`, and
+not under `<data>`; `update-supervisor` was not seen on the deb install,
+which is updated through apt, not by the in-app updater, and its Linux
+line is kept but unobserved. The IDE on Linux downloads its copy of
+the Agent CLI only when a cloud or remote-host feature is first used,
+not at folder open or for local agent turns: the
+`anysphere.cursor-agent-worker/agent-cli` directory appeared at the
+first cloud-agent attempt, holding two partial
+`cursor-agent-<version>-<pid>-<epoch ms>.tar.gz` downloads of 88.6 MB
+and 35.1 MB, so the `agent-cli` exclusion below applies on Linux as
+well. The Windows lines follow the user-data directory and were not
+observed.
 
 Excluded from collector 1.17.0, each recorded as `skipped_excluded` with
 its size:
