@@ -501,7 +501,8 @@ Inputs: the `sourcegraph.cody-ai` row of any collected `state.vscdb`
 
 #### Permission rows
 
-All rows are `system` (issues 96 and 97):
+All rows are `system` ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)):
 
 - `permission decision: <decision> confirmation state=<state> error=<error.message> title=<title>`
   for a `processes[]` entry of `type` `confirmation`, which the source describes as "a process that
@@ -514,7 +515,8 @@ All rows are `system` (issues 96 and 97):
   [Permission records](#permission-records): `rejected` for `state` `error` with `error.message` `Command
   rejected`, and `approved or unanswered` for `pending`, which source cannot split. Any other state
   is written `permission decision: confirmation state=<state>`, with `error=` when the step has an
-  `error.message`, and the row does not interpret it (issue 169).
+  `error.message`, and the row does not interpret it
+  ([issue 169](https://github.com/seanthegeek/doubleagent/issues/169)).
 
 The agentic chat records no per-call decision, so it yields no row. The standing settings in
 [Permission records](#permission-records) are not read by this parser; the editor's `settings.json`
@@ -523,7 +525,8 @@ is collected under the editor's agent, and the JetBrains files that hold them ar
 
 #### Model rows
 
-All rows are `system` (issues 96 and 97):
+All rows are `system` ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)):
 
 - `model: <id>` at the first assistant message of a chat whose `model`
   is set and `model: <old> -> <new>` on every later assistant message

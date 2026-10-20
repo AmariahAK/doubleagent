@@ -35,7 +35,8 @@ and on a synthetic fixture.
   ([section 11](#11-format-versions)). The review added the permission settings and project trust,
   the denied-call results, the other `db.sqlite` tables, the scratch directories, the delete
   behaviour and the external agents' ids, with the plan lines of [section 13](#13-parser-plan)
-  that read them, and the bad-record rows the parser now yields (issue 168).
+  that read them, and the bad-record rows the parser now yields
+  ([issue 168](https://github.com/seanthegeek/doubleagent/issues/168)).
 - 2026-10-17, [zed-industries/zed](https://github.com/zed-industries/zed) at
   [`56934ec`](https://github.com/zed-industries/zed/commit/56934ec0560bce8929025497411de7f5322fb6ca):
   a sync check that added [Sync, relay and origin rows](#sync-relay-and-origin-rows),
@@ -560,10 +561,12 @@ no transcript).
 | tool_name, tool_use_id | `ToolUse.name` / `tool_name`, `ToolUse.id` / `tool_use_id` |
 | text | text, `arguments` JSON, result text; `Mention.uri` for mentions |
 
-Model and permission rows (issues 96 and 97), all `system`, come after the
+Model and permission rows ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), all `system`, come after the
 thread-start row and before the first message. The plan lines marked "not read" below are not
 implemented and rest on source at
-[`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6) alone (fixture only).
+[`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
+alone (fixture only).
 
 #### Permission rows
 
@@ -681,8 +684,8 @@ survives is in [What survives a delete](#what-survives-a-delete).
 
 #### Bad-line rows
 
-Implemented (issue 168). The parser reads no file line
-by line; its bad records are whole files, `threads` rows and items
+Implemented ([issue 168](https://github.com/seanthegeek/doubleagent/issues/168)). The parser reads
+no file line by line; its bad records are whole files, `threads` rows and items
 inside a thread blob. A file that is not SQLite is one `parser: not a
 SQLite database` row, and a SQLite error while reading one `parser:
 SQLite error: <error>` row. A `data` blob that does not decode to a

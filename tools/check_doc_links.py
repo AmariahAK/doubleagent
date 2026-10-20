@@ -15,6 +15,11 @@ every tracked Markdown file and every untracked one git does not ignore:
   to hyphens, `-1`, `-2` appended to repeated anchors);
 - outside AGENTS.md, no `section <n>` or `sections <n>` appears except as
   link text, since a section reference must link to the heading;
+- no `issue <n>`, `issues <n>`, `pull request <n>`, `PR <n>`, `discussion <n>`
+  or `#<n>` appears except as link text, since an issue or pull request
+  named in a document is a link to it, one link per issue (the link rule
+  under "Conventions" in AGENTS.md); `[#<n>]`, the changelogs' reference
+  link form, is not matched, and neither is a number inside a code span;
 - with link targets, reference definition targets and `<autolinks>` also
   ignored, no `http://` or `https://` URL and no scheme-less host path such as
   `github.com/owner/repo` is left in the text, and no inline link has a URL or
@@ -60,6 +65,10 @@ INLINE_LINK = re.compile(
 REF_DEF = re.compile(r"^ {0,3}\[[^\]]+\]:[ \t]*(<[^>\n]*>|\S+)", re.M)
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 SECTION = re.compile(r"\bsections?\s+\d+", re.I)
+ISSUE = re.compile(
+    r"(?<![\w/#\[-])(?:(?:issues?|pull requests?|PRs?|discussions?)\s+#?\d+|#\d+)(?![\w-])",
+    re.I,
+)
 ATX = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
 SETEXT = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
 HTML_ID = re.compile(r"<a\s[^>]*\b(?:id|name)=\"([^\"]+)\"", re.I)
@@ -248,6 +257,14 @@ def main() -> int:
             if msg:
                 print("%s:%d: %s" % (rel, line_of(text, offset), msg))
                 bad += 1
+        for m in ISSUE.finditer(text):
+            if any(lo <= m.start() and m.end() <= hi for lo, hi in link_text):
+                continue
+            words = " ".join(m.group(0).split())
+            print(
+                "%s:%d: issue reference is not a link: %s" % (rel, line_of(text, m.start()), words)
+            )
+            bad += 1
         if f.name == "AGENTS.md" and f.parent == ROOT:
             continue
         for m in SECTION.finditer(text):

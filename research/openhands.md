@@ -688,7 +688,8 @@ once per conversation. Optional: `bash_events/*`. One row per event; an `ActionE
 
 #### Permission rows
 
-Written (issues 96 and 97):
+Written ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)):
 
 - `permission decision: rejected rejection_source=<rejection_source> <rejection_reason>`: a `system`
   row immediately after the `UserRejectObservation`'s `tool_result` row, with its `tool_name` and
@@ -710,8 +711,10 @@ An approval writes nothing, so none can be shown. Not yet written, from the reco
 
 #### Model rows
 
-Written (issues 96 and 97): `model: <id>`, a `system` row after the conversation's header row, at
-the header's time, from `base_state.json` `agent.llm.model`, once per conversation.
+Written ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)): `model: <id>`, a `system` row
+after the conversation's header row, at the header's time, from `base_state.json` `agent.llm.model`,
+once per conversation.
 
 Not yet written, from the records of [Model records](#model-records): `model: <old> -> <new>` at
 each `SwitchLLMObservation` or `ClassifyAndSwitchLLMObservation` (`active_model`, with

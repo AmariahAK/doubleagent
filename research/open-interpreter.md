@@ -30,7 +30,8 @@ The layout under the home directory is therefore the Codex layout described in
 reference to the Python-era paths (`platformdirs` `open-interpreter` config, `profiles/*.yaml`,
 `conversations/*.json`); a grep of the tree for them finds nothing. Those paths are still on disk
 wherever the Python tool was used, so they were researched separately in the agent framework sweep
-for issue #64 (see [frameworks.md](frameworks.md)) and are described under
+for [issue 64](https://github.com/seanthegeek/doubleagent/issues/64) (see
+[frameworks.md](frameworks.md)) and are described under
 [Legacy Python SDK and CLI (0.x)](#legacy-python-sdk-and-cli-0x).
 
 ### Observed
@@ -194,8 +195,8 @@ Older layouts stay in place, because the migration copies and never deletes:
 [756-765](https://github.com/openinterpreter/openinterpreter/blob/13061d2ce0ac35344f04c5285e795415cccf259d/interpreter/terminal_interface/profiles/profiles.py#L756-L765)).
 The catalog covers all of these since collector 1.10.0 (`.config/Open Interpreter*` and its macOS
 and Windows equivalents); `open-interpreter` and `Open Interpreter` differ by hyphen and space, not
-only by case, so issue 29 does not apply. The legacy tool runs shell commands through a subprocess,
-with `auto_run=False` by default
+only by case, so [issue 29](https://github.com/seanthegeek/doubleagent/issues/29) does not apply.
+The legacy tool runs shell commands through a subprocess, with `auto_run=False` by default
 ([shell.py:8-20](https://github.com/openinterpreter/openinterpreter/blob/13061d2ce0ac35344f04c5285e795415cccf259d/interpreter/core/computer/terminal/languages/shell.py#L8-L20),
 [core.py:46](https://github.com/openinterpreter/openinterpreter/blob/13061d2ce0ac35344f04c5285e795415cccf259d/interpreter/core/core.py#L46)).
 The unreleased `development` branch (1.0.0, commit
@@ -427,9 +428,9 @@ Same SQLite set as Codex (`state_5.sqlite`, `logs_2.sqlite`, `thread_history_1.s
 the rollouts are the primary record. zstd for `.jsonl.zst` rollouts.
 
 `state_5.sqlite` and `thread_history_1.sqlite` are parsed as secondary
-sources by the shared Codex reader (issue 122); their record shapes, joins
-and what they survive are in
-[section 10 of `codex-cli.md`](codex-cli.md#10-other-stores). The fork's
+sources by the shared Codex reader
+([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)); their record shapes, joins and
+what they survive are in [section 10 of `codex-cli.md`](codex-cli.md#10-other-stores). The fork's
 `threads` migrations that the parser reads match Codex's
 ([`state/migrations/0001_threads.sql:1-19`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/migrations/0001_threads.sql#L1-L19),
 [`0007_threads_first_user_message.sql:1`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/state/migrations/0007_threads_first_user_message.sql#L1),

@@ -658,7 +658,8 @@ does not decode (not JSON, or JSON that is not an array) is one `system`
 row `parser: unparseable record <rowid> (message <id> parts: <reason>):
 <parts>`, carrying the stored value in full, with the message's session
 and project, an empty timestamp and `source_line` set to the rowid; the
-session's other messages are still yielded (issue 166).
+session's other messages are still yielded
+([issue 166](https://github.com/seanthegeek/doubleagent/issues/166)).
 
 #### Fixtures
 

@@ -776,7 +776,9 @@ thinking part, one `tool_use` plus `tool_result` per `toolInvocationSerialized`.
 
 #### Permission rows
 
-The parser writes these `system` rows (issues 96 and 97):
+The parser writes these `system` rows
+([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)):
 
 - `permission mode: <mode>` and `permission mode: <old> -> <new>` from the request
   `modeInfo.telemetryModeId` (`ask`, `agent`, `edit`, `custom`), placed before the request's user
@@ -802,7 +804,9 @@ same way. The keys are under [Standing permission grants](#standing-permission-g
 
 The parser writes `model: <id>` at the first request whose `modelId` is set and
 `model: <old> -> <new>` on every later request with a different `modelId`, as `system` rows before
-the request's user row, with its `timestamp` (issues 96 and 97). The model is chosen per request,
+the request's user row, with its `timestamp`
+([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)). The model is chosen per request,
 so a session can change model at any request.
 
 Not read yet, and planned: the request's `modelConfiguration` (as `key=value`) appended to its

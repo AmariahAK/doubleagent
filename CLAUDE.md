@@ -18,7 +18,7 @@ Claude Code specific notes:
 - This Mac has `/bin/dash` (macOS 26 ships it; `tests/smoke.sh dash` takes a
   few minutes) but no busybox, posh, pwsh, shellcheck or shfmt. Its
   `/bin/sh` is bash 3.2, the one shell CI does not run, and the smoke
-  test passes under it since collector 1.11.0 (issues 78 and 82): about
+  test passes under it since collector 1.11.0 ([issue 78](https://github.com/seanthegeek/doubleagent/issues/78) and [issue 82](https://github.com/seanthegeek/doubleagent/issues/82)): about
   17 minutes with no VM running, far longer while a Parallels VM holds
   most of the 8 GB, so never run it beside a VM. When a Linux lab VM is
   up, run dash, bash and busybox there instead (a few minutes each) and

@@ -53,7 +53,7 @@ to Devin paths.
 #### Extensions
 
 Extensions: `~/.windsurf/extensions/` legacy (read-only after migration), `~/.devin/extensions/` new
-(FAQ; issue 295).
+(FAQ; [Exafunction/codeium issue 295](https://github.com/Exafunction/codeium/issues/295)).
 
 #### Cascade hook transcripts
 

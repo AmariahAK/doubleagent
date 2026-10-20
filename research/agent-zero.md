@@ -593,7 +593,8 @@ a `system` row saying the log was trimmed.
 
 Paths: `chat.json`, its `messages/<n>.txt` and the legacy `<ctxid>.json`
 under `<a0>/usr/chats` or `<a0>/tmp/chats` of a home install, and under
-`chats/` at the base of a Docker volume mounted at `/a0/usr` (issue 175,
+`chats/` at the base of a Docker volume mounted at `/a0/usr`
+([issue 175](https://github.com/seanthegeek/doubleagent/issues/175),
 [section 7](#7-transcript-stores)); the rows are the same in both forms.
 
 | Column | Source |

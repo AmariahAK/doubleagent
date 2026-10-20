@@ -55,7 +55,7 @@ Every shape below marked **bundle** rests on the code that writes or reads it; s
 ### Observed
 
 All three installs are Claude Desktop 2.31226.1, read for file names, sizes, key names and value
-types only (issue 73).
+types only ([issue 73](https://github.com/seanthegeek/doubleagent/issues/73)).
 
 - macOS, Code tab: the author's install of the standard build (`CFBundleShortVersionString` of
   `/Applications/Claude.app`) on macOS 26.4.1 arm64, 2026-10-11. One Code-tab session on a project
@@ -284,15 +284,17 @@ the issues cited in [section 1](#1-source-and-evidence):
 
   `GPUCache/`, `DawnGraphiteCache/`, `DawnWebGPUCache/`, `sentry/` (standard Chromium/Electron
   layout; names from prior catalog, consistent with the OSCrypt `Local State` dependency reported in
-  issue 105).
+  [CodeZeno/Claude-Code-Usage-Monitor issue 105](https://github.com/CodeZeno/Claude-Code-Usage-Monitor/issues/105)).
 
 ### 3. Credentials
 
 - `config.json` in the app-data dir, keys `oauth:tokenCacheV2` (live grant, includes `refreshToken`,
   `expiresAt`, `scopes`) and legacy `oauth:tokenCache`; value is base64 OSCrypt `v10` + nonce +
-  AES-256-GCM ciphertext, key from `Local State` (DPAPI on Windows) (issue 105, PR 6). Docs: "OAuth
-  tokens ... encrypted with the operating system's secure storage (Keychain on macOS, DPAPI on
-  Windows)". So `config.json` + `Local State` together are the credential; on Linux the Chromium
+  AES-256-GCM ciphertext, key from `Local State` (DPAPI on Windows)
+  ([CodeZeno/Claude-Code-Usage-Monitor issue 105](https://github.com/CodeZeno/Claude-Code-Usage-Monitor/issues/105),
+  [yhm138/ai-quota-tray pull request 6](https://github.com/yhm138/ai-quota-tray/pull/6)). Docs:
+  "OAuth tokens ... encrypted with the operating system's secure storage (Keychain on macOS, DPAPI
+  on Windows)". So `config.json` + `Local State` together are the credential; on Linux the Chromium
   safe-storage key comes from the keyring or the fixed "peanuts" key.
 - Transient files (docs): `host-creds-<random-id>.json` (resolved inference bearer token or API key,
   0600), `ccd-session-secrets/<session-id>/` (GCP ADC / AWS files), and the same cloud credential
@@ -322,7 +324,8 @@ the issues cited in [section 1](#1-source-and-evidence):
   ([`spaces-present` link key](#spaces-present-link-key)).
 - `~/.claude/sessions/<pid>.<sha256>.key` (139 bytes on Linux, 108 bytes on macOS) beside
   `~/.claude/sessions/<pid>.json` belongs to the Claude Code CLI the Code tab launches (observed
-  with CLI 2.1.295, issue 76) and is described in [`claude-code.md`](claude-code.md).
+  with CLI 2.1.295, [issue 76](https://github.com/seanthegeek/doubleagent/issues/76)) and is
+  described in [`claude-code.md`](claude-code.md).
 - Not credentials (real install):
   - `buddy-tokens.json` is a daily token-usage counter (`index.chunk-Cyt2WTko.js@5079810`).
   - `ccd-ids.json` holds a start-id `salt` (`@1191469`).
@@ -651,15 +654,16 @@ Imported records (`finishRegisterExternalSession`, `@1686493`) also carry `index
 
 #### Remote Control state in the Code-tab record
 
-Remote Control is another device driving the session's CLI through a bridge (issue 80); the CLI side
-is in [`claude-code.md`](claude-code.md), [Remote Control](claude-code.md#remote-control). The
-serializer `dk` (`app.asar:.vite/build/index.chunk-epGqPC4W.js@549559`, keys from `@554789`
-`bridgeSessionIds` to `@555190` `peerMessaged`) persists `remoteControlUserEnabled`,
-`remoteControlUserRequested`, `remoteControlUserToggled`, `remoteControlAutoEligible`,
-`bridgeSessionIds[]` (every bridge session the session was attached to), `remoteControlSpawn` (the
-session was started from a remote client: `ccrSessionId`, `detachedAt`, `rcChild`,
-`projectThreadChild`), `remoteControlDescendant`, `steeredByRemoteClient` (a remote client steered a
-turn), `peerMessaged`, `remoteControlLiveAtUpdateQuit` (`at`, `accountId`) and `cloudSessionId`.
+Remote Control is another device driving the session's CLI through a bridge
+([issue 80](https://github.com/seanthegeek/doubleagent/issues/80)); the CLI side is in
+[`claude-code.md`](claude-code.md), [Remote Control](claude-code.md#remote-control). The serializer
+`dk` (`app.asar:.vite/build/index.chunk-epGqPC4W.js@549559`, keys from `@554789` `bridgeSessionIds`
+to `@555190` `peerMessaged`) persists `remoteControlUserEnabled`, `remoteControlUserRequested`,
+`remoteControlUserToggled`, `remoteControlAutoEligible`, `bridgeSessionIds[]` (every bridge session
+the session was attached to), `remoteControlSpawn` (the session was started from a remote client:
+`ccrSessionId`, `detachedAt`, `rcChild`, `projectThreadChild`), `remoteControlDescendant`,
+`steeredByRemoteClient` (a remote client steered a turn), `peerMessaged`,
+`remoteControlLiveAtUpdateQuit` (`at`, `accountId`) and `cloudSessionId`.
 
 The setters are in `index.chunk-BCHP6ll9.js`:
 
@@ -757,7 +761,8 @@ task, so tasks set from a chat are server-side too.
 
 - Audit line to transcript line: both carry the SDK `uuid` for `assistant` and `user` messages;
   whether the values are equal was not determined (no audit file on disk to compare). The parser
-  therefore pairs them as the secondary-source rule of issue 122 does
+  therefore pairs them as the secondary-source rule of
+  [issue 122](https://github.com/seanthegeek/doubleagent/issues/122) does
   ([section 13](#13-parser-plan)): same `turn_type` and text, the same `session_id` (the record's
   `cliSessionId` on both sides, the transcript's file name and JSONL `sessionId`), and times at most
   2 seconds apart. The audit time is the desktop prompt's `timestamp` (set as the desktop sends it)
@@ -915,7 +920,8 @@ Not parsed: LevelDB stores, logs, `spaces.json`, memory Markdown, `rpm/`, caches
 
 #### Permission rows
 
-The session record row of either kind (issue 93) ends with
+The session record row of either kind
+([issue 93](https://github.com/seanthegeek/doubleagent/issues/93)) ends with
 ` permission_mode=<permissionMode> effort=<effort>`, `-` for an absent key (the Cowork key list in
 [section 8](#8-record-schema) has `effortOverride` and `pinnedSpawnEffort` but no `effort`, so a
 Cowork row usually reads `effort=-`). Then the per-session grants, all `system` rows with the
@@ -934,12 +940,13 @@ string, and the bundle reading in [section 8](#8-record-schema) did not cover th
 fixture's entries (a rule string, and an object shaped like the CLI's permission update
 `{type, rules, behavior, destination}`) are invented ([section 14](#14-confidence)).
 
-Cowork grants (issue 97), after those rows and at the same time with the same `(as of <field>)`
-suffix: `approvedToolNames`, `webFetchAllowedUrls`, `egressAllowedDomains`,
-`userApprovedFileAccessPaths`, `enabledMcpTools` and `fileDeleteApprovedMounts`.
-[Section 8](#8-record-schema) types them only as "arrays and objects", without saying which key is
-which, so a list is one row per entry, `permission grant: <key> <entry>`, an object one row per
-member, `permission grant: <key>.<member>=<value>`, and any other non-empty value one row,
+Cowork grants ([issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), after those rows
+and at the same time with the same `(as of <field>)` suffix: `approvedToolNames`,
+`webFetchAllowedUrls`, `egressAllowedDomains`, `userApprovedFileAccessPaths`, `enabledMcpTools` and
+`fileDeleteApprovedMounts`. [Section 8](#8-record-schema) types them only as "arrays and objects",
+without saying which key is which, so a list is one row per entry,
+`permission grant: <key> <entry>`, an object one row per member,
+`permission grant: <key>.<member>=<value>`, and any other non-empty value one row,
 `permission grant: <key>=<value>`; the fixture's values are invented. Not read:
 `remoteMcpServersConfig` (it can carry server credentials) and `chromePermsBeforeUnsupervised`.
 `preferences.remoteChatFolderGrants` is not in the session record but in
@@ -954,21 +961,23 @@ The audit log's permission events give `permission request:`, `permission respon
 
 The audit log's `system` `init` line gives `model: <model>` the first time a session's model is
 seen, and an `assistant` line whose `message.model` differs from the session's last one is preceded
-by `model: <old> -> <new>`, one tracker per session id in the file (issues 96 and 97);
-`model_refusal_fallback` lines are printed as recorded ([Audit log](#audit-log)). The session record
-and scheduled-task rows fill the `model` column. The transcripts' model rows are the claude-code
-reader's ([Model in `claude-code.md`](claude-code.md#model-rows)).
+by `model: <old> -> <new>`, one tracker per session id in the file
+([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)); `model_refusal_fallback` lines
+are printed as recorded ([Audit log](#audit-log)). The session record and scheduled-task rows fill
+the `model` column. The transcripts' model rows are the claude-code reader's
+([Model in `claude-code.md`](claude-code.md#model-rows)).
 
 #### Past-use rows and secondary sources
 
 The transcript is the primary store: the CLI writes it and the desktop itself reads it back to show
 the session (the lookup in [section 7](#7-transcript-stores)). `audit.jsonl` is a secondary source
-of it (issue 122): the desktop writes the same SDK messages beside it, append-only, so its `user`,
-`assistant` and tool lines repeat the transcript's turns. Every line is read on every run, whether
-or not a transcript exists, and the timeline's deduplication drops the rows the transcript also
-yields. What the audit log survives is in [What survives a delete](#what-survives-a-delete). The
-permission events, the `result` lines and the `init` line have no transcript twin and are always
-kept.
+of it ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)): the desktop writes the
+same SDK messages beside it, append-only, so its `user`, `assistant` and tool lines repeat the
+transcript's turns. Every line is read on every run, whether or not a transcript exists, and the
+timeline's deduplication drops the rows the transcript also yields. What the audit log survives is
+in [What survives a delete](#what-survives-a-delete). The permission events, the `result` lines and
+the `init` line have no transcript twin and are always kept.
 
 The default 2-second window applies. Rows the window or the text cannot pair, and that the timeline
 therefore shows twice: a Bash `tool_use` whose transcript record has `wireToolInputs` (the command
@@ -979,11 +988,12 @@ the desktop stamped it.
 
 If a Cowork record has `initialMessage`, also yield it as a `user` row, always, with an empty
 `timestamp_utc`: the record keeps no time for the prompt (`createdAt` is the session's). The record
-is a secondary source (issue 122), so the row drops when the audit log or the transcript holds the
-same prompt in the same session, and survives when both are gone; the record's `system` rows have no
-twin and are always kept. A Code-tab record's `initialMessage` is yielded at `createdAt` only when
-the session's transcript was not collected, because that transcript is a `~/.claude/projects/` file
-of agent `claude-code` and the rule pairs rows of one agent only.
+is a secondary source ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)), so the
+row drops when the audit log or the transcript holds the same prompt in the same session, and
+survives when both are gone; the record's `system` rows have no twin and are always kept. A Code-tab
+record's `initialMessage` is yielded at `createdAt` only when the session's transcript was not
+collected, because that transcript is a `~/.claude/projects/` file of agent `claude-code` and the
+rule pairs rows of one agent only.
 
 #### Sync, relay and origin rows
 
@@ -1007,11 +1017,12 @@ marker is stated ([What survives a delete](#what-survives-a-delete)).
 #### Bad-line rows
 
 A line that does not parse becomes its own `system` row after the file's other rows, carrying the
-line in full (`parser: unparseable line (<decoder message>): <line>`, issue 136), and reading
-continues. The transcripts go through the claude-code reader and its bad-line rows ([Bad lines in
-`claude-code.md`](claude-code.md#bad-line-rows)); a `remote-session-spaces.json` that is not a JSON
-object is one whole-file row ([Remote session folders](#remote-session-folders)). The fixture adds a
-truncated last line written with `write_bad_line` ([Fixtures](#fixtures)).
+line in full (`parser: unparseable line (<decoder message>): <line>`,
+[issue 136](https://github.com/seanthegeek/doubleagent/issues/136)), and reading continues. The
+transcripts go through the claude-code reader and its bad-line rows
+([Bad lines in `claude-code.md`](claude-code.md#bad-line-rows)); a `remote-session-spaces.json` that
+is not a JSON object is one whole-file row ([Remote session folders](#remote-session-folders)). The
+fixture adds a truncated last line written with `write_bad_line` ([Fixtures](#fixtures)).
 
 #### Fixtures
 
@@ -1059,7 +1070,8 @@ fixture need not verify):
 
 The first prompt has no twin in the transcript beside it; the last prompt, `thanks`, and the `init`
 line's `model: claude-fable-5-1` repeat the transcript's last `user` record and its first `model:`
-row, so the timeline drops those two audit rows (issue 122).
+row, so the timeline drops those two audit rows
+([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)).
 
 The `decision` values are `deny`, `once`, `always` and `scheduled` ([section 8](#8-record-schema)).
 Add a second session dir with only `audit.jsonl` (no `.claude/projects`) for a session whose
@@ -1110,7 +1122,7 @@ session dir name or its eight-hex prefix):
 | `system` `permission_response` | `system` | `permission response: <tool_name> <decision> granted=<bool>` | `tool_name` |
 | `system` `permission_auto_approved` / `_denied` | `system` | `permission auto-approved: <tool_name> (<source or scheduled_task_id>)` | `tool_name` |
 | `result` | `system` | `result: <subtype> turns=<num_turns> error=<is_error>` | |
-| `system` `init` | `system` | `model: <model>` the first time a session's model is seen (issues 96 and 97) | `model` the line's `model`; one tracker per session id in the file |
+| `system` `init` | `system` | `model: <model>` the first time a session's model is seen ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and [issue 97](https://github.com/seanthegeek/doubleagent/issues/97)) | `model` the line's `model`; one tracker per session id in the file |
 | `system` `model_refusal_fallback` | `system` | `model_refusal_fallback: <compact JSON of the line less type, subtype, uuid, session_id, timestamp and the _audit_ keys>` | the subtype is in the bundle loop above, but its fields are not recorded, so the parser prints them as they are rather than a `model: <old> -> <new>` row |
 
 The turns, from every audit log: `user` lines with `client_platform` `desktop_app` and no

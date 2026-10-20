@@ -653,7 +653,9 @@ file covers that `sessionId`.
 
 #### Permission rows
 
-Permission rows (issues 96 and 97), added with the model rows in [Model](#model-rows):
+Permission rows ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), added with the model rows in
+[Model](#model-rows):
 
 - `permission decision: <status>` (`system`, the call's `tool_name` and
   `tool_use_id`) after the `tool_result` row of a `toolCalls[]` element

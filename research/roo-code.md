@@ -403,10 +403,11 @@ Neither is a per-task record; the parser yields no model row from them.
 #### Past-use rows and secondary sources
 
 The task files are the primary store. `cli-history.json` ([CLI input history](#cli-input-history))
-is a secondary source (issue 122): one `user` row per entry, with empty `timestamp_utc`,
-`session_id` and `project_path` because the file records none, so the timeline's deduplication pairs
-it with a task's `user` row of the same text and keeps it only when no task has the text (a prompt
-whose task directory was deleted, or a CLI command such as `/new`).
+is a secondary source ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)): one
+`user` row per entry, with empty `timestamp_utc`, `session_id` and `project_path` because the file
+records none, so the timeline's deduplication pairs it with a task's `user` row of the same text and
+keeps it only when no task has the text (a prompt whose task directory was deleted, or a CLI command
+such as `/new`).
 
 #### Sync, relay and origin rows
 

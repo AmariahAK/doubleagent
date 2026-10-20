@@ -75,8 +75,10 @@ file names; nothing more about it was determined.
 
 ### Observed
 
-- macOS, 2026-10-18 (issues 49, 149 and 160): ChatGPT `26.1013.40934` (bundle id
-  `com.openai.codex`, `Codex Framework` `155.0.8059.80`) with the bundled Codex
+- macOS, 2026-10-18 ([issue 49](https://github.com/seanthegeek/doubleagent/issues/49),
+  [issue 149](https://github.com/seanthegeek/doubleagent/issues/149) and
+  [issue 160](https://github.com/seanthegeek/doubleagent/issues/160)): ChatGPT `26.1013.40934`
+  (bundle id `com.openai.codex`, `Codex Framework` `155.0.8059.80`) with the bundled Codex
   `0.163.0-alpha.10.2` (`originator` `Codex Desktop`), from 2026-10-18 18:15Z to 2026-10-19 00:43Z
   in the author's macOS lab VM of the 2026-10-15 round (macOS 26.6.2 build 25G83, arm64, 64-bit
   Arm, one user, no Python and no Xcode Command Line Tools). Unlike the round of 2026-10-15, the
@@ -103,7 +105,9 @@ file names; nothing more about it was determined.
   a turn in Full access, the access level with no sandbox, a scheduled task, and remote control
   from two paired phones) wrote only to `~/.codex`. No step created a launchd agent or daemon or a
   keychain item.
-- macOS, 2026-10-15 (issues 113 and 121): ChatGPT `26.1007.71326`, the build above, observed
+- macOS, 2026-10-15 ([issue 113](https://github.com/seanthegeek/doubleagent/issues/113) and
+  [issue 121](https://github.com/seanthegeek/doubleagent/issues/121)): ChatGPT `26.1007.71326`, the
+  build above, observed
   2026-10-15 (16:25Z to 17:05Z) in the author's macOS lab VM, macOS 26.6.2 build 25G83, arm64
   (64-bit Arm), one user, no Homebrew, Node.js or Python. The user repeated the Windows round with
   no listing between tasks: install and first launch (16:26Z) created `~/Library/Application
@@ -119,7 +123,11 @@ file names; nothing more about it was determined.
   `codex-cli.md`](codex-cli.md#macos-differences)). No launchd agent or daemon, no `~/Applications`
   entry and no login-keychain item with an OpenAI, Codex or ChatGPT identifier appeared ([section
   3](#3-credentials)).
-- Windows, 2026-10-15 (issues 113, 114, 115 and 116): ChatGPT `26.1007.9446.0`, the `OpenAI.Codex`
+- Windows, 2026-10-15 ([issue 113](https://github.com/seanthegeek/doubleagent/issues/113),
+  [issue 114](https://github.com/seanthegeek/doubleagent/issues/114),
+  [issue 115](https://github.com/seanthegeek/doubleagent/issues/115) and
+  [issue 116](https://github.com/seanthegeek/doubleagent/issues/116)): ChatGPT `26.1007.9446.0`, the
+  `OpenAI.Codex`
   package above, observed 2026-10-15 in the author's Parallels lab VM, Windows 11 ARM64 (ARM64 is
   the 64-bit Arm architecture; `ver` reports `10.0.26300.9550`), one user, no WSL (Windows
   Subsystem for Linux) distribution. No listing was taken between the tasks of each survey, so

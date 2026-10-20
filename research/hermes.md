@@ -831,7 +831,7 @@ Inputs, under any Hermes home (a home's `.hermes`,
 followed by `profiles/<name>`, or the root of a Docker or Podman named
 volume's `_data`, which holds the Hermes home itself, see
 [Volume homes](#volume-homes)), each marked for the timeline's
-deduplication (issue 122, see
+deduplication ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122), see
 [Secondary sources in `docs/output.md`](../analyzer/docs/output.md#secondary-sources)):
 
 | Source | Kind | Why |
@@ -865,9 +865,10 @@ evidence of rewound or compacted turns.
 The subsections that follow are written against HEAD
 [`86fa9e6`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872);
 the model-switch rows, the volume homes and the `tool_calls` rows are
-implemented (issues 180, 181 and 182); the rest is not, and every
-proposal rests on source alone, so each change starts with a per-step
-real-install round.
+implemented ([issue 180](https://github.com/seanthegeek/doubleagent/issues/180),
+[issue 181](https://github.com/seanthegeek/doubleagent/issues/181) and
+[issue 182](https://github.com/seanthegeek/doubleagent/issues/182)); the rest is not, and every
+proposal rests on source alone, so each change starts with a per-step real-install round.
 
 #### Permission rows
 
@@ -897,8 +898,8 @@ secret).
 
 #### Model rows
 
-Model rows (issue 96), `system`, after each session's start row: the
-session's `session_model_usage` rows with `task` empty, ordered by
+Model rows ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96)), `system`, after each
+session's start row: the session's `session_model_usage` rows with `task` empty, ordered by
 `first_seen`, give `model: <model>` for the first and
 `model: <old> -> <new>` for each later one, at `first_seen`, with
 ` provider=<billing_provider>` when it is set; auxiliary task rows are
@@ -907,8 +908,8 @@ already used is not visible. A session with no such rows gets one
 `model: <sessions.model>` row at `started_at`. The `model` column of the
 other rows stays `sessions.model` ([Model usage](#model-usage)).
 
-Model-switch markers (issue 180), `system`, in message order: each
-`messages` row with `display_kind = 'model_switch'` is one row
+Model-switch markers ([issue 180](https://github.com/seanthegeek/doubleagent/issues/180)), `system`,
+in message order: each `messages` row with `display_kind = 'model_switch'` is one row
 `model: <old> -> <model> provider=<provider>` at the row's `timestamp`,
 with `model` set to the new model and `source_line` to `messages.id`,
 parsed from the marker text
@@ -1087,8 +1088,8 @@ row per marker, at `retired_at`, with ` sweep` when it has `expires`;
 that does not parse or is not a JSON list is one `parser:` row, and an entry that is not an object
 with a `url` is its own `parser: unparseable record <N>` row carrying the entry.
 
-Malformed `tool_calls` (issue 182): a value that is not valid JSON, is
-not a list (a lone object is read as a one-call list) or holds an entry
+Malformed `tool_calls` ([issue 182](https://github.com/seanthegeek/doubleagent/issues/182)): a value
+that is not valid JSON, is not a list (a lone object is read as a one-call list) or holds an entry
 that is not an object gives one row through `error_rows`, after the
 message's other rows, `parser: unparseable record <messages.id>
 (tool_calls is not valid JSON: <reason>)`, `(tool_calls is not a
@@ -1123,8 +1124,8 @@ INSERT INTO messages (session_id,role,content,tool_call_id,tool_calls,tool_name,
 
 #### Volume homes
 
-Issue 181: the catalog's `hermes|*hermes*` volume line
-collects a named volume whole with its `_data` directory as the base.
+[Issue 181](https://github.com/seanthegeek/doubleagent/issues/181): the catalog's `hermes|*hermes*`
+volume line collects a named volume whole with its `_data` directory as the base.
 The container's Hermes home is `/opt/data` ([Docker](#docker)),
 so a named volume mounted there holds the Hermes home itself and the
 files arrive as `state.db`, `sessions/<id>.jsonl`,

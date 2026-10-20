@@ -46,9 +46,10 @@ against the `xdg-basedir` 5.1.0 tarball, the version pinned in
 
 No real install.
 
-- The 2.0 layout the parser reads since issue 165 (`session_v2` and the 2.0 `session_message` types)
-  is not observed on any real install, source-derived (at `cb07c55`), and the real-install round of
-  2.0 is still to run.
+- The 2.0 layout the parser reads since
+  [issue 165](https://github.com/seanthegeek/doubleagent/issues/165) (`session_v2` and the 2.0
+  `session_message` types) is not observed on any real install, source-derived (at `cb07c55`), and
+  the real-install round of 2.0 is still to run.
 - No real install has shown a `session_share` row or a shared session's events, so the
   `session synced:` rows are fixture only
   ([Sync, relay and origin](#sync-relay-and-origin-rows)).
@@ -61,7 +62,7 @@ No real install.
   ([section 10](#10-other-stores)), the desktop app, the background server's `service.json`
   ([section 3](#3-credentials)), the permission records, the temp root and worktrees, the 2.0
   delete and the `session_v2` layout ([section 11](#11-format-versions)) that the parser has read
-  since issue 165.
+  since [issue 165](https://github.com/seanthegeek/doubleagent/issues/165).
 - 2026-10-17, session sharing at
   [`907b3bc`](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c) and
   the default branch at
@@ -98,11 +99,12 @@ to prefer it over `/tmp`, as a directory "pre-created and approved for external 
 It is `/tmp/opencode` on Linux, under `/var/folders` on macOS and `%TEMP%\opencode`
 (`AppData\Local\Temp\opencode`) on Windows, so outside the home on Linux and macOS, where no catalog
 line can reach it, and under the home but unclaimed by any catalog line on Windows; the same gap as
-Claude Code's temp root (issue 163). The instruction is about where the model writes temporary
-files, so the path shows in tool inputs; whether a session's `directory` can be it was not
-determined. The worktrees OpenCode makes for a project are scratch directories inside the data
-directory (`worktree/` under [Data directory](#data-directory)); how the analyzer classes a
-session working in one is under [Scratch directory rows](#scratch-directory-rows).
+Claude Code's temp root ([issue 163](https://github.com/seanthegeek/doubleagent/issues/163)). The
+instruction is about where the model writes temporary files, so the path shows in tool inputs;
+whether a session's `directory` can be it was not determined. The worktrees OpenCode makes for a
+project are scratch directories inside the data directory (`worktree/` under
+[Data directory](#data-directory)); how the analyzer classes a session working in one is under
+[Scratch directory rows](#scratch-directory-rows).
 
 #### Data directory
 
@@ -750,17 +752,16 @@ the same way as `permission mode: agent=<name>` and `permission mode: agent=<old
 because an agent (`build`, `plan` or a custom one) is a mode that carries its own permission ruleset
 (the agent's `permission: PermissionV1.Ruleset`,
 [`packages/opencode/src/agent/agent.ts:44`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/agent/agent.ts#L44)).
-Both rows take the message's timestamp. The parser reads nothing else of the permission state (issue
-98): not the session's `permission` JSON, not the project's `sandboxes` array, and not the per-call
-outcomes and standing grants in [Permission records](#permission-records). Planned, not read
-today: per call,
-a tool result whose 1.x `state.error` starts "The user rejected permission" or "The user has
-specified a rule which prevents you", or whose 2.0 `error.type` is `permission.rejected` or is
-`aborted` with "The user declined this tool call", gets `permission decision: rejected` (with
-` feedback` or ` rule` as the text shows) after its `tool_result` row, joined on `tool_use_id`; no
-approval is recorded. Standing: one
-`permission setting: <action> <resource>=allow (from <database> permission, time_created)` row per
-`permission` table row at its `time_created`, `project_path` the project's `worktree`; and the
+Both rows take the message's timestamp. The parser reads nothing else of the permission state
+([issue 98](https://github.com/seanthegeek/doubleagent/issues/98)): not the session's `permission`
+JSON, not the project's `sandboxes` array, and not the per-call outcomes and standing grants in
+[Permission records](#permission-records). Planned, not read today: per call, a tool result whose
+1.x `state.error` starts "The user rejected permission" or "The user has specified a rule which
+prevents you", or whose 2.0 `error.type` is `permission.rejected` or is `aborted` with "The user
+declined this tool call", gets `permission decision: rejected` (with ` feedback` or ` rule` as the
+text shows) after its `tool_result` row, joined on `tool_use_id`; no approval is recorded. Standing:
+one `permission setting: <action> <resource>=allow (from <database> permission, time_created)` row
+per `permission` table row at its `time_created`, `project_path` the project's `worktree`; and the
 session's `permission` rule list as `permission setting: session <action> <resource>=<effect>` rows
 at the session's `time_updated`. Not read today.
 
@@ -882,8 +883,8 @@ today.
 
 #### Bad-line rows
 
-Done (issue 139). Each `message`, `part`, `session_message`
-or `event` row whose `data` is not a JSON object is its own `parser:
+Done ([issue 139](https://github.com/seanthegeek/doubleagent/issues/139)). Each `message`, `part`,
+`session_message` or `event` row whose `data` is not a JSON object is its own `parser:
 unparseable record <rowid> (<table>.data: <reason>): <data>` row
 carrying the stored value in full, with its row's session and project,
 an empty timestamp and `source_line` the rowid; each part file of the
@@ -908,8 +909,8 @@ INSERT INTO credential VALUES('cred_01','anthropic','key','my key','{"type":"key
 
 #### Version drift
 
-Done (issue 165), from source alone; the real-install
-round of 2.0 is still to run, and its line types and key sets are to be
+Done ([issue 165](https://github.com/seanthegeek/doubleagent/issues/165)), from source alone; the
+real-install round of 2.0 is still to run, and its line types and key sets are to be
 compared with this plan. Session headers and `directory` come from
 `session_v2`, else `session`; the session-start row adds
 `fork=<fork_session_id>`, and a session a 2.0 database holds only in

@@ -239,7 +239,7 @@ without updating that page and noting it in the commit message.
 ### Readability
 
 A responder reads a collector before running it as root, so both are
-written to be audited (issue 99). The architecture and the function tables
+written to be audited ([issue 99](https://github.com/seanthegeek/doubleagent/issues/99)). The architecture and the function tables
 are in [`collectors/docs/internals.md`](collectors/docs/internals.md).
 
 - **One layout.** Both scripts have the same twelve sections, in this
@@ -343,7 +343,7 @@ rules are different from the collectors'.
   line that does not decode becomes its own `system` row carrying the
   line in full: `parser: unparseable line (<reason>): <line>`, the line
   as read with only its terminator removed, nothing repaired, extracted
-  or shortened (issue 136); a JSON array reader says `unparseable record
+  or shortened ([issue 136](https://github.com/seanthegeek/doubleagent/issues/136)); a JSON array reader says `unparseable record
   <N> (<reason>)` instead. An error about the whole file (unreadable,
   not a JSON array, cut inside an array) is one row `parser: <message>`.
   The row carries the `session_id` and `project_path` the reader knows
@@ -361,7 +361,7 @@ rules are different from the collectors'.
   `errors` list a reader fills is reported, returned or passed on; a
   pre-scan that discards errors passes a literal `[]`, and only over a
   file the same parser also parses in full and reports on. Three history
-  readers dropped bad lines silently (issues 125 and 134);
+  readers dropped bad lines silently ([issue 125](https://github.com/seanthegeek/doubleagent/issues/125) and [issue 134](https://github.com/seanthegeek/doubleagent/issues/134));
   `ErrorListsReportedTests` in `analyzer/tests/test_errors.py` fails on
   a list a parser fills and never reads again.
   The agent's subsection under
@@ -457,7 +457,7 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
    line says the agent records none. Antigravity's per-step
    `TrajectoryPermissions` blob and its `globalPermissionGrants` list were
    collected for a week before anyone noticed the parser read neither
-   (issue 92).
+   ([issue 92](https://github.com/seanthegeek/doubleagent/issues/92)).
    The model is evidence of the same kind. Any agent that can use or
    switch between models gets a `system` row `model: <id>` at the first
    record of a session that names one and `model: <old> -> <new>` on
@@ -468,7 +468,7 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
    (a `/model` command and its output) keeps its own row as well. The
    research document names where the format records the model per
    message, per session and per switch, and a parser plan with no model
-   line says the agent records none (issue 93).
+   line says the agent records none ([issue 93](https://github.com/seanthegeek/doubleagent/issues/93)).
    Past use is evidence of the same kind, and the transcript store is
    rarely its only record. A per-prompt history file, a mirror or
    projection of the transcript (a search index, a summaries database, a
@@ -477,7 +477,7 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
    each outlive the transcript they repeat, and a session the user
    deleted is often recoverable from nothing else: an Antigravity session
    whose project directory the agent had deleted survived as a database,
-   a brain mirror, four history lines and a summaries row (issue 122).
+   a brain mirror, four history lines and a summaries row ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)).
    Before the parser is written, the research document lists every file
    that records use beyond the primary store, says what each holds, what
    it survives (a deleted session, a rewind, a removed project, a
@@ -503,7 +503,7 @@ reviewer verdicts, the trigger of a turn, a phone driving the session).
    parser yields a `system` row for the marker (`session synced: remote
    session <id> last event <id>`, or the agent's own terms) at the
    file's modification time, saying so; a parser plan with no sync line
-   says the agent records none (issue 151 is the Copilot CLI row).
+   says the agent records none ([issue 151](https://github.com/seanthegeek/doubleagent/issues/151) is the Copilot CLI row).
    A session carried through a messaging platform (Telegram, WhatsApp,
    email) is a relay, not a sync: the copy is on the platform, and the
    parser yields a `session relayed:` row for it instead. Such a parser
@@ -754,7 +754,7 @@ part of `research/<agent>.md`, record schema research (how transcripts
 are encoded and how a parser reads them) goes to its Parsing part. A
 document covers one agent only, and
 every agent that earns a catalog line gets its own, even when it came out
-of a grouped sweep such as the framework sweep (issue 64): the sweep
+of a grouped sweep such as the framework sweep ([issue 64](https://github.com/seanthegeek/doubleagent/issues/64)): the sweep
 document ([`research/frameworks.md`](research/frameworks.md)) keeps only the summary
 table and the evidence for what got no catalog line. Where
 agents share a lineage, each says so and links to the other rather than
@@ -937,7 +937,7 @@ And from the October 2026 round:
   and the round adds it.
 - Entries that differ only by case (`.config/PearAI` and `.config/pearai`,
   `.config/goose` and `.config/Goose`) collect the same directory twice on
-  macOS and Windows (issue 29). Add both only when they are distinct on
+  macOS and Windows ([issue 29](https://github.com/seanthegeek/doubleagent/issues/29)). Add both only when they are distinct on
   Linux, and make the smoke check for them test attribution, not count.
 - Counts in a brief are not evidence. The integration agent derives the
   number of agents from the documents in the tree, not from the brief, and
@@ -987,8 +987,8 @@ output directories), seven parser gaps in the Codex parser (per-turn
 settings events, the reviewer's verdicts and decisions, the trigger of each
 turn, the remote-control enrolment and its phone clients, the global state
 as a secondary source), a parser for the account conversation list, the
-split of scratch directories from projects in the inventory (issue 149),
-and the Claude Code temp-root gap (issue 163); the rounds before it, which
+split of scratch directories from projects in the inventory ([issue 149](https://github.com/seanthegeek/doubleagent/issues/149)),
+and the Claude Code temp-root gap ([issue 163](https://github.com/seanthegeek/doubleagent/issues/163)); the rounds before it, which
 ran every action before the first listing, could map actions to files only
 by modification time and left most of this unseen. A version check is part
 of every round: the Observed bullet names the build, and a later install of
@@ -1315,8 +1315,8 @@ the start of this section).
   `Refs`, not `Fixes` or `Closes`, so the push does not close the issue
   before CI is green. GitHub closes an issue for any closing keyword
   (`close`, `fix`, `resolve` and their `-s` and `-d` forms) followed by
-  `#<n>` anywhere in a commit message, prose included, so write "the fix
-  for #29" or "#29 is fixed", never "fixes #29"; the issue is closed after the release is tagged,
+  `#<n>` anywhere in a commit message, prose included, so write `the fix
+  for #29` or `#29 is fixed`, never `fixes #29`; the issue is closed after the release is tagged,
   with a comment that explains the fix and names the commit and the
   release that contains it. Changes with no behaviour of their own
   (typos, formatting, a test-only refactor, these conventions) need no
@@ -1446,12 +1446,22 @@ the start of this section).
   bare text, with the repository and full sha taken from the citation
   links of the agent's research document; a build hash of a
   closed-source binary, which no public repository holds, stays as
-  written.
+  written. An issue or pull request named in a document is a link in the
+  same way, one link per issue: one of this project's is written
+  `[issue 92](https://github.com/seanthegeek/doubleagent/issues/92)` or
+  `[pull request 129](https://github.com/seanthegeek/doubleagent/pull/129)`,
+  another project's `[owner/repo issue 105](<its URL>)`, and `issues 125
+  and 134` becomes two links. A bare `issue <n>`, `PR <n>` or `#<n>` in
+  prose or a table is a defect; the changelogs' `([#<n>])` reference links
+  are the exception, and an issue number inside a code span is a literal,
+  not a reference.
   `tools/check_doc_links.py`, run by the CI lint job, fails on a relative
   link whose file or heading does not exist, on a `section <n>` that is
-  not link text, on a URL or scheme-less host path (`github.com/...`)
-  outside a link target, and on a bare commit hash after `at `,
-  `commit ` or `@`; run it before pushing a documentation change.
+  not link text, on an `issue <n>`, `pull request <n>`, `PR <n>` or `#<n>`
+  that is not link text, on a URL or scheme-less host path
+  (`github.com/...`) outside a link target, and on a bare commit hash
+  after `at `, `commit ` or `@`; run it before pushing a documentation
+  change.
 - Bump `VERSION` in the script for any change to output format or options.
   For the analyzer, bump `VERSION` in `doubleagent/__init__.py`;
   `pyproject.toml` reads the version from it. Bump once per release: if

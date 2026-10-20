@@ -204,9 +204,9 @@ writes `settings.json`, `logs/startup/`, `logs/main.log`, `recent-dirs.json` und
 Electron userData is `~/.config/Goose`, `~/Library/Application Support/Goose`, `%APPDATA%\Goose`.
 The desktop talks to the same Rust config and data dirs.
 
-Of the catalog entries that issue 23 questioned, `.config/Goose` is this Electron userData directory
-on Linux, derived from `productName` rather than written as a literal, and `~/.goose` is read for
-its `agents/` subdirectory at
+Of the catalog entries that [issue 23](https://github.com/seanthegeek/doubleagent/issues/23)
+questioned, `.config/Goose` is this Electron userData directory on Linux, derived from `productName`
+rather than written as a literal, and `~/.goose` is read for its `agents/` subdirectory at
 [`591edd4`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose/src/sources.rs#L467)
 ([Shared cross-agent directories](#shared-cross-agent-directories)); whether anything writes there
 is not determined.
@@ -488,9 +488,10 @@ Timestamps and their precision are in [section 8](#8-record-schema).
 
 #### CLI history
 
-CLI history (`history.txt`) to `sessions.db`, on text alone (issue 122). The CLI adds every input
-line that is not blank to the rustyline history, slash commands included, before it decides what the
-line is
+CLI history (`history.txt`) to `sessions.db`, on text alone
+([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)). The CLI adds every input line
+that is not blank to the rustyline history, slash commands included, before it decides what the line
+is
 ([`goose-cli/src/session/input.rs:193-195`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/session/input.rs#L193-L195)),
 and sends a prompt as the line with surrounding whitespace trimmed
 ([`input.rs:210`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-cli/src/session/input.rs#L210)).
@@ -676,7 +677,8 @@ Rows: one per `content_json` block, plus one `system` row per session from `sess
 
 #### Permission rows
 
-Written (issues 96 and 97), all `system`, from `sessions.db`:
+Written ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), all `system`, from `sessions.db`:
 
 - `permission mode: <goose_mode>` after each session's start row; `goose_mode` is one value per
   session row (default `auto`), so there is no change row.
@@ -707,7 +709,8 @@ same generic row (`actionType` `toolConfirmation`). Not yet written:
 
 #### Model rows
 
-Written (issues 96 and 97), all `system`, from `sessions.db`:
+Written ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), all `system`, from `sessions.db`:
 
 - `model: <model_config_json.model_name> provider=<provider_name>` after each session's start row,
   at `created_at`.
@@ -720,11 +723,12 @@ Written (issues 96 and 97), all `system`, from `sessions.db`:
 
 #### Past-use rows and secondary sources
 
-Sources (issue 122): `sessions.db` is the primary store, and the legacy JSONL sessions and the
-`llm_request` logs are read as primary records. Both `history.txt` files are secondary sources: one
-`user` row per entry, with an empty `timestamp_utc`, `session_id` and `project_path`, which
-`dedup.deduplicate` drops when a database `user` row of the same user has the same text and keeps
-otherwise (a removed session's prompt, a slash command). See [CLI history](#cli-history).
+Sources ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)): `sessions.db` is the
+primary store, and the legacy JSONL sessions and the `llm_request` logs are read as primary records.
+Both `history.txt` files are secondary sources: one `user` row per entry, with an empty
+`timestamp_utc`, `session_id` and `project_path`, which `dedup.deduplicate` drops when a database
+`user` row of the same user has the same text and keeps otherwise (a removed session's prompt, a
+slash command). See [CLI history](#cli-history).
 
 Not yet written: `schedule.json` ([Scheduler and project files](#scheduler-and-project-files))
 would add one `system` row per job,
@@ -834,9 +838,10 @@ session start row (`archived=`).
 #### Bad-line rows
 
 The legacy JSONL and request logs are covered by `iter_jsonl` and `error_rows`;
-`history.txt` cannot fail to decode (each line is a row). In `sessions.db` (issue 183) a
-`content_json`, `metadata_json` or `model_config_json` that does not decode, or decodes to another
-type than Goose writes (an array for `content_json`
+`history.txt` cannot fail to decode (each line is a row). In `sessions.db`
+([issue 183](https://github.com/seanthegeek/doubleagent/issues/183)) a `content_json`,
+`metadata_json` or `model_config_json` that does not decode, or decodes to another type than Goose
+writes (an array for `content_json`
 ([`message.rs:317-330`](https://github.com/block/goose/blob/591edd47cf2cfea4957d720c607cf2a4def8673d/crates/goose-provider-types/src/conversation/message.rs#L317-L330)),
 an object for the other two), is one `system` row through `error_rows`:
 `parser: unparseable record <N> (<table>.<column>: <reason>): <stored value>`, the stored text in
@@ -844,8 +849,8 @@ full, `<N>` the `messages.id` or the `sessions` rowid (also `source_line`), with
 `session_id` and `working_dir` and an empty `timestamp_utc`. A NULL or empty `content_json` gives
 the row with reason `empty` and no value. The rest of the session is still yielded: a bad
 `model_config_json` row follows the session start row and the session has no `model:` row; a bad
-`metadata_json` row precedes the message's content rows, which keep the session's model and count
-as visible; a bad `content_json` row stands in for the message's rows. Not observed on any real
+`metadata_json` row precedes the message's content rows, which keep the session's model and count as
+visible; a bad `content_json` row stands in for the message's rows. Not observed on any real
 install, source-derived (block/goose at
 [`591edd4`](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d)).
 

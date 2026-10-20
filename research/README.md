@@ -126,19 +126,20 @@ Notes end with the transcript store, where the agent has one.
 | `windsurf` | [windsurf.md](windsurf.md) | official docs, community write-ups | no, backlog | rebrand to Devin in progress; new `.windsurf/transcripts` |
 | `zed` | [zed.md](zed.md) | source, crate sources | yes, needs `zstandard` | Flatpak install paths not covered. Store: SQLite with zstd-compressed JSON thread blobs |
 
-Collector version 1.3.0 (issue 24, commit [88678a0](https://github.com/seanthegeek/doubleagent/commit/88678a02e7e8deb988c7763b98384cd014d0fff4)) applied the catalog
-lines these documents proposed, and the proposals were then removed from
-the documents: the tables in the scripts record what was adopted, and that
-commit's history what was considered.
+Collector version 1.3.0 ([issue 24](https://github.com/seanthegeek/doubleagent/issues/24), commit
+[88678a0](https://github.com/seanthegeek/doubleagent/commit/88678a02e7e8deb988c7763b98384cd014d0fff4))
+applied the catalog lines these documents proposed, and the proposals were then removed from the
+documents: the tables in the scripts record what was adopted, and that commit's history what was
+considered.
 
 Collector version 1.4.0 added fifteen agents from the October 2026 backlog
 (`agent-zero` to `twinny` above, among them agents that are not coding
 agents, such as `hermes`, `openclaw`, `nanobot` and `local-deep-research`)
 the same way.
 
-Collector version 1.10.0 (issue #64) swept sixteen agent frameworks, framework
-studios and self-hosted agent platforms for default per-user paths. The sweep
-itself, with the evidence for every framework that got no catalog line (the
+Collector version 1.10.0 ([issue 64](https://github.com/seanthegeek/doubleagent/issues/64)) swept
+sixteen agent frameworks, framework studios and self-hosted agent platforms for default per-user
+paths. The sweep itself, with the evidence for every framework that got no catalog line (the
 AutoGen libraries, Microsoft Agent Framework, Semantic Kernel, TaskWeaver,
 LangGraph, the Pydantic AI library, Logfire, Atomic Agents and IntentKit), is
 one document, [frameworks.md](frameworks.md), with no row in the table. Each
@@ -194,7 +195,7 @@ link in each row opens that document's account of what survives. Parsed,
 secondary and not parsed say whether the analyzer reads a file and as
 what; [Secondary sources](../analyzer/docs/output.md#secondary-sources) lists the
 secondary sources per agent, and
-[doubleagent issue 122](https://github.com/seanthegeek/doubleagent/issues/122)
+[issue 122](https://github.com/seanthegeek/doubleagent/issues/122)
 is the design that shows each event once across them.
 
 | Agent | Transcripts live in | Survives project deletion | Per-prompt history file | Working directory recorded | Second copy |
@@ -253,7 +254,7 @@ What the table shows:
   Antigravity, Claude Desktop, Cline, Hermes, OpenClaw, Tabby, nanobot,
   Letta, Codex and Open Interpreter; the analyzer shows each event once
   across them
-  ([doubleagent issue 122](https://github.com/seanthegeek/doubleagent/issues/122)).
+  ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)).
 - A transcript can also survive in another agent's store: Hermes Agent,
   Cline's SDK and CLAI import Claude Code and Codex sessions, and the
   copy outlives the original file

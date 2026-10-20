@@ -841,8 +841,8 @@ agent's own parser reads what it did with it.
 
 #### Model rows
 
-Model rows (issue 96), `system`: `model: <model_name>` before the rows of
-a chat's first assistant message that names a model, and
+Model rows ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96)), `system`:
+`model: <model_name>` before the rows of a chat's first assistant message that names a model, and
 `model: <old> -> <new>` before the rows of each later assistant message
 whose `model_name` differs, with the message's time and `source_line`.
 `config.json` `last_model` is not read for rows.
@@ -925,10 +925,11 @@ No row: a chat deleted in the desktop app is deleted only locally and leaves no 
 In `.ollama/history`, a line that is not valid UTF-8 becomes, after the file's other rows, one
 `system` row `parser: unparseable line (<decode error>): <line>` carrying
 the line as read less its terminator, with the same empty fields and its line number, reported
-through `error_rows` (issue 174; issue 136 sets the rule). Until that change the parser decoded the
-file with `errors="replace"`, so such a line became a `user` row with replacement characters and
-no `parser:` row. Such a line has not been seen on any real install: `Save` writes each entry with
-`fmt.Fprintln` and checks no encoding
+through `error_rows` ([issue 174](https://github.com/seanthegeek/doubleagent/issues/174);
+[issue 136](https://github.com/seanthegeek/doubleagent/issues/136) sets the rule). Until that change
+the parser decoded the file with `errors="replace"`, so such a line became a `user` row with
+replacement characters and no `parser:` row. Such a line has not been seen on any real install:
+`Save` writes each entry with `fmt.Fprintln` and checks no encoding
 ([`history.go:125-150`](https://github.com/ollama/ollama/blob/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce/readline/history.go#L125-L150)).
 A `db.sqlite` that is not a database becomes one `system` row ([Fixtures](#fixtures)).
 

@@ -508,8 +508,8 @@ that store.
 `credential.value`, `account.access_token`/`refresh_token`, `control_account`, and
 `session.share_url`. The `storage/session_share/*.json` files hold no credential: the ingest service
 authenticates with the Kilo token from `auth.json` ([section 13](#13-parser-plan)). The database is
-collected unflagged like Cursor's `state.vscdb`; the tables above are the redaction targets (issue
-23).
+collected unflagged like Cursor's `state.vscdb`; the tables above are the redaction targets
+([issue 23](https://github.com/seanthegeek/doubleagent/issues/23)).
 
 ### 13. Parser plan
 
@@ -538,7 +538,8 @@ the same way as the model ([Model](#model-rows)), as `permission mode: agent=<na
 `permission mode: agent=<old> -> agent=<new>`, because an agent (`build`, `plan` or a custom one) is
 a mode that carries its own permission ruleset (the agent's `permission: PermissionV1.Ruleset`,
 [`packages/opencode/src/agent/agent.ts:54`](https://github.com/Kilo-Org/kilocode/blob/76bcfd40be616a72f4697b3041565f322245b462/packages/opencode/src/agent/agent.ts#L54)).
-The parser reads nothing else of the permission state (issue 98): not the session's `permission`
+The parser reads nothing else of the permission state
+([issue 98](https://github.com/seanthegeek/doubleagent/issues/98)): not the session's `permission`
 JSON or the project's `sandboxes` array ([section 10](#10-other-stores)), not the `.kilo/` and
 `.kilocode/` permission configuration files ([section 5](#5-project-local-files)), and not the
 per-call records below; the session column's shape is in
@@ -700,10 +701,12 @@ The `kilo-code` parser subclasses the `opencode` parser
 parser counted undecodable database records, part files and events into one
 `parser: <n> record(s) with undecodable data` row; since 0.19.0 each undecodable record, part file
 and event is its own `parser: unparseable record <rowid> (<table>.data: <reason>): <data>` or
-`parser: unparseable part <partID> (<reason>): <text>` row carrying it in full (issue 139), and a
-database with `session_v2` ([section 11](#11-format-versions)) is read from it, its
-`session_message` transcript and the 1.x tables only for a session that `session_message` lacks
-(issue 165). Both reach Kilo Code through the subclass.
+`parser: unparseable part <partID> (<reason>): <text>` row carrying it in full
+([issue 139](https://github.com/seanthegeek/doubleagent/issues/139)), and a database with
+`session_v2` ([section 11](#11-format-versions)) is read from it, its `session_message` transcript
+and the 1.x tables only for a session that `session_message` lacks
+([issue 165](https://github.com/seanthegeek/doubleagent/issues/165)). Both reach Kilo Code through
+the subclass.
 
 #### Fixtures
 

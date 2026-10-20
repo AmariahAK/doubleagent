@@ -699,7 +699,8 @@ it (`input_history.json`, `dev_data`,
 `iter_jsonl` and `error_rows`. `sessions.json` is read by
 `read_index` in `continue_dev.py` (the PearAI parser shares it), whose
 errors the index's own artifact reports through `error_rows`, once,
-with an empty `session_id` and time (issue 170): `parser: unreadable
+with an empty `session_id` and time
+([issue 170](https://github.com/seanthegeek/doubleagent/issues/170)): `parser: unreadable
 session index: <reason>`, `parser: not a JSON array`, `parser:
 unparseable record <N> (<reason>): <the text from that entry to the
 end of the file>` for an entry cut mid-write (the entries before it

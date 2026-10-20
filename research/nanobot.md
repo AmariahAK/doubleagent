@@ -277,7 +277,8 @@ Home-relative; `.nanobot` may be `.nanobot-<instance>` when `--config` points el
   always under `~/.nanobot` whatever instance runs unless `--home` moves it with the instance root
   ([section 2](#2-per-user-storage)), so an instance run as `--home ~/.nanobot-work` writes
   `.nanobot-work/history/cli_history`. Read as a secondary source; the parser selects
-  `history/cli_history` under any `.nanobot*` state directory (issue 179).
+  `history/cli_history` under any `.nanobot*` state directory
+  ([issue 179](https://github.com/seanthegeek/doubleagent/issues/179)).
 
 #### What survives a delete
 
@@ -324,7 +325,8 @@ read the sidebar cache, the run records or `llm_usage.sqlite3` (see
 
 #### SQLite session store
 
-Since [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9), parsed (issue 178):
+Since [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9),
+parsed ([issue 178](https://github.com/seanthegeek/doubleagent/issues/178)):
 
 - `.nanobot/sessions/<workspace-id>/sessions.sqlite3`, with its `-wal` and `-shm` sidecars: the
   session store of record, mode 0600
@@ -650,12 +652,16 @@ emitted as if UTC, stated in its [subsection of the agents page](../docs/agents.
 lets the analyst correct it; `llm_usage.sqlite3` gives true UTC for the same calls to derive the
 offset.
 
-The primary store and the CLI history location are in the parser (issues 178 and 179); each
-subsection below says what else is.
+The primary store and the CLI history location are in the parser
+([issue 178](https://github.com/seanthegeek/doubleagent/issues/178) and
+[issue 179](https://github.com/seanthegeek/doubleagent/issues/179)); each subsection below says what
+else is.
 
 #### Permission rows
 
-No permission state is read by the parser (issues 96 and 97), `pairing.json` (the chat senders
+No permission state is read by the parser
+([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), `pairing.json` (the chat senders
 the operator approved, shape in [section 3](#3-credentials)) included.
 
 Plan, at [`909b277`](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9) (not yet in the parser): one `system` row per standing setting at the
@@ -687,10 +693,10 @@ in-memory goal permission of `agent/goal_permission.py`).
 
 #### Model rows
 
-When the metadata line has (issues 96 and 97)
-`metadata._nanobot_model_preset`, a `system` row `model: <preset>
-(preset)` follows the session start row at its time; the value names a
-model preset of nanobot's configuration, not a model id, and the row says
+When the metadata line has ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)) `metadata._nanobot_model_preset`,
+a `system` row `model: <preset> (preset)` follows the session start row at its time; the value
+names a model preset of nanobot's configuration, not a model id, and the row says
 so. A session file has one metadata line, so it names one preset and no
 `model: <old> -> <new>` row is written; per-call models are in
 `llm_usage.sqlite3` `llm_calls`, which the parser does not read.
@@ -708,11 +714,12 @@ anywhere.
 
 #### Past-use rows and secondary sources
 
-Sources, primary or secondary (issue 122; every one read on every run):
+Sources, primary or secondary ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122);
+every one read on every run):
 
 | File | Role | Rows |
 | --- | --- | --- |
-| `sessions/<workspace-id>/sessions.sqlite3` | primary (issue 178) | as above, one session per `sessions` row in `created_at` order, its `messages.record` values in `position` order, `source_line` the row's `rowid`; a value that is not a JSON object is a `parser: unparseable record <position> (<reason>): <record>` or `parser: unparseable session metadata (<reason>): <metadata>` row |
+| `sessions/<workspace-id>/sessions.sqlite3` | primary ([issue 178](https://github.com/seanthegeek/doubleagent/issues/178)) | as above, one session per `sessions` row in `created_at` order, its `messages.record` values in `position` order, `source_line` the row's `rowid`; a value that is not a JSON object is a `parser: unparseable record <position> (<reason>): <record>` or `parser: unparseable session metadata (<reason>): <metadata>` row |
 | `sessions/<workspace-id>/<stem>.jsonl` and `jsonl-backup/<name>.jsonl` beside a `sessions.sqlite3` | secondary, tolerance 2 seconds (the same `timestamp` strings) | as above |
 | `sessions/<workspace-id>/<stem>.jsonl` with no database beside it, legacy and `.migration-conflicts/` copies | primary | as above |
 | `<workspace>/memory/history.jsonl` | primary: summaries, not copies of events | one `system` row per entry, `memory history #<cursor>: <content>` |

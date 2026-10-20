@@ -27,8 +27,11 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
 
 ### Observed
 
-- macOS, Codex Desktop inside ChatGPT 26.1013.40934 (issues 49, the ChatGPT desktop parser, 149, and
-  160, the resume and sync question): ChatGPT `26.1013.40934` (bundle identifier `com.openai.codex`,
+- macOS, Codex Desktop inside ChatGPT 26.1013.40934
+  ([issue 49](https://github.com/seanthegeek/doubleagent/issues/49), the ChatGPT desktop parser,
+  [issue 149](https://github.com/seanthegeek/doubleagent/issues/149), and
+  [issue 160](https://github.com/seanthegeek/doubleagent/issues/160), the resume and sync question):
+  ChatGPT `26.1013.40934` (bundle identifier `com.openai.codex`,
   the build after the 26.1007.71326 of the 2026-10-15 round) with the bundled Codex
   `0.163.0-alpha.10.2` (`originator` `Codex Desktop`), from 2026-10-18 18:15Z to 2026-10-19 00:43Z,
   in the macOS lab VM of the 2026-10-15 bullet below (macOS 26.6.2, build 25G83, arm64, one user).
@@ -76,7 +79,9 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
   an "always allow" grant (the dialog of build 26.1013.40934 offered none for a command), a subagent
   the agent spawned itself, a heartbeat `NOTIFY` decision, an `automation_runs` row and an archived
   thread.
-- Ubuntu, standalone CLI (issues 113 and 118): Ubuntu 26.04.1 LTS, Codex CLI 0.162.1 standalone
+- Ubuntu, standalone CLI ([issue 113](https://github.com/seanthegeek/doubleagent/issues/113) and
+  [issue 118](https://github.com/seanthegeek/doubleagent/issues/118)): Ubuntu 26.04.1 LTS, Codex CLI
+  0.162.1 standalone
   (`codex --version` prints `codex-cli 0.162.1`), 2026-10-15, 17:12Z to 17:22Z (UTC), in the
   author's Ubuntu lab VM (aarch64, kernel 7.0.0-38-generic, one user; no Node.js, npm, snap or deb
   package of Codex, and no ChatGPT app, which has no Linux build), read for file names, sizes, key
@@ -85,8 +90,12 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
   ([section 3](#3-credentials)), and given two turns in `~/demo`, which wrote seven files there, one
   rollout ([Observed rollouts](#observed-rollouts)) and two `history.jsonl` lines. The tree holds
   none of the desktop app's files ([Standalone CLI on Linux](#standalone-cli-on-linux)).
-- macOS, Codex Desktop inside ChatGPT 26.1007.71326 and standalone CLI (issues 113, 118, 120 and
-  121): ChatGPT `26.1007.71326` (bundle id `com.openai.codex`; the app's build is in [section 1 of
+- macOS, Codex Desktop inside ChatGPT 26.1007.71326 and standalone CLI
+  ([issue 113](https://github.com/seanthegeek/doubleagent/issues/113),
+  [issue 118](https://github.com/seanthegeek/doubleagent/issues/118),
+  [issue 120](https://github.com/seanthegeek/doubleagent/issues/120) and
+  [issue 121](https://github.com/seanthegeek/doubleagent/issues/121)): ChatGPT `26.1007.71326`
+  (bundle id `com.openai.codex`; the app's build is in [section 1 of
   `chatgpt-desktop.md`](chatgpt-desktop.md#1-source-and-evidence)) with the bundled Codex
   `0.162.0-alpha.17.2` (`originator` `Codex Desktop`), then Codex CLI `0.162.1` (`originator`
   `codex-tui`) from its shell installer, 2026-10-15 (16:25Z to 17:05Z, UTC), in the author's macOS
@@ -101,8 +110,9 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
   `history.jsonl`. A plain chat and an image generation left no rollout ([section 7 of
   `chatgpt-desktop.md`](chatgpt-desktop.md#7-transcript-stores)). The `~/.codex` tree is the Windows
   one with the differences in [macOS differences](#macos-differences).
-- Windows, standalone CLI (issues 113 and 120): Codex CLI `0.162.1` (`originator` `codex-tui`),
-  installed at 15:38Z on 2026-10-15 (run until 15:46Z) in the
+- Windows, standalone CLI ([issue 113](https://github.com/seanthegeek/doubleagent/issues/113) and
+  [issue 120](https://github.com/seanthegeek/doubleagent/issues/120)): Codex CLI `0.162.1`
+  (`originator` `codex-tui`), installed at 15:38Z on 2026-10-15 (run until 15:46Z) in the
   VM of the Codex Desktop bullet below, beside the ChatGPT desktop app, with the PowerShell
   installer OpenAI documents for Windows (the exact command was not recorded). No npm, Node.js,
   winget or scoop is on the host. The user gave it one prompt from a PowerShell console in a new
@@ -117,7 +127,12 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
   tool calls failed; what the folder ended up holding was not surveyed. The console's own command
   history is in PSReadLine's `ConsoleHost_history.txt`, which is shell history, the job of the EDR
   (the endpoint detection and response tool), and not collected.
-- Windows, Codex Desktop inside ChatGPT 26.1007.9446.0 (issues 113, 114, 115, 116 and 118): the
+- Windows, Codex Desktop inside ChatGPT 26.1007.9446.0
+  ([issue 113](https://github.com/seanthegeek/doubleagent/issues/113),
+  [issue 114](https://github.com/seanthegeek/doubleagent/issues/114),
+  [issue 115](https://github.com/seanthegeek/doubleagent/issues/115),
+  [issue 116](https://github.com/seanthegeek/doubleagent/issues/116) and
+  [issue 118](https://github.com/seanthegeek/doubleagent/issues/118)): the
   ChatGPT desktop app `26.1007.9446.0` (the Microsoft Store package `OpenAI.Codex`, an MSIX
   package, the Windows app package format; see [`chatgpt-desktop.md`](chatgpt-desktop.md)) bundles
   Codex, which identifies itself in its rollouts as `originator` `Codex Desktop`, `cli_version`
@@ -170,11 +185,13 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
 Home resolution: `CODEX_HOME` if set (must exist, canonicalised) else `dirs::home_dir()/.codex`
 ([utils/home-dir/src/lib.rs:13-56](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/utils/home-dir/src/lib.rs#L13-L56)).
 No OS branching: Linux, macOS and Windows all use `~/.codex` / `%USERPROFILE%\.codex`. The macOS
-desktop app uses the same `~/.codex` for sessions (web: github issue 49797, jazzyalex write-up) and
+desktop app uses the same `~/.codex` for sessions (web:
+[openai/codex issue 49797](https://github.com/openai/codex/issues/49797), jazzyalex write-up) and
 keeps only Sparkle update state in `~/Library/Application Support/com.openai.codex`
 ([cli/src/doctor/updates.rs:586](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/cli/src/doctor/updates.rs#L586)).
 Since 26.1007 the bundle id `com.openai.codex` is the ChatGPT app, which bundles Codex (observed on
-macOS, 2026-10-15), so that directory is collected as `chatgpt-desktop` (issue 121).
+macOS, 2026-10-15), so that directory is collected as `chatgpt-desktop`
+([issue 121](https://github.com/seanthegeek/doubleagent/issues/121)).
 
 Inside `$CODEX_HOME`:
 
@@ -263,7 +280,8 @@ Inside `$CODEX_HOME`:
   the ChatGPT desktop app's projectless output directory, the working directory the bundled Codex is
   given for a thread with no project, which the thread's rollout `cwd` names; `outputs/` holds the
   files the agent wrote for the user. Collected whole by the `codex-cli|Documents/Codex` catalog
-  line (issue 149); project discovery drops a rollout `cwd` in it
+  line ([issue 149](https://github.com/seanthegeek/doubleagent/issues/149)); project discovery drops
+  a rollout `cwd` in it
   ([section 6](#6-where-the-project-path-is-recorded)). Observed on Windows (ChatGPT
   26.1007.9446.0, 2026-10-15;
   [section 2 of `chatgpt-desktop.md`](chatgpt-desktop.md#2-per-user-storage)) and on macOS
@@ -339,8 +357,8 @@ and `skills\.system\`. The desktop app adds:
   the tables and columns this build adds ([section 10](#10-other-stores)).
 - `plugins/.plugin-appserver/` (`codex.exe`, 282,678,064 B, and `codex-code-mode-host.exe`,
   `codex-command-runner.exe`, `codex-windows-sandbox-setup.exe`, 7 to 70 MB): copies of the
-  package's binaries, excluded (issue 116). `plugins/.remote-plugin-install-staging/` (empty) is
-  excluded with it.
+  package's binaries, excluded ([issue 116](https://github.com/seanthegeek/doubleagent/issues/116)).
+  `plugins/.remote-plugin-install-staging/` (empty) is excluded with it.
 - `.tmp/bundled-marketplaces/openai-bundled/` (`.materialization-key`, `plugins/`, 274 MB) and
   `.tmp/plugins/` (60 plugin directories, 57 MB; the whole `.tmp/` was gone by the second survey, so
   it is a temporary tree), the marketplace sync the source cites
@@ -591,13 +609,14 @@ Observed on the Ubuntu install of [section 1](#1-source-and-evidence); names, ty
   `.codex/.sandbox-secrets/*`.
 - `.codex-global-state.json` and its `.bak` (observed, Codex Desktop only): ChatGPT conversation
   resume tokens, the account's ids and the user's prompts ([section 12](#12-secrets)). Flagged by
-  `.codex/.codex-global-state.json*` (issue 115).
+  `.codex/.codex-global-state.json*`
+  ([issue 115](https://github.com/seanthegeek/doubleagent/issues/115)).
 - `shell_snapshots/<thread uuid>.<unix ns>.sh` (observed on macOS, Codex Desktop 0.163.0-alpha.10.2
   inside ChatGPT 26.1013.40934, 2026-10-18): the user's exported login-shell environment replayed
   for the sandbox, so any API key the login shell exports is copied into the file; the names
   exported on the clean lab VM included no key-like name
   ([Thread locks and shell snapshots](#thread-locks-and-shell-snapshots)). Flagged by
-  `.codex/shell_snapshots/*` (issue 160).
+  `.codex/shell_snapshots/*` ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)).
 - Remote control's server token (observed on macOS, ChatGPT 26.1013.40934, 2026-10-18 and
   2026-10-19): the app refreshes it when "Allow connections" is turned back on, and
   `logs_2.sqlite` records the refresh, never the token. `state_5.sqlite`
@@ -627,9 +646,11 @@ store.
 
 `.codex/packages`, `.codex/cache`, `.codex/.tmp`, `.codex/tmp`, `.codex/plugins/cache`,
 `.codex/plugins/.plugin-appserver` and `.codex/plugins/.remote-plugin-install-staging` (Codex
-Desktop, issue 116), `.codex/skills/.system`, `.codex/worktrees`, `.codex/.sandbox`,
+Desktop, [issue 116](https://github.com/seanthegeek/doubleagent/issues/116)),
+`.codex/skills/.system`, `.codex/worktrees`, `.codex/.sandbox`,
 `.codex/.sandbox-bin`, `.codex/visualizations`, `.codex/app-server-daemon/packages` (if present).
-`.codex/computer-use/*.app` (the computer-use app bundle on macOS, 77 MB, issue 121).
+`.codex/computer-use/*.app` (the computer-use app bundle on macOS, 77 MB,
+[issue 121](https://github.com/seanthegeek/doubleagent/issues/121)).
 
 On the Windows standalone install `.codex/packages` (794,201,900 B, the standalone and daemon
 releases) and `.codex/.sandbox-bin` (289,784,416 B) fall under these exclusions, so the binaries
@@ -646,7 +667,8 @@ On ChatGPT 26.1013.40934 (macOS, 2026-10-19) the excluded trees under `.codex` m
 `plugins/.plugin-appserver` 341 MB, `.tmp` 123 MB and `computer-use/Codex Computer Use.app` 78 MB,
 beside the small `plugins/.remote-plugin-install-staging`, `skills/.system`, `tmp` and
 `visualizations`; nothing new and large sat outside them. `Library/Application
-Support/com.openai.codex` is updater state only, collected as `chatgpt-desktop` (issue 121).
+Support/com.openai.codex` is updater state only, collected as `chatgpt-desktop`
+([issue 121](https://github.com/seanthegeek/doubleagent/issues/121)).
 
 ### 5. Project-local files
 
@@ -671,7 +693,8 @@ No per-project database.
   Compressed rollouts need zstd before grep. Project discovery reads it and drops a `cwd` that is
   `<home>/Documents/Codex` or lies under it, the desktop app's projectless output directories,
   which the `codex-cli|Documents/Codex` catalog line collects instead
-  ([Scratch directories](#scratch-directories); issue 149).
+  ([Scratch directories](#scratch-directories);
+  [issue 149](https://github.com/seanthegeek/doubleagent/issues/149)).
 - `state_5.sqlite` `threads` `cwd`, which the analyzer reads
   ([`state_5.sqlite` threads](#state_5sqlite-threads)). `session_index.jsonl` holds titles only,
   no path ([`session_index.jsonl`](#session_indexjsonl)).
@@ -721,7 +744,8 @@ Paths relative to the home; `$CODEX_HOME` replaces `.codex` when set.
   the ChatGPT desktop app ([section 10](#10-other-stores)). **Parser reads.**
 - `.codex/state_5.sqlite`, `.codex/thread_history_1.sqlite`: thread metadata
   and a projection of paginated rollouts ([section 10](#10-other-stores)).
-  **Parser reads**, as secondary sources (issue 122).
+  **Parser reads**, as secondary sources
+  ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)).
 - **Copies held by other agents.** Three agents copy these transcripts into stores of their own,
   where the copy outlives the original file (from those agents' source; none seen on a real
   install):
@@ -1266,7 +1290,8 @@ Titles only; local shape matches. Codex Desktop also lists the guardian review t
 A row whose rollout is gone still holds the first prompt. The file name is fixed beside the other
 databases
 ([state/src/sqlite.rs:34-39](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/state/src/sqlite.rs#L34-L39)).
-The columns the parser reads (issue 122), each only when the table has it:
+The columns the parser reads ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)),
+each only when the table has it:
 
 - `id`, the thread id: the rollout's `session_meta.id`, so the rows join
   the rollout's on `session_id`.
@@ -1342,7 +1367,7 @@ On macOS (2026-10-18) the file was created with the first thread (`thread_items`
 `commandActions`, `cwd`, `durationMs`, `exitCode`, `id`, `pluginId`,
 `processId`, `scriptPath`, `source`, `status`, `type`) and `fileChange`
 (`changes`, `diff`, `id`, `kind`, `path`, `status`, `type`). Record shapes
-from source (issue 122):
+from source ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)):
 
 - What is projected: one rollout line at a time, `task_started`,
   `task_complete` and `turn_aborted` into `thread_turns` and each
@@ -1586,7 +1611,8 @@ whether to notify the user. The file is flat TOML (383 bytes on Windows, 356 byt
 string, `prompt` string (what the automation sends), `status` string (`ACTIVE`), `rrule` string
 (an iCalendar recurrence rule, the scheduling syntax of RFC 5545), `target_thread_id` string (the
 thread the automation runs in), `created_at` and `updated_at` integers (epoch milliseconds).
-**Parser reads** (issue 119). The `rrule` values seen:
+**Parser reads** ([issue 119](https://github.com/seanthegeek/doubleagent/issues/119)). The `rrule`
+values seen:
 `RRULE:FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0;BYDAY=MO,TU,WE,TH,FR` (Windows, a weekday schedule),
 `FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0;BYDAY=MO` (macOS, 2026-10-15) and
 `RRULE:FREQ=WEEKLY;BYHOUR=19;BYMINUTE=45;BYDAY=SU,MO,TU,WE,TH,FR,SA` for a task the user set to run
@@ -1983,10 +2009,10 @@ emitting rows, so that an `item_completed` line can be checked against every
 
 | Record | Row |
 | --- | --- |
-| first `session_meta` | `system` ("session start: originator version provider cwd", then ` account=<creator_account_id> user=<creator_user_id>` with only the keys present, issue 118); plus `system` `subagent <id> of <parent> [agent_path= agent_role= agent_nickname=]` when `parent_thread_id`, `source.subagent.thread_spawn.parent_thread_id`, or a `session_id` other than `id` on a non-fork names a parent; plus `system` `forked from <id>` for `forked_from_id` |
+| first `session_meta` | `system` ("session start: originator version provider cwd", then ` account=<creator_account_id> user=<creator_user_id>` with only the keys present, [issue 118](https://github.com/seanthegeek/doubleagent/issues/118)); plus `system` `subagent <id> of <parent> [agent_path= agent_role= agent_nickname=]` when `parent_thread_id`, `source.subagent.thread_spawn.parent_thread_id`, or a `session_id` other than `id` on a non-fork names a parent; plus `system` `forked from <id>` for `forked_from_id` |
 | later `session_meta` | `system` `copied from ancestor: session start ... id= cwd=` when its id differs; none when it repeats the file's own |
 | `turn_context` | sets project and model; `system` `model: <model>` at the first one that names a model and `model: <old> -> <new>` at each later one whose `model` differs; `system` `permission mode: approval=<approval_policy> sandbox=<sandbox_policy> profile=<permission_profile> network=<network> reviewer=<approvals_reviewer> profile_id=<active_permission_profile.id>` at the first one with any of the fields and `permission mode: <old> -> <new>` on every change to the composite (a missing field is `-`, an object compact JSON); both at the line's `timestamp`, before the turn's rows, keyed per session |
-| `event_msg` `thread_settings_applied` (Codex Desktop) | the same `model:` and `permission mode:` tracking as `turn_context`, at the event's `timestamp`, so a change the user makes between turns (a model switch, Approve for me, Full access and its revert) is dated when it was made rather than at the next turn. The event is the thread's settings, not a turn's: it carries `model`, `approval_policy`, `approvals_reviewer` and `active_permission_profile`, no `sandbox_policy`, and a `permission_profile` without the roots a turn adds, so only the three thread-level fields come from it; `sandbox` and `profile` stay as the last `turn_context` had them, or read `-` once the access level changed until the next `turn_context`, and an event before the thread's first `turn_context` is folded into that turn's row (issue 160) |
+| `event_msg` `thread_settings_applied` (Codex Desktop) | the same `model:` and `permission mode:` tracking as `turn_context`, at the event's `timestamp`, so a change the user makes between turns (a model switch, Approve for me, Full access and its revert) is dated when it was made rather than at the next turn. The event is the thread's settings, not a turn's: it carries `model`, `approval_policy`, `approvals_reviewer` and `active_permission_profile`, no `sandbox_policy`, and a `permission_profile` without the roots a turn adds, so only the three thread-level fields come from it; `sandbox` and `profile` stay as the last `turn_context` had them, or read `-` once the access level changed until the next `turn_context`, and an event before the thread's first `turn_context` is folded into that turn's row ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
 | `response_item` with `metadata.inherited_user_message` | none (copied from the parent thread) |
 | `response_item` `message` user | per `content_item_kinds` run: `user` for `user.*`, `unknown` or empty kinds; `system` `context: <kind>: ...` for any other kind; without a kinds list as long as `content`, per block: `system` `context: <marker name>: ...` for a block that is wholly one of the harness wrappers below, else `user`. In a subagent file the first prompt is `system` `subagent task: ...`; later ones stay `user` (below) |
 | `response_item` `message` assistant / developer | `assistant` / `system` (`developer: ...`); empty text skipped |
@@ -2015,11 +2041,11 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `history.jsonl` line | `user` |
 | `state_5.sqlite` `threads` row (secondary) | `system` `thread record: <id> title=<title> rollout=<rollout_path>`, then ` name=`, ` branch=`, ` model=` (the last turn's) and ` archived` when set, at `created_at_ms` (else `created_at`); then `first_user_message` as `user` with no timestamp, `system` `subagent task: ...` in a subagent's thread |
 | `thread_history_1.sqlite` `thread_turns` row (secondary) | `system` `task_started turn=<id>` at `started_at`; `task_complete turn=<id> duration_ms=<n>` at `completed_at` for a completed or failed turn; an interrupted turn has no closing row (its reason is only in the rollout) |
-| `thread_history_1.sqlite` `thread_items` row (secondary) | `userMessage` `user`, `agentMessage` `assistant`, `reasoning` `thinking` (opt-in), at `completed_at_ms`; `hookPrompt`, `contextCompaction` none; any other item renamed to the turn-item form and rendered as the `item_completed` rows above, at `started_at_ms` and `completed_at_ms` (else `created_at_ms`); an `item_json` that does not decode to a JSON object is one `system` row per record at the end of the file's rows, `parser: unparseable record <rowid> (<reason>): <item_json as stored>`, `source_line` the rowid, `session_id` and `project_path` the record's thread's (issue 184) |
-| `automations/<slug>/automation.toml` (Codex only) | one `system` row `scheduled task: <id> name=<name> kind=<kind> status=<status> rrule=<rrule> target_thread=<target_thread_id> created=<created_at> updated=<updated_at> (from <file>, file mtime) prompt: <prompt>` at the file's modification time, `session_id` the target thread; an unreadable file is one `system` row (issue 119) |
-| `logs_2.sqlite` `logs` row `codex_core::session::handlers` `op=ExecApproval` or `codex_app_server::outgoing_message` `CommandExecutionRequestApproval` (Codex Desktop) | `system` `permission decision: <decision> exec <item id> turn=<turn id> (from logs_<N>.sqlite logs, ts)` at `ts` from the handlers row (`denied`, `approved` seen), `session_id` the row's thread id, `tool_use_id` the governed item's id (`exec-<uuid>`, [section 10](#10-other-stores)); a response row (`Decline`, `Accept`) with no handlers row within two seconds is `permission decision: <decision> request <n> (from logs_<N>.sqlite logs, ts)` with no session (issue 160) |
-| `state_5.sqlite` `remote_control_enrollments` row | `system` `remote control: enabled=<0\|1> server=<server_id> environment=<environment_id> host=<server_name> client=<app_server_client_name> account=<account_id>` at `updated_at`, `session_id` empty (issue 160) |
-| `.codex-global-state.json` (secondary, Codex Desktop) | `user` for each `prompt-history` entry of a thread, with an empty `timestamp_utc` (matched on text and session), `session_id` the thread id; `system` `session deleted: <id>` for each `codex-writing-block-deleted-thread-v1:<id>` key and `system` `permission mode (standing): ...` for each `heartbeat-thread-permissions-by-id` entry, at the file's modification time; `system` `thread description: ...` for each `thread-descriptions-v1` entry; one `system` `remote control: mobile device connected=<bool> environment=<id>` row from the two top-level keys; one `system` `scratch directory: <path> (projectless thread <id>) (from <file> thread-projectless-output-directories, file mtime)` row for each `thread-projectless-output-directories` entry, `session_id` the thread id and `project_path` the path itself, so inventory.json lists the directory under `scratch_directories` (issue 149); a file that does not decode is one `parser:` row (issue 160) |
+| `thread_history_1.sqlite` `thread_items` row (secondary) | `userMessage` `user`, `agentMessage` `assistant`, `reasoning` `thinking` (opt-in), at `completed_at_ms`; `hookPrompt`, `contextCompaction` none; any other item renamed to the turn-item form and rendered as the `item_completed` rows above, at `started_at_ms` and `completed_at_ms` (else `created_at_ms`); an `item_json` that does not decode to a JSON object is one `system` row per record at the end of the file's rows, `parser: unparseable record <rowid> (<reason>): <item_json as stored>`, `source_line` the rowid, `session_id` and `project_path` the record's thread's ([issue 184](https://github.com/seanthegeek/doubleagent/issues/184)) |
+| `automations/<slug>/automation.toml` (Codex only) | one `system` row `scheduled task: <id> name=<name> kind=<kind> status=<status> rrule=<rrule> target_thread=<target_thread_id> created=<created_at> updated=<updated_at> (from <file>, file mtime) prompt: <prompt>` at the file's modification time, `session_id` the target thread; an unreadable file is one `system` row ([issue 119](https://github.com/seanthegeek/doubleagent/issues/119)) |
+| `logs_2.sqlite` `logs` row `codex_core::session::handlers` `op=ExecApproval` or `codex_app_server::outgoing_message` `CommandExecutionRequestApproval` (Codex Desktop) | `system` `permission decision: <decision> exec <item id> turn=<turn id> (from logs_<N>.sqlite logs, ts)` at `ts` from the handlers row (`denied`, `approved` seen), `session_id` the row's thread id, `tool_use_id` the governed item's id (`exec-<uuid>`, [section 10](#10-other-stores)); a response row (`Decline`, `Accept`) with no handlers row within two seconds is `permission decision: <decision> request <n> (from logs_<N>.sqlite logs, ts)` with no session ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
+| `state_5.sqlite` `remote_control_enrollments` row | `system` `remote control: enabled=<0\|1> server=<server_id> environment=<environment_id> host=<server_name> client=<app_server_client_name> account=<account_id>` at `updated_at`, `session_id` empty ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
+| `.codex-global-state.json` (secondary, Codex Desktop) | `user` for each `prompt-history` entry of a thread, with an empty `timestamp_utc` (matched on text and session), `session_id` the thread id; `system` `session deleted: <id>` for each `codex-writing-block-deleted-thread-v1:<id>` key and `system` `permission mode (standing): ...` for each `heartbeat-thread-permissions-by-id` entry, at the file's modification time; `system` `thread description: ...` for each `thread-descriptions-v1` entry; one `system` `remote control: mobile device connected=<bool> environment=<id>` row from the two top-level keys; one `system` `scratch directory: <path> (projectless thread <id>) (from <file> thread-projectless-output-directories, file mtime)` row for each `thread-projectless-output-directories` entry, `session_id` the thread id and `project_path` the path itself, so inventory.json lists the directory under `scratch_directories` ([issue 149](https://github.com/seanthegeek/doubleagent/issues/149)); a file that does not decode is one `parser:` row ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
 
 #### Permission rows
 
@@ -2052,8 +2078,8 @@ the settings events.
 
 #### Past-use rows and secondary sources
 
-Sources, by role (issue 122). The rollouts are the primary store: Codex
-writes every other file from them. `history.jsonl`, `state_5.sqlite`,
+Sources, by role ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)). The rollouts
+are the primary store: Codex writes every other file from them. `history.jsonl`, `state_5.sqlite`,
 `thread_history_1.sqlite` and Codex Desktop's `.codex-global-state.json`
 are secondary sources, read on every run; the
 timeline drops a row of theirs that a rollout row of the same session
@@ -2237,7 +2263,7 @@ Codex records no relay and no remote-origin session, at `3e23877` and at `4e7b9e
 Codex Desktop's projectless output directory is a scratch directory: the parser yields a
 `scratch directory:` row for each `thread-projectless-output-directories` entry of
 `.codex-global-state.json` (the table above), so inventory.json lists the directory under
-`scratch_directories` (issue 149).
+`scratch_directories` ([issue 149](https://github.com/seanthegeek/doubleagent/issues/149)).
 
 A rollout `cwd` under `<home>/.codex/worktrees` is classed as a scratch directory by the catalog
 rule (source at `4e7b9e2`); one under a configured `git-worktree-root` is not, and no row marks it.
@@ -2261,7 +2287,8 @@ A bad line in a rollout or in `history.jsonl`, a cut or corrupt zstd frame, and 
 `thread_history_1.sqlite` row whose `item_json` does not decode each give the rows in the table
 above.
 
-Until issue 184 a `thread_history_1.sqlite` row with an unreadable `item_json` gave one summary row
+Until [issue 184](https://github.com/seanthegeek/doubleagent/issues/184) a `thread_history_1.sqlite`
+row with an unreadable `item_json` gave one summary row
 (`parser: <n> thread_items row(s) with unreadable item_json, first at rowid <n>`); it is now one
 row per record with the value in full, as the table above gives (fixture only, no real install has
 shown a corrupt row).

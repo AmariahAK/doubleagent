@@ -486,7 +486,9 @@ row `key = 'rjmacarthy.twinny'`, parse JSON, iterate
 | text | `content` with think block removed; tool_use: `command` or `args` JSON; tool_result: `output`; a `said` step: `summary` |
 | source_line | empty (one SQLite row) |
 
-Model and permission rows are all `system` (issues 96 and 97).
+Model and permission rows are all `system`
+([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)).
 
 #### Permission rows
 
@@ -613,7 +615,8 @@ it as a `user` row with the `summary` as its text, in its place among the reply'
 `tool_name`, `tool_use_id` or `model`
 ([`src/extension/chat/tool-steps.ts:101-104`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/extension/chat/tool-steps.ts#L101-L104),
 [`src/common/types.ts:129-133`](https://github.com/twinnydotdev/twinny/blob/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a/src/common/types.ts#L129-L133));
-before the fix for issue 171 it was a `tool_use` named `said` and an empty `tool_result`. `changes`,
+before the fix for [issue 171](https://github.com/seanthegeek/doubleagent/issues/171) it was a
+`tool_use` named `said` and an empty `tool_result`. `changes`,
 `mcpTool`, `meta.outOfSteps` and `meta.instructions` are not read. The `said` step layout is not
 observed on any real install, source-derived (twinnydotdev/twinny at
 [`0337b26`](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a)).

@@ -755,7 +755,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 
 ### Added
 
-- Docker and Podman named volumes are collected (issue 28). Both
+- Docker and Podman named volumes are collected ([#28]). Both
   collectors enumerate `var/lib/docker/volumes`,
   `var/lib/containers/storage/volumes` and `ProgramData/Docker/volumes`
   under the root, and the rootless `.local/share/docker/volumes` and
@@ -977,3 +977,4 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [#31]: https://github.com/seanthegeek/doubleagent/issues/31
 [#30]: https://github.com/seanthegeek/doubleagent/issues/30
 [#29]: https://github.com/seanthegeek/doubleagent/issues/29
+[#28]: https://github.com/seanthegeek/doubleagent/issues/28

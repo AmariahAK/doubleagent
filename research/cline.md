@@ -756,7 +756,8 @@ All typed `system`:
 #### Past-use rows and secondary sources
 
 Sources, primary or secondary (the analyzer drops a row of a secondary
-source that a primary store records too, issue 122):
+source that a primary store records too,
+[issue 122](https://github.com/seanthegeek/doubleagent/issues/122)):
 
 - Primary: `ui_messages.json`, `api_conversation_history.json` (when no
   `ui_messages.json` is beside it), `task_metadata.json`,

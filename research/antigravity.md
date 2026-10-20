@@ -76,16 +76,16 @@ Extraction:
 
 ### Observed
 
-- **Windows, CLI** (issues 83, 89, 90): `agy` 1.3.5 (`agy --version`) at
-  `%LOCALAPPDATA%\agy\bin\agy.exe`, on `PATH`, 184,062,616 B, sha256
-  `223953a7d64ad199bbeaae3cf84d634b0ec3917979c7a60feac6ade05d50888b`,
-  installed 2026-10-14T23:56:21Z in the author's Parallels lab VM, Windows
-  11 ARM64 build 26300 (`ver` reports `10.0.26300.9550`; ARM64 is the 64-bit
-  Arm architecture) with no WSL distribution installed, and observed the
-  same evening (US Eastern daylight time; the UTC times below cross into
-  2026-10-15), read for file names, sizes, key names, value types and log
-  lines with ids redacted only. `%LOCALAPPDATA%` is the per-user
-  `AppData\Local` folder, `%APPDATA%` the per-user `AppData\Roaming` folder,
+- **Windows, CLI** ([issue 83](https://github.com/seanthegeek/doubleagent/issues/83),
+  [issue 89](https://github.com/seanthegeek/doubleagent/issues/89) and
+  [issue 90](https://github.com/seanthegeek/doubleagent/issues/90)): `agy` 1.3.5 (`agy --version`)
+  at `%LOCALAPPDATA%\agy\bin\agy.exe`, on `PATH`, 184,062,616 B, sha256
+  `223953a7d64ad199bbeaae3cf84d634b0ec3917979c7a60feac6ade05d50888b`, installed 2026-10-14T23:56:21Z
+  in the author's Parallels lab VM, Windows 11 ARM64 build 26300 (`ver` reports `10.0.26300.9550`;
+  ARM64 is the 64-bit Arm architecture) with no WSL distribution installed, and observed the same
+  evening (US Eastern daylight time; the UTC times below cross into 2026-10-15), read for file
+  names, sizes, key names, value types and log lines with ids redacted only. `%LOCALAPPDATA%` is the
+  per-user `AppData\Local` folder, `%APPDATA%` the per-user `AppData\Roaming` folder,
   and `~` is `%USERPROFILE%`, `C:\Users\<user>`. The executable's version
   resource (`VersionInfo.ProductVersion`, the version Windows shows in the
   file's properties) is empty; the embedded changelog's newest heading is
@@ -103,16 +103,16 @@ Extraction:
   [section 3](#3-credentials) and its project-path spellings in
   [section 6](#6-where-the-project-path-is-recorded).
 
-- **Windows, desktop app** (issues 83, 84, 91): version 2.23.1
-  (`main.log`: `Starting app (v2.23.1) with dynamic port…`; the version
-  resource of `Antigravity.exe` has `ProductVersion` `2.23.1.0` and
-  `FileVersion` `2.23.1`), in the same VM, installed per user and first
-  launched 2026-10-14T23:56:11Z (program files in
-  [Program files and install metadata](#program-files-and-install-metadata)).
-  The user ran, in the app: a question with no file writes; a coding task
-  in a project folder `<home>\demo` (`C:\Users\sean\demo`), which wrote six
-  files there (a hello world in C, Go, JavaScript, Python and Rust, and a
-  `README.md`, 00:01:44Z to 00:03:20Z); a research task that wrote a
+- **Windows, desktop app** ([issue 83](https://github.com/seanthegeek/doubleagent/issues/83),
+  [issue 84](https://github.com/seanthegeek/doubleagent/issues/84) and
+  [issue 91](https://github.com/seanthegeek/doubleagent/issues/91)): version 2.23.1 (`main.log`:
+  `Starting app (v2.23.1) with dynamic port…`; the version resource of `Antigravity.exe` has
+  `ProductVersion` `2.23.1.0` and `FileVersion` `2.23.1`), in the same VM, installed per user and
+  first launched 2026-10-14T23:56:11Z (program files in
+  [Program files and install metadata](#program-files-and-install-metadata)). The user ran, in the
+  app: a question with no file writes; a coding task in a project folder `<home>\demo`
+  (`C:\Users\sean\demo`), which wrote six files there (a hello world in C, Go, JavaScript, Python
+  and Rust, and a `README.md`, 00:01:44Z to 00:03:20Z); a research task that wrote a
   Markdown document to the app's `scratch/` directory (00:10:29Z) and
   started a background task; and a task that set up a scheduled automation
   named `weekly-microsoft-security-bulletins` (`sidecar.json` 00:17:41Z to
@@ -136,13 +136,13 @@ Extraction:
   `~/.antigravity`, `~/.config`, `~/.cache` or `~/.antigravity-server` under
   the profile, and no `%APPDATA%\Antigravity IDE`.
 
-- **Linux, CLI** (issues 83, 89, 90): `agy` 1.3.4 (`agy --version`) at
-  `~/.local/bin/agy`, which is not on the non-interactive `PATH`, ELF
-  aarch64, 204,492,984 bytes, sha256
-  `08d619ae3969c33b9cba5eac2a54f4566cbca1b5de68968167cb908ced5b4824`, in the
-  author's Ubuntu lab VM (Ubuntu 26.04.1 LTS, aarch64, Linux
-  7.0.0-38-generic), installed 2026-10-13 21:37 local time (EDT, US Eastern
-  daylight time) and observed the same day, read for file names, sizes, key
+- **Linux, CLI** ([issue 83](https://github.com/seanthegeek/doubleagent/issues/83),
+  [issue 89](https://github.com/seanthegeek/doubleagent/issues/89) and
+  [issue 90](https://github.com/seanthegeek/doubleagent/issues/90)): `agy` 1.3.4 (`agy --version`)
+  at `~/.local/bin/agy`, which is not on the non-interactive `PATH`, ELF aarch64, 204,492,984 bytes,
+  sha256 `08d619ae3969c33b9cba5eac2a54f4566cbca1b5de68968167cb908ced5b4824`, in the author's Ubuntu
+  lab VM (Ubuntu 26.04.1 LTS, aarch64, Linux 7.0.0-38-generic), installed 2026-10-13 21:37 local
+  time (EDT, US Eastern daylight time) and observed the same day, read for file names, sizes, key
   names, value types, SQLite schemas and enum values only, with `find`,
   `ls`, `analyzer/tools/shape.py` and a read-only schema script, all Python
   run with `python3 -I`. The embedded changelog's newest heading is
@@ -156,12 +156,12 @@ Extraction:
   [CLI data directory](#cli-data-directory), and the file secret store its
   log names in [section 3](#3-credentials).
 
-- **Linux, desktop app** (issues 83, 91): version 2.23.1
-  (`main.log`: `Starting app (v2.23.1) with dynamic port…`), in the same VM,
-  first run 2026-10-13 21:29 local time, unpacked by hand from a tarball
-  ([Program files and install metadata](#program-files-and-install-metadata)).
-  The user ran a few tasks, among them a coding task and a scheduled
-  automation, which left four conversations under
+- **Linux, desktop app** ([issue 83](https://github.com/seanthegeek/doubleagent/issues/83) and
+  [issue 91](https://github.com/seanthegeek/doubleagent/issues/91)): version 2.23.1 (`main.log`:
+  `Starting app (v2.23.1) with dynamic port…`), in the same VM, first run 2026-10-13 21:29 local
+  time, unpacked by hand from a tarball
+  ([Program files and install metadata](#program-files-and-install-metadata)). The user ran a few
+  tasks, among them a coding task and a scheduled automation, which left four conversations under
   `~/.gemini/antigravity/conversations/` (655,360 to 1,114,112 B, modified
   21:45, 21:51, 21:55 and 22:00, all `trajectory_meta.source` 1
   (`cascade_client`) and `trajectory_type` 4, of 14, 43, 30 and 38 steps,
@@ -179,9 +179,9 @@ Extraction:
   (lower case), `~/.antigravity`, `~/.antigravity-server`,
   `~/.gemini/antigravity-ide` or `~/.gemini/antigravity-backup`.
 
-- **macOS, CLI** (issue 83): two builds on the author's Mac (macOS 26.4,
-  Darwin 25.4.0, Apple silicon, arm64). `agy` 1.2.16 (`agy --version`; the
-  embedded changelog's newest heading is still `## 1.2.15`) at
+- **macOS, CLI** ([issue 83](https://github.com/seanthegeek/doubleagent/issues/83)): two builds on
+  the author's Mac (macOS 26.4, Darwin 25.4.0, Apple silicon, arm64). `agy` 1.2.16 (`agy --version`;
+  the embedded changelog's newest heading is still `## 1.2.15`) at
   `~/.local/bin/agy`, Mach-O 64-bit arm64 (the macOS executable format),
   175,966,448 bytes, sha256
   `7dca095cfc1df2c057a385ed88a76c7ba98dc103258a80be87a8f42e484cb3aa`,
@@ -203,9 +203,9 @@ Extraction:
   `history.jsonl` lines carry `conversationId` in
   [section 9](#9-joins-and-timestamps).
 
-- **macOS, desktop app** (issue 83): `/Applications/Antigravity.app`,
-  `CFBundleShortVersionString` and `CFBundleVersion` both `2.23.0`, on the
-  same Mac, first launched 2026-10-13 18:28 local time and observed the same
+- **macOS, desktop app** ([issue 83](https://github.com/seanthegeek/doubleagent/issues/83)):
+  `/Applications/Antigravity.app`, `CFBundleShortVersionString` and `CFBundleVersion` both `2.23.0`,
+  on the same Mac, first launched 2026-10-13 18:28 local time and observed the same
   day (its `app.asar` is the **bundle** source above, its other program
   files in
   [Program files and install metadata](#program-files-and-install-metadata)).
@@ -861,10 +861,11 @@ unknown.
   and 1,126 B on Linux, both mode 0600, and 1,122 B on Windows, app
   2.23.1), its
   keys in [section 12](#12-secrets). `*.gemini/antigravity*/plugin_data/*/token.json`
-  flags it in every `.gemini/antigravity*` directory (issue 84).
+  flags it in every `.gemini/antigravity*` directory
+  ([issue 84](https://github.com/seanthegeek/doubleagent/issues/84)).
 - `plugin-secrets.json`, the CLI's file store for plugin secrets when no
-  OS keychain is usable (issue 90). Each CLI 1.3.4 log on Linux has two
-  lines (observed, home redacted)
+  OS keychain is usable ([issue 90](https://github.com/seanthegeek/doubleagent/issues/90)). Each CLI
+  1.3.4 log on Linux has two lines (observed, home redacted)
 
   ```text
   I<MMDD HH:MM:SS.ffffff> <n> auth_store.go:136] Using file-based secret storage at ~/.config/antigravity/plugin-secrets.json
@@ -1250,8 +1251,8 @@ The paths inside `action_spec` sit at different field numbers per action:
 `ActionSpecDeleteFile` 1 `path` and `ActionSpecSed` 3 `path`, each a
 `PathScopeItem` (descriptors of `agy` 1.2.16 and `language_server` 2.23.0,
 macOS arm64), so `delete_file` does not share the `create_file` layout:
-its `path` is field 1, not 2 (issue 88). No `code_action` step has been
-seen in real data.
+its `path` is field 1, not 2 ([issue 88](https://github.com/seanthegeek/doubleagent/issues/88)). No
+`code_action` step has been seen in real data.
 
 `gen_metadata.data` is `CortexStepGeneratorMetadata`: 1 `chat_model`
 (`ChatModelMetadata`: 19 `response_model` such as `gemini-3.8-flash`, 21
@@ -1262,10 +1263,10 @@ The app's databases have one `gen_metadata` row per planner step
 `battle_mode_infos` none, and `trajectory_metadata_blob` one row of 618-698
 B.
 
-Three tool-payload fields carry permission evidence (issue 97), all bool and
-identical in the `agy` 1.2.16 and `language_server` 2.23.0 descriptors
-(macOS arm64): `CortexStepRunCommand` 14 `user_rejected` and 34
-`ran_in_sandbox`, and `CortexStepMcpTool` 7 `user_rejected`. None of the
+Three tool-payload fields carry permission evidence
+([issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), all bool and identical in the
+`agy` 1.2.16 and `language_server` 2.23.0 descriptors (macOS arm64): `CortexStepRunCommand` 14
+`user_rejected` and 34 `ran_in_sandbox`, and `CortexStepMcpTool` 7 `user_rejected`. None of the
 three has been seen set in real data, since every observed tool step was a
 `generic` step whose typed payload sits in a `google.protobuf.Any` the
 parser does not unpack.
@@ -1360,8 +1361,8 @@ empty. Up to CLI 1.2.x `history.jsonl` has no conversation id, so its rows
 carry only the workspace. From CLI 1.3.x a line can carry `conversationId`
 (**observed**, CLI 1.3.4 Linux, one of two lines), which is the
 conversation id above; the parser puts it in the history row's
-`session_id` (issue 89), so the prompt joins to its conversation's rows,
-and a line without it keeps `session_id` empty. A macOS session with CLI
+`session_id` ([issue 89](https://github.com/seanthegeek/doubleagent/issues/89)), so the prompt joins
+to its conversation's rows, and a line without it keeps `session_id` empty. A macOS session with CLI
 1.3.6 (**observed**, 2026-10-15) shows which lines get it: of four lines
 for one conversation, the first prompt, written before the conversation
 existed, had no `conversationId`, and the three prompts typed into the
@@ -1602,8 +1603,8 @@ extracted.
   directory is `.gemini/antigravity-ide/` ([section 7](#7-transcript-stores)).
 
 The descriptor comparison: `tools/proto_descriptors.py extract` (after the
-fix for issue 86) found 271 descriptor files in `agy` 1.2.16 and 484 in
-`language_server` 2.23.0; the difference from the Linux count in
+fix for [issue 86](https://github.com/seanthegeek/doubleagent/issues/86)) found 271 descriptor files
+in `agy` 1.2.16 and 484 in `language_server` 2.23.0; the difference from the Linux count in
 [section 1](#1-source-and-evidence) was not investigated.
 `exa.cortex_pb.CortexStepType` (118 values), `CortexStepStatus`,
 `CortexTrajectorySource`, `gemini_coder.Step`, `gemini_coder.Trajectory` and
@@ -1623,10 +1624,10 @@ themselves, the `delete_file` layout ([Conversation database](#conversation-data
 array of 8 URLs), `token` {`access_token`, `expiry` (ISO date),
 `refresh_token`, `token_type`} and `updated_at`. `client_secret` and the
 `token` values are the credential and `email` names the account. The
-collector flags the file `secret: true` (issue 84); the parser never reads
-it. `ChatModelMetadata.system_prompt` and
-`message_prompts` in `gen_metadata` hold the full prompt including file
-contents; the parser does not read them. Tool outputs in `generic.result`
+collector flags the file `secret: true`
+([issue 84](https://github.com/seanthegeek/doubleagent/issues/84)); the parser never reads it.
+`ChatModelMetadata.system_prompt` and `message_prompts` in `gen_metadata` hold the full prompt
+including file contents; the parser does not read them. Tool outputs in `generic.result`
 and `run_command`, the brain directory's `steps/<idx>/output.txt` and
 `tasks/*.log` contain whatever the agent read, and so, presumably, do the
 FTS5 table's `user_body` and `agent_body`.
@@ -1698,14 +1699,14 @@ workspace's row carry the folder as `project_path`. A `deny[]` list beside
 each `allow[]` is read the same way; none was seen, so it is fixture only.
 On Windows (**observed**, CLI 1.3.5) the one `trustedWorkspaces[]` entry was
 an absolute Windows path, not a `file://` URI; the parser accepts both
-(issue 92).
+([issue 92](https://github.com/seanthegeek/doubleagent/issues/92)).
 
 #### Model rows
 
-The parser yields the model as a `system` row (issue 96): `model: <id>`
-before the rows of the conversation's first step that a `gen_metadata`
-row lists in `step_indices`, and `model: <old> -> <new>` before the rows
-of each later step whose model differs, at the step's
+The parser yields the model as a `system` row
+([issue 96](https://github.com/seanthegeek/doubleagent/issues/96)): `model: <id>` before the rows of
+the conversation's first step that a `gen_metadata` row lists in `step_indices`, and
+`model: <old> -> <new>` before the rows of each later step whose model differs, at the step's
 `metadata.created_at`, with the new id in the `model` column. The id is
 `chat_model.response_model`, else `model_display_name`. No step kind in
 the parser's `SCHEMA` records a model switch. The macOS and Linux rounds
@@ -1745,9 +1746,9 @@ Not stated.
 
 A `steps.permissions` blob that does not decode is one `system` row,
 `parser: the permissions of step <idx> could not be decoded`, and the
-step's other rows stand (issue 92). Each `history.jsonl` and brain mirror
-line that does not decode is its own `system` row carrying the line, and
-the lines around it are still read; a brain chunk can cut a line at a
+step's other rows stand ([issue 92](https://github.com/seanthegeek/doubleagent/issues/92)). Each
+`history.jsonl` and brain mirror line that does not decode is its own `system` row carrying the
+line, and the lines around it are still read; a brain chunk can cut a line at a
 chunk boundary ([section 7](#7-transcript-stores)).
 
 #### Fixtures

@@ -27,9 +27,9 @@ were checked at the same commit on 2026-10-17.
 ### Observed
 
 - No real install of OpenClaw has been surveyed; every review was of source only.
-- The bad-line rows of issue 177 (the legacy `sessions.json` index and JSON lines that are not
-  objects) are not observed on any real install, source-derived
-  ([openclaw/openclaw](https://github.com/openclaw/openclaw) at
+- The bad-line rows of [issue 177](https://github.com/seanthegeek/doubleagent/issues/177) (the
+  legacy `sessions.json` index and JSON lines that are not objects) are not observed on any real
+  install, source-derived ([openclaw/openclaw](https://github.com/openclaw/openclaw) at
   [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)).
 - The public-share and backup-upload rows are fixture only
   ([Sync, relay and origin](#sync-relay-and-origin-rows)).
@@ -799,7 +799,8 @@ provider=<providerOverride> source=<modelOverrideSource>` row from
 
 Every source is parsed on
 every run, and a row of a secondary source is dropped when a primary
-store's row records the same event (issue 122; see
+store's row records the same event
+([issue 122](https://github.com/seanthegeek/doubleagent/issues/122); see
 [Secondary sources in `analyzer/docs/output.md`](../analyzer/docs/output.md#secondary-sources)).
 
 - Primary: `openclaw-agent.sqlite`, all of it: `transcript_events`, the cold archives and every
@@ -982,8 +983,8 @@ forgotten from memory: <session_id> reason=<reason>` per
 
 #### Bad-line rows
 
-Issue 177: a legacy `sessions.json` that cannot be read,
-does not decode or is not a JSON object yields one whole-file `system`
+[Issue 177](https://github.com/seanthegeek/doubleagent/issues/177): a legacy `sessions.json` that
+cannot be read, does not decode or is not a JSON object yields one whole-file `system`
 row in each transcript beside it, after that transcript's line rows,
 with `source_line` 0 and the transcript's `session_id` and `cwd`:
 `parser: sessions.json unreadable (<reason>)`, `parser: sessions.json

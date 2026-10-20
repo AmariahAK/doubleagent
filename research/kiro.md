@@ -95,8 +95,9 @@ KIRO_HOME/.kiro/sessions"):
   `:4, 13, 134-135`); `sessions/<workspace-hash>/sess_<uuid>/session.json` (`workspacePaths`,
   `modelId`, `createdAt`) and `messages.jsonl`, written by the IDE and the CLI's v3 session store
   (tokscale `:8-9, 171-179, 569-590`; codeburn; binary `sess_<uuid>`); `session-index/<hash>.jsonl`;
-  `workspace-roots/<hash(root)>/.trust-migration.json` with key `root` and `permissions.yaml` (issue
-  11282; docs permissions).
+  `workspace-roots/<hash(root)>/.trust-migration.json` with key `root` and `permissions.yaml`
+  ([kirodotdev/Kiro issue 11282](https://github.com/kirodotdev/Kiro/issues/11282); docs
+  permissions).
 - State stores: `memories/` (memory database), `sandbox-state/`, `web-session/`, `cloud-cache/`,
   `sandbox-curl/` (docs permissions). `.default` config marker in `install.sh`.
 - Legacy Amazon Q:
@@ -131,9 +132,11 @@ Kiro IDE (VS Code fork, `nameShort` Kiro, `dataFolderName` `.kiro`, `serverDataF
 `:505-513`). Chat state in `User/globalStorage/kiro.kiroagent/`: `<workspace-hash>/<execution>.chat`
 legacy, extensionless `<workspace-hash>/<session>/<execution>` (post Feb 2026),
 `workspace-sessions/<base64url(path)>/<uuid>.json` v1 records, `index/` code-search index,
-`config.json`, `profile.json`, `.migrations/`, a LanceDB vector index (codeburn; PR 5755; issue
-6780: 4.8 GB sessions plus 564 MB LanceDB; issue 9977: 25 GB across 31 hash dirs). Extensions in
-`~/.kiro/extensions` share the CLI's home.
+`config.json`, `profile.json`, `.migrations/`, a LanceDB vector index (codeburn;
+[kirodotdev/Kiro pull request 5755](https://github.com/kirodotdev/Kiro/pull/5755);
+[kirodotdev/Kiro issue 6780](https://github.com/kirodotdev/Kiro/issues/6780): 4.8 GB sessions plus
+564 MB LanceDB; [kirodotdev/Kiro issue 9977](https://github.com/kirodotdev/Kiro/issues/9977): 25 GB
+across 31 hash dirs). Extensions in `~/.kiro/extensions` share the CLI's home.
 
 #### Environment variables
 
@@ -166,7 +169,9 @@ recording, docs reference/settings), `KIRO_TEST_SESSIONS_DIR`, `KIRO_TEST_SETTIN
 `.aws/amazonq/knowledge_bases` (Q
 [`paths.rs:66`](https://github.com/aws/amazon-q-developer-cli/blob/15cc8f3cd18c4272925ce1c7053268eedff1ea0a/crates/chat-cli/src/util/paths.rs#L66)),
 `.kiro/cloud-cache`, `.kiro/sandbox-state`, `.kiro/sandbox-curl` (names only, docs permissions),
-`*/User/globalStorage/kiro.kiroagent/index` and `*lance*` (PR 5755; issue 6780), `.kiro/extensions`
+`*/User/globalStorage/kiro.kiroagent/index` and `*lance*`
+([kirodotdev/Kiro pull request 5755](https://github.com/kirodotdev/Kiro/pull/5755);
+[kirodotdev/Kiro issue 6780](https://github.com/kirodotdev/Kiro/issues/6780)), `.kiro/extensions`
 (IDE extension payloads). `.kiro/powers` should not be excluded wholesale: powers are skills,
 `mcp.json` and knowledge files (docs powers), and `powers/installed/*/mcp.json` can carry
 credentials.
@@ -188,7 +193,8 @@ No per-project database. `.amazonq/.subagents/<agent>.json` records the last bac
 
 ### 6. Where the project path is recorded
 
-- `~/.kiro/workspace-roots/<hash>/.trust-migration.json` key `root` (issue 11282).
+- `~/.kiro/workspace-roots/<hash>/.trust-migration.json` key `root`
+  ([kirodotdev/Kiro issue 11282](https://github.com/kirodotdev/Kiro/issues/11282)).
 - `~/.kiro/sessions/*/sess_*/session.json` key `workspacePaths` (array) (tokscale `:178-179`);
   `~/.kiro/sessions/cli/*.json` key `cwd` (tokscale `:135`).
 - `data.sqlite3` table `conversations(key, value)` keyed by cwd (Q
@@ -544,8 +550,8 @@ and `--trust-all-tools` leave nothing to read.
 
 #### Model rows
 
-`system` rows (issue 96): `model: <id>` before the rows of the
-first history entry and `model: <old> -> <new>` before the rows of each
+`system` rows ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96)): `model: <id>`
+before the rows of the first history entry and `model: <old> -> <new>` before the rows of each
 entry whose model differs, timestamped like the entry's user row. The
 model is `request_metadata.model_id`; an entry without one falls back to
 `model_info.model_id`, else the legacy `model`, and the row then ends

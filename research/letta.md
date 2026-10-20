@@ -579,7 +579,8 @@ hold pasted keys. V1 `sqlite.db` table `providers` column `api_key`
 
 ### 13. Parser plan
 
-Parse `transcript.jsonl` and `messages.jsonl` always (issue 122), and `sessions.jsonl`.
+Parse `transcript.jsonl` and `messages.jsonl` always
+([issue 122](https://github.com/seanthegeek/doubleagent/issues/122)), and `sessions.jsonl`.
 
 | Column | transcript.jsonl | messages.jsonl |
 | --- | --- | --- |

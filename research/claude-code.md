@@ -41,11 +41,12 @@ executed. Each claim names its evidence level, best first:
   transcript layout for the model itself (2.1.289 strings file, cc:489602: "Session transcripts
   live at `~/.claude/projects/<sanitized-cwd>/*.jsonl`. Each line is a JSON object. Tool calls
   appear as `assistant` messages with `message.content[]` entries of `type: "tool_use"`").
-- **Binary 2.1.296** (issue 93): the author's installed CLI,
-  `~/.local/share/claude/versions/2.1.296`, a Bun-compiled Mach-O arm64 executable of
-  240,664,432 bytes, sha256 `c9b5341637becbd423ddffc5b254afb645682a3868cb708bbc6cc0e7bb419937`,
-  searched for byte strings. Citations are `claude 2.1.296 darwin-arm64 @<byte offset>` with the
-  literal snippet, as for the 2.1.295 Linux build below; the offsets are only valid for this build.
+- **Binary 2.1.296** ([issue 93](https://github.com/seanthegeek/doubleagent/issues/93)): the
+  author's installed CLI, `~/.local/share/claude/versions/2.1.296`, a Bun-compiled Mach-O arm64
+  executable of 240,664,432 bytes, sha256
+  `c9b5341637becbd423ddffc5b254afb645682a3868cb708bbc6cc0e7bb419937`, searched for byte strings.
+  Citations are `claude 2.1.296 darwin-arm64 @<byte offset>` with the literal snippet, as for the
+  2.1.295 Linux build below; the offsets are only valid for this build.
 - **Binary 2.1.295**: the Linux arm64 build of CLI 2.1.295 that Claude Desktop downloads
   (`https://downloads.claude.ai/claude-code-releases/2.1.295/linux-arm64/claude.zst`, decompressed
   255,516,664 bytes, sha256 `cfb9dc1332fb6f92a683f835823e91b3179a803398ca7852cd2381a3cb1dea3b`);
@@ -55,12 +56,13 @@ executed. Each claim names its evidence level, best first:
 
 ### Observed
 
-- macOS, CLI 2.1.296, the author's install, 2026-10-13 (issue 93), key names, enum values and counts
-  only: 308 `permission-mode` records across four session files, every one `permissionMode` `auto`
-  ([section 8](#8-record-schema)); `permissionMode` on every `user` prompt line; `message.model` and
-  `requestedModel` on every `assistant` line, equal on every line seen; a `/model` switch written as
-  a `user` line `<command-name>/model</command-name>` followed by a `user` line holding the command
-  output ([section 9](#9-joins-and-timestamps)); summary lines with
+- macOS, CLI 2.1.296, the author's install, 2026-10-13
+  ([issue 93](https://github.com/seanthegeek/doubleagent/issues/93)), key names, enum values and
+  counts only: 308 `permission-mode` records across four session files, every one `permissionMode`
+  `auto` ([section 8](#8-record-schema)); `permissionMode` on every `user` prompt line;
+  `message.model` and `requestedModel` on every `assistant` line, equal on every line seen; a
+  `/model` switch written as a `user` line `<command-name>/model</command-name>` followed by a
+  `user` line holding the command output ([section 9](#9-joins-and-timestamps)); summary lines with
   `modelUsage.<model id>.{inputTokens, outputTokens, ...}`. The permission configuration keys of
   [Permission configuration](#permission-configuration) were seen in `~/.claude.json` and the
   settings files of the same install, by name only.
@@ -158,8 +160,9 @@ are described in [section 6 of
 - `settings.json`, `settings.local.json` and, per project, `.claude/settings.json` and
   `.claude/settings.local.json`: settings, including the standing permission grants, which with
   the `projects.<path>` grants in `.claude.json` are the evidence of what the person authorised
-  (issue 93). They are collected with the config home and the project catalog's `.claude` entry;
-  their keys are under [Permission configuration](#permission-configuration).
+  ([issue 93](https://github.com/seanthegeek/doubleagent/issues/93)). They are collected with the
+  config home and the project catalog's `.claude` entry; their keys are under
+  [Permission configuration](#permission-configuration).
 - `plugins/`: `installed_plugins.json`, `known_marketplaces.json`, `marketplaces/<name>/` git
   clones, `cache/` zip cache (cc plugins ctx); local also `blocklist.json`,
   `plugin-directory-cache-v2.json`, `synced/`.
@@ -174,11 +177,12 @@ are described in [section 6 of
 
 #### CLI cache directory
 
-The CLI cache directory (issue 81) comes from the env-paths code bundled in the CLI with app name
-`claude-cli` and suffix `nodejs`: `~/Library/Caches/claude-cli-nodejs/` on macOS (observed with CLI
-2.1.295 launched by the Claude Desktop Code tab, 2026-10-11), `$XDG_CACHE_HOME/claude-cli-nodejs/`
-else `~/.cache/claude-cli-nodejs/` on Linux, and `%LOCALAPPDATA%\claude-cli-nodejs\Cache\` on
-Windows (both bundle-derived, not observed on a real install). Under it,
+The CLI cache directory ([issue 81](https://github.com/seanthegeek/doubleagent/issues/81)) comes
+from the env-paths code bundled in the CLI with app name `claude-cli` and suffix `nodejs`:
+`~/Library/Caches/claude-cli-nodejs/` on macOS (observed with CLI 2.1.295 launched by the Claude
+Desktop Code tab, 2026-10-11), `$XDG_CACHE_HOME/claude-cli-nodejs/` else
+`~/.cache/claude-cli-nodejs/` on Linux, and `%LOCALAPPDATA%\claude-cli-nodejs\Cache\` on Windows
+(both bundle-derived, not observed on a real install). Under it,
 `<project slug>/mcp-logs-<server>/<timestamp>.jsonl`: the slug is the cwd with every
 non-alphanumeric character replaced by `-` (the `projects/` key scheme), the server is the MCP
 server name slugged the same way, and the file name is an ISO timestamp with `:` and `.` replaced by
@@ -287,7 +291,8 @@ install):
   `host-creds-*.json` (see claude-desktop).
 - `<config>/sessions/<pid>.<sha256>.key` (139 bytes on Linux, 108 bytes on macOS) beside the
   per-process `sessions/<pid>.json`, observed on real installs with CLI 2.1.295 launched from the
-  Claude Desktop Code tab on Linux and on macOS, 2026-10-11 (see issue 76 and
+  Claude Desktop Code tab on Linux and on macOS, 2026-10-11 (see
+  [issue 76](https://github.com/seanthegeek/doubleagent/issues/76) and
   [`claude-desktop.md`](claude-desktop.md)); flagged `secret: true` (`.claude/sessions/*.key`,
   `.claude-*/sessions/*.key`). The `<pid>.json` itself is not flagged
   ([Remote Control](#remote-control)).
@@ -354,7 +359,7 @@ The config home is `$CLAUDE_CONFIG_DIR`, else `~/.claude`, on every OS
 | `.claude/sessions/<pid>.json` | live-process registry, one file per running CLI process; its keys are under [Remote Control](#remote-control) | yes, one `system` row per file, [section 13](#13-parser-plan) |
 | `.claude/jobs/<id>/parent-transcript.jsonl` | a copy of the parent transcript handed to a background job (cc:474968) | no; not observed |
 | `.claude/dump-prompts/<session id>.jsonl` | full outgoing prompts, when that debug option is on (cc:487015) | no; not observed |
-| `<CLI cache directory>/<key>/mcp-logs-<server>/<timestamp>.jsonl` | MCP server log of the CLI, outside the config home; paths per platform and line shape under [CLI cache directory](#cli-cache-directory) (issue 81) | no; a possible source of `system` rows ([section 13](#13-parser-plan)) |
+| `<CLI cache directory>/<key>/mcp-logs-<server>/<timestamp>.jsonl` | MCP server log of the CLI, outside the config home; paths per platform and line shape under [CLI cache directory](#cli-cache-directory) ([issue 81](https://github.com/seanthegeek/doubleagent/issues/81)) | no; a possible source of `system` rows ([section 13](#13-parser-plan)) |
 
 The parser selects `projects/[^/]+/.*\.jsonl$` and `history.jsonl` under `.claude` or a
 `.claude-<name>` home, so it reads main and subagent transcripts at any depth, ignores the
@@ -661,7 +666,7 @@ which no other record lists in one place.
 #### Permission configuration
 
 - Key names come from the 2.1.296 binary and were observed by name on the 2.1.296 install, values
-  never read (issue 93).
+  never read ([issue 93](https://github.com/seanthegeek/doubleagent/issues/93)).
 - Settings files: `<config home>/settings.json` and `<config home>/settings.local.json` for the
   user, and `<project>/.claude/settings.json` (shared, committed) and
   `<project>/.claude/settings.local.json` (personal, gitignored) per project (`@188743274`
@@ -698,11 +703,11 @@ through a bridge. The evidence is the 2.1.295 Linux binary of [section 1](#1-sou
 and the Ubuntu lab install of 2026-10-11 ([Observed](#observed)).
 
 - **Live at collection time.** `.claude/sessions/<pid>.json` is the per-process registry (collector
-  issue 76). Observed keys on Linux 2.1.295: `pid`, `sessionId`, `cwd`, `startedAt`, `procStart`,
-  `version`, `peerProtocol`, `peerFeatures`, `kind`, `entrypoint`, `hostSessionId`, `pidDomain`,
-  `messagingSocketPath`, `name`, `nameSource`, `nameSince`, `status`, `updatedAt`,
-  `statusUpdatedAt`, with a sibling `<pid>.<sha256>.key`; evidence
-  `claude 2.1.295 linux-arm64 @209019746`
+  [issue 76](https://github.com/seanthegeek/doubleagent/issues/76)). Observed keys on Linux 2.1.295:
+  `pid`, `sessionId`, `cwd`, `startedAt`, `procStart`, `version`, `peerProtocol`, `peerFeatures`,
+  `kind`, `entrypoint`, `hostSessionId`, `pidDomain`, `messagingSocketPath`, `name`, `nameSource`,
+  `nameSince`, `status`, `updatedAt`, `statusUpdatedAt`, with a sibling `<pid>.<sha256>.key`;
+  evidence `claude 2.1.295 linux-arm64 @209019746`
   `pid:process.pid,sessionId:V(),cwd:we(),startedAt:Date.now(),procStart:await Fl(process.pid)`,
   then `@209020296`
   `peerProtocol:Akr,peerFeatures:HU(),kind:s,entrypoint:a.CLAUDE_CODE_ENTRYPOINT,hostSessionId:Okr(),pidDomain:await BT()`.
@@ -743,7 +748,7 @@ and the Ubuntu lab install of 2026-10-11 ([Observed](#observed)).
   shows; a different feature, whose files are in [section 3](#3-credentials).
 
 [Sync, relay and origin rows](#sync-relay-and-origin-rows) says which rows the parser makes of
-these fields (issue 80).
+these fields ([issue 80](https://github.com/seanthegeek/doubleagent/issues/80)).
 
 ### 11. Format versions
 
@@ -813,7 +818,7 @@ Coverage. A label is the start of a `system` row's text, `<label>: ` and then th
 | `user`, any other string, `text` or `image` block | `user` (one row per block); the rules above are tried in this order, the record-level ones for every block |
 | `user`, `tool_result` block | `tool_result`; `tool_reference` blocks as their `tool_name`; a `<persisted-output>` stub replaced by its `tool-results/` file (below); text prefixed `[error]` when `is_error` |
 | `user`, `permissionDecision` (2.1.295) | one `system` row after the line's `tool_result` rows, `permission decision: <decision> source=<source> reason=<reasonType>` (`-` for a missing key), then a space and the object's compact JSON when it has other keys; `tool_use_id` of the line's first `tool_result` block, `tool_name` empty as on `tool_result` rows |
-| `user`, `toolDenialKind`, `userFeedback` (factory key list, [section 8](#8-record-schema)) | appended to that line's `permission decision:` row as ` toolDenialKind=<value> userFeedback=<value>`, in that order, each only when set, printed as recorded (no value set is recorded; `userFeedback` is free text, so it comes last); a line with either key and no `permissionDecision` gets the row with `-` for `decision`, `source` and `reasonType` (issue 97) |
+| `user`, `toolDenialKind`, `userFeedback` (factory key list, [section 8](#8-record-schema)) | appended to that line's `permission decision:` row as ` toolDenialKind=<value> userFeedback=<value>`, in that order, each only when set, printed as recorded (no value set is recorded; `userFeedback` is free text, so it comes last); a line with either key and no `permissionDecision` gets the row with `-` for `decision`, `source` and `reasonType` ([issue 97](https://github.com/seanthegeek/doubleagent/issues/97)) |
 | `attachment` `plan_mode`, `plan_mode_exit`, `plan_mode_reentry`, `auto_mode` | skip: they are timestamped mode changes, but their field shapes are not recorded in this document, so the parser does not read them |
 | `user`, `turnOrigin`, `promptSource`, `origin` (2.1.295 prompt keys) | no row; `origin.kind` still picks the label above, the others change nothing |
 | `user` `permissionMode`, `permission-mode` record | one tracker per session id in the file: the first value is a `system` row `permission mode: <mode>`, a later different value `permission mode: <old> -> <new>`, before the line's other rows; a `user` line's row takes its timestamp, a `permission-mode` record (no timestamp) the latest one seen; an unchanged value, such as a re-appended state record, yields nothing; a subagent file has its own tracker |
@@ -868,9 +873,10 @@ time, so each `debug` message could become a `system` row joined to the session.
 #### Permission rows
 
 Per-call decisions are the `permission decision:` rows of `permissionDecision`, `toolDenialKind`
-and `userFeedback` (issue 97), the mode the `permission mode:` rows, and the standing grants the
-`permission setting:` rows of the settings files and `.claude.json` (issue 93); the coverage table
-has the exact texts, [section 8](#8-record-schema) and
+and `userFeedback` ([issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), the mode the
+`permission mode:` rows, and the standing grants the `permission setting:` rows of the settings
+files and `.claude.json` ([issue 93](https://github.com/seanthegeek/doubleagent/issues/93)); the
+coverage table has the exact texts, [section 8](#8-record-schema) and
 [Permission configuration](#permission-configuration) the records. The `plan_mode`,
 `plan_mode_exit`, `plan_mode_reentry` and `auto_mode` attachments are not read.
 
@@ -906,9 +912,9 @@ Not stated; no deletion marker is stated ([What survives a delete](#what-survive
 #### Bad-line rows
 
 Each bad line becomes its own `system` row at the end of the file's rows, `source_line` its line
-number and text `parser: unparseable line (<decoder message>): <the line in full>` (issue 136); the
-rows before and after it are kept. The session sample under [Fixtures](#fixtures) ends with a cut
-line for this case.
+number and text `parser: unparseable line (<decoder message>): <the line in full>`
+([issue 136](https://github.com/seanthegeek/doubleagent/issues/136)); the rows before and after it
+are kept. The session sample under [Fixtures](#fixtures) ends with a cut line for this case.
 
 #### Fixtures
 

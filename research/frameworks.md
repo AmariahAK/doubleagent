@@ -1,7 +1,7 @@
 # Agent frameworks and self-hosted platforms: default-path sweep
 
-The sweep asked for in issue #64: sixteen agent frameworks, framework
-studios and self-hosted agent platforms, checked for a default per-user
+The sweep asked for in [issue 64](https://github.com/seanthegeek/doubleagent/issues/64): sixteen
+agent frameworks, framework studios and self-hosted agent platforms, checked for a default per-user
 directory that the collectors could add as catalog lines. It is not an
 agent document. The frameworks that got a catalog agent each have their
 own document, linked from the table; this document holds the evidence for

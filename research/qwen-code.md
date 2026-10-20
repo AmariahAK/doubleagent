@@ -606,7 +606,8 @@ Between the first commit and
   `provenance: "external_agent"` unless a user mention, with `agentId` and `agentName`; messages
   from another agent of the same workspace,
   [CRS 2541-2585](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L2541-L2585))
-  are parsed as `system` rows (issue 172): `<subtype> (provenance=<provenance> agent=<agentName>
+  are parsed as `system` rows ([issue 172](https://github.com/seanthegeek/doubleagent/issues/172)):
+  `<subtype> (provenance=<provenance> agent=<agentName>
   agentId=<agentId>): <text>`, the agent from the record's `agentId` and `agentName` or, on an
   agent's `agent_mention`, from `systemPayload.author` (`agentId`, `name`), parts not recorded left
   out, `<text>` the message parts or `systemPayload.displayText`. A `type: "user"` record is a
@@ -667,7 +668,9 @@ row per `functionCall` part and a `thinking` row per `thought:true` part.
 
 #### Permission rows
 
-Permission rows (issues 96 and 97), added with the model rows in [Model](#model-rows):
+Permission rows ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
+[issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), added with the model rows in
+[Model](#model-rows):
 
 - `permission decision: <status>` (`system`, the result's `tool_name` and
   `tool_use_id`) after a `tool_result` row whose `toolCallResult.status`
