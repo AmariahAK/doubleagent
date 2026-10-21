@@ -1302,6 +1302,32 @@ a session's `origin` is `remote`, its `synced` `yes`, and its turn
 counts 0. The update time is the conversation's as of sign-in: a reply
 from inside the app did not change it.
 
+The `cursor` parser writes `session origin: remote cursor cloud agent`
+for a Cursor cloud agent, which runs on Cursor's servers, with the
+agent's `bc-<id>` as `session_id` and its repository
+(`github.com/<owner>/<repo>`) as `project_path`: at the cached
+conversation's `updated_at` when `conversation-search.db` holds one for
+the agent, else at the agent's `createdAt` from the
+`cloudAgentRepository.agents.<account>` list in `state.vscdb`. Beside it,
+at the agent's `createdAt`, `session synced: cursor cloud agent <bcId>
+(vendor copy; from state.vscdb cloudAgentRepository.agents)` records
+that Cursor holds the conversation. The
+session also has `model: <model>` (with ` requested=<id>` when the
+requested model id differs), `source host: github.com <owner>/<repo>
+(cloud agent)`, `cloud agent: <name> repo=<repoUrl> status=<status>
+workflowStatus=<workflowStatus> archived=<isArchived> killed=<isKilled>
+vmStarted=<hasStartedVm> (from state.vscdb cloudAgentRepository.agents,
+rowUpdatedAtMs)` and, when the search index holds its text, `cached
+conversation text (conversation-search.db, source=cloud-cache): <text>`,
+one `system` row because the index runs the prompt and the reply
+together; when the user answered the agent's request to authorise an
+MCP server, the session also has `permission decision: <userDecision>
+mcp auth for cloud agent <bcId> tool_call=<toolCallId> (from state.vscdb
+cloudAgentRepository.mcpAuthResolution, file mtime)`, with the tool call
+id as `tool_use_id`. Its `origin` is `remote` and its `synced` `yes`; every other
+Cursor session's `synced` is `no`, since the editor records no sync of a
+local conversation.
+
 The `zed`, `goose`, `kiro`, `hermes` and `ollama` parsers write model rows
 in the same form. `zed` writes `model: <model> provider=<provider>` once
 per thread, after the thread-start row, since a thread blob keeps one
@@ -1628,9 +1654,9 @@ no timestamp come first. Its fields, in order:
 | `assistant_turns` | integer | The number with `turn_type` `assistant`. |
 | `tool_calls` | integer | The number with `turn_type` `tool_use`. |
 | `source_file` | string | The `source_file` that contributed the most of the session's records, the first met on a tie, so a transcript wins over a one-line-per-prompt history file; `""` when no record names one. |
-| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (written by the `agent-zero`, `chatgpt-desktop`, `cline`, `codex-cli`, `copilot-cli`, `kilo-code`, `letta`, `open-interpreter`, `openclaw`, `opencode`, `pi` and `vscode` parsers); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
+| `synced` | string | Whether the session is synced to a remote account, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session synced:` (written by the `agent-zero`, `chatgpt-desktop`, `cline`, `codex-cli`, `copilot-cli`, `cursor`, `kilo-code`, `letta`, `open-interpreter`, `openclaw`, `opencode`, `pi` and `vscode` parsers); `no` when the agent's parser records sync state and no record carries that row; `""` when the agent's parser records no sync state, so nothing is known. A string rather than a boolean, because `false` would say the agent can sync and did not. Since analyzer 0.14.0. |
 | `relayed` | string | Whether the session was carried through a messaging platform (Telegram, WhatsApp, email, a GitHub thread), which keeps its own copy of the conversation, from the agent's own record of it: `yes` when one of the session's records is a `system` row whose `text` starts with `session relayed:` (written by the `agent-zero`, `goose` and `qwen-code` parsers); `no` when the agent's parser records relay state and no record carries that row; `""` when the agent's parser records no relay state, so nothing is known. A relay is not a sync: the copy is on the platform, not in the agent vendor's account, so a session can read `yes` in both fields (an Agent Zero Telegram chat chained on a stored provider response). Since analyzer 0.15.0. |
-| `origin` | string | Where the session began, from the agent's own record of it: `remote` when one of the session's records is a `system` row whose `text` starts with `session origin: remote` (written by the `vscode` parser, for a Copilot cloud agent task that ran on GitHub's servers and is only listed in the editor, and by the `chatgpt-desktop` parser, for a ChatGPT conversation the app lists from the account; since analyzer 0.20.0 also by the `cursor` parser, for a conversation whose header names an agent location other than `local`); `local` when the agent's parser records origin and no record carries that row; `""` when the agent's parser records no origin, so nothing is known. A remote `vscode` or `chatgpt-desktop` session is also `synced` `yes`, since the vendor holds its copy; the `cursor` parser records no sync state, so a Cursor session's `synced` is `""`. Since analyzer 0.15.0. |
+| `origin` | string | Where the session began, from the agent's own record of it: `remote` when one of the session's records is a `system` row whose `text` starts with `session origin: remote` (written by the `vscode` parser, for a Copilot cloud agent task that ran on GitHub's servers and is only listed in the editor, and by the `chatgpt-desktop` parser, for a ChatGPT conversation the app lists from the account; since analyzer 0.20.0 also by the `cursor` parser, for a conversation whose header names an agent location other than `local`, and since analyzer 0.20.1 for a Cursor cloud agent, `session origin: remote cursor cloud agent`); `local` when the agent's parser records origin and no record carries that row; `""` when the agent's parser records no origin, so nothing is known. A remote `vscode`, `chatgpt-desktop` or `cursor` session is also `synced` `yes`, since the vendor holds its copy; since analyzer 0.20.1 every other Cursor session's `synced` is `no`. Since analyzer 0.15.0. |
 | `recovered` | string | Whether the session was rebuilt from secondary sources (see [Secondary sources](#secondary-sources)): `yes` when every one of its records in `timeline.jsonl` has `recovered` `yes`, so its primary transcript is gone and only secondary sources hold it; `partial` when some do, so the primary was cut or rewound and a secondary source kept turns it lost; `no` when none does and the agent's parser reads at least one secondary source; `""` when the agent's parser reads no secondary source, so nothing is known. Computed after the filters, over the session's event records only (`system` rows left out), so a secondary source's header, record or `parser:` row never makes a complete session `partial`, and a session with no event record reads `no` or `""`. Because deduplication matches on text, `partial` also results when a secondary source records an event in another form than the primary store does (an index that compresses a tool call into one line), so it marks a session to compare against its secondary sources, not proof of a cut; and a Letta session on the server backend, whose local transcript mirrors the server's store of record, reads `yes` or `partial` by design. Since analyzer 0.15.0. |
 
 ## Compatibility

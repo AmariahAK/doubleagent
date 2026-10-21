@@ -160,7 +160,7 @@ cursor|.local/state/cursor/agent-stores
 cursor|.config/Cursor/update-supervisor
 cursor|AppData/Roaming/Cursor/User
 cursor|AppData/Roaming/Cursor/logs
-cursor|AppData/Roaming/Cursor/AgentStores
+cursor|AppData/Local/Cursor/AgentStores
 cursor|AppData/Roaming/Cursor/update-supervisor
 # VS Code and VSCodium: globalStorage holds Copilot Chat, Cline, Roo, Kilo, Continue, Augment state
 vscode|.vscode*/extensions/extensions.json
@@ -749,11 +749,13 @@ AppData/Local/com.github.githubapp/EBWebView/BrowserMetrics-spare.pma
 .cursor/extensions
 .cursor/worktrees
 .cursor/plugins/marketplaces
+.cursor/plugins/cache
 .cursor-server/bin
 .cursor-server/extensions
 */Cursor/User/globalStorage/state.vscdb.backup
 */User/globalStorage/anysphere.cursor-agent-worker/agent-cli
 */Cursor/update-supervisor/*/cursor-update-supervisor
+*/Cursor/update-supervisor/*/inno_updater.exe
 .cursor/projects/*/canvases/node_modules
 .cursor/statsig-cache.json
 .codeium/windsurf/implicit

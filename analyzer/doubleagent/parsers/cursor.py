@@ -1,8 +1,8 @@
 """Cursor IDE agent conversations (issue 51).
 
-Closed source. Validated against a real install of the Cursor IDE on macOS
-(3.24.18, 3.25.9 and 3.26.13, October 2026), one step per listing, and the
-3.25.9 and 3.26.13 bundles (`workbench.glass.main.js`) for the run modes;
+Closed source. Validated against real installs of the Cursor IDE on macOS
+(3.24.18, 3.25.9 and 3.26.13), Linux (3.25.9) and Windows (3.26.13),
+October 2026, one step per listing, and the 3.25.9 and 3.26.13 bundles (`workbench.glass.main.js`) for the run modes;
 see `research/cursor.md`, whose Parsing part this module follows (Record
 schema, Joins and timestamps, Parser plan). The standalone Cursor Agent
 CLI's `~/.cursor/chats` and `acp-sessions` stores are not read: no real
@@ -32,7 +32,8 @@ install has shown them. The IDE's paths are under `<ide>`, which is
   - User bubble (`type` 1: `text`, `createdAt`, `modelInfo.modelName`):
     a `model: <id>` row the first time a user bubble names a model and
     `model: <old> -> <new>` when a later one names another, then the `user`
-    row at `createdAt`. Every row of the turn carries that model in
+    row at `createdAt`. A user bubble without `modelInfo` (the turns the
+    app injects) gives no `model:` row. Every row of the turn carries that model in
     `model`; assistant records name none. `composerData.modelConfig` is
     the current selection with no history and is not read.
   - Assistant sub-bubble (`type` 2, no `toolFormerData`: `thinking.text`,
@@ -63,11 +64,28 @@ install has shown them. The IDE's paths are under `<ide>`, which is
     reason=<blockReason> options=<allowlistOptions ids>` instead; then a
     `tool_result` row, `result`, prefixed `[rejected] ` when
     `additionalData.status` is `rejected` and the prompt was answered, at
-    `completedAtMs`, and none for a pending call with no `result`.
+    `completedAtMs`, and none for a pending call with no `result`. A
+    call in flight when the user stopped the turn (Windows 3.26.13) has
+    `reviewData.status` the string `None`, `additionalData.status`
+    `rejected` and the preset `selectedOption`: its row is `permission
+    decision: stopped by the user (reviewData.status None,
+    additionalData.status rejected)`, and its result keeps the
+    `[rejected] ` prefix; the calls queued after it have
+    `toolFormerData.status` `cancelled` and an empty `additionalData`,
+    and yield their `tool_use` row and no permission row.
     `tool_name` is `toolFormerData.name` and `tool_use_id` `toolCallId` on
     all three. A call that ran under auto-run or a standing allowlist
     entry has no `reviewData` and gets no permission row; the run mode and
-    the list in force are standing rows.
+    the list in force are standing rows. An MCP tool call is an ordinary
+    tool bubble (Windows 3.26.13): `toolFormerData.name`
+    `mcp-<server>-<tool>` (`tool` 19) and the manifest fetch
+    `get_mcp_tools` (`tool` 63), with `params` and `rawArgs` as for any
+    tool and `additionalData` holding only `status`. A prompt for an MCP
+    call answered Run under Allowlist leaves no `reviewData`,
+    `selectedOption` or `blockReason`, so no per-call decision row exists
+    for MCP calls; the switches in force (`yoloMcpToolsDisabled`,
+    `mcpAuthBlocking`) are standing rows. `toolFormerData.toolCallBinary`
+    (a serialized copy of the call) and `modelCallId` are not read.
   - `composerHeaders` table (`composerId`, `createdAt`, `lastUpdatedAt`,
     `isArchived`, and `value`: `name`, `isArchived`,
     `workspaceIdentifier.uri.fsPath`, `trackedGitRepos[]`,
@@ -80,9 +98,15 @@ install has shown them. The IDE's paths are under `<ide>`, which is
     `lastUpdatedAt`. A header with no `composerData` that is not a draft
     (it has an `agentLocationHistory` entry or is archived) is a deleted
     conversation: `conversation deleted (header kept; time is the header's
-    lastUpdatedAt)` at `lastUpdatedAt`. An `agentLocation.type` other than
-    `local` gives `session origin: remote <type>` (bundle-derived: only
-    `local` has been seen), so `records_origin` is set.
+    lastUpdatedAt)` at `lastUpdatedAt`, followed by ` (isArchived is set by
+    the delete)` when the header is archived, since the delete sets the
+    flag on a conversation that was never archived (Windows 3.26.13); such
+    a header gets no `conversation archived` row. An `agentLocation.type`
+    other than `local` gives `session origin: remote <type>`
+    (bundle-derived: only `local` has been seen). `agentLocation` and
+    `agentLocationHistory` are optional per conversation: on Windows
+    3.26.13 one header had neither and a later one of the same install
+    both.
   - `agentKv:blob:<sha256>` rows, read only for deleted conversations: a
     JSON blob (`role`, `content`) whose `content` contains the id of a
     deleted composer yields a `user` or `assistant` row from `content`
@@ -128,10 +152,76 @@ install has shown them. The IDE's paths are under `<ide>`, which is
     <account>` true gives `remote agent host enrolled: <displayName>
     (from state.vscdb remoteAgentHost.enrolled.<account>, file mtime)`,
     `<displayName>` from `remoteAgentHost.displayName.<account>` (JSON or
-    plain text), else `-`. Only the `github-` and `remoteAgentHost.` keys
+    plain text), else `-`; the row text ends `file mtime; on by default, a
+    paired device leaves no local record)`, since the enrolment is on
+    from sign-in and pairing a phone wrote nothing locally (Windows
+    3.26.13). Only the `github-` and `remoteAgentHost.` keys
     are selected: the `secret://` values beside them (the GitHub token,
     `remoteAgentHost.computerKey.<account>`) are never read. Nothing
-    marks a session synced, so `records_sync` stays unset.
+    marks a local session synced: a local session reads `synced` `no`.
+  - Cloud agents (Windows 3.26.13, 2026-10-21). A cloud agent (`bc-<uuid>`,
+    "background composer") runs on Cursor's servers and has no composer
+    rows locally. Each element of an `ItemTable`
+    `cloudAgentRepository.agents.<account>` list (selected by the prefix,
+    so the account id may be URL-encoded; a value that is not a JSON list
+    is skipped) with `bcId`, `name`, `repoUrl` (`github.com/<owner>/
+    <repo>`), `status`, `workflowStatus`, `isArchived`, `isKilled`,
+    `hasStartedVm`, `createdAt`, `rowUpdatedAtMs`, `modelDetails.modelName`
+    and `requestedModel.modelId` gives, with `session_id` the `bcId`,
+    `project_path` the `repoUrl` and `model` the model on every row:
+    `session origin: remote cursor cloud agent` at `createdAt`, unless the
+    `conversation-search.db` beside the file has a `cloud-cache` row for
+    the agent, whose parse yields it; `session synced: cursor cloud agent
+    <bcId> (vendor copy; from state.vscdb cloudAgentRepository.agents)`
+    at `createdAt`, since the vendor holds the conversation, so
+    `records_sync` is set; `model: <modelName>` (with `
+    requested=<modelId>` when the two differ) at `createdAt`; `source host:
+    github.com <owner>/<repo> (cloud agent)` at `createdAt` when `repoUrl`
+    starts `github.com/`; and `cloud agent: <name> repo=<repoUrl>
+    status=<status> workflowStatus=<workflowStatus> archived=<isArchived>
+    killed=<isKilled> vmStarted=<hasStartedVm> (from state.vscdb
+    cloudAgentRepository.agents, rowUpdatedAtMs)` at `rowUpdatedAtMs`.
+    An agent the Agents window started as a new project
+    (`startedAsNewProject`, with `branchName`) has a `repoUrl` in Cursor
+    Origin, `origin.cursor.com/git/<namespace>/tmp-<hex>`, and no
+    `source host:` row. `cloudAgentRepository.mcpAuthResolution`
+    (`agentId`, `toolCallId`, `userDecision`; also `authId`, `nonce`,
+    `queryId` and `version`, not read), the user's answer to a cloud
+    agent's request to authorise an MCP server, gives `permission
+    decision: <userDecision> mcp auth for cloud agent <agentId>
+    tool_call=<toolCallId> (from state.vscdb
+    cloudAgentRepository.mcpAuthResolution, file mtime)` in the agent's
+    session with `tool_use_id` the `toolCallId`; the grant itself is held
+    server-side.
+    Each element of `cloudEnvironmentTemplate.githubRepos` (`url`, `name`,
+    `type`), the repositories the account may reach through Origin,
+    gives `source host repository: <url, else name> type=<type> (from
+    state.vscdb cloudEnvironmentTemplate.githubRepos, file mtime)` with
+    no session. `cursorDiskKV` `bcCachedDetails:<bcId>`, written when a
+    cloud conversation is reopened, is protobuf with no schema yet and is
+    not read; the `secret://` connection tokens beside the list are never
+    read.
+  - MCP servers and plugins (Windows 3.26.13), from `ItemTable`, with an
+    empty `session_id`. A key `mcpOAuth.global.<b64>` or
+    `mcpOAuth.secret.<b64>` names URL-safe base64 (unpadded) of `[<scope>]
+    <field>`, the scope `plugin-<plugin>-<server>::mcpScope:profile:<b64
+    profile>` or `oauth-attempt:<uuid>`. Per server scope with the global
+    field `mcp_server_url`: `mcp server: <scope before ::> url=<url> (from
+    state.vscdb mcpOAuth.global, mcp_oauth_updated_at_ms)` at the scope's
+    `mcp_oauth_updated_at_ms` (`file mtime` in the text and the file's
+    time when it is absent), ending ` tokens=stored (ciphertext, not
+    read)` when a `mcpOAuth.secret.` key of the scope names `mcp_tokens`.
+    Only the key names of `mcpOAuth.secret.` rows are selected: their
+    values (`mcp_tokens`, `mcp_code_verifier`,
+    `mcp_oauth_attempt_client_secret`, `mcp_client_information`) are
+    safeStorage ciphertext and credentials. The `oauth-attempt:` scopes,
+    the migration flags and `mcpOAuth.extensionMigrationComplete` yield
+    nothing. Each entry (`id`, `sources[]`) of a
+    `cursor.plugins.installedIds.<team>|<scope>` list gives `plugin
+    installed: id=<id> sources=<sources> scope=<scope> (from state.vscdb
+    cursor.plugins.installedIds, file mtime)`, the scope `no-workspace` or
+    a folder's `file://` URI, whose path (a Windows drive URI in the
+    `c:\\...` form `fsPath` writes) is the row's `project_path`.
 * `.cursor/projects/<sanitized cwd>/agent-transcripts/<composerId>/
   <composerId>.jsonl`, the agent worker's copy, a secondary source
   (`secondary()`): `{role, message{content[{type text|tool_use, text,
@@ -143,7 +233,8 @@ install has shown them. The IDE's paths are under `<ide>`, which is
   text blocks are `assistant` rows and tool blocks `tool_use` rows
   (`tool_name` the transcript's CamelCase name, `text` the compact JSON of
   `input`), with an empty time, so they pair on text alone; the
-  transcript's tool names differ from `toolFormerData.name` and are not
+  transcript's tool names differ from `toolFormerData.name` (an MCP
+  call is `GetDynamicTools` or `CallDynamicTool` there) and are not
   mapped, so a live conversation's transcript `tool_use` rows do not pair
   with the bubbles' and are kept beside them. `turn_ended` lines and lines
   of any other shape yield nothing. `session_id` is the file name and
@@ -164,9 +255,32 @@ install has shown them. The IDE's paths are under `<ide>`, which is
   -<linesDeleted>` at `scoredAt`, with no session. Only `ai_code_hashes`
   has been seen populated; the other three are fixture only.
 * `<ide>/User/globalStorage/conversation-search.db` (not secondary):
-  `conversations` (`id`, `title`, `source`, `is_archived`, `updated_at`),
-  one `conversation index: <title> source=<source> archived=<is_archived>`
-  row per row with a title, at `updated_at`.
+  `conversations` (`fts_rowid`, `id`, `title`, `source`, `is_archived`,
+  `updated_at`) and the FTS5 shadow table `conversation_fts_content`
+  (`id`, `c0` the title, `c1` the body), read as a plain table joined on
+  `fts_rowid` = `id`, never through the fts5 virtual table. Per row, at
+  `updated_at`: `session origin: remote cursor cloud agent` when `source`
+  is `cloud-cache` (a cloud agent's cached conversation, `id` its
+  `bc-<uuid>`); `conversation index: <title> source=<source>
+  archived=<is_archived>` when it has a title; and `cached conversation
+  text (conversation-search.db, source=<source>): <c1>` when the body is
+  not empty. The body runs the prompt and the reply together with no turn
+  boundary, so it is one `system` row, never `user` or `assistant`, with
+  `source=local` for a local row. Some local rows have no body: on
+  Windows 3.26.13 conversations with text had bodies of 252 and 806
+  characters and the deleted and short ones none, as on macOS (42
+  characters); the `cloud-cache` rows held the cloud conversations'
+  text. A cloud agent's project and model come from the agent list in
+  the home's `state.vscdb`.
+* `<ide>/User/globalStorage/mcp-oauth-attempts/<uuid>.json` (Windows
+  3.26.13), the dynamic client registration of an MCP OAuth attempt, one
+  file per server at a time, rewritten when the server reconnects
+  (`serverUrl`, `clientInformation.client_id`, `owner.workspaceId`,
+  `createdAtMs`; plaintext, no secret): `mcp oauth attempt:
+  server=<serverUrl> client_id=<client_id> workspace=<workspaceId> (from
+  mcp-oauth-attempts/<file>)` at `createdAtMs`, else the file's
+  modification time with `, file mtime` in the parenthesis; a file that
+  is not a JSON object is one `parser:` row.
 * `.cursor/cli-config.json` (`approvalMode`, `permissions.allow[]`,
   `permissions.deny[]`, `sandbox.mode`) and `.cursor/permissions.json` in
   the home or a project (`approvalMode`, `allowlists.mcp[]`,
@@ -188,12 +302,14 @@ that does not decode one `parser:` row.
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import sqlite3
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from ..inputs import Artifact, error_reason
 from ..model import Row, compact
@@ -219,6 +335,7 @@ TRANSCRIPT_RX = re.compile(r"^\.cursor/projects/[^/]+/agent-transcripts/[^/]+/([
 TRACKING_RX = re.compile(r"^\.cursor/ai-tracking/ai-code-tracking\.db$")
 CLI_CONFIG_RX = re.compile(r"^\.cursor/cli-config\.json$")
 PERMISSIONS_RX = re.compile(r"^\.cursor/permissions\.json$")
+ATTEMPT_RX = re.compile(r"^%s/User/globalStorage/mcp-oauth-attempts/([^/]+\.json)$" % IDE)
 
 SETTINGS_KEY = (
     "src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl"
@@ -254,7 +371,41 @@ SWITCHES = (
 # The settings blob is flushed late by the app, so its rows say so.
 COMPOSER_SOURCE = "(from state.vscdb composerState, file mtime, written late by the app)"
 MODEL_USED_SOURCE = "(from state.vscdb aiSettings.modelLastUsedAt, written late by the app)"
+STOPPED_TEXT = (
+    "permission decision: stopped by the user (reviewData.status None,"
+    " additionalData.status rejected)"
+)
 DELETED_TEXT = "conversation deleted (header kept; time is the header's lastUpdatedAt)"
+# The delete sets the header's `isArchived`, so a deleted header reads
+# archived although the conversation never was (Windows 3.26.13).
+ARCHIVED_BY_DELETE = " (isArchived is set by the delete)"
+# The cloud agent list, one `ItemTable` key per Cursor account (the suffix
+# is the account id, `auth0|user_<id>` or URL-encoded `auth0%7Cuser_<id>`),
+# and the repositories a cloud agent may use (Windows 3.26.13).
+CLOUD_AGENTS_PREFIX = "cloudAgentRepository.agents."
+GITHUB_REPOS_KEY = "cloudEnvironmentTemplate.githubRepos"
+CLOUD_ORIGIN = "session origin: remote cursor cloud agent"
+CLOUD_SOURCE = "(from state.vscdb cloudAgentRepository.agents, rowUpdatedAtMs)"
+CLOUD_SYNCED = (
+    "session synced: cursor cloud agent %s (vendor copy; from state.vscdb"
+    " cloudAgentRepository.agents)"
+)
+REPOS_SOURCE = "(from state.vscdb cloudEnvironmentTemplate.githubRepos, file mtime)"
+CLOUD_CACHE = "cloud-cache"
+# The cloud agent's request to authorise an MCP server, answered by the
+# user (Windows 3.26.13).
+MCP_AUTH_KEY = "cloudAgentRepository.mcpAuthResolution"
+MCP_AUTH_SOURCE = "(from state.vscdb cloudAgentRepository.mcpAuthResolution, file mtime)"
+# MCP OAuth state, one `ItemTable` key per scope and field: the suffix is
+# URL-safe base64 of `[<scope>] <field>`. The `mcpOAuth.secret.` values are
+# safeStorage ciphertext and are never read: only their key names are
+# selected.
+MCP_GLOBAL_PREFIX = "mcpOAuth.global."
+MCP_SECRET_PREFIX = "mcpOAuth.secret."
+MCP_KEY_RX = re.compile(r"^\[(.+)\] (\S+)$")
+MCP_TOKENS = " tokens=stored (ciphertext, not read)"
+PLUGINS_PREFIX = "cursor.plugins.installedIds."
+PLUGINS_SOURCE = "(from state.vscdb cursor.plugins.installedIds, file mtime)"
 
 # `<timestamp>Thursday, Oct 1, 2026, 6:00 AM (UTC-4)</timestamp>` LF
 # `<user_query>Q</user_query>`, the worker's wrapper of a user text block.
@@ -280,7 +431,7 @@ TRACKING_TABLES = {
     "ai_deleted_files": ("gitPath", "composerId", "conversationId", "model", "deletedAt"),
     "scored_commits": ("commitHash", "branchName", "linesAdded", "linesDeleted", "scoredAt"),
 }
-SEARCH_COLUMNS = ("id", "title", "source", "is_archived", "updated_at")
+SEARCH_COLUMNS = ("fts_rowid", "id", "title", "source", "is_archived", "updated_at")
 
 
 def run_mode(mode: dict, sandbox: bool) -> str:
@@ -466,11 +617,52 @@ def read_composers(con: sqlite3.Connection) -> dict[str, _Composer]:
     return composers
 
 
+def read_cloud_agents(con: sqlite3.Connection, errors: list) -> list[tuple[int, dict]]:
+    """(rowid, agent) of every element with a `bcId` of the `ItemTable`
+    lists `cloudAgentRepository.agents.<account>`, in key order. The
+    prefix alone selects them, so either spelling of the account id
+    matches; a value that is not a JSON list is skipped, and one that
+    starts as a list and does not decode is an error entry."""
+    if "ItemTable" not in table_names(con):
+        return []
+    sql = "select rowid, key, value from ItemTable where substr(key, 1, ?) = ? order by key"
+    found: list[tuple[int, dict]] = []
+    for rowid, key, value in con.execute(sql, (len(CLOUD_AGENTS_PREFIX), CLOUD_AGENTS_PREFIX)):
+        agents = None
+        if _as_text(value).lstrip().startswith("["):
+            agents = _decode(int(rowid), _as_text(key), value, errors)
+        for agent in agents if isinstance(agents, list) else []:
+            if isinstance(agent, dict) and agent.get("bcId"):
+                found.append((int(rowid), agent))
+    return found
+
+
+def cloud_model(agent: dict) -> tuple[str, str]:
+    """(model, requested) of a cloud agent: `modelDetails.modelName`, else
+    `requestedModel.modelId`, and that `modelId`."""
+    requested = _as_text(_object(agent.get("requestedModel")).get("modelId"))
+    model = _as_text(_object(agent.get("modelDetails")).get("modelName")) or requested
+    return model, requested
+
+
 def project_map(path: Path) -> dict[str, tuple[str, str]]:
-    """composerId -> (project_path, git_branch) from the `state.vscdb` at
-    `path`; {} when it is missing or unreadable. Cached by the file's and
-    its sidecar's size and mtime, since every transcript and side database
-    of a home asks for the same file."""
+    """composerId, and a cloud agent's `bcId`, -> (project_path,
+    git_branch) from the `state.vscdb` at `path`; {} when it is missing or
+    unreadable."""
+    return _state_index(path)[0]
+
+
+def model_map(path: Path) -> dict[str, str]:
+    """A cloud agent's `bcId` -> its model, from the `state.vscdb` at
+    `path`; {} when it is missing or unreadable."""
+    return _state_index(path)[1]
+
+
+def _state_index(path: Path) -> tuple[dict[str, tuple[str, str]], dict[str, str]]:
+    """(project_map, model_map) of the `state.vscdb` at `path`. A cloud
+    agent's project is its `repoUrl`. Cached by the file's and its
+    sidecar's size and mtime, since every transcript and side database of
+    a home asks for the same file."""
     key = [str(path)]
     for p in (path, Path(str(path) + "-wal")):
         try:
@@ -482,35 +674,71 @@ def project_map(path: Path) -> dict[str, tuple[str, str]]:
     if cache_key in _PROJECT_CACHE:
         return _PROJECT_CACHE[cache_key]
     found: dict[str, tuple[str, str]] = {}
+    models: dict[str, str] = {}
     if is_sqlite(path):
         try:
             with open_copy(path) as con:
                 # A pre-scan: the file's own parse reports its errors.
                 found = {cid: c.project for cid, c in read_composers(con).items()}
+                for _rowid, agent in read_cloud_agents(con, []):
+                    bc_id = str(agent["bcId"])
+                    found.setdefault(bc_id, (_as_text(agent.get("repoUrl")), ""))
+                    models.setdefault(bc_id, cloud_model(agent)[0])
         except sqlite3.DatabaseError:
-            found = {}
+            found, models = {}, {}
     _PROJECT_CACHE.clear()
-    _PROJECT_CACHE[cache_key] = found
-    return found
+    _PROJECT_CACHE[cache_key] = (found, models)
+    return found, models
 
 
-_PROJECT_CACHE: dict[tuple, dict[str, tuple[str, str]]] = {}
+_PROJECT_CACHE: dict[tuple, tuple[dict[str, tuple[str, str]], dict[str, str]]] = {}
 
 
-def home_projects(artifact: Artifact) -> dict[str, tuple[str, str]]:
-    """The composer projects of the IDE `state.vscdb` in the artifact's
-    home, the first of the platform parents that has one."""
+def _home_state(artifact: Artifact) -> Path | None:
+    """The IDE `state.vscdb` in the artifact's home, the first of the
+    platform parents that has one."""
     for parent in IDE_PARENTS:
         path = artifact.home.disk_path / parent / "User/globalStorage/state.vscdb"
         if path.is_file():
-            return project_map(path)
-    return {}
+            return path
+    return None
+
+
+def home_projects(artifact: Artifact) -> dict[str, tuple[str, str]]:
+    """The composer and cloud agent projects of the home's IDE
+    `state.vscdb`."""
+    path = _home_state(artifact)
+    return project_map(path) if path else {}
+
+
+def home_models(artifact: Artifact) -> dict[str, str]:
+    """The cloud agent models of the home's IDE `state.vscdb`."""
+    path = _home_state(artifact)
+    return model_map(path) if path else {}
+
+
+def cloud_cached_ids(state: Path) -> set[str]:
+    """The ids of the `cloud-cache` rows of the `conversation-search.db`
+    beside the `state.vscdb` at `state`, whose parse yields their origin
+    row; an empty set when it is missing or unreadable."""
+    path = state.parent / "conversation-search.db"
+    if not is_sqlite(path):
+        return set()
+    try:
+        with open_copy(path) as con:
+            if "conversations" not in table_names(con):
+                return set()
+            sql = "select id from conversations where source = ?"
+            return {_as_text(r[0]) for r in con.execute(sql, (CLOUD_CACHE,))}
+    except sqlite3.DatabaseError:
+        return set()
 
 
 class CursorParser(Parser):
     agent = "cursor"
     name = "cursor"
     records_origin = True
+    records_sync = True
     has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
@@ -524,6 +752,7 @@ class CursorParser(Parser):
                 TRACKING_RX,
                 CLI_CONFIG_RX,
                 PERMISSIONS_RX,
+                ATTEMPT_RX,
             )
         )
 
@@ -545,6 +774,8 @@ class CursorParser(Parser):
             yield from self._database(artifact, self._tracking, opts)
         elif TRANSCRIPT_RX.match(rel):
             yield from self._transcript(artifact)
+        elif ATTEMPT_RX.match(rel):
+            yield from self._attempt(artifact)
         else:
             yield from self._settings_file(artifact)
 
@@ -602,6 +833,9 @@ class CursorParser(Parser):
             yield from self._blobs(artifact, con, deleted)
         yield from self._standing(artifact, con, errors)
         yield from self._integrations(artifact, con, errors)
+        yield from self._cloud(artifact, con, errors)
+        yield from self._mcp(artifact, con)
+        yield from self._plugins(artifact, con, errors)
         yield from error_rows(self, artifact, errors)
 
     def _stamper(self, artifact: Artifact, c: _Composer):
@@ -715,8 +949,14 @@ class CursorParser(Parser):
         review = extra.get("reviewData")
         pending = False
         if isinstance(review, dict):
-            pending = review.get("status") != "Done" or tool.get("status") == "loading"
-            text = pending_text(name, extra, review) if pending else permission_text(extra, review)
+            if review.get("status") == "None" and extra.get("status") == "rejected":
+                # A turn the user stopped: `selectedOption` is a preset.
+                text = STOPPED_TEXT
+            else:
+                pending = review.get("status") != "Done" or tool.get("status") == "loading"
+                text = (
+                    pending_text(name, extra, review) if pending else permission_text(extra, review)
+                )
             yield row("system", text, started)
         result = tool.get("result")
         result_text = ""
@@ -733,7 +973,9 @@ class CursorParser(Parser):
         if name:
             yield stamp("system", "session name: " + name, c.created(), line)
         yield from self._origin(c, stamp)
-        yield stamp("system", DELETED_TEXT, c.header_updated(), line)
+        # The delete sets `isArchived`: no `conversation archived` row.
+        text = DELETED_TEXT + (ARCHIVED_BY_DELETE if c.archived() else "")
+        yield stamp("system", text, c.header_updated(), line)
 
     def _draft(self, c: _Composer, found, stamp) -> Iterator[Row]:
         rowid, key, value = found
@@ -836,30 +1078,195 @@ class CursorParser(Parser):
                 raw = items.get(DISPLAY_PREFIX + account, (0, None))[1]
                 name = _plain(raw)
                 name = compact(name if isinstance(name, str) else _as_text(raw)) or "-"
-                text = "remote agent host enrolled: %s (from state.vscdb %s, file mtime)" % (
-                    name,
-                    key,
+                text = (
+                    "remote agent host enrolled: %s (from state.vscdb %s, file mtime;"
+                    " on by default, a paired device leaves no local record)" % (name, key)
                 )
                 yield self._row(artifact, "system", text, mtime, rowid)
+
+    def _cloud(self, artifact: Artifact, con: sqlite3.Connection, errors: list) -> Iterator[Row]:
+        """Rows of the cloud agent lists and of the repository list. The
+        origin row of an agent is left to `conversation-search.db` when it
+        has a `cloud-cache` row for the agent. `bcCachedDetails:<bcId>` is
+        protobuf with no schema and is not read."""
+        if "ItemTable" not in table_names(con):
+            return
+        cached = cloud_cached_ids(artifact.disk_path)
+        agents = read_cloud_agents(con, errors)
+        for rowid, agent in agents:
+            yield from self._cloud_agent(artifact, rowid, agent, cached)
+        yield from self._mcp_auth(artifact, con, agents, errors)
+        found = con.execute(
+            "select rowid, value from ItemTable where key = ?", (GITHUB_REPOS_KEY,)
+        ).fetchone()
+        if found is None:
+            return
+        repos = _decode(int(found[0]), GITHUB_REPOS_KEY, found[1], errors)
+        mtime = file_mtime(artifact)
+        for repo in repos if isinstance(repos, list) else []:
+            if isinstance(repo, dict):
+                yield self._row(artifact, "system", repository_text(repo), mtime, int(found[0]))
+
+    def _cloud_agent(
+        self, artifact: Artifact, rowid: int, agent: dict, cached: set[str]
+    ) -> Iterator[Row]:
+        """`session origin:`, `model:`, `source host:` and `cloud agent:`
+        rows of one element of a cloud agent list, in its session."""
+        bc_id = str(agent["bcId"])
+        repo = _as_text(agent.get("repoUrl"))
+        model, requested = cloud_model(agent)
+        created = agent.get("createdAt") or agent.get("rowUpdatedAtMs")
+
+        def row(text: str, when) -> Row:
+            r = self._row(artifact, "system", text, when, rowid)
+            r.session_id, r.project_path, r.model = bc_id, repo, model
+            return r
+
+        if bc_id not in cached:
+            yield row(CLOUD_ORIGIN, created)
+        yield row(CLOUD_SYNCED % bc_id, created)
+        if model:
+            extra = " requested=" + requested if requested and requested != model else ""
+            yield row("model: " + model + extra, created)
+        if repo.startswith("github.com/"):
+            yield row("source host: github.com %s (cloud agent)" % repo[11:], created)
+        yield row(cloud_text(agent), agent.get("rowUpdatedAtMs") or created)
+
+    def _mcp_auth(
+        self, artifact: Artifact, con: sqlite3.Connection, agents: list, errors: list
+    ) -> Iterator[Row]:
+        """`permission decision: <userDecision> mcp auth for cloud agent
+        <agentId> ...` from `cloudAgentRepository.mcpAuthResolution`, in
+        the agent's session and joined on its `toolCallId`, at the file's
+        modification time; project and model from the agent list."""
+        found = con.execute(
+            "select rowid, value from ItemTable where key = ?", (MCP_AUTH_KEY,)
+        ).fetchone()
+        if found is None:
+            return
+        doc = _decode(int(found[0]), MCP_AUTH_KEY, found[1], errors)
+        known = {str(a["bcId"]): a for _rowid, a in agents}
+        mtime = file_mtime(artifact)
+        for res in doc if isinstance(doc, list) else [doc]:
+            if not isinstance(res, dict):
+                continue
+            agent_id, call_id = _as_text(res.get("agentId")), _as_text(res.get("toolCallId"))
+            text = "permission decision: %s mcp auth for cloud agent %s tool_call=%s %s" % (
+                _field(res.get("userDecision")),
+                _field(agent_id),
+                _field(call_id),
+                MCP_AUTH_SOURCE,
+            )
+            row = self._row(artifact, "system", text, mtime, int(found[0]))
+            row.session_id, row.tool_use_id = agent_id, call_id
+            if agent_id in known:
+                row.project_path = _as_text(known[agent_id].get("repoUrl"))
+                row.model = cloud_model(known[agent_id])[0]
+            yield row
+
+    def _mcp(self, artifact: Artifact, con: sqlite3.Connection) -> Iterator[Row]:
+        """`mcp server: <server> url=<url> (from ...)` per MCP OAuth scope
+        with an `mcp_server_url`, at its `mcp_oauth_updated_at_ms`, else the
+        file's modification time, with ` tokens=stored (ciphertext, not
+        read)` when an `mcpOAuth.secret.` key names `mcp_tokens` for the
+        scope. Only the key names of the secret rows are selected. The
+        `oauth-attempt:` scopes and keys whose name does not decode to
+        `[<scope>] <field>` are skipped."""
+        if "ItemTable" not in table_names(con):
+            return
+        sql = "select key from ItemTable where substr(key, 1, ?) = ?"
+        tokens = set()
+        for (key,) in con.execute(sql, (len(MCP_SECRET_PREFIX), MCP_SECRET_PREFIX)):
+            name = mcp_key_name(_as_text(key), MCP_SECRET_PREFIX)
+            if name and name[1] == "mcp_tokens":
+                tokens.add(name[0])
+        sql = "select rowid, key, value from ItemTable where substr(key, 1, ?) = ? order by key"
+        scopes: dict[str, dict[str, tuple[int, object]]] = {}
+        for rowid, key, value in con.execute(sql, (len(MCP_GLOBAL_PREFIX), MCP_GLOBAL_PREFIX)):
+            name = mcp_key_name(_as_text(key), MCP_GLOBAL_PREFIX)
+            if name and not name[0].startswith("oauth-attempt:"):
+                scopes.setdefault(name[0], {})[name[1]] = (int(rowid), value)
+        mtime = file_mtime(artifact)
+        for scope in sorted(scopes):
+            fields = scopes[scope]
+            if "mcp_server_url" not in fields:
+                continue
+            rowid, raw = fields["mcp_server_url"]
+            url = _plain(raw)
+            url = url if isinstance(url, str) else _as_text(raw)
+            updated = _plain(fields.get("mcp_oauth_updated_at_ms", (0, None))[1])
+            has_time = isinstance(updated, (int, float)) and not isinstance(updated, bool)
+            text = "mcp server: %s url=%s (from state.vscdb mcpOAuth.global, %s)" % (
+                scope.split("::", 1)[0],
+                _field(compact(url)),
+                "mcp_oauth_updated_at_ms" if has_time else "file mtime",
+            )
+            if scope in tokens:
+                text += MCP_TOKENS
+            yield self._row(artifact, "system", text, updated if has_time else mtime, rowid)
+
+    def _plugins(self, artifact: Artifact, con: sqlite3.Connection, errors: list) -> Iterator[Row]:
+        """`plugin installed: id=<id> sources=<sources> scope=<scope> (from
+        ...)` per entry of each `cursor.plugins.installedIds.<team>|<scope>`
+        list, at the file's modification time; a `file://` scope is the
+        row's `project_path`. A value that is not a JSON list is skipped,
+        one that starts as a list and does not decode is an error entry."""
+        if "ItemTable" not in table_names(con):
+            return
+        sql = "select rowid, key, value from ItemTable where substr(key, 1, ?) = ? order by key"
+        mtime = file_mtime(artifact)
+        for rowid, key, value in con.execute(sql, (len(PLUGINS_PREFIX), PLUGINS_PREFIX)):
+            key = _as_text(key)
+            scope = key[len(PLUGINS_PREFIX) :].rsplit("|", 1)[-1]
+            entries = None
+            if _as_text(value).lstrip().startswith("["):
+                entries = _decode(int(rowid), key, value, errors)
+            for entry in entries if isinstance(entries, list) else []:
+                if not isinstance(entry, dict):
+                    continue
+                sources = entry.get("sources")
+                names = ",".join(str(s) for s in sources) if isinstance(sources, list) else ""
+                text = "plugin installed: id=%s sources=%s scope=%s %s" % (
+                    _value(entry.get("id")),
+                    names or "-",
+                    _field(scope),
+                    PLUGINS_SOURCE,
+                )
+                row = self._row(artifact, "system", text, mtime, int(rowid))
+                row.project_path = uri_path(scope) if scope.startswith("file:") else ""
+                yield row
 
     # -- side databases --------------------------------------------------
 
     def _search(self, artifact: Artifact, con: sqlite3.Connection, opts: Options) -> Iterator[Row]:
         if "conversations" not in table_names(con):
             return
-        projects = home_projects(artifact)
+        projects, models = home_projects(artifact), home_models(artifact)
+        bodies = fts_bodies(con)
         for rec in _select(con, "conversations", SEARCH_COLUMNS):
+            sid = _as_text(rec.get("id"))
+
+            def row(text: str, rec=rec, sid=sid) -> Row:
+                r = self._row(artifact, "system", text, rec.get("updated_at"), int(rec["_rowid"]))
+                self._join(r, sid, projects)
+                r.model = models.get(sid, "")
+                return r
+
+            source = _as_text(rec.get("source"))
+            if source == CLOUD_CACHE:
+                yield row(CLOUD_ORIGIN)
             title = compact(_as_text(rec.get("title")))
-            if not title:
-                continue
-            text = "conversation index: %s source=%s archived=%s" % (
-                title,
-                _field(rec.get("source")),
-                _field(rec.get("is_archived")),
-            )
-            row = self._row(artifact, "system", text, rec.get("updated_at"), int(rec["_rowid"]))
-            self._join(row, _as_text(rec.get("id")), projects)
-            yield row
+            if title:
+                yield row(
+                    "conversation index: %s source=%s archived=%s"
+                    % (title, _field(source), _field(rec.get("is_archived")))
+                )
+            body = compact(_as_text(bodies.get(rec.get("fts_rowid"))))
+            if body:
+                yield row(
+                    "cached conversation text (conversation-search.db, source=%s): %s"
+                    % (_field(source), body)
+                )
 
     def _tracking(
         self, artifact: Artifact, con: sqlite3.Connection, opts: Options
@@ -922,6 +1329,38 @@ class CursorParser(Parser):
                     yield r
         yield from error_rows(self, artifact, errors, sid, path)
 
+    # -- MCP OAuth attempt files ------------------------------------------
+
+    def _attempt(self, artifact: Artifact) -> Iterator[Row]:
+        """`mcp oauth attempt: server=<serverUrl> client_id=<client_id>
+        workspace=<workspaceId> (from mcp-oauth-attempts/<file>)` at
+        `createdAtMs`, else the file's modification time (and the text
+        says so). The client id is an identifier, not a secret."""
+        rel = artifact.rel
+        try:
+            with open(artifact.disk_path, "rb") as fh:
+                doc = json.loads(fh.read().decode("utf-8", errors="replace"))
+        except (OSError, ValueError) as e:
+            yield self._row(
+                artifact, "system", "parser: unreadable %s: %s" % (rel, error_reason(e))
+            )
+            return
+        if not isinstance(doc, dict):
+            yield self._row(artifact, "system", "parser: %s is not a JSON object" % rel)
+            return
+        m = ATTEMPT_RX.match(rel)
+        source = "mcp-oauth-attempts/" + (m.group(1) if m else "")
+        created = doc.get("createdAtMs")
+        if created in (None, ""):
+            created, source = file_mtime(artifact), source + ", file mtime"
+        text = "mcp oauth attempt: server=%s client_id=%s workspace=%s (from %s)" % (
+            _field(doc.get("serverUrl")),
+            _field(_object(doc.get("clientInformation")).get("client_id")),
+            _field(_object(doc.get("owner")).get("workspaceId")),
+            source,
+        )
+        yield self._row(artifact, "system", text, created, 1)
+
     # -- settings files ---------------------------------------------------
 
     def _settings_file(self, artifact: Artifact) -> Iterator[Row]:
@@ -962,6 +1401,77 @@ def _field(value) -> str:
 
 def _role_label(role: str) -> str:
     return "system prompt" if role == "system" else "%s message" % (role or "-")
+
+
+def _value(value) -> str:
+    """A cloud agent field as row text: `-` when absent or empty, else as
+    `setting_value` writes it."""
+    return "-" if value in (None, "") else setting_value(value)
+
+
+def mcp_key_name(key: str, prefix: str) -> tuple[str, str] | None:
+    """(scope, field) of an `mcpOAuth.global.` or `mcpOAuth.secret.` key,
+    whose suffix is URL-safe base64 (unpadded) of `[<scope>] <field>`; None
+    when it does not decode to that form. Only the key name is read."""
+    suffix = key[len(prefix) :]
+    try:
+        name = base64.urlsafe_b64decode(suffix + "=" * (-len(suffix) % 4)).decode("utf-8")
+    except ValueError:
+        return None
+    m = MCP_KEY_RX.match(name)
+    return (m.group(1), m.group(2)) if m else None
+
+
+def uri_path(uri: str) -> str:
+    """The path of a `file://` URI, percent-decoded; a Windows drive path
+    (`file:///c%3A/Users/...`) in the drive form `c:\\Users\\...` that
+    `fsPath` writes."""
+    path = unquote(urlparse(uri).path)
+    if re.match(r"^/[A-Za-z]:", path):
+        return path[1:].replace("/", "\\")
+    return path
+
+
+def fts_bodies(con: sqlite3.Connection) -> dict:
+    """`conversation_fts_content` `id` -> `c1` (the body; `c0` is the
+    title), read from the FTS5 shadow table as a plain table, so the fts5
+    module is never needed; {} when the table or a column is missing."""
+    if "conversation_fts_content" not in table_names(con):
+        return {}
+    have = {r[1] for r in con.execute("pragma table_info(conversation_fts_content)")}
+    if not {"id", "c1"} <= have:
+        return {}
+    return {r[0]: r[1] for r in con.execute("select id, c1 from conversation_fts_content")}
+
+
+def cloud_text(agent: dict) -> str:
+    """`cloud agent: <name> repo=<repoUrl> status=<status> workflowStatus=
+    <workflowStatus> archived=<isArchived> killed=<isKilled>
+    vmStarted=<hasStartedVm> (from ...)`, `-` for an absent value."""
+    return (
+        "cloud agent: %s repo=%s status=%s workflowStatus=%s archived=%s killed=%s vmStarted=%s %s"
+        % (
+            compact(agent.get("name")) or "-",
+            _value(agent.get("repoUrl")),
+            _value(agent.get("status")),
+            _value(agent.get("workflowStatus")),
+            _value(agent.get("isArchived")),
+            _value(agent.get("isKilled")),
+            _value(agent.get("hasStartedVm")),
+            CLOUD_SOURCE,
+        )
+    )
+
+
+def repository_text(repo: dict) -> str:
+    """`source host repository: <url, else name> type=<type> (from ...)`
+    for one element of `cloudEnvironmentTemplate.githubRepos`."""
+    target = _as_text(repo.get("url")) or _as_text(repo.get("name")) or "-"
+    return "source host repository: %s type=%s %s" % (
+        target,
+        _value(repo.get("type")),
+        REPOS_SOURCE,
+    )
 
 
 def pending_text(name: str, extra: dict, review: dict) -> str:

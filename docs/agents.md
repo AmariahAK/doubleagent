@@ -47,7 +47,7 @@ agent name in each row links to its subsection.
 | [`copilot-desktop`](#copilot-desktop) | parsed | shipped app and real installs: Linux, Windows (October 2026) | [research](../research/copilot-desktop.md); [issue 147](https://github.com/seanthegeek/doubleagent/issues/147); [issue 149](https://github.com/seanthegeek/doubleagent/issues/149): the inventory lists the app's own directories as projects |
 | [`crewai`](#crewai) | backlog | Source, appdirs source | [research](../research/crewai.md); [issue 140](https://github.com/seanthegeek/doubleagent/issues/140); `latest_kickoff_task_outputs.db` holds every task's output with its messages |
 | [`crush`](#crush) | parsed | source; fixture only | [research](../research/crush.md) |
-| [`cursor`](#cursor) | parsed | real installs: macOS IDE and CLI, Linux IDE (October 2026) | [research](../research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); [issue 235](https://github.com/seanthegeek/doubleagent/issues/235); [issue 236](https://github.com/seanthegeek/doubleagent/issues/236); [issue 237](https://github.com/seanthegeek/doubleagent/issues/237); the Agent CLI's own chat store is not parsed yet |
+| [`cursor`](#cursor) | parsed | real installs: macOS IDE and CLI, Linux and Windows IDE (October 2026) | [research](../research/cursor.md); [issue 51](https://github.com/seanthegeek/doubleagent/issues/51); [issue 235](https://github.com/seanthegeek/doubleagent/issues/235); [issue 236](https://github.com/seanthegeek/doubleagent/issues/236); [issue 237](https://github.com/seanthegeek/doubleagent/issues/237); the Agent CLI's own chat store is not parsed yet |
 | [`dify`](#dify) | backlog | Source | [research](../research/dify.md); [issue 142](https://github.com/seanthegeek/doubleagent/issues/142); sandbox `shellctl.db` and job logs hold shell jobs; chats in PostgreSQL |
 | [`factory-droid`](#factory-droid) | backlog | Shipped binary strings, docs | [research](../research/factory-droid.md); [issue 54](https://github.com/seanthegeek/doubleagent/issues/54); JSONL session transcripts under `.factory/sessions` and a prompt history |
 | [`flowise`](#flowise) | backlog | Source | [research](../research/flowise.md); [issue 68](https://github.com/seanthegeek/doubleagent/issues/68); `database.sqlite` with `chat_message` (tool use and agent reasoning) and `execution` |
@@ -509,8 +509,25 @@ switch, at the file's modification time, one `model last used:` row
 per model, a `source host: github account <login>` row from the
 editor's own GitHub sign-in (`github-<login>` keys, at their last use)
 and a `remote agent host enrolled:` row when the machine is enrolled as
-a remote agent host; the cached GitHub token is never read. `User/globalStorage/conversation-search.db` (`conversation
-index:` rows), `.cursor/ai-tracking/ai-code-tracking.db` (`ai code:`,
+a remote agent host, which remote control does by default; for each
+cloud agent in a `cloudAgentRepository.agents.*` list a `session origin:
+remote cursor cloud agent`, a `session synced:` row, a `cloud agent:`
+status row, a `source host:` row for its
+repository and a `model:` row, and a `source host repository:` row per
+entry of `cloudEnvironmentTemplate.githubRepos`; a `permission
+decision:` row for a cloud agent's request to authorise an MCP server
+(`cloudAgentRepository.mcpAuthResolution`); an `mcp server:` row per
+plugin MCP server from the `mcpOAuth.global.*` keys, saying when its
+tokens are stored, and a `plugin installed:` row per
+`cursor.plugins.installedIds.*` entry; the cached GitHub token, the
+`mcpOAuth.secret.*` values and the cloud agent's connection token are
+never read.
+`User/globalStorage/conversation-search.db` (`conversation index:`
+rows, and for a cloud agent's `cloud-cache` row its origin and its
+cached conversation text from `conversation_fts_content`),
+`User/globalStorage/mcp-oauth-attempts/<uuid>.json` (`mcp oauth
+attempt:` rows),
+`.cursor/ai-tracking/ai-code-tracking.db` (`ai code:`,
 `conversation summary:`, `file deleted by agent:` and `scored commit:`
 rows), `.cursor/cli-config.json` and `.cursor/permissions.json` in the
 home or a project (`permission setting:` rows). Secondary source:
@@ -545,8 +562,22 @@ allow-always form (`selectedOption` `run` with
 `appliedAllowlistOptionIds`), the agent transcripts, `ai_code_hashes`
 rows, the records an archive and a delete left, and the keys of the
 editor's GitHub sign-in and of the remote agent host enrolment; a
-repository-bound cloud conversation was not observed. The Agent CLI on
-Linux and Windows, and the IDE on Windows, are not observed. The CLI's
+repository-bound cloud conversation was not observed there. Real
+install of the Cursor IDE on Windows 11 arm64 (the per-user installer
+3.26.13, 2026-10-21): `state.vscdb` under `AppData/Roaming/Cursor` with
+the same records as macOS 3.26.13, a call waiting at its prompt
+(`additionalData.status` `pending`), the standing allow list, the
+agent's injected user turns, the delete of a conversation never
+archived, the editor's GitHub sign-in, and a cloud agent on a repository
+mirrored into Cursor Origin: its `cloud-cache` row and cached text in
+`conversation-search.db`, its `cloudAgentRepository.agents` record and
+the `cloudEnvironmentTemplate.githubRepos` repository list, archived
+from the Agents window; and the Google Calendar plugin's MCP OAuth
+keys, installed-plugin keys and attempt file, its MCP tool calls, and a
+second cloud agent's MCP authorisation record. The cloud agents'
+`bcCachedDetails` protobuf is not decoded. A turn steered from a paired phone is not observed: pairing
+wrote nothing locally, and the embedded agent worker does not start on
+Windows arm64. The Agent CLI on Linux and Windows is not observed. The CLI's
 `acp-sessions/` store rests on the shipped bundle alone, and the parser
 does not read it.
 

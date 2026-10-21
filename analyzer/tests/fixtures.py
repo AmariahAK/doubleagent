@@ -4,6 +4,7 @@ CLI files as of October 2026 (see the parser module docstrings)."""
 
 from __future__ import annotations
 
+import base64
 import datetime
 import json
 import os
@@ -11564,8 +11565,18 @@ def build_chatgpt_desktop(home: Path) -> None:
 # invented UUIDs: a live conversation with the 3.25.9 inline header list,
 # an archived one with 3.26.13 header chunks, a deleted one that only its
 # header row, an agentKv blob, its transcript and ai-tracking row still
-# name, a draft with an unsent message and a header-only draft.
+# name, a draft with an unsent message and a header-only draft. Two cloud
+# agents (`bc-<uuid>`, Windows 3.26.13, issue 236): one with a cached
+# conversation in conversation-search.db, one in the agent list only.
 CURSOR_LIVE = "c0000001-0000-4000-8000-000000000001"
+CURSOR_CLOUD = "bc-e0000001-0000-4000-8000-000000000001"
+CURSOR_CLOUD_LISTED = "bc-e0000002-0000-4000-8000-000000000002"
+CURSOR_CLOUD_REPO = "github.com/alice-gh/demo"
+CURSOR_CLOUD_BODY = (
+    "Describe this repository, change nothing, open no pull request.\n"
+    "The repository holds calc.py, a small calculator module.\n"
+    "  It has no tests."
+)
 CURSOR_ARCHIVED = "c0000002-0000-4000-8000-000000000002"
 CURSOR_DELETED = "c0000003-0000-4000-8000-000000000003"
 CURSOR_DRAFT = "d0000001-0000-4000-8000-000000000001"
@@ -11851,6 +11862,11 @@ def cursor_kv_records() -> list[tuple[str, object]]:
         # Protobuf: not JSON, though its bytes name the deleted composer.
         ("agentKv:blob:" + "0a0b" * 16, b"\x0a\x24" + gone.encode("ascii") + b"\x1a\x00"),
         ("composerTranscriptHeightTail:" + gone, {"height": 120}),
+        # A reopened cloud conversation's cached details: protobuf, not read.
+        (
+            "bcCachedDetails:" + CURSOR_CLOUD,
+            b"\x1a\x2b\x0a\x27" + CURSOR_CLOUD.encode("ascii") + b"\x12\x00",
+        ),
     ]
 
 
@@ -12031,6 +12047,227 @@ def cursor_integration_items() -> list[tuple[str, str]]:
     ]
 
 
+def cursor_cloud_agent(bc_id: str, offset_ms: int, **extra) -> dict:
+    """One element of a `cloudAgentRepository.agents.<account>` list, with
+    the key set of the Windows 3.26.13 round; times are epoch ms
+    `offset_ms` after `CURSOR_T0`."""
+    agent = {
+        "bcId": bc_id,
+        "cloudTargetKey": "github:alice-gh/demo:main:0123456789abcdef0123",
+        "createdAt": CURSOR_T0 + offset_ms,
+        "environmentPublicId": "e1000001-0000-4000-8000-000000000001",
+        "hasPendingInteraction": False,
+        "hasStartedVm": True,
+        "isArchived": False,
+        "isKilled": False,
+        "isOwnedByDifferentTeamMember": False,
+        "isUnread": False,
+        "lastMessageActivityAtMs": CURSOR_T0 + offset_ms + 60000,
+        "lastReadAtMs": CURSOR_T0 + offset_ms + 90000,
+        "modelDetails": {"maxMode": False, "modelName": "grok-4.7"},
+        "name": "Describe the demo repository",
+        "repoUrl": CURSOR_CLOUD_REPO,
+        "repoUrls": [CURSOR_CLOUD_REPO],
+        "requestedModel": {
+            "builtInModel": "",
+            "maxMode": False,
+            "modelId": "grok-4.7",
+            "parameters": [{"id": "context", "value": "256k"}],
+        },
+        "rowUpdatedAtMs": CURSOR_T0 + offset_ms + 120000,
+        "source": 16,
+        "status": 2,
+        "transportRepoUrls": ["https://" + CURSOR_CLOUD_REPO],
+        "updatedAt": CURSOR_T0 + offset_ms + 60000,
+        "usePrivateWorker": False,
+        "workflowStatus": 2,
+        "workspaceRootPath": "/home/ubuntu/demo",
+    }
+    agent.update(extra)
+    return agent
+
+
+def cursor_cloud_items() -> list[tuple[str, str]]:
+    """ItemTable rows of the cloud agents (Windows 3.26.13, issue 236): the
+    agent list under both spellings of the account id, the server pins,
+    the repository list, and the connection token, a `secret://` row the
+    parser must never read."""
+    archived = cursor_cloud_agent(CURSOR_CLOUD, 10000000, isArchived=True)
+    listed = cursor_cloud_agent(
+        CURSOR_CLOUD_LISTED,
+        11000000,
+        name="Summarise the web repository",
+        repoUrl="github.com/alice-gh/web",
+        requestedModel={"builtInModel": "", "maxMode": False, "modelId": "default"},
+        hasStartedVm=False,
+        status=1,
+        workflowStatus=1,
+    )
+    repos = [
+        {
+            "name": "alice-gh/demo",
+            "scmRepoNodeId": "R_kgDOAAAAAA",
+            "type": "github",
+            "url": "https://github.com/alice-gh/demo",
+        },
+        {"name": "alice-gh/web", "scmRepoNodeId": "R_kgDOAAAAAB", "type": "github"},
+    ]
+    token = 'secret://{"extensionId":"anysphere.cursor-resolver-helper","key":"connectionToken:%s"}'
+    return [
+        ("cloudAgentRepository.agents." + CURSOR_ACCOUNT, json.dumps([archived])),
+        ("cloudAgentRepository.agents.auth0%7Cuser_02", json.dumps([listed])),
+        ("cloudAgentRepository.serverPinnedBcIds." + CURSOR_ACCOUNT, "[]"),
+        ("cloudEnvironmentTemplate.githubRepos", json.dumps(repos)),
+        ("glass.cloudAgentProjectMembership.v1", json.dumps({CURSOR_CLOUD: "p1"})),
+        (token % CURSOR_CLOUD, CURSOR_SECRET),
+    ]
+
+
+CURSOR_MCP_SCOPE = "plugin-calendar-calendar::mcpScope:profile:ZGVmYXVsdA"
+CURSOR_MCP_ATTEMPT = "oauth-attempt:a0000001-0000-4000-8000-000000000001"
+CURSOR_MCP_CALL = "toolu_mcp_auth_01\nfc_mcp_auth_01"
+CURSOR_ATTEMPT_REL = (
+    "Library/Application Support/Cursor/User/globalStorage/mcp-oauth-attempts/0000.json"
+)
+
+
+def cursor_mcp_key(prefix: str, name: str, padded: bool = False) -> str:
+    """An `mcpOAuth.global.` or `mcpOAuth.secret.` key: the prefix and the
+    URL-safe base64 of `name` (`[<scope>] <field>`), unpadded as on the
+    real install unless `padded`."""
+    encoded = base64.urlsafe_b64encode(name.encode("utf-8")).decode("ascii")
+    return prefix + (encoded if padded else encoded.rstrip("="))
+
+
+def cursor_mcp_items() -> list[tuple[str, str]]:
+    """ItemTable rows of the plugin and MCP steps (Windows 3.26.13, issue
+    236): the MCP OAuth keys of a plugin server and of a second server with
+    no update time or token, an attempt scope, the migration flag, the
+    secret keys whose ciphertext values hold the sentinel the parser must
+    never read, the installed plugin lists and the cloud agent's MCP auth
+    resolution."""
+    glob, secret = "mcpOAuth.global.", "mcpOAuth.secret."
+    other = "plugin-acme-tracker-tracker::mcpScope:profile:ZGVmYXVsdA"
+    buffer = json.dumps({"type": "Buffer", "data": [ord(c) for c in CURSOR_SECRET]})
+    plugins = json.dumps([{"id": "12345678", "sources": ["user"]}])
+    resolution = {
+        "agentId": CURSOR_CLOUD,
+        "authId": "f0000001-0000-4000-8000-000000000001",
+        "nonce": "f0000002-0000-4000-8000-000000000002",
+        "queryId": "f0000003-0000-4000-8000-000000000003",
+        "toolCallId": CURSOR_MCP_CALL,
+        "userDecision": "accepted",
+        "version": 1,
+    }
+    return [
+        (
+            cursor_mcp_key(glob, "[%s] mcp_server_url" % CURSOR_MCP_SCOPE),
+            json.dumps("https://calendar.mcp.example.test/mcp"),
+        ),
+        (
+            cursor_mcp_key(glob, "[%s] mcp_oauth_updated_at_ms" % CURSOR_MCP_SCOPE),
+            str(CURSOR_T0 + 500000),
+        ),
+        (
+            cursor_mcp_key(glob, "[%s] mcp_tokens_canonical_migration_complete" % CURSOR_MCP_SCOPE),
+            "true",
+        ),
+        (
+            cursor_mcp_key(glob, "[%s] mcp_server_url" % other, padded=True),
+            "https://tracker.example.test/mcp",
+        ),
+        (
+            cursor_mcp_key(glob, "[%s] mcp_server_url" % CURSOR_MCP_ATTEMPT),
+            json.dumps("https://calendar.mcp.example.test/mcp"),
+        ),
+        (cursor_mcp_key(glob, "mcpOAuth.extensionMigrationComplete"), "true"),
+        (cursor_mcp_key(secret, "[%s] mcp_tokens" % CURSOR_MCP_SCOPE), buffer),
+        (cursor_mcp_key(secret, "[%s] mcp_client_information" % CURSOR_MCP_SCOPE), buffer),
+        (cursor_mcp_key(secret, "[%s] mcp_code_verifier" % CURSOR_MCP_ATTEMPT), buffer),
+        ("cursor.plugins.installedIds.no-team|no-workspace", plugins),
+        ("cursor.plugins.installedIds.no-team|file:///srv/proj", plugins),
+        ("cloudAgentRepository.mcpAuthResolution", json.dumps(resolution)),
+    ]
+
+
+def cursor_attempt_record() -> dict:
+    """An `mcp-oauth-attempts/<uuid>.json` file (Windows 3.26.13, the
+    shape after authentication, with no `authorizationServerUrl`)."""
+    return {
+        "activeIdentifier": "plugin-calendar-calendar::mcpScope:profile:default",
+        "attemptId": "a0000002-0000-4000-8000-000000000002",
+        "clientInformation": {
+            "client_id": "client-0123456789abcdef",
+            "grant_types": ["authorization_code", "refresh_token"],
+            "redirect_uris": ["cursor://anysphere.cursor-mcp/oauth/callback"],
+            "response_types": ["code"],
+        },
+        "createdAtMs": CURSOR_T0 + 480000,
+        "identifier": "plugin-calendar-calendar",
+        "owner": {"workspaceId": "empty-window"},
+        "serverUrl": "https://calendar.mcp.example.test/mcp",
+        "transportServerUrl": "https://calendar.mcp.example.test/mcp",
+    }
+
+
+def cursor_mcp_bubble() -> tuple[dict, dict]:
+    """(header entry, bubble) of an MCP tool call approved under Allowlist
+    (Windows 3.26.13): no `reviewData`, `additionalData` holds only
+    `status`, and `toolCallBinary` a serialized copy of the call."""
+    call = "call-m1-5\nfc_m1_5"
+    tool = {
+        "name": "mcp-google-calendar-list_events",
+        "tool": 19,
+        "status": "completed",
+        "toolCallId": call,
+        "modelCallId": "model-call-m1",
+        "toolIndex": 5,
+        "rawArgs": json.dumps({"calendarId": "primary", "timeMin": "2026-10-01T00:00:00Z"}),
+        "params": json.dumps({"calendarId": "primary"}),
+        "result": json.dumps({"events": [{"summary": "Standup"}]}),
+        "additionalData": {"status": "success"},
+        "toolCallBinary": "Q0FMTEJJTkFSWQ==",
+    }
+    bubble = {
+        "type": 2,
+        "capabilityType": 15,
+        "startedAtMs": CURSOR_T0 + 110000,
+        "completedAtMs": CURSOR_T0 + 111000,
+        "toolFormerData": tool,
+    }
+    return _cursor_head("a2/t:%s" % call, 2, 110000), bubble
+
+
+def cursor_stopped_bubbles() -> list[tuple[dict, dict]]:
+    """(header entry, bubble) of a turn the user stopped (Windows 3.26.13):
+    the call in flight (`tc9`), rejected with `reviewData.status` the
+    string `None` and the preset option, and a queued call (`tc10`),
+    cancelled with an empty `additionalData`."""
+    stopped = _cursor_tool(
+        "t9",
+        5,
+        "dir",
+        {
+            "status": "rejected",
+            "reviewData": {
+                "status": "None",
+                "selectedOption": "rejectAndTellWhatToDoDifferently",
+                "isShowingInput": False,
+            },
+        },
+        "",
+    )
+    stopped["toolFormerData"]["toolCallId"] = "tc9"
+    stopped["startedAtMs"] = CURSOR_T0 + 120000
+    cancelled = _cursor_tool("t10", 6, "type README.md", {}, "")
+    cancelled["toolFormerData"].update(toolCallId="tc10", status="cancelled")
+    cancelled["startedAtMs"] = CURSOR_T0 + 121000
+    return [
+        (_cursor_head("a2/t:tc9", 2, 120000), stopped),
+        (_cursor_head("a2/t:tc10", 2, 121000), cancelled),
+    ]
+
+
 def write_cursor_state(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(path))
@@ -12049,6 +12286,8 @@ def write_cursor_state(path: Path) -> None:
         ("cursor/sandboxAutoRunSettingEnabled", "true"),
         ("cursor/sandboxSupported", "true"),
         *cursor_integration_items(),
+        *cursor_cloud_items(),
+        *cursor_mcp_items(),
     ):
         con.execute(
             "INSERT INTO ItemTable (key, value) VALUES (?, ?)", (key, value.encode("utf-8"))
@@ -12158,6 +12397,7 @@ CREATE TABLE conversations (fts_rowid INTEGER PRIMARY KEY, source TEXT NOT NULL
   CHECK (source IN ('local', 'cloud-cache')), scope TEXT, id TEXT, title TEXT, branches TEXT,
   updated_at INTEGER, is_archived INTEGER, root_fingerprint TEXT, cache_fingerprint TEXT);
 CREATE TABLE conversation_search_settings (effective_conversation_cap INTEGER);
+CREATE TABLE conversation_fts_content (id INTEGER PRIMARY KEY, c0, c1, c2);
 """
 
 
@@ -12175,6 +12415,30 @@ def write_cursor_search(path: Path) -> None:
             " is_archived) VALUES (?, 'workspace', ?, ?, '[]', ?, ?)",
             row,
         )
+    # A cloud agent's cached conversation (Windows 3.26.13, issue 236): the
+    # FTS5 content holds its title and body; a local row's may be empty
+    # (Windows) or hold text (macOS). The
+    # fixture writes the shadow table as a plain table, as the parser reads it.
+    con.execute(
+        "INSERT INTO conversations (fts_rowid, source, scope, id, title, branches, updated_at,"
+        " is_archived, cache_fingerprint) VALUES (10, 'cloud-cache', ?, ?, ?, '', ?, 1, ?)",
+        (
+            "ab" * 32,
+            CURSOR_CLOUD,
+            "Describe the demo repository",
+            CURSOR_T0 + 10060000,
+            "cd" * 32,
+        ),
+    )
+    for rowid, title, body in (
+        (1, "Add subtract", "Add a subtract function"),
+        (2, "", ""),
+        (3, "", ""),
+        (10, "Describe the demo repository", CURSOR_CLOUD_BODY),
+    ):
+        con.execute(
+            "INSERT INTO conversation_fts_content VALUES (?, ?, ?, '')", (rowid, title, body)
+        )
     con.execute("INSERT INTO conversation_search_settings VALUES (10000)")
     con.commit()
     con.close()
@@ -12187,6 +12451,7 @@ def build_cursor(home: Path) -> None:
     _jsonl(home / CURSOR_TRANSCRIPT_REL, cursor_transcript_records())
     write_bad_line(home / CURSOR_TRANSCRIPT_REL)
     _jsonl(home / CURSOR_DELETED_TRANSCRIPT_REL, cursor_deleted_transcript_records())
+    _json_file(home / CURSOR_ATTEMPT_REL, cursor_attempt_record())
     for rel, doc in (
         (
             ".cursor/cli-config.json",

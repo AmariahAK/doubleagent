@@ -44,6 +44,8 @@ from fixtures import (
     COPILOT_EVENT_LINES,
     COPILOT_SESSION,
     COPILOT_WORKSPACE_YAML,
+    CURSOR_CLOUD,
+    CURSOR_CLOUD_LISTED,
     CURSOR_LIVE,
     GOOSE_GATEWAY_SESSION,
     GOOSE_SESSION,
@@ -812,6 +814,8 @@ class SyncedSessionTests(unittest.TestCase):
             (("chatgpt-desktop", CHATGPT_CONVERSATION), "remote"),
             (("chatgpt-desktop", CHATGPT_TPP_CONVERSATION), "remote"),
             (("cursor", CURSOR_LIVE), "local"),
+            (("cursor", CURSOR_CLOUD), "remote"),
+            (("cursor", CURSOR_CLOUD_LISTED), "remote"),
             (("copilot-cli", COPILOT_SESSION), ""),
             (("claude-code", CLAUDE_SESSION), ""),
         ):
@@ -826,14 +830,15 @@ class SyncedSessionTests(unittest.TestCase):
             {v for (agent, _), v in by_id.items() if agent == "chatgpt-desktop"}, {"remote"}
         )
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
-        self.assertEqual(inv["remote_sessions"], 4)
+        self.assertEqual(inv["remote_sessions"], 6)
         agents = {a["agent"]: a for h in inv["homes"] for a in h["agents"]}
         self.assertEqual(agents["vscode"]["remote_sessions"], 2)
         self.assertEqual(agents["chatgpt-desktop"]["remote_sessions"], 2)
+        self.assertEqual(agents["cursor"]["remote_sessions"], 2)
         self.assertEqual(agents["chatgpt-desktop"]["synced_sessions"], 2)
         self.assertEqual(agents["copilot-cli"]["remote_sessions"], 0)
         line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
-        self.assertIn(", 4 remote", line)
+        self.assertIn(", 6 remote", line)
 
     def test_recovered(self):
         out = self.tmp / "out"

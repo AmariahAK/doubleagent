@@ -359,8 +359,8 @@ as `cursor`:
 | --- | --- |
 | `<data>/User` | The editor's settings, `globalStorage/state.vscdb`, which holds the agent conversations and the sign-in tokens (see [Credentials](#credentials)), the per-workspace `workspaceStorage`, and the `globalStorage` of Cursor's built-in extensions. |
 | `<data>/logs` | One directory of logs per launch. |
-| `<data>/AgentStores`, on Linux `.local/state/cursor/agent-stores` | From collector 1.17.0; the Linux location from collector 1.18.0. The sync stores of the agent's files, one per account and one per conversation (`cursor_agent_stores/<id>/.sync/index.sqlite` with `root-id`, `mount.json` and `sync.lock`), and the pins of the open conversations (`.control/<id>/pins/`). The directory names carry the numeric account id. |
-| `<data>/update-supervisor` | From collector 1.17.0. One directory per in-app update, with `events.jsonl`, `result.json` and `app-ready.json`, which record which build ran from when. |
+| `<data>/AgentStores` on macOS, `.local/state/cursor/agent-stores` on Linux, `AppData/Local/Cursor/AgentStores` on Windows | From collector 1.17.0; the Linux and Windows locations from collector 1.18.0. The sync stores of the agent's files, one per account and one per conversation (`cursor_agent_stores/<id>/.sync/index.sqlite` with `root-id`, `mount.json` and `sync.lock`), and the pins of the open conversations (`.control/<id>/pins/`). The directory names carry the numeric account id. |
+| `<data>/update-supervisor` | From collector 1.17.0. One directory per in-app update: on macOS `events.jsonl`, `result.json` and `app-ready.json`, which record which build ran from when; on Windows `win32/<installationId>/` with `app-ready.json` and `state.json` beside the excluded `inno_updater.exe`. |
 
 The `AgentStores` and `update-supervisor` directories were seen on macOS
 (Cursor 3.25.9 and 3.26.13, October 2026). On Linux (Cursor 3.25.9 from
@@ -375,8 +375,50 @@ not at folder open or for local agent turns: the
 first cloud-agent attempt, holding two partial
 `cursor-agent-<version>-<pid>-<epoch ms>.tar.gz` downloads of 88.6 MB
 and 35.1 MB, so the `agent-cli` exclusion below applies on Linux as
-well. The Windows lines follow the user-data directory and were not
-observed.
+well.
+
+On Windows (Cursor 3.26.13 from the per-user installer, Windows 11 arm64,
+October 2026) the sync stores were in `%LOCALAPPDATA%\Cursor\AgentStores`
+(`AppData/Local/Cursor/AgentStores`), not under `<data>`;
+`%APPDATA%\Cursor\AgentStores` never existed. The Windows build updates
+through an updater made with Inno Setup (a common builder of Windows
+installers), and `update-supervisor` appeared only with the update to
+3.26.16: an in-app update earlier the same day, while on 3.26.13, left
+none. The update to 3.26.16 wrote
+`update-supervisor\win32\<installationId>\` with `app-ready.json` and
+`state.json`, which are collected, and a copy of `inno_updater.exe`, 3.4
+MB, which is excluded by the pattern below. The updater's own log,
+`%LOCALAPPDATA%\Temp\cursor-inno-updater-<epoch s>.log`, 4.9 MB, is
+outside the catalog roots and is not collected. As on Linux, the IDE extracted its copy of
+the Agent CLI only during the cloud-agent steps, not at folder open or
+for local agent turns: the `anysphere.cursor-agent-worker/agent-cli`
+directory, 262.7 MB, is excluded by the pattern below, and the worker's
+bookkeeping beside it,
+`cursor-agent-worker-<id>.{install,log,owner.json,restart.json,spec}`, is
+collected. On that arm64 install the worker failed to load its native
+module, and its `.log` holds the crash; the log grows with each spawn
+attempt, from 557 KB after the first to 5.6 MB after five, and is
+collected under the size cap. The Agents window also
+leaves one scaffold project per launch under `~/.cursor/projects`, named
+after a temporary folder it opened and removed
+(`C-Users-<user>-AppData-Local-Temp-<uuid>`), with `canvases/` and `mcps/`
+and about 60 small files each; their `canvases/node_modules` is excluded
+and the `mcps/` tool manifests are collected.
+
+Installing a plugin from Cursor's plugin library (the Google Calendar
+plugin, Windows, October 2026) wrote three more kinds of file, two of
+them collected. `<data>/User/globalStorage/mcp-oauth-attempts/<uuid>.json`
+is collected: a plaintext record of the OAuth client registration made
+for the plugin's MCP server (Model Context Protocol, the protocol through
+which the agent calls the plugin's tools), with the client id, the
+redirect URIs and the server URLs, and no token; Cursor keeps one such
+file per server and replaces it at each sign-in or reconnection, and the
+tokens themselves are encrypted keys inside `state.vscdb` (see
+[Credentials](#credentials)).
+`.cursor/projects/<project>/agent-tools/<uuid>.txt` is collected: the
+tool manifest of an MCP server that the agent fetched during a turn, 38
+KB on that install. The marketplace copy of the plugin under
+`.cursor/plugins/cache` is excluded, below.
 
 Excluded from collector 1.17.0, each recorded as `skipped_excluded` with
 its size:
@@ -385,8 +427,10 @@ its size:
 | --- | --- |
 | `*/User/globalStorage/anysphere.cursor-agent-worker/agent-cli` | A copy of the Cursor Agent CLI that the IDE's agent worker runs, 608 MB on the macOS install. The worker's own files beside it (`cursor-agent-worker-<id>.log` and its `.owner.json`, `.restart.json` and `.spec` siblings, and `worker-data/`) are collected. |
 | `*/Cursor/update-supervisor/*/cursor-update-supervisor` | The update supervisor binary, 484 KB, in each update directory. |
+| `*/Cursor/update-supervisor/*/inno_updater.exe` | From collector 1.18.0. The Windows updater binary, 3.4 MB, in each update directory. |
 | `.cursor/projects/*/canvases/node_modules` | TypeScript type declarations for Cursor's canvas feature, about 226 KB per project. The project's `agent-transcripts/` and `mcps/` beside it are collected. |
 | `.cursor/statsig-cache.json` | A feature-flag cache downloaded from Cursor's servers, 932 KB. |
+| `.cursor/plugins/cache` | From collector 1.18.0. The marketplace copy of each installed plugin, `<marketplace>/<plugin>/<sha>/` with `.cursor-plugin/plugin.json`, `mcp.json`, a README, a licence and assets, about 7 KB for the Google Calendar plugin. Which plugins were installed stays collected, in `state.vscdb` and in the per-project `mcps/plugin-<name>-<server>/` manifests; `.cursor/plugins/local` is collected. |
 
 `<data>/process-monitor`, Cursor's logs of the processes it runs, one
 file every four hours, is not collected: process activity is the EDR's to
@@ -687,7 +731,10 @@ Cursor and Windsurf keep their auth tokens inside the same `state.vscdb`
 that holds the chat history, so that file is collected unflagged; the keys
 to redact are `cursorAuth/*` and `windsurfAuthStatus`, and in Cursor's
 `ItemTable` also the `secret://` entries, the editor's secret storage,
-which holds the agent worker's API key.
+which holds the agent worker's API key, and the `mcpOAuth.secret.*`
+entries, which hold an MCP server's OAuth tokens, PKCE code verifier
+(the one-time proof of a sign-in in progress) and client secret,
+encrypted with the operating system's key store.
 Agent Zero copies a Telegram bot's configuration into each Telegram
 chat's `chat.json`, which is collected unflagged; the keys to redact are
 `data.telegram_bot_cfg.token` and `data.telegram_bot_cfg.webhook_secret`.

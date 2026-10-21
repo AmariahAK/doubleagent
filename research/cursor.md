@@ -12,7 +12,11 @@ that agent user interface (`workbench.glass.main.js`, the `cursor/glass.*` keys)
 key prefix of a content-addressed blob store inside the IDE's database; `yolo` is Cursor's internal
 name for auto-run, the setting that runs agent tool calls without asking (`yoloCommandAllowlist`);
 and `toolFormer` is its internal name for a tool call's record inside a bubble (`toolFormerData`).
-The analyzer parses the IDE's conversations
+A cloud agent is an agent conversation that runs on a virtual machine of Cursor's against a
+repository, not on the host; Cursor's internal name for it is background composer, so its id is
+`bc-<uuid>` and its keys carry `bc` or `backgroundComposer`. Cursor Origin is Cursor's own git
+hosting service, into which a GitHub repository is mirrored before a cloud agent can use it
+([Source-host integration](#source-host-integration)). The analyzer parses the IDE's conversations
 ([issue 51](https://github.com/seanthegeek/doubleagent/issues/51)) and the files a CLI session
 shares with the IDE; the Agent CLI's own chat store is not parsed yet
 ([issue 235](https://github.com/seanthegeek/doubleagent/issues/235)).
@@ -25,7 +29,8 @@ shown:
 
 - Real installs ([Observed](#observed)): the Cursor IDE on macOS, builds 3.24.18, 3.25.9 and
   3.26.13 (2026-10-19 and 2026-10-20), and on Ubuntu (arm64), builds 3.24.18 and 3.25.9 of the
-  deb package (2026-10-20); the standalone Cursor Agent CLI on macOS, build 2026.10.19-6bbf2c4
+  deb package (2026-10-20); on Windows 11 (arm64), build 3.26.13 of the per-user installer
+  (2026-10-21); the standalone Cursor Agent CLI on macOS, build 2026.10.19-6bbf2c4
   (2026-10-20). Read for file names, sizes, key, table and column names,
   value types and enum values only; no value from the install is reproduced, and account ids are
   written `u<id>` and `auth0|user_<id>`, CLI session ids `<sessionId>`.
@@ -39,6 +44,7 @@ shown:
   2026.10.19-6bbf2c4, the build the IDE's worker directory held.
 - L2 official docs: [Cursor CLI configuration](https://cursor.com/docs/cli/reference/configuration),
   [Cursor CLI parameters](https://cursor.com/docs/cli/reference/parameters) (fetched 2026-10-20),
+  [Cursor Origin](https://cursor.com/docs/origin) (fetched 2026-10-21),
   [Cursor rules](https://cursor.com/docs/context/rules),
   [Cursor MCP](https://cursor.com/docs/context/mcp),
   [Cursor hooks](https://cursor.com/docs/agent/hooks),
@@ -163,20 +169,92 @@ shown:
   to all of them and making the repository public changed nothing, so no cloud conversation was
   created, and it started a download of the Agent CLI copy that was left as two partial tarballs
   ([Cursor IDE on Linux](#cursor-ide-on-linux)). The repository-bound remote session was
-  therefore not observed; it is left for the Windows round or a newer macOS round
-  ([issue 236](https://github.com/seanthegeek/doubleagent/issues/236)).
+  therefore not observed on Linux; the Windows round explained the empty picker and observed it
+  ([Source-host integration](#source-host-integration)).
+- Windows 11 arm64 (10.0.26300), Cursor IDE 3.26.13 per-user installer, 2026-10-21
+  ([issue 236](https://github.com/seanthegeek/doubleagent/issues/236)): in the author's Windows
+  lab VM, one user, a project folder `%USERPROFILE%\proj\demo` with `README.md` and `calc.py`
+  that was not a git repository, because git was not installed until the step of 13:55Z, so the
+  round shows no git-derived field and no code index for it; the agent pane of the editor window,
+  and the Agents window for the cloud agent. One step per listing, each diffed against the last
+  (times UTC, the listing's): the install and first launch, not signed in (00:45Z), wrote the
+  trees of [Cursor IDE on Windows](#cursor-ide-on-windows) and the `~/.cursor` entries of
+  [`~/.cursor` as the IDE writes it](#cursor-as-the-ide-writes-it); sign-in through the browser
+  (00:50Z), with no credential prompt, wrote the plaintext tokens of
+  [Credentials](#credentials) and the account's sync store under `%LOCALAPPDATA%`
+  ([AgentStores](#agentstores)); an in-app update (00:56Z) relaunched the app and left the build
+  at 3.26.13, writing only an installer log ([`update-supervisor`](#update-supervisor));
+  opening the folder (01:10Z), with no workspace-trust prompt, wrote its workspace state and its
+  `projects\` entry with the first terminal capture of any round; a question with no tool use
+  (01:12Z) wrote the 3.26.13 layout of [Format versions](#format-versions); a code edit of
+  `calc.py` (01:15Z), applied with no prompt, wrote a shadow copy
+  ([Retrieval checkpoints](#retrieval-checkpoints)); a request for a Python command (01:40Z) on
+  a VM without Python made the agent run several commands under the Auto-review default, one of
+  them failing ([Tool bubbles](#tool-bubbles)); switching the run mode to Allowlist and sending a
+  PowerShell command (01:58Z) left the call waiting at a prompt that offered no allow-list entry,
+  and it was answered Run (02:02Z) and, for the same command, Skip (02:08Z); adding the command
+  in Settings > Agent (02:10Z) stored the standing entry
+  ([Run mode and standing lists](#run-mode-and-standing-lists)); a model switch from Auto to
+  `grok-4.6` (02:12Z) and a question after it (02:14Z) are in [Model rows](#model-rows), with
+  the agent's injected user turns of [User bubbles](#user-bubbles); a quit, a relaunch and the
+  conversation reopened (02:20Z) wrote nothing to the conversation
+  ([Joins and timestamps](#joins-and-timestamps)) and removed the terminal captures; exporting
+  from the editor window's history (02:25Z; the archive step was skipped) and deleting from it
+  (02:28Z) are in [Exported Markdown](#exported-markdown) and
+  [What survives a delete](#what-survives-a-delete). Enabling Cursor Origin, mirroring the demo
+  repository into it from GitHub at cursor.com, and running a cloud agent on it with a read-only
+  task fell in one listing (13:10Z); a quit, a relaunch and the cloud conversation reopened
+  (13:21Z), and archiving the cloud agent from the Agents window (13:36Z) are in
+  [Cloud agents](#cloud-agents) and [Source-host integration](#source-host-integration); the
+  same listing of 13:36Z held what the Agents window created by itself (a new draft in a
+  workspace project, two temporary projects, and the first extraction of the embedded Agent CLI,
+  which failed to start on arm64; [Cursor IDE on Windows](#cursor-ide-on-windows)). Installing
+  Git for Windows 2.56.0.windows.2 and opening the Welcome tab's "Steer from iOS" modal (13:55Z)
+  wrote one key ([`ItemTable` keys](#itemtable-keys)); a relaunch, Clone a repository > Clone
+  from GitHub with the editor's own GitHub sign-in through the browser, and the clone opened
+  (14:03Z) wrote the keys of [Secrets](#secrets) and an empty code index
+  ([Project-local files](#project-local-files)). Settings > Cursor Settings showed agent remote
+  control on by default with no paired device; pairing the Cursor iOS app to the install through
+  "Steer from iOS" (14:31Z, diffed against a baseline listing of 14:18Z) wrote nothing locally,
+  and a turn driven from the paired iPhone (14:35Z, closed by the listing of 14:44Z) started the
+  embedded agent worker, which exited at once because it has no win32/arm64 native module, so
+  the phone could not connect ([Remote control](#remote-control)). The steered turn is a feature
+  this VM could not run, for that cause: the worker ran on macOS arm64 and Linux arm64 in the
+  earlier rounds, so remote steering from a paired device is an open cell for the macOS VM.
+  Installing the Google Calendar plugin from the plugin library (14:58Z), from the Agents
+  window with no folder open and before any Google authentication, wrote a marketplace copy, a
+  per-project tool manifest, an OAuth attempt record and the OAuth keys of
+  [MCP servers and plugins](#mcp-servers-and-plugins); completing the plugin's Google
+  authentication through the browser (15:05Z) stored its tokens as ciphertext in `state.vscdb`
+  ([Secrets](#secrets)) and replaced the manifest's one tool with the server's nine; the
+  plugin's "Try in chat" button, a chat the user stopped and archived, and then the user's own
+  chat from the Agents window, which the records show ran as a second cloud agent in a new
+  temporary Origin repository and whose request to authorise the MCP server the user accepted
+  with a separate Google consent, fell in one listing (15:15Z;
+  [Cloud agents](#cloud-agents)); the same calendar question in the demo folder's local chat
+  (15:35Z) prompted for each MCP call under Allowlist, each approved, and for none under
+  Auto-review, and left no per-call decision ([Permission rows](#permission-rows)). An update
+  the app offered (15:56Z) had already been installed in the background, and the restart that
+  applied it (16:06Z), the last step of the round, brought the build to 3.26.16 and wrote the
+  install's first `update-supervisor` directory ([`update-supervisor`](#update-supervisor));
+  3.26.16 itself was not surveyed. No step wrote a Windows Credential Manager entry, a
+  scheduled task or a Run key.
 - Cursor Agent CLI features the macOS round did not exercise (the `acp-sessions` store,
-  `agent worker`, worktrees, plans, hooks, MCP servers, print mode `-p`), any platform: not
+  `agent worker`, worktrees, plans, hooks, MCP servers (Model Context Protocol servers, which
+  give the agent the tools of another service), print mode `-p`), any platform: not
   observed on any real install; bundle-derived ([Cursor Agent CLI](#cursor-agent-cli)).
-- Cloud (background) agents and worktree agents, any platform: not observed on any real install
-  (a cloud agent was attempted on Linux and offered no repository).
-- Windows, IDE and CLI, and the Agent CLI on Linux: not observed on any real install
-  ([issue 236](https://github.com/seanthegeek/doubleagent/issues/236)); the Windows IDE paths
-  are the macOS layout under the VS Code user-data-directory convention. The RPM and AppImage
-  builds for Linux, and the x64 deb, were not installed.
+- Worktree agents, any platform: not observed on any real install. Cloud agents were observed
+  on Windows only (3.26.13, 2026-10-21); the attempt on Linux offered no repository.
+- The Agent CLI on Windows and on Linux: not observed on any real install
+  ([issue 236](https://github.com/seanthegeek/doubleagent/issues/236)). The RPM and AppImage
+  builds for Linux and the x64 deb were not installed, and on Windows only the arm64 per-user
+  installer was.
 
 ### Source reviews
 
+- 2026-10-21: the [Cursor Origin](https://cursor.com/docs/origin) page (L2), for the cloud
+  agent's repository list. The document gained Cursor Origin and the reason the Linux round's
+  repository picker was empty.
 - 2026-10-20: the [Cursor CLI parameters](https://cursor.com/docs/cli/reference/parameters)
   reference (L2), for the CLI's commands. The document gained the command list and the absence of
   a delete, clear, export or share command, and the CLI's half was rewritten from the real
@@ -191,9 +269,9 @@ shown:
 
 ### Per-user storage
 
-The IDE layout below is the macOS install's ([Observed](#observed)); the Linux install's
-differs in the places listed in [Cursor IDE on Linux](#cursor-ide-on-linux); the Windows parent
-(`AppData/Roaming/Cursor`) follows the VS Code convention and was not observed. The CLI's
+The IDE layout below is the macOS install's ([Observed](#observed)); the Linux and Windows
+installs differ in the places listed in [Cursor IDE on Linux](#cursor-ide-on-linux) and
+[Cursor IDE on Windows](#cursor-ide-on-windows). The CLI's
 `auth.json` location differs per OS ([Credentials](#credentials)).
 
 #### Scratch directories
@@ -220,6 +298,12 @@ socket (0 bytes), a new one per start (2026.10.19-6bbf2c4, 2026-10-20).
 The Linux IDE install (3.25.9, 2026-10-20) wrote none of these under `/tmp`: no
 `cursor-agent-logs-<uid>/`, since no worker ran, and no copies of the
 shell's rc files (the VM's shell was bash, and no bash counterpart of the zsh copies appeared).
+
+On Windows (3.26.13, 2026-10-21) the Agents window opened two temporary folders,
+`%LOCALAPPDATA%\Temp\<uuid>`, at 13:31Z and left neither behind; their `projects\` entries
+remained ([`~/.cursor` as the IDE writes it](#cursor-as-the-ide-writes-it)). The updater's
+`%LOCALAPPDATA%\Temp\cursor-inno-updater-<epoch s>.log` is in
+[Cursor IDE on Windows](#cursor-ide-on-windows). `%LOCALAPPDATA%\Temp` is not collected.
 
 #### Cursor IDE
 
@@ -318,6 +402,68 @@ Elsewhere under the home, not collected: GNOME's recent-files list
 `~/.local/share/recently-used.xbel`, which named the exported file
 ([Exported Markdown](#exported-markdown)).
 
+#### Cursor IDE on Windows
+
+The per-user installer (3.26.13, arm64, 2026-10-21) installs the app under
+`%LOCALAPPDATA%\Programs\cursor\` with no administrator rights and registers the Uninstall entry
+"Cursor (User)", version 3.26.13; it adds no scheduled task, no Run key and no Credential Manager
+entry. The first launch wrote the tree of [Cursor IDE](#cursor-ide) under `%APPDATA%\Cursor\`
+(`AppData/Roaming/Cursor`): `User\` with `globalStorage\` (`state.vscdb` and
+`conversation-search.db` with their sidecars, `storage.json`), `workspaceStorage\`, `History\`,
+`snippets\` and `settings.json`; `logs\<launch stamp>\`; `sentry\`; and the editor's caches
+and Chromium profile (`Backups`, `Cache`, `CachedExtensionVSIXs\.trash\anysphere.remote-ssh-1.1.16`,
+`CachedProfilesData\__default__profile__\extensions.builtin.cache` of 899 KB, `code.lock`,
+`DIPS`, `languagepacks.json`, `Local State`, `Preferences`, `SharedStorage`). It also wrote the
+`~/.cursor` entries of [`~/.cursor` as the IDE writes it](#cursor-as-the-ide-writes-it). It
+differs from the macOS install in these places:
+
+- Chromium's network state is in a `Network\` subdirectory (`Cookies`, `Trust Tokens`,
+  `Network Persistent State`, `NetworkDataMigrated`, and from the first update
+  `TransportSecurity`).
+- `machineid` (36 bytes) in `%APPDATA%\Cursor\` holds the device id.
+- The account's and the conversations' sync stores are under the local application data
+  directory, `%LOCALAPPDATA%\Cursor\AgentStores\cursor_agent_stores\`
+  (`AppData/Local/Cursor/AgentStores`); `%APPDATA%\Cursor\AgentStores` never existed
+  ([AgentStores](#agentstores)).
+- The app updates through an installer built with Inno Setup (a third-party installer builder
+  for Windows), whose log `%LOCALAPPDATA%\Temp\cursor-inno-updater-<epoch s>.log` is outside
+  every catalog line. The update to 3.26.16 also wrote
+  `%APPDATA%\Cursor\update-supervisor\win32\<installationId>\`; the earlier in-app update on
+  3.26.13 wrote no `update-supervisor\`, and neither wrote a `%LOCALAPPDATA%\cursor-updater`
+  ([`update-supervisor`](#update-supervisor)).
+- `process-monitor\<epoch ms>.log` from sign-in, as on the other platforms, and
+  `User\globalStorage\anysphere.cursor-agent-host\data.sqlite` (4 KB) from the first relaunch.
+- The shadow copies of edited files are under `User\globalStorage\anysphere.cursor-commits\`, as
+  on Linux ([Retrieval checkpoints](#retrieval-checkpoints)).
+- `CachedConfigurations\folder\<id>\configuration.json` (67 bytes,
+  `{content{launch, mcp, settings, tasks}}`) holds the cached settings of a remote folder, and
+  `User\workspaceStorage\<id>\` with an id of the form `-3a879060`, not 32 hex digits,
+  is a cloud agent's remote workspace ([Cloud agents](#cloud-agents)).
+- The Agent CLI copy is not extracted at the folder's opening or for local agent turns, as on
+  Linux. It was extracted at 13:26Z, while the Agents window was open and no cloud agent was
+  being started: `User\globalStorage\anysphere.cursor-agent-worker\` with
+  `agent-cli\.local\share\cursor-agent\versions\2026.10.19-6bbf2c4\` (the CLI, its files dated
+  2026-10-20T04:38Z, the build time) and the control files
+  `cursor-agent-worker-<10 hex>.{install, log, owner.json, restart.json, spec}` (`install` 23
+  bytes of text, `owner.json` `{ownerHash}` of 64 hex digits, `restart.json` `{ownerHash, roots,
+  version, workerId, workerName}` with one absolute path in `roots` and a 30-character
+  `workerName`, `spec` one byte, a number), and `%LOCALAPPDATA%\cursor-compile-cache\`. The
+  worker did not start on arm64: its `.log` is a Node 24.5.0 crash, `Error: Failed to
+  load native binding for win32/arm64 (expected: ./merkle-tree-napi.win32-arm64-msvc.node)` and
+  `The specified module could not be found`, with the minified bundle line echoed; it holds paths
+  and no token. Each spawn attempt appends another crash with its echo of the minified source, so
+  the log grows: 557 KB after the first, 5.58 MB after the fifth (15:51Z), still under the size
+  cap. The extraction also wrote the worker's `secret://` rows
+  ([Credentials](#credentials)).
+- No sandbox is offered ([Run mode and standing lists](#run-mode-and-standing-lists)).
+- `User\globalStorage\mcp-oauth-attempts\<uuid>.json`, from the first plugin install: the
+  OAuth attempt of an MCP server, plaintext JSON, one file per server at a time, replaced by a
+  new file when the attempt completes or the server reconnects
+  ([MCP servers and plugins](#mcp-servers-and-plugins)).
+
+Elsewhere, outside the catalog: the exported file, saved where the user chose
+(`%USERPROFILE%\Desktop\export.md`; [Exported Markdown](#exported-markdown)).
+
 #### `~/.cursor` as the IDE writes it
 
 The IDE writes the CLI's data root (macOS install, 3.24.18 to 3.26.13; final sizes):
@@ -330,8 +476,12 @@ The IDE writes the CLI's data root (macOS install, 3.24.18 to 3.26.13; final siz
 | `argv.json` | Electron launch arguments, as in VS Code |
 | `extensions/` | `anysphere.remote-ssh-1.1.16` and `extensions.json`, 1.3 MB; excluded |
 | `projects/<sanitized cwd>/agent-transcripts/<composerId>/<composerId>.jsonl` | the worker's JSONL copy of each conversation ([Agent transcript JSONL](#agent-transcript-jsonl)) |
-| `projects/<name>/mcps/<server>/{INSTRUCTIONS.md,SERVER_METADATA.json,tools/<tool>.json}` | the built-in MCP servers' tool manifests (`cursor-app-control`, `cursor-ide-browser`, `cursor-origin`, `cursor-subscriptions`), Cursor's own, rewritten at every launch, 44 KB |
+| `projects/<name>/mcps/<server>/{INSTRUCTIONS.md,SERVER_METADATA.json,tools/<tool>.json}` | the built-in MCP servers' tool manifests (`cursor-app-control`, `cursor-ide-browser`, `cursor-origin`, `cursor-subscriptions`, and on Windows also `cursor-computer-use`), Cursor's own, rewritten at every launch, 44 KB; the `cursor-origin` tools are in [Source-host integration](#source-host-integration) |
+| `projects/<name>/mcps/plugin-<plugin>-<server>/` | an installed plugin's MCP server, in every project the plugin is enabled in, rewritten at every launch (Windows, 3.26.13): `SERVER_METADATA.json` (101 bytes, `{serverIdentifier, serverName}`, the identifier 38 characters); before authentication `STATUS.md` (268 bytes, one line, the server's needs-authentication status) and `tools/mcp_auth.json` (343 bytes, the schema of `mcp_auth`, the one tool offered); after it the server's own tool schemas instead, nine for Google Calendar (`create_event`, `delete_event`, `get_event`, `list_calendars`, `list_events`, `respond_to_event`, `search_events`, `suggest_time`, `update_event`), 164 KB per project |
+| `projects/<name>/agent-tools/<uuid>.txt` | a tool's output saved during a turn (Windows, 3.26.13): the `get_mcp_tools` call's, 38 KB of JSON `{mode, namespace, namespaceStatus, tools[{description, inputSchema, tool}]}` with `mode` `namespace`, `namespace` the server's `serverIdentifier`, `namespaceStatus` `ready` and 10 tools, the MCP server's tool manifest as the turn fetched it |
+| `plugins/cache/<marketplace>/<plugin>/<40-hex sha>/` | a marketplace copy of each installed plugin (Windows, 3.26.13, marketplace `cursor-public`): `.cache-complete` (0 bytes), `.cursor-plugin/plugin.json` (755 bytes, `{author{email, name}, category, description, displayName, homepage, keywords, license, logo, mcpServers, minClientVersions{cursor}, name, repository, tags, version}`), `mcp.json` (144 bytes, `{mcpServers{<name>{type, url}}}`, `type` `http`), `README.md`, `LICENSE` and `assets/logo.svg`; excluded |
 | `projects/<name>/canvases/node_modules/` | type declarations (`@types/react`, `cursor/canvas`, `grok/canvas`), 226 KB per project; excluded |
+| `projects/<name>/terminals/<N>.txt` | the output of each terminal while its window lives, plain text with no time but the file's: `1.txt` the integrated terminal's, a large `N` (`401229.txt`) each terminal the agent ran commands in, none for a skipped command; the agent's files are removed at quit (Windows, 3.26.13; [What survives a delete](#what-survives-a-delete)) |
 | `projects/empty-window/` | the same for the window with no folder |
 | `projects/<epoch ms>/`, `projects/tmp-<uuid>/` | `<epoch ms>/` holds `canvases/` (one also `terminals/`) and `tmp-<uuid>/` `canvases/` and `mcps/`; an `<epoch ms>` directory pairs with `User/workspaceStorage/<same epoch ms>/`, VS Code's id for an untitled window, and `tmp-<uuid>` is a temporary workspace a relaunch created (Linux install, 3.24.18 and 3.25.9) |
 | `projects/.agent-data-cleanup-<YYYY-MM-DD>` | an empty marker, written at the first launch, named for a daily cleanup of agent data under `projects/` ([What survives a delete](#what-survives-a-delete)) |
@@ -347,6 +497,25 @@ On Linux the first launch wrote `.gitignore`, `agents/`, `ai-tracking/ai-code-tr
 folder the project's entry, named after the sanitized cwd as on macOS. An IDE-run shell command left
 no `terminals/` capture under `projects/<sanitized cwd>/`, and `~/.local/share/cursor-agent` and
 `~/.local/bin` stayed absent: the IDE's worker is its own copy of the CLI.
+
+On Windows (3.26.13, 2026-10-21) the first launch wrote the Linux set under `%USERPROFILE%\.cursor\`
+(`argv.json` of 798 bytes, `.gitignore` of 985, `agents\`, `ai-tracking\ai-code-tracking.db` of
+72 KB, `extensions\`, empty, `plugins\local\`, `projects\.agent-data-cleanup-<YYYY-MM-DD>` and
+`projects\empty-window\{canvases\tsconfig.json, mcps\}`), and sign-in `skills-cursor\` with 16
+skills and `.sync-manifest.json`. The sanitized name keeps the drive letter, lower-cased, and
+replaces every other non-alphanumeric run with `-`: the folder `%USERPROFILE%\proj\demo` became
+`projects\c-Users-<user>-proj-demo\`. The other `projects\` entries seen were `<epoch ms>\` for an
+untitled window (`canvases`, `terminals`); `<epoch ms>\` for a workspace project the Agents window
+created by itself (13:30Z, `canvases` and `terminals\1.txt`, paired with
+`User\workspaceStorage\<same epoch ms>\`); and one `C-Users-<user>-AppData-Local-Temp-<uuid>\`
+(capital `C`) per temporary folder the Agents window opened, five by the end of the round (two at
+13:31Z and two at 13:59Z among them), each with `mcps\` and the
+`canvases\node_modules\@types\react` scaffold of 61 entries ([Exclusions](#exclusions)). Opening
+the folder wrote the first `terminals\` capture of any round, `1.txt` of 78 bytes, though the
+user did not report opening one; the agent's commands then added one file each. `mcps\` and
+`skills-cursor\` are rewritten at every launch. The plugin install wrote `plugins\cache\` and
+left `plugins\local\` unchanged, with no `plugins\marketplaces\`; no `mcp-approvals.json` or
+`mcp-cache.json`, which the bundle names, appeared under `.cursor\` through the MCP steps.
 
 #### Cursor Agent CLI
 
@@ -418,14 +587,16 @@ not observed on any real install:
 - IDE: `User/globalStorage/state.vscdb` `ItemTable`, the same file as the chats, so it is
   collected unflagged and redacted by key
   ([ShayGus/quota PR 20](https://github.com/ShayGus/quota/pull/20), L4, confirmed on the macOS
-  install, 3.24.18 to 3.26.13, and on the Linux install, 3.24.18 and 3.25.9):
+  install, 3.24.18 to 3.26.13, on the Linux install, 3.24.18 and 3.25.9, and on the Windows
+  install, 3.26.13):
   - tokens: `cursorAuth/accessToken` and `cursorAuth/refreshToken`, 413 bytes each, plaintext
     JWT-shaped text (JSON Web Tokens, the signed bearer-token format); still plaintext on
     3.26.13, although the key `cursor.storage.authTokenEncryptionAtRest` (5 bytes) has existed since 3.25.9;
     plaintext on Linux too (3.24.18 at sign-in, 2026-10-20), where `ItemTable` also holds, from
     the first launch, `encryption.migratedToGnomeLibsecret` (4 bytes, a boolean), VS Code's
     marker for moving its secret storage to libsecret (the Linux secret-service library the
-    GNOME keyring serves);
+    GNOME keyring serves); plaintext on Windows too (3.26.13 at sign-in, 2026-10-21), with the
+    same identity keys beside them and no `secret://` row yet;
   - VS Code secret storage, one row per secret, keys beginning `secret://`:
     `secret://{"extensionId":"anysphere.cursor-agent-worker","key":"cursor-agent-worker.apiKey"}`
     (311 bytes, reissued at 323 bytes by the plan change), the matching `...apiKeyAuthId` row (207
@@ -439,7 +610,20 @@ not observed on any real install:
     from the first agent turn, and, after the editor's GitHub sign-in,
     `secret://{"extensionId":"vscode.github-authentication","key":"github.auth"}`, the GitHub
     token; no `cursor-agent-worker` rows, since no worker ran; their values are ciphertext
-    ([Secrets](#secrets));
+    ([Secrets](#secrets)); on Windows (3.26.13, 2026-10-21) the rows were
+    `secret://remoteAgentHost.computerKey.auth0|user_<id>`, present before the editor's GitHub
+    sign-in (sign-in itself wrote no `secret://` row; the step that first wrote it was not
+    recorded);
+    `secret://{"extensionId":"anysphere.cursor-resolver-helper","key":"connectionToken:bc-<uuid>"}`,
+    the token the IDE uses to attach to a cloud agent's virtual machine, and
+    `secret://{"extensionId":"vscode.git","key":"git-ipc-auth-token:/home/ubuntu/.cursor-server/data/User/workspaceStorage/<id>/vscode.git"}`,
+    the git extension's token on that machine, whose remote path is in the key name (a second
+    connection appended `-1` to the id), both from the cloud agent's first run and its reopening
+    ([Cloud agents](#cloud-agents)); the worker's
+    `secret://{"extensionId":"anysphere.cursor-agent-worker","key":"cursor-agent-worker.apiKey"}`
+    and `...apiKeyAuthId` rows, from the worker's extraction
+    ([Cursor IDE on Windows](#cursor-ide-on-windows)); and, after the editor's GitHub sign-in,
+    `secret://{"extensionId":"vscode.github-authentication","key":"github.auth"}`;
   - account identity: `cursorAuth/cachedEmail`, `cursorAuth/cachedScopedProfile` (JSON
     `{authId, displayName}`), `cursorAuth/cachedSignUpType`, `cursorAuth/stripeMembershipAuthId`
     (37 bytes), `cursorAuth/stripeMembershipType` (plain text: `free`, then `premium` for the
@@ -456,7 +640,10 @@ not observed on any real install:
   through the browser) showed no keyring prompt; the GNOME keyring file
   `~/.local/share/keyrings/login.keyring` had been created at the first launch, before sign-in,
   so by its timing it holds Electron's safeStorage key and not the tokens; its item labels were
-  not listed (`secret-tool` was not installed).
+  not listed (`secret-tool` was not installed). On Windows no step wrote a Credential Manager
+  entry (`cmdkey /list` listed none for Cursor, git or GitHub), and the editor's GitHub sign-in
+  wrote no git credential store (no `.gitconfig`, no `.git-credentials`): the editor's git
+  extension passes its token through its askpass helper.
 - `ItemTable` `glass.lastSignedInAuthId`, present before sign-in on the Linux install, is by its
   name the last signed-in account's id; its value was not read.
 - IDE device identifiers: `User/globalStorage/storage.json` `telemetry.devDeviceId` (a UUID),
@@ -480,7 +667,15 @@ not observed on any real install:
   logout` removed both objects. The file holds no token, so it is an identity file collected
   unflagged, its identity keys redacted by name ([Secrets](#secrets)).
 - MCP OAuth tokens per project: `~/.cursor/projects/<p>/mcp-auth.json` (`6136.index.js`,
-  `8192.index.js`); flagged.
+  `8192.index.js`); flagged. The Windows IDE (3.26.13, 2026-10-21) wrote none: it kept a
+  plugin's MCP OAuth state in `state.vscdb` `ItemTable`, under keys `mcpOAuth.secret.<b64>`
+  (the suffix encodes a scope and a field name;
+  [MCP servers and plugins](#mcp-servers-and-plugins)), whose fields are `mcp_tokens` (the
+  tokens, from authentication), `mcp_code_verifier`, `mcp_oauth_attempt_client_secret` and
+  `mcp_client_information`, every value ciphertext ([Secrets](#secrets)); redact the prefix
+  `mcpOAuth.secret.` like `secret://`. The plaintext `mcpOAuth.global.<b64>` keys beside them
+  and the attempt files under `User/globalStorage/mcp-oauth-attempts/` hold no secret. A cloud
+  agent's MCP grant is held on the server, not on the host.
 - `~/.cursor/mcp.json` and project `.cursor/mcp.json` carry server env blocks that often hold
   literal keys (docs recommend `${env:...}`); both are flagged, since the secret glob
   `.cursor/mcp.json` matches in the home and in a collected project.
@@ -490,14 +685,22 @@ not observed on any real install:
 - Not credentials, though their names suggest it (macOS install): `canvas-tokens.d.ts` and
   `tokens.d.ts` (TypeScript declarations of design tokens, under `canvases/node_modules` and
   `skills-cursor/canvas/sdk`), `browser_press_key.json` (an MCP tool manifest),
-  `workbench.mcp.oauth.log` (MCP connection state changes, no token),
-  `GitHub Authentication.*.log` ("Reading sessions from keychain", "Got 0 sessions") and
+  `workbench.mcp.oauth.log` (MCP connection state changes, no token; on Windows `[MCPService]
+  State transition: cursor-origin none → error` four times before Origin was enabled),
+  `computer_key.json` (an MCP tool manifest, Windows),
+  `GitHub Authentication.*.log` ("Reading sessions from keychain", "Got 0 sessions"; on
+  Windows after the editor's sign-in also `Logging in for the following scopes: read:user repo
+  user:email workflow`, `Trying device code flow...`, `Login success!` and `Storing 1
+  sessions...`, no token) and
   `cursorAuthDebug.*.log` (0 bytes each).
 
 ### Exclusions
 
 `.cursor/extensions` (extension payloads), `.cursor/worktrees` (git checkouts),
-`.cursor/plugins/marketplaces` (cloned marketplaces),
+`.cursor/plugins/marketplaces` (cloned marketplaces), `.cursor/plugins/cache` (the marketplace
+copy of each installed plugin, re-downloadable; the installed set stays in `state.vscdb`
+`cursor.plugins.installedIds.*` and in the per-project `mcps/plugin-<plugin>-<server>/`
+manifests, both collected; Windows, 3.26.13),
 `*/Cursor/User/globalStorage/state.vscdb.backup` (stale copy, up to 12 GB per forum 167641),
 and `.cursor-server/bin` and `.cursor-server/extensions` (the remote server's binaries and
 extensions, beside the collected `.cursor-server/data/User`). From the macOS install, copies of
@@ -507,15 +710,28 @@ what exists elsewhere:
   of the install's 610 MB; the worker's control files and `worker-data/` beside it stay collected.
   It applies on Linux too, where the copy is downloaded only when a cloud or remote-host feature
   is first used, and partial tarballs remain when the download does not complete
-  ([Cursor IDE on Linux](#cursor-ide-on-linux)).
+  ([Cursor IDE on Linux](#cursor-ide-on-linux)), and on Windows, where the extracted copy under
+  `AppData/Roaming/Cursor/User/globalStorage/` was 262.7 MB and the worker's crash log
+  beside it stays collected ([Cursor IDE on Windows](#cursor-ide-on-windows)).
 - `*/Cursor/update-supervisor/*/cursor-update-supervisor`: the 484 KB update helper binary
-  (macOS; the Linux deb has no `update-supervisor`).
-- `.cursor/projects/*/canvases/node_modules`: type declarations, 226 KB per project.
+  (macOS).
+- `*/Cursor/update-supervisor/*/inno_updater.exe`: the 3.4 MB Inno Setup updater binary that the
+  Windows supervisor keeps from the update to 3.26.16 on; the Linux deb has no
+  `update-supervisor`.
+- `.cursor/projects/*/canvases/node_modules`: type declarations, 226 KB per project; on Windows
+  also in every temporary project the Agents window creates
+  ([`~/.cursor` as the IDE writes it](#cursor-as-the-ide-writes-it)).
 - `.cursor/statsig-cache.json`: the server's feature flags, 951 KB.
 
 `~/.local/share/cursor-agent` (557 MB per version for the bundle's build, 614 MB for
-2026.10.19-6bbf2c4) is not in the catalog. `projects/*/agent-tools`
-holds only outputs over 49 MB; leave it to the size cap rather than exclude.
+2026.10.19-6bbf2c4) is not in the catalog. `projects/*/agent-tools` holds, by the bundle,
+outputs over 49 MB, but the Windows IDE wrote a 38 KB `get_mcp_tools` output there; it is
+collected and left to the size cap. `.cursor/projects/*/mcps` is a candidate exclusion that is
+not taken: the tool manifests are copies, rewritten at every launch, Cursor's own for the
+built-in servers and downloaded for a plugin's (164 KB per project for Google Calendar), but
+they show which MCP servers and tools the agent was offered. On the Windows install
+(2026-10-21) `.cursor\projects` held 621 files and 2.6 MB, 383 of the files in the five
+temporary projects' `mcps\` manifests and canvases.
 
 ### Project-local files
 
@@ -537,7 +753,11 @@ Opening the folder (3.25.9, 2026-10-19; on Linux 3.24.18, 2026-10-20) wrote a co
 the repository's git directory:
 `.git/cursor/crepe/build.lock` and `.git/cursor/crepe/<HEAD sha>/{index.bin, metadata.json,
 postings.bin}`, `metadata.json` holding `{git_revision, version}`. `.git/cursor` is not in
-`PROJECT_CATALOG`.
+`PROJECT_CATALOG`. On Windows (3.26.13, 2026-10-21) the repository cloned through the editor's
+Clone from GitHub got `.git\cursor\crepe\` at 14:02:10Z, still empty two minutes later; the
+clone's `.git\config` (338 bytes) held `remote.origin.url` and `branch.main.vscode-merge-base`,
+the latter written by the editor's git extension. The round's first folder was not a
+repository and got no index.
 
 ### Where the project path is recorded
 
@@ -549,8 +769,10 @@ postings.bin}`, `metadata.json` holding `{git_revision, version}`. `.git/cursor`
 - `~/.cursor/projects/<sanitized cwd>/.workspace-trusted` key `workspacePath`, the absolute path
   of a folder the CLI was trusted in (macOS install).
 - `~/.cursor/projects/<name>` is the sanitized cwd (lossy: `/home/u/a-b` and `/home/u/a_b` collide);
-  the IDE names it the same way (`~/.cursor/projects/<sanitized cwd>/`, macOS and Linux
-  installs). Its `<epoch ms>` and `tmp-<uuid>` names hold no path
+  the IDE names it the same way (`~/.cursor/projects/<sanitized cwd>/`, macOS, Linux and Windows
+  installs; on Windows with the drive letter, `c-Users-<user>-proj-demo`). Its `<epoch ms>` and
+  `tmp-<uuid>` names hold no path, and the Windows `C-Users-<user>-AppData-Local-Temp-<uuid>`
+  names a temporary folder, not a project
   ([`~/.cursor` as the IDE writes it](#cursor-as-the-ide-writes-it)).
 - IDE: `User/workspaceStorage/<md5>/workspace.json` `folder` (a `file://` URL).
 - IDE, per conversation: `composerHeaders.value.workspaceIdentifier{id, uri{fsPath}}` and the
@@ -561,21 +783,24 @@ postings.bin}`, `metadata.json` holding `{git_revision, version}`. `.git/cursor`
   `trackedGitRepos[].repoPath`, `workspaceId`) and `cursor/glass.additionalProjects`
   (`workspaceIdentifier.uri.fsPath`), and the path inside key names
   (`glass.localRepoBranchRecency.<abs path>`, `ofsContent:<composerId>:file://<path>`,
-  `composer.autoAccept.lastSeenHeadSha` keys); the worker's `restart.json` `roots` and
-  `agent-cli-state.json` display names (`<cwd> @ <hostname>`).
+  `composer.autoAccept.lastSeenHeadSha` keys, and on Windows
+  `cursor.plugins.installedIds.no-team|file:///c%3A/Users/<user>/<repo>`, `[]`, one per opened
+  folder beside `...no-workspace`); `history.recentlyOpenedPathsList`; the worker's
+  `restart.json` `roots` and `agent-cli-state.json` display names (`<cwd> @ <hostname>`).
 - IDE, repository list: `ItemTable` `cloudEnvironmentTemplate.githubRepos`, the cache of the
-  repositories a cloud agent may use, and `cloudAgentRepository.agents.auth0|user_<id>`, the
-  cloud-agent list, both `[]` on the Linux install, whose picker listed no repository; and
-  `vscode.github`, which names the open repository by its file URI. The GitHub account is named
-  only by the editor's sign-in keys; Cursor's GitHub app connection names none locally
-  ([`ItemTable` keys](#itemtable-keys)).
+  repositories a cloud agent may use, filled only once a repository is in Cursor Origin (`[]` on
+  the Linux install); a cloud agent's repository is `repoUrl` in
+  `cloudAgentRepository.agents.auth0|user_<id>`, and the repository name is part of key names
+  ([Cloud-agent keys](#cloud-agent-keys)); and `vscode.github`, which names the open repository
+  by its file URI. The GitHub account is named only by the editor's sign-in keys; Cursor's GitHub
+  app connection names none locally ([Source-host integration](#source-host-integration)).
 
 ## Parsing
 
 ### Transcript stores
 
 Relative to the home; the IDE's paths are given for macOS, with `.config/Cursor` (observed on
-Linux) and `AppData/Roaming/Cursor` (convention) as the other platforms' parents.
+Linux) and `AppData/Roaming/Cursor` (observed on Windows) as the other platforms' parents.
 
 | Store | Holds | Role |
 | --- | --- | --- |
@@ -583,6 +808,7 @@ Linux) and `AppData/Roaming/Cursor` (convention) as the other platforms' parents
 | `.cursor/projects/<sanitized cwd>/agent-transcripts/<id>/<id>.jsonl` | the copy of each IDE conversation the worker writes (the id a `composerId`) and of each CLI session (the id its session id): user and assistant text and tool calls; no results or decisions, and no times but the user lines' tags | secondary |
 | `.cursor/chats/<md5 of cwd>/<sessionId>/store.db` (+`-wal`), with `meta.json` and `prompt_history.json` | each standalone CLI session: the model messages as content-addressed blobs, the session's state, title and model | observed (macOS, 2026.10.19-6bbf2c4); parser pending, [issue 235](https://github.com/seanthegeek/doubleagent/issues/235) |
 | `.cursor/acp-sessions/<id>/store.db` | the sessions of `agent acp` | bundle-derived, not observed on any real install; not in this plan |
+| `Library/Application Support/Cursor/User/globalStorage/conversation-search.db` `cloud-cache` rows, with the `cloudAgentRepository.agents.*` record in `state.vscdb` | a cloud agent's conversation text as one block, its title, repository, model, status and times ([Cloud agents](#cloud-agents)) | the only local copy; the conversation's own store is on the agent's virtual machine |
 
 A conversation is a `composerData:<composerId>` row plus one `bubbleId:<composerId>:<bubbleId>`
 row per bubble, ordered by the composer's header list
@@ -592,6 +818,58 @@ chat" creates draft composers (`status` `none`, no headers), so composers outnum
 conversations: 11 `composerData` rows for 2 conversations by 3.26.13. Likewise every start of the
 CLI creates a session directory, so a start that sent nothing leaves a session with no
 conversation ([CLI session and trust files](#cli-session-and-trust-files)).
+
+#### Cloud agents
+
+A cloud agent's conversation is not a local composer (Windows, 3.26.13, 2026-10-21, one agent
+with a read-only task on a repository mirrored into Cursor Origin). Running it wrote no
+`composerData`, bubble, `composerConvHeaders`, `agentKv` or `composerHeaders` row, no
+`cursorDiskKV` key naming `bc-`, no transcript JSONL under `~/.cursor/projects` and no
+`ai-code-tracking.db` row. The agent runs on one of Cursor's virtual machines, and the IDE opens
+it as a remote workspace whose authority is `background-composer+bc-<uuid>`: the window gets a
+`User/workspaceStorage/<id>/` of its own, its `workspace.json` (105 bytes) a `{folder}` with a
+`vscode-remote` URL and its `state.vscdb` no composer row
+([Cloud-agent keys](#cloud-agent-keys)), and only a `webWorker` extension host log,
+since the real extension host runs on the machine. The `vscode.git` secret's key name places a
+`.cursor-server` under `/home/ubuntu` on that machine ([Credentials](#credentials)), so the
+conversation's own store is there, not on the host.
+
+What the host keeps, all under `User/globalStorage/`:
+
+- in `conversation-search.db`, a `conversations` row with `source` `cloud-cache` and `id` the
+  `bc-<uuid>`, whose full-text content holds the title and the conversation's text as one block
+  ([`conversation-search.db`](#conversation-searchdb));
+- in `state.vscdb` `ItemTable`, the agent's record in the cloud-agent list
+  `cloudAgentRepository.agents.<account>` (title, repository URL, model, status numbers, archive
+  flag and times), the repository list `cloudEnvironmentTemplate.githubRepos`, the project and
+  branch caches, and the pane keys ([Cloud-agent keys](#cloud-agent-keys));
+- from the conversation's reopening after a relaunch, `cursorDiskKV`
+  `bcCachedDetails:bc-<uuid>`, a protobuf blob with the prompt, a 224-character text, the
+  repository, branch and model, and `composerTranscriptHeightTail:bc-<uuid>`
+  ([Cloud-agent keys](#cloud-agent-keys)).
+
+A second cloud agent (about 15:08Z) was started from the Agents window with no folder open, by
+the user's own chat after the plugin's "Try in chat" button
+([MCP servers and plugins](#mcp-servers-and-plugins)); the records show it ran in a new temporary
+repository in Cursor Origin rather than on a mirrored one. Its element in the cloud-agent list
+(2,101 bytes for two) has `branchName` `main` and a boolean `startedAsNewProject`, keys the first
+agent's lacked, and `repoUrl` `origin.cursor.com/git/<namespace>/tmp-<16 hex digits>` (54
+characters), where `<namespace>` is the user's Cursor namespace, the account's own space in
+Origin; it also got a second remote workspace (`User/workspaceStorage/<id>/`), its own
+`connectionToken:bc-<uuid>` secret (2,028 bytes) and `vscode.git` token, a second entry in
+`glass.cloudAgentProjects.v1`, and a `cloud-cache` search row (a 21-character title and an
+836-character body, not archived). It asked to authorise the plugin's MCP server for itself,
+which the user accepted with a second Google consent, distinct from the local plugin's (the user
+confirmed it): locally that left only the decision record
+`cloudAgentRepository.mcpAuthResolution` and a larger cloud MCP server list
+([Cloud-agent keys](#cloud-agent-keys)), and the local `mcpOAuth.*` keys did not change. It then
+answered the calendar question with no permission prompt; cloud agents run under their own
+policy, not the local run mode.
+
+So a responder can read the conversation's text, title, repository, branch, model, status and
+times on the host, but no tool call, tool result or per-turn time. The editor window's chat
+history never listed the cloud agent, only the conversations of a locally opened folder; the
+Agents window listed it under its repository's project, as does `cursor.com/agents`.
 
 #### What survives a delete
 
@@ -607,7 +885,9 @@ L3). The 3.26.13 bundle also has "Delete chat", the command `developer.deleteOld
 `[DeleteOldChats] Starting deletion of N chat(s) older than D days`, calling
 `clearLegacyCheckpoints()` and then `deleteComposer`) and an account-level "Delete All Data"
 ("This will permanently delete all your data. This action cannot be undone."); none of these
-three was exercised.
+three was exercised. A cloud agent's menu in the Agents window (3.26.13, Windows, 2026-10-21)
+holds Pin, Rename, Edit Icon, Mark as Unread, Fork, Move to, Copy, Open in Web and Archive, and
+no Delete; the editor window does not list cloud agents ([Cloud agents](#cloud-agents)).
 
 Archive (Agents window, 3.26.13, 2026-10-20) removes nothing: every bubble, checkpoint, `agentKv`
 blob, transcript JSONL file and retrieval checkpoint stayed. It sets `composerHeaders.isArchived`
@@ -658,12 +938,38 @@ the transcript JSONL under `~/.cursor/projects/<sanitized cwd>/agent-transcripts
 under `anysphere.cursor-commits/checkpoints/<requestId>/`, now unattributed, and the exported
 file.
 
+The editor window on Windows (3.26.13, 2026-10-21) deleted a conversation that had never been
+archived, with no confirmation and no file removed, as on the other platforms: gone were
+`composerData`, all 46 bubbles, the `composerConvHeaders` chunk and the `conversation-search.db`
+row. The `composerHeaders` row survived with `isArchived` 1, which the delete itself set, so a
+deleted conversation's header reads archived whether or not it ever was; `lastUpdatedAt` became
+the delete time and `name` was dropped from `value`, whose key set is in
+[`composerHeaders`](#composerheaders). Also left: `composerTranscriptHeightTailIde:<composerId>`,
+11 `agentKv` blobs naming the composer, the transcript JSONL (9,640 bytes, the whole
+conversation, the agent's injected user turns included), the store directory
+`%LOCALAPPDATA%\Cursor\AgentStores\cursor_agent_stores\<composerId>\`, the edit's shadow copy and
+the exported file.
+
+Archiving a cloud agent from the Agents window (3.26.13, Windows, 2026-10-21) removed nothing,
+locally or in the cached text: it set `isArchived` from 0 to 1 in the agent's record in
+`cloudAgentRepository.agents.<account>`, moving its `rowUpdatedAtMs` to the archive time and
+leaving `updatedAt`, `lastReadAtMs` and the status numbers, and set `is_archived` 1 on the
+`cloud-cache` row of `conversation-search.db`, leaving its `updated_at` and its 1,971-character
+text; `bcCachedDetails:bc-<uuid>` was unchanged. No delete of a cloud agent was exercised, and
+the IDE offers none.
+
 Retention: `~/.cursor/projects/.agent-data-cleanup-<YYYY-MM-DD>`, an empty file written at the
 first launch, is named for a daily cleanup of agent data under `projects/`; what that cleanup
-removes, and whether it reaches the transcript JSONL, was not observed.
+removes, and whether it reaches the transcript JSONL, was not observed. A quit removes more
+(Windows, 3.26.13, 2026-10-21): every terminal capture the agent's commands wrote under
+`projects\<p>\terminals\` (five files, 424 to 826 bytes), leaving only the integrated terminal's
+`1.txt`, rewritten at the relaunch, so a collection taken after a quit has no command output from
+them; the remote workspace's `workspace.json` of a cloud agent, its `state.vscdb` kept; and, as on
+Linux, an untitled window's `workspaceStorage\<epoch ms>\`.
 
 The analyzer reads the surviving header, the transcript JSONL, the `agentKv` blobs
-and `ai-code-tracking.db`
+and `ai-code-tracking.db`, and for an archived cloud agent the cached text and the agent's
+record
 ([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources);
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
@@ -704,7 +1010,8 @@ recency)` and `(recency, composerId)`. Values are JSON text unless a row says ot
 | `agentKv:blob:<sha256>` | a content-addressed blob ([`agentKv` blobs](#agentkv-blobs)) |
 | `composerDraft:<composerId>` | `{richText, text}`, an unsent draft (3.26.13; 35 characters on the install) |
 | `composerRootWriterDiagnostic:<composerId>` | `{version, writerInstanceId, rendererRootBlobIdHex, previousRendererRootBlobIdHex, throughWriterSequence, writtenAtMs, writers, writersOmitted, predecessorVerified}`; `rendererRootBlobIdHex` (64 hex) names an `agentKv` blob |
-| `composerTranscriptHeightTail:<composerId>` (`composerTranscriptHeightTailIde:<composerId>` for the editor window's conversation, 3.25.9 on Linux), `composerVirtualRowHeights:_recentIds`, `slashMenuItems/v7/local.glass.<workspace>`, `model-nudge.startup-trigger-session`, `model-nudge.startup-session`, `composer.composerHeaders.migratedToTable` | layout, menu and migration state, no conversation content |
+| `bcCachedDetails:bc-<uuid>` | a cloud agent's cached details, protobuf, written when the conversation is reopened ([Cloud-agent keys](#cloud-agent-keys)) |
+| `composerTranscriptHeightTail:<composerId>` (`composerTranscriptHeightTailIde:<composerId>` for the editor window's conversation, 3.25.9 on Linux and 3.26.13 on Windows; `composerTranscriptHeightTail:bc-<uuid>` for a cloud agent's), `composerVirtualRowHeights:_recentIds`, `slashMenuItems/v7/local.glass.<workspace>`, `model-nudge.startup-trigger-session`, `model-nudge.startup-session`, `composer.composerHeaders.migratedToTable` | layout, menu and migration state, no conversation content |
 
 #### `composerHeaders`
 
@@ -722,6 +1029,19 @@ on both conversations), `agentLocationHistory[{id, reason, timestamp, destinatio
 location}]` (`reason` `created`) and `isArchived`; a deleted conversation's row also had
 `filesChangedCount`. The empty-window head has `isEphemeral`, a draft `draftTarget`,
 `isArchived` and `hasBeenInSidebar`.
+
+On Windows (3.26.13, 2026-10-21) none of the five rows' `value` had `agentLocation` or
+`agentLocationHistory` at the delete step (02:28Z); a conversation created later in the same
+folder (15:21Z) had both, `agentLocation{...}` with `type` `local` and one
+`agentLocationHistory` entry, so their absence is per conversation, not per platform. The
+deleted conversation's surviving `value` (831 bytes) held
+`composerId`, `contextUsagePercent`, `conversationCheckpointLastUpdatedAt`, `createdAt`,
+`filesChangedCount`, `forceMode`, `hasBlockingPendingActions`, `hasPendingPlan`,
+`hasUnreadMessages`, `isArchived`, `isBestOfNSubcomposer`, `isDraft`, `isProject`, `isSpec`,
+`isWorktree`, `lastUpdatedAt`, `numSubComposers`, `referencedPlans`, `totalLinesAdded`,
+`totalLinesRemoved`, `trackedGitRepos`, `type`, `unifiedMode`, `workspaceIdentifier` and
+`worktreeStartedReadOnly`. The two keys are therefore optional, and what decides whether a header
+carries them is not known.
 
 #### `composerData`
 
@@ -773,6 +1093,14 @@ on), and empty lists such as `toolResults`, `allThinkingBlocks`, `commits` and `
 `modelInfo.modelName` is the model the turn was sent to (`grok-4.6` on the six turns before the
 switch, `grok-4.7` after it).
 
+Not every user bubble is typed (Windows, 3.26.13, 2026-10-21). Of the conversation's first 7
+user bubbles, 4 were typed prompts, with `modelInfo{modelName}` (`default` while Auto was
+selected) and `agentMode` 1 and 26 to 98 characters of text; 3 had no `modelInfo` and no
+`agentMode`, 527 to 689 characters of text, and a `createdAt` within a second of a terminal
+command's completion: turns the agent injected, such as a command's output fed back as a user
+message, not the person's words. Their header entries are `type` 1 like a typed prompt's (7 of
+type 1 and 36 of type 2 for 43 bubbles at that point).
+
 #### Assistant sub-bubbles
 
 One assistant turn is a `bubbleId` uuid whose records carry suffixes: `/s:<n>` for reasoning and
@@ -794,8 +1122,29 @@ absent on `edit_file_v2` and on a terminal command), `result` (a JSON string, 22
 seen; an error object when the call was refused), `status` (`completed`, even for a refused call;
 `loading` while the call waits at its prompt), `tool` (a number), `toolCallId` (85 characters),
 `modelCallId` (85 characters, or empty), `toolCallBinary` (base64), `toolIndex` and
-`additionalData`. Names seen: `glob_file_search`, `get_mcp_tools`, `read_file_v2`, `edit_file_v2`
-and `run_terminal_command_v2`. One bubble holds both the call and its result.
+`additionalData`. Names seen: `glob_file_search`, `get_mcp_tools`, `read_file_v2`, `edit_file_v2`,
+`run_terminal_command_v2` and, for an MCP server's tool, `mcp-<server>-<tool>`. One bubble holds
+both the call and its result.
+
+An MCP call (Windows, 3.26.13, 2026-10-21, the Google Calendar plugin's tools) is a tool bubble
+of the same shape: `toolFormerData{name, tool, status, toolCallId, modelCallId, toolIndex,
+rawArgs, params, result, additionalData, toolCallBinary}` with `name`
+`mcp-google-calendar-list_events` or `mcp-google-calendar-list_calendars` (31 and 34
+characters), `tool` 19, `status` `completed`, `rawArgs` a JSON string of 178 to 598 characters,
+`params` one of 76 to 308, `result` one of 539 to 4,472, `additionalData{status: "success"}` and
+`toolCallBinary` 1,196 to 5,964 characters, a serialised copy of the call whose encoding is not
+known. The call that lists a server's tools first is `get_mcp_tools`, `tool` 63, with
+`additionalData` `{}`. Under Allowlist the user was asked to approve each MCP call and approved
+each, yet no approved MCP bubble has `reviewData`, `selectedOption` or `blockReason`: an MCP
+prompt answered Run leaves no per-call record on 3.26.13, unlike a shell command's. Under
+Auto-review the same calls were not prompted and have the same shape.
+
+A turn the user stopped (Windows, 3.26.13, the "Try in chat" conversation) left its running
+terminal call with `toolFormerData.status` `completed`, `additionalData.status` `rejected`,
+`additionalData.reviewData.status` the string `None` (present, not `Done`) and `selectedOption`
+the preset `rejectAndTellWhatToDoDifferently`, which nobody chose; the three tool calls after it
+(`read_file_v2` and two `glob_file_search`) have `toolFormerData.status` `cancelled` and an
+empty `additionalData`.
 
 `additionalData` is absent on a call that ran with no review (a file read); a terminal command
 that ran under auto-run has `{status, startedAtMs}`, and so has one that ran because the
@@ -804,12 +1153,12 @@ command the user was asked about has:
 
 | Key | Values seen |
 | --- | --- |
-| `status` | `success` (ran), `rejected` (skipped) |
+| `status` | `success` (ran), `rejected` (skipped, or cut off by a Stop), `error` (ran and the command failed; Windows, under auto-run), `pending` (the prompt open; Windows) |
 | `startedAtMs` | present when the command ran |
-| `blockReason` | why it was held, e.g. `Not in allowlist: curl, head` |
-| `reviewData.selectedOption` | `run` (Run, and the editor window's add-to-allow-list), `skip` (Skip), `allowlistCommands` (the Agents window's Always run), `rejectAndTellWhatToDoDifferently` (the preset while the prompt is open: the skip-and-tell option, never seen chosen) |
+| `blockReason` | why it was held, e.g. `Not in allowlist: curl, head`, or `Shell allowlist is empty` (Windows) |
+| `reviewData.selectedOption` | `run` (Run, and the editor window's add-to-allow-list), `skip` (Skip), `allowlistCommands` (the Agents window's Always run), `rejectAndTellWhatToDoDifferently` (the preset while the prompt is open: the skip-and-tell option, never seen chosen; it also stays on a call cut off by a Stop) |
 | `reviewData.approvalType` | `user` |
-| `reviewData.status` | `Requested` (the prompt open), `Done` (answered) |
+| `reviewData.status` | `Requested` (the prompt open), `Done` (answered), `None` (the turn stopped by the user; Windows) |
 | `reviewData.allowlistOptions` | `[{id, label, value, commandName, ancestorIds, tokens, tokenCount, indentLevel}]`, one per command in the line |
 | `reviewData.candidatesForAllowlist`, `defaultAllowlistOptionIds`, `selectedAllowlistOptionIds` | the commands offered and preselected (`curl`, `head`) |
 | `reviewData.appliedAllowlistOptionIds` | only after an allow-always choice, with either `selectedOption`: the entries the choice named |
@@ -821,6 +1170,18 @@ Skip, a change of run mode and "add python3 to the allow list", naming the comma
 3.25.9, 2026-10-20). The decision records were the same on both: Run wrote `selectedOption`
 `run`, `approvalType` `user`, `additionalData.status` `success` and `startedAtMs`; Skip wrote
 `skip`, no `startedAtMs` and a refusal object in `result` (70 characters on Linux).
+
+On Windows (3.26.13, editor window, Allowlist, 2026-10-21) the prompt for a `powershell -Command
+...` line offered a change of run mode, Skip and Run, and no allow-list entry: the waiting
+bubble had `toolFormerData.status` `loading`, `additionalData{status: "pending", blockReason:
+"Shell allowlist is empty", reviewData{status: "Requested", selectedOption:
+"rejectAndTellWhatToDoDifferently", allowlistOptions: [], candidatesForAllowlist: [],
+hasClassifierSuggestions: false}}`. Whether `powershell` was not offered because it is an
+interpreter, because of the `-Command` form or because of a 3.26 change is not known; Linux
+3.25.9 offered `python3`. Run and Skip then wrote the same records as on macOS and Linux (Skip's
+refusal object 70 characters), and a skipped command left no terminal capture. Earlier, under
+the Auto-review default, the agent's commands carried `additionalData{status, startedAtMs}` with
+`status` `success` three times and `error` once, and no `reviewData`.
 
 A call waiting at its prompt is on disk before any answer (Linux, 3.25.9, editor window,
 2026-10-20): `toolFormerData.status` `loading`, and `additionalData{status, blockReason,
@@ -885,7 +1246,10 @@ Keys that hold conversation, permission and model evidence (macOS install):
   question sent after it (about 22:06Z), its other entries all carrying the sign-in time; and the
   standing allow list did not show an addition made from the prompt
   ([Run mode and standing lists](#run-mode-and-standing-lists)). A time in the blob, and the
-  file's modification time, can therefore follow the action they record by many minutes.
+  file's modification time, can therefore follow the action they record by many minutes. On
+  Windows (3.26.13, 2026-10-21) the switch from Auto to `grok-4.6` set
+  `aiSettings.modelConfig.composer.modelName` and gave `modelLastUsedAt` its `grok-4.6` entry at
+  the switch itself (02:11:03.900Z), as on macOS, before any message was sent.
 - `glass.agentConversationPanes.<id>` (`{activeTabId, tabAgentIds, version}`),
   `cursor/glass.selectedAgent`, `cursor/glass.lastRealAgent`,
   `glass/cursor.editorPanelVisibility.agent/<id>`, `cursor/glass.editorPanelFullscreen/<id>`:
@@ -895,6 +1259,11 @@ Keys that hold conversation, permission and model evidence (macOS install):
   account, `:auth0%7Cuser_<id>`).
 - `cursor/glass.additionalProjects`, `cursor/glass.removedProjects`, `workspaceMetadata.entries`
   ([Where the project path is recorded](#where-the-project-path-is-recorded)).
+  `cursor/glass.additionalProjects` is the Agents window's project list: on Windows (3.26.13)
+  three entries `{id, lastUsedAt, name, repoUrls, type}` (`id` 39 characters, `type` 4) after the
+  cloud agent, and a fourth `{id, lastUsedAt, name, type: "workspace",
+  workspaceIdentifier{id}}` when the Agents window created a workspace project by itself, `id`
+  the project's epoch-ms name.
 - `cursorai/donotchange/{newPrivacyMode2, privacyMode, partnerDataShare,
   newPrivacyModeHoursRemainingInGracePeriod}` and `cursorai/serverConfig` (60 KB of server
   configuration); `adminSettings.cached` (792 bytes before sign-in).
@@ -918,21 +1287,100 @@ Keys that hold conversation, permission and model evidence (macOS install):
   `cloudAgentRepository.agents.auth0|user_<id>` (`[]`, the cloud-agent list),
   `cloudAgentRepository.serverPinnedBcIds.auth0|user_<id>` (`[]`) and
   `cursor/glass.runningSessionCloudSetupCta.multiRepoOwnerUserId.auth0|user_<id>` (a number).
-- `remoteAgentHost.enrolled.auth0|user_<id>` (a boolean), `remoteAgentHost.displayName.auth0|user_<id>`
-  (6 bytes) and `remoteAgentHost.targetId` (a UUID): the machine's enrolment as a remote agent
-  host for the account, whose credential is `secret://remoteAgentHost.computerKey.auth0|user_<id>`
-  ([Credentials](#credentials)); first seen after the editor's GitHub sign-in (Linux, 3.25.9).
+- `remoteAgentHost.enrolled.auth0|user_<id>` (a boolean, 4 bytes),
+  `remoteAgentHost.displayName.auth0|user_<id>` (6 bytes on Linux; 14 bytes on Windows, the
+  machine's host name) and `remoteAgentHost.targetId` (a UUID, 36 bytes): the machine's enrolment
+  as a remote agent host for the account, whose credential is
+  `secret://remoteAgentHost.computerKey.auth0|user_<id>` ([Credentials](#credentials)); when they
+  appear and what pairing a phone leaves are in [Remote control](#remote-control). The Welcome
+  tab's "Steer from iOS" button, beside "Clone a repository", wrote
+  `cursor/steerFromCloudModalOpened` (a boolean, 4 bytes) when its modal was opened (Windows,
+  3.26.13, 2026-10-21); `cursor/glass.steerFromPhonePill.cadence.v1/<account>` (52 bytes,
+  `{firstShownAtMs, impressionCount}`), present from the cloud agent's step, is the cadence record
+  of the interface's nudge to steer the agent from a phone.
 - `cursor/agentAutorunBrandNewDefaultAttempted` (true, set before sign-in),
   `cursor/sandboxSupported`, `cursor/sandboxAutoRunSettingEnabled` (on Linux the first absent
   throughout and the second absent until the run-mode switch wrote it false).
 - `cursor.update.sendAuthHeaders` (before sign-in), `cursor.storage.disableSqliteStorageBackup`
   and `cursor.storage.sqliteIncrementalAutoVacuumOnClose`: seen on the Linux install.
+- On Windows `cursor/sandboxSupported` was absent throughout, as on Linux; the editor's GitHub
+  sign-in wrote the Linux keys (`github-<login>` 55 bytes, `github-<login>-usages` 137,
+  `vscode.github-github` 13, `vscode.github-github-repo workflow user:email read:user` 16) and
+  `vscode.github` (87 bytes, `{branchProtection:file:///c%3A/Users/<user>/<repo>: [{remote,
+  rules}]}`, `remote` `origin`); opening the clone wrote `backgroundComposer.windowBcMapping`
+  (`{"1": []}`), `notifications.perSourceDoNotDisturbMode` and the
+  `cursor.plugins.installedIds.*` keys of
+  [Where the project path is recorded](#where-the-project-path-is-recorded).
+- `mcpOAuth.global.<b64>`, `mcpOAuth.secret.<b64>` and the `cursor.plugins.installedIds.*`
+  values: a plugin's MCP OAuth state and the installed plugins (Windows, 3.26.13), in
+  [MCP servers and plugins](#mcp-servers-and-plugins).
+
+#### Cloud-agent keys
+
+The records of a cloud agent ([Cloud agents](#cloud-agents)) on Windows (3.26.13, 2026-10-21),
+in `User/globalStorage/state.vscdb`. `<account>` is the `auth0|user_<id>` account id, which
+appears URL-encoded (`auth0%7Cuser_<id>`) inside key names, and `<repo key>` is
+`github.com%2F<owner>%2F<repo>`, the repository's name in a key name, or for a temporary Origin
+repository `origin.cursor.com%2Fgit%2F<namespace>%2Ftmp-<hex>`. `ItemTable`, JSON unless said:
+
+| Key | Value |
+| --- | --- |
+| `cloudAgentRepository.agents.<account>` | the cloud-agent list, `[]` before the first agent (1,026 bytes with one): `[{bcId, cloudTargetKey, createdAt, environmentPublicId, hasPendingInteraction, hasStartedVm, isArchived, isKilled, isOwnedByDifferentTeamMember, isUnread, lastMessageActivityAtMs, lastReadAtMs, modelDetails{maxMode, modelName}, name, repoUrl, repoUrls, requestedModel{builtInModel, maxMode, modelId, parameters[{id, value}]}, rowUpdatedAtMs, source, status, transportRepoUrls, updatedAt, usePrivateWorker, workflowStatus, workspaceRootPath}]`; `bcId` 39 characters, `cloudTargetKey` 42, `environmentPublicId` a UUID, `name` the title (36), `repoUrl` `github.com/<owner>/<repo>`, `modelDetails.modelName` and `requestedModel.modelId` 8 characters each, three parameters, `source`, `status` and `workflowStatus` numbers (16, 2 and 2 after the run), `workspaceRootPath` an absolute path on the agent's machine; the second agent's element added `branchName` (`main`) and `startedAsNewProject` (a boolean), and its `repoUrl` was an Origin repository, `origin.cursor.com/git/<namespace>/tmp-<16 hex digits>` |
+| `cloudAgentRepository.serverPinnedBcIds.<account>` | `[]` |
+| `cloudAgentRepository.mcpAuthResolution` | the user's answer to a cloud agent's request to authorise an MCP server, 310 bytes: `{agentId, authId, nonce, queryId, toolCallId, userDecision, version}`, `agentId` the 39-character `bc-<uuid>`, `authId` 37 characters, `nonce` a UUID, `toolCallId` 85 characters, `userDecision` `accepted`; the meaning of `authId`, `queryId` and `version` is not known |
+| `agentData.cacheStorage.glass.cloudMcpServers.v1.personal.<account>` | the account's cloud MCP server list, not JSON, printable; 95 bytes before the cloud agent's MCP authorisation, 381 after |
+| `cloudEnvironmentTemplate.githubRepos` | the repository list, `[]` until a repository was in Cursor Origin (127 bytes with one): `[{name, scmRepoNodeId, type, url}]`, `name` `<owner>/<repo>`, `scmRepoNodeId` 12 characters, `type` 7, `url` 34 |
+| `glass.cloudAgentProjects.v1` | `[{createdAt, id, isArchived, lastUpdatedAt, name, workspace{id, uri{$mid, authority, external, path, scheme}}}]`, `id` a UUID, `name` `<owner>/<repo>`, `scheme` `vscode-remote`, `authority` 59 characters |
+| `glass.cloudAgentProjectMembership.v1` | `{"bc-<uuid>": <project uuid>}` |
+| `glass.cloudRepoBranches.<account>.<repo key>` | `{branches[{isDefault, name}], fetchedAtMs, hasMore, isEmptyRepo, page}`, the repository's branches (14) |
+| `glass.cloudRepoBranchRecency.<account>.<repo key>` | `[{name, selectedAtMs}]` |
+| `agentData.cacheStorage.glass.repoSlashInventory.v2.<repo key>.<account>` | 122 bytes, not JSON |
+| `cursor/glass.projectSelector.recentCloudTargets` | `[{githubNodeId, lastSelectedAt, repoUrl, startTargetSelection, templateType}]` |
+| `cursor/glass.selectedAgent`, `cursor/glass.lastRealAgent` | the `bc-<uuid>` as a bare string |
+| `glass.agentConversationPanes.bc-<uuid>`, `cursor/glass.editorPanelFullscreen/bc-<uuid>`, `glass/cursor.editorPanelVisibility.agent/bc-<uuid>` | the pane state of [`ItemTable` keys](#itemtable-keys) |
+| `cursor/glass.tabs.v2/<workspace id>/state.json` | the Agents window's tabs per workspace |
+
+`cursorDiskKV` gained, at the reopening after a relaunch, `bcCachedDetails:bc-<uuid>` (1,783
+bytes of protobuf, the only protobuf family beside the `agentKv` blobs) and
+`composerTranscriptHeightTail:bc-<uuid>` (`{f: [], h: [7 x [4 x string]], l, t, v}`, the seven
+rendered turns' layout). `bcCachedDetails` decoded by wire type alone, with no descriptor (field
+numbers, with what each holds):
+
+```text
+3 (1,776 bytes)
+  1: the agent record: the bc id (39), a fixed64, text 10, the name (36), text 42 (the
+     cloudTargetKey), varints, 28 {model (8), varint}, branch (4), text 56, a UUID, a fixed64,
+     59 {model (8), 3 x {parameter id, value (4)}}, the repoUrl (34), a UUID, varints
+  2: text 40
+  3: text 11
+  4.7: {1: text of 139 characters, the length of the user's prompt; 2: varint; 57: text 224;
+        94: varint}
+  22.1.1: {1: the same 139-character text; 2: a UUID; 8: the same 224-character text}
+  23: text 38 (two line feeds)
+  27: {UUID, UUID, text 36 (one line feed), text 20, varints}
+  28: the model and parameters message again
+  36: {text 28, text 42, text 4}
+  37: 64 hex digits (perhaps the search row's scope)
+```
+
+So the blob carries the prompt, a 224-character text (a summary or the reply's start; not the
+1,971-character cached text), the repository, branch, model and ids, and not the whole
+conversation; its fields need the descriptors of the 3.26.13 bundle to be named.
+
+The remote workspace's `User/workspaceStorage/<id>/state.vscdb` held 13 `ItemTable` keys at the
+run (`resource.authority.os.background-composer+bc-<uuid>`, `workbench.view.remote.state`,
+`vscode.git`, `cursor/sandboxSupported` among them) and 31 after the reopening, among them
+`workbench.backgroundComposer.workspacePersistentData`
+(`{cachedInWindowBackgroundComposer{bcId, data{hasLocalChanges, status}, timestamp},
+isSideBarExpanded}`); its `composerHeaders` and `cursorDiskKV` stayed empty.
 
 #### Run mode and standing lists
 
 The applicationUser blob's `composerState` holds the run mode per agent mode and the standing
 lists. `modes4` has seven entries, `{id, autoRun, fullAutoRun, smartModeAutoRun, autoFix,
-shouldAutoApplyIfNoEditTool, thinkingLevel, actionId, description, enabledMcpServers}`, with
+shouldAutoApplyIfNoEditTool, thinkingLevel, actionId, description, enabledMcpServers}` (on
+Windows 3.26.13 also `enabledTools`; `enabledMcpServers` and `enabledTools` are the mode's MCP
+server and tool lists, `[]` after the MCP steps), with
 `id` `agent`, `plan`, `chat`, `triage`, `spec`, `debug` and `multitask`; on the new install
 `agent`, `triage` and `multitask` had `autoRun` true. No run-mode string is stored: the mode is
 derived from the three flags and the `ItemTable` key `cursor/sandboxAutoRunSettingEnabled`
@@ -945,9 +1393,9 @@ set `smartModeAutoRun` false and wrote `cursor/sandboxAutoRunSettingEnabled` fal
 | `autoRun` | `smartModeAutoRun` | `fullAutoRun` | sandbox key | Run mode (UI label) | Seen |
 | --- | --- | --- | --- | --- | --- |
 | false | any | false | any | Ask Every Time | bundle |
-| true | false | false | absent or false | Allowlist | after the switch on Linux |
+| true | false | false | absent or false | Allowlist | after the switch on Linux and Windows |
 | true | false | false | true | Allowlist (with Sandbox) | after the switch |
-| true | true | false | absent or false | Auto-review | the new-install default (macOS and Linux) |
+| true | true | false | absent or false | Auto-review | the new-install default (macOS, Linux and Windows) |
 | true | true | false | true | Auto-review (with Sandbox) | bundle |
 | any | any | true | any | Run Everything | bundle |
 
@@ -985,6 +1433,18 @@ holds the user's own entries only: `ls`, which the settings page showed as a def
 built in and not stored, as `cli-config.json` ships `Shell(ls)`. `User/settings.json` held only
 `window.autoDetectColorScheme`: the list is not a VS Code setting.
 
+On Windows (3.26.13, 2026-10-21) no sandbox is offered either: `cursor/sandboxSupported` was
+absent, and the switch to Allowlist left `modes4` `agent` at `autoRun` true, `smartModeAutoRun`
+false and `fullAutoRun` false and wrote `cursor/sandboxAutoRunSettingEnabled` false. Settings >
+Agent persisted the list on 3.26.13 as on 3.25.9: `yoloCommandAllowlist` became
+`["powershell"]`. The entry the user tried first, `powershell.exe`, was not in the stored list
+and did not match the command line; `powershell`, the command's first token as typed, did, and
+the command then ran with no prompt and a record with no `reviewData`. The prompt never offered
+an allow-list entry for this command on Windows ([Tool bubbles](#tool-bubbles)), so whether the
+prompt's shortcut persists on 3.26.13 was not tested. Before the MCP turn under Auto-review
+(15:35Z) the user removed the `powershell` entry in Settings, and the list read `[]` after that
+turn; `yoloMcpToolsDisabled` and `mcpAuthBlocking` kept their values.
+
 #### Agent transcript JSONL
 
 `~/.cursor/projects/<sanitized cwd>/agent-transcripts/<composerId>/<composerId>.jsonl`, written by
@@ -999,21 +1459,27 @@ the worker beside each IDE turn (3.25.9 and 3.26.13). Line shapes:
 - `{role: "assistant", message: {content: [...]}}` with blocks `{type: "text", text}` and
   `{type: "tool_use", name, input}`; `name` is a CamelCase tool name, not the snake_case
   `toolFormerData.name` (table below); `input` keys seen: `glob_pattern`;
-  `namespace` and `toolName`; `path`; `path`, `old_string` and `new_string`; `command`,
+  `namespace` and `toolName`; `arguments`, `mcpDetails`, `namespace` and `toolName` for an MCP
+  call; `path`; `path`, `old_string` and `new_string`; `command`,
   `description` and, for a command that needed a sandbox exception, `required_permissions`
   (`["full_network"]`);
-- `{type: "turn_ended", status}` (`success`).
+- `{type: "turn_ended", status}` (`success`); on Windows (3.26.13, the stopped "Try in chat"
+  turn) also with `error`, `{error, status, type}`.
 
 The user line's tag is the only time in the file; no line carries a model, tool result or
 permission decision, so an approved and a skipped command have identical lines. The first
 conversation's file grew from 3 to 28 lines over seven turns; the two conversations' files held
-32 lines in all, 8 user, 16 assistant and 8 `turn_ended` (one per turn).
+32 lines in all, 8 user, 16 assistant and 8 `turn_ended` (one per turn). On Windows (3.26.13,
+2026-10-21) the file (`projects\c-Users-<user>-proj-demo\agent-transcripts\<composerId>\`, 300
+bytes after the first question, 9,640 at the delete) also held the turns the agent injected as
+user messages ([User bubbles](#user-bubbles)).
 
 The transcript's tool names, matched to `toolFormerData.name` by their position in the round's
 turns (one install, 3.25.9 and 3.26.13):
 
 | Transcript `name` | `toolFormerData.name` |
 | --- | --- |
+| `CallDynamicTool` | `mcp-<server>-<tool>` (Windows, 3.26.13) |
 | `GetDynamicTools` | `get_mcp_tools` |
 | `Glob` | `glob_file_search` |
 | `Read` | `read_file_v2` |
@@ -1130,7 +1596,20 @@ conversation: after a quit, two relaunches and the conversation reopened, the bu
 `status`, `lastUpdatedAt` and headers were unchanged and `lastReadAtMs` stayed the last bubble's
 `startedAtMs`; a relaunch shows only as a `logs/<launch stamp>/` directory and new drafts. The
 same held on Linux (3.25.9), where the quit also checkpointed the WAL into `state.vscdb` (3.0 MB)
-and removed the `workspaceStorage/<epoch ms>/` of an earlier untitled window.
+and removed the `workspaceStorage/<epoch ms>/` of an earlier untitled window, and on Windows
+(3.26.13), where the 46 bubbles and `lastUpdatedAt` were unchanged after the reopening.
+
+A cloud agent's `bc-<uuid>` joins its `cloudAgentRepository.agents.<account>` element
+(`bcId`), the `conversation-search.db` `conversations.id`, the `bcCachedDetails:` and
+`composerTranscriptHeightTail:` keys, the `glass.agentConversationPanes.` and pane keys, the key
+of `glass.cloudAgentProjectMembership.v1`, the remote workspace's authority
+`background-composer+bc-<uuid>` and the `connectionToken:bc-<uuid>` secret; the repository joins
+on `repoUrl` and the repository key names ([Cloud-agent keys](#cloud-agent-keys)). Its times are
+the agent record's `createdAt`, `updatedAt`, `lastMessageActivityAtMs`, `lastReadAtMs` and
+`rowUpdatedAtMs` (an archive moved only the last) and the search row's `updated_at` (13:09:09Z on
+the install, unmoved by the archive). The cached text has no per-turn time
+and no boundary between the prompt and the reply, so the cloud conversation cannot be split into
+turns locally.
 
 A CLI session's id is its `chats/<md5>/<sessionId>/` directory name, the
 `agent-transcripts/<sessionId>/` directory and file name, and `ai_code_hashes.conversationId`;
@@ -1150,18 +1629,29 @@ to 4 KB).
 #### `conversation-search.db`
 
 `User/globalStorage/conversation-search.db`: `conversations(fts_rowid, source, scope, id, title,
-branches, updated_at, is_archived, root_fingerprint, cache_fingerprint)` with `source`
-constrained to `local` or `cloud-cache` (only `local` seen), the FTS5 (SQLite's full-text search
-module) table
+branches, updated_at, is_archived, root_fingerprint, cache_fingerprint)` with a CHECK constraint
+`source IN ('local','cloud-cache')`, the FTS5 (SQLite's full-text search module) table
 `conversation_fts(title, body, branches)` with its shadow tables (`_idx`, `_config`, `_content`,
 `_data`, `_docsize`), `conversation_search_candidates(id, updated_at)`,
 `conversation_search_reconciliation(cursor, in_progress)` and
-`conversation_search_settings(effective_conversation_cap)` (10000). One `conversations` row per
-composer, drafts included (an empty title); `updated_at` is the composer's `lastUpdatedAt` in
-epoch ms, refreshed at launch, and `is_archived` follows an archive. The FTS content holds the
-conversation's text: title, the messages' text and the branches (42 characters of body in all
-after the first question and its answer). A delete removes the row ([What survives a
-delete](#what-survives-a-delete)).
+`conversation_search_settings(effective_conversation_cap)` (10000). The shadow table
+`conversation_fts_content(id, c0, c1, c2)` holds the indexed text, `c0` the title, `c1` the body
+and `c2` the branches, and joins `conversations` on `conversations.fts_rowid =
+conversation_fts_content.id`. One `conversations` row per composer, drafts included (an empty
+title); `updated_at` is the composer's `lastUpdatedAt` in epoch ms, refreshed at launch, and
+`is_archived` follows an archive. A `local` row has `scope` `''` and a `root_fingerprint`; a
+`cloud-cache` row, a cloud agent's ([Cloud agents](#cloud-agents)), has a `scope` of 64 hex
+digits, a 64-character `cache_fingerprint`, `id` the `bc-<uuid>` and `branches` `''`. On the
+macOS install the content held the conversation's text (42 characters of body in all after the
+first question and its answer). On the Windows install (3.26.13, 2026-10-21) the three `local`
+rows of the morning's steps had empty content (title and body 0 characters, before and after the
+delete), while the first `cloud-cache` row held a 36-character title and a 1,971-character body
+of 21 lines, plain turn text with the user's prompt once and no `**User**` or `**Cursor**`
+markers, unchanged by the conversation's reopening and by its archive. Later `local` rows held
+text too: the "Try in chat" conversation's a 28-character title and a 252-character body, and
+the MCP conversation's a 21-character title and an 806-character body. So some local rows have
+no body, and a body is not particular to cloud agents. A delete removes a local row
+([What survives a delete](#what-survives-a-delete)).
 
 #### `ai-code-tracking.db`
 
@@ -1193,7 +1683,10 @@ one-function edit), with the same layout, one per agent request that edited a fi
 requestFiles[{fileUuid, fsPath, gitInfo{gitInfo{branch, commitHash, gitRoot}}}],
 deduplicatedGitInfos}`), `files/<fileUuid>` (the file before the edit) and `diffs/<fileUuid>`
 (`{fsPath, fileUuid, kind, numLines, fileSizeBytes, gitInfo, diffChanges[{original and modified line
-ranges, addedLines, tokenizedAddedLines}]}`). The composer id is not in it.
+ranges, addedLines, tokenizedAddedLines}]}`). The composer id is not in it. The Windows install
+(3.26.13, 2026-10-21) wrote `anysphere.cursor-commits\checkpoints\<requestId>\` too
+(`metadata.json` 324 bytes, a 32-byte file copy, a 475-byte diff); the macOS 3.26.13 install's
+directory name was not checked, so which builds use which name is not known.
 
 #### Workspace `state.vscdb`
 
@@ -1204,7 +1697,8 @@ ranges, addedLines, tokenizedAddedLines}]}`). The composer id is not in it.
 `terminal.integrated.environmentVariableCollectionsV2`, `vscode.git`,
 `workbench.view.remote.state` and
 `workbench.customize.primitiveSourceSnapshot.{commands,rules,skills,subagents,mcps}.v3`.
-`User/workspaceStorage/<id>/workspace.json` is `{folder}`.
+`User/workspaceStorage/<id>/workspace.json` is `{folder}` (51 bytes for a local folder on
+Windows); a cloud agent's remote workspace is in [Cloud-agent keys](#cloud-agent-keys).
 
 #### `cli-config.json`, `permissions.json` and `sandbox.json`
 
@@ -1262,6 +1756,18 @@ composerId>/pins/<pid>-<uuid>.json` (`{createdAtMs, hostname, pid, purpose, uid,
 windowId}`, `purpose` `foreground`; 166 bytes on Linux) pins a store per open window or
 conversation, and `.store-eviction-last-run` holds a number.
 
+On Windows (3.26.13, 2026-10-21) the stores are under
+`%LOCALAPPDATA%\Cursor\AgentStores\cursor_agent_stores\`, from sign-in: `u<id>\.sync\{index.sqlite,
+root-id, root-id.lock, sync.lock, tmp\}`, `u<id>\files\skills\`, `.control\u<id>\pins\`,
+`.store-eviction-last-run`, and per conversation `<composerId>\files\` and
+`.control\<composerId>\pins\`, the latter from the first question, as on Linux. `index.sqlite` was
+written at sign-in, as on macOS, and had the same tables, its `files` table empty (36 KB with a
+4.1 MB WAL by the cloud agent's step). The pin files carry `sid` (46 characters) where the other
+platforms' carry `uid`, `{createdAtMs, hostname, pid, purpose, sid, version, windowId}` (214
+bytes, `hostname` 14 characters, `purpose` 10, `windowId` 41), and they accumulate across
+launches, one per window and process (7 by the cloud agent's step, 11 an hour later);
+`sync.lock` is `{acquiredAt, hostname, kind, pid, sid, windowId}`.
+
 #### `update-supervisor`
 
 `update-supervisor/<install uuid>/`, one per in-app update: `events.jsonl` (17 lines per update;
@@ -1275,6 +1781,27 @@ status}`, `finalPhase` `confirmed`, `status` `success`), `app-ready.json` (`{cur
 readyAt}`) and the `cursor-update-supervisor` binary. Together they date each build the install
 ran. The Linux deb has none ([Cursor IDE on Linux](#cursor-ide-on-linux)).
 
+On Windows (per-user installer, 2026-10-21) the directory depends on the build the update brings.
+The in-app update run on 3.26.13 ran Inno Setup alone: it relaunched the app at 00:52Z with a new
+log directory, left the build at 3.26.13 (`package.json` and the `Cursor.exe` product version
+both 3.26.13) and wrote only its log, `cursor-inno-updater-<epoch s>.log` (3.5 MB), and no
+`update-supervisor\` ([Cursor IDE on Windows](#cursor-ide-on-windows)). The update to 3.26.16
+installs in the background and the restart only switches to it. Inno Setup ran at 15:42-15:44Z
+while the running app was still 3.26.13: it rewrote the install directory
+`%LOCALAPPDATA%\Programs\cursor\` (`resources\app`, `unins000.exe`, `unins000.dat`,
+`unins000.msg`, `tools\` and `_\`, Inno's staging directory for the old files), set the
+Uninstall entry's version to 3.26.16, and created `%TEMP%\Setup Log 2026-10-21 #001.txt` (0
+bytes) and `%TEMP%\vscode-stable-user-arm64-<id>\`, the downloaded installer's extraction; no
+scheduled task. The restart that the app offered then (15:59-16:01Z) removed both temporary
+entries, rewrote the install directory, grew the Inno log to 4.95 MB and wrote
+`update-supervisor\win32\<installationId uuid>\` under `%APPDATA%\Cursor\`, the path the
+catalog's `AppData/Roaming/Cursor/update-supervisor` line names, with `app-ready.json` (116
+bytes, `{currentVersion, installationId, schemaVersion}`, `currentVersion` `3.26.16`),
+`state.json` (104 bytes, `{installationId, schemaVersion, stage}`, `stage` 18 characters) and
+`inno_updater.exe` (3,417,896 bytes, its modification time the build time), and nothing else.
+So the supervisor came with the update that brought 3.26.16, and the Windows updates of earlier
+builds ran Inno Setup alone; the 3.26.16 build itself was not surveyed.
+
 #### Exported Markdown
 
 Export (editor window, 3.26.13, 2026-10-20) writes one Markdown file where the user saves it,
@@ -1283,22 +1810,165 @@ line `_Exported on <M/D/YYYY at HH:MM:SS> <time zone> from Cursor (3.26.13)_`, t
 `**User**` and `**Cursor**` blocks separated by `---`. It has no per-turn time, tool call, tool
 name, code fence, model or composer id: the prose only. The Linux export (editor window, 3.25.9,
 2026-10-20) had the same shape, its line naming `Cursor (3.25.9)` (1,243 bytes and 101 lines for
-eight turns, 16 `---` separators). Nothing in the app's stores records an export; macOS's
+eight turns, 16 `---` separators). The Windows export (editor window, 3.26.13, 2026-10-21) had it
+too: 3,433 bytes, 144 lines with LF line endings, 7 `**User**` and 7 `**Cursor**` blocks, for a
+conversation of 5 typed prompts and 3 injected user turns ([User bubbles](#user-bubbles)); how
+its blocks map to those turns was not determined. Its save dialog wrote only Chromium state
+(`blob_storage`, `Crashpad\settings.dat`, `Local Storage\leveldb\LOG`). Nothing in the app's
+stores records an export; macOS's
 recent-documents list ([Cursor IDE](#cursor-ide)) and GNOME's recent-files list
 ([Cursor IDE on Linux](#cursor-ide-on-linux)) named the file.
 
 #### Source-host integration
 
-Cursor connects to GitHub in two ways that store differently (Linux, 3.25.9, 2026-10-20).
-Cursor's own GitHub integration installs the Cursor GitHub app on the account for cloud agents and
-keeps the grant on the server: connecting it wrote the connect flow's record and empty
-repository and agent caches, and named no account and added no `secret://` row. The editor's own
-GitHub sign-in (VS Code's GitHub authentication) names the account in key names, records the
-scopes and the extensions that used it, and stores an encrypted token. The keys are in
-[`ItemTable` keys](#itemtable-keys), the secrets in [Secrets](#secrets) and the repository list
-in [Where the project path is recorded](#where-the-project-path-is-recorded). A
-repository-bound cloud conversation was not observed: the cloud agent's picker listed no
-repository.
+Cursor connects to GitHub in two ways that store differently (Linux, 3.25.9, 2026-10-20;
+Windows, 3.26.13, 2026-10-21):
+
+- Cursor's own GitHub integration installs the Cursor GitHub app on the account for cloud agents
+  and keeps the grant on the server: connecting it wrote the connect flow's record and empty
+  repository and agent caches, named no account and added no `secret://` row
+  ([`ItemTable` keys](#itemtable-keys)). No GitHub token is stored for it.
+- The editor's own GitHub sign-in (VS Code's GitHub authentication, reached through Welcome >
+  Clone a repository > Clone from GitHub; Cursor's Accounts menu has no GitHub entry) names the
+  account in key names, records the scopes in a key name and the extensions that used it, and
+  stores an encrypted token ([`ItemTable` keys](#itemtable-keys), [Secrets](#secrets)). On
+  Windows it wrote no git credential store ([Credentials](#credentials)).
+
+The repository list is Cursor Origin's, not GitHub's
+([Cursor Origin](https://cursor.com/docs/origin), L2, fetched 2026-10-21). Origin is Cursor's
+own git hosting, in early beta: a repository is hosted there or mirrored in from GitHub ("Sync
+from GitHub" on [Cursor's repository list](https://cursor.com/codebase), "Mirror a GitHub
+repository"), with
+GitHub the source of truth and Origin the mirror; Origin follows the namespace owner's Privacy
+Mode, has a CLI of its own, and cloud agents and automations can be connected to its
+repositories. Installing the Cursor GitHub app alone lists no repository in the IDE, which is
+why the Linux round's picker was empty: `cloudEnvironmentTemplate.githubRepos` stays `[]` until a
+repository is mirrored into Origin, and then holds one entry per repository
+([Cloud-agent keys](#cloud-agent-keys)). Origin is also an MCP server
+(`logs/<stamp>/mcp-server-cursor-origin.log`: `connecting streamableHttp for "Origin"
+(cursor-origin)`, `Successfully connected to streamableHttp server`), whose tool manifests the
+IDE writes under `~/.cursor/projects/<p>/mcps/cursor-origin/tools/` (34 files on Windows, among
+them `list_repositories`, `list_namespaces`, `get_repository`, `create_repository`,
+`sync_mirror`, `list_branches`, `list_commits`, `commit_read`, `compare_commits`,
+`get_git_tree`, `get_file_contents`, `grep_contents`, `checks_read`, `list_pull_requests`,
+`pull_request_read`, `create_pull_request`, `update_pull_request`, `update_pull_request_base`,
+`merge_pull_request`, the pull-request review, comment, review-thread and reviewer tools,
+`create_label` and `update_pull_request_labels`).
+
+A repository-bound cloud agent was observed on Windows (3.26.13, 2026-10-21), on a throwaway
+repository mirrored into Origin, with a read-only task that opened no pull request. What it left
+on the host, and what a responder can read there, is in [Cloud agents](#cloud-agents): the
+connected GitHub account is named nowhere by it, the repository is named in the agent's record,
+in the repository list and in key names, and the conversation is held locally only as cached
+text beside its title, repository, branch, model, status and times; its full store is on the
+agent's machine. Archiving it in the Agents window flipped two flags and removed nothing, and
+the Agents window offers no Delete ([What survives a delete](#what-survives-a-delete)).
+
+#### MCP servers and plugins
+
+The plugin library is Cursor's catalogue of plugins, packages that add MCP servers to the agent,
+opened from the Agents window; each plugin page has a "Try in chat" button, which opens a chat
+with a prompt the plugin supplies. On Windows (3.26.13, 2026-10-21) the Google Calendar plugin,
+from the `cursor-public` marketplace, was installed from the Agents window with no folder open
+(14:58Z). Its manifest names one HTTP MCP server, which signs in to Google through OAuth. The
+install wrote, before any authentication:
+
+- the marketplace copy under `~/.cursor/plugins/cache/` and the per-project manifest
+  `~/.cursor/projects/empty-window/mcps/plugin-google-calendar-google-calendar/`, its one tool
+  `mcp_auth` ([`~/.cursor` as the IDE writes it](#cursor-as-the-ide-writes-it));
+- the installed set in `state.vscdb` `ItemTable`, `cursor.plugins.installedIds.<team>|<scope>`
+  (`no-team|no-workspace` here), `[{id, sources}]` (38 bytes, `id` 8 digits, `sources`
+  `["user"]`); there is one such key per open folder beside it, with the folder's file URI as
+  the scope ([Where the project path is recorded](#where-the-project-path-is-recorded)), and the
+  demo folder's became 38 bytes at the authentication, the plugin then enabled for it too;
+- the OAuth attempt, `User/globalStorage/mcp-oauth-attempts/<uuid>.json` (772 bytes, plaintext):
+  `{activeIdentifier, attemptId, authorizationServerUrl, clientInformation{client_id,
+  grant_types, redirect_uris, response_types}, createdAtMs, identifier, owner{workspaceId},
+  serverUrl, transportServerUrl}`, `activeIdentifier` 82 characters, `attemptId` a UUID,
+  `client_id` 72, `grant_types` two strings of 18, `redirect_uris` two URLs, `response_types`
+  `["code"]`, `identifier` 67 and `owner.workspaceId` `empty-window`; `clientInformation` is the
+  result of OAuth dynamic client registration, in which the app registers itself with the
+  authorization server at run time and receives a client id;
+- the OAuth keys of `ItemTable`, `mcpOAuth.global.<b64>` (plaintext) and `mcpOAuth.secret.<b64>`
+  (ciphertext), whose suffix is URL-safe base64 without padding of `[<scope>] <field>`; the
+  scope is `plugin-<plugin>-<server>::mcpScope:profile:<base64 of the profile name>` (profile
+  `default`) for the server or `oauth-attempt:<uuid>` for an attempt. The global fields are
+  `mcp_server_url` (a 43-byte URL), `mcp_oauth_updated_at_ms` (a number) and the booleans
+  `mcp_tokens_canonical_migration_complete` and
+  `mcp_client_information_canonical_migration_complete`, beside the key
+  `mcpOAuth.global.<base64 of "mcpOAuth.extensionMigrationComplete">` (a boolean). The secret
+  fields are `mcp_code_verifier` (the OAuth code verifier, under both the attempt and the server
+  scope), `mcp_oauth_attempt_client_secret` and `mcp_client_information`, so a verifier and a
+  client secret exist before the user authenticates ([Secrets](#secrets)).
+
+Completing the authentication through the browser (15:05Z) added `mcp_tokens` under the server's
+scope, rewrote the server scope's `mcp_code_verifier` and `mcp_client_information` and the
+attempt's `mcp_oauth_attempt_client_secret`, removed the first attempt's `mcp_code_verifier`
+key, and replaced the attempt file with a new `<uuid>.json` (717 bytes, the same keys without
+`authorizationServerUrl`). A reconnect of the server rewrites it again: a third file replaced the
+second at 15:22Z. So there is one attempt file per server at a time, and a completed attempt's
+record is dropped. The per-project manifests of the empty window and of the open folder lost
+`STATUS.md` and `tools/mcp_auth.json` and gained the server's nine tool schemas. No token was
+written in plaintext, to a file or to the Credential Manager. The logs
+`workbench.mcp.oauth.log` and `MCP Logs` ([Logs](#logs)) were not re-read for these steps.
+
+The "Try in chat" button (about 15:06Z) opened a local agent chat in the empty window with the
+plugin's 106-character prompt, model `grok-4.7`; its tool calls were `get_mcp_tools`, two
+`glob_file_search`, `read_file_v2` and a `run_terminal_command_v2`, which the user stopped
+([Tool bubbles](#tool-bubbles)), and the conversation was archived. Its turn saved the
+`get_mcp_tools` output under `~/.cursor/projects/empty-window/agent-tools/`. The user's next chat
+from the Agents window ran as a cloud agent in a new temporary Origin repository, and the cloud
+agent's MCP authorisation is a separate grant held on the server
+([Cloud agents](#cloud-agents)): one install can leave two grants on the Google account, the
+local client's tokens in `state.vscdb` and the cloud agent's, of which the host keeps only the
+`cloudAgentRepository.mcpAuthResolution` decision record. A responder revoking the access looks
+for both.
+
+The calendar question in the demo folder's local chat (15:21Z to 15:35Z, model `grok-4.7`) used
+the plugin's tools under two run modes in one conversation: under Allowlist the user was asked to
+approve each MCP call and approved each (the turn's calls were `get_mcp_tools`, `list_events`,
+a second `get_mcp_tools`, `list_calendars` and three more `list_events`), and after the switch to
+Auto-review two `list_events` calls ran with no prompt; no bubble records any of those approvals
+([Tool bubbles](#tool-bubbles)). The worker's transcript names the calls `GetDynamicTools` and
+`CallDynamicTool` ([Agent transcript JSONL](#agent-transcript-jsonl)). Its `get_mcp_tools` output
+was not saved under `agent-tools/` for the demo folder.
+
+#### Remote control
+
+Remote control lets the Cursor iOS app ("Steer from iOS") follow and drive the agent turns of
+an IDE install. The switch, agent remote control under Settings > Cursor Settings, was on by
+default with no paired device (Windows, 3.26.13, 2026-10-21), and the install was enrolled as a
+remote agent host for the account without any step of the user's: the enrolment keys of
+[`ItemTable` keys](#itemtable-keys) and the computer key of [Credentials](#credentials). On Linux
+(3.25.9, 2026-10-20) the computer key was on disk after the first agent turn and the three
+`remoteAgentHost.*` keys were first seen after the editor's GitHub sign-in; on Windows all four
+were on disk by the delete step, long before the editor's GitHub sign-in, and the step that
+first wrote them is not known.
+
+Pairing the Cursor iOS app to the install (Windows, 3.26.13, 2026-10-21) wrote no key, no file
+and no log line: the four keys kept their sizes (14, 4, 36 and 770 bytes), no `ItemTable` or
+`cursorDiskKV` key and no file was added, and no log of any launch stamp under
+`%APPDATA%\Cursor\logs\` mentions `remoteAgentHost`, `steerFrom`, `paired` or `pairing`; the
+listing's other changes were the window state of the clone opened before it. The paired device
+is account state on the server, and the enrolment is the only local record of remote control.
+
+A steered turn runs through the embedded agent worker (`cursor-agent-worker`,
+[Cursor IDE on Windows](#cursor-ide-on-windows)). On Windows arm64 the phone saw the install but
+could not connect: its attempt (14:35Z) opened a new window on the project (`window2_wb3`), and
+the worker's log,
+`exthost\anysphere.cursor-agent-worker\Cursor Agent Worker.workspaceId-<id>.<stamp>.log`
+(1749 bytes), records, with paths and ids redacted,
+`[cursor-agent-worker] Activating`, `Resolving installer for windows/arm64`,
+`Using cached Cursor Agent 2026.10.19-6bbf2c4`, `CLI install: prod:2026.10.19-6bbf2c4`,
+`Installed CLI at <path>\node` (the worker ships its own Node), `Workspace roots: <project path>`
+(three times), `Spawning worker "<project path> @ <hostname>" (name=<id>) with endpoint URL`,
+`Started daemon "<name>" pid=<n> from <project path>`, `Logs: <path>\<name>.log` (the worker's
+own log, which holds the native-module crash of [Cursor IDE on Windows](#cursor-ide-on-windows)),
+`Pushed worker id "<uuid>" to browser service` and `Worker exited (code=1, signal=null)`. The
+worker's name carries the project path and the host name ([Secrets](#secrets)). A relaunch
+(14:37Z) and another spawn attempt, which rewrote the worker's control files (14:44Z), added no
+key or file. Whether a steered turn is marked in the bubbles or the transcript is therefore not
+known; the worker ran on macOS arm64 and Linux arm64 ([Observed](#observed)).
 
 #### Logs
 
@@ -1314,6 +1984,15 @@ cursorAuthDebug.workspaceId-<id>.log, tasks.workspaceId-<id>.log}` and
 `Filesync`, `Cursor Indexing & Retrieval`, `MCP Logs`, and `Cursor Agent Host{, Network, Network
 (debug), Storage}.workspaceId-<id>.<stamp>.log`).
 
+On Windows (3.26.13, 2026-10-21) the round left six launch directories (4.0 MB). The renderer
+log of the window that opened a cloud agent (`window2_wb2/renderer.log`) records the attach:
+`Invoking resolveAuthority(background-composer)...` and `returned 'Managed(1)'`,
+`[WorkspaceConnectionService] Promoted workspace to connected after authority resolved.` with
+the remote workspace id, `[MainThreadShellExec] ... hostKind=3, expectedHost=3, isRemote=true,
+sandboxSupported=true, linuxKernelVersion=6.12.94+` (a Linux kernel on the agent's machine) and
+`shared-process MCP routing disabled for remote workspace`. The GitHub authentication and MCP
+OAuth logs are described under [Credentials](#credentials).
+
 ### Format versions
 
 - Before 3.0 (L4, cursaves; forum 2825, 167641): the composer list in `ItemTable`
@@ -1326,14 +2005,21 @@ cursorAuthDebug.workspaceId-<id>.log, tasks.workspaceId-<id>.log}` and
   `anysphere.cursor-agent-host/data.sqlite` and `cursor.storage.authTokenEncryptionAtRest`.
   3.25.9 on Linux (deb, 2026-10-20) wrote the same records as 3.25.9 on macOS: the header list
   inline, no `composerConvHeaders:` row, tool names with `_v2`; its editor window's conversation
-  had `composerTranscriptHeightTailIde:<composerId>`. The apt repository served 3.25.9 on
-  2026-10-20, the day the macOS updater served 3.26.13, so the deb channel lags.
+  had `composerTranscriptHeightTailIde:<composerId>`. The apt repository
+  (`https://downloads.cursor.com/aptrepo`, suite `stable`, component `main`, amd64 and arm64)
+  served 3.25.9 when the VM upgraded at 21:35Z on 2026-10-20 and listed 3.26.13 for both
+  architectures from its 22:18Z refresh the same day (checked 2026-10-21): the arm64 build is
+  not behind, and the repository follows a release within the day.
 - 3.26.13 (observed): a new conversation's header list is in
   `composerConvHeaders:<composerId>:<NNNNNN>` chunks, with `fullConversationHeadersOnly` `[]`; an
   older conversation keeps its inline list until the composer is rewritten, and archiving the
   first conversation moved its 37 entries into a chunk. Also new: `composerDraft:<composerId>` and
   `composerTranscriptHeightTail:<composerId>`. Tool names carry a `_v2` suffix on both 3.25.9 and
-  3.26.13.
+  3.26.13. 3.26.13 on Windows (per-user installer, 2026-10-21) wrote the same layout as on
+  macOS: a new conversation with `fullConversationHeadersOnly` `[]` and one
+  `composerConvHeaders:<composerId>:000000` chunk, the user bubble's `modelInfo.modelName`
+  `default`, so the parser's two-layout rule holds there; differences in single keys are noted
+  where they occur ([`composerHeaders`](#composerheaders), [Tool bubbles](#tool-bubbles)).
 - `composerData._v` is 18 on every composer of the 3.26.13 install (12 rows);
   `composerRootWriterDiagnostic.version` carries a version whose value was not recorded.
 - Cursor Agent CLI 2026.10.19-6bbf2c4 (observed, macOS, 2026-10-20; the build the IDE's worker
@@ -1366,6 +2052,42 @@ runs. Cursor's GitHub app grant has no local token. The GitHub login is an ident
 key names `github-<login>` and `github-<login>-usages` and in the value of `vscode.github-github`
 ([`ItemTable` keys](#itemtable-keys)).
 
+On Windows (3.26.13, 2026-10-21) the `secret://` values are the same JSON Buffer form, encrypted
+with the safeStorage key, which Electron protects with DPAPI (the Windows Data Protection API,
+which encrypts data to the user's logon credentials) on Windows: the editor's GitHub token row
+was 814 bytes, `secret://remoteAgentHost.computerKey.auth0|user_<id>` 770 bytes; the cloud
+agent's `connectionToken:bc-<uuid>` and `git-ipc-auth-token` rows and the worker's `apiKey` and
+`apiKeyAuthId` rows were not shaped ([Credentials](#credentials)). Identity values beside them:
+the host name in `remoteAgentHost.displayName.<account>`, which the `remote agent host
+enrolled:` row prints, in the `AgentStores` pin and lock files, and with the project path in the
+embedded worker's name, `<project path> @ <hostname>`, which the worker's log prints
+([Remote control](#remote-control)), beside which `restart.json`'s 30-character `workerName` is
+identity-bearing too, its form not resolved; the repository's
+`<owner>/<repo>` in the `glass.cloudRepoBranches.*`, `glass.cloudRepoBranchRecency.*` and
+`agentData.cacheStorage.glass.repoSlashInventory.v2.*` key names and in the cloud-agent records
+([Cloud-agent keys](#cloud-agent-keys)); the clone's path in the
+`cursor.plugins.installedIds.no-team|file:///...` key names and inside `vscode.github`; and the
+editor's GitHub scopes in the key name `vscode.github-github-repo workflow user:email
+read:user`. User content beyond the messages: a cloud agent's cached conversation text in
+`conversation-search.db` and the prompt inside `bcCachedDetails`.
+
+The MCP OAuth state of a plugin (Windows, 3.26.13, 2026-10-21;
+[MCP servers and plugins](#mcp-servers-and-plugins)): every `mcpOAuth.secret.<b64>` value is
+safeStorage ciphertext in the Buffer form. Before authentication `mcp_code_verifier` held 74 data
+bytes, `mcp_oauth_attempt_client_secret` 66 and `mcp_client_information` 354; after it
+`mcp_tokens` was 2,559 bytes and the rewritten verifier, client information and client secret
+292, 1,294 and 259. The values are never read; the key names, decoded, say which server holds
+tokens. The plaintext beside them is identity, not secret: `mcp_server_url` and the update time
+in `mcpOAuth.global.*`, and in the attempt file the 72-character `client_id`, the redirect URIs
+and the server URLs. A cloud agent's MCP authorisation is a second credential, on the server:
+the host keeps only the decision record `cloudAgentRepository.mcpAuthResolution`, and the local
+`mcp_tokens` key did not change when it was granted, so revoking a Google grant on the host's
+evidence alone misses the cloud agent's. The user's Cursor namespace, an identity value, is in a
+temporary Origin repository's `repoUrl`, `origin.cursor.com/git/<namespace>/tmp-<hex>`, and in
+the key names `glass.cloudRepoBranches.<account>.origin.cursor.com%2Fgit%2F<namespace>%2F...`
+and `agentData.cacheStorage.glass.repoSlashInventory.v2.origin.cursor.com%2Fgit%2F<namespace>...`
+([Cloud-agent keys](#cloud-agent-keys)).
+
 The CLI on macOS keeps its tokens in the login keychain ([Credentials](#credentials)).
 `cli-config.json` holds, while signed in, `authInfo` (the email, the display name, the numeric
 user id and the `auth0|user_<id>` id) and the 42-character `authCacheKey` of `serverConfigCache` and
@@ -1387,6 +2109,7 @@ written `<ide>`:
 ^\.cursor/ai-tracking/ai-code-tracking\.db$
 ^\.cursor/cli-config\.json$
 ^\.cursor/permissions\.json$
+^<ide>/User/globalStorage/mcp-oauth-attempts/[^/]+\.json$
 ```
 
 SQLite files are opened through `sqlite_util.py`. In `state.vscdb` the parser reads every
@@ -1410,16 +2133,19 @@ entry.
 | header entry with no bubble row | `system`, `parser: missing bubble <bubbleId>`, at the entry's `createdAt` |
 | settings blob and `cli-config.json`, `permissions.json` | `system` permission and model rows ([Permission rows](#permission-rows), [Model rows](#model-rows)) |
 | `ai-code-tracking.db`, `conversation-search.db`, transcript JSONL, `agentKv` blobs | [Past-use rows and secondary sources](#past-use-rows-and-secondary-sources) |
+| a cloud agent: the `cloud-cache` row of `conversation-search.db`, its element of `cloudAgentRepository.agents.*`, and `cloudEnvironmentTemplate.githubRepos` | [Sync, relay and origin rows](#sync-relay-and-origin-rows) |
+| `cloudAgentRepository.mcpAuthResolution` | a `permission decision:` row ([Permission rows](#permission-rows)) |
+| `mcpOAuth.global.*` keys, `cursor.plugins.installedIds.*` keys and `mcp-oauth-attempts/<uuid>.json` | [MCP server and plugin rows](#mcp-server-and-plugin-rows) |
 
 Columns:
 
 | Column | Source |
 | --- | --- |
 | timestamp_utc | as in the table; epoch ms converted to UTC |
-| session_id | the `composerId` |
-| project_path | `composerHeaders.value.workspaceIdentifier.uri.fsPath`, else `composerData.workspaceIdentifier.uri.fsPath`, else the first `trackedGitRepos[].repoPath` |
+| session_id | the `composerId`; for a cloud agent its `bc-<uuid>` |
+| project_path | `composerHeaders.value.workspaceIdentifier.uri.fsPath`, else `composerData.workspaceIdentifier.uri.fsPath`, else the first `trackedGitRepos[].repoPath`; for a cloud agent the record's `repoUrl` (`github.com/<owner>/<repo>`) |
 | git_branch | the first entry of the matching `trackedGitRepos[].branches`, which was empty on the install; empty otherwise |
-| model | the tracked `modelInfo.modelName` of the turn's user bubble |
+| model | the tracked `modelInfo.modelName` of the turn's user bubble; for a cloud agent's rows its `modelDetails.modelName` |
 | tool_name | `toolFormerData.name` |
 | tool_use_id | `toolFormerData.toolCallId` |
 | source_line | the `cursorDiskKV` rowid, or the 1-based line of a JSONL file, or the rowid of a table row |
@@ -1435,15 +2161,40 @@ The `allowlisted=` suffix marks an allow-always choice whatever `selectedOption`
 Agents window writes `allowlistCommands` and the editor window `run` for it, and it is the
 durable record of that choice: on Linux the standing list never gained the entry
 ([Run mode and standing lists](#run-mode-and-standing-lists)). A bubble whose
-`reviewData.status` is not `Done`, or whose `toolFormerData.status` is `loading`, is a call
+`reviewData.status` is neither `Done` nor `None`, or whose `toolFormerData.status` is
+`loading`, is a call
 still waiting at its prompt when the store was copied: its `selectedOption` is the preset
 `rejectAndTellWhatToDoDifferently`, so it yields no decision but `permission prompt pending:
 <tool_name> reason=<blockReason> options=<allowlistOptions ids>`, joined on `tool_use_id`, and
 no `tool_result` row unless its `result` is non-empty
-([issue 237](https://github.com/seanthegeek/doubleagent/issues/237)). A call that ran under
-auto-run (`additionalData` without `reviewData`) or with no `additionalData` yields no permission
-row; the run mode then in force is the standing row below. The record shapes are in
-[Tool bubbles](#tool-bubbles).
+([issue 237](https://github.com/seanthegeek/doubleagent/issues/237)). On Windows (3.26.13) such
+a bubble also had `additionalData.status` `pending`, and its `allowlistOptions` was `[]`, so the
+row's `options=` is empty and its `reason=` is `Shell allowlist is empty`. A call that ran under
+auto-run (`additionalData` without `reviewData`, whatever its `status`, `error` included) or with
+no `additionalData` yields no permission row; the run mode then in force is the standing row
+below. The record shapes are in [Tool bubbles](#tool-bubbles).
+
+A call cut off when the user stopped the turn, `reviewData.status` `None` with
+`additionalData.status` `rejected`, is neither an answer nor a pending prompt: it yields
+`permission decision: stopped by the user (reviewData.status None, additionalData.status
+rejected)` beside the call, joined on `tool_use_id`, and its `tool_result` prefixed
+`[rejected] `. A call with `toolFormerData.status` `cancelled` (one the stopped turn never ran)
+yields its `tool_use` row and no permission row.
+
+An MCP call (`toolFormerData.name` `mcp-<server>-<tool>`, and `get_mcp_tools`) is an ordinary
+`tool_use` and `tool_result` pair, its `additionalData` holding only `status`, so it yields no
+permission row: an MCP prompt answered Run under Allowlist leaves no per-call record on 3.26.13
+(Windows, 2026-10-21), and no `permission decision:` row can exist for an MCP call. The
+standing rows below give the run mode and `yoloMcpToolsDisabled` in force. `toolCallBinary` is
+not read.
+
+A cloud agent's request to authorise an MCP server, `cloudAgentRepository.mcpAuthResolution`
+([Cloud-agent keys](#cloud-agent-keys)), yields `permission decision: <userDecision> mcp auth
+for cloud agent <agentId> tool_call=<toolCallId> (from state.vscdb
+cloudAgentRepository.mcpAuthResolution, file mtime)` at the file's modification time, with
+`session_id` the `agentId` and `tool_use_id` the `toolCallId`; a value that is a list, which no
+install has shown, gives one row per element. The cloud agent's own tool calls are on its
+machine and prompted for nothing on the install.
 
 Standing, at the modification time of the file, saying so in the text, with empty `session_id`: from
 `state.vscdb`'s settings blob, which the app writes late ([`ItemTable` keys](#itemtable-keys)), one
@@ -1452,7 +2203,8 @@ row per entry of `yoloCommandAllowlist`, `yoloCommandDenylist`, `smartAllowlistD
 (from state.vscdb composerState, file mtime, written late by the app)`; one per `modes4` entry,
 `permission setting: run mode <id>=<mode> autoRun=<b> smartModeAutoRun=<b> fullAutoRun=<b>
 sandbox=<b>`, the mode derived as in [Run mode and standing lists](#run-mode-and-standing-lists);
-and one per boolean switch of that section. From `cli-config.json`: `approvalMode`, each
+and one per boolean switch of that section (on Windows the list entry was
+`yoloCommandAllowlist=powershell`). From `cli-config.json`: `approvalMode`, each
 `permissions.allow` and `permissions.deny` entry and `sandbox.mode`. From `permissions.json`
 (bundle-derived, fixture only): each `allowlists.mcp` and `allowlists.terminal` entry,
 `approvalMode`, and each `allowInstructions` and `blockInstructions` entry.
@@ -1471,14 +2223,22 @@ rows above already read. The session's `meta.0.isRunEverything` flag and the fol
 
 Per message the model is the user bubble's `modelInfo.modelName`: `model: <id>` at the first user
 bubble that names one, `model: <old> -> <new>` at each later user bubble whose model differs;
-assistant and tool rows take the tracked model. A switch in the UI writes no bubble, so it shows
+assistant and tool rows take the tracked model. A user bubble with no `modelInfo`, such as a turn
+the agent injected ([User bubbles](#user-bubbles)), neither starts nor changes the tracked model
+and yields no `model:` row. A switch in the UI writes no bubble, so it shows
 only at the next message. `composerData.modelConfig` is the current selection with no history and
 yields no row. The settings blob's `aiSettings.modelLastUsedAt` is the only dated record of a
 switch beside the next user bubble, and it is written late: on Linux its entry for the new model
-was dated 27 minutes after the switch, at a later command ([`ItemTable` keys](#itemtable-keys)),
-so its time is when the app wrote the blob, at or after the switch. One `system` row per entry,
+was dated 27 minutes after the switch, at a later command, while on Windows (3.26.13) it was
+dated at the switch ([`ItemTable` keys](#itemtable-keys)), so its time is when the app wrote the
+blob, at or after the switch. One `system` row per entry,
 `model last used: <id> (from state.vscdb aiSettings.modelLastUsedAt, written late by the app)`,
 at its time, with empty `session_id`.
+
+A cloud agent records one model per agent: its element of `cloudAgentRepository.agents.*` yields
+`model: <modelDetails.modelName>` at its `createdAt`, followed by
+` requested=<requestedModel.modelId>` when the requested id differs from the resolved name; the
+`model` column of that session's rows carries `modelDetails.modelName`.
 
 For the CLI, `meta.0.lastUsedModel` is the session's current model id (`default`, the Auto
 selection, then `grok-4.7`), updated at the first message after a switch; each assistant
@@ -1521,7 +2281,16 @@ and `model: <old> -> <new>` on a change, with the selection (`meta.0.lastUsedMod
   `ai_code_hashes` was populated on the install.
 - `conversation-search.db` (not secondary): one `system` row per `conversations` row with a
   title, `conversation index: <title> source=<source> archived=<is_archived>` at `updated_at`,
-  `session_id` the `id`. A delete removes it, so it marks only conversations still present.
+  `session_id` the `id`. A delete removes a local row, so it marks only conversations still
+  present. The text is read from the shadow table `conversation_fts_content` directly, joined
+  on `fts_rowid`, never through the FTS5 virtual table, whose module may be absent. For a
+  `cloud-cache` row with a non-empty body (`c1`) the parser yields one `system` row
+  `cached conversation text (conversation-search.db, source=cloud-cache): <c1 in full>` at
+  `updated_at`, `session_id` the `bc-<uuid>`: the only local copy of a cloud agent's
+  conversation text ([Cloud agents](#cloud-agents)). It is never a `user` or `assistant` row,
+  because the body runs the prompt and the reply together with no boundary. Some `local` rows
+  have no body ([`conversation-search.db`](#conversation-searchdb)); a non-empty one yields the
+  same row with `source=local`.
 - The surviving `composerHeaders` row of a deleted conversation gives its `conversation deleted`
   row ([Deletion rows](#deletion-rows)).
 
@@ -1532,32 +2301,73 @@ yet ([issue 235](https://github.com/seanthegeek/doubleagent/issues/235)). Its tr
 
 The retrieval checkpoints, `AgentStores`, `update-supervisor`, the logs and an exported Markdown
 file yield nothing: no times per turn, or no join to a conversation. The workspace
-`aiService.prompts` key stayed `[]` and is not read.
+`aiService.prompts` key stayed `[]` and is not read. The terminal captures
+`.cursor/projects/<p>/terminals/<N>.txt` hold the output of the agent's commands, a record the
+transcript JSONL lacks, but as plain text with no time, command or call id, and a quit removes
+them ([What survives a delete](#what-survives-a-delete)); they are not read.
+`bcCachedDetails:bc-<uuid>` is read as a key but not decoded, pending its descriptors, and
+yields nothing; the cached text above is the readable copy.
 
 #### Sync, relay and origin rows
 
-The IDE recorded no sync of a local conversation (3.26.13, 2026-10-20): no Share or upload
-surface, `agentLocation.type` `local` on both conversations, and every `AgentStores` `files` table
-empty (those stores sync files such as skills, not transcripts). The parser yields `session
-origin: remote <agentLocation.type>` when `agentLocation.type` is not `local` (bundle-derived:
-only `local` was seen) and sets `records_origin`, so a local conversation's `origin` reads
-`local`. `conversation-search.db` `source` `cloud-cache` (a cached cloud conversation,
-bundle-derived) would mark a conversation held by the vendor; none was seen, and no sync row is
-yielded. Relay: the agent records none. The CLI recorded no sync either (2026.10.19-6bbf2c4,
+The IDE recorded no sync of a local conversation (3.26.13, macOS 2026-10-20 and Windows
+2026-10-21): no Share or upload surface, `agentLocation.type` `local` on both macOS
+conversations and the key absent on Windows, and every `AgentStores` `files` table empty (those
+stores sync files such as skills, not transcripts). The parser yields `session origin: remote
+<agentLocation.type>` when `agentLocation.type` is present and not `local` (bundle-derived: only
+`local` was seen) and sets `records_origin`, so a local conversation's `origin` reads `local`,
+and `records_sync`, so a local conversation's `synced` reads `no`.
+Relay: the agent records none. The CLI recorded no sync either (2026.10.19-6bbf2c4,
 2026-10-20): it has no share command, and `agent worker start`, which runs a private cloud worker
 and is the CLI's remote surface, was not exercised.
+
+A cloud agent is a conversation of remote origin, held by the vendor
+([Cloud agents](#cloud-agents)), and yields:
+
+- from the `cloud-cache` row of `conversation-search.db`, `session origin: remote cursor cloud
+  agent` at `updated_at`, beside the `conversation index:` row and the cached text of
+  [Past-use rows and secondary sources](#past-use-rows-and-secondary-sources);
+- from each element of an `ItemTable` key beginning `cloudAgentRepository.agents.` (the suffix,
+  the account id in either the `auth0|user_<id>` or the URL-encoded `auth0%7Cuser_<id>` form, is
+  not matched; a value that is not a JSON list is skipped), with `session_id` the `bcId` and
+  `project_path` the `repoUrl`: `cloud agent: <name> repo=<repoUrl> status=<status>
+  workflowStatus=<workflowStatus> archived=<isArchived> killed=<isKilled>
+  vmStarted=<hasStartedVm> (from state.vscdb cloudAgentRepository.agents, rowUpdatedAtMs)` at
+  `rowUpdatedAtMs`, a field that is absent or empty printed `-`; `source host: github.com
+  <owner>/<repo> (cloud agent)` at `createdAt` when
+  `repoUrl` begins with `github.com/`; the `model:` row of [Model rows](#model-rows);
+  `session origin: remote cursor cloud agent` at `createdAt` only when no `conversation-search.db`
+  row yielded it for the same `bcId`; and `session synced: cursor cloud agent <bcId> (vendor copy;
+  from state.vscdb cloudAgentRepository.agents)` at `createdAt`, else `rowUpdatedAtMs`, since the
+  vendor holds the conversation;
+- for an agent started as a new project in a temporary Origin repository (the second agent of
+  [Cloud agents](#cloud-agents)), the same rows, with `project_path` its
+  `origin.cursor.com/git/<namespace>/tmp-<hex>` `repoUrl` and no `source host:` row, since the
+  URL is not GitHub's; its MCP authorisation is the decision row of
+  [Permission rows](#permission-rows);
+- from each element of `cloudEnvironmentTemplate.githubRepos`, the repository list the account
+  may reach through Cursor Origin, `source host repository: <url or name> type=<type> (from
+  state.vscdb cloudEnvironmentTemplate.githubRepos, file mtime)` at the file's modification time,
+  with an empty `session_id`.
+
+`bcCachedDetails:bc-<uuid>` yields nothing until it is decoded
+([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources)). The `status`,
+`workflowStatus` and `source` numbers are printed as stored; their meanings are not known.
 
 Source host ([Source-host integration](#source-host-integration)): one `system` row per
 `github-<login>` key of the editor's GitHub sign-in, `source host: github account <login>
 scopes=<scopes> (from state.vscdb key github-<login>)`, the login from the key name and the
 scopes from the `-usages` entries, at their latest `lastUsed`, else the file's modification time;
 and `remote agent host enrolled: <displayName> (from state.vscdb
-remoteAgentHost.enrolled.<account>, file mtime)` when `remoteAgentHost.enrolled.<account>` is
-true, the name from `remoteAgentHost.displayName.<account>`. Both have an empty `session_id` and
-are added in analyzer 0.20.1. Only these keys are read: the cached GitHub token and the computer
-key are never read. The repository list `cloudEnvironmentTemplate.githubRepos` would be read like
-a project list, but it was empty on the install, so no repository row is planned from it; the
-Cursor GitHub app connection records nothing to yield.
+remoteAgentHost.enrolled.<account>, file mtime; on by default, a paired device leaves no local
+record)` when `remoteAgentHost.enrolled.<account>` is true, the name from
+`remoteAgentHost.displayName.<account>`, the host name on Windows. The enrolment row is a
+standing capability of the install, not a user action and not a relay or a sync; no `remote agent
+device paired:` row can exist, because pairing leaves no local record
+([Remote control](#remote-control)). Both rows have an empty `session_id` and are added in
+analyzer 0.20.1. Only these keys are read: the cached GitHub token, the computer key and the
+cloud agent's connection token are never read. The Cursor GitHub app connection records nothing
+to yield.
 
 #### Scratch directory rows
 
@@ -1569,8 +2379,13 @@ CLI's logs among them, and its askpass sockets under `/private/tmp` are not coll
 An archived conversation yields `conversation archived` at `lastUpdatedAt`. A `composerHeaders` row
 whose `composerData` is gone, not a draft (it has an entry in `agentLocationHistory`, or
 `isArchived` 1), yields `conversation deleted (header kept; time is the header's lastUpdatedAt)`
-at `lastUpdatedAt`, with `project_path` from the header and `session_id` the composer id; the
-archive time is lost, since the delete overwrote `lastUpdatedAt`. What survives a delete is in
+followed by ` (isArchived is set by the delete)`, at `lastUpdatedAt`, with `project_path` from
+the header and `session_id` the composer id, and no `conversation archived` row, since the delete
+sets `isArchived` 1 on a conversation that was never archived
+([What survives a delete](#what-survives-a-delete)); an archive time, if there was one, is lost,
+since the delete overwrote `lastUpdatedAt`. A cloud agent's archive shows as `archived=1` in its
+`cloud agent:` row and in its `conversation index:` row; no delete of a cloud agent exists in the
+IDE. What survives a delete is in
 [What survives a delete](#what-survives-a-delete).
 
 The CLI has no delete command and keeps no header row that outlives a session: a session
@@ -1585,7 +2400,9 @@ through `error_rows`. A `cursorDiskKV` or `ItemTable` value that is not JSON (wh
 is appended to the errors list with its rowid and key, and a header entry with no bubble row has
 its own row (table above). A database that is not SQLite is one `parser: not a SQLite database`
 row, a SQLite error one `parser: SQLite error: <message>` row. `cli-config.json` or
-`permissions.json` that is not JSON is one `parser:` row. For the CLI parser, a `meta.json`,
+`permissions.json` that is not JSON is one `parser:` row, and so is an
+`mcp-oauth-attempts/<uuid>.json` file that is not JSON (`parser: unreadable <rel>: <reason>`) or
+not a JSON object (`parser: <rel> is not a JSON object`). For the CLI parser, a `meta.json`,
 `prompt_history.json` or `.workspace-trusted` that is not JSON, or a `meta.0` value that is not
 hex-encoded JSON, is one `parser:` row for that file, and a blob that is neither JSON nor
 protobuf is appended to the errors list with its `id`.
@@ -1677,6 +2494,118 @@ the switch; `model last used: grok-4.7`; `c1`'s `ai code:` row; and from `c1`'s 
 bubble's text, a `tool_use` row with `tool_name` `Shell`, then the `parser:` row for the
 truncated line.
 
+Two cloud agents. `conversation-search.db` `conversations` row (`fts_rowid` 10, `source`
+`cloud-cache`, `scope` and `cache_fingerprint` 64 hex digits, `id` `bc-e1`, `title` `Describe the
+repository`, `branches` `''`, `updated_at` 1790020060000, `is_archived` 1) and its
+`conversation_fts_content` row (`id` 10, `c0` the title, `c1` a body of two lines, the prompt and
+the reply run together, `c2` `''`), beside empty content rows for the local conversations; in
+`ItemTable`, the agent list under each spelling of the account id, the second agent listed
+only, and the repository list:
+
+```json
+{"key": "cloudAgentRepository.agents.auth0|user_01", "value": [{"bcId": "bc-e1", "cloudTargetKey": "github:owner/demo:main:0123", "createdAt": 1790020000000, "environmentPublicId": "e0", "hasPendingInteraction": false, "hasStartedVm": true, "isArchived": true, "isKilled": false, "isOwnedByDifferentTeamMember": false, "isUnread": false, "lastMessageActivityAtMs": 1790020060000, "lastReadAtMs": 1790020090000, "modelDetails": {"maxMode": false, "modelName": "grok-4.7"}, "name": "Describe the repository", "repoUrl": "github.com/owner/demo", "repoUrls": ["github.com/owner/demo"], "requestedModel": {"builtInModel": "", "maxMode": false, "modelId": "grok-4.7", "parameters": [{"id": "context", "value": "256k"}]}, "rowUpdatedAtMs": 1790020120000, "source": 16, "status": 2, "transportRepoUrls": ["https://github.com/owner/demo"], "updatedAt": 1790020060000, "usePrivateWorker": false, "workflowStatus": 2, "workspaceRootPath": "/home/ubuntu/demo"}]}
+{"key": "cloudAgentRepository.agents.auth0%7Cuser_02", "value": [{"bcId": "bc-e2", "createdAt": 1790021000000, "hasStartedVm": false, "isArchived": false, "isKilled": false, "modelDetails": {"modelName": "grok-4.7"}, "name": "Summarise the web repository", "repoUrl": "github.com/owner/web", "requestedModel": {"modelId": "default"}, "rowUpdatedAtMs": 1790021120000, "status": 1, "workflowStatus": 1}]}
+{"key": "cloudEnvironmentTemplate.githubRepos", "value": [{"name": "owner/demo", "scmRepoNodeId": "R_0", "type": "github", "url": "https://github.com/owner/demo"}, {"name": "owner/web", "scmRepoNodeId": "R_1", "type": "github"}]}
+```
+
+with a `bcCachedDetails:bc-e1` protobuf row in `cursorDiskKV` and a
+`secret://{"extensionId":"anysphere.cursor-resolver-helper","key":"connectionToken:bc-e1"}` row,
+neither of which yields anything. Expected: for `bc-e1`, `conversation index: Describe the
+repository source=cloud-cache archived=1`, `session origin: remote cursor cloud agent` at
+`updated_at` and the `cached conversation text (conversation-search.db, source=cloud-cache):`
+row with the whole body, then `cloud agent: Describe the repository repo=github.com/owner/demo
+status=2 workflowStatus=2 archived=true killed=false vmStarted=true (from state.vscdb
+cloudAgentRepository.agents, rowUpdatedAtMs)`, `source host: github.com owner/demo (cloud
+agent)` and `model: grok-4.7`, with `project_path` `github.com/owner/demo` and the session's
+`origin` `remote`; for `bc-e2`, the same rows from the list with `session origin: remote cursor
+cloud agent` at its `createdAt` and `model: grok-4.7 requested=default`; and two `source host
+repository:` rows with an empty `session_id`, the first naming the URL, the second the name. The
+local conversations' empty content rows yield no cached-text row.
+
+MCP servers and plugins, in `ItemTable`, each key suffix the URL-safe base64 of `[<scope>]
+<field>`, without padding unless said: for the scope
+`plugin-calendar-calendar::mcpScope:profile:ZGVmYXVsdA` (the profile `default` in base64), the
+`mcpOAuth.global` fields `mcp_server_url` (`"https://calendar.mcp.example.test/mcp"`),
+`mcp_oauth_updated_at_ms` (1790849300000) and `mcp_tokens_canonical_migration_complete`
+(`true`); for a second server scope, `plugin-acme-tracker-tracker::mcpScope:profile:ZGVmYXVsdA`,
+only `mcp_server_url` (`https://tracker.example.test/mcp`, its key padded), with no tokens and
+no update time; for the attempt scope `oauth-attempt:a0000001-0000-4000-8000-000000000001`, a
+`mcp_server_url`; the key `mcpOAuth.extensionMigrationComplete` (`true`); the `mcpOAuth.secret`
+fields `mcp_tokens` and `mcp_client_information` of the calendar scope and `mcp_code_verifier`
+of the attempt scope, each value `{"type": "Buffer", "data": [...]}` with the sentinel
+`CURSOR-SECRET-SENTINEL` inside; `cursor.plugins.installedIds.no-team|no-workspace` and
+`cursor.plugins.installedIds.no-team|file:///srv/proj`, each `[{"id": "12345678", "sources":
+["user"]}]`; and `cloudAgentRepository.mcpAuthResolution` for the cloud agent `bc-e1` above,
+its `toolCallId` `toolu_mcp_auth_01` and `fc_mcp_auth_01` joined by a newline:
+
+```json
+{"agentId": "bc-e1", "authId": "f0000001-0000-4000-8000-000000000001", "nonce": "f0000002-0000-4000-8000-000000000002", "queryId": "f0000003-0000-4000-8000-000000000003", "toolCallId": "toolu_mcp_auth_01\nfc_mcp_auth_01", "userDecision": "accepted", "version": 1}
+```
+
+In `cursorDiskKV`, one MCP tool bubble appended to a local conversation, under the header
+`a2/t:call-m1-5` + newline + `fc_m1_5`:
+
+```json
+{"type": 2, "capabilityType": 15, "startedAtMs": 1790848910000, "completedAtMs": 1790848911000, "toolFormerData": {"name": "mcp-google-calendar-list_events", "tool": 19, "status": "completed", "toolCallId": "call-m1-5\nfc_m1_5", "modelCallId": "model-call-m1", "toolIndex": 5, "rawArgs": "{\"calendarId\": \"primary\", \"timeMin\": \"2026-10-01T00:00:00Z\"}", "params": "{\"calendarId\": \"primary\"}", "result": "{\"events\": [{\"summary\": \"Standup\"}]}", "additionalData": {"status": "success"}, "toolCallBinary": "Q0FMTEJJTkFSWQ=="}}
+```
+
+and `User/globalStorage/mcp-oauth-attempts/0000.json` under the IDE's data directory:
+
+```json
+{"activeIdentifier": "plugin-calendar-calendar::mcpScope:profile:default", "attemptId": "a0000002-0000-4000-8000-000000000002", "clientInformation": {"client_id": "client-0123456789abcdef", "grant_types": ["authorization_code", "refresh_token"], "redirect_uris": ["cursor://anysphere.cursor-mcp/oauth/callback"], "response_types": ["code"]}, "createdAtMs": 1790849280000, "identifier": "plugin-calendar-calendar", "owner": {"workspaceId": "empty-window"}, "serverUrl": "https://calendar.mcp.example.test/mcp", "transportServerUrl": "https://calendar.mcp.example.test/mcp"}
+```
+
+The settings files' modification time is 2026-10-01T14:00:00Z. Expected, with an empty
+`session_id` except where said: `mcp server: plugin-acme-tracker-tracker
+url=https://tracker.example.test/mcp (from state.vscdb mcpOAuth.global, file mtime)` at the file
+time; `mcp server: plugin-calendar-calendar url=https://calendar.mcp.example.test/mcp (from
+state.vscdb mcpOAuth.global, mcp_oauth_updated_at_ms) tokens=stored (ciphertext, not read)` at
+10:08:20Z; nothing for the attempt scope or the migration flags; `plugin installed: id=12345678
+sources=user scope=file:///srv/proj (from state.vscdb cursor.plugins.installedIds, file mtime)`
+with `project_path` `/srv/proj` and the same with `scope=no-workspace`, at the file time; `mcp
+oauth attempt: server=https://calendar.mcp.example.test/mcp client_id=client-0123456789abcdef
+workspace=empty-window (from mcp-oauth-attempts/0000.json)` at 10:08:00Z; `permission decision:
+accepted mcp auth for cloud agent bc-e1 tool_call=<toolCallId> (from state.vscdb
+cloudAgentRepository.mcpAuthResolution, file mtime)` with `session_id` `bc-e1`, `tool_use_id`
+the `toolCallId`, the agent's `project_path` `github.com/owner/demo` and `model` `grok-4.7`; for
+the bubble a `tool_use` row (`tool_name` `mcp-google-calendar-list_events`, the text the
+`params`) at 10:01:50Z and a `tool_result` row (the `result`) at 10:01:51Z, and no permission
+row; and neither the sentinel nor the `toolCallBinary` value in any row. The attempt file
+rewritten as `{"serverUrl": "https://x.test/mcp"}` gives `mcp oauth attempt:
+server=https://x.test/mcp client_id=- workspace=- (from mcp-oauth-attempts/0000.json, file
+mtime)` at its modification time, cut mid-value the `parser: unreadable` row, and as `[]` the
+`parser: ... is not a JSON object` row.
+
+#### MCP server and plugin rows
+
+From the MCP OAuth keys and the plugin records of
+[MCP servers and plugins](#mcp-servers-and-plugins), with an empty `session_id`; only key names
+are decoded, and no `mcpOAuth.secret.*` value is read:
+
+- for each scope with an `mcpOAuth.global` field `mcp_server_url`, `mcp server: <scope before
+  ::> url=<value> (from state.vscdb mcpOAuth.global, mcp_oauth_updated_at_ms)` at that scope's
+  `mcp_oauth_updated_at_ms`, or, when the scope has none, the same text ending `(from state.vscdb
+  mcpOAuth.global, file mtime)` at the file's modification time, followed by ` tokens=stored
+  (ciphertext, not read)` when an `mcpOAuth.secret` key for the same scope has the field
+  `mcp_tokens`; the `oauth-attempt:` scopes and the `mcpOAuth.extensionMigrationComplete` key
+  yield nothing;
+- for each entry of a `cursor.plugins.installedIds.<team>|<scope>` key, `plugin installed:
+  id=<id> sources=<sources, comma-separated> scope=<scope> (from state.vscdb
+  cursor.plugins.installedIds, file mtime)` at the file's modification time, the scope the
+  key's segment after the last `|` (`no-workspace`, or a folder's `file://` URI, whose decoded
+  path is the row's `project_path`, a Windows drive in the form VS Code's `fsPath` writes, with
+  the drive letter in lower case, `c:\...`, so that it matches the composer headers'
+  `workspaceIdentifier.uri.fsPath`);
+- for each `User/globalStorage/mcp-oauth-attempts/<uuid>.json`, `mcp oauth attempt:
+  server=<serverUrl> client_id=<clientInformation.client_id> workspace=<owner.workspaceId>
+  (from mcp-oauth-attempts/<file>)` at `createdAtMs`, or, when it has none, the same text
+  ending `(from mcp-oauth-attempts/<file>, file mtime)` at the file's modification time; a file
+  that is not JSON is one `parser: unreadable <rel>: <reason>` row and one that is JSON but not
+  an object one `parser: <rel> is not a JSON object` row ([Bad-line rows](#bad-line-rows)).
+
+The plugin cache is excluded and not read, and the per-project `mcps/` manifests and
+`agent-tools/` outputs yield nothing.
+
 For the CLI parser of [issue 235](https://github.com/seanthegeek/doubleagent/issues/235), one CLI session in `/srv/proj`, under
 `.cursor/chats/6da544f59eb1005eef665ccbade87510/s1/` (the directory name the md5 of `/srv/proj`).
 `store.db` `meta` row `0`, the hex encoding of
@@ -1764,14 +2693,24 @@ Globs for the CLI files, relative to the home:
   Agent CLI copy until a cloud feature is used, the absence of `update-supervisor`, the plaintext
   tokens beside the encrypted `secret://` values, the source-host keys, the pending-prompt and
   editor-window allow-always records, and the archive and delete results.
+- High, observed on Windows (Cursor IDE 3.26.13 per-user installer, arm64, one step per
+  listing): the `AppData/Roaming/Cursor` and `AppData/Local/Cursor/AgentStores` layout, the
+  updater's files before and at the update to 3.26.16, the plaintext tokens, the decision,
+  pending and standing-list records, the delete's result on a conversation never archived, the
+  source-host keys, and a
+  cloud agent's local records, archive and reopening, the remote-control enrolment and the
+  absence of a local record of a paired device, a plugin's install and MCP OAuth records, the
+  MCP tool bubbles and the cloud agent's MCP authorisation record; two cloud agents with one turn
+  each, on arm64, where the embedded worker did not start.
+- Not observed: remote steering from a paired device (the worker does not start on Windows
+  arm64); to be observed on macOS.
 - High, observed on macOS (Cursor Agent CLI 2026.10.19-6bbf2c4, one step per listing): the CLI's
   files under `~/.cursor` and `~/.local`, the chat store's tables, the `meta.0` keys and the JSON
   message shapes, the keychain items, and what `agent logout` and the project's removal left.
 - High (L1 bundle): the CLI entries the install did not write (`acp-sessions/`, worktrees, hooks,
   plans), the `projects/` name truncation, and the CLI's `auth.json` logic on Linux and Windows;
   the IDE's run-mode names and delete commands.
-- Medium: `.cursor-server` (convention plus L4); the Windows IDE paths (convention, not
-  observed).
+- Medium: `.cursor-server` (convention plus L4).
 - Low: `~/.cursor_info` (a single L4 claim).
 - Not determined: the schema of the CLI chat store's protobuf nodes (no descriptor extracted), so
   the CLI's message order and per-call times; whether other CLI builds split or encrypt the blobs,
@@ -1783,12 +2722,23 @@ Globs for the CLI files, relative to the home:
   the five names of one install; the form of a positive UTC offset in the transcript tag, and
   whether the tag truncates or rounds the seconds; whether `messageRequestContext:*` rows still
   appear on any 3.x build; the unit of `ai_code_hashes.createdAt`; subagent composers
-  (`isSubagent`, `subagentComposerIds`), cloud
-  and worktree agents, and a `cloud-cache` row in `conversation-search.db`; what the editor
-  window's Delete does on a conversation that was not archived first, and what deleting the
-  project directory leaves for the IDE; whether the editor window's add-to-allow-list shortcut
+  (`isSubagent`, `subagentComposerIds`) and worktree agents; what deleting the project directory
+  leaves for the IDE; the meaning of the fields of `bcCachedDetails` (no descriptor extracted)
+  and of the cloud agent's `status`, `workflowStatus` and `source` numbers; whether a cloud
+  agent's cached text grows with more turns or keeps one block, and whether it can be deleted
+  locally or only on `cursor.com/agents`; whether `.git/cursor/crepe` fills later on Windows;
+  what decides whether a header carries `agentLocation`; why some local rows of
+  `conversation-search.db` have no body; what `toolCallBinary` encodes; the meaning of the
+  `authId`, `queryId` and `version` fields of `cloudAgentRepository.mcpAuthResolution`; the
+  value of the cloud MCP server list `agentData.cacheStorage.glass.cloudMcpServers.v1.personal.*`;
+  how the export's blocks map to
+  typed and injected turns; whether the prompt offers an allow-list entry for an interpreter
+  command line such as `powershell -Command`; which builds name the shadow copies
+  `cursor-retrieval` and which `cursor-commits`; the step that first wrote the Windows
+  `remoteAgentHost` keys; whether the editor window's add-to-allow-list shortcut
   is kept in memory for the session or was lost at the quit, and whether other builds persist
   it; what the daily `projects/` cleanup removes; whether the Linux `secret://` values are
   encrypted through libsecret, and what the GNOME keyring item holds; the Agents window, the RPM
-  and AppImage builds and the x64 deb on Linux; and where `update-supervisor` and the sync stores
-  live on Windows; a repository-bound cloud conversation and how it is stored locally.
+  and AppImage builds and the x64 deb on Linux; the Cursor IDE 3.26.16 on Windows, beyond its
+  update, and the values `update-supervisor\win32\<installationId>\state.json` `stage` takes;
+  and the Agent CLI on Windows and on Linux.

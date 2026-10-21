@@ -1058,6 +1058,33 @@ $l236 = 'home/bob/.local/state/cursor/agent-stores/cursor_agent_stores'
 Mk "$l236/u1/.sync/index.sqlite" "sqlite`n"
 Mk "$l236/.control/u1/pins/1-x.json" "{`"purpose`":`"foreground`"}`n"
 
+# 2026-10-21 Cursor IDE round on Windows (#236)
+# Cursor 3.26.13 (Windows 11 arm64, per-user installer, 2026-10-21) keeps
+# the sync stores under %LOCALAPPDATA%\Cursor\AgentStores, not beside the
+# user-data directory in AppData/Roaming, and extracts the worker's Agent
+# CLI copy (262.7 MB) under agent-cli in AppData/Roaming/Cursor, which is
+# excluded while the worker's log beside it stays collected. Checks follow
+# the default run below; the same files are in smoke.sh under bob.
+$s236 = 'Users/alice/AppData/Local/Cursor/AgentStores/cursor_agent_stores'
+$w236 = 'Users/alice/AppData/Roaming/Cursor/User/globalStorage/anysphere.cursor-agent-worker'
+Mk "$s236/u1/.sync/index.sqlite" "sqlite`n"
+Mk "$s236/.control/u1/pins/1-x.json" "{`"purpose`":`"foreground`"}`n"
+Mk "$w236/agent-cli/x" "cli`n"
+Mk "$w236/cursor-agent-worker-1.log" "worker log`n"
+# Cursor 3.26.13 (W21, 2026-10-21) put an installed plugin's marketplace copy
+# under .cursor/plugins/cache/<marketplace>/<plugin>/<sha>, excluded like the
+# Claude Code and Codex plugin caches; plugins/local beside it is collected.
+$p236 = 'Users/alice/.cursor/plugins'
+Mk "$p236/cache/cursor-public/x/0123abcd/mcp.json" "{`"mcpServers`":{}}`n"
+Mk "$p236/local/x.json" "{}`n"
+# Cursor 3.26.16 (W25, 2026-10-21): the update that brought it wrote
+# update-supervisor/win32/<installationId>/ with app-ready.json, state.json
+# and a copy of inno_updater.exe (3.4 MB), which is excluded.
+$u236 = 'Users/alice/AppData/Roaming/Cursor/update-supervisor/win32/0000'
+Mk "$u236/inno_updater.exe" "binary`n"
+Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
+Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1590,6 +1617,15 @@ Check '#6 Cursor statsig cache excluded' { (StatusOf 'Users/alice/.cursor/statsi
 
 # 2026-10-20 Cursor IDE round on Ubuntu (#236)
 Check '#236 Cursor Linux agent-stores collected' { (Is6 "$l236/u1/.sync/index.sqlite") -and (Is6 "$l236/.control/u1/pins/1-x.json") }
+
+# 2026-10-21 Cursor IDE round on Windows (#236)
+Check '#236 Cursor Windows agent-stores collected' { (Is6 "$s236/u1/.sync/index.sqlite") -and (Is6 "$s236/.control/u1/pins/1-x.json") }
+Check '#236 Cursor Windows embedded agent CLI excluded' { (StatusOf "$w236/agent-cli") -eq 'skipped_excluded' -and (NoRow6 'anysphere.cursor-agent-worker/agent-cli/x') }
+Check '#236 Cursor Windows agent worker log collected' { Is6 "$w236/cursor-agent-worker-1.log" }
+Check '#236 Cursor plugin cache excluded' { (StatusOf "$p236/cache") -eq 'skipped_excluded' -and (NoRow6 'cache/cursor-public/x/0123abcd/mcp.json') }
+Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
+Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
+Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

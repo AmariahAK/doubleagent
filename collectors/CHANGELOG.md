@@ -10,7 +10,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [1.18.0] - 2026-10-20
+## [1.18.0] - 2026-10-21
+
+### Added
+
+- An exclusion for Cursor's plugin cache, `.cursor/plugins/cache`,
+  recorded as `skipped_excluded` with its size. It holds the marketplace
+  copy of each installed plugin (`<marketplace>/<plugin>/<sha>/` with
+  `.cursor-plugin/plugin.json`, `mcp.json`, a README, a licence and
+  assets), which can be downloaded again, as the Claude Code and Codex
+  plugin caches already excluded can. Which plugins were installed stays
+  collected, in `state.vscdb` and in the per-project
+  `.cursor/projects/<project>/mcps/plugin-<name>-<server>/` manifests
+  ([#236]).
+- An exclusion for the copy of Cursor's Windows updater,
+  `*/Cursor/update-supervisor/*/inno_updater.exe` (3.4 MB), recorded as
+  `skipped_excluded` with its size. Cursor's update to 3.26.16 on
+  Windows (October 2026) wrote it into
+  `update-supervisor/win32/<installationId>/` beside `app-ready.json` and
+  `state.json`, which stay collected; it is a copied binary that the
+  macOS supervisor exclusion did not cover ([#236]).
 
 ### Changed
 
@@ -23,6 +42,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the Ubuntu deb (October 2026) wrote the stores there, so collector
   1.17.0 left them out on Linux. `--list` (`-List`) prints the new line
   ([#236]).
+- The Windows catalog line for Cursor's agent sync stores now names
+  `AppData/Local/Cursor/AgentStores`, where Cursor 3.26.13 (Windows 11,
+  October 2026) writes them, in place of
+  `AppData/Roaming/Cursor/AgentStores`, which matched nothing, so
+  collector 1.17.0 left them out on Windows. `--list` (`-List`) prints
+  the new line ([#236]).
 
 ## [1.17.0] - 2026-10-20
 

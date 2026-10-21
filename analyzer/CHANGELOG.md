@@ -9,10 +9,58 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.20.1] - 2026-10-20
+## [0.20.1] - 2026-10-21
 
 ### Added
 
+- The `cursor` parser reads Cursor cloud agents, which run on Cursor's
+  servers and keep no conversation records in the editor's database.
+  Each entry of the `cloudAgentRepository.agents.<account>` list in
+  `state.vscdb` becomes a session with the agent's `bc-<id>` as
+  `session_id` and its repository (`github.com/<owner>/<repo>`) as
+  `project_path`, with `session origin: remote cursor cloud agent`,
+  `session synced: cursor cloud agent <bc-id> (vendor copy; ...)`,
+  `model: <model>` (with ` requested=<id>` when the requested id
+  differs), `source host: github.com <owner>/<repo> (cloud agent)` and
+  `cloud agent: <name> repo=... status=... workflowStatus=...
+  archived=... killed=... vmStarted=...` rows; such a session's `origin`
+  is `remote` and its `synced` `yes` in `sessions.jsonl` and the
+  inventory, since Cursor holds the conversation, and every other Cursor
+  session's `synced` now reads `no` instead of `""`. The repository list
+  `cloudEnvironmentTemplate.githubRepos` gives one `source host
+  repository: <url> type=<type>` row per repository, at the file's
+  modification time. The encrypted `secret://` connection tokens beside
+  them are never read, and the protobuf `bcCachedDetails:<bc-id>` record
+  is not decoded yet ([#236]).
+- The `cursor` parser reads the text `conversation-search.db` holds for a
+  conversation, from its full-text index's `conversation_fts_content`
+  table (read as a plain table, so SQLite's fts5 module is not needed):
+  one `cached conversation text (conversation-search.db,
+  source=<source>): <text>` row per conversation with text, a single
+  `system` row because the index runs the prompt and the reply together.
+  For a cloud agent's `cloud-cache` row this is the only local copy of the
+  conversation's text, and the row also gives the session's `session
+  origin: remote cursor cloud agent` row ([#236]).
+
+- The `cursor` parser reads the editor's MCP servers and plugins:
+  `mcp server: <server> url=<url> (from state.vscdb mcpOAuth.global,
+  mcp_oauth_updated_at_ms)` per MCP server with OAuth state, ending
+  ` tokens=stored (ciphertext, not read)` when the editor holds the
+  server's OAuth tokens, which are encrypted and never read (the parser
+  decodes only the key names of `mcpOAuth.*`); `plugin installed: id=<id>
+  sources=<sources> scope=<scope>` per installed plugin, with the folder
+  as `project_path` when the plugin is enabled for one; and `mcp oauth
+  attempt: server=<url> client_id=<id> workspace=<workspace>` from the
+  plaintext `User/globalStorage/mcp-oauth-attempts/<uuid>.json`, the
+  OAuth client registration of the server's sign-in ([#236]).
+- The `cursor` parser yields `permission decision: <decision> mcp auth
+  for cloud agent <bc-id> tool_call=<id>` from
+  `cloudAgentRepository.mcpAuthResolution`, the user's answer to a cloud
+  agent's request to authorise an MCP server, in the cloud agent's
+  session and joined on the tool call. An MCP tool call in a local
+  conversation is a `tool_use` row named `mcp-<server>-<tool>`; the
+  editor records no per-call decision for it, so it has no `permission
+  decision:` row ([#236]).
 - The `cursor` parser yields `source host: github account <login>
   scopes=<scopes>` for the editor's own GitHub sign-in (the
   `github-<login>` and `github-<login>-usages` keys of `state.vscdb`), at
@@ -23,6 +71,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The `cursor` parser's `conversation deleted` row ends ` (isArchived is
+  set by the delete)` when the kept header is marked archived, since the
+  editor sets that flag when it deletes a conversation that was never
+  archived ([#236]).
+- The `cursor` parser's `remote agent host enrolled:` row now ends
+  `file mtime; on by default, a paired device leaves no local record)`:
+  the enrolment is on by default, and pairing a phone writes nothing
+  on the computer ([#236]).
+- The bundled catalog copy follows the collector on Windows: Cursor's
+  sync store is read from `AppData/Local/Cursor/AgentStores`, where the
+  editor writes it, instead of `AppData/Roaming/Cursor/AgentStores`
+  ([#236]).
 - The bundled catalog copy follows the collector: the Linux sync-store
   line `.local/state/cursor/agent-stores` replaces
   `.config/Cursor/AgentStores` ([#236]).
@@ -45,6 +105,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   for the editor window's "add ... to the allow list", which stores the
   decision as `run` with the added commands, as it does for the Agents
   window's Always run ([#237]).
+- The `cursor` parser no longer reads the tool call that was running
+  when the user stopped a turn as a pending prompt: such a call
+  (`reviewData.status` `None`, `additionalData.status` `rejected`)
+  yields `permission decision: stopped by the user (reviewData.status
+  None, additionalData.status rejected)` beside its `[rejected] ` result,
+  and the calls queued after it (`cancelled`) yield their `tool_use` row
+  and no permission row ([#236]).
 
 ## [0.20.0] - 2026-10-20
 

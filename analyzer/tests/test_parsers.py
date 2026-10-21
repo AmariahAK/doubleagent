@@ -14601,21 +14601,29 @@ class ChatGptDesktopTests(ParserBase):
         )
 
 
-from doubleagent.parsers.cursor import CursorParser, run_mode, tag_time, unwrap_query
+from doubleagent.parsers.cursor import CursorParser, run_mode, tag_time, unwrap_query, uri_path
 from fixtures import (
     CURSOR_ARCHIVED,
+    CURSOR_ATTEMPT_REL,
+    CURSOR_CLOUD,
+    CURSOR_CLOUD_BODY,
+    CURSOR_CLOUD_LISTED,
+    CURSOR_CLOUD_REPO,
     CURSOR_DELETED,
     CURSOR_DELETED_TRANSCRIPT_REL,
     CURSOR_DRAFT,
     CURSOR_EMPTY_HEAD,
     CURSOR_LIVE,
+    CURSOR_MCP_CALL,
     CURSOR_MTIME,
     CURSOR_SEARCH_REL,
     CURSOR_SECRET,
     CURSOR_STATE_REL,
     CURSOR_TRACKING_REL,
     CURSOR_TRANSCRIPT_REL,
+    cursor_mcp_bubble,
     cursor_review_bubbles,
+    cursor_stopped_bubbles,
 )
 
 
@@ -14624,7 +14632,111 @@ class CursorTests(ParserBase):
 
     COMPOSER = "(from state.vscdb composerState, file mtime, written late by the app)"
     REASON = "reason=Not in allowlist: curl, head"
-    DELETED = "conversation deleted (header kept; time is the header's lastUpdatedAt)"
+    DELETED = (
+        "conversation deleted (header kept; time is the header's lastUpdatedAt)"
+        " (isArchived is set by the delete)"
+    )
+    CLOUD_ORIGIN = "session origin: remote cursor cloud agent"
+    CLOUD_SOURCE = "(from state.vscdb cloudAgentRepository.agents, rowUpdatedAtMs)"
+    REPOS_SOURCE = "(from state.vscdb cloudEnvironmentTemplate.githubRepos, file mtime)"
+    CACHED = "cached conversation text (conversation-search.db, source=cloud-cache): "
+    MCP_AUTH = (
+        "permission decision: accepted mcp auth for cloud agent %s tool_call=%s"
+        " (from state.vscdb cloudAgentRepository.mcpAuthResolution, file mtime)"
+        % (CURSOR_CLOUD, CURSOR_MCP_CALL)
+    )
+    PLUGINS_SOURCE = "(from state.vscdb cursor.plugins.installedIds, file mtime)"
+    # The MCP server and plugin rows of state.vscdb (Windows 3.26.13, issue
+    # 236): scopes in name order, the attempt scope skipped; the plugin
+    # lists in key order.
+    MCP_ROWS: ClassVar[list[tuple[str, str, str, str]]] = [
+        (
+            "2026-10-01T14:00:00.000Z",
+            "",
+            "system",
+            "mcp server: plugin-acme-tracker-tracker url=https://tracker.example.test/mcp"
+            " (from state.vscdb mcpOAuth.global, file mtime)",
+        ),
+        (
+            "2026-10-01T10:08:20.000Z",
+            "",
+            "system",
+            "mcp server: plugin-calendar-calendar"
+            " url=https://calendar.mcp.example.test/mcp"
+            " (from state.vscdb mcpOAuth.global, mcp_oauth_updated_at_ms)"
+            " tokens=stored (ciphertext, not read)",
+        ),
+        (
+            "2026-10-01T14:00:00.000Z",
+            "",
+            "system",
+            "plugin installed: id=12345678 sources=user scope=file:///srv/proj " + PLUGINS_SOURCE,
+        ),
+        (
+            "2026-10-01T14:00:00.000Z",
+            "",
+            "system",
+            "plugin installed: id=12345678 sources=user scope=no-workspace " + PLUGINS_SOURCE,
+        ),
+    ]
+    SYNCED = (
+        "session synced: cursor cloud agent %s (vendor copy; from state.vscdb"
+        " cloudAgentRepository.agents)"
+    )
+    # The cloud agent rows of state.vscdb: the agent list under the
+    # URL-encoded account id sorts first; the agent with a cached
+    # conversation leaves its origin row to conversation-search.db.
+    CLOUD_ROWS: ClassVar[list[tuple[str, str, str, str]]] = [
+        ("2026-10-01T13:03:20.000Z", CURSOR_CLOUD_LISTED, "system", CLOUD_ORIGIN),
+        ("2026-10-01T13:03:20.000Z", CURSOR_CLOUD_LISTED, "system", SYNCED % CURSOR_CLOUD_LISTED),
+        (
+            "2026-10-01T13:03:20.000Z",
+            CURSOR_CLOUD_LISTED,
+            "system",
+            "model: grok-4.7 requested=default",
+        ),
+        (
+            "2026-10-01T13:03:20.000Z",
+            CURSOR_CLOUD_LISTED,
+            "system",
+            "source host: github.com alice-gh/web (cloud agent)",
+        ),
+        (
+            "2026-10-01T13:05:20.000Z",
+            CURSOR_CLOUD_LISTED,
+            "system",
+            "cloud agent: Summarise the web repository repo=github.com/alice-gh/web status=1"
+            " workflowStatus=1 archived=false killed=false vmStarted=false " + CLOUD_SOURCE,
+        ),
+        ("2026-10-01T12:46:40.000Z", CURSOR_CLOUD, "system", SYNCED % CURSOR_CLOUD),
+        ("2026-10-01T12:46:40.000Z", CURSOR_CLOUD, "system", "model: grok-4.7"),
+        (
+            "2026-10-01T12:46:40.000Z",
+            CURSOR_CLOUD,
+            "system",
+            "source host: github.com alice-gh/demo (cloud agent)",
+        ),
+        (
+            "2026-10-01T12:48:40.000Z",
+            CURSOR_CLOUD,
+            "system",
+            "cloud agent: Describe the demo repository repo=github.com/alice-gh/demo status=2"
+            " workflowStatus=2 archived=true killed=false vmStarted=true " + CLOUD_SOURCE,
+        ),
+        ("2026-10-01T14:00:00.000Z", CURSOR_CLOUD, "system", MCP_AUTH),
+        (
+            "2026-10-01T14:00:00.000Z",
+            "",
+            "system",
+            "source host repository: https://github.com/alice-gh/demo type=github " + REPOS_SOURCE,
+        ),
+        (
+            "2026-10-01T14:00:00.000Z",
+            "",
+            "system",
+            "source host repository: alice-gh/web type=github " + REPOS_SOURCE,
+        ),
+    ]
     CALL = "call-t%d-%d\nfc_t%d_%d"
     CURL = '{"command": "curl -s example.test | head"}'
     GITHUB = (
@@ -14633,7 +14745,8 @@ class CursorTests(ParserBase):
     )
     ENROLLED = (
         "remote agent host enrolled: lab-vm"
-        " (from state.vscdb remoteAgentHost.enrolled.auth0|user_01, file mtime)"
+        " (from state.vscdb remoteAgentHost.enrolled.auth0|user_01, file mtime;"
+        " on by default, a paired device leaves no local record)"
     )
     # (timestamp_utc, session_id, turn_type, text) of every state.vscdb row
     # without --include-thinking, in the order the parser yields them.
@@ -14739,6 +14852,8 @@ class CursorTests(ParserBase):
         ),
         ("2026-10-01T10:06:40.000Z", "", "system", GITHUB),
         ("2026-10-01T14:00:00.000Z", "", "system", ENROLLED),
+        *CLOUD_ROWS,
+        *MCP_ROWS,
     ]
 
     def state_rows(self, **kw):
@@ -14758,7 +14873,14 @@ class CursorTests(ParserBase):
         for r in rows:
             self.assertEqual((r.host, r.user, r.agent), ("h1", "alice", "cursor"))
             self.assertEqual(r.source_file, "/alice/" + CURSOR_STATE_REL)
-            self.assertEqual(r.project_path, "/srv/proj" if r.session_id[:1] == "c" else "")
+            project = "/srv/proj" if r.session_id[:1] == "c" else ""
+            if r.text.startswith("plugin installed:") and "file:///srv/proj" in r.text:
+                project = "/srv/proj"
+            if r.session_id[:3] == "bc-":
+                project = (
+                    CURSOR_CLOUD_REPO if r.session_id == CURSOR_CLOUD else "github.com/alice-gh/web"
+                )
+            self.assertEqual(r.project_path, project)
             self.assertEqual(r.git_branch, "")
             self.assertEqual(
                 r.recovered, "yes" if r.turn_type == "user" and not r.timestamp_utc else ""
@@ -14945,8 +15067,8 @@ class CursorTests(ParserBase):
             for s in sessions
             if s.agent == "cursor"
         }
-        self.assertEqual(got[CURSOR_LIVE], ("local", "partial", "", 2, 5))
-        self.assertEqual(got[CURSOR_ARCHIVED], ("local", "no", "", 2, 0))
+        self.assertEqual(got[CURSOR_LIVE], ("local", "partial", "no", 2, 5))
+        self.assertEqual(got[CURSOR_ARCHIVED], ("local", "no", "no", 2, 0))
         # Every event row of the deleted conversation is recovered; its
         # system rows (the header, the ai-tracking row) are not counted.
         self.assertEqual(got[CURSOR_DELETED][:2], ("local", "yes"))
@@ -15006,13 +15128,35 @@ class CursorTests(ParserBase):
                     "conversation index: Add subtract source=local archived=0",
                 ),
                 (
+                    "2026-10-01T10:05:00.000Z",
+                    CURSOR_LIVE,
+                    "/srv/proj",
+                    "cached conversation text (conversation-search.db, source=local):"
+                    " Add a subtract function",
+                ),
+                (
                     "2026-10-01T12:00:00.000Z",
                     CURSOR_ARCHIVED,
                     "/srv/proj",
                     "conversation index: Read the README source=local archived=1",
                 ),
+                ("2026-10-01T12:47:40.000Z", CURSOR_CLOUD, CURSOR_CLOUD_REPO, self.CLOUD_ORIGIN),
+                (
+                    "2026-10-01T12:47:40.000Z",
+                    CURSOR_CLOUD,
+                    CURSOR_CLOUD_REPO,
+                    "conversation index: Describe the demo repository source=cloud-cache"
+                    " archived=1",
+                ),
+                (
+                    "2026-10-01T12:47:40.000Z",
+                    CURSOR_CLOUD,
+                    CURSOR_CLOUD_REPO,
+                    self.CACHED + CURSOR_CLOUD_BODY,
+                ),
             ],
         )
+        self.assertEqual([r.model for r in rows], ["", "", ""] + ["grok-4.7"] * 3)
         self.assertFalse(CursorParser().secondary(self.artifact(CURSOR_SEARCH_REL)))
 
     def test_settings_files(self):
@@ -15060,6 +15204,8 @@ class CursorTests(ParserBase):
         ):
             self.assertFalse(p.wants(self.artifact(rel)), rel)
             self.assertEqual(self.artifact(rel).agent, "cursor")
+        self.assertTrue(p.wants(self.artifact(CURSOR_ATTEMPT_REL)))
+        self.assertEqual(self.artifact(CURSOR_ATTEMPT_REL).agent, "cursor")
         for rel in (
             CURSOR_STATE_REL + "-wal",
             ".config/Cursor/User/workspaceStorage/0123/state.vscdb",
@@ -15067,12 +15213,16 @@ class CursorTests(ParserBase):
             ".config/Code/User/globalStorage/state.vscdb",
             ".cursor/chats/ab/s1/store.db",
             ".cursor/projects/p/agent-transcripts/c.jsonl",
+            ".cursor/projects/empty-window/agent-tools/a0000001.txt",
+            ".cursor/plugins/cache/cursor-public/google-calendar/0123abcd/mcp.json",
+            "AppData/Roaming/Cursor/User/globalStorage/mcp-oauth-attempts/x/a.json",
         ):
             self.assertFalse(p.wants(rel_only(rel)), rel)
         for rel in (
             ".config/Cursor/User/globalStorage/state.vscdb",
             "AppData/Roaming/Cursor/User/globalStorage/conversation-search.db",
             ".cursor/projects/p/agent-transcripts/c/c.jsonl",
+            "AppData/Roaming/Cursor/User/globalStorage/mcp-oauth-attempts/a.json",
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
 
@@ -15130,7 +15280,11 @@ class CursorTests(ParserBase):
         is the latest usage; the remote agent host enrolment is at the file
         time; no `secret://` value reaches any row (issue 236)."""
         rows = self.state_rows()
-        hosts = [r for r in rows if r.text.startswith(("source host:", "remote agent host"))]
+        hosts = [
+            r
+            for r in rows
+            if r.text.startswith(("source host:", "remote agent host")) and not r.session_id
+        ]
         self.assertEqual(
             [(r.timestamp_utc, r.session_id, r.project_path, r.text) for r in hosts],
             [
@@ -15156,6 +15310,7 @@ class CursorTests(ParserBase):
             (r.timestamp_utc, r.text)
             for r in self.state_rows()
             if r.text.startswith(("source host:", "remote agent host", "parser:"))
+            and not r.session_id
         ]
         self.assertEqual(
             hosts,
@@ -15207,6 +15362,277 @@ class CursorTests(ParserBase):
             (rows[1].timestamp_utc, rows[1].text),
             ("2026-10-01T10:20:00.000Z", "session origin: remote cloud"),
         )
+
+    def test_cloud_agents(self):
+        """A cloud agent is a remote-origin session from its list entry and
+        its cached conversation; the cached body is one system row in full,
+        never a user or assistant row (Windows 3.26.13, issue 236)."""
+        rows, _, problems, _ = cli.collect_rows(self.col, Options(), ["cursor"])
+        self.assertEqual(problems, [])
+        cloud = [r for r in rows if r.session_id == CURSOR_CLOUD]
+        self.assertEqual({r.turn_type for r in cloud}, {"system"})
+        self.assertEqual([r.text for r in cloud].count(self.CLOUD_ORIGIN), 1)
+        self.assertIn(self.CACHED + CURSOR_CLOUD_BODY, [r.text for r in cloud])
+        self.assertEqual(
+            {(r.project_path, r.model) for r in cloud}, {(CURSOR_CLOUD_REPO, "grok-4.7")}
+        )
+        listed = [r.text for r in rows if r.session_id == CURSOR_CLOUD_LISTED]
+        self.assertEqual(listed.count(self.CLOUD_ORIGIN), 1)
+        sessions = summarise(
+            rows, cli.SYNC_AGENTS, cli.RELAY_AGENTS, cli.ORIGIN_AGENTS, cli.SECONDARY_AGENTS
+        )
+        got = {
+            s.session_id: (s.origin, s.synced, s.user_turns, s.project_path)
+            for s in sessions
+            if s.agent == "cursor"
+        }
+        self.assertEqual(got[CURSOR_CLOUD], ("remote", "yes", 0, CURSOR_CLOUD_REPO))
+        self.assertEqual(got[CURSOR_CLOUD_LISTED], ("remote", "yes", 0, "github.com/alice-gh/web"))
+        self.assertEqual(got[CURSOR_LIVE][:2], ("local", "no"))
+        self.assertEqual([r.text for r in cloud].count(self.SYNCED % CURSOR_CLOUD), 1)
+        for r in self.state_rows():
+            self.assertNotIn(CURSOR_SECRET, r.text)
+            self.assertNotIn("connectionToken", r.text)
+            self.assertNotIn("bcCachedDetails", r.text)
+            self.assertNotIn("serverPinnedBcIds", r.text)
+
+    def test_cloud_agents_without_search_or_list(self):
+        """Without conversation-search.db the state database yields the
+        origin row of every listed agent; a list value that is not a JSON
+        list is skipped, a cut one is a bad record; no fts content, no
+        cached text row."""
+        (self.home / CURSOR_SEARCH_REL).unlink()
+        rows = [r for r in self.state_rows() if r.session_id == CURSOR_CLOUD]
+        self.assertEqual(rows[0].text, self.CLOUD_ORIGIN)
+        self.assertEqual(rows[0].timestamp_utc, "2026-10-01T12:46:40.000Z")
+        key = "cloudAgentRepository.agents.auth0%7Cuser_02"
+        self.kv("UPDATE ItemTable SET value = ? WHERE key = ?", (b'{"bcId": "x"}', key))
+        self.kv(
+            "UPDATE ItemTable SET value = ? WHERE key = ?",
+            (b'[{"bcId": "bc-cut"', "cloudAgentRepository.agents.auth0|user_01"),
+        )
+        rows = self.state_rows()
+        # The MCP auth resolution keeps its session; its project and model
+        # came from the list.
+        cloud = [r for r in rows if r.session_id.startswith("bc-")]
+        self.assertEqual(
+            [(r.text, r.project_path, r.model) for r in cloud], [(self.MCP_AUTH, "", "")]
+        )
+        bad = [r for r in rows if r.text.startswith("parser:")]
+        self.assertEqual(len(bad), 1)
+        self.assertTrue(
+            bad[0].text.startswith(
+                "parser: unparseable record %d (cloudAgentRepository.agents.auth0|user_01: "
+                % bad[0].source_line
+            ),
+            bad[0].text,
+        )
+        self.assertTrue(bad[0].text.endswith('): [{"bcId": "bc-cut"'), bad[0].text)
+        con = sqlite3.connect(str(self.home / CURSOR_STATE_REL))
+        con.execute("DROP TABLE ItemTable")
+        con.commit()
+        con.close()
+        self.assertFalse([r for r in self.state_rows() if "cloud" in r.text])
+
+    def test_mcp_servers_and_plugins(self):
+        """MCP OAuth scopes come from the key names alone, a secret key's
+        value is never read; the plugin lists give one row per entry, a
+        folder scope is the project path (Windows 3.26.13, issue 236)."""
+        rows = self.state_rows()
+        got = [
+            (r.timestamp_utc, r.session_id, r.turn_type, r.text)
+            for r in rows
+            if r.text.startswith(("mcp server:", "plugin installed:"))
+        ]
+        self.assertEqual(got, self.MCP_ROWS)
+        self.assertEqual(
+            [r.project_path for r in rows if r.text.startswith("plugin installed:")],
+            ["/srv/proj", ""],
+        )
+        for r in self.state_rows(include_thinking=True):
+            self.assertNotIn(CURSOR_SECRET, r.text)
+            self.assertNotIn("Buffer", r.text)
+            self.assertNotIn("oauth-attempt", r.text)
+            self.assertNotIn("mcp_code_verifier", r.text)
+            self.assertNotIn("extensionMigrationComplete", r.text)
+        self.assertEqual(
+            uri_path("file:///c%3A/Users/alice/proj/demo"), "c:\\Users\\alice\\proj\\demo"
+        )
+        self.assertEqual(uri_path("file:///home/alice/my%20proj"), "/home/alice/my proj")
+        # A plugin list that is not a list is skipped, a cut one is a bad
+        # record; an empty one yields nothing.
+        self.kv(
+            "UPDATE ItemTable SET value = ? WHERE key = ?",
+            (b"{}", "cursor.plugins.installedIds.no-team|no-workspace"),
+        )
+        self.kv(
+            "UPDATE ItemTable SET value = ? WHERE key = ?",
+            (b'[{"id": "1"', "cursor.plugins.installedIds.no-team|file:///srv/proj"),
+        )
+        self.kv("INSERT INTO ItemTable VALUES (?, ?)", ("cursor.plugins.installedIds.t|x", b"[]"))
+        rows = self.state_rows()
+        self.assertFalse([r for r in rows if r.text.startswith("plugin installed:")])
+        bad = [r.text for r in rows if r.text.startswith("parser:")]
+        self.assertEqual(len(bad), 1)
+        self.assertTrue(bad[0].endswith('): [{"id": "1"'), bad[0])
+
+    def test_mcp_oauth_attempt(self):
+        """The attempt file is one row at its `createdAtMs`; without it the
+        file time, said in the text; a file that is not JSON is one
+        `parser:` row."""
+        p = CursorParser()
+        self.assertTrue(p.wants(self.artifact(CURSOR_ATTEMPT_REL)))
+        self.assertFalse(p.secondary(self.artifact(CURSOR_ATTEMPT_REL)))
+        name = CURSOR_ATTEMPT_REL.rsplit("/", 1)[1]
+        rows = self.rows_for(p, CURSOR_ATTEMPT_REL)
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.project_path, r.turn_type, r.text) for r in rows],
+            [
+                (
+                    "2026-10-01T10:08:00.000Z",
+                    "",
+                    "",
+                    "system",
+                    "mcp oauth attempt: server=https://calendar.mcp.example.test/mcp"
+                    " client_id=client-0123456789abcdef workspace=empty-window"
+                    " (from mcp-oauth-attempts/%s)" % name,
+                )
+            ],
+        )
+        path = self.home / CURSOR_ATTEMPT_REL
+        path.write_text(json.dumps({"serverUrl": "https://x.test/mcp"}), encoding="utf-8")
+        os.utime(path, (CURSOR_MTIME, CURSOR_MTIME))
+        rows = self.rows_for(p, CURSOR_ATTEMPT_REL)
+        self.assertEqual(
+            [(r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "2026-10-01T14:00:00.000Z",
+                    "mcp oauth attempt: server=https://x.test/mcp client_id=- workspace=-"
+                    " (from mcp-oauth-attempts/%s, file mtime)" % name,
+                )
+            ],
+        )
+        path.write_text('{"serverUrl": "https://x', encoding="utf-8")
+        rows = self.rows_for(p, CURSOR_ATTEMPT_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(
+            rows[0].text.startswith("parser: unreadable %s: " % CURSOR_ATTEMPT_REL), rows[0].text
+        )
+        path.write_text("[]", encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(p, CURSOR_ATTEMPT_REL)],
+            ["parser: %s is not a JSON object" % CURSOR_ATTEMPT_REL],
+        )
+
+    def test_mcp_auth_resolution(self):
+        """The cloud agent's MCP auth answer is a decision in the agent's
+        session, joined on its tool call id."""
+        rows = [r for r in self.state_rows() if r.text.startswith("permission decision: accepted")]
+        self.assertEqual(
+            [(r.session_id, r.tool_use_id, r.project_path, r.model, r.text) for r in rows],
+            [(CURSOR_CLOUD, CURSOR_MCP_CALL, CURSOR_CLOUD_REPO, "grok-4.7", self.MCP_AUTH)],
+        )
+
+    def test_stopped_turn(self):
+        """A call in flight when the user stopped the turn is a decision,
+        not a pending prompt; a queued, cancelled call has no permission
+        row (Windows 3.26.13)."""
+        con = sqlite3.connect(str(self.home / CURSOR_STATE_REL))
+        key = "composerData:" + CURSOR_LIVE
+        data = json.loads(
+            con.execute("SELECT value FROM cursorDiskKV WHERE key = ?", (key,)).fetchone()[0]
+        )
+        for head, bubble in cursor_stopped_bubbles():
+            data["fullConversationHeadersOnly"].append(head)
+            con.execute(
+                "INSERT INTO cursorDiskKV VALUES (?, ?)",
+                ("bubbleId:%s:%s" % (CURSOR_LIVE, head["bubbleId"]), json.dumps(bubble)),
+            )
+        con.execute("UPDATE cursorDiskKV SET value = ? WHERE key = ?", (json.dumps(data), key))
+        con.commit()
+        con.close()
+        rows = [r for r in self.state_rows() if r.tool_use_id in ("tc9", "tc10")]
+        self.assertEqual(
+            [(r.timestamp_utc, r.tool_use_id, r.turn_type, r.text) for r in rows],
+            [
+                ("2026-10-01T10:02:00.000Z", "tc9", "tool_use", '{"command": "dir"}'),
+                (
+                    "2026-10-01T10:02:00.000Z",
+                    "tc9",
+                    "system",
+                    "permission decision: stopped by the user (reviewData.status None,"
+                    " additionalData.status rejected)",
+                ),
+                ("2026-10-01T10:02:00.000Z", "tc9", "tool_result", "[rejected]"),
+                ("2026-10-01T10:02:01.000Z", "tc10", "tool_use", '{"command": "type README.md"}'),
+            ],
+        )
+        self.assertFalse([r for r in rows if "pending" in r.text])
+
+    def test_mcp_tool_bubble(self):
+        """An MCP tool call approved under Allowlist is a tool_use and a
+        tool_result with no permission row: the bubble records no decision
+        (Windows 3.26.13); `toolCallBinary` is not read."""
+        con = sqlite3.connect(str(self.home / CURSOR_STATE_REL))
+        key = "composerData:" + CURSOR_LIVE
+        data = json.loads(
+            con.execute("SELECT value FROM cursorDiskKV WHERE key = ?", (key,)).fetchone()[0]
+        )
+        head, bubble = cursor_mcp_bubble()
+        data["fullConversationHeadersOnly"].append(head)
+        con.execute(
+            "INSERT INTO cursorDiskKV VALUES (?, ?)",
+            ("bubbleId:%s:%s" % (CURSOR_LIVE, head["bubbleId"]), json.dumps(bubble)),
+        )
+        con.execute("UPDATE cursorDiskKV SET value = ? WHERE key = ?", (json.dumps(data), key))
+        con.commit()
+        con.close()
+        call = bubble["toolFormerData"]["toolCallId"]
+        rows = [r for r in self.state_rows() if r.tool_use_id == call]
+        self.assertEqual(
+            [(r.timestamp_utc, r.turn_type, r.tool_name, r.model, r.text) for r in rows],
+            [
+                (
+                    "2026-10-01T10:01:50.000Z",
+                    "tool_use",
+                    "mcp-google-calendar-list_events",
+                    "grok-4.7",
+                    '{"calendarId": "primary"}',
+                ),
+                (
+                    "2026-10-01T10:01:51.000Z",
+                    "tool_result",
+                    "mcp-google-calendar-list_events",
+                    "grok-4.7",
+                    '{"events": [{"summary": "Standup"}]}',
+                ),
+            ],
+        )
+        self.assertFalse([r for r in self.state_rows() if "Q0FMTEJJTkFSWQ" in r.text])
+
+    def test_search_without_fts_content(self):
+        con = sqlite3.connect(str(self.home / CURSOR_SEARCH_REL))
+        con.execute("DROP TABLE conversation_fts_content")
+        con.commit()
+        con.close()
+        texts = [r.text for r in self.rows_for(CursorParser(), CURSOR_SEARCH_REL)]
+        self.assertEqual(len(texts), 4)
+        self.assertNotIn("source=local)", " ".join(texts))
+        self.assertFalse([t for t in texts if t.startswith("cached conversation text")])
+        self.assertIn(self.CLOUD_ORIGIN, texts)
+
+    def test_deleted_header_not_archived(self):
+        """A deleted header that is not archived (kept by its location
+        history) gives the deleted row without the isArchived clause."""
+        self.kv(
+            "UPDATE composerHeaders SET isArchived = 0, value = json_set(value, '$.isArchived',"
+            " json('false')) WHERE composerId = ?",
+            (CURSOR_DELETED,),
+        )
+        texts = [r.text for r in self.state_rows() if r.session_id == CURSOR_DELETED]
+        self.assertIn(self.DELETED.split(" (isArchived")[0], texts)
+        self.assertFalse([t for t in texts if "isArchived" in t or t == "conversation archived"])
 
     def test_unreadable_database(self):
         db = self.home / CURSOR_STATE_REL
