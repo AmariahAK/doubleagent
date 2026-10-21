@@ -22,10 +22,60 @@ reads what little-coder writes itself:
   collector's `cp -p`). The session id is taken from the directory name,
   and the project path from the pi session header when that file was
   collected in the same home.
+
+The retired v0.0.x Python releases (read at tag v0.0.5, 424f7a4b) kept
+their own state in `~/.little-coder`, which an install that never upgraded
+still has. Everything below is source-derived; no real install has shown
+it.
+
+* Saved sessions, one JSON object `{session_id (8 hex, made at save
+  time), saved_at ("YYYY-MM-DD HH:MM:SS", host local time, no zone),
+  messages, turn_count, total_input_tokens, total_output_tokens}`:
+  `sessions/daily/<YYYY-MM-DD>/session_<HHMMSS>_<id>.json` (written at
+  exit, pruned to the newest few per day) and `sessions/session_<time>_<id>.json`
+  or another name (`/save`), both primary; `sessions/mr_sessions/
+  session_latest.json` (the exit save again) and `sessions/history.json`
+  (`{total_turns, sessions: [...]}`, every exit save, the last 100 to 200
+  kept), both secondary, since they repeat the daily copy. `messages` are
+  the neutral format: `user` (`content`), `assistant` (`content`,
+  `tool_calls[{id, name, input}]`) and `tool` (`tool_call_id`, `name`,
+  `content`). No message has a time, a model or a working directory, so
+  every row carries the session's `saved_at`, emitted as if it were UTC
+  (the host's offset is not recorded), and an empty `project_path`. A
+  `session saved:` system row starts each session. A `tool` result whose
+  content is `Denied: user rejected this operation` is followed by
+  `permission decision: denied (Denied: user rejected this operation)`
+  with the call's `tool_name` and `tool_use_id`. In `history.json`
+  `source_line` is the session's position in the array; in a session
+  file it is the message's position (0 for the `session saved:` row). A
+  file cut mid-write still yields the messages before the cut.
+* `input_history.txt`: the REPL's readline history, one prompt per line
+  as Python's `readline.write_history_file` wrote it, with no time,
+  session or project; a secondary source of `user` rows, matched on text
+  alone.
+* `config.json` (a secret file: it holds `gist_token`, `telegram_token`
+  and provider keys, none of which is read): `cloudsave_last_gist_id`
+  gives `session synced: gist <id> (from .little-coder/config.json, file
+  mtime)`, `telegram_chat_id` gives `session relayed: telegram chat <id>
+  (from .little-coder/config.json, file mtime)` and `permission_mode`
+  gives `permission setting: permission_mode=<value> (from
+  .little-coder/config.json, file mtime)`, each at the file's
+  modification time with an empty `session_id`: the gist holds an upload
+  with a fresh session id of its own, and the bridge records no session,
+  so neither joins a saved session and `records_sync` and `records_relay`
+  stay unset.
+* `checkpoints/<session id>/snapshots.json`: a JSON array of snapshots
+  `{id, session_id, created_at (naive local ISO), turn_count,
+  message_index, user_prompt_preview, token_snapshot, file_backups{<path>:
+  {backup_filename, version, backup_time}}}`; one system row per snapshot
+  at `created_at`, as if UTC. The session id is the REPL's runtime id,
+  which matches no saved session file. The copies under `backups/` are not
+  read.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections.abc import Iterator
@@ -34,13 +84,26 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, error_rows
-from .cline_legacy import iter_json_array
-from .pi import read_session
+from .base import Options, Parser, error_rows, file_mtime, line_text, setting_value, text_of
+from .cline_legacy import iter_array_at, iter_json_array, read_text
+from .pi import args_summary, read_session
 
 HISTORY_REL = ".pi/agent/little-coder-prompt-history.json"
 CHECKPOINT_RX = re.compile(r"^\.little-coder/checkpoints/([^/]+)/[^/]+$")
 SESSION_FILE_RX = re.compile(r"_([^_/]+)\.jsonl$")
+
+# The v0.0.x Python layout under ~/.little-coder.
+LEGACY_SESSION_RX = re.compile(r"^\.little-coder/sessions/(?:[^/]+/)*[^/]+\.json$")
+LEGACY_HISTORY_REL = ".little-coder/sessions/history.json"
+LEGACY_LATEST_REL = ".little-coder/sessions/mr_sessions/session_latest.json"
+LEGACY_INPUT_REL = ".little-coder/input_history.txt"
+LEGACY_CONFIG_REL = ".little-coder/config.json"
+LEGACY_SNAPSHOTS_RX = re.compile(r"^\.little-coder/checkpoints/([^/]+)/snapshots\.json$")
+LEGACY_DENIED = "Denied: user rejected this operation"
+SESSIONS_KEY_RX = re.compile(r'"sessions"\s*:\s*')
+MESSAGES_KEY_RX = re.compile(r'"messages"\s*:\s*')
+SESSION_ID_RX = re.compile(r'"session_id"\s*:\s*"([^"\\]*)"')
+SAVED_AT_RX = re.compile(r'"saved_at"\s*:\s*"([^"\\]*)"')
 
 
 def _regular_files(d: Path) -> list[os.DirEntry]:
@@ -63,16 +126,40 @@ def _session_header(home: Path, name: str) -> dict | None:
     return None
 
 
+def _dash(v) -> str:
+    return "-" if v in (None, "") else setting_value(v)
+
+
 class LittleCoderParser(Parser):
     agent = "little-coder"
     name = "little-coder"
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
-        return artifact.rel == HISTORY_REL or bool(CHECKPOINT_RX.match(artifact.rel))
+        rel = artifact.rel
+        return (
+            rel in (HISTORY_REL, LEGACY_INPUT_REL, LEGACY_CONFIG_REL)
+            or bool(CHECKPOINT_RX.match(rel))
+            or bool(LEGACY_SESSION_RX.match(rel))
+        )
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return artifact.rel in (LEGACY_HISTORY_REL, LEGACY_LATEST_REL, LEGACY_INPUT_REL)
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
-        if artifact.rel == HISTORY_REL:
+        rel = artifact.rel
+        if rel == HISTORY_REL:
             yield from self._parse_history(artifact, opts)
+        elif rel == LEGACY_INPUT_REL:
+            yield from self._parse_input_history(artifact)
+        elif rel == LEGACY_CONFIG_REL:
+            yield from self._parse_legacy_config(artifact)
+        elif rel == LEGACY_HISTORY_REL:
+            yield from self._parse_legacy_history(artifact)
+        elif LEGACY_SESSION_RX.match(rel):
+            yield from self._parse_legacy_session(artifact)
+        elif LEGACY_SNAPSHOTS_RX.match(rel) and not SESSION_FILE_RX.search(rel.split("/")[2]):
+            yield from self._parse_legacy_snapshots(artifact)
         else:
             yield from self._parse_checkpoints(artifact, opts)
 
@@ -121,3 +208,214 @@ class LittleCoderParser(Parser):
             % (what, len(names), "" if header else ", session file not collected", listed),
         )
         yield row
+
+    # ---- the v0.0.x Python layout -------------------------------------------
+
+    def _parse_input_history(self, artifact: Artifact) -> Iterator[Row]:
+        """`input_history.txt`: one readline entry per line, no time."""
+        with open(artifact.disk_path, "rb") as fh:
+            for n, raw in enumerate(fh, 1):
+                text = line_text(raw)
+                if not text.strip():
+                    continue
+                row = self.base_row(artifact)
+                row.source_line, row.turn_type, row.text = n, "user", compact(text)
+                yield row
+
+    def _parse_legacy_config(self, artifact: Artifact) -> Iterator[Row]:
+        """`config.json`: the gist id, the Telegram chat id and the permission
+        mode, never a token or a key."""
+        try:
+            doc = json.loads(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
+        except (OSError, ValueError):
+            doc = None
+        ts = file_mtime(artifact)
+        if not isinstance(doc, dict):
+            row = self.base_row(artifact)
+            row.source_line, row.turn_type, row.timestamp_utc = 1, "system", ts
+            row.text = "parser: %s is not a JSON object" % artifact.rel
+            yield row
+            return
+        src = "(from %s, file mtime)" % artifact.rel
+        texts = []
+        if doc.get("cloudsave_last_gist_id") not in (None, ""):
+            texts.append("session synced: gist %s %s" % (_dash(doc["cloudsave_last_gist_id"]), src))
+        if doc.get("telegram_chat_id") not in (None, "", 0):
+            texts.append(
+                "session relayed: telegram chat %s %s" % (_dash(doc["telegram_chat_id"]), src)
+            )
+        if doc.get("permission_mode") not in (None, ""):
+            texts.append(
+                "permission setting: permission_mode=%s %s" % (_dash(doc["permission_mode"]), src)
+            )
+        for text in texts:
+            row = self.base_row(artifact)
+            row.source_line, row.turn_type, row.timestamp_utc = 1, "system", ts
+            row.text = compact(text)
+            yield row
+
+    def _parse_legacy_history(self, artifact: Artifact) -> Iterator[Row]:
+        """`sessions/history.json`: every session saved at exit."""
+        errors: list = []
+        s = read_text(artifact.disk_path)
+        doc = None
+        if s is not None:
+            try:
+                doc = json.loads(s)
+            except ValueError:
+                doc = None
+        if isinstance(doc, dict) and isinstance(doc.get("sessions"), list):
+            sessions = enumerate(doc["sessions"], 1)
+        elif s is None:
+            errors.append((0, "unreadable", ""))
+            sessions = iter(())
+        else:
+            # Cut mid-write: walk the sessions array as far as it parses.
+            m = SESSIONS_KEY_RX.search(s)
+            if m:
+                sessions = iter_array_at(s, m.end(), errors)
+            else:
+                errors.append((0, "history.json has no sessions array", ""))
+                sessions = iter(())
+        for n, session in sessions:
+            if not isinstance(session, dict):
+                continue
+            yield from self._legacy_rows(
+                artifact,
+                session,
+                enumerate(session.get("messages") or [], 1),
+                str(session.get("session_id") or ""),
+                str(session.get("saved_at") or ""),
+                n,
+            )
+        yield from error_rows(self, artifact, errors)
+
+    def _parse_legacy_session(self, artifact: Artifact) -> Iterator[Row]:
+        """One saved session file (daily, `/save`, or `session_latest.json`)."""
+        errors: list = []
+        s = read_text(artifact.disk_path)
+        doc = None
+        if s is not None:
+            try:
+                doc = json.loads(s)
+            except ValueError:
+                doc = None
+        if isinstance(doc, dict):
+            yield from self._legacy_rows(
+                artifact,
+                doc,
+                enumerate(doc.get("messages") or [], 1),
+                str(doc.get("session_id") or ""),
+                str(doc.get("saved_at") or ""),
+            )
+        elif s is None:
+            errors.append((0, "unreadable", ""))
+        else:
+            # Cut mid-write: the keys before `messages` and the messages
+            # array as far as it parses.
+            m = MESSAGES_KEY_RX.search(s)
+            if m:
+                head = s[: m.start()]
+                sid = SESSION_ID_RX.search(head)
+                saved = SAVED_AT_RX.search(head)
+                yield from self._legacy_rows(
+                    artifact,
+                    {},
+                    iter_array_at(s, m.end(), errors),
+                    sid.group(1) if sid else "",
+                    saved.group(1) if saved else "",
+                )
+            else:
+                errors.append((0, "session file is not a JSON object", ""))
+        yield from error_rows(self, artifact, errors)
+
+    def _legacy_rows(
+        self, artifact: Artifact, session: dict, messages, sid: str, saved_at: str, pos: int = 0
+    ) -> Iterator[Row]:
+        """Rows for one v0.0.x session: a `session saved:` row, then each
+        message at the session's `saved_at`. `pos` is the session's position
+        in `history.json`, 0 for a session file."""
+        ts = to_utc(saved_at)
+
+        def row(n: int, turn: str, text: str, tool_name: str = "", tool_use_id: str = "") -> Row:
+            r = self.base_row(artifact)
+            r.source_line = pos or n
+            r.timestamp_utc = ts
+            r.session_id = sid
+            r.turn_type = turn
+            r.tool_name = tool_name
+            r.tool_use_id = tool_use_id
+            r.text = compact(text)
+            return r
+
+        yield row(
+            0,
+            "system",
+            "session saved: little-coder v0.0.x session %s turn_count=%s input_tokens=%s "
+            "output_tokens=%s (saved_at %s, host local time)"
+            % (
+                _dash(sid),
+                _dash(session.get("turn_count")),
+                _dash(session.get("total_input_tokens")),
+                _dash(session.get("total_output_tokens")),
+                _dash(saved_at),
+            ),
+        )
+        for n, msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            role = msg.get("role")
+            text = text_of(msg.get("content"))
+            if role == "user":
+                if msg.get("images"):
+                    text = (text + "\n" if text else "") + "[%d image(s)]" % len(msg["images"])
+                if text:
+                    yield row(n, "user", text)
+            elif role == "assistant":
+                if text:
+                    yield row(n, "assistant", text)
+                calls = msg.get("tool_calls")
+                for tc in calls if isinstance(calls, list) else []:
+                    if isinstance(tc, dict):
+                        yield row(
+                            n,
+                            "tool_use",
+                            args_summary(tc.get("input")),
+                            str(tc.get("name") or ""),
+                            str(tc.get("id") or ""),
+                        )
+            elif role == "tool":
+                name = str(msg.get("name") or "")
+                call_id = str(msg.get("tool_call_id") or "")
+                yield row(n, "tool_result", text, name, call_id)
+                if text == LEGACY_DENIED:
+                    yield row(n, "system", "permission decision: denied (%s)" % text, name, call_id)
+
+    def _parse_legacy_snapshots(self, artifact: Artifact) -> Iterator[Row]:
+        """`checkpoints/<id>/snapshots.json`: one row per snapshot."""
+        sid = artifact.rel.split("/")[2]
+        errors: list = []
+        for n, snap in iter_json_array(artifact.disk_path, errors):
+            if not isinstance(snap, dict):
+                continue
+            backups = snap.get("file_backups")
+            files = []
+            for path, fb in (backups if isinstance(backups, dict) else {}).items():
+                name = fb.get("backup_filename") if isinstance(fb, dict) else None
+                files.append("%s (%s)" % (path, "backup %s" % name if name else "did not exist"))
+            row = self.base_row(artifact)
+            row.source_line, row.turn_type = n, "system"
+            row.timestamp_utc = to_utc(snap.get("created_at"))
+            row.session_id = str(snap.get("session_id") or sid)
+            row.text = compact(
+                "little-coder v0.0.x checkpoint %s: turn_count=%s prompt=%s files=%s "
+                "(created_at host local time)"
+                % (
+                    _dash(snap.get("id")),
+                    _dash(snap.get("turn_count")),
+                    _dash(snap.get("user_prompt_preview")),
+                    "; ".join(files) or "-",
+                )
+            )
+            yield row
+        yield from error_rows(self, artifact, errors)

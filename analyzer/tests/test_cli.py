@@ -711,11 +711,13 @@ FIXTURE_DEDUPLICATED = {
     "goose": 1,  # "run the tests", no timestamp
     "hermes": 11,  # snapshot copies and the divert's screenshot prompt
     "letta": 4,  # transcript.jsonl turn: prompt, tool_use, tool_result, reply
+    "little-coder": 17,  # v0.0.x session_latest.json 8, history.json 8, input_history 1
     "muse-code": 1,  # "fix the failing test", no timestamp
     "nanobot": 10,  # four WebUI rows, CLI "hello", frozen JSONL 5 (sessions.sqlite3)
     "open-interpreter": 3,  # history.jsonl "list the files", state_5.sqlite 2
     "openclaw": 11,  # .jsonl.deleted.* 1, pre-doctor .bak 7, checkpoint 3
     "opencode": 2,  # opencode-next.db: the imported session's start row and prompt
+    "pi": 4,  # pi-debug.log: prompt, model row, tool_use, tool_result
     "qwen-code": 1,  # "run the tests"
     "roo-code": 2,  # "rename the helper" and "yes", no timestamp
     "tabby": 8,  # completion prompt and choice, threads 7 and 3 in the backups
