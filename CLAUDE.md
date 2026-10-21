@@ -53,9 +53,11 @@ that need it:
   fixtures, test classes, README tables).
 - **Fable reviews.** The main session reads each subagent's report, checks
   the diff against the brief and the research documents, runs the test
-  suite itself, fixes or sends back what is wrong, then commits and pushes.
-  Subagent reports are evidence, not approval; a claim that tests pass is
-  re-run, not trusted.
+  suite itself, fixes or sends back what is wrong, then commits, pushes
+  the branch and opens the pull request. The user merges it and decides
+  on any tag; the rules are under [Conventions](AGENTS.md#conventions) in
+  AGENTS.md. Subagent reports are evidence, not approval; a claim that
+  tests pass is re-run, not trusted.
 
 The brief for each subagent lives in the scratchpad as one file every
 subagent in that round reads, so the rules are identical and the prompt per

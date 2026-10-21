@@ -1255,8 +1255,9 @@ enough: 5.1 is stricter about `.Count` on scalars and lacks several APIs.
 A pass under 5.1 through the WSL path is still weaker than a pass on the
 CI runner: the runner has longer temp paths, a different console width and
 no symlink privilege, and two 5.1 failures so far appeared only there. A
-change is done when the CI run for the pushed commit is green; check it
-with `gh run watch` and fix what fails before moving on.
+change is done when every check on its pull request is green, the CI
+jobs and the CodeQL analysis; watch them with `gh pr checks --watch` and
+fix what fails before reporting the pull request ready.
 
 The smoke test builds a fake disk image under `$TMPDIR` with two users, a
 service account, a `nobody` account to skip, awkward filenames (quotes,
@@ -1315,8 +1316,8 @@ way that cannot hang:
 - Read results from the output files, not from whether the watcher
   ended: a finished watcher can still mean a failed check, and a
   killed one says nothing about the checks it was waiting on.
-- For CI, use `gh run watch <id> --exit-status`, which exits when the
-  run ends.
+- For CI, use `gh pr checks <n> --watch` or `gh run watch <id>
+  --exit-status`, which exit when the checks or the run end.
 
 ### Quality gates
 
@@ -1378,7 +1379,18 @@ the start of this section).
   as the tool reports it, not a family name or a guess; when a subagent
   wrote the change and the main session reviewed it, name both. This
   applies to text an agent posts on a person's behalf too.
-- Work on `main` directly for now; branch when a change spans several commits.
+- Every change reaches `main` through a pull request. A ruleset on the
+  repository protects `main`: no direct push, no force push, no deletion,
+  and a merge needs every CI job and the CodeQL code-scanning analysis
+  green (the ruleset is a repository setting, not a file in the tree;
+  `gh api repos/seanthegeek/doubleagent/rulesets` shows it). Work on a
+  branch named for the change, push it, open the pull request with
+  `gh pr create` (its description names the issue and ends with the AI
+  disclosure line), watch its checks with `gh pr checks --watch`, and
+  report it ready. The user merges it, unless the task's instructions
+  said to merge; an agent never pushes to `main`, never merges a pull
+  request the user has not asked it to merge, and never asks for a
+  bypass of the ruleset.
 - Outstanding work is tracked as GitHub issues. File one when you find
   something out of scope rather than widening a change, and label it by
   what it is: `bug` for behaviour that is wrong, broken or contradicts the
@@ -1574,16 +1586,20 @@ the start of this section).
   dismissal) before the tag. CI cannot enforce this, because the workflow
   token cannot read Dependabot alerts, so it is part of the release step.
   Dependabot itself is configured in `.github/dependabot.yml`.
-- A tag marks a change to what the collector or the analyzer does. Once
-  the bump commit is pushed and its CI run is green, tag it
+- A tag marks a change to what the collector or the analyzer does, and
+  tagging is the user's decision: an agent never creates or pushes a tag
+  unless the user asked for that tag in the current session, and a
+  bumped `VERSION`, a finished changelog entry or a green CI run is not
+  that permission. Once the bump commit has reached `main` through its
+  pull request and the user has said to tag it, tag it
   `collector-vX.Y.Z` or `analyzer-vX.Y.Z` with an annotated tag and push
   the tag. The prefix is what distinguishes the two version sequences;
   never use a bare `vX.Y.Z`. Add the version's comparison link at the
   bottom of the changelog. A change that touches only documentation,
   research documents, this file or the linter configuration gets no tag,
   for the same reason it gets no `VERSION` bump: the released scripts
-  and package are unchanged, and the change is published by the push to
-  `main`. Such a commit may follow a tagged commit without needing a
+  and package are unchanged, and the change is published by its merge
+  into `main`. Such a commit may follow a tagged commit without needing a
   tag of its own, and a pending tag may sit on it or on the last code
   commit, whichever the user prefers.
 
