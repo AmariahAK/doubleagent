@@ -385,13 +385,16 @@ Validated against: Source at [8e20ac6c](https://github.com/sourcegraph/cody-publ
 
 Files read: `.continue/sessions/<sessionId>.json` (timestamped from
 `sessions/sessions.json` `dateCreated`; messages have no time of their
-own), `.continue/dev_data/<schema>/chatInteraction.jsonl` and
-`toolUsage.jsonl`; `.continue/logs/cn.log` and its rotated `cn<N>.log`
-files, whose `cn serve` metadata posts and skipped storage uploads are
-`agent metadata posted:` and `storage upload requested, skipped` rows,
-timestamped in host-local time (fixture only).
+own), `.continue/dev_data/<schema>/chatInteraction.jsonl`,
+`toolUsage.jsonl`, `editInteraction.jsonl`, `editOutcome.jsonl` and
+`chatFeedback.jsonl` (secondary); `.continue/logs/cn.log` and its rotated `cn<N>.log`
+files, whose `cn serve` metadata posts, skipped storage uploads and added
+permission rules are `agent metadata posted:`, `storage upload requested,
+skipped` and `permission decision: allow always` rows, timestamped in
+host-local time (fixture only); the CLI's `.continue/permissions.yaml` and
+`.continue/input_history.json` (secondary).
 
-Validated against: Source at [5522c6f](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470), synthetic fixture.
+Validated against: Source at [5522c6f](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470), synthetic fixture; the standing grants, denial reasons, session mode, prompt history, edit and feedback events and `cn review` scratch directories from the same commit (2.0.0, reviewed 2026-10-21), synthetic fixture.
 
 ### `copilot-cli`
 

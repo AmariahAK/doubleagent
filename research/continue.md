@@ -6,7 +6,8 @@ core via `binary/`) and the `cn` CLI (`extensions/cli`), which share
 [`core/util/history.ts`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/history.ts)
 ([`extensions/cli/src/session.ts:12`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/session.ts#L12),[`50-51`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/session.ts#L50-L51)).
 PearAI is a fork of it ([`pearai.md`](pearai.md)). The analyzer parses its sessions, `dev_data`
-events and `cn.log`, from source and fixtures only.
+events, `cn.log`, the CLI's `permissions.yaml` and its prompt history, from source and fixtures
+only.
 
 ## Source and evidence
 
@@ -29,6 +30,13 @@ from the clone.
 
 ### Source reviews
 
+- 2026-10-21: continuedev/continue at
+  [`5522c6f`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470)
+  (2.0.0, the last commit): the Parser plan now reads `permissions.yaml`, the denial reasons and
+  the session mode, `input_history.json`, the `chatFeedback`, `editInteraction` and `editOutcome`
+  events and the `cn review` worktrees, all source-derived; it added which prompt log the
+  `chatInteraction` and `chatFeedback` lines share ([dev_data event files](#dev_data-event-files))
+  and the source-host review of [Source host rows](#source-host-rows).
 - 2026-10-19: [continuedev/continue](https://github.com/continuedev/continue) at
   [`5522c6f`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470),
   the commit this document already cited. It added the CLI's `permissions.yaml` shape and writer,
@@ -157,6 +165,14 @@ not determined; the catalog's `globalStorage/continue.continue` lines do not cov
 - `index/globalContext.json` key `mcpOauthStorage[server].tokens` and `clientInformation`
   ([`core/util/GlobalContext.ts:50-53`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/util/GlobalContext.ts#L50-L53));
   it shares the `index/` dir with the embedding store.
+- The same config files can embed source-host tokens as context provider parameters: the
+  GitHub Issues provider (`issue`) takes `githubToken` and a `repos` list of `{owner, repo, type}`
+  ([`core/context/providers/GitHubIssuesContextProvider.ts:10-16`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/context/providers/GitHubIssuesContextProvider.ts#L10-L16),
+  [`29-33`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/context/providers/GitHubIssuesContextProvider.ts#L29-L33),
+  [`84-89`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/context/providers/GitHubIssuesContextProvider.ts#L84-L89)),
+  and the deprecated GitLab merge request provider (`gitlab-mr`) a `token` and a `domain`
+  ([`core/context/providers/GitLabMergeRequestContextProvider.ts:73`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/context/providers/GitLabMergeRequestContextProvider.ts#L73),
+  [`86-98`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/context/providers/GitLabMergeRequestContextProvider.ts#L86-L98)).
 - `mcpServers/*.yaml|json` can embed headers and env.
 - VS Code: hub session token in `globalStorage/continue.continue/*.bin`,
   decryptable only with the key in the editor's `state.vscdb`.
@@ -229,10 +245,11 @@ time per prompt but no session id or directory and at most 1000
 entries; so do the `dev_data` lines that carry the session's
 `sessionId`, `logs/cn.log` and any `/share` Markdown export. No command
 deletes the remote copy; a deletion marker is not stated. The
-analyzer reads the `chatInteraction` and `toolUsage` event files and
-`cn.log`; it does not read `input_history.json` or the
-`editInteraction`, `editOutcome` and `chatFeedback` events
-([Past use and secondary sources](#past-use-rows-and-secondary-sources); see
+analyzer reads all of these but the `/share` exports: the `chatInteraction`, `toolUsage`,
+`editInteraction` and `editOutcome` event files and `cn.log` as primary records, and
+`input_history.json` and the `chatFeedback` events as secondary sources, so a deleted session's
+prompts and rated replies are shown again
+([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources); see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### Record schema
@@ -378,12 +395,21 @@ the 0.2.0 schema table,
 `editInteraction` (`prompt`, `completion`, `modelTitle`, `filepath`, written by the VS Code edit
 flow,
 [`extensions/vscode/src/extension/VsCodeMessenger.ts:236`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/vscode/src/extension/VsCodeMessenger.ts#L236))
-and `editOutcome` (`prompt`, `completion`, `accepted`, `previousCode`, `newCode`, `filepath`) record
-edit requests; whether an edit also reaches a session file is not determined, so they are marked
-primary. `chatFeedback` (`prompt`, `completion`, `modelTitle`, `feedback`, `sessionId`, one line per
-prompt log of a rated reply,
-[`gui/src/components/FeedbackButtons.tsx:20-30`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/gui/src/components/FeedbackButtons.tsx#L20-L30))
-repeats a chat turn and adds the user's thumbs up or down: secondary. `quickEdit` has no 0.2.0
+and `editOutcome` (`prompt`, `completion`, `accepted`, `previousCode`, `newCode`,
+`previousCodeLines`, `newCodeLines`, `lineChange`, `filepath`) record edit requests and whether the
+user kept the edit. `editOutcome` is written both when an edit of the VS Code edit flow is accepted
+or rejected and when an agent-mode file edit is
+([`extensions/vscode/src/extension/EditOutcomeTracker.ts:41-76`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/vscode/src/extension/EditOutcomeTracker.ts#L41-L76);
+[`gui/src/util/editOutcomeLogger.ts:184-208`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/gui/src/util/editOutcomeLogger.ts#L184-L208)).
+Whether an edit also reaches a session file is not determined, so both are marked primary.
+`chatFeedback` (`prompt`, `completion`, `modelTitle`, `feedback`, `sessionId`) is one line per
+prompt log of a reply the user rated with the Helpful or Unhelpful button
+([`gui/src/components/FeedbackButtons.tsx:20-39`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/gui/src/components/FeedbackButtons.tsx#L20-L39)).
+Its `prompt` and `completion` are the prompt log's, the same pair the `chatInteraction` line of that
+reply was written with when the reply ended
+([`gui/src/redux/thunks/streamNormalInput.ts:229-243`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/gui/src/redux/thunks/streamNormalInput.ts#L229-L243)),
+so it repeats that line, at the time of the click, and adds the rating: secondary. In both,
+`prompt` is the full prompt sent to the model, not the user's message. `quickEdit` has no 0.2.0
 schema, so `logLocalData` throws and nothing is written for it at this commit
 ([`core/data/log.ts:78-84`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/core/data/log.ts#L78-L84)).
 
@@ -523,7 +549,9 @@ an older `cn` may have left one, and `.continue/auth*.json` is a secret glob.
 Globs: `.continue/sessions/*.json` (`sessions.json` is read for
 `dateCreated` and yields rows only for what it loses, see [Bad lines](#bad-line-rows)),
 `.continue/dev_data/*/chatInteraction.jsonl`,
-`.continue/dev_data/*/toolUsage.jsonl`, and `.continue/logs/cn.log` with
+`.continue/dev_data/*/toolUsage.jsonl`, `.continue/dev_data/*/editInteraction.jsonl`,
+`.continue/dev_data/*/editOutcome.jsonl`, `.continue/dev_data/*/chatFeedback.jsonl`,
+`.continue/permissions.yaml`, `.continue/input_history.json`, and `.continue/logs/cn.log` with
 its rotated `cn<N>.log` files ([Sync, relay and origin](#sync-relay-and-origin-rows)).
 
 Rows: one per `history[]` item (user, assistant, thinking, tool), plus one
@@ -549,22 +577,39 @@ Per-call decision rows, typed `system`:
   `timestamp`, `toolCallId` and `functionName`; the result row keeps its
   `accepted=` and `succeeded=` text.
 - A `ToolCallState` whose `status` is `canceled` yields `permission
-  decision: canceled` with the call's `toolCallId` and function name,
-  after the state's `tool_result` row when there is one, at the session
-  time.
+  decision: canceled reason=user` when its output is `Permission denied by user`,
+  `permission decision: canceled reason=policy` when it is `Command blocked by security
+  policy`, and `permission decision: canceled` otherwise; an `errored` state with an output
+  item named `Security Policy Violation` yields `permission decision: errored reason=policy`
+  ([Tool call states and denials](#tool-call-states-and-denials)). Each carries the call's
+  `toolCallId` and function name, follows the state's `tool_result` row when there is one, and
+  has the session time.
+- `editOutcome.jsonl` yields `permission decision: edit accepted=<accepted> file=<filepath>
+  lines <previousCodeLines> -> <newCodeLines>` (`-` for a missing value) at the line's
+  `timestamp`, with `modelTitle` as the model; the line names no session or tool call.
+- The `Added policy rule to permissions.yaml: <rule>` line of `logs/cn.log` and its rotated files,
+  written by a "Continue + don't ask again" answer, yields `permission decision: allow always
+  rule=<rule> (from logs/cn.log, log line time, host-local)`, with an empty `session_id` and the
+  log's host-local time read as UTC, as the other `cn.log` rows
+  ([permissions.yaml](#permissionsyaml)).
 
-Read: `toolUsage.accepted` and `canceled` states.
-Not read: `permissions.yaml` (one `permission setting:` row per
-entry, at the file's modification time, would follow the rule);
-the session's `mode`, a `permission mode:` row as the `opencode`
-parser writes, since `plan` restricts the tools; the denial reason
-in a `canceled` state's output (`Permission denied by user` against
-`Command blocked by security policy`); an `errored` state whose
-output is `Security Policy Violation`, which gets no `permission
-decision:` row today; and the `Added policy rule to permissions.yaml`
-line of `logs/cn.log`, which the log reader skips
-([Tool call states and denials](#tool-call-states-and-denials);
-[permissions.yaml](#permissionsyaml)).
+Standing and session-level rows, typed `system`:
+
+- Each rule of `permissions.yaml` yields `permission setting: <list>=<rule> (from
+  .continue/permissions.yaml, file mtime)`, `<list>` being `allow`, `ask` or `exclude`, at the
+  file's modification time, with `source_line` the rule's line and no session. The reader takes
+  only the shape the CLI writes: top-level `allow`, `ask` and `exclude` keys, each empty (`[]`,
+  `null`, `~` or nothing) or followed by `- <rule>` lines, the rule plain, single- or
+  double-quoted, with comments and blank lines. Any other construct makes the whole file one
+  `parser: unsupported YAML at line <N> (only allow, ask and exclude lists of strings are read)`
+  row and no rule row, since a reader of that shape cannot tell what the rest grants.
+- A session whose `mode` is set yields `permission mode: <mode>` after the `model:` row, at the
+  session time with `source_line` 0
+  ([Session mode and CLI sessions](#session-mode-and-cli-sessions)), since `plan` restricts the
+  tools. One value per file, so there is no
+  `permission mode: <old> -> <new>` row.
+
+All of these are source-derived; not observed on any real install.
 
 The CLI's permission mode (`normal`, `plan` or `auto`, cycled in the TUI or set by `--auto` and
 `--readonly`, with `--allow`, `--ask` and `--exclude` overrides) is recorded nowhere on disk: the
@@ -594,10 +639,29 @@ so they get no `model:` row; `globalContext.json` `cliSelectedModel` and
 
 #### Past-use rows and secondary sources
 
-Read: `sessions/`, `chatInteraction`, `toolUsage`,
-`cn.log`. Not read: `input_history.json` (secondary, joins on text
-and time) and `editInteraction`, `editOutcome` and `chatFeedback`
-([Other stores](#other-stores)).
+Primary: `sessions/`, `chatInteraction`, `toolUsage`, `editInteraction`, `editOutcome` and
+`cn.log`. `editInteraction` yields `edit interaction: file=<filepath>` (a `system` row with
+`modelTitle` as the model), then the `prompt` as `user` and the `completion`, the file after the
+edit, as `assistant`, at the line's `timestamp` with no session; `editOutcome` yields only the
+decision row of [Permission rows](#permission-rows), since its prompt and completion repeat the
+edit request.
+
+Secondary, with `secondary()` true ([Other stores](#other-stores)):
+
+- `input_history.json`: one `user` row per entry at its `timestamp`, with no session or project,
+  `source_line` the entry's position in the array.
+- `chatFeedback.jsonl`: `user` (`prompt`) and `assistant` (`completion`) rows like a
+  `chatInteraction` line, then `chat feedback: feedback=<true|false|-> model=<modelTitle|->`, with
+  the line's `sessionId`, the session's `workspaceDirectory` and the line's time.
+
+Both pair with their twins at any distance in time (`secondary_tolerance` is ten years): a
+session's rows carry its creation time, not the prompt's, so a history entry stamped at
+submission is later by as long as the session ran, and a rating is stamped at the click, any time
+after its `chatInteraction` line. A history entry pairs with a session `user` row or a
+`chatInteraction` `user` row of the same text; it never pairs a `user` row with no
+`timestamp_utc`, as a session the index lost has. A slash command the TUI kept, which no session
+records as a message, is kept as a recovered row. All of these are source-derived; not observed on
+any real install.
 
 #### Sync, relay and origin rows
 
@@ -681,11 +745,12 @@ No relay through a messaging platform: not found in `core/`, `extensions/cli/src
 
 #### Scratch directory rows
 
-`cn review` sessions name a temp worktree
-`cn-review-<epoch ms>-<n>` as `workspaceDirectory`
-([Scratch directories](#scratch-directories)).
-The parser writes no `scratch directory:` row for them, so they count
-as projects.
+`cn review` sessions name a temp worktree `cn-review-<epoch ms>-<n>` as `workspaceDirectory`
+([Scratch directories](#scratch-directories)). A session whose `workspaceDirectory` ends in a
+component `cn-review-<digits>-<digits>` (with `/` or `\` separators) yields `scratch directory:
+<workspaceDirectory> (cn review worktree)` after the session's other session-level rows, at the
+session time with that directory as `project_path`, so the inventory lists it under
+`scratch_directories` rather than `projects`. Source-derived; not observed on any real install.
 
 #### Deletion rows
 
@@ -695,8 +760,16 @@ it (`input_history.json`, `dev_data`,
 
 #### Bad-line rows
 
-`chatInteraction.jsonl` and `toolUsage.jsonl` go through
-`iter_jsonl` and `error_rows`. `sessions.json` is read by
+`chatInteraction.jsonl`, `toolUsage.jsonl`, `editInteraction.jsonl`, `editOutcome.jsonl` and
+`chatFeedback.jsonl` go through `iter_jsonl` and `error_rows`. `input_history.json` is read as a
+JSON array: an element cut mid-write is `parser: unparseable record <N> (<reason>): <the text from
+that element to the end of the file>`, the entries before it kept; an element that is not an
+object with a string `text` is `parser: unparseable record <N> (not an object with a text): <the
+element as JSON>` and the walk goes on; `parser: not a JSON array`, `parser: array cut off after
+record <N>` and `parser: unparseable data after the JSON array` describe the whole file, and an
+unreadable file is `parser: unreadable (<reason>)`, as is an unreadable `permissions.yaml`, whose
+other layouts are the one row of [Permission rows](#permission-rows). These are source-derived;
+not observed on any real install. `sessions.json` is read by
 `read_index` in `continue_dev.py` (the PearAI parser shares it), whose
 errors the index's own artifact reports through `error_rows`, once,
 with an empty `session_id` and time
@@ -739,10 +812,55 @@ Fixture `sessions/0f1e.json`:
 {"eventName":"chatInteraction","schema":"0.2.0","timestamp":"2026-10-02T10:00:00.000Z","userId":"","userAgent":"vscode/1.1 (Continue/1.0)","selectedProfileId":"local","prompt":"rename foo","completion":"done","modelName":"gpt-4o","modelTitle":"GPT-4o","modelProvider":"openai","sessionId":"0f1e"}
 ```
 
+`dev_data/0.2.0/chatFeedback.jsonl` and `editOutcome.jsonl`:
+
+```json
+{"eventName":"chatFeedback","schema":"0.2.0","timestamp":"2026-10-02T10:01:30.000Z","userId":"","userAgent":"vscode/1.1 (Continue/1.0)","selectedProfileId":"local","prompt":"rename foo","completion":"done","modelProvider":"openai","modelName":"GPT-4o","modelTitle":"GPT-4o","feedback":true,"sessionId":"0f1e"}
+{"eventName":"editOutcome","schema":"0.2.0","timestamp":"2026-10-02T10:02:30.000Z","userId":"","userAgent":"vscode/1.1 (Continue/1.0)","selectedProfileId":"local","modelProvider":"openai","modelName":"GPT-4o","modelTitle":"GPT-4o","prompt":"add a docstring","completion":"def foo(): ...","accepted":false,"previousCode":"def foo(): pass","newCode":"def foo(): ...","previousCodeLines":1,"newCodeLines":2,"lineChange":1,"filepath":"/srv/proj/a.py"}
+```
+
+`permissions.yaml`, as the CLI rewrites it after a "don't ask again" answer, and
+`input_history.json`:
+
+```yaml
+# Continue CLI Permissions Configuration
+# This file is managed by the Continue CLI and should not be edited manually.
+# Use the TUI to modify permissions interactively.
+
+allow:
+  - Read
+  - Bash(npm*)
+ask: []
+exclude: []
+```
+
+```json
+[{"text": "/model", "timestamp": 1790935260000}, {"text": "rename foo", "timestamp": 1790935201000}]
+```
+
+#### Source host rows
+
+The agent records no source-host account. No sign-in to GitHub, GitLab or Bitbucket exists in the
+extension or the CLI, no repository list is cached, and no conversation is bound to a remote
+repository. The only source-host tokens are context provider parameters a user writes into
+`config.yaml` or `config.json` by hand: `githubToken` with a configured `repos` list for the GitHub
+Issues provider and `token` with `domain` for the GitLab merge request provider
+([Credentials](#credentials)); they name no account login, the files are flagged secrets, and the
+parser reads neither, since `config.yaml` needs a YAML reader. `cn checks` reads `GITHUB_TOKEN` from
+the environment to look up the current branch's pull request and stores nothing
+([`extensions/cli/src/commands/checks.ts:64-75`](https://github.com/continuedev/continue/blob/5522c6f44ca0ac3528b37244818fbfa39b5af470/extensions/cli/src/commands/checks.ts#L64-L75)).
+Grepped `github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`, `pull request` and
+`clone` in `core/`, `gui/src`, `extensions/vscode/src` and `extensions/cli/src` at
+[`5522c6f`](https://github.com/continuedev/continue/commit/5522c6f44ca0ac3528b37244818fbfa39b5af470);
+the `oauth` hits are MCP server OAuth ([Credentials](#credentials)).
+
 ## Confidence
 
 - High: every `~/.continue` path, `auth.json` fields, `workspaceDirectory`, the `.bin` secret blobs;
   the session, `sessions.json` and `dev_data` schemas (typed source).
+- Medium: how the `yaml` library's `YAML.stringify` lays out `permissions.yaml` (sequence indent,
+  which rules it quotes); not checked against the library, so the reader takes indented and
+  unindented items, plain and quoted.
 - Medium: the list of project `.continue/<subdir>` names (the loader accepts any subdir passed by
   callers); the `prompt.log` format (from a doc comment; only the JetBrains binary writes it).
 - Not determined: whether the JetBrains plugin writes anything outside `~/.continue` (its
