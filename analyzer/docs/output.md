@@ -1541,7 +1541,9 @@ before a message whose recorded model differs, with
 `kiro` writes `model: <id>` and `model: <old> -> <new>` before the rows of
 the history entry whose `request_metadata.model_id` names it, ending
 ` source=model_info` or ` source=model` when the entry had none and the
-conversation-level field stood in. `hermes` writes them from the
+conversation-level field stood in; the entries it recovers from a
+checkpoint snapshot or the tangent-mode main history track their own
+model sequence. `hermes` writes them from the
 `session_model_usage` table at each model's first use, with
 ` provider=<billing_provider>`, or one `model: <id>` from the session row
 at its start. Since 0.19.0 a switch made in the Hermes TUI or desktop
@@ -1636,6 +1638,35 @@ each trajectory line is `trajectory: model=<model> completed=<true|false>
 (from <file>, timestamp host-local)` before its turns, whose system
 prompt is `trajectory system prompt: <text>`. `-` stands for an absent
 value.
+
+The `kiro` parser follows each `cancelled` `tool_result` of an Amazon Q
+Developer CLI conversation with a row carrying its `tool_use_id` and
+`tool_name`: `permission decision: denied by=n` when the user answered
+the approval prompt with a bare `n`, `permission decision: denied
+by=deny-rule tool=<name>` when a deny rule of the agent configuration
+rejected the call, `permission decision: cancelled by=interrupt` for an
+interrupt during tool execution, `permission decision: denied
+by=user-text` when the user typed something else instead of approving,
+and `permission decision: cancelled` when the message has no prompt; a
+deny-rule rejection stored as a plain prompt gives the same deny-rule row
+with the tool name and no id. Each agent configuration
+(`.aws/amazonq/cli-agents/*.json`, or a project's
+`.amazonq/cli-agents/*.json` with `project_path` the project) gives
+`permission setting: allowedTools=<entry> (from <file>, file mtime)` per
+entry and `permission setting: toolsSettings.<tool>.<key>=<value> (from
+<file>, file mtime)` per tool setting, with an empty `session_id`. The
+turns it recovers from a conversation's checkpoint snapshots or the main
+history held aside in tangent mode follow the conversation's own rows,
+each group behind `checkpoint snapshot: tag=<tag>[ tool=<tool_name>]
+recovered=<n> entries[: <description>]` at the checkpoint's time or
+`tangent mode: main conversation held aside, recovered=<n> entries`. A
+project's `.amazonq/.subagents/<agent>.json` gives `delegate task
+launched: agent=<agent> pid=<pid>[ trust_all_tools=true]: <task>` at the
+launch, `trust_all_tools=true` marking the default agent, which the
+delegate tool runs with `--trust-all-tools`, and, once the task ended,
+`delegate task <status>: agent=<agent> exit_code=<code>` followed by
+`summary:` and `output:` lines at its completion, with `project_path` the
+task's working directory and no `session_id`.
 
 OpenHands, Agent Zero, nanobot and Muse Code write the same kinds of row.
 `openhands` writes `model: <id>` after each conversation's header row, at
@@ -1817,7 +1848,10 @@ event rows it took from the secondary copy `recovered` `yes` in the same
 way: since 0.19.0 the `opencode` parser reads the 1.x
 `message` and `part` tables of a database upgraded to OpenCode 2.0 only
 for a session its `session_message` table does not hold, matched exactly
-on the session id. [`sessions.jsonl`](#sessionsjsonl)
+on the session id, and the `kiro` parser reads a conversation's
+checkpoint snapshots and tangent-mode main history only for the turns
+the conversation's history no longer holds, matched on the user message
+and its time and the assistant message. [`sessions.jsonl`](#sessionsjsonl)
 `recovered` says whether a session was rebuilt from such rows alone
 (`yes`) or in part (`partial`):
 `jq -c 'select(.recovered == "yes")' out/sessions.jsonl` lists the
@@ -1848,6 +1882,7 @@ beside its `session synced: server conversation` row.
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json`; `shell_history` (no timestamp or session: matches on text and project, and pairs with the `logs.json` copy of the command), `checkpoint-<tag>.json` from `/chat save` and `bug-report-history-<ms>.json` from `/bug` (no timestamp or session: match on text and project, tool rows on `tool_use_id`) in the same directory; each also under `.cache/.gemini` | `.gemini/tmp/<slug>/chats/*.jsonl` |
 | `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone); `.local/state/goose/logs/llm_request.<N>.jsonl` (`AppData/Roaming/Block/goose/data/logs/` on Windows; the last 10 provider calls, with no session or project: a 600-second window; streamed chunks of one message are assembled first; the `llm request` row has no twin and is always kept) | `.local/share/goose/sessions/sessions.db` |
 | `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full` before collector 1.18.0) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session); since 0.20.1 also `.hermes/.hermes_history` (no session or project: matches on text and time), `.hermes/cron/output/<job>/<time>.md` (no session: matches on text and time), `.hermes/response_store.db` (no timestamp per message: matches on text within the session) and the `trajectory_samples.jsonl` and `failed_trajectories.jsonl` files of a project (no timestamp per turn: matches on text within the project); all but the trajectory files also under `.hermes_<suffix>`, `AppData/Local/hermes`, `profiles/<name>/` and, since 0.19.0, the root of a Docker or Podman volume | `.hermes/state.db` |
+| `kiro` | `.aws/amazonq/.cli_bash_history`, the chat prompt history (no timestamp, session or project: matches on text alone); in each conversation, the checkpoint snapshots and the tangent-mode main history, read only for the turns the conversation no longer holds and paired by the parser itself | `data.sqlite3` `conversations` under `amazon-q/` or `kiro-cli/`, and `/save` exports |
 | `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
 | `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot*/history/cli_history` (no session or project: matches on text and time); when a `sessions.sqlite3` sits in the namespace directory, the namespace's `<key>.jsonl` files and their `jsonl-backup/` copies, which the database imported (since 0.19.0) | `.nanobot*/sessions/<workspace-id>/sessions.sqlite3`, else `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
@@ -1906,7 +1941,8 @@ are true UTC and fall within it as well.
 
 Several sources record no time for an event, and their rows match on
 text and scope alone: Muse Code's `tui-history.jsonl`, Goose's
-`history.txt` and Roo Code's `cli-history.json` record none at all;
+`history.txt`, Kiro's `.cli_bash_history` and Roo Code's
+`cli-history.json` record none at all;
 Claude Desktop's Cowork session record keeps its first prompt with no
 time of its own; Cline's `session-search.db` records none per message,
 and its CLI `user_input_history.jsonl` only on its newest line, since

@@ -55,7 +55,7 @@ agent name in each row links to its subsection.
 | [`goose`](#goose) | parsed | source; fixture only | [research](../research/goose.md) |
 | [`hermes`](#hermes) | parsed | source; fixture only | [research](../research/hermes.md); [issue 208](https://github.com/seanthegeek/doubleagent/issues/208); the nested `config.yaml` `approvals` settings are not parsed |
 | [`kilo-code`](#kilo-code) | parsed | source; fixture only | [research](../research/kilo-code.md) |
-| [`kiro`](#kiro) | parsed | source; fixture only | [research](../research/kiro.md) |
+| [`kiro`](#kiro) | parsed | source; fixture only | [research](../research/kiro.md); [issue 212](https://github.com/seanthegeek/doubleagent/issues/212); Kiro CLI's own sessions and permission files wait for a real install |
 | [`langflow`](#langflow) | backlog | Source, platformdirs source; Desktop from docs only | [research](../research/langflow.md); [issue 141](https://github.com/seanthegeek/doubleagent/issues/141); Desktop's `database.db`; the server's `langflow.db` is not collected |
 | [`letta`](#letta) | parsed | source; fixture only | [research](../research/letta.md) |
 | [`little-coder`](#little-coder) | parsed | source; fixture only | [research](../research/little-coder.md) |
@@ -716,10 +716,17 @@ Validated against: Source at [76bcfd4](https://github.com/Kilo-Org/kilocode/comm
 Files read: Amazon Q CLI `data.sqlite3` (`conversations` and legacy
 `history` tables) under `amazon-q/` or `kiro-cli/` in `.local/share`,
 `Library/Application Support` or `AppData/Local`; `/save` exports (`.json`
-with `conversation_id` and `history`). Kiro CLI `.kiro/sessions/` files
-are not parsed until their format is confirmed.
+with `conversation_id` and `history`), including each conversation's
+checkpoint snapshots and tangent-mode main history for the turns the
+conversation no longer holds; the chat prompt history
+`.aws/amazonq/.cli_bash_history` (a secondary source with no time,
+session or project); the agent configurations
+`.aws/amazonq/cli-agents/*.json` and a project's
+`.amazonq/cli-agents/*.json` (standing tool grants); a project's
+`.amazonq/.subagents/*.json` (delegated background tasks). Kiro CLI
+`.kiro/sessions/` files are not parsed until their format is confirmed.
 
-Validated against: Source at [15cc8f3](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a), synthetic fixture.
+Validated against: Source at [15cc8f3](https://github.com/aws/amazon-q-developer-cli/commit/15cc8f3cd18c4272925ce1c7053268eedff1ea0a), synthetic fixture; the denial rows, standing grants, prompt history, history copies and delegate records from source at the same commit and [kkawakam/rustyline at bc06b3e](https://github.com/kkawakam/rustyline/commit/bc06b3eb322df1a535e6e3b64db8c0fee0b1df8c) (v15.0.0, the prompt history format), synthetic fixture.
 
 ### `letta`
 
