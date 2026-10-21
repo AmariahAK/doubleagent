@@ -1123,8 +1123,34 @@ turn: Crush's `prism_model_id` for a Hyper Prism turn, else `model`.
 Since 0.19.0 the row ends with ` requested=<model>` when the requested
 `model` differs from the served one, and the `model` column reads
 `<provider>/<served model>`, or the served model alone when no provider
-is recorded. It writes no permission rows, because Crush
-records no permission state the research names.
+is recorded. After a `tool_result` row it writes `permission decision:
+denied by user` when the result is Crush's `User denied permission`
+error, `permission decision: <allow|deny|halt> by hook <names>
+reason=<reason>` from the result's hook metadata (` reason=` only when
+the hook gave one), and `permission decision: <deny|halt> by hook` for a
+hook's block or halt message with no metadata, each with the call's
+`tool_name` and `tool_use_id`. Standing entries are `permission setting:
+<key>=<value> (from <file>, file mtime)`, one per entry of
+`permissions.allowed_tools`, `options.disabled_tools`,
+`mcp.<name>.disabled_tools`, `mcp.<name>.enabled_tools` and
+`hooks.<event>` in each `crush.json`, of `permissions allow` (as
+`permissions.allowed_tools`) and `permissions deny` (as
+`options.disabled_tools`) lines in a `crushrc`, where the file reads
+`<file> line <n>`, and of the `mcp_enabled_servers` and
+`mcp_disabled_servers` tables of `crush.db`, at the file's modification
+time with an empty `session_id`. A session bound to an MCP channel gets
+`session relayed: channel <server> (from crush.db sessions.channel, as
+of updated_at)`, and the first user message a channel pushed for each
+source, sender and group `session relayed: channel <source> sender
+<sender> group <group> (from crush.db message <id>)`, `sender` and
+`group` only when present; the parser records relay state. A sub-agent
+session whose parent is gone gives `session deleted: <parent>
+(parent_session_id of sub-agent session <id> names no session in
+crush.db; time is the sub-agent's updated_at)` with `session_id` the
+parent. Each `files` snapshot is `file version: <path> version=<n>
+bytes=<length> (from crush.db files)` at its `created_at`, and each
+`read_files` entry `file read: <path> (from crush.db read_files,
+read_at)` at its `read_at`.
 The `opencode` and `kilo-code` parsers write, after a database's
 session-start rows, `session synced: share <id> url <url> (from
 <database> session_share, time_created)` for each session published to
