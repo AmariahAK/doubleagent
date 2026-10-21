@@ -695,6 +695,8 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # "fix the failing test" with the log's prompt and its "and run lint" with
 # the database turn, the only other copy of the prompt the cut log lost.
 # The turn "and run lint", "file changed:" and "rewind snapshot:" are kept.
+# OpenHands: the CLI prompt_history.json's "list the files" pairs with the
+# CLI conversation's prompt; its "and the hidden files?" is kept.
 # Tabby: the event log's completion prompt and choice (user_events copies
 # them), the later backup's thread 7 (the live database has it) and the
 # second backup copy of ephemeral thread 3.
@@ -716,6 +718,7 @@ FIXTURE_DEDUPLICATED = {
     "open-interpreter": 3,  # history.jsonl "list the files", state_5.sqlite 2
     "openclaw": 11,  # .jsonl.deleted.* 1, pre-doctor .bak 7, checkpoint 3
     "opencode": 2,  # opencode-next.db: the imported session's start row and prompt
+    "openhands": 1,  # CLI prompt_history.json "list the files"
     "qwen-code": 1,  # "run the tests"
     "roo-code": 2,  # "rename the helper" and "yes", no timestamp
     "tabby": 8,  # completion prompt and choice, threads 7 and 3 in the backups
