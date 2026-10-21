@@ -3560,6 +3560,199 @@ def kiro_export_records():
     }
 
 
+KIRO_DENIAL_SESSION = "9e8d7c6b-5a49-4382-9170-6f5e4d3c2b1a"
+KIRO_DENY_TEXT = "I deny this tool request. Ask a follow up question clarifying the expected action"
+KIRO_RULE_TEXT = (
+    "Tool use with execute_bash was rejected because the arguments supplied were forbidden"
+)
+
+
+def _kiro_tool_entry(n, prompt_content, ts, tool_id, command, start_ms):
+    """A history entry whose assistant message asks for one execute_bash call."""
+    return {
+        "user": _kiro_user(prompt_content, ts),
+        "assistant": {
+            "ToolUse": {
+                "message_id": "msg-%03d" % n,
+                "content": "",
+                "tool_uses": [
+                    {
+                        "id": tool_id,
+                        "name": "execute_bash",
+                        "orig_name": "execute_bash",
+                        "args": {"command": command},
+                        "orig_args": {"command": command},
+                    }
+                ],
+            }
+        },
+        "request_metadata": _kiro_meta(n, start_ms, start_ms + 500, "ToolUse"),
+    }
+
+
+def _kiro_cancelled(prompt, tool_id):
+    return {
+        "CancelledToolUses": {
+            "prompt": prompt,
+            "tool_use_results": [
+                {
+                    "tool_use_id": tool_id,
+                    "content": [{"Text": "Tool use was cancelled by the user"}],
+                    "status": "Error",
+                }
+            ],
+        }
+    }
+
+
+def kiro_denial_records():
+    """A /save export for the 2026-10-21 rows (issue 212), from the Amazon Q
+    source at 15cc8f3: a bare `n` denial, a deny-rule rejection as a
+    CancelledToolUses prompt and as a plain Prompt, an interrupt, a
+    checkpoint whose snapshot keeps a turn a restore discarded, and a tangent
+    held-aside main history."""
+    first = _kiro_tool_entry(
+        20,
+        {"Prompt": {"prompt": "clean the build"}},
+        "2026-04-25T09:00:00.000-07:00",
+        "tooluse_d1",
+        "rm -rf build",
+        1777132800000,
+    )
+    second = _kiro_tool_entry(
+        21,
+        _kiro_cancelled(KIRO_DENY_TEXT, "tooluse_d1"),
+        "2026-04-25T09:00:05.000-07:00",
+        "tooluse_d2",
+        "rm -rf /",
+        1777132805000,
+    )
+    third = _kiro_tool_entry(
+        22,
+        _kiro_cancelled(KIRO_RULE_TEXT, "tooluse_d2"),
+        "2026-04-25T09:00:10.000-07:00",
+        "tooluse_d3",
+        "sleep 100",
+        1777132810000,
+    )
+    fourth = {
+        "user": _kiro_user(
+            _kiro_cancelled("The user interrupted the tool execution.", "tooluse_d3"),
+            "2026-04-25T09:00:15.000-07:00",
+        ),
+        "assistant": {"Response": {"message_id": "msg-023", "content": "Interrupted."}},
+        "request_metadata": _kiro_meta(23, 1777132815000, 1777132815500),
+    }
+    fifth = {
+        "user": _kiro_user({"Prompt": {"prompt": KIRO_RULE_TEXT}}, "2026-04-25T09:00:20.000-07:00"),
+        "assistant": {"Response": {"message_id": "msg-024", "content": "Understood."}},
+        "request_metadata": _kiro_meta(24, 1777132820000, 1777132820500),
+    }
+    discarded = {
+        "user": _kiro_user(
+            {"Prompt": {"prompt": "the turn a restore discarded"}},
+            "2026-04-25T08:59:00.000-07:00",
+        ),
+        "assistant": {"Response": {"message_id": "msg-019", "content": "Discarded reply."}},
+        "request_metadata": dict(_kiro_meta(19, 1777132740000, 1777132740500), model_id="m-old"),
+    }
+    aside = {
+        "user": _kiro_user(
+            {"Prompt": {"prompt": "the main conversation"}}, "2026-04-25T08:58:00.000-07:00"
+        ),
+        "assistant": {"Response": {"message_id": "msg-018", "content": "Main reply."}},
+        "request_metadata": _kiro_meta(18, 1777132680000, 1777132680500),
+    }
+    return {
+        "conversation_id": KIRO_DENIAL_SESSION,
+        "next_message": None,
+        "history": [first, second, third, fourth, fifth],
+        "valid_history_range": [0, 5],
+        "transcript": [],
+        "tools": {"native___": []},
+        "latest_summary": None,
+        "model_info": {"model_id": "claude-sonnet-4"},
+        "checkpoint_manager": {
+            "shadow_repo_path": "/home/alice/.aws/amazonq/cli-checkouts/" + KIRO_DENIAL_SESSION,
+            "work_tree_path": "/srv/proj",
+            "checkpoints": [
+                {
+                    "tag": "1",
+                    "timestamp": "2026-04-25T08:59:30.000-07:00",
+                    "description": "the turn a restore discarded",
+                    "history_snapshot": [discarded, first],
+                    "is_turn": True,
+                    "tool_name": None,
+                },
+                {
+                    "tag": "1.1",
+                    "timestamp": "2026-04-25T09:00:01.000-07:00",
+                    "description": "rm -rf build",
+                    "history_snapshot": [first],
+                    "is_turn": False,
+                    "tool_name": "execute_bash",
+                },
+            ],
+            "tag_index": {"1": 0, "1.1": 1},
+            "current_turn": 2,
+            "tools_in_turn": 0,
+            "pending_user_message": None,
+            "message_locked": False,
+        },
+        "tangent_state": {
+            "main_history": [aside],
+            "main_next_message": None,
+            "main_transcript": [],
+            "main_latest_summary": None,
+        },
+    }
+
+
+def kiro_delegate_records():
+    """The delegate tool's `.amazonq/.subagents/<agent>.json` records, which
+    the CLI writes in the working directory, so a test places them in a
+    project: one finished task of the default agent and one still running
+    with the `Unknown` cwd default (issue 212)."""
+    return {
+        "q_cli_default.json": {
+            "agent": "q_cli_default",
+            "task": "run the tests",
+            "status": "completed",
+            "launched_at": 1777132900,
+            "completed_at": 1777132960,
+            "pid": 4711,
+            "exit_code": 0,
+            "output": "12 passed",
+            "user_notified": True,
+            "summary": "All tests pass.",
+            "cwd": "/srv/proj",
+        },
+        "reviewer.json": {
+            "agent": "reviewer",
+            "task": "review the diff",
+            "status": "running",
+            "launched_at": 1777132970,
+            "completed_at": None,
+            "pid": 4712,
+            "exit_code": None,
+            "output": "",
+            "user_notified": False,
+            "summary": None,
+            "cwd": "Unknown",
+        },
+    }
+
+
+# The chat prompt's rustyline history: the #V2 header, a prompt the
+# conversation also holds, a slash command, an entry with an escaped line
+# feed and one with an escaped backslash, then a line that is not UTF-8 and
+# one after it (issue 212).
+KIRO_PROMPT_HISTORY = (
+    b"#V2\nlist the files here\n/clear\nfix the\\nbuild\npath C:\\\\tmp\n"
+    b"\xff\xfe not utf-8\nafter the cut\n"
+)
+
+
 def build_kiro(home: Path) -> None:
     base = home / ".local/share/amazon-q"
     base.mkdir(parents=True, exist_ok=True)
@@ -3606,6 +3799,32 @@ def build_kiro(home: Path) -> None:
     (exports / "issue-chat-cut.json").write_text(
         text[: text.index("stop, do not delete")], encoding="utf-8"
     )
+    (exports / "denials.json").write_text(
+        json.dumps(kiro_denial_records(), indent=2), encoding="utf-8"
+    )
+    (home / ".aws/amazonq/.cli_bash_history").write_bytes(KIRO_PROMPT_HISTORY)
+    agents = home / ".aws/amazonq/cli-agents"
+    agents.mkdir(parents=True, exist_ok=True)
+    (agents / "dev.json").write_text(
+        json.dumps(
+            {
+                "name": "dev",
+                "tools": ["*"],
+                "allowedTools": ["fs_read", "@git"],
+                "toolsSettings": {
+                    "execute_bash": {
+                        "allowedCommands": ["git status"],
+                        "deniedCommands": ["rm -rf .*"],
+                        "autoAllowReadonly": True,
+                    },
+                    "fs_write": {"deniedPaths": ["/etc"]},
+                },
+                "model": "claude-sonnet-4",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (agents / "broken.json").write_text("{not json", encoding="utf-8")
     # noise the parser must not want: CLI settings, and a Kiro CLI session
     # file whose format is unverified even though it looks like an export
     (home / ".kiro/settings").mkdir(parents=True, exist_ok=True)

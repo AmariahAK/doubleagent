@@ -61,10 +61,61 @@ the entry's `request_metadata.model_id`; an entry without one falls back to
 the conversation's `model_info.model_id` (or the legacy `model`), and the
 row then ends ` source=model_info` (or ` source=model`), because that field
 is a conversation-level value serialised with the whole state, not a record
-of the request. No permission rows: a cancelled tool use stays a
-`tool_result` prefixed `cancelled`, and Kiro CLI's `settings/permissions.yaml`,
-`sandbox-state/` and `workspace-roots/<hash>/.trust-migration.json` have no
-recorded shape and are not read.
+of the request.
+
+Everything below was added from the same source on 2026-10-21
+(issue 212); it is source-derived and not observed on any real install.
+
+Permission rows, `system`. A cancelled tool use stays a `tool_result`
+prefixed `cancelled` and is followed by a row with its `tool_use_id` and
+`tool_name`, chosen by the CancelledToolUses `prompt`: `permission
+decision: denied by=n` for the fixed text a bare `n` sends ("I deny this
+tool request. Ask a follow up question clarifying the expected action"),
+`permission decision: denied by=deny-rule tool=<name>` for "Tool use with
+<name> was rejected because the arguments supplied were forbidden" (a
+deny rule of the agent's `toolsSettings`), `permission decision: cancelled
+by=interrupt` for "The user interrupted the tool execution.", `permission
+decision: denied by=user-text` for any other prompt (what the user typed
+instead of `y` or `t`) and `permission decision: cancelled` for none. The
+deny-rule text in a `Prompt` message (no pending call to cancel) gives the
+same deny-rule row after the user row, with `tool_name` and no id. An
+approval (`y`, `t`, `--trust-all-tools`) is not persisted.
+
+Standing grants: `cli-agents/<name>.json` under `.aws/amazonq/` (global)
+or `.amazonq/` (a project; `project_path` is the project): camelCase
+`allowedTools` (a list) and `toolsSettings` (`{<tool>: {<key>: value}}`,
+e.g. `allowedCommands`, `deniedCommands`, `denyByDefault`,
+`autoAllowReadonly`, `allowedPaths`, `deniedPaths`). One row per entry,
+`permission setting: allowedTools=<entry> (from <file>, file mtime)` and
+`permission setting: toolsSettings.<tool>.<key>=<value> (from <file>, file
+mtime)`, at the file's modification time with no session.
+
+Past use. `.aws/amazonq/.cli_bash_history`, the chat prompt's rustyline 15
+history, is secondary: a first line `#V2` marks the multi-line format, in
+which `\\n` is a line feed and `\\\\` a backslash; without it each line is
+one entry as written. One `user` row per entry with no timestamp, session
+or project. A line that is not UTF-8 is a bad line. Inside each blob,
+`checkpoint_manager.checkpoints[]` (`tag`, `timestamp`, `description`,
+`tool_name`, `history_snapshot`) and `tangent_state.main_history` are copies
+of `history`: the entries the history no longer holds (equal on user
+content, user timestamp and assistant message) are yielded after the
+history's rows, behind one `system` row `checkpoint snapshot: tag=<tag>[
+tool=<tool_name>] recovered=<n> entries[: <description>]` at the
+checkpoint's time or `tangent mode: main conversation held aside,
+recovered=<n> entries`, and every non-`system` row of them is marked
+`recovered` "yes"; their model rows track their own sequence.
+`.amazonq/.subagents/<agent>.json` (`agent`, `task`, `status`,
+`launched_at` and `completed_at` in Unix seconds, `pid`, `exit_code`,
+`output`, `summary`, `cwd`) is primary: `delegate task launched:
+agent=<agent> pid=<pid>[ trust_all_tools=true]: <task>` at `launched_at`
+(`trust_all_tools` for the default agent `q_cli_default`, which the
+delegate tool runs with `--trust-all-tools`) and, once it ended, `delegate
+task <status>: agent=<agent> exit_code=<code>` with `summary:` and
+`output:` lines at `completed_at`; `project_path` is `cwd`.
+
+Kiro CLI's `settings/permissions.yaml`, `sandbox-state/` and
+`workspace-roots/<hash>/.trust-migration.json` have no recorded shape and
+are not read.
 
 A blob or export that fails to parse as a whole (an export truncated
 mid-write) is salvaged entry by entry: the history entries before the cut
@@ -87,12 +138,37 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, track_change
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    error_rows,
+    file_mtime,
+    line_text,
+    setting_value,
+    track_change,
+)
 
 DB_RX = re.compile(
     r"^(?:\.local/share|Library/Application Support|AppData/Local)/(?:amazon-q|kiro-cli)/data\.sqlite3$"
 )
 SESSIONS_RX = re.compile(r"^\.kiro/sessions/")
+# The chat prompt's rustyline history (Q `paths.rs` `CLI_BASH_HISTORY`).
+HISTORY_RX = re.compile(r"^\.aws/amazonq/\.cli_bash_history$")
+# Agent configurations, global and per project (Q `paths.rs` `AGENTS_DIR`).
+AGENT_RX = re.compile(r"^(?:\.aws/amazonq|\.amazonq)/cli-agents/[^/]+\.json$")
+# The delegate tool's per-agent task records (Q `paths.rs` `SUBAGENTS_DIR`).
+SUBAGENT_RX = re.compile(r"^\.amazonq/\.subagents/[^/]+\.json$")
+# The header rustyline writes first in a multi-line-aware history file.
+HISTORY_V2 = "#V2"
+# The fixed prompts of a CancelledToolUses message (Q `cli/chat/mod.rs`).
+DENY_TEXT = "I deny this tool request. Ask a follow up question clarifying the expected action"
+INTERRUPT_TEXT = "The user interrupted the tool execution."
+DENY_RULE_RX = re.compile(
+    r"^Tool use with (.+) was rejected because the arguments supplied were forbidden$", re.S
+)
+# The agent the delegate tool runs with --trust-all-tools (Q `cli/agent/mod.rs`).
+DEFAULT_AGENT_NAME = "q_cli_default"
 SNIFF_BYTES = 4096
 
 _CONV_ID_RX = re.compile(r'"conversation_id"\s*:\s*"((?:[^"\\]|\\.)*)"')
@@ -172,23 +248,214 @@ def result_text(result: dict) -> str:
     return text
 
 
+def unescape_history(line: str) -> str:
+    """One entry of a rustyline `#V2` history file: `\\n` becomes a line
+    feed and `\\\\` a backslash. A line with any other escape, or a trailing
+    backslash, is kept exactly as written, as rustyline 15's `load_from`
+    keeps it."""
+    out: list[str] = []
+    i = 0
+    n = len(line)
+    while i < n:
+        c = line[i]
+        if c != "\\":
+            out.append(c)
+            i += 1
+            continue
+        nxt = line[i + 1] if i + 1 < n else ""
+        if nxt == "n":
+            out.append("\n")
+        elif nxt == "\\":
+            out.append("\\")
+        else:
+            return line
+        i += 2
+    return "".join(out)
+
+
+def decision_text(prompt) -> str:
+    """The `permission decision:` row text for a CancelledToolUses message
+    whose `prompt` is `prompt`: a bare `n` answer (the fixed denial text), a
+    deny rule of the agent's `toolsSettings`, an interrupt, or the user's own
+    words typed at the approval prompt."""
+    if not isinstance(prompt, str) or not prompt:
+        return "permission decision: cancelled"
+    if prompt == DENY_TEXT:
+        return "permission decision: denied by=n"
+    if prompt == INTERRUPT_TEXT:
+        return "permission decision: cancelled by=interrupt"
+    m = DENY_RULE_RX.match(prompt)
+    if m:
+        return "permission decision: denied by=deny-rule tool=%s" % m.group(1)
+    return "permission decision: denied by=user-text"
+
+
+def _entry_key(entry: dict) -> str:
+    """What identifies a history entry across the copies one blob holds:
+    the user content and time and the assistant message. A snapshot entry is
+    a clone of the history entry, so the two are equal on these."""
+    user = entry.get("user")
+    user = user if isinstance(user, dict) else {}
+    return compact_json([user.get("content"), user.get("timestamp"), entry.get("assistant")])
+
+
 class KiroParser(Parser):
     agent = "kiro"
     name = "kiro"
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
-        if DB_RX.match(rel):
+        if DB_RX.match(rel) or HISTORY_RX.match(rel):
+            return True
+        if AGENT_RX.match(rel) or SUBAGENT_RX.match(rel):
             return True
         if SESSIONS_RX.match(rel) or not rel.endswith(".json"):
             return False
         return _sniff_export(artifact.disk_path)
 
+    def secondary(self, artifact: Artifact) -> bool:
+        return bool(HISTORY_RX.match(artifact.rel))
+
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
-        if DB_RX.match(artifact.rel):
+        rel = artifact.rel
+        if DB_RX.match(rel):
             yield from self._parse_db(artifact, opts)
+        elif HISTORY_RX.match(rel):
+            yield from self._parse_history(artifact)
+        elif AGENT_RX.match(rel):
+            yield from self._parse_agent_config(artifact)
+        elif SUBAGENT_RX.match(rel):
+            yield from self._parse_delegate(artifact)
         else:
             yield from self._parse_export(artifact, opts)
+
+    # -- .cli_bash_history ---------------------------------------------------------
+    def _parse_history(self, artifact: Artifact) -> Iterator[Row]:
+        """One `user` row per entry, with no timestamp, session or project,
+        since the file records none."""
+        errors: list = []
+        v2 = False
+        with open(artifact.disk_path, "rb") as fh:
+            for n, raw in enumerate(fh, 1):
+                try:
+                    line = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    errors.append((n, "unparseable line (not valid UTF-8)", line_text(raw)))
+                    continue
+                line = line_text(raw)
+                if n == 1 and line == HISTORY_V2:
+                    v2 = True
+                    continue
+                if not line:
+                    continue
+                row = self.base_row(artifact)
+                row.source_line = n
+                row.turn_type = "user"
+                row.text = compact(unescape_history(line) if v2 else line)
+                yield row
+        yield from error_rows(self, artifact, errors)
+
+    # -- cli-agents/<name>.json ---------------------------------------------------
+    def _json_doc(self, artifact: Artifact, what: str) -> tuple[dict | None, Row | None]:
+        """The file as a JSON object, or a `system` row saying it is not one."""
+        try:
+            doc = json.loads(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
+        except (OSError, ValueError):
+            doc = None
+        if isinstance(doc, dict):
+            return doc, None
+        row = self.base_row(artifact)
+        row.source_line = 1
+        row.turn_type = "system"
+        row.timestamp_utc = file_mtime(artifact)
+        row.text = "parser: %s is not a JSON object" % what
+        return None, row
+
+    def _parse_agent_config(self, artifact: Artifact) -> Iterator[Row]:
+        """One `permission setting:` row per `allowedTools` entry and per key
+        of each `toolsSettings` tool, at the file's modification time."""
+        doc, bad = self._json_doc(artifact, "agent configuration")
+        if doc is None:
+            if bad is not None:
+                yield bad
+            return
+        ts = file_mtime(artifact)
+        project = artifact.home.original if artifact.home.project else ""
+
+        def setting(key: str, value) -> Row:
+            row = self.base_row(artifact)
+            row.source_line = 1
+            row.turn_type = "system"
+            row.timestamp_utc = ts
+            row.project_path = project
+            row.text = compact(
+                "permission setting: %s=%s (from %s, file mtime)"
+                % (key, setting_value(value), artifact.rel)
+            )
+            return row
+
+        allowed = doc.get("allowedTools")
+        if isinstance(allowed, list):
+            for entry in allowed:
+                yield setting("allowedTools", entry)
+        tools = doc.get("toolsSettings")
+        if isinstance(tools, dict):
+            for tool, conf in tools.items():
+                if isinstance(conf, dict):
+                    for key, value in conf.items():
+                        yield setting("toolsSettings.%s.%s" % (tool, key), value)
+                else:
+                    yield setting("toolsSettings.%s" % tool, conf)
+
+    # -- .amazonq/.subagents/<agent>.json -----------------------------------------
+    def _parse_delegate(self, artifact: Artifact) -> Iterator[Row]:
+        """A `system` row at `launched_at` and, once the task ended, one at
+        `completed_at` with its status, exit code, summary and output."""
+        doc, bad = self._json_doc(artifact, "delegate record")
+        if doc is None:
+            if bad is not None:
+                yield bad
+            return
+        cwd = str(doc.get("cwd") or "")
+        if not cwd or cwd == "Unknown":
+            cwd = artifact.home.original if artifact.home.project else ""
+        agent = str(doc.get("agent") or "")
+
+        def when(value) -> str:
+            ok = isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+            return to_utc(value) if ok else ""
+
+        def event(ts: str, text: str) -> Row:
+            row = self.base_row(artifact)
+            row.source_line = 1
+            row.turn_type = "system"
+            row.timestamp_utc = ts
+            row.project_path = cwd
+            row.text = compact(text)
+            return row
+
+        trust = " trust_all_tools=true" if agent == DEFAULT_AGENT_NAME else ""
+        yield event(
+            when(doc.get("launched_at")),
+            "delegate task launched: agent=%s pid=%s%s: %s"
+            % (agent, doc.get("pid", ""), trust, doc.get("task") or ""),
+        )
+        status = str(doc.get("status") or "")
+        completed = doc.get("completed_at")
+        if completed is None and status in ("", "running"):
+            return
+        exit_code = doc.get("exit_code")
+        text = "delegate task %s: agent=%s exit_code=%s" % (
+            status or "ended",
+            agent,
+            "" if exit_code is None else exit_code,
+        )
+        if doc.get("summary"):
+            text += "\nsummary: %s" % doc["summary"]
+        if doc.get("output"):
+            text += "\noutput: %s" % doc["output"]
+        yield event(when(completed), text)
 
     # -- data.sqlite3 -------------------------------------------------------------
     def _parse_db(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
@@ -278,9 +545,7 @@ class KiroParser(Parser):
             row.text = compact(s)
             return row
 
-        for entry in state["history"]:
-            if not isinstance(entry, dict):
-                continue
+        def entry_rows(entry: dict, seen_model: dict[str, str]) -> Iterator[Row]:
             meta = entry.get("request_metadata")
             meta = meta if isinstance(meta, dict) else {}
             model = str(meta.get("model_id") or conv_model)
@@ -326,6 +591,34 @@ class KiroParser(Parser):
                 row.turn_type = "system"
                 yield fill(row, "compact: conversation history summarised")
 
+        seen_entries: set[str] = set()
+        for entry in state["history"]:
+            if isinstance(entry, dict):
+                seen_entries.add(_entry_key(entry))
+                yield from entry_rows(entry, seen_model)
+
+        # Copies of the history inside the same blob: each checkpoint's
+        # history_snapshot (kept through /checkpoint restore) and the main
+        # conversation held aside in tangent mode. Only entries the history
+        # no longer holds are yielded, marked recovered.
+        seen_copy_model: dict[str, str] = {}
+        for head, tail, ts, entries in self._history_copies(state):
+            fresh = []
+            for entry in entries:
+                if isinstance(entry, dict) and _entry_key(entry) not in seen_entries:
+                    seen_entries.add(_entry_key(entry))
+                    fresh.append(entry)
+            if not fresh:
+                continue
+            row = base(ts)
+            row.turn_type = "system"
+            yield fill(row, "%s recovered=%d entries%s" % (head, len(fresh), tail))
+            for entry in fresh:
+                for row in entry_rows(entry, seen_copy_model):
+                    if row.turn_type != "system":
+                        row.recovered = "yes"
+                    yield row
+
         summary = state.get("latest_summary")
         if isinstance(summary, list) and summary:
             smeta = summary[1] if len(summary) > 1 and isinstance(summary[1], dict) else {}
@@ -369,6 +662,27 @@ class KiroParser(Parser):
         return fill(row, content if isinstance(content, str) else compact_json(content))
 
     @staticmethod
+    def _history_copies(state: dict) -> Iterator[tuple[str, str, str, list]]:
+        """(row text before and after the entry count, timestamp, entries)
+        for each checkpoint's `history_snapshot`, in checkpoint order, then
+        for `tangent_state.main_history`. The tangent row has no time of its
+        own (`tangent_start_time` is not read)."""
+        manager = state.get("checkpoint_manager")
+        checkpoints = manager.get("checkpoints") if isinstance(manager, dict) else None
+        for cp in checkpoints if isinstance(checkpoints, list) else []:
+            if not isinstance(cp, dict) or not isinstance(cp.get("history_snapshot"), list):
+                continue
+            head = "checkpoint snapshot: tag=%s" % (cp.get("tag") or "")
+            if cp.get("tool_name"):
+                head += " tool=%s" % cp["tool_name"]
+            tail = ": %s" % cp["description"] if cp.get("description") else ""
+            yield head, tail, to_utc(cp.get("timestamp")), cp["history_snapshot"]
+        tangent = state.get("tangent_state")
+        if isinstance(tangent, dict) and isinstance(tangent.get("main_history"), list):
+            head = "tangent mode: main conversation held aside,"
+            yield head, "", "", tangent["main_history"]
+
+    @staticmethod
     def _user(content, ts: str, model: str, names: dict[str, str], base, fill) -> Iterator[Row]:
         tag, body = _variant(content)
         prompt = body.get("prompt")
@@ -376,6 +690,15 @@ class KiroParser(Parser):
             row = base(ts, model)
             row.turn_type = "user"
             yield fill(row, prompt)
+        if tag == "Prompt" and isinstance(prompt, str):
+            m = DENY_RULE_RX.match(prompt)
+            if m:
+                # the rejection reached the model as a plain prompt: it names
+                # the tool but not the call
+                row = base(ts, model)
+                row.turn_type = "system"
+                row.tool_name = m.group(1)
+                yield fill(row, decision_text(prompt))
         if tag in ("ToolUseResults", "CancelledToolUses"):
             for result in body.get("tool_use_results") or []:
                 if not isinstance(result, dict):
@@ -388,6 +711,12 @@ class KiroParser(Parser):
                 if tag == "CancelledToolUses":
                     s = "cancelled %s" % s if s else "cancelled"
                 yield fill(row, s)
+                if tag == "CancelledToolUses":
+                    dec = base(ts, model)
+                    dec.turn_type = "system"
+                    dec.tool_use_id = row.tool_use_id
+                    dec.tool_name = row.tool_name
+                    yield fill(dec, decision_text(prompt))
 
     @staticmethod
     def _first_cwd(state: dict) -> str:

@@ -3621,7 +3621,14 @@ class QwenCodeTests(ParserBase):
 
 
 from doubleagent.parsers.kiro import KiroParser, salvage
-from fixtures import KIRO_EXPORT_SESSION, KIRO_SESSION, KIRO_SHELL_SESSION
+from doubleagent.parsers.kiro import unescape_history as kiro_unescape
+from fixtures import (
+    KIRO_DENIAL_SESSION,
+    KIRO_EXPORT_SESSION,
+    KIRO_SESSION,
+    KIRO_SHELL_SESSION,
+    kiro_delegate_records,
+)
 
 
 class KiroTests(ParserBase):
@@ -3730,7 +3737,7 @@ class KiroTests(ParserBase):
         # an entry without model_id falls back to the conversation's model and says so
         rows = self.rows_for(KiroParser(), self.EXPORT)
         self.assertEqual(
-            [r.text for r in rows if model_or_permission_row(r)],
+            [r.text for r in rows if r.text.startswith("model: ")],
             [
                 "model: claude-3.7-sonnet source=model",
                 "model: claude-3.7-sonnet -> claude-sonnet-4",
@@ -3782,6 +3789,234 @@ class KiroTests(ParserBase):
         self.assertEqual(state, {"conversation_id": 'c"1', "history": [{"x": 1}]})
         self.assertTrue(err)
         self.assertEqual(salvage("garbage")[0], None)
+
+    # -- 2026-10-21, issue 212: source-derived rows ----------------------------
+    DENIALS = ".aws/amazonq/exports/denials.json"
+    HISTORY = ".aws/amazonq/.cli_bash_history"
+    AGENT = ".aws/amazonq/cli-agents/dev.json"
+
+    def test_permission_decisions(self):
+        rows = self.rows_for(KiroParser(), self.DENIALS)
+        main = [r for r in rows if r.recovered != "yes" and r.text.startswith("permission ")]
+        self.assertEqual(
+            [(r.text, r.tool_use_id, r.tool_name, r.timestamp_utc) for r in main],
+            [
+                (
+                    "permission decision: denied by=n",
+                    "tooluse_d1",
+                    "execute_bash",
+                    "2026-04-25T16:00:05.000Z",
+                ),
+                (
+                    "permission decision: denied by=deny-rule tool=execute_bash",
+                    "tooluse_d2",
+                    "execute_bash",
+                    "2026-04-25T16:00:10.000Z",
+                ),
+                (
+                    "permission decision: cancelled by=interrupt",
+                    "tooluse_d3",
+                    "execute_bash",
+                    "2026-04-25T16:00:15.000Z",
+                ),
+                # the deny-rule text as a plain prompt names the tool, not a call
+                (
+                    "permission decision: denied by=deny-rule tool=execute_bash",
+                    "",
+                    "execute_bash",
+                    "2026-04-25T16:00:20.000Z",
+                ),
+            ],
+        )
+        for r in main:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.project_path),
+                ("system", KIRO_DENIAL_SESSION, "/srv/proj"),
+            )
+        # each decision follows the cancelled result it governs
+        for i, r in enumerate(rows):
+            if r.tool_use_id and r.text.startswith("permission decision:"):
+                self.assertEqual(
+                    (rows[i - 1].turn_type, rows[i - 1].tool_use_id), ("tool_result", r.tool_use_id)
+                )
+        # the user's own words at the approval prompt
+        rows = self.rows_for(KiroParser(), self.EXPORT)
+        self.assertEqual(
+            [(r.text, r.tool_use_id) for r in rows if r.text.startswith("permission ")],
+            [("permission decision: denied by=user-text", "tooluse_bash2")],
+        )
+
+    def test_history_copies_recovered(self):
+        rows = self.rows_for(KiroParser(), self.DENIALS)
+        markers = [r for r in rows if r.text.startswith(("checkpoint snapshot:", "tangent mode:"))]
+        self.assertEqual(
+            [(r.text, r.timestamp_utc) for r in markers],
+            [
+                (
+                    "checkpoint snapshot: tag=1 recovered=1 entries: the turn a restore discarded",
+                    "2026-04-25T15:59:30.000Z",
+                ),
+                # inherits the previous row's time: tangent_start_time is not read
+                (
+                    "tangent mode: main conversation held aside, recovered=1 entries",
+                    "2026-04-25T15:59:00.500Z",
+                ),
+            ],
+        )
+        recovered = [r for r in rows if r.recovered == "yes"]
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in recovered],
+            [
+                ("user", "the turn a restore discarded"),
+                ("assistant", "Discarded reply."),
+                ("user", "the main conversation"),
+                ("assistant", "Main reply."),
+            ],
+        )
+        self.assertTrue(all(r.session_id == KIRO_DENIAL_SESSION for r in recovered))
+        # the snapshot entry the history still holds is not repeated
+        self.assertEqual(len([r for r in rows if r.text == "clean the build"]), 1)
+        # recovered entries keep their own model sequence; system rows are not marked
+        self.assertEqual(
+            [r.text for r in rows if r.text.startswith("model: ")],
+            ["model: claude-sonnet-4", "model: m-old", "model: m-old -> claude-sonnet-4"],
+        )
+        self.assertFalse([r for r in rows if r.turn_type == "system" and r.recovered])
+
+    def test_prompt_history(self):
+        p = KiroParser()
+        art = self.artifact(self.HISTORY)
+        self.assertTrue(p.wants(art))
+        self.assertTrue(p.secondary(art))
+        self.assertTrue(p.has_secondary)
+        self.assertFalse(p.secondary(self.artifact(self.DB)))
+        rows = list(p.parse(art, Options()))
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (2, "user", "list the files here"),
+                (3, "user", "/clear"),
+                (4, "user", "fix the\nbuild"),
+                (5, "user", "path C:\\tmp"),
+                (7, "user", "after the cut"),
+                # the line that is not UTF-8, in full, after the lines around it
+                (6, "system", "parser: unparseable line (not valid UTF-8): \ufffd\ufffd not utf-8"),
+            ],
+        )
+        for r in rows:
+            self.assertEqual((r.timestamp_utc, r.session_id, r.project_path), ("", "", ""))
+        # a history line the database also holds is dropped as its copy
+        primary = self.rows_for(KiroParser(), self.DB)
+        kept, dropped = deduplicate(primary, [(r, 2.0) for r in rows])
+        self.assertEqual(dropped["kiro"], 1)
+        self.assertEqual(
+            [r.text for r in kept if r.recovered == "yes"],
+            ["/clear", "fix the\nbuild", "path C:\\tmp", "after the cut"],
+        )
+
+    def test_unescape_history(self):
+        self.assertEqual(kiro_unescape("a\\nb\\\\c"), "a\nb\\c")
+        # an escape rustyline never writes keeps the line as written
+        self.assertEqual(kiro_unescape("C:\\tmp\\nx"), "C:\\tmp\\nx")
+        self.assertEqual(kiro_unescape("trailing\\"), "trailing\\")
+
+    def test_agent_config_settings(self):
+        p = KiroParser()
+        self.assertTrue(p.wants(self.artifact(self.AGENT)))
+        rows = self.rows_for(p, self.AGENT)
+        src = "(from .aws/amazonq/cli-agents/dev.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: allowedTools=fs_read " + src,
+                "permission setting: allowedTools=@git " + src,
+                'permission setting: toolsSettings.execute_bash.allowedCommands=["git status"] '
+                + src,
+                'permission setting: toolsSettings.execute_bash.deniedCommands=["rm -rf .*"] '
+                + src,
+                "permission setting: toolsSettings.execute_bash.autoAllowReadonly=true " + src,
+                'permission setting: toolsSettings.fs_write.deniedPaths=["/etc"] ' + src,
+            ],
+        )
+        mtime = to_utc((self.home / self.AGENT).stat().st_mtime)
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.timestamp_utc, r.session_id, r.project_path),
+                ("system", mtime, "", ""),
+            )
+        bad = self.rows_for(p, ".aws/amazonq/cli-agents/broken.json")
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in bad],
+            [("system", "parser: agent configuration is not a JSON object")],
+        )
+
+    def _project_artifact(self, rel, record):
+        proj = self.tmp / "srv" / "proj"
+        path = proj / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(record), encoding="utf-8")
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
+        return Artifact(path, "/srv/proj/" + rel, rel, "kiro", home)
+
+    def test_project_agent_config(self):
+        rel = ".amazonq/cli-agents/proj.json"
+        art = self._project_artifact(rel, {"name": "proj", "allowedTools": ["execute_bash"]})
+        self.assertTrue(KiroParser().wants(art))
+        rows = list(KiroParser().parse(art, Options()))
+        self.assertEqual(
+            [(r.text, r.project_path) for r in rows],
+            [
+                (
+                    "permission setting: allowedTools=execute_bash (from %s, file mtime)" % rel,
+                    "/srv/proj",
+                )
+            ],
+        )
+
+    def test_delegate_records(self):
+        records = kiro_delegate_records()
+        done = self._project_artifact(
+            ".amazonq/.subagents/q_cli_default.json", records["q_cli_default.json"]
+        )
+        running = self._project_artifact(
+            ".amazonq/.subagents/reviewer.json", records["reviewer.json"]
+        )
+        p = KiroParser()
+        self.assertTrue(p.wants(done) and p.wants(running))
+        self.assertFalse(p.secondary(done))
+        self.assertEqual(
+            [
+                (r.turn_type, r.timestamp_utc, r.project_path, r.text)
+                for r in p.parse(done, Options())
+            ],
+            [
+                (
+                    "system",
+                    "2026-04-25T16:01:40.000Z",
+                    "/srv/proj",
+                    "delegate task launched: agent=q_cli_default pid=4711 trust_all_tools=true: "
+                    "run the tests",
+                ),
+                (
+                    "system",
+                    "2026-04-25T16:02:40.000Z",
+                    "/srv/proj",
+                    "delegate task completed: agent=q_cli_default exit_code=0\n"
+                    "summary: All tests pass.\noutput: 12 passed",
+                ),
+            ],
+        )
+        # still running: the launch only; the `Unknown` cwd falls back to the project
+        self.assertEqual(
+            [(r.text, r.project_path) for r in p.parse(running, Options())],
+            [("delegate task launched: agent=reviewer pid=4712: review the diff", "/srv/proj")],
+        )
+
+    def test_new_files_not_wanted(self):
+        p = KiroParser()
+        for rel in (".aws/amazonq/cli-agents/sub/x.json", ".amazonq/.subagents/notes.txt"):
+            art = self._project_artifact(rel, {"name": "x"})
+            self.assertFalse(p.wants(art), rel)
 
 
 from fixtures import GEMINI_TRUST_MTIME, TRUST_JSONC
