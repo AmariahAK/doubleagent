@@ -648,6 +648,13 @@ their state must be copied by hand.
 - **Cursor** writes its agent worker's logs and copies of the user's zsh
   startup files to the temp directory; see
   [Cursor data directories](#cursor-data-directories).
+- **Roo Code's CLI** run as `roo --ephemeral` keeps its whole storage,
+  tasks included, in `roo-cli-<epoch ms>-<random>` under the system temp
+  directory (`$TMPDIR` or `/tmp`, `%TEMP%` on Windows) and removes it when
+  the CLI exits, so it survives only a CLI killed before its cleanup ran.
+  No catalog entry reaches it; when a `roo --ephemeral` process was
+  killed, copy any `roo-cli-*` directory in the temp directory by hand
+  ([CLI ephemeral storage in `research/roo-code.md`](../../research/roo-code.md#cli-ephemeral-storage)).
 - **OpenClaw, Codex CLI, Continue and Gemini CLI** write backups,
   exports or a log to a directory the user chooses or works in; see
   [Files written where the user chooses](#files-written-where-the-user-chooses).
@@ -842,6 +849,13 @@ and `api_key` inside `data.chat_model_override`, which a model chosen for
 one chat from the A0 CLI connector can carry. Its WhatsApp bridge's login
 state, `tmp/whatsapp/session/` of the install directory, is flagged
 `secret: true`: whoever holds it can act as the account's linked device.
+Roo Code releases up to 3.53.0 kept a retry queue of failed Roo Code Cloud
+uploads in the extension's workspace state, the `RooVeterinaryInc.roo-cline`
+row of an editor's `User/workspaceStorage/<hash>/state.vscdb` and the CLI's
+`.vscode-mock/workspace-storage/<hash>/workspace-state.json`, both collected
+unflagged; the key to redact is `roo.retryQueue[].options.headers.Authorization`,
+a bearer token. The same releases' CLI saved its cloud token in
+`~/.roo/cli-credentials.json`, which is flagged.
 
 ## Pattern matching
 

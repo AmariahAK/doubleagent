@@ -1266,6 +1266,13 @@ Mk 'Users/alice/.local/state/kilo-sandbox-preference/bb.json' "false`n"
 Mk 'Users/alice/.qwen/sessions/4242.json' "{`"sessionId`":`"x`",`"ipcToken`":`"x`"}`n"
 Mk 'Users/alice/.qwen/sessions/4243-0123abcd.json' "{`"sessionId`":`"x`",`"ipcToken`":`"x`"}`n"
 
+# 2026-10-21 Roo Code CLI cloud credentials (#159)
+# The Roo Code CLI up to 3.53.0 saved its Roo Code Cloud token in
+# ~/.roo/cli-credentials.json (apps/cli/src/lib/storage/credentials.ts at
+# Roo-Code v3.53.0); the secret glob flags it. Checks follow the default run
+# below; the same file is in smoke.sh under alice.
+Mk 'Users/alice/.roo/cli-credentials.json' "{`"token`":`"not-a-real-token`"}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1877,6 +1884,10 @@ Check '#221 Kilo sandbox policy and preference collected' { (Is113 "$k221/bb.jso
 
 # 2026-10-21 Qwen Code session registry (#230)
 Check '#230 Qwen Code session registry flagged secret' { (Is113 'Users/alice/.qwen/sessions/4242.json' 'qwen-code' $true) -and (Is113 'Users/alice/.qwen/sessions/4243-0123abcd.json' 'qwen-code' $true) }
+
+# 2026-10-21 Roo Code CLI cloud credentials (#159)
+$r159 = Row 'Users/alice/.roo/cli-credentials.json'
+Check '#159 roo cli-credentials.json flagged secret' { $r159 -and $r159.agent -eq 'roo-code' -and $r159.secret -eq $true -and $r159.status -eq 'collected' }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

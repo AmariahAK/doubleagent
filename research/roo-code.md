@@ -14,7 +14,9 @@ Apache-2.0 (clone `scratchpad/repos/roo`). All claims from source. It applies to
 extension, id `RooVeterinaryInc.roo-cline`
 ([`src/package.json:2`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L2),[`5`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L5)),
 and the CLI, which is `apps/cli` on top of `packages/vscode-shim`. Paths cited are relative to the
-clone.
+clone. The Roo Code Cloud client of earlier releases is cited at the tag `v3.53.0`,
+[`44f6bba250235a98a21403df8b2ff64dfb5421c0`](https://github.com/RooCodeInc/Roo-Code/commit/44f6bba250235a98a21403df8b2ff64dfb5421c0),
+the last release that shipped it.
 
 ### Observed
 
@@ -22,6 +24,14 @@ No real install.
 
 ### Source reviews
 
+- 2026-10-21: [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code) at
+  [b867ec9](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16)
+  (3.53.0 development tree) and at
+  [44f6bba](https://github.com/RooCodeInc/Roo-Code/commit/44f6bba250235a98a21403df8b2ff64dfb5421c0)
+  (tag v3.53.0, the last release with the Roo Code Cloud client): added the extension's global
+  and workspace state, the Roo Code Cloud settings cache, retry queue and CLI token file of releases
+  up to 3.53.0, the source-host statement, and the parser's permission, mode, sync-setting and
+  retry-queue rows ([Other stores](#other-stores), [Parser plan](#parser-plan)).
 - 2026-10-19: [RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code) HEAD is still
   [`b867ec9`](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16)
   (2026-05-15, "Remove roocode.com web app"), the commit this document cites, so nothing has
@@ -77,13 +87,14 @@ redirectable by the setting `roo-cline.customStoragePath`,
 CLI (`roo`), `~/.vscode-mock/` from `$HOME` or `%USERPROFILE%`
 ([`packages/vscode-shim/src/utils/paths.ts:8-16`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L8-L16),[`65-82`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L65-L82)):
 
-- `global-storage/`: same `tasks/` tree as above, plus `global-state.json`, `configuration.json`,
-  `secrets.json`
+- `global-storage/`: same `tasks/` tree as above, plus `global-state.json` (the extension's global
+  state, [Extension global and workspace state](#extension-global-and-workspace-state)),
+  `configuration.json`, `secrets.json`
   ([`packages/vscode-shim/src/context/ExtensionContext.ts:102-111`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/context/ExtensionContext.ts#L102-L111);
   [`api/WorkspaceConfiguration.ts:87-88`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/api/WorkspaceConfiguration.ts#L87-L88);
   [`storage/SecretStorage.ts:47`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/storage/SecretStorage.ts#L47)).
-- `workspace-storage/<hash>/workspace-state.json`, `configuration.json`; hash is a 32-bit string
-  hash of the workspace path, not reversible
+- `workspace-storage/<hash>/workspace-state.json` (the extension's workspace state),
+  `configuration.json`; hash is a 32-bit string hash of the workspace path, not reversible
   ([`paths.ts:24-32`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L24-L32),[`72-75`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L72-L75)).
 - `logs/`
   ([`paths.ts:80-82`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/utils/paths.ts#L80-L82)).
@@ -108,8 +119,9 @@ entries are raw prompts), `cli-settings.json`
 `onboardingProviderChoice`, `mode`, `provider`, `model`, `reasoningEffort`,
 `consecutiveMistakeLimit`, `requireApproval`, the older `dangerouslySkipPermissions` and `oneshot`,
 [`apps/cli/src/types/types.ts:55-73`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/types/types.ts#L55-L73);
-`requireApproval` is permission state, see [Permission rows](#permission-rows)). `~/.agents/skills`
-is also read
+`requireApproval` is permission state, see [Permission rows](#permission-rows)), and in releases up
+to 3.53.0 `cli-credentials.json`, the CLI's Roo Code Cloud token
+([Credentials](#credentials)). `~/.agents/skills` is also read
 ([`roo-config/index.ts:53-55`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/roo-config/index.ts#L53-L55);
 [`SkillsManager.ts:594`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/services/skills/SkillsManager.ts#L594)).
 
@@ -140,6 +152,20 @@ process collects the temp directory by hand.
 - CLI: the same keys serialised to `~/.vscode-mock/global-storage/secrets.json` (mode 0600,
   [`packages/vscode-shim/src/storage/SecretStorage.ts:10-47`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/storage/SecretStorage.ts#L10-L47)),
   flagged by the catalog's secret glob `.vscode-mock/global-storage/secrets.json`.
+- Releases up to 3.53.0: the CLI's `roo auth login` saved a Roo Code Cloud token as
+  `~/.roo/cli-credentials.json`, `{token, createdAt, userId?, orgId?}`, mode 0600
+  ([`apps/cli/src/lib/storage/credentials.ts:6-28`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/apps/cli/src/lib/storage/credentials.ts#L6-L28),
+  in `~/.roo` by
+  [`config-dir.ts:5-9`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/apps/cli/src/lib/storage/config-dir.ts#L5-L9)),
+  used as the API key of the vendor's `roo` provider
+  ([`apps/cli/src/commands/cli/run.ts:172`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/apps/cli/src/commands/cli/run.ts#L172),
+  [`184`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/apps/cli/src/commands/cli/run.ts#L184),
+  [`258`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/apps/cli/src/commands/cli/run.ts#L258));
+  flagged by the secret glob `.roo/cli-credentials.json`. The extension kept its Roo Code Cloud
+  sign-in in SecretStorage under `clerk-auth-credentials` (with `-<base URL>` for a non-production
+  sign-in service,
+  [`packages/cloud/src/WebAuthService.ts:113-115`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/WebAuthService.ts#L113-L115),
+  [`215`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/WebAuthService.ts#L215)).
 - `settings/mcp_settings.json` and project `.roo/mcp.json` can embed `env`
   and headers. No keychain use.
 
@@ -196,9 +222,14 @@ The CLI's `~/.roo/cli-history.json` is not touched: it holds the newest 500 subm
 time, task id or workspace, and outlives a deleted task directory, a removed workspace and the
 extension's task-history pruning, so it is what is left of a deleted CLI task. A `roo --ephemeral`
 task is removed with its temporary directory when the CLI exits and survives only a CLI killed
-before its cleanup ran. Other second copies, project-local traces and deletion markers are not
-stated. The analyzer reads `cli-history.json` as a secondary source whose lines are kept only when
-no task has the same text (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+before its cleanup ran. In releases up to 3.53.0 the messages of a task synced to Roo Code Cloud
+are held by the service, and a message whose upload failed stays in the workspace state's retry
+queue, which nothing in `src/` touches, so a task delete leaves it
+([Roo Code Cloud state](#roo-code-cloud-state-releases-up-to-3530)); the analyzer writes one row
+per queued request, naming the task, but not the message. Other second copies, project-local
+traces and deletion markers are not stated. The analyzer reads `cli-history.json` as a secondary
+source whose lines are kept only when no task has the same text (see
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 #### Transcripts in CLI ephemeral storage
 
@@ -266,6 +297,13 @@ in `api_conversation_history.json` whose text is JSON:
 `{"status":"denied","feedback":...}`, or for an approval with a typed note
 `{"status":"approved","feedback":...}`
 ([`src/core/prompts/responses.ts:8-24`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/prompts/responses.ts#L8-L24)).
+The approval JSON opens the call's result text, followed by two newlines and the tool's own output,
+and a denial with images is a block list whose first text block is the JSON
+([`src/core/assistant-message/presentAssistantMessage.ts:469-472`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/assistant-message/presentAssistantMessage.ts#L469-L472),
+[`491-525`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/assistant-message/presentAssistantMessage.ts#L491-L525);
+[`responses.ts:99-111`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/prompts/responses.ts#L99-L111)).
+`ui_messages.json` keeps no mark of a denial: the ask stays without `isAnswered`, and a typed note
+becomes a `say: "user_feedback"` record.
 `HistoryItem.mode` is the task's mode slug (`code`, `architect`, `ask`, `debug` or a custom mode),
 which decides the tool groups the task may use, and `apiConfigName` names the provider profile
 ([`packages/types/src/history.ts:21-22`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/types/src/history.ts#L21-L22)).
@@ -291,7 +329,8 @@ line went to.
 
 ### Other stores
 
-No SQLite store. The VS Code side keeps secrets in SecretStorage (`state.vscdb`).
+No SQLite store of its own. The VS Code side keeps its global and workspace state, and its secrets
+in SecretStorage, in the editor's `state.vscdb` files.
 
 #### CLI input history
 
@@ -321,6 +360,93 @@ CLI commands such as `/new` that the CLI handles itself and never sends to a tas
 ([`apps/cli/src/ui/hooks/useTaskSubmit.ts:56-132`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/ui/hooks/useTaskSubmit.ts#L56-L132)).
 A prompt given on the command line rather than typed into the input box does not pass through it.
 
+#### Extension global and workspace state
+
+The extension's settings live in its global state. In VS Code that is one `ItemTable` row of the
+editor's `User/globalStorage/state.vscdb`, keyed by `<publisher>.<name>`
+([microsoft/vscode `extensionStorage.ts:134-141`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/platform/extensionManagement/common/extensionStorage.ts#L134-L141),
+[`159-176`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/platform/extensionManagement/common/extensionStorage.ts#L159-L176)),
+here `RooVeterinaryInc.roo-cline`
+([`src/package.json:2`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L2),[`5`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/package.json#L5)),
+whose value is a flat JSON object. The CLI's shim writes the same object to
+`~/.vscode-mock/global-storage/global-state.json`, pretty-printed
+([`packages/vscode-shim/src/context/ExtensionContext.ts:104`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/context/ExtensionContext.ts#L104);
+[`packages/vscode-shim/src/storage/Memento.ts:58-66`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/storage/Memento.ts#L58-L66)).
+A settings change from the webview is written key by key with `contextProxy.setValue`, which stores
+a global-state key with `globalState.update`
+([`src/core/webview/webviewMessageHandler.ts:638-734`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/webviewMessageHandler.ts#L638-L734);
+[`src/core/config/ContextProxy.ts:331-337`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/config/ContextProxy.ts#L331-L337)).
+`allowedCommands` and `deniedCommands` are also written to the VS Code settings
+`roo-cline.allowedCommands` and `roo-cline.deniedCommands` (the user's `settings.json`); the CLI's
+shim keeps those settings in the same global-state file under the prefixed names
+([`packages/vscode-shim/src/api/WorkspaceConfiguration.ts:73-78`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/api/WorkspaceConfiguration.ts#L73-L78),
+[`140-151`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/api/WorkspaceConfiguration.ts#L140-L151);
+[`packages/vscode-shim/src/api/WorkspaceAPI.ts:117`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/api/WorkspaceAPI.ts#L117)).
+A non-interactive CLI run sends `autoApprovalEnabled`, every `alwaysAllow*` switch but
+`alwaysAllowFollowupQuestions` as `true` and `allowedCommands: ["*"]`, an interactive one
+`autoApprovalEnabled: false`, and the run's `mode`, through the same path, so the file holds the
+last run's values
+([`apps/cli/src/agent/extension-host.ts:221-250`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/agent/extension-host.ts#L221-L250),
+[`450-451`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/agent/extension-host.ts#L450-L451)).
+The workspace state is the same kind of row in the editor's
+`User/workspaceStorage/<hash>/state.vscdb`, and the CLI's
+`~/.vscode-mock/workspace-storage/<hash>/workspace-state.json`
+([`ExtensionContext.ts:102`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/vscode-shim/src/context/ExtensionContext.ts#L102)).
+The permission keys are listed in [Permission rows](#permission-rows).
+
+#### Roo Code Cloud state (releases up to 3.53.0)
+
+Roo Code Cloud, the vendor's hosted service for task sync and task sharing, was the
+`packages/cloud` client through the tag v3.53.0 and is gone at the commit this document cites
+([Sync, relay and origin rows](#sync-relay-and-origin-rows)). While the extension was signed in,
+it sent every completed `ui_messages.json` record of a task as a `Task Message` event
+`{type, properties: {taskId, message, ...}}`
+([`src/core/task/Task.ts:1165-1174`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/src/core/task/Task.ts#L1165-L1174);
+[`packages/types/src/telemetry.ts:24`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/types/src/telemetry.ts#L24),
+[`219-226`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/types/src/telemetry.ts#L219-L226);
+[`packages/cloud/src/CloudService.ts:424-426`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/CloudService.ts#L424-L426)),
+when task sync was on: the organization's `cloudSettings.recordTaskMessages` for a member of an
+organization (default false), else the user's `settings.taskSyncEnabled` (default true)
+([`packages/cloud/src/CloudSettingsService.ts:269-282`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/CloudSettingsService.ts#L269-L282);
+[`packages/cloud/src/TelemetryClient.ts:279-283`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/TelemetryClient.ts#L279-L283)).
+Which messages were sent was kept only in memory, so no file says which tasks were uploaded.
+Sharing a task (`organization` or `public` visibility) asked the service for a link and copied it
+to the clipboard; a task the service did not hold was first uploaded whole through
+`/api/events/backfill`, and the link was not stored
+([`packages/cloud/src/CloudShareService.ts:17-30`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/CloudShareService.ts#L17-L30);
+[`CloudService.ts:315-330`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/CloudService.ts#L315-L330);
+[`TelemetryClient.ts:195-240`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/TelemetryClient.ts#L195-L240)).
+
+Two things in the extension's state survive locally:
+
+- The settings cache, global-state keys `organization-settings`
+  (`{version, cloudSettings: {recordTaskMessages, enableTaskSharing, allowPublicTaskSharing,
+  taskShareExpirationDays, allowMembersViewAllTasks, workspaceTaskVisibility,
+  llmEnhancedFeaturesEnabled}, defaultSettings, allowList, ...}`) and `user-settings`
+  (`{features, settings: {taskSyncEnabled, llmEnhancedFeaturesEnabled}, version}`), written after
+  each fetch while signed in and removed at sign-out
+  ([`CloudSettingsService.ts:25-26`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/CloudSettingsService.ts#L25-L26),
+  [`169-178`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/CloudSettingsService.ts#L169-L178),
+  [`284-291`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/CloudSettingsService.ts#L284-L291);
+  [`packages/types/src/cloud.ts:128-136`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/types/src/cloud.ts#L128-L136),
+  [`175-184`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/types/src/cloud.ts#L175-L184)).
+  Its presence means the extension was signed in when it was last written.
+- The retry queue, workspace-state key `roo.retryQueue`, an array of `{id, url, options, timestamp,
+  retryCount, type, operation?, lastError?}`, `type` one of `api-call`, `telemetry`, `settings`
+  and `other`
+  ([`packages/cloud/src/retry-queue/RetryQueue.ts:14`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/retry-queue/RetryQueue.ts#L14),
+  [`62-95`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/retry-queue/RetryQueue.ts#L62-L95);
+  [`retry-queue/types.ts:1-10`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/retry-queue/types.ts#L1-L10)).
+  An event that failed on a network error, a 5xx or a 429 is queued with its whole request:
+  `options.body` is the JSON event, the task message included, and `options.headers` carries
+  `Authorization: Bearer <session token>`
+  ([`TelemetryClient.ts:102-153`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/TelemetryClient.ts#L102-L153),
+  [`157-192`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/TelemetryClient.ts#L157-L192)).
+  It retries without limit, keeps at most 100 requests (oldest dropped first), removes a request
+  when it succeeds, and is cleared when the signed-in user changes or signs out
+  ([`RetryQueue.ts:32-40`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/retry-queue/RetryQueue.ts#L32-L40),
+  [`343-360`](https://github.com/RooCodeInc/Roo-Code/blob/44f6bba250235a98a21403df8b2ff64dfb5421c0/packages/cloud/src/retry-queue/RetryQueue.ts#L343-L360)).
+
 ### Format versions
 
 `claude_messages.json` became `api_conversation_history.json` (deleted on read); globalState
@@ -332,7 +458,13 @@ A prompt given on the command line rather than typed into the input box does not
 
 The secret `roo_cline_config_api_config` ([Credentials](#credentials)) holds the provider
 profiles with their API keys, in the editor's `state.vscdb` or the CLI's `secrets.json`; its shape
-is in [Model rows](#model-rows). Transcripts carry file contents and command output.
+is in [Model rows](#model-rows). Transcripts carry file contents and command output. In releases up
+to 3.53.0 each `roo.retryQueue` request of the workspace state
+([Roo Code Cloud state](#roo-code-cloud-state-releases-up-to-3530)) holds the Roo Code Cloud session
+token in `options.headers.Authorization` and a task message in `options.body`; the extension's
+state row and the CLI's `workspace-state.json` are collected unflagged, so that key is the one to
+redact. An MCP server entry's `env` and `headers` can hold keys
+([Credentials](#credentials)).
 
 ### Parser plan
 
@@ -340,7 +472,13 @@ Globs:
 `<GS>/rooveterinaryinc.roo-cline/tasks/*/{api_conversation_history,ui_messages,history_item}.json`,
 `<GS>/rooveterinaryinc.roo-cline/tasks/_index.json`,
 `.vscode-mock/global-storage/tasks/**` (same files),
-`.roo/cli-history.json`.
+`.roo/cli-history.json`; for permission and Roo Code Cloud state also
+`.vscode-mock/global-storage/global-state.json`,
+`.vscode-mock/workspace-storage/*/workspace-state.json`, `.roo/cli-settings.json`,
+`<GS>/rooveterinaryinc.roo-cline/settings/mcp_settings.json` (and the `.vscode-mock` one), a
+project's `.roo/mcp.json`, and the `RooVeterinaryInc.roo-cline` row of an editor's
+`User/globalStorage/state.vscdb` and `User/workspaceStorage/*/state.vscdb`, which the catalog
+attributes to the editor.
 
 Rows and columns follow the Cline legacy mapping, with `ApiMessage.ts`
 available as a fallback timestamp, `condense_context` typed `system`,
@@ -349,13 +487,19 @@ and `model` always empty.
 
 #### Permission rows
 
-The parser reads none of the permission state yet:
+The parser reads all of the permission state below; source-derived; not observed on any real
+install.
 
-- Per call: the `isAnswered` mark and the denial and approval JSON of
-  [Record schema](#record-schema). A `tool_result` whose JSON `status` is
-  `denied` or `approved` can yield `permission decision: <status>`
-  (with ` feedback` when the key is present) beside the `tool_result`
-  row, joined on `tool_use_id`.
+- Per call, from [Permission records](#permission-records): a `tool` ask with `isAnswered: true`
+  in `ui_messages.json` yields `permission decision: approved isAnswered=true (user or
+  auto-approval)` after the ask's `tool_use` row, with its `tool_use_id` (the ask's `ts`) and
+  `tool_name`. A `tool_result` in the API history whose text opens with the JSON `status` `denied`
+  or `approved` yields `permission decision: <status>`, plus ` feedback=<feedback>` when that key
+  is set, with the result's `tool_use_id` and the `tool_use` block's `name`. When the task has no
+  `ui_messages.json` the row follows the `tool_result` row; beside one, the API history is read
+  for these rows only, since `ui_messages.json` keeps no mark of a denial. A denied ask in
+  `ui_messages.json` has no row of its own, and an automatic approval is not told apart from a
+  click.
 - Standing: the global settings `autoApprovalEnabled`, `alwaysAllowReadOnly`,
   `alwaysAllowReadOnlyOutsideWorkspace`, `alwaysAllowWrite`, `alwaysAllowWriteOutsideWorkspace`,
   `alwaysAllowWriteProtected`, `alwaysAllowMcp`, `alwaysAllowModeSwitch`, `alwaysAllowSubtasks`,
@@ -382,9 +526,23 @@ The parser reads none of the permission state yet:
   or `requireApproval: true` (or the older `dangerouslySkipPermissions: false`) in
   `~/.roo/cli-settings.json` says otherwise
   ([`apps/cli/src/commands/cli/run.ts:125-128`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/apps/cli/src/commands/cli/run.ts#L125-L128)).
-  Each entry can be one `permission setting:` row at the file's modification time.
-- Mode: `HistoryItem.mode` can be one `permission mode: <mode>` row per
-  task.
+  The parser yields one `permission setting: <key>=<value> (from <file>, file mtime)` row per
+  scalar or list entry, at the file's modification time with an empty `session_id`: the keys
+  above and the current `mode`
+  ([`global-settings.ts:192`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/packages/types/src/global-settings.ts#L192))
+  from the extension's global state, `<file>` naming `<state.vscdb path> ItemTable
+  RooVeterinaryInc.roo-cline` for the database (the lower-case key is read too), plus
+  `roo-cline.allowedCommands` and `roo-cline.deniedCommands` from the CLI's `global-state.json`
+  ([Extension global and workspace state](#extension-global-and-workspace-state));
+  `requireApproval`, `dangerouslySkipPermissions` and `mode` from `.roo/cli-settings.json`; and
+  `mcpServers.<name>.alwaysAllow=<tool>` per tool from `settings/mcp_settings.json` and a
+  project's `.roo/mcp.json`, whose rows carry the project as `project_path` when the file came from
+  a collected project. Nothing else of an MCP server entry is read. The copies of the command lists
+  in the editor's own `settings.json` are not read: the global state holds the same lists. The
+  fixed protected-file list is code, not a record.
+- Mode: each task row from `history_item.json`, or from `tasks/_index.json` for a task whose
+  directory is gone, is followed by `permission mode: <mode>` from `HistoryItem.mode`, at the
+  task's `ts`.
 
 #### Model rows
 
@@ -407,11 +565,15 @@ is a secondary source ([issue 122](https://github.com/seanthegeek/doubleagent/is
 `user` row per entry, with empty `timestamp_utc`, `session_id` and `project_path` because the file
 records none, so the timeline's deduplication pairs it with a task's `user` row of the same text and
 keeps it only when no task has the text (a prompt whose task directory was deleted, or a CLI command
-such as `/new`).
+such as `/new`). A Roo Code Cloud retry-queue request of releases up to 3.53.0 holds a copy of one
+task message in its body ([Roo Code Cloud state](#roo-code-cloud-state-releases-up-to-3530)); the
+parser writes only the request's metadata row ([Sync, relay and origin
+rows](#sync-relay-and-origin-rows)), not the message, because the body sits beside the bearer token.
 
 #### Sync, relay and origin rows
 
-Sync: Roo Code records no sync state. Cline's enterprise prompt upload and its manifest marker
+Sync: Roo Code at this commit records no sync state. Cline's enterprise prompt upload and its
+manifest marker
 ([Sync, relay and origin in `cline.md`](cline.md#sync-relay-and-origin-rows)) live in Cline's later
 SDK, which Roo Code never took: its tasks keep the forked legacy layout, and its `HistoryItem` has
 no share, sync or remote field
@@ -435,11 +597,30 @@ only `auth.me` and has no caller
 `PRIVACY.md` still describes PostHog (a product-analytics service) usage telemetry that excludes
 code and prompts
 ([`PRIVACY.md:13`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/PRIVACY.md#L13)),
-but no telemetry code is in the tree. The releases that shipped Roo Code Cloud (the changelog's
-Cloud Team entries,
-[`CHANGELOG.md:312`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/CHANGELOG.md#L312),
-[`486`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/CHANGELOG.md#L486))
-were not reviewed, so an install of one of them may hold sync state this document does not describe.
+but no telemetry code is in the tree.
+
+The releases that shipped Roo Code Cloud end with the tag v3.53.0, which still has
+`packages/cloud`; its task sync and sharing are described in
+[Roo Code Cloud state](#roo-code-cloud-state-releases-up-to-3530). No file records which tasks
+were uploaded or shared, so the parser writes no `session synced:` row and does not set
+`records_sync`. It writes what the client kept (source-derived; not observed on any real install):
+
+- From the extension's global state (the `state.vscdb` row or the CLI's `global-state.json`):
+  `sync setting: user-settings.settings.taskSyncEnabled=<value>`, `unset (defaults to true)` when
+  the cache has no such key, and one
+  `sync setting: organization-settings.cloudSettings.<key>=<value>` row each for
+  `recordTaskMessages`, `enableTaskSharing`, `allowPublicTaskSharing`, `taskShareExpirationDays`,
+  `allowMembersViewAllTasks` and `workspaceTaskVisibility` when set, each ending
+  `(from <file>, Roo Code Cloud settings cache, file mtime)` at the file's modification time.
+- From the workspace state (an editor's `User/workspaceStorage/<hash>/state.vscdb` row or the CLI's
+  `workspace-state.json`), one row per `roo.retryQueue` request: `cloud upload queued: <event
+  type, else operation, else -> task=<properties.taskId or -> type=<type> retries=<retryCount>
+  url=<url>`, then ` lastError=<lastError>` when set, then `(Roo Code Cloud retry queue, from
+  <file> roo.retryQueue, request timestamp)`, at the request's `timestamp` with the task as
+  `session_id`: an upload that had not reached the service. The headers and the body are never
+  written.
+
+Relay and origin: the agent records none.
 
 #### Scratch directory rows
 
@@ -458,7 +639,11 @@ yields no deletion row.
 Every file the parser reads is a JSON document or array. A `cli-history.json` cut mid-write yields
 the entries before the cut and one `system` row for the cut, `parser: unparseable record <N>
 (<reason>): <raw>` or `parser: array cut off after record N`, as the `roo-code` parser's docstring
-states.
+states. The API history read beside `ui_messages.json` for decisions reports its own bad records the
+same way. A `global-state.json`, `workspace-state.json`, `cli-settings.json`, `mcp_settings.json` or
+`mcp.json` that is not a JSON object is one `parser: <name> is not a JSON object` row; a
+`state.vscdb` that cannot be read, or whose extension row is not JSON, is one `parser:` row that
+never echoes the value.
 
 #### Fixtures
 
@@ -466,7 +651,26 @@ states.
 {"_file":"tasks/_index.json","record":{"version":1,"updatedAt":1760000005000,"entries":[{"id":"8f1c2b7e-1","number":1,"ts":1760000000000,"task":"fix tests","tokensIn":1200,"tokensOut":80,"totalCost":0.0041,"workspace":"/home/u/proj","mode":"code","status":"completed"}]}}
 {"_file":"api_conversation_history.json","record":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"execute_command","input":{"command":"pytest -q"}}],"ts":1760000002000}}
 {"_file":"api_conversation_history.json","record":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01A","content":"3 passed","is_error":false}],"ts":1760000003000}}
+{"_file":"api_conversation_history.json","record":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01B","content":"{\"status\":\"denied\",\"feedback\":\"leave conftest alone\"}"},{"type":"tool_result","tool_use_id":"toolu_01C","content":"{\"status\":\"approved\",\"feedback\":\"ok\"}\n\n[pytest]"}],"ts":1760000005000}}
+{"_file":"ui_messages.json","record":{"ts":1760000002000,"type":"ask","ask":"tool","text":"{\"tool\":\"appliedDiff\",\"path\":\"src/util.py\",\"diff\":\"-old\\n+new\"}","isAnswered":true}}
+{"_file":"global-state.json","record":{"autoApprovalEnabled":true,"alwaysAllowReadOnly":true,"allowedCommands":["git status","npm test"],"deniedCommands":["rm -rf"],"mode":"architect","roo-cline.allowedCommands":["git status"],"user-settings":{"features":{},"settings":{"taskSyncEnabled":true},"version":3},"organization-settings":{"version":1,"cloudSettings":{"recordTaskMessages":true,"enableTaskSharing":false},"defaultSettings":{},"allowList":{"allowAll":true,"providers":{}}}}}
+{"_file":"workspace-state.json","record":{"roo.retryQueue":[{"id":"1760000000500-abc123def","url":"https://app.roocode.com/api/events","options":{"method":"POST","body":"{\"type\":\"Task Message\",\"properties\":{\"taskId\":\"8f1c2b7e-1\",\"message\":{}}}","headers":{"Authorization":"Bearer <token>","Content-Type":"application/json"}},"timestamp":1760000000500,"retryCount":2,"type":"telemetry","lastError":"fetch failed"}]}}
+{"_file":"settings/mcp_settings.json","record":{"mcpServers":{"github":{"command":"npx","env":{"GITHUB_TOKEN":"<token>"},"alwaysAllow":["list_issues","get_issue"]}}}}
+{"_file":".roo/cli-settings.json","record":{"mode":"code","provider":"anthropic","requireApproval":true}}
 ```
+
+#### Source host rows
+
+The agent records no source-host integration. Grepped `github`, `gitlab`, `bitbucket`, `oauth`,
+`installation`, `repositor`, `pull request`, `clone` and `octokit` in `src/`, `apps/cli/src`,
+`packages/` and `webview-ui/src` at
+[b867ec9](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16)
+(the only OAuth flows sign in to model providers, OpenAI Codex and Qwen Code) and in
+`packages/cloud/src` at
+[44f6bba](https://github.com/RooCodeInc/Roo-Code/commit/44f6bba250235a98a21403df8b2ff64dfb5421c0)
+(no match); the Roo Code Cloud integrations the changelog names, Slack and Linear
+([`CHANGELOG.md:312`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/CHANGELOG.md#L312)),
+have no client code in either tree.
 
 ## Confidence
 
@@ -475,4 +679,8 @@ states.
 - Medium: `.roo/worktrees` is only the suggested default offered to the user
   ([`handlers.ts:230`](https://github.com/RooCodeInc/Roo-Code/blob/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16/src/core/webview/worktree/handlers.ts#L230)),
   so it may be elsewhere.
-- Not determined: the `checkpoint` object keys.
+- Medium: the `ItemTable` key of the extension's state row is the case-preserved
+  `RooVeterinaryInc.roo-cline` from VS Code's source; no real `state.vscdb` was checked, so the
+  parser reads the lower-case form too.
+- Not determined: the `checkpoint` object keys; whether the CLI of releases up to 3.53.0 started
+  the Roo Code Cloud client, and so whether its `workspace-state.json` can hold a retry queue.

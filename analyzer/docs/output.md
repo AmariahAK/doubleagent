@@ -1643,6 +1643,48 @@ generated: model=<model> provider=<provider> promptTokens=<n>
 generatedTokens=<n>` row per request; all of these rows have an empty
 `timestamp_utc`, since neither file records a time.
 
+The `roo-code` parser writes Roo Code's permission state as `system`
+rows. In a task's `ui_messages.json`, a tool approval ask marked
+`isAnswered` gives `permission decision: approved isAnswered=true (user
+or auto-approval)` after the ask's `tool_use` row, with its `tool_use_id`
+and `tool_name`: the record does not say whether the user clicked or the
+auto-approval settings approved it. In the API history, a `tool_result`
+that opens with Roo Code's denial or approval JSON gives `permission
+decision: denied` or `permission decision: approved`, with ` feedback=<text>`
+when the user typed a note, joined on the call's `tool_use_id` and
+`tool_name`; it follows the `tool_result` row when the API history is
+the task's only transcript, and is the API history's only row beside a
+`ui_messages.json`. Each task row from `history_item.json` or
+`tasks/_index.json` is followed by `permission mode: <mode>`, the task's
+mode slug (`code`, `architect`, `ask`, `debug` or a custom mode). The
+standing settings are `permission setting: <key>=<value> (from <file>,
+file mtime)`, one row per scalar or list entry, at the file's modification
+time and with an empty `session_id`: the auto-approval switches, command
+allow and deny lists and the current `mode` from the extension's global
+state (the `RooVeterinaryInc.roo-cline` row of an editor's
+`state.vscdb`, named `<file> ItemTable RooVeterinaryInc.roo-cline`) and
+the CLI's `.vscode-mock/global-storage/global-state.json`;
+`requireApproval`, `dangerouslySkipPermissions` and `mode` from
+`.roo/cli-settings.json`; and `mcpServers.<name>.alwaysAllow=<tool>` from
+`settings/mcp_settings.json` and a project's `.roo/mcp.json`, with the
+project as `project_path`. Releases up to 3.53.0 also signed in to Roo
+Code Cloud, the vendor's hosted service, and uploaded each task message
+while task sync was on; no file records which tasks were uploaded, so the
+parser writes no `session synced:` row. It writes the settings cache that
+decided it, `sync setting: user-settings.settings.taskSyncEnabled=<value>`
+(`unset (defaults to true)` when the key is absent) and `sync setting:
+organization-settings.cloudSettings.<key>=<value>` for `recordTaskMessages`,
+`enableTaskSharing`, `allowPublicTaskSharing`, `taskShareExpirationDays`,
+`allowMembersViewAllTasks` and `workspaceTaskVisibility`, each ending
+`(from <file>, Roo Code Cloud settings cache, file mtime)`, and, for each
+upload that failed and was queued for retry in the workspace state,
+`cloud upload queued: <event> task=<task id> type=<type>
+retries=<retryCount> url=<url> lastError=<error> (Roo Code Cloud retry
+queue, from <file> roo.retryQueue, request timestamp)` at the time it was
+queued, with the task as `session_id`, ` lastError=<error>` only when one
+is recorded, and `-` for an absent value. The queued request's headers and
+body are never written.
+
 The `vscode`, `cody` and `twinny` parsers write the same `model: <id>`
 and `model: <old> -> <new>` rows, from the request `modelId` (VS Code),
 the assistant message `model` (Cody, per chat) and `meta.model` (Twinny,

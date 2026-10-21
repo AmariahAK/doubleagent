@@ -1398,6 +1398,7 @@ AppData/Roaming/devin/credentials.toml
 */User/globalStorage/saoudrizwan.claude-dev/cache/remote_config_*.json
 Documents/Cline/webhook_config.json
 .vscode-mock/global-storage/secrets.json
+.roo/cli-credentials.json
 .local/share/kilo/auth.json
 .local/share/kilo/mcp-auth.json
 .local/share/kilo/kilo*.db*

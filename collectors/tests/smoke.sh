@@ -1365,6 +1365,14 @@ mkdir -p "$H/.qwen/sessions"
 printf '{"sessionId":"x","ipcToken":"x"}\n' >"$H/.qwen/sessions/4242.json"
 printf '{"sessionId":"x","ipcToken":"x"}\n' >"$H/.qwen/sessions/4243-0123abcd.json"
 
+# 2026-10-21 Roo Code CLI cloud credentials (#159)
+# The Roo Code CLI up to 3.53.0 saved its Roo Code Cloud token in
+# ~/.roo/cli-credentials.json (apps/cli/src/lib/storage/credentials.ts at
+# Roo-Code v3.53.0); the secret glob flags it. Checks follow the default run
+# below; the same file is in smoke.ps1 under alice.
+mkdir -p "$H/.roo"
+printf '{"token":"not-a-real-token"}\n' >"$H/.roo/cli-credentials.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1809,6 +1817,9 @@ check "#221 Kilo sandbox policy and preference collected" "row \"$K221/bb.json\"
 
 # 2026-10-21 Qwen Code session registry (#230)
 check "#230 Qwen Code session registry flagged secret" "row \"$H/.qwen/sessions/4242.json\" | grep -q '\"agent\":\"qwen-code\".*\"secret\":true,\"status\":\"collected\"' && row \"$H/.qwen/sessions/4243-0123abcd.json\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+
+# 2026-10-21 Roo Code CLI cloud credentials (#159)
+check "#159 roo cli-credentials.json flagged secret" "row \"$H/.roo/cli-credentials.json\" | grep -q '\"agent\":\"roo-code\".*\"secret\":true,\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
