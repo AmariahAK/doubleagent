@@ -1232,6 +1232,38 @@ with an empty `session_id` and the log's host-local time written as if
 it were UTC. `roo-code`,
 `aider`, `shellgpt` and `tabby` record no model and write no such row.
 
+The `pearai` parser writes per-call decisions on the agent surface, from
+the Roo Code 3.15.3 result texts of `api_conversation_history.json`: a
+tool result that starts `The user denied this operation.` is followed by
+`permission decision: denied`, one that starts `The user denied this
+operation and provided the following feedback:` by `permission decision:
+denied with feedback`, and one that starts `The user approved this
+operation and provided the following context:` by `permission decision:
+approved with feedback`, each with the call's `tool_name` and
+`tool_use_id` at the API message's time; beside a `ui_messages.json` the
+API history yields these rows only, with the `tool_use_id` of the last
+tool ask of `ui_messages.json` before the message. An approval with no
+note leaves no mark. The `pearai.pearai-roo-cline` row of the editor's
+`state.vscdb` gives one `task: <task> | tokensIn=<n> tokensOut=<n>
+totalCost=<n> number=<n>` row per `taskHistory` entry at the entry's
+`ts`, with the task id as `session_id`, ending ` | creator mode:
+newProjectType=<type> newProjectPath=<path>` for a task PearAI Creator
+started, and one `permission setting: <key>=<value> (from state.vscdb
+pearai.pearai-roo-cline, file mtime)` per standing auto-approval key
+(`autoApprovalEnabled`, `alwaysAllowReadOnly`, `alwaysAllowExecute`,
+`allowedCommands` and the other `alwaysAllow` keys) at the file's
+modification time. On the chat surface, the `PearAI` output channel log
+gives `model: <id>` and `model: <old> -> <new>` from each request's
+`Settings:` block, tracked over the file; a request whose prompt is not in
+the `<user>` and `<assistant>` block form (an autocomplete request) is
+`model request: <prompt>` and its reply `model completion: <reply>`.
+`dev_data/chat.jsonl` gives `user feedback: <true|false> (from
+dev_data/chat.jsonl)` after each rated reply, with the line's
+`sessionId`, and `dev_data/tokens_generated.jsonl` one `tokens
+generated: model=<model> provider=<provider> promptTokens=<n>
+generatedTokens=<n>` row per request; all of these rows have an empty
+`timestamp_utc`, since neither file records a time.
+
 The `vscode`, `cody` and `twinny` parsers write the same `model: <id>`
 and `model: <old> -> <new>` rows, from the request `modelId` (VS Code),
 the assistant message `model` (Cody, per chat) and `meta.model` (Twinny,
@@ -1552,6 +1584,7 @@ beside its `session synced: server conversation` row.
 | `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
 | `openclaw` | `.openclaw/agents/<id>/sessions/` copies of a transcript: the published `*.jsonl.reset.*` / `*.jsonl.deleted.*` archive files, `*.checkpoint.<uuid>.jsonl` and `*.jsonl.pre-doctor-*-repair-*.bak` (each copy's session-start row names it and is kept) | `.openclaw/agents/<id>/agent/openclaw-agent.sqlite` (`transcript_events` and the `session_transcript_archives` blobs) and the legacy `sessions/<id>.jsonl` |
 | `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
+| `pearai` | the `PearAI` output channel log `<editor>/logs/<session>/window<N>/exthost/output_logging_<time>/<n>-PearAI.log` (no timestamp, session or project: matches on text alone; a prompt sent with context items carries them and never pairs); `.pearai/dev_data/chat.jsonl` (the rated replies, no timestamp: matches on text within the session) | `.pearai/sessions/<sessionId>.json` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
 | `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
