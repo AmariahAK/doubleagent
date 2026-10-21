@@ -5806,6 +5806,236 @@ def build_kilo_share(home: Path) -> None:
     os.utime(home / KILO_SHARE_REL, (KILO_SHARE_MTIME, KILO_SHARE_MTIME))
 
 
+# Standing state, past use, scratch directories and deletion (issues 194,
+# 192, 221), source-derived, not observed on any real install: anomalyco/
+# opencode at cb07c555d4d1ca34430b7857b52f104c3d95e09e and Kilo-Org/kilocode
+# at 87cc35ce6904465a0eed507a8c75c79185863a22. Built by the tests that read
+# them, not by `build_home`, so the other tests' session and dedup counts
+# stay as they are.
+OPENCODE_STATE_DB_NAME = "opencode-state.db"
+OPENCODE_ARCHIVED = "ses_20ARCHIVED"
+OPENCODE_PINNED_GONE = "ses_21PINNEDGONE"
+OPENCODE_STATE_T0 = OPENCODE_T0 + 10800000  # 2026-10-03T12:00:00Z
+OPENCODE_STATE_MTIME = 1791043200  # 2026-10-03T16:00:00Z
+OPENCODE_WORKTREE = "/home/alice/.local/share/opencode/worktree/proj_a/brave-otter"
+KILO_LOG_NAME = "2026-10-03T100000.log"
+KILO_SANDBOX_SESSION_HASH = "a" * 64
+KILO_SANDBOX_DIR_HASH = "b" * 64
+
+
+def build_opencode_state_db(db: Path, t0: int = OPENCODE_STATE_T0) -> None:
+    """A 2.0 database with standing state: the `permission` table
+    (packages/core/src/permission/sql.ts:7-20), the `worktree` table
+    (worktree/sql.ts:6-20) and the deprecated `project_directory`
+    (project/sql.ts:31-47), an archived session with a rule list
+    (`session_v2.time_archived`, `permission`), and a tool call refused by a
+    deny rule (`error.type` `permission.rejected`, to-session-error.ts:61)."""
+    db.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(db))
+    con.executescript(
+        "CREATE TABLE project (id text PRIMARY KEY, worktree text NOT NULL, vcs text, name text,"
+        " time_created integer NOT NULL, time_updated integer NOT NULL, sandboxes text NOT NULL);"
+        "CREATE TABLE session_v2 %s;"
+        "CREATE TABLE session_message (id text PRIMARY KEY, session_id text NOT NULL,"
+        " type text NOT NULL, seq integer NOT NULL, time_created integer NOT NULL,"
+        " time_updated integer NOT NULL, data text NOT NULL);"
+        "CREATE TABLE permission (id text PRIMARY KEY, project_id text NOT NULL,"
+        " action text NOT NULL, resource text NOT NULL, time_created integer NOT NULL,"
+        " time_updated integer NOT NULL);"
+        "CREATE TABLE worktree (project_id text NOT NULL, directory text NOT NULL,"
+        " strategy text, time_created integer NOT NULL, PRIMARY KEY (project_id, directory));"
+        "CREATE TABLE project_directory (project_id text NOT NULL, directory text NOT NULL,"
+        " type text, strategy text, time_created integer NOT NULL,"
+        " PRIMARY KEY (project_id, directory));" % OPENCODE_SESSION_V2_COLUMNS
+    )
+    con.execute(
+        "INSERT INTO project (id, worktree, vcs, time_created, time_updated, sandboxes)"
+        " VALUES (?,?,?,?,?,?)",
+        ("proj_a", "/srv/proj", "git", t0, t0, "[]"),
+    )
+    _oc_v2_session(con, "session_v2", OPENCODE_ARCHIVED, "Archived", t0)
+    rules = [
+        {"action": "bash", "resource": "git *", "effect": "allow"},
+        {"action": "edit", "resource": "*.env", "effect": "deny"},
+    ]
+    con.execute(
+        "UPDATE session_v2 SET project_id = 'proj_a', time_archived = ?, permission = ?"
+        " WHERE id = ?",
+        (t0 + 90000, json.dumps(rules), OPENCODE_ARCHIVED),
+    )
+    blocked = {
+        "type": "tool",
+        "id": "call_s1",
+        "name": "edit",
+        "state": {
+            "status": "error",
+            "input": {"filePath": "/srv/proj/.env"},
+            "error": {"type": "permission.rejected", "message": "Permission denied: edit"},
+        },
+        "time": {"created": t0 + 2500, "completed": t0 + 2600},
+    }
+    _oc_v2_message(
+        con,
+        "msg_s1",
+        OPENCODE_ARCHIVED,
+        "assistant",
+        1,
+        t0 + 2000,
+        opencode_v2_assistant(t0 + 2000, [blocked]),
+    )
+    con.execute(
+        "INSERT INTO permission VALUES (?,?,?,?,?,?)",
+        ("per_01", "proj_a", "bash", "npm test", t0 + 3000, t0 + 3000),
+    )
+    con.execute(
+        "INSERT INTO worktree VALUES (?,?,?,?)", ("proj_a", OPENCODE_WORKTREE, "git", t0 + 4000)
+    )
+    # The same worktree in the deprecated table is not repeated; a `main` row is not one.
+    con.executemany(
+        "INSERT INTO project_directory VALUES (?,?,?,?,?)",
+        [
+            ("proj_a", OPENCODE_WORKTREE, "git_worktree", "git", t0 + 4000),
+            ("proj_a", "/srv/proj", "main", None, t0),
+        ],
+    )
+    con.commit()
+    con.close()
+
+
+def build_opencode_state(home: Path) -> None:
+    """OpenCode's terminal UI state at the 2.0 shapes
+    (packages/tui/src/prompt/history.tsx:20-23, stash.tsx:9-12,
+    context/local.tsx:517-530), a 1.x stash line (`input`), the database
+    above, and `kv.json` and `service.json` beside them, which the parser
+    must not want."""
+    state = home / ".local/state/opencode"
+    _jsonl(
+        state / "prompt-history.jsonl",
+        [
+            {"text": "list files", "files": [], "agents": [], "skills": [], "pasted": []},
+            {
+                "text": "git status",
+                "files": [],
+                "agents": [],
+                "skills": [],
+                "pasted": [],
+                "mode": "shell",
+            },
+            {
+                "text": "only the history kept this",
+                "files": [],
+                "agents": [],
+                "skills": [],
+                "pasted": [],
+            },
+        ],
+    )
+    _jsonl(
+        state / "prompt-stash.jsonl",
+        [
+            {
+                "prompt": {
+                    "text": "draft: rotate the keys",
+                    "files": [],
+                    "agents": [],
+                    "skills": [],
+                    "pasted": [],
+                },
+                "timestamp": OPENCODE_STATE_T0 + 5000,
+            },
+            {"input": "older stash", "parts": [], "timestamp": OPENCODE_STATE_T0 + 6000},
+        ],
+    )
+    _json(state / "session.json", {"pinned": [OPENCODE_SESSION, OPENCODE_PINNED_GONE]})
+    os.utime(state / "session.json", (OPENCODE_STATE_MTIME, OPENCODE_STATE_MTIME))
+    _json(state / "kv.json", {"share_consent": True})
+    _json(
+        state / "service.json", {"id": "svc", "url": "http://127.0.0.1:4096", "password": "REDACT"}
+    )
+    build_opencode_state_db(home / ".local/share/opencode" / OPENCODE_STATE_DB_NAME)
+
+
+def build_kilo_state(home: Path) -> None:
+    """Kilo Code's standing state, past use and remote control at 87cc35c:
+    the TUI history and stash in the 1.x shapes (packages/tui/src/prompt/
+    history.tsx:9-25, stash.tsx:9-13), the global config's `permission` key
+    (packages/core/src/v1/config/permission.ts:5-56), a sandbox policy and
+    preference (kilocode/sandbox/store.ts:11-17, preference.ts:10-29), the
+    retention state (kilocode/session/retention.ts:45-54) and a log with the
+    remote control lines (kilo-sessions/remote-session-log.ts:37-61,
+    kilo-sessions.ts:1220, :1259; core/src/util/log.ts:162-189)."""
+    state = home / ".local/state/kilo"
+    _jsonl(
+        state / "prompt-history.jsonl",
+        [
+            {"input": "fix the tests", "parts": []},
+            {"input": "ls -la", "mode": "shell", "parts": []},
+        ],
+    )
+    _jsonl(
+        state / "prompt-stash.jsonl",
+        [{"input": "stashed idea", "parts": [], "timestamp": KILO_T0 + 9000}],
+    )
+    config = home / ".config/kilo/kilo.jsonc"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(
+        '{\n  // written by an "always" approval\n'
+        '  "permission": {"bash": {"git status": "allow", "rm *": "deny"}, "webfetch": "ask"},\n'
+        '  "model": "anthropic/claude-sonnet-4-5",\n}\n',
+        encoding="utf-8",
+    )
+    os.utime(config, (KILO_SHARE_MTIME, KILO_SHARE_MTIME))
+    policy = (
+        home
+        / ".local/state/kilo-sandbox-policy"
+        / KILO_SANDBOX_SESSION_HASH
+        / (KILO_SANDBOX_DIR_HASH + ".json")
+    )
+    _json(
+        policy,
+        {
+            "enabled": True,
+            "mode": "proxy",
+            "allowedHosts": ["registry.npmjs.org"],
+            "writablePaths": ["/srv/proj"],
+            "version": 3,
+        },
+    )
+    os.utime(policy, (KILO_SHARE_MTIME, KILO_SHARE_MTIME))
+    pref = home / ".local/state/kilo-sandbox-preference" / (KILO_SANDBOX_DIR_HASH + ".json")
+    pref.parent.mkdir(parents=True, exist_ok=True)
+    pref.write_text("false", encoding="utf-8")
+    os.utime(pref, (KILO_SHARE_MTIME, KILO_SHARE_MTIME))
+    _json(
+        home / ".local/share/kilo/retention/state.json",
+        {
+            "at": KILO_T0 + 7200000,
+            "scanned": 40,
+            "deleted": 12,
+            "skippedActive": 1,
+            "failed": 0,
+            "durationMs": 830,
+            "reclaimedBytes": 4096,
+        },
+    )
+    log = home / ".local/share/kilo/log" / KILO_LOG_NAME
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(
+        'INFO  2026-10-03T10:00:00 +0ms service=default version=7.0.0 args=["remote"] kilo\n'
+        "INFO  2026-10-03T10:00:05 +12ms service=kilo-sessions connected=true "
+        "remote connection enabled\n"
+        "INFO  2026-10-03T10:00:09 +40ms service=kilo-sessions sessionID=%s "
+        "startedAt=2026-10-03T10:00:09.250Z model=anthropic/claude-sonnet-4-5 "
+        "directory=/srv/proj remote session started\n"
+        "INFO  2026-10-03T10:05:00 +3ms service=kilo-sessions sessionID=%s "
+        "startedAt=2026-10-03T10:00:09.250Z durationMs=290750 reason=disabled "
+        "remote session ended\n"
+        "INFO  2026-10-03T10:05:00 +1ms service=kilo-sessions remote connection disabled\n"
+        % (KILO_SESSION, KILO_SESSION),
+        encoding="utf-8",
+    )
+
+
 # ---- Cline and Roo Code (research/cline.md, research/roo-code.md) ----------------
 
 CLINE_TASK = "1791021600000"  # 2026-10-03T10:00:00Z, a Date.now() id

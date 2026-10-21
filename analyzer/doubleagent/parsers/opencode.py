@@ -104,9 +104,8 @@ OpenCode agent is a mode with its own permission ruleset. Both rows take
 the message's timestamp and `source_line` and sit before its other rows.
 In the JSON trees, where a file holds one message, the starting value is
 the message file before it in the same session directory. The session's
-`permission` JSON and the project's `sandboxes` are not read, because their
-shape is not in the research; no per-call approval or denial is recorded
-that the research names. Timestamps come from the
+`permission` rules are read (see below); the project's `sandboxes` are
+not. Timestamps come from the
 part's `time.start` (tool results: `state.time.end`), else the part row's
 `time_created`, else the message's `time.created`; user text parts carry no
 time of their own and inherit the message's. `project_path` is the
@@ -130,6 +129,59 @@ file name (`opencode.db`, `opencode-<channel>.db`, `kilo.db`). An absent
 value prints `-`. The legacy JSON trees have no share record, so their
 sessions have no sync row. Kilo Code's fork writes the same tables (see
 `kilo_code.py`).
+
+Permission, deletion and scratch rows (issue 194), source-derived; not
+observed on any real install (anomalyco/opencode at cb07c55; the 1.x texts
+at 907b3bc). All `system`:
+
+* A refused tool call: after its `tool_result` row, on its `tool_name` and
+  `tool_use_id` and at its time, `permission decision: rejected` (1.x
+  `state.error` "The user rejected permission to use this specific tool
+  call.", or 2.0 `error.type` `aborted` with "The user declined this tool
+  call"), `permission decision: rejected with feedback` (1.x "... with the
+  following feedback: <text>"), `permission decision: denied by rule` (1.x
+  "The user has specified a rule which prevents you ...") or `permission
+  decision: rejected (permission.rejected)` (2.0 `error.type`
+  `permission.rejected`, a deny rule or a rejection with feedback, which the
+  message does not tell apart). An approval leaves no record.
+* After the session-start and sync rows: per session with `time_archived`
+  set, `session archived (from <database> <table>, time_archived)` at that
+  time; per rule of the session's `permission` column (a JSON array of 2.0
+  `{action, resource, effect}` or 1.x `{permission, pattern, action}`),
+  `permission setting: session <permission> <pattern>=<effect> (from
+  <database> <table>.permission, time_updated)` at `time_updated`, a value
+  that is not a JSON array being `parser: unparseable record <rowid>
+  (<table>.permission: not a JSON array): <value>`; per row of the 2.0
+  `worktree(project_id, directory, strategy, time_created)` table, else of
+  the deprecated `project_directory` with `type` `git_worktree`, `scratch
+  directory: <directory> (git worktree of <project worktree> strategy=
+  <strategy>) (from <database> <table>, time_created)` with `project_path`
+  the directory and no session; per row of the `permission(id, project_id,
+  action, resource, time_created)` table of saved "always" grants,
+  `permission setting: <action> <resource>=allow (from <database>
+  permission, time_created)` with `project_path` the project's worktree.
+
+Terminal UI state (issue 194), source-derived; not observed on any real
+install, under `.local/state/opencode` (Kilo Code: `.local/state/kilo`):
+
+* `prompt-history.jsonl`, secondary (`secondary()`): the last 50 prompts,
+  2.0 `{text, files, agents, skills, pasted, mode?}`, 1.x and Kilo Code
+  `{input, parts, mode?}`, no session, project or time. One row per line
+  with an empty `timestamp_utc`: a `user` row, or for `mode` `shell` a
+  `tool_use` row with tool `shell` and no id, which pairs on text with the
+  transcript's command.
+* `prompt-stash.jsonl`: prompts set aside unsent, 2.0 `{prompt: {text},
+  timestamp}`, 1.x and Kilo Code `{input, parts, timestamp}` (epoch ms);
+  one `system` row per line at `timestamp`, `prompt stashed (unsent):
+  <text> (from <file>, timestamp)`.
+* `session.json` (OpenCode only), secondary: `{pinned: [<session id>]}`;
+  one `system` row per id, `session pinned: <id> (from <file> pinned, file
+  mtime)`, with that `session_id`, at the file's modification time. The id
+  outlives a deleted session. A file that is not a JSON object is one
+  `parser:` row.
+
+Bad lines in both JSONL files are `parser: unparseable line` rows
+(`error_rows`).
 
 Bad records (issue 139): each `message`, `part`, `session_message` or
 `event` row whose `data` is not a JSON object is its own `system` row
@@ -155,7 +207,15 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, error_rows, track_change
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    error_rows,
+    file_mtime,
+    iter_jsonl,
+    track_change,
+)
 
 # The session-start row of a session that a 2.0 database holds only in the 1.x
 # `session` table: deleted in 2.0, which leaves the 1.x rows behind.
@@ -308,6 +368,73 @@ def _error_text(err) -> str:
     return _join(e.get("name") or e.get("type") or "", msg) or (compact_json(err) if err else "")
 
 
+# The refusal texts a tool's error carries (research/opencode.md, Permission
+# records; research/kilo-code.md, Permission rows). 1.x and Kilo Code store
+# the error's message as the tool part's `state.error` string; 2.0 stores
+# `{type, message}` on the tool item.
+V1_REJECTED = "The user rejected permission to use this specific tool call."
+V1_FEEDBACK = (
+    "The user rejected permission to use this specific tool call with the following feedback: "
+)
+V1_RULE = "The user has specified a rule which prevents you from using this specific tool call."
+V2_DECLINED = "The user declined this tool call"
+
+
+def decision_text(err) -> str:
+    """The `permission decision:` row text for a tool error that records a
+    refusal, else "". The 2.0 `permission.rejected` type covers both a deny
+    rule and a rejection with feedback, which its message does not tell
+    apart, so it keeps the agent's own term."""
+    if isinstance(err, str):
+        etype, msg = "", err
+    elif isinstance(err, dict):
+        etype, msg = err.get("type"), err.get("message")
+        etype = etype if isinstance(etype, str) else ""
+        msg = msg if isinstance(msg, str) else ""
+    else:
+        return ""
+    if etype == "permission.rejected":
+        return "permission decision: rejected (permission.rejected)"
+    if etype in ("", "aborted") and msg == V2_DECLINED:
+        return "permission decision: rejected"
+    if msg.startswith(V1_FEEDBACK):
+        return "permission decision: rejected with feedback"
+    if msg.startswith(V1_REJECTED):
+        return "permission decision: rejected"
+    if msg.startswith(V1_RULE):
+        return "permission decision: denied by rule"
+    return ""
+
+
+def session_rules(value) -> list[tuple[str, str, str]] | None:
+    """(permission, pattern, effect) per rule of a session's `permission`
+    column: a JSON array of 2.0 `{action, resource, effect}` or 1.x and
+    Kilo Code `{permission, pattern, action}` objects. None when the value
+    is not a JSON array; entries that are neither shape are skipped."""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    try:
+        rules = json.loads(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+    if not isinstance(rules, list):
+        return None
+    out = []
+    for rule in rules:
+        rule = _d(rule)
+        if "effect" in rule:
+            keys = ("action", "resource", "effect")
+        elif "permission" in rule:
+            keys = ("permission", "pattern", "action")
+        else:
+            continue
+        perm, pattern, effect = (
+            str(rule[k]) if rule.get(k) not in (None, "") else "-" for k in keys
+        )
+        out.append((perm, pattern, effect))
+    return out
+
+
 class _Ctx:
     """Session-level values shared by every row of a session."""
 
@@ -329,9 +456,17 @@ class OpenCodeParser(Parser):
     next_db = "opencode-next.db"
     data_dir = ".local/share/opencode"
     db_prefixes: tuple[str, ...] = ("opencode",)
+    # The terminal UI's state directory: `prompt-history.jsonl` (secondary),
+    # `prompt-stash.jsonl` and, for OpenCode, `session.json` (secondary).
+    state_dir = ".local/state/opencode"
+    pinned_sessions = True
 
     def __init__(self) -> None:
         dd = re.escape(self.data_dir)
+        sd = re.escape(self.state_dir)
+        self.history_rx = re.compile(r"^%s/prompt-history\.jsonl$" % sd)
+        self.stash_rx = re.compile(r"^%s/prompt-stash\.jsonl$" % sd)
+        self.pinned_rx = re.compile(r"^%s/session\.json$" % sd if self.pinned_sessions else r"(?!)")
         prefixes = "|".join(re.escape(p) for p in self.db_prefixes)
         self.db_rx = re.compile(r"^%s/(?:%s)(?:-[^/]+)?\.db$" % (dd, prefixes))
         self.session_rx = re.compile(r"^%s/storage/session/([^/]+)/([^/]+)\.json$" % dd)
@@ -353,15 +488,27 @@ class OpenCodeParser(Parser):
                 self.message_rx,
                 self.old_session_rx,
                 self.old_message_rx,
+                self.history_rx,
+                self.stash_rx,
+                self.pinned_rx,
             )
         )
 
     def secondary(self, artifact: Artifact) -> bool:
-        return bool(self.db_rx.match(artifact.rel)) and self.db_label(artifact) == self.next_db
+        rel = artifact.rel
+        if self.history_rx.match(rel) or self.pinned_rx.match(rel):
+            return True
+        return bool(self.db_rx.match(rel)) and self.db_label(artifact) == self.next_db
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         rel = artifact.rel
-        if self.db_rx.match(rel):
+        if self.history_rx.match(rel):
+            yield from self._parse_history(artifact)
+        elif self.stash_rx.match(rel):
+            yield from self._parse_stash(artifact)
+        elif self.pinned_rx.match(rel):
+            yield from self._parse_pinned(artifact)
+        elif self.db_rx.match(rel):
             yield from self._parse_db(artifact, opts)
         elif self.session_rx.match(rel) or self.old_session_rx.match(rel):
             yield from self._parse_session_file(artifact, opts)
@@ -572,6 +719,10 @@ class OpenCodeParser(Parser):
                 text = out if isinstance(out, str) else compact_json(out)
             res = mk("tool_result", text, to_utc(times.get("end")) or to_utc(times.get("start")))
             res.tool_name, res.tool_use_id = name, call_id
+            decision = decision_text(state.get("error")) if status == "error" else ""
+            if decision:
+                row = mk("system", decision, res.timestamp_utc)
+                row.tool_name, row.tool_use_id = name, call_id
 
     # -- SQLite ---------------------------------------------------------------------
     def _parse_db(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
@@ -627,6 +778,7 @@ class OpenCodeParser(Parser):
         # (rowid, message, raw, session id) per record whose data does not decode.
         errors: list[tuple[int, str, str, str]] = []
         yield from self._share_rows(con, tables, artifact, ctx_for, errors)
+        yield from self._state_rows(con, tables, artifact, sessions, projects, ctx_for, errors)
         if v2:
             # 2.0: `session_message` is the transcript. The 1.x rows repeat a
             # migrated session and are read only for a session it does not
@@ -812,6 +964,107 @@ class OpenCodeParser(Parser):
             )
             yield row
 
+    def _state_rows(
+        self,
+        con: sqlite3.Connection,
+        tables: set,
+        artifact: Artifact,
+        sessions: dict,
+        projects: dict,
+        ctx_for,
+        errors: list,
+    ) -> Iterator[Row]:
+        """The database's standing state, all `system` rows: per session a
+        `session archived` row at `time_archived` and one `permission
+        setting: session ...` row per rule of its `permission` column at
+        `time_updated`; one `scratch directory:` row per worktree OpenCode
+        made (`worktree`, else `project_directory` of type `git_worktree`);
+        one `permission setting:` row per saved grant of the `permission`
+        table. A `permission` value that is not a JSON array is appended to
+        `errors` as (rowid, message, raw, session id)."""
+        db = self.db_label(artifact)
+
+        def mk(ctx: _Ctx, line: int, when, text: str, project: str | None = None) -> Row:
+            row = self._row(artifact, ctx, "", line, to_utc(when))
+            row.turn_type = "system"
+            row.text = compact(text)
+            if project is not None:
+                row.project_path = project
+            return row
+
+        for sid, (rowid, s, table) in sessions.items():
+            if s.get("time_archived"):
+                yield mk(
+                    ctx_for(sid),
+                    rowid,
+                    s["time_archived"],
+                    "session archived (from %s %s, time_archived)" % (db, table),
+                )
+            if s.get("permission") in (None, ""):
+                continue
+            rules = session_rules(s["permission"])
+            if rules is None:
+                raw = s["permission"]
+                raw = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
+                label = "unparseable record %d (%s.permission: not a JSON array)" % (rowid, table)
+                errors.append((rowid, label, raw, sid))
+                continue
+            for perm, pattern, effect in rules:
+                yield mk(
+                    ctx_for(sid),
+                    rowid,
+                    s.get("time_updated"),
+                    "permission setting: session %s %s=%s (from %s %s.permission, time_updated)"
+                    % (perm, pattern, effect, db, table),
+                )
+
+        def worktree_of(project_id) -> str:
+            wt = projects.get(project_id, {}).get("worktree") or ""
+            return wt if wt != "/" else ""
+
+        seen: set[str] = set()
+        for table in ("worktree", "project_directory"):
+            if table not in tables:
+                continue
+            for r in con.execute(
+                "select rowid as _rowid, * from %s order by time_created, directory" % table
+            ):
+                r = dict(r)
+                directory = str(r.get("directory") or "")
+                if not directory or directory in seen:
+                    continue
+                if table == "project_directory" and r.get("type") != "git_worktree":
+                    continue
+                seen.add(directory)
+                text = "scratch directory: %s (git worktree of %s strategy=%s) (from %s %s, " % (
+                    directory,
+                    worktree_of(r.get("project_id")) or "-",
+                    r.get("strategy") or "-",
+                    db,
+                    table,
+                )
+                yield mk(
+                    _Ctx(), r["_rowid"], r.get("time_created"), text + "time_created)", directory
+                )
+
+        if "permission" in tables:
+            for r in con.execute(
+                "select rowid as _rowid, * from permission order by time_created, id"
+            ):
+                r = dict(r)
+                if "action" not in r:
+                    # The first migration's `permission(project_id, data)`,
+                    # dropped later; its `data` shape is not in the research.
+                    break
+                yield mk(
+                    _Ctx(),
+                    r["_rowid"],
+                    r.get("time_created"),
+                    "permission setting: %s %s=allow (from %s permission, time_created)"
+                    % (r.get("action") or "-", r.get("resource") or "-", db),
+                    worktree_of(r.get("project_id")),
+                )
+
     @staticmethod
     def db_label(artifact: Artifact) -> str:
         """The database's file name for row text (`opencode.db`, `kilo.db`,
@@ -934,6 +1187,11 @@ class OpenCodeParser(Parser):
                         )
                         res.tool_name, res.tool_use_id = name, call_id
                         yield res
+                        decision = decision_text(state.get("error")) if status == "error" else ""
+                        if decision:
+                            row = mk("system", decision, res.timestamp_utc)
+                            row.tool_name, row.tool_use_id = name, call_id
+                            yield row
             if data.get("error"):
                 yield mk("system", "error: " + _error_text(data.get("error")))
         elif mtype:
@@ -966,6 +1224,72 @@ class OpenCodeParser(Parser):
         res = mk("tool_result", text, to_utc(times.get("completed")))
         res.tool_name, res.tool_use_id = "shell", call_id
         yield res
+
+    # -- terminal UI state ----------------------------------------------------------
+    def _parse_history(self, artifact: Artifact) -> Iterator[Row]:
+        """`prompt-history.jsonl`, the last 50 prompts typed into the terminal
+        UI: one row per line with an empty `timestamp_utc`, `session_id` and
+        `project_path`, since the line records none. A prompt is a `user`
+        row; a shell command (`mode` `shell`) a `tool_use` row with tool
+        `shell` and no id, which pairs on text with the transcript's command.
+        2.0 writes the prompt as `text`, 1.x and Kilo Code as `input`."""
+        errors: list = []
+        for n, rec in iter_jsonl(artifact.disk_path, errors):
+            text = rec.get("text") if isinstance(rec.get("text"), str) else rec.get("input")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            row = self._row(artifact, _Ctx(), "", n, "")
+            if rec.get("mode") == "shell":
+                row.turn_type, row.tool_name = "tool_use", "shell"
+            else:
+                row.turn_type = "user"
+            row.text = compact(text)
+            yield row
+        yield from error_rows(self, artifact, errors)
+
+    def _parse_stash(self, artifact: Artifact) -> Iterator[Row]:
+        """`prompt-stash.jsonl`, prompts the user set aside unsent: one
+        `system` row per line at its `timestamp` (epoch ms), `prompt stashed
+        (unsent): <text> (from <file>, timestamp)`. 2.0 writes `{prompt:
+        {text, ...}, timestamp}`, 1.x and Kilo Code `{input, parts,
+        timestamp}`."""
+        errors: list = []
+        for n, rec in iter_jsonl(artifact.disk_path, errors):
+            prompt = rec.get("prompt")
+            text = _d(prompt).get("text") if isinstance(prompt, dict) else rec.get("input")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            row = self._row(artifact, _Ctx(), "", n, to_utc(rec.get("timestamp")))
+            row.turn_type = "system"
+            row.text = compact(
+                "prompt stashed (unsent): %s (from %s, timestamp)" % (text.strip(), artifact.rel)
+            )
+            yield row
+        yield from error_rows(self, artifact, errors)
+
+    def _parse_pinned(self, artifact: Artifact) -> Iterator[Row]:
+        """`session.json`, `{pinned: [<session id>...]}`: one `system` row per
+        pinned id, `session pinned: <id> (from <file> pinned, file mtime)`,
+        with that `session_id`, at the file's modification time. The id stays
+        after the session is deleted, so a pinned session with no other row
+        is a trace of a deleted one. A file that is not a JSON object is one
+        `parser:` row."""
+        doc = _read_json(artifact.disk_path)
+        ts = file_mtime(artifact)
+        if doc is None:
+            row = self._row(artifact, _Ctx(), "", 1, ts)
+            row.turn_type = "system"
+            row.text = "parser: %s is not a JSON object" % artifact.rel
+            yield row
+            return
+        pinned = doc.get("pinned")
+        for sid in pinned if isinstance(pinned, list) else []:
+            if not isinstance(sid, str) or not sid:
+                continue
+            row = self._row(artifact, _Ctx(sid), "", 1, ts)
+            row.turn_type = "system"
+            row.text = "session pinned: %s (from %s pinned, file mtime)" % (sid, artifact.rel)
+            yield row
 
     # -- legacy JSON tree -----------------------------------------------------------
     @staticmethod
