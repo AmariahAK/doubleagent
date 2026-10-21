@@ -10,7 +10,13 @@ agent is parsed by the `claude-code` parser ([Parser plan](#parser-plan)).
 
 ## Source and evidence
 
-Closed source; no public repository, so there are no commit links. No binary below was ever
+Closed source. The public repository
+[anthropics/claude-code](https://github.com/anthropics/claude-code), at
+[1132b8a](https://github.com/anthropics/claude-code/commit/1132b8a98e93300bb3822197fb7eee12ce4fb906)
+(2026-10-21), is published under Anthropic's Commercial Terms of Service and ships the README,
+the changelog, example plugins, the TypeScript of four built-in mods (`sec-default`, `diff`,
+`telemetry`, `agents-md`) and the plugin API's type declarations, not the CLI, so the claims
+about the CLI below have no commit links. No binary below was ever
 executed. Each claim names its evidence level, best first:
 
 - **Bundle 2.1.288**, the evidence for the Collection part ([Per-user storage](#per-user-storage) to
@@ -86,6 +92,12 @@ executed. Each claim names its evidence level, best first:
 
 ### Source reviews
 
+- 2026-10-21: [anthropics/claude-code](https://github.com/anthropics/claude-code) at
+  [1132b8a](https://github.com/anthropics/claude-code/commit/1132b8a98e93300bb3822197fb7eee12ce4fb906):
+  the public repository was checked for the CLI's source and does not ship it; the opening of
+  [Source and evidence](#source-and-evidence) says what it holds, and
+  [Project-local files](#project-local-files) gains the `AGENTS.md` instruction files the
+  `agents-md` mod reads.
 - 2026-10-19: the agents that read, drive, copy or index Claude Code state, at Crush
   [7f799fb](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da),
   Agent Zero
@@ -323,7 +335,11 @@ Desktop exclusion `*/Claude*/Cache` does not prune it
 `.claude/scheduled_tasks.lock`, `.claude/routines/.state/`, `.claude/worktrees/`,
 `.claude/checkpoints/`, `.claude/mailbox/`, `.claude/agent-registry.json`,
 `.claude/agent-memory-local`, `.claude/first-run`, `.claude/assistant-daemon-state.json` (gitignore
-template, cc "claude-code-runtime" ctx). No per-project database.
+template, cc "claude-code-runtime" ctx). The built-in `agents-md` mod also reads `AGENTS.md`
+and `.claude/AGENTS.md` as project instructions, by default where a project has no `CLAUDE.md`
+([`mods/agents-md/hooks/names/agents-names.ts:5`](https://github.com/anthropics/claude-code/blob/1132b8a98e93300bb3822197fb7eee12ce4fb906/mods/agents-md/hooks/names/agents-names.ts#L5));
+the collector gathers them through the shared `project|AGENTS.md` entry and `claude-code|.claude`.
+No per-project database.
 
 ### Where the project path is recorded
 
