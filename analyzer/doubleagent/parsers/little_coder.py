@@ -62,8 +62,10 @@ it.
   .little-coder/config.json, file mtime)`, each at the file's
   modification time with an empty `session_id`: the gist holds an upload
   with a fresh session id of its own, and the bridge records no session,
-  so neither joins a saved session and `records_sync` and `records_relay`
-  stay unset.
+  so neither joins a saved session. `records_sync` and `records_relay` are
+  set all the same, since the parser writes both kinds of row; with no
+  session named, every little-coder session's `synced` and `relayed` read
+  `no`.
 * `checkpoints/<session id>/snapshots.json`: a JSON array of snapshots
   `{id, session_id, created_at (naive local ISO), turn_count,
   message_index, user_prompt_preview, token_snapshot, file_backups{<path>:
@@ -134,6 +136,8 @@ class LittleCoderParser(Parser):
     agent = "little-coder"
     name = "little-coder"
     has_secondary = True
+    records_sync = True
+    records_relay = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel

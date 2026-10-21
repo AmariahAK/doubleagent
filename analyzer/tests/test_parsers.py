@@ -12496,7 +12496,7 @@ class LittleCoderTests(ParserBase):
         for r in rows:
             self.assertNotIn("not-a-real", r.text)
             self.assertNotIn("ghp_", r.text)
-        self.assertFalse(LittleCoderParser.records_sync or LittleCoderParser.records_relay)
+        self.assertTrue(LittleCoderParser.records_sync and LittleCoderParser.records_relay)
         (self.home / LC_LEGACY_CONFIG).write_text("[1]", encoding="utf-8")
         rows = self.rows_for(LittleCoderParser(), LC_LEGACY_CONFIG)
         self.assertEqual(
