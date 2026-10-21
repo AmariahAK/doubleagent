@@ -4114,6 +4114,10 @@ CREATE TABLE messages (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, role TEXT 
   is_summary_message INTEGER DEFAULT 0 NOT NULL, prism_model_id TEXT, prism_model_name TEXT);
 CREATE TABLE files (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, path TEXT NOT NULL, content TEXT NOT NULL,
   version INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE read_files (session_id TEXT NOT NULL, path TEXT NOT NULL, read_at INTEGER NOT NULL,
+  PRIMARY KEY (path, session_id));
+CREATE TABLE mcp_disabled_servers (name TEXT PRIMARY KEY);
+CREATE TABLE mcp_enabled_servers (name TEXT PRIMARY KEY);
 """
 
 
@@ -4158,6 +4162,10 @@ def build_crush(home: Path) -> None:
     )
     (home / ".config/crush").mkdir(parents=True, exist_ok=True)
     (home / ".config/crush/crush.json").write_text("{}", encoding="utf-8")
+    # The data-directory lock (internal/db/datadirlock.go at 7f799fb): noise.
+    (home / ".crush/crush.lock").write_text(
+        '{"pid":4242,"version":"v0.80.0","started_at":"2026-10-01T12:00:00Z"}', encoding="utf-8"
+    )
 
 
 CRUSH_HYPER_SESSION = "6f1c0002"
@@ -4187,6 +4195,118 @@ def crush_hyper_records():
         """('h3','6f1c0002','assistant','[{"type":"text","data":{"text":"second step"}},{"type":"finish","data":{"reason":"end_turn","time":1760000104}}]','prism-auto','hyper',1760000103,1760000104,1760000104,'gpt-5-mini','GPT-5 mini'),"""
         """('h4','6f1c0002','assistant','[{"type":"text","data":{"text":"third step"}},{"type":"finish","data":{"reason":"end_turn","time":1760000106}}]','prism-auto','hyper',1760000105,1760000106,1760000106,NULL,NULL)""",
     ]
+
+
+CRUSH_PERM_SESSION = "6f1c0003"
+CRUSH_CHANNEL_SESSION = "6f1c0004"
+
+
+def crush_permission_records():
+    """Records for the permission, relay, deletion and file rows (issue 195),
+    from research/crush.md at crush 7f799fb: a user denial (`User denied
+    permission`, internal/agent/tools/tools.go 78-84), a hook denial and a
+    hook approval carrying `metadata.hook` (internal/agent/hooked_tool.go
+    62-140, internal/hooks/hooks.go 26-40), a session bound to a Signal-like
+    MCP channel with a pushed `<channel>` user message
+    (internal/agent/tools/mcp/channel.go 124-150, coordinator.go 436-465),
+    a sub-agent session whose parent was deleted (session.go 116-168), a
+    `files` snapshot, a `read_files` entry and one per-project MCP override
+    of each kind. Hook names, reasons, the channel server and its meta
+    values are invented; no real install has shown them. The Crush tests
+    apply these on top of `crush_records()`."""
+    hook_deny = json.dumps(
+        {
+            "hook": {
+                "hook_count": 1,
+                "decision": "deny",
+                "reason": "no rm",
+                "hooks": [{"name": "guard", "matcher": "bash", "decision": "deny"}],
+            }
+        }
+    )
+    hook_allow = json.dumps(
+        {
+            "hook": {
+                "hook_count": 2,
+                "decision": "allow",
+                "hooks": [
+                    {"name": "lint", "decision": "none"},
+                    {"name": "trust-view", "matcher": "view", "decision": "allow"},
+                ],
+            }
+        }
+    )
+
+    def result(call, name, content, meta, error):
+        return json.dumps(
+            [
+                {
+                    "type": "tool_result",
+                    "data": {
+                        "tool_call_id": call,
+                        "name": name,
+                        "content": content,
+                        "metadata": meta,
+                        "is_error": error,
+                    },
+                }
+            ]
+        ).replace("'", "''")
+
+    cols = "id,session_id,role,parts,model,provider,created_at,updated_at,finished_at"
+    channel_text = (
+        '<channel source="signal" group="g-77" sender="+15550100">deploy status?</channel>'
+    )
+    user_push = json.dumps([{"type": "text", "data": {"text": channel_text}}])
+    return [
+        "INSERT INTO sessions(id,title,message_count,prompt_tokens,completion_tokens,cost,updated_at,created_at) "
+        "VALUES('6f1c0003','Perms',6,0,0,0,1760000210,1760000200)",
+        "INSERT INTO sessions(id,title,message_count,prompt_tokens,completion_tokens,cost,updated_at,created_at,channel) "
+        "VALUES('6f1c0004','Signal',2,0,0,0,1760000310,1760000300,'signal')",
+        "INSERT INTO sessions(id,parent_session_id,title,message_count,prompt_tokens,completion_tokens,cost,updated_at,created_at) "
+        "VALUES('m9$$call_t1','6f1c0099','Task',0,0,0,0,1760000410,1760000400)",
+        "INSERT INTO messages(%s) VALUES " % cols
+        + "('p1','6f1c0003','tool','%s','','',1760000201,1760000201,NULL),"
+        % result("call_d1", "bash", "User denied permission", "", True)
+        + "('p2','6f1c0003','tool','%s','','',1760000202,1760000202,NULL),"
+        % result("call_d2", "bash", "Tool call blocked by hook. Reason: no rm", hook_deny, True)
+        + "('p3','6f1c0003','tool','%s','','',1760000203,1760000203,NULL),"
+        % result("call_d3", "view", "file contents", hook_allow, False)
+        + "('p4','6f1c0003','tool','%s','','',1760000204,1760000204,NULL),"
+        % result("call_d4", "bash", "Turn halted by hook. Reason: stop", "", True)
+        + "('c1','6f1c0004','user','%s',NULL,NULL,1760000301,1760000301,NULL),"
+        % user_push.replace("'", "''")
+        + "('c2','6f1c0004','user','%s',NULL,NULL,1760000302,1760000302,NULL)"
+        % user_push.replace("'", "''"),
+        "INSERT INTO files(id,session_id,path,content,version,created_at,updated_at) "
+        "VALUES('f1','6f1c0003','/srv/proj/a.txt','hello',1,1760000205,1760000205)",
+        "INSERT INTO read_files(session_id,path,read_at) VALUES('6f1c0003','/srv/proj/b.txt',1760000206)",
+        "INSERT INTO mcp_disabled_servers(name) VALUES('github')",
+        "INSERT INTO mcp_enabled_servers(name) VALUES('docs')",
+    ]
+
+
+# A crush.json with every standing permission key the parser reads beside a
+# provider key it must never print (internal/config/config.go 224-225,
+# 431-433, 471, 817-826, 865-869 at crush 7f799fb).
+CRUSH_CONFIG_JSON = {
+    "providers": {"anthropic": {"api_key": "sk-crush-secret"}},
+    "permissions": {"allowed_tools": ["view", "bash:ls"]},
+    "options": {"disabled_tools": ["sourcegraph"]},
+    "mcp": {"docs": {"type": "stdio", "disabled_tools": ["delete"], "enabled_tools": ["search"]}},
+    "hooks": {"PreToolUse": [{"name": "guard", "matcher": "bash", "command": "./guard.sh"}]},
+}
+
+# A crushrc shell config (internal/shellconfig/permissions.go 10-78 at crush
+# 7f799fb): one allow line with two tools, one deny line, and lines the
+# parser must ignore.
+CRUSHRC = """# crush shell config
+export ANTHROPIC_API_KEY=sk-rc-secret
+permissions allow view 'bash:ls'
+  permissions deny sourcegraph  # hide it
+permissions list
+echo permissions allow nothing
+"""
 
 
 GOOSE_SESSION = "20260301_1"

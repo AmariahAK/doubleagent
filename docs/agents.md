@@ -530,9 +530,15 @@ survived, and quitting the app checkpointed the WAL into `data.db`.
 
 Files read: `<project>/.crush/crush.db` (SQLite with WAL sidecars; reached
 as a project artifact, or under a home when Crush ran in `~`),
-`.local/share/crush/projects.json`, `AppData/Local/crush/projects.json`.
+`.local/share/crush/projects.json`, `AppData/Local/crush/projects.json`;
+every `crush.json` scope (`.config/crush/crush.json`,
+`.local/share/crush/crush.json`, `AppData/Local/crush/crush.json`,
+`.crush/crush.json`, a project's `crush.json` and `.crush.json`) for its
+standing permission entries only, so provider keys are never emitted; and
+the `permissions` lines of `.config/crush/crushrc` and a project's
+`crushrc` and `.crushrc`.
 
-Validated against: Source at [ca6ae26](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f), synthetic fixture.
+Validated against: Source at [ca6ae26](https://github.com/charmbracelet/crush/commit/ca6ae26ce016b980407ce32f012a467ec10c1e2f), synthetic fixture; the permission, relay, deletion and file rows and the standing settings from source at [7f799fb](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da), with fantasy v0.45.1 at [ec25857](https://github.com/charmbracelet/fantasy/commit/ec258577c7d825ec38cfdf8cbeaaa2f7e197aacd) for the stored hook metadata, synthetic fixture.
 
 ### `cursor`
 

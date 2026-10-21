@@ -4453,11 +4453,16 @@ class CrushTests(ParserBase):
         self.assertEqual(project_of("C:\\Users\\a\\repo\\.crush\\crush.db"), "C:\\Users\\a\\repo")
         self.assertEqual(project_of(".crush/crush.db"), "")
 
-    def test_config_and_sidecars_not_wanted(self):
+    def test_sidecars_and_lock_not_wanted(self):
         p = CrushParser()
+        seen = 0
         for a in self.col.artifacts:
-            if a.agent == "crush" and a.rel.endswith(("crush.json", "-wal", "-shm")):
+            if a.agent == "crush" and a.rel.endswith(("-wal", "-shm", "crush.lock")):
                 self.assertFalse(p.wants(a), a.rel)
+                seen += 1
+        self.assertGreaterEqual(seen, 3)
+        for rel in (".crush/crush.json", ".config/crush/crush.json"):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
 
     def test_bad_parts_is_reported_not_fatal(self):
         import sqlite3
@@ -4560,6 +4565,222 @@ class CrushTests(ParserBase):
         self.assertEqual(third.model, "hyper/prism-auto")
         first = next(r for r in rows if r.text == "first step")
         self.assertEqual(first.model, "hyper/claude-sonnet-4-5")
+
+    def _perm_rows(self):
+        from fixtures import crush_permission_records
+
+        self._insert(crush_permission_records())
+        return self.rows_for(CrushParser(), self.REL)
+
+    def test_permission_decisions(self):
+        # Issue 195: a user denial and hook decisions follow their result.
+        rows = self._perm_rows()
+        pairs = [
+            (rows[i - 1].text, r.text, r.tool_use_id, r.tool_name, r.timestamp_utc)
+            for i, r in enumerate(rows)
+            if r.text.startswith("permission decision:")
+        ]
+        self.assertEqual(
+            pairs,
+            [
+                (
+                    "[error] User denied permission",
+                    "permission decision: denied by user",
+                    "call_d1",
+                    "bash",
+                    "2025-10-09T08:56:41.000Z",
+                ),
+                (
+                    "[error] Tool call blocked by hook. Reason: no rm",
+                    "permission decision: deny by hook guard reason=no rm",
+                    "call_d2",
+                    "bash",
+                    "2025-10-09T08:56:42.000Z",
+                ),
+                (
+                    "file contents",
+                    "permission decision: allow by hook trust-view",
+                    "call_d3",
+                    "view",
+                    "2025-10-09T08:56:43.000Z",
+                ),
+                (
+                    "[error] Turn halted by hook. Reason: stop",
+                    "permission decision: halt by hook",
+                    "call_d4",
+                    "bash",
+                    "2025-10-09T08:56:44.000Z",
+                ),
+            ],
+        )
+        for r in rows:
+            if r.text.startswith("permission decision:"):
+                self.assertEqual((r.turn_type, r.session_id), ("system", "6f1c0003"))
+
+    def test_relay_rows(self):
+        from fixtures import CRUSH_CHANNEL_SESSION
+
+        self.assertTrue(CrushParser.records_relay)
+        rows = [r for r in self._perm_rows() if r.session_id == CRUSH_CHANNEL_SESSION]
+        relays = [(r.text, r.timestamp_utc) for r in rows if r.text.startswith("session relayed:")]
+        # One row from sessions.channel, one for the first push only.
+        self.assertEqual(
+            relays,
+            [
+                (
+                    "session relayed: channel signal (from crush.db sessions.channel, "
+                    "as of updated_at)",
+                    "2025-10-09T08:58:30.000Z",
+                ),
+                (
+                    "session relayed: channel signal sender +15550100 group g-77 "
+                    "(from crush.db message c1)",
+                    "2025-10-09T08:58:21.000Z",
+                ),
+            ],
+        )
+        texts = [r.text for r in rows]
+        self.assertEqual(
+            texts.index(relays[1][0]) - 1,
+            texts.index(next(t for t in texts if t.startswith("<channel "))),
+        )
+
+    def test_deleted_parent_row(self):
+        rows = [r for r in self._perm_rows() if r.text.startswith("session deleted:")]
+        self.assertEqual(
+            [(r.session_id, r.text, r.timestamp_utc, r.project_path) for r in rows],
+            [
+                (
+                    "6f1c0099",
+                    "session deleted: 6f1c0099 (parent_session_id of sub-agent session "
+                    "m9$$call_t1 names no session in crush.db; time is the sub-agent's "
+                    "updated_at)",
+                    "2025-10-09T09:00:10.000Z",
+                    "/alice",
+                )
+            ],
+        )
+
+    def test_mcp_and_file_rows(self):
+        rows = self._perm_rows()
+        mcp = [r for r in rows if r.text.startswith("permission setting:")]
+        self.assertEqual(
+            [r.text for r in mcp],
+            [
+                "permission setting: mcp_enabled_servers=docs (from .crush/crush.db, file mtime)",
+                "permission setting: mcp_disabled_servers=github (from .crush/crush.db, file mtime)",
+            ],
+        )
+        self.assertEqual({(r.session_id, r.project_path) for r in mcp}, {("", "/alice")})
+        files = [
+            (r.session_id, r.text, r.timestamp_utc)
+            for r in rows
+            if r.text.startswith(("file version:", "file read:"))
+        ]
+        self.assertEqual(
+            files,
+            [
+                (
+                    "6f1c0003",
+                    "file version: /srv/proj/a.txt version=1 bytes=5 (from crush.db files)",
+                    "2025-10-09T08:56:45.000Z",
+                ),
+                (
+                    "6f1c0003",
+                    "file read: /srv/proj/b.txt (from crush.db read_files, read_at)",
+                    "2025-10-09T08:56:46.000Z",
+                ),
+            ],
+        )
+
+    def test_config_standing_rows(self):
+        from fixtures import CRUSH_CONFIG_JSON
+
+        rel = ".crush/crush.json"
+        (self.home / rel).write_text(json.dumps(CRUSH_CONFIG_JSON), encoding="utf-8")
+        rows = self.rows_for(CrushParser(), rel)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: permissions.allowed_tools=view (from .crush/crush.json, file mtime)",
+                "permission setting: permissions.allowed_tools=bash:ls (from .crush/crush.json, file mtime)",
+                "permission setting: options.disabled_tools=sourcegraph (from .crush/crush.json, file mtime)",
+                "permission setting: mcp.docs.disabled_tools=delete (from .crush/crush.json, file mtime)",
+                "permission setting: mcp.docs.enabled_tools=search (from .crush/crush.json, file mtime)",
+                'permission setting: hooks.PreToolUse={"command":"./guard.sh","matcher":"bash",'
+                '"name":"guard"} (from .crush/crush.json, file mtime)',
+            ],
+        )
+        self.assertEqual(
+            {(r.turn_type, r.session_id, r.project_path) for r in rows}, {("system", "", "/alice")}
+        )
+        self.assertTrue(all(r.timestamp_utc.endswith("Z") for r in rows))
+        self.assertFalse(any("sk-crush-secret" in r.text for r in rows))
+        # The global config holds no permission key: no rows.
+        self.assertEqual(self.rows_for(CrushParser(), ".config/crush/crush.json"), [])
+
+    def test_config_not_json_is_one_row(self):
+        rel = ".config/crush/crush.json"
+        (self.home / rel).write_text("{not json", encoding="utf-8")
+        rows = self.rows_for(CrushParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.project_path) for r in rows],
+            [("system", "parser: .config/crush/crush.json is not a JSON object", "")],
+        )
+
+    def test_crushrc_standing_rows(self):
+        from fixtures import CRUSHRC
+
+        rel = ".config/crush/crushrc"
+        (self.home / rel).write_text(CRUSHRC, encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        self.assertTrue(CrushParser().wants(self.artifact(rel)))
+        rows = self.rows_for(CrushParser(), rel)
+        self.assertEqual(
+            [(r.text, r.source_line) for r in rows],
+            [
+                (
+                    "permission setting: permissions.allowed_tools=view "
+                    "(from .config/crush/crushrc line 3, file mtime)",
+                    3,
+                ),
+                (
+                    "permission setting: permissions.allowed_tools=bash:ls "
+                    "(from .config/crush/crushrc line 3, file mtime)",
+                    3,
+                ),
+                (
+                    "permission setting: options.disabled_tools=sourcegraph "
+                    "(from .config/crush/crushrc line 4, file mtime)",
+                    4,
+                ),
+            ],
+        )
+        self.assertFalse(any("sk-rc-secret" in r.text for r in rows))
+
+    def test_crushrc_bad_line_is_reported(self):
+        from fixtures import CRUSHRC
+
+        rel = ".config/crush/crushrc"
+        lines = CRUSHRC.split("\n")
+        lines.insert(3, "permissions allow 'unclosed")
+        (self.home / rel).write_text("\n".join(lines), encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(CrushParser(), rel)
+        self.assertEqual(
+            [r.source_line for r in rows if r.text.startswith("permission setting:")], [3, 3, 5]
+        )
+        self.assertEqual(
+            [(r.turn_type, r.text, r.source_line, r.timestamp_utc) for r in rows[3:]],
+            [
+                (
+                    "system",
+                    "parser: unparseable line (No closing quotation): permissions allow 'unclosed",
+                    4,
+                    "",
+                )
+            ],
+        )
 
 
 class GooseTests(ParserBase):

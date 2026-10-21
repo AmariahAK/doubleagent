@@ -8,7 +8,8 @@ and goose migrations, and keeps one database per project where OpenCode keeps on
 ([OpenCode's permission records](opencode.md#permission-records)), no agent or mode recorded per
 message ([OpenCode's messages](opencode.md#message-and-part)), and file history in a `files` table
 instead of git snapshots. Hyper is Charm's hosted model gateway, and its Prism router picks a model
-per request. The analyzer parses the per-project `crush.db`, from source and fixtures only.
+per request. The analyzer parses the per-project `crush.db`, every `crush.json` scope and the
+`crushrc` shell configs, from source and fixtures only.
 
 ## Source and evidence
 
@@ -25,6 +26,14 @@ No real install.
 
 ### Source reviews
 
+- 2026-10-21: charmbracelet/crush at
+  [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da),
+  with charmbracelet/fantasy at
+  [`ec25857`](https://github.com/charmbracelet/fantasy/commit/ec258577c7d825ec38cfdf8cbeaaa2f7e197aacd)
+  (v0.45.1, the version `go.mod` pins): the fantasy copy settled that the hook metadata reaches the
+  stored result, the dead `~/.config/crush/.crushrc` went from Confidence to
+  [Per-user storage](#per-user-storage), and the parser plan's permission, relay, deletion, file and
+  bad-line subsections now describe rows the parser writes; a source-host subsection was added.
 - 2026-10-19:
   [`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da),
   the default branch that day, against
@@ -52,6 +61,11 @@ Config: `~/.config/crush/crush.json`, or `$CRUSH_GLOBAL_CONFIG/crush.json`
 ([`internal/config/load.go:1212-1216`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/config/load.go#L1212-L1216)),
 with an optional sibling shell config `crushrc`
 ([`load.go:1219-1231`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/config/load.go#L1219-L1231)).
+A `.crushrc` in the config directory is never read: the global list holds the system config, the
+global `crush.json`, its `crushrc` sibling and the data `crush.json`, and the names `.crushrc`,
+`crushrc`, `.crush.json` and `crush.json` are searched only from the working directory up to the
+project boundary
+([`load.go:946-975`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/config/load.go#L946-L975)).
 Global context files default to `~/.config/crush/CRUSH.md` and `~/.config/AGENTS.md`
 ([`load.go:578-582`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/config/load.go#L578-L582)).
 
@@ -255,8 +269,9 @@ vendor without a session id
 ([`internal/session/session.go:173`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/session/session.go#L173),
 [`internal/event/all.go:28-30`](https://github.com/charmbracelet/crush/blob/12f96b4acd8f36312befbbf6fe7459da9ca07a72/internal/event/all.go#L28-L30)),
 and nothing on disk records it. The analyzer reads the database, the sub-agent sessions included,
-but does not yet flag a missing parent, and reads neither the log nor the stats page
-([Deletion](#deletion-rows); see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+and writes a `session deleted:` row for each parent a sub-agent session names that is gone
+([Deletion rows](#deletion-rows)); it reads neither the log nor the stats page (see
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### Record schema
 
@@ -340,9 +355,12 @@ in its `metadata`, `decision` being `allow`, `deny` or `none`
 [`:98-140`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/hooked_tool.go#L98-L140),
 [`internal/hooks/hooks.go:26-40`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/hooks/hooks.go#L26-L40),
 [`:56-65`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/hooks/hooks.go#L56-L65)).
-Whether the `hook` object reaches the stored result is not confirmed: the copy from the tool
-response's `Metadata` to the stored `ClientMetadata` happens in the `fantasy` library, which was not
-cloned ([Confidence](#confidence)).
+The `hook` object reaches the stored result: fantasy copies the tool response's `Metadata` to the
+result's `ClientMetadata` on both the error and the success path
+([`agent.go:851`](https://github.com/charmbracelet/fantasy/blob/ec258577c7d825ec38cfdf8cbeaaa2f7e197aacd/agent.go#L851),
+[`:859`](https://github.com/charmbracelet/fantasy/blob/ec258577c7d825ec38cfdf8cbeaaa2f7e197aacd/agent.go#L859)),
+and Crush stores `ClientMetadata` as the part's `metadata`, a JSON string
+([`internal/agent/agent.go:2155-2160`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/agent.go#L2155-L2160)).
 
 #### Synthetic results
 
@@ -388,6 +406,9 @@ and at the end of such a turn Crush sends the reply through one of the server's 
 mode); the `sender` and `group` meta attributes name the recipient
 ([`internal/agent/channelreply.go:23-40`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/channelreply.go#L23-L40),
 [`:245-307`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/channelreply.go#L245-L307)).
+The rendered element is the turn's prompt as it stands, so the stored user text starts
+`<channel source=`
+([`internal/backend/channels.go:75-96`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/backend/channels.go#L75-L96)).
 The source names a Signal MCP server as the model case, so a channel session can be carried through
 a messaging platform. The automatic reply is not a stored tool call: only the log records it
 ([Data directory files](#data-directory-files)).
@@ -476,7 +497,8 @@ and the per-project `mcp_enabled_servers` and `mcp_disabled_servers` tables. `--
 command-line flag held in memory
 ([`internal/cmd/root.go:61`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/cmd/root.go#L61),
 [`:301`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/cmd/root.go#L301)),
-never written. The `crush.json` files and `crushrc` are collected.
+never written. The `crush.json` files and `crushrc` are collected and parsed
+([Permission rows](#permission-rows)).
 
 The global data `crush.json` keeps the user's current `models.large` and `models.small` and up to
 five `recent_models` per type
@@ -500,7 +522,10 @@ at `~/.config/crush/`, `~/.local/share/crush/` and `<project>/.crush/`. `reasoni
 ### Parser plan
 
 Globs: `.local/share/crush/projects.json`,
-`AppData/Local/crush/projects.json`, project-level `.crush/crush.db{,-wal,-shm}`.
+`AppData/Local/crush/projects.json`, project-level `.crush/crush.db{,-wal,-shm}`, every `crush.json`
+scope (`.config/crush/crush.json`, `.local/share/crush/crush.json`,
+`AppData/Local/crush/crush.json`, `.crush/crush.json`, a project's `crush.json` and `.crush.json`),
+and `.config/crush/crushrc` and a project's `crushrc` and `.crushrc`.
 
 Rows: one per part in `parts`.
 
@@ -517,24 +542,31 @@ Rows: one per part in `parts`.
 
 #### Permission rows
 
-The parser emits no permission rows; the records below exist and are not yet read.
+Parsed; source-derived; not observed on any real install.
 
-Per call (primary, not parsed). A `tool_result` whose
-content is `User denied permission` is a user denial; one whose content
-starts `Tool call blocked by hook.` or `Turn halted by hook.` is a hook
-denial; a `metadata.hook.decision` of `allow` on any result is a hook
-approval that skipped the prompt
-([Permission outcomes in tool results](#permission-outcomes-in-tool-results)). The
-parser could yield `permission decision: denied` and `permission
-decision: <hook decision> (hook <name>)` beside the result, joined on
-`tool_call_id`. A prompt the user approved, a session grant, the allow
-list and yolo mode leave nothing, so the absence of a denial is not an
-approval.
+Per call (primary). After a `tool_result` row, with its `tool_name` and `tool_use_id`, the parser
+writes `permission decision: denied by user` when the error content is `User denied permission`;
+`permission decision: <allow|deny|halt> by hook <names> reason=<reason>` from `metadata.hook`, where
+`halt` wins over the decision, `<names>` are the hooks whose own decision (or halt) matches, and
+` reason=` is present only when the hook gave one; and `permission decision: <deny|halt> by hook`
+for an error result that starts `Tool call blocked by hook.` or `Turn halted by hook.` but carries
+no hook metadata
+([Permission outcomes in tool results](#permission-outcomes-in-tool-results)). A hook decision of
+`none` without a halt writes nothing. A prompt the user approved, a session grant, the allow list
+and yolo mode leave nothing, so the absence of a denial is not an approval.
 
-Standing (not parsed). The keys of every `crush.json` scope, the `crushrc` lines and the
-per-project MCP tables in [crush.json and crushrc](#crushjson-and-crushrc); one
-`permission setting:` row per entry at the file's modification time, as
-other parsers write, would need the parser to want those files.
+Standing (primary). One `permission setting: <key>=<value> (from <file>, file mtime)` row per entry
+at the file's modification time, with an empty `session_id`
+([crush.json and crushrc](#crushjson-and-crushrc)): from every `crush.json` scope the entries of
+`permissions.allowed_tools`, `options.disabled_tools`, `mcp.<name>.disabled_tools`,
+`mcp.<name>.enabled_tools` and each hook under `hooks.<event>` (the hook object as compact JSON);
+from a `crushrc`, each tool on a `permissions allow` line as `permissions.allowed_tools=<tool>` and
+on a `permissions deny` line as `options.disabled_tools=<tool>`, with `(from <file> line <n>, file
+mtime)`; from `crush.db`, `mcp_enabled_servers=<name>` and `mcp_disabled_servers=<name>` at the
+database file's modification time. The `crushrc` reader takes only lines whose first word is
+`permissions`, as written, so a line inside a condition that never ran still yields its rows. A
+workspace `.crush/crush.json` and a project file carry the project as `project_path`; no other
+`crush.json` key is read, so provider keys and tokens never reach a row.
 
 #### Model rows
 
@@ -560,10 +592,14 @@ per-session record ([crush.json and crushrc](#crushjson-and-crushrc)).
 Crush keeps none that repeats the transcript: no prompt history file (the TUI's prompt history is a
 query over `messages`,
 [`internal/ui/model/history.go:18-30`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/ui/model/history.go#L18-L30)),
-no search index, no export. Secondary evidence of other kinds, none parsed: `files` (each version of
-every file the agent wrote, per session), `read_files` (each file read, per session, with
-`read_at`), both deleted with their session; `logs/crush.log` and `stats/index.html`
-([Data directory files](#data-directory-files)), which outlive it. Compaction (`is_summary_message`)
+no search index, no export. Evidence of other kinds: `files` (each version of every file the agent
+wrote, per session) and `read_files` (each file read, per session, with `read_at`), both deleted
+with their session, are parsed, as `file version: <path> version=<n> bytes=<length> (from crush.db
+files)` at the snapshot's `created_at` (the content stays in the database) and `file read: <path>
+(from crush.db read_files, read_at)` at `read_at`, source-derived; not observed on any real install.
+Neither repeats a transcript event, so neither is secondary. `logs/crush.log` and
+`stats/index.html` ([Data directory files](#data-directory-files)), which outlive the session, are
+not parsed. Compaction (`is_summary_message`)
 adds a summary message and keeps the earlier ones; the model reads from the summary onward
 ([`internal/db/sql/messages.sql:79`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/db/sql/messages.sql#L79)),
 so nothing is lost locally.
@@ -625,14 +661,15 @@ model calls:
 
 The parser plan proposes no sync row.
 
-Relay (primary, not parsed). A session whose `sessions.channel` is
-set, or whose user text starts with `<channel source=`, was driven by an
-MCP channel ([Channels (relay)](#channels-relay)). The parser could yield
-`session relayed: channel <server> (from crush.db sessions.channel)` at
-the first such user message and set `records_relay`; whether the
-channel is a messaging platform is only in the server's name and the
-`<channel>` attributes. A channel turn's automatic reply is in the log
-alone.
+Relay (primary, parsed; source-derived; not observed on any real install). A session whose
+`sessions.channel` is set, or whose user text starts with `<channel source=`, was driven by an MCP
+channel ([Channels (relay)](#channels-relay)). The parser sets `records_relay` and writes `session
+relayed: channel <server> (from crush.db sessions.channel, as of updated_at)` after the session
+start of a bound session, at its `updated_at`, and `session relayed: channel <source> sender
+<sender> group <group> (from crush.db message <id>)` after the first user message of a session for
+each distinct source, sender and group, with `sender` and `group` present only when the element
+carries them. Whether the channel is a messaging platform is only in the server's name and the
+`<channel>` attributes. A channel turn's automatic reply is in the log alone.
 
 Origin: none; every session is created by the local process.
 
@@ -644,21 +681,26 @@ database's location, no scratch path can become a project; no `scratch directory
 
 #### Deletion rows
 
-Not parsed. A session whose `parent_session_id` names no session is the trace of a deleted
-parent ([What survives a delete](#what-survives-a-delete)), and the parser could say so on its
-`session start` row (`parent=<id> (parent session not in database)`). The log, the stats
-page and the telemetry event `session deleted` (no session id) outlive
-the delete.
+Parsed; source-derived; not observed on any real install. A session whose `parent_session_id`
+names no session is the trace of a deleted parent
+([What survives a delete](#what-survives-a-delete)). The parser writes one row per such parent,
+`session deleted: <parent> (parent_session_id of sub-agent session <id> names no session in
+crush.db; time is the sub-agent's updated_at)`, with `session_id` the deleted parent, so the parent
+appears as a session of its own; the delete time is not recorded, and the sub-agent's `updated_at`
+is only a time the parent still existed before. The log, the stats page and the telemetry event
+`session deleted` (no session id) outlive the delete and are not read.
 
 #### Bad-line rows
 
-No line-oriented file is read. `projects.json` that does
-not parse is one whole-file `parser:` row; a `messages.parts` value that
-does not decode (not JSON, or JSON that is not an array) is one `system`
-row `parser: unparseable record <rowid> (message <id> parts: <reason>):
-<parts>`, carrying the stored value in full, with the message's session
-and project, an empty timestamp and `source_line` set to the rowid; the
-session's other messages are still yielded
+A `crushrc` is read line by line for its `permissions` lines: such a line that does not split
+into shell words (an unclosed quote) is one row `parser: unparseable line (<reason>): <line>` with
+`source_line` its line number, and the file's other lines are still read; other lines are not
+records and are skipped. `projects.json` that does not parse is one whole-file `parser:` row, as is
+a `crush.json` that is not a JSON object (`parser: <file> is not a JSON object`); a `messages.parts`
+value that does not decode (not JSON, or JSON that is not an array) is one `system` row
+`parser: unparseable record <rowid> (message <id> parts: <reason>): <parts>`, carrying the stored
+value in full, with the message's session and project, an empty timestamp and `source_line` set to
+the rowid; the session's other messages are still yielded
 ([issue 166](https://github.com/seanthegeek/doubleagent/issues/166)).
 
 #### Fixtures
@@ -679,18 +721,49 @@ INSERT INTO messages(id,session_id,role,parts,model,provider,created_at,updated_
 {"projects":[{"path":"/home/u/repo","data_dir":"/home/u/repo/.crush","last_accessed":"2026-10-01T12:00:00Z"}]}
 ```
 
+Permission, relay, deletion and file records, invented values in the shapes above (a hook denial
+shown; the user denial is the content `User denied permission` with `is_error: true` and an empty
+`metadata`):
+
+```json
+{"type":"tool_result","data":{"tool_call_id":"call_d2","name":"bash","content":"Tool call blocked by hook. Reason: no rm","metadata":"{\"hook\":{\"hook_count\":1,\"decision\":\"deny\",\"reason\":\"no rm\",\"hooks\":[{\"name\":\"guard\",\"matcher\":\"bash\",\"decision\":\"deny\"}]}}","is_error":true}}
+```
+
+```text
+<channel source="signal" group="g-77" sender="+15550100">deploy status?</channel>
+```
+
+A sub-agent session `m9$$call_t1` with `parent_session_id` `6f1c0099` and no such session; a
+`crush.json` with `permissions.allowed_tools`, `options.disabled_tools`, `mcp.docs.disabled_tools`,
+`mcp.docs.enabled_tools` and one `hooks.PreToolUse` entry beside a provider `api_key`; a `crushrc`:
+
+```sh
+permissions allow view 'bash:ls'
+permissions deny sourcegraph
+```
+
+#### Source host rows
+
+The agent records no source-host integration. Searched `github`, `gitlab`, `bitbucket`, `oauth`,
+`installation`, `repositor`, `pull request` and `clone` over the Go sources at
+[`7f799fb`](https://github.com/charmbracelet/crush/commit/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da):
+the only GitHub account Crush holds is the Copilot OAuth grant it reads from
+`github-copilot/apps.json` to reach the Copilot models
+([Credentials](#credentials)), a model-provider credential, not repository access; the `gh` CLI is
+only probed on `PATH` to word the tool descriptions
+([`internal/agent/tools/tools.go:86-93`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/agent/tools/tools.go#L86-L93)),
+and GitHub's MCP endpoint appears only in a list of servers that keep no MCP session
+([`internal/config/config.go:628-631`](https://github.com/charmbracelet/crush/blob/7f799fbc1fdaf0a931a4ff73e6539bafee59d3da/internal/config/config.go#L628-L631)),
+so a GitHub MCP server is an ordinary user-configured MCP entry. No repository list and no
+repository-bound remote conversation is stored.
+
 ## Confidence
 
 - High: all paths and file names, the table columns, the part JSON field names, the timestamp units,
   WAL, the tool result as a separate message and the absence of a git branch (source).
-- Medium: whether a `.crushrc` in the global config directory is read; `shellConfigSibling` derives
-  only `crushrc`
-  ([`load.go:1219-1225`](https://github.com/charmbracelet/crush/blob/ca6ae26ce016b980407ce32f012a467ec10c1e2f/internal/config/load.go#L1219-L1225)), so
-  `~/.config/crush/.crushrc` is probably ignored.
 - Medium: the Hyper Prism columns (`prism_model_id`, `prism_model_name`) are not observed on any
   real install, source-derived ([Model columns](#model-columns)).
-- Not determined: whether the `hook` object reaches the stored `metadata` of a `tool_result`; the
-  copy from the tool response happens in the `fantasy` library, which was not cloned
-  ([Permission outcomes in tool results](#permission-outcomes-in-tool-results)).
+- Medium: the permission, relay, deletion, file and standing-setting rows rest on source alone; the
+  hook, channel and Hyper surfaces are unexercised, and a real-install round is still owed.
 - Not determined: the `binary` part key casing in shipped builds (inferred from an untagged Go
   struct).

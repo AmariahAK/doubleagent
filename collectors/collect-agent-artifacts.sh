@@ -1409,7 +1409,6 @@ Documents/Cline/webhook_config.json
 AppData/Local/crush/crush.json
 .config/crush/crush.json
 .config/crush/crushrc
-.config/crush/.crushrc
 .crush/crush.json
 .config/goose/secrets.yaml
 .config/goose/config.yaml
