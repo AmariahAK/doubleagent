@@ -5102,6 +5102,17 @@ class CrushTests(ParserBase):
         )
 
 
+from fixtures import (
+    GOOSE_PERMISSION_SESSION,
+    GOOSE_PERMISSION_YAML,
+    GOOSE_SCHEDULE,
+    GOOSE_STANDING_MTIME,
+    build_goose_standing,
+    goose_permission_records,
+    goose_streamed_llm_records,
+)
+
+
 class GooseTests(ParserBase):
     REL = ".local/share/goose/sessions/sessions.db"
     HISTORY = ".local/state/goose/history.txt"
@@ -5112,7 +5123,12 @@ class GooseTests(ParserBase):
         self.assertTrue(p.secondary(self.artifact(self.HISTORY)))
         self.assertFalse(p.secondary(self.artifact(self.REL)))
         self.assertFalse(p.secondary(self.artifact(GOOSE_LEGACY_REL)))
-        self.assertFalse(p.secondary(self.artifact(".local/state/goose/logs/llm_request.0.jsonl")))
+        # The request logs repeat the database's messages (#126), with a
+        # wider window; the history keeps the default.
+        log = self.artifact(".local/state/goose/logs/llm_request.0.jsonl")
+        self.assertTrue(p.secondary(log))
+        self.assertEqual(p.secondary_tolerance(log), 600.0)
+        self.assertEqual(p.secondary_tolerance(self.artifact(self.HISTORY)), 2.0)
 
     def test_history_rows_have_no_time_session_or_project(self):
         # "run the tests" repeats the database's first prompt; the second
@@ -5224,9 +5240,19 @@ class GooseTests(ParserBase):
 
     def test_config_secrets_and_sidecars_not_wanted(self):
         p = GooseParser()
+        build_goose_standing(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
         for a in self.col.artifacts:
-            if a.agent == "goose" and a.rel.endswith((".yaml", "-wal", "-shm")):
+            if a.agent != "goose" or a.rel.endswith("/permission.yaml"):
+                continue
+            if a.rel.endswith((".yaml", "-wal", "-shm", ".lock", "/roaming_peers.json")):
                 self.assertFalse(p.wants(a), a.rel)
+        for rel in (
+            ".config/goose/permission.yaml",
+            ".config/goose/roaming_trust.json",
+            ".local/share/goose/schedule.json",
+        ):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / GOOSE_LEGACY_REL)
@@ -5451,6 +5477,261 @@ class GooseTests(ParserBase):
             ],
         )
         self.assertEqual(rows[-1].session_id, GOOSE_SESSION)
+
+    # -- tool confirmations and standing permissions (issue 209) --------------
+
+    def _permission_rows(self):
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.REL))
+        for sql in goose_permission_records():
+            con.execute(sql)
+        con.commit()
+        con.close()
+        return [
+            r
+            for r in self.rows_for(GooseParser(), self.REL)
+            if r.session_id == GOOSE_PERMISSION_SESSION
+        ]
+
+    def test_tool_confirmation_rows(self):
+        rows = self._permission_rows()
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.tool_name, r.tool_use_id, r.text) for r in rows[2:]],
+            [
+                (301, "tool_use", "developer__shell", "call_p1", '{"command":"rm -rf build"}'),
+                (
+                    302,
+                    "system",
+                    "developer__shell",
+                    "call_p1",
+                    'permission request: developer__shell | {"command":"rm -rf build"}',
+                ),
+                (
+                    303,
+                    "system",
+                    "developer__shell",
+                    "call_p1",
+                    "permission decision: allow_once (toolConfirmationResponse)",
+                ),
+                (304, "tool_result", "developer__shell", "call_p1", "removed"),
+                (305, "tool_use", "developer__text_editor", "call_p2", '{"path":"/etc/hosts"}'),
+                (
+                    305,
+                    "system",
+                    "developer__text_editor",
+                    "call_p2",
+                    "permission decision: not executable (goose.executable=false)",
+                ),
+                (
+                    306,
+                    "tool_result",
+                    "developer__text_editor",
+                    "call_p2",
+                    "The user has declined to run this tool. DO NOT attempt to call this tool"
+                    " again.",
+                ),
+                (
+                    307,
+                    "system",
+                    "",
+                    "",
+                    'action required: {"actionType":"elicitation","id":"el_1",'
+                    '"message":"Pick one","requestedSchema":{}}',
+                ),
+            ],
+        )
+        self.assertEqual(rows[1].text, "permission mode: smart_approve")
+        decision = rows[4]
+        self.assertEqual(
+            (decision.timestamp_utc, decision.project_path),
+            ("2026-10-21T08:00:05.000Z", "/srv/proj"),
+        )
+
+    def test_answered_executable_false_has_no_verdict_row(self):
+        # A request the user answered keeps only the answer's decision row,
+        # even while its `_meta` still says false.
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.REL))
+        for sql in goose_permission_records():
+            con.execute(sql.replace('"goose.executable":true', '"goose.executable":false'))
+        con.commit()
+        con.close()
+        rows = self.rows_for(GooseParser(), self.REL)
+        verdicts = [r.tool_use_id for r in rows if "goose.executable" in r.text]
+        self.assertEqual(verdicts, ["call_p2"])
+
+    def test_legacy_and_log_have_no_verdict_rows(self):
+        for rel in (GOOSE_LEGACY_REL, ".local/state/goose/logs/llm_request.0.jsonl"):
+            rows = self.rows_for(GooseParser(), rel)
+            self.assertFalse([r for r in rows if r.text.startswith("permission ")])
+
+    def _standing(self, rel):
+        build_goose_standing(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        return self.rows_for(GooseParser(), rel)
+
+    def test_permission_yaml_rows(self):
+        rel = ".config/goose/permission.yaml"
+        rows = self._standing(rel)
+        self.assertEqual(
+            [(r.source_line, r.text) for r in rows],
+            [
+                (
+                    3,
+                    "permission setting: user.always_allow=developer__shell (from %s, file mtime)"
+                    % rel,
+                ),
+                (
+                    6,
+                    "permission setting: user.never_allow=developer__text_editor"
+                    " (from %s, file mtime)" % rel,
+                ),
+                (
+                    10,
+                    "permission setting: smart_approve.ask_before="
+                    "computercontroller__automation_script (from %s, file mtime)" % rel,
+                ),
+            ],
+        )
+        self.assertEqual(
+            {(r.turn_type, r.timestamp_utc, r.session_id, r.project_path) for r in rows},
+            {("system", to_utc(GOOSE_STANDING_MTIME), "", "")},
+        )
+
+    def test_permission_yaml_bad_line_is_reported_not_fatal(self):
+        rel = ".config/goose/permission.yaml"
+        build_goose_standing(self.home)
+        path = self.home / rel
+        lines = GOOSE_PERMISSION_YAML.splitlines(keepends=True)
+        lines.insert(3, "  ask_bef\n")  # cut mid-write
+        path.write_text("".join(lines), encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(GooseParser(), rel)
+        self.assertEqual([r.source_line for r in rows], [3, 7, 11, 4])
+        self.assertEqual(
+            rows[-1].text,
+            "parser: unparseable line (not a category, level or list item):   ask_bef",
+        )
+        self.assertEqual((rows[-1].turn_type, rows[-1].timestamp_utc), ("system", ""))
+
+    def test_roaming_trust_rows(self):
+        rel = ".config/goose/roaming_trust.json"
+        rows = self._standing(rel)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: roaming_trust.allowed=peerkeyaaaa (from %s, file mtime)" % rel,
+                "permission setting: roaming_trust.revoked_keys=peerkeybbbb"
+                " (from %s, file mtime)" % rel,
+            ],
+        )
+        self.assertEqual({r.timestamp_utc for r in rows}, {to_utc(GOOSE_STANDING_MTIME)})
+
+    def test_roaming_trust_not_json_is_one_row(self):
+        rel = ".config/goose/roaming_trust.json"
+        build_goose_standing(self.home)
+        (self.home / rel).write_text('{"allowed": ["peer', encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(GooseParser(), rel)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: %s is not JSON (" % rel), rows[0].text)
+
+    def test_schedule_rows(self):
+        rel = ".local/share/goose/schedule.json"
+        rows = self._standing(rel)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "scheduled task: nightly-report 0 0 2 * * * paused=false running=false"
+                " source=/home/alice/.local/share/goose/scheduled_recipes/nightly-report.yaml"
+                " last_run=2026-10-21T02:00:00.123Z current_session=-"
+                " recipe_base_dir=/srv/proj/recipes (from %s, file mtime)" % rel,
+                "scheduled task: weekly 0 0 9 * * 1 paused=true running=false"
+                " source=/home/alice/.local/share/goose/scheduled_recipes/weekly.yaml"
+                ' last_run=- current_session=- recipe_base_dir=- parameters=[["env","prod"]]'
+                " (from %s, file mtime)" % rel,
+            ],
+        )
+        self.assertEqual(
+            {(r.turn_type, r.timestamp_utc, r.session_id) for r in rows},
+            {("system", to_utc(GOOSE_STANDING_MTIME), "")},
+        )
+
+    def test_schedule_bad_record_is_reported_not_fatal(self):
+        rel = ".local/share/goose/schedule.json"
+        build_goose_standing(self.home)
+        (self.home / rel).write_text(
+            json.dumps([GOOSE_SCHEDULE[0], "oops", GOOSE_SCHEDULE[1]]), encoding="utf-8"
+        )
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        rows = self.rows_for(GooseParser(), rel)
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(rows[1].text.startswith("scheduled task: weekly "))
+        self.assertEqual(rows[2].text, 'parser: unparseable record 2 (not a JSON object): "oops"')
+
+    # -- request logs as a secondary source (issue 126) ------------------------
+
+    LOG = ".local/state/goose/logs/llm_request.0.jsonl"
+
+    def _streamed(self):
+        path = self.home / self.LOG
+        path.write_text(
+            "".join(json.dumps(r) + "\n" for r in goose_streamed_llm_records()), encoding="utf-8"
+        )
+        return self.rows_for(GooseParser(), self.LOG)
+
+    def test_streamed_chunks_are_assembled(self):
+        rows = self._streamed()
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.tool_use_id, r.text) for r in rows],
+            [
+                (1, "system", "", "llm request | 1 messages | last user: run the tests"),
+                (2, "assistant", "", "All 3 tests pass."),
+                (2, "tool_use", "call_1", '{"command":"pytest -q"}'),
+            ],
+        )
+        self.assertEqual({r.timestamp_utc for r in rows}, {"2026-03-01T09:00:05.000Z"})
+
+    def test_log_rows_repeating_the_database_are_dropped(self):
+        p = GooseParser()
+        log = self._streamed()
+        primary = self.rows_for(p, self.REL)
+        tolerance = p.secondary_tolerance(self.artifact(self.LOG))
+        kept, dropped = deduplicate(primary, [(r, tolerance) for r in log])
+        self.assertEqual(dropped["goose"], 2)
+        recovered = [r for r in kept if r.source_file.endswith("llm_request.0.jsonl")]
+        # Only the request row, which no database row repeats, is kept.
+        self.assertEqual([r.text for r in recovered], [log[0].text])
+        # Within the default window the tool call, four seconds off, stays.
+        _, dropped = deduplicate(primary, [(r, 2.0) for r in log])
+        self.assertEqual(dropped["goose"], 1)
+
+    def test_request_log_truncated_line_is_reported_not_fatal(self):
+        path = self.home / self.LOG
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(
+                "\n"
+                + json.dumps(
+                    {
+                        "data": {
+                            "role": "assistant",
+                            "created": 1772355609,
+                            "content": [{"type": "text", "text": "after the cut"}],
+                        }
+                    }
+                )
+                + "\n"
+            )
+        rows = self.rows_for(GooseParser(), self.LOG)
+        self.assertEqual(
+            [(r.source_line, r.turn_type) for r in rows],
+            [(1, "system"), (2, "assistant"), (4, "assistant"), (3, "system")],
+        )
+        self.assertEqual((rows[1].text, rows[2].text), ("hi", "after the cut"))
+        self.assertEqual(rows[-1].text, bad_line_text())
 
 
 from doubleagent.parsers.aider import AiderParser

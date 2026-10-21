@@ -4630,6 +4630,241 @@ def goose_bad_json_records():
     ]
 
 
+# Tool confirmations (issue 209), shapes from aaif-goose/goose fb9e3c8
+# (research/goose.md, Tool confirmations and permission mode): the question
+# is an `assistant` message holding an `actionRequired` block of
+# `actionType` `toolConfirmation`, the answer a `user` message holding one
+# of `actionType` `toolConfirmationResponse`, and the approval step patches
+# `goose.executable` into the `toolRequest`'s `_meta`. call_p1 was asked
+# about and allowed once; call_p2 was refused by the permission check (a
+# `never_allow` tool) with no question; the last message is an MCP
+# elicitation, which keeps the generic row. Kept out of build_home, as the
+# gateway session is.
+GOOSE_PERMISSION_SESSION = "20261021_6"
+
+
+def goose_permission_records():
+    def msg(n, role, content, ts, meta='{"userVisible":true,"agentVisible":true}'):
+        return "(%d,'msg_perm_%d','%s','%s','%s',%d,'%s')" % (
+            n,
+            n,
+            GOOSE_PERMISSION_SESSION,
+            role,
+            json.dumps(content, separators=(",", ":")).replace("'", "''"),
+            ts,
+            meta,
+        )
+
+    def call(cid, name, arguments, executable):
+        return {
+            "type": "toolRequest",
+            "id": cid,
+            "toolCall": {"status": "success", "value": {"name": name, "arguments": arguments}},
+            "_meta": {"goose.executable": executable},
+        }
+
+    def response(cid, text):
+        return {
+            "type": "toolResponse",
+            "id": cid,
+            "toolResult": {
+                "status": "success",
+                "value": {"content": [{"type": "text", "text": text}]},
+            },
+        }
+
+    def action(data):
+        return {"type": "actionRequired", "data": data}
+
+    rows = [
+        msg(
+            301,
+            "assistant",
+            [call("call_p1", "developer__shell", {"command": "rm -rf build"}, True)],
+            1792569600,
+        ),
+        msg(
+            302,
+            "assistant",
+            [
+                action(
+                    {
+                        "actionType": "toolConfirmation",
+                        "id": "call_p1",
+                        "toolName": "developer__shell",
+                        "arguments": {"command": "rm -rf build"},
+                        "prompt": None,
+                    }
+                )
+            ],
+            1792569600,
+            '{"userVisible":true,"agentVisible":false}',
+        ),
+        msg(
+            303,
+            "user",
+            [
+                action(
+                    {
+                        "actionType": "toolConfirmationResponse",
+                        "id": "call_p1",
+                        "permission": "allow_once",
+                    }
+                )
+            ],
+            1792569605,
+            '{"userVisible":false,"agentVisible":false}',
+        ),
+        msg(304, "user", [response("call_p1", "removed")], 1792569606),
+        msg(
+            305,
+            "assistant",
+            [call("call_p2", "developer__text_editor", {"path": "/etc/hosts"}, False)],
+            1792569610,
+        ),
+        msg(
+            306,
+            "user",
+            [
+                response(
+                    "call_p2",
+                    "The user has declined to run this tool. DO NOT attempt to call this tool again.",
+                )
+            ],
+            1792569610,
+        ),
+        msg(
+            307,
+            "assistant",
+            [
+                action(
+                    {
+                        "actionType": "elicitation",
+                        "id": "el_1",
+                        "message": "Pick one",
+                        "requestedSchema": {},
+                    }
+                )
+            ],
+            1792569611,
+        ),
+    ]
+    return [
+        "INSERT INTO sessions(id,name,session_type,working_dir,created_at,updated_at,goose_mode)"
+        " VALUES ('%s','permissions','user','/srv/proj','2026-10-21 08:00:00',"
+        "'2026-10-21 08:01:00','smart_approve')" % GOOSE_PERMISSION_SESSION,
+        "INSERT INTO messages(id,message_id,session_id,role,content_json,created_timestamp,"
+        "metadata_json) VALUES " + ",".join(rows),
+    ]
+
+
+# Standing permission and scheduler files (issue 209), shapes from
+# aaif-goose/goose fb9e3c8: permission.yaml as serde_yaml writes the map of
+# `PermissionConfig` (config/permission.rs:13-44, 260-262), roaming_trust.json
+# the `TrustBook` (goose-roaming/src/trust.rs:19-26) and schedule.json a list
+# of `ScheduledJob` (scheduler/common.rs:167-187). The peer keys and ids are
+# invented. Kept out of build_home so the shared timeline stays as the CLI
+# tests expect.
+GOOSE_STANDING_MTIME = 1792656000  # 2026-10-22T08:00:00Z
+GOOSE_PERMISSION_YAML = """user:
+  always_allow:
+  - developer__shell
+  ask_before: []
+  never_allow:
+  - developer__text_editor
+smart_approve:
+  always_allow: []
+  ask_before:
+  - 'computercontroller__automation_script'
+  never_allow: []
+"""
+GOOSE_ROAMING_TRUST = {"allowed": ["peerkeyaaaa"], "revoked_keys": ["peerkeybbbb"]}
+GOOSE_SCHEDULE = [
+    {
+        "id": "nightly-report",
+        "source": "/home/alice/.local/share/goose/scheduled_recipes/nightly-report.yaml",
+        "cron": "0 0 2 * * *",
+        "last_run": "2026-10-21T02:00:00.123456Z",
+        "currently_running": False,
+        "paused": False,
+        "current_session_id": None,
+        "process_start_time": None,
+        "parameters": [],
+        "recipe_base_dir": "/srv/proj/recipes",
+    },
+    {
+        "id": "weekly",
+        "source": "/home/alice/.local/share/goose/scheduled_recipes/weekly.yaml",
+        "cron": "0 0 9 * * 1",
+        "last_run": None,
+        "paused": True,
+        "parameters": [["env", "prod"]],
+    },
+]
+
+
+def build_goose_standing(home: Path) -> None:
+    """The standing files beside two noise files the parser must not want
+    (`permission.yaml.lock`, `roaming_peers.json`)."""
+    cfg = home / ".config/goose"
+    data = home / ".local/share/goose"
+    cfg.mkdir(parents=True, exist_ok=True)
+    data.mkdir(parents=True, exist_ok=True)
+    files = {
+        cfg / "permission.yaml": GOOSE_PERMISSION_YAML,
+        cfg / "roaming_trust.json": json.dumps(GOOSE_ROAMING_TRUST, indent=2),
+        data / "schedule.json": json.dumps(GOOSE_SCHEDULE, indent=2),
+        cfg / "permission.yaml.lock": "",
+        cfg / "roaming_peers.json": "{}",
+    }
+    for path, text in files.items():
+        path.write_text(text, encoding="utf-8")
+        os.utime(path, (GOOSE_STANDING_MTIME, GOOSE_STANDING_MTIME))
+
+
+# A streamed request log (issue 126): the response lines are chunks of one
+# message (`id` msg_s1) as the providers log them, two text deltas and a
+# tool request, which `Conversation::push` assembles into the message
+# sessions.db stores (goose-provider-types/src/conversation.rs:75-119 at
+# aaif-goose/goose fb9e3c8). The assembled text and the tool call repeat
+# the shared session's database rows.
+def goose_streamed_llm_records():
+    def chunk(content, created):
+        return {
+            "data": {"id": "msg_s1", "role": "assistant", "created": created, "content": content},
+            "usage": None,
+        }
+
+    return [
+        {
+            "model_config": {"model_name": "claude-sonnet-4-5"},
+            "input": {"messages": [{"role": "user", "content": "run the tests"}]},
+        },
+        chunk([{"type": "text", "text": "All 3 "}], 1772355605),
+        chunk([{"type": "text", "text": "tests pass."}], 1772355606),
+        chunk(
+            [
+                {
+                    "type": "toolRequest",
+                    "id": "call_1",
+                    "toolCall": {
+                        "status": "success",
+                        "value": {
+                            "name": "developer__shell",
+                            "arguments": {"command": "pytest -q"},
+                        },
+                    },
+                }
+            ],
+            1772355607,
+        ),
+        {
+            "data": {"id": "msg_s1", "role": "assistant", "created": 1772355607, "content": []},
+            "usage": {"input_tokens": 9},
+        },
+    ]
+
+
 CONTINUE_SESSION = "0f1e"
 CONTINUE_CREATED = (
     "1790935200000"  # 2026-10-02T10:00:00Z, a millisecond epoch string as sessions.json stores it
