@@ -7296,6 +7296,7 @@ class VsCodeTests(ParserBase):
                 "system",
                 "system",
                 "system",
+                "system",
                 "user",
                 "tool_use",
                 "tool_result",
@@ -7303,6 +7304,7 @@ class VsCodeTests(ParserBase):
                 "assistant",
                 "user",
                 "assistant",
+                "system",
                 "system",
                 "system",
                 "system",
@@ -7317,8 +7319,8 @@ class VsCodeTests(ParserBase):
             )
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
             self.assertTrue(r.timestamp_utc.endswith("Z"), r)
-        self.assertEqual([r.source_line for r in rows], [1] * 8 + [2, 2, 2] + [6] * 5)
-        start, model, mode, user, use, result, decision, asst, user2, asst2 = rows[:10]
+        self.assertEqual([r.source_line for r in rows], [1] * 9 + [2, 2, 2] + [6] * 6)
+        start, model, mode, level, user, use, result, decision, asst, user2, asst2 = rows[:11]
         self.assertEqual(
             (model.text, model.model, model.timestamp_utc),
             ("model: copilot/gpt-4.1", "copilot/gpt-4.1", "2026-10-03T11:00:01.000Z"),
@@ -7326,6 +7328,11 @@ class VsCodeTests(ParserBase):
         self.assertEqual(
             (mode.text, mode.timestamp_utc),
             ("permission mode: agent", "2026-10-03T11:00:01.000Z"),
+        )
+        # modeInfo.permissionLevel (issue 210), source-derived.
+        self.assertEqual(
+            (level.text, level.timestamp_utc),
+            ("permission level: default", "2026-10-03T11:00:01.000Z"),
         )
         self.assertEqual(
             (decision.text, decision.tool_use_id, decision.tool_name, decision.timestamp_utc),
@@ -7337,7 +7344,7 @@ class VsCodeTests(ParserBase):
                 "2026-10-03T11:00:02.000Z",
             ),
         )
-        confirm, model2, mode2, user3, chosen, asst3 = rows[10:]
+        confirm, model2, mode2, level2, user3, chosen, asst3 = rows[11:]
         self.assertEqual(
             (confirm.text, confirm.timestamp_utc),
             (
@@ -7349,12 +7356,14 @@ class VsCodeTests(ParserBase):
         self.assertEqual(
             (model2.text, model2.model, model2.timestamp_utc),
             (
-                "model: copilot/gpt-4.1 -> copilot/claude-sonnet-4",
+                # modelConfiguration rides with the model (issue 210).
+                "model: copilot/gpt-4.1 -> copilot/claude-sonnet-4 reasoningEffort=high",
                 "copilot/claude-sonnet-4",
                 "2026-10-03T11:00:20.000Z",
             ),
         )
         self.assertEqual(mode2.text, "permission mode: agent -> ask")
+        self.assertEqual(level2.text, "permission level: default -> autoApprove")
         self.assertEqual(user3.text, 'Allow: "Run npm install?"')
         self.assertEqual(
             (chosen.text, chosen.timestamp_utc),
@@ -7429,10 +7438,25 @@ class VsCodeTests(ParserBase):
         self.assertEqual(rows[2].model, "copilot/gpt-4o")
 
     def test_not_wanted(self):
-        for rel in (VSCODE_WS + "/workspace.json", ".config/Code/User/settings.json"):
+        for rel in (
+            VSCODE_WS + "/workspace.json",
+            VSCODE_WS + "/chatEditingSessions/%s/contents/aaaaaaa" % VSCODE_SESSION,
+        ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertFalse(VsCodeParser().wants(art), rel)
         for rel in (
+            ".config/Code/User/keybindings.json",
+            ".config/Code/User/profiles/p1/mcp.json",
+            ".config/Code/User/workspaceStorage/x/chatEditingSessions/s/contents/state.json",
+            ".config/Code/User/globalStorage/github.copilot-chat/state.vscdb",
+        ):
+            self.assertFalse(VsCodeParser().wants(rel_only(rel)), rel)
+        for rel in (
+            ".config/Code/User/settings.json",
+            ".config/Code/User/profiles/p1/settings.json",
+            ".config/Code/User/profiles/builtin/agents/globalStorage/state.vscdb",
+            "AppData/Roaming/Code/User/workspaceStorage/x/state.vscdb",
+            ".vscode-server/data/User/workspaceStorage/x/chatEditingSessions/s/state.json",
             "Library/Application Support/Code - Insiders/User/workspaceStorage/x/chatSessions/s.json",
             "AppData/Roaming/VSCodium/User/globalStorage/transferredChatSessions/s.json",
             ".config/Positron/User/globalStorage/emptyWindowChatSessions/s.jsonl",
@@ -7554,11 +7578,15 @@ from fixtures import (
     VSCODE_CLOUD_SESSIONS_MTIME,
     VSCODE_CLOUD_SESSIONS_REL,
     VSCODE_CLOUD_TASK,
+    VSCODE_EDITING_REL,
+    VSCODE_GRANTS_MTIME,
     VSCODE_MULTIROOT_FILE,
     VSCODE_MULTIROOT_WS,
     VSCODE_OLD_TASK,
     VSCODE_OTHER_MACHINE_SESSION,
+    VSCODE_PROFILE_SETTINGS_REL,
     VSCODE_STATE_REL,
+    VSCODE_WS_STATE_REL,
     build_vscode_agents_window,
 )
 
@@ -7606,6 +7634,7 @@ class VsCodeSyncTests(ParserBase):
 
     def test_owned_tasks_rows(self):
         rows = self.rows_for(VsCodeParser(), VSCODE_STATE_REL)
+        rows = [r for r in rows if r.text.startswith("session ")]
         self.assertEqual(
             [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
             [
@@ -7638,6 +7667,165 @@ class VsCodeSyncTests(ParserBase):
             ],
         )
         self.assertEqual([r for r in rows if "gho_not_real" in r.text], [])
+
+    def test_profile_state_grants_and_source_host(self):
+        # Issue 210, source-derived: the Copilot Chat repository selection,
+        # the GitHub account's usage records and the profile-scope grants.
+        rows = self.rows_for(VsCodeParser(), VSCODE_STATE_REL)
+        rest = [r for r in rows if not r.text.startswith("session ")]
+        ts = to_utc(VSCODE_GRANTS_MTIME)
+        src = "(from User/globalStorage/state.vscdb, file mtime)"
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rest],
+            [
+                (
+                    "system",
+                    "",
+                    "",
+                    "2026-10-03T10:56:40.000Z",
+                    "source host repository: octocat/hello-world type=cloud agent selection"
+                    " (from state.vscdb GitHub.copilot-chat userSelectedRepositories, timestamp)",
+                ),
+                (
+                    "system",
+                    "",
+                    "",
+                    "2026-10-03T10:58:20.000Z",
+                    "source host: github.com account octocat extension=GitHub.copilot-chat"
+                    " scopes=read:user,user:email (from state.vscdb github-octocat-usages,"
+                    " lastUsed)",
+                ),
+                (
+                    "system",
+                    "",
+                    "",
+                    "2026-10-03T10:59:10.000Z",
+                    "source host: github.com account octocat mcp_server=github scopes=repo"
+                    " (from state.vscdb github-octocat-mcpserver-usages, lastUsed)",
+                ),
+                (
+                    "system",
+                    "",
+                    "",
+                    ts,
+                    "permission setting: chat/autoconfirm-post.read_file=Read File " + src,
+                ),
+                (
+                    "system",
+                    "",
+                    "",
+                    ts,
+                    "permission setting: chat.tools.global.autoApprove.optIn=true " + src,
+                ),
+            ],
+        )
+        self.assertEqual([r for r in rows if "gho_not_real" in r.text], [])
+
+    def test_workspace_state_grants(self):
+        rows = self.rows_for(VsCodeParser(), VSCODE_WS_STATE_REL)
+        src = "(from User/workspaceStorage/abc123/state.vscdb, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: chat/autoconfirm.run_in_terminal=true " + src,
+                "permission setting: chat/autoconfirm.mcp_github_create_issue="
+                + json.dumps(
+                    {"arguments": '{"repo":"x"}', "label": "Create issue"},
+                    separators=(",", ":"),
+                )
+                + " "
+                + src,
+                "permission setting: chat/servers/autoconfirm.github=true " + src,
+                "permission setting: chat.externalPath.workspaceAllowlist=/srv/shared " + src,
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.project_path, r.timestamp_utc),
+                ("system", "", "/srv/proj", to_utc(VSCODE_GRANTS_MTIME)),
+            )
+
+    def test_grant_of_wrong_type_is_reported(self):
+        _vscdb(self.home / VSCODE_WS_STATE_REL, {"chat/autoconfirm-post": "7"})
+        rows = self.rows_for(VsCodeParser(), VSCODE_WS_STATE_REL)
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(
+            rows[-1].text,
+            "parser: ItemTable value for chat/autoconfirm-post is not a JSON object or array",
+        )
+
+    def test_settings_rows(self):
+        rows = self.rows_for(VsCodeParser(), VSCODE_PROFILE_SETTINGS_REL)
+        src = " (from User/profiles/-5f3a1b2c/settings.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: chat.tools.terminal.autoApprove.npm test=true" + src,
+                "permission setting: chat.tools.terminal.autoApprove.rm=false" + src,
+                "permission setting: chat.tools.edits.autoApprove={}" + src,
+                "permission setting: chat.permissions.default=autoApprove" + src,
+                "model setting: chat.defaultModel=copilot/gpt-5" + src,
+            ],
+        )
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.timestamp_utc),
+                ("system", "", to_utc(VSCODE_GRANTS_MTIME)),
+            )
+        # The default profile's settings name no chat key: no row.
+        self.assertEqual(self.rows_for(VsCodeParser(), ".config/Code/User/settings.json"), [])
+
+    def test_settings_not_an_object(self):
+        (self.home / VSCODE_PROFILE_SETTINGS_REL).write_text("[1, 2", encoding="utf-8")
+        rows = self.rows_for(VsCodeParser(), VSCODE_PROFILE_SETTINGS_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(
+            rows[0].text.startswith(
+                "parser: User/profiles/-5f3a1b2c/settings.json is not a JSON object ("
+            ),
+            rows[0].text,
+        )
+
+    def test_editing_state_rows(self):
+        self.assertTrue(VsCodeParser.has_secondary)
+        self.assertTrue(VsCodeParser().secondary(self.artifact(VSCODE_EDITING_REL)))
+        self.assertFalse(VsCodeParser().secondary(self.artifact(VSCODE_WS_STATE_REL)))
+        rows = self.rows_for(VsCodeParser(), VSCODE_EDITING_REL)
+        tail = " (from chatEditingSessions state.json, file mtime)"
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    VSCODE_SESSION,
+                    "/srv/proj",
+                    to_utc(VSCODE_GRANTS_MTIME),
+                    "edit state: Accepted /srv/proj/test_a.py request=request_1"
+                    " model=copilot/gpt-4.1" + tail,
+                ),
+                (
+                    "system",
+                    VSCODE_SESSION,
+                    "/srv/proj",
+                    to_utc(VSCODE_GRANTS_MTIME),
+                    "edit state: Rejected /srv/proj/old.py request=request_1"
+                    " model=copilot/gpt-4.1 deleted=true" + tail,
+                ),
+            ],
+        )
+
+    def test_editing_state_bad_file(self):
+        for raw, want in (
+            ('{"version": 2, "recentSnap', "parser: file is not valid JSON ("),
+            ("[]", "parser: state.json is not a JSON object"),
+        ):
+            (self.home / VSCODE_EDITING_REL).write_text(raw, encoding="utf-8")
+            rows = self.rows_for(VsCodeParser(), VSCODE_EDITING_REL)
+            self.assertEqual(len(rows), 1, raw)
+            self.assertEqual(
+                (rows[0].session_id, rows[0].project_path), (VSCODE_SESSION, "/srv/proj")
+            )
+            self.assertTrue(rows[0].text.startswith(want), rows[0].text)
 
     def test_state_without_copilot_key_yields_nothing(self):
         # Cody's and Twinny's databases, and the plain-text placeholder.

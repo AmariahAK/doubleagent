@@ -5846,6 +5846,8 @@ def vscode_log_records(cwd="/srv/proj"):
                             "kind": "agent",
                             "telemetryModeId": "agent",
                             "isBuiltin": True,
+                            # ChatPermissionLevel (constants.ts:204-213 at 4d22f4f)
+                            "permissionLevel": "default",
                         },
                         "variableData": {
                             "variables": [
@@ -5936,7 +5938,15 @@ def vscode_log_records(cwd="/srv/proj"):
                     "variableData": {"variables": []},
                     "confirmation": "Allow",
                     "modelId": "copilot/claude-sonnet-4",
-                    "modeInfo": {"kind": "ask", "telemetryModeId": "ask", "isBuiltin": True},
+                    # The model's options (chatModel.ts:2157-2158 at 4d22f4f);
+                    # the key name is invented.
+                    "modelConfiguration": {"reasoningEffort": "high"},
+                    "modeInfo": {
+                        "kind": "ask",
+                        "telemetryModeId": "ask",
+                        "isBuiltin": True,
+                        "permissionLevel": "autoApprove",
+                    },
                     "response": [{"value": "Installed."}],
                     "responseTimestamp": t + 21000,
                 }
@@ -5982,6 +5992,108 @@ def build_vscode(home: Path) -> None:
         json.dumps(vscode_legacy_session(), indent=2), encoding="utf-8"
     )
     build_vscode_sync(home)
+    build_vscode_grants(home)
+
+
+# Standing grants, settings, the GitHub account and the chat editing state
+# (issue 210), source-derived from microsoft/vscode at 4d22f4f
+# (research/vscode.md, Standing permission grants and Chat editing
+# sessions). The ids, labels and the login are invented.
+VSCODE_WS_STATE_REL = VSCODE_WS + "/state.vscdb"
+VSCODE_PROFILE_SETTINGS_REL = ".config/Code/User/profiles/-5f3a1b2c/settings.json"
+VSCODE_EDITING_REL = VSCODE_WS + "/chatEditingSessions/%s/state.json" % VSCODE_SESSION
+VSCODE_GRANTS_MTIME = 1791025300  # 2026-10-03T11:01:40Z
+
+
+def vscode_editing_state(cwd="/srv/proj"):
+    """A chat editing `state.json` (chatEditingSessionStorage.ts:242-288)."""
+
+    def entry(name, state, request, **more):
+        return {
+            "resource": "file://%s/%s" % (cwd, name),
+            "languageId": "python",
+            "originalHash": "aaaaaaa",
+            "currentHash": "bbbbbbb",
+            "state": state,
+            "snapshotUri": "chat-editing-snapshot-text-model:/%s/%s" % (cwd, name),
+            "telemetryInfo": {"requestId": request, "modelId": "copilot/gpt-4.1", **more},
+        }
+
+    return {
+        "version": 2,
+        "initialFileContents": [["file://%s/test_a.py" % cwd, "aaaaaaa"]],
+        "timeline": None,
+        "recentSnapshot": {
+            "stopId": None,
+            "entries": [
+                entry("test_a.py", 1, "request_1", agentId="github.copilot.editsAgent"),
+                {**entry("old.py", 2, "request_1"), "isDeleted": True},
+            ],
+        },
+    }
+
+
+def build_vscode_grants(home: Path) -> None:
+    _vscdb(
+        home / VSCODE_WS_STATE_REL,
+        {
+            "chat/autoconfirm": {
+                "run_in_terminal": True,
+                "mcp_github_create_issue": {"label": "Create issue", "arguments": '{"repo":"x"}'},
+            },
+            "chat/servers/autoconfirm": ["github"],
+            "chat.externalPath.workspaceAllowlist": ["file:///srv/shared"],
+            "workbench.panel.chat": "not read",
+        },
+    )
+    _vscdb(
+        home / VSCODE_STATE_REL,
+        {
+            "chat/autoconfirm-post": {"read_file": "Read File"},
+            "chat.tools.global.autoApprove.optIn": "true",
+            # authenticationUsageService.ts:103, authenticationMcpUsageService.ts:101
+            "github-octocat-usages": [
+                {
+                    "extensionId": "GitHub.copilot-chat",
+                    "extensionName": "GitHub Copilot Chat",
+                    "scopes": ["read:user", "user:email"],
+                    "lastUsed": 1791025100000,
+                }
+            ],
+            "github-octocat-mcpserver-usages": [
+                {
+                    "mcpServerId": "github",
+                    "mcpServerName": "GitHub",
+                    "scopes": ["repo"],
+                    "lastUsed": 1791025150000,
+                }
+            ],
+        },
+    )
+    settings = home / VSCODE_PROFILE_SETTINGS_REL
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(
+        "{\n"
+        "  // a profile's settings, JSONC\n"
+        '  "chat.tools.terminal.autoApprove": {"npm test": true, "rm": false},\n'
+        '  "chat.tools.edits.autoApprove": {},\n'
+        '  "chat.permissions.default": "autoApprove",\n'
+        '  "chat.defaultModel": "copilot/gpt-5",\n'
+        '  "editor.fontSize": 14,\n'
+        "}\n",
+        encoding="utf-8",
+    )
+    _json(home / VSCODE_EDITING_REL, vscode_editing_state())
+    contents = home / VSCODE_WS / "chatEditingSessions" / VSCODE_SESSION / "contents"
+    contents.mkdir(parents=True, exist_ok=True)
+    (contents / "aaaaaaa").write_text("print('a')\n", encoding="utf-8")
+    for rel in (
+        VSCODE_WS_STATE_REL,
+        VSCODE_STATE_REL,
+        VSCODE_PROFILE_SETTINGS_REL,
+        VSCODE_EDITING_REL,
+    ):
+        os.utime(home / rel, (VSCODE_GRANTS_MTIME, VSCODE_GRANTS_MTIME))
 
 
 # Session sync (issue 153): Copilot Chat's cloudSessions.json, naming the
@@ -6017,6 +6129,10 @@ def build_vscode_sync(home: Path) -> None:
                     VSCODE_OLD_TASK: 1759300000000,
                 },
                 "github.copilot.someOtherKey": "not read",
+                # copilotCloudSessionsProvider.ts:416-419 at 4d22f4f
+                "userSelectedRepositories": [
+                    {"name": "octocat/hello-world", "timestamp": 1791025000000}
+                ],
             },
             'secret://{"extensionId":"github.copilot-chat","key":"token"}': "gho_not_real",
         },

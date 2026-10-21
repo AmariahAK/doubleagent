@@ -868,7 +868,9 @@ class SyncedSessionTests(unittest.TestCase):
             (("codex-cli", CODEX_SESSION), "no"),
             (("open-interpreter", OI_SESSION), "no"),
             (("qwen-code", QWEN_SESSION), "no"),
-            (("vscode", VSCODE_SESSION), ""),
+            # The chat editing state is a secondary source since issue 210, and
+            # holds only `system` rows: "no".
+            (("vscode", VSCODE_SESSION), "no"),
             # The scheduler task's logged prompt survives only in tasks.json.
             (("agent-zero", AGENT_ZERO_CHAT), "partial"),
         ):
