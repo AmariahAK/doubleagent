@@ -1155,6 +1155,22 @@ mkdir -p "$U236"
 printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
+# 2026-10-21 OpenHands Agent Canvas credentials and workspaces (#218)
+# Agent Canvas (OpenHands/OpenHands 8d39305, scripts/mars-credentials.mjs)
+# keeps its DigitalOcean connections in mars-credentials.json in the Electron
+# user data directory, and Canvas-in-Docker unpacks automation runs under
+# ~/.openhands/workspaces (docker/entrypoint.sh), excluded like
+# agent-canvas/workspaces; workspaces.json beside it stays collected. Checks
+# follow the default run below; the same files are in smoke.ps1 under alice.
+M218A="$H/.config/OpenHands Agent Canvas/mars-credentials.json"
+M218B="$B/Library/Application Support/OpenHands Agent Canvas/mars-credentials.json"
+M218C="$B/AppData/Roaming/OpenHands Agent Canvas/mars-credentials.json"
+for _f in "$M218A" "$M218B" "$M218C"; do
+  mkdir -p "$(dirname "$_f")"
+  printf '{"version":1,"connections":[]}\n' >"$_f"
+done
+mkdir -p "$H/.openhands/workspaces/run1"
+printf 'x\n' >"$H/.openhands/workspaces/run1/f"
 
 # 2026-10-21 Agent Zero source review (#217)
 # The WhatsApp bridge's Baileys login state under the install's tmp/ (home,
@@ -1721,6 +1737,11 @@ check "#236 Cursor plugin cache excluded" "[ \"\$(status_of \"$P236/cache\")\" =
 check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+# 2026-10-21 OpenHands Agent Canvas credentials and workspaces (#218)
+S218='"agent":"openhands".*"secret":true,"status":"collected"'
+check "#218 OpenHands Agent Canvas mars-credentials.json flagged secret" "row \"$M218A\" | grep -q '$S218' && row \"$M218B\" | grep -q '$S218' && row \"$M218C\" | grep -q '$S218'"
+check "#218 OpenHands automation workspaces excluded" "[ \"\$(status_of \"$H/.openhands/workspaces\")\" = skipped_excluded ] && ! grep -qF '.openhands/workspaces/run1/f' \"\$M\""
+check "#218 OpenHands workspaces.json beside the excluded workspaces collected" "[ \"\$(status_of \"$H/.openhands/workspaces.json\")\" = collected ]"
 
 # 2026-10-21 Agent Zero source review (#217)
 check "#217 Agent Zero WhatsApp session flagged secret" "row \"$H/agent-zero/main/$W217\" | grep -q '\"agent\":\"agent-zero\".*$SEC153' && row \"$H/Desktop/agent-zero/$W217\" | grep -q '$SEC153' && row \"$DV/a0_usr/_data/$W217\" | grep -q '\"user\":\"docker\".*$SEC153'"

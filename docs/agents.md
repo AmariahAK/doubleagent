@@ -68,7 +68,7 @@ agent name in each row links to its subsection.
 | [`open-interpreter`](#open-interpreter) | parsed | source; fixture only | [research](../research/open-interpreter.md); [issue 70](https://github.com/seanthegeek/doubleagent/issues/70); the legacy Python tool's `conversations/*.json` files are collected but not parsed yet |
 | [`openclaw`](#openclaw) | parsed | source; fixture only | [research](../research/openclaw.md) |
 | [`opencode`](#opencode) | parsed | source; fixture only | [research](../research/opencode.md); [issue 139](https://github.com/seanthegeek/doubleagent/issues/139); [issue 194](https://github.com/seanthegeek/doubleagent/issues/194); [issue 213](https://github.com/seanthegeek/doubleagent/issues/213); the desktop app's `drafts.sqlite` is not parsed yet |
-| [`openhands`](#openhands) | parsed | source; fixture only | [research](../research/openhands.md) |
+| [`openhands`](#openhands) | parsed | source; fixture only | [research](../research/openhands.md); [issue 205](https://github.com/seanthegeek/doubleagent/issues/205); Agent Canvas browser storage (cloud origin, archive) needs a LevelDB reader |
 | [`pearai`](#pearai) | parsed | source; fixture only | [research](../research/pearai.md) |
 | [`pi`](#pi) | parsed | source; fixture only | [research](../research/pi.md) |
 | [`pydantic-clai`](#pydantic-clai) | backlog | Source, PyPI wheel | [research](../research/pydantic-clai.md); [issue 66](https://github.com/seanthegeek/doubleagent/issues/66); CLAI 2.0 `sessions.db` conversations and the prompt histories |
@@ -916,12 +916,15 @@ Files read: `.openhands/agent-canvas/dev_conversations/<hex>/`,
 `.openhands/agent-canvas/conversations/<hex>/` and
 `.openhands/conversations/<hex>/`: one `events/event-<idx>-<id>.json` per
 event, with the sibling `meta.json` (title, `created_at`, working dir) and
-`base_state.json` (model). Event times are naive local time, corrected by
-the offset `meta.json` `created_at` implies, else emitted as if UTC.
-Legacy 0.x `sessions/<sid>/events/<n>.json` is reported as one `system`
-row per session, not parsed.
+`base_state.json` (model, per-response token usage). Event times are naive
+local time, corrected by the offset `meta.json` `created_at` implies, else
+emitted as if UTC. Each `base_state.json` also gives the confirmation
+policy, security analyzer and hook-blocked actions as standing permission
+rows. The CLI's `.openhands/projects/<sha256 of cwd>/prompt_history.json`
+is a secondary source. Legacy 0.x `sessions/<sid>/events/<n>.json` is
+reported as one `system` row per session, not parsed.
 
-Validated against: Source at [b347047](https://github.com/OpenHands/software-agent-sdk/commit/b347047e2dcdd8f4b2be810aa8bc6632bc756d41) (SDK), synthetic fixture.
+Validated against: Source at [b347047](https://github.com/OpenHands/software-agent-sdk/commit/b347047e2dcdd8f4b2be810aa8bc6632bc756d41) (SDK), synthetic fixture; the security-analyzer verdicts, model switches, standing permission rows and worktree scratch directories from source at [33d8aa2](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360) (SDK) and the prompt history at [0403f1a](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2) (CLI), synthetic fixture.
 
 ### `pearai`
 
