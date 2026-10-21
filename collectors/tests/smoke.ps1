@@ -1085,6 +1085,25 @@ Mk "$u236/inno_updater.exe" "binary`n"
 Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
 Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
 
+# 2026-10-21 framework catalog gaps (#223, #224, #225)
+# From source, no real install: CrewAI's project-local .crewai/last_run.json,
+# its mark of a run traced to AMP, in a discovered project; difyctl's pending
+# device login, login-pending.yml, in its three config directories; and the
+# CLAI 2.0 state directory .local/state/pydantic-clai2 with the web
+# orchestrator's conversation, a workspace record, its token and session.log,
+# and a clone of a remote repository, which is excluded. Checks follow the
+# default and -NoSecrets runs below; the same files are in smoke.sh.
+Mk 'proj/.crewai/last_run.json' "{`"execution_id`":`"x`",`"tier`":`"ephemeral`"}`n"
+foreach ($d224 in @('.config', 'AppData/Roaming', 'AppData/Local')) {
+  Mk "Users/alice/$d224/difyctl/login-pending.yml" "device_code: x`n"
+}
+$p225 = 'Users/alice/.local/state/pydantic-clai2'
+Mk "$p225/orchestrator.json" "{}`n"
+Mk "$p225/workspaces/registry/ws1/workspace.json" "{`"id`":`"ws1`"}`n"
+Mk "$p225/workspaces/registry/ws1/token" "token`n"
+Mk "$p225/workspaces/registry/ws1/session.log" "log`n"
+Mk "$p225/workspaces/clones/repo-0123456789/.git/HEAD" "ref: refs/heads/main`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1627,6 +1646,16 @@ Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
 Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
 Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
 
+# 2026-10-21 framework catalog gaps (#223, #224, #225)
+$r = Row 'proj/.crewai/last_run.json'
+Check '#223 CrewAI project .crewai collected' { $r -and ($r.home -replace '\\', '/').EndsWith('/proj') -and $r.agent -eq 'crewai' -and $r.status -eq 'collected' }
+function IsSecret224([string]$rel) { $r = Row $rel; return ($r -and $r.secret -eq $true -and $r.status -eq 'collected') }
+Check '#224 difyctl login-pending.yml flagged secret' { (IsSecret224 'Users/alice/.config/difyctl/login-pending.yml') -and (IsSecret224 'Users/alice/AppData/Roaming/difyctl/login-pending.yml') -and (IsSecret224 'Users/alice/AppData/Local/difyctl/login-pending.yml') }
+function Is225([string]$rel) { $r = Row $rel; return ($r -and $r.agent -eq 'pydantic-clai' -and $r.status -eq 'collected') }
+Check '#225 CLAI 2.0 state directory collected' { (Is225 "$p225/orchestrator.json") -and (Is225 "$p225/workspaces/registry/ws1/workspace.json") -and (Is225 "$p225/workspaces/registry/ws1/session.log") }
+Check '#225 CLAI 2.0 workspace token flagged secret' { (Is225 "$p225/workspaces/registry/ws1/token") -and (Row "$p225/workspaces/registry/ws1/token").secret -eq $true }
+Check '#225 CLAI 2.0 workspace clones excluded' { (StatusOf "$p225/workspaces/clones") -eq 'skipped_excluded' -and @($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like '*/repo-0123456789/.git/HEAD' }).Count -eq 0 }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -1832,6 +1861,9 @@ Check '#153 Qwen Code channel credentials skipped without secrets' { (StatusOf '
 Check '#153 Qwen Code channel routing files kept without secrets' { (StatusOf 'Users/alice/.qwen/channels/sessions.json') -eq 'collected' -and (StatusOf 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json') -eq 'collected' }
 # 2026-10-18 Codex shell snapshots (#160)
 Check '#160 Codex shell snapshot skipped without secrets' { (StatusOf $s160) -eq 'skipped_secret' }
+# 2026-10-21 framework catalog gaps (#223, #224, #225)
+Check '#224 difyctl login-pending.yml skipped without secrets' { (StatusOf 'Users/alice/.config/difyctl/login-pending.yml') -eq 'skipped_secret' }
+Check '#225 CLAI 2.0 workspace token skipped without secrets' { (StatusOf "$p225/workspaces/registry/ws1/token") -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }
