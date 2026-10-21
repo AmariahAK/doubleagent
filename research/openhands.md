@@ -38,6 +38,16 @@ All claims are from source.
 
 ### Source reviews
 
+- 2026-10-21: OpenHands/software-agent-sdk at
+  [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360),
+  OpenHands/OpenHands-CLI at
+  [`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
+  and OpenHands/OpenHands at
+  [`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95):
+  the Parser plan now describes the permission, model, prompt-history and scratch rows the parser
+  writes from source, the `mars-credentials.json` secret globs and the `.openhands/workspaces`
+  exclusion are in the tables, and [Source host rows](#source-host-rows) states the GitHub
+  repository search and its token.
 - 2026-10-19: SDK at
   [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)
   (previously
@@ -93,7 +103,7 @@ OpenHands has three, all chosen by the agent rather than the user:
   [`src/api/agent-server-config.ts:203-211`](https://github.com/OpenHands/OpenHands/blob/a6bba78ffd5a8b31620770f52383b1a2c0477fcd/src/api/agent-server-config.ts#L203-L211)).
   Excluded by default ([Exclusions](#exclusions)).
 - `~/.openhands/workspaces/<run>/`, automation runs under Canvas-in-Docker ([Automation
-  workspaces](#automation-workspaces)). Not excluded ([Exclusions](#exclusions)).
+  workspaces](#automation-workspaces)). Excluded by default ([Exclusions](#exclusions)).
 - `/tmp/conversation-worktrees/<dir>/`, the git worktree the Agent Server makes for a conversation
   started with worktree isolation
   ([`openhands-agent-server/openhands/agent_server/config.py:286-293`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/config.py#L286-L293);
@@ -300,7 +310,15 @@ in Canvas-in-Docker, everything except `~/.openhands` and `PROJECTS_PATH`.
   [`77-88`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/mars-credentials.mjs#L77-L88),
   [`118-135`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/mars-credentials.mjs#L118-L135),
   [`195-210`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/scripts/mars-credentials.mjs#L195-L210)).
-  No secret glob flags it yet.
+  Flagged by the three secret globs
+  `Library/Application Support/OpenHands Agent Canvas/mars-credentials.json`,
+  `.config/OpenHands Agent Canvas/mars-credentials.json` and
+  `AppData/Roaming/OpenHands Agent Canvas/mars-credentials.json`.
+- A GitHub, GitLab or Bitbucket token the Agent Server uses to clone and to search the user's
+  repositories is a custom secret in `secrets.json` (`custom_secrets.<name>.secret`, under one of
+  the names `github_token`, `GITHUB_TOKEN`, `GH_TOKEN` or `github` for the search), encrypted like
+  the other secret fields of the first bullet
+  ([Source host rows](#source-host-rows)).
 - The Canvas `Local Storage` holds each backend's API key in plain JSON
   ([Secrets](#secrets)).
 
@@ -317,7 +335,7 @@ collected with `--full`. `.openhands/agent-canvas/tmux` holds sockets only. Keep
 
 `.openhands/workspaces` (automation run workspaces under Canvas-in-Docker,
 [Per-user storage](#per-user-storage)) holds the same kind of content as `agent-canvas/workspaces` and is
-not excluded today; an exclusion like the native one would treat both alike.
+excluded the same way; `workspaces.json` beside it is a file of its own and is collected.
 
 ### Project-local files
 
@@ -341,7 +359,9 @@ Also read: `.agents/skills/`
   Under Canvas-in-Docker these are container paths (`/projects/<name>`), not host paths.
 - CLI `projects/<sha256>/` names are hashes of the path
   ([`locations.py:34-42`](https://github.com/OpenHands/OpenHands-CLI/blob/954f2ba646e8d749261a8f2b2b7e3031fa39be9f/openhands_cli/locations.py#L34-L42));
-  not reversible, but checkable against a candidate path.
+  not reversible, but checkable against a candidate path; the analyzer checks each
+  conversation's `workspace.working_dir`
+  ([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources)).
 - Agent Canvas `localStorage` (Electron `Local Storage`)
   `openhands-agent-server-conversation-metadata`: per conversation id, `selected_workspace` (the
   folder the user attached), `selected_repository`, `selected_branch` and `workspace_mode`
@@ -411,8 +431,10 @@ and joins on `meta.json` `forked_from_conversation_id`;
 the global `agent-canvas/bash_events/` record of terminal commands; and Canvas browser-storage keys
 with no message text, such as `openhands-last-conversation-by-backend`
 ([Other stores](#other-stores)). Nothing local records a deleted conversation. The analyzer reads a
-fork as its own conversation and does not read the prompt history, the global terminal record or the
-browser storage ([Parser plan](#parser-plan)).
+fork as its own conversation and the prompt history as a secondary source (see
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)), so a deleted CLI
+conversation's prompts are still in the timeline; it does not read the global terminal record or
+the browser storage ([Parser plan](#parser-plan)).
 
 ### Record schema
 
@@ -636,7 +658,7 @@ workspace choice, archive state and the profile the user picked.
   [`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
   as at the earlier commits; new at those commits are `mars-credentials.json`
   ([Credentials](#credentials)) and the `SecurityAnalysisEvent` kind
-  ([Permission records](#permission-records)), which the parser writes as a generic `system` row.
+  ([Permission records](#permission-records)).
 - Legacy 1.x app: `.openhands/[<user_id>/]v1_conversations/<hex>/<event hex>.json`
   ([`openhands/app_server/conversation_paths.py:12`](https://github.com/OpenHands/OpenHands/blob/11ca68ab2e15dcd85c21e4d7d3409e7a259369ac/openhands/app_server/conversation_paths.py#L12);
   [`event/event_service_base.py:89`](https://github.com/OpenHands/OpenHands/blob/11ca68ab2e15dcd85c21e4d7d3409e7a259369ac/openhands/app_server/event/event_service_base.py#L89)),
@@ -673,9 +695,11 @@ key is the one to redact.
 Globs: `.openhands/agent-canvas/dev_conversations/*/events/event-*.json`,
 `.openhands/agent-canvas/conversations/*/events/event-*.json`,
 `.openhands/conversations/*/events/event-*.json`; read the sibling `meta.json` and `base_state.json`
-once per conversation. Optional: `bash_events/*`. One row per event; an `ActionEvent` also yields a
-`thinking` row for `thought`/`reasoning_content`. Detect and report legacy
-`sessions/*/events/*.json` without parsing.
+and every event file once per conversation. The same directories' `base_state.json` is also read
+as an artifact of its own for the standing rows, and
+`.openhands/projects/*/prompt_history.json` as a secondary source. Optional: `bash_events/*`. One
+row per event; an `ActionEvent` also yields a `thinking` row for `thought`/`reasoning_content`.
+Detect and report legacy `sessions/*/events/*.json` without parsing.
 
 | Column | Source |
 | --- | --- |
@@ -684,7 +708,7 @@ once per conversation. Optional: `bash_events/*`. One row per event; an `ActionE
 | project_path | `workspace.working_dir` |
 | git_branch | empty |
 | turn_type | `MessageEvent` by `llm_message.role`; `ActionEvent`, `ACPToolCallEvent` → tool_use; `ObservationEvent`, `UserRejectObservation` → tool_result; others → system |
-| model | `base_state.json` `agent.llm.model` |
+| model | the model in force at the event ([Model rows](#model-rows)), else `base_state.json` `agent.llm.model` |
 | tool_name, tool_use_id | `tool_name`, `tool_call_id` |
 | text | message text; `action.command` or `tool_call.arguments`; observation `content[].text`; `error`; `summary` |
 
@@ -699,35 +723,56 @@ Written ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
   `rejection_reason`.
 - ` security_risk=<value>` at the end of an `ActionEvent`'s `tool_use` text, from `security_risk`.
 
-An approval writes nothing, so none can be shown. Not yet written, from the records of
-[Permission records](#permission-records):
+An approval writes nothing, so none can be shown. Also written, from the records of
+[Permission records](#permission-records), source-derived; not observed on any real install:
 
-- The `SecurityAnalysisEvent` verdict, today a generic `SecurityAnalysisEvent: <JSON>` `system`
-  row; proposed as one `permission decision: analyzed risk=<risk> analyzer=<analyzer>
-  policy=<policy>` row per entry of `risks`, joined to the `ActionEvent` whose `id` is the key (its
-  `tool_call_id` as `tool_use_id`).
-- Standing state: one `permission setting: confirmation_policy=<kind>[ threshold=<threshold>]
-  (from base_state.json, file mtime)` row, one `security_analyzer=<kind>` row, and one
-  `blocked_actions.<action id>=<reason>` row per entry, per conversation, at the file's
-  modification time; the value is the policy at the last write, not its history.
+- `permission decision: analyzed risk=<risk> analyzer=<analyzer> policy=<policy>[
+  details=<JSON>]`: one `system` row per entry of a `SecurityAnalysisEvent`'s `risks`, at the
+  event's time, with the `tool_name` and `tool_call_id` (as `tool_use_id`) of the `ActionEvent`
+  whose `id` is the key; ` action_id=<id>` takes their place when no event file of the
+  conversation has that id, and ` details=` carries the entry of `details` for that action as
+  compact JSON when there is one.
+- Standing state, from `base_state.json` read as an artifact of its own, at its modification time:
+  `permission setting: confirmation_policy=<kind>[ threshold=<threshold>][
+  confirm_unknown=<true|false>] (from base_state.json, file mtime)`,
+  `permission setting: security_analyzer=<kind> (from base_state.json, file mtime)` (`none` when
+  the key is absent, which with `exclude_none` means no analyzer), and one
+  `permission setting: blocked_actions.<action id>=<reason> (from base_state.json, file mtime)`
+  per entry, with the blocked action's `tool_name` and `tool_use_id` when its `ActionEvent` is on
+  disk. The values are the state at the last write, not its history.
 
 #### Model rows
 
 Written ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
 [issue 97](https://github.com/seanthegeek/doubleagent/issues/97)): `model: <id>`, a `system` row
-after the conversation's header row, at the header's time, from `base_state.json` `agent.llm.model`,
-once per conversation.
+after the conversation's header row, at the header's time, once per conversation.
 
-Not yet written, from the records of [Model records](#model-records): `model: <old> -> <new>` at
-each `SwitchLLMObservation` or `ClassifyAndSwitchLLMObservation` (`active_model`, with
-` profile=<profile_name>`), and the per-response model from
-`stats.usage_to_metrics.*.token_usages[]` joined on `llm_response_id`, which is the only record of
-a switch made through the REST endpoints.
+From the records of [Model records](#model-records), source-derived; not observed on any real
+install:
+
+- The `<id>` of that first row is the model of the conversation's first response, from
+  `stats.usage_to_metrics.*.token_usages[]` joined on the event's `llm_response_id`, when one is
+  recorded before any switch; else `base_state.json` `agent.llm.model`, which holds only the
+  current model. With no response joined and a switch first, the first row is the switch's.
+- `model: <old> -> <new>` before the first event of a response whose model differs from the one
+  in force (a switch through the REST endpoints between two responses shows only this way).
+- `model: <old> -> <active_model> profile=<profile>[ class=<chosen_class>]` after a successful
+  `SwitchLLMObservation` (`profile_name`) or `ClassifyAndSwitchLLMObservation` (`model`, the
+  profile name, and `chosen_class`), at the observation's time.
+- `model: <old> -> <new> (from base_state.json agent.llm, file mtime)` on `base_state.json` at its
+  modification time, when `agent.llm.model` differs from the last model the events show: a REST
+  switch after the last response.
+- The `model` column of each event row is the model in force at that event.
 
 #### Past-use rows and secondary sources
 
 - `.openhands/projects/<sha256 of cwd>/prompt_history.json` (CLI; secondary,
-  [CLI prompt history](#cli-prompt-history)): not read by the parser.
+  [CLI prompt history](#cli-prompt-history)), source-derived; not observed on any real install:
+  one `user` row per entry, `text` as the row text, `timestamp` emitted as if UTC (as the CLI's
+  conversations are, since the CLI writes no `meta.json` to anchor the zone), an empty
+  `session_id`, and as `project_path` the `workspace.working_dir` of a conversation under the same
+  `.openhands` whose SHA-256 equals the directory name, else empty. It joins the CLI conversation's
+  `user` rows on text and time; what only it holds is kept.
 - A fork's directory ([What survives a delete](#what-survives-a-delete)): primary, parsed as its
   own conversation.
 - The Canvas browser-storage keys ([Other stores](#other-stores)) hold no message text and repeat
@@ -847,15 +892,17 @@ feature flag).
 
 #### Scratch directory rows
 
-Not written. The analyzer's catalog rule already classes `.openhands/agent-canvas/workspaces/<hex>`
-and `.openhands/workspaces/<run>` (both under the `.openhands` entry). A worktree conversation's
+The analyzer's catalog rule already classes `.openhands/agent-canvas/workspaces/<hex>` and
+`.openhands/workspaces/<run>` (both under the `.openhands` entry). A worktree conversation's
 `workspace.working_dir` under `/tmp/conversation-worktrees/<dir>`
 ([Scratch directories](#scratch-directories);
 [`agent_server/local_storage.py:14-23`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/local_storage.py#L14-L23))
-is outside every home, so it is listed as a project; a
-`scratch directory: <working_dir> (conversation worktree)` row for a `working_dir` under that
-default root is proposed. The root is configurable, so a non-default root cannot be recognised
-from the conversation's files.
+is outside every home, so the parser writes
+`scratch directory: <working_dir> (conversation worktree under the Agent Server's default
+conversation_worktree_root /tmp/conversation-worktrees)` after the conversation's model row, at the
+header's time, with the `working_dir` as `project_path`; `/private/tmp/conversation-worktrees/`,
+the same root as macOS resolves it, counts too. Source-derived; not observed on any real install.
+The root is configurable, so a non-default root cannot be recognised from the conversation's files.
 
 #### Deletion rows
 
@@ -876,6 +923,12 @@ since the CLI writes no `meta.json`. The cut-file shape is not observed on any r
 source-derived (OpenHands/software-agent-sdk at
 [`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360)).
 
+`prompt_history.json` is read as a JSON array element by element: a record that does not decode
+(a file cut mid-write) is one `parser: unparseable record <N> (<reason>): <the text from that
+record to the end of the file>` row after the rows of the records before it, an element that is
+not an object is `parser: unparseable record <N> (not a JSON object): <the element>`, and a file
+that is not an array or cannot be read is one whole-file `parser:` row.
+
 #### Fixtures
 
 Fixture (`.openhands/conversations/0f0e0d0c111140008000000000000001/`):
@@ -893,6 +946,66 @@ Fixture (`.openhands/conversations/0f0e0d0c111140008000000000000001/`):
 ```
 
 (files `events/event-00000-6b1d5c2e-...0001.json` and so on, one object each).
+
+The permission and model records, from the shapes of [Permission records](#permission-records) and
+[Model records](#model-records) (a worktree conversation, so its `working_dir` is under
+`/tmp/conversation-worktrees/`):
+
+```json
+{"kind":"SecurityAnalysisEvent","id":"8a2f0c1d-0000-4000-8000-000000000002","timestamp":"2026-10-03T11:00:02.500000","source":"environment","analyzer":"LLMSecurityAnalyzer","policy":"ConfirmRisky","risks":{"8a2f0c1d-0000-4000-8000-000000000001":"LOW"},"details":{"8a2f0c1d-0000-4000-8000-000000000001":{"rationale":"runs the test suite"}}}
+{"kind":"ObservationEvent","id":"8a2f0c1d-0000-4000-8000-000000000005","timestamp":"2026-10-03T11:00:05.000000","source":"environment","tool_name":"switch_llm","tool_call_id":"call_w2","action_id":"8a2f0c1d-0000-4000-8000-000000000004","observation":{"kind":"SwitchLLMObservation","content":[{"type":"text","text":"Switched LLM profile to 'fast'"}],"is_error":false,"profile_name":"fast","reason":"cheaper","active_model":"openai/gpt-5-mini"}}
+```
+
+`base_state.json`, the fields beside `agent.llm.model`:
+
+```json
+{"confirmation_policy":{"kind":"ConfirmRisky","threshold":"HIGH","confirm_unknown":true},"security_analyzer":{"kind":"LLMSecurityAnalyzer"},"blocked_actions":{"8a2f0c1d-0000-4000-8000-000000000006":"rm is blocked by hook"},"stats":{"usage_to_metrics":{"agent":{"model_name":"litellm_proxy/claude-sonnet-4-5","token_usages":[{"model":"litellm_proxy/claude-sonnet-4-5","prompt_tokens":10,"completion_tokens":5,"response_id":"resp_w1"}]}}}}
+```
+
+`.openhands/projects/<sha256 of /srv/proj>/prompt_history.json`:
+
+```json
+[{"text":"list the files","timestamp":"2026-10-02T08:30:01.000000"},{"text":"and the hidden files?","timestamp":"2026-10-02T08:45:00.000000"}]
+```
+
+#### Source host rows
+
+The agent records no connected source-host account, so the parser writes no `source host:` row.
+The Agent Server searches the user's GitHub repositories (`/git/repositories/search` on its
+API router, GitHub only) with a token it reads from its secrets store under the names
+`github_token`, `GITHUB_TOKEN`, `GH_TOKEN` or `github`, and uses the `github_token`,
+`gitlab_token` or `bitbucket_token` secret to clone; it never asks the host who the token
+belongs to, and returns the repository list (`id`, `full_name`, `git_provider`, `is_public`,
+`pushed_at`, `main_branch`) without storing it
+([`agent_server/git_provider_service.py:26-31`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/git_provider_service.py#L26-L31),
+[`54-87`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/git_provider_service.py#L54-L87),
+[`211-220`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/git_provider_service.py#L211-L220);
+[`agent_server/git_router.py:35`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/git_router.py#L35),
+[`129-150`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/git_router.py#L129-L150);
+[`openhands-sdk/openhands/sdk/workspace/repo.py:46-50`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-sdk/openhands/sdk/workspace/repo.py#L46-L50)).
+The token is a custom secret in `.openhands/secrets.json` (`custom_secrets.<name>.secret`),
+Fernet ciphertext under the master key or plaintext without one
+([`agent_server/persistence/store.py:575-586`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/persistence/store.py#L575-L586);
+[`agent_server/persistence/models.py:519-527`](https://github.com/OpenHands/software-agent-sdk/blob/33d8aa29c3078d074799e2fbf5e847aeb2d71360/openhands-agent-server/openhands/agent_server/persistence/models.py#L519-L527)),
+and the file is flagged ([Credentials](#credentials)); a conversation's `meta.json` `secrets` can
+hold the same names, as the fixture's `GITHUB_TOKEN` does. Agent Canvas keeps the last three
+repositories the user picked, with `git_provider` and `full_name`, under the `localStorage` key
+`home-store` (`recentRepositories`, `lastSelectedProvider`)
+([`src/stores/home-store.ts:6-9`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/stores/home-store.ts#L6-L9),
+[`60-63`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/stores/home-store.ts#L60-L63);
+[`src/types/git.d.ts:58-67`](https://github.com/OpenHands/OpenHands/blob/8d39305538c1d17a30cbe477e57a0e18fcee7d95/src/types/git.d.ts#L58-L67)),
+and the repository bound to each conversation under
+`openhands-agent-server-conversation-metadata` ([Agent Canvas browser
+storage](#agent-canvas-browser-storage)); both are LevelDB in the Electron app, which the analyzer
+does not read. An OpenHands Cloud conversation started on a repository (`openhands cloud`, a
+Canvas cloud backend) is stored server-side only
+([Sync, relay and origin rows](#sync-relay-and-origin-rows)). Grepped for `github`, `gitlab`,
+`bitbucket`, `provider_tokens`, `git_provider`, `repositor` and `oauth` in software-agent-sdk at
+[`33d8aa2`](https://github.com/OpenHands/software-agent-sdk/commit/33d8aa29c3078d074799e2fbf5e847aeb2d71360),
+OpenHands-CLI at
+[`0403f1a`](https://github.com/OpenHands/OpenHands-CLI/commit/0403f1a79a9fc62a6c7be21c17d7b51f64245ad2)
+and OpenHands at
+[`8d39305`](https://github.com/OpenHands/OpenHands/commit/8d39305538c1d17a30cbe477e57a0e18fcee7d95).
 
 ## Confidence
 

@@ -1370,11 +1370,33 @@ name no session.
 
 OpenHands, Agent Zero, nanobot and Muse Code write the same kinds of row.
 `openhands` writes `model: <id>` after each conversation's header row, at
-the header's time, from `agent.llm.model` in `base_state.json`; a
+the header's time: the model of the first response (`token_usages[]` in
+`base_state.json`, joined on `llm_response_id`), else `agent.llm.model`.
+It writes `model: <old> -> <new>` before the first event of a response
+whose model changed, `model: <old> -> <new> profile=<profile>[
+class=<chosen_class>]` after the agent's own switch
+(`SwitchLLMObservation`, `ClassifyAndSwitchLLMObservation`), and, on
+`base_state.json` at its modification time, `model: <old> -> <new> (from
+base_state.json agent.llm, file mtime)` when the file names a model the
+events do not reach (a switch over the Agent Server's REST endpoints). A
 rejected call's `tool_result` is followed by `permission decision:
 rejected rejection_source=<source> <reason>` with the call's `tool_name`
 and `tool_use_id`, and an action's `tool_use` text ends with
-` security_risk=<value>` when the event has one. `agent-zero` writes
+` security_risk=<value>` when the event has one. Each entry of a security
+analyzer's verdict is `permission decision: analyzed risk=<risk>
+analyzer=<analyzer> policy=<policy>[ details=<JSON>]` with the analysed
+action's `tool_name` and `tool_use_id` (` action_id=<id>` when the action
+is not on disk). At `base_state.json`'s modification time it writes
+`permission setting: confirmation_policy=<kind>[ threshold=<threshold>][
+confirm_unknown=<true|false>] (from base_state.json, file mtime)`,
+`permission setting: security_analyzer=<kind> (from base_state.json,
+file mtime)` (`none` when no analyzer is set) and `permission setting:
+blocked_actions.<action id>=<reason> (from base_state.json, file mtime)`
+per hook-blocked action. A conversation whose working directory is under
+the Agent Server's default worktree root gets `scratch directory:
+<working_dir> (conversation worktree under the Agent Server's default
+conversation_worktree_root /tmp/conversation-worktrees)` after its model
+row. `agent-zero` writes
 `model: <id>` before an agent's first reply and `model: <old> -> <new>`
 on a change, tracked per chat and agent number, with ` agent=<n>` for a
 subordinate agent. After the chat start row, at the file's modification
@@ -1552,6 +1574,7 @@ beside its `session synced: server conversation` row.
 | `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
 | `openclaw` | `.openclaw/agents/<id>/sessions/` copies of a transcript: the published `*.jsonl.reset.*` / `*.jsonl.deleted.*` archive files, `*.checkpoint.<uuid>.jsonl` and `*.jsonl.pre-doctor-*-repair-*.bak` (each copy's session-start row names it and is kept) | `.openclaw/agents/<id>/agent/openclaw-agent.sqlite` (`transcript_events` and the `session_transcript_archives` blobs) and the legacy `sessions/<id>.jsonl` |
 | `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
+| `openhands` | `.openhands/projects/<sha256 of cwd>/prompt_history.json`, the CLI's last 100 prompts per working directory (no conversation id: matches on text and time; `project_path` is the working directory of a conversation whose SHA-256 is the directory name) | `.openhands/conversations/<hex>/events/event-*.json` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
 | `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
