@@ -9536,6 +9536,128 @@ def cody_deep_records():
     return {CODY_ACCOUNT: {"chat": {CODY_DEEP_CHAT: chat}}}
 
 
+# Settings, model preferences and the legacy JetBrains history (issue 197),
+# from sourcegraph/cody-public-snapshot at 8e20ac6c1460c08b0db581c0204658112a246eda:
+# the settings keys from `vscode/package.json:1136-1140` and `1176-1213` and the MCP
+# server schema `MCPManager.ts:20-45`; `cody-model-preferences` from
+# `LocalStorageProvider.ts:37` and `modelsService.ts:198-219`; the XML from the
+# serialisation `HistoryStateTest.kt:37-67`, with `llm` (`ChatState.kt:24`,
+# `LLMState.kt:8-18`) and the component wrapper the IDE writes around it.
+CODY_SETTINGS_REL = ".config/VSCodium/User/settings.json"
+CODY_PREFS_REL = ".local/share/Cody-nodejs/JetBrains-globalState/cody-model-preferences"
+CODY_MCP_TOKEN = "ghp_cody_mcp_secret_not_real"
+CODY_LEGACY_REL = ".idea/cody_history.xml"
+CODY_LEGACY_ACCOUNT = "VXNlkjoxEFU3NjE="
+CODY_LEGACY_UPDATED = "2024-01-31T01:06:18.524621"
+CODY_LEGACY_ID = "0f8b7034-9fa8-488a-a13e-09c52677008a"
+
+CODY_SETTINGS_TEXT = (
+    "{\n"
+    "  // editor settings with comments and a trailing comma\n"
+    '  "editor.fontSize": 14,\n'
+    '  "cody.chat.agenticContext": false,\n'
+    '  "cody.agentic.context.experimentalShell": true,\n'
+    '  "cody.agentic.context.experimentalOptions": {\n'
+    '    "shell": {"allow": ["git", "ls"], "block": ["sudo"]}\n'
+    "  },\n"
+    '  "cody.mcpServers": {\n'
+    '    "github": {"command": "npx", "args": ["gh-mcp"],\n'
+    '      "env": {"GITHUB_TOKEN": "' + CODY_MCP_TOKEN + '"},\n'
+    '      "disabledTools": ["delete_repo"]},\n'
+    '    "web": {"url": "https://mcp.example/sse", "disabled": true,\n'
+    '      "headers": {"Authorization": "Bearer ' + CODY_MCP_TOKEN + '"}},\n'
+    "  },\n"
+    "}\n"
+)
+
+
+def cody_model_preferences():
+    return {
+        "https://sourcegraph.com/": {
+            "defaults": {"chat": CODY_MODEL, "edit": CODY_MODEL},
+            "selected": {"chat": CODY_MODEL_SWITCHED},
+        }
+    }
+
+
+CODY_LEGACY_XML = """<project version="4">
+  <component name="ChatHistory">
+    <accountData>
+      <list>
+        <AccountData>
+          <accountId value="%(account)s" />
+          <chats>
+            <list>
+              <chat>
+                <internalId value="%(id)s" />
+                <llm>
+                  <llm>
+                    <model value="%(model)s" />
+                    <provider value="Anthropic" />
+                  </llm>
+                </llm>
+                <messages>
+                  <list>
+                    <message>
+                      <speaker value="HUMAN" />
+                      <text value="hi&#10;there" />
+                    </message>
+                    <message>
+                      <speaker value="ASSISTANT" />
+                      <text value="hello" />
+                    </message>
+                    <message>
+                      <speaker value="HUMAN" />
+                      <text value="unpaired question" />
+                    </message>
+                  </list>
+                </messages>
+                <updatedAt value="%(updated)s" />
+              </chat>
+              <chat>
+                <internalId value="1f8b7034-9fa8-488a-a13e-09c52677008b" />
+                <messages>
+                  <list>
+                    <message>
+                      <speaker value="HUMAN" />
+                      <text value="second chat" />
+                    </message>
+                  </list>
+                </messages>
+                <updatedAt value="2024-02-01T09:00:00.000001" />
+              </chat>
+            </list>
+          </chats>
+        </AccountData>
+      </list>
+    </accountData>
+  </component>
+</project>
+""" % {
+    "account": CODY_LEGACY_ACCOUNT,
+    "id": CODY_LEGACY_ID,
+    "model": CODY_MODEL,
+    "updated": CODY_LEGACY_UPDATED,
+}
+
+
+def build_cody_settings(home: Path) -> None:
+    """Write the editor settings, the JetBrains model preferences and the
+    VS Code row's preferences; not part of `build_home`, a test adds them.
+    A keybindings file beside settings.json is noise the parser skips."""
+    path = home / CODY_SETTINGS_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(CODY_SETTINGS_TEXT, encoding="utf-8")
+    (path.parent / "keybindings.json").write_text("[]\n", encoding="utf-8")
+    prefs = home / CODY_PREFS_REL
+    prefs.parent.mkdir(parents=True, exist_ok=True)
+    prefs.write_text(json.dumps(cody_model_preferences()), encoding="utf-8")
+    (prefs.parent / "cody-anonymous-user-id").write_text('"anon-1"', encoding="utf-8")
+    state = cody_vscode_state()
+    state["cody-model-preferences"] = cody_model_preferences()
+    _vscdb(home / CODY_VSCDB_REL, {"sourcegraph.cody-ai": state})
+
+
 def build_cody_deep(home: Path) -> None:
     """Write the Deep Cody history; not part of `build_home`, a test adds it."""
     path = home / CODY_DEEP_REL
