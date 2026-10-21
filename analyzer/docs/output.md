@@ -1361,7 +1361,38 @@ updated_at)` row per grant the user gave for the rest of a thread
 and each `sandbox_grants` escape flag that is `true`): unlike the
 settings-file rows these live in the thread blob, so their `session_id` is
 the thread id and their `timestamp_utc` is the thread's `updated_at`, the
-blob's last write rather than the time of the grant. `hermes` also
+blob's last write rather than the time of the grant. It also writes, after
+a failed tool result whose text is Zed's denial, `permission decision:
+denied` (the user denied the call) or `permission decision: auto_denied
+reason=<text>` (a rule denied it), with the call's `tool_name` and
+`tool_use_id`; an approval leaves no record. From the user settings files
+(`settings.json`, `global_settings.json`) it writes one `permission
+setting: <key>=<value> (from <file>, file mtime)` row per entry of
+`agent.tool_permissions` and `agent.sandbox_permissions`, per
+`agent_servers.<id>.default_mode` and per `session.trust_all_worktrees`,
+the key prefixed with the override block or profile it sits in
+(`stable.agent.tool_permissions.default`), and from `db.sqlite` one
+`permission setting: trusted_worktrees.<path>=true[ host=<user>@<host>]
+(from <file> trusted_worktrees, file mtime)` row per trusted project, with
+the path as `project_path`. Its other `db.sqlite` rows are `sidebar thread:
+title=<title> archived=<true|false> interacted_at=<time|->
+main_worktree=<path|->` per native thread, at the sidebar row's
+`updated_at`; `unsent draft: <text>` per draft prompt, at the draft's
+`updated_at`, or ending ` (from <file> agent_draft_prompts, file mtime)`
+when the draft's sidebar row is gone, and `unsent draft: <text> (thread
+blob, as of updated_at)` for a thread blob's own draft; `archived worktree:
+<worktree> of <main repository> branch=<branch> staged=<hash>
+unstaged=<hash> original=<hash> ref=refs/archived-worktrees/<id> (from
+<file> archived_git_worktrees, file mtime)` per archived worktree and
+linked thread; and `sidebar terminal: <title> cwd=<directory>` per
+sidebar terminal at its `created_at`. Its `scratch directory:` rows are
+`scratch directory: <path> (sandboxed terminal temp directory of thread
+<id>) (thread blob, as of updated_at)` for a macOS thread's sandbox temp
+directory and `scratch directory: <worktree> (Zed-created git worktree
+of <main repository>) (from <file> created_git_worktrees, created_at)` for each
+linked worktree Zed made, at its creation time, with `host=<host>` after
+the main repository for a remote one; both have an empty `session_id`. These rows rest on source
+alone. `hermes` also
 writes one `debug report uploaded: <url> (from pastes/pending.json,
 expire_at minus 6 hours)` row per paste.rs link that `hermes debug
 share` uploaded and that is still due for deletion, at the upload time,

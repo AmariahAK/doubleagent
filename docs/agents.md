@@ -900,12 +900,17 @@ Validated against: Source at [d7622a5](https://github.com/microsoft/vscode/commi
 ### `zed`
 
 Files read: `threads/threads.db` (zstd-compressed JSON threads; needs
-`zstandard`) and `db/0-<channel>/db.sqlite` `sidebar_threads`
-(external-agent threads as `system` rows) under `.local/share/zed`,
+`zstandard`) and `db/0-<channel>/db.sqlite` (`sidebar_threads`, external-agent
+threads and native thread state; `trusted_worktrees`; the `scoped_kv_store`
+namespaces `agent_draft_prompts` and `created_git_worktrees`;
+`archived_git_worktrees` with `thread_archived_worktrees`;
+`sidebar_terminal_threads`) under `.local/share/zed`,
 `Library/Application Support/Zed`, `AppData/Local/Zed` or the Flatpak data
-dir. No per-message timestamps: messages carry the thread's `updated_at`.
+dir, and `settings.json` and `global_settings.json` under `.config/zed`,
+`AppData/Roaming/Zed` or the Flatpak config dir. No per-message timestamps:
+messages carry the thread's `updated_at`.
 
-Validated against: Source at [a846890](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a), synthetic fixture.
+Validated against: Source at [a846890](https://github.com/zed-industries/zed/commit/a84689073d296dfd39987bc7dd478e43ef76d83a), synthetic fixture; the settings files, the other `db.sqlite` stores, denied calls, scratch directories and draft prompts from source at [9cd14da](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6), synthetic fixture.
 
 ## Collected agents
 

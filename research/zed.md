@@ -4,7 +4,8 @@ Zed (catalog agent `zed`) is a code editor whose built-in agent panel runs threa
 native Zed Agent and drives external agents over ACP, the Agent Client Protocol, the JSON-RPC
 protocol Zed uses to drive an external agent (Claude Agent, Gemini CLI, Codex) as a child process.
 It was researched together with Goose ([`goose.md`](goose.md)). The analyzer parses the panel's
-threads in `threads.db` and the `sidebar_threads` table, from source and fixtures only.
+threads in `threads.db`, the agent tables and key-value namespaces of `db.sqlite` and the standing
+permission entries of the user settings files, from source and fixtures only.
 
 ## Source and evidence
 
@@ -28,6 +29,15 @@ and on a synthetic fixture.
 
 ### Source reviews
 
+- 2026-10-21: zed-industries/zed at
+  [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6):
+  the plan lines of [Parser plan](#parser-plan) for standing permissions, denied calls, scratch
+  directories, draft prompts, archived worktrees, sidebar terminals and the native sidebar rows now
+  describe what the parser does, source-derived
+  ([issue 196](https://github.com/seanthegeek/doubleagent/issues/196)). The review found that a
+  project's `.zed/settings.json` cannot hold the permission keys, added the override blocks of a
+  user settings file, the remaining automatic denial texts, the draft prompts' ACP block shape and
+  the [Source host rows](#source-host-rows) statement.
 - 2026-10-19, [zed-industries/zed](https://github.com/zed-industries/zed) at
   [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
   (the default branch that day): the paths of [Per-user storage](#per-user-storage) and the shapes
@@ -158,6 +168,16 @@ and `custom_headers` for LM Studio style providers
 ([`crates/settings_content/src/language_model.rs:310-312`](https://github.com/zed-industries/zed/blob/a84689073d296dfd39987bc7dd478e43ef76d83a/crates/settings_content/src/language_model.rs#L310-L312))
 and `agent_servers` environment. `db.sqlite` and `threads.db` hold no tokens.
 
+The GitHub Copilot model provider runs its own GitHub OAuth device flow with Zed's client id and
+the `read:user` scope
+([`crates/copilot_chat/src/copilot_oauth.rs:20-23`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/copilot_chat/src/copilot_oauth.rs#L20-L23))
+and keeps the token through the same credentials provider under the URL
+`https://<oauth domain>/copilot-agent`, so in the keychain, or in `development_credentials` on the
+Dev channel
+([`crates/copilot_chat/src/copilot_chat.rs:50-52`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/copilot_chat/src/copilot_chat.rs#L50-L52),
+[`562-571`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/copilot_chat/src/copilot_chat.rs#L562-L571),
+[`678`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/copilot_chat/src/copilot_chat.rs#L678)).
+
 The `settings.json` keys `agent.tool_permissions` and `agent.sandbox_permissions` hold rules and
 paths, not secrets, and the `scoped_kv_store` namespaces read at
 [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6) hold no token.
@@ -246,8 +266,10 @@ ACP `session/delete` only when the agent offers it
 ([`crates/agent_servers/src/acp/v1.rs:285-300`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_servers/src/acp/v1.rs#L285-L300)),
 so otherwise it stays there. A copy already sent with a rating stays with Zed
 ([Sync, relay and origin](#sync-relay-and-origin-rows)). Nothing local records a deletion. The
-analyzer reads `threads.db` and the external agents' `sidebar_threads` rows, and none of the other
-`db.sqlite` stores (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+analyzer reads `threads.db` and every store of [Other db.sqlite tables](#other-dbsqlite-tables), so
+a deleted thread's surviving `created_git_worktrees` entry still shows; none of these stores
+repeats a thread's messages, so none is a secondary source (see
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### Record schema
 
@@ -330,8 +352,16 @@ and for an automatic denial by the rules `Blocked by global default: deny`,
 `Blocked by built-in security rule`
 ([`crates/agent/src/tool_permissions.rs:12-13`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/tool_permissions.rs#L12-L13),
 [`292-298`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/tool_permissions.rs#L292-L298),
-[`396-430`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/tool_permissions.rs#L396-L430));
-a call cut off by the user is `Tool canceled by user`
+[`396-430`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/tool_permissions.rs#L396-L430)),
+and three more automatic texts: `The terminal command could not be approved because ...` for a
+command with shell substitutions, `The <tool> tool cannot run because <n> regex pattern(s) failed to
+compile. ...` and `The <shell> shell does not support "always allow" patterns ...`
+([`tool_permissions.rs:14-17`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/tool_permissions.rs#L14-L17),
+[`318-323`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/tool_permissions.rs#L318-L323),
+[`447-460`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/tool_permissions.rs#L447-L460)).
+The error becomes one `Text` content item holding the error's message
+([`crates/language_model_core/src/request.rs:251-255`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/language_model_core/src/request.rs#L251-L255)).
+A call cut off by the user is `Tool canceled by user`
 ([`thread.rs:72`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/thread.rs#L72)).
 
 #### sidebar_threads and archived worktrees
@@ -408,15 +438,16 @@ tables with its migrations) opens that file
 [`1078`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/workspace/src/persistence.rs#L1078)).
 They are the tables `trusted_worktrees`, `sidebar_terminal_threads` and `archived_git_worktrees`
 and the key-value table `scoped_kv_store`, whose namespaces include `agent_draft_prompts` and
-`created_git_worktrees`. The parser reads none of them.
+`created_git_worktrees`. The parser reads every one of them, each as a primary source, as
+[Past-use rows and secondary sources](#past-use-rows-and-secondary-sources) describes.
 
 | Source | Table and key | What it holds | Survives | Joins on | Plan |
 | --- | --- | --- | --- | --- | --- |
-| Draft prompts | `scoped_kv_store(namespace, key, value)`, namespace `agent_draft_prompts`, key the sidebar `thread_id` ([`kvp.rs:31-36`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/db/src/kvp.rs#L31-L36); [`agent_ui/src/draft_prompt_store.rs:25-58`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/draft_prompt_store.rs#L25-L58)) | the unsent prompt of a draft thread, a JSON array of ACP content blocks; a draft is a `sidebar_threads` row with `session_id` NULL ([`draft_prompt_store.rs:1-5`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/draft_prompt_store.rs#L1-L5)) | nothing: deleted with the sidebar row ([`thread_metadata_store.rs:1141-1164`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_metadata_store.rs#L1141-L1164)) | `key` to `sidebar_threads.thread_id` | primary: text no other store holds |
-| Zed-created worktrees | `scoped_kv_store` namespace `created_git_worktrees`, key `<host>` newline `<worktree path>` (`local` for this machine), value `{created_at_seconds, created_at_subsec_nanos}` ([`git_ui_core/src/created_worktrees.rs:34-73`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/git_ui_core/src/created_worktrees.rs#L34-L73)) | each linked git worktree Zed made for a thread, with its creation time | the thread's deletion; removed only by `forget_created_worktree` ([`created_worktrees.rs:142`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/git_ui_core/src/created_worktrees.rs#L142)) | worktree path to `sidebar_threads.folder_paths` | primary: the scratch marker |
-| Archived worktrees | `archived_git_worktrees`, `thread_archived_worktrees` ([Record schema](#record-schema)) | for a thread archived from a Zed-created worktree: the worktree and main repository paths, the branch, and the staged, unstaged and original commit ids; the worktree directory is removed and the WIP commits stay in the main repository under `refs/archived-worktrees/<id>` ([`agent_ui/src/thread_worktree_archive.rs:77-79`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L77-L79), [`499-607`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L499-L607)) | the worktree's removal; dropped with the ref when the last thread linked to it is deleted ([`thread_worktree_archive.rs:823-912`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L823-L912)) | `thread_archived_worktrees.thread_id` to `sidebar_threads.thread_id` | primary |
-| Sidebar terminals | `sidebar_terminal_threads(terminal_id, title, custom_title, created_at, working_directory, folder_paths, folder_paths_order, main_worktree_paths, main_worktree_paths_order, remote_connection)` ([`agent_ui/src/terminal_thread_metadata_store.rs:483-500`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/terminal_thread_metadata_store.rs#L483-L500)) | a terminal tab opened in the threads sidebar: title, start time and working directory, no output | not determined | `folder_paths` | primary, metadata only |
-| Native sidebar rows | `sidebar_threads` rows with `agent_id` NULL ([Record schema](#record-schema)) | title, `title_override`, `archived`, `interacted_at` and `main_worktree_paths` of a native thread | deleted with the thread | `session_id` to `threads.id` | secondary; skipped today, so `archived`, `interacted_at` and `main_worktree_paths` are never shown |
+| Draft prompts | `scoped_kv_store(namespace, key, value)`, namespace `agent_draft_prompts`, key the sidebar `thread_id` ([`kvp.rs:31-36`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/db/src/kvp.rs#L31-L36); [`agent_ui/src/draft_prompt_store.rs:25-58`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/draft_prompt_store.rs#L25-L58)) | the unsent prompt of a draft thread, a JSON array of ACP `ContentBlock`s, internally tagged by `type` (`text` with `text`, `image`, `audio`, `resource_link` with `name` and `uri`, `resource` with an embedded `resource`) ([`agent-client-protocol-schema/src/v2/content.rs:84-111`](https://github.com/agentclientprotocol/agent-client-protocol/blob/e2d83349bc9e28a4059ea3acefa1c91c966f74e2/agent-client-protocol-schema/src/v2/content.rs#L84-L111), schema 1.12.0, the version in `Cargo.lock` at `9cd14da`); the key is the `thread_id` UUID in hyphenated form ([`thread_metadata_store.rs:41-44`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_metadata_store.rs#L41-L44)); a draft is a `sidebar_threads` row with `session_id` NULL ([`draft_prompt_store.rs:1-5`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/draft_prompt_store.rs#L1-L5)) | nothing: deleted with the sidebar row ([`thread_metadata_store.rs:1141-1164`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_metadata_store.rs#L1141-L1164)) | `key` to `sidebar_threads.thread_id` | primary, read: text no other store holds |
+| Zed-created worktrees | `scoped_kv_store` namespace `created_git_worktrees`, key `<host>` newline `<worktree path>` (`local` for this machine), value `{created_at_seconds, created_at_subsec_nanos}` ([`git_ui_core/src/created_worktrees.rs:34-73`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/git_ui_core/src/created_worktrees.rs#L34-L73)) | each linked git worktree Zed made for a thread, with its creation time | the thread's deletion; removed only by `forget_created_worktree` ([`created_worktrees.rs:142`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/git_ui_core/src/created_worktrees.rs#L142)) | worktree path to `sidebar_threads.folder_paths` | primary, read: the scratch marker |
+| Archived worktrees | `archived_git_worktrees`, `thread_archived_worktrees` ([Record schema](#record-schema)) | for a thread archived from a Zed-created worktree: the worktree and main repository paths, the branch, and the staged, unstaged and original commit ids; the worktree directory is removed and the WIP commits stay in the main repository under `refs/archived-worktrees/<id>` ([`agent_ui/src/thread_worktree_archive.rs:77-79`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L77-L79), [`499-607`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L499-L607)) | the worktree's removal; dropped with the ref when the last thread linked to it is deleted ([`thread_worktree_archive.rs:823-912`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/thread_worktree_archive.rs#L823-L912)) | `thread_archived_worktrees.thread_id` to `sidebar_threads.thread_id` | primary, read |
+| Sidebar terminals | `sidebar_terminal_threads(terminal_id, title, custom_title, created_at, working_directory, folder_paths, folder_paths_order, main_worktree_paths, main_worktree_paths_order, remote_connection)` ([`agent_ui/src/terminal_thread_metadata_store.rs:483-500`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/terminal_thread_metadata_store.rs#L483-L500)) | a terminal tab opened in the threads sidebar: title, start time (RFC 3339, [`terminal_thread_metadata_store.rs:519`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent_ui/src/terminal_thread_metadata_store.rs#L519)) and working directory, no output | not determined | `folder_paths` | primary, read, metadata only |
+| Native sidebar rows | `sidebar_threads` rows with `agent_id` NULL ([Record schema](#record-schema)) | title, `title_override`, `archived`, `interacted_at` and `main_worktree_paths` of a native thread | deleted with the thread | `session_id` to `threads.id` | primary, read as thread state: it repeats no message of `threads.db` and is deleted with the thread, so it is not a secondary source |
 
 The `trusted_worktrees(trust_id, absolute_path, user_name, host_name)`
 table of the same file is permission state, not past use
@@ -426,8 +457,8 @@ table of the same file is permission state, not past use
 
 At
 [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
-the user's `settings.json` (and a project's `.zed/settings.json`; patterns from every layer add up)
-holds `agent.tool_permissions.default` and, per tool name (`terminal`, `edit_file`, `fetch`,
+the user's `settings.json` (and `global_settings.json`, which parses the same way) holds
+`agent.tool_permissions.default` and, per tool name (`terminal`, `edit_file`, `fetch`,
 `mcp:<server>:<tool>` and so on), `tools.<tool>.default` and the regex lists `always_allow`,
 `always_deny` and `always_confirm` of `{pattern, case_sensitive}`, with the modes `allow`, `deny`
 and `confirm`
@@ -437,6 +468,15 @@ and `confirm`
 and `agent.sandbox_permissions` holds `allow_all_hosts`, `network_hosts[]`, `allow_fs_write_all`,
 `allow_unsandboxed` and `write_paths[]` (a path or `{requested, resolved}`)
 ([`agent.rs:1013-1065`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/settings_content/src/agent.rs#L1013-L1065)).
+The same keys can also sit in a user file's release-channel blocks (`dev`, `nightly`, `preview`,
+`stable`), its platform blocks (`macos`, `linux`, `windows`) and each `profiles.<name>.settings`,
+each a whole settings object of its own
+([`crates/settings_content/src/settings_content.rs:459-469`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/settings_content/src/settings_content.rs#L459-L469),
+[`501-514`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/settings_content/src/settings_content.rs#L501-L514)).
+A project's `.zed/settings.json` cannot hold them: it is parsed as `ProjectSettingsContent`, which
+has no `agent`, `agent_servers` or `session` key
+([`crates/settings_content/src/project.rs:44`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/settings_content/src/project.rs#L44);
+[`crates/settings/src/settings_store.rs:1104-1113`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/settings/src/settings_store.rs#L1104-L1113)).
 
 Zed writes these itself: an "Always allow" or "Always deny" choice on a tool prompt (option ids
 `always_allow:<tool>`, `always_deny:<tool>`, `always_allow_mcp:<tool>`, `always_deny_mcp:<tool>`)
@@ -543,12 +583,14 @@ API keys were found in thread storage; the settings files that can hold them are
 
 ### Parser plan
 
-Globs: `{Library/Application Support/Zed,.local/share/zed,AppData/Local/Zed}/threads/threads.db*`
-and `.../db/0-*/db.sqlite*`. Requires the `zstandard` package.
+Globs: `{Library/Application Support/Zed,.local/share/zed,AppData/Local/Zed}/threads/threads.db*`,
+`.../db/0-*/db.sqlite*`, and `{.config/zed,AppData/Roaming/Zed}/{settings,global_settings}.json`
+(with the Flatpak `.var/app/dev.zed.Zed*/{data,config}/zed` forms). Requires the `zstandard`
+package.
 
 Rows: one per message content item and per `tool_results` entry; one
 `system` row per `sidebar_threads` entry with `agent_id` set (external agent,
-no transcript).
+no transcript); the `system` rows of the subsections below.
 
 | Column | Source |
 | --- | --- |
@@ -563,14 +605,14 @@ no transcript).
 
 Model and permission rows ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96) and
 [issue 97](https://github.com/seanthegeek/doubleagent/issues/97)), all `system`, come after the
-thread-start row and before the first message. The plan lines marked "not read" below are not
-implemented and rest on source at
+thread-start row and before the first message. The rows added for
+[issue 196](https://github.com/seanthegeek/doubleagent/issues/196) rest on source at
 [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
-alone (fixture only).
+alone and a fixture.
 
 #### Permission rows
 
-Implemented: `permission setting: <key>=<value> (thread blob, as of updated_at)`, one
+Thread grants: `permission setting: <key>=<value> (thread blob, as of updated_at)`, one
 row per `profile`, per `sandbox_grants.write_paths[]` entry (a string, or
 the object printed as compact JSON), per `sandbox_grants.network_hosts[]`
 entry, and per `sandbox_grants` boolean (`network_any_host`,
@@ -579,21 +621,33 @@ The grants live in the thread blob, so `session_id` is the thread id and
 `timestamp_utc` the thread's `updated_at` (the blob's last write; the
 moment of the grant is not recorded).
 
-Standing rules (not read), from
-[Permission settings and project trust](#permission-settings-and-project-trust): one
-`permission setting: <key>=<value> (from <file>, file
-mtime)` row per entry of `agent.tool_permissions`,
-`agent.sandbox_permissions`, `agent_servers.<id>.default_mode` and
-`session.trust_all_worktrees`, read from the settings files the
-catalog collects, and one `permission setting:
-trusted_worktrees.<path>=true (from db.sqlite trusted_worktrees, file
-mtime)` row per trusted path, `project_path` the path.
+Standing rules, from
+[Permission settings and project trust](#permission-settings-and-project-trust), source-derived;
+not observed on any real install. The parser reads `settings.json` and `global_settings.json` in
+the config directory as JSON with comments and trailing commas (Zed parses them with
+`parse_json_with_comments`,
+[`settings_content.rs:450-457`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/settings_content/src/settings_content.rs#L450-L457))
+and writes one `permission setting: <key>=<value> (from <file>, file mtime)` row per leaf of
+`agent.tool_permissions` and `agent.sandbox_permissions` (each list entry its own row, an
+`always_allow`, `always_deny` or `always_confirm` rule `{pattern, case_sensitive}` as compact
+JSON), per `agent.always_allow_tool_actions` (the legacy boolean, should a file still hold it),
+`agent_servers.<id>.default_mode` and `session.trust_all_worktrees`, in the top level and in each
+override block and profile, whose name prefixes the key (`stable.agent.tool_permissions.default`),
+at the file's modification time with an empty `session_id`. A project's `.zed/settings.json` is not
+read, since it cannot hold these keys. Each `trusted_worktrees` row of `db.sqlite` is
+`permission setting: trusted_worktrees.<path>=true[ host=<user_name>@<host_name>] (from <file>
+trusted_worktrees, file mtime)`, `project_path` the path.
 
-Per call (not read), from [Tool results of denied calls](#tool-results-of-denied-calls): after
-such a `tool_result` row, a `permission decision:
-denied` or `permission decision: auto_denied reason=<text>` row with
-the call's `tool_name` and `tool_use_id`, matched on those message
-fragments.
+Per call, from [Tool results of denied calls](#tool-results-of-denied-calls), source-derived; not
+observed on any real install: a failed `tool_result` (`is_error` true) whose whole text is
+`Permission to run tool denied by user` is followed by `permission decision: denied`, and one whose
+text is an automatic denial by `permission decision: auto_denied reason=<text>`, each with the
+call's `tool_name` and `tool_use_id`. The sandbox-escalation prompt's denial writes the same user
+text
+([`thread.rs:6393`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/thread.rs#L6393),
+[`6398`](https://github.com/zed-industries/zed/blob/9cd14daad768fbfaeeac8789f515f9a5f67669a6/crates/agent/src/thread.rs#L6398)).
+An approval, once or always, leaves no record in the thread and has no row; an "Always allow" or
+"Always deny" choice shows only as the settings rows it wrote.
 
 #### Model rows
 
@@ -604,13 +658,27 @@ change row; no message records a model ([Thread blob](#thread-blob)).
 
 #### Past-use rows and secondary sources
 
-The draft prompts, the created-worktree registry, the
-archived worktrees and the sidebar terminals in
-[Other db.sqlite tables](#other-dbsqlite-tables) are primary sources the parser does
-not read: a `user` row `draft prompt (unsent): <text>` per draft, at
-the sidebar row's `updated_at`, and the archived-worktree branch and
-commit ids as a `system` row. The native `sidebar_threads` rows are
-secondary; reading them would show `archived` and `interacted_at`.
+Every store of [Other db.sqlite tables](#other-dbsqlite-tables) is read as a primary source, all
+`system` rows, source-derived; not observed on any real install:
+
+- A draft prompt is `unsent draft: <text>` at its sidebar row's `updated_at`, with its first
+  folder as `project_path` and no `session_id` (a draft has none), or, when the sidebar row is gone,
+  `unsent draft: <text> (from <file> agent_draft_prompts, file mtime)` at the file's modification
+  time. The text joins the ACP blocks: `text` as written, `resource_link` and `resource` as
+  `[mention] <uri>`, `image` and `audio` as markers. The thread blob's own `draft_prompt` (same
+  shape) is `unsent draft: <text> (thread blob, as of updated_at)` after the thread's messages.
+- An archived worktree is `archived worktree: <worktree_path> of <main_repo_path> branch=<b>
+  staged=<hash> unstaged=<hash> original=<hash> ref=refs/archived-worktrees/<id> (from <file>
+  archived_git_worktrees, file mtime)`, one per thread linked to it with that thread's
+  `session_id`, `project_path` the main repository; the archive time is not recorded.
+- A sidebar terminal is `sidebar terminal: <custom_title or title> cwd=<working_directory>` at its
+  `created_at`, with its first folder as `project_path` and no `session_id`.
+- A native `sidebar_threads` row with a `session_id` is `sidebar thread: title=<title>
+  archived=<true|false> interacted_at=<time|-> main_worktree=<path|->` at its `updated_at`, with
+  the thread id: the archive flag, the last user send and the main repository of a thread run in a
+  linked worktree, none of which `threads.db` holds.
+
+None of these repeats a message of `threads.db`, so the parser has no secondary source.
 
 #### Sync, relay and origin rows
 
@@ -667,15 +735,24 @@ the rating upload is still the only one: a grep for `share_thread`, `ShareThread
 
 #### Scratch directory rows
 
-Both [Scratch directories](#scratch-directories) are unmarked today, and the parser reports a
-Zed-created worktree, being the thread's `folder_paths`, as the project.
+Source-derived; not observed on any real install. Both
+[Scratch directories](#scratch-directories) are marked with a `system` row that names the
+directory in its own `project_path`:
 
-Plan (not read): `scratch directory:
-<sandboxed_terminal_temp_dir> (sandbox temp directory)` per thread
-blob that names one, and `scratch directory: <worktree path>
-(Zed-created git worktree of <main_worktree_paths>)` for a thread
-whose `folder_paths` has a `created_git_worktrees` entry, with
-`project_path` the main repository from `main_worktree_paths`.
+- A thread blob's `sandboxed_terminal_temp_dir` is `scratch directory: <path> (sandboxed terminal
+  temp directory of thread <id>) (thread blob, as of updated_at)`, after the grant rows, at the
+  thread's `updated_at` (when the directory was made is not recorded) and with no `session_id`, so
+  the thread stays counted under its project.
+- A `created_git_worktrees` entry is `scratch directory: <worktree path> (Zed-created git
+  worktree[ of <main>][ host=<host>]) (from <file> created_git_worktrees, created_at)` at the
+  recorded creation time, with no `session_id`; `<main>` is the `main_worktree_paths` of a
+  `sidebar_threads` row whose `folder_paths` holds the worktree, else the `main_repo_path` of its
+  `archived_git_worktrees` row, and `host` appears for a remote worktree. The thread run in the
+  worktree keeps the worktree as its `project_path`, since the two files are parsed apart, so its
+  rows count under the scratch directory.
+
+The macOS temp directory is outside the home and not collected
+([Scratch directories](#scratch-directories)); the row is the only trace the analyzer shows.
 
 #### Deletion rows
 
@@ -708,6 +785,13 @@ such row is `system`, carries the thread's `session_id` and
 `source_line`, and follows the thread's other rows. An unknown `User`
 content object stays in the prompt text as JSON.
 
+A `scoped_kv_store` value that does not decode (a draft prompt that is not JSON, a worktree
+record without `created_at_seconds`) is `parser: unparseable record <rowid> (<namespace>[ <key>]:
+<error type>: <reason>): <stored value>` at the end of the file's rows, with an empty
+`timestamp_utc` and the store's rowid as `source_line`; a settings file that does not decode to a
+JSON object is one `parser: <file> is not a JSON object` row, and an empty one yields nothing.
+These are source-derived; not observed on any real install.
+
 #### Fixtures
 
 `threads.db` (`data` is the zstd of the JSON below,
@@ -737,6 +821,55 @@ VALUES (randomblob(16),'6f1c0b2e-1111-4bbb-8ccc-000000000001',NULL,'Fix flaky te
 INSERT INTO sidebar_threads(thread_id,session_id,agent_id,title,updated_at,folder_paths,folder_paths_order)
 VALUES (randomblob(16),'ext-claude-code-sess-1','claude-code','External thread','2026-03-01T10:00:00+00:00','/home/alice/proj','0');
 ```
+
+The other `db.sqlite` stores, as `9cd14da` creates them (a draft, a thread run in a Zed-created
+worktree and archived, project trust and a sidebar terminal):
+
+```sql
+INSERT INTO sidebar_threads(thread_id,session_id,agent_id,title,updated_at,folder_paths,folder_paths_order,archived,main_worktree_paths,interacted_at)
+VALUES (X'0b5e2d7a44444ddd9eee000000000004',NULL,NULL,'New Thread','2026-03-01T11:00:00+00:00','/home/alice/proj','0',0,NULL,NULL),
+       (X'<16 bytes>','6f1c0b2e-3333-4bbb-8ccc-000000000003',NULL,'Fix tests in a worktree','2026-03-01T12:00:00+00:00','/home/alice/worktrees/fix-tests/proj','0',1,'/home/alice/proj','2026-03-01T11:59:00+00:00');
+INSERT INTO scoped_kv_store(namespace,key,value) VALUES
+ ('agent_draft_prompts','0b5e2d7a-4444-4ddd-9eee-000000000004','[{"type":"text","text":"refactor the parser"},{"type":"resource_link","name":"main.py","uri":"file:///home/alice/proj/main.py"}]'),
+ ('created_git_worktrees','local' || char(10) || '/home/alice/worktrees/fix-tests/proj','{"created_at_seconds":1772362800,"created_at_subsec_nanos":500000000}');
+INSERT INTO trusted_worktrees(absolute_path,user_name,host_name) VALUES
+ ('/home/alice/proj',NULL,NULL), ('/home/alice/remote','alice','build.example');
+INSERT INTO archived_git_worktrees VALUES
+ (1,'/home/alice/worktrees/fix-tests/proj','/home/alice/proj','fix-tests','a1b2c3','d4e5f6','0a0b0c');
+INSERT INTO thread_archived_worktrees VALUES (X'<16 bytes>',1);
+INSERT INTO sidebar_terminal_threads(terminal_id,title,created_at,working_directory,folder_paths,folder_paths_order)
+VALUES ('7c1d0e2f-6666-4fff-8aaa-000000000006','zsh','2026-03-01T10:30:00+00:00','/home/alice/proj','/home/alice/proj','0');
+```
+
+The thread blob's 9cd14da fields: `"sandboxed_terminal_temp_dir":
+"/private/var/folders/xy/abc/T/zed-agent-terminal-Ab12Cd"`, `"draft_prompt":
+[{"type":"text","text":"and then lint"}]`, and a denied call's result
+`{"tool_use_id":"toolu_02","tool_name":"terminal","is_error":true,
+"content":[{"Text":"Permission to run tool denied by user"}]}`.
+
+`settings.json` (JSON with comments):
+
+```json
+{"agent": {"tool_permissions": {"default": "confirm", "tools": {"terminal": {
+   "always_allow": [{"pattern": "^cargo test"}],
+   "always_deny": [{"pattern": "^rm -rf", "case_sensitive": false}]}}},
+  "sandbox_permissions": {"network_hosts": ["*.npmjs.org"], "allow_unsandboxed": false}},
+ "agent_servers": {"claude-acp": {"type": "registry", "default_mode": "plan"}},
+ "session": {"trust_all_worktrees": false},
+ "stable": {"agent": {"tool_permissions": {"default": "allow"}}}}
+```
+
+#### Source host rows
+
+The agent records no source-host integration. A grep of the agent, agent UI and ACP server crates
+at [`9cd14da`](https://github.com/zed-industries/zed/commit/9cd14daad768fbfaeeac8789f515f9a5f67669a6)
+for `github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`, `pull request` and
+`clone` finds no connected source-host account, no cached repository list and no
+repository-bound remote conversation: the hits are the local repository a thread runs in, context
+server (MCP) extension installs and host patterns in sandbox examples. The one GitHub token
+Zed holds is the GitHub Copilot model provider's `read:user` grant, a model credential kept in
+the keychain ([Credentials](#credentials)), not a grant to act on repositories; a project's own
+git remote, which the thread blob's `git_state.remote_url` records, is not an integration.
 
 ## Confidence
 
