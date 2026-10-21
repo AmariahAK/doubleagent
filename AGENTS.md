@@ -594,15 +594,7 @@ to delegate the backlog.
 
 Prefer reading the tool's source over installing it. Most agents are open
 source even when their models are not, and the path constants are easy to
-find. Source the vendor publishes publicly counts as source whatever its
-licence allows, so a commercial or proprietary licence on a public
-repository is no reason to fall back to the bundle. What matters is
-whether the repository ships the agent's own code: `anthropics/claude-code`
-is public under Anthropic's Commercial Terms but holds the README, the
-changelog, example plugins, four built-in mods and the plugin API's type
-declarations, not the CLI, so the shipped bundle stays the evidence for
-Claude Code. A researcher confirms what the repository ships before
-citing it. The validation for every current entry is recorded in the index table in
+find. The validation for every current entry is recorded in the index table in
 [`research/README.md`](research/README.md).
 
 What counts as one agent is decided before any line is written, by the
