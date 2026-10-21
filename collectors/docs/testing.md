@@ -109,5 +109,5 @@ copy is stale or the tables differ; the linters run in CI only.
 CI (`.github/workflows/ci.yml`) runs the drift test and shellcheck, the sh
 smoke test under sh, dash, bash, busybox ash, zsh and posh, a lint job, the
 PowerShell smoke test under PowerShell 7 on Linux and Windows PowerShell 5.1
-on Windows, and the analyzer tests, on every push to `main` and every pull
-request.
+on Windows, and the analyzer tests, then a `CI result` job that fails when
+any of them failed, on every push to `main` and every pull request.
