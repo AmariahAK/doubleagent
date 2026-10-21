@@ -623,9 +623,10 @@ metagpt|.metagpt
 n8n|.n8n
 n8n|.n8n-local-gateway
 n8n|.n8n-gateway
-# Pydantic AI CLIs: clai prompt history and the CLAI 2.0 coding agent (~/.config on every OS)
+# Pydantic AI CLIs: clai prompt history and the CLAI 2.0 coding agent (~/.config and ~/.local/state on every OS)
 pydantic-clai|.pydantic-ai
 pydantic-clai|.config/pydantic-clai2
+pydantic-clai|.local/state/pydantic-clai2
 # Shared cross-agent directories (skills and instructions read by several agents)
 shared|.agents
 shared|.config/AGENTS.md
@@ -745,6 +746,7 @@ pi|pi-session-*.html
 letta|.letta
 pydantic-clai|.clai
 letta|.skills
+crewai|.crewai
 hermes|.hermes.md
 hermes|HERMES.md
 hermes|.hermes
@@ -1232,6 +1234,7 @@ AppData/Local/langflow/langflow/Cache/profile_pictures
 .n8n/custom/node_modules
 .n8n/node-definitions
 .n8n/n8n-sdk-templates
+.local/state/pydantic-clai2/workspaces/clones
 .ollama/models/blobs
 AppData/Local/Ollama/updates
 Library/Caches/ollama
@@ -1681,6 +1684,9 @@ AppData/Local/[Cc]rew[Aa][Ii]/credentials/*
 .config/difyctl/tokens.yml
 AppData/Roaming/difyctl/tokens.yml
 AppData/Local/difyctl/tokens.yml
+.config/difyctl/login-pending.yml
+AppData/Roaming/difyctl/login-pending.yml
+AppData/Local/difyctl/login-pending.yml
 .flowise/encryption.key
 .flowise/*_secret.key
 .cache/langflow/*secret_key
@@ -1694,6 +1700,7 @@ AppData/Roaming/com.LangflowDesktop/data/.env
 .n8n/ssh/*
 .config/pydantic-clai2/credentials-*
 .config/pydantic-clai2/logfire/logfire_credentials.json
+.local/state/pydantic-clai2/workspaces/registry/*/token
 .ollama/id_ed25519
 .env
 secrets.env

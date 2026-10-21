@@ -33,6 +33,10 @@ and the agent runs shell jobs in `local_sandbox` through shellctl
 
 ### Source reviews
 
+- 2026-10-21: langgenius/dify at
+  [`ac17912`](https://github.com/langgenius/dify/commit/ac1791279d43b9d78edc66b2fccc8949e2a2a082),
+  from source only: difyctl's `login-pending.yml` is now flagged as a credential in its three
+  locations ([Credentials](#credentials)).
 - 2026-10-19: HEAD [`ac17912`](https://github.com/langgenius/dify/commit/ac1791279d43b9d78edc66b2fccc8949e2a2a082) against the previously cited
   [`519ef8b`](https://github.com/langgenius/dify/commit/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e),
   from source only. Added shellctl's `jobs` columns and retention, the PostgreSQL model and Human
@@ -170,8 +174,8 @@ deleted rows left in the database's free pages; shellctl keeps no other copy of 
   The device code is what the CLI polls the server with to receive the
   token once the user approves the login
   ([auth/device-flow.ts:34-38](https://github.com/langgenius/dify/blob/ac1791279d43b9d78edc66b2fccc8949e2a2a082/cli/src/auth/device-flow.ts#L34-L38)),
-  so while a login is pending the file can yield a token; it is not
-  flagged.
+  so while a login is pending the file can yield a token. It is flagged
+  in the same three locations as `tokens.yml`.
 - Not collected (outside the home): `docker/.env` holds `SECRET_KEY`
   ([.env.example:33](https://github.com/langgenius/dify/blob/519ef8b8c2d75f597b8a1dfff79ef4b8c5013e3e/docker/.env.example#L33)).
   Per-tenant RSA keys are written to `privkeys/<tenant_id>/private.pem` in storage

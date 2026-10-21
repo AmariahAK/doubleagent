@@ -1179,6 +1179,28 @@ printf '# acp\n' >"$ROOT/srv/a0acp/AGENTS.md"
 printf '# extra\n' >"$ROOT/srv/a0extra/AGENTS.md"
 printf 'png\n' >"$T217/0000.png"
 
+# 2026-10-21 framework catalog gaps (#223, #224, #225)
+# From source, no real install: CrewAI's project-local .crewai/last_run.json,
+# its mark of a run traced to AMP, in a discovered project; difyctl's pending
+# device login, login-pending.yml, in its three config directories; and the
+# CLAI 2.0 state directory .local/state/pydantic-clai2 with the web
+# orchestrator's conversation, a workspace record, its token and session.log,
+# and a clone of a remote repository, which is excluded. Checks follow the
+# default and --no-secrets runs below; the same files are in smoke.ps1.
+mkdir -p "$ROOT/srv/proj/.crewai"
+printf '{"execution_id":"x","tier":"ephemeral"}\n' >"$ROOT/srv/proj/.crewai/last_run.json"
+for _d224 in .config AppData/Roaming AppData/Local; do
+  mkdir -p "$H/$_d224/difyctl"
+  printf 'device_code: x\n' >"$H/$_d224/difyctl/login-pending.yml"
+done
+P225="$H/.local/state/pydantic-clai2"
+mkdir -p "$P225/workspaces/registry/ws1" "$P225/workspaces/clones/repo-0123456789/.git"
+printf '{}\n' >"$P225/orchestrator.json"
+printf '{"id":"ws1"}\n' >"$P225/workspaces/registry/ws1/workspace.json"
+printf 'token\n' >"$P225/workspaces/registry/ws1/token"
+printf 'log\n' >"$P225/workspaces/registry/ws1/session.log"
+printf 'ref: refs/heads/main\n' >"$P225/workspaces/clones/repo-0123456789/.git/HEAD"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1567,6 +1589,13 @@ check "#217 Agent Zero WhatsApp session flagged secret" "row \"$H/agent-zero/mai
 check "#217 Agent Zero ACP workspace and extra folder discovered" "[ \"\$(status_of \"$ROOT/srv/a0acp/AGENTS.md\")\" = collected ] && [ \"\$(status_of \"$ROOT/srv/a0extra/AGENTS.md\")\" = collected ]"
 check "#217 Agent Zero connector screen capture collected" "row \"$T217/0000.png\" | grep -q '\"agent\":\"agent-zero\".*\"status\":\"collected\"'"
 
+# 2026-10-21 framework catalog gaps (#223, #224, #225)
+check "#223 CrewAI project .crewai collected" "row \"$ROOT/srv/proj/.crewai/last_run.json\" | grep -q '\"home\":\"$ROOT/srv/proj\",\"agent\":\"crewai\".*\"status\":\"collected\"'"
+check "#224 difyctl login-pending.yml flagged secret" "row \"$H/.config/difyctl/login-pending.yml\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$H/AppData/Roaming/difyctl/login-pending.yml\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$H/AppData/Local/difyctl/login-pending.yml\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+check "#225 CLAI 2.0 state directory collected" "row \"$P225/orchestrator.json\" | grep -q '\"agent\":\"pydantic-clai\".*\"status\":\"collected\"' && row \"$P225/workspaces/registry/ws1/workspace.json\" | grep -q '\"agent\":\"pydantic-clai\".*\"status\":\"collected\"' && row \"$P225/workspaces/registry/ws1/session.log\" | grep -q '\"agent\":\"pydantic-clai\".*\"status\":\"collected\"'"
+check "#225 CLAI 2.0 workspace token flagged secret" "row \"$P225/workspaces/registry/ws1/token\" | grep -q '\"agent\":\"pydantic-clai\".*\"secret\":true,\"status\":\"collected\"'"
+check "#225 CLAI 2.0 workspace clones excluded" "[ \"\$(status_of \"$P225/workspaces/clones\")\" = skipped_excluded ] && ! grep -qF 'repo-0123456789/.git/HEAD' \"\$M\""
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -1593,6 +1622,9 @@ check "#153 Qwen Code channel credentials skipped without secrets" "[ \"\$(statu
 check "#153 Qwen Code channel routing files kept without secrets" "[ \"\$(status_of \"$H/.qwen/channels/sessions.json\")\" = collected ] && [ \"\$(status_of \"$H/.qwen/channels/daemon/0123abcd/routes.json\")\" = collected ]"
 # 2026-10-18 Codex shell snapshots (#160)
 check "#160 Codex shell snapshot skipped without secrets" "[ \"\$(status_of \"$S160\")\" = skipped_secret ]"
+# 2026-10-21 framework catalog gaps (#223, #224, #225)
+check "#224 difyctl login-pending.yml skipped without secrets" "[ \"\$(status_of \"$H/.config/difyctl/login-pending.yml\")\" = skipped_secret ]"
+check "#225 CLAI 2.0 workspace token skipped without secrets" "[ \"\$(status_of \"$P225/workspaces/registry/ws1/token\")\" = skipped_secret ]"
 
 # 2026-10-21 Agent Zero source review (#217)
 check "#217 Agent Zero WhatsApp session skipped without secrets" "[ \"\$(status_of \"$H/agent-zero/main/$W217\")\" = skipped_secret ] && [ \"\$(status_of \"$H/Desktop/agent-zero/$W217\")\" = skipped_secret ] && [ \"\$(status_of \"$DV/a0_usr/_data/$W217\")\" = skipped_secret ]"

@@ -38,6 +38,12 @@ and the harness ships a shell toolset
 
 ### Source reviews
 
+- 2026-10-21: pydantic/pydantic-ai at
+  [`62b7bf0`](https://github.com/pydantic/pydantic-ai/commit/62b7bf0aeac9a03066263469e650f40957d84cae),
+  from source only: the state directory is now collected, with its workspace clones excluded
+  and the workspace tokens flagged ([State directory](#state-directory),
+  [Credentials](#credentials), [Exclusions](#exclusions)); the GitHub plugin's token sources are
+  added to [Credentials](#credentials).
 - 2026-10-19: [`62b7bf0`](https://github.com/pydantic/pydantic-ai/commit/62b7bf0aeac9a03066263469e650f40957d84cae) against
   [`0ba01f9`](https://github.com/pydantic/pydantic-ai/commit/0ba01f92be3fc361f89970502cd6e7dd3611aec3).
   Added CLAI 2.0's XDG state directory, which the catalog does not name, the harness step store
@@ -70,8 +76,9 @@ write:
 The workspaces plugin's clones under the state
 directory and the worktrees it makes at `<repository>/.worktrees/<id>`
 (or under a kind's `root`) are the agent's own checkouts; the clones are
-under the home only through the uncatalogued state directory, and the
-worktrees sit wherever the user's repository is. Both are recorded in
+under the home in the state directory, where the catalog excludes them
+([Exclusions](#exclusions)), and the worktrees sit wherever the user's
+repository is. Both are recorded in
 `workspace.json` (`path`, `root`) and in a session's `metadata.workspace`
 and `checkout.root`.
 
@@ -81,7 +88,7 @@ At [`62b7bf0`](https://github.com/pydantic/pydantic-ai/commit/62b7bf0aeac9a03066
 that is not a preference in `$XDG_STATE_HOME/pydantic-clai2` when that
 variable is absolute, else `.local/state/pydantic-clai2`, on every OS
 ([config/settings_store.py:60-69](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/config/settings_store.py#L60-L69)).
-No catalog line names it. Its contents:
+The catalog line `pydantic-clai|.local/state/pydantic-clai2` collects it. Its contents:
 
 | Path under `.local/state/pydantic-clai2/` | Holds | Default or opt-in |
 | --- | --- | --- |
@@ -155,20 +162,34 @@ None.
 - `mcp.json` is collected unflagged although its headers may embed tokens.
 - `.local/state/pydantic-clai2/workspaces/registry/<id>/token`
   is the access token of a running workspace's local `clai2 --web`
-  server, plaintext, owner-only ([State directory](#state-directory)); not
-  collected today, and a secret if the state directory is added. Slack
+  server, plaintext, owner-only ([State directory](#state-directory)):
+  flagged, by the glob
+  `.local/state/pydantic-clai2/workspaces/registry/*/token`. Slack
   sign-in tokens go to the credential store under the account
   `slack-oauth`
   ([slack_app.py:15](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/slack_app.py#L15)),
   so a `credentials-slack-oauth.*` file is already flagged.
+- The GitHub token of the built-in `github` plugin, which gives the agent GitHub's hosted MCP
+  tools, comes from the GitHub CLI's sign-in or from a key saved with `/keys`, by default under
+  the name `GITHUB_TOKEN`
+  ([builtin_plugins/github.py:1-9](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/github.py#L1-L9),
+  [:34](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/github.py#L34)).
+  The CLI's token is read with `gh auth token` on every run and stays in `gh`'s own store, the
+  OS keyring, so CLAI keeps no copy of it
+  ([gh_cli.py:1-5](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/gh_cli.py#L1-L5),
+  [:58-74](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/gh_cli.py#L58-L74)).
+  Saved keys are one bundle in the credential store under the account `api-keys`
+  ([config/api_keys.py:114-121](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/config/api_keys.py#L114-L121)),
+  so a `credentials-api-keys.*` file is already flagged. The plugin's settings hold only
+  `login` (`gh` or `key`), the key's name and the MCP endpoint `url`
+  ([builtin_plugins/github.py:48-54](https://github.com/pydantic/pydantic-ai/blob/62b7bf0aeac9a03066263469e650f40957d84cae/src/pydantic_clai2/pydantic_clai2/builtin_plugins/github.py#L48-L54)).
 
 ### Exclusions
 
-None under the home in the catalog today, since nothing the catalog collects there needs one.
-`.local/state/pydantic-clai2/workspaces/clones`
-holds full git clones of remote repositories
-([State directory](#state-directory)); if the state directory is collected,
-the clones need an exclusion.
+`.local/state/pydantic-clai2/workspaces/clones`, the full git clones of remote repositories
+the workspaces plugin makes, with the workspaces' worktrees inside them
+([State directory](#state-directory)): excluded, since they are copies of repositories that
+exist elsewhere; what a workspace's agent did is recorded in its session.
 
 CLAI 2.0 puts git worktrees at
 `<repo>/.worktrees/<name>`
@@ -208,7 +229,7 @@ and the harness step store in the same file (`runs`, `events`, `snapshots`, `too
 ([Session store](#session-store)), with the prompt histories `input-history` and
 `clai` v1's `.pydantic-ai/prompt-history.txt`, which keep a deleted session's prompts, and the
 saved model defaults in `config.db`. The orchestrator's `orchestrator.json` and the workspace
-records sit in the state directory, which no catalog line names
+records sit in the state directory, which is collected
 ([State directory](#state-directory)); a session imported from Claude Code or Codex repeats
 that agent's own store ([Other agents' sessions](#other-agents-sessions)). `input-history` and
 `prompt-history.txt` are line files and `orchestrator.json` a whole-file JSON document.

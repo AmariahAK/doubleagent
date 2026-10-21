@@ -990,14 +990,17 @@ Files collected: The run data directory, named after the project folder
 `AppData/Local/CrewAI/<project>`): `latest_kickoff_task_outputs.db` (every
 task's output with its messages), `flow_states.db` and
 `.crewai_user.json`; `.config/crewai/settings.json`, the
-`crewai/credentials/` key and encrypted token, and `.crewai` skills.
+`crewai/credentials/` key and encrypted token, and `.crewai` skills; in a
+project that another agent's state or `-p` names, its `.crewai` directory
+(`last_run.json`, the record that a run's trace reached AMP, CrewAI's hosted
+service, and the `crewai eval` state).
 
 Validated against: Source, appdirs source.
 
 ### `dify`
 
-Files collected: The `difyctl` CLI client's `config.yml`, `login.yml` and
-`tokens.yml` (`.config/difyctl`, `AppData/Roaming/difyctl`,
+Files collected: The `difyctl` CLI client's `config.yml`, `login.yml`,
+`tokens.yml` and `login-pending.yml` (`.config/difyctl`, `AppData/Roaming/difyctl`,
 `AppData/Local/difyctl`), and the Docker volumes
 `*dify_agent_local_sandbox_home` (the sandbox runtime shellctl's
 `shellctl.db` and job output logs) and
@@ -1086,7 +1089,10 @@ Files collected: `.pydantic-ai/prompt-history.txt` (`clai` v1) and
 `.config/pydantic-clai2/` (CLAI 2.0): `sessions.db` (`conversations` with
 the messages, `workspace` and `model`), `input-history`, `config.db`,
 `credentials-*` and `mcp.json`; `sessions.db` can also hold Claude Code
-and Codex sessions imported by `/resume`.
+and Codex sessions imported by `/resume`. The CLAI 2.0 state directory
+`.local/state/pydantic-clai2/`: the web orchestrator's `orchestrator.json`
+and each workspace's `workspace.json`, `token` and `session.log`, with the
+workspaces' clones of remote repositories excluded.
 
 Validated against: Source, PyPI wheel.
 
