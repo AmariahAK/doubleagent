@@ -2113,13 +2113,14 @@ Check '#153 Gemini CLI bug-memory heap snapshot skipped without secrets' { (Stat
 Check '#153 little-coder legacy config.json skipped without secrets' { (StatusOf 'Users/alice/.little-coder/config.json') -eq 'skipped_secret' }
 Check '#153 Qwen Code channel credentials skipped without secrets' { (StatusOf 'Users/alice/.qwen/channels/qqbot-credentials.json') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.qwen/channels/weixin/account.json') -eq 'skipped_secret' }
 Check '#153 Qwen Code channel routing files kept without secrets' { (StatusOf 'Users/alice/.qwen/channels/sessions.json') -eq 'collected' -and (StatusOf 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json') -eq 'collected' }
-# 2026-10-21 Agent Zero source review (#217)
-Check '#217 Agent Zero WhatsApp session skipped without secrets' { (StatusOf "Users/alice/agent-zero/main/$w217") -eq 'skipped_secret' -and (StatusOf "Users/alice/Desktop/agent-zero/$w217") -eq 'skipped_secret' -and (StatusOf "var/lib/docker/volumes/a0_usr/_data/$w217") -eq 'skipped_secret' }
 # 2026-10-18 Codex shell snapshots (#160)
 Check '#160 Codex shell snapshot skipped without secrets' { (StatusOf $s160) -eq 'skipped_secret' }
 # 2026-10-21 framework catalog gaps (#223, #224, #225)
 Check '#224 difyctl login-pending.yml skipped without secrets' { (StatusOf 'Users/alice/.config/difyctl/login-pending.yml') -eq 'skipped_secret' }
 Check '#225 CLAI 2.0 workspace token skipped without secrets' { (StatusOf "$p225/workspaces/registry/ws1/token") -eq 'skipped_secret' }
+
+# 2026-10-21 Agent Zero source review (#217)
+Check '#217 Agent Zero WhatsApp session skipped without secrets' { (StatusOf "Users/alice/agent-zero/main/$w217") -eq 'skipped_secret' -and (StatusOf "Users/alice/Desktop/agent-zero/$w217") -eq 'skipped_secret' -and (StatusOf "var/lib/docker/volumes/a0_usr/_data/$w217") -eq 'skipped_secret' }
 
 # 2026-10-21 Cody JetBrains plugin files (#214)
 Check '#214 Cody cody_accounts.xml skipped without secrets' { (StatusOf "$o214/cody_accounts.xml") -eq 'skipped_secret' }
