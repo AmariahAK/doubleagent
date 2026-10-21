@@ -3599,7 +3599,7 @@ class QwenCodeTests(ParserBase):
         with open(self.home / self.REL, "a", encoding="utf-8") as fh:
             fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(QwenCodeParser(), self.REL)
-        self.assertEqual(len(rows), 14)
+        self.assertEqual(len(rows), 15)
         self.assertEqual(
             [(r.source_line, r.turn_type, r.text) for r in rows[:13]],
             [(r.source_line, r.turn_type, r.text) for r in before],
@@ -16865,15 +16865,18 @@ from fixtures import (
 
 
 class ReadsAgentsRoutingTests(ParserBase):
-    """`reads_agents` offers a `vscode` state.vscdb to the Cody and Twinny
-    parsers as well as to the VS Code parser, and nothing else to them."""
+    """`reads_agents` offers a `vscode` state.vscdb to the Cody, Twinny,
+    Roo Code and Tabby parsers as well as to the VS Code parser, and nothing
+    else to them."""
 
     def test_state_vscdb_offered_to_extension_parsers(self):
         parsers = by_agent()
         art = next(a for a in self.col.artifacts if a.rel == CODY_VSCDB_REL)
         self.assertEqual(art.agent, "vscode")
         offered = cli.parsers_for(art, parsers)
-        self.assertEqual({p.agent for p in offered}, {"vscode", "cody", "twinny"})
+        self.assertEqual(
+            {p.agent for p in offered}, {"vscode", "cody", "twinny", "roo-code", "tabby"}
+        )
         self.assertEqual(len(offered), len(set(map(id, offered))))
         # The VS Code parser reads the Copilot Chat row of the same database
         # (issue 153), which Cody's has none of.
@@ -16897,8 +16900,12 @@ class ReadsAgentsRoutingTests(ParserBase):
             r.agent for r in rows if r.source_file.endswith("/User/globalStorage/state.vscdb")
         }
         # `vscode` rows come from the Copilot Chat cloud agent tasks (issue 153),
-        # `cursor` rows from Cursor's own state.vscdb (issue 51).
-        self.assertEqual(from_vscdb, {"cody", "cursor", "twinny", "vscode"})
+        # `cursor` rows from Cursor's own state.vscdb (issue 51), `pearai`
+        # rows from PearAI's (issue 193), `roo-code` permission settings
+        # (issue 191) and `tabby` inline-edit command history (issue 211).
+        self.assertEqual(
+            from_vscdb, {"cody", "cursor", "pearai", "roo-code", "tabby", "twinny", "vscode"}
+        )
         rows, _, _, _ = cli.collect_rows(self.col, Options(), ["twinny"])
         self.assertEqual({r.agent for r in rows}, {"twinny"})
 
@@ -17051,7 +17058,7 @@ class CodyTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / CODY_JB_REL)
         rows = self.rows_for(CodyParser(), CODY_JB_REL)
-        self.assertEqual(len(rows), 14)
+        self.assertEqual(len(rows), 15)
         self.assertEqual([r.turn_type for r in rows[:4]], ["system", "user", "system", "assistant"])
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser: chat history did not parse; recovered 2 chat(s)", rows[-1].text)
@@ -20817,9 +20824,24 @@ class HasSecondaryTests(ParserBase):
     def test_has_secondary_matches_fixture(self):
         from doubleagent.parsers import ALL
 
+        from fixtures import CODY_LEGACY_REL, CODY_LEGACY_XML, build_kilo_state, build_twinny_415
+
+        # Secondary fixtures that build_home does not write: Kilo's terminal
+        # UI prompt history, Twinny 4.3.15's agent-changes records and log,
+        # and the Cody JetBrains plugin's project-local history.
+        build_kilo_state(self.home)
+        build_twinny_415(self.tmp / "home" / "bob")  # a home of its own
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        proj = self.tmp / "srv" / "proj"
+        (proj / CODY_LEGACY_REL).parent.mkdir(parents=True, exist_ok=True)
+        (proj / CODY_LEGACY_REL).write_text(CODY_LEGACY_XML, encoding="utf-8")
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
+        legacy = Artifact(
+            proj / CODY_LEGACY_REL, "/srv/proj/" + CODY_LEGACY_REL, CODY_LEGACY_REL, "cody", home
+        )
         parsers = by_agent()
         seen = set()
-        for a in self.col.artifacts:
+        for a in [*self.col.artifacts, legacy]:
             for p in cli.parsers_for(a, parsers):
                 if p.wants(a) and p.secondary(a):
                     seen.add(type(p).__name__)
