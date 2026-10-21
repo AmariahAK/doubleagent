@@ -1158,6 +1158,24 @@ printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
 
+# 2026-10-21 Cody JetBrains plugin files (#214)
+# Source-derived (sourcegraph/cody-public-snapshot at 8e20ac6): the plugin's
+# application components in each IDE's options/ directory, ~/.sourcegraph and
+# a project's .idea/.sourcegraph settings, and the legacy project-level
+# .idea/cody_history.xml. cody_accounts.xml carries customRequestHeaders and
+# is flagged; cody_accounts_settings.xml holds only the active account id.
+# Checks follow the default and --no-secrets runs below; the same files are
+# in smoke.ps1 under alice.
+O214="$H/.config/JetBrains/IntelliJIdea2025.2/options"
+mkdir -p "$O214" "$H/.sourcegraph" "$ROOT/srv/proj/.idea/.sourcegraph"
+printf '<application />\n' >"$O214/cody.xml"
+printf '<application />\n' >"$O214/cody_accounts.xml"
+printf '<application />\n' >"$O214/cody_accounts_settings.xml"
+printf '<application />\n' >"$O214/cody_application_settings.xml"
+printf '{}\n' >"$H/.sourcegraph/cody_settings.json"
+printf '<project version="4" />\n' >"$ROOT/srv/proj/.idea/cody_history.xml"
+printf '{}\n' >"$ROOT/srv/proj/.idea/.sourcegraph/cody_settings.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1541,6 +1559,13 @@ check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 
+# 2026-10-21 Cody JetBrains plugin files (#214)
+check "#214 Cody JetBrains options files collected" "row \"$O214/cody.xml\" | grep -q '\"agent\":\"cody\".*\"secret\":false,\"status\":\"collected\"' && row \"$O214/cody_application_settings.xml\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"'"
+check "#214 Cody cody_accounts.xml flagged secret" "row \"$O214/cody_accounts.xml\" | grep -q '\"agent\":\"cody\".*\"secret\":true,\"status\":\"collected\"'"
+check "#214 Cody cody_accounts_settings.xml not flagged" "row \"$O214/cody_accounts_settings.xml\" | grep -q '\"agent\":\"cody\".*\"secret\":false,\"status\":\"collected\"'"
+check "#214 Cody home .sourcegraph collected" "row \"$H/.sourcegraph/cody_settings.json\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"'"
+check "#214 Cody project .idea files collected" "row \"$ROOT/srv/proj/.idea/cody_history.xml\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"' && row \"$ROOT/srv/proj/.idea/.sourcegraph/cody_settings.json\" | grep -q '\"agent\":\"cody\".*\"status\":\"collected\"'"
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -1567,6 +1592,8 @@ check "#153 Qwen Code channel credentials skipped without secrets" "[ \"\$(statu
 check "#153 Qwen Code channel routing files kept without secrets" "[ \"\$(status_of \"$H/.qwen/channels/sessions.json\")\" = collected ] && [ \"\$(status_of \"$H/.qwen/channels/daemon/0123abcd/routes.json\")\" = collected ]"
 # 2026-10-18 Codex shell snapshots (#160)
 check "#160 Codex shell snapshot skipped without secrets" "[ \"\$(status_of \"$S160\")\" = skipped_secret ]"
+# 2026-10-21 Cody JetBrains plugin files (#214)
+check "#214 Cody cody_accounts.xml skipped without secrets" "[ \"\$(status_of \"$O214/cody_accounts.xml\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"

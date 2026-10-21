@@ -22,6 +22,15 @@ inside them goes to the extension's agent.
   their globalStorage is claimed by nested catalog entries, so those files
   are attributed to the extension's agent rather than to the editor,
   whichever editor they sit in.
+- **Sourcegraph Cody's JetBrains plugin** keeps its application settings
+  in each JetBrains IDE's `options/` directory: `cody.xml`,
+  `cody_application_settings.xml`, `cody_accounts_settings.xml` and
+  `cody_accounts.xml` are collected as `cody`, and `cody_accounts.xml` is
+  flagged secret because a server entry's `customRequestHeaders` can
+  carry proxy credentials. Its `cody_settings.json` under `~/.sourcegraph`
+  and under a discovered project's `.idea/.sourcegraph`, and the
+  plugin's pre-agent chat history in the project's
+  `.idea/cody_history.xml`, are collected as `cody` too.
 - **GitHub Copilot Desktop** shares `~/.copilot` with Copilot CLI: its
   sessions, written there by a bundled Copilot CLI, are collected as
   `copilot-cli`, and nested catalog entries attribute the app's own store,

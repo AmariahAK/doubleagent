@@ -1085,6 +1085,23 @@ Mk "$u236/inno_updater.exe" "binary`n"
 Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
 Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
 
+# 2026-10-21 Cody JetBrains plugin files (#214)
+# Source-derived (sourcegraph/cody-public-snapshot at 8e20ac6): the plugin's
+# application components in each IDE's options/ directory, ~/.sourcegraph and
+# a project's .idea/.sourcegraph settings, and the legacy project-level
+# .idea/cody_history.xml. cody_accounts.xml carries customRequestHeaders and
+# is flagged; cody_accounts_settings.xml holds only the active account id.
+# Checks follow the default and -NoSecrets runs below; the same files, in the
+# Linux layout, are in smoke.sh.
+$o214 = 'Users/alice/AppData/Roaming/JetBrains/IntelliJIdea2025.2/options'
+Mk "$o214/cody.xml" "<application />`n"
+Mk "$o214/cody_accounts.xml" "<application />`n"
+Mk "$o214/cody_accounts_settings.xml" "<application />`n"
+Mk "$o214/cody_application_settings.xml" "<application />`n"
+Mk 'Users/alice/.sourcegraph/cody_settings.json' "{}`n"
+Mk 'proj/.idea/cody_history.xml' "<project version=`"4`" />`n"
+Mk 'proj/.idea/.sourcegraph/cody_settings.json' "{}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1627,6 +1644,13 @@ Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
 Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
 Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
 
+# 2026-10-21 Cody JetBrains plugin files (#214)
+Check '#214 Cody JetBrains options files collected' { (Is113 "$o214/cody.xml" 'cody' $false) -and (Is113 "$o214/cody_application_settings.xml" 'cody' $false) }
+Check '#214 Cody cody_accounts.xml flagged secret' { Is113 "$o214/cody_accounts.xml" 'cody' $true }
+Check '#214 Cody cody_accounts_settings.xml not flagged' { Is113 "$o214/cody_accounts_settings.xml" 'cody' $false }
+Check '#214 Cody home .sourcegraph collected' { Is113 'Users/alice/.sourcegraph/cody_settings.json' 'cody' $false }
+Check '#214 Cody project .idea files collected' { (Is113 'proj/.idea/cody_history.xml' 'cody' $false) -and (Is113 'proj/.idea/.sourcegraph/cody_settings.json' 'cody' $false) }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -1832,6 +1856,8 @@ Check '#153 Qwen Code channel credentials skipped without secrets' { (StatusOf '
 Check '#153 Qwen Code channel routing files kept without secrets' { (StatusOf 'Users/alice/.qwen/channels/sessions.json') -eq 'collected' -and (StatusOf 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json') -eq 'collected' }
 # 2026-10-18 Codex shell snapshots (#160)
 Check '#160 Codex shell snapshot skipped without secrets' { (StatusOf $s160) -eq 'skipped_secret' }
+# 2026-10-21 Cody JetBrains plugin files (#214)
+Check '#214 Cody cody_accounts.xml skipped without secrets' { (StatusOf "$o214/cody_accounts.xml") -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }
