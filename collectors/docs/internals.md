@@ -55,7 +55,7 @@ The steps in the main program, in run order:
 | Options | `parse_options` (exits after `--version`, `--help`, an unknown option, or exit 1 with the usage for an option missing its value); `--list` runs `print_catalog` and exits 0; `set_max_size` (exit 1 on a bad value) | `param()`; `-Version` and `-List` (`Write-CatalogList`) exit 0; a negative `-MaxFileSizeMB` exits 1 |
 | Resolve options | `resolve_extra_projects`, `resolve_root` (exit 2 when `-r` is not a directory) | `Initialize-TableRegexes`, `Resolve-ProjectArgs`, `Resolve-RootArg` (exit 2) |
 | Output directory and tools | `check_prerequisites`: outside `--inventory`, the output directory is created and must be writable and `tar` must exist; `find` must exist (exit 2) | `Initialize-OutputDir` outside `-Inventory` (exit 2) |
-| Capabilities and names | `detect_capabilities`, `set_output_names` | `Initialize-RunNames`, `Initialize-Archivers` (exit 2 on a bad `CAC_ARCHIVER`) |
+| Capabilities and names | `detect_capabilities`, `compile_secret_pattern`, `define_secret_test`, `set_output_names` | `Initialize-RunNames`, `Initialize-Archivers` (exit 2 on a bad `CAC_ARCHIVER`) |
 | Open outputs | exports the worker settings, sets the `EXIT`, `INT` and `TERM` traps, `create_output_files`, sets `ACTIVE_EXCLUDES` (empty under `--full`), `log_start`, then clears the globals the steps fill (`NOTES`, the `DOCKER_*` counters, `DOCKER_INV`, `PROJECT_LIST`, `NESTED_CLAIMS`) so no value comes from the environment | `Open-RunFiles` |
 | Users | `USER_LIST=$(get_user_homes)`, a warning when it is empty, then `collect_user_homes` unless `--inventory` | `Get-UserHomes`, `Test-Administrator`, `Write-StartLog`, then `Add-UserHomes`, which under `-Inventory` is also the inventory walk |
 | Volumes | `collect_docker_volumes` unless `--no-docker` | `Add-DockerVolumes` unless `-NoDocker` |
@@ -124,8 +124,8 @@ this order, which keeps the per-file order of the forensic rules:
    output does not have one line per file (a file vanished, `stat` failed,
    or there is no `stat`), it falls back to `stat_file` per file.
 2. `plan_chunk` creates the staging directories with one `mkdir -p`,
-   recreates symlinks with `readlink` and `ln -s`, tests `SECRET_GLOBS`,
-   and marks each file `symlink`, `skipped_special`, `skipped_secret`,
+   recreates symlinks with `readlink` and `ln -s`, tests `SECRET_GLOBS`
+   with `is_secret`, and marks each file `symlink`, `skipped_special`, `skipped_secret`,
    `skipped_size` or `copy`. A path that exists and is neither a symlink
    nor a regular file is `skipped_special`, its `type_N` set to `socket`,
    `fifo`, `device` or `other` by `test -S`, `-p`, `-b` and `-c`; it is
@@ -163,7 +163,7 @@ keeps the banner and says so.
 | --- | --- | --- | --- |
 | `CATALOG`, `PROJECT_CATALOG` | the base (home, project), one path segment at a time; `*` and `?` do not cross `/` | shell pathname expansion of `BASE/GLOB` in `expand_glob`, with `IFS` set to newline only so a base with spaces stays one word; a pattern that matches nothing expands to itself and fails the existence test. As in any POSIX shell, `*` does not match a name's leading `.`. | `Expand-Glob` splits the glob on `/`; a wildcard segment lists the directory and matches each name with `Convert-GlobToRegex` (`*` is `[^/]*`, so it matches a leading `.`) and `-match`, which ignores case; a literal segment is tested for existence and respelled as on disk by `Get-OnDiskName`. |
 | `EXCLUDES` | the path relative to the base; `*` crosses `/` | `find -path "$base/$glob"` in `collect_tree`, which splits the table with globbing off, and a `case` pattern in `test_excluded` for a match that is not a directory, case-sensitive | `$script:ExcludeRegex`, built by `ConvertTo-TableRegex`, tested in `Add-CollectedPath` and `Add-CollectedTree`; case-insensitive |
-| `SECRET_GLOBS` | the path relative to the base; `*` crosses `/` | a `case` pattern in `plan_chunk` (and in `test_inventory_secret`), case-sensitive | `$script:SecretRegex`, built by `ConvertTo-TableRegex`, tested in `Add-CollectedFile` and `Test-InventorySecret`; case-insensitive |
+| `SECRET_GLOBS` | the path relative to the base; `*` crosses `/` | one `case` pattern, every glob joined with `\|`, built once by `compile_secret_pattern` and turned into `is_secret` by `define_secret_test`; `is_secret` is called in `plan_chunk` (and in `test_inventory_secret`), case-sensitive | `$script:SecretRegex`, built by `ConvertTo-TableRegex`, tested in `Add-CollectedFile` and `Test-InventorySecret`; case-insensitive |
 | `DOCKER_VOLUMES` | the volume directory's name | a `case` pattern in `get_docker_volume_rule`, with globbing off | `Convert-GlobToRegex` and `-cmatch`, case-sensitive, in `Get-DockerVolumeRule` |
 
 `[...]` classes and `[!...]` negated classes work everywhere: sh `case`,
@@ -474,6 +474,7 @@ PowerShell functions that do their job.
 | --- | --- | --- |
 | Append a line to the log, and to stderr unless quiet | `log_line` | `Write-CollectorLog` |
 | Record a note for `collection.json` | `add_note` | `Add-Note` |
+| Compile the secret globs into one pattern (PowerShell: the exclusions too) | `compile_secret_pattern` | `Initialize-TableRegexes` |
 | JSON-escape a string | `json_escape`, `json_escape_var` | `ConvertTo-JsonEscaped` |
 | SHA-256 of one file | `hash_file` | `Get-FileSha256` |
 | Write one manifest row | `write_manifest_row` | `Write-ManifestRow` |
@@ -538,6 +539,7 @@ PowerShell functions that do their job.
 | `hash_files`, `hash_match` | Shared helpers | Hashes many files in one call; matches one output line to a file |
 | `to_number`, `to_number_var` | Shared helpers | A non-negative integer or 0 |
 | `file_id` | Shared helpers | `device:inode` of a path, for case-variant folding |
+| `define_secret_test`, `is_secret` | Shared helpers | Defines `is_secret` from `SECRET_PATTERN` with one `eval`; whether a path relative to the base matches a secret glob |
 | `lstat_chunk`, `plan_chunk`, `copy_chunk`, `copy_run`, `hash_chunk`, `write_chunk_rows` | Staging files | The passes of `STAGE_FILES_WORKER`, defined inside it |
 | `UNREADABLE_DIRS_WORKER` | Staging files | `error_read` rows for directories inside a walk; PowerShell does this in `Add-CollectedTree` |
 | `print_file_rows` | Staging files | Inside `INVENTORY_FILES_WORKER`: the `F\|` lines from one `stat` call |
@@ -582,5 +584,5 @@ PowerShell functions that do their job.
 | `Write-StageZip` | Summary and archive | The zip archiver |
 | `Invoke-Archiver`, `Switch-Archiver`, `Format-ExitCode`, `Clear-PartialArchive` | Summary and archive | Running and switching archivers |
 | `Clear-StagedLinks`, `Clear-StagedLinksForZip`, `Clear-LinkArchivePaths` | Summary and archive | Removing staged links and updating their rows |
-| `Get-NonEmptyLines`, `Initialize-TableRegexes` | Main program | `-List` lines; the exclusion and secret regexes |
+| `Get-NonEmptyLines` | Main program | `-List` lines |
 | `Initialize-OutputDir`, `Initialize-Archivers`, `Test-Administrator` | Main program | Output directory check, archiver chain, Administrator test |

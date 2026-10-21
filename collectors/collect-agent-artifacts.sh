@@ -1898,6 +1898,15 @@ json_escape_var() {
   esac
 }
 to_number_var() { case "$1" in ''|*[!0-9]*) _ret_number=0 ;; *) _ret_number=$1 ;; esac; }
+# define_secret_test: defines is_secret REL, which returns 0 when REL, a path
+# relative to the collection base, matches any secret glob, else 1. Reads
+# SECRET_PATTERN, the globs joined with | that compile_secret_pattern builds
+# in the main shell and the workers get through the environment. One case
+# with every glob runs in the shell's own matcher; the loop of one case per
+# glob it replaces ran in the interpreter, which is slow under bash and posh.
+define_secret_test() {
+  eval "is_secret() { case \"\$1\" in $SECRET_PATTERN) return 0 ;; esac; return 1; }"
+}
 EOF_COMMON_HELPERS
 COMMON=$_ret_heredoc_text
 eval "$COMMON"
@@ -1907,6 +1916,16 @@ eval "$COMMON"
 # in a pipeline or $(...).
 add_note() { NOTES="$NOTES
 $1"; log_line "NOTE: $1"; }
+
+# compile_secret_pattern: sets SECRET_PATTERN to every line of SECRET_GLOBS
+# joined with |, each space escaped with a backslash, so the alternation is
+# one case pattern for define_secret_test. Run once, in the main shell. The
+# globs hold no |, parenthesis, quote, $ or backslash that would need more.
+# Reads SECRET_GLOBS.
+compile_secret_pattern() {
+  SECRET_PATTERN=$(printf '%s\n' "$SECRET_GLOBS" | sed 's/ /\\ /g' | tr '\n' '|')
+  SECRET_PATTERN=${SECRET_PATTERN%|}
+}
 
 # file_id PATH -> device:inode of PATH itself (lstat), or the inode alone from
 # ls -di when stat is unavailable; empty when PATH cannot be stat'ed. Reads
@@ -2055,6 +2074,7 @@ $_ret_heredoc_text"
 heredoc_var <<'EOF_STAGE_FILES_WORKER'
 stage_dir=$1; root=$2; user=$3; home=$4; agent=$5; manifest=$6; shift 6
 set -f
+define_secret_test
 if [ "${CAC_NO_BATCH:-0}" = 1 ]; then batch=0; else batch=1; fi
 batch_stat=$batch; batch_copy=$batch; batch_hash=$batch
 last_mkdir_dir=
@@ -2083,7 +2103,8 @@ lstat_chunk() {
   fi
 }
 # plan_chunk: pass 2, staging directories, symlinks, special files, secret
-# and size skips. Reads path_N, stat_N, SECRET_GLOBS, NO_SECRETS, MAX_SIZE;
+# and size skips. Reads path_N, stat_N, NO_SECRETS, MAX_SIZE, and calls
+# is_secret (SECRET_PATTERN);
 # sets status_N (symlink, skipped_special, skipped_secret, skipped_size or
 # copy), type_N (file, symlink, or socket, fifo, device or other for a file
 # that exists but is not regular, which is never copied: cp would block on a
@@ -2106,11 +2127,7 @@ plan_chunk() {
     set -- $stat_line
     home_rel=${path#"$home"/}
     secret=false
-    saved_ifs=$IFS; IFS=$NEWLINE
-    for secret_glob in $SECRET_GLOBS; do
-      case "$home_rel" in $secret_glob) secret=true; break ;; esac
-    done
-    IFS=$saved_ifs
+    if is_secret "$home_rel"; then secret=true; fi
     target=; type=file
     if [ -L "$path" ]; then
       status=symlink; type=symlink
@@ -2842,21 +2859,12 @@ EOF_DOCKER_DESKTOP_DIRS
 # discover_projects), matches SECRET_GLOBS. Inventory never opens such a
 # file, so discovery sources that are credential files (.claude.json, the
 # OpenClaw and nanobot configs, Tabby's config.toml) are not read in that
-# mode. Reads INVENTORY, DISCOVERY_HOME, SECRET_GLOBS. Temporaries: _tis_.
+# mode. Reads INVENTORY, DISCOVERY_HOME, and calls is_secret
+# (SECRET_PATTERN). Temporaries: _tis_.
 test_inventory_secret() {
   [ "$INVENTORY" = 1 ] || return 1
   _tis_rel=${1#"$DISCOVERY_HOME"/}
-  _tis_saved_ifs=$IFS
-  IFS='
-'
-  set -f
-  for _tis_glob in $SECRET_GLOBS; do
-    # shellcheck disable=SC2254 # the table entry is a glob
-    case "$_tis_rel" in $_tis_glob) set +f; IFS=$_tis_saved_ifs; return 0 ;; esac
-  done
-  set +f
-  IFS=$_tis_saved_ifs
-  return 1
+  is_secret "$_tis_rel"
 }
 # Evaluated at the top of each discovery helper after its key is shifted off:
 # drops the files test_inventory_secret rejects from "$@". A string for eval,
@@ -3677,9 +3685,11 @@ resolve_extra_projects
 resolve_root
 check_prerequisites
 detect_capabilities
+compile_secret_pattern
+define_secret_test
 set_output_names
 # exported for the worker programs
-export HASH_TOOL STAT_MODE MAX_SIZE SECRET_GLOBS NO_SECRETS LOG QUIET
+export HASH_TOOL STAT_MODE MAX_SIZE SECRET_PATTERN NO_SECRETS LOG QUIET
 trap 'cleanup' EXIT
 trap 'log_line "interrupted"; cleanup; trap - EXIT; exit 130' INT TERM
 create_output_files
