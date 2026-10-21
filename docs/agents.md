@@ -793,13 +793,23 @@ local time, emitted as if UTC. Secondary sources: the session JSONL files
 and `jsonl-backup/*.jsonl` copies beside a `sessions.sqlite3`, which the
 database imported and which are never written again; the WebUI transcript
 `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (true UTC
-`created_at_ms`, 15-hour window); and `.nanobot*/history/cli_history`
-(local time, prompts only).
+`created_at_ms`, 15-hour window); `.nanobot*/history/cli_history`
+(local time, prompts only); the cron and trigger run records
+`cron/runs/*.json` and `triggers/runs/*.json` of a workspace (true UTC,
+15-hour window); and the WebUI sidebar cache
+`.nanobot*/sessions/<workspace-id>/.webui_session_index.json`. Settings:
+`.nanobot*/config.json` (the workspace restriction, the exec sandbox and
+its allow and deny lists, the channel `allowFrom` lists; no other key) and
+`.nanobot*/pairing.json` (approved and pending chat senders), one
+`permission setting:` row per entry.
 
 Validated against: Source at [acdae3d](https://github.com/HKUDS/nanobot/commit/acdae3d0ae2714b6dde672428e921dbf705c096f), synthetic fixture. The session database and the `--home` history
 location are fixture only, from source at
 [909b277](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9),
-which may not be released yet.
+which may not be released yet; the relay, model switch, permission, run
+record and sidebar cache rows from source at
+[909b277](https://github.com/HKUDS/nanobot/commit/909b277e7a5a7ecd2aebdba9611e5febe86988d9),
+synthetic fixture.
 
 ### `ollama`
 

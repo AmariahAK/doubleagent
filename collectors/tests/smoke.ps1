@@ -1183,6 +1183,19 @@ Mk "$q123/pairing/telegram-approved.json" "{`"42`":{`"user_name`":`"u`"}}`n"
 Mk "$w123/state.db" "sqlite`n"
 Mk 'Users/alice/.config/Hermes/connections.json' "{`"connections`":[]}`n"
 
+# 2026-10-21 nanobot workspace cron and triggers (#220)
+# nanobot (HKUDS/nanobot at 909b277, source only) keeps its cron jobs and
+# local triggers in the workspace, with one run record per run (session
+# key, prompt, reply) that outlives the session. The project catalog
+# collects the job and trigger files and the runs directories of a
+# discovered workspace; the trigger queue (inbox/) is left. Checks follow
+# the default run below; the same files are in smoke.sh under srv/nanows.
+Mk 'nanows/cron/jobs.json' "{`"jobs`":[]}`n"
+Mk 'nanows/cron/runs/j1_1_ab.json' "{`"job_id`":`"j1`",`"status`":`"ok`"}`n"
+Mk 'nanows/triggers/triggers.json' "{`"triggers`":[]}`n"
+Mk 'nanows/triggers/runs/d1.json' "{`"trigger_id`":`"t1`",`"status`":`"ok`"}`n"
+Mk 'nanows/triggers/inbox/d2.json' "{`"id`":`"d2`"}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1760,6 +1773,12 @@ Check '#216 Gemini CLI project settings beside the worktrees collected' { ($r = 
 Check '#123 Hermes quick snapshot state.db collected' { (Is113 "$q123/state.db" 'hermes' $false) -and (Is113 "$q123/manifest.json" 'hermes' $false) -and (Is113 "$w123/state.db" 'hermes' $false) -and (StatusOf 'Users/alice/.hermes/state-snapshots') -eq '' }
 Check '#123 Hermes quick snapshot credentials flagged secret' { (Is113 "$q123/.env" 'hermes' $true) -and (Is113 "$q123/auth.json" 'hermes' $true) -and (Is113 "$q123/pairing/telegram-approved.json" 'hermes' $true) }
 Check '#208 Hermes desktop connection files flagged secret' { (Is113 'Users/alice/.config/Hermes/connections.json' 'hermes' $true) -and (Is113 'Users/alice/.config/Hermes/connection.json' 'hermes' $true) }
+
+# 2026-10-21 nanobot workspace cron and triggers (#220)
+function Is220([string]$rel) { $r = Row $rel; return ($r -and $r.agent -eq 'nanobot' -and $r.status -eq 'collected') }
+Check '#220 nanobot workspace cron jobs and runs collected' { (Is220 'nanows/cron/jobs.json') -and (Is220 'nanows/cron/runs/j1_1_ab.json') }
+Check '#220 nanobot workspace triggers and runs collected' { (Is220 'nanows/triggers/triggers.json') -and (Is220 'nanows/triggers/runs/d1.json') }
+Check '#220 nanobot trigger queue not collected' { @($script:Rows | Where-Object { ($_.path -replace '\\', '/') -like '*nanows/triggers/inbox*' }).Count -eq 0 }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

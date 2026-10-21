@@ -13052,6 +13052,8 @@ from fixtures import (
     NANOBOT_KEY,
     NANOBOT_LEGACY_REL,
     NANOBOT_REL,
+    NANOBOT_SWEEP_RELS,
+    NANOBOT_TOKEN,
     OPENCLAW_AGENT,
     OPENCLAW_CHECKPOINT,
     OPENCLAW_COLD_SESSION,
@@ -13685,16 +13687,22 @@ class NanobotTests(ParserBase):
         rows = self.rows_for(NanobotParser(), NANOBOT_REL)
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "system", "user", "tool_use", "tool_result", "assistant"],
+            ["system", "system", "system", "user", "tool_use", "tool_result", "assistant"],
         )
         for r in rows:
             self.assertEqual(
                 (r.host, r.user, r.agent, r.session_id), ("h1", "alice", "nanobot", NANOBOT_KEY)
             )
             self.assertEqual((r.project_path, r.git_branch, r.model), ("/srv/proj", "", ""))
-        start, hidden, user, use, result, asst = rows
+        start, relayed, hidden, user, use, result, asst = rows
         self.assertIn("last_channel=telegram:123456789", start.text)
         self.assertEqual(start.timestamp_utc, "2026-10-01T10:15:00.000Z")
+        # Issue 207: the session key names a messaging platform; the
+        # metadata's last_channel is the same route, so one row.
+        self.assertEqual(
+            (relayed.text, relayed.timestamp_utc, relayed.source_line),
+            ("session relayed: telegram chat 123456789 (from session key)", start.timestamp_utc, 1),
+        )
         self.assertTrue(hidden.text.startswith("summarised history:"))
         self.assertEqual(
             (user.text, user.timestamp_utc),
@@ -13708,7 +13716,7 @@ class NanobotTests(ParserBase):
             (result.tool_use_id, result.timestamp_utc), ("call_abc123", "2026-10-01T10:15:05.000Z")
         )
         self.assertEqual(asst.text, "python3 (pid 4242) is listening on 8080.")
-        self.assertEqual([r.source_line for r in rows], [1, 3, 4, 5, 6, 7])
+        self.assertEqual([r.source_line for r in rows], [1, 1, 3, 4, 5, 6, 7])
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(NanobotParser(), NANOBOT_REL, include_thinking=True)
@@ -13758,7 +13766,10 @@ class NanobotTests(ParserBase):
     def test_not_wanted(self):
         p = NanobotParser()
         for rel in (
-            ".nanobot/config.json",
+            ".nanobot/workspace/cron/jobs.json",
+            ".nanobot/workspace/cron/action.jsonl",
+            ".nanobot/workspace/triggers/triggers.json",
+            ".nanobot/workspace/triggers/inbox/d-2.json",
             ".nanobot/sessions/%s/.workspace" % "0123456789abcdef0123456789abcdef",
             ".nanobot/sessions/0123456789abcdef0123456789abcdef/dGVsZWdyYW06MTIzNDU2Nzg5.checkpoint.json",
         ):
@@ -13778,6 +13789,7 @@ class NanobotTests(ParserBase):
         for rel in (
             ".nanobot/webui/websocket_chat-1.json",  # legacy thread, shape not recorded
             ".nanobot/history/cli_history.bak",
+            ".nanobot/workspace/config.json",
         ):
             self.assertFalse(p.wants(rel_only(rel)), rel)
 
@@ -13789,7 +13801,7 @@ class NanobotTests(ParserBase):
                 '"timestamp": "2026-10-01T10:16:00.000000"}' + "\n"
             )
         rows = self.rows_for(NanobotParser(), NANOBOT_REL)
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), 9)
         self.assertEqual(
             (rows[-2].source_line, rows[-2].turn_type, rows[-2].text), (9, "user", "after the cut")
         )
@@ -13933,9 +13945,10 @@ class NanobotTests(ParserBase):
         self.assertEqual(by_text["list the old logs"], ["000001.jsonl"])
         self.assertEqual(by_text["first line\nsecond line"], ["cli_history"])
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
-        # Five more: the frozen discord:555 JSONL's model row and four
-        # message rows, which sessions.sqlite3 also holds (issue 178).
-        self.assertEqual(inv["deduplicated"], {"nanobot": 10})
+        # Six more: the frozen discord:555 JSONL's relay row (issue 207),
+        # model row and four message rows, which sessions.sqlite3 also holds
+        # (issue 178).
+        self.assertEqual(inv["deduplicated"], {"nanobot": 11})
 
     # -- sessions.sqlite3 (issue 178) -----------------------------------------------------
     DB_ROWS: ClassVar[list[tuple[int, str, str, str]]] = [
@@ -13954,6 +13967,7 @@ class NanobotTests(ParserBase):
             "session start: key=discord:555 last_channel=discord:555"
             " updated_at=2026-10-03T11:00:31 workspace=/srv/proj",
         ),
+        (1, "system", NANOBOT_DB_KEY, "session relayed: discord chat 555 (from session key)"),
         (1, "system", NANOBOT_DB_KEY, "model: smart (preset)"),
         (1, "user", NANOBOT_DB_KEY, "rotate the api key"),
         (2, "tool_use", NANOBOT_DB_KEY, "./rotate.sh"),
@@ -14102,6 +14116,243 @@ class NanobotTests(ParserBase):
         )
         self.assertFalse(p.wants(rel_only(".nanobot-work/history/cli_history.bak")))
         self.assertFalse(p.wants(rel_only("work/.nanobot/history/cli_history")))
+
+    # -- issue 207: relay, model switches, permission state, run records, sidebar -------
+    def test_relay_from_last_channel(self):
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["unified"])
+        self.assertEqual(
+            [r.text for r in rows[:2]],
+            [
+                "session start: key=unified:default last_channel=telegram:777"
+                " updated_at=2026-10-04T08:05:00 workspace=/srv/proj",
+                "session relayed: telegram chat 777 (from metadata.last_channel)",
+            ],
+        )
+        self.assertTrue(NanobotParser.records_relay)
+        # The WebUI, CLI, heartbeat and legacy sessions are local.
+        for rel in (NANOBOT_WEBUI_SESSION_REL, NANOBOT_LEGACY_REL):
+            rows = self.rows_for(NanobotParser(), rel)
+            self.assertFalse([r for r in rows if r.text.startswith("session relayed:")], rel)
+
+    def test_model_switch_rows(self):
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["unified"])
+        models = [(r.source_line, r.text, r.model) for r in rows if r.text.startswith("model:")]
+        # The metadata's preset (`smart`) is the last switch's, so no start
+        # row names it; the first switch has no recorded previous preset,
+        # and the failed `/model nope` switches nothing.
+        self.assertEqual(
+            models,
+            [
+                (5, "model: fast (preset) requested=fast resolved=gpt-5.4-mini", "fast"),
+                (
+                    7,
+                    "model: fast -> smart (preset) requested=smart resolved=claude-opus-5-5",
+                    "smart",
+                ),
+            ],
+        )
+        by_text = {r.text: r for r in rows}
+        self.assertEqual(
+            (by_text["good morning"].model, by_text["/model nope"].model), ("", "smart")
+        )
+        self.assertEqual(by_text["/model fast"].turn_type, "user")
+
+    def test_permission_mode_from_workspace_scope(self):
+        rows = self.rows_for(NanobotParser(), NANOBOT_WEBUI_SESSION_REL)
+        self.assertEqual(
+            (rows[1].turn_type, rows[1].text, rows[1].timestamp_utc, rows[1].source_line),
+            (
+                "system",
+                "permission mode: access_mode=restricted project=/srv/proj"
+                " (from session metadata workspace_scope)",
+                rows[0].timestamp_utc,
+                1,
+            ),
+        )
+
+    def test_config_permission_settings(self):
+        p = NanobotParser()
+        art = self.artifact(NANOBOT_SWEEP_RELS["config"])
+        self.assertTrue(p.wants(art))
+        self.assertFalse(p.secondary(art))
+        rows = self.rows_for(p, NANOBOT_SWEEP_RELS["config"])
+        tail = " (from .nanobot/config.json, file mtime)"
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: " + x + tail
+                for x in (
+                    "tools.restrictToWorkspace=true",
+                    "tools.ssrfWhitelist=100.64.0.0/10",
+                    "tools.exec.enable=true",
+                    "tools.exec.sandbox=bwrap",
+                    "tools.exec.denyPatterns=rm -rf /",
+                    "tools.exec.denyPatterns=curl *",
+                    "channels.telegram.allowFrom=123456789",
+                )
+            ],
+        )
+        mtime = to_utc((self.home / NANOBOT_SWEEP_RELS["config"]).stat().st_mtime)
+        for r in rows:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.project_path, r.timestamp_utc),
+                ("system", "", "", mtime),
+            )
+            self.assertNotIn(NANOBOT_TOKEN, r.text)
+            self.assertNotIn("123:abc", r.text)
+
+    def test_config_snake_case_and_bad_file(self):
+        path = self.home / NANOBOT_SWEEP_RELS["config"]
+        path.write_text('{"tools": {"restrict_to_workspace": false}}', encoding="utf-8")
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["config"])
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: tools.restrict_to_workspace=false"
+                " (from .nanobot/config.json, file mtime)"
+            ],
+        )
+        path.write_text('{"tools": ', encoding="utf-8")
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["config"])
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: config.json did not parse: "))
+
+    def test_pairing_rows(self):
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["pairing"])
+        mtime = to_utc((self.home / NANOBOT_SWEEP_RELS["pairing"]).stat().st_mtime)
+        self.assertEqual(
+            [(r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    mtime,
+                    "permission setting: pairing.approved.telegram=123456789"
+                    " (from .nanobot/pairing.json, file mtime)",
+                ),
+                (
+                    mtime,
+                    "permission setting: pairing.approved.telegram=555"
+                    " (from .nanobot/pairing.json, file mtime)",
+                ),
+                (
+                    "2026-10-05T08:00:00.500Z",
+                    "permission setting: pairing.pending.discord=999"
+                    " expires_at=2026-10-05T08:10:00.500Z delivery_status=sent"
+                    " (from .nanobot/pairing.json, created_at)",
+                ),
+            ],
+        )
+        self.assertFalse([r for r in rows if "ABCD-EFGH" in r.text])
+
+    def test_cron_run_record(self):
+        p = NanobotParser()
+        rel = NANOBOT_SWEEP_RELS["cron"]
+        self.assertTrue(p.secondary(self.artifact(rel)))
+        self.assertEqual(p.secondary_tolerance(self.artifact(rel)), 15 * 3600.0)
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [(r.timestamp_utc, r.turn_type, r.text) for r in rows],
+            [
+                (
+                    "2026-10-05T08:00:00.000Z",
+                    "user",
+                    "Scheduled cron job triggered: morning digest\n\nsummarise the inbox",
+                ),
+                ("2026-10-05T08:00:05.000Z", "assistant", "Three new mails."),
+                (
+                    "2026-10-05T08:00:05.000Z",
+                    "system",
+                    "cron run: job morning digest (job1) run job1:1791187200000:ab12cd34 status=ok",
+                ),
+            ],
+        )
+        self.assertEqual(
+            {(r.session_id, r.project_path) for r in rows},
+            {(NANOBOT_SWEEP_RELS["run_key"], "/alice/.nanobot/workspace")},
+        )
+
+    def test_trigger_run_record(self):
+        rel = NANOBOT_SWEEP_RELS["trigger"]
+        self.assertTrue(NanobotParser().secondary(self.artifact(rel)))
+        rows = self.rows_for(NanobotParser(), rel)
+        self.assertEqual(
+            [(r.timestamp_utc, r.turn_type, r.text) for r in rows],
+            [
+                (
+                    "2026-10-05T09:00:00.000Z",
+                    "user",
+                    "Local trigger received: ci\n\nbuild failed on main",
+                ),
+                (
+                    "2026-10-05T09:00:01.000Z",
+                    "system",
+                    "trigger run: trigger ci (t1) delivery d-1 status=error attempts=1"
+                    " error=target channel is not enabled: slack",
+                ),
+            ],
+        )
+
+    def test_run_record_in_project_and_bad_file(self):
+        p = NanobotParser()
+        project = cast(
+            Artifact, SimpleNamespace(rel="cron/runs/x.json", home=SimpleNamespace(project=True))
+        )
+        home = cast(
+            Artifact, SimpleNamespace(rel="cron/runs/x.json", home=SimpleNamespace(project=False))
+        )
+        self.assertTrue(p.wants(project))
+        self.assertFalse(p.wants(home))
+        self.assertTrue(p.wants(rel_only(".nanobot-work/triggers/runs/d.json")))
+        (self.home / NANOBOT_SWEEP_RELS["cron"]).write_text("[]", encoding="utf-8")
+        rows = self.rows_for(p, NANOBOT_SWEEP_RELS["cron"])
+        self.assertEqual(
+            [(r.text, r.project_path) for r in rows],
+            [("parser: cron run record is not a JSON object", "/alice/.nanobot/workspace")],
+        )
+
+    def test_sidebar_cache(self):
+        p = NanobotParser()
+        rel = NANOBOT_SWEEP_RELS["sidebar"]
+        self.assertTrue(p.secondary(self.artifact(rel)))
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [(r.timestamp_utc, r.turn_type, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "2026-10-04T09:00:00.000Z",
+                    "system",
+                    "websocket:chat-9",
+                    "webui sidebar entry: key=websocket:chat-9 preview=draft the release notes"
+                    " updated_at=2026-10-04T09:10:00 (from .webui_session_index.json version 8)",
+                )
+            ],
+        )
+
+    def test_sidebar_bad_entry(self):
+        path = self.home / NANOBOT_SWEEP_RELS["sidebar"]
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["sessions"] = ["cut", *data["sessions"]]
+        path.write_text(json.dumps(data), encoding="utf-8")
+        rows = self.rows_for(NanobotParser(), NANOBOT_SWEEP_RELS["sidebar"])
+        self.assertEqual([r.session_id for r in rows], ["websocket:chat-9", ""])
+        self.assertEqual(rows[-1].text, 'parser: unparseable record 1 (not a JSON object): "cut"')
+
+    def test_sweep_timeline(self):
+        import contextlib
+
+        out = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--agent", "nanobot"])
+        sessions = {
+            s["session_id"]: s
+            for s in read_jsonl(out / "sessions.jsonl")
+            if s["agent"] == "nanobot"
+        }
+        self.assertEqual(sessions["telegram:123456789"]["relayed"], "yes")
+        self.assertEqual(sessions["unified:default"]["relayed"], "yes")
+        self.assertEqual(sessions["discord:555"]["relayed"], "yes")
+        self.assertEqual(sessions["websocket:chat-1"]["relayed"], "no")
+        # The run records' session is gone: its turns are recovered from them.
+        self.assertEqual(sessions[NANOBOT_SWEEP_RELS["run_key"]]["recovered"], "yes")
 
 
 from doubleagent import vscode_state

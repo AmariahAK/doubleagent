@@ -1271,6 +1271,21 @@ printf '{"42":{"user_name":"u"}}\n' >"$Q123/pairing/telegram-approved.json"
 printf 'sqlite\n' >"$W123/state.db"
 printf '{"connections":[]}\n' >"$H/.config/Hermes/connections.json"
 
+# 2026-10-21 nanobot workspace cron and triggers (#220)
+# nanobot (HKUDS/nanobot at 909b277, source only) keeps its cron jobs and
+# local triggers in the workspace, with one run record per run (session
+# key, prompt, reply) that outlives the session. The project catalog
+# collects the job and trigger files and the runs directories of a
+# discovered workspace; the trigger queue (inbox/) is left. Checks follow
+# the default run below; the same files are in smoke.ps1 under nanows.
+N220="$ROOT/srv/nanows"
+mkdir -p "$N220/cron/runs" "$N220/triggers/runs" "$N220/triggers/inbox"
+printf '{"jobs":[]}\n' >"$N220/cron/jobs.json"
+printf '{"job_id":"j1","status":"ok"}\n' >"$N220/cron/runs/j1_1_ab.json"
+printf '{"triggers":[]}\n' >"$N220/triggers/triggers.json"
+printf '{"trigger_id":"t1","status":"ok"}\n' >"$N220/triggers/runs/d1.json"
+printf '{"id":"d2"}\n' >"$N220/triggers/inbox/d2.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1686,6 +1701,11 @@ check "#216 Gemini CLI project settings beside the worktrees collected" "row \"$
 check "#123 Hermes quick snapshot state.db collected" "row \"$Q123/state.db\" | grep -q '\"agent\":\"hermes\".*\"secret\":false,\"status\":\"collected\"' && row \"$Q123/manifest.json\" | grep -q '\"secret\":false,\"status\":\"collected\"' && row \"$W123/state.db\" | grep -q '\"agent\":\"hermes\".*\"secret\":false,\"status\":\"collected\"' && [ -z \"\$(status_of \"$H/.hermes/state-snapshots\")\" ]"
 check "#123 Hermes quick snapshot credentials flagged secret" "row \"$Q123/.env\" | grep -q '$SEC153' && row \"$Q123/auth.json\" | grep -q '$SEC153' && row \"$Q123/pairing/telegram-approved.json\" | grep -q '$SEC153'"
 check "#208 Hermes desktop connection files flagged secret" "row \"$H/.config/Hermes/connections.json\" | grep -q '\"agent\":\"hermes\".*$SEC153' && row \"$H/.config/Hermes/connection.json\" | grep -q '$SEC153'"
+
+# 2026-10-21 nanobot workspace cron and triggers (#220)
+check "#220 nanobot workspace cron jobs and runs collected" "row \"$N220/cron/jobs.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"' && row \"$N220/cron/runs/j1_1_ab.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"'"
+check "#220 nanobot workspace triggers and runs collected" "row \"$N220/triggers/triggers.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"' && row \"$N220/triggers/runs/d1.json\" | grep -q '\"agent\":\"nanobot\".*\"status\":\"collected\"'"
+check "#220 nanobot trigger queue not collected" "! grep -qF 'nanows/triggers/inbox' \"\$M\""
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

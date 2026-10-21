@@ -54,6 +54,8 @@ from fixtures import (
     KILO_TASK,
     LETTA_CONV,
     LETTA_LOCAL_AGENT_CONV,
+    NANOBOT_DB_KEY,
+    NANOBOT_KEY,
     OI_SESSION,
     OPENCLAW_RESET_SESSION,
     OPENCLAW_SESSION,
@@ -678,9 +680,9 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # of "show disk usage" pair with the session file's within the 15-hour
 # window, and the CLI history's "hello" with the legacy cli:direct
 # session's; the segment's older turn and the second CLI prompt are kept.
-# The frozen discord:555 JSONL's model row and four message rows pair with
-# sessions.sqlite3's; the jsonl-backup/ heartbeat turn the database lost is
-# kept.
+# The frozen discord:555 JSONL's relay row, model row and four message
+# rows pair with sessions.sqlite3's; the jsonl-backup/ heartbeat turn the
+# database lost is kept.
 # OpenClaw: the deleted archive file's prompt (the blob holds it), the
 # pre-doctor backup's seven entry rows (the legacy file holds them) and the
 # checkpoint's three entry rows, which collapse onto the backup's copies of
@@ -713,7 +715,7 @@ FIXTURE_DEDUPLICATED = {
     "hermes": 11,  # snapshot copies and the divert's screenshot prompt
     "letta": 4,  # transcript.jsonl turn: prompt, tool_use, tool_result, reply
     "muse-code": 1,  # "fix the failing test", no timestamp
-    "nanobot": 10,  # four WebUI rows, CLI "hello", frozen JSONL 5 (sessions.sqlite3)
+    "nanobot": 11,  # four WebUI rows, CLI "hello", frozen JSONL 6 (sessions.sqlite3)
     "open-interpreter": 3,  # history.jsonl "list the files", state_5.sqlite 2
     "openclaw": 11,  # .jsonl.deleted.* 1, pre-doctor .bak 7, checkpoint 3
     "opencode": 2,  # opencode-next.db: the imported session's start row and prompt
@@ -907,10 +909,12 @@ class SyncedSessionTests(unittest.TestCase):
         self.assertEqual(agy["recovered"], "partial")
         self.assertEqual(projects["/sessions/quiet-river-1234"]["recovered"], "yes")
         # nanobot's workspace is inside its own state directory, a scratch
-        # directory by the catalog rule (issue 149).
+        # directory by the catalog rule (issue 149). Its memory journal's
+        # sessions are not recovered; the cron and trigger run records'
+        # session, gone from every store, is (issue 207).
         self.assertNotIn("/alice/.nanobot/workspace", projects)
         scratch = inv["scratch_directories"]
-        self.assertEqual(scratch["/alice/.nanobot/workspace"]["recovered"], "no")
+        self.assertEqual(scratch["/alice/.nanobot/workspace"]["recovered"], "partial")
         self.assertEqual(projects["/a0/usr/projects/demo"]["recovered"], "partial")
         self.assertEqual(projects["/srv/proj2"]["recovered"], "")
         # The recovered sessions with no project: AGY_ORPHAN is one.
@@ -1002,9 +1006,10 @@ class SyncedSessionTests(unittest.TestCase):
         self.assertEqual(rc, 0, stdout)
         sessions = read_jsonl(out / "sessions.jsonl")
         by_id = {(s["agent"], s["session_id"]): s["relayed"] for s in sessions}
-        # The Agent Zero Telegram chat, the Goose gateway session and the two
-        # Qwen Code channel routes are relayed; the other sessions of those
-        # agents are not.
+        # The Agent Zero Telegram chat, the Goose gateway session, the two
+        # Qwen Code channel routes and the three nanobot sessions keyed to or
+        # routed through a messaging channel are relayed; the other sessions
+        # of those agents are not.
         for key, want in (
             (("agent-zero", AGENT_ZERO_TG_CHAT), "yes"),
             (("agent-zero", AGENT_ZERO_CHAT), "no"),
@@ -1014,25 +1019,30 @@ class SyncedSessionTests(unittest.TestCase):
             (("qwen-code", QWEN_DAEMON_SESSION), "yes"),
             (("qwen-code", QWEN_ARCHIVED), "no"),
             (("hermes", HERMES_SESSION), "no"),
+            (("nanobot", NANOBOT_KEY), "yes"),
+            (("nanobot", NANOBOT_DB_KEY), "yes"),
+            (("nanobot", "unified:default"), "yes"),
+            (("nanobot", "websocket:chat-1"), "no"),
             (("copilot-cli", COPILOT_SESSION), ""),
             (("claude-code", CLAUDE_SESSION), ""),
         ):
             self.assertEqual(by_id[key], want, key)
         relay_agents = {p.agent for p in ALL if p.records_relay}
-        self.assertEqual(relay_agents, {"agent-zero", "goose", "hermes", "qwen-code"})
+        self.assertEqual(relay_agents, {"agent-zero", "goose", "hermes", "nanobot", "qwen-code"})
         self.assertEqual({v for (agent, _), v in by_id.items() if agent not in relay_agents}, {""})
         self.assertEqual(
             {v for (agent, _), v in by_id.items() if agent in relay_agents}, {"yes", "no"}
         )
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
-        self.assertEqual(inv["relayed_sessions"], 4)
+        self.assertEqual(inv["relayed_sessions"], 7)
         agents = {a["agent"]: a for h in inv["homes"] for a in h["agents"]}
         self.assertEqual(agents["agent-zero"]["relayed_sessions"], 1)
         self.assertEqual(agents["goose"]["relayed_sessions"], 1)
         self.assertEqual(agents["qwen-code"]["relayed_sessions"], 2)
+        self.assertEqual(agents["nanobot"]["relayed_sessions"], 3)
         self.assertEqual(agents["copilot-cli"]["relayed_sessions"], 0)
         line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
-        self.assertIn(", 4 relayed", line)
+        self.assertIn(", 7 relayed", line)
 
     def test_synced_codex_and_cline(self):
         # A `/feedback` report marks a Codex or Open Interpreter thread, and
@@ -1147,7 +1157,8 @@ class SyncedSessionOpenClawAgentZeroTests(unittest.TestCase):
         self.assertEqual(agents["goose"]["relayed_sessions"], 0)
         self.assertEqual(agents["qwen-code"]["relayed_sessions"], 2)
         self.assertEqual(agents["openclaw"]["relayed_sessions"], 0)
-        self.assertEqual(inv["relayed_sessions"], 3)
+        self.assertEqual(agents["nanobot"]["relayed_sessions"], 3)
+        self.assertEqual(inv["relayed_sessions"], 6)
 
 
 class SyncedSessionB3Tests(unittest.TestCase):
