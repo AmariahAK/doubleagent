@@ -3371,7 +3371,7 @@ class QwenCodeTests(ParserBase):
         with open(self.home / self.REL, "a", encoding="utf-8") as fh:
             fh.write("\n" + json.dumps(after) + "\n")
         rows = self.rows_for(QwenCodeParser(), self.REL)
-        self.assertEqual(len(rows), 15)
+        self.assertEqual(len(rows), 14)
         self.assertEqual(
             [(r.source_line, r.turn_type, r.text) for r in rows[:13]],
             [(r.source_line, r.turn_type, r.text) for r in before],
@@ -7513,9 +7513,23 @@ from doubleagent.parsers.tabby import TabbyParser
 from fixtures import (
     TABBY_BACKUP2_REL,
     TABBY_BACKUP_REL,
+    TABBY_CLIENT_TOKEN,
+    TABBY_CONFIG_REL,
+    TABBY_ENDPOINT_TOKEN,
     TABBY_EVENTS_REL,
+    TABBY_INTELLIJ_REL,
     TABBY_REL,
     TABBY_SECRETS,
+    TABBY_VSCDB_REL,
+)
+
+TABBY_SOURCE_HOST = (
+    "source host: github.com integration acme kind=github api_base=- (account not recorded; "
+    "from integrations table, created_at)"
+)
+TABBY_SOURCE_REPO = (
+    "source host repository: https://github.com/acme/app type=github name=acme/app active=yes "
+    "(integration acme; from provided_repositories table, updated_at)"
 )
 
 
@@ -7524,15 +7538,27 @@ class TabbyTests(ParserBase):
         # The backups and the event log are secondary sources, the live
         # database is not (#122).
         p = TabbyParser()
-        for rel in (TABBY_BACKUP_REL, TABBY_BACKUP2_REL, TABBY_EVENTS_REL):
+        for rel in (
+            TABBY_BACKUP_REL,
+            TABBY_BACKUP2_REL,
+            TABBY_EVENTS_REL,
+            TABBY_INTELLIJ_REL,
+            TABBY_VSCDB_REL,
+        ):
             self.assertTrue(p.secondary(self.artifact(rel)), rel)
         self.assertFalse(p.secondary(self.artifact(TABBY_REL)))
+        self.assertFalse(p.secondary(self.artifact(TABBY_CONFIG_REL)))
 
     def test_rows(self):
         rows = self.rows_for(TabbyParser(), TABBY_REL)
         self.assertEqual(
             [r.turn_type for r in rows],
-            ["system", "user", "assistant", "system", "user", "assistant", "system"],
+            [
+                *("system", "user", "assistant"),  # thread 7
+                *("system", "assistant", "assistant", "assistant"),  # page 4
+                *("system", "user", "assistant", "system"),  # user_events
+                *("system", "system"),  # integration, cached repository
+            ],
         )
         for r in rows:
             self.assertEqual(
@@ -7540,11 +7566,11 @@ class TabbyTests(ParserBase):
             )
             self.assertTrue(r.source_file.endswith(TABBY_REL), r.source_file)
         start, user, asst = rows[:3]
-        select = rows[-1]
+        select = rows[-3]
         # The user_events copy of the event log's completion line (#122).
         app = "https://github.com/acme/app"
         self.assertEqual(
-            [(r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows[3:6]],
+            [(r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows[7:10]],
             [
                 (
                     "cmpl-7f3a",
@@ -7595,7 +7621,10 @@ class TabbyTests(ParserBase):
 
     def test_backup_and_event_log(self):
         rows = self.rows_for(TabbyParser(), TABBY_BACKUP_REL)
-        self.assertEqual([r.turn_type for r in rows], ["system", "system", "user", "assistant"])
+        self.assertEqual(
+            [r.turn_type for r in rows], ["system", "system", "user", "assistant", "system"]
+        )
+        self.assertEqual(rows.pop().text, TABBY_SOURCE_HOST)
         self.assertEqual(
             rows[0].text,
             "backup database db.backup-20260915.sqlite copied before a schema migration; it can "
@@ -7645,10 +7674,20 @@ class TabbyTests(ParserBase):
                 seen.add(a.rel)
                 self.assertEqual(
                     p.wants(a),
-                    a.rel in (TABBY_REL, TABBY_BACKUP_REL, TABBY_BACKUP2_REL, TABBY_EVENTS_REL),
+                    a.rel
+                    in (
+                        TABBY_REL,
+                        TABBY_BACKUP_REL,
+                        TABBY_BACKUP2_REL,
+                        TABBY_EVENTS_REL,
+                        TABBY_CONFIG_REL,
+                        TABBY_INTELLIJ_REL,
+                    ),
                     a.rel,
                 )
-        self.assertIn(".tabby/config.toml", seen)
+        self.assertIn(".tabby-client/agent/config.toml", seen)
+        self.assertIn(".config/JetBrains/IntelliJIdea2025.2/options/intellij-tabby.xml", seen)
+        self.assertIn(".tabby/ee/db.sqlite-wal", seen)
 
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / TABBY_EVENTS_REL)
@@ -7676,11 +7715,9 @@ class TabbyTests(ParserBase):
         con.commit()
         con.close()
         rows = self.rows_for(TabbyParser(), TABBY_REL)
-        self.assertEqual(
-            [r.turn_type for r in rows],
-            ["system", "user", "assistant", "system", "user", "assistant", "system", "system"],
-        )
-        self.assertIn("payload did not parse", rows[-1].text)
+        self.assertEqual(len(rows), 14)
+        self.assertIn("payload did not parse", rows[-3].text)
+        self.assertEqual([r.text for r in rows[-2:]], [TABBY_SOURCE_HOST, TABBY_SOURCE_REPO])
 
     def test_corrupt_backup_is_reported_not_fatal(self):
         (self.home / TABBY_BACKUP2_REL).write_bytes(b"SQLite format 3\x00" + b"\x00" * 84)
@@ -7700,11 +7737,13 @@ class TabbyTests(ParserBase):
                 ("system", "7", "2026-10-01T10:00:00.000Z"),
                 ("user", "7", "2026-10-01T10:00:00.000Z"),
                 ("assistant", "7", "2026-10-01T10:00:02.000Z"),
+                ("system", "", "2026-09-01T09:00:00.000Z"),
             ],
         )
+        self.assertEqual(rows.pop().text, TABBY_SOURCE_HOST)
         self.assertIn("db.backup-20261005.sqlite", rows[0].text)
         # The same texts and projects as the first backup and the live database.
-        first = self.rows_for(TabbyParser(), TABBY_BACKUP_REL)
+        first = self.rows_for(TabbyParser(), TABBY_BACKUP_REL)[:-1]
         live = self.rows_for(TabbyParser(), TABBY_REL)
         self.assertEqual(
             [(r.text, r.project_path) for r in rows[1:4]],
@@ -7722,7 +7761,8 @@ class TabbyTests(ParserBase):
         # two backup copies of ephemeral thread 3. The event log's system rows
         # name the owner by id, the database's by email, so both are kept.
         rows, _, _, dropped = cli.collect_rows(self.col, Options(), ["tabby"])
-        self.assertEqual(dropped, {"tabby": 8})
+        self.assertEqual(dropped, {"tabby": 10})
+        self.assertEqual(len([r for r in rows if r.text == TABBY_SOURCE_HOST]), 1)
         texts = [(r.source_file.rsplit("/", 1)[-1], r.turn_type, r.text) for r in rows]
         self.assertEqual(
             [t for t in texts if t[2] in ("def add(a, b):", "return a + b")],
@@ -7765,6 +7805,209 @@ class TabbyTests(ParserBase):
                 self.assertNotIn(secret.encode(), data, p)
         for secret in TABBY_SECRETS:
             self.assertNotIn(secret, buf.getvalue())
+
+    def test_no_new_secret_reaches_rows(self):
+        # The model api_key, the client token and the VS Code endpoint token
+        # (#211) sit beside what the parser now reads.
+        rows, _, _, _ = cli.collect_rows(self.col, Options(), ["tabby"])
+        for r in rows:
+            for value in r.as_dict().values():
+                for secret in ("sk-tabby-test", TABBY_CLIENT_TOKEN, TABBY_ENDPOINT_TOKEN):
+                    self.assertNotIn(secret, str(value))
+
+    def test_pages(self):
+        # AI-written pages outlive their thread (#211; page.rs:92-150).
+        rows = [r for r in self.rows_for(TabbyParser(), TABBY_REL) if r.session_id == "page:4"]
+        app = "https://github.com/acme/app"
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.timestamp_utc, r.project_path, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    4,
+                    "2026-10-01T11:00:00.000Z",
+                    app,
+                    "page start | title Cache invalidation | author alice@example.com (Alice)"
+                    " | code_source acme-app",
+                ),
+                ("assistant", 4, "2026-10-01T11:00:00.000Z", app, "How the cache is cleared."),
+                (
+                    "assistant",
+                    9,
+                    "2026-10-01T11:00:10.000Z",
+                    app,
+                    "Clearing\n\nCall `clear()`. [attachments: code https://github.com/acme/app"
+                    " src/cache.rs:10]",
+                ),
+                (
+                    "assistant",
+                    10,
+                    "2026-10-01T11:00:20.000Z",
+                    app,
+                    "Expiry\n\nEntries expire after an hour.",
+                ),
+            ],
+        )
+
+    def test_source_host_rows(self):
+        # The integration and its cached repository list (schema.sql:142-165);
+        # the access token is never selected.
+        rows = self.rows_for(TabbyParser(), TABBY_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows[-2:]],
+            [
+                ("system", "", "2026-09-01T09:00:00.000Z", TABBY_SOURCE_HOST),
+                ("system", "", "2026-09-02T09:05:00.000Z", TABBY_SOURCE_REPO),
+            ],
+        )
+
+    def test_config_model_rows(self):
+        # config.rs:259-342: one row per configured model, at the file mtime (#211).
+        rows = self.rows_for(TabbyParser(), TABBY_CONFIG_REL)
+        mtime = to_utc((self.home / TABBY_CONFIG_REL).stat().st_mtime)
+        self.assertTrue(all(r.timestamp_utc == mtime for r in rows))
+        self.assertTrue(all((r.turn_type, r.session_id) == ("system", "") for r in rows))
+        if sys.version_info < (3, 11):
+            self.assertEqual(
+                [r.text for r in rows],
+                ["parser: config.toml model tables not read: Python 3.11 or later needed"],
+            )
+            return
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "model configured: completion StarCoder-1B via local"
+                " (from config.toml [model.completion.local], file mtime)",
+                "model configured: chat gpt-4o via http kind=openai/chat"
+                " endpoint=https://api.openai.com/v1 supported_models=gpt-4o,gpt-4o-mini"
+                " (from config.toml [model.chat.http], file mtime)",
+            ],
+        )
+
+    def test_bad_config_is_reported_not_fatal(self):
+        (self.home / TABBY_CONFIG_REL).write_text(
+            '[model.chat.http]\napi_key = "sk-tabby-test\n', encoding="utf-8"
+        )
+        rows = self.rows_for(TabbyParser(), TABBY_CONFIG_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: config.toml"), rows[0].text)
+        self.assertNotIn("sk-tabby-test", rows[0].text)
+
+    def test_intellij_command_history(self):
+        # CommandHistory.kt:5-31: newest first, no times (#211).
+        rows = self.rows_for(TabbyParser(), TABBY_INTELLIJ_REL)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.timestamp_utc, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    0,
+                    "",
+                    "",
+                    "inline edit command history: 2 commands, newest first"
+                    " (from intellij-tabby-command-history.xml, no times)",
+                ),
+                ("user", 1, "", "", "add docstrings"),
+                ("user", 2, "", "", "convert to async"),
+            ],
+        )
+
+    def test_truncated_intellij_history_is_reported_not_fatal(self):
+        path = self.home / TABBY_INTELLIJ_REL
+        path.write_text(path.read_text(encoding="utf-8")[:120], encoding="utf-8")
+        rows = self.rows_for(TabbyParser(), TABBY_INTELLIJ_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: not a readable XML document"))
+
+    def test_vscode_command_history(self):
+        # Config.ts:139-145 and quickPick.ts:322-351, read from the editor's
+        # state.vscdb through reads_agents (#211).
+        p = TabbyParser()
+        self.assertIn("vscode", p.reads_agents)
+        art = self.artifact(TABBY_VSCDB_REL)
+        self.assertEqual(art.agent, "vscode")
+        self.assertTrue(p.wants(art))
+        rows = list(p.parse(art, Options()))
+        self.assertEqual(
+            [(r.agent, r.turn_type, r.source_line, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "tabby",
+                    "system",
+                    0,
+                    "",
+                    "inline edit command history: 3 commands, newest first (from state.vscdb"
+                    " TabbyML.vscode-tabby edit.recentlyCommand, no times)",
+                ),
+                (
+                    "tabby",
+                    "user",
+                    1,
+                    "",
+                    "rename @file to snake case [context: file:///srv/proj/app/math.py]",
+                ),
+                ("tabby", "user", 2, "", "add type hints"),
+                ("tabby", "user", 3, "", "fix the typo"),
+            ],
+        )
+        # Another editor's state.vscdb without Tabby's row yields nothing.
+        other = self.artifact(".config/Code - Insiders/User/globalStorage/state.vscdb")
+        self.assertEqual(list(p.parse(other, Options())), [])
+        # A Tabby-attributed path is never routed as an editor database.
+        self.assertFalse(p.wants(self.artifact(".tabby-client/agent/config.toml")))
+
+    def test_volume_root(self):
+        """A Tabby server root collected from a Docker named volume has its
+        files at the base's root (#124); the parser reads them as it reads
+        a home's `.tabby`."""
+        from fixtures import TABBY_VOLUME_HOME, build_tabby_volume
+
+        p = TabbyParser()
+        for rel in (
+            "ee/db.sqlite",
+            "ee/dev-db.sqlite",
+            "ee/db.backup-20260915.sqlite",
+            "events/2025-10-01.json",
+            "config.toml",
+        ):
+            self.assertTrue(p.wants(rel_only(rel)), rel)
+        for rel in (
+            "ee/db.sqlite-wal",
+            "usage_anonymous_id",
+            "x/ee/db.sqlite",
+            "events/today.json",
+            "agent/config.toml",
+        ):
+            self.assertFalse(p.wants(rel_only(rel)), rel)
+        self.assertTrue(p.secondary(rel_only("events/2025-10-01.json")))
+        self.assertFalse(p.secondary(rel_only("ee/db.sqlite")))
+
+        root = self.tmp / "volume"
+        build_tabby_volume(root)
+        col = open_input(root, self.cat)
+        self.assertEqual(col.kind, "collected")
+        wanted = sorted(a.rel for a in col.artifacts if a.agent == "tabby" and p.wants(a))
+        self.assertEqual(
+            wanted,
+            sorted(
+                [
+                    "ee/db.sqlite",
+                    "ee/db.backup-20260915.sqlite",
+                    "events/2025-10-01.json",
+                    "config.toml",
+                ]
+            ),
+        )
+        rows, _, problems, _ = cli.collect_rows(col, Options(), [])
+        self.assertEqual(problems, [])
+        self.assertEqual({(r.host, r.user, r.agent) for r in rows}, {("h2", "docker", "tabby")})
+        self.assertIn(
+            "Where is the cache cleared? [attachments: client_code src/cache.rs:10]",
+            [r.text for r in rows if r.session_id == "7"],
+        )
+        self.assertIn("dump the users table", [r.text for r in rows if r.session_id == "3"])
+        self.assertIn("chat_completion", [r.text for r in rows])
+        self.assertTrue(all(a.home.original == TABBY_VOLUME_HOME for a in col.artifacts))
 
 
 from doubleagent.parsers.openhands import OpenHandsParser
@@ -11380,7 +11623,7 @@ class CodyTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / CODY_JB_REL)
         rows = self.rows_for(CodyParser(), CODY_JB_REL)
-        self.assertEqual(len(rows), 15)
+        self.assertEqual(len(rows), 14)
         self.assertEqual([r.turn_type for r in rows[:4]], ["system", "user", "system", "assistant"])
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser: chat history did not parse; recovered 2 chat(s)", rows[-1].text)
