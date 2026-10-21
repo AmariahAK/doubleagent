@@ -1230,7 +1230,24 @@ being `Success`, `Unexpected response`, `Auth required`, `Failed`,
 requested, skipped (from logs/cn.log, log line time, host-local)`, both
 with an empty `session_id` and the log's host-local time written as if
 it were UTC. `roo-code`,
-`aider`, `shellgpt` and `tabby` record no model and write no such row.
+`shellgpt` and `tabby` record no model and write no such row.
+
+The `aider` parser reads the announcement lines Aider writes to
+`.aider.chat.history.md` at startup and after each `/model`,
+`/weak-model`, `/editor-model` or `/chat-mode` switch, and after the
+`tool_result` row of the blockquote run that holds them writes
+`model: <name>` at a session's first announcement and `model: <old> ->
+<new>` on each later one that names another main model, the same text
+followed by ` (editor model)` or ` (weak model)` for those two roles,
+with the new model in the `model` column; a `Model:` line, which means
+no separate weak model, sets the weak model to the main one without a
+row unless it replaces a separate weak model. Each confirmation line
+is `permission decision: <decision> (<question>) answer=<letter>
+default=<default>` after the same kind of `tool_result` row, with
+`<decision>` `yes`, `no`, `all`, `skip all` or `no, don't ask again`;
+a `y` or `n` answer ends `; may be automatic (--yes-always)`, because
+Aider writes the same line when `--yes-always` answers for the user.
+Both take the run's time, a session header's or the last prompt's.
 
 The `vscode`, `cody` and `twinny` parsers write the same `model: <id>`
 and `model: <old> -> <new>` rows, from the request `modelId` (VS Code),
