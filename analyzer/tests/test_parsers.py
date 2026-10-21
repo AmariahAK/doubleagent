@@ -16060,9 +16060,16 @@ class TwinnyTests(ParserBase):
         )
 
 
+from fixtures import PEARAI_LOG_REL, pearai_log_completion, pearai_log_settings
+
+
 class PearAiTests(ParserBase):
     SESSION = ".pearai/sessions/%s.json" % PEARAI_SESSION
     API = PEARAI_ROO + "tasks/%s/api_conversation_history.json" % PEARAI_TASK
+    UI_API = PEARAI_ROO + "tasks/%s/api_conversation_history.json" % PEARAI_UI_TASK
+    STATE = PEARAI_GS + "state.vscdb"
+    DEV_CHAT = ".pearai/dev_data/chat.jsonl"
+    TOKENS = ".pearai/dev_data/tokens_generated.jsonl"
 
     def test_rows(self):
         rows = self.rows_for(PearAiParser(), self.SESSION)
@@ -16115,7 +16122,7 @@ class PearAiTests(ParserBase):
         self.assertIn("integration=perplexity", rows[0].text)
 
     def test_task_xml_tool_calls(self):
-        rows = self.rows_for(PearAiParser(), self.API)
+        rows = self.rows_for(PearAiParser(), self.API)[:6]
         self.assertEqual(
             [r.turn_type for r in rows],
             ["user", "system", "assistant", "tool_use", "tool_result", "tool_use"],
@@ -16143,6 +16150,215 @@ class PearAiTests(ParserBase):
             ("attempt_completion", "4", "All 12 tests pass."),
         )
 
+    def test_permission_decisions(self):
+        # Roo 3.15.3 result texts: each decision follows its tool_result on
+        # the call's tool_use_id (the assistant message's position).
+        rows = self.rows_for(PearAiParser(), self.API)[6:]
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.tool_use_id, r.text.split("\n")[0]) for r in rows],
+            [
+                ("tool_use", "write_to_file", "5", "build/out.txt | x"),
+                (
+                    "tool_result",
+                    "write_to_file",
+                    "5",
+                    "The user denied this operation and provided the following feedback:",
+                ),
+                ("system", "write_to_file", "5", "permission decision: denied with feedback"),
+                ("tool_use", "execute_command", "7", "rm -rf build"),
+                ("tool_result", "execute_command", "7", "The user denied this operation."),
+                ("system", "execute_command", "7", "permission decision: denied"),
+                ("tool_use", "execute_command", "9", "make all"),
+                (
+                    "tool_result",
+                    "execute_command",
+                    "9",
+                    "The user approved this operation and provided the following context:",
+                ),
+                ("system", "execute_command", "9", "permission decision: approved with feedback"),
+                ("tool_result", "execute_command", "9", "built"),
+            ],
+        )
+        self.assertEqual(rows[2].timestamp_utc, "2026-10-03T14:00:22.000Z")
+        self.assertEqual({r.session_id for r in rows}, {PEARAI_TASK})
+
+    def test_permission_decisions_beside_ui_messages(self):
+        # ui_messages.json holds the transcript; the API history still gives
+        # the decisions, joined to the ts of the ui ask before each.
+        rows = self.rows_for(PearAiParser(), self.UI_API)
+        u0 = int(PEARAI_UI_TASK) + 20000
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.tool_use_id, r.text, r.source_line) for r in rows],
+            [
+                (
+                    "system",
+                    "write_to_file",
+                    str(u0 + 1000),
+                    "permission decision: denied with feedback",
+                    6,
+                ),
+                ("system", "execute_command", str(u0 + 4000), "permission decision: denied", 8),
+                (
+                    "system",
+                    "execute_command",
+                    str(u0 + 7000),
+                    "permission decision: approved with feedback",
+                    10,
+                ),
+            ],
+        )
+        self.assertEqual(rows[0].timestamp_utc, "2026-10-03T15:00:22.000Z")
+        ui = self.rows_for(
+            PearAiParser(), PEARAI_ROO + "tasks/%s/ui_messages.json" % PEARAI_UI_TASK
+        )
+        self.assertIn(str(u0 + 4000), {r.tool_use_id for r in ui if r.turn_type == "tool_use"})
+
+    def test_state_task_history_and_settings(self):
+        rows = self.rows_for(PearAiParser(), self.STATE)
+        tasks = [r for r in rows if r.text.startswith("task: ")]
+        self.assertEqual(
+            [(r.session_id, r.project_path, r.timestamp_utc, r.source_line) for r in tasks],
+            [
+                (PEARAI_TASK, "/srv/proj", "2026-10-03T14:00:10.000Z", 1),
+                ("1791037000000", "/srv/proj", "2026-10-03T14:16:40.000Z", 2),
+            ],
+        )
+        self.assertEqual(
+            tasks[1].text,
+            "task: make a todo app | tokensIn=300 tokensOut=20 totalCost=0.001 number=2"
+            " | creator mode: newProjectType=webapp newProjectPath=/srv/proj",
+        )
+        settings = [r for r in rows if r.text.startswith("permission setting:")]
+        self.assertEqual(
+            [r.text for r in settings],
+            [
+                "permission setting: autoApprovalEnabled=true "
+                "(from state.vscdb pearai.pearai-roo-cline, file mtime)",
+                "permission setting: alwaysAllowReadOnly=true "
+                "(from state.vscdb pearai.pearai-roo-cline, file mtime)",
+                "permission setting: alwaysAllowExecute=false "
+                "(from state.vscdb pearai.pearai-roo-cline, file mtime)",
+                'permission setting: allowedCommands=["npm test","npm run lint"] '
+                "(from state.vscdb pearai.pearai-roo-cline, file mtime)",
+            ],
+        )
+        self.assertEqual({(r.session_id, r.turn_type) for r in settings}, {("", "system")})
+        self.assertTrue(all(r.timestamp_utc for r in settings))
+        self.assertEqual(len(rows), len(tasks) + len(settings))
+
+    def test_state_without_the_extension_row(self):
+        other = ".config/PearAI/User/globalStorage/state.vscdb"
+        (self.home / other).unlink()
+        _vscdb(self.home / other, {"some.other-extension": {"x": 1}})
+        self.assertEqual(self.rows_for(PearAiParser(), other), [])
+
+    def test_output_log_secondary(self):
+        p = PearAiParser()
+        art = self.artifact(PEARAI_LOG_REL)
+        self.assertTrue(p.wants(art))
+        self.assertTrue(p.secondary(art))
+        self.assertTrue(p.has_secondary)
+        rows = self.rows_for(p, PEARAI_LOG_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.model) for r in rows],
+            [
+                (3, "system", "model: pearai_model_2", "pearai_model_2"),
+                (3, "user", "add the target", "pearai_model_2"),
+                (24, "assistant", "Added `all:` to the Makefile.", "pearai_model_2"),
+                (30, "user", "delete the old logs", "pearai_model_2"),
+                (42, "assistant", "Removed logs/.", "pearai_model_2"),
+                (48, "system", "model: pearai_model_2 -> starcoder2:3b", "starcoder2:3b"),
+                (48, "system", "model request: def add(a, b):\n<FIM>", "starcoder2:3b"),
+                (59, "system", "model completion: return a + b", "starcoder2:3b"),
+            ],
+        )
+        self.assertEqual(
+            {(r.timestamp_utc, r.session_id, r.project_path) for r in rows}, {("", "", "")}
+        )
+
+    def test_output_log_pairs_with_the_session(self):
+        # The logged turn of the fixture session is dropped against the
+        # session's rows; the turn whose session is gone is kept, recovered.
+        p = PearAiParser()
+        primary = self.rows_for(p, self.SESSION)
+        secondary = [(r, 2.0) for r in self.rows_for(p, PEARAI_LOG_REL)]
+        kept, dropped = deduplicate(primary, secondary)
+        texts = [(r.turn_type, r.text, r.recovered) for r in kept if r.turn_type != "system"]
+        self.assertIn(("user", "delete the old logs", "yes"), texts)
+        self.assertIn(("assistant", "Removed logs/.", "yes"), texts)
+        self.assertEqual(
+            [t for t in texts if t[1] == "add the target"], [("user", "add the target", "")]
+        )
+        self.assertEqual(dropped["pearai"], 2)
+
+    def test_dev_data_chat_secondary(self):
+        p = PearAiParser()
+        self.assertTrue(p.secondary(self.artifact(self.DEV_CHAT)))
+        rows = self.rows_for(p, self.DEV_CHAT)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.model, r.session_id) for r in rows],
+            [
+                (1, "user", "add the target", "pearai_model_2", PEARAI_SESSION),
+                (1, "assistant", "Added `all:` to the Makefile.", "pearai_model_2", PEARAI_SESSION),
+                (
+                    1,
+                    "system",
+                    "user feedback: true (from dev_data/chat.jsonl)",
+                    "pearai_model_2",
+                    PEARAI_SESSION,
+                ),
+                (
+                    2,
+                    "user",
+                    "what broke the deploy",
+                    "pearai_model",
+                    "9b1c2d3e-0000-4000-8000-0000000000ff",
+                ),
+                (
+                    2,
+                    "assistant",
+                    "The DNS record.",
+                    "pearai_model",
+                    "9b1c2d3e-0000-4000-8000-0000000000ff",
+                ),
+                (
+                    2,
+                    "system",
+                    "user feedback: false (from dev_data/chat.jsonl)",
+                    "pearai_model",
+                    "9b1c2d3e-0000-4000-8000-0000000000ff",
+                ),
+            ],
+        )
+        # the session's project from sessions.json; no time of its own
+        self.assertEqual([r.project_path for r in rows], ["/srv/proj"] * 3 + [""] * 3)
+        self.assertEqual({r.timestamp_utc for r in rows}, {""})
+
+    def test_tokens_generated(self):
+        p = PearAiParser()
+        self.assertFalse(p.secondary(self.artifact(self.TOKENS)))
+        rows = self.rows_for(p, self.TOKENS)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.model) for r in rows],
+            [
+                (
+                    1,
+                    "system",
+                    "tokens generated: model=pearai_model provider=pearai_server "
+                    "promptTokens=120 generatedTokens=9",
+                    "pearai_model",
+                ),
+                (
+                    2,
+                    "system",
+                    "tokens generated: model=pearai_model_2 provider=pearai_server "
+                    "promptTokens=180 generatedTokens=11",
+                    "pearai_model_2",
+                ),
+            ],
+        )
+        self.assertEqual({(r.timestamp_utc, r.session_id) for r in rows}, {("", "")})
+
     def test_thinking_opt_in(self):
         self.assertNotIn("thinking", [r.turn_type for r in self.rows_for(PearAiParser(), self.API)])
         rows = self.rows_for(PearAiParser(), self.API, include_thinking=True)
@@ -16150,7 +16366,14 @@ class PearAiTests(ParserBase):
 
     def test_ui_messages_preferred(self):
         task = PEARAI_ROO + "tasks/%s/" % PEARAI_UI_TASK
-        self.assertEqual(self.rows_for(PearAiParser(), task + "api_conversation_history.json"), [])
+        # only the permission decisions come from the API history then
+        self.assertEqual(
+            {
+                r.text.split(":")[0]
+                for r in self.rows_for(PearAiParser(), task + "api_conversation_history.json")
+            },
+            {"permission decision"},
+        )
         rows = self.rows_for(PearAiParser(), task + "ui_messages.json")
         self.assertEqual(rows[0].turn_type, "user")
         self.assertEqual({r.session_id for r in rows}, {PEARAI_UI_TASK})
@@ -16159,7 +16382,8 @@ class PearAiTests(ParserBase):
     def test_not_wanted(self):
         for rel in (
             ".pearai/config.json",
-            PEARAI_GS + "state.vscdb",
+            ".pearai/dev_data/autocomplete.jsonl",
+            PEARAI_LOG_REL.replace("1-PearAI.log", "2-Git.log"),
         ):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertEqual(art.agent, "pearai")
@@ -16177,9 +16401,63 @@ class PearAiTests(ParserBase):
         self.assertIn("parser:", rows[-1].text)
         write_bad_line(self.home / self.API)
         rows = self.rows_for(PearAiParser(), self.API)
-        self.assertEqual(len(rows), 7)
+        self.assertEqual(len(rows), 17)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser:", rows[-1].text)
+        # beside ui_messages.json the API history is read for decisions only,
+        # and still reports what it lost
+        write_bad_line(self.home / self.UI_API)
+        rows = self.rows_for(PearAiParser(), self.UI_API)
+        self.assertEqual(len(rows), 4)
+        self.assertTrue(rows[-1].text.startswith("parser: unparseable data after"), rows[-1].text)
+
+    def _jsonl_with_bad_line(self, rel):
+        path = self.home / rel
+        lines = path.read_text(encoding="utf-8").splitlines()
+        path.write_text("%s\n%s\n%s\n" % (lines[0], BAD_LINE, lines[1]), encoding="utf-8")
+
+    def test_truncated_dev_data_lines(self):
+        for rel, per_line in ((self.DEV_CHAT, 3), (self.TOKENS, 1)):
+            self._jsonl_with_bad_line(rel)
+            rows = self.rows_for(PearAiParser(), rel)
+            self.assertEqual(len(rows), 2 * per_line + 1, rel)
+            bad = rows[-1]
+            self.assertEqual((bad.turn_type, bad.text), ("system", bad_line_text()))
+            self.assertTrue(any(r.source_line == 3 for r in rows[:-1]), rel)
+
+    def test_damaged_output_log_record(self):
+        # a write that is neither header, between two good ones, and a
+        # Settings write cut off before its rule at the end of the file
+        path = self.home / PEARAI_LOG_REL
+        path.write_text(
+            pearai_log_settings("m1", "<user>\nfirst\n\n")
+            + ("=" * 74 + "\n") * 2
+            + "garbage line\n"
+            + pearai_log_completion("second")
+            + ("=" * 74 + "\n") * 2
+            + "Settings:\ncontextLength: 8192\nmod",
+            encoding="utf-8",
+        )
+        rows = self.rows_for(PearAiParser(), PEARAI_LOG_REL)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows],
+            [
+                (3, "system", "model: m1"),
+                (3, "user", "first"),
+                (18, "assistant", "second"),
+                (
+                    15,
+                    "system",
+                    "parser: unparseable record (not a Settings: or Completion: write): "
+                    "garbage line",
+                ),
+                (
+                    24,
+                    "system",
+                    "parser: unparseable record (no prompt rule): Settings:\ncontextLength: 8192\nmod",
+                ),
+            ],
+        )
 
     def test_index_cut_mid_write_is_reported(self):
         # #170, through the Continue parser's index reader: the entry before

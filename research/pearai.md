@@ -42,6 +42,16 @@ its own:
 
 ### Source reviews
 
+- 2026-10-21: trypear/pearai-submodule at
+  [51eceef](https://github.com/trypear/pearai-submodule/commit/51eceef62a90c29f712b3a9607ea70a9dca657e9),
+  trypear/PearAI-Roo-Code at
+  [0b6df73](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda)
+  and trypear/pearai-app at
+  [d930f02](https://github.com/trypear/pearai-app/commit/d930f0233c14668df9f85c6a78a81828f4251194)
+  (extensions 2.0.0 and 3.15.3): the output channel log's record format, the standing
+  auto-approval keys, the context providers' source-host tokens and the source-host review were
+  added, and the Parser plan now describes the permission, task-list, output-log and `dev_data`
+  rows the parser writes.
 - 2026-10-19: the heads of all three repositories are still the commits cited here,
   [`51eceef`](https://github.com/trypear/pearai-submodule/commit/51eceef62a90c29f712b3a9607ea70a9dca657e9)
   (pearai-submodule),
@@ -200,6 +210,16 @@ extension's `PearAI` channel, `<n>-PearAI.log`, is a prompt log of every model r
   `.pearai-agent/mcp.json`
   ([`src/services/mcp/McpHub.ts:502-503`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/services/mcp/McpHub.ts#L502-L503))
   can hold MCP server `env` secrets.
+- `config.json` (or `config.ts`) context providers can carry source-host tokens: the `issue`
+  provider (GitHub Issues) takes `params.githubToken` for its GitHub API client
+  ([`core/context/providers/GitHubIssuesContextProvider.ts:12`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/context/providers/GitHubIssuesContextProvider.ts#L12),
+  [`26`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/context/providers/GitHubIssuesContextProvider.ts#L26)),
+  and the `gitlab-mr` provider takes `params.token` and `params.domain` (default `gitlab.com`)
+  ([`core/context/providers/GitLabMergeRequestContextProvider.ts:74`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/context/providers/GitLabMergeRequestContextProvider.ts#L74),
+  [`83-94`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/context/providers/GitLabMergeRequestContextProvider.ts#L83-L94));
+  each provider is built from its `contextProviders[]` entry's `params`
+  ([`core/config/load.ts:392-402`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/config/load.ts#L392-L402)).
+  The `.pearai/config.json` secret glob already flags the file.
 - `index/globalContext.json` holds only UI state in this fork
   ([`core/util/GlobalContext.ts:5-16`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/util/GlobalContext.ts#L5-L16)),
   unlike upstream Continue; it need not be flagged.
@@ -287,12 +307,13 @@ log session directory ([Output channel log](#output-channel-log));
 `dev_data/chat.jsonl`, the rated prompts with their `sessionId` and no time;
 `dev_data/tokens_generated.jsonl`, which names the models used; the `/share` Markdown exports; and
 `pearai_memories.json`, derived from chats but naming none. PearAI's analytics may hold the ids of
-tasks deleted locally, but nothing on disk marks a deletion. The analyzer reads none of these
-survivors yet: it reads the chat session files with the `sessions.json` index and the agent tasks'
-`api_conversation_history.json`, and the plan in
-[Past use and secondary sources](#past-use-rows-and-secondary-sources) names the output channel log
-and `dev_data/chat.jsonl` as secondary sources still to be read (see
-[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+tasks deleted locally, but nothing on disk marks a deletion. The analyzer reads the output channel
+log and `dev_data/chat.jsonl` as secondary sources of the chat sessions, so a deleted session's
+logged prompts and replies and its rated replies are kept, and `dev_data/tokens_generated.jsonl` for
+the models used (see [Secondary sources](../analyzer/docs/output.md#secondary-sources) and
+[Past-use rows and secondary sources](#past-use-rows-and-secondary-sources)); the `/share` exports
+and `pearai_memories.json` are not read. A deleted agent task leaves nothing the analyzer reads,
+since its `taskHistory` entry goes with its directory.
 
 ### Record schema
 
@@ -346,7 +367,8 @@ by the output
 ([`src/schemas/index.ts:868-880`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L868-L880)).
 `task_metadata.json` holds only `files_in_context`
 ([`src/core/context-tracking/FileContextTrackerTypes.ts:23-25`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/core/context-tracking/FileContextTrackerTypes.ts#L23-L25)).
-The `taskHistory` entry (`HistoryItem`) also carries
+The `taskHistory` entry (`HistoryItem`) is `id`, `number`, `ts`, `task`, `tokensIn`, `tokensOut`,
+`cacheWrites`, `cacheReads`, `totalCost`, `size`, `workspace` and
 `creatorModeConfig{creatorMode, newProjectType, newProjectPath}`
 ([`src/schemas/index.ts:327-331`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L327-L331),
 [`:339-352`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L339-L352)),
@@ -360,7 +382,25 @@ the plain text `The user denied this operation.`, or
 block, and an approval with a typed note with
 `The user approved this operation and provided the following context:` and a `<feedback>` block
 ([`src/core/prompts/responses.ts:8-14`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/core/prompts/responses.ts#L8-L14)).
-An approval without a note, by the user or by the auto-approve settings, leaves no mark.
+An approval without a note, by the user or by the auto-approve settings, leaves no mark. The
+denial and approval texts are pushed as the second text block of the tool result, after
+`[<tool> for '<arg>'] Result:`; an approval with a note is followed by a second result block with
+the tool's output
+([`src/core/Cline.ts:1342-1386`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/core/Cline.ts#L1342-L1386)).
+The `ui_messages.json` record of the call is the `ask` before the answer, and a typed note is a
+`say: "user_feedback"` record; neither says which button the user pressed.
+
+The standing auto-approval state is the global-state keys `autoApprovalEnabled`,
+`alwaysAllowReadOnly`, `alwaysAllowReadOnlyOutsideWorkspace`, `alwaysAllowWrite`,
+`alwaysAllowWriteOutsideWorkspace`, `alwaysAllowBrowser`, `alwaysApproveResubmit`, `alwaysAllowMcp`,
+`alwaysAllowModeSwitch`, `alwaysAllowSubtasks`, `alwaysAllowExecute` and `allowedCommands`
+([`src/schemas/index.ts:584-597`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L584-L597)),
+each stored with `globalState.update(key, value)`
+([`src/core/config/ContextProxy.ts:119-123`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/core/config/ContextProxy.ts#L119-L123)),
+so they sit in the extension's row of `state.vscdb` beside `taskHistory`; and each MCP server's
+`alwaysAllow` list in `settings/pearai_agent_mcp_settings.json` or a project's
+`.pearai-agent/mcp.json`
+([`src/services/mcp/McpHub.ts:47`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/services/mcp/McpHub.ts#L47)).
 
 ### Joins and timestamps
 
@@ -398,6 +438,27 @@ The editor, a VS Code fork, backs every extension output channel with a file,
 [`:160-170`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/api/common/extHostOutput.ts#L160-L170)),
 and keeps the newest 49 log session directories besides the current one
 ([`src/vs/workbench/contrib/logs/common/logsDataCleaner.ts:24-35`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/contrib/logs/common/logsDataCleaner.ts#L24-L35)).
+Each write to the channel is two lines of 74 `=` and then the text
+([`VsCodeExtension.ts:147-155`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/extensions/vscode/src/extension/VsCodeExtension.ts#L147-L155)):
+a request is `Settings:`, one `key: value` line per setting (`contextLength` first, then the
+completion options, `model` among them), a blank line, a line of 44 `#`, a blank line and the
+prompt, with no newline added after it; a reply is `Completion:`, a blank line, the reply and two
+newlines
+([`core/llm/index.ts:247-261`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/llm/index.ts#L247-L261),
+[`:586-587`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/llm/index.ts#L586-L587)).
+A chat prompt with no template is the messages as `<system>`, `<user>` and `<assistant>` blocks,
+each `<role>`, a newline, the content and a blank line
+([`:373-384`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/llm/index.ts#L373-L384)),
+the context items' contents inside the user message they were sent with; a model with a prompt
+template logs the templated text instead
+([`:548-550`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/llm/index.ts#L548-L550)).
+Autocomplete requests are logged the same way, as `<prefix><FIM><suffix>` or a raw prompt, since
+autocomplete does not pass `log: false`
+([`:402-406`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/llm/index.ts#L402-L406);
+[`core/autocomplete/completionProvider.ts:646-653`](https://github.com/trypear/pearai-submodule/blob/51eceef62a90c29f712b3a9607ea70a9dca657e9/core/autocomplete/completionProvider.ts#L646-L653)).
+The editor writes the channel's text unformatted, with no time or level prefix
+([`extHostOutput.ts:47-49`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/api/common/extHostOutput.ts#L47-L49),
+[`:166`](https://github.com/trypear/pearai-app/blob/d930f0233c14668df9f85c6a78a81828f4251194/src/vs/workbench/api/common/extHostOutput.ts#L166)).
 The file has no session id and no per-entry time; the log session directory's name and the file's
 modification time bound it. It outlives a deleted chat session. `logs/prompt.log` under `~/.pearai`
 is written only by the JetBrains binary
@@ -467,9 +528,11 @@ tokens are written to these files; they are in SecretStorage.
 
 Globs (home-relative): `.pearai/sessions/*.json` (read `sessions.json`
 as the index through the Continue parser's `read_index`; see [Bad-line rows](#bad-line-rows)),
-`*/User/globalStorage/pearai.pearai-roo-cline/tasks/*/api_conversation_history.json`.
-The Roo fork task files can reuse the Roo Code parser if it accepts
-XML-in-text tool calls; otherwise rows are emitted per message.
+`*/User/globalStorage/pearai.pearai-roo-cline/tasks/*/{ui_messages,api_conversation_history,task_metadata}.json`
+(read through the shared Cline task mapping, with the XML-in-text tool calls handled by the PearAI
+parser), `*/User/globalStorage/state.vscdb` (the `pearai.pearai-roo-cline` row),
+`*/logs/*/window*/exthost/output_logging_*/*-PearAI.log`, `.pearai/dev_data/chat.jsonl` and
+`.pearai/dev_data/tokens_generated.jsonl`.
 
 | Column | Chat session | Agent task |
 | --- | --- | --- |
@@ -480,24 +543,24 @@ XML-in-text tool calls; otherwise rows are emitted per message.
 | turn_type | `message.role`; items from `perplexityHistory` also by role | `role`; XML tool tag → tool_use; `[x] Result:` block → tool_result |
 | model | `promptLogs[0].completionOptions.model` | empty |
 | tool_name | empty | XML tag name |
-| tool_use_id | empty | empty |
+| tool_use_id | empty | the assistant message's position in the array |
 | text | `message.content` (text parts joined) | text block |
 
 #### Permission rows
 
-Not read yet. Agent surface: a `tool_result` row
-whose text starts with `The user denied this operation` can be followed by
-`permission decision: denied` (`denied with feedback` when the `<feedback>` block follows), and one
-starting `The user approved this operation` by `permission decision: approved with feedback`, on the
-same `tool_use_id`. Standing: the global-state keys `autoApprovalEnabled`, `alwaysAllowReadOnly`,
-`alwaysAllowReadOnlyOutsideWorkspace`, `alwaysAllowWrite`, `alwaysAllowWriteOutsideWorkspace`,
-`alwaysAllowBrowser`, `alwaysApproveResubmit`, `alwaysAllowMcp`, `alwaysAllowModeSwitch`,
-`alwaysAllowSubtasks`, `alwaysAllowExecute` and `allowedCommands`
-([`src/schemas/index.ts:584-597`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/schemas/index.ts#L584-L597)),
-in the extension's row of `state.vscdb`, and each MCP server's `alwaysAllow` list in
-`settings/pearai_agent_mcp_settings.json` or a project's `.pearai-agent/mcp.json`
-([`src/services/mcp/McpHub.ts:47`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/src/services/mcp/McpHub.ts#L47)).
-Each can be one `permission setting:` row at the file's modification time. The chat surface has no
+Source-derived; not observed on any real install. Agent surface, from the texts in
+[Permission records](#permission-records): the `tool_result` row of a result whose first block
+after the `Result:` line starts `The user denied this operation.` is followed by a `system` row
+`permission decision: denied`, one starting `The user denied this operation and provided the
+following feedback:` by `permission decision: denied with feedback`, and one starting `The user
+approved this operation and provided the following context:` by `permission decision: approved with
+feedback`, with the call's `tool_name` and `tool_use_id` at the API message's `ts`. When
+`ui_messages.json` holds the task's transcript, `api_conversation_history.json` is still read for
+these rows alone, and the `tool_use_id` is the `ts` of the last tool ask in `ui_messages.json` at or
+before the API message, the id the `ui_messages.json` rows give that call. Standing: each
+auto-approval key present in the extension's row of `state.vscdb` is one `permission setting:
+<key>=<value> (from state.vscdb pearai.pearai-roo-cline, file mtime)` row at the file's
+modification time. The MCP servers' `alwaysAllow` lists are not read yet. The chat surface has no
 tools and no permission state.
 
 #### Model rows
@@ -508,18 +571,35 @@ Model rows, typed `system`, chat sessions only: the first item whose
 one yields `model: <old> -> <new>`. Mid-session switching is not
 researched: the format has no switch record, so a change shows only as a
 different value between items. Agent tasks record no model (the Roo fork
-writes no `modelInfo` and no `model_usage`).
+writes no `modelInfo` and no `model_usage`). Source-derived; not observed on any real install: the
+output channel log's `model` setting yields `model: <id>` and `model: <old> -> <new>` rows tracked
+over the file, with no session, and each `dev_data/tokens_generated.jsonl` line a `system` row
+`tokens generated: model=<model> provider=<provider> promptTokens=<n> generatedTokens=<n>` with the
+model in the `model` column.
 
 #### Past-use rows and secondary sources
 
-Not read yet: the `PearAI` output channel log ([Output channel log](#output-channel-log)) is a
-secondary source for chat: one `user` row per logged prompt and one `assistant` row per
-`Completion:`, with no session id, matched to session rows on text, and a `model:` value from its
-`Settings:` block. `dev_data/chat.jsonl` is secondary too, joined on `sessionId` and the prompt
-text; `tokens_generated.jsonl` names models used even after their sessions are gone. The `/share`
-Markdown files and `pearai_memories.json` are not transcripts the dedup rule can pair and stay
-unread. The agent surface's `taskHistory` entries can be one `system` row per task, as the `cline`
-parser yields from `state/taskHistory.json`, so a task whose directory is gone still shows.
+Source-derived; not observed on any real install.
+
+- The `PearAI` output channel log ([Output channel log](#output-channel-log)), secondary: a
+  request in the `<role>` block form gives its last `<user>` block as a `user` row and its
+  `Completion:` as an `assistant` row; any other request (autocomplete, a templated prompt) gives
+  `model request: <prompt>` and `model completion: <reply>` rows. No time, session or project, so
+  the rows match the session rows on text alone; a prompt sent with context items carries their
+  contents and never pairs with the session's `user` row. A record that does not parse is a
+  `parser:` row ([Bad-line rows](#bad-line-rows)).
+- `dev_data/chat.jsonl` ([`dev_data` tables](#dev_data-tables)), secondary: per line a `user` row
+  from the prompt as above, an `assistant` row from `completion` and `user feedback: <true|false>
+  (from dev_data/chat.jsonl)`, with the line's `sessionId` and the session's `workspaceDirectory`
+  from `sessions.json`, no time.
+- `dev_data/tokens_generated.jsonl`, primary, since no other store repeats it: one `tokens
+  generated:` row per line ([Model rows](#model-rows)).
+- The agent surface's `taskHistory` entries, primary: one `system` row per entry, `task: <task> |
+  tokensIn=<n> tokensOut=<n> totalCost=<n> number=<n>` at the entry's `ts`, the task id as
+  `session_id` and `workspace` as `project_path`, so a task whose directory is missing from the
+  collection still shows.
+- The `/share` Markdown files and `pearai_memories.json` are not transcripts the dedup rule can
+  pair and stay unread.
 
 #### Sync, relay and origin rows
 
@@ -568,8 +648,9 @@ in both clones' `core/`, `gui/src`, `extensions/vscode/src`, `src/` and `webview
 
 None. Creator mode's project directory ([Scratch directories](#scratch-directories)) is the user's
 new project and appears as the task's `workspace` and `creatorModeConfig.newProjectPath`
-([Where the project path is recorded](#where-the-project-path-is-recorded)). The latter can name the
-project on a `system` row.
+([Where the project path is recorded](#where-the-project-path-is-recorded)). Source-derived; not
+observed on any real install: the task's `taskHistory` row ends ` | creator mode:
+newProjectType=<type> newProjectPath=<path>` for such a task.
 
 #### Deletion rows
 
@@ -578,7 +659,14 @@ what survives it is in [What survives a delete](#what-survives-a-delete).
 
 #### Bad-line rows
 
-`dev_data/*.jsonl` would need per-line handling if read. The chat surface's `sessions.json` index is
+Source-derived; not observed on any real install. Each line of `dev_data/chat.jsonl` and
+`dev_data/tokens_generated.jsonl` that does not decode is its own `parser: unparseable line
+(<reason>): <line>` row, the lines around it still read. In the output channel log, a write that
+starts with neither `Settings:` nor `Completion:`, or a `Settings:` write with no `#` rule (cut off
+mid-write), is `parser: unparseable record (<reason>): <record>` at its first line, and text before
+the first separator is one such row too; the records around it are still read. The API history read
+beside `ui_messages.json` reports its own bad records. A damaged `state.vscdb`, or an extension row
+that is not JSON, is one `parser:` row. The chat surface's `sessions.json` index is
 read through the Continue parser's index reader (`PearAIParser` keeps a `ContinueParser` for it),
 which yields rows for what it loses, with the texts of
 [Bad-line rows in `continue.md`](continue.md#bad-line-rows); an unreadable index leaves the
@@ -603,6 +691,63 @@ Agent `tasks/1759400100000/api_conversation_history.json`:
 ```json
 [{"role":"user","content":[{"type":"text","text":"<task>\nrun the tests\n</task>"}],"ts":1759400100000},{"role":"assistant","content":[{"type":"text","text":"<execute_command>\n<command>npm test</command>\n</execute_command>"}],"ts":1759400103000},{"role":"user","content":[{"type":"text","text":"[execute_command for 'npm test'] Result:"},{"type":"text","text":"12 passing"}],"ts":1759400109000}]
 ```
+
+A denied call's result in the same file:
+
+```json
+{"role":"user","content":[{"type":"text","text":"[execute_command for 'rm -rf build'] Result:"},{"type":"text","text":"The user denied this operation."}],"ts":1759400125000}
+```
+
+Output channel log `<n>-PearAI.log`, one chat request and its reply (the `=` lines are 74
+characters, the `#` line 44):
+
+```text
+==========================================================================
+==========================================================================
+Settings:
+contextLength: 8192
+model: pearai_model
+maxTokens: 4096
+
+############################################
+
+<user>
+add the target
+
+==========================================================================
+==========================================================================
+Completion:
+
+Added `all:` to the Makefile.
+
+```
+
+`dev_data/chat.jsonl` line:
+
+```json
+{"completionOptions":{"model":"pearai_model"},"prompt":"<user>\nadd the target\n\n","completion":"Added `all:` to the Makefile.","feedback":true,"sessionId":"9b1c2d3e-0000-4000-8000-000000000001"}
+```
+
+`dev_data/tokens_generated.jsonl` line:
+
+```json
+{"model":"pearai_model","provider":"pearai_server","promptTokens":120,"generatedTokens":9}
+```
+
+#### Source host rows
+
+Neither extension connects a source-host account, caches a repository list or keeps
+repository-bound remote conversations, so the parser writes no `source host:` row. The chat fork's
+`issue` and `gitlab-mr` context providers call the GitHub and GitLab APIs with a token from
+`config.json` each time an issue or merge request is added as context, and record no account
+([Credentials](#credentials)). Searched `github`, `gitlab`, `bitbucket`, `octokit`, `oauth`,
+`installation`, `repositor`, `clone` and `githubToken` in `core/`, `gui/src` and
+`extensions/vscode/src` of pearai-submodule at
+[51eceef](https://github.com/trypear/pearai-submodule/commit/51eceef62a90c29f712b3a9607ea70a9dca657e9)
+and in `src/` and `webview-ui/src` of PearAI-Roo-Code at
+[0b6df73](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda),
+whose only OAuth flows are model providers' (Glama, OpenRouter, Requesty;
+[`webview-ui/src/oauth/urls.ts:1-16`](https://github.com/trypear/PearAI-Roo-Code/blob/0b6df736c9b2799c38b9ee629668407521a7bdda/webview-ui/src/oauth/urls.ts#L1-L16)).
 
 ## Confidence
 

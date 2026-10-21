@@ -932,10 +932,17 @@ Files read: `.pearai/sessions/<sessionId>.json` (Continue fork, `history`
 and `perplexityHistory`, timestamped from `sessions.json` `dateCreated`)
 and `<editor>/User/globalStorage/pearai.pearai-roo-cline/tasks/<id>/` (Roo
 Code 3.15 fork through the Cline task mapping; XML tool calls in
-`api_conversation_history.json`; project from `taskHistory` in the sibling
-`state.vscdb`).
+`api_conversation_history.json`, also read beside `ui_messages.json` for
+the permission decisions; project from `taskHistory` in the sibling
+`state.vscdb`), the `pearai.pearai-roo-cline` row of the editor's
+`User/globalStorage/state.vscdb` (one row per `taskHistory` entry and per
+standing auto-approval setting), the `PearAI` output channel log
+`<editor>/logs/<session>/window<N>/exthost/output_logging_<time>/<n>-PearAI.log`
+and `.pearai/dev_data/chat.jsonl` (secondary: every chat request's prompt
+and reply, and the rated ones with their session), and
+`.pearai/dev_data/tokens_generated.jsonl` (the model of each request).
 
-Validated against: Source at [51eceef6](https://github.com/trypear/pearai-submodule/commit/51eceef62a90c29f712b3a9607ea70a9dca657e9) and [0b6df736](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda), synthetic fixture.
+Validated against: Source at [51eceef6](https://github.com/trypear/pearai-submodule/commit/51eceef62a90c29f712b3a9607ea70a9dca657e9) and [0b6df736](https://github.com/trypear/PearAI-Roo-Code/commit/0b6df736c9b2799c38b9ee629668407521a7bdda), synthetic fixture; the permission texts, the task list, the standing settings and the chat use logs from source at the same commits and [d930f023](https://github.com/trypear/pearai-app/commit/d930f0233c14668df9f85c6a78a81828f4251194) (the editor), synthetic fixture.
 
 ### `pi`
 

@@ -12770,6 +12770,134 @@ def pearai_api_records(t0=1791036000000):
     ]
 
 
+def pearai_permission_records(t0):
+    """Three Roo 3.15.3 approval exchanges (PearAI-Roo-Code at 0b6df736,
+    src/core/prompts/responses.ts:8-14, src/core/Cline.ts:1342-1386): a
+    denial with feedback, a bare denial and an approval with a note."""
+
+    def call(ts, body):
+        return {"role": "assistant", "content": [{"type": "text", "text": body}], "ts": ts}
+
+    def result(ts, *texts):
+        return {"role": "user", "content": [{"type": "text", "text": t} for t in texts], "ts": ts}
+
+    return [
+        call(
+            t0,
+            "<write_to_file>\n<path>build/out.txt</path>\n<content>x</content>\n</write_to_file>",
+        ),
+        result(
+            t0 + 2000,
+            "[write_to_file for 'build/out.txt'] Result:",
+            "The user denied this operation and provided the following feedback:\n"
+            "<feedback>\nnot in build/\n</feedback>",
+        ),
+        call(t0 + 3000, "<execute_command>\n<command>rm -rf build</command>\n</execute_command>"),
+        result(
+            t0 + 5000,
+            "[execute_command for 'rm -rf build'] Result:",
+            "The user denied this operation.",
+        ),
+        call(t0 + 6000, "<execute_command>\n<command>make all</command>\n</execute_command>"),
+        result(
+            t0 + 9000,
+            "[execute_command for 'make all'] Result:",
+            "The user approved this operation and provided the following context:\n"
+            "<feedback>\nuse -j4\n</feedback>",
+            "[execute_command for 'make all'] Result:",
+            "built",
+        ),
+    ]
+
+
+def pearai_permission_ui_asks(t0):
+    """The ui_messages.json asks of the same three calls, each before the API
+    message that answers it."""
+    return [
+        {"ts": t0 + 1000, "type": "ask", "ask": "tool", "text": '{"tool":"newFileCreated"}'},
+        {"ts": t0 + 4000, "type": "ask", "ask": "command", "text": "rm -rf build"},
+        {"ts": t0 + 7000, "type": "ask", "ask": "command", "text": "make all"},
+    ]
+
+
+# The `PearAI` output channel as the editor writes it (pearai-submodule at
+# 51eceef6, extensions/vscode/src/extension/VsCodeExtension.ts:147-155 and
+# core/llm/index.ts:247-261, :373-384, :551-554, :586-587).
+PEARAI_LOG_REL = (
+    ".config/PearAI/logs/20261003T130000/window1/exthost/"
+    "output_logging_20261003T130001/1-PearAI.log"
+)
+PEARAI_LOG_SEP = ("=" * 74 + "\n") * 2
+
+
+def pearai_log_settings(model, prompt):
+    return "%sSettings:\ncontextLength: 8192\nmodel: %s\nmaxTokens: 4096\n\n%s\n\n%s" % (
+        PEARAI_LOG_SEP,
+        model,
+        "#" * 44,
+        prompt,
+    )
+
+
+def pearai_log_completion(text):
+    return "%sCompletion:\n\n%s\n\n" % (PEARAI_LOG_SEP, text)
+
+
+def pearai_output_log():
+    """Three requests: a turn of the fixture session, a turn whose session is
+    gone, and an autocomplete request with another model."""
+    return "".join(
+        (
+            pearai_log_settings(
+                "pearai_model_2",
+                "<system>\nYou are PearAI.\n\n<user>\nwhy does build.sh fail\n\n"
+                "<assistant>\nThe make target is missing.\n\n<user>\nadd the target\n\n",
+            ),
+            pearai_log_completion("Added `all:` to the Makefile."),
+            pearai_log_settings("pearai_model_2", "<user>\ndelete the old logs\n\n"),
+            pearai_log_completion("Removed logs/."),
+            pearai_log_settings("starcoder2:3b", "def add(a, b):\n<FIM>\n"),
+            pearai_log_completion("    return a + b"),
+        )
+    )
+
+
+def pearai_dev_chat():
+    return [
+        {
+            "completionOptions": {"model": "pearai_model_2"},
+            "prompt": "<user>\nadd the target\n\n",
+            "completion": "Added `all:` to the Makefile.",
+            "feedback": True,
+            "sessionId": PEARAI_SESSION,
+        },
+        {
+            "completionOptions": {"model": "pearai_model"},
+            "prompt": "<user>\nwhat broke the deploy\n\n",
+            "completion": "The DNS record.",
+            "feedback": False,
+            "sessionId": "9b1c2d3e-0000-4000-8000-0000000000ff",
+        },
+    ]
+
+
+def pearai_tokens():
+    return [
+        {
+            "model": "pearai_model",
+            "provider": "pearai_server",
+            "promptTokens": 120,
+            "generatedTokens": 9,
+        },
+        {
+            "model": "pearai_model_2",
+            "provider": "pearai_server",
+            "promptTokens": 180,
+            "generatedTokens": 11,
+        },
+    ]
+
+
 def build_pearai(home: Path) -> None:
     sessions = home / ".pearai/sessions"
     _json(sessions / (PEARAI_SESSION + ".json"), pearai_session())
@@ -12777,13 +12905,28 @@ def build_pearai(home: Path) -> None:
     _json(sessions / "sessions.json", pearai_index())
     (home / ".pearai/config.json").write_text('{"models": []}', encoding="utf-8")
     roo = home / PEARAI_ROO
-    _json(roo / "tasks" / PEARAI_TASK / "api_conversation_history.json", pearai_api_records())
+    t0, u0 = int(PEARAI_TASK), int(PEARAI_UI_TASK)
+    _json(
+        roo / "tasks" / PEARAI_TASK / "api_conversation_history.json",
+        pearai_api_records() + pearai_permission_records(t0 + 20000),
+    )
     _json(roo / "tasks" / PEARAI_TASK / "task_metadata.json", {"files_in_context": []})
-    _json(roo / "tasks" / PEARAI_UI_TASK / "ui_messages.json", roo_ui_records(int(PEARAI_UI_TASK)))
+    _json(
+        roo / "tasks" / PEARAI_UI_TASK / "ui_messages.json",
+        roo_ui_records(u0) + pearai_permission_ui_asks(u0 + 20000),
+    )
     _json(
         roo / "tasks" / PEARAI_UI_TASK / "api_conversation_history.json",
-        pearai_api_records(int(PEARAI_UI_TASK)),
+        pearai_api_records(u0) + pearai_permission_records(u0 + 20000),
     )
+    log = home / PEARAI_LOG_REL
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(pearai_output_log(), encoding="utf-8")
+    (log.parent / "2-Git.log").write_text("> fetch\n", encoding="utf-8")  # noise
+    dev = home / ".pearai/dev_data"
+    _jsonl(dev / "chat.jsonl", pearai_dev_chat())
+    _jsonl(dev / "tokens_generated.jsonl", pearai_tokens())
+    _jsonl(dev / "autocomplete.jsonl", [{"accepted": True}])  # noise
     _vscdb(
         home / PEARAI_GS / "state.vscdb",
         {
@@ -12798,8 +12941,29 @@ def build_pearai(home: Path) -> None:
                         "tokensOut": 40,
                         "totalCost": 0.002,
                         "workspace": "/srv/proj",
-                    }
-                ]
+                    },
+                    {
+                        # a Creator task whose directory is not in the collection
+                        "id": "1791037000000",
+                        "number": 2,
+                        "ts": 1791037000000,
+                        "task": "make a todo app",
+                        "tokensIn": 300,
+                        "tokensOut": 20,
+                        "totalCost": 0.001,
+                        "workspace": "/srv/proj",
+                        "creatorModeConfig": {
+                            "creatorMode": True,
+                            "newProjectType": "webapp",
+                            "newProjectPath": "/srv/proj",
+                        },
+                    },
+                ],
+                "autoApprovalEnabled": True,
+                "alwaysAllowReadOnly": True,
+                "alwaysAllowExecute": False,
+                "allowedCommands": ["npm test", "npm run lint"],
+                "currentApiConfigName": "default",
             }
         },
     )

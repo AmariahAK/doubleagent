@@ -722,6 +722,7 @@ FIXTURE_DEDUPLICATED = {
     "openclaw": 11,  # .jsonl.deleted.* 1, pre-doctor .bak 7, checkpoint 3
     "opencode": 2,  # opencode-next.db: the imported session's start row and prompt
     "openhands": 1,  # CLI prompt_history.json "list the files"
+    "pearai": 4,  # output log and dev_data/chat.jsonl: "add the target" and its reply
     "qwen-code": 1,  # "run the tests"
     "roo-code": 2,  # "rename the helper" and "yes", no timestamp
     "tabby": 8,  # completion prompt and choice, threads 7 and 3 in the backups
