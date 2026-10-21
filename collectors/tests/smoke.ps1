@@ -1085,6 +1085,13 @@ Mk "$u236/inno_updater.exe" "binary`n"
 Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
 Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
 
+# 2026-10-21 Roo Code CLI cloud credentials (#159)
+# The Roo Code CLI up to 3.53.0 saved its Roo Code Cloud token in
+# ~/.roo/cli-credentials.json (apps/cli/src/lib/storage/credentials.ts at
+# Roo-Code v3.53.0); the secret glob flags it. Checks follow the default run
+# below; the same file is in smoke.sh under alice.
+Mk 'Users/alice/.roo/cli-credentials.json' "{`"token`":`"not-a-real-token`"}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1626,6 +1633,10 @@ Check '#236 Cursor plugin cache excluded' { (StatusOf "$p236/cache") -eq 'skippe
 Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
 Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
 Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
+
+# 2026-10-21 Roo Code CLI cloud credentials (#159)
+$r159 = Row 'Users/alice/.roo/cli-credentials.json'
+Check '#159 roo cli-credentials.json flagged secret' { $r159 -and $r159.agent -eq 'roo-code' -and $r159.secret -eq $true -and $r159.status -eq 'collected' }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

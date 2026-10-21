@@ -1158,6 +1158,14 @@ printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
 
+# 2026-10-21 Roo Code CLI cloud credentials (#159)
+# The Roo Code CLI up to 3.53.0 saved its Roo Code Cloud token in
+# ~/.roo/cli-credentials.json (apps/cli/src/lib/storage/credentials.ts at
+# Roo-Code v3.53.0); the secret glob flags it. Checks follow the default run
+# below; the same file is in smoke.ps1 under alice.
+mkdir -p "$H/.roo"
+printf '{"token":"not-a-real-token"}\n' >"$H/.roo/cli-credentials.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1540,6 +1548,9 @@ check "#236 Cursor plugin cache excluded" "[ \"\$(status_of \"$P236/cache\")\" =
 check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+
+# 2026-10-21 Roo Code CLI cloud credentials (#159)
+check "#159 roo cli-credentials.json flagged secret" "row \"$H/.roo/cli-credentials.json\" | grep -q '\"agent\":\"roo-code\".*\"secret\":true,\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
