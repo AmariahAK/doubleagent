@@ -38,6 +38,7 @@ exclude_docs: |
   !/assets/**
   **/.*/**
   /README.md
+  /SECURITY.md
   /CLAUDE.md
   /mkdocs/**
   /analyzer/doubleagent/**

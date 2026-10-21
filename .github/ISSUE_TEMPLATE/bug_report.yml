@@ -1,0 +1,113 @@
+name: Bug report
+description: Behaviour that is wrong, broken or contradicts the documentation.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A vulnerability (a vulnerable dependency, an unintended
+        action such as writing outside the output directory, a denial of service) is
+        reported privately instead: see
+        [SECURITY.md](https://github.com/seanthegeek/doubleagent/blob/main/SECURITY.md).
+        Never paste a real collection, manifest rows, transcript content or
+        credentials; the smoke tests and the analyzer tests show how to build a
+        synthetic reproduction.
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      description: Which part of DoubleAgent misbehaves.
+      options:
+        - Collector, sh (collect-agent-artifacts.sh)
+        - Collector, PowerShell (Collect-AgentArtifacts.ps1)
+        - Analyzer (doubleagent command)
+        - Documentation or research document
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >-
+        From `collect-agent-artifacts.sh --version`, `Collect-AgentArtifacts.ps1 -Version`
+        or `doubleagent --version`; for a documentation bug, the page's commit or "site".
+      placeholder: "1.18.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      description: >-
+        The system the part ran on: for a collector the host (or, for a mounted
+        image, the analyst workstation and the image's operating system); for the
+        analyzer the workstation.
+      placeholder: "macOS 26.1; Windows 11 24H2; Windows Server 2019; Ubuntu 24.04; FreeBSD 14.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Architecture
+      options:
+        - x86_64 / amd64
+        - arm64 / aarch64
+        - Other (say which below)
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Shell, PowerShell or Python version
+      description: >-
+        For the sh collector the shell that ran it (`/bin/sh` and what it is, `dash`,
+        `bash`, busybox `ash`, or the EDR remote shell by name); for the PowerShell
+        collector the output of `$PSVersionTable.PSVersion`; for the analyzer the
+        output of `python3 --version`.
+      placeholder: "/bin/sh (bash 3.2); dash 0.5.12; PowerShell 5.1.26100; Python 3.12.3"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The behaviour you saw, and the documentation page or sentence it contradicts if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        The command line as run (options included) and the input shape: which agent's
+        files, a synthetic layout, or the smoke test's fake image. Redact hostnames,
+        user names and paths that identify a system.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output
+      description: >-
+        stdout, stderr or the log lines around the problem, the exit code, and the
+        manifest status or timeline row kind if one is involved. Redact values; keep
+        field names, status values and messages.
+      render: text
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed credentials, transcript content, hostnames and user names from everything above.
+          required: true
+        - label: This is not a vulnerability as SECURITY.md defines one.
+          required: true
