@@ -833,9 +833,17 @@ the file's modification time with `project_path` the folder;
 `.qwen/channels/sessions.json` and `.qwen/channels/daemon/<hash>/routes.json`,
 one `session relayed:` row per session driven from a messaging platform
 (fixture only), so the parser records relay state and `sessions.jsonl`
-`relayed` reads `yes` or `no`.
+`relayed` reads `yes` or `no`. A record's `executionContext` as `model:`
+and `permission mode:` rows on change, a `session_approval_mode` record
+as `permission mode:`, and a `ui_telemetry` tool call the user answered
+as `permission decision: <decision> (tool_call ui_telemetry)`;
+`.qwen/settings.json` in the home or a project, one `permission setting:`
+row per `permissions.allow`, `ask` and `deny` rule and one for
+`tools.approvalMode`; `.qwen/usage_record.jsonl`, one `session usage:`
+row per session summary, a secondary source that outlives a deleted
+transcript.
 
-Validated against: Source at [2c591ec](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb), synthetic fixture.
+Validated against: Source at [2c591ec](https://github.com/QwenLM/qwen-code/commit/2c591ecc08a6fa080342f9b1b9f7f43215178cbb), synthetic fixture; the `executionContext`, `session_approval_mode` and `ui_telemetry` decision rows, `settings.json` and `usage_record.jsonl` from source at [5dcf7c7](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1) (version 0.25.3), synthetic fixture.
 
 ### `roo-code`
 

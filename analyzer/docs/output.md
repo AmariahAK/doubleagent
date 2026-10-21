@@ -1078,6 +1078,31 @@ the parts the record lacks left out: a `cron` or `notification` record
 (`cron (provenance=system): ...`), an `agent_message` or `agent_mention`
 another workspace agent wrote (`provenance=external_agent`), and a
 record of `goal_runtime` provenance; the user's own `agent_mention` stays a `user` row.
+A Qwen Code record's `executionContext` (on user prompts) feeds the same
+model tracking, as `model: <id> auth=<authType>` or `model: <old> ->
+<new> auth=<authType>` (the `auth=` part left out when not recorded),
+and an approval-mode tracking per session, `permission mode: <mode>` the
+first time and `permission mode: <old> -> <new>` on a change, before the
+record's own rows; a `session_approval_mode` record reads `permission
+mode: <mode>` or `permission mode: <old> -> <mode>`, followed by
+` prePlanMode=<mode>` and ` planExecutionMode=<mode>` when recorded. A
+`ui_telemetry` record of a tool call the user was asked about keeps its
+`ui_telemetry: <JSON>` row and is followed by `permission decision:
+<decision> (tool_call ui_telemetry)`, `<decision>` one of `accept`,
+`reject`, `modify` or `auto_accept` (an "allow always" answer), with the
+call's `tool_name` and `tool_use_id`. Each entry of `permissions.allow`,
+`permissions.ask` and `permissions.deny` in `.qwen/settings.json`, in
+the home or a project, is one row `permission setting:
+permissions.<list>=<rule> (from .qwen/settings.json, file mtime)`, and
+`tools.approvalMode` one row `permission setting:
+tools.approvalMode=<mode> (from .qwen/settings.json, file mtime)`, at the
+file's modification time with an empty `session_id` (`project_path` the
+project for a project's file). Each line of `.qwen/usage_record.jsonl`
+is one row `session usage: project <project> duration <ms>ms models
+<id>,... tools <tool>=<count>,... (from usage_record.jsonl, startTime)`,
+with `-` for an absent part, the record's `sessionId` and `project`, at
+its `startTime`; the line is written when a session ends, at `/clear`
+and before a session is deleted, so it can be all that is left of one.
 
 The `antigravity` parser writes `model: <id>` before the rows of a
 conversation's first step that the `gen_metadata` table names a model for
@@ -1552,7 +1577,7 @@ beside its `session synced: server conversation` row.
 | `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
 | `openclaw` | `.openclaw/agents/<id>/sessions/` copies of a transcript: the published `*.jsonl.reset.*` / `*.jsonl.deleted.*` archive files, `*.checkpoint.<uuid>.jsonl` and `*.jsonl.pre-doctor-*-repair-*.bak` (each copy's session-start row names it and is kept) | `.openclaw/agents/<id>/agent/openclaw-agent.sqlite` (`transcript_events` and the `session_transcript_archives` blobs) and the legacy `sessions/<id>.jsonl` |
 | `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
-| `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
+| `qwen-code` | `.qwen/tmp/<hash>/logs.json`; `.qwen/usage_record.jsonl` (per-session summaries, `system` rows that no transcript row repeats) | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
 | `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
 

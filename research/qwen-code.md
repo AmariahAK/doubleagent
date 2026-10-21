@@ -15,7 +15,8 @@ shape Gemini CLI has left behind
 it has a Web Shell served by `qwen serve`, Qwen Code Desktop, a Tauri app that wraps that Web
 Shell ([Qwen Code Desktop](#qwen-code-desktop)), and messaging-platform channels. Paths cited are
 relative to the clone. The agent is parsed: the `qwen-code` parser reads the transcripts,
-`logs.json`, `trustedFolders.json` and the channel route files ([Parser plan](#parser-plan)).
+`logs.json`, `usage_record.jsonl`, `trustedFolders.json`, `settings.json` and the channel route
+files ([Parser plan](#parser-plan)).
 
 ## Source and evidence
 
@@ -34,6 +35,12 @@ workflows, audits).
 
 ### Source reviews
 
+- 2026-10-21: QwenLM/qwen-code at [`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1) (0.25.3): the per-call
+  decision, approval-mode, `settings.json` permission and `usage_record.jsonl` rows moved from
+  proposed to parsed, the `ui_telemetry` tool-call event name was corrected to
+  `qwen-code.tool_call`, the session registry gained its secret glob, and the source-host review
+  of the GitHub and GitLab channels and the pull-request sidecar was added
+  ([Source host rows](#source-host-rows)).
 - 2026-10-19: HEAD
   [`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1)
   (2026-10-20 UTC+8, version 0.25.3) against the commit above; `storage.ts`, `paths.ts` and the
@@ -233,7 +240,14 @@ whether the app or that setting leaves a local record of a paired device was not
   ([`channels/base/src/PollingChannelBase.ts:128-135`](https://github.com/QwenLM/qwen-code/blob/2c591ecc08a6fa080342f9b1b9f7f43215178cbb/packages/channels/base/src/PollingChannelBase.ts#L128-L135)).
   The `~/.qwen/channels/dingtalk-groups.json` named in a design document is a proposed store of
   group conversation ids, not a credential, and no writer exists at this commit. Platform bot tokens
-  set in `settings.json` are covered by that file's glob.
+  set in `settings.json` are covered by that file's glob; among them the GitHub and GitLab
+  channels' personal access tokens, the `token` field of a `channels` entry
+  ([`channels/github/src/index.ts:13-20`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/channels/github/src/index.ts#L13-L20), [`channels/gitlab/src/index.ts:14-21`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/channels/gitlab/src/index.ts#L14-L21)), which the
+  GitHub channel may replace with the token of the host's own `gh` login
+  ([`channels/github/src/GithubAdapter.ts:76-90`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/channels/github/src/GithubAdapter.ts#L76-L90); [Source host rows](#source-host-rows)).
+- `sessions/<pid>.json`, the session registry ([Session registry](#session-registry)): its
+  `ipcToken` admits a connection to a running session's socket, so the secret glob
+  `.qwen/sessions/*.json` flags every record.
 
 ### Exclusions
 
@@ -241,7 +255,9 @@ whether the app or that setting leaves a local record of a paired device was not
 `.qwen/scratch-workspaces`, `.qwen/extensions/*/node_modules`, `.qwen/arena`
 (parallel agent working copies), `.qwen/artifacts` (published build
 outputs), `.qwen/resources`, `.qwen/startup-perf`, `.qwen/locales` (user locale overrides) and
-`.qwen/sandbox` (no writer found at either commit reviewed). Keep `file-history/`
+`.qwen/sandbox` (no writer found at either commit reviewed). `.qwen/worktrees`, the agent's git
+worktrees inside a project ([Scratch workspaces and worktrees](#scratch-workspaces-and-worktrees)),
+is excluded as a copy of the repository. Keep `file-history/`
 (pre-edit file copies: evidence), `audits/`, `debug/`, `boards/`.
 
 ### Project-local files
@@ -349,9 +365,9 @@ are gone after the next start ([shell_history and checkpoints](#shell_history-an
 on that platform, and the daemon's `routes.json` stays on disk while the foreground service's
 `channels/sessions.json` is deleted on a clean shutdown. No deletion marker is written: the
 surviving `usage_record.jsonl` entry and the `logs.json` prompts are all that show a removed
-session. The analyzer reads the transcripts in `chats/` and `chats/archive/`, `logs.json` as a
-secondary source and both channel route files, and not `usage_record.jsonl`, `shell_history`, the
-checkpoints or the memory documents (see
+session. The analyzer reads the transcripts in `chats/` and `chats/archive/`, `logs.json` and
+`usage_record.jsonl` as secondary sources and both channel route files, and not `shell_history`,
+the checkpoints or the memory documents (see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 #### Scratch workspaces and worktrees
@@ -441,10 +457,13 @@ Per-call permission. A `system` record with subtype `ui_telemetry` holds `system
 ([CRS 3124-3140](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/chatRecordingService.ts#L3124-L3140);
 written for every telemetry event,
 [`core/src/telemetry/loggers.ts:172-175`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/telemetry/loggers.ts#L172-L175)).
-For a tool call the event has `"event.name": "tool_call"`, `call_id`, `function_name`,
-`function_args`, `status` (`success`, `error`, `cancelled`) and `decision`, set only when the user
-was asked: `accept` (allow once), `auto_accept` (any "allow always" choice), `modify` (edited first)
-or `reject`
+For a tool call the event has `"event.name": "qwen-code.tool_call"` (`logToolCall` replaces the
+event's own `tool_call` with the `EVENT_TOOL_CALL` constant before recording it,
+[`core/src/telemetry/loggers.ts:317-331`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/telemetry/loggers.ts#L317-L331);
+[`core/src/telemetry/constants.ts:11`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/telemetry/constants.ts#L11)),
+`call_id`, `function_name`, `function_args`, `status` (`success`, `error`, `cancelled`) and
+`decision`, set only when the user was asked: `accept` (allow once), `auto_accept` (any "allow
+always" choice), `modify` (edited first) or `reject`
 ([`core/src/telemetry/types.ts:182-245`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/telemetry/types.ts#L182-L245);
 [`core/src/telemetry/tool-call-decision.ts:9-36`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/telemetry/tool-call-decision.ts#L9-L36)).
 
@@ -478,7 +497,7 @@ No SQLite or binary store; all stores are JSON or JSONL text.
 
 The past-use stores beside the transcript are described at
 [`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1);
-of them only `logs.json` is parsed.
+of them `logs.json` and `usage_record.jsonl` are parsed.
 
 #### logs.json
 
@@ -488,14 +507,20 @@ it (`logs.json` and `getProjectTempDir` do not occur in
 
 #### usage_record.jsonl
 
-`~/.qwen/usage_record.jsonl` (secondary, not parsed): one JSON object per session, `{version: 1,
+`~/.qwen/usage_record.jsonl` (secondary, parsed): one JSON object per session, `{version: 1,
 sessionId, timestamp, startTime, project, durationMs, totalLatencyMs?, models: {<model id>:
 {requests, inputTokens, outputTokens, cachedTokens, thoughtsTokens, totalTokens}}, tools:
 {totalCalls, totalSuccess, totalFail, byName: {<tool>: {count, success, fail}}}, files: {linesAdded,
 linesRemoved}, skills?}`, with epoch-millisecond times, last record per `sessionId` winning
 ([`core/src/services/usageHistoryService.ts:37-77`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/usageHistoryService.ts#L37-L77),
 [140](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/usageHistoryService.ts#L140)).
-A session's usage is salvaged into this file before its transcript is deleted
+A record is appended when a session exits with model activity and at `/clear`, with `project` the
+project root
+([`cli/src/llm.tsx:1200-1216`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/llm.tsx#L1200-L1216),
+[`cli/src/ui/commands/clearCommand.ts:80-98`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/ui/commands/clearCommand.ts#L80-L98)),
+and a session's usage is salvaged into this file before its transcript is deleted, with `project`
+the first record's `cwd`
+([`core/src/services/usageHistoryService.ts:239-281`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/usageHistoryService.ts#L239-L281))
 ([What survives a delete](#what-survives-a-delete)), so a deleted session survives here as its id,
 project, start and duration, the models it used and how often it called each tool. Joins on
 `sessionId`.
@@ -578,7 +603,8 @@ An "always allow" choice for the project or for the user appends its rules to `p
 the matching file
 ([`core/src/core/permission-helpers.ts:194-243`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/core/permission-helpers.ts#L194-L243);
 [`cli/src/config/config.ts:2624-2636`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/config/config.ts#L2624-L2636)).
-Qwen Code has no `auto-saved.toml` policy file, where Gemini CLI keeps its saved grants
+The file is read with comments stripped and a byte-order mark removed
+([`cli/src/config/settings.ts:921`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/cli/src/config/settings.ts#L921)). Qwen Code has no `auto-saved.toml` policy file, where Gemini CLI keeps its saved grants
 ([Other stores in `gemini-cli.md`](gemini-cli.md#other-stores)).
 
 ### Format versions
@@ -647,7 +673,9 @@ connection to the running session's socket
 ### Parser plan
 
 Globs (home-relative): `.qwen/projects/*/chats/*.jsonl`,
-`.qwen/projects/*/chats/archive/*.jsonl`, `.qwen/tmp/*/logs.json`. Exclude
+`.qwen/projects/*/chats/archive/*.jsonl`, `.qwen/tmp/*/logs.json`, `.qwen/trustedFolders.json`,
+`.qwen/settings.json` (also a project's), `.qwen/usage_record.jsonl` and the channel route files.
+Exclude
 `*.runtime.json`, `*.worktree.json` and `*.ledger.jsonl` from transcript
 parsing.
 
@@ -675,8 +703,7 @@ Permission rows ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96
 - `permission decision: <status>` (`system`, the result's `tool_name` and
   `tool_use_id`) after a `tool_result` row whose `toolCallResult.status`
   is `cancelled` or `awaiting_approval`; the `[<status>]` prefix on the
-  result row stays. No other approval record is written to the session
-  file.
+  result row stays.
 - `permission setting: trustedFolders.<path>=<value> (from <file>, file mtime)` (`system`,
   `project_path` the folder, no session id, the file's modification time, line 1), one per key of
   `~/.qwen/trustedFolders.json`. The file is a JSON object read with comments stripped
@@ -692,24 +719,30 @@ Permission rows ([issue 96](https://github.com/seanthegeek/doubleagent/issues/96
   strings. The value is printed as recorded. A file that is still not a JSON object is one
   `parser: <file> is not a JSON object` row.
 
-Proposed (not parsed; shapes in
+The following rows are source-derived; not observed on any real install (shapes in
 [Permission records](#permission-records) and
 [Permission lists in settings.json](#permission-lists-in-settingsjson)):
 
-- Per call: the parser emits the record as `ui_telemetry: <JSON>`; proposed:
-  `permission decision: <decision> (tool_call ui_telemetry)` with
-  `tool_name` `function_name` and `tool_use_id` `call_id`, beside the
-  call. No separate record of the AUTO classifier's verdict was found
-  (`classifier` and `denial` do not occur in `CRS`); a call it blocks
-  shows only as the tool result.
-- Approval mode: `permission setting: approvalMode=<mode>` at a session's
-  first user record and `approvalMode=<old> -> <new>` on each change,
-  tracked per session as the model is; the `session_approval_mode`
-  record read the same way.
-- Standing rules: one `permission setting: permissions.<list>=<rule> (from
-  <file>, file mtime)` row per rule and one for `tools.approvalMode`.
-  `~/.qwen/settings.json` is a secret glob, so a `--no-secrets`
-  collection lacks it.
+- Per call: a `ui_telemetry` record keeps its `ui_telemetry: <JSON>` row; when its `uiEvent` has
+  `event.name` `qwen-code.tool_call` and a `decision`, it is followed by
+  `permission decision: <decision> (tool_call ui_telemetry)` with `tool_name` the event's
+  `function_name` and `tool_use_id` its `call_id`, which join the call's `tool_use` row. The
+  record is written when the call completes, so the row follows the result. No separate record of
+  the AUTO classifier's verdict was found (`classifier` and `denial` do not occur in `CRS`); a
+  call it blocks shows only as the tool result.
+- Approval mode: `permission mode: <approvalMode>` at the first record whose `executionContext`
+  names one and `permission mode: <old> -> <new>` on each change, tracked per session, before the
+  record's own rows. A `session_approval_mode` record is `permission mode: <mode>` or
+  `permission mode: <old> -> <mode>` in the same tracking, followed by ` prePlanMode=<mode>` and
+  ` planExecutionMode=<mode>` when recorded.
+- Standing rules: one `permission setting: permissions.<list>=<rule> (from .qwen/settings.json,
+  file mtime)` row per `allow`, `ask` and `deny` entry and one `permission setting:
+  tools.approvalMode=<mode> (from .qwen/settings.json, file mtime)`, at the file's modification
+  time, line 1, no session id, and `project_path` the project for a project's
+  `.qwen/settings.json`. The file is read as JSONC; no other key is read, so the provider keys and
+  channel tokens beside them are never emitted. `permissions.autoMode` (the classifier's hints)
+  is not read. `~/.qwen/settings.json` is a secret glob, so a `--no-secrets` collection lacks it.
+  A file that is not a JSON object is one `parser: .qwen/settings.json is not a JSON object` row.
 
 #### Model rows
 
@@ -723,20 +756,25 @@ Proposed (not parsed; shapes in
 - A `logs.json` `model_switch` entry is
   `model: <fromModel> -> <toModel> reason=<reason>` (`model` column
   `toModel`), printed from the entry, not tracked.
-- `executionContext.modelId` (with `authType`) on each user
-  record is the model in force when the prompt was sent; proposed as a
-  further input to the `model:` tracking above, not read yet. `session_model`, assistant `model`
-  and `logs.json` `model_switch` are covered.
+- `executionContext.modelId` (with `authType`) on each user prompt and `mid_turn_user_message`
+  record is the model in force when the prompt was sent and feeds the same tracking, before the
+  record's own rows: `model: <modelId> auth=<authType>` or `model: <old> -> <modelId>
+  auth=<authType>`, the `auth=` part left out when `authType` is absent. Source-derived; not
+  observed on any real install.
 
 #### Past-use rows and secondary sources
 
 `logs.json` is parsed as a secondary source
 ([Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
-Proposed, not parsed: `usage_record.jsonl` (secondary, joins on `sessionId`;
-one row per record: `session usage: project <project> models
-<ids> tools <name>=<count>... (from usage_record.jsonl)` at
-`startTime`), then `shell_history` and `checkpoint-<tag>.json` as proposed for Gemini CLI
+`usage_record.jsonl` is parsed as a secondary source, source-derived; not observed on any real
+install. Each line is one `system` row, `session usage: project <project> duration
+<durationMs>ms models <id>,<id> tools <tool>=<count>,<tool>=<count> (from usage_record.jsonl,
+startTime)`, `-` for an absent part, at `startTime`, with `session_id` the record's `sessionId`
+and `project_path` its `project`. No transcript row repeats it, so it is always kept, and for a
+deleted session it is the only row ([What survives a delete](#what-survives-a-delete)).
+
+Proposed, not parsed: `shell_history` and `checkpoint-<tag>.json` as proposed for Gemini CLI
 ([Parser plan in `gemini-cli.md`](gemini-cli.md#parser-plan));
 the auto-memory directory after a real-install round ([Other stores](#other-stores)).
 
@@ -830,8 +868,9 @@ Each line of a transcript that does not decode becomes its own `parser: unparsea
 cut is one `unparseable record <N>` row. A channel routes file or a `trustedFolders.json` that is
 not a JSON object is one whole-file `parser:` row, and a routes entry that is not an object is its
 own row ([Channel routes](#channel-routes), [Permission rows](#permission-rows)).
-`usage_record.jsonl` is JSONL and needs `iter_jsonl` and
-`error_rows` when it is parsed.
+Each line of `usage_record.jsonl` that does not decode is its own `parser: unparseable line` row,
+and the lines before and after it are still read. A `settings.json` that is not a JSON object is
+one whole-file `parser:` row.
 
 #### Fixtures
 
@@ -843,6 +882,41 @@ Fixture:
 {"uuid":"2b2c2d2e-6666-4000-8000-000000000013","parentUuid":"1a1b1c1d-5555-4000-8000-000000000012","sessionId":"e5f6a7b8-4444-4000-8000-000000000011","timestamp":"2026-10-01T10:00:09.000Z","type":"tool_result","provenance":"tool_result","cwd":"/home/alice/proj","version":"0.24.7","gitBranch":"main","message":{"role":"user","parts":[{"functionResponse":{"id":"call_abc123","name":"run_shell_command","response":{"output":"12 passing"}}}]},"toolCallResult":{"callId":"call_abc123","status":"success","resultDisplay":"12 passing","errorType":null}}
 {"uuid":"3c3d3e3f-7777-4000-8000-000000000014","parentUuid":"2b2c2d2e-6666-4000-8000-000000000013","sessionId":"e5f6a7b8-4444-4000-8000-000000000011","timestamp":"2026-10-01T10:00:10.000Z","type":"system","subtype":"custom_title","provenance":"system","cwd":"/home/alice/proj","version":"0.24.7","gitBranch":"main","systemPayload":{"customTitle":"Run tests","titleSource":"auto"}}
 ```
+
+Permission, approval-mode and usage records at
+[`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1)
+(a user record's `executionContext`, a `ui_telemetry` tool-call decision, a daemon's
+`session_approval_mode` and a `usage_record.jsonl` line), shapes from
+[Permission records](#permission-records) and [usage_record.jsonl](#usage_recordjsonl):
+
+```json
+{"uuid":"p1","parentUuid":null,"sessionId":"e5f6a7b8-4444-4000-8000-000000000044","timestamp":"2026-10-03T09:00:00.000Z","type":"user","provenance":"real_user","cwd":"/srv/proj","version":"0.25.3","executionContext":{"modelId":"qwen3-coder-plus","authType":"qwen-oauth","approvalMode":"default"},"message":{"role":"user","parts":[{"text":"clean the build"}]}}
+{"uuid":"p3","parentUuid":"p2","sessionId":"e5f6a7b8-4444-4000-8000-000000000044","timestamp":"2026-10-03T09:00:09.000Z","type":"system","subtype":"ui_telemetry","cwd":"/srv/proj","version":"0.25.3","systemPayload":{"uiEvent":{"event.name":"qwen-code.tool_call","event.timestamp":"2026-10-03T09:00:09.000Z","call_id":"call_p1","function_name":"run_shell_command","status":"success","decision":"auto_accept","prompt_id":"p#1"}}}
+{"uuid":"p4","parentUuid":"p3","sessionId":"e5f6a7b8-4444-4000-8000-000000000044","timestamp":"2026-10-03T09:01:00.000Z","type":"system","subtype":"session_approval_mode","cwd":"/srv/proj","version":"0.25.3","systemPayload":{"mode":"plan","prePlanMode":"default"}}
+{"version":1,"sessionId":"e5f6a7b8-4444-4000-8000-000000000055","timestamp":1790935200000,"startTime":1790931600000,"project":"/srv/proj","durationMs":3600000,"models":{"qwen3-coder-plus":{"requests":4,"inputTokens":100,"outputTokens":20,"cachedTokens":0,"thoughtsTokens":0,"totalTokens":120}},"tools":{"totalCalls":3,"totalSuccess":3,"totalFail":0,"byName":{"run_shell_command":{"count":2,"success":2,"fail":0},"read_file":{"count":1,"success":1,"fail":0}}},"files":{"linesAdded":4,"linesRemoved":1}}
+```
+
+#### Source host rows
+
+The agent records no connected source-host account in a file the parser reads. The GitHub and
+GitLab channels act as an account through a personal access token in a `channels` entry of
+`settings.json` or, for GitHub, through the host's own `gh` login
+([Credentials](#credentials)); the authenticated login is looked up at connect and kept in memory
+(the GitHub channel also writes it to the daemon's standard error), never in a file
+([`channels/github/src/GithubAdapter.ts:563-603`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/channels/github/src/GithubAdapter.ts#L563-L603),
+[`channels/gitlab/src/GitlabAdapter.ts:69-98`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/channels/gitlab/src/GitlabAdapter.ts#L69-L98)).
+The GitHub
+channel appends a publication audit per workspace,
+`~/.qwen/channels/<workspace scope>/<channel>-<hash>-github-audit.jsonl`, whose records name the
+`repository`, issue or pull request `number`, `sessionId`, `actor` and `commentUrl` of each reply
+it posted ([`GithubAdapter.ts:271-290`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/channels/github/src/GithubAdapter.ts#L271-L290),
+[`2064-2075`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/channels/github/src/GithubAdapter.ts#L2064-L2075));
+and a session that opened or reviewed a pull request keeps `chats/<sessionId>.pr.json`,
+`{prs: [{number, url, createdAt, state?, source?, issues?}]}`
+([`core/src/services/session-pr-service.ts:15-43`](https://github.com/QwenLM/qwen-code/blob/5dcf7c7cb162e825d95d531081f67ee60da3c0e1/packages/core/src/services/session-pr-service.ts#L15-L43)).
+Neither is parsed yet. No repository list is cached. Grepped for `github`, `gitlab`,
+`bitbucket`, `oauth`, `installation`, `repositor`, `pull request` and `clone` at
+[`5dcf7c7`](https://github.com/QwenLM/qwen-code/commit/5dcf7c7cb162e825d95d531081f67ee60da3c0e1).
 
 ## Confidence
 
