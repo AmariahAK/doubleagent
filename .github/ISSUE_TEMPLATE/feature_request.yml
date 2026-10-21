@@ -1,0 +1,70 @@
+name: Feature request
+description: A new agent for the catalog, a parser, an option, an output or an improvement to behaviour that works as documented.
+title: "[enhancement] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Scope: DoubleAgent supplements the EDR a responder already has. Process
+        lists, network connections, services, scheduled tasks and shell histories
+        are the EDR's job and are out of scope; what the tool adds is the agents'
+        own transcripts, configuration, credentials and project references on
+        disk, and the catalog that says where they are.
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      options:
+        - Collectors (both scripts; the catalog is shared)
+        - Collector, sh only (collect-agent-artifacts.sh)
+        - Collector, PowerShell only (Collect-AgentArtifacts.ps1)
+        - Analyzer (doubleagent command)
+        - Documentation or research
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - New agent for the catalog
+        - Parser for an agent the collector already gathers
+        - New option, command or output
+        - Improvement to existing behaviour
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version you checked
+      description: >-
+        The version that lacks the feature, from `collect-agent-artifacts.sh --version`,
+        `Collect-AgentArtifacts.ps1 -Version` or `doubleagent --version`.
+      placeholder: "0.20.1"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you need and why
+      description: The investigation situation that needs it, and what you do today instead.
+    validations:
+      required: true
+  - type: textarea
+    id: agent
+    attributes:
+      label: For a new agent or parser
+      description: >-
+        The agent's name, its repository or vendor documentation, the platforms it
+        runs on, and where it keeps state (directories under the home, SQLite
+        databases, keychain use, Docker volumes) as far as you know. Links to source
+        files are the most useful evidence; an install's file listing with names and
+        sizes only is next.
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: The option, output, row or catalog line you have in mind, if you have one; the manifest and JSONL fields are interfaces, so say if one would change.
