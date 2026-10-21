@@ -1205,7 +1205,12 @@ CI (`.github/workflows/ci.yml`) runs the catalog drift test, shellcheck, the
 sh smoke test under sh, dash, bash, busybox ash, zsh and posh, the PowerShell
 smoke test under PowerShell 7 on Linux and Windows PowerShell 5.1 on
 Windows, the analyzer tests on Python 3.10, 3.11, 3.12, 3.13 and 3.14, and a lint job
-with the quality gates below. A change that touches only Markdown files
+with the quality gates below, then a `CI result` job that depends on all
+of them and fails when any failed or was cancelled; it is the one status
+check the ruleset on `main` requires, because a matrix job the
+classification skips reports under its unexpanded name and a per-job
+list could never be satisfied by a documentation-only pull request. A
+change that touches only Markdown files
 and `.markdownlint-cli2.jsonc` is documentation only: the workflow's
 first job classifies the push or pull request from the changed file
 list, and when it is documentation only every other job is skipped and
@@ -1381,8 +1386,9 @@ the start of this section).
   applies to text an agent posts on a person's behalf too.
 - Every change reaches `main` through a pull request. A ruleset on the
   repository protects `main`: no direct push, no force push, no deletion,
-  and a merge needs every CI job and the CodeQL code-scanning analysis
-  green (the ruleset is a repository setting, not a file in the tree;
+  and a merge needs the workflow's `CI result` job, which fails when any
+  CI job failed, and the CodeQL code-scanning analysis green (the
+  ruleset is a repository setting, not a file in the tree;
   `gh api repos/seanthegeek/doubleagent/rulesets` shows it). Work on a
   branch named for the change, push it, open the pull request with
   `gh pr create` (its description names the issue and ends with the AI
