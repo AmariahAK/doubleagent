@@ -600,15 +600,19 @@ Validated against: Source at [fb972b2](https://github.com/google-gemini/gemini-c
 
 Files read: `.local/share/goose/sessions/sessions.db` (SQLite with WAL
 sidecars), legacy `sessions/*.jsonl`,
-`.local/state/goose/logs/llm_request.*.jsonl`, `history.txt` (a secondary
-source, no timestamp: matches on text alone), and the
-`AppData/Roaming/Block/goose/data` equivalents. A `sessions.db` session
+`.local/state/goose/logs/llm_request.*.jsonl` (a secondary source: the
+last 10 provider calls, matched within 600 seconds), `history.txt` (a
+secondary source, no timestamp: matches on text alone),
+`.config/goose/permission.yaml` and `.config/goose/roaming_trust.json`
+(standing permission rows), `.local/share/goose/schedule.json` (one
+`scheduled task:` row per job), and the `AppData/Roaming/Block/goose/data`
+and `AppData/Roaming/Block/goose/config` equivalents. A `sessions.db` session
 whose `session_type` is `gateway` was relayed through the gateway's
 Telegram bot, so the parser records relay state and `sessions.jsonl`
 `relayed` reads `yes` or `no`; `config.yaml` `gateway_pairings` is not
 read.
 
-Validated against: Source at [591edd4](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d), synthetic fixture.
+Validated against: Source at [591edd4](https://github.com/block/goose/commit/591edd47cf2cfea4957d720c607cf2a4def8673d), synthetic fixture; the tool confirmation and `goose.executable` rows, `permission.yaml`, `roaming_trust.json`, `schedule.json` and the request logs as a secondary source from source at [fb9e3c8](https://github.com/aaif-goose/goose/commit/fb9e3c89b2b4670a0eded99e7567e578ac6e502c), synthetic fixture.
 
 ### `hermes`
 
