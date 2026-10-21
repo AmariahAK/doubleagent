@@ -1235,7 +1235,42 @@ enterprise.blobUpload, started_at)` for a session known only from
 saoudrizwan.claude-dev/cache/sync-queue.json, item timestamp)`, prefixed
 `session synced: ` only when `<status>` is `synced` (a `pending` or
 `failed` item has not reached the bucket), with the item's `taskId` as
-`session_id`, at the item's time. Continue's `.continue/logs/cn.log`, and the `cn<N>.log`
+`session_id`, at the item's time. A Cline SDK tool result for a call
+the runtime did not run is followed by `permission decision: rejected
+reason=<reason>` when the reason ends with the runtime's `-- NOT a tool
+or system failure. Clarify with user before proceeding.` (written
+without it), or `permission decision: blocked reason=<reason>` for
+`Tool "<name>" is disabled by policy` and `Tool <name> was blocked by a
+runtime hook`, with the result's `tool_use_id`, `tool_name` and time.
+Cline's standing settings are one `permission setting: <key>=<value>
+(from <file>, file mtime)` row each, at the file's modification time:
+`autoApprovalSettings.enabled`, `.maxRequests`, `.favorites` (per entry)
+and `.actions.<name>` and `mode` from `.cline/data/globalState.json`;
+`toolAutoApprove`, `planActMode`, `disabledTools`, `disabledPlugins` and
+`disabledAgentPlugins` (per entry) and `tools.<name>.enabled` from
+`.cline/data/settings/global-settings.json`; and
+`mcpServers.<name>.autoApprove` (per entry) and
+`mcpServers.<name>.disabled` from `settings/cline_mcp_settings.json`.
+Each Cline Cloud session in `globalState.json` `cloudSessionStatuses`
+gets `session origin: remote cline-cloud session <id> status <status>
+(from .cline/data/globalState.json cloudSessionStatuses, observedAt)`
+and `session synced: cline-cloud holds session <id>, no local transcript
+(from ...)` at its `observedAt`, with the id as `session_id`, and each
+record of a `.cline/data/cloud-pending-starts/*.json` file the same pair,
+the origin row reading `sandbox start pending account=<account>
+endpoint=<endpoint>`, at the file's modification time, so such a session
+has `origin` `remote` and `synced` `yes`; every other Cline session has
+`origin` `local`. The `cloudTaskTarget` is `cloud task target:
+target=<target> repository_id=<id> branch=<branch> (from
+.cline/data/globalState.json, file mtime)`. A Cline session imported
+from another agent names it on its start row: `imported_from=<tool>
+imported_session=<id> imported_path=<path> imported_at=<time>
+imported_provider=<provider> imported_model=<model>`. The hook audit log
+`.cline/data/logs/hooks.jsonl` gives a `hook audit: <hookName> ...` row
+for each `agent_start`, `agent_abort`, `agent_error` and
+`session_shutdown` line, with `cline_version=`, `user=`, `agent=`,
+`parent_agent=`, `reason=`, `pid=`, `source=` and `error=<name>:
+<message>` when present. Continue's `.continue/logs/cn.log`, and the `cn<N>.log`
 files it is rotated to, give `agent metadata posted: agent <agentId>
 keys <metadataKeys> <status> (from logs/cn.log, log line time,
 host-local)` for each metadata post of `cn serve --id`, `<status>`
@@ -1601,7 +1636,7 @@ beside its `session synced: server conversation` row.
 | `antigravity` | `.gemini/antigravity-cli/history.jsonl`; the brain mirror `.gemini/<dir>/brain/<uuid>/.system_generated/logs/transcript_full.jsonl`, else its chunks, else `transcript.jsonl`, else its chunks, `<dir>` each of `antigravity-cli`, `antigravity`, `antigravity-ide` and `antigravity-backup` (600 seconds: the mirror records a step's start, the database row its completion) | `.gemini/<dir>/conversations/<uuid>.db` |
 | `claude-code` | `.claude/history.jsonl` (and `.claude-<name>/history.jsonl`) | `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `claude-desktop` | each Cowork session's `local-agent-mode-sessions/<acct>/<org>/[agent/]<session dir>/audit.jsonl` under the app-data directory; the session records `local_<uuid>.json` beside the session dirs and under `claude-code-sessions/` (a Cowork record's first prompt has no timestamp: matches on text within the session) | the session dir's `.claude/projects/<slug>/*.jsonl` and its subagent files |
-| `cline` | `.cline/data/db/session-search.db` (no timestamp per message: matches on text and session; a message of content blocks keeps their type names and tool ids, so only plain-string prompts match); `.cline/data/cache/user_input_history.jsonl` (only the last line timestamped: the others match on text alone) | `.cline/data/sessions/<id>/<id>.messages.json` |
+| `cline` | `.cline/data/db/session-search.db` (no timestamp per message: matches on text and session; a message of content blocks keeps their type names and tool ids, so only plain-string prompts match); `.cline/data/cache/user_input_history.jsonl` (only the last line timestamped: the others match on text alone); `.cline/data/logs/hooks.jsonl` (tolerance one hour; tool rows match on the call id) | `.cline/data/sessions/<id>/<id>.messages.json` |
 | `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite`; `.codex/.codex-global-state.json` (the desktop app's prompt history, no timestamp: matches on text within the thread) | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
 | `copilot-cli` | `.copilot/session-store.db` (`turns`, the prompt and the final reply of each turn, stamped when the turn ends: a one-hour window; its `sessions` name pairs with the `workspace.yaml` row; `session_files`, `session_refs`, `checkpoints` and `forge_trajectory_events` rows the log has no copy of are always kept); `.copilot/session-state/<id>/rewind-file-snapshots/index.json` (each turn's prompt, a one-hour window); `.copilot/command-history-state.json` (no timestamp, session or project: matches on text alone); each also under the pre-XDG `.local/state/.copilot` | `.copilot/session-state/<id>/events.jsonl` and `workspace.yaml` |
 | `cursor` | `.cursor/projects/<project>/agent-transcripts/<composerId>/<composerId>.jsonl`, the agent worker's copy of each conversation (a prompt is stamped to the minute in local time with its UTC offset: a 60-second window; replies and tool calls have no timestamp and match on text within the conversation; the tool calls name the tools differently from the database, so they never pair) | the editor's `User/globalStorage/state.vscdb` `cursorDiskKV` composer and bubble rows |
@@ -1639,6 +1674,10 @@ ends, so its window is one hour; a turn longer than that leaves its
 earlier lines shown twice. Copilot CLI's session store writes a turn
 when it ends, so its `turns` rows and its rewind snapshots match within
 one hour, and only against an identical event of the same session.
+Cline's hook audit log `logs/hooks.jsonl` stamps a tool call when it
+starts or ends and the transcript stamps the message when the turn is
+written, so its rows match within one hour; its call rows match on the
+call id.
 nanobot's WebUI transcript stamps events in
 true UTC while its session files record host local time, emitted as if
 UTC, so its window is 15 hours (the largest UTC offset, 14 hours, plus

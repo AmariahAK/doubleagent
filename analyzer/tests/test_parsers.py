@@ -6855,7 +6855,16 @@ from fixtures import (
     CLINE_BLOB_DELETED,
     CLINE_BLOB_SESSION,
     CLINE_CLI_TASK,
+    CLINE_CLOUD_SESSION,
+    CLINE_DENIED_SESSION,
+    CLINE_GLOBAL_SETTINGS,
+    CLINE_GLOBAL_STATE,
+    CLINE_HOOKS_LOG,
+    CLINE_IMPORTED_SESSION,
+    CLINE_MCP_SETTINGS,
     CLINE_OLD_SESSION,
+    CLINE_PENDING_SESSION,
+    CLINE_PENDING_START,
     CLINE_QUEUE_FAILED,
     CLINE_QUEUE_PENDING,
     CLINE_SESSION,
@@ -6866,6 +6875,9 @@ from fixtures import (
     ROO_GONE_TASK,
     ROO_TASK,
     build_cline_blob_upload,
+    build_cline_denied_and_imported,
+    build_cline_hooks_log,
+    build_cline_settings_and_cloud,
     build_cline_sync_queue,
 )
 
@@ -7234,7 +7246,6 @@ class ClineTests(ParserBase):
     def test_config_and_secrets_not_wanted(self):
         p = ClineParser()
         for rel in (
-            CLINE_GS + "settings/cline_mcp_settings.json",
             ".cline/data/secrets.json",
             self.SDK + ".compaction.json",
             ".cline/data/db/cron.db",
@@ -7468,6 +7479,316 @@ class ClineTests(ParserBase):
             [r.text for r in self.rows_for(ClineParser(), CLINE_SYNC_QUEUE)],
             ["parser: sync-queue item x is not a JSON object"],
         )
+
+    # -- source review of 2026-10-21 (#190), source-derived
+
+    def _reopen(self, *builders) -> None:
+        for build in builders:
+            build(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_hooks_log_rows(self):
+        self._reopen(build_cline_hooks_log)
+        p = ClineParser()
+        self.assertTrue(p.wants(self.artifact(CLINE_HOOKS_LOG)))
+        self.assertTrue(p.secondary(self.artifact(CLINE_HOOKS_LOG)))
+        self.assertEqual(p.secondary_tolerance(self.artifact(CLINE_HOOKS_LOG)), 3600.0)
+        self.assertEqual(p.secondary_tolerance(self.artifact(self.INPUT_HISTORY)), 2.0)
+        rows = self.rows_for(p, CLINE_HOOKS_LOG)
+        s, old = CLINE_SESSION, CLINE_OLD_SESSION
+        self.assertEqual(
+            [
+                (r.source_line, r.turn_type, r.session_id, r.tool_name, r.tool_use_id, r.text)
+                for r in rows
+            ],
+            [
+                (
+                    1,
+                    "system",
+                    s,
+                    "",
+                    "",
+                    "hook audit: agent_start cline_version=4.1.25 user=alice agent=agent_lead",
+                ),
+                (2, "user", s, "", "", "fix tests"),
+                (3, "tool_use", s, "bash", "call_1", "pytest -q"),
+                (4, "tool_result", s, "bash", "call_1", "3 passed"),
+                (5, "assistant", s, "", "", "Fixed."),
+                (6, "tool_use", old, "bash", "call_9", "git branch -D stale"),
+                (7, "tool_result", old, "bash", "call_9", "[error] exit code 1"),
+                (
+                    8,
+                    "system",
+                    old,
+                    "",
+                    "",
+                    "hook audit: agent_abort cline_version=4.1.25 user=alice agent=agent_lead"
+                    " reason=aborted by user",
+                ),
+                (
+                    9,
+                    "system",
+                    old,
+                    "",
+                    "",
+                    "hook audit: session_shutdown reason=stale_process pid=4100 source=cli",
+                ),
+            ],
+        )
+        self.assertEqual(rows[2].timestamp_utc, "2026-10-03T10:01:42.500Z")
+        self.assertEqual({r.project_path for r in rows[:8]}, {"/srv/proj"})
+        self.assertEqual(rows[8].project_path, "")
+
+    def test_hooks_log_dedup_keeps_what_the_transcripts_lost(self):
+        self._reopen(build_cline_hooks_log)
+        p = ClineParser()
+        primary = self.rows_for(p, self.SDK + ".messages.json")
+        audit = self.rows_for(p, CLINE_HOOKS_LOG)
+        tolerance = p.secondary_tolerance(self.artifact(CLINE_HOOKS_LOG))
+        kept, dropped = deduplicate(primary, [(r, tolerance) for r in audit])
+        self.assertEqual(dropped["cline"], 4)
+        survivors = kept[len(primary) :]
+        self.assertEqual(
+            [(r.session_id, r.turn_type, r.recovered) for r in survivors],
+            [
+                (CLINE_SESSION, "system", ""),
+                (CLINE_OLD_SESSION, "tool_use", "yes"),
+                (CLINE_OLD_SESSION, "tool_result", "yes"),
+                (CLINE_OLD_SESSION, "system", ""),
+                (CLINE_OLD_SESSION, "system", ""),
+            ],
+        )
+
+    def test_hooks_log_truncated_line(self):
+        self._reopen(build_cline_hooks_log)
+        path = self.home / CLINE_HOOKS_LOG
+        first, rest = path.read_bytes().split(b"\n", 1)
+        path.write_bytes(first + b"\n" + BAD_LINE.encode() + b"\n" + rest)
+        write_bad_line(path)
+        rows = self.rows_for(ClineParser(), CLINE_HOOKS_LOG)
+        self.assertEqual(len(rows), 11)
+        self.assertEqual((rows[0].source_line, rows[1].source_line), (1, 3))
+        self.assertEqual(rows[1].text, "fix tests")
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text) for r in rows[-2:]],
+            [(2, "system", bad_line_text()), (11, "system", bad_line_text())],
+        )
+
+    def test_standing_permission_settings(self):
+        self._reopen(build_cline_settings_and_cloud)
+        p = ClineParser()
+        mtime = "2026-10-03T10:10:00.000Z"
+
+        def settings(rel):
+            rows = self.rows_for(p, rel)
+            got = [r for r in rows if r.text.startswith("permission setting:")]
+            for r in got:
+                self.assertEqual(
+                    (r.turn_type, r.timestamp_utc, r.session_id, r.project_path),
+                    ("system", mtime, "", ""),
+                )
+                self.assertTrue(r.text.endswith("(from %s, file mtime)" % rel), r.text)
+            return [r.text.split(" (from ")[0] for r in got]
+
+        self.assertEqual(
+            settings(CLINE_GLOBAL_STATE),
+            [
+                "permission setting: autoApprovalSettings.enabled=true",
+                "permission setting: autoApprovalSettings.maxRequests=20",
+                "permission setting: autoApprovalSettings.actions.readFiles=true",
+                "permission setting: autoApprovalSettings.actions.editFiles=true",
+                "permission setting: autoApprovalSettings.actions.executeSafeCommands=false",
+                "permission setting: autoApprovalSettings.actions.executeAllCommands=true",
+                "permission setting: autoApprovalSettings.actions.useBrowser=false",
+                "permission setting: autoApprovalSettings.actions.useMcp=true",
+                "permission setting: mode=act",
+            ],
+        )
+        self.assertEqual(
+            settings(CLINE_GLOBAL_SETTINGS),
+            [
+                "permission setting: toolAutoApprove=false",
+                "permission setting: planActMode=plan",
+                "permission setting: disabledTools=browser_action",
+                "permission setting: disabledPlugins=acme-plugin",
+                "permission setting: tools.web_fetch.enabled=false",
+            ],
+        )
+        self.assertEqual(
+            settings(CLINE_MCP_SETTINGS),
+            [
+                "permission setting: mcpServers.github.autoApprove=list_issues",
+                "permission setting: mcpServers.github.autoApprove=get_issue",
+                "permission setting: mcpServers.github.disabled=false",
+            ],
+        )
+        everything = " ".join(
+            r.text
+            for rel in (CLINE_GLOBAL_STATE, CLINE_GLOBAL_SETTINGS, CLINE_MCP_SETTINGS)
+            for r in self.rows_for(p, rel)
+        )
+        for secret in ("ghp_not_real", "npx", "apiProvider", "telemetryOptOut"):
+            self.assertNotIn(secret, everything)
+        # The extension's older copy under globalStorage is read the same way.
+        self.assertTrue(p.wants(self.artifact(CLINE_GS + "settings/cline_mcp_settings.json")))
+        self.assertEqual(self.rows_for(p, CLINE_GS + "settings/cline_mcp_settings.json"), [])
+
+    def test_cloud_origin_and_sync_rows(self):
+        self._reopen(build_cline_settings_and_cloud)
+        p = ClineParser()
+        self.assertTrue(p.records_origin)
+        state = [
+            r for r in self.rows_for(p, CLINE_GLOBAL_STATE) if not r.text.startswith("permission")
+        ]
+        source = "(from %s cloudSessionStatuses, observedAt)" % CLINE_GLOBAL_STATE
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.text) for r in state],
+            [
+                (
+                    "system",
+                    "2026-10-03T10:10:00.000Z",
+                    "",
+                    "cloud task target: target=cloud repository_id=812345678 branch=main"
+                    " (from %s, file mtime)" % CLINE_GLOBAL_STATE,
+                ),
+                (
+                    "system",
+                    "2026-10-03T10:03:20.000Z",
+                    CLINE_CLOUD_SESSION,
+                    "session origin: remote cline-cloud session %s status completed %s"
+                    % (CLINE_CLOUD_SESSION, source),
+                ),
+                (
+                    "system",
+                    "2026-10-03T10:03:20.000Z",
+                    CLINE_CLOUD_SESSION,
+                    "session synced: cline-cloud holds session %s, no local transcript %s"
+                    % (CLINE_CLOUD_SESSION, source),
+                ),
+            ],
+        )
+        self.assertTrue(p.wants(self.artifact(CLINE_PENDING_START)))
+        pending = self.rows_for(p, CLINE_PENDING_START)
+        source = "(from %s, file mtime)" % CLINE_PENDING_START
+        self.assertEqual(
+            [(r.source_line, r.timestamp_utc, r.session_id, r.text) for r in pending],
+            [
+                (
+                    1,
+                    "2026-10-03T10:10:00.000Z",
+                    CLINE_PENDING_SESSION,
+                    "session origin: remote cline-cloud session %s sandbox start pending"
+                    " account=user:usr_0f9e8d7c endpoint=https://api.cline.bot %s"
+                    % (CLINE_PENDING_SESSION, source),
+                ),
+                (
+                    1,
+                    "2026-10-03T10:10:00.000Z",
+                    CLINE_PENDING_SESSION,
+                    "session synced: cline-cloud holds session %s, no local transcript %s"
+                    % (CLINE_PENDING_SESSION, source),
+                ),
+            ],
+        )
+        local = self.rows_for(p, self.SDK + ".json")
+        sessions = {
+            x.session_id: (x.origin, x.synced)
+            for x in summarise(
+                state + pending + local, frozenset({"cline"}), origin_agents=frozenset({"cline"})
+            )
+        }
+        self.assertEqual(
+            sessions,
+            {
+                CLINE_CLOUD_SESSION: ("remote", "yes"),
+                CLINE_PENDING_SESSION: ("remote", "yes"),
+                CLINE_SESSION: ("local", "no"),
+            },
+        )
+
+    def test_settings_files_that_are_not_objects(self):
+        self._reopen(build_cline_settings_and_cloud)
+        p = ClineParser()
+        for rel, what in (
+            (CLINE_GLOBAL_STATE, "globalState.json"),
+            (CLINE_GLOBAL_SETTINGS, "global-settings.json"),
+            (CLINE_MCP_SETTINGS, "cline_mcp_settings.json"),
+        ):
+            (self.home / rel).write_text("[1, 2]", encoding="utf-8")
+            self.assertEqual(
+                [r.text for r in self.rows_for(p, rel)], ["parser: %s is not a JSON object" % what]
+            )
+        path = self.home / CLINE_PENDING_START
+        path.write_text('[{"account": "x"}, {"sessionId": "ses-1"}]', encoding="utf-8")
+        rows = self.rows_for(p, CLINE_PENDING_START)
+        self.assertEqual(
+            [(r.source_line, r.session_id, r.text.split(" ")[0]) for r in rows],
+            [
+                (2, "ses-1", "session"),
+                (2, "ses-1", "session"),
+                (1, "", "parser:"),
+            ],
+        )
+        self.assertEqual(rows[-1].text, "parser: pending-start record 1 has no sessionId")
+        path.write_text("{}", encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(p, CLINE_PENDING_START)],
+            ["parser: cloud pending-start file is not a JSON array"],
+        )
+
+    def test_rejected_and_blocked_calls(self):
+        self._reopen(build_cline_denied_and_imported)
+        rel = ".cline/data/sessions/%s/%s.messages.json" % (
+            CLINE_DENIED_SESSION,
+            CLINE_DENIED_SESSION,
+        )
+        rows = self.rows_for(ClineParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.tool_use_id) for r in rows],
+            [
+                ("user", "", ""),
+                ("tool_use", "bash", "call_r"),
+                ("tool_use", "web_fetch", "call_b"),
+                ("tool_result", "bash", "call_r"),
+                ("system", "bash", "call_r"),
+                ("tool_result", "web_fetch", "call_b"),
+                ("system", "web_fetch", "call_b"),
+            ],
+        )
+        self.assertEqual(
+            rows[4].text,
+            "permission decision: rejected reason=This tool call was rejected by the user and"
+            " not executed. The user provided the following feedback:\n<feedback>\nnot that"
+            " one\n</feedback>",
+        )
+        self.assertEqual(
+            rows[6].text,
+            'permission decision: blocked reason=Tool "web_fetch" is disabled by policy',
+        )
+        self.assertEqual(
+            {(r.timestamp_utc, r.session_id, r.model) for r in rows[3:]},
+            {("2026-10-03T10:08:22.000Z", CLINE_DENIED_SESSION, "claude-sonnet-4-5")},
+        )
+        # A successful or merely failed call has no decision row.
+        plain = self.rows_for(ClineParser(), self.SDK + ".messages.json")
+        self.assertFalse([r for r in plain if r.text.startswith("permission decision:")])
+
+    def test_imported_session_names_its_source(self):
+        self._reopen(build_cline_denied_and_imported)
+        rel = ".cline/data/sessions/%s/%s.json" % (CLINE_IMPORTED_SESSION, CLINE_IMPORTED_SESSION)
+        start = self.rows_for(ClineParser(), rel)[0]
+        self.assertEqual(start.session_id, CLINE_IMPORTED_SESSION)
+        self.assertTrue(start.text.startswith("session start: source=desktop"), start.text)
+        self.assertIn(
+            " prompt=port the parser imported_from=claude-code"
+            " imported_session=5f0c1d2e-0000-4000-8000-00000000c1a0"
+            " imported_path=/home/u/.claude/projects/-srv-proj/5f0c1d2e.jsonl"
+            " imported_at=2026-10-03T10:11:45.000Z imported_provider=anthropic"
+            " imported_model=claude-opus-4-5",
+            start.text,
+        )
+        native = self.rows_for(ClineParser(), self.SDK + ".json")[0]
+        self.assertNotIn("imported_", native.text)
 
 
 class RooCodeTests(ParserBase):
