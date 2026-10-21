@@ -1366,7 +1366,54 @@ writes one `debug report uploaded: <url> (from pastes/pending.json,
 expire_at minus 6 hours)` row per paste.rs link that `hermes debug
 share` uploaded and that is still due for deletion, at the upload time,
 with an empty `session_id`: the uploaded logs hold recent messages but
-name no session.
+name no session. Since 0.20.1 `hermes` also writes, at a session's
+`started_at` after its model rows, `session relayed: <source> chat
+<chat_id> type <chat_type> thread <thread_id> user <user_id> name
+<user_name> display <display_name> (from state.db sessions, started_at)`
+for a session carried through a messaging platform, so its `relayed` is
+`yes` and every other Hermes session's `no`; `permission setting:
+yolo_mode=<true|false> (from state.db sessions.model_config,
+started_at)` when the session's `/yolo` bypass (every approval off) is
+recorded; and `scratch directory: <cwd> (git worktree the agent created
+in <repo>, branch <git_branch>)` for a session run in a worktree Hermes
+made under `<repo>/.worktrees/`. The session-start row ends
+` | archived=1` for an archived session and ` | imported from <tool>
+<path> session <id>` for a session Hermes copied from Claude Code or
+Codex CLI. After a `terminal` tool result that records the approval
+outcome, a `permission decision: approved (<approval note>)`,
+`permission decision: blocked <error>` (with ` user_summary=<summary>`
+when a person was asked) or `permission decision: pending
+pattern=<pattern_key> smart_denied=<true|false>` row carries the call's
+`tool_use_id`. Standing approvals are `permission setting:
+command_allowlist=<pattern> (from config.yaml, file mtime)` per pattern
+an "always" answer allowed, and `permission setting:
+pairing.<platform>.<user id> user_name=<name> (from
+pairing/<platform>-approved.json, approved_at)` (or
+`platforms/pairing/...`) per messaging user the gateway's owner
+approved, at the approval time. `session deleted: <id>
+(from state.db state_meta gateway.retired_session.v1, retired_at)`, with
+` sweep` after the id when the idle sweep rather than a delete removed
+the session, is the deletion record Hermes keeps after the rows are
+gone, at the deletion time and with the deleted session's id. `relay
+peer: <source> <session_key> generation <n> (from state.db
+conversation_generations)`, with no time or session, names a messaging
+chat that ever had a conversation; `bot mode room <name> (<room_id>)
+seq <seq> <kind> actor <actor kind>:<actor id> (<display_name>): <text>`
+is one event of a desktop Bot Mode group chat, at its time; and
+`remote backend: <kind> <label> <url or user@host:port> (from
+connections.json, file mtime)`, with ` org=`, ` name=` and ` profile=`
+when recorded, is a remote, SSH or Hermes Cloud backend the desktop app
+was connected to, with no session. In the secondary sources, a prompt
+history entry that starts with `/` is `slash command: <entry>`, each
+cron run file starts with `cron run: job <job id> (from cron/output,
+file name time, host-local)` and a run document with no prompt section
+is one row `cron run output: <document>`, each `response_store.db`
+response is `api server response <id> status=<status> model=<model>
+conversation=<name> (from response_store.db responses, created_at)`, and
+each trajectory line is `trajectory: model=<model> completed=<true|false>
+(from <file>, timestamp host-local)` before its turns, whose system
+prompt is `trajectory system prompt: <text>`. `-` stands for an absent
+value.
 
 OpenHands, Agent Zero, nanobot and Muse Code write the same kinds of row.
 `openhands` writes `model: <id>` after each conversation's header row, at
@@ -1545,7 +1592,7 @@ beside its `session synced: server conversation` row.
 | `cursor` | `.cursor/projects/<project>/agent-transcripts/<composerId>/<composerId>.jsonl`, the agent worker's copy of each conversation (a prompt is stamped to the minute in local time with its UTC offset: a 60-second window; replies and tool calls have no timestamp and match on text within the conversation; the tool calls name the tools differently from the database, so they never pair) | the editor's `User/globalStorage/state.vscdb` `cursorDiskKV` composer and bubble rows |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
 | `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone) | `.local/share/goose/sessions/sessions.db` |
-| `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full`) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session), also under `.hermes_<suffix>`, `AppData/Local/hermes`, `profiles/<name>/` and, since 0.19.0, the root of a Docker or Podman volume | `.hermes/state.db` |
+| `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full` before collector 1.18.0) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session); since 0.20.1 also `.hermes/.hermes_history` (no session or project: matches on text and time), `.hermes/cron/output/<job>/<time>.md` (no session: matches on text and time), `.hermes/response_store.db` (no timestamp per message: matches on text within the session) and the `trajectory_samples.jsonl` and `failed_trajectories.jsonl` files of a project (no timestamp per turn: matches on text within the project); all but the trajectory files also under `.hermes_<suffix>`, `AppData/Local/hermes`, `profiles/<name>/` and, since 0.19.0, the root of a Docker or Podman volume | `.hermes/state.db` |
 | `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
 | `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot*/history/cli_history` (no session or project: matches on text and time); when a `sessions.sqlite3` sits in the namespace directory, the namespace's `<key>.jsonl` files and their `jsonl-backup/` copies, which the database imported (since 0.19.0) | `.nanobot*/sessions/<workspace-id>/sessions.sqlite3`, else `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
@@ -1562,10 +1609,10 @@ a second from the database step. Qwen Code's `logs.json` rows have no
 project path and match by `sessionId` only. A known miss: a prompt the
 agent queued and sent later (Claude Code queues input typed while it
 works) can be minutes from its transcript record, and is then shown
-twice, the history row at the time it was typed. Hermes's quick
-snapshots (`state-snapshots/`) are excluded by the collector unless it
-runs with `--full`, so they appear only in a full collection or loose
-input.
+twice, the history row at the time it was typed. Collectors before
+1.18.0 excluded Hermes's quick snapshots (`state-snapshots/`) unless run
+with `--full`, so in their collections the snapshots appear only in a
+full collection or loose input.
 
 Some sources have a wider window, because they stamp an event later
 than the primary store does or more coarsely. Cursor's agent transcript
@@ -1581,7 +1628,11 @@ nanobot's WebUI transcript stamps events in
 true UTC while its session files record host local time, emitted as if
 UTC, so its window is 15 hours (the largest UTC offset, 14 hours, plus
 an hour of turn); a WebUI row kept because no session row matched
-carries true UTC, unlike every other nanobot row.
+carries true UTC, unlike every other nanobot row. Hermes's
+`.hermes_history` (the classic CLI's entries) and cron run files record
+host local time, emitted as if UTC, against the true UTC of `state.db`,
+so their window is 14 hours plus 2 seconds; the TUI's history entries
+are true UTC and fall within it as well.
 
 Several sources record no time for an event, and their rows match on
 text and scope alone: Muse Code's `tui-history.jsonl`, Goose's
