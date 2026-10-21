@@ -268,7 +268,6 @@ excl||.hermes/sandboxes
 excl||.hermes/checkpoints/store/objects
 excl||.hermes/checkpoints/store/indexes
 excl||.hermes/checkpoints/legacy-1
-excl||.hermes/state-snapshots
 excl||.hermes/backups
 excl||.hermes/browser-profile
 excl||.hermes/browser-profiles
@@ -286,7 +285,6 @@ excl||AppData/Local/hermes/sandboxes
 excl||AppData/Local/hermes/checkpoints/store/objects
 excl||AppData/Local/hermes/checkpoints/store/indexes
 excl||AppData/Local/hermes/checkpoints/legacy-1
-excl||AppData/Local/hermes/state-snapshots
 excl||AppData/Local/hermes/backups
 excl||AppData/Local/hermes/browser-profile
 excl||AppData/Local/hermes/browser-profiles
@@ -1158,6 +1156,25 @@ printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
 
+# 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208)
+# hermes-agent 86fa9e6 (source only): a quick snapshot under state-snapshots
+# holds an older state.db, the only copy of a pruned or deleted session, so
+# it is collected, while the credential copies beside it (.env, auth.json,
+# the pairing stores) stay flagged by the home-relative secret globs. The
+# desktop app's connection.json and connections.json can hold a gateway
+# token in plain text and are flagged. Checks follow the default and
+# --no-secrets runs below; the same files are in smoke.ps1 under alice.
+Q123="$H/.hermes/state-snapshots/20261001-120004-pre-update"
+W123="$H/AppData/Local/hermes/state-snapshots/20261001-120004"
+mkdir -p "$Q123/pairing" "$W123" "$H/.config/Hermes"
+printf 'sqlite\n' >"$Q123/state.db"
+printf '{"id":"20261001-120004-pre-update"}\n' >"$Q123/manifest.json"
+printf 'KEY=x\n' >"$Q123/.env"
+printf '{"providers":{}}\n' >"$Q123/auth.json"
+printf '{"42":{"user_name":"u"}}\n' >"$Q123/pairing/telegram-approved.json"
+printf 'sqlite\n' >"$W123/state.db"
+printf '{"connections":[]}\n' >"$H/.config/Hermes/connections.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1541,6 +1558,11 @@ check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 
+# 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208)
+check "#123 Hermes quick snapshot state.db collected" "row \"$Q123/state.db\" | grep -q '\"agent\":\"hermes\".*\"secret\":false,\"status\":\"collected\"' && row \"$Q123/manifest.json\" | grep -q '\"secret\":false,\"status\":\"collected\"' && row \"$W123/state.db\" | grep -q '\"agent\":\"hermes\".*\"secret\":false,\"status\":\"collected\"' && [ -z \"\$(status_of \"$H/.hermes/state-snapshots\")\" ]"
+check "#123 Hermes quick snapshot credentials flagged secret" "row \"$Q123/.env\" | grep -q '$SEC153' && row \"$Q123/auth.json\" | grep -q '$SEC153' && row \"$Q123/pairing/telegram-approved.json\" | grep -q '$SEC153'"
+check "#208 Hermes desktop connection files flagged secret" "row \"$H/.config/Hermes/connections.json\" | grep -q '\"agent\":\"hermes\".*$SEC153' && row \"$H/.config/Hermes/connection.json\" | grep -q '$SEC153'"
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -1567,6 +1589,9 @@ check "#153 Qwen Code channel credentials skipped without secrets" "[ \"\$(statu
 check "#153 Qwen Code channel routing files kept without secrets" "[ \"\$(status_of \"$H/.qwen/channels/sessions.json\")\" = collected ] && [ \"\$(status_of \"$H/.qwen/channels/daemon/0123abcd/routes.json\")\" = collected ]"
 # 2026-10-18 Codex shell snapshots (#160)
 check "#160 Codex shell snapshot skipped without secrets" "[ \"\$(status_of \"$S160\")\" = skipped_secret ]"
+# 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208)
+check "#123 Hermes quick snapshot credentials skipped without secrets" "[ \"\$(status_of \"$Q123/.env\")\" = skipped_secret ] && [ \"\$(status_of \"$Q123/auth.json\")\" = skipped_secret ] && [ \"\$(status_of \"$Q123/state.db\")\" = collected ]"
+check "#208 Hermes desktop connection files skipped without secrets" "[ \"\$(status_of \"$H/.config/Hermes/connections.json\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"
@@ -1645,6 +1670,15 @@ printf 'k\n' >"$DV/langflow_langflow-data/_data/cache_secret_key"
 printf 'x\n' >"$DV/langflow_langflow-data/_data/profile_pictures/p.svg"
 printf 'db\n' >"$DV/docker_dify_agent_local_sandbox_home/_data/.local/share/shellctl/shellctl.db"
 printf 'x\n' >"$DV/docker_dify_agent_local_sandbox_workspace/_data/out.txt"
+# 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208): a
+# Hermes home in a named volume keeps its quick snapshots at the volume root,
+# so their credential copies need the volume-relative secret globs.
+V123="$DV/hermes_home/_data/state-snapshots/20261001-120004"
+mkdir -p "$V123/pairing"
+printf 'sqlite\n' >"$V123/state.db"
+printf 'KEY=x\n' >"$V123/.env"
+printf '{"providers":{}}\n' >"$V123/auth.json"
+printf '{}\n' >"$V123/pairing/telegram-approved.json"
 run fwvolumes; check "frameworks volumes exit 0" "[ $? -eq 0 ]"
 check "n8n_data volume collected as n8n" "row \"$FV/database.sqlite\" | grep -q '\"user\":\"docker\",\"home\":\"$FV\",\"agent\":\"n8n\".*\"status\":\"collected\"'"
 check "n8n volume config flagged secret (volume-relative)" "row \"$FV/config\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
@@ -1658,7 +1692,9 @@ check "langflow-data volume cache_secret_key flagged (volume-relative)" "row \"$
 check "langflow-data volume profile_pictures excluded (volume-relative)" "[ \"\$(status_of \"$DV/langflow_langflow-data/_data/profile_pictures\")\" = skipped_excluded ]"
 check "dify sandbox home volume collected as dify" "row \"$DV/docker_dify_agent_local_sandbox_home/_data/.local/share/shellctl/shellctl.db\" | grep -q '\"agent\":\"dify\".*\"status\":\"collected\"'"
 check "dify sandbox workspace volume collected as dify" "row \"$DV/docker_dify_agent_local_sandbox_workspace/_data/out.txt\" | grep -q '\"agent\":\"dify\".*\"status\":\"collected\"'"
-rm -rf "$DV/n8n_data" "$DV/n8n_n8n-data" "$DV/langflow_langflow-data" "$DV/docker_dify_agent_local_sandbox_home" "$DV/docker_dify_agent_local_sandbox_workspace"
+# 2026-10-21 Hermes quick snapshots and desktop connections (#123, #208)
+check "#123 Hermes volume quick snapshot collected, credentials flagged (volume-relative)" "row \"$V123/state.db\" | grep -q '\"user\":\"docker\".*\"agent\":\"hermes\".*\"secret\":false,\"status\":\"collected\"' && row \"$V123/.env\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$V123/auth.json\" | grep -q '\"secret\":true,\"status\":\"collected\"' && row \"$V123/pairing/telegram-approved.json\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+rm -rf "$DV/n8n_data" "$DV/n8n_n8n-data" "$DV/langflow_langflow-data" "$DV/docker_dify_agent_local_sandbox_home" "$DV/docker_dify_agent_local_sandbox_workspace" "$DV/hermes_home"
 
 # ---- --inventory (1.6.0, 2026-10-04) ---------------------------------------
 # Stat-only fleet inventory: JSON Lines on stdout, nothing written anywhere.
