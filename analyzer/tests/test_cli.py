@@ -703,6 +703,7 @@ class TimelineProjectStatusTests(unittest.TestCase):
 # them), the later backup's thread 7 (the live database has it) and the
 # second backup copy of ephemeral thread 3.
 FIXTURE_DEDUPLICATED = {
+    "agent-zero": 1,  # scheduler tasks.json: the task chat's reply (issue 204)
     "aider": 2,  # "rename foo to bar", "/add b.py"
     "antigravity": 14,  # history 1; brain mirror 7 (CLI) + 6 (app)
     "claude-code": 2,  # .claude and .claude-work history.jsonl
@@ -715,6 +716,7 @@ FIXTURE_DEDUPLICATED = {
     "gemini-cli": 1,  # "list files in src"
     "goose": 1,  # "run the tests", no timestamp
     "hermes": 11,  # snapshot copies and the divert's screenshot prompt
+    "kiro": 1,  # .cli_bash_history "list the files here" (issue 212)
     "letta": 4,  # transcript.jsonl turn: prompt, tool_use, tool_result, reply
     "little-coder": 17,  # v0.0.x session_latest.json 8, history.json 8, input_history 1
     "muse-code": 1,  # "fix the failing test", no timestamp
@@ -727,7 +729,10 @@ FIXTURE_DEDUPLICATED = {
     "pi": 4,  # pi-debug.log: prompt, model row, tool_use, tool_result
     "qwen-code": 1,  # "run the tests"
     "roo-code": 2,  # "rename the helper" and "yes", no timestamp
-    "tabby": 8,  # completion prompt and choice, threads 7 and 3 in the backups
+    "shellgpt": 1,  # response cache: the answer the chat file holds (issue 189)
+    # completion prompt and choice, threads 7 and 3 in the backups, and
+    # each backup's copy of the GitHub integration row (issue 211)
+    "tabby": 10,
 }
 
 
@@ -830,7 +835,10 @@ class SyncedSessionTests(unittest.TestCase):
         ):
             self.assertEqual(by_id[key], want, key)
         origin_agents = {p.agent for p in ALL if p.records_origin}
-        self.assertEqual(origin_agents, {"vscode", "chatgpt-desktop", "cursor", "agent-zero"})
+        # Cline records origin since issue 190; its fixture sessions are local.
+        self.assertEqual(
+            origin_agents, {"vscode", "chatgpt-desktop", "cursor", "agent-zero", "cline"}
+        )
         self.assertEqual({v for (agent, _), v in by_id.items() if agent not in origin_agents}, {""})
         self.assertEqual(
             {v for (agent, _), v in by_id.items() if agent == "vscode"}, {"remote", "local"}
@@ -1015,9 +1023,12 @@ class SyncedSessionTests(unittest.TestCase):
         sessions = read_jsonl(out / "sessions.jsonl")
         by_id = {(s["agent"], s["session_id"]): s["relayed"] for s in sessions}
         # The Agent Zero Telegram chat, the Goose gateway session, the two
-        # Qwen Code channel routes and the three nanobot sessions keyed to or
-        # routed through a messaging channel are relayed; the other sessions
-        # of those agents are not.
+        # Qwen Code channel routes, the three nanobot sessions keyed to or
+        # routed through a messaging channel, the OpenClaw Telegram
+        # conversation (issue 206) and the Letta channel route (issue 202) are
+        # relayed; the other sessions of those agents are not. Crush (issue
+        # 195) and little-coder (issue 157) record relay, but no fixture
+        # session of theirs is relayed: little-coder's row names no session.
         for key, want in (
             (("agent-zero", AGENT_ZERO_TG_CHAT), "yes"),
             (("agent-zero", AGENT_ZERO_CHAT), "no"),
@@ -1031,26 +1042,49 @@ class SyncedSessionTests(unittest.TestCase):
             (("nanobot", NANOBOT_DB_KEY), "yes"),
             (("nanobot", "unified:default"), "yes"),
             (("nanobot", "websocket:chat-1"), "no"),
+            (("openclaw", OPENCLAW_SESSION), "yes"),
+            (("openclaw", OPENCLAW_RESET_SESSION), "no"),
+            (("letta", "conv-9f"), "yes"),
+            (("letta", "local-conv-1"), "no"),
+            (("crush", "6f1c0001"), "no"),
+            (("little-coder", "c0ffee12"), "no"),
             (("copilot-cli", COPILOT_SESSION), ""),
             (("claude-code", CLAUDE_SESSION), ""),
         ):
             self.assertEqual(by_id[key], want, key)
         relay_agents = {p.agent for p in ALL if p.records_relay}
-        self.assertEqual(relay_agents, {"agent-zero", "goose", "hermes", "nanobot", "qwen-code"})
+        self.assertEqual(
+            relay_agents,
+            {
+                "agent-zero",
+                "crush",
+                "goose",
+                "hermes",
+                "letta",
+                "little-coder",
+                "nanobot",
+                "openclaw",
+                "qwen-code",
+            },
+        )
         self.assertEqual({v for (agent, _), v in by_id.items() if agent not in relay_agents}, {""})
         self.assertEqual(
             {v for (agent, _), v in by_id.items() if agent in relay_agents}, {"yes", "no"}
         )
         inv = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
-        self.assertEqual(inv["relayed_sessions"], 7)
+        self.assertEqual(inv["relayed_sessions"], 9)
         agents = {a["agent"]: a for h in inv["homes"] for a in h["agents"]}
         self.assertEqual(agents["agent-zero"]["relayed_sessions"], 1)
         self.assertEqual(agents["goose"]["relayed_sessions"], 1)
         self.assertEqual(agents["qwen-code"]["relayed_sessions"], 2)
         self.assertEqual(agents["nanobot"]["relayed_sessions"], 3)
+        self.assertEqual(agents["openclaw"]["relayed_sessions"], 1)
+        self.assertEqual(agents["letta"]["relayed_sessions"], 1)
+        self.assertEqual(agents["crush"]["relayed_sessions"], 0)
+        self.assertEqual(agents["little-coder"]["relayed_sessions"], 0)
         self.assertEqual(agents["copilot-cli"]["relayed_sessions"], 0)
         line = next(x for x in stdout.splitlines() if x.startswith("sessions:"))
-        self.assertIn(", 7 relayed", line)
+        self.assertIn(", 9 relayed", line)
 
     def test_synced_codex_and_cline(self):
         # A `/feedback` report marks a Codex or Open Interpreter thread, and
@@ -1164,9 +1198,12 @@ class SyncedSessionOpenClawAgentZeroTests(unittest.TestCase):
         self.assertEqual(agents["agent-zero"]["relayed_sessions"], 1)
         self.assertEqual(agents["goose"]["relayed_sessions"], 0)
         self.assertEqual(agents["qwen-code"]["relayed_sessions"], 2)
-        self.assertEqual(agents["openclaw"]["relayed_sessions"], 0)
+        # The OpenClaw Telegram conversation (issue 206) and the Letta
+        # channel route (issue 202) are relayed too.
+        self.assertEqual(agents["openclaw"]["relayed_sessions"], 1)
+        self.assertEqual(agents["letta"]["relayed_sessions"], 1)
         self.assertEqual(agents["nanobot"]["relayed_sessions"], 3)
-        self.assertEqual(inv["relayed_sessions"], 6)
+        self.assertEqual(inv["relayed_sessions"], 8)
 
 
 class SyncedSessionB3Tests(unittest.TestCase):
