@@ -34,6 +34,15 @@ openinterpreter/openinterpreter at 2767e5f (see
   project. Read by the shared reader in `codex_state.py`: one `session
   synced: feedback report uploaded to Sentry, ...` row per sent report,
   so `records_sync` is inherited and set.
+* `.openinterpreter/config.toml`, `.openinterpreter/rules/*.rules`,
+  `.openinterpreter/memories/rollout_summaries/*.md` and
+  `.openinterpreter/db-backups/sqlite-*/state_5.sqlite`: the standing
+  grants, memory summaries and database backups the fork keeps from Codex
+  at ac1fcc8 (`core/src/exec_policy.rs:54-56`,
+  `memories/write/src/storage.rs:110-136`,
+  `state/src/runtime/recovery.rs:12`), read by the shared reader as for
+  Codex (source-derived). The fork's core logs no approval decision and
+  has no `guardian_review_feedback` table, so those rows cannot occur.
 * `.openinterpreter/external_agent_session_imports.json`: the `/import`
   ledger, `records[]` with `source_path`, `content_sha256`,
   `imported_thread_id`, `imported_at` and optional `source_modified_at`

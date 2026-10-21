@@ -2981,10 +2981,13 @@ find_claude_code_projects() {
 # in chat.json. Temporaries: _fcsp_.
 find_cli_session_projects() {
   # A Codex cwd in this home's Documents/Codex (the ChatGPT desktop app's projectless output
-  # directories, which the catalog collects whole) is not a project.
-  session_cwds "$1/.codex/sessions" '*.jsonl' | while IFS= read -r _fcsp_cwd; do
+  # directories, which the catalog collects whole) or .codex/worktrees (thread worktrees,
+  # excluded) is not a project. An archived thread's rollout is in archived_sessions.
+  for _fcsp_dir in "$1/.codex/sessions" "$1/.codex/archived_sessions"; do
+    session_cwds "$_fcsp_dir" '*.jsonl'
+  done | while IFS= read -r _fcsp_cwd; do
     case $ROOT$_fcsp_cwd in
-      ("$1/Documents/Codex" | "$1/Documents/Codex/"*) ;;
+      ("$1/Documents/Codex" | "$1/Documents/Codex/"* | "$1/.codex/worktrees/"*) ;;
       (*) printf '%s\n' "$_fcsp_cwd" ;;
     esac
   done
@@ -3042,8 +3045,15 @@ find_agent_session_projects() {
   json_path_keys "$1/.pi/agent/trust.json" '[tf]'
   json_path_keys "$1/.config/muse/trust.json" '{'
   json_vals workspace_root "$1"/.local/share/muse/sessions/*/*/*/*/session.jsonl
+  # A cwd under this home's .openinterpreter/worktrees (thread worktrees, excluded) is not a
+  # project.
   for _fasp_dir in "$1/.openinterpreter/sessions" "$1/.openinterpreter/archived_sessions"; do
     session_cwds "$_fasp_dir" 'rollout-*.jsonl'
+  done | while IFS= read -r _fasp_cwd; do
+    case $ROOT$_fasp_cwd in
+      ("$1/.openinterpreter/worktrees/"*) ;;
+      (*) printf '%s\n' "$_fasp_cwd" ;;
+    esac
   done
   json_vals path "$1/.openhands/workspaces.json"
   json_vals working_dir "$1"/.openhands/agent-canvas/dev_conversations/*/meta.json \

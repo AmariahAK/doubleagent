@@ -1022,6 +1022,38 @@ call under review in that window (else `exec -` and an empty
 whose text the parser cannot read is a `parser: unreadable approval log
 row (<target>): <text>` row.
 
+From Codex source, with no real install yet to confirm them, and for
+Open Interpreter's home as well where the fork keeps the code: an
+`apply_patch` approval in `logs_<N>.sqlite` is `permission decision:
+<decision> patch <item id> (from logs_<N>.sqlite logs, ts)`, with the
+thread as `session_id` and the `FileChange` item's id as `tool_use_id`;
+each record of the `guardian_review_feedback` table of `state_5.sqlite`,
+an automatic review that did not allow the action, is a row at the
+record's capture time with the reviewed thread as `session_id` and the
+governed item as `tool_use_id`. A `denied` record whose decision is the
+reviewer's JSON verdict reads exactly as the guardian review thread's
+row, so the timeline keeps one of the two; any other reads
+`permission decision: <status> (auto_review feedback model=<model>) exec
+<item id> turn=<turn id> reviewer <review thread id>: <decision> action:
+<reviewed command>`, `<status>` being `denied`, `invalid_decision`,
+`missing_decision`, `failed`, `timed_out` or `aborted`. The standing
+grants are one row each, `permission setting: <key>=<value> (from
+.codex/config.toml, file mtime)` for `approval_policy`,
+`approvals_reviewer`, `sandbox_mode`, `default_permissions`,
+`projects.<path>.trust_level` (with `project_path` the path) and each MCP
+or app tool's `approval_mode`, and `permission setting: <statement> (from
+.codex/rules/<file>, file mtime)` for each statement of a rules file
+(`prefix_rule(...)` for an "approve and remember" answer,
+`network_rule(...)` for a network answer), at the file's modification
+time with an empty `session_id`; a project's own `.codex/config.toml` and
+`.codex/rules/` give the same rows with the project as `project_path`.
+No other key of `config.toml` is shown. A `thread_goal_updated` event is
+`thread goal: status=<status> turn=<turn id> objective: <objective>`, and
+each `.codex/memories/rollout_summaries/<file>.md` is one row
+`memory summary: thread <thread id> rollout=<path> (from <file>,
+updated_at): <summary>` at the summary's `updated_at`, with the thread as
+`session_id`; it repeats no event, so it is never dropped as a copy.
+
 Each `/feedback` report recorded in `logs_<N>.sqlite`
 is one row `session synced: feedback report uploaded to Sentry,
 attachments <uploaded_attachments> failed <attachments_failed> (from
@@ -1637,7 +1669,7 @@ beside its `session synced: server conversation` row.
 | `claude-code` | `.claude/history.jsonl` (and `.claude-<name>/history.jsonl`) | `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `claude-desktop` | each Cowork session's `local-agent-mode-sessions/<acct>/<org>/[agent/]<session dir>/audit.jsonl` under the app-data directory; the session records `local_<uuid>.json` beside the session dirs and under `claude-code-sessions/` (a Cowork record's first prompt has no timestamp: matches on text within the session) | the session dir's `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `cline` | `.cline/data/db/session-search.db` (no timestamp per message: matches on text and session; a message of content blocks keeps their type names and tool ids, so only plain-string prompts match); `.cline/data/cache/user_input_history.jsonl` (only the last line timestamped: the others match on text alone); `.cline/data/logs/hooks.jsonl` (tolerance one hour; tool rows match on the call id) | `.cline/data/sessions/<id>/<id>.messages.json` |
-| `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite`; `.codex/.codex-global-state.json` (the desktop app's prompt history, no timestamp: matches on text within the thread) | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
+| `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite`; `.codex/.codex-global-state.json` (the desktop app's prompt history, no timestamp: matches on text within the thread); `.codex/db-backups/<folder>/state_5.sqlite` (a copy Codex set aside as corrupt, read as `state_5.sqlite`) | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
 | `copilot-cli` | `.copilot/session-store.db` (`turns`, the prompt and the final reply of each turn, stamped when the turn ends: a one-hour window; its `sessions` name pairs with the `workspace.yaml` row; `session_files`, `session_refs`, `checkpoints` and `forge_trajectory_events` rows the log has no copy of are always kept); `.copilot/session-state/<id>/rewind-file-snapshots/index.json` (each turn's prompt, a one-hour window); `.copilot/command-history-state.json` (no timestamp, session or project: matches on text alone); each also under the pre-XDG `.local/state/.copilot` | `.copilot/session-state/<id>/events.jsonl` and `workspace.yaml` |
 | `cursor` | `.cursor/projects/<project>/agent-transcripts/<composerId>/<composerId>.jsonl`, the agent worker's copy of each conversation (a prompt is stamped to the minute in local time with its UTC offset: a 60-second window; replies and tool calls have no timestamp and match on text within the conversation; the tool calls name the tools differently from the database, so they never pair) | the editor's `User/globalStorage/state.vscdb` `cursorDiskKV` composer and bubble rows |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
@@ -1646,7 +1678,7 @@ beside its `session synced: server conversation` row.
 | `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
 | `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot*/history/cli_history` (no session or project: matches on text and time); when a `sessions.sqlite3` sits in the namespace directory, the namespace's `<key>.jsonl` files and their `jsonl-backup/` copies, which the database imported (since 0.19.0) | `.nanobot*/sessions/<workspace-id>/sessions.sqlite3`, else `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
-| `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
+| `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite`; `.openinterpreter/db-backups/<folder>/state_5.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
 | `openclaw` | `.openclaw/agents/<id>/sessions/` copies of a transcript: the published `*.jsonl.reset.*` / `*.jsonl.deleted.*` archive files, `*.checkpoint.<uuid>.jsonl` and `*.jsonl.pre-doctor-*-repair-*.bak` (each copy's session-start row names it and is kept) | `.openclaw/agents/<id>/agent/openclaw-agent.sqlite` (`transcript_events` and the `session_transcript_archives` blobs) and the legacy `sessions/<id>.jsonl` |
 | `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |

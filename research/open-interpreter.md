@@ -40,6 +40,13 @@ for [issue 64](https://github.com/seanthegeek/doubleagent/issues/64) (see
 
 ### Source reviews
 
+- 2026-10-21: [openinterpreter/openinterpreter](https://github.com/openinterpreter/openinterpreter)
+  at
+  [`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87),
+  the commit of the 2026-10-19 review; source only. The shared Codex reader now reads the standing
+  grants, the memory rollout summaries, the `thread_goal_updated` events and the `db-backups/`
+  copies of `state_5.sqlite` for the fork too, project discovery skips the thread worktrees, and
+  the [Source host rows](#source-host-rows) were added.
 - 2026-10-19: [openinterpreter/openinterpreter](https://github.com/openinterpreter/openinterpreter)
   at
   [`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87),
@@ -232,9 +239,11 @@ under `config.toml` `[desktop] git-worktree-root`
 ([`codex-rs/worktree/src/settings.rs:12`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L12),
 [`44`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/worktree/src/settings.rs#L44)).
 The default location is excluded ([Exclusions](#exclusions)); project discovery reads
-`.openinterpreter/sessions` and `archived_sessions` and drops no `cwd`, so a thread that ran in a
-worktree has the worktree discovered as a project. The `.zcode/cli/artifacts` spill directory is the
-agent's own output, under the catalog line.
+`.openinterpreter/sessions` and `archived_sessions` and, from collector 1.18.0, drops a `cwd` under
+`<home>/.openinterpreter/worktrees`
+([issue 222](https://github.com/seanthegeek/doubleagent/issues/222)), so only a worktree under a
+configured `git-worktree-root` is discovered as a project. The `.zcode/cli/artifacts` spill
+directory is the agent's own output, under the catalog line.
 
 ### Credentials
 
@@ -306,7 +315,8 @@ over `sessions/**/*.jsonl`) applies unchanged with `.openinterpreter` in place o
 `.jsonl.zst` rollouts need zstd first.
 
 A rollout `cwd` under `.openinterpreter/worktrees` (or a configured `git-worktree-root`) is a
-scratch directory rather than a project ([Scratch directories](#scratch-directories));
+scratch directory rather than a project ([Scratch directories](#scratch-directories)), and
+discovery skips one under the default location;
 `config.toml` `[projects."<path>"]` tables name the
 projects the user trusted or distrusted.
 
@@ -348,11 +358,11 @@ from Claude Code or Cursor. The memories files (off by default) and
 `db-backups/` exist as in Codex
 ([Memories and database backups](#memories-and-database-backups)); what a delete does to them is
 not stated in this document. No deletion marker is
-written. The analyzer reads `history.jsonl`, `state_5.sqlite` and
-`thread_history_1.sqlite` as secondary sources and the import ledger to
+written. The analyzer reads `history.jsonl`, `state_5.sqlite`,
+`thread_history_1.sqlite` and the `db-backups/` copies of `state_5.sqlite` as secondary sources,
+the memory rollout summaries as a source of their own and the import ledger to
 mark imported rollouts
-([Past use and secondary sources](#past-use-rows-and-secondary-sources)), and does not read
-the memories files or `db-backups/` (see
+([Past use and secondary sources](#past-use-rows-and-secondary-sources); see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### Record schema
@@ -509,10 +519,12 @@ row: the fork, like Codex, lists the approval request events among the transient
 never stores
 ([`rollout/src/policy.rs:140-204`](https://github.com/openinterpreter/openinterpreter/blob/2767e5f20d6927500b8f1938c773c61afb823245/codex-rs/rollout/src/policy.rs#L140-L204)).
 
-The standing grants of `rules/default.rules` and `config.toml` ([Standing grants](#standing-grants))
-are not read, as in Codex; per-call decisions can come only from the app server's response lines,
-since the core does not log the decision
-([Approval decisions in the logs](#approval-decisions-in-the-logs)).
+The standing grants of `rules/*.rules` and `config.toml` ([Standing grants](#standing-grants))
+give one `permission setting:` row per rule statement and per standing key, from the shared reader,
+as in Codex ([Permission rows in `codex-cli.md`](codex-cli.md#permission-rows)); source-derived;
+not observed on any real install. The per-call decisions the fork logs, and its lack of a
+`guardian_review_feedback` table, are in
+[Approval decisions in the logs](#approval-decisions-in-the-logs).
 
 #### Model rows
 
@@ -524,9 +536,14 @@ The rollouts are the primary store; `history.jsonl`, `state_5.sqlite` and
 `thread_history_1.sqlite` are secondary sources, read as for Codex
 ([Past use and secondary sources in
 `codex-cli.md`](codex-cli.md#past-use-rows-and-secondary-sources)).
-Each record of the import ledger becomes a `system` row naming `source_path`. The memories
-files and `db-backups/` ([Memories and database backups](#memories-and-database-backups)) are not
-read, as in Codex.
+Each record of the import ledger becomes a `system` row naming `source_path`. The memory
+rollout summaries, the `db-backups/` copies of `state_5.sqlite`
+([Memories and database backups](#memories-and-database-backups)) and the `thread_goal_updated`
+events, which the fork persists in the rollout as Codex does
+([`codex-rs/rollout/src/policy.rs:114`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/rollout/src/policy.rs#L114)), are read by the
+shared reader with Codex's roles and rows
+([Past-use rows in `codex-cli.md`](codex-cli.md#past-use-rows-and-secondary-sources));
+source-derived; not observed on any real install.
 
 #### Sync, relay and origin rows
 
@@ -595,6 +612,17 @@ record with the value in full
 The import ledger `external_agent_session_imports.json`:
 
 - `{"records":[{"source_path":"/home/alice/.claude/projects/-home-alice-proj/5b1c.jsonl","content_sha256":"ab12...","imported_thread_id":"0199a1b2-0000-7000-8000-000000000002","imported_at":1759312800}]}`
+
+#### Source host rows
+
+The agent records no source-host integration in a file the collector gathers (source at
+[`ac1fcc8`](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87),
+grepped for `github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor` and `clone`): as
+in Codex ([Source host rows in `codex-cli.md`](codex-cli.md#source-host-rows)), `codex cloud` looks
+up a server-side environment by the local repository's GitHub origin
+([`codex-rs/cloud-tasks/src/env_detect.rs:50-63`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/cloud-tasks/src/env_detect.rs#L50-L63))
+and the network proxy reads a GitHub token from the environment only
+([`codex-rs/network-proxy/src/credential_broker/providers/github.rs:13-20`](https://github.com/openinterpreter/openinterpreter/blob/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87/codex-rs/network-proxy/src/credential_broker/providers/github.rs#L13-L20)).
 
 ## Confidence
 

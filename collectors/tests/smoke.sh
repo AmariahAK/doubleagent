@@ -1201,6 +1201,26 @@ printf 'token\n' >"$P225/workspaces/registry/ws1/token"
 printf 'log\n' >"$P225/workspaces/registry/ws1/session.log"
 printf 'ref: refs/heads/main\n' >"$P225/workspaces/clones/repo-0123456789/.git/HEAD"
 
+# 2026-10-21 Codex worktree cwds and archived threads (#222)
+# Codex (source at 4e7b9e2) runs a desktop thread in its own git worktree,
+# ~/.codex/worktrees/<4 hex>/<repo>, excluded by the catalog, and moves an
+# archived thread's rollout flat into ~/.codex/archived_sessions; Open
+# Interpreter keeps the same worktree layout under ~/.openinterpreter.
+# Discovery drops a worktree cwd and reads the archive. Checks follow the
+# default run below; the same files are in smoke.ps1 (Codex under bob, Open
+# Interpreter under alice).
+mkdir -p "$B/.codex/archived_sessions" "$ROOT/srv/codexarch" "$B/.codex/worktrees/a1b2/repo" \
+  "$H/.openinterpreter/worktrees/c3d4/repo"
+printf '{"type":"session_meta","payload":{"cwd":"/srv/codexarch"}}\n' \
+  >"$B/.codex/archived_sessions/rollout-2026-10-01T00-00-00-a1.jsonl"
+printf '# agents\n' >"$ROOT/srv/codexarch/AGENTS.md"
+printf '{"type":"session_meta","payload":{"cwd":"/Users/bob/.codex/worktrees/a1b2/repo"}}\n' \
+  >"$B/.codex/sessions/2026/10/03/rollout-3.jsonl"
+printf '# agents\n' >"$B/.codex/worktrees/a1b2/repo/AGENTS.md"
+printf '{"type":"session_meta","payload":{"cwd":"/home/alice/.openinterpreter/worktrees/c3d4/repo"}}\n' \
+  >"$H/.openinterpreter/sessions/2026/10/04/rollout-2026-10-04T00-00-00-u3.jsonl"
+printf '# agents\n' >"$H/.openinterpreter/worktrees/c3d4/repo/AGENTS.md"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1595,6 +1615,11 @@ check "#224 difyctl login-pending.yml flagged secret" "row \"$H/.config/difyctl/
 check "#225 CLAI 2.0 state directory collected" "row \"$P225/orchestrator.json\" | grep -q '\"agent\":\"pydantic-clai\".*\"status\":\"collected\"' && row \"$P225/workspaces/registry/ws1/workspace.json\" | grep -q '\"agent\":\"pydantic-clai\".*\"status\":\"collected\"' && row \"$P225/workspaces/registry/ws1/session.log\" | grep -q '\"agent\":\"pydantic-clai\".*\"status\":\"collected\"'"
 check "#225 CLAI 2.0 workspace token flagged secret" "row \"$P225/workspaces/registry/ws1/token\" | grep -q '\"agent\":\"pydantic-clai\".*\"secret\":true,\"status\":\"collected\"'"
 check "#225 CLAI 2.0 workspace clones excluded" "[ \"\$(status_of \"$P225/workspaces/clones\")\" = skipped_excluded ] && ! grep -qF 'repo-0123456789/.git/HEAD' \"\$M\""
+
+# 2026-10-21 Codex worktree cwds and archived threads (#222)
+check "#222 Codex archived rollout cwd discovers project" "[ \"\$(status_of \"$ROOT/srv/codexarch/AGENTS.md\")\" = collected ] && grep '^  \"projects\"' \"\$S\" | grep -qF '\"$ROOT/srv/codexarch\"'"
+check "#222 Codex worktree cwd not a project" "! grep '^  \"projects\"' \"\$S\" | grep -q '\.codex/worktrees' && [ \"\$(status_of \"$B/.codex/worktrees\")\" = skipped_excluded ] && ! grep -qF 'worktrees/a1b2/repo/AGENTS.md' \"\$M\""
+check "#222 Open Interpreter worktree cwd not a project" "! grep '^  \"projects\"' \"\$S\" | grep -q '\.openinterpreter/worktrees' && ! grep -qF 'worktrees/c3d4/repo/AGENTS.md' \"\$M\""
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

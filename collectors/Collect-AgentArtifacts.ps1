@@ -3307,14 +3307,22 @@ function Find-ClaudeCodeProjects([string]$homeDir) {
 # extra folders are a string and a JSON array in chat.json.
 function Find-CliSessionProjects([string]$homeDir) {
   # A Codex cwd in this home's Documents/Codex (the ChatGPT desktop app's projectless output
-  # directories, which the catalog collects whole) is not a project.
+  # directories, which the catalog collects whole) or .codex/worktrees (thread worktrees,
+  # excluded) is not a project. An archived thread's rollout is in archived_sessions.
   $codexOutputDir = Join-PathSafe $homeDir 'Documents/Codex'
+  $codexWorktrees = (Join-PathSafe $homeDir '.codex/worktrees') + $script:Sep
   $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
-  Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.codex/sessions/*/*/*/*.jsonl') |
+  $codexRollouts = @(
+    Expand-Glob $homeDir '.codex/sessions/*/*/*/*.jsonl'
+    Expand-Glob $homeDir '.codex/archived_sessions/*.jsonl'
+    Expand-Glob $homeDir '.codex/archived_sessions/*/*/*/*.jsonl'
+  )
+  Get-JsonValues 'cwd' $codexRollouts |
     Where-Object {
       $cwdPath = [string](ConvertTo-LocalPath $_)
       -not ($cwdPath.Equals($codexOutputDir, $ignoreCase) -or
-        $cwdPath.StartsWith($codexOutputDir + $script:Sep, $ignoreCase))
+        $cwdPath.StartsWith($codexOutputDir + $script:Sep, $ignoreCase) -or
+        $cwdPath.StartsWith($codexWorktrees, $ignoreCase))
     }
   Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.qwen/projects/*/chats/*.jsonl')
   Get-JsonValues 'cwd' @(Expand-Glob $homeDir '.cline/data/sessions/*/*.json')
@@ -3395,11 +3403,16 @@ function Find-AgentSessionProjects([string]$homeDir) {
   Get-JsonKeys '\{' @((Join-PathSafe $homeDir '.config/muse/trust.json'))
   $museSessions = '.local/share/muse/sessions/*/*/*/*/session.jsonl'
   Get-JsonValues 'workspace_root' @(Expand-Glob $homeDir $museSessions)
+  # A cwd under this home's .openinterpreter/worktrees (thread worktrees, excluded) is not a
+  # project.
+  $oiWorktrees = (Join-PathSafe $homeDir '.openinterpreter/worktrees') + $script:Sep
   Get-JsonValues 'cwd' @(
     Expand-Glob $homeDir '.openinterpreter/sessions/*/*/*/rollout-*.jsonl'
     Expand-Glob $homeDir '.openinterpreter/archived_sessions/rollout-*.jsonl'
     Expand-Glob $homeDir '.openinterpreter/archived_sessions/*/*/*/rollout-*.jsonl'
-  )
+  ) | Where-Object {
+    -not ([string](ConvertTo-LocalPath $_)).StartsWith($oiWorktrees, $ignoreCase)
+  }
   Get-JsonValues 'path' @((Join-PathSafe $homeDir '.openhands/workspaces.json'))
   Get-JsonValues 'working_dir' @(
     Expand-Glob $homeDir '.openhands/agent-canvas/dev_conversations/*/meta.json'
