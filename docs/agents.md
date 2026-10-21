@@ -128,9 +128,11 @@ Validated against: Source at [e3051fb](https://github.com/agent0ai/agent-zero/co
 Files read: `.aider.chat.history.md`, `.aider.input.history`,
 `.aider.llm.history`, in a home or a repository (a project directory the
 collector gathered); the input and LLM histories are secondary sources of
-the chat history; times are host local time, emitted as if UTC.
+the chat history; times are host local time, emitted as if UTC. The
+chat history's announcement and confirmation lines also give the `model:`
+and `permission decision:` rows.
 
-Validated against: Source at [5dc9490](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c), synthetic fixture.
+Validated against: Source at [5dc9490](https://github.com/Aider-AI/aider/commit/5dc9490bb35f9729ef2c95d00a19ccd30c26339c), synthetic fixture; the `model:` and `permission decision:` rows from source at the same commit (reviewed 2026-10-21), synthetic fixture.
 
 ### `antigravity`
 
