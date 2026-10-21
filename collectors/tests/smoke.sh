@@ -1373,6 +1373,25 @@ printf '{"sessionId":"x","ipcToken":"x"}\n' >"$H/.qwen/sessions/4243-0123abcd.js
 mkdir -p "$H/.roo"
 printf '{"token":"not-a-real-token"}\n' >"$H/.roo/cli-credentials.json"
 
+# 2026-10-21 Twinny workspace storage (#215)
+# Twinny 4.3.15 (source, twinnydotdev/twinny 0337b265) keeps one
+# agent-changes/<uuid>.json record per agent-mode reply that changed files
+# in its per-workspace extension storage, workspaceStorage/<id>/
+# rjmacarthy.twinny, beside the editor's own workspace.json and
+# state.vscdb. The nested twinny entries claim that directory from the
+# editor's walk; the files beside it stay vscode. Checks follow the default
+# run below; the same files are in smoke.ps1 under alice.
+T215="$H/.config/Code/User/workspaceStorage/ws215"
+mkdir -p "$T215/rjmacarthy.twinny/agent-changes"
+printf '{"id":"c1","root":"/srv/twinproj","createdAt":1,"files":[]}\n' \
+  >"$T215/rjmacarthy.twinny/agent-changes/c1.json"
+printf '{"folder":"file:///srv/twinproj"}\n' >"$T215/workspace.json"
+# The twinny-server forge plugins (GitHub, GitLab, Gitea, Bitbucket) keep
+# their saved access tokens beside the watched repositories in
+# plugins/<id>/repos.json, flagged secret.
+mkdir -p "$H/.twinny/server/plugins/github"
+printf '{"version":1,"repos":[],"tokens":[]}\n' >"$H/.twinny/server/plugins/github/repos.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1820,6 +1839,11 @@ check "#230 Qwen Code session registry flagged secret" "row \"$H/.qwen/sessions/
 
 # 2026-10-21 Roo Code CLI cloud credentials (#159)
 check "#159 roo cli-credentials.json flagged secret" "row \"$H/.roo/cli-credentials.json\" | grep -q '\"agent\":\"roo-code\".*\"secret\":true,\"status\":\"collected\"'"
+
+# 2026-10-21 Twinny workspace storage (#215)
+check "#215 twinny workspaceStorage agent-changes attributed to twinny" "row \"$T215/rjmacarthy.twinny/agent-changes/c1.json\" | grep -q '\"agent\":\"twinny\".*\"status\":\"collected\"'"
+check "#215 twinny workspaceStorage neighbour stays vscode" "row \"$T215/workspace.json\" | grep -q '\"agent\":\"vscode\".*\"status\":\"collected\"'"
+check "#215 twinny-server forge repos.json flagged secret" "row \"$H/.twinny/server/plugins/github/repos.json\" | grep -q '\"agent\":\"twinny\".*\"secret\":true,\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

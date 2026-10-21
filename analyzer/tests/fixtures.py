@@ -13298,6 +13298,166 @@ def build_twinny_said(home: Path) -> None:
     _vscdb(home / TWINNY_SAID_REL, {"rjmacarthy.twinny": twinny_said_records()})
 
 
+# Twinny 4.3.15 records beside the conversations (#154, #199), from
+# research/twinny.md (twinnydotdev/twinny at 0337b265): the standing grants
+# and team policy in the global state value, the per-reply agent-changes
+# record, the Twinny log channel and the review tab's repository in the
+# workspace state value. A home of its own, like `build_twinny_said`.
+TWINNY_415_CONVERSATION = "7d1c2b3a-1111-4000-8000-000000000004"
+TWINNY_415_CHANGE = "5f0e9d8c-2222-4000-8000-000000000001"
+TWINNY_415_USER = ".config/Code/User"
+TWINNY_415_REL = TWINNY_415_USER + "/globalStorage/state.vscdb"
+TWINNY_415_WS = TWINNY_415_USER + "/workspaceStorage/ws1"
+TWINNY_415_WS_DB_REL = TWINNY_415_WS + "/state.vscdb"
+TWINNY_415_CHANGES_REL = (
+    TWINNY_415_WS + "/rjmacarthy.twinny/agent-changes/%s.json" % TWINNY_415_CHANGE
+)
+TWINNY_415_LOG_DIR = ".config/Code/logs/20261003T120000/window1/exthost/rjmacarthy.twinny"
+TWINNY_415_LOG_REL = TWINNY_415_LOG_DIR + "/Twinny.log"
+TWINNY_415_LOG_OLD_REL = TWINNY_415_LOG_DIR + "/Twinny.log_1"
+TWINNY_415_MTIME = 1791029400  # 2026-10-03T12:10:00Z, the state files' mtime
+TWINNY_415_EMAIL = "dev@example.invalid"
+# Two entries and a Debug block, in VS Code's file log format
+# (src/vs/platform/log/common/fileLog.ts:62-101 at microsoft/vscode 4d22f4f9)
+# with Twinny's messages (generation.ts:150-153, 188-207; logger.ts:77-87).
+TWINNY_415_LOG = (
+    "2026-10-03 14:00:01.250 [info] Chat → qwen2.5-coder:7b (Ollama) · "
+    "2 messages, 41 chars\n"
+    "2026-10-03 14:00:01.251 [debug] Chat messages\n"
+    "    [user]\n"
+    "    which tests fail?\n"
+    "    \n"
+    "    [assistant]\n"
+    "    Two tests fail.\n"
+    "2026-10-03 14:00:06.400 [info] Chat ← 5.1s · 15 chars\n"
+)
+
+
+def twinny_415_records():
+    """The global state value: one conversation whose reply changed two
+    files, the standing grants, a team policy and the ChatGPT plan profile
+    (an identity the parser must never emit)."""
+    return {
+        "twinny.conversations": {
+            TWINNY_415_CONVERSATION: {
+                "id": TWINNY_415_CONVERSATION,
+                "title": "Fix the tests",
+                "updatedAt": 1791029100000,
+                "messages": [
+                    {"role": "user", "content": "fix the failing tests"},
+                    {
+                        "role": "assistant",
+                        "content": "Fixed both.",
+                        "meta": {"model": "qwen2.5-coder:7b", "provider": "Ollama"},
+                        "changes": {
+                            "id": TWINNY_415_CHANGE,
+                            "files": [
+                                {
+                                    "path": "src/a.ts",
+                                    "status": "modified",
+                                    "added": 3,
+                                    "removed": 1,
+                                },
+                                {
+                                    "path": "logo.png",
+                                    "status": "created",
+                                    "added": 0,
+                                    "removed": 0,
+                                    "noUndo": True,
+                                },
+                            ],
+                        },
+                    },
+                ],
+            }
+        },
+        "twinny-global-context-agentMode": True,
+        "twinny-global-context-autoRunCommands": False,
+        "twinny-global-context-alwaysRunCommands": ["npm test", "git status"],
+        "twinny-global-context-alwaysRunMcpTools": ["github/list_issues"],
+        "twinny-global-context-twinny.selectedModel": "qwen2.5-coder:7b",
+        "twinny.teamPolicy": {
+            "url": "https://gateway.example.invalid",
+            "policy": {
+                "teamOnly": True,
+                "agent": {"commands": "ask", "blockedPaths": ["secrets/", ".env"]},
+            },
+            "providerIds": ["team-0a1b-chat"],
+            "fetchedAt": "2026-10-03T09:00:00.000Z",
+        },
+        "twinny.chatgpt-plan.profile": {
+            "clientId": "app_x",
+            "subject": "user-subject",
+            "email": TWINNY_415_EMAIL,
+            "name": "Dev",
+        },
+    }
+
+
+def twinny_415_change_record():
+    """The agent-changes record of the reply above (reply-changes.ts:35-47):
+    `src/a.ts` since put back, so `undone`."""
+    return {
+        "id": TWINNY_415_CHANGE,
+        "root": "/srv/proj",
+        "createdAt": 1791029098000,
+        "files": [
+            {
+                "path": "src/a.ts",
+                "status": "modified",
+                "added": 3,
+                "removed": 1,
+                "undone": True,
+                "before": "export const a = 1\n",
+                "afterHash": "ab" * 32,
+            },
+            {
+                "path": "logo.png",
+                "status": "created",
+                "added": 0,
+                "removed": 0,
+                "noUndo": True,
+                "before": None,
+                "afterHash": None,
+            },
+        ],
+    }
+
+
+def build_twinny_415(home: Path) -> None:
+    """Write the 4.3.15 stores to a home of their own, plus a noise file the
+    parser must not want (the workspace's workspace.json and the extension
+    host's own log)."""
+    _vscdb(home / TWINNY_415_REL, {"rjmacarthy.twinny": twinny_415_records()})
+    _vscdb(
+        home / TWINNY_415_WS_DB_REL,
+        {
+            "rjmacarthy.twinny": {
+                "twinny-workspace-context-reviewOwner": "acme",
+                "twinny-workspace-context-reviewRepo": "widgets",
+                "twinny-workspace-context-chatMessage": "draft",
+            }
+        },
+    )
+    for rel in (TWINNY_415_REL, TWINNY_415_WS_DB_REL):
+        os.utime(home / rel, (TWINNY_415_MTIME, TWINNY_415_MTIME))
+    changes = home / TWINNY_415_CHANGES_REL
+    changes.parent.mkdir(parents=True, exist_ok=True)
+    changes.write_text(json.dumps(twinny_415_change_record()), encoding="utf-8")
+    (home / TWINNY_415_WS / "workspace.json").write_text(
+        '{"folder":"file:///srv/proj"}\n', encoding="utf-8"
+    )
+    log = home / TWINNY_415_LOG_REL
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(TWINNY_415_LOG, encoding="utf-8")
+    (home / TWINNY_415_LOG_OLD_REL).write_text(
+        "2026-10-03 13:00:00.000 [warning] Chat failed: connection refused\n", encoding="utf-8"
+    )
+    (log.parent.parent / "exthost.log").write_text(
+        "2026-10-03 14:00:00.000 [info] Extension host started\n", encoding="utf-8"
+    )
+
+
 PEARAI_SESSION = "9b1c2d3e-0000-4000-8000-000000000001"
 PEARAI_SEARCH_SESSION = "9b1c2d3e-0000-4000-8000-000000000002"
 PEARAI_TASK = "1791036000000"

@@ -21,7 +21,10 @@ inside them goes to the extension's agent.
 - **Cline, Roo Code, Kilo Code, Continue, Sourcegraph Cody and Twinny:**
   their globalStorage is claimed by nested catalog entries, so those files
   are attributed to the extension's agent rather than to the editor,
-  whichever editor they sit in.
+  whichever editor they sit in. Twinny's per-workspace extension storage,
+  `workspaceStorage/<id>/rjmacarthy.twinny` (the `agent-changes/` record of
+  each agent-mode reply that changed files), is claimed the same way; the
+  `workspace.json` and `state.vscdb` beside it stay the editor's.
 - **Sourcegraph Cody's JetBrains plugin** keeps its application settings
   in each JetBrains IDE's `options/` directory: `cody.xml`,
   `cody_application_settings.xml`, `cody_accounts_settings.xml` and

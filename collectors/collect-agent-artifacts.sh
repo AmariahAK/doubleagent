@@ -297,7 +297,8 @@ vscode|.positron-server/data/User
 # VS Code family extension state. Each editor User directory is collected
 # above; these nested entries claim the agent extension globalStorage from
 # that walk so Cline, Roo, Kilo, Continue, Cody and Twinny files are
-# attributed to them.
+# attributed to them. Twinny also keeps per-workspace extension storage
+# (agent-changes/) under workspaceStorage/<id>/rjmacarthy.twinny.
 cline|.config/*/User/globalStorage/saoudrizwan.claude-dev
 cline|Library/Application Support/*/User/globalStorage/saoudrizwan.claude-dev
 cline|AppData/Roaming/*/User/globalStorage/saoudrizwan.claude-dev
@@ -316,12 +317,16 @@ cody|AppData/Roaming/*/User/globalStorage/sourcegraph.cody-ai
 twinny|.config/*/User/globalStorage/rjmacarthy.twinny
 twinny|Library/Application Support/*/User/globalStorage/rjmacarthy.twinny
 twinny|AppData/Roaming/*/User/globalStorage/rjmacarthy.twinny
+twinny|.config/*/User/workspaceStorage/*/rjmacarthy.twinny
+twinny|Library/Application Support/*/User/workspaceStorage/*/rjmacarthy.twinny
+twinny|AppData/Roaming/*/User/workspaceStorage/*/rjmacarthy.twinny
 cline|.*-server*/data/User/globalStorage/saoudrizwan.claude-dev
 roo-code|.*-server*/data/User/globalStorage/rooveterinaryinc.roo-cline
 kilo-code|.*-server*/data/User/globalStorage/kilocode.kilo-code
 continue|.*-server*/data/User/globalStorage/continue.continue
 cody|.*-server*/data/User/globalStorage/sourcegraph.cody-ai
 twinny|.*-server*/data/User/globalStorage/rjmacarthy.twinny
+twinny|.*-server*/data/User/workspaceStorage/*/rjmacarthy.twinny
 # Windsurf (rebranding to Devin)
 windsurf|.codeium
 windsurf|.windsurf
@@ -1508,6 +1513,7 @@ AppData/Roaming/JetBrains/*/options/cody_accounts.xml
 .twinny/node/identity.json
 .twinny/server/license
 .twinny/server/plugins/*/settings.json
+.twinny/server/plugins/*/repos.json
 .tabby/config.toml
 .tabby-client/agent/config.toml
 .openinterpreter/auth.json

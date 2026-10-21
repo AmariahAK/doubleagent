@@ -1776,7 +1776,32 @@ workspace's folder, never that file. Twinny's tool steps saved while waiting for
 Skip, or skipped, are `permission decision: waiting` and `permission
 decision: skipped`, each with ` approval=<command|change>` when the
 step records what was asked, after the step's `tool_result` row with
-its `tool_use_id`.
+its `tool_use_id`. Twinny's standing grants are `system` rows with an
+empty `session_id` at the modification time of the editor's
+`globalStorage/state.vscdb`, each ending ` (from state.vscdb
+rjmacarthy.twinny, file mtime)`: `permission mode: agentMode=<true|false>`,
+`permission setting: autoRunCommands=<true|false>`, one `permission
+setting: alwaysRunCommands=<command>` per command the user chose Always
+run for, one `permission setting: alwaysRunMcpTools=<server/tool>` per
+MCP tool, and one `permission setting: twinny.teamPolicy.<dotted
+key>=<value>` per leaf of the team gateway policy the user accepted (a
+list gives one row per entry). Each file a reply changed is `file
+changed: <status> <path> +<added> -<removed> reply=<id>`, with
+` undone=true` and ` noUndo=true` when set: in the conversation, after
+the reply's tool steps, and again from the reply's `agent-changes/`
+record with the record's `root` as `project_path`, its `createdAt` as the
+time and an empty `session_id`; `reply=<id>` joins the two, which
+deduplication cannot pair because the conversation records neither the
+project nor the reply's time. Each entry of the Twinny log channel is
+`log <level>: <message> (from <file name>, log line time, host-local)`,
+its continuation lines (a Debug block's prompt or reply) on the
+following lines, with an empty `session_id`, `source_line` the entry's
+first line and the log's host-local time written as if it were UTC.
+The `rjmacarthy.twinny` row of a workspace's
+`workspaceStorage/<id>/state.vscdb` gives `source host repository:
+https://github.com/<owner>/<repo> type=review (from workspaceStorage
+state.vscdb rjmacarthy.twinny, file mtime)` for the repository the pull
+request review tab last listed, at that file's modification time.
 The `vscode` parser writes `session synced: remote session
 <cloudSessionId> task <cloudTaskId> (from
 User/globalStorage/github.copilot-chat/cloudSessions.json, file mtime)`
@@ -2271,6 +2296,7 @@ beside its `session synced: server conversation` row.
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
 | `shellgpt` | the response cache `AppData/Local/Temp/shell_gpt/cache/<md5>`, one answer per file (no timestamp, session or project: matches on text alone; the answer after a function call is cached without the chat file's `> @FunctionCall` marker, so it never pairs and is kept) | the chat files `chat_cache/<id>` |
 | `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads, pages, events and integrations); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair); the IntelliJ `intellij-tabby-command-history.xml` and the VS Code `state.vscdb` `edit.recentlyCommand` (no timestamp; the server keeps no copy of an inline-edit instruction, so they never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
+| `twinny` | the editor's `User/workspaceStorage/<id>/rjmacarthy.twinny/agent-changes/<id>.json` (or under `globalStorage/rjmacarthy.twinny/`; `system` rows with the project root and no session, which never pair); the log channel `logs/.../rjmacarthy.twinny/Twinny.log` and `Twinny.log_<n>` (`system` rows with no session, which never pair) | the `rjmacarthy.twinny` row of the editor's `User/globalStorage/state.vscdb` |
 
 The 2 seconds cover Codex's `history.jsonl`, which records whole seconds
 beside the rollouts' milliseconds, and Antigravity's history line, under

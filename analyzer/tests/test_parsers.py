@@ -16361,6 +16361,16 @@ from fixtures import (
     PEARAI_SESSION,
     PEARAI_TASK,
     PEARAI_UI_TASK,
+    TWINNY_415_CHANGE,
+    TWINNY_415_CHANGES_REL,
+    TWINNY_415_CONVERSATION,
+    TWINNY_415_EMAIL,
+    TWINNY_415_LOG_DIR,
+    TWINNY_415_LOG_OLD_REL,
+    TWINNY_415_LOG_REL,
+    TWINNY_415_REL,
+    TWINNY_415_WS,
+    TWINNY_415_WS_DB_REL,
     TWINNY_ACTIVE,
     TWINNY_API_KEY,
     TWINNY_CONVERSATION,
@@ -16368,6 +16378,7 @@ from fixtures import (
     TWINNY_SAID_REL,
     TWINNY_VSCDB_REL,
     _vscdb,
+    build_twinny_415,
     build_twinny_said,
     cody_vscode_state,
     twinny_said_records,
@@ -17053,6 +17064,201 @@ class TwinnyTests(ParserBase):
                 "parser: ItemTable value for rjmacarthy.twinny is not valid JSON"
             )
         )
+
+    # ---- 4.3.15 records beside the conversations (#154, #199, #215) --------
+
+    def _415(self):
+        home = self.tmp / "twinny-415"
+        build_twinny_415(home)
+        col = open_input(home, self.cat, host="h1")
+        return home, {a.rel: a for a in col.artifacts}
+
+    def test_standing_grants_team_policy_and_changes(self):
+        _, arts = self._415()
+        art = arts[TWINNY_415_REL]
+        rows = list(TwinnyParser().parse(art, Options()))
+        src = " (from state.vscdb rjmacarthy.twinny, file mtime)"
+        reply = "reply=" + TWINNY_415_CHANGE
+        policy = "permission setting: twinny.teamPolicy."
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "conversation: Fix the tests | messages=2",
+                "fix the failing tests",
+                "model: qwen2.5-coder:7b",
+                "Fixed both.",
+                "file changed: modified src/a.ts +3 -1 " + reply,
+                "file changed: created logo.png +0 -0 %s noUndo=true" % reply,
+                "permission mode: agentMode=true" + src,
+                "permission setting: autoRunCommands=false" + src,
+                "permission setting: alwaysRunCommands=npm test" + src,
+                "permission setting: alwaysRunCommands=git status" + src,
+                "permission setting: alwaysRunMcpTools=github/list_issues" + src,
+                policy + "url=https://gateway.example.invalid" + src,
+                policy + "policy.teamOnly=true" + src,
+                policy + "policy.agent.commands=ask" + src,
+                policy + "policy.agent.blockedPaths=secrets/" + src,
+                policy + "policy.agent.blockedPaths=.env" + src,
+                policy + "providerIds=team-0a1b-chat" + src,
+                policy + "fetchedAt=2026-10-03T09:00:00.000Z" + src,
+            ],
+        )
+        for r in rows[4:6]:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.timestamp_utc, r.project_path),
+                ("system", TWINNY_415_CONVERSATION, "2026-10-03T12:05:00.000Z", ""),
+            )
+        for r in rows[6:]:
+            self.assertEqual(
+                (r.turn_type, r.session_id, r.timestamp_utc, r.project_path),
+                ("system", "", "2026-10-03T12:10:00.000Z", ""),
+            )
+        # The ChatGPT plan profile and the selected model are never emitted.
+        text = "\n".join(r.text for r in rows)
+        self.assertNotIn(TWINNY_415_EMAIL, text)
+        self.assertNotIn("selectedModel", text)
+        self.assertFalse(TwinnyParser().secondary(art))
+
+    def test_agent_changes_record_is_secondary(self):
+        _, arts = self._415()
+        art = arts[TWINNY_415_CHANGES_REL]
+        self.assertEqual(art.agent, "twinny")
+        self.assertTrue(TwinnyParser().wants(art))
+        self.assertTrue(TwinnyParser().secondary(art))
+        self.assertTrue(TwinnyParser.has_secondary)
+        rows = list(TwinnyParser().parse(art, Options()))
+        reply = "reply=" + TWINNY_415_CHANGE
+        when = "2026-10-03T12:04:58.000Z"
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    "/srv/proj",
+                    when,
+                    "file changed: modified src/a.ts +3 -1 %s undone=true" % reply,
+                ),
+                (
+                    "system",
+                    "",
+                    "/srv/proj",
+                    when,
+                    "file changed: created logo.png +0 -0 %s noUndo=true" % reply,
+                ),
+            ],
+        )
+        # The text before the reply is never emitted.
+        self.assertNotIn("export const a", "\n".join(r.text for r in rows))
+
+    def test_agent_changes_record_cut_is_reported(self):
+        home, arts = self._415()
+        path = home / TWINNY_415_CHANGES_REL
+        path.write_text(path.read_text(encoding="utf-8")[:40], encoding="utf-8")
+        rows = list(TwinnyParser().parse(arts[TWINNY_415_CHANGES_REL], Options()))
+        self.assertEqual([r.turn_type for r in rows], ["system"])
+        self.assertTrue(
+            rows[0].text.startswith("parser: agent-changes record is not valid JSON ("),
+            rows[0].text,
+        )
+
+    def test_log_channel_rows(self):
+        _, arts = self._415()
+        art = arts[TWINNY_415_LOG_REL]
+        self.assertTrue(TwinnyParser().secondary(art))
+        rows = list(TwinnyParser().parse(art, Options()))
+        src = " (from Twinny.log, log line time, host-local)"
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.source_line, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    "2026-10-03T14:00:01.250Z",
+                    1,
+                    "log info: Chat → qwen2.5-coder:7b (Ollama) · 2 messages, 41 chars" + src,
+                ),
+                (
+                    "system",
+                    "",
+                    "2026-10-03T14:00:01.251Z",
+                    2,
+                    "log debug: Chat messages"
+                    + src
+                    + "\n[user]\nwhich tests fail?\n\n[assistant]\nTwo tests fail.",
+                ),
+                (
+                    "system",
+                    "",
+                    "2026-10-03T14:00:06.400Z",
+                    8,
+                    "log info: Chat ← 5.1s · 15 chars" + src,
+                ),
+            ],
+        )
+        old = list(TwinnyParser().parse(arts[TWINNY_415_LOG_OLD_REL], Options()))
+        self.assertEqual(
+            [r.text for r in old],
+            [
+                "log warning: Chat failed: connection refused"
+                " (from Twinny.log_1, log line time, host-local)"
+            ],
+        )
+
+    def test_log_truncated_line_is_reported_not_fatal(self):
+        home, arts = self._415()
+        log = home / TWINNY_415_LOG_REL
+        write_bad_line(log)
+        with open(log, "a", encoding="utf-8") as fh:
+            fh.write("\n    orphan continuation\n2026-10-03 14:00:07.000 [info] after the cut\n")
+        rows = list(TwinnyParser().parse(arts[TWINNY_415_LOG_REL], Options()))
+        self.assertEqual(
+            [r.text.split(" (from ")[0] for r in rows[:4]],
+            [
+                "log info: Chat → qwen2.5-coder:7b (Ollama) · 2 messages, 41 chars",
+                "log debug: Chat messages",
+                "log info: Chat ← 5.1s · 15 chars",
+                "log info: after the cut",
+            ],
+        )
+        self.assertEqual(
+            [(r.text, r.source_line, r.session_id, r.timestamp_utc) for r in rows[4:]],
+            [
+                ("parser: unparseable line (no log line header): " + BAD_LINE, 9, "", ""),
+                # An indented line after a bad line has no entry to join.
+                (
+                    "parser: unparseable line (no log line header):     orphan continuation",
+                    10,
+                    "",
+                    "",
+                ),
+            ],
+        )
+
+    def test_workspace_review_repository(self):
+        _, arts = self._415()
+        art = arts[TWINNY_415_WS_DB_REL]
+        self.assertEqual(art.agent, "vscode")
+        rows = list(TwinnyParser().parse(art, Options()))
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    "2026-10-03T12:10:00.000Z",
+                    "source host repository: https://github.com/acme/widgets type=review"
+                    " (from workspaceStorage state.vscdb rjmacarthy.twinny, file mtime)",
+                )
+            ],
+        )
+        self.assertFalse(TwinnyParser().secondary(art))
+
+    def test_not_wanted_415(self):
+        _, arts = self._415()
+        exthost = TWINNY_415_LOG_DIR.rsplit("/", 1)[0] + "/exthost.log"
+        for rel in (TWINNY_415_WS + "/workspace.json", exthost):
+            self.assertFalse(TwinnyParser().wants(arts[rel]), rel)
 
 
 from fixtures import PEARAI_LOG_REL, pearai_log_completion, pearai_log_settings
