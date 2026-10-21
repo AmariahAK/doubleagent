@@ -788,6 +788,7 @@ $EXCLUDES = @'
 .gemini/extensions/*/node_modules
 .gemini/extensions/*/.git
 .gemini/cli-browser-profile
+.gemini/worktrees
 .gemini/antigravity/bin
 .gemini/antigravity-cli/bin
 .gemini/antigravity-ide/bin
@@ -1016,6 +1017,7 @@ AppData/Roaming/Block/goose/data/codex
 .qwen/artifacts
 .qwen/resources
 .qwen/startup-perf
+.qwen/worktrees
 .cache/amp/runner-desktop
 .cache/amp/desktop
 .cache/amp/bin

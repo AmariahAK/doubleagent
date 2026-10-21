@@ -1158,6 +1158,21 @@ printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
 
+# 2026-10-21 agent worktrees inside a project (#216)
+# Gemini CLI's --worktree creates <project>/.gemini/worktrees/<name>
+# (google-gemini/gemini-cli 3be3d44, worktreeService.ts) and Qwen Code's
+# enter_worktree <project>/.qwen/worktrees/<slug> (QwenLM/qwen-code 5dcf7c7,
+# worktreeSessionService.ts): full git checkouts that the project entries
+# collected whole. Both are excluded, as .claude/worktrees and
+# .kilo/worktrees are; the project's .gemini/settings.json beside them stays
+# collected. Checks follow the default run below; the same files are in
+# smoke.ps1 under gem.
+G216="$ROOT/srv/gem"
+mkdir -p "$G216/.gemini/worktrees/w1" "$G216/.qwen/worktrees/w1"
+printf 'wt\n' >"$G216/.gemini/worktrees/w1/f"
+printf 'wt\n' >"$G216/.qwen/worktrees/w1/f"
+printf '{}\n' >"$G216/.gemini/settings.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1540,6 +1555,10 @@ check "#236 Cursor plugin cache excluded" "[ \"\$(status_of \"$P236/cache\")\" =
 check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+
+# 2026-10-21 agent worktrees inside a project (#216)
+check "#216 Gemini CLI and Qwen Code project worktrees excluded" "[ \"\$(status_of \"$G216/.gemini/worktrees\")\" = skipped_excluded ] && [ \"\$(status_of \"$G216/.qwen/worktrees\")\" = skipped_excluded ] && ! grep -qF 'gem/.gemini/worktrees/w1' \"\$M\" && ! grep -qF 'gem/.qwen/worktrees/w1' \"\$M\""
+check "#216 Gemini CLI project settings beside the worktrees collected" "row \"$G216/.gemini/settings.json\" | grep -q '\"agent\":\"gemini-cli\".*\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

@@ -1085,6 +1085,19 @@ Mk "$u236/inno_updater.exe" "binary`n"
 Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
 Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
 
+# 2026-10-21 agent worktrees inside a project (#216)
+# Gemini CLI's --worktree creates <project>/.gemini/worktrees/<name>
+# (google-gemini/gemini-cli 3be3d44, worktreeService.ts) and Qwen Code's
+# enter_worktree <project>/.qwen/worktrees/<slug> (QwenLM/qwen-code 5dcf7c7,
+# worktreeSessionService.ts): full git checkouts that the project entries
+# collected whole. Both are excluded, as .claude/worktrees and
+# .kilo/worktrees are; the project's .gemini/settings.json beside them stays
+# collected. Checks follow the default run below; the same files are in
+# smoke.sh under /srv/gem.
+Mk 'gem/.gemini/worktrees/w1/f' "wt`n"
+Mk 'gem/.qwen/worktrees/w1/f' "wt`n"
+Mk 'gem/.gemini/settings.json' "{}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1626,6 +1639,10 @@ Check '#236 Cursor plugin cache excluded' { (StatusOf "$p236/cache") -eq 'skippe
 Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
 Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
 Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
+
+# 2026-10-21 agent worktrees inside a project (#216)
+Check '#216 Gemini CLI and Qwen Code project worktrees excluded' { (StatusOf 'gem/.gemini/worktrees') -eq 'skipped_excluded' -and (StatusOf 'gem/.qwen/worktrees') -eq 'skipped_excluded' -and $null -eq (Row 'gem/.gemini/worktrees/w1/f') -and $null -eq (Row 'gem/.qwen/worktrees/w1/f') }
+Check '#216 Gemini CLI project settings beside the worktrees collected' { ($r = Row 'gem/.gemini/settings.json') -and $r.agent -eq 'gemini-cli' -and $r.status -eq 'collected' }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
