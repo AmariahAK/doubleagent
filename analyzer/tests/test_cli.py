@@ -1010,12 +1010,13 @@ class SyncedSessionTests(unittest.TestCase):
             (("qwen-code", QWEN_SESSION), "yes"),
             (("qwen-code", QWEN_DAEMON_SESSION), "yes"),
             (("qwen-code", QWEN_ARCHIVED), "no"),
+            (("hermes", HERMES_SESSION), "no"),
             (("copilot-cli", COPILOT_SESSION), ""),
             (("claude-code", CLAUDE_SESSION), ""),
         ):
             self.assertEqual(by_id[key], want, key)
         relay_agents = {p.agent for p in ALL if p.records_relay}
-        self.assertEqual(relay_agents, {"agent-zero", "goose", "qwen-code"})
+        self.assertEqual(relay_agents, {"agent-zero", "goose", "hermes", "qwen-code"})
         self.assertEqual({v for (agent, _), v in by_id.items() if agent not in relay_agents}, {""})
         self.assertEqual(
             {v for (agent, _), v in by_id.items() if agent in relay_agents}, {"yes", "no"}
@@ -1137,7 +1138,8 @@ class SyncedSessionOpenClawAgentZeroTests(unittest.TestCase):
         }
         self.assertEqual(relayed[("agent-zero", AGENT_ZERO_TG_CHAT)], "yes")
         self.assertEqual(relayed[("agent-zero", AGENT_ZERO_CHAT)], "no")
-        self.assertEqual(relayed[("hermes", HERMES_SESSION)], "")
+        # Hermes records relay since issue 208; the CLI fixture session is not one.
+        self.assertEqual(relayed[("hermes", HERMES_SESSION)], "no")
         self.assertEqual(agents["agent-zero"]["relayed_sessions"], 1)
         self.assertEqual(agents["goose"]["relayed_sessions"], 0)
         self.assertEqual(agents["qwen-code"]["relayed_sessions"], 2)

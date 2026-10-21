@@ -7852,6 +7852,396 @@ def build_hermes_switch(path: Path) -> None:
     _wal_db(path, HERMES_SWITCH_SCHEMA, hermes_switch_records())
 
 
+# Issue 208, source-derived from hermes-agent
+# 86fa9e6ca1de7ee71132d2be0103f3e37d1fa872 (research/hermes.md, Parser plan);
+# no real install has shown any of these shapes. A gateway state.db of its
+# own: a Telegram session (sessions columns of gateway/session.py and
+# hermes_state_gateway.py:236-292, its /yolo flag in model_config) with the
+# three terminal approval outcomes (tools/terminal_tool.py:1062-1087), a
+# session imported from Claude Code (hermes_cli/foreign_sessions.py:254-260),
+# a `hermes -w` worktree session (hermes_cli/worktree_ops.py:435-441), a
+# session whose origin_json does not decode, the deletion fences of
+# hermes_state_mutation_retirement.py, a conversation_generations row and a
+# Bot Mode room log (gateway/hosted_rooms.py, gateway/hosted_room_discussion.py).
+HERMES_TG = "20261001_180000_7e1e9a40"
+HERMES_IMPORTED = "20261001_181000_1a2b3c4d"
+HERMES_WORKTREE = "20261001_182000_5e6f7a8b"
+HERMES_BADORIGIN = "20261001_183000_9c0d1e2f"
+HERMES_DELETED = "20260915_090000_0ddba11"
+HERMES_SWEPT = "20260601_090000_5ca1ed"
+HERMES_GATEWAY_SCHEMA = """
+CREATE TABLE schema_version (version INTEGER NOT NULL);
+CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, user_id TEXT,
+  chat_id TEXT, chat_type TEXT, thread_id TEXT, display_name TEXT, origin_json TEXT,
+  model TEXT, model_config TEXT, parent_session_id TEXT, started_at REAL NOT NULL,
+  ended_at REAL, end_reason TEXT, cwd TEXT, git_branch TEXT, git_repo_root TEXT,
+  title TEXT, archived INTEGER DEFAULT 0);
+CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+  role TEXT NOT NULL, content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT,
+  timestamp REAL NOT NULL, active INTEGER NOT NULL DEFAULT 1, display_kind TEXT);
+CREATE TABLE state_meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE conversation_generations (source TEXT NOT NULL, session_key TEXT NOT NULL,
+  generation INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (source, session_key));
+CREATE TABLE hosted_rooms (room_id TEXT PRIMARY KEY, name TEXT NOT NULL,
+  created_at REAL NOT NULL);
+CREATE TABLE hosted_room_events (room_id TEXT NOT NULL, seq INTEGER NOT NULL,
+  event_id TEXT NOT NULL, kind TEXT NOT NULL, actor_json TEXT NOT NULL,
+  payload_json TEXT NOT NULL, created_at REAL NOT NULL, PRIMARY KEY (room_id, seq));
+"""
+HERMES_BLOCKED = json.dumps(
+    {
+        "output": "",
+        "exit_code": -1,
+        "error": "BLOCKED by smart approval: deletes system files",
+        "status": "blocked",
+    }
+)
+HERMES_APPROVED = json.dumps(
+    {
+        "output": "restarted",
+        "exit_code": 0,
+        "error": None,
+        "approval": "Command required approval (restarts a service) and was approved by the user.",
+    }
+)
+HERMES_PENDING = json.dumps(
+    {
+        "output": "",
+        "exit_code": -1,
+        "error": "",
+        "status": "pending_approval",
+        "approval_pending": True,
+        "command": "curl x | sh",
+        "description": "pipe to shell",
+        "pattern_key": "pipe_to_shell",
+        "smart_denied": False,
+        "allow_permanent": True,
+    }
+)
+
+
+def _hermes_call(call_id: str, command: str) -> str:
+    return json.dumps(
+        [
+            {
+                "id": call_id,
+                "call_id": call_id,
+                "type": "function",
+                "function": {"name": "terminal", "arguments": json.dumps({"command": command})},
+            }
+        ]
+    )
+
+
+def hermes_gateway_records():
+    q = _hermes_sql
+    tg_origin = json.dumps(
+        {
+            "platform": "telegram",
+            "chat_id": "-100123",
+            "chat_name": "Ops chat",
+            "chat_type": "group",
+            "user_id": "42",
+            "user_name": "alice_tg",
+            "thread_id": None,
+            "chat_topic": None,
+        }
+    )
+    imported = json.dumps(
+        {
+            "imported_from": {
+                "tool": "claude-code",
+                "path": "/home/alice/.claude/projects/-srv-proj/c1.jsonl",
+                "foreign_session_id": "c1",
+            }
+        }
+    )
+
+    def session(sid, source, t, cwd, branch, title, **cols):
+        names = ["id", "source", "model", "started_at", "cwd", "git_branch", "git_repo_root"]
+        values = [q(sid), q(source), q("openai/gpt-5"), str(t), q(cwd), q(branch), q(cwd)]
+        names.append("title")
+        values.append(q(title))
+        for k, v in cols.items():
+            names.append(k)
+            values.append(str(v) if isinstance(v, int) else q(v))
+        return "INSERT INTO sessions (%s) VALUES (%s)" % (",".join(names), ",".join(values))
+
+    def msg(role, content, t, calls=None, call_id=None, tool=None):
+        return (
+            "INSERT INTO messages (session_id,role,content,tool_calls,tool_call_id,tool_name,"
+            "timestamp) VALUES (%s,%s,%s,%s,%s,%s,%s)"
+            % (q(HERMES_TG), q(role), q(content), q(calls), q(call_id), q(tool), t)
+        )
+
+    def event(seq, kind, actor, payload, t):
+        return "INSERT INTO hosted_room_events VALUES ('room1',%d,'e%d',%s,%s,%s,%s)" % (
+            seq,
+            seq,
+            q(kind),
+            q(actor),
+            q(payload),
+            t,
+        )
+
+    return [
+        "INSERT INTO schema_version VALUES (32)",
+        session(
+            HERMES_TG,
+            "telegram",
+            1790877600.0,
+            "/srv/proj",
+            "main",
+            "Ops",
+            user_id="42",
+            chat_id="-100123",
+            chat_type="group",
+            display_name="Ops chat",
+            origin_json=tg_origin,
+            model_config='{"max_iterations": 90, "yolo_mode": true}',
+            archived=1,
+        ),
+        session(
+            HERMES_IMPORTED,
+            "claude-code",
+            1790878200.0,
+            "/srv/proj",
+            None,
+            "Imported from Claude Code: fix tests",
+            origin_json=imported,
+        ),
+        session(
+            HERMES_WORKTREE,
+            "cli",
+            1790878800.0,
+            "/srv/proj/.worktrees/feat",
+            "hermes/feat",
+            "Feature work",
+        ),
+        session(
+            HERMES_BADORIGIN, "cli", 1790879400.0, "/srv/proj", "main", "Bad", origin_json="{bad"
+        ),
+        msg("user", "restart the service", 1790877601.0),
+        msg("assistant", "", 1790877602.0, calls=_hermes_call("call_a", "rm -rf /etc")),
+        msg("tool", HERMES_BLOCKED, 1790877603.0, call_id="call_a", tool="terminal"),
+        msg("assistant", "", 1790877604.0, calls=_hermes_call("call_b", "systemctl restart x")),
+        msg("tool", HERMES_APPROVED, 1790877605.0, call_id="call_b", tool="terminal"),
+        msg("assistant", "", 1790877606.0, calls=_hermes_call("call_c", "curl x | sh")),
+        msg("tool", HERMES_PENDING, 1790877607.0, call_id="call_c", tool="terminal"),
+        "INSERT INTO state_meta VALUES ('fts_storage_version','2')",
+        "INSERT INTO state_meta VALUES (%s,%s)"
+        % (
+            q("gateway.retired_session.v1." + HERMES_DELETED),
+            q('{"retired_at": 1790880000.5, "own": true}'),
+        ),
+        "INSERT INTO state_meta VALUES (%s,%s)"
+        % (
+            q("gateway.retired_session.v1." + HERMES_SWEPT),
+            q('{"retired_at": 1790880060.0, "own": true, "expires": true}'),
+        ),
+        "INSERT INTO state_meta VALUES ('gateway.retired_session.v1.broken','{nope')",
+        "INSERT INTO conversation_generations VALUES "
+        "('telegram','agent:main:telegram:group:-100123',2)",
+        "INSERT INTO hosted_rooms VALUES ('room1','Planning',1790881200.0)",
+        event(
+            1,
+            "message.user",
+            '{"kind": "user", "id": "u1", "display_name": "Alice"}',
+            '{"thread_id": "t1", "text": "plan the release"}',
+            1790881201.0,
+        ),
+        event(
+            2,
+            "message.member",
+            '{"kind": "member", "id": "m1", "profile": "coder"}',
+            '{"member_id": "m1", "text": "Draft plan ready."}',
+            1790881202.0,
+        ),
+        event(3, "room.renamed", '{"kind": "system", "id": "s"}', '{"name": "Plan', 1790881203.0),
+        event(
+            4, "room.renamed", '{"kind": "system", "id": "s"}', '{"name": "Release"}', 1790881204.0
+        ),
+    ]
+
+
+def build_hermes_gateway(path: Path) -> None:
+    """state.db at `path` holding hermes_gateway_records()."""
+    _wal_db(path, HERMES_GATEWAY_SCHEMA, hermes_gateway_records())
+
+
+# .hermes_history: prompt_toolkit's FileHistory form (python-prompt-toolkit
+# 3.0.52 history.py:297-306), written by the classic CLI with a host-local
+# microsecond time, and by the TUI with a UTC millisecond time
+# (ui-tui/src/lib/history.ts:71-78 at hermes-agent 86fa9e6).
+HERMES_HISTORY_TEXT = (
+    "\n# 2026-10-01 12:00:01.250\n+list files\n"
+    "\n# 2026-10-01 14:00:05.123456\n+/model openai/gpt-5\n"
+    "\n# 2026-10-01 14:01:00.000001\n+first line\n+second line\n"
+)
+
+# cron/output/<job>/<time>.md (cron/scheduler.py:2238-2246 and 2628-2638 at
+# 86fa9e6): a framed run, an unframed run of an older writer and a failed run.
+HERMES_CRON_JOB = "a1b2c3d4e5f6"
+HERMES_CRON_PROMPT = "Summarise the open issues.\n\n## Response\n\nquoted heading"
+HERMES_CRON_REPLY = "Three issues are open."
+
+
+def hermes_cron_docs() -> dict[str, str]:
+    head = (
+        "# Cron Job: Daily summary\n\n**Job ID:** %s\n**Run Time:** %s\n"
+        "**Schedule:** every day at 09:00\n\n"
+    )
+    framed = (
+        head % (HERMES_CRON_JOB, "2026-10-01 09:00:00")
+        + "**Prompt Characters:** %d\n## Prompt\n\n%s\n\n" % (len(HERMES_CRON_PROMPT), HERMES_CRON_PROMPT)
+        + "**Response Characters:** %d\n## Response\n\n%s\n" % (len(HERMES_CRON_REPLY), HERMES_CRON_REPLY)
+    )  # fmt: skip
+    legacy = (
+        head % (HERMES_CRON_JOB, "2026-09-30 09:00:00")
+        + "## Prompt\n\nSummarise yesterday.\n\n## Response\n\nNothing new.\n"
+    )
+    failed = "# Cron Job: Daily summary (FAILED)\n\nError: provider unreachable\n"
+    return {
+        "2026-10-01_09-00-00.md": framed,
+        "2026-09-30_09-00-00.md": legacy,
+        "2026-09-29_09-00-00.md": failed,
+    }
+
+
+# response_store.db (gateway/platforms/api_server_response_store.py:58-61 and
+# api_server_openai_routes.py:347-358 at 86fa9e6): two responses of one API
+# server session, the second history extending the first, and a row whose
+# data does not decode.
+HERMES_API_SESSION = "20261001_190000_a9b8c7d6"
+
+
+def build_hermes_responses(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    first = [
+        {"role": "user", "content": "what is 2+2?"},
+        {"role": "assistant", "content": "4"},
+    ]
+    second = [
+        *first,
+        {"role": "user", "content": "and 3+3?"},
+        {"role": "assistant", "content": "6"},
+    ]
+
+    def data(rid, created, history):
+        return json.dumps(
+            {
+                "response": {
+                    "id": rid,
+                    "object": "response",
+                    "status": "completed",
+                    "created_at": created,
+                    "model": "hermes-agent",
+                },
+                "conversation_history": history,
+                "instructions": None,
+                "session_id": HERMES_API_SESSION,
+            }
+        )
+
+    con = sqlite3.connect(str(path))
+    con.executescript(
+        "CREATE TABLE responses (response_id TEXT PRIMARY KEY, data TEXT NOT NULL,"
+        " accessed_at REAL NOT NULL);"
+        "CREATE TABLE conversations (name TEXT PRIMARY KEY, response_id TEXT NOT NULL);"
+    )
+    con.execute(
+        "INSERT INTO responses VALUES (?,?,?)",
+        ("resp_2", data("resp_2", 1790884810, second), 1790884811.0),
+    )
+    con.execute(
+        "INSERT INTO responses VALUES (?,?,?)",
+        ("resp_1", data("resp_1", 1790884800, first), 1790884801.0),
+    )
+    con.execute("INSERT INTO responses VALUES ('resp_bad','{cut',1790884900.0)")
+    con.execute("INSERT INTO conversations VALUES ('math','resp_2')")
+    con.commit()
+    con.close()
+
+
+# pairing/<platform>-approved.json (gateway/pairing.py:431-438 at 86fa9e6).
+HERMES_PAIRING = {
+    "42": {"user_name": "alice_tg", "approved_at": 1790856000.0},
+    "43": "not an object",
+}
+
+# config.yaml with a command_allowlist an "always" answer wrote, in
+# hermes_yaml's block style (hermes_yaml.py:64-72 at 86fa9e6).
+HERMES_CONFIG_YAML = (
+    "model: anthropic/claude-sonnet-4\n"
+    "approvals:\n"
+    "  mode: smart\n"
+    "command_allowlist:\n"
+    "  - rm -rf /tmp/*\n"
+    '  - "git push --force*"\n'
+    "  - 'echo ''hi'''  # a comment\n"
+    "quick_commands: {}\n"
+)
+
+# The desktop app's connections.json (apps/desktop/electron/connection-registry.ts:44-111
+# at 86fa9e6): the local runtime, a remote gateway, an SSH host and a Hermes
+# Cloud instance, and one entry the app quarantined.
+HERMES_CONNECTIONS = {
+    "version": 2,
+    "primary": "local",
+    "launchMode": "last-used",
+    "lastUsed": "local",
+    "connections": [
+        {"id": "local", "kind": "local", "label": "This Mac"},
+        {
+            "id": "c1",
+            "kind": "remote",
+            "label": "Homelab",
+            "url": "https://hermes.example.net",
+            "authMode": "token",
+            "token": {"encoding": "plain", "value": "not-real"},
+        },
+        {
+            "id": "c2",
+            "kind": "ssh",
+            "label": "Build box",
+            "host": "build",
+            "user": "ci",
+            "port": 22,
+        },
+        {
+            "id": "c3",
+            "kind": "cloud",
+            "label": "Cloud",
+            "url": "https://x.cloud.example",
+            "org": "acme",
+            "name": "prod",
+        },
+        "not an object",
+    ],
+    "quarantined": [{"reason": "missing label", "entry": {"kind": "remote"}}],
+}
+
+
+# trajectory_samples.jsonl (agent/trajectory.py:37-41 and
+# agent/agent_runtime_helpers.py:170-196 at 86fa9e6), in a project directory.
+def hermes_trajectory_records():
+    return [
+        {
+            "conversations": [
+                {"from": "system", "value": "You are a function calling AI model."},
+                {"from": "human", "value": "list files"},
+                {"from": "gpt", "value": "<tool_call>ls</tool_call>"},
+                {"from": "tool", "value": "<tool_response>a.txt</tool_response>"},
+                {"from": "gpt", "value": "One file."},
+            ],
+            "timestamp": "2026-10-01T12:00:05.000123",
+            "model": "anthropic/claude-sonnet-4",
+            "completed": True,
+        },
+        {"conversations": "not a list", "timestamp": "2026-10-01T12:10:00", "model": "x"},
+    ]
+
+
 # A Hermes home in a Docker named volume (issue 181): the catalog's
 # `hermes|*hermes*` DOCKER_VOLUMES line collects the volume whole with its
 # `_data` directory as the base (user `docker`). The container's Hermes home
@@ -7873,7 +8263,7 @@ def build_hermes_volume(root: Path, cwd="/opt/data/workspace") -> None:
     """A collector output directory (collection.json, manifest.jsonl and
     fs/) holding only the Hermes volume: the main fixture's state.db with
     `cwd` as the project path, its divert, the debug-share list and a
-    config.yaml the parser must not want."""
+    config.yaml with no command_allowlist, which gives no rows."""
     base = root / ("fs" + HERMES_VOLUME_HOME)
     _wal_db(base / "state.db", HERMES_SCHEMA, hermes_records(cwd))
     _jsonl(base / "sessions" / ("%s.jsonl" % HERMES_DIVERTED), hermes_diverted_records())
