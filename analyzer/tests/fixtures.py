@@ -4291,6 +4291,14 @@ def continue_session():
                         "toolCall": term,
                         "status": "canceled",
                         "parsedArgs": {"command": "rm -rf build"},
+                        # the CLI's refusal at the prompt (#198)
+                        "output": [
+                            {
+                                "content": "Permission denied by user",
+                                "name": "Tool Result",
+                                "description": "Tool execution result",
+                            }
+                        ],
                     }
                 ],
             },
@@ -4368,7 +4376,86 @@ def build_continue(home: Path) -> None:
     chat, tool = continue_dev_data()
     _jsonl(home / ".continue/dev_data/0.2.0/chatInteraction.jsonl", chat)
     _jsonl(home / ".continue/dev_data/0.2.0/toolUsage.jsonl", tool)
+    for event, records in continue_dev_data_more().items():
+        _jsonl(home / (".continue/dev_data/0.2.0/%s.jsonl" % event), records)
     (home / ".continue/config.yaml").write_text("name: Local\nmodels: []\n", encoding="utf-8")
+    (home / ".continue/permissions.yaml").write_text(CONTINUE_PERMISSIONS, encoding="utf-8")
+    (home / ".continue/input_history.json").write_text(
+        json.dumps(CONTINUE_INPUT_HISTORY, indent=2), encoding="utf-8"
+    )
+
+
+# The CLI's standing tool grants as policyWriter.ts:57-66 writes them at
+# 5522c6f (a header comment, then YAML.stringify of the three lists), with
+# a quoted rule and a trailing comment a hand edit can add (#198).
+CONTINUE_PERMISSIONS = (
+    "# Continue CLI Permissions Configuration\n"
+    "# This file is managed by the Continue CLI and should not be edited manually.\n"
+    "# Use the TUI to modify permissions interactively.\n"
+    "\n"
+    "allow:\n"
+    "  - Read\n"
+    "  - Bash(npm*)  # added by hand\n"
+    "ask: []\n"
+    "exclude:\n"
+    '  - "Bash(rm*)"\n'
+)
+
+# extensions/cli/src/util/inputHistory.ts:53-72 at 5522c6f: newest first,
+# `timestamp` in epoch milliseconds, written with JSON.stringify(_, null, 2).
+CONTINUE_INPUT_HISTORY = [
+    {"text": "/model", "timestamp": 1790935260000},  # 2026-10-02T10:01:00Z
+    {"text": "rename foo", "timestamp": 1790935201000},  # 2026-10-02T10:00:01Z
+]
+
+
+def continue_dev_data_more() -> dict[str, list[dict]]:
+    """The `chatFeedback`, `editInteraction` and `editOutcome` lines of
+    dev_data 0.2.0 (packages/config-yaml/src/schemas/data/ at 5522c6f): the
+    rating of the fixture's chatInteraction reply, and one edit request the
+    user rejected (#198)."""
+    base = {
+        "schema": "0.2.0",
+        "userId": "",
+        "userAgent": "vscode/1.1 (Continue/1.0)",
+        "selectedProfileId": "local",
+        "modelProvider": "openai",
+        "modelName": "GPT-4o",
+        "modelTitle": "GPT-4o",
+    }
+    feedback = dict(
+        base,
+        eventName="chatFeedback",
+        timestamp="2026-10-02T10:01:30.000Z",
+        completionOptions={},
+        prompt="rename foo",
+        completion="done",
+        feedback=True,
+        sessionId=CONTINUE_SESSION,
+    )
+    edit = dict(
+        base,
+        eventName="editInteraction",
+        timestamp="2026-10-02T10:02:00.000Z",
+        prompt="add a docstring",
+        completion='def foo():\n    """Doc."""\n',
+        filepath="/srv/proj/a.py",
+    )
+    outcome = dict(
+        base,
+        eventName="editOutcome",
+        timestamp="2026-10-02T10:02:30.000Z",
+        prompt="add a docstring",
+        completion='def foo():\n    """Doc."""\n',
+        previousCode="def foo(): pass\n",
+        newCode='def foo():\n    """Doc."""\n',
+        previousCodeLines=1,
+        newCodeLines=2,
+        lineChange=1,
+        accepted=False,
+        filepath="/srv/proj/a.py",
+    )
+    return {"chatFeedback": [feedback], "editInteraction": [edit], "editOutcome": [outcome]}
 
 
 # The `cn` CLI's winston log in `cn serve --id` mode (#153), in the line

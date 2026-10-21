@@ -4701,6 +4701,7 @@ class ContinueTests(ParserBase):
             [
                 "system",
                 "system",
+                "system",
                 "user",
                 "tool_use",
                 "tool_result",
@@ -4719,12 +4720,14 @@ class ContinueTests(ParserBase):
             self.assertEqual((r.project_path, r.git_branch), ("/srv/proj", ""))
             # no per-message time: every row inherits sessions.json dateCreated
             self.assertEqual(r.timestamp_utc, "2026-10-02T10:00:00.000Z")
-        start, model, user, use1, res1, switch, asst, _use2, res2, canceled = rows
+        start, model, mode, user, use1, res1, switch, asst, _use2, res2, canceled = rows
         self.assertIn("session start: Fix bug mode=agent items=5", start.text)
         # chatModelTitle starts the session; item 5's promptLogs switch it
         self.assertEqual(
             (model.text, model.model, model.source_line), ("model: GPT-4o", "GPT-4o", 0)
         )
+        # the session's mode is a permission mode (#198)
+        self.assertEqual((mode.text, mode.source_line), ("permission mode: agent", 0))
         self.assertEqual(
             (switch.text, switch.model, switch.source_line),
             ("model: GPT-4o -> Claude Sonnet 4.5", "Claude Sonnet 4.5", 5),
@@ -4739,18 +4742,311 @@ class ContinueTests(ParserBase):
         )
         self.assertEqual(asst.text, "Renamed. Cleaning the build too.")
         # a call with no tool message keeps its outcome in toolCallStates
-        self.assertEqual((res2.tool_use_id, res2.text), ("call_2", "[canceled]"))
-        # the canceled state is a per-call decision, after its result row
+        self.assertEqual(
+            (res2.tool_use_id, res2.text), ("call_2", "[canceled] Permission denied by user")
+        )
+        # the canceled state is a per-call decision, after its result row,
+        # with the CLI's denial reason (#198)
         self.assertEqual(
             (canceled.text, canceled.tool_use_id, canceled.tool_name, canceled.timestamp_utc),
             (
-                "permission decision: canceled",
+                "permission decision: canceled reason=user",
                 "call_2",
                 "run_terminal_command",
                 "2026-10-02T10:00:00.000Z",
             ),
         )
-        self.assertEqual([r.source_line for r in rows], [0, 0, 1, 3, 4, 5, 5, 5, 5, 5])
+        self.assertEqual([r.source_line for r in rows], [0, 0, 0, 1, 3, 4, 5, 5, 5, 5, 5])
+
+    def _write_session(self, sid: str, workspace: str, states: list, mode: str = "") -> str:
+        """A one-item session file `sid` in `workspace` whose assistant item
+        has `states`, the input reopened so the parser is offered it."""
+        calls = [s["toolCall"] for s in states]
+        sess = {
+            "sessionId": sid,
+            "title": "t",
+            "workspaceDirectory": workspace,
+            "history": [
+                {
+                    "message": {"role": "assistant", "content": "", "toolCalls": calls},
+                    "contextItems": [],
+                    "toolCallStates": states,
+                }
+            ],
+        }
+        if mode:
+            sess["mode"] = mode
+        rel = ".continue/sessions/%s.json" % sid
+        (self.home / rel).write_text(json.dumps(sess), encoding="utf-8")
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+        return rel
+
+    @staticmethod
+    def _state(call_id: str, status: str, output: list) -> dict:
+        call = {"id": call_id, "type": "function", "function": {"name": "t", "arguments": "{}"}}
+        return {"toolCallId": call_id, "toolCall": call, "status": status, "output": output}
+
+    def test_policy_decisions_in_states(self):
+        # #198: the CLI's policy refusal and the extension's Security Policy
+        # Violation; an errored call without that item is no decision.
+        violation = {"name": "Security Policy Violation", "content": "disabled"}
+        rel = self._write_session(
+            "5e5e",
+            "/srv/proj",
+            [
+                self._state("c1", "canceled", [{"content": "Command blocked by security policy"}]),
+                self._state("c2", "errored", [violation]),
+                self._state("c3", "errored", [{"name": "Tool Result", "content": "boom"}]),
+                self._state("c4", "canceled", []),
+            ],
+            mode="plan",
+        )
+        rows = self.rows_for(ContinueParser(), rel)
+        decisions = [
+            (r.tool_use_id, r.text) for r in rows if r.text.startswith("permission decision:")
+        ]
+        self.assertEqual(
+            decisions,
+            [
+                ("c1", "permission decision: canceled reason=policy"),
+                ("c2", "permission decision: errored reason=policy"),
+                ("c4", "permission decision: canceled"),
+            ],
+        )
+        self.assertIn("permission mode: plan", [r.text for r in rows])
+        self.assertFalse([r for r in rows if r.text.startswith("scratch directory:")])
+
+    def test_cn_review_worktree_is_scratch(self):
+        # #198: `cn review` runs in <tmp>/cn-review-<ms>-<n>; a CLI session
+        # has no mode, so no permission mode row.
+        path = "/tmp/cn-review-1790935200000-0"
+        rel = self._write_session("6f6f", path, [])
+        rows = self.rows_for(ContinueParser(), rel)
+        self.assertEqual(
+            [(r.turn_type, r.project_path, r.source_line, r.text) for r in rows[1:]],
+            [("system", path, 0, "scratch directory: %s (cn review worktree)" % path)],
+        )
+        rel = self._write_session("7a7a", "C:\\Users\\a\\AppData\\Local\\Temp\\cn-review-17-1", [])
+        texts = [r.text for r in self.rows_for(ContinueParser(), rel)]
+        self.assertTrue(texts[-1].startswith("scratch directory: C:\\Users"), texts)
+        rel = self._write_session("8b8b", "/srv/cn-review-notes", [])
+        texts = [r.text for r in self.rows_for(ContinueParser(), rel)]
+        self.assertFalse([t for t in texts if t.startswith("scratch directory:")])
+
+    PERMS = ".continue/permissions.yaml"
+
+    def test_permissions_yaml(self):
+        # #198: one standing-grant row per rule, at the file's mtime.
+        rows = self.rows_for(ContinueParser(), self.PERMS)
+        mtime = to_utc((self.home / self.PERMS).stat().st_mtime)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.timestamp_utc, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    n,
+                    mtime,
+                    "",
+                    "permission setting: %s (from .continue/permissions.yaml, file mtime)" % rule,
+                )
+                for n, rule in (
+                    (6, "allow=Read"),
+                    (7, "allow=Bash(npm*)"),
+                    (10, "exclude=Bash(rm*)"),
+                )
+            ],
+        )
+        self.assertFalse(ContinueParser().secondary(self.artifact(self.PERMS)))
+
+    def test_permissions_yaml_other_constructs(self):
+        path = self.home / self.PERMS
+        for text, line in (
+            ("allow:\n  - Read\nask: [Write]\n", 3),
+            ("allow:\n  - Read\nmodels:\n  - x\n", 3),
+            ("allow:\n  - {tool: Read}\n", 2),
+            ("- Read\n", 1),
+            ("allow: null\n  - Read\n", 2),
+        ):
+            path.write_text(text, encoding="utf-8")
+            rows = self.rows_for(ContinueParser(), self.PERMS)
+            self.assertEqual(
+                [(r.source_line, r.text) for r in rows],
+                [
+                    (
+                        0,
+                        "parser: unsupported YAML at line %d (only allow, ask and exclude lists"
+                        " of strings are read)" % line,
+                    )
+                ],
+                text,
+            )
+        path.write_text("# cn tool permissions\n\nallow: []\nask: []\nexclude: []\n")
+        self.assertEqual(self.rows_for(ContinueParser(), self.PERMS), [])
+        path.write_text("allow:\n- 'it''s'\n- \"a\\\"b\"\n", encoding="utf-8")
+        self.assertEqual(
+            [r.text.split(" (from")[0] for r in self.rows_for(ContinueParser(), self.PERMS)],
+            ["permission setting: allow=it's", 'permission setting: allow=a"b'],
+        )
+
+    HISTORY = ".continue/input_history.json"
+
+    def test_input_history(self):
+        # #198: the CLI's prompt history is a secondary source, newest first.
+        p = ContinueParser()
+        rows = self.rows_for(p, self.HISTORY)
+        self.assertEqual(
+            [(r.turn_type, r.source_line, r.timestamp_utc, r.session_id, r.text) for r in rows],
+            [
+                ("user", 1, "2026-10-02T10:01:00.000Z", "", "/model"),
+                ("user", 2, "2026-10-02T10:00:01.000Z", "", "rename foo"),
+            ],
+        )
+        art = self.artifact(self.HISTORY)
+        self.assertTrue(p.secondary(art))
+        self.assertTrue(p.has_secondary)
+        # The session rows carry the session's creation time, so a history
+        # entry pairs on text whatever the time; the slash command is kept.
+        primary = self.rows_for(p, ".continue/dev_data/0.2.0/chatInteraction.jsonl")
+        kept, dropped = deduplicate(primary, [(r, p.secondary_tolerance(art)) for r in rows])
+        self.assertEqual(dropped["continue"], 1)
+        self.assertEqual([r.text for r in kept[len(primary) :]], ["/model"])
+        _, dropped = deduplicate(primary, [(r, 2.0) for r in rows])
+        self.assertEqual(dropped["continue"], 0)
+
+    def test_input_history_cut_keeps_earlier_entries(self):
+        path = self.home / self.HISTORY
+        raw = path.read_text(encoding="utf-8")
+        cut = raw[: raw.index("rename") + 3]
+        path.write_text(cut, encoding="utf-8")
+        rows = self.rows_for(ContinueParser(), self.HISTORY)
+        self.assertEqual([(r.turn_type, r.source_line) for r in rows], [("user", 1), ("system", 2)])
+        self.assertEqual(rows[0].text, "/model")
+        self.assertTrue(rows[1].text.startswith("parser: unparseable record 2 ("), rows[1].text)
+        self.assertTrue(rows[1].text.endswith(cut[cut.rindex("{") :]), rows[1].text)
+        # an element that is not an entry is reported and the walk goes on
+        path.write_text(json.dumps([7, {"text": "after", "timestamp": 1}]), encoding="utf-8")
+        self.assertEqual(
+            [(r.source_line, r.text) for r in self.rows_for(ContinueParser(), self.HISTORY)],
+            [
+                (2, "after"),
+                (1, "parser: unparseable record 1 (not an object with a text): 7"),
+            ],
+        )
+
+    DEV = ".continue/dev_data/0.2.0/%s.jsonl"
+
+    def test_chat_feedback_is_secondary(self):
+        p = ContinueParser()
+        rel = self.DEV % "chatFeedback"
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.project_path, r.model, r.text) for r in rows],
+            [
+                ("user", CONTINUE_SESSION, "/srv/proj", "", "rename foo"),
+                ("assistant", CONTINUE_SESSION, "/srv/proj", "GPT-4o", "done"),
+                (
+                    "system",
+                    CONTINUE_SESSION,
+                    "/srv/proj",
+                    "GPT-4o",
+                    "chat feedback: feedback=true model=GPT-4o",
+                ),
+            ],
+        )
+        self.assertEqual({r.timestamp_utc for r in rows}, {"2026-10-02T10:01:30.000Z"})
+        art = self.artifact(rel)
+        self.assertTrue(p.secondary(art))
+        # the rated reply's chatInteraction line holds the prompt and reply
+        primary = self.rows_for(p, self.DEV % "chatInteraction")
+        kept, dropped = deduplicate(primary, [(r, p.secondary_tolerance(art)) for r in rows])
+        self.assertEqual(dropped["continue"], 2)
+        self.assertEqual([r.turn_type for r in kept[len(primary) :]], ["system"])
+
+    def test_edit_interaction_and_outcome(self):
+        p = ContinueParser()
+        rows = self.rows_for(p, self.DEV % "editInteraction")
+        self.assertEqual(
+            [(r.turn_type, r.model, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "GPT-4o",
+                    "2026-10-02T10:02:00.000Z",
+                    "edit interaction: file=/srv/proj/a.py",
+                ),
+                ("user", "", "2026-10-02T10:02:00.000Z", "add a docstring"),
+                ("assistant", "GPT-4o", "2026-10-02T10:02:00.000Z", 'def foo():\n    """Doc."""'),
+            ],
+        )
+        rows = self.rows_for(p, self.DEV % "editOutcome")
+        self.assertEqual(
+            [(r.turn_type, r.model, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "GPT-4o",
+                    "2026-10-02T10:02:30.000Z",
+                    "permission decision: edit accepted=false file=/srv/proj/a.py lines 1 -> 2",
+                )
+            ],
+        )
+        for event in ("editInteraction", "editOutcome"):
+            self.assertFalse(p.secondary(self.artifact(self.DEV % event)))
+
+    def test_truncated_new_dev_data_lines(self):
+        # Each new line-oriented file keeps the lines before and after a cut.
+        after = {
+            "chatFeedback": '{"sessionId": "0f1e", "prompt": "later", "feedback": false}',
+            "editInteraction": '{"prompt": "later", "filepath": "b.py"}',
+            "editOutcome": '{"accepted": true, "filepath": "b.py"}',
+        }
+        want = {
+            "chatFeedback": [
+                (1, "user"),
+                (1, "assistant"),
+                (1, "system"),
+                (3, "user"),
+                (3, "system"),
+            ],
+            "editInteraction": [
+                (1, "system"),
+                (1, "user"),
+                (1, "assistant"),
+                (3, "system"),
+                (3, "user"),
+            ],
+            "editOutcome": [(1, "system"), (3, "system")],
+        }
+        for event, line in after.items():
+            rel = self.DEV % event
+            write_bad_line(self.home / rel)
+            with open(self.home / rel, "a", encoding="utf-8") as fh:
+                fh.write("\n" + line + "\n")
+            rows = self.rows_for(ContinueParser(), rel)
+            self.assertEqual([(r.source_line, r.turn_type) for r in rows[:-1]], want[event], event)
+            self.assertEqual((rows[-1].source_line, rows[-1].text), (2, bad_line_text()), event)
+
+    def test_cn_log_policy_rule(self):
+        # #198: a "don't ask again" answer logs the rule it added.
+        path = self.home / ".continue/logs/cn.log"
+        path.write_text(
+            "2026-10-07 11:00:00.000 [a1b2c3d4] [info]: Added policy rule to permissions.yaml:"
+            " Bash(npm*)\n",
+            encoding="utf-8",
+        )
+        rows = self.rows_for(ContinueParser(), ".continue/logs/cn.log")
+        self.assertEqual(
+            [(r.timestamp_utc, r.source_line, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "2026-10-07T11:00:00.000Z",
+                    1,
+                    "",
+                    "permission decision: allow always rule=Bash(npm*) (from logs/cn.log, log"
+                    " line time, host-local)",
+                )
+            ],
+        )
 
     def test_thinking_opt_in(self):
         rows = self.rows_for(ContinueParser(), self.REL, include_thinking=True)
