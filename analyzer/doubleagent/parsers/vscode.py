@@ -42,7 +42,14 @@ Model and permission rows, all `system`: the request `modelId` gives
 `model: <old> -> <new>` on every later change, and the request
 `modeInfo.telemetryModeId` (`ask`, `agent`, `edit`, `custom`) gives
 `permission mode: <mode>` and `permission mode: <old> -> <new>` the same
-way; both precede the request's user row and take its timestamp. A tool
+way; both precede the request's user row and take its timestamp. Since
+issue 210 (source-derived from microsoft/vscode at 4d22f4f922eb, not
+observed on any real install) the request's `modelConfiguration`, a
+dictionary of the model's options, is tracked with the model and printed
+after its id as sorted `key=value` pairs (`model: <id> <k>=<v>`), and
+`modeInfo.permissionLevel` (`default`, `assisted`, `autoApprove`,
+`autopilot`) gives `permission level: <level>` and
+`permission level: <old> -> <new>` after the mode row. A tool
 invocation's `isConfirmed` (a boolean before 1.104, else a
 `ConfirmedReason` object whose numeric `type` is a `ToolConfirmKind`,
 printed `<Name>(<n>)`, with its `source`, `id`, `scope`, `selectedButton`,
@@ -113,6 +120,58 @@ written by the Copilot Chat extension:
 
 An absent value prints `-` in both.
 
+Standing grants, settings, the GitHub account and the chat editing state
+(issue 210), all source-derived from microsoft/vscode at 4d22f4f922eb and
+not observed on any real install; every row is `system`:
+
+* `state.vscdb` of the default profile (`globalStorage/`), of another
+  profile (`profiles/<id>/globalStorage/`, `profiles/builtin/agents/` for
+  the Agents window) and of a workspace (`workspaceStorage/<hash>/`):
+  the `ItemTable` keys `chat/autoconfirm`, `chat/autoconfirm-post`,
+  `chat/servers/autoconfirm`, `chat/servers/autoconfirm-post` and
+  `chat/autoconfirm-combination` (each an object keyed by tool or server
+  id whose value is `true`, a label or `{label, arguments}`, or the older
+  array of ids), `chat.tools.global.autoApprove.optIn` and
+  `chat.externalPath.workspaceAllowlist` (an array of folder URIs) give
+  one `permission setting: <key>.<id>=<value>`,
+  `permission setting: chat.tools.global.autoApprove.optIn=<value>` or
+  `permission setting: chat.externalPath.workspaceAllowlist=<path>` row
+  per entry, ending `(from User/<path>/state.vscdb, file mtime)`, at the
+  file's modification time, with the workspace's folder as the project of
+  a workspace database's rows. A key whose value is another JSON type is
+  one `parser:` row.
+* In a profile's database only: `userSelectedRepositories` in the
+  Copilot Chat global state (`[{name, timestamp}]`, the repositories
+  picked for cloud agent tasks in the last week) gives `source host
+  repository: <name> type=cloud agent selection (from state.vscdb
+  GitHub.copilot-chat userSelectedRepositories, timestamp)` at
+  `timestamp`, and each `github-<login>-usages` or
+  `github-<login>-mcpserver-usages` key (VS Code's record of which
+  extension or MCP server used the GitHub account, `[{extensionId` or
+  `mcpServerId, scopes, lastUsed}]`; `github-enterprise-<label>` for
+  GitHub Enterprise, whose label ends ` - <host>`) gives `source host:
+  <host> account <login> extension=<id>` (or `mcp_server=<id>`)
+  `scopes=<a,b> (from state.vscdb <key>, lastUsed)` at `lastUsed`. The
+  token itself is a `secret://` row and never read.
+* `settings.json` of the default or another profile (JSONC): each key
+  matching `chat.tools.*autoApprov*` and `chat.permissions.default` gives
+  `permission setting: <key>=<value>`, or one row per entry
+  (`<key>.<entry>=<value>`) of a non-empty object, and
+  `chat.defaultModel` gives `model setting: chat.defaultModel=<value>`,
+  each ending `(from User/<path>/settings.json, file mtime)`, at the
+  file's modification time. A file that is not a JSON object is one
+  `parser:` row.
+* `workspaceStorage/<hash>/chatEditingSessions/<key>/state.json`, a
+  secondary source (`secondary()`), `{version, recentSnapshot: {stopId,
+  entries: [{resource, state, telemetryInfo: {requestId, modelId},
+  isDeleted?}]}}`: one `edit state: <Modified|Accepted|Rejected>
+  <path> request=<requestId> model=<modelId>[ deleted=true] (from
+  chatEditingSessions state.json, file mtime)` row per entry, with the
+  folder's `<key>` (the chat session id for a local chat) as `session_id`
+  and the workspace's folder as project, at the file's modification time.
+  It survives the chat's deletion. A file that does not decode or is not
+  a JSON object is one whole-file `parser:` row.
+
 Errors (issue 136), after the session's other rows, each a `system` row
 through `error_rows` in `base.py`: a `.jsonl` line that does not decode, or
 that decodes but whose mutation cannot be applied, carries the line in full
@@ -125,13 +184,15 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
+from .. import sqlite_util
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from ..vscode_state import read_item
+from ..vscode_state import read_items
 from .antigravity import uri_to_path
 from .base import (
     Options,
@@ -143,6 +204,7 @@ from .base import (
     setting_value,
     track_change,
 )
+from .gemini_cli import parse_jsonc
 
 USER_DIR = (
     r"^(?:(?:\.config|Library/Application Support|AppData/Roaming)/(?:Code[^/]*|VSCodium[^/]*|Positron|Trae[^/]*)"
@@ -157,9 +219,40 @@ SESSION_RX = re.compile(
 CLOUD_SESSIONS_RX = re.compile(
     USER_DIR + r"globalStorage/github\.copilot-chat/cloudSessions\.json$"
 )
-STATE_RX = re.compile(USER_DIR + r"globalStorage/state\.vscdb$")
+# A `state.vscdb` of the default profile (`globalStorage/`, also the
+# application scope), of another profile (`profiles/<id>/globalStorage/`,
+# the Agents window's under `profiles/builtin/agents/`) or of a workspace
+# (`workspaceStorage/<hash>/`).
+STATE_RX = re.compile(
+    USER_DIR + r"(?P<scope>globalStorage|profiles/(?:builtin/)?[^/]+/globalStorage"
+    r"|workspaceStorage/[^/]+)/state\.vscdb$"
+)
+SETTINGS_RX = re.compile(USER_DIR + r"(?:profiles/(?:builtin/)?[^/]+/)?settings\.json$")
+EDITING_RX = re.compile(
+    USER_DIR + r"workspaceStorage/[^/]+/chatEditingSessions/(?P<key>[^/]+)/state\.json$"
+)
 COPILOT_STATE_KEY = "GitHub.copilot-chat"
 OWNED_TASKS_KEY = "github.copilot.cloudAgent.ownedTasks"
+SELECTED_REPOS_KEY = "userSelectedRepositories"
+# `ToolConfirmStore` keys (languageModelToolsConfirmationService.ts:240-244
+# at 4d22f4f), each in workspace and profile scope.
+GRANT_KEYS = (
+    "chat/autoconfirm",
+    "chat/autoconfirm-post",
+    "chat/servers/autoconfirm",
+    "chat/servers/autoconfirm-post",
+    "chat/autoconfirm-combination",
+)
+OPT_IN_KEY = "chat.tools.global.autoApprove.optIn"
+ALLOWLIST_KEY = "chat.externalPath.workspaceAllowlist"
+# `<providerId>-<account label>-usages` and `-mcpserver-usages`, application
+# scope (authenticationUsageService.ts:103, authenticationMcpUsageService.ts:101).
+USAGE_KEY_RX = re.compile(r"^(github(?:-enterprise)?)-(.+?)(-mcpserver)?-usages$")
+SETTINGS_PERMISSION_RX = re.compile(r"^chat\.tools\..*[Aa]utoApprov|^chat\.permissions\.default$")
+DEFAULT_MODEL_KEY = "chat.defaultModel"
+# `ModifiedFileEntryState`, a const enum serialised as its index
+# (chatEditingService.ts:353-357 at 4d22f4f).
+EDIT_STATES = ("Modified", "Accepted", "Rejected")
 
 
 class MutationError(ValueError):
@@ -359,22 +452,107 @@ def tool_result_text(part: dict) -> str:
     return ("[error] " + text) if is_error else text
 
 
+def user_rel(rel: str) -> str:
+    """`rel` from its `User/` component on, as row text names the file."""
+    i = rel.find("/User/")
+    return rel[i + 1 :] if i >= 0 else rel
+
+
+def grant_texts(values: dict, problems: list) -> Iterator[str]:
+    """`permission setting:` texts, without the source, for the standing
+    grants of one `state.vscdb`: one per entry of each `ToolConfirmStore`
+    key (an object keyed by tool or server id whose value is `true`, a
+    label or `{label, arguments}`, or the older array of ids), the global
+    auto-approve opt-in, and one per external path allowed in the
+    workspace. A value of another JSON type is added to `problems`."""
+    for key in GRANT_KEYS:
+        value = values.get(key)
+        if value is None or isinstance(value, str):
+            continue  # absent, or not JSON (read_items reported it)
+        if isinstance(value, dict):
+            for tool_id, entry in value.items():
+                yield "permission setting: %s.%s=%s" % (key, tool_id, setting_value(entry))
+        elif isinstance(value, list):
+            for tool_id in value:
+                yield "permission setting: %s.%s=true" % (key, setting_value(tool_id))
+        else:
+            problems.append("ItemTable value for %s is not a JSON object or array" % key)
+    if OPT_IN_KEY in values:
+        yield "permission setting: %s=%s" % (OPT_IN_KEY, setting_value(values[OPT_IN_KEY]))
+    allow = values.get(ALLOWLIST_KEY)
+    if isinstance(allow, list):
+        for entry in allow:
+            text = uri_to_path(entry) if isinstance(entry, str) else setting_value(entry)
+            yield "permission setting: %s=%s" % (ALLOWLIST_KEY, text)
+    elif allow is not None and not isinstance(allow, str):
+        problems.append("ItemTable value for %s is not a JSON array" % ALLOWLIST_KEY)
+
+
+def setting_texts(key: str, value) -> Iterator[str]:
+    """`permission setting:` texts for one `settings.json` key: one per
+    entry of a non-empty object value (`<key>.<entry>=<value>`), else one
+    (`<key>=<value>`)."""
+    if isinstance(value, dict) and value:
+        for entry, v in value.items():
+            yield "permission setting: %s.%s=%s" % (key, entry, setting_value(v))
+    else:
+        yield "permission setting: %s=%s" % (key, setting_value(value))
+
+
+def edit_state_text(entry: dict) -> str:
+    """The `edit state:` text for one snapshot entry of a chat editing
+    `state.json`."""
+    state = entry.get("state")
+    if isinstance(state, int) and not isinstance(state, bool) and 0 <= state < len(EDIT_STATES):
+        name = EDIT_STATES[state]
+    else:
+        name = setting_value(state)
+    info = entry.get("telemetryInfo")
+    info = info if isinstance(info, dict) else {}
+    text = "edit state: %s %s request=%s model=%s" % (
+        name,
+        uri_to_path(str(entry.get("resource") or "")) or "-",
+        info.get("requestId") or "-",
+        info.get("modelId") or "-",
+    )
+    if entry.get("isDeleted"):
+        text += " deleted=true"
+    return text + " (from chatEditingSessions state.json, file mtime)"
+
+
 class VsCodeParser(Parser):
     agent = "vscode"
     name = "vscode"
     records_sync = True
     records_origin = True
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
-        return bool(SESSION_RX.match(rel) or CLOUD_SESSIONS_RX.match(rel) or STATE_RX.match(rel))
+        return bool(
+            SESSION_RX.match(rel)
+            or CLOUD_SESSIONS_RX.match(rel)
+            or STATE_RX.match(rel)
+            or SETTINGS_RX.match(rel)
+            or EDITING_RX.match(rel)
+        )
+
+    def secondary(self, artifact: Artifact) -> bool:
+        """The chat editing state repeats which files a request edited."""
+        return bool(EDITING_RX.match(artifact.rel))
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if CLOUD_SESSIONS_RX.match(artifact.rel):
             yield from self._parse_cloud_sessions(artifact)
             return
         if STATE_RX.match(artifact.rel):
-            yield from self._parse_owned_tasks(artifact)
+            yield from self._parse_state(artifact)
+            return
+        if SETTINGS_RX.match(artifact.rel):
+            yield from self._parse_settings(artifact)
+            return
+        if EDITING_RX.match(artifact.rel):
+            yield from self._parse_editing(artifact)
             return
         req_lines: dict[int, int] = {}
         errors: list = []
@@ -471,13 +649,180 @@ class VsCodeParser(Parser):
             row.source_line = 1
             yield row
 
-    def _parse_owned_tasks(self, artifact: Artifact) -> Iterator[Row]:
-        """`state.vscdb`: a `session synced:` and a `session origin: remote`
-        row per cloud agent task in the Copilot Chat global state's
-        `ownedTasks`, at `recordedAt`, then a `parser:` row per problem
-        reading the database or the value."""
-        state, problems = read_item(artifact.disk_path, COPILOT_STATE_KEY)
-        tasks = state.get(OWNED_TASKS_KEY) if isinstance(state, dict) else None
+    def _parse_state(self, artifact: Artifact) -> Iterator[Row]:
+        """`state.vscdb` of a profile or a workspace: the cloud agent task,
+        selected repository and source-host rows (profile scope only), then
+        one `permission setting:` row per standing grant at the file's
+        modification time, then a `parser:` row per problem reading the
+        database or a value."""
+        scope = STATE_RX.match(artifact.rel)
+        workspace = bool(scope and scope.group("scope").startswith("workspaceStorage/"))
+        keys = [*GRANT_KEYS, OPT_IN_KEY, ALLOWLIST_KEY]
+        if not workspace:
+            keys.append(COPILOT_STATE_KEY)
+        values, problems = read_items(artifact.disk_path, keys)
+        project, errors = "", []
+        if workspace:
+            project = self._workspace_json(artifact.disk_path.parent, errors)[0]
+        state = values.get(COPILOT_STATE_KEY)
+        if isinstance(state, dict):
+            yield from self._owned_task_rows(artifact, state.get(OWNED_TASKS_KEY))
+            yield from self._selected_repo_rows(artifact, state.get(SELECTED_REPOS_KEY))
+        if not workspace:
+            usages, more = self._usage_items(artifact.disk_path)
+            problems.extend(more)
+            yield from self._source_host_rows(artifact, usages)
+        ts, src = file_mtime(artifact), user_rel(artifact.rel)
+        for text in grant_texts(values, problems):
+            row = self._system_row(artifact, "", ts, "%s (from %s, file mtime)" % (text, src))
+            row.project_path = project
+            yield row
+        for problem in problems:
+            row = self._system_row(artifact, "", "", "parser: " + problem)
+            row.project_path = project
+            yield row
+        yield from error_rows(self, artifact, errors, "", project)
+
+    def _selected_repo_rows(self, artifact: Artifact, repos) -> Iterator[Row]:
+        """A `source host repository:` row per repository the user picked
+        for a cloud agent task in the last week, at the entry's
+        `timestamp`."""
+        source = "(from state.vscdb %s %s, timestamp)" % (COPILOT_STATE_KEY, SELECTED_REPOS_KEY)
+        for entry in repos if isinstance(repos, list) else ():
+            if isinstance(entry, dict) and entry.get("name"):
+                yield self._system_row(
+                    artifact,
+                    "",
+                    to_utc(entry.get("timestamp")),
+                    "source host repository: %s type=cloud agent selection %s"
+                    % (setting_value(entry["name"]), source),
+                )
+
+    @staticmethod
+    def _usage_items(path: Path) -> tuple[list[tuple[str, object]], list[str]]:
+        """`(key, decoded value)` for each `ItemTable` row that is an
+        authentication usage record of the GitHub provider, and problems.
+        `secret://` rows never match the pattern. A database `read_items`
+        could not open gives nothing here, since it reported it."""
+        if path.is_symlink() or not sqlite_util.is_sqlite(path):
+            return [], []
+        try:
+            with sqlite_util.open_copy(path) as con:
+                if "ItemTable" not in sqlite_util.table_names(con):
+                    return [], []
+                sql = "select key, value from ItemTable where key like 'github%-usages'"
+                found = [(r[0], r[1]) for r in con.execute(sql)]
+        except (sqlite3.DatabaseError, OSError):
+            return [], []
+        out: list[tuple[str, object]] = []
+        problems: list[str] = []
+        for key, value in found:
+            if not isinstance(key, str) or not USAGE_KEY_RX.match(key):
+                continue
+            if isinstance(value, memoryview):
+                value = value.tobytes()
+            if isinstance(value, (bytes, bytearray)):
+                value = bytes(value).decode("utf-8", errors="replace")
+            try:
+                out.append((key, json.loads(str(value))))
+            except ValueError as e:
+                problems.append("ItemTable value for %s is not valid JSON (%s)" % (key, e))
+        return out, problems
+
+    def _source_host_rows(self, artifact: Artifact, usages) -> Iterator[Row]:
+        """A `source host:` row per extension or MCP server that used a
+        GitHub account, at the usage's `lastUsed`. The account label is the
+        GitHub login; a GitHub Enterprise label ends ` - <host><path>`."""
+        for key, entries in usages:
+            m = USAGE_KEY_RX.match(key)
+            if not m or not isinstance(entries, list):
+                continue
+            provider, label, mcp = m.group(1), m.group(2), m.group(3)
+            host, login = "github.com", label
+            if provider == "github-enterprise":
+                login, _, host = label.rpartition(" - ")
+                if not login:
+                    login, host = label, provider
+            for usage in entries:
+                if not isinstance(usage, dict):
+                    continue
+                scopes = usage.get("scopes")
+                yield self._system_row(
+                    artifact,
+                    "",
+                    to_utc(usage.get("lastUsed")),
+                    "source host: %s account %s %s=%s scopes=%s (from state.vscdb %s, lastUsed)"
+                    % (
+                        host,
+                        login,
+                        "mcp_server" if mcp else "extension",
+                        setting_value(usage.get("mcpServerId" if mcp else "extensionId") or "-"),
+                        ",".join(str(x) for x in scopes) if isinstance(scopes, list) else "-",
+                        key,
+                    ),
+                )
+
+    def _parse_settings(self, artifact: Artifact) -> Iterator[Row]:
+        """`settings.json` of the default or another profile: a `permission
+        setting:` row per auto-approve setting or entry and for the default
+        permission level, and a `model setting:` row for the default model,
+        at the file's modification time; one `parser:` row when the file is
+        not a JSON object."""
+        ts, src = file_mtime(artifact), user_rel(artifact.rel)
+        try:
+            doc = parse_jsonc(artifact.disk_path.read_bytes())
+        except (OSError, ValueError) as e:
+            doc = e
+        if not isinstance(doc, dict):
+            why = " (%s)" % doc if isinstance(doc, Exception) else ""
+            text = "parser: %s is not a JSON object%s" % (src, why)
+            yield self._system_row(artifact, "", "", text)
+            return
+        for key, value in doc.items():
+            if key == DEFAULT_MODEL_KEY:
+                texts = ["model setting: %s=%s" % (key, setting_value(value))]
+            elif SETTINGS_PERMISSION_RX.match(key):
+                texts = list(setting_texts(key, value))
+            else:
+                continue
+            for text in texts:
+                row = self._system_row(artifact, "", ts, "%s (from %s, file mtime)" % (text, src))
+                row.source_line = 1
+                yield row
+
+    def _parse_editing(self, artifact: Artifact) -> Iterator[Row]:
+        """`chatEditingSessions/<key>/state.json`: an `edit state:` row per
+        file of the most recent snapshot, at the file's modification time,
+        with the folder's name as the session id and the workspace's folder
+        as the project; a whole-file `parser:` row when it does not decode
+        or is not a JSON object."""
+        m = EDITING_RX.match(artifact.rel)
+        session_id = m.group("key") if m else ""
+        errors: list = []
+        project = self._workspace_json(artifact.disk_path.parent.parent.parent, errors)[0]
+        doc = None
+        try:
+            with open(artifact.disk_path, "rb") as fh:
+                doc = json.loads(fh.read().decode("utf-8", errors="replace"))
+        except ValueError as e:
+            errors.append((0, "file is not valid JSON (%s)" % e, ""))
+        else:
+            if not isinstance(doc, dict):
+                errors.append((0, "state.json is not a JSON object", ""))
+        snapshot = doc.get("recentSnapshot") if isinstance(doc, dict) else None
+        entries = snapshot.get("entries") if isinstance(snapshot, dict) else None
+        ts = file_mtime(artifact)
+        for entry in entries if isinstance(entries, list) else ():
+            if isinstance(entry, dict):
+                row = self._system_row(artifact, session_id, ts, edit_state_text(entry))
+                row.project_path, row.source_line = project, 1
+                yield row
+        yield from error_rows(self, artifact, errors, session_id, project)
+
+    def _owned_task_rows(self, artifact: Artifact, tasks) -> Iterator[Row]:
+        """A `session synced:` and a `session origin: remote` row per cloud
+        agent task in the Copilot Chat global state's `ownedTasks`, at
+        `recordedAt`."""
         for task_id, entry in tasks.items() if isinstance(tasks, dict) else ():
             if isinstance(entry, dict):
                 recorded, application = entry.get("recordedAt"), entry.get("application")
@@ -495,8 +840,6 @@ class VsCodeParser(Parser):
             yield self._system_row(
                 artifact, session_id, ts, "session origin: remote GitHub cloud agent " + source
             )
-        for problem in problems:
-            yield self._system_row(artifact, "", "", "parser: " + problem)
 
     def _replay(self, artifact: Artifact, req_lines: dict[int, int], errors: list):
         """Replay a `.jsonl` mutation log and return the session state. A
@@ -563,7 +906,14 @@ class VsCodeParser(Parser):
         parts = artifact.rel.split("/")
         if len(parts) < 4 or parts[-2] != "chatSessions" or parts[-4] != "workspaceStorage":
             return "", ""
-        ws = artifact.disk_path.parent.parent / "workspace.json"
+        return VsCodeParser._workspace_json(artifact.disk_path.parent.parent, errors)
+
+    @staticmethod
+    def _workspace_json(ws_dir: Path, errors: list) -> tuple[str, str]:
+        """`(folder, workspace_file)` from `<ws_dir>/workspace.json`, as
+        `_workspace_folder` describes; also read for a workspace's
+        `state.vscdb` and chat editing state."""
+        ws = ws_dir / "workspace.json"
         try:
             if ws.is_symlink() or not ws.is_file():
                 return "", ""
@@ -584,12 +934,23 @@ class VsCodeParser(Parser):
         model = str(req.get("modelId") or "")
         req_ts = req.get("timestamp")
         # One file is one session, so the tracked keys need no session id.
-        t = track_change("model", seen, "model", model)
+        # The model's options (`modelConfiguration`) are tracked with it.
+        config = req.get("modelConfiguration")
+        pairs = ""
+        if model and isinstance(config, dict):
+            pairs = " ".join("%s=%s" % (k, setting_value(config[k])) for k in sorted(config))
+        t = track_change("model", seen, "model", model + (" " + pairs if pairs else ""))
         if t:
             yield base("system", t, req_ts, line, model)
         mode_info = req.get("modeInfo")
-        mode = mode_info.get("telemetryModeId") if isinstance(mode_info, dict) else None
+        if not isinstance(mode_info, dict):
+            mode_info = {}
+        mode = mode_info.get("telemetryModeId")
         t = track_change("permission mode", seen, "mode", setting_value(mode) if mode else "")
+        if t:
+            yield base("system", t, req_ts, line, model)
+        level = mode_info.get("permissionLevel")
+        t = track_change("permission level", seen, "level", setting_value(level) if level else "")
         if t:
             yield base("system", t, req_ts, line, model)
         resp_ts = req.get("responseTimestamp") or req_ts
