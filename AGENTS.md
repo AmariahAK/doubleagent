@@ -125,7 +125,12 @@ OpenBSD sh, posh (the pdksh lineage), and `zsh --emulate sh`. Concretely:
   `${var,,}`, no `${var:0:3}`, no `$'...'`, no `function` keyword, no
   `-print0 | read -d ''`, no process substitution.
 - No GNU-only flags: no `sed -i`, `date -d`, `cp --parents`, `find -false`,
-  `stat -c` without a BSD fallback, `xargs -0` without a fallback.
+  `stat -c` without a BSD fallback, `xargs -0` without a fallback. No
+  GNU-only regular expressions either: `\|`, `\+`, `\?`, `\b` and `\w`
+  are extensions in a basic regular expression for `grep` or `sed`, so
+  alternation is `grep -E` or two `-e` patterns, and repetition is `*`
+  or `grep -E`. No linter sees inside a pattern string; the macOS CI
+  job, whose tools are the BSD ones, is the check.
 - Platform differences (`stat`, hashing, user enumeration) go behind a
   small wrapper function with capability detection done once at startup.
 - Shell functions cannot be inherited by `find -exec sh -c`, so shared helpers
@@ -1202,7 +1207,9 @@ the modification times, and the mapping waits for the next round.
 ## Validation and testing
 
 CI (`.github/workflows/ci.yml`) runs the catalog drift test, shellcheck, the
-sh smoke test under sh, dash, bash, busybox ash, zsh and posh, the PowerShell
+sh smoke test under sh, dash, bash, busybox ash, zsh and posh, the drift
+test and the sh smoke test under dash on macOS, where find, sed, stat,
+grep, awk and tar are the BSD ones, the PowerShell
 smoke test under PowerShell 7 on Linux and Windows PowerShell 5.1 on
 Windows, the analyzer tests on Python 3.10, 3.11, 3.12, 3.13 and 3.14, and a lint job
 with the quality gates below, then a `CI result` job that depends on all
