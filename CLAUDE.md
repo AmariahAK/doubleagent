@@ -15,6 +15,13 @@ Claude Code specific notes:
 - A live run against this workstation collects the author's own Claude Code,
   Gemini, Antigravity, Codex and Copilot state. Write it under the scratchpad
   directory and delete it afterwards.
+- This Mac's `python3` is 3.14 without `zstandard` or `python-dateutil`, so
+  `analyzer/tests/run.sh` fails at import; make a venv in the scratchpad
+  (`python3 -m venv venv && venv/bin/pip install -r analyzer/requirements.txt
+  ruff==0.16.10 pyright==1.1.414`), run the suite with `venv/bin/python -m
+  unittest discover -s tests -t tests` from `analyzer/`, and pyright with
+  `--pythonpath venv/bin/python`. `uvx`, shellcheck, shfmt and pwsh are
+  not installed; CI runs those gates.
 - This Mac has `/bin/dash` (macOS 26 ships it; `tests/smoke.sh dash` takes a
   few minutes) but no busybox, posh, pwsh, shellcheck or shfmt. Its
   `/bin/sh` is bash 3.2, the one shell CI does not run, and the smoke
