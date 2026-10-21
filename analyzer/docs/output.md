@@ -1168,6 +1168,57 @@ later line of the session names another model. The `pi` parser reads
 share, as one `permission setting: <path>=<true|false> (from
 .pi/agent/trust.json, file mtime)` row per project, with `project_path`
 the project, the file's modification time and an empty `session_id`.
+
+The `openclaw` parser also writes, each text ending in
+`(from <file> <table>, <time column>)`, which names the source and the time the row
+carries. After the start row of a session's current generation, from the
+session's `session_nodes.entry_json` at `updated_at`:
+`model: <modelOverride> provider=<providerOverride>
+source=<modelOverrideSource>` (with ` fallback_from=<provider>/<model>`
+when a fallback replaced the user's choice; the entry keeps no previous
+model), one `permission setting: <key>=<value>` per `elevatedLevel`,
+`execHost`, `execNode`, `execCwd`, `toolOverrides` and `sendPolicy`, and
+`session archived: <archiveReason> by <type>:<id>` at `archivedAt`. One
+`session relayed: <channel> account <account> <kind> peer <peer>
+thread <thread> role <role>` per chat-platform conversation linked to a
+generation, else `session relayed: <channel>
+account <account> <chat_type>` from its window, else `session relayed: <channel>
+account <account> <chatType> from <from> to <to>` from the session's external
+delivery route, and `session relayed: gmail hook` for a session a Gmail
+hook started; the Control UI (`webchat`) and the internal wake channels
+give none, and `sessions.jsonl` `relayed` reads `no` for a session
+without the row. `session deleted: <session_id> archive <archive_name>`
+follows each deleted archive's rows, and `session forgotten from
+memory: <session_id> agent <agent_id> reason=<reason>` marks each memory
+tombstone. A prompt in `session_pending_inputs` that no transcript entry
+consumed gives a `user` row and `pending input: <state>, not consumed by
+the transcript (input <input_id> run <run_id>; ...)`; one consumed by an
+entry the database no longer holds gives its `user` row, and a full-text
+index entry the transcript no longer holds its `user`, `assistant` or
+`system` row, both marked `recovered`. `channel
+delivery: <kind> <status> channel <channel> conversation <id> platform message <id>` and
+`channel delivery reply: <text> (reply message <id>; ...)` record the
+sends to a platform conversation and the platform's replies. From
+`state/openclaw.sqlite`: `permission decision: <decision>
+status=<status> kind=<kind> resolver=<resolver_kind>
+reason=<terminal_reason> approval <id>` per approval, at its resolution
+(its request while pending), with the governed call's `session_id`,
+`tool_name` and `tool_use_id`; one `permission
+setting: <scope>.<setting>` per default and per-agent exec policy value,
+allowlist entry and MCP tool grant (the approvals socket token is never
+read), per `allow-always` standing grant (`permission setting: standing
+grant <id> ...`) and per allowed channel sender (`permission setting:
+channel <channel> account <account> allowFrom=<sender>`); `channel
+ingress: <channel> account <account> status <status>: <payload>` per
+inbound channel message, the payload whole and with no session; and
+`source host: github account <login> id <id> identity <source>;
+publication <status> repository <repo> branch <branch> pull
+request <url>` per push or pull request the Gateway made on GitHub, with the
+session's id. An agent or state database that is only a PostgreSQL
+engine anchor is one row, `parser: agent database is a PostgreSQL anchor
+(store <store_id>, schema <schema>): transcripts are on the database
+server` (`state database ... the Gateway state is on the database
+server`).
 For a `/bug` report recorded in a session, the `pi` parser writes
 `session synced: bug report <id> uploaded to radius.pi.dev
 transcript=<true|false> summary=<true|false> (from session entry
@@ -1518,7 +1569,10 @@ event rows it took from the secondary copy `recovered` `yes` in the same
 way: since 0.19.0 the `opencode` parser reads the 1.x
 `message` and `part` tables of a database upgraded to OpenCode 2.0 only
 for a session its `session_message` table does not hold, matched exactly
-on the session id. [`sessions.jsonl`](#sessionsjsonl)
+on the session id, and the `openclaw` parser reads the full-text index
+(`session_transcript_fts_content`) and the consumed pending inputs of an
+agent database only for an entry whose session and entry id the
+database's transcript does not hold. [`sessions.jsonl`](#sessionsjsonl)
 `recovered` says whether a session was rebuilt from such rows alone
 (`yes`) or in part (`partial`):
 `jq -c 'select(.recovered == "yes")' out/sessions.jsonl` lists the

@@ -498,7 +498,7 @@ def _override_text(entry: dict) -> str:
 def _policy_settings(policy) -> list[str]:
     """`<key>=<value>` for each policy field, allowlist entry and MCP tool
     grant of one `defaults` or `agents.<id>` object of an exec approvals
-    file (`packages/gateway-protocol/src/schema/exec-approvals.ts:15-60`)."""
+    file (`packages/gateway-protocol/src/schema/exec-approvals.ts:15-75`)."""
     if not isinstance(policy, dict):
         return []
     out = []

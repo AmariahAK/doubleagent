@@ -760,10 +760,23 @@ and sender) is in each session's start row; `auth_profile_store` is never
 read; `*.trajectory.jsonl` and `*.migrated*` are not read. The agent
 database's `session_nodes.entry_json` gives each published session's
 `publicShare` grant, and `state/openclaw.sqlite` table `backup_runs` the
-`openclaw backup` uploads.
+`openclaw backup` uploads. The same `entry_json` gives the session's
+delivery route, model override, permission settings and archive marker;
+the agent database's `session_conversations`, `conversations` and
+`session_windows` give the relay rows, `session_pending_inputs` the
+prompts that never reached the transcript, the full-text index content
+table `session_transcript_fts_content` the entries the transcript lost,
+`conversation_deliveries` the channel sends and replies,
+`session_transcript_archives` the deletions and
+`memory_session_tombstones` the sessions forgotten from memory.
+`state/openclaw.sqlite` also gives `operator_approvals`,
+`exec_approvals_config` (never its socket token),
+`operator_approval_standing_grants`, `channel_pairing_allow_entries`,
+`channel_ingress_events` and the three GitHub publication request tables.
+A PostgreSQL engine anchor in place of either database is one row.
 
 Validated against: Source at [3b16db7](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9) (the checkpoint and backup writers,
-since removed, at [6814525](https://github.com/openclaw/openclaw/commit/68145258676f1401a2e42cbaffe6564c2a6213c6) and [6559e3f](https://github.com/openclaw/openclaw/commit/6559e3f3b94c54e2b1aa06d1fca712c5360455ff)), synthetic fixture.
+since removed, at [6814525](https://github.com/openclaw/openclaw/commit/68145258676f1401a2e42cbaffe6564c2a6213c6) and [6559e3f](https://github.com/openclaw/openclaw/commit/6559e3f3b94c54e2b1aa06d1fca712c5360455ff)), synthetic fixture; the relay, permission, model-override, past-use, deletion, PostgreSQL-anchor and GitHub publication rows from source at [146284a](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b) (version 2026.10.5), synthetic fixture.
 
 ### `opencode`
 
