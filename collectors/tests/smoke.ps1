@@ -1085,6 +1085,28 @@ Mk "$u236/inno_updater.exe" "binary`n"
 Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
 Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
 
+# 2026-10-21 OpenCode and Kilo Code source review (#213, #221)
+# Source only, no real install: OpenCode 2.0 (anomalyco/opencode cb07c55)
+# writes its background server's password to service.json, or
+# service-<channel>.json, in the config and the state directory, keeps the
+# Electron desktop app's data in ai.opencode.desktop, .beta or .dev under
+# the platform's app data directory with a V8 compile-cache, and keeps a
+# temp root that is AppData/Local/Temp/opencode on Windows. Kilo Code
+# (Kilo-Org/kilocode 87cc35c) writes its sandbox policy and preference files
+# beside its state directory. Checks follow the default and -NoSecrets runs
+# below; the same files are in smoke.sh under alice and bob.
+$d213 = 'Users/alice/Library/Application Support/ai.opencode.desktop'
+$k221 = 'Users/alice/.local/state/kilo-sandbox-policy/aa'
+Mk 'Users/alice/.config/opencode/service.json' "{`"password`":`"x`"}`n"
+Mk 'Users/alice/.local/state/opencode/service-local.json' "{`"password`":`"x`"}`n"
+Mk "$d213/drafts.sqlite" "sqlite`n"
+Mk "$d213/compile-cache/x" "v8`n"
+Mk 'Users/alice/.config/ai.opencode.desktop.beta/drafts.sqlite' "sqlite`n"
+Mk 'Users/alice/AppData/Roaming/ai.opencode.desktop/drafts.sqlite' "sqlite`n"
+Mk 'Users/alice/AppData/Local/Temp/opencode/notes.txt' "tmp`n"
+Mk "$k221/bb.json" "{`"enabled`":true,`"mode`":`"deny`",`"version`":1}`n"
+Mk 'Users/alice/.local/state/kilo-sandbox-preference/bb.json' "false`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1627,6 +1649,13 @@ Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
 Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
 Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
 
+# 2026-10-21 OpenCode and Kilo Code source review (#213, #221)
+Check '#213 OpenCode service.json flagged secret' { (Is113 'Users/alice/.config/opencode/service.json' 'opencode' $true) -and (Is113 'Users/alice/.local/state/opencode/service-local.json' 'opencode' $true) }
+Check '#213 OpenCode desktop data collected' { (Is113 "$d213/drafts.sqlite" 'opencode' $false) -and (Is113 'Users/alice/.config/ai.opencode.desktop.beta/drafts.sqlite' 'opencode' $false) -and (Is113 'Users/alice/AppData/Roaming/ai.opencode.desktop/drafts.sqlite' 'opencode' $false) }
+Check '#213 OpenCode desktop compile-cache excluded' { (StatusOf "$d213/compile-cache") -eq 'skipped_excluded' -and (NoRow6 'compile-cache/x') }
+Check '#213 OpenCode Windows temp root collected' { Is113 'Users/alice/AppData/Local/Temp/opencode/notes.txt' 'opencode' $false }
+Check '#221 Kilo sandbox policy and preference collected' { (Is113 "$k221/bb.json" 'kilo-code' $false) -and (Is113 'Users/alice/.local/state/kilo-sandbox-preference/bb.json' 'kilo-code' $false) }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -1832,6 +1861,8 @@ Check '#153 Qwen Code channel credentials skipped without secrets' { (StatusOf '
 Check '#153 Qwen Code channel routing files kept without secrets' { (StatusOf 'Users/alice/.qwen/channels/sessions.json') -eq 'collected' -and (StatusOf 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json') -eq 'collected' }
 # 2026-10-18 Codex shell snapshots (#160)
 Check '#160 Codex shell snapshot skipped without secrets' { (StatusOf $s160) -eq 'skipped_secret' }
+# 2026-10-21 OpenCode and Kilo Code source review (#213, #221)
+Check '#213 OpenCode service.json skipped without secrets' { (StatusOf 'Users/alice/.config/opencode/service.json') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.local/state/opencode/service-local.json') -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }

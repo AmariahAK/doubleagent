@@ -1158,6 +1158,31 @@ printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
 
+# 2026-10-21 OpenCode and Kilo Code source review (#213, #221)
+# Source only, no real install: OpenCode 2.0 (anomalyco/opencode cb07c55)
+# writes its background server's password to service.json, or
+# service-<channel>.json, in the config and the state directory, keeps the
+# Electron desktop app's data in ai.opencode.desktop, .beta or .dev under
+# the platform's app data directory with a V8 compile-cache, and keeps a
+# temp root that is AppData/Local/Temp/opencode on Windows. Kilo Code
+# (Kilo-Org/kilocode 87cc35c) writes its sandbox policy and preference files
+# beside its state directory. Checks follow the default and --no-secrets
+# runs below; the same files are in smoke.ps1 under alice.
+D213="$B/Library/Application Support/ai.opencode.desktop"
+K221="$H/.local/state/kilo-sandbox-policy/aa"
+mkdir -p "$H/.config/opencode" "$H/.local/state/opencode" "$D213/compile-cache" \
+  "$H/.config/ai.opencode.desktop.beta" "$B/AppData/Roaming/ai.opencode.desktop" \
+  "$B/AppData/Local/Temp/opencode" "$K221" "$H/.local/state/kilo-sandbox-preference"
+printf '{"password":"x"}\n' >"$H/.config/opencode/service.json"
+printf '{"password":"x"}\n' >"$H/.local/state/opencode/service-local.json"
+printf 'sqlite\n' >"$D213/drafts.sqlite"
+printf 'v8\n' >"$D213/compile-cache/x"
+printf 'sqlite\n' >"$H/.config/ai.opencode.desktop.beta/drafts.sqlite"
+printf 'sqlite\n' >"$B/AppData/Roaming/ai.opencode.desktop/drafts.sqlite"
+printf 'tmp\n' >"$B/AppData/Local/Temp/opencode/notes.txt"
+printf '{"enabled":true,"mode":"deny","version":1}\n' >"$K221/bb.json"
+printf 'false\n' >"$H/.local/state/kilo-sandbox-preference/bb.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1541,6 +1566,13 @@ check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 
+# 2026-10-21 OpenCode and Kilo Code source review (#213, #221)
+check "#213 OpenCode service.json flagged secret" "row \"$H/.config/opencode/service.json\" | grep -q '\"agent\":\"opencode\".*$SEC153' && row \"$H/.local/state/opencode/service-local.json\" | grep -q '\"agent\":\"opencode\".*$SEC153'"
+check "#213 OpenCode desktop data collected" "row \"$D213/drafts.sqlite\" | grep -q '\"agent\":\"opencode\".*\"status\":\"collected\"' && row \"$H/.config/ai.opencode.desktop.beta/drafts.sqlite\" | grep -q '\"agent\":\"opencode\".*\"status\":\"collected\"' && row \"$B/AppData/Roaming/ai.opencode.desktop/drafts.sqlite\" | grep -q '\"agent\":\"opencode\".*\"status\":\"collected\"'"
+check "#213 OpenCode desktop compile-cache excluded" "[ \"\$(status_of \"$D213/compile-cache\")\" = skipped_excluded ] && ! grep -qF 'compile-cache/x' \"\$M\""
+check "#213 OpenCode Windows temp root collected" "row \"$B/AppData/Local/Temp/opencode/notes.txt\" | grep -q '\"agent\":\"opencode\".*\"status\":\"collected\"'"
+check "#221 Kilo sandbox policy and preference collected" "row \"$K221/bb.json\" | grep -q '\"agent\":\"kilo-code\".*\"status\":\"collected\"' && row \"$H/.local/state/kilo-sandbox-preference/bb.json\" | grep -q '\"agent\":\"kilo-code\".*\"status\":\"collected\"'"
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -1567,6 +1599,8 @@ check "#153 Qwen Code channel credentials skipped without secrets" "[ \"\$(statu
 check "#153 Qwen Code channel routing files kept without secrets" "[ \"\$(status_of \"$H/.qwen/channels/sessions.json\")\" = collected ] && [ \"\$(status_of \"$H/.qwen/channels/daemon/0123abcd/routes.json\")\" = collected ]"
 # 2026-10-18 Codex shell snapshots (#160)
 check "#160 Codex shell snapshot skipped without secrets" "[ \"\$(status_of \"$S160\")\" = skipped_secret ]"
+# 2026-10-21 OpenCode and Kilo Code source review (#213, #221)
+check "#213 OpenCode service.json skipped without secrets" "[ \"\$(status_of \"$H/.config/opencode/service.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.local/state/opencode/service-local.json\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"
