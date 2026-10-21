@@ -767,9 +767,17 @@ Validated against: Source at [77faf36](https://github.com/letta-ai/letta-code/co
 Files read: `.pi/agent/little-coder-prompt-history.json` (prompts without
 timestamps or sessions) and `.little-coder/checkpoints/<session file>/`
 (one `system` row per session's pre-edit copies); its transcripts are pi
-sessions, parsed as `pi`.
+sessions, parsed as `pi`. From the retired v0.0.x Python releases:
+`.little-coder/sessions/daily/<date>/session_*.json` and the `/save`
+files under `.little-coder/sessions/` (saved sessions, timed by their
+save time in host local time), `sessions/history.json` and
+`sessions/mr_sessions/session_latest.json` (secondary copies of them),
+`.little-coder/input_history.txt` (secondary, prompts without
+timestamps), `.little-coder/checkpoints/<id>/snapshots.json` (one
+`system` row per snapshot) and three keys of `.little-coder/config.json`
+(the gist sync, the Telegram relay and the permission mode).
 
-Validated against: Source at [89d4fa0](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df), synthetic fixture.
+Validated against: Source at [89d4fa0](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df), synthetic fixture; the v0.0.x layout from source at [424f7a4](https://github.com/itayinbarr/little-coder/commit/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03) (tag `v0.0.5`), synthetic fixture.
 
 ### `muse-code`
 
@@ -952,11 +960,16 @@ parent file are dropped; a session that looks driven by little-coder gets
 a `system` row saying so),
 `.pi/agent/experimental/sessions/<id>/meta.json` (the durable
 `session.sqlite` beside it is not parsed), `.pi/agent/trust.json` (project
-trust decisions, one `permission setting:` row per project). A session's
+trust decisions, one `permission setting:` row per project),
+`.pi/agent/settings.json` (only `defaultProjectTrust`, one `permission
+setting:` row), `.pi/agent/pi-debug.log` (secondary, the last `/debug`
+snapshot of a session's messages) and `.pi/agent/crashes.json` (one
+`crash:` row per recent crash). A session's
 `pi.bug-report` entry gives a `session synced:` row for a `/bug` upload
-or a `bug report exported:` row for a zip.
+or a `bug report exported:` row for a zip, and a call little-coder's
+permission gate refused a `permission decision: denied` row.
 
-Validated against: Source at [2003871](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c), synthetic fixture.
+Validated against: Source at [2003871](https://github.com/earendil-works/pi/commit/200387122ca450d6387f033949423114a270b96c), synthetic fixture; `defaultProjectTrust`, the debug and crash logs and the permission-gate rows from source at [5c1736f](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e) (coding-agent 1.3.0), synthetic fixture.
 
 ### `qwen-code`
 

@@ -2,7 +2,10 @@
 
 Validated against source, earendil-works/pi at 20038712 (coding-agent
 1.0.2, October 2026; v0.83.0 at 845d6ff1 where the schema differs), with a
-synthetic fixture; see `research/pi.md`. Files:
+synthetic fixture; see `research/pi.md`. The `defaultProjectTrust` row, the
+little-coder permission-gate rows, `pi-debug.log` and `crashes.json` were
+added from source at 5c1736f8 (coding-agent 1.3.0, October 2026) and are
+source-derived; no real install has shown them. Files:
 
 * `~/.pi/agent/sessions/--<encoded cwd>--/<ISO time>_<session id>.jsonl`,
   and legacy `~/.pi/agent/*.jsonl`. One JSON object per line, append-only:
@@ -41,7 +44,13 @@ synthetic fixture; see `research/pi.md`. Files:
   names the model already in force still yields `model: <id>
   provider=<provider>`; an assistant message that repeats it yields
   nothing. The `model` column is `responseModel`, else `model`. No entry type
-  records a per-call permission decision.
+  records a per-call permission decision; an extension that blocks a call
+  leaves an error `toolResult` whose text is its reason. little-coder's
+  permission gate refuses with `edit cancelled by user`, `command
+  cancelled by user` or a text starting `shell whitelist:`, so an error
+  `toolResult` with one of those texts is followed by `permission
+  decision: denied (<the text>)` with the call's `tool_name` and
+  `tool_use_id`.
 * Sync rows (issue 153), so `records_sync` is set: `/bug` (not at
   v0.83.0) appends `{type: "custom", customType: "pi.bug-report", data:
   {id, createdAt, hint, sessionIncluded, summaryIncluded, delivery,
@@ -71,10 +80,38 @@ synthetic fixture; see `research/pi.md`. Files:
   `session_id` empty, timestamped by the file's modification time, which
   is not the time of the decision. A file that is not a JSON object is
   one `system` row.
+* `~/.pi/agent/settings.json`: only the global `defaultProjectTrust`
+  (`ask`, `always`, `never`; since 1.3.0), which decides a project
+  `trust.json` has no entry for, is read: `permission setting:
+  defaultProjectTrust=<value> (from .pi/agent/settings.json, file mtime)`
+  at the file's modification time; no row when the key is absent (the
+  default, `ask`). No other key is read.
+* `~/.pi/agent/pi-debug.log`, rewritten by each `/debug` (v0.83.0 too): a
+  `Debug output at <ISO time>` line, the rendered screen, then `=== Agent
+  messages (JSONL) ===` and the open session's messages, one
+  `message`-shaped object per line, with no session id or cwd. A
+  secondary source (`secondary()`): one `debug snapshot:` system row at
+  the first line's time, then the messages through the session reader
+  with an empty `session_id` and `project_path`, each at the message's
+  own `timestamp` (ms). The session file stamps an entry when the message
+  ends and an assistant message's own `timestamp` is when its stream
+  started, so `secondary_tolerance()` is one hour. Bad lines after the
+  marker are reported; the screen lines before it are not JSON and are
+  not read.
+* `~/.pi/agent/crashes.json` (not at v0.83.0): a JSON array of up to five
+  recent crashes, `{timestamp, version, kind, message, stack,
+  sessionFile, cwd, notified}`. One `crash: <kind> <message>
+  version=<version> sessionFile=<sessionFile> (from .pi/agent/crashes.json,
+  record timestamp)` system row per record at its `timestamp`, the stack
+  on the lines after it, `project_path` the `cwd` and `session_id` taken
+  from the `sessionFile` name; `-` for an absent value. It repeats no
+  session event, so it is not a secondary source.
 * `~/.pi/agent/experimental/sessions/<id>/meta.json` (`PI_EXPERIMENTAL=1`,
   not at v0.83.0): `{createdAt (ms), cwd}`, one system row per session.
   The transcript beside it, `session.sqlite`, is not parsed: its `record`
-  JSON shape was not determined by the research.
+  JSON shape was not determined by the research. The experimental server
+  that wrote these was removed by coding-agent 1.3.0 (5c1736f8), so the
+  reader serves only installs where an older build ran.
 
 The session reader (`read_session`, `entry_rows`) is shared with
 `letta.py`, whose local backend writes the same format.
@@ -98,13 +135,28 @@ from .base import (
     error_rows,
     file_mtime,
     iter_jsonl,
+    line_text,
     setting_value,
     text_of,
     track_change,
 )
+from .cline_legacy import iter_json_array
 
 SESSION_RX = re.compile(r"^\.pi/agent/(?:sessions/[^/]+/)?[^/]+\.jsonl$")
 TRUST_REL = ".pi/agent/trust.json"
+SETTINGS_REL = ".pi/agent/settings.json"
+DEBUG_REL = ".pi/agent/pi-debug.log"
+CRASHES_REL = ".pi/agent/crashes.json"
+DEBUG_MARKER = "=== Agent messages (JSONL) ==="
+DEBUG_HEADER = "Debug output at "
+# The debug log's messages carry their own `timestamp`, which for an
+# assistant message is when its stream started; the session file stamps the
+# entry when the message ended.
+DEBUG_TOLERANCE_SECONDS = 3600.0
+SESSION_NAME_RX = re.compile(r"_([^_/]+)\.jsonl$")
+# The refusal texts of little-coder's permission-gate extension.
+GATE_REFUSALS = ("edit cancelled by user", "command cancelled by user")
+GATE_PREFIX = "shell whitelist:"
 META_RX = re.compile(r"^\.pi/agent/experimental/sessions/([^/]+)/meta\.json$")
 
 ARG_KEYS = ("command", "path", "file_path", "pattern", "code", "url", "query")
@@ -350,16 +402,19 @@ def _message_rows(
                 ),
             )
     elif role == "toolResult":
-        text = text_of(msg.get("content"))
-        if msg.get("isError"):
-            text = "[error] " + text
-        yield emit(
-            base(),
-            "tool_result",
-            text,
-            tool_name=str(msg.get("toolName") or ""),
-            tool_use_id=str(msg.get("toolCallId") or ""),
-        )
+        reason = text_of(msg.get("content"))
+        text = "[error] " + reason if msg.get("isError") else reason
+        tool_name = str(msg.get("toolName") or "")
+        tool_use_id = str(msg.get("toolCallId") or "")
+        yield emit(base(), "tool_result", text, tool_name=tool_name, tool_use_id=tool_use_id)
+        if msg.get("isError") and (reason in GATE_REFUSALS or reason.startswith(GATE_PREFIX)):
+            yield emit(
+                base(),
+                "system",
+                "permission decision: denied (%s)" % reason,
+                tool_name=tool_name,
+                tool_use_id=tool_use_id,
+            )
     elif role == "bashExecution":
         eid = str(rec.get("id") or "")
         yield emit(
@@ -422,18 +477,36 @@ class PiParser(Parser):
     agent = "pi"
     name = "pi"
     records_sync = True
+    has_secondary = True
 
     def __init__(self) -> None:
         self._parent_cache: dict[Path, set[tuple[str, str]]] = {}
 
     def wants(self, artifact: Artifact) -> bool:
-        return artifact.rel == TRUST_REL or bool(
+        return artifact.rel in (TRUST_REL, SETTINGS_REL, DEBUG_REL, CRASHES_REL) or bool(
             SESSION_RX.match(artifact.rel) or META_RX.match(artifact.rel)
         )
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return artifact.rel == DEBUG_REL
+
+    def secondary_tolerance(self, artifact: Artifact) -> float:
+        if artifact.rel == DEBUG_REL:
+            return DEBUG_TOLERANCE_SECONDS
+        return super().secondary_tolerance(artifact)
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if artifact.rel == TRUST_REL:
             yield from self._parse_trust(artifact)
+            return
+        if artifact.rel == SETTINGS_REL:
+            yield from self._parse_settings(artifact)
+            return
+        if artifact.rel == DEBUG_REL:
+            yield from self._parse_debug_log(artifact, opts)
+            return
+        if artifact.rel == CRASHES_REL:
+            yield from self._parse_crashes(artifact)
             return
         m = META_RX.match(artifact.rel)
         if m:
@@ -522,6 +595,85 @@ class PiParser(Parser):
             )
             yield row
 
+    def _parse_settings(self, artifact: Artifact) -> Iterator[Row]:
+        """`settings.json`: the global `defaultProjectTrust` alone, one
+        standing row timestamped by the file's modification time."""
+        try:
+            doc = json.loads(artifact.disk_path.read_bytes().decode("utf-8", errors="replace"))
+        except (OSError, ValueError):
+            return  # settings, not a transcript: no standing value to report
+        value = doc.get("defaultProjectTrust") if isinstance(doc, dict) else None
+        if value in (None, ""):
+            return
+        row = self.base_row(artifact)
+        row.source_line, row.turn_type, row.timestamp_utc = 1, "system", file_mtime(artifact)
+        row.text = compact(
+            "permission setting: defaultProjectTrust=%s (from %s, file mtime)"
+            % (setting_value(value), artifact.rel)
+        )
+        yield row
+
+    def _parse_debug_log(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        """`pi-debug.log`: the messages after the JSONL marker, with no
+        session id; the screen lines before it are not read."""
+        session = SessionFile()
+        written = ""
+        in_messages = False
+        with open(artifact.disk_path, "rb") as fh:
+            for n, raw in enumerate(fh, 1):
+                line = line_text(raw)
+                if n == 1 and line.startswith(DEBUG_HEADER):
+                    written = to_utc(line[len(DEBUG_HEADER) :].strip())
+                if not in_messages:
+                    in_messages = line == DEBUG_MARKER
+                    continue
+                if not line.strip():
+                    continue
+                try:
+                    msg = json.loads(line)
+                except ValueError as e:
+                    session.errors.append((n, "unparseable line (%s)" % e, line))
+                    continue
+                if not isinstance(msg, dict):
+                    session.errors.append((n, "unparseable line (not a JSON object)", line))
+                    continue
+                session.entries.append((n, {"type": "message", "message": msg}))
+        row = self.base_row(artifact)
+        row.source_line, row.turn_type, row.timestamp_utc = 1, "system", written
+        row.text = compact(
+            "debug snapshot: /debug wrote %d message(s) of the open session, which the log "
+            "does not name (from %s, Debug output at line)" % (len(session.entries), artifact.rel)
+        )
+        yield row
+        yield from entry_rows(self, artifact, session, opts)
+        yield from error_rows(self, artifact, session.errors)
+
+    def _parse_crashes(self, artifact: Artifact) -> Iterator[Row]:
+        """`crashes.json`: one row per crash record, at its own time."""
+        errors: list = []
+        for n, rec in iter_json_array(artifact.disk_path, errors):
+            if not isinstance(rec, dict):
+                continue
+            session_file = str(rec.get("sessionFile") or "")
+            m = SESSION_NAME_RX.search(session_file.replace("\\", "/"))
+            row = self.base_row(artifact)
+            row.source_line, row.turn_type = n, "system"
+            row.timestamp_utc = to_utc(rec.get("timestamp"))
+            row.session_id = m.group(1) if m else ""
+            row.project_path = str(rec.get("cwd") or "")
+            text = "crash: %s %s version=%s sessionFile=%s (from %s, record timestamp)" % (
+                _dash(rec.get("kind")),
+                _dash(rec.get("message")),
+                _dash(rec.get("version")),
+                _dash(rec.get("sessionFile")),
+                artifact.rel,
+            )
+            if rec.get("stack"):
+                text += "\n" + str(rec.get("stack"))
+            row.text = compact(text)
+            yield row
+        yield from error_rows(self, artifact, errors)
+
     def _parse_meta(self, artifact: Artifact, sid: str, opts: Options) -> Iterator[Row]:
         row = self.base_row(artifact)
         row.session_id, row.turn_type, row.source_line = sid, "system", 1
@@ -541,6 +693,11 @@ class PiParser(Parser):
             "not parsed)" % row.project_path,
         )
         yield row
+
+
+def _dash(v) -> str:
+    """A record value as row text, `-` when it is absent or empty."""
+    return "-" if v in (None, "") else setting_value(v)
 
 
 def little_coder_markers(artifact: Artifact, session: SessionFile) -> list[str]:

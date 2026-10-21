@@ -10713,6 +10713,16 @@ from doubleagent.parsers.pi import PiParser
 from doubleagent.parsers.pi import args_summary as pi_args_summary
 from fixtures import (
     LC_FILE,
+    LC_LEGACY_CKPT,
+    LC_LEGACY_CONFIG,
+    LC_LEGACY_DAILY,
+    LC_LEGACY_GIST,
+    LC_LEGACY_HISTORY,
+    LC_LEGACY_INPUT,
+    LC_LEGACY_LATEST,
+    LC_LEGACY_OLD_SESSION,
+    LC_LEGACY_SESSION,
+    LC_LEGACY_SNAPSHOTS,
     LC_SESSION,
     LETTA_AGENT,
     LETTA_CONV,
@@ -10723,13 +10733,18 @@ from fixtures import (
     LETTA_LOCAL_CONV,
     LETTA_LOCAL_DIR,
     LETTA_TASK,
+    PI_CRASHES,
+    PI_DEBUG_LOG,
+    PI_DELETED_PROMPT,
     PI_DIR,
     PI_EXPERIMENTAL,
     PI_FILE,
     PI_FORK,
     PI_FORK_FILE,
     PI_SESSION,
+    PI_SETTINGS,
     PI_TRUST,
+    _json,
     _jsonl,
     letta_sessions_records,
     pi_session_records,
@@ -10938,8 +10953,155 @@ class PiTests(ParserBase):
         self.assertEqual(len(rows), 1)
         self.assertIn("is not a JSON object", rows[0].text)
 
+    def test_default_project_trust_row(self):
+        # Since 1.3.0 (issue 201): the one key of settings.json read.
+        rows = self.rows_for(PiParser(), PI_SETTINGS)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.session_id, r.source_line) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: defaultProjectTrust=always "
+                    "(from .pi/agent/settings.json, file mtime)",
+                    "2026-10-01T10:53:20.000Z",
+                    "",
+                    1,
+                )
+            ],
+        )
+        _json(self.home / PI_SETTINGS, {"defaultProvider": "anthropic"})
+        self.assertEqual(self.rows_for(PiParser(), PI_SETTINGS), [])
+        (self.home / PI_SETTINGS).write_text("{not json", encoding="utf-8")
+        self.assertEqual(self.rows_for(PiParser(), PI_SETTINGS), [])
+
+    def test_permission_gate_refusal(self):
+        # little-coder's gate blocks the edit; pi records an error toolResult
+        # with the gate's reason, followed by the decision row (issue 201).
+        rows = self.rows_for(PiParser(), self.LC)
+        i = next(n for n, r in enumerate(rows) if r.text.startswith("permission decision:"))
+        result, decision = rows[i - 1], rows[i]
+        self.assertEqual(
+            (result.turn_type, result.text, result.tool_use_id),
+            ("tool_result", "[error] edit cancelled by user", "call_2"),
+        )
+        self.assertEqual(
+            (decision.turn_type, decision.text, decision.tool_name, decision.tool_use_id),
+            ("system", "permission decision: denied (edit cancelled by user)", "edit", "call_2"),
+        )
+        self.assertEqual(
+            (decision.timestamp_utc, decision.session_id), ("2026-10-01T11:00:15.000Z", LC_SESSION)
+        )
+        # A whitelist refusal is one too; an ordinary error result is not.
+        path = self.home / self.LC
+        recs = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
+        recs[-1]["message"]["content"][0]["text"] = 'shell whitelist: "rm" is not in SAFE_PREFIXES'
+        recs[4]["message"].update(isError=True)  # "1 failing", not a refusal
+        _jsonl(path, recs)
+        texts = [r.text for r in self.rows_for(PiParser(), self.LC)]
+        self.assertEqual(
+            [t for t in texts if t.startswith("permission decision:")],
+            ['permission decision: denied (shell whitelist: "rm" is not in SAFE_PREFIXES)'],
+        )
+        plain = self.rows_for(PiParser(), self.REL)
+        self.assertFalse(any(r.text.startswith("permission decision:") for r in plain))
+
+    def test_debug_log_secondary(self):
+        art = self.artifact(PI_DEBUG_LOG)
+        self.assertTrue(PiParser().secondary(art))
+        self.assertEqual(PiParser().secondary_tolerance(art), 3600.0)
+        self.assertTrue(PiParser.has_secondary)
+        self.assertFalse(PiParser().secondary(self.artifact(self.REL)))
+        rows = self.rows_for(PiParser(), PI_DEBUG_LOG)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.source_line) for r in rows],
+            [
+                (
+                    "system",
+                    "debug snapshot: /debug wrote 4 message(s) of the open session, which "
+                    "the log does not name (from .pi/agent/pi-debug.log, Debug output at line)",
+                    "2026-10-01T09:02:00.000Z",
+                    1,
+                ),
+                ("user", "fix the failing test", "2026-10-01T09:00:01.000Z", 10),
+                (
+                    "system",
+                    "model: claude-sonnet-4-5 provider=anthropic",
+                    "2026-10-01T09:00:02.000Z",
+                    11,
+                ),
+                ("tool_use", "npm test", "2026-10-01T09:00:02.000Z", 11),
+                ("tool_result", "1 failing", "2026-10-01T09:00:07.000Z", 12),
+                ("user", PI_DELETED_PROMPT, "2026-10-01T09:01:40.000Z", 13),
+            ],
+        )
+        for r in rows:
+            self.assertEqual((r.agent, r.session_id, r.project_path), ("pi", "", ""))
+        self.assertEqual(rows[3].tool_use_id, "toolu_01")
+
+    def test_debug_log_dedup_against_the_session(self):
+        # The four rows the session file also holds are dropped, within the
+        # one-hour window; the prompt no session holds is recovered.
+        primary = self.rows_for(PiParser(), self.REL)
+        tolerance = PiParser().secondary_tolerance(self.artifact(PI_DEBUG_LOG))
+        secondary = [(r, tolerance) for r in self.rows_for(PiParser(), PI_DEBUG_LOG)]
+        kept, dropped = deduplicate(primary, secondary)
+        self.assertEqual(dropped, {"pi": 4})
+        survivors = kept[len(primary) :]
+        self.assertEqual(
+            [(r.turn_type, r.recovered) for r in survivors], [("system", ""), ("user", "yes")]
+        )
+        self.assertEqual(survivors[1].text, PI_DELETED_PROMPT)
+
+    def test_debug_log_bad_line_keeps_the_rows_around_it(self):
+        row = CodexTests.check_bad_line(self, PiParser, PI_DEBUG_LOG, 10)
+        self.assertEqual((row.session_id, row.project_path), ("", ""))
+
+    def test_crash_rows(self):
+        rows = self.rows_for(PiParser(), PI_CRASHES)
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertEqual(
+            (r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.source_line),
+            ("system", "2026-10-01T09:05:00.000Z", PI_SESSION, "/srv/proj", 1),
+        )
+        self.assertEqual(
+            r.text,
+            "crash: uncaught_exception Cannot read properties of undefined version=1.3.0 "
+            "sessionFile=/home/alice/%s%s (from .pi/agent/crashes.json, record timestamp)\n"
+            "TypeError: Cannot read properties of undefined\n    at run (ext.ts:3:1)"
+            % (PI_DIR, PI_FILE),
+        )
+        self.assertFalse(PiParser().secondary(self.artifact(PI_CRASHES)))
+        # An older record shape (no kind, version or session file).
+        _json(
+            self.home / PI_CRASHES,
+            [{"timestamp": "2026-10-01T09:06:00.000Z", "message": "boom", "cwd": "/srv/proj"}],
+        )
+        rows = self.rows_for(PiParser(), PI_CRASHES)
+        self.assertEqual(
+            [(r.text, r.session_id) for r in rows],
+            [
+                (
+                    "crash: - boom version=- sessionFile=- "
+                    "(from .pi/agent/crashes.json, record timestamp)",
+                    "",
+                )
+            ],
+        )
+
+    def test_truncated_crash_log_keeps_earlier_records(self):
+        text = (self.home / PI_CRASHES).read_text(encoding="utf-8")
+        (self.home / PI_CRASHES).write_text(
+            text.rstrip().rstrip("]") + ', {"timestamp": "2026-10-01T09:0', encoding="utf-8"
+        )
+        rows = self.rows_for(PiParser(), PI_CRASHES)
+        self.assertEqual([r.turn_type for r in rows], ["system", "system"])
+        self.assertTrue(rows[0].text.startswith("crash: uncaught_exception"), rows[0].text)
+        self.assertEqual(rows[1].source_line, 2)
+        self.assertTrue(rows[1].text.startswith("parser: unparseable record 2 ("), rows[1].text)
+
     def test_config_not_wanted(self):
-        for rel in (".pi/agent/auth.json", ".pi/agent/settings.json"):
+        for rel in (".pi/agent/auth.json",):
             art = next(a for a in self.col.artifacts if a.rel == rel)
             self.assertFalse(PiParser().wants(art), rel)
         for rel in (
@@ -11051,6 +11213,173 @@ class LittleCoderTests(ParserBase):
         self.assertEqual(rows[-1].source_line, 2)
         self.assertTrue(rows[-1].text.startswith("parser: unparseable record 2 ("), rows[-1].text)
         self.assertTrue(rows[-1].text.endswith("): " + cut), rows[-1].text)
+
+    # ---- the v0.0.x layout under ~/.little-coder (issue 157) ----------------
+
+    LEGACY_TYPES: ClassVar[list] = [
+        "system",
+        "user",
+        "tool_use",
+        "tool_result",
+        "assistant",
+        "tool_use",
+        "tool_result",
+        "system",
+    ]
+
+    def test_legacy_session_rows(self):
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_DAILY)
+        self.assertEqual([r.turn_type for r in rows], self.LEGACY_TYPES)
+        for r in rows:
+            self.assertEqual(
+                (r.agent, r.session_id, r.project_path, r.timestamp_utc),
+                ("little-coder", LC_LEGACY_SESSION, "", "2026-09-20T10:15:00.000Z"),
+            )
+        saved, user, use, result, reply, write, denied, decision = rows
+        self.assertEqual(
+            (denied.turn_type, denied.text), ("tool_result", "Denied: user rejected this operation")
+        )
+        self.assertEqual(
+            saved.text,
+            "session saved: little-coder v0.0.x session %s turn_count=1 input_tokens=1200 "
+            "output_tokens=60 (saved_at 2026-09-20 10:15:00, host local time)" % LC_LEGACY_SESSION,
+        )
+        self.assertEqual(user.text, "list the files")
+        self.assertEqual((use.tool_name, use.tool_use_id, use.text), ("Bash", "toolu_l1", "ls"))
+        self.assertEqual((result.tool_use_id, result.text), ("toolu_l1", "README.md"))
+        self.assertEqual(reply.text, "One file.")
+        self.assertEqual((write.tool_name, write.text), ("Write", "/srv/proj/b.py"))
+        self.assertEqual(
+            (decision.text, decision.tool_name, decision.tool_use_id),
+            (
+                "permission decision: denied (Denied: user rejected this operation)",
+                "Write",
+                "toolu_l2",
+            ),
+        )
+        self.assertEqual([r.source_line for r in rows], [0, 1, 2, 3, 4, 4, 5, 5])
+        self.assertFalse(LittleCoderParser().secondary(self.artifact(LC_LEGACY_DAILY)))
+
+    def test_legacy_copies_are_secondary(self):
+        self.assertTrue(LittleCoderParser.has_secondary)
+        for rel in (LC_LEGACY_LATEST, LC_LEGACY_HISTORY, LC_LEGACY_INPUT):
+            self.assertTrue(LittleCoderParser().secondary(self.artifact(rel)), rel)
+        for rel in (self.HISTORY, LC_LEGACY_CONFIG, LC_LEGACY_SNAPSHOTS):
+            self.assertFalse(LittleCoderParser().secondary(self.artifact(rel)), rel)
+        daily = self.rows_for(LittleCoderParser(), LC_LEGACY_DAILY)
+        latest = self.rows_for(LittleCoderParser(), LC_LEGACY_LATEST)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc) for r in latest],
+            [(r.turn_type, r.text, r.timestamp_utc) for r in daily],
+        )
+
+    def test_legacy_history_json(self):
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_HISTORY)
+        old = [r for r in rows if r.session_id == LC_LEGACY_OLD_SESSION]
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.source_line) for r in old[1:]],
+            [("user", "an old prompt", "2026-09-19T08:00:00.000Z", 1)],
+        )
+        new = [r for r in rows if r.session_id == LC_LEGACY_SESSION]
+        self.assertEqual([r.turn_type for r in new], self.LEGACY_TYPES)
+        self.assertEqual({r.source_line for r in new}, {2})
+
+    def test_legacy_history_cut_keeps_earlier_sessions(self):
+        path = self.home / LC_LEGACY_HISTORY
+        text = path.read_text(encoding="utf-8")
+        cut = text[: text.index('"list the files"') + 8]
+        path.write_text(cut, encoding="utf-8")
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_HISTORY)
+        self.assertEqual(
+            [(r.turn_type, r.session_id) for r in rows[:2]],
+            [("system", LC_LEGACY_OLD_SESSION), ("user", LC_LEGACY_OLD_SESSION)],
+        )
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[-1].source_line, 2)
+        self.assertTrue(rows[-1].text.startswith("parser: unparseable record 2 ("), rows[-1].text)
+
+    def test_legacy_session_cut_keeps_earlier_messages(self):
+        path = self.home / LC_LEGACY_DAILY
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text[: text.index('"One file."')], encoding="utf-8")
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_DAILY)
+        self.assertEqual(
+            [r.turn_type for r in rows], ["system", "user", "tool_use", "tool_result", "system"]
+        )
+        self.assertEqual(rows[1].session_id, LC_LEGACY_SESSION)
+        self.assertEqual(rows[1].timestamp_utc, "2026-09-20T10:15:00.000Z")
+        self.assertEqual(rows[-1].source_line, 4)
+        self.assertTrue(rows[-1].text.startswith("parser: unparseable record 4 ("), rows[-1].text)
+        path.write_text("not json", encoding="utf-8")
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_DAILY)
+        self.assertEqual([r.text for r in rows], ["parser: session file is not a JSON object"])
+
+    def test_legacy_input_history(self):
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_INPUT)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.session_id, r.source_line) for r in rows],
+            [("user", "list the files", "", "", 1), ("user", "an older prompt", "", "", 2)],
+        )
+
+    def test_legacy_config_rows(self):
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_CONFIG)
+        src = "(from .little-coder/config.json, file mtime)"
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [
+                (
+                    "system",
+                    "session synced: gist %s %s" % (LC_LEGACY_GIST, src),
+                    "2026-09-27T10:00:00.000Z",
+                    "",
+                ),
+                (
+                    "system",
+                    "session relayed: telegram chat 424242 %s" % src,
+                    "2026-09-27T10:00:00.000Z",
+                    "",
+                ),
+                (
+                    "system",
+                    "permission setting: permission_mode=manual %s" % src,
+                    "2026-09-27T10:00:00.000Z",
+                    "",
+                ),
+            ],
+        )
+        # The tokens in the same file are never printed.
+        for r in rows:
+            self.assertNotIn("not-a-real", r.text)
+            self.assertNotIn("ghp_", r.text)
+        self.assertFalse(LittleCoderParser.records_sync or LittleCoderParser.records_relay)
+        (self.home / LC_LEGACY_CONFIG).write_text("[1]", encoding="utf-8")
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_CONFIG)
+        self.assertEqual(
+            [r.text for r in rows], ["parser: .little-coder/config.json is not a JSON object"]
+        )
+
+    def test_legacy_snapshots(self):
+        rows = self.rows_for(LittleCoderParser(), LC_LEGACY_SNAPSHOTS)
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.source_line) for r in rows],
+            [
+                ("system", "2026-09-20T10:14:00.000Z", LC_LEGACY_CKPT, 1),
+                ("system", "2026-09-20T10:14:30.500Z", LC_LEGACY_CKPT, 2),
+            ],
+        )
+        self.assertEqual(
+            rows[1].text,
+            "little-coder v0.0.x checkpoint 2: turn_count=1 prompt=list the files "
+            "files=/srv/proj/a.py (backup 0123456789abcdef@v1); /srv/proj/b.py (did not exist) "
+            "(created_at host local time)",
+        )
+
+    def test_legacy_noise_not_wanted(self):
+        for rel in (
+            ".little-coder/mcp.json",
+            ".little-coder/checkpoints/%s/backups/0123456789abcdef@v1" % LC_LEGACY_CKPT,
+        ):
+            self.assertFalse(LittleCoderParser().wants(self.artifact(rel)), rel)
 
 
 class LettaTests(ParserBase):

@@ -6,8 +6,9 @@ beside a few files of its own, so its transcripts are pi session files written b
 retired v0.0.x releases were a separate Python implementation with their own state in
 `~/.little-coder`. Catalog agent: `little-coder`. Parsed: the pi parser reads the sessions under
 agent `pi` and names little-coder in a `system` row, and the little-coder parser reads the files
-little-coder writes itself; this document covers what little-coder adds and how to tell its
-sessions from plain pi sessions, and the full pi record schema is in [`pi.md`](pi.md).
+little-coder writes itself, those of the v0.0.x releases included; this document covers what
+little-coder adds and how to tell its sessions from plain pi sessions, and the full pi record
+schema is in [`pi.md`](pi.md).
 
 ## Source and evidence
 
@@ -28,8 +29,9 @@ pi's storage was therefore read at [earendil-works/pi](https://github.com/earend
 
 The retired v0.0.x Python implementation, which kept its own state in `~/.little-coder` and had a
 Gist sync command, was read at tag `v0.0.5`,
-[`424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03`](https://github.com/itayinbarr/little-coder/commit/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03),
-for sync only (2026-10-17).
+[`424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03`](https://github.com/itayinbarr/little-coder/commit/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03)
+(its `pyproject.toml` says version 4.0.0), for sync on 2026-10-17 and for its whole layout on
+2026-10-21 ([The v0.0.x layout](#the-v00x-layout-little-coder)).
 
 ### Observed
 
@@ -37,6 +39,12 @@ for sync only (2026-10-17).
 
 ### Source reviews
 
+- 2026-10-21: itayinbarr/little-coder at [`424f7a4`](https://github.com/itayinbarr/little-coder/commit/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03) (tag `v0.0.5`) and
+  [`89d4fa0`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df):
+  the v0.0.x layout is described in [The v0.0.x layout](#the-v00x-layout-little-coder) and
+  [v0.0.x session files](#v00x-session-files) and parsed, with its gist sync, Telegram relay and
+  permission rows; the permission gate's refusals are now `permission decision:` rows; and
+  [Source host rows](#source-host-rows) was added.
 - 2026-10-19: [`89d4fa0`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df)
   is still the head of `main` and still pins pi `^0.83.0`, so no path changed. The review added
   the permission gate and the phase-model switches to [Record schema](#record-schema), the
@@ -87,6 +95,38 @@ only
 ([checkpoint/index.ts:64](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/checkpoint/index.ts#L64)),
 so a Windows session path with backslashes would not be split.
 
+#### The v0.0.x layout: `~/.little-coder`
+
+The retired Python releases kept everything in `Path.home()/.little-coder` on every OS
+([config.py:6-14](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/config.py#L6-L14)):
+
+- `config.json`: the settings, saved whole by every command that changes one
+  ([config.py:16-38](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/config.py#L16-L38), [62-66](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/config.py#L62-L66)), among them
+  `model`, `permission_mode` (`auto`, the default, `accept-all` or `manual`), the per-provider
+  `<provider>_api_key`, `gist_token`, `cloudsave_auto` and `cloudsave_last_gist_id`
+  ([Sync, relay and origin rows](#sync-relay-and-origin-rows)) and `telegram_token` and
+  `telegram_chat_id` ([little_coder.py:2586-2595](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L2586-L2595)).
+- `input_history.txt`: the REPL's readline history, up to 1000 entries, written at exit
+  ([config.py:8](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/config.py#L8), [little_coder.py:3376-3389](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L3376-L3389)).
+- `sessions/daily/<YYYY-MM-DD>/session_<HHMMSS>_<id>.json`, written at exit and pruned to the
+  newest `session_daily_limit` (10 by default) of the day; the same session as
+  `sessions/mr_sessions/session_latest.json`, overwritten at each exit; and appended to
+  `sessions/history.json`, which keeps the newest `session_history_limit` (200 by default)
+  ([little_coder.py:978-1033](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L978-L1033)). `/save` writes
+  `sessions/session_<YYYYMMDD_HHMMSS>_<id>.json`, or a name or path the user gives
+  ([966-976](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L966-L976)). [v0.0.x session files](#v00x-session-files) gives
+  the format.
+- `checkpoints/<session id>/snapshots.json` and `checkpoints/<session id>/backups/<sha256 of the
+  path, 16 hex>@v<N>`, the copies of files the agent edited
+  ([checkpoint/store.py:1-8](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/checkpoint/store.py#L1-L8)); a directory untouched for 30 days is removed at
+  each start ([290-309](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/checkpoint/store.py#L290-L309)), and `/checkpoint clear` removes
+  the running session's ([2740-2743](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L2740-L2743)).
+- `memory/`, `skills/`, `agents/`, `plugins/` with `plugins.json`, and `mcp.json`
+  ([memory/store.py:20](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/memory/store.py#L20); [skill/loader.py:30-33](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/skill/loader.py#L30-L33); [multi_agent/subagent.py:160](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/multi_agent/subagent.py#L160); [plugin/store.py:15-16](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/plugin/store.py#L15-L16); [mcp/config.py:34-35](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/mcp/config.py#L34-L35)).
+
+The catalog line `little-coder|.little-coder` collects the whole directory, `config.json` flagged
+as a secret ([Credentials](#credentials)).
+
 #### Configuration: `~/.config/little-coder/`
 
 `~/.config/little-coder/`, or `$XDG_CONFIG_HOME/little-coder`, using
@@ -135,9 +175,9 @@ history) is in [What survives a delete](#what-survives-a-delete).
   ([config.ts:4-14](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/llama-cpp-provider/config.ts#L4-L14),
   [294-300](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/llama-cpp-provider/config.ts#L294-L300)).
   Flag it.
-- `~/.little-coder/config.json` of the v0.0.x Python releases holds a GitHub token
-  ([Secrets](#secrets) names the key); secret glob `.little-coder/config.json` from
-  collector 1.14.0.
+- `~/.little-coder/config.json` of the v0.0.x Python releases holds a GitHub token, a Telegram bot
+  token and provider API keys ([Secrets](#secrets) names the keys); secret glob
+  `.little-coder/config.json` from collector 1.14.0.
 - No keychain use.
 
 ### Exclusions
@@ -156,6 +196,10 @@ host, but they are pre-edit evidence; keep them.
   `.pi/extensions` load only with `--with-pi-extensions`
   ([little-coder.mjs:222-228](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L222-L228),
   [365-372](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/bin/little-coder.mjs#L365-L372)).
+- The v0.0.x releases kept tasks in `<cwd>/.little-coder/tasks.json`
+  ([task/store.py:24-25](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/task/store.py#L24-L25)) and read project skills from `<cwd>/.little-coder/skills`
+  ([skill/loader.py:30-33](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/skill/loader.py#L30-L33)) and MCP servers from `<cwd>/.mcp.json`
+  ([mcp/config.py:35](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/mcp/config.py#L35)).
 - `/deep-research` writes its report into the cwd
   ([.pi/extensions/deep-research/index.ts:366-367](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/deep-research/index.ts#L366-L367)).
 
@@ -165,7 +209,9 @@ The pi session header line: `{"type":"session",...,"cwd":...}`
 ([session-manager.ts:32-39](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/session-manager.ts#L32-L39),
 [936-944](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/session-manager.ts#L936-L944)),
 and the encoded session directory name. Checkpoint file names encode absolute paths, but lossily
-(`/` becomes `_`).
+(`/` becomes `_`). The v0.0.x session files record no working directory; their checkpoint
+snapshots name each backed-up file by its absolute path
+([v0.0.x session files](#v00x-session-files)).
 
 ## Parsing
 
@@ -183,6 +229,9 @@ and the encoded session directory name. Checkpoint file names encode absolute pa
   transcripts, but they join to a session by name
   ([.pi/extensions/checkpoint/index.ts:25-29](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/checkpoint/index.ts#L25-L29);
   the naming is in [Checkpoints](#checkpoints-little-codercheckpointssession-file-name)).
+
+- v0.0.x: the saved session files under `.little-coder/sessions/`, `input_history.txt` and the
+  checkpoint snapshots of [The v0.0.x layout](#the-v00x-layout-little-coder).
 
 Sub-agents run pi with `--no-session`, so they leave no file
 ([.pi/extensions/subagent/spawn.ts:14](https://github.com/itayinbarr/little-coder/blob/89d4fa0af864230527ab75d12604ed0eb320e6df/.pi/extensions/subagent/spawn.ts#L14),
@@ -203,6 +252,17 @@ No deletion marker is written. The analyzer reads both: the prompt history as `u
 timestamp and no session ([Past use and secondary sources](#past-use-rows-and-secondary-sources)),
 and each checkpoint directory as one `system` row naming the session and the files
 ([Parser plan](#parser-plan)).
+
+The v0.0.x releases delete nothing a user asks for: `/clear` empties the conversation in memory
+([little_coder.py:934-938](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L934-L938)). What goes is pruning: a day's daily copies beyond
+the limit and `history.json` sessions beyond its limit, so a session pruned from `daily/` stays in
+`history.json`, and one pruned from both may still be the last `session_latest.json`; checkpoint
+directories older than 30 days go at the next start
+([The v0.0.x layout](#the-v00x-layout-little-coder)).
+`input_history.txt` keeps the prompts of pruned sessions, and the gist named in `config.json`
+keeps the last upload on GitHub. The analyzer reads every one of these copies, the daily and
+`/save` files as primary and `session_latest.json`, `history.json` and `input_history.txt` as
+secondary ([Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### Record schema
 
@@ -280,6 +340,35 @@ and pi 0.83.0 records a blocked call as a `toolResult` with that reason as its t
 [756-761](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/agent/src/agent-loop.ts#L756-L761)).
 An approval leaves no record beyond the call's normal result.
 
+#### v0.0.x session files
+
+A saved session ([little_coder.py:1331-1348](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1331-L1348)) is one JSON object written with
+`indent=2`: `session_id` (8 hex characters, a fresh random value at each save, so the daily copy,
+`session_latest.json` and the `history.json` entry of one exit share it, and nothing else does),
+`saved_at` (`YYYY-MM-DD HH:MM:SS`, host local time with no zone, the save time), `messages`,
+`turn_count`, `total_input_tokens`, `total_output_tokens`. `history.json` is
+`{total_turns, sessions: [<session>, ...]}` ([1013-1028](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1013-L1028)).
+
+`messages` hold the neutral format
+([providers.py:254-258](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/providers.py#L254-L258)): `{role: "user", content, images?}`
+([agent.py:88-93](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/agent.py#L88-L93)), `{role: "assistant", content, tool_calls: [{id, name,
+input}]}` ([207-211](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/agent.py#L207-L211)) and `{role: "tool", tool_call_id, name, content}`
+([243-248](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/agent.py#L243-L248)). No message has a time, a model or a working directory.
+A call the user refused is recorded as a `tool` message whose content is `Denied: user rejected
+this operation` ([226-233](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/agent.py#L226-L233)); whether to ask follows `permission_mode`
+([252-270](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/agent.py#L252-L270)), and answering `a` sets `accept-all` for the rest of the
+session in memory, which the next save of `config.json` keeps
+([little_coder.py:585-597](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L585-L597)). Prompts that arrive through the Telegram bridge
+enter the same conversation with no marker ([2495-2510](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L2495-L2510)).
+
+A snapshot in `checkpoints/<session id>/snapshots.json` is `{id, session_id, created_at (naive
+local ISO), turn_count, message_index, user_prompt_preview (the first 80 characters of the
+prompt), token_snapshot, file_backups: {<absolute path>: {backup_filename (null when the file did
+not exist), version, backup_time}}}` ([checkpoint/types.py:40-63](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/checkpoint/types.py#L40-L63),
+[116-196](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/checkpoint/store.py#L116-L196)). Its session id is the REPL's runtime id, made at
+start ([3450-3457](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L3450-L3457)), which is not the id of any saved session
+file.
+
 #### Model switches
 
 The `phase-model` extension switches the model at the plan and implementation phases through
@@ -295,18 +384,33 @@ Tool use to result: `toolCall.id` = `toolResult.toolCallId`. Project path:
 header `cwd`. Forked sessions: header `parentSession`. Checkpoint directory
 name = session file basename.
 
+v0.0.x: session id `session_id`, shared only by the copies of one save; tool use to result
+`tool_calls[].id` = `tool_call_id`; no project path; the only time is the session's `saved_at`,
+host local time to the second, which the analyzer emits as if it were UTC because the host's
+offset is not recorded. A `/load` or `/resume` carries an earlier session's messages into the
+next save under a new id, so one turn can appear in several primary files. The checkpoint
+snapshots' session id and the gist's uploaded session id each match no saved file.
+
 ### Other stores
 
 little-coder keeps no database, index or log beside the prompt history and the checkpoints of
 [Transcript stores](#transcript-stores). Images are base64 inside `image` parts
 ([types.ts:354-358](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L354-L358)).
 
+#### v0.0.x input history
+
+`input_history.txt` is the readline history of [The v0.0.x layout](#the-v00x-layout-little-coder),
+one entry per line as Python's `readline.write_history_file` writes it, with no time, session or
+project.
+
 ### Format versions
 
 pi header `version` (absent in v1 files, 3 now,
 [session-manager.ts:30-35](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/core/session-manager.ts#L30-L35)).
 little-coder pins pi 0.83.x; a release that moves to pi 1.x should be re-checked against pi's
-research.
+research. The v0.0.x releases were a separate Python program with their own formats
+([v0.0.x session files](#v00x-session-files)); the move to the pi launcher left `~/.little-coder`
+in place.
 
 ### Secrets
 
@@ -315,8 +419,9 @@ opaque provider blobs
 ([types.ts:344-366](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L344-L366)).
 Credentials are in `auth.json`, not in sessions.
 
-The v0.0.x Python releases kept a GitHub personal access token with the `gist` scope as `gist_token`
-in `~/.little-coder/config.json`
+The v0.0.x Python releases kept, in `~/.little-coder/config.json`, the provider keys as
+`<provider>_api_key` ([config.py:29-36](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/config.py#L29-L36)), the Telegram bot token as
+`telegram_token` and a GitHub personal access token with the `gist` scope as `gist_token`
 ([cloudsave.py:9-12](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/cloudsave.py#L9-L12),
 [little_coder.py:1371-1384](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1371-L1384),
 [config.py:6-7](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/config.py#L6-L7)).
@@ -343,23 +448,42 @@ checkpoint directory as one `system` row naming the session and the files.
 
 #### Permission rows
 
-The refusals of the [permission gate](#permission-gate) are on disk as error `toolResult` rows
+The refusals of the [permission gate](#permission-gate) are on disk as error `toolResult` entries
 whose text is `edit cancelled by user`, `command cancelled by user` or starts `shell whitelist:`.
-The pi parser shows the refusal as an ordinary `tool_result` row; a
-`permission decision: denied (<reason>)` row joined on the `toolCallId` would show them as
-decisions. There is no standing state on disk to read: the mode and the allow list are
-environment variables.
+The pi parser follows each one's `tool_result` row with `permission decision: denied (<the
+text>)`, carrying the call's `tool_name` and `tool_use_id`, under agent `pi`
+([Permission rows in `pi.md`](pi.md#permission-rows)). There is no standing state on disk to read:
+the mode and the allow list are environment variables.
+
+v0.0.x: a refused call's `tool` message `Denied: user rejected this operation` is followed by
+`permission decision: denied (Denied: user rejected this operation)` with the call's `tool_name`
+and `tool_use_id`, and `config.json` `permission_mode` is one `system` row `permission setting:
+permission_mode=<value> (from .little-coder/config.json, file mtime)` at the file's modification
+time ([v0.0.x session files](#v00x-session-files)). All these rows are source-derived; not observed
+on any real install.
 
 #### Model rows
 
 Covered through pi's `model_change` rows: the [phase-model switches](#model-switches) become
 `model_change` entries, which pi's reader turns into `model:` rows
-([Model in `pi.md`](pi.md#model-rows)).
+([Model in `pi.md`](pi.md#model-rows)). The v0.0.x session files record no model; `config.json`
+`model` is the configured default, not a session's, and is not read.
 
 #### Past-use rows and secondary sources
 
-The prompt history is read on every run, as above, and is the one secondary source. The
-checkpoints of [Transcript stores](#transcript-stores) are covered past use. No other store found.
+The prompt history is read on every run, as above; it is primary, since its rows (agent
+`little-coder`) cannot pair with the pi sessions' (agent `pi`). The checkpoints of
+[Transcript stores](#transcript-stores) are covered past use.
+
+v0.0.x, source-derived; not observed on any real install: the daily and `/save` session files are
+primary; `session_latest.json` and `history.json`, which repeat them under the same session id and
+`saved_at`, and `input_history.txt` (`user` rows with no time, session or project, matched on text
+alone) are secondary. Each session gives a `session saved: little-coder v0.0.x session <id>
+turn_count=<n> input_tokens=<n> output_tokens=<n> (saved_at <saved_at>, host local time)` row and
+its messages, all at `saved_at`, with an empty `project_path`. Each checkpoint snapshot is one
+`system` row `little-coder v0.0.x checkpoint <id>: turn_count=<n> prompt=<user_prompt_preview>
+files=<path> (backup <name>|did not exist); ... (created_at host local time)` at `created_at`,
+with the snapshot's session id; the copies under `backups/` are not read.
 
 #### Sync, relay and origin rows
 
@@ -389,9 +513,19 @@ The automatic path passes `existing_gist_id=`, a keyword `upload_session` does n
 with a `TypeError` before any upload
 ([little_coder.py:1477-1480](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1477-L1480),
 [cloudsave.py:73-78](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/cloudsave.py#L73-L78)).
-The current parser does not read the v0.0.x layout; when it does, the row is one `system` row
-`session synced: gist <cloudsave_last_gist_id> (from .little-coder/config.json, file mtime)`, at the
-file's modification time, with an empty session id.
+The parser reads `cloudsave_last_gist_id` and no other secret key of the file, and writes one
+`system` row `session synced: gist <cloudsave_last_gist_id> (from .little-coder/config.json, file
+mtime)`, at the file's modification time, with an empty session id.
+
+The v0.0.x Telegram bridge (`/telegram <bot token> <chat id>`) carries prompts from one Telegram
+chat into the running session and sends the replies back
+([little_coder.py:2344](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L2344), [2586-2595](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L2586-L2595)), so
+`config.json` `telegram_chat_id` gives one `system` row `session relayed: telegram chat
+<telegram_chat_id> (from .little-coder/config.json, file mtime)`, with an empty session id;
+`telegram_token` is not read. Neither row names a saved session: the gist's upload has a session id
+of its own and the bridge marks no message, so the parser leaves `records_sync` and
+`records_relay` unset rather than call every other session unsynced. Both rows are
+source-derived; not observed on any real install.
 
 The current releases sync nothing of their own, and no session is relayed or of remote origin.
 
@@ -402,12 +536,16 @@ and no record names it ([Scratch directories](#scratch-directories)).
 
 #### Deletion rows
 
-No marker; see [What survives a delete](#what-survives-a-delete).
+No marker; see [What survives a delete](#what-survives-a-delete). The v0.0.x releases write none
+either; their pruning is described there.
 
 #### Bad-line rows
 
 Covered: the session files go through pi's reader
 ([Bad lines in `pi.md`](pi.md#bad-line-rows)), and the prompt history reader reports a bad record.
+A v0.0.x session file or `history.json` cut mid-write yields the messages or sessions before the
+cut and one `parser: unparseable record <N> (<reason>): <the rest>` row; a `snapshots.json` cut
+the same way does too, and a `config.json` that is not a JSON object is one `parser:` row.
 
 #### Fixtures
 
@@ -422,6 +560,38 @@ Fixture:
 ```
 
 `little-coder-prompt-history.json`: `["fix the failing test","now run lint"]`
+
+v0.0.x, `.little-coder/sessions/daily/2026-09-20/session_101500_a1b2c3d4.json` (also the content of
+`session_latest.json` and the second entry of `history.json`):
+
+```json
+{"session_id": "a1b2c3d4", "saved_at": "2026-09-20 10:15:00", "messages": [{"role": "user", "content": "list the files"}, {"role": "assistant", "content": "", "tool_calls": [{"id": "toolu_l1", "name": "Bash", "input": {"command": "ls"}}]}, {"role": "tool", "tool_call_id": "toolu_l1", "name": "Bash", "content": "README.md"}, {"role": "assistant", "content": "One file.", "tool_calls": [{"id": "toolu_l2", "name": "Write", "input": {"file_path": "/srv/proj/b.py", "content": "x"}}]}, {"role": "tool", "tool_call_id": "toolu_l2", "name": "Write", "content": "Denied: user rejected this operation"}], "turn_count": 1, "total_input_tokens": 1200, "total_output_tokens": 60}
+```
+
+`.little-coder/config.json`, the tokens replaced:
+
+```json
+{"model": "ollama/qwen3.5", "permission_mode": "manual", "gist_token": "<redacted>", "cloudsave_last_gist_id": "aa11bb22cc33dd44ee55ff6677889900", "telegram_token": "<redacted>", "telegram_chat_id": 424242}
+```
+
+`.little-coder/checkpoints/c0ffee12/snapshots.json`, second entry:
+
+```json
+{"id": 2, "session_id": "c0ffee12", "created_at": "2026-09-20T10:14:30.500000", "turn_count": 1, "message_index": 5, "user_prompt_preview": "list the files", "token_snapshot": {"input": 1200, "output": 60}, "file_backups": {"/srv/proj/a.py": {"backup_filename": "0123456789abcdef@v1", "version": 1, "backup_time": "2026-09-20T10:14:30.500000"}}}
+```
+
+#### Source host rows
+
+The current releases record no source-host integration: a search of `bin/` and `.pi/extensions/`
+at [`89d4fa0`](https://github.com/itayinbarr/little-coder/commit/89d4fa0af864230527ab75d12604ed0eb320e6df)
+for `github`, `gitlab`, `bitbucket`, `oauth`, `repositor`, `pull request` and `clone` finds the
+update check and the research tools only; pi's own finding is in
+[Source host rows in `pi.md`](pi.md#source-host-rows). The v0.0.x releases kept a GitHub personal
+access token, `gist_token` in `~/.little-coder/config.json` ([Secrets](#secrets)), to upload
+sessions as gists; `/cloudsave setup` checks it against `GET /user` and shows the login without
+storing it ([cloudsave.py:61-70](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/cloudsave.py#L61-L70), [little_coder.py:1371-1384](https://github.com/itayinbarr/little-coder/blob/424f7a4b9f9214a36a6bcb69e1f3435ca3e68d03/little_coder.py#L1371-L1384)),
+so no account is on disk and no `source host:` row is written. The token is flagged with the whole
+file and never read; no repository list or repository-bound conversation is stored.
 
 ## Confidence
 
@@ -439,5 +609,7 @@ Fixture:
 - Not determined: the exact `usage` sub-fields beyond those shown
   ([types.ts:368-380](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/ai/src/types.ts#L368-L380)).
 - Not determined: real sizes of `checkpoints/`.
+- Medium: the v0.0.x `input_history.txt` encoding, which is that of the readline library Python
+  links on the host, not stated by little-coder's source.
 - Not determined: whether pi project files beyond `.pi/approved-plan.md` are written when
   `--with-pi-extensions` is used; that is pi's behaviour ([pi](pi.md)).

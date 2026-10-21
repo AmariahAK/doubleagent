@@ -8885,6 +8885,43 @@ def little_coder_session_records(cwd="/srv/proj"):
                 "timestamp": 1790852412000,
             },
         },
+        # The permission gate refuses an edit in manual mode (issue 201).
+        {
+            "type": "message",
+            "id": "a6",
+            "parentId": "a5",
+            "timestamp": "2026-10-01T11:00:14.000Z",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "toolCall",
+                        "id": "call_2",
+                        "name": "edit",
+                        "arguments": {"path": "src/a.ts", "edits": []},
+                    }
+                ],
+                "api": "openai-completions",
+                "provider": "llamacpp",
+                "model": "qwen3.6-27b",
+                "stopReason": "toolUse",
+                "timestamp": 1790852414000,
+            },
+        },
+        {
+            "type": "message",
+            "id": "a7",
+            "parentId": "a6",
+            "timestamp": "2026-10-01T11:00:15.000Z",
+            "message": {
+                "role": "toolResult",
+                "toolCallId": "call_2",
+                "toolName": "edit",
+                "content": [{"type": "text", "text": "edit cancelled by user"}],
+                "isError": True,
+                "timestamp": 1790852415000,
+            },
+        },
     ]
 
 
@@ -8897,10 +8934,87 @@ def build_pi(home: Path) -> None:
         {"createdAt": 1790856000000, "cwd": "/srv/proj"},
     )
     _json(home / ".pi/agent/auth.json", {"anthropic": {"type": "api_key", "key": "sk-not-real"}})
-    _json(home / ".pi/agent/settings.json", {"defaultProvider": "anthropic"})
+    _json(
+        home / PI_SETTINGS,
+        {"defaultProvider": "anthropic", "defaultProjectTrust": "always"},
+    )
+    os.utime(home / PI_SETTINGS, (PI_TRUST_MTIME, PI_TRUST_MTIME))
     _json(home / PI_TRUST, {"/srv/proj": True, "/srv/untrusted": False})
     os.utime(home / PI_TRUST, (PI_TRUST_MTIME, PI_TRUST_MTIME))
     _jsonl(home / PI_DIR / PI_BUG_FILE, pi_bug_report_records())
+    (home / PI_DEBUG_LOG).write_text(pi_debug_log_text(), encoding="utf-8")
+    _json(home / PI_CRASHES, pi_crash_records())
+
+
+# Secondary and past-use sources beside the sessions (issue 201,
+# research/pi.md, Debug log and crash log): the `/debug` snapshot of the
+# open session's messages and the recent-crash log.
+PI_SETTINGS = ".pi/agent/settings.json"
+PI_DEBUG_LOG = ".pi/agent/pi-debug.log"
+PI_CRASHES = ".pi/agent/crashes.json"
+PI_DELETED_PROMPT = "a prompt whose session file was deleted"
+
+
+def pi_debug_log_text():
+    messages = [
+        # The PI_SESSION turn: the user prompt, the assistant's call (whose
+        # own timestamp, the stream start, is before the entry's), its result.
+        {"role": "user", "content": "fix the failing test", "timestamp": 1790845201000},
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "toolCall",
+                    "id": "toolu_01",
+                    "name": "bash",
+                    "arguments": {"command": "npm test"},
+                }
+            ],
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-5",
+            "stopReason": "toolUse",
+            "timestamp": 1790845202000,
+        },
+        {
+            "role": "toolResult",
+            "toolCallId": "toolu_01",
+            "toolName": "bash",
+            "content": [{"type": "text", "text": "1 failing"}],
+            "isError": False,
+            "timestamp": 1790845207000,
+        },
+        # A prompt no collected session holds.
+        {"role": "user", "content": PI_DELETED_PROMPT, "timestamp": 1790845300000},
+    ]
+    lines = [
+        "Debug output at 2026-10-01T09:02:00.000Z",
+        "Terminal: 120x40",
+        "Total lines: 2",
+        "",
+        "=== All rendered lines with visible widths ===",
+        '[0] (w=20) "fix the failing test"',
+        '[1] (w=9) "1 failing"',
+        "",
+        "=== Agent messages (JSONL) ===",
+        *(json.dumps(m) for m in messages),
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def pi_crash_records():
+    return [
+        {
+            "timestamp": "2026-10-01T09:05:00.000Z",
+            "version": "1.3.0",
+            "kind": "uncaught_exception",
+            "message": "Cannot read properties of undefined",
+            "stack": "TypeError: Cannot read properties of undefined\n    at run (ext.ts:3:1)",
+            "sessionFile": "/home/alice/" + PI_DIR + PI_FILE,
+            "cwd": "/srv/proj",
+            "notified": True,
+        }
+    ]
 
 
 # Session sync (issue 153): a session reported with `/bug` twice, once
@@ -8988,6 +9102,122 @@ def build_little_coder(home: Path) -> None:
     os.utime(ck / "_srv_proj_src_new.ts.absent", (1790852407, 1790852407))
     (home / ".config/little-coder").mkdir(parents=True, exist_ok=True)
     (home / ".config/little-coder/settings.json").write_text("{}", encoding="utf-8")
+    build_little_coder_legacy(home)
+
+
+# The retired v0.0.x Python layout under ~/.little-coder (issue 157,
+# research/little-coder.md, The v0.0.x layout).
+LC_LEGACY = ".little-coder/"
+LC_LEGACY_SESSION = "a1b2c3d4"
+LC_LEGACY_OLD_SESSION = "e1f2a3b4"
+LC_LEGACY_DAILY = LC_LEGACY + "sessions/daily/2026-09-20/session_101500_%s.json" % LC_LEGACY_SESSION
+LC_LEGACY_LATEST = LC_LEGACY + "sessions/mr_sessions/session_latest.json"
+LC_LEGACY_HISTORY = LC_LEGACY + "sessions/history.json"
+LC_LEGACY_INPUT = LC_LEGACY + "input_history.txt"
+LC_LEGACY_CONFIG = LC_LEGACY + "config.json"
+LC_LEGACY_CKPT = "c0ffee12"
+LC_LEGACY_SNAPSHOTS = LC_LEGACY + "checkpoints/%s/snapshots.json" % LC_LEGACY_CKPT
+LC_LEGACY_GIST = "aa11bb22cc33dd44ee55ff6677889900"
+LC_LEGACY_CONFIG_MTIME = 1790503200  # 2026-09-27T10:00:00Z
+
+
+def little_coder_legacy_session(session_id=LC_LEGACY_SESSION, saved_at="2026-09-20 10:15:00"):
+    return {
+        "session_id": session_id,
+        "saved_at": saved_at,
+        "messages": [
+            {"role": "user", "content": "list the files"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": "toolu_l1", "name": "Bash", "input": {"command": "ls"}}],
+            },
+            {"role": "tool", "tool_call_id": "toolu_l1", "name": "Bash", "content": "README.md"},
+            {
+                "role": "assistant",
+                "content": "One file.",
+                "tool_calls": [
+                    {
+                        "id": "toolu_l2",
+                        "name": "Write",
+                        "input": {"file_path": "/srv/proj/b.py", "content": "x"},
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "toolu_l2",
+                "name": "Write",
+                "content": "Denied: user rejected this operation",
+            },
+        ],
+        "turn_count": 1,
+        "total_input_tokens": 1200,
+        "total_output_tokens": 60,
+    }
+
+
+def build_little_coder_legacy(home: Path) -> None:
+    session = little_coder_legacy_session()
+    old = little_coder_legacy_session(LC_LEGACY_OLD_SESSION, "2026-09-19 08:00:00")
+    old["messages"] = [{"role": "user", "content": "an old prompt"}]
+    old["turn_count"] = 1
+    _json(home / LC_LEGACY_DAILY, session)
+    _json(home / LC_LEGACY_LATEST, session)
+    _json(home / LC_LEGACY_HISTORY, {"total_turns": 2, "sessions": [old, session]})
+    (home / LC_LEGACY_INPUT).write_text("list the files\nan older prompt\n", encoding="utf-8")
+    _json(
+        home / LC_LEGACY_CONFIG,
+        {
+            "model": "ollama/qwen3.5",
+            "permission_mode": "manual",
+            "gist_token": "ghp_not_a_real_token",
+            "cloudsave_last_gist_id": LC_LEGACY_GIST,
+            "telegram_token": "123:not-a-real-token",
+            "telegram_chat_id": 424242,
+        },
+    )
+    os.utime(home / LC_LEGACY_CONFIG, (LC_LEGACY_CONFIG_MTIME, LC_LEGACY_CONFIG_MTIME))
+    _json(
+        home / LC_LEGACY_SNAPSHOTS,
+        [
+            {
+                "id": 1,
+                "session_id": LC_LEGACY_CKPT,
+                "created_at": "2026-09-20T10:14:00.000000",
+                "turn_count": 0,
+                "message_index": 0,
+                "user_prompt_preview": "(initial state)",
+                "token_snapshot": {"input": 0, "output": 0},
+                "file_backups": {},
+            },
+            {
+                "id": 2,
+                "session_id": LC_LEGACY_CKPT,
+                "created_at": "2026-09-20T10:14:30.500000",
+                "turn_count": 1,
+                "message_index": 5,
+                "user_prompt_preview": "list the files",
+                "token_snapshot": {"input": 1200, "output": 60},
+                "file_backups": {
+                    "/srv/proj/a.py": {
+                        "backup_filename": "0123456789abcdef@v1",
+                        "version": 1,
+                        "backup_time": "2026-09-20T10:14:30.500000",
+                    },
+                    "/srv/proj/b.py": {
+                        "backup_filename": None,
+                        "version": 0,
+                        "backup_time": "2026-09-20T10:14:30.500000",
+                    },
+                },
+            },
+        ],
+    )
+    backup = home / LC_LEGACY / "checkpoints" / LC_LEGACY_CKPT / "backups" / "0123456789abcdef@v1"
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    backup.write_text("print(1)\n", encoding="utf-8")
+    _json(home / LC_LEGACY / "mcp.json", {"mcpServers": {}})
 
 
 def letta_transcript_records():
