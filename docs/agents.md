@@ -872,11 +872,20 @@ Validated against: Source at [21b2904](https://github.com/TabbyML/tabby/commit/2
 ### `twinny`
 
 Files read: The `rjmacarthy.twinny` row of a VS Code or fork
-`User/globalStorage/state.vscdb` (`twinny.conversations`). Messages have
-no time of their own: every row carries the conversation's `updatedAt`.
-Provider `apiKey`s in the same value are never emitted.
+`User/globalStorage/state.vscdb` (`twinny.conversations`, the standing
+Always run grants, the agent-mode and auto-run switches and
+`twinny.teamPolicy`). Messages have no time of their own: every row
+carries the conversation's `updatedAt`. Provider `apiKey`s and the ChatGPT
+plan profile in the same value are never emitted. As secondary sources,
+the `agent-changes/<id>.json` records under
+`User/workspaceStorage/<id>/rjmacarthy.twinny/` (or
+`User/globalStorage/rjmacarthy.twinny/`), which carry the project root,
+and the extension's log channel, `logs/.../rjmacarthy.twinny/Twinny.log`
+and its rotated `Twinny.log_<n>` copies. The `rjmacarthy.twinny` row of
+`User/workspaceStorage/<id>/state.vscdb` for the pull request review
+tab's GitHub repository.
 
-Validated against: Source at [9339bd10](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6), synthetic fixture; the `said` tool step of Twinny 4.3.5 and later from source at [0337b265](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a) (version 4.3.15), synthetic fixture.
+Validated against: Source at [9339bd10](https://github.com/twinnydotdev/twinny/commit/9339bd108e60781ec4d693fbec3f0bc7a0d7d3e6), synthetic fixture; the `said` tool step of Twinny 4.3.5 and later from source at [0337b265](https://github.com/twinnydotdev/twinny/commit/0337b265bf3b9f8f00ff45d597ae1f2e99ef230a) (version 4.3.15), synthetic fixture; the standing grants, team policy, file changes, `agent-changes/` records, log channel and review repository from source at the same commit, synthetic fixture.
 
 ### `vscode`
 
