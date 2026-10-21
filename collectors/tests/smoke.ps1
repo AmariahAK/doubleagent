@@ -1085,6 +1085,18 @@ Mk "$u236/inno_updater.exe" "binary`n"
 Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
 Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
 
+# 2026-10-21 Twinny workspace storage (#215)
+# Twinny 4.3.15 (source, twinnydotdev/twinny 0337b265) keeps one
+# agent-changes/<uuid>.json record per agent-mode reply that changed files
+# in its per-workspace extension storage, workspaceStorage/<id>/
+# rjmacarthy.twinny, beside the editor's own workspace.json and
+# state.vscdb. The nested twinny entries claim that directory from the
+# editor's walk; the files beside it stay vscode. Checks follow the default
+# run below; the same files are in smoke.sh under alice.
+$t215 = 'Users/alice/AppData/Roaming/Code/User/workspaceStorage/ws215'
+Mk "$t215/rjmacarthy.twinny/agent-changes/c1.json" "{`"id`":`"c1`",`"root`":`"C:\\twinproj`",`"createdAt`":1,`"files`":[]}`n"
+Mk "$t215/workspace.json" "{`"folder`":`"file:///c%3A/twinproj`"}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1626,6 +1638,10 @@ Check '#236 Cursor plugin cache excluded' { (StatusOf "$p236/cache") -eq 'skippe
 Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
 Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
 Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
+
+# 2026-10-21 Twinny workspace storage (#215)
+Check '#215 twinny workspaceStorage agent-changes attributed to twinny' { $r = Row "$t215/rjmacarthy.twinny/agent-changes/c1.json"; $r -and $r.agent -eq 'twinny' -and $r.status -eq 'collected' }
+Check '#215 twinny workspaceStorage neighbour stays vscode' { $r = Row "$t215/workspace.json"; $r -and $r.agent -eq 'vscode' -and $r.status -eq 'collected' }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

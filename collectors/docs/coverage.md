@@ -21,7 +21,10 @@ inside them goes to the extension's agent.
 - **Cline, Roo Code, Kilo Code, Continue, Sourcegraph Cody and Twinny:**
   their globalStorage is claimed by nested catalog entries, so those files
   are attributed to the extension's agent rather than to the editor,
-  whichever editor they sit in.
+  whichever editor they sit in. Twinny's per-workspace extension storage,
+  `workspaceStorage/<id>/rjmacarthy.twinny` (the `agent-changes/` record of
+  each agent-mode reply that changed files), is claimed the same way; the
+  `workspace.json` and `state.vscdb` beside it stay the editor's.
 - **GitHub Copilot Desktop** shares `~/.copilot` with Copilot CLI: its
   sessions, written there by a bundled Copilot CLI, are collected as
   `copilot-cli`, and nested catalog entries attribute the app's own store,
