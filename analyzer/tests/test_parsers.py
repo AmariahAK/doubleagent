@@ -10637,6 +10637,7 @@ from fixtures import (
     OPENHANDS_PROJECT_HASH,
     OPENHANDS_WT_CONV,
     OPENHANDS_WT_DIR,
+    SHELLGPT_CACHE_COPY,
     SHELLGPT_CHAT,
     SHELLGPT_LEGACY_CHAT,
 )
@@ -11025,13 +11026,92 @@ class ShellGptTests(ParserBase):
             [r.turn_type for r in self.rows_for(ShellGptParser(), self.CHAT)],
         )
 
+    SGPTRC = ".config/shell_gpt/.sgptrc"
+    FUNCTION = ".config/shell_gpt/functions/execute_shell.py"
+    CACHE = "AppData/Local/Temp/shell_gpt/cache/"
+
     def test_not_wanted(self):
-        for rel in (
-            ".config/shell_gpt/.sgptrc",
-            "AppData/Local/Temp/shell_gpt/cache/0cc175b9c0f1b6a831c399e269772661",
-        ):
-            art = next(a for a in self.col.artifacts if a.rel == rel)
-            self.assertFalse(ShellGptParser().wants(art), rel)
+        art = self.artifact(".config/shell_gpt/roles/ShellGPT.json")
+        self.assertFalse(ShellGptParser().wants(art))
+        for rel in (self.SGPTRC, self.FUNCTION, self.CACHE + SHELLGPT_CACHE_COPY):
+            self.assertTrue(ShellGptParser().wants(self.artifact(rel)), rel)
+
+    def test_settings_rows(self):
+        rows = self.rows_for(ShellGptParser(), self.SGPTRC)
+        rel = self.SGPTRC
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "model: gpt-5.4-mini (configured default, from %s, file mtime)" % rel,
+                "permission setting: DEFAULT_EXECUTE_SHELL_CMD=true (from %s, file mtime)" % rel,
+                "permission setting: OPENAI_USE_FUNCTIONS=true (from %s, file mtime)" % rel,
+                "permission setting: SHELL_INTERACTION=false (from %s, file mtime)" % rel,
+            ],
+        )
+        self.assertEqual(rows[0].model, "gpt-5.4-mini")
+        for r in rows:
+            self.assertEqual((r.turn_type, r.session_id), ("system", ""))
+            self.assertTrue(r.timestamp_utc.endswith("Z"))
+            self.assertNotIn("sk-not-real", r.text)
+            self.assertNotIn("API_BASE_URL", r.text)
+
+    def test_settings_bad_line_never_shows_the_line(self):
+        path = self.home / self.SGPTRC
+        path.write_text(
+            "DEFAULT_MODEL=gpt-4o\nOPENAI_API_KEY sk-not-real\nSHELL_INTERACTION=true\n",
+            encoding="utf-8",
+        )
+        rows = self.rows_for(ShellGptParser(), self.SGPTRC)
+        self.assertEqual(
+            [r.text.split(" (")[0] for r in rows],
+            [
+                "model: gpt-4o",
+                "permission setting: SHELL_INTERACTION=true",
+                "parser: unparseable line 2",
+            ],
+        )
+        self.assertEqual(
+            rows[-1].text,
+            'parser: unparseable line 2 (no "=" separator; not shown, the file holds the API key)',
+        )
+        for r in rows:
+            self.assertNotIn("sk-not-real", r.text)
+
+    def test_function_rows(self):
+        rows = self.rows_for(ShellGptParser(), self.FUNCTION)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(
+            rows[0].text,
+            "permission setting: function execute_shell.py "
+            "(from .config/shell_gpt/functions, file mtime)",
+        )
+        self.assertEqual(rows[0].turn_type, "system")
+        self.assertTrue(rows[0].timestamp_utc.endswith("Z"))
+
+    def test_response_cache_is_secondary(self):
+        parser = ShellGptParser()
+        self.assertTrue(parser.has_secondary)
+        cache = self.artifact(self.CACHE + SHELLGPT_CACHE_COPY)
+        self.assertTrue(parser.secondary(cache))
+        for rel in (self.CHAT, self.LEGACY, self.SGPTRC, self.FUNCTION):
+            self.assertFalse(parser.secondary(self.artifact(rel)), rel)
+        rows = self.rows_for(parser, self.CACHE + SHELLGPT_CACHE_COPY)
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [("assistant", "30G is free on /.", "", "")],
+        )
+        self.assertEqual(self.rows_for(parser, self.CACHE + "d41d8cd98f00b204e9800998ecf8427e"), [])
+
+    def test_response_cache_dedup(self):
+        rows, _, _, deduplicated = cli.collect_rows(self.col, Options(), ["shellgpt"])
+        self.assertEqual(deduplicated, {"shellgpt": 1})
+        cached = [
+            r
+            for r in rows
+            if r.source_file.endswith("/shell_gpt/cache/" + "0cc175b9c0f1b6a831c399e269772661")
+        ]
+        self.assertEqual([(r.text, r.recovered) for r in cached], [("a cached response", "yes")])
+        self.assertFalse([r for r in rows if r.source_file.endswith(SHELLGPT_CACHE_COPY)])
 
     def test_loose_temp_directory_is_wanted(self):
         art = next(a for a in self.col.artifacts if a.rel == self.CHAT)

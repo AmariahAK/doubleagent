@@ -1027,8 +1027,13 @@ Files read: Files directly under a `chat_cache/` directory:
 temp directory given as loose input. One JSON array of OpenAI messages per
 chat, `tool_calls` and the pre-1.5.0 `function_call` shape; no timestamp,
 model or working directory is recorded, so those columns stay empty.
+`.config/shell_gpt/.sgptrc` (four keys only: `DEFAULT_MODEL`,
+`OPENAI_USE_FUNCTIONS`, `DEFAULT_EXECUTE_SHELL_CMD`, `SHELL_INTERACTION`;
+the API key is never read into a row), the function store
+`.config/shell_gpt/functions/*.py` (file names only) and the response
+cache `AppData/Local/Temp/shell_gpt/cache/<md5>` (secondary).
 
-Validated against: Source at [a082bd5](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6), synthetic fixture.
+Validated against: Source at [a082bd5](https://github.com/TheR1D/shell_gpt/commit/a082bd5327ce0c4ef5a0284d9060e833be9444a6), synthetic fixture; the settings, function store and response cache rows from the same source, synthetic fixture.
 
 ### `tabby`
 

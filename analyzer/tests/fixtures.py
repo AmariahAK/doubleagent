@@ -8832,6 +8832,19 @@ def build_openhands(home: Path) -> None:
 
 SHELLGPT_CHAT = "deploy-check"
 SHELLGPT_LEGACY_CHAT = "old-functions"
+SHELLGPT_CACHE_COPY = "900150983cd24fb0d6963f7d28e17f72"
+# `.sgptrc` as ShellGPT 1.5.1 writes it (config.py DEFAULT_CONFIG order,
+# shortened), with the API key the parser must never put in a row.
+SHELLGPT_SGPTRC = (
+    "CHAT_CACHE_PATH=/tmp/chat_cache\n"
+    "CACHE_PATH=/tmp/cache\n"
+    "DEFAULT_MODEL=gpt-5.4-mini\n"
+    "DEFAULT_EXECUTE_SHELL_CMD=true\n"
+    "OPENAI_USE_FUNCTIONS=true\n"
+    "API_BASE_URL=default\n"
+    "SHELL_INTERACTION=false\n"
+    "OPENAI_API_KEY=sk-not-real\n"
+)
 
 
 def shellgpt_messages():
@@ -8903,11 +8916,19 @@ def build_shellgpt(home: Path) -> None:
     (temp / "shell_gpt/cache/0cc175b9c0f1b6a831c399e269772661").write_text(
         "a cached response", encoding="utf-8"
     )
+    # The same answer as the legacy chat's last message: a copy the primary holds.
+    (temp / "shell_gpt/cache" / SHELLGPT_CACHE_COPY).write_text(
+        "30G is free on /.", encoding="utf-8"
+    )
+    # An empty response is written too; it yields no row.
+    (temp / "shell_gpt/cache/d41d8cd98f00b204e9800998ecf8427e").write_text("", encoding="utf-8")
     cfg = home / ".config/shell_gpt"
     cfg.mkdir(parents=True, exist_ok=True)
-    (cfg / ".sgptrc").write_text(
-        "OPENAI_API_KEY=sk-not-real\nDEFAULT_MODEL=gpt-4o\n", encoding="utf-8"
-    )
+    (cfg / ".sgptrc").write_text(SHELLGPT_SGPTRC, encoding="utf-8")
+    (cfg / "functions").mkdir(parents=True, exist_ok=True)
+    (cfg / "functions/execute_shell.py").write_text("class Function: pass\n", encoding="utf-8")
+    (cfg / "roles").mkdir(parents=True, exist_ok=True)
+    _json_file(cfg / "roles/ShellGPT.json", {"name": "ShellGPT", "role": "assistant"})
 
 
 # ---- pi, little-coder, letta (pi session format) --------------------------------

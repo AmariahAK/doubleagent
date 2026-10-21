@@ -1591,8 +1591,8 @@ requested, skipped (from logs/cn.log, log line time, host-local)`, and
 for each rule a "don't ask again" answer added to `permissions.yaml`
 `permission decision: allow always rule=<rule> (from logs/cn.log, log
 line time, host-local)`, all with an empty `session_id` and the log's
-host-local time written as if it were UTC. `roo-code`,
-`shellgpt` and `tabby` record no model and write no such row.
+host-local time written as if it were UTC. `roo-code` and `tabby` record no model and write no such
+row.
 
 The `aider` parser reads the announcement lines Aider writes to
 `.aider.chat.history.md` at startup and after each `/model`,
@@ -1610,6 +1610,21 @@ default=<default>` after the same kind of `tool_result` row, with
 a `y` or `n` answer ends `; may be automatic (--yes-always)`, because
 Aider writes the same line when `--yes-always` answers for the user.
 Both take the run's time, a session header's or the last prompt's.
+
+The `shellgpt` chat files record no model, permission or time. From
+`.config/shell_gpt/.sgptrc` the parser reads four keys and no other,
+since the file also holds the API key: `DEFAULT_MODEL` is `model:
+<value> (configured default, from .config/shell_gpt/.sgptrc, file
+mtime)`, with the value in the `model` column, and
+`OPENAI_USE_FUNCTIONS`, `DEFAULT_EXECUTE_SHELL_CMD` and
+`SHELL_INTERACTION` are each `permission setting: <key>=<value> (from
+.config/shell_gpt/.sgptrc, file mtime)`, in file order. A line of that
+file with no `=` is `parser: unparseable line <n> (no "=" separator; not
+shown, the file holds the API key)`, without the line. Each file in the
+function store is `permission setting: function <file name> (from
+.config/shell_gpt/functions, file mtime)`; the function calls in the
+chat files ran with no confirmation. All of these rows carry the file's
+modification time and an empty `session_id`.
 
 The `pearai` parser writes per-call decisions on the agent surface, from
 the Roo Code 3.15.3 result texts of `api_conversation_history.json`: a
@@ -2228,6 +2243,7 @@ beside its `session synced: server conversation` row.
 | `openhands` | `.openhands/projects/<sha256 of cwd>/prompt_history.json`, the CLI's last 100 prompts per working directory (no conversation id: matches on text and time; `project_path` is the working directory of a conversation whose SHA-256 is the directory name) | `.openhands/conversations/<hex>/events/event-*.json` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json`; `.qwen/usage_record.jsonl` (per-session summaries, `system` rows that no transcript row repeats) | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
+| `shellgpt` | the response cache `AppData/Local/Temp/shell_gpt/cache/<md5>`, one answer per file (no timestamp, session or project: matches on text alone; the answer after a function call is cached without the chat file's `> @FunctionCall` marker, so it never pairs and is kept) | the chat files `chat_cache/<id>` |
 | `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
 
 The 2 seconds cover Codex's `history.jsonl`, which records whole seconds
