@@ -1,8 +1,10 @@
 """OpenClaw (formerly Clawdbot and Moltbot) agent transcripts.
 
-Validated against source, openclaw/openclaw at 3b16db7 (see
-`research/openclaw.md`), with a synthetic fixture; no real install
-was checked. The state directory is `.openclaw`, a profile's
+Validated against source, openclaw/openclaw at 3b16db7 and, for the
+relay, permission, model-override, past-use, deletion and PostgreSQL
+anchor rows (issue 206), at 146284a (see `research/openclaw.md`), with
+a synthetic fixture; no real install was checked, so every row named
+below rests on source alone. The state directory is `.openclaw`, a profile's
 `.openclaw-<profile>`, or the legacy `.clawdbot` / `.moltbot`. Files:
 
 * `agents/<agentId>/agent/openclaw-agent.sqlite` (WAL, opened through
@@ -46,8 +48,85 @@ was checked. The state directory is `.openclaw`, a profile's
     others. An `entry_json` that does not decode is its own `parser:` row
     carrying the column in full. The share URL's token is not stored.
     Fixture only: no real install has shown the key.
+    The same `entry_json` gives, attached after the start row of the
+    session's current generation (`current_session_id`) and timestamped
+    by `session_nodes.updated_at` unless stated: `model: <modelOverride>
+    provider=<providerOverride> source=<modelOverrideSource>[
+    fallback_from=<modelOverrideFallbackOriginProvider>/<...Model>] (from
+    openclaw-agent.sqlite session_nodes.entry_json modelOverride,
+    updated_at)`, the model column set to `modelOverride`
+    (`src/config/sessions/types.ts:502-516`; the entry keeps only the
+    current override, so the row names no previous model); one
+    `permission setting: <key>=<value> (from openclaw-agent.sqlite
+    session_nodes.entry_json, updated_at)` per `elevatedLevel`, `execHost`,
+    `execNode`, `execCwd`, `toolOverrides` (compact JSON) and `sendPolicy`
+    (`types.ts:481-500`, `532`); `session archived: <archiveReason> by
+    <archivedBy.type>:<archivedBy.id> (from openclaw-agent.sqlite
+    session_nodes.entry_json, archivedAt)` at `archivedAt`
+    (`types.ts:300-305`); and, when no conversation or window below gave
+    the generation a relay row, `session relayed: <route.channel> account
+    <route.accountId or origin.accountId> <origin.chatType> from
+    <origin.from> to <origin.to> (from openclaw-agent.sqlite
+    session_nodes.entry_json delivery, updated_at)` for a `delivery` of
+    kind `external` (`types.ts:60-83`).
+  - Relay (`records_relay`), attached after a generation's start row:
+    `session relayed: <channel> account <account_id> <kind> peer
+    <peer_id> thread <thread_id> role <role> (from openclaw-agent.sqlite
+    session_conversations and conversations, first_seen_at)` per
+    `session_conversations` link to a `conversations` row; else
+    `session relayed: <channel> account <account_id> <chat_type> (from
+    openclaw-agent.sqlite session_windows, started_at)` from
+    `session_windows`; and `session relayed: gmail hook (from
+    openclaw-agent.sqlite session_windows hook_external_content_source,
+    started_at)` for a session a Gmail hook started. The Control UI
+    channel `webchat` and the internal wake channels (`heartbeat`, `cron`,
+    `webhook`, `voice`, `sessions_send`;
+    `src/utils/message-channel-constants.ts:3`, `14-20`) are no platform.
+  - `session_transcript_archives` rows with `reason` `deleted` add
+    `session deleted: <session_id> archive <archive_name> (from
+    openclaw-agent.sqlite session_transcript_archives reason deleted,
+    created_at)` after the archive's rows.
+  - `session_pending_inputs(seq, input_id, session_id, run_id,
+    message_json, state, accepted_at, consumed_event_id)`, each accepted
+    prompt (`message_json` a user message, `content`): a row never
+    consumed (`consumed_event_id` NULL; a cancelled or interrupted prompt
+    never reaches the transcript) yields a `user` row and `pending input:
+    <state>, not consumed by the transcript (input <input_id> run
+    <run_id>; from openclaw-agent.sqlite session_pending_inputs,
+    accepted_at)`, at `accepted_at`, `source_line` the `seq`; a consumed
+    one yields its `user` row, marked `recovered`, only when the
+    transcript entry `consumed_event_id` names is not in the database. A
+    `message_json` that does not decode is its own `parser:` row.
+  - `session_transcript_fts`, the FTS5 index behind session search, read
+    from its content table `session_transcript_fts_content` (`c0` text,
+    `c1` session_id, `c2` message_id, `c3` role, `c4` timestamp) as a
+    plain table: a `user` or `assistant` row (else `system`, `<role>:
+    <text>`) per indexed entry whose `(session_id, message_id)` no
+    transcript row of the database carries, marked `recovered`.
+  - `conversation_deliveries` joined to `conversations`: `channel
+    delivery: <operation_kind> <status> channel <channel> conversation
+    <conversation_id> platform message <platform_message_id>[
+    error=<rejection_error>] (from openclaw-agent.sqlite
+    conversation_deliveries, created_at)` and, when a platform message
+    replied to it, `channel delivery reply: <reply_text> (reply message
+    <reply_message_id>; from openclaw-agent.sqlite
+    conversation_deliveries, reply_timestamp)`; `session_id` is the
+    current generation of `source_session_key`.
+  - `memory_session_tombstones`: `session forgotten from memory:
+    <session_id> agent <agent_id> reason=<reason> (from
+    openclaw-agent.sqlite memory_session_tombstones, created_at)`.
+  The full-text index and the pending inputs repeat transcript entries
+  inside the primary database, where `secondary()` cannot mark them, so
+  the parser joins them itself on the entry id and keeps only what the
+  transcript lost. Rows read after the transcripts carry the `cwd` of
+  their generation's header when the database has one.
   - `auth_profile_store`, `auth_profile_state` and `session_suggestions`
     hold credentials and are never read.
+  - With the PostgreSQL engine the file is an anchor holding only
+    `openclaw_engine_anchor(store_id, engine, schema)`
+    (`src/infra/database-engine/open.ts:149`): one whole-file row
+    `parser: agent database is a PostgreSQL anchor (store <store_id>,
+    schema <schema>): transcripts are on the database server`.
 * `state/openclaw.sqlite` (WAL, opened through `sqlite_util`), the
   Gateway's state database, table `backup_runs(id, created_at,
   archive_path, status, manifest_json)`, one row per `openclaw backup`
@@ -67,8 +146,55 @@ was checked. The state directory is `.openclaw`, a profile's
   so a Git row says a commit was made and, unless the push failed, may
   have been pushed. A `manifest_json` that does not decode is its own
   `parser:` row carrying the column in full; a file that is not SQLite or
-  does not open is one `parser:` row. The database's other tables are not
-  read. Fixture only.
+  does not open is one `parser:` row; a PostgreSQL anchor is one row
+  `parser: state database is a PostgreSQL anchor (store <store_id>,
+  schema <schema>): the Gateway state is on the database server`. Also
+  read (`src/state/openclaw-state-schema.sql:356-475`, `512-529`,
+  `794-801`, `1273-1294` at 146284a):
+  - `operator_approvals(approval_id, kind, status, decision,
+    terminal_reason, resolver_kind, source_session_id,
+    source_tool_call_id, source_tool_name, created_at_ms,
+    resolved_at_ms)`: `permission decision: <decision, else status>
+    status=<status> kind=<kind> resolver=<resolver_kind>
+    reason=<terminal_reason> approval <approval_id> (from
+    state/openclaw.sqlite operator_approvals, <resolved_at_ms or
+    created_at_ms>)` at that time, `session_id` `source_session_id`,
+    `tool_name` `source_tool_name` and `tool_use_id`
+    `source_tool_call_id`, so it joins the call it governed.
+  - `exec_approvals_config(raw_json, updated_at_ms)`, the migrated
+    `exec-approvals.json`: one `permission setting: <scope>.<setting>
+    (from state/openclaw.sqlite exec_approvals_config, updated_at_ms)`
+    per `security`, `ask`, `askFallback` and `autoAllowSkills`
+    (`<key>=<value>`), allowlist entry (`allowlist=<pattern>[
+    argPattern=<argPattern>] source=<source>`) and MCP tool grant
+    (`mcpTools=<server>/<tool> source=<source>`) of `defaults` and of
+    each `agents.<id>`. `socket` holds the approvals socket token and is
+    never read; a `raw_json` that does not decode is one `parser:` row
+    without the text, for the same reason.
+  - `operator_approval_standing_grants`: `permission setting: standing
+    grant <grant_id> allow-always cron job <cron_job_id> agent <agent_id>
+    binding <operation_binding> approval <minted_by_approval_id>
+    expires=<expires_at_ms> revoked=<revoked_at_ms> uses=<use_count> (from
+    state/openclaw.sqlite operator_approval_standing_grants,
+    created_at_ms)`.
+  - `channel_pairing_allow_entries`: `permission setting: channel
+    <channel_key> account <account_id> allowFrom=<entry> (from
+    state/openclaw.sqlite channel_pairing_allow_entries, updated_at)`.
+  - `channel_ingress_events`: `channel ingress: <channel_id> account
+    <account_id> status <status>: <payload_json> (from
+    state/openclaw.sqlite channel_ingress_events, received_at)`, the
+    payload whole, since its shape per channel is not in the research;
+    no session id.
+  - `github_publication_requests`, `github_personal_publication_requests`
+    and `github_repository_publication_requests` (lines 2093-2140,
+    2410-2482, 2488-2531), one row per push or pull request the Gateway
+    made on GitHub for a session: `source host: github account
+    <identity_login> id <identity_account_id> identity <identity_source>;
+    publication <status> repository <repository> branch <branch> pull
+    request <pull_request_url> (from state/openclaw.sqlite <table>,
+    created_at_ms)`, `session_id` the session. The OAuth token
+    (`secret_store_entries`, name `github-oauth-<32 hex>`) is never read.
+  Its other tables are not read. Fixture only.
 * `agents/<agentId>/sessions/<sessionId>.jsonl` (and `sessions/` at the
   state root, the older single-agent layout): legacy transcripts not yet
   imported by `openclaw doctor`. The sibling legacy `sessions.json`,
@@ -146,10 +272,9 @@ else a `model_change` `modelId` or an assistant `responseModel`, else
 entry whose model differs, with ` requested=<model>` when an assistant
 `responseModel` differs from its `model` (`pi.model_text`). A
 `model_change` entry naming the model already in force still yields the
-plain `model: <id> provider=<provider>` row (`pi.switch_text`). The
-permission tables of `state/openclaw.sqlite` (`exec_approvals_config`,
-`operator_approvals`, `audit_events`) are not read: their columns are not
-in the research. Timestamps are the entry `timestamp`,
+plain `model: <id> provider=<provider>` row (`pi.switch_text`).
+`audit_events` is not read: its `kind` and `action` values are not in
+the research. Timestamps are the entry `timestamp`,
 else the message's ms timestamp, else the row's `created_at`. `source_line`
 is the `transcript_events` (or archive table) rowid, or the JSONL line. No
 git branch is recorded.
@@ -205,6 +330,70 @@ JSONL_RX = re.compile(
 COLD_RX = re.compile(SESSIONS + r"cold/[0-9a-f]{64}\.jsonl\.zst$")
 SKIP_NAME_RX = re.compile(r"\.trajectory$")
 ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
+# Channels that are not a messaging platform: the Control UI and the
+# internal wake sources (`src/utils/message-channel-constants.ts:3`, `14-20`).
+NOT_PLATFORMS = frozenset(("webchat", "heartbeat", "cron", "webhook", "voice", "sessions_send"))
+# Per-session permission state in `session_nodes.entry_json`
+# (`src/config/sessions/types.ts:481-500`, `532`).
+SESSION_PERMISSION_KEYS = (
+    "elevatedLevel",
+    "execHost",
+    "execNode",
+    "execCwd",
+    "toolOverrides",
+    "sendPolicy",
+)
+# The GitHub publication requests of `state/openclaw.sqlite`, each naming the
+# GitHub account that pushed or opened the pull request
+# (`src/state/openclaw-state-schema.sql:2093-2140`, `2410-2482`, `2488-2531`).
+GITHUB_PUBLICATION_TABLES = (
+    "github_publication_requests",
+    "github_personal_publication_requests",
+    "github_repository_publication_requests",
+)
+# The `state/openclaw.sqlite` tables read, in the order their rows are yielded.
+STATE_QUERIES = (
+    (
+        "backup_runs",
+        "select rowid as _rowid, id, created_at, archive_path, status, manifest_json"
+        " from backup_runs order by created_at, id",
+    ),
+    (
+        "operator_approvals",
+        "select rowid as _rowid, approval_id, kind, status, decision, terminal_reason,"
+        " resolver_kind, source_session_id, source_tool_call_id, source_tool_name,"
+        " created_at_ms, resolved_at_ms from operator_approvals order by created_at_ms, rowid",
+    ),
+    (
+        "exec_approvals_config",
+        "select rowid as _rowid, raw_json, updated_at_ms from exec_approvals_config order by rowid",
+    ),
+    (
+        "operator_approval_standing_grants",
+        "select rowid as _rowid, grant_id, minted_by_approval_id, agent_id, cron_job_id,"
+        " operation_binding, created_at_ms, expires_at_ms, revoked_at_ms, use_count"
+        " from operator_approval_standing_grants order by created_at_ms, rowid",
+    ),
+    (
+        "channel_pairing_allow_entries",
+        "select rowid as _rowid, channel_key, account_id, entry, updated_at"
+        " from channel_pairing_allow_entries order by channel_key, account_id, sort_order",
+    ),
+    (
+        "channel_ingress_events",
+        "select rowid as _rowid, channel_id, account_id, status, payload_json, received_at"
+        " from channel_ingress_events order by received_at, rowid",
+    ),
+    *(
+        (
+            table,
+            "select rowid as _rowid, session_id, identity_source, identity_account_id,"
+            " identity_login, status, repository, branch, pull_request_url, created_at_ms"
+            " from %s order by created_at_ms, rowid" % table,
+        )
+        for table in GITHUB_PUBLICATION_TABLES
+    ),
+)
 
 
 def tool_args_text(args) -> str:
@@ -254,6 +443,139 @@ def _iter_lines(data: bytes, errors: list) -> Iterator[tuple[int, dict]]:
         yield n, rec
 
 
+def _platform(channel) -> bool:
+    """True for a channel id that names a messaging platform."""
+    return isinstance(channel, str) and bool(channel) and channel not in NOT_PLATFORMS
+
+
+def _delivery_relay(delivery) -> str:
+    """The `session relayed:` text of an `entry_json.delivery` of kind
+    `external` whose `route.channel` is a platform, else `""`
+    (`src/config/sessions/types.ts:60-83`; `route` is a `ChannelRouteRef`,
+    `src/plugin-sdk/channel-route.ts:18-25`)."""
+    if not isinstance(delivery, dict) or delivery.get("kind") != "external":
+        return ""
+    route = delivery.get("route")
+    route = route if isinstance(route, dict) else {}
+    origin = delivery.get("origin")
+    origin = origin if isinstance(origin, dict) else {}
+    channel = route.get("channel")
+    if not _platform(channel):
+        return ""
+    return (
+        "session relayed: %s account %s %s from %s to %s (from openclaw-agent.sqlite"
+        " session_nodes.entry_json delivery, updated_at)"
+        % (
+            channel,
+            route.get("accountId") or origin.get("accountId") or "-",
+            origin.get("chatType") or "-",
+            origin.get("from") or "-",
+            origin.get("to") or "-",
+        )
+    )
+
+
+def _override_text(entry: dict) -> str:
+    """The `model:` text of a session's `modelOverride`
+    (`src/config/sessions/types.ts:502-516`)."""
+    origin = "/".join(
+        str(entry[k])
+        for k in ("modelOverrideFallbackOriginProvider", "modelOverrideFallbackOriginModel")
+        if entry.get(k)
+    )
+    return (
+        "model: %s provider=%s source=%s%s (from openclaw-agent.sqlite"
+        " session_nodes.entry_json modelOverride, updated_at)"
+        % (
+            entry.get("modelOverride"),
+            entry.get("providerOverride") or "-",
+            entry.get("modelOverrideSource") or "-",
+            " fallback_from=%s" % origin if origin else "",
+        )
+    )
+
+
+def _policy_settings(policy) -> list[str]:
+    """`<key>=<value>` for each policy field, allowlist entry and MCP tool
+    grant of one `defaults` or `agents.<id>` object of an exec approvals
+    file (`packages/gateway-protocol/src/schema/exec-approvals.ts:15-60`)."""
+    if not isinstance(policy, dict):
+        return []
+    out = []
+    for key in ("security", "ask", "askFallback", "autoAllowSkills"):
+        value = policy.get(key)
+        if value is not None:
+            out.append("%s=%s" % (key, json.dumps(value) if isinstance(value, bool) else value))
+    allowlist = policy.get("allowlist")
+    for e in allowlist if isinstance(allowlist, list) else []:
+        if isinstance(e, dict) and e.get("pattern") is not None:
+            arg = " argPattern=%s" % e["argPattern"] if e.get("argPattern") else ""
+            out.append("allowlist=%s%s source=%s" % (e["pattern"], arg, e.get("source") or "-"))
+    grants = policy.get("mcpTools")
+    for g in grants if isinstance(grants, list) else []:
+        if isinstance(g, dict):
+            out.append(
+                "mcpTools=%s/%s source=%s"
+                % (g.get("server") or "-", g.get("tool") or "-", g.get("source") or "-")
+            )
+    return out
+
+
+def _grant_text(r: dict) -> str:
+    """The `permission setting:` text of an `operator_approval_standing_grants`
+    row, the grant an `allow-always` decision on a cron job mints."""
+    return (
+        "permission setting: standing grant %s allow-always cron job %s agent %s binding %s"
+        " approval %s expires=%s revoked=%s uses=%s (from state/openclaw.sqlite"
+        " operator_approval_standing_grants, created_at_ms)"
+        % (
+            r.get("grant_id") or "-",
+            r.get("cron_job_id") or "-",
+            r.get("agent_id") or "-",
+            r.get("operation_binding") or "-",
+            r.get("minted_by_approval_id") or "-",
+            to_utc(r.get("expires_at_ms")) or "-",
+            to_utc(r.get("revoked_at_ms")) or "-",
+            r.get("use_count") if r.get("use_count") is not None else "-",
+        )
+    )
+
+
+def _publication_text(table: str, r: dict) -> str:
+    """The `source host:` text of a GitHub publication request: the account
+    the Gateway pushed or opened the pull request as, and what it published."""
+    return (
+        "source host: github account %s id %s identity %s; publication %s repository %s"
+        " branch %s pull request %s (from state/openclaw.sqlite %s, created_at_ms)"
+        % (
+            r.get("identity_login") or "-",
+            r.get("identity_account_id") if r.get("identity_account_id") is not None else "-",
+            r.get("identity_source") or "-",
+            r.get("status") or "-",
+            r.get("repository") or "-",
+            r.get("branch") or "-",
+            r.get("pull_request_url") or "-",
+            table,
+        )
+    )
+
+
+class _Db:
+    """What one agent database's passes share: the rows to attach after a
+    generation's session-start row, the transcript entry ids already
+    yielded (for the exact joins of the full-text index and the pending
+    inputs) and each generation's `cwd`."""
+
+    def __init__(self) -> None:
+        # {generation: [(source_line, timestamp, text, model)]}
+        self.attached: dict[str, list[tuple[int, str, str, str]]] = {}
+        self.ids: set[tuple[str, str]] = set()
+        self.cwds: dict[str, str] = {}
+
+    def attach(self, sid: str, line: int, ts: str, text: str, model: str = "") -> None:
+        self.attached.setdefault(sid, []).append((line, ts, text, model))
+
+
 class _Session:
     """State carried across one transcript's entries."""
 
@@ -274,9 +596,9 @@ class _Session:
         self.header_id = False  # True: the header `id` replaces session_id
         self.started = False
         self.seen: dict = {}  # the model in use, for the `model:` rows
-        # The database's `publicShare` grants, {generation: (rowid, grant)};
-        # the session-start row pops its own and yields its row.
-        self.shares: dict[str, tuple[int, dict]] = {}
+        # The agent database's shared state; the session-start row pops the
+        # rows attached to its generation and yields them.
+        self.ctx: _Db | None = None
 
 
 class OpenClawParser(Parser):
@@ -284,6 +606,7 @@ class OpenClawParser(Parser):
     name = "openclaw"
     has_secondary = True
     records_sync = True
+    records_relay = True
 
     def wants(self, artifact: Artifact) -> bool:
         rel = artifact.rel
@@ -367,20 +690,10 @@ class OpenClawParser(Parser):
         mtext = model_text(s.seen, s.session_id, s.model, s.provider)
         if mtext:
             yield self._row(artifact, s, line, ts, "system", mtext, opts, s.model)
-        share = s.shares.pop(s.session_id, None)
-        if share is not None:
-            yield self._share_row(artifact, s, *share)
-
-    def _share_row(self, artifact: Artifact, s: _Session, rowid: int, grant: dict) -> Row:
-        """The `session synced: public share` row of a `publicShare` grant,
-        `source_line` the `session_nodes` rowid."""
-        text = (
-            "session synced: public share %s generation %s (from openclaw-agent.sqlite"
-            " session_nodes.entry_json, publicShare.createdAt)"
-            % (grant.get("id") or "-", grant.get("sessionId") or "-")
-        )
-        ts = to_utc(grant.get("createdAt"))
-        return self._row(artifact, s, rowid, ts, "system", text, Options())
+        if s.ctx is not None:
+            s.ctx.cwds.setdefault(s.session_id, s.cwd)
+            for aline, ats, atext, amodel in s.ctx.attached.pop(s.session_id, []):
+                yield self._row(artifact, s, aline, ats, "system", atext, opts, amodel)
 
     def _entry_rows(
         self, artifact: Artifact, s: _Session, line: int, rec: dict, created_at, opts: Options
@@ -395,6 +708,8 @@ class OpenClawParser(Parser):
             return
         if not s.started:
             yield from self._start(artifact, s, line, ts, None, opts)
+        if s.ctx is not None and rec.get("id") not in (None, ""):
+            s.ctx.ids.add((s.session_id, str(rec["id"])))
         if etype == "message":
             yield from self._message_rows(artifact, s, line, ts, rec, msg, opts)
             return
@@ -697,71 +1012,426 @@ class OpenClawParser(Parser):
 
     # -- SQLite store -------------------------------------------------------------------
     def _parse_db(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        errors: list = []
+        ctx = _Db()
         with open_copy(artifact.disk_path) as con:
             tables = table_names(con)
+            if "transcript_events" not in tables and "openclaw_engine_anchor" in tables:
+                yield from error_rows(self, artifact, [self._anchor_error(con, "agent")])
+                return
             windows: dict[str, dict] = {}
             if "session_windows" in tables:
-                for w in con.execute("select * from session_windows"):
+                for w in con.execute("select rowid as _rowid, * from session_windows"):
                     w = dict(w)
                     windows[str(w.get("session_id"))] = w
-            errors: list = []
-            shares = self._db_shares(con, errors) if "session_nodes" in tables else {}
+            relayed = self._db_relays(con, tables, windows, ctx)
+            nodes = self._db_nodes(con, errors) if "session_nodes" in tables else []
+            self._attach_nodes(nodes, relayed, ctx)
             if "transcript_events" in tables:
-                yield from self._db_events(artifact, con, windows, shares, opts)
+                yield from self._db_events(artifact, con, windows, ctx, opts)
             if "session_transcript_archives" in tables:
-                yield from self._db_archives(artifact, con, windows, shares, opts)
+                yield from self._db_archives(artifact, con, windows, ctx, opts)
             if "session_transcript_cold_archives" in tables:
-                yield from self._db_cold(artifact, con, windows, shares, opts)
-        # Grants whose generation has no transcript rows in the database.
-        for sid, share in list(shares.items()):
-            yield self._share_row(artifact, _Session(sid), *share)
+                yield from self._db_cold(artifact, con, windows, ctx, opts)
+            if "session_pending_inputs" in tables:
+                yield from self._db_pending(artifact, con, ctx, errors)
+            if "session_transcript_fts_content" in tables:
+                yield from self._db_fts(artifact, con, ctx)
+            if "conversation_deliveries" in tables and "conversations" in tables:
+                current = {str(n["session_key"]): str(n["current_session_id"]) for n in nodes}
+                yield from self._db_deliveries(artifact, con, ctx, current)
+            if "memory_session_tombstones" in tables:
+                yield from self._db_tombstones(artifact, con, ctx)
+        # Rows attached to a generation with no transcript rows in the database.
+        for sid, items in list(ctx.attached.items()):
+            s = _Session(sid)
+            s.cwd = ctx.cwds.get(sid, "")
+            for line, ts, text, model in items:
+                yield self._row(artifact, s, line, ts, "system", text, opts, model)
         yield from error_rows(self, artifact, errors)
 
     @staticmethod
-    def _db_shares(con, errors: list) -> dict[str, tuple[int, dict]]:
-        """{generation: (rowid, publicShare)} from `session_nodes.entry_json`;
+    def _anchor_error(con, label: str) -> tuple[int, str, str]:
+        """The whole-file error of a PostgreSQL engine anchor: the
+        `openclaw_engine_anchor (store_id, engine, schema)` table that
+        replaces the store when `database.engine` is `postgres`
+        (`src/infra/database-engine/open.ts:149`)."""
+        try:
+            r = con.execute("select store_id, schema from openclaw_engine_anchor").fetchone()
+        except sqlite3.DatabaseError:
+            r = None
+        store, schema = (r["store_id"], r["schema"]) if r is not None else ("-", "-")
+        where = "transcripts are" if label == "agent" else "the Gateway state is"
+        return (
+            0,
+            "%s database is a PostgreSQL anchor (store %s, schema %s): %s on the"
+            " database server" % (label, store, schema, where),
+            "",
+        )
+
+    @staticmethod
+    def _db_nodes(con, errors: list) -> list[dict]:
+        """The `session_nodes` rows with `entry_json` decoded into `entry`;
         an `entry_json` that does not decode is appended to `errors`."""
-        shares: dict[str, tuple[int, dict]] = {}
+        nodes: list[dict] = []
         for r in con.execute(
-            "select rowid as _rowid, current_session_id, entry_json from session_nodes"
-            " order by rowid"
+            "select rowid as _rowid, session_key, current_session_id, entry_json, updated_at"
+            " from session_nodes order by rowid"
         ):
+            r = dict(r)
             raw = r["entry_json"] if isinstance(r["entry_json"], str) else ""
             try:
                 entry = json.loads(raw)
             except ValueError as e:
                 errors.append((r["_rowid"], "session_nodes entry_json unparseable (%s)" % e, raw))
                 continue
-            grant = entry.get("publicShare") if isinstance(entry, dict) else None
-            if isinstance(grant, dict) and grant.get("id"):
-                sid = str(grant.get("sessionId") or r["current_session_id"] or "")
-                shares.setdefault(sid, (r["_rowid"], grant))
-        return shares
+            r["entry"] = entry if isinstance(entry, dict) else {}
+            nodes.append(r)
+        return nodes
 
+    @staticmethod
+    def _attach_nodes(nodes: list[dict], relayed: set, ctx: _Db) -> None:
+        """Rows of each session's metadata entry, attached to its current
+        generation: the public share (to the generation it publishes), the
+        external delivery route when no conversation or window recorded the
+        relay, the model override, the per-session permission settings and
+        the archive marker."""
+        for n in nodes:
+            entry, line = n["entry"], n["_rowid"]
+            sid = str(n["current_session_id"] or "")
+            ts = to_utc(n.get("updated_at"))
+            grant = entry.get("publicShare")
+            if isinstance(grant, dict) and grant.get("id"):
+                ctx.attach(
+                    str(grant.get("sessionId") or sid),
+                    line,
+                    to_utc(grant.get("createdAt")),
+                    "session synced: public share %s generation %s (from openclaw-agent.sqlite"
+                    " session_nodes.entry_json, publicShare.createdAt)"
+                    % (grant.get("id") or "-", grant.get("sessionId") or "-"),
+                )
+            relay = _delivery_relay(entry.get("delivery"))
+            if relay and sid not in relayed:
+                ctx.attach(sid, line, ts, relay)
+            override = entry.get("modelOverride")
+            if isinstance(override, str) and override:
+                ctx.attach(sid, line, ts, _override_text(entry), override)
+            for key in SESSION_PERMISSION_KEYS:
+                value = entry.get(key)
+                if value in (None, "", {}, []):
+                    continue
+                ctx.attach(
+                    sid,
+                    line,
+                    ts,
+                    "permission setting: %s=%s (from openclaw-agent.sqlite"
+                    " session_nodes.entry_json, updated_at)"
+                    % (key, value if isinstance(value, str) else compact_json(value)),
+                )
+            if entry.get("archivedAt") is not None:
+                by = entry.get("archivedBy")
+                by = by if isinstance(by, dict) else {}
+                actor = ":".join(str(by[k]) for k in ("type", "id") if by.get(k)) or "-"
+                ctx.attach(
+                    sid,
+                    line,
+                    to_utc(entry.get("archivedAt")),
+                    "session archived: %s by %s (from openclaw-agent.sqlite"
+                    " session_nodes.entry_json, archivedAt)"
+                    % (entry.get("archiveReason") or "-", actor),
+                )
+
+    @staticmethod
+    def _db_relays(con, tables: set, windows: dict[str, dict], ctx: _Db) -> set:
+        """Attach a `session relayed:` row per platform conversation linked to
+        a generation (`session_conversations` joined to `conversations`),
+        else one per generation whose window names a platform channel, and
+        one per generation a Gmail hook started; returns the generations that
+        got one. The Control UI and the internal wake channels are not
+        platforms (`_platform`)."""
+        relayed: set = set()
+        if "session_conversations" in tables and "conversations" in tables:
+            for r in con.execute(
+                "select l.rowid as _rowid, l.session_id, l.role, l.first_seen_at, c.channel,"
+                " c.account_id, c.kind, c.peer_id, c.thread_id from session_conversations l"
+                " join conversations c using (conversation_id)"
+                " order by l.first_seen_at, l.rowid"
+            ):
+                if not _platform(r["channel"]):
+                    continue
+                sid = str(r["session_id"] or "")
+                ctx.attach(
+                    sid,
+                    r["_rowid"],
+                    to_utc(r["first_seen_at"]),
+                    "session relayed: %s account %s %s peer %s thread %s role %s (from"
+                    " openclaw-agent.sqlite session_conversations and conversations,"
+                    " first_seen_at)"
+                    % (
+                        r["channel"],
+                        r["account_id"] or "-",
+                        r["kind"] or "-",
+                        r["peer_id"] or "-",
+                        r["thread_id"] or "-",
+                        r["role"] or "-",
+                    ),
+                )
+                relayed.add(sid)
+        for sid, w in windows.items():
+            ts = to_utc(w.get("started_at")) or to_utc(w.get("created_at"))
+            if sid not in relayed and _platform(w.get("channel")):
+                ctx.attach(
+                    sid,
+                    w["_rowid"],
+                    ts,
+                    "session relayed: %s account %s %s (from openclaw-agent.sqlite"
+                    " session_windows, started_at)"
+                    % (w["channel"], w.get("account_id") or "-", w.get("chat_type") or "-"),
+                )
+                relayed.add(sid)
+            if w.get("hook_external_content_source") == "gmail":
+                ctx.attach(
+                    sid,
+                    w["_rowid"],
+                    ts,
+                    "session relayed: gmail hook (from openclaw-agent.sqlite session_windows"
+                    " hook_external_content_source, started_at)",
+                )
+                relayed.add(sid)
+        return relayed
+
+    def _ctx_row(
+        self,
+        artifact: Artifact,
+        ctx: _Db,
+        sid: str,
+        line: int,
+        ts: str,
+        turn_type: str,
+        text: str,
+    ) -> Row:
+        """A row of a table read after the transcripts, with the `cwd` the
+        generation's header gave."""
+        s = _Session(sid)
+        s.cwd = ctx.cwds.get(sid, "")
+        return self._row(artifact, s, line, ts, turn_type, text, Options())
+
+    def _db_pending(self, artifact: Artifact, con, ctx: _Db, errors: list) -> Iterator[Row]:
+        """Prompts in `session_pending_inputs`: one never consumed (`queued`,
+        `interrupted` or `cancelled` with `consumed_event_id` NULL) never
+        reached the transcript and yields its `user` row and a `pending
+        input:` row; a consumed one yields its `user` row, marked recovered,
+        only when the transcript entry that consumed it is not in the
+        database. A `message_json` that does not decode is appended to
+        `errors`."""
+        for r in con.execute(
+            "select seq, input_id, session_id, run_id, message_json, state, accepted_at,"
+            " consumed_event_id from session_pending_inputs order by seq"
+        ):
+            sid = str(r["session_id"] or "")
+            consumed = r["consumed_event_id"]
+            if consumed and (sid, str(consumed)) in ctx.ids:
+                continue
+            raw = r["message_json"] if isinstance(r["message_json"], str) else ""
+            try:
+                msg = json.loads(raw)
+            except ValueError as e:
+                errors.append(
+                    (r["seq"], "session_pending_inputs message_json unparseable (%s)" % e, raw)
+                )
+                continue
+            msg = msg if isinstance(msg, dict) else {}
+            ts = to_utc(r["accepted_at"])
+            row = self._ctx_row(
+                artifact, ctx, sid, r["seq"], ts, "user", text_of(msg.get("content"))
+            )
+            if consumed:
+                row.recovered = "yes"
+                yield row
+                continue
+            yield row
+            yield self._ctx_row(
+                artifact,
+                ctx,
+                sid,
+                r["seq"],
+                ts,
+                "system",
+                "pending input: %s, not consumed by the transcript (input %s run %s; from"
+                " openclaw-agent.sqlite session_pending_inputs, accepted_at)"
+                % (r["state"] or "-", r["input_id"] or "-", r["run_id"] or "-"),
+            )
+
+    def _db_fts(self, artifact: Artifact, con, ctx: _Db) -> Iterator[Row]:
+        """Rows of the full-text index `session_transcript_fts`, read from its
+        FTS5 content table (`c0` text, `c1` session_id, `c2` message_id,
+        `c3` role, `c4` timestamp) as a plain table, for the entries whose
+        `(session_id, message_id)` the transcript no longer holds; each is
+        marked recovered."""
+        have = {r[1] for r in con.execute("pragma table_info(session_transcript_fts_content)")}
+        if not {"id", "c0", "c1", "c2", "c3", "c4"} <= have:
+            return
+        for r in con.execute(
+            "select id, c0, c1, c2, c3, c4 from session_transcript_fts_content order by id"
+        ):
+            sid, mid = str(r["c1"] or ""), str(r["c2"] or "")
+            if mid and (sid, mid) in ctx.ids:
+                continue
+            role = str(r["c3"] or "")
+            text = compact(r["c0"])
+            ts = to_utc(r["c4"])
+            if role in ("user", "assistant"):
+                row = self._ctx_row(artifact, ctx, sid, r["id"], ts, role, text)
+            else:
+                label = "%s: %s" % (role or "message", text)
+                row = self._ctx_row(artifact, ctx, sid, r["id"], ts, "system", label)
+            row.recovered = "yes"
+            yield row
+
+    def _db_deliveries(
+        self, artifact: Artifact, con, ctx: _Db, current: dict[str, str]
+    ) -> Iterator[Row]:
+        """One `channel delivery:` row per `conversation_deliveries` row, a
+        send or turn to a platform conversation, and a `channel delivery
+        reply:` row for the platform message that replied to it; the session
+        is the current generation of `source_session_key`."""
+        for r in con.execute(
+            "select d.rowid as _rowid, d.*, c.channel from conversation_deliveries d"
+            " join conversations c using (conversation_id) order by d.created_at, d.rowid"
+        ):
+            sid = current.get(str(r["source_session_key"] or ""), "")
+            yield self._ctx_row(
+                artifact,
+                ctx,
+                sid,
+                r["_rowid"],
+                to_utc(r["created_at"]),
+                "system",
+                "channel delivery: %s %s channel %s conversation %s platform message %s%s"
+                " (from openclaw-agent.sqlite conversation_deliveries, created_at)"
+                % (
+                    r["operation_kind"] or "-",
+                    r["status"] or "-",
+                    r["channel"] or "-",
+                    r["conversation_id"] or "-",
+                    r["platform_message_id"] or "-",
+                    " error=%s" % r["rejection_error"] if r["rejection_error"] else "",
+                ),
+            )
+            if r["reply_text"] is not None:
+                yield self._ctx_row(
+                    artifact,
+                    ctx,
+                    sid,
+                    r["_rowid"],
+                    to_utc(r["reply_timestamp"]),
+                    "system",
+                    "channel delivery reply: %s (reply message %s; from openclaw-agent.sqlite"
+                    " conversation_deliveries, reply_timestamp)"
+                    % (r["reply_text"], r["reply_message_id"] or "-"),
+                )
+
+    def _db_tombstones(self, artifact: Artifact, con, ctx: _Db) -> Iterator[Row]:
+        """One row per session `openclaw memory forget` removed from the
+        memory index (`memory_session_tombstones`)."""
+        for r in con.execute(
+            "select rowid as _rowid, session_id, agent_id, reason, created_at"
+            " from memory_session_tombstones order by created_at, rowid"
+        ):
+            sid = str(r["session_id"] or "")
+            yield self._ctx_row(
+                artifact,
+                ctx,
+                sid,
+                r["_rowid"],
+                to_utc(r["created_at"]),
+                "system",
+                "session forgotten from memory: %s agent %s reason=%s (from"
+                " openclaw-agent.sqlite memory_session_tombstones, created_at)"
+                % (sid or "-", r["agent_id"] or "-", r["reason"] or "-"),
+            )
+
+    # -- state/openclaw.sqlite ----------------------------------------------------------
     def _parse_state_db(self, artifact: Artifact) -> Iterator[Row]:
-        """`backup uploaded:` rows from `state/openclaw.sqlite` `backup_runs`."""
+        """Rows from `state/openclaw.sqlite`: `backup uploaded:` from
+        `backup_runs`, the permission rows of `operator_approvals`,
+        `exec_approvals_config`, `operator_approval_standing_grants` and
+        `channel_pairing_allow_entries`, and `channel ingress:` from
+        `channel_ingress_events`."""
         if not is_sqlite(artifact.disk_path):
             yield from error_rows(
                 self, artifact, [(0, "state/openclaw.sqlite is not a SQLite database", "")]
             )
             return
+        data: dict[str, list[dict]] = {}
         try:
             with open_copy(artifact.disk_path) as con:
-                if "backup_runs" not in table_names(con):
+                tables = table_names(con)
+                if "backup_runs" not in tables and "openclaw_engine_anchor" in tables:
+                    yield from error_rows(self, artifact, [self._anchor_error(con, "state")])
                     return
-                runs = [
-                    dict(r)
-                    for r in con.execute(
-                        "select rowid as _rowid, id, created_at, archive_path, status,"
-                        " manifest_json from backup_runs order by created_at, id"
-                    )
-                ]
+                for table, query in STATE_QUERIES:
+                    if table in tables:
+                        data[table] = [dict(r) for r in con.execute(query)]
         except sqlite3.DatabaseError as e:
             yield from error_rows(
                 self, artifact, [(0, "state/openclaw.sqlite unreadable (%s)" % e, "")]
             )
             return
         errors: list = []
+        yield from self._backup_rows(artifact, data.get("backup_runs", []), errors)
+        for r in data.get("operator_approvals", []):
+            yield self._approval_row(artifact, r)
+        for r in data.get("exec_approvals_config", []):
+            yield from self._exec_config_rows(artifact, r, errors)
+        for r in data.get("operator_approval_standing_grants", []):
+            yield self._state_row(artifact, r["_rowid"], to_utc(r["created_at_ms"]), _grant_text(r))
+        for r in data.get("channel_pairing_allow_entries", []):
+            yield self._state_row(
+                artifact,
+                r["_rowid"],
+                to_utc(r["updated_at"]),
+                "permission setting: channel %s account %s allowFrom=%s (from"
+                " state/openclaw.sqlite channel_pairing_allow_entries, updated_at)"
+                % (r["channel_key"] or "-", r["account_id"] or "-", r["entry"]),
+            )
+        for r in data.get("channel_ingress_events", []):
+            yield self._state_row(
+                artifact,
+                r["_rowid"],
+                to_utc(r["received_at"]),
+                "channel ingress: %s account %s status %s: %s (from state/openclaw.sqlite"
+                " channel_ingress_events, received_at)"
+                % (
+                    r["channel_id"] or "-",
+                    r["account_id"] or "-",
+                    r["status"] or "-",
+                    r["payload_json"],
+                ),
+            )
+        for table in GITHUB_PUBLICATION_TABLES:
+            for r in data.get(table, []):
+                yield self._state_row(
+                    artifact,
+                    r["_rowid"],
+                    to_utc(r["created_at_ms"]),
+                    _publication_text(table, r),
+                    str(r["session_id"] or ""),
+                )
+        yield from error_rows(self, artifact, errors)
+
+    def _state_row(
+        self, artifact: Artifact, line: int, ts: str, text: str, session_id: str = ""
+    ) -> Row:
+        row = self.base_row(artifact)
+        row.source_line = line
+        row.timestamp_utc = ts
+        row.turn_type = "system"
+        row.session_id = session_id
+        row.text = compact(text)
+        return row
+
+    def _backup_rows(self, artifact: Artifact, runs: list[dict], errors: list) -> Iterator[Row]:
         for r in runs:
             raw = r["manifest_json"] if isinstance(r.get("manifest_json"), str) else ""
             try:
@@ -771,13 +1441,67 @@ class OpenClawParser(Parser):
                 continue
             text = self._backup_text(r, manifest if isinstance(manifest, dict) else {})
             if text:
-                row = self.base_row(artifact)
-                row.source_line = r["_rowid"]
-                row.timestamp_utc = to_utc(r.get("created_at"))
-                row.turn_type = "system"
-                row.text = text
-                yield row
-        yield from error_rows(self, artifact, errors)
+                yield self._state_row(artifact, r["_rowid"], to_utc(r.get("created_at")), text)
+
+    def _approval_row(self, artifact: Artifact, r: dict) -> Row:
+        """The `permission decision:` row of one `operator_approvals` row, at
+        `resolved_at_ms` (`created_at_ms` while pending), joined to the call
+        it governed on `source_session_id` and `source_tool_call_id`."""
+        field = "resolved_at_ms" if r.get("resolved_at_ms") is not None else "created_at_ms"
+        row = self._state_row(
+            artifact,
+            r["_rowid"],
+            to_utc(r.get(field)),
+            "permission decision: %s status=%s kind=%s resolver=%s reason=%s approval %s"
+            " (from state/openclaw.sqlite operator_approvals, %s)"
+            % (
+                r.get("decision") or r.get("status") or "-",
+                r.get("status") or "-",
+                r.get("kind") or "-",
+                r.get("resolver_kind") or "-",
+                r.get("terminal_reason") or "-",
+                r.get("approval_id") or "-",
+                field,
+            ),
+            str(r.get("source_session_id") or ""),
+        )
+        row.tool_name = str(r.get("source_tool_name") or "")
+        row.tool_use_id = str(r.get("source_tool_call_id") or "")
+        return row
+
+    def _exec_config_rows(self, artifact: Artifact, r: dict, errors: list) -> Iterator[Row]:
+        """One `permission setting:` row per default and per-agent policy
+        field, allowlist entry and MCP tool grant of `raw_json`, the
+        migrated `exec-approvals.json`. `socket` holds the approvals
+        socket's token and is never read; a `raw_json` that does not decode
+        is reported without its text for the same reason."""
+        try:
+            doc = json.loads(r["raw_json"] if isinstance(r.get("raw_json"), str) else "")
+        except ValueError as e:
+            errors.append(
+                (
+                    r["_rowid"],
+                    "exec_approvals_config raw_json unparseable (%s; text withheld,"
+                    " it holds the approvals socket token)" % e,
+                    "",
+                )
+            )
+            return
+        doc = doc if isinstance(doc, dict) else {}
+        ts = to_utc(r.get("updated_at_ms"))
+        scopes: list[tuple[str, object]] = [("defaults", doc.get("defaults"))]
+        agents = doc.get("agents")
+        if isinstance(agents, dict):
+            scopes += [("agents.%s" % k, v) for k, v in agents.items()]
+        for scope, policy in scopes:
+            for setting in _policy_settings(policy):
+                yield self._state_row(
+                    artifact,
+                    r["_rowid"],
+                    ts,
+                    "permission setting: %s.%s (from state/openclaw.sqlite"
+                    " exec_approvals_config, updated_at_ms)" % (scope, setting),
+                )
 
     @staticmethod
     def _backup_text(run: dict, manifest: dict) -> str:
@@ -806,7 +1530,7 @@ class OpenClawParser(Parser):
     def _window_session(
         session_id: str,
         windows: dict[str, dict],
-        shares: dict[str, tuple[int, dict]],
+        ctx: _Db,
         key: str = "",
         extra: str = "",
     ) -> _Session:
@@ -835,11 +1559,11 @@ class OpenClawParser(Parser):
             str(w.get("model") or ""),
             str(w.get("model_provider") or ""),
         )
-        s.shares = shares
+        s.ctx = ctx
         return s
 
     def _db_events(
-        self, artifact: Artifact, con, windows: dict[str, dict], shares: dict, opts: Options
+        self, artifact: Artifact, con, windows: dict[str, dict], ctx: _Db, opts: Options
     ) -> Iterator[Row]:
         s: _Session | None = None
         for r in con.execute(
@@ -849,7 +1573,7 @@ class OpenClawParser(Parser):
             r = dict(r)
             sid = str(r.get("session_id") or "")
             if s is None or s.session_id != sid:
-                s = self._window_session(sid, windows, shares)
+                s = self._window_session(sid, windows, ctx)
             line = r["_rowid"]
             raw = r.get("event_json")
             if raw is None and r.get("event_zstd") is not None:
@@ -897,7 +1621,7 @@ class OpenClawParser(Parser):
             yield from self._entry_rows(artifact, s, line, rec, r.get("created_at"), opts)
 
     def _db_archives(
-        self, artifact: Artifact, con, windows: dict[str, dict], shares: dict, opts: Options
+        self, artifact: Artifact, con, windows: dict[str, dict], ctx: _Db, opts: Options
     ) -> Iterator[Row]:
         for r in con.execute(
             "select rowid as _rowid, session_id, session_key, reason, encoding, archive_name, "
@@ -907,7 +1631,7 @@ class OpenClawParser(Parser):
             r = dict(r)
             sid = str(r.get("session_id") or "")
             extra = "archive=%s name=%s" % (r.get("reason") or "", r.get("archive_name") or "")
-            s = self._window_session(sid, windows, shares, str(r.get("session_key") or ""), extra)
+            s = self._window_session(sid, windows, ctx, str(r.get("session_key") or ""), extra)
             line = r["_rowid"]
             data, err = _maybe_zstd(r.get("archive_blob") or b"")
             if data is None:
@@ -920,14 +1644,27 @@ class OpenClawParser(Parser):
                     opts,
                     to_utc(r.get("created_at")),
                 )
-                continue
-            errors: list = []
-            yield from self._records(artifact, s, _iter_lines(data, errors), opts, fixed_line=line)
-            label = "archive %s" % (r.get("archive_name") or sid)
-            yield from self._blob_errors(artifact, s, line, label, errors)
+            else:
+                errors: list = []
+                records = _iter_lines(data, errors)
+                yield from self._records(artifact, s, records, opts, fixed_line=line)
+                label = "archive %s" % (r.get("archive_name") or sid)
+                yield from self._blob_errors(artifact, s, line, label, errors)
+            if r.get("reason") == "deleted":
+                yield self._row(
+                    artifact,
+                    s,
+                    line,
+                    to_utc(r.get("created_at")),
+                    "system",
+                    "session deleted: %s archive %s (from openclaw-agent.sqlite"
+                    " session_transcript_archives reason deleted, created_at)"
+                    % (sid or "-", r.get("archive_name") or "-"),
+                    opts,
+                )
 
     def _db_cold(
-        self, artifact: Artifact, con, windows: dict[str, dict], shares: dict, opts: Options
+        self, artifact: Artifact, con, windows: dict[str, dict], ctx: _Db, opts: Options
     ) -> Iterator[Row]:
         for r in con.execute(
             "select rowid as _rowid, session_id, archive_name, archived_at, archive_blob "
@@ -936,7 +1673,7 @@ class OpenClawParser(Parser):
             r = dict(r)
             sid = str(r.get("session_id") or "")
             s = self._window_session(
-                sid, windows, shares, extra="cold_archive=%s" % (r.get("archive_name") or "")
+                sid, windows, ctx, extra="cold_archive=%s" % (r.get("archive_name") or "")
             )
             line = r["_rowid"]
             data, err = _maybe_zstd(r.get("archive_blob") or b"")

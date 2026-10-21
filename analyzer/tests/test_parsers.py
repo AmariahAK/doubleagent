@@ -10127,13 +10127,24 @@ class OpenClawTests(ParserBase):
     DB = OPENCLAW_AGENT + "/agent/openclaw-agent.sqlite"
     LEGACY = OPENCLAW_AGENT + "/sessions/%s.jsonl" % OPENCLAW_LEGACY
 
-    def test_rows(self):
-        # The public share row is checked in test_public_share_row.
-        rows = [
+    def transcript(self, sid):
+        """The database rows of generation `sid` that come from its
+        transcript: not the rows of the session metadata and side tables
+        (which name their table in the text), the pending prompts or the
+        rows recovered from the full-text index."""
+        return [
             r
             for r in self.rows_for(OpenClawParser(), self.DB)
-            if r.session_id == OPENCLAW_SESSION and not r.text.startswith("session synced:")
+            if r.session_id == sid
+            and "openclaw-agent.sqlite" not in r.text
+            and not r.recovered
+            and r.text != "also restart nginx"
         ]
+
+    def test_rows(self):
+        # The rows of the session metadata and side tables are checked in
+        # the tests further down.
+        rows = self.transcript(OPENCLAW_SESSION)
         self.assertEqual(
             [r.turn_type for r in rows],
             ["system", "system", "user", "assistant", "tool_use", "tool_result", "system"],
@@ -10210,7 +10221,7 @@ class OpenClawTests(ParserBase):
 
     def test_archives_in_database(self):
         rows = self.rows_for(OpenClawParser(), self.DB)
-        reset = [r for r in rows if r.session_id == OPENCLAW_RESET_SESSION]
+        reset = self.transcript(OPENCLAW_RESET_SESSION)
         self.assertEqual(
             [(r.turn_type, r.text.split(":")[0]) for r in reset],
             [
@@ -10222,7 +10233,13 @@ class OpenClawTests(ParserBase):
         self.assertIn("archive=reset", reset[0].text)
         # A published archive is parsed in full too: the blob is the
         # canonical copy, the .jsonl.deleted.* file the secondary one.
-        published = [r for r in rows if r.session_id == OPENCLAW_DELETED]
+        published = [
+            r
+            for r in rows
+            if r.session_id == OPENCLAW_DELETED
+            and not r.recovered
+            and not r.text.startswith("session forgotten")
+        ]
         self.assertEqual(
             [(r.turn_type, r.text, r.timestamp_utc) for r in published],
             [
@@ -10234,6 +10251,13 @@ class OpenClawTests(ParserBase):
                     "2026-10-01T09:00:00.000Z",
                 ),
                 ("user", "check disk space on the server", "2026-10-01T09:00:01.000Z"),
+                (
+                    "system",
+                    "session deleted: %s archive %s.jsonl.deleted.2026-10-02T08-00-00.000Z.zst"
+                    " (from openclaw-agent.sqlite session_transcript_archives reason deleted,"
+                    " created_at)" % (OPENCLAW_DELETED, OPENCLAW_DELETED),
+                    "2026-10-02T08:00:00.000Z",
+                ),
             ],
         )
         self.assertEqual({r.project_path for r in published}, {"/srv/proj"})
@@ -10352,7 +10376,7 @@ class OpenClawTests(ParserBase):
         )
         # The deleted session's prompt is kept once, from the database.
         self.assertEqual(
-            [r.source_file for r in users if r.session_id == OPENCLAW_DELETED],
+            [r.source_file for r in users if r.session_id == OPENCLAW_DELETED and not r.recovered],
             ["/alice/" + self.DB],
         )
         # Each copy keeps the session-start row that names it.
@@ -10393,10 +10417,12 @@ class OpenClawTests(ParserBase):
 
     def test_credentials_never_emitted(self):
         rows = self.rows_for(OpenClawParser(), self.DB, include_thinking=True)
+        rows += self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
         self.assertTrue(rows)
-        self.assertFalse(
-            [r for r in rows if OPENCLAW_TOKEN in "|".join(str(v) for v in r.as_dict().values())]
-        )
+        for token in (OPENCLAW_TOKEN, OPENCLAW_SOCKET_TOKEN):
+            self.assertFalse(
+                [r for r in rows if token in "|".join(str(v) for v in r.as_dict().values())]
+            )
         out = self.tmp / "out"
         import contextlib
 
@@ -10404,9 +10430,9 @@ class OpenClawTests(ParserBase):
             cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--include-thinking"])
         for f in out.iterdir():
             if f.is_file():
-                self.assertNotIn(
-                    OPENCLAW_TOKEN, f.read_text(encoding="utf-8", errors="replace"), f.name
-                )
+                text = f.read_text(encoding="utf-8", errors="replace")
+                self.assertNotIn(OPENCLAW_TOKEN, text, f.name)
+                self.assertNotIn(OPENCLAW_SOCKET_TOKEN, text, f.name)
 
     def test_truncated_line_is_reported_not_fatal(self):
         clean = [(r.turn_type, r.text) for r in self.rows_for(OpenClawParser(), self.LEGACY)]
@@ -10439,11 +10465,7 @@ class OpenClawTests(ParserBase):
         con.commit()
         con.close()
         line = bytes(blob).rstrip(b"\n").count(b"\n") + 2
-        rows = [
-            r
-            for r in self.rows_for(OpenClawParser(), self.DB)
-            if r.session_id == OPENCLAW_RESET_SESSION
-        ]
+        rows = self.transcript(OPENCLAW_RESET_SESSION)
         self.assertEqual([r.turn_type for r in rows], ["system", "user", "system", "system"])
         self.assertEqual(rows[1].text, "check disk space on the server")
         try:
@@ -10477,10 +10499,8 @@ class OpenClawTests(ParserBase):
         )
         con.commit()
         con.close()
-        rows = [
-            r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
-        ]
-        self.assertEqual(len(rows), 9)
+        rows = self.transcript(OPENCLAW_SESSION)
+        self.assertEqual(len(rows), 8)
         self.assertEqual(
             (rows[-1].turn_type, rows[-1].timestamp_utc), ("system", "2026-10-01T09:01:40.000Z")
         )
@@ -10497,10 +10517,8 @@ class OpenClawTests(ParserBase):
         )
         con.commit()
         con.close()
-        rows = [
-            r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
-        ]
-        self.assertEqual(len(rows), 9)
+        rows = self.transcript(OPENCLAW_SESSION)
+        self.assertEqual(len(rows), 8)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("event seq 9 unreadable: not a JSON object", rows[-1].text)
 
@@ -10517,7 +10535,8 @@ class OpenClawTests(ParserBase):
             r for r in self.rows_for(OpenClawParser(), self.DB) if r.session_id == OPENCLAW_SESSION
         ]
         # After the session-start and starting-model rows.
-        share = rows[2]
+        share = next(r for r in rows if r.text.startswith("session synced:"))
+        self.assertEqual([r.text.split(":")[0] for r in rows[:2]], ["session start", "model"])
         self.assertEqual(
             (share.turn_type, share.text, share.timestamp_utc, share.project_path),
             (
@@ -10585,7 +10604,11 @@ class OpenClawTests(ParserBase):
     )
 
     def test_backup_rows(self):
-        rows = self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+        rows = [
+            r
+            for r in self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+            if r.text.startswith("backup uploaded:")
+        ]
         self.assertEqual(
             [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
             [
@@ -10615,7 +10638,11 @@ class OpenClawTests(ParserBase):
         )
         con.commit()
         con.close()
-        rows = self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+        rows = [
+            r
+            for r in self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+            if r.text.startswith(("backup uploaded:", "parser:"))
+        ]
         self.assertEqual(len(rows), 3)
         self.assertTrue(rows[1].text.startswith("backup uploaded: git"))
         self.assertTrue(
@@ -10710,17 +10737,337 @@ class OpenClawTests(ParserBase):
         )
         con.commit()
         con.close()
-        rows = [
-            r
-            for r in self.rows_for(OpenClawParser(), self.DB)
-            if r.session_id == OPENCLAW_RESET_SESSION
-        ]
+        rows = self.transcript(OPENCLAW_RESET_SESSION)
         self.assertEqual([r.turn_type for r in rows], ["system", "user", "system", "system"])
         self.assertEqual(rows[1].text, "check disk space on the server")
         self.assertEqual(
             (rows[-1].source_line, rows[-1].text),
             (rowid, "parser: archive %s line 2: unparseable line (not a JSON object): 42" % name),
         )
+
+    # -- issue 206: relay, permission, model, past-use and deletion rows ---------
+
+    def db(self):
+        return sqlite3.connect(str(self.home / self.DB))
+
+    def texts(self, prefix, rel=None, sid=None):
+        return [
+            r
+            for r in self.rows_for(OpenClawParser(), rel or self.DB)
+            if r.text.startswith(prefix) and (sid is None or r.session_id == sid)
+        ]
+
+    def test_relay_row_from_conversation(self):
+        self.assertTrue(OpenClawParser.records_relay)
+        rows = self.texts("session relayed:")
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.project_path, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:00:00.500Z",
+                    "/srv/proj",
+                    "session relayed: telegram account default direct peer 123456789 thread -"
+                    " role primary (from openclaw-agent.sqlite session_conversations and"
+                    " conversations, first_seen_at)",
+                )
+            ],
+        )  # the reset session's Control UI conversation and delivery are no relay
+
+    def test_relay_row_fallbacks(self):
+        con = self.db()
+        con.execute("DELETE FROM session_conversations")
+        con.commit()
+        con.close()
+        self.assertEqual(
+            [r.text for r in self.texts("session relayed:")],
+            [
+                "session relayed: telegram account default direct (from openclaw-agent.sqlite"
+                " session_windows, started_at)"
+            ],
+        )
+        con = self.db()
+        con.execute("UPDATE session_windows SET channel = 'webchat'")
+        con.commit()
+        con.close()
+        rows = self.texts("session relayed:")
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:02:00.000Z",
+                    "session relayed: telegram account default direct from 123456789 to -"
+                    " (from openclaw-agent.sqlite session_nodes.entry_json delivery,"
+                    " updated_at)",
+                )
+            ],
+        )
+        con = self.db()
+        con.execute("UPDATE session_windows SET hook_external_content_source = 'gmail'")
+        con.commit()
+        con.close()
+        self.assertEqual(
+            [r.text for r in self.texts("session relayed:")],
+            [
+                "session relayed: gmail hook (from openclaw-agent.sqlite session_windows"
+                " hook_external_content_source, started_at)"
+            ],
+        )
+
+    def test_model_override_row(self):
+        rows = self.texts("model: gpt-5 provider=openai source=")
+        self.assertEqual(
+            [(r.session_id, r.model, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_SESSION,
+                    "gpt-5",
+                    "2026-10-01T09:02:00.000Z",
+                    "model: gpt-5 provider=openai source=user (from openclaw-agent.sqlite"
+                    " session_nodes.entry_json modelOverride, updated_at)",
+                )
+            ],
+        )
+
+    def test_session_permission_settings(self):
+        rows = self.texts("permission setting:")
+        self.assertEqual(
+            [r.text.split(" (from")[0] for r in rows],
+            [
+                "permission setting: elevatedLevel=on",
+                "permission setting: execHost=gateway",
+                'permission setting: toolOverrides={"mcpServers":"off"}',
+                "permission setting: sendPolicy=allow",
+            ],
+        )
+        self.assertEqual({r.session_id for r in rows}, {OPENCLAW_SESSION})
+        self.assertEqual({r.timestamp_utc for r in rows}, {"2026-10-01T09:02:00.000Z"})
+        self.assertTrue(
+            rows[0].text.endswith(
+                "(from openclaw-agent.sqlite session_nodes.entry_json, updated_at)"
+            )
+        )
+
+    def test_archived_row(self):
+        rows = self.texts("session archived:")
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_RESET_SESSION,
+                    "2026-10-01T09:46:40.000Z",
+                    "session archived: manual by human:operator-1 (from openclaw-agent.sqlite"
+                    " session_nodes.entry_json, archivedAt)",
+                )
+            ],
+        )
+
+    def test_forgotten_from_memory_row(self):
+        rows = self.texts("session forgotten from memory:")
+        self.assertEqual(
+            [(r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_DELETED,
+                    "/srv/proj",
+                    "2026-10-02T08:33:20.000Z",
+                    "session forgotten from memory: %s agent main reason=forgotten (from"
+                    " openclaw-agent.sqlite memory_session_tombstones, created_at)"
+                    % OPENCLAW_DELETED,
+                )
+            ],
+        )
+
+    def test_pending_inputs(self):
+        rows = [
+            r
+            for r in self.rows_for(OpenClawParser(), self.DB)
+            if r.text in ("also restart nginx", "show the biggest directories")
+            or r.text.startswith("pending input:")
+        ]
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.recovered, r.text) for r in rows],
+            [
+                ("user", OPENCLAW_SESSION, "2026-10-01T09:00:50.000Z", "", "also restart nginx"),
+                (
+                    "system",
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:00:50.000Z",
+                    "",
+                    "pending input: cancelled, not consumed by the transcript (input in-1 run"
+                    " run-1; from openclaw-agent.sqlite session_pending_inputs, accepted_at)",
+                ),
+                (
+                    "user",
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:00:30.000Z",
+                    "yes",
+                    "show the biggest directories",
+                ),
+            ],
+        )  # the prompt consumed by a transcript entry the database holds yields nothing
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+
+    def test_bad_pending_input_is_reported_not_fatal(self):
+        con = self.db()
+        con.execute(
+            "INSERT INTO session_pending_inputs VALUES (9,'in-9',?,?,'run-9',?,'queued',1,NULL)",
+            (OPENCLAW_KEY, OPENCLAW_SESSION, BAD_LINE),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenClawParser(), self.DB)
+        self.assertIn("also restart nginx", [r.text for r in rows])
+        reason = bad_line_text().split("(", 1)[1].split("): ", 1)[0]
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            (
+                "system",
+                9,
+                "parser: session_pending_inputs message_json unparseable (%s): %s"
+                % (reason, BAD_LINE),
+            ),
+        )
+
+    def test_full_text_index_rows(self):
+        rows = [r for r in self.rows_for(OpenClawParser(), self.DB) if r.recovered]
+        fts = [r for r in rows if r.text == OPENCLAW_FTS_ONLY]
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.source_line) for r in fts],
+            [("user", OPENCLAW_DELETED, "2026-10-01T07:33:20.000Z", 2)],
+        )  # the index row of an entry the transcript holds is dropped
+        self.assertEqual(
+            [r.text for r in rows], ["show the biggest directories", OPENCLAW_FTS_ONLY]
+        )
+
+    def test_delivery_rows(self):
+        rows = self.texts("channel delivery")
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:00:06.000Z",
+                    "channel delivery: turn replied channel telegram conversation conv-tg"
+                    " platform message tg-msg-77 (from openclaw-agent.sqlite"
+                    " conversation_deliveries, created_at)",
+                ),
+                (
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:01:30.000Z",
+                    "channel delivery reply: thanks, looks fine (reply message tg-msg-78; from"
+                    " openclaw-agent.sqlite conversation_deliveries, reply_timestamp)",
+                ),
+            ],
+        )
+
+    def test_postgres_anchor_is_one_row(self):
+        for rel, label, where in (
+            (self.DB, "agent", "transcripts are"),
+            (OPENCLAW_STATE_DB, "state", "the Gateway state is"),
+        ):
+            path = self.home / rel
+            for side in ("-wal", "-shm"):
+                Path(str(path) + side).unlink(missing_ok=True)
+            path.unlink()
+            con = sqlite3.connect(str(path))
+            con.execute(
+                "CREATE TABLE openclaw_engine_anchor (store_id TEXT NOT NULL, engine TEXT NOT NULL"
+                " CHECK (engine = 'postgres'), schema TEXT NOT NULL)"
+            )
+            con.execute(
+                "INSERT INTO openclaw_engine_anchor VALUES ('st-1','postgres','oc_%s_0123')" % label
+            )
+            con.commit()
+            con.close()
+            rows = self.rows_for(OpenClawParser(), rel)
+            self.assertEqual(
+                [(r.turn_type, r.source_line, r.text) for r in rows],
+                [
+                    (
+                        "system",
+                        0,
+                        "parser: %s database is a PostgreSQL anchor (store st-1, schema"
+                        " oc_%s_0123): %s on the database server" % (label, label, where),
+                    )
+                ],
+            )
+
+    def test_state_permission_rows(self):
+        rows = self.texts("permission ", rel=OPENCLAW_STATE_DB)
+        self.assertEqual(
+            [r.text.split(" (from")[0] for r in rows],
+            [
+                "permission decision: allow-once status=allowed kind=exec resolver=device"
+                " reason=user approval appr-1",
+                "permission decision: pending status=pending kind=exec resolver=- reason=-"
+                " approval appr-2",
+                "permission setting: defaults.security=allowlist",
+                "permission setting: defaults.ask=on-miss",
+                "permission setting: agents.main.autoAllowSkills=true",
+                "permission setting: agents.main.allowlist=df source=allow-always",
+                "permission setting: agents.main.mcpTools=github/search source=allow-always",
+                "permission setting: standing grant grant-1 allow-always cron job cron-7 agent"
+                " main binding exec:df approval appr-1 expires=- revoked=- uses=3",
+                "permission setting: channel telegram account default allowFrom=123456789",
+            ],
+        )
+        allowed, pending = rows[:2]
+        self.assertEqual(
+            (allowed.session_id, allowed.tool_name, allowed.tool_use_id, allowed.timestamp_utc),
+            (OPENCLAW_SESSION, "exec", "call_01", "2026-10-01T09:00:04.500Z"),
+        )
+        self.assertTrue(allowed.text.endswith("operator_approvals, resolved_at_ms)"))
+        self.assertTrue(pending.text.endswith("operator_approvals, created_at_ms)"))
+        self.assertEqual(rows[2].timestamp_utc, "2026-10-01T08:58:20.000Z")
+        self.assertTrue(rows[2].text.endswith("exec_approvals_config, updated_at_ms)"))
+
+    def test_channel_ingress_row(self):
+        rows = self.texts("channel ingress:", rel=OPENCLAW_STATE_DB)
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "",
+                    "2026-10-01T09:00:00.900Z",
+                    'channel ingress: telegram account default status completed: {"text":"check'
+                    ' disk space on the server"} (from state/openclaw.sqlite'
+                    " channel_ingress_events, received_at)",
+                )
+            ],
+        )
+
+    def test_source_host_row(self):
+        rows = self.texts("source host:", rel=OPENCLAW_STATE_DB)
+        self.assertEqual(
+            [(r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    OPENCLAW_SESSION,
+                    "2026-10-01T09:03:20.000Z",
+                    "source host: github account octo-bot id 4242 identity system-configured;"
+                    " publication published repository octo/infra branch openclaw/disk-check"
+                    " pull request https://github.com/octo/infra/pull/7 (from"
+                    " state/openclaw.sqlite github_publication_requests, created_at_ms)",
+                )
+            ],
+        )
+
+    def test_bad_exec_config_withholds_the_text(self):
+        con = sqlite3.connect(str(self.home / OPENCLAW_STATE_DB))
+        con.execute(
+            "UPDATE exec_approvals_config SET raw_json = ?",
+            ('{"socket": {"token": "%s"' % OPENCLAW_SOCKET_TOKEN,),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenClawParser(), OPENCLAW_STATE_DB)
+        self.assertTrue(rows[-1].text.startswith("parser: exec_approvals_config raw_json"))
+        self.assertTrue(
+            rows[-1].text.endswith("text withheld, it holds the approvals socket token)")
+        )
+        self.assertFalse([r for r in rows if OPENCLAW_SOCKET_TOKEN in r.text])
 
 
 from fixtures import (
@@ -10731,7 +11078,9 @@ from fixtures import (
     NANOBOT_WEBUI_SESSION_REL,
     OPENCLAW_BACKUP_COMMIT,
     OPENCLAW_BACKUP_KEY,
+    OPENCLAW_FTS_ONLY,
     OPENCLAW_SHARE_ID,
+    OPENCLAW_SOCKET_TOKEN,
     OPENCLAW_STATE_DB,
 )
 

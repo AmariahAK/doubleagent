@@ -8487,7 +8487,8 @@ OPENCLAW_SCHEMA = """
 CREATE TABLE session_windows (session_id TEXT NOT NULL PRIMARY KEY, session_key TEXT NOT NULL,
   previous_session_id TEXT, reason TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
   started_at INTEGER, ended_at INTEGER, status TEXT, chat_type TEXT, channel TEXT, account_id TEXT,
-  model_provider TEXT, model TEXT, parent_session_key TEXT, spawned_by TEXT, display_name TEXT);
+  model_provider TEXT, model TEXT, parent_session_key TEXT, spawned_by TEXT, display_name TEXT,
+  hook_external_content_source TEXT);
 CREATE TABLE transcript_events (session_id TEXT NOT NULL, seq INTEGER NOT NULL, event_json TEXT,
   created_at INTEGER NOT NULL, event_zstd BLOB, event_utf8_bytes INTEGER, navigation_json TEXT,
   PRIMARY KEY (session_id, seq));
@@ -8661,10 +8662,138 @@ OPENCLAW_NODES_SCHEMA = """
 CREATE TABLE session_nodes (session_key TEXT NOT NULL PRIMARY KEY, current_session_id TEXT NOT NULL,
   entry_json TEXT NOT NULL, updated_at INTEGER NOT NULL, created_via TEXT, label TEXT);
 """
+# Relay, past-use and deletion tables (issue 206): src/state/openclaw-agent-schema.sql
+# at 146284a, the columns the parser reads. The full-text index is read from the FTS5
+# content table `session_transcript_fts_content` (`id`, then `c0` to `c4` in the
+# column order of lines 809-816) as a plain table.
+OPENCLAW_PAST_USE_SCHEMA = """
+CREATE TABLE conversations (conversation_id TEXT NOT NULL PRIMARY KEY, channel TEXT NOT NULL,
+  account_id TEXT NOT NULL, kind TEXT NOT NULL, peer_id TEXT NOT NULL, delivery_target TEXT NOT NULL,
+  thread_id TEXT, label TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE session_conversations (session_id TEXT NOT NULL, conversation_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'primary', first_seen_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL,
+  PRIMARY KEY (session_id, conversation_id, role));
+CREATE TABLE conversation_deliveries (operation_id TEXT NOT NULL PRIMARY KEY,
+  operation_kind TEXT NOT NULL, conversation_id TEXT NOT NULL, source_session_key TEXT,
+  message_hash TEXT NOT NULL, status TEXT NOT NULL, platform_message_id TEXT, rejection_error TEXT,
+  reply_message_id TEXT, reply_text TEXT, reply_timestamp INTEGER, created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL);
+CREATE TABLE session_pending_inputs (seq INTEGER PRIMARY KEY AUTOINCREMENT,
+  input_id TEXT NOT NULL UNIQUE, session_key TEXT NOT NULL, session_id TEXT NOT NULL,
+  run_id TEXT NOT NULL, message_json TEXT NOT NULL, state TEXT NOT NULL,
+  accepted_at INTEGER NOT NULL, consumed_event_id TEXT);
+CREATE TABLE session_transcript_fts_content (id INTEGER PRIMARY KEY, c0, c1, c2, c3, c4);
+CREATE TABLE memory_session_tombstones (session_id TEXT NOT NULL PRIMARY KEY,
+  agent_id TEXT NOT NULL, reason TEXT NOT NULL, created_at INTEGER NOT NULL);
+"""
 OPENCLAW_STATE_SCHEMA = """
 CREATE TABLE backup_runs (id TEXT NOT NULL PRIMARY KEY, created_at INTEGER NOT NULL,
   archive_path TEXT NOT NULL, status TEXT NOT NULL, manifest_json TEXT NOT NULL) STRICT;
+CREATE TABLE exec_approvals_config (config_key TEXT NOT NULL PRIMARY KEY, raw_json TEXT NOT NULL,
+  has_socket_token INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL);
+CREATE TABLE operator_approvals (approval_id TEXT NOT NULL PRIMARY KEY, kind TEXT NOT NULL,
+  status TEXT NOT NULL, presentation_json TEXT NOT NULL, source_agent_id TEXT,
+  source_session_key TEXT, source_session_id TEXT, source_tool_call_id TEXT,
+  source_tool_name TEXT, created_at_ms INTEGER NOT NULL, decision TEXT, terminal_reason TEXT,
+  resolved_at_ms INTEGER, resolver_kind TEXT);
+CREATE TABLE operator_approval_standing_grants (grant_id TEXT NOT NULL PRIMARY KEY,
+  minted_by_approval_id TEXT NOT NULL, agent_id TEXT NOT NULL, cron_job_id TEXT NOT NULL,
+  operation_binding TEXT NOT NULL, created_at_ms INTEGER NOT NULL, expires_at_ms INTEGER,
+  revoked_at_ms INTEGER, use_count INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE channel_pairing_allow_entries (channel_key TEXT NOT NULL, account_id TEXT NOT NULL,
+  entry TEXT NOT NULL, sort_order INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE channel_ingress_events (queue_name TEXT NOT NULL, event_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL, account_id TEXT NOT NULL, status TEXT NOT NULL,
+  payload_json TEXT NOT NULL, received_at INTEGER NOT NULL);
+CREATE TABLE github_publication_requests (request_id TEXT NOT NULL PRIMARY KEY,
+  session_id TEXT NOT NULL, session_key TEXT NOT NULL, agent_id TEXT NOT NULL,
+  identity_source TEXT NOT NULL, identity_profile_id TEXT, identity_account_id INTEGER NOT NULL,
+  identity_login TEXT NOT NULL, status TEXT NOT NULL, repository TEXT, branch TEXT NOT NULL,
+  pull_request_url TEXT, created_at_ms INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL);
 """
+OPENCLAW_SOCKET_TOKEN = "FIXTURE-OPENCLAW-SOCKET-TOKEN-5c4b3a"
+OPENCLAW_FTS_ONLY = "prompt only the search index still holds"
+
+
+def openclaw_past_use_inserts():
+    """A Telegram conversation linked to the live session and a Control UI
+    one linked to the reset session; a delivery with a reply; a cancelled
+    prompt that never reached the transcript, one consumed by a transcript
+    entry the database holds and one consumed by an entry it lost; two
+    full-text index rows, one of an entry the transcript holds; and a
+    memory tombstone for the deleted session."""
+
+    def prompt(text):
+        return json.dumps({"role": "user", "content": [{"type": "text", "text": text}]})
+
+    return [
+        "INSERT INTO conversations VALUES ('conv-tg','telegram','default','direct','123456789',"
+        "'telegram:123456789',NULL,NULL,1790845200000,1790845260000)",
+        "INSERT INTO conversations VALUES ('conv-ui','webchat','default','direct','operator',"
+        "'webchat:main',NULL,NULL,1790846000000,1790846000000)",
+        "INSERT INTO session_conversations VALUES ('%s','conv-tg','primary',1790845200500,"
+        "1790845260000)" % OPENCLAW_SESSION,
+        "INSERT INTO session_conversations VALUES ('%s','conv-ui','primary',1790846000000,"
+        "1790846000000)" % OPENCLAW_RESET_SESSION,
+        "INSERT INTO conversation_deliveries VALUES ('op-1','turn','conv-tg','%s','%s','replied',"
+        "'tg-msg-77',NULL,'tg-msg-78','thanks, looks fine',1790845290000,1790845206000,"
+        "1790845290000)" % (OPENCLAW_KEY, "a" * 64),
+        "INSERT INTO session_pending_inputs VALUES (1,'in-1','%s','%s','run-1','%s','cancelled',"
+        "1790845250000,NULL)" % (OPENCLAW_KEY, OPENCLAW_SESSION, prompt("also restart nginx")),
+        "INSERT INTO session_pending_inputs VALUES (2,'in-2','%s','%s','run-2','%s','queued',"
+        "1790845201000,'a1b2c3d4')"
+        % (OPENCLAW_KEY, OPENCLAW_SESSION, prompt("check disk space on the server")),
+        "INSERT INTO session_pending_inputs VALUES (3,'in-3','%s','%s','run-3','%s','queued',"
+        "1790845230000,'lost-entry')"
+        % (OPENCLAW_KEY, OPENCLAW_SESSION, prompt("show the biggest directories")),
+        "INSERT INTO session_transcript_fts_content VALUES (1,'check disk space on the server',"
+        "'%s','a1b2c3d4','user',1790845201000)" % OPENCLAW_SESSION,
+        "INSERT INTO session_transcript_fts_content VALUES (2,'%s','%s','gone-1','user',"
+        "1790840000000)" % (OPENCLAW_FTS_ONLY, OPENCLAW_DELETED),
+        "INSERT INTO memory_session_tombstones VALUES ('%s','main','forgotten',1790930000000)"
+        % OPENCLAW_DELETED,
+    ]
+
+
+def openclaw_state_inserts():
+    """Permission records of state/openclaw.sqlite (src/state/openclaw-state-schema.sql
+    at 146284a, lines 356-475, 512-529 and 794-801) and one inbound channel
+    message (lines 1273-1294); the exec approvals file keeps the socket token,
+    which the parser never reads."""
+    raw = {
+        "version": 1,
+        "socket": {"path": "/home/alice/.openclaw/exec.sock", "token": OPENCLAW_SOCKET_TOKEN},
+        "defaults": {"security": "allowlist", "ask": "on-miss"},
+        "agents": {
+            "main": {
+                "autoAllowSkills": True,
+                "allowlist": [{"pattern": "df", "source": "allow-always"}],
+                "mcpTools": [
+                    {"server": "github", "tool": "search", "source": "allow-always", "addedAt": 1}
+                ],
+            }
+        },
+    }
+    return [
+        "INSERT INTO exec_approvals_config VALUES ('default','%s',1,1790845100000)"
+        % json.dumps(raw),
+        "INSERT INTO operator_approvals VALUES ('appr-1','exec','allowed','{}','main','%s','%s',"
+        "'call_01','exec',1790845204100,'allow-once','user',1790845204500,'device')"
+        % (OPENCLAW_KEY, OPENCLAW_SESSION),
+        "INSERT INTO operator_approvals VALUES ('appr-2','exec','pending','{}','main','%s','%s',"
+        "'call_02','exec',1790845300000,NULL,NULL,NULL,NULL)" % (OPENCLAW_KEY, OPENCLAW_SESSION),
+        "INSERT INTO operator_approval_standing_grants VALUES ('grant-1','appr-1','main','cron-7',"
+        "'exec:df',1790845205000,NULL,NULL,3)",
+        "INSERT INTO channel_pairing_allow_entries VALUES ('telegram','default','123456789',0,"
+        "1790845000000)",
+        "INSERT INTO channel_ingress_events VALUES ('inbound','ev-1','telegram','default',"
+        "'completed','{\"text\":\"check disk space on the server\"}',1790845200900)",
+        # src/state/openclaw-state-schema.sql:2410-2482 at 146284a.
+        "INSERT INTO github_publication_requests VALUES ('req-1','%s','%s','main',"
+        "'system-configured','profile-1',4242,'octo-bot','published','octo/infra',"
+        "'openclaw/disk-check','https://github.com/octo/infra/pull/7',1790845400000,"
+        "1790845460000)" % (OPENCLAW_SESSION, OPENCLAW_KEY),
+    ]
 
 
 def openclaw_node_inserts():
@@ -8677,8 +8806,36 @@ def openclaw_node_inserts():
             "sessionId": OPENCLAW_SESSION,
             "createdAt": 1790845320000,
         },
+        # src/config/sessions/types.ts:60-83, 481-516 and 532 at 146284a.
+        "delivery": {
+            "kind": "external",
+            "route": {"channel": "telegram", "accountId": "default"},
+            "context": {},
+            "origin": {"provider": "telegram", "chatType": "direct", "from": "123456789"},
+        },
+        "providerOverride": "openai",
+        "modelOverride": "gpt-5",
+        "modelOverrideSource": "user",
+        "elevatedLevel": "on",
+        "execHost": "gateway",
+        "toolOverrides": {"mcpServers": "off"},
+        "sendPolicy": "allow",
     }
-    plain = {"sessionId": OPENCLAW_RESET_SESSION, "updatedAt": 1790847000000}
+    # Archived from the session list (types.ts:300-305); its delivery is the
+    # Control UI, which is not a platform.
+    plain = {
+        "sessionId": OPENCLAW_RESET_SESSION,
+        "updatedAt": 1790847000000,
+        "delivery": {
+            "kind": "external",
+            "route": {"channel": "webchat"},
+            "context": {},
+            "origin": {"provider": "webchat"},
+        },
+        "archivedAt": 1790848000000,
+        "archivedBy": {"type": "human", "id": "operator-1"},
+        "archiveReason": "manual",
+    }
     return [
         "INSERT INTO session_nodes VALUES ('%s','%s','%s',1790845320000,'channel',NULL)"
         % (OPENCLAW_KEY, OPENCLAW_SESSION, json.dumps(shared)),
@@ -8752,7 +8909,7 @@ def build_openclaw_state(home: Path) -> None:
         % (rid, created, path, status, json.dumps(manifest))
         for rid, created, path, status, manifest in openclaw_backup_runs()
     ]
-    _wal_db(home / OPENCLAW_STATE_DB, OPENCLAW_STATE_SCHEMA, inserts)
+    _wal_db(home / OPENCLAW_STATE_DB, OPENCLAW_STATE_SCHEMA, inserts + openclaw_state_inserts())
 
 
 def _openclaw_zstd(raw: bytes) -> bytes:
@@ -8768,8 +8925,8 @@ def build_openclaw(home: Path) -> None:
     agent = home / OPENCLAW_AGENT
     inserts = [
         "INSERT INTO session_windows VALUES ('%s','%s',NULL,'initial',1790845200000,1790845260000,1790845200000,"
-        "NULL,'running','direct','telegram','default','anthropic','claude-sonnet-4-5',NULL,NULL,'Disk check')"
-        % (OPENCLAW_SESSION, OPENCLAW_KEY),
+        "NULL,'running','direct','telegram','default','anthropic','claude-sonnet-4-5',NULL,NULL,'Disk check',"
+        "NULL)" % (OPENCLAW_SESSION, OPENCLAW_KEY),
         "INSERT INTO auth_profile_store VALUES ('anthropic:default','%s',1790845200000)"
         % json.dumps(
             {"type": "oauth", "access": OPENCLAW_TOKEN, "refresh": OPENCLAW_TOKEN + "-refresh"}
@@ -8846,8 +9003,8 @@ def build_openclaw(home: Path) -> None:
     )
     _wal_db(
         agent / "agent/openclaw-agent.sqlite",
-        OPENCLAW_SCHEMA + OPENCLAW_NODES_SCHEMA,
-        inserts + openclaw_node_inserts(),
+        OPENCLAW_SCHEMA + OPENCLAW_NODES_SCHEMA + OPENCLAW_PAST_USE_SCHEMA,
+        inserts + openclaw_node_inserts() + openclaw_past_use_inserts(),
     )
     sessions = agent / "sessions"
     _jsonl(sessions / (OPENCLAW_LEGACY + ".jsonl"), openclaw_legacy_records())
