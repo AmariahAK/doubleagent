@@ -14,6 +14,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Catalog lines and secret globs from the 2026-10-19 source review's
+  issues, taken from each agent's source; the real-install rounds that
+  confirm them are still owed.
+- A project's `.crewai` directory (CrewAI's `last_run.json`, the record
+  that a run's trace reached AMP, and the `crewai eval` state) is
+  collected as `crewai` ([#223]).
+- The CLAI 2.0 state directory `.local/state/pydantic-clai2` (the web
+  orchestrator conversation, workspace records and logs) is collected as
+  `pydantic-clai`; its workspaces' clones of remote repositories are
+  excluded, and each workspace's `token` is flagged `secret: true`
+  ([#225]).
+- difyctl's `login-pending.yml`, a pending OAuth device login, is
+  flagged `secret: true` in `.config/difyctl`, `AppData/Roaming/difyctl`
+  and `AppData/Local/difyctl` ([#224]).
+- Sourcegraph Cody's JetBrains plugin files are collected: `options/cody*.xml`
+  in each JetBrains IDE, `~/.sourcegraph`, and a project's
+  `.idea/cody_history.xml` and `.idea/.sourcegraph`; the account list
+  `options/cody_accounts.xml` is flagged secret, since its
+  `customRequestHeaders` can carry proxy credentials ([#214]).
+- The Agent Zero WhatsApp bridge's login state `tmp/whatsapp/session/` is
+  flagged secret, in home, Desktop and volume forms; the A0 CLI
+  connector's computer-use screen captures in
+  `AppData/Local/Temp/_a0_connector` are collected on Windows ([#217]).
+- Project discovery reads Agent Zero editor (ACP) chats' `acp_cwd` and
+  `acp_additional_directories` ([#217]) and archived Codex threads in
+  `~/.codex/archived_sessions` ([#222]).
+- A discovered nanobot workspace's `cron/jobs.json`, `cron/runs/`,
+  `triggers/triggers.json` and `triggers/runs/` are collected ([#220]).
+- The OpenCode desktop app's data directory is collected, with its
+  compile cache excluded, and so is the Windows temp root
+  `AppData/Local/Temp/opencode`; OpenCode's `service.json` and
+  `service-<channel>.json` are flagged secret ([#213]).
+- Kilo Code's `kilo-sandbox-policy` and `kilo-sandbox-preference`
+  directories are collected ([#221]).
+- OpenHands Agent Canvas `mars-credentials.json` (DigitalOcean
+  connections) is flagged secret on macOS, Linux and Windows ([#218]).
+- Qwen Code's running-session registry `~/.qwen/sessions/<pid>.json`,
+  which holds the session's `ipcToken`, is flagged secret ([#230]).
+- `~/.roo/cli-credentials.json`, the Roo Code CLI's cloud token in
+  releases up to 3.53.0, is flagged secret ([#159]).
+- The twinny-server forge plugins' `plugins/<id>/repos.json`, which holds
+  saved access tokens, is flagged secret ([#215]).
+- The Hermes desktop app's `connection.json` and `connections.json`,
+  which hold a remote gateway's token, are flagged secret ([#208]).
+
 - An exclusion for Cursor's plugin cache, `.cursor/plugins/cache`,
   recorded as `skipped_excluded` with its size. It holds the marketplace
   copy of each installed plugin (`<marketplace>/<plugin>/<sha>/` with
@@ -53,6 +98,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   workers run under bash, posh or a BSD sh is faster. The manifest is
   unchanged: the same files are flagged `secret: true` or
   `skipped_secret` ([#242]).
+- Gemini CLI `--worktree` checkouts (`.gemini/worktrees`) and Qwen Code
+  worktrees (`.qwen/worktrees`) are excluded, in a home and inside a
+  project ([#216]).
+- OpenClaw's Gateway repository clones (`projects/<16 hex>/<name>`) are
+  excluded, and the volume-relative forms of the clone, `plugin-skills`
+  and agent `tmp` and `.tmp` exclusions are added ([#219]).
+- OpenHands `~/.openhands/workspaces` (Canvas-in-Docker automation runs)
+  is excluded by default, like `agent-canvas/workspaces` ([#218]).
+- Hermes quick snapshots (`state-snapshots/`) are collected instead of
+  excluded; their `.env`, `auth.json` and pairing copies stay flagged, in
+  volumes too ([#123]).
+- Twinny's per-workspace extension storage
+  (`workspaceStorage/<id>/rjmacarthy.twinny`, the `agent-changes/`
+  records) is attributed to `twinny` instead of the editor ([#215]).
+- Project discovery no longer takes a Codex or Open Interpreter thread
+  worktree (`.codex/worktrees`, `.openinterpreter/worktrees`) for a
+  project ([#222]).
+
+### Fixed
+
+- OpenClaw's legacy `exec-approvals.json` (the approvals socket token),
+  `~/.openclaw-auth-profile-secrets/` and a volume-root
+  `exec-approvals.json` are flagged `secret: true` ([#219]).
+
+### Removed
+
+- The secret glob `.config/crush/.crushrc`, which matched a file Crush
+  never reads ([#231]).
 
 ## [1.17.0] - 2026-10-20
 
@@ -1009,11 +1082,29 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 
 [#242]: https://github.com/seanthegeek/doubleagent/issues/242
 [#236]: https://github.com/seanthegeek/doubleagent/issues/236
+[#231]: https://github.com/seanthegeek/doubleagent/issues/231
+[#230]: https://github.com/seanthegeek/doubleagent/issues/230
+[#225]: https://github.com/seanthegeek/doubleagent/issues/225
+[#224]: https://github.com/seanthegeek/doubleagent/issues/224
+[#223]: https://github.com/seanthegeek/doubleagent/issues/223
+[#222]: https://github.com/seanthegeek/doubleagent/issues/222
+[#221]: https://github.com/seanthegeek/doubleagent/issues/221
+[#220]: https://github.com/seanthegeek/doubleagent/issues/220
+[#219]: https://github.com/seanthegeek/doubleagent/issues/219
+[#218]: https://github.com/seanthegeek/doubleagent/issues/218
+[#217]: https://github.com/seanthegeek/doubleagent/issues/217
+[#216]: https://github.com/seanthegeek/doubleagent/issues/216
+[#215]: https://github.com/seanthegeek/doubleagent/issues/215
+[#214]: https://github.com/seanthegeek/doubleagent/issues/214
+[#213]: https://github.com/seanthegeek/doubleagent/issues/213
+[#208]: https://github.com/seanthegeek/doubleagent/issues/208
 [#160]: https://github.com/seanthegeek/doubleagent/issues/160
+[#159]: https://github.com/seanthegeek/doubleagent/issues/159
 [#153]: https://github.com/seanthegeek/doubleagent/issues/153
 [#149]: https://github.com/seanthegeek/doubleagent/issues/149
 [#147]: https://github.com/seanthegeek/doubleagent/issues/147
 [#131]: https://github.com/seanthegeek/doubleagent/issues/131
+[#123]: https://github.com/seanthegeek/doubleagent/issues/123
 [#121]: https://github.com/seanthegeek/doubleagent/issues/121
 [#120]: https://github.com/seanthegeek/doubleagent/issues/120
 [#116]: https://github.com/seanthegeek/doubleagent/issues/116
