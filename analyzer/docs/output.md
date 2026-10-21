@@ -1259,7 +1259,23 @@ the step's description and content on the next lines. Since 0.19.0
 unanswered` for a `pending` step, because Cody saves an approval and an
 unanswered request the same way; any other step reads `permission
 decision: confirmation state=<state> ...` with no separate decision
-word. VS Code's session-start row ends with `workspace=<path>` when the
+word. Cody's standing settings in the editor's `User/settings.json` are
+`permission setting: <key>=<value> (from <file>, file mtime)` rows, one
+per leaf of `cody.agentic.context.experimentalOptions` (such as
+`cody.agentic.context.experimentalOptions.shell.allow=["git"]`), for
+`cody.agentic.context.experimentalShell` and `cody.chat.agenticContext`,
+and for `disabled` and `disabledTools` of each `cody.mcpServers.<server>`;
+its model preferences are `model setting: <selected|defaults>.<usage>=<id>
+endpoint=<endpoint> (from <file>, file mtime)`, from
+`JetBrains-globalState/cody-model-preferences` or, ending `(from <file>
+cody-model-preferences, file mtime)`, from the `state.vscdb` row, with
+the `model` column the id. Both kinds have an empty `session_id` and the
+file's modification time, not the time the setting was made. A JetBrains
+project's legacy `.idea/cody_history.xml` gives, per chat, `chat:
+<internalId> | account=<accountId> | messages=<n> (legacy JetBrains
+history)`, `model: <id>` before the first assistant message, and the user
+and assistant rows, with the chat's `updatedAt` as `session_id` and time
+and the project as `project_path`. VS Code's session-start row ends with `workspace=<path>` when the
 chat's workspace is a `.code-workspace` file (since 0.19.0); the
 `project_path` is the session's `workingDirectory`, else the
 workspace's folder, never that file. Twinny's tool steps saved while waiting for the user's Run or
@@ -1540,6 +1556,7 @@ beside its `session synced: server conversation` row.
 | `claude-code` | `.claude/history.jsonl` (and `.claude-<name>/history.jsonl`) | `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `claude-desktop` | each Cowork session's `local-agent-mode-sessions/<acct>/<org>/[agent/]<session dir>/audit.jsonl` under the app-data directory; the session records `local_<uuid>.json` beside the session dirs and under `claude-code-sessions/` (a Cowork record's first prompt has no timestamp: matches on text within the session) | the session dir's `.claude/projects/<slug>/*.jsonl` and its subagent files |
 | `cline` | `.cline/data/db/session-search.db` (no timestamp per message: matches on text and session; a message of content blocks keeps their type names and tool ids, so only plain-string prompts match); `.cline/data/cache/user_input_history.jsonl` (only the last line timestamped: the others match on text alone) | `.cline/data/sessions/<id>/<id>.messages.json` |
+| `cody` | a JetBrains project's `.idea/cody_history.xml`, the pre-agent plugin's history (the migration's chat id `updatedAt` as session and time; complete pairs match the migrated chat, an unpaired message is recovered) | the `sourcegraph.cody-ai` row of the editor's `state.vscdb` and `Cody-nodejs/[Data/]JetBrains-globalState/cody-local-chatHistory-v2` |
 | `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite`; `.codex/.codex-global-state.json` (the desktop app's prompt history, no timestamp: matches on text within the thread) | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
 | `copilot-cli` | `.copilot/session-store.db` (`turns`, the prompt and the final reply of each turn, stamped when the turn ends: a one-hour window; its `sessions` name pairs with the `workspace.yaml` row; `session_files`, `session_refs`, `checkpoints` and `forge_trajectory_events` rows the log has no copy of are always kept); `.copilot/session-state/<id>/rewind-file-snapshots/index.json` (each turn's prompt, a one-hour window); `.copilot/command-history-state.json` (no timestamp, session or project: matches on text alone); each also under the pre-XDG `.local/state/.copilot` | `.copilot/session-state/<id>/events.jsonl` and `workspace.yaml` |
 | `cursor` | `.cursor/projects/<project>/agent-transcripts/<composerId>/<composerId>.jsonl`, the agent worker's copy of each conversation (a prompt is stamped to the minute in local time with its UTC offset: a 60-second window; replies and tool calls have no timestamp and match on text within the conversation; the tool calls name the tools differently from the database, so they never pair) | the editor's `User/globalStorage/state.vscdb` `cursorDiskKV` composer and bubble rows |

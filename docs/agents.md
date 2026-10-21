@@ -377,9 +377,14 @@ Files read: The `sourcegraph.cody-ai` row of a VS Code or fork
 and the JetBrains file
 `Cody-nodejs/[Data/]JetBrains-globalState/cody-local-chatHistory-v2`.
 Every row of a chat carries the chat's creation time (its id); no project
-path is recorded.
+path is recorded. The standing permission settings (`cody.*` keys of the
+editor's `User/settings.json`), the model preferences
+(`cody-model-preferences` in the same database row and
+`Cody-nodejs/[Data/]JetBrains-globalState/cody-model-preferences`), and
+the JetBrains plugin's pre-agent history `<project>/.idea/cody_history.xml`
+as a secondary source.
 
-Validated against: Source at [8e20ac6c](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda), synthetic fixture.
+Validated against: Source at [8e20ac6c](https://github.com/sourcegraph/cody-public-snapshot/commit/8e20ac6c1460c08b0db581c0204658112a246eda), synthetic fixture; the settings, model preferences and legacy JetBrains history from source at the same commit (2026-10-21 review), synthetic fixture.
 
 ### `continue`
 
