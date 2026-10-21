@@ -6330,6 +6330,306 @@ def build_cline_sync_queue(home: Path) -> None:
     _json(home / CLINE_SYNC_QUEUE, {"items": items})
 
 
+# Source review of 2026-10-21 (#190), from cline/cline at 41e75efc: the hook
+# audit log (sdk/packages/core/src/hooks/hook-file-hooks.ts:234-254,
+# 629-756), the standing permission settings (apps/vscode/src/shared/
+# AutoApprovalSettings.ts:1-44, sdk/packages/core/src/services/
+# global-settings.ts:61-74, apps/vscode/src/services/mcp/schemas.ts:10-28),
+# the Cline Cloud state (apps/vscode/src/shared/cloud/cloud-sessions.ts:15-52,
+# apps/vscode/src/sdk/cloud-pending-starts.ts:5-12), a rejected and a blocked
+# SDK call (sdk/packages/agents/src/agent-runtime.ts:2469-2512) and an
+# imported session (sdk/packages/core/src/services/session-import/
+# service.ts:20-28). Not part of `build_home`: the tests that need them add
+# them, so the session counts of the other Cline tests stay.
+CLINE_HOOKS_LOG = ".cline/data/logs/hooks.jsonl"
+CLINE_GLOBAL_STATE = ".cline/data/globalState.json"
+CLINE_GLOBAL_SETTINGS = ".cline/data/settings/global-settings.json"
+CLINE_MCP_SETTINGS = ".cline/data/settings/cline_mcp_settings.json"
+CLINE_CLOUD_SESSION = "ses-01JCLOUDDONE"
+CLINE_PENDING_SESSION = "ses-01JCLOUDWAIT"
+CLINE_PENDING_START = (
+    ".cline/data/cloud-pending-starts/4242-0b6f2c1e-6a1d-4c51-9a7e-2f3d1c0e9b8a.json"
+)
+CLINE_SETTINGS_MTIME = 1791022200  # 2026-10-03T10:10:00Z
+CLINE_DENIED_SESSION = "1791022100000_den1a"
+CLINE_IMPORTED_SESSION = "1791022300000_imp0r"
+CLINE_REJECTION_SUFFIX = " -- NOT a tool or system failure. Clarify with user before proceeding."
+
+
+def _hook_line(hook: str, ts: str, session: str, **extra) -> dict:
+    line = {
+        "ts": ts,
+        "clineVersion": "4.1.25",
+        "timestamp": ts,
+        "taskId": session,
+        "sessionContext": {"rootSessionId": session},
+        "workspaceRoots": ["/srv/proj"],
+        "userId": "alice",
+        "agent_id": "agent_lead",
+        "hookName": hook,
+    }
+    line.update(extra)
+    return line
+
+
+def cline_hook_lines():
+    """CLINE_SESSION's turns as the audit log repeats them, then the tool call
+    and abort of CLINE_OLD_SESSION, whose transcript is gone, and a stale
+    session's shutdown line."""
+    s, old = CLINE_SESSION, CLINE_OLD_SESSION
+    call = {"id": "call_1", "name": "bash", "input": {"command": "pytest -q"}}
+    return [
+        _hook_line("agent_start", "2026-10-03T10:01:40.050Z", s, taskStart={"taskMetadata": {}}),
+        _hook_line(
+            "prompt_submit",
+            "2026-10-03T10:01:40.100Z",
+            s,
+            userPromptSubmit={"prompt": "fix tests", "attachments": []},
+        ),
+        _hook_line(
+            "tool_call",
+            "2026-10-03T10:01:42.500Z",
+            s,
+            iteration=1,
+            tool_call=call,
+            preToolUse={"toolName": "bash", "parameters": {"command": "pytest -q"}},
+        ),
+        _hook_line(
+            "tool_result",
+            "2026-10-03T10:01:42.900Z",
+            s,
+            iteration=1,
+            tool_result=dict(
+                call,
+                output="3 passed",
+                durationMs=400,
+                startedAt="2026-10-03T10:01:42.500Z",
+                endedAt="2026-10-03T10:01:42.900Z",
+            ),
+            postToolUse={
+                "toolName": "bash",
+                "parameters": {"command": "pytest -q"},
+                "result": "3 passed",
+                "success": True,
+                "executionTimeMs": 400,
+            },
+        ),
+        _hook_line(
+            "agent_end",
+            "2026-10-03T10:01:49.000Z",
+            s,
+            iteration=2,
+            turn={"outputText": "Fixed.", "status": "completed"},
+            taskComplete={"taskMetadata": {}},
+        ),
+        _hook_line(
+            "tool_call",
+            "2026-10-02T23:00:05.000Z",
+            old,
+            iteration=1,
+            tool_call={"id": "call_9", "name": "bash", "input": {"command": "git branch -D stale"}},
+        ),
+        _hook_line(
+            "tool_result",
+            "2026-10-02T23:00:06.000Z",
+            old,
+            iteration=1,
+            tool_result={
+                "id": "call_9",
+                "name": "bash",
+                "input": {"command": "git branch -D stale"},
+                "output": "",
+                "error": "exit code 1",
+                "durationMs": 900,
+            },
+            postToolUse={"toolName": "bash", "result": "", "success": False},
+        ),
+        _hook_line(
+            "agent_abort",
+            "2026-10-02T23:00:07.000Z",
+            old,
+            reason="aborted by user",
+            taskCancel={"taskMetadata": {}},
+        ),
+        {
+            "ts": "2026-10-03T10:09:00.000Z",
+            "hookName": "session_shutdown",
+            "reason": "stale_process",
+            "sessionId": old,
+            "pid": 4100,
+            "source": "cli",
+        },
+    ]
+
+
+def build_cline_hooks_log(home: Path) -> None:
+    path = home / CLINE_HOOKS_LOG
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(json.dumps(line) + "\n" for line in cline_hook_lines()), encoding="utf-8"
+    )
+
+
+def cline_global_state() -> dict:
+    return {
+        "autoApprovalSettings": {
+            "version": 3,
+            "enabled": True,
+            "favorites": [],
+            "maxRequests": 20,
+            "actions": {
+                "readFiles": True,
+                "editFiles": True,
+                "executeSafeCommands": False,
+                "executeAllCommands": True,
+                "useBrowser": False,
+                "useMcp": True,
+            },
+            "enableNotifications": False,
+        },
+        "mode": "act",
+        "apiProvider": "anthropic",  # not a permission: never read
+        "cloudTaskTarget": {"target": "cloud", "repositoryId": 812345678, "branch": "main"},
+        "cloudSessionStatuses": {
+            CLINE_CLOUD_SESSION: {"status": "completed", "observedAt": 1791021800000},
+        },
+    }
+
+
+def build_cline_settings_and_cloud(home: Path) -> None:
+    """globalState.json, global-settings.json, the MCP settings file and one
+    pending-start file, each with `CLINE_SETTINGS_MTIME` as its mtime."""
+    _json(home / CLINE_GLOBAL_STATE, cline_global_state())
+    _json(
+        home / CLINE_GLOBAL_SETTINGS,
+        {
+            "telemetryOptOut": False,
+            "autoUpdateEnabled": True,
+            "planActMode": "plan",
+            "toolAutoApprove": False,
+            "disabledTools": ["browser_action"],
+            "tools": {"web_fetch": {"enabled": False}},
+            "disabledPlugins": ["acme-plugin"],
+        },
+    )
+    _json(
+        home / CLINE_MCP_SETTINGS,
+        {
+            "mcpServers": {
+                "github": {
+                    "command": "npx",
+                    "env": {"GITHUB_TOKEN": "ghp_not_real"},
+                    "autoApprove": ["list_issues", "get_issue"],
+                    "disabled": False,
+                }
+            }
+        },
+    )
+    _json(
+        home / CLINE_PENDING_START,
+        [
+            {
+                "sessionId": CLINE_PENDING_SESSION,
+                "account": "user:usr_0f9e8d7c",
+                "endpoint": "https://api.cline.bot",
+            }
+        ],
+    )
+    for rel in (CLINE_GLOBAL_STATE, CLINE_GLOBAL_SETTINGS, CLINE_MCP_SETTINGS, CLINE_PENDING_START):
+        os.utime(home / rel, (CLINE_SETTINGS_MTIME, CLINE_SETTINGS_MTIME))
+
+
+def build_cline_denied_and_imported(home: Path) -> None:
+    """An SDK session with one call the user rejected (with feedback) and one
+    the policy blocked, and a session imported from Claude Code."""
+    sessions = home / ".cline/data/sessions"
+    manifest = dict(
+        cline_sdk_manifest(),
+        session_id=CLINE_DENIED_SESSION,
+        started_at="2026-10-03T10:08:20.000Z",
+        ended_at=None,
+        prompt="clean up",
+        metadata={"title": "clean up"},
+    )
+    _json(sessions / CLINE_DENIED_SESSION / (CLINE_DENIED_SESSION + ".json"), manifest)
+    t0 = 1791022100000
+    rejected = (
+        "This tool call was rejected by the user and not executed. The user provided the"
+        " following feedback:\n<feedback>\nnot that one\n</feedback>"
+    )
+    messages = {
+        "version": 1,
+        "updated_at": "2026-10-03T10:08:30.000Z",
+        "agent": "lead",
+        "sessionId": CLINE_DENIED_SESSION,
+        "messages": [
+            {"id": "m1", "role": "user", "content": "clean up", "ts": t0},
+            {
+                "id": "m2",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call_r",
+                        "name": "bash",
+                        "input": {"command": "rm -rf build"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "call_b",
+                        "name": "web_fetch",
+                        "input": {"url": "https://example.com"},
+                    },
+                ],
+                "modelInfo": {"id": "claude-sonnet-4-5", "provider": "anthropic"},
+                "ts": t0 + 1000,
+            },
+            {
+                "id": "m3",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_r",
+                        "name": "bash",
+                        "content": json.dumps({"error": rejected + CLINE_REJECTION_SUFFIX}),
+                        "is_error": True,
+                    },
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_b",
+                        "name": "web_fetch",
+                        "content": json.dumps({"error": 'Tool "web_fetch" is disabled by policy'}),
+                        "is_error": True,
+                    },
+                ],
+                "ts": t0 + 2000,
+            },
+        ],
+    }
+    _json(sessions / CLINE_DENIED_SESSION / (CLINE_DENIED_SESSION + ".messages.json"), messages)
+    imported = dict(
+        cline_sdk_manifest(),
+        session_id=CLINE_IMPORTED_SESSION,
+        source="desktop",
+        started_at="2026-10-03T10:11:40.000Z",
+        ended_at=None,
+        prompt="port the parser",
+        metadata={
+            "title": "port the parser",
+            "importedFrom": {
+                "tool": "claude-code",
+                "sourceSessionId": "5f0c1d2e-0000-4000-8000-00000000c1a0",
+                "sourcePath": "/home/u/.claude/projects/-srv-proj/5f0c1d2e.jsonl",
+                "importedAt": "2026-10-03T10:11:45.000Z",
+                "sourceProvider": "anthropic",
+                "sourceModel": "claude-opus-4-5",
+            },
+        },
+    )
+    _json(sessions / CLINE_IMPORTED_SESSION / (CLINE_IMPORTED_SESSION + ".json"), imported)
+
+
 def roo_ui_records(t0=CLINE_T0 + 200000):
     return [
         {"ts": t0, "type": "say", "say": "text", "text": "rename the helper"},

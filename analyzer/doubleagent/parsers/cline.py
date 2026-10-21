@@ -139,8 +139,88 @@ SDK session layout, `~/.cline/data/sessions/<sessionId>/`:
   `items` object, is one `parser:` row, and so is an item that is not an
   object. Fixture only: no real install has shown the file.
 
-Not read: `<sessionId>.compaction.json`, `sessions/sessions.index.json`,
-`teams/teams.db` and `logs/hooks.jsonl`.
+The items below are source-derived (cline/cline at 41e75efc, research
+document's Parser plan); not observed on any real install.
+
+* Permission decisions, SDK messages: a call the runtime did not run ends
+  in a `tool_result` block with `is_error` true and `content` the JSON
+  string `{"error": <reason>}` (`sdk/packages/agents/src/
+  agent-runtime.ts:2469-2512`, `sdk/packages/core/src/session/
+  persisted-tool-result-content.ts:9-24`). A reason ending
+  ` -- NOT a tool or system failure. Clarify with user before proceeding.`
+  (`TOOL_REJECTION_SUFFIX`, every approval that came back not approved:
+  the user's rejection, a denied edit, a follow-up message, a timeout, a
+  missing approval callback) yields `permission decision: rejected
+  reason=<reason without the suffix>`; the fixed `Tool "<name>" is
+  disabled by policy` and `Tool <name> was blocked by a runtime hook`
+  yield `permission decision: blocked reason=<reason>`. The `system` row
+  follows the `tool_result` row it governs, with its `tool_use_id`,
+  `tool_name`, time and model. A hook's own skip reason matches neither
+  and yields no row; an approved call leaves no mark.
+* Standing permission settings, one `system` row per value or list entry,
+  `permission setting: <key>=<value> (from <rel>, file mtime)` at the
+  file's modification time, `session_id` and `project_path` empty:
+  `~/.cline/data/globalState.json` `autoApprovalSettings` (`enabled`,
+  `maxRequests`, each `favorites` entry, each `actions.<name>`) and
+  `mode`; `~/.cline/data/settings/global-settings.json` `toolAutoApprove`,
+  `planActMode`, each `disabledTools`, `disabledPlugins` and
+  `disabledAgentPlugins` entry, and `tools.<name>.enabled`; each
+  `mcpServers.<name>` of `settings/cline_mcp_settings.json` (under
+  `~/.cline/data` or the extension's globalStorage) as
+  `mcpServers.<name>.autoApprove=<tool>` per entry and
+  `mcpServers.<name>.disabled=<bool>`. No other key of these files is read
+  (globalState.json holds much else; the MCP file can carry `env`,
+  `headers` and OAuth state). A file that is not a JSON object is one
+  `parser:` row.
+* Origin and sync, Cline Cloud: `globalState.json` `cloudSessionStatuses`
+  `{<ses- id>: {status, observedAt}}` yields per session, at `observedAt`
+  (epoch ms) with `session_id` the id, `session origin: remote cline-cloud
+  session <id> status <status> (from .cline/data/globalState.json
+  cloudSessionStatuses, observedAt)` and `session synced: cline-cloud
+  holds session <id>, no local transcript (from ... cloudSessionStatuses,
+  observedAt)`. Each `{sessionId, account, endpoint}` record of
+  `~/.cline/data/cloud-pending-starts/<pid>-<uuid>.json` yields the same
+  pair, the origin row reading `sandbox start pending account=<account>
+  endpoint=<endpoint>` in place of the status, at the file's modification
+  time and ending `(from <rel>, file mtime)`; a file that is not a JSON
+  array is one `parser:` row, a record without a `sessionId` one row per
+  record. `cloudTaskTarget {target, repositoryId, branch}` yields one
+  `cloud task target: target=<target> repository_id=<id> branch=<branch>
+  (from .cline/data/globalState.json, file mtime)` row; the repository id
+  is GitHub's. `records_origin` is set.
+* Imported sessions: `metadata.importedFrom {tool, sourceSessionId,
+  sourcePath, importedAt, sourceProvider, sourceModel}` of the manifest
+  (or the `sessions.db` `metadata_json`) is named on the session start
+  row as `imported_from=`, `imported_session=`, `imported_path=`,
+  `imported_at=`, `imported_provider=` and `imported_model=`, so a copy of
+  another agent's transcript is not read as Cline's own work.
+* `~/.cline/data/logs/hooks.jsonl`, a secondary source: the SDK's hook
+  audit log, one JSON line per event, `{ts (ISO 8601), hookName,
+  clineVersion, timestamp, taskId, sessionContext.rootSessionId,
+  workspaceRoots, userId, agent_id, parent_agent_id, ...}`
+  (`sdk/packages/core/src/hooks/hook-file-hooks.ts:234-254`, `629-756`),
+  appended only and never rotated. `session_id` is `rootSessionId` (else
+  `taskId`, else `sessionId`), the SDK session directory name the
+  messages reader uses; `project_path` the first `workspaceRoots` entry.
+  `prompt_submit` (`userPromptSubmit.prompt`) is a `user` row;
+  `tool_call` (`tool_call {id, name, input}`) a `tool_use` row with the
+  tool's summary as the transcript writes it; `tool_result`
+  (`tool_result {id, name, input, output, error}`, `postToolUse.result`)
+  a `tool_result` row, `[error] <error>` when the call failed; both carry
+  the call id, so `dedup.deduplicate` pairs them with the transcript's
+  rows on it. `agent_end` (`turn.outputText`) is an `assistant` row.
+  Every other line (`agent_start`, `agent_abort`, `agent_error`,
+  `session_shutdown`, appended by the session store as `{ts, hookName,
+  reason, sessionId, pid, source}`) is a `system` row `hook audit:
+  <hookName>` followed by `cline_version=`, `user=`, `agent=`,
+  `parent_agent=`, `reason=`, `pid=` and `source=` when present and
+  `error=<name>: <message>` for `agent_error` (never the stack). The
+  window is an hour (`secondary_tolerance`), since a call line is stamped
+  when the call starts or ends and the transcript message when the turn
+  is persisted. Each bad line is its own `system` row.
+
+Not read: `<sessionId>.compaction.json`, `sessions/sessions.index.json`
+and `teams/teams.db`.
 """
 
 from __future__ import annotations
@@ -156,7 +236,17 @@ from ..inputs import Artifact
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
-from .base import Options, error_rows, iter_jsonl, track_change
+from .base import (
+    Options,
+    compact_json,
+    error_rows,
+    file_mtime,
+    iter_jsonl,
+    setting_value,
+    text_of,
+    track_change,
+)
+from .claude_code import tool_summary
 from .cline_legacy import (
     LegacyTaskParser,
     content_rows,
@@ -182,12 +272,50 @@ SEARCH_COLUMNS = (
 BLOB_UPLOAD_KEY = "enterprise.blobUpload"
 SEARCH_KEYS = ("title", "workspace_root", "prompt", "document_count", "indexed_at")
 MESSAGES_KEY_RX = re.compile(r'"messages"\s*:\s*(?=\[)')
+HOOKS_REL = ".cline/data/logs/hooks.jsonl"
+# A tool_call or tool_result line is written when the call starts or ends,
+# the transcript's message when the whole turn is persisted, which can be a
+# long command later; the call id pairs them, so the wide window is safe.
+HOOKS_TOLERANCE_SECONDS = 3600.0
+GLOBAL_STATE_REL = ".cline/data/globalState.json"
+GLOBAL_SETTINGS_REL = ".cline/data/settings/global-settings.json"
+MCP_SETTINGS_RX = re.compile(r"^%s/settings/cline_mcp_settings\.json$" % ROOT, re.I)
+PENDING_START_RX = re.compile(r"^\.cline/data/cloud-pending-starts/\d+-[0-9a-f-]+\.json$")
+# The runtime appends this to every rejected approval's reason
+# (sdk/packages/shared/src/llms/tools.ts:104-105, agent-runtime.ts:2490).
+REJECTION_SUFFIX = " -- NOT a tool or system failure. Clarify with user before proceeding."
+# The two fixed reasons of a call the runtime skips without asking
+# (sdk/packages/agents/src/agent-runtime.ts:2469, 2481).
+BLOCKED_RX = re.compile(
+    r'^(?:Tool "[^"\n]*" is disabled by policy|Tool [^\n]* was blocked by a runtime hook)$'
+)
+# Hook audit keys named on a `hook audit:` row, with the name the row uses.
+HOOK_KEYS = (
+    ("clineVersion", "cline_version"),
+    ("userId", "user"),
+    ("agent_id", "agent"),
+    ("parent_agent_id", "parent_agent"),
+    ("reason", "reason"),
+    ("pid", "pid"),
+    ("source", "source"),
+)
+# metadata.importedFrom keys named on the session start row.
+IMPORTED_KEYS = (
+    ("tool", "imported_from"),
+    ("sourceSessionId", "imported_session"),
+    ("sourcePath", "imported_path"),
+    ("importedAt", "imported_at"),
+    ("sourceProvider", "imported_provider"),
+    ("sourceModel", "imported_model"),
+)
 
 
 class ClineParser(LegacyTaskParser):
     agent = "cline"
     # `enterprise.blobUpload` in a session's metadata marks an uploaded transcript.
     records_sync = True
+    # Cline Cloud sessions listed in globalState.json or a pending-start file.
+    records_origin = True
     name = "cline"
     has_secondary = True
     ROOT = ROOT
@@ -201,10 +329,27 @@ class ClineParser(LegacyTaskParser):
             or MANIFEST_RX.match(rel)
             or MESSAGES_RX.match(rel)
             or SYNC_QUEUE_RX.match(rel)
-        ) or rel in (SESSIONS_DB_REL, SEARCH_DB_REL, INPUT_HISTORY_REL)
+            or MCP_SETTINGS_RX.match(rel)
+            or PENDING_START_RX.match(rel)
+        ) or rel in (
+            SESSIONS_DB_REL,
+            SEARCH_DB_REL,
+            INPUT_HISTORY_REL,
+            HOOKS_REL,
+            GLOBAL_STATE_REL,
+            GLOBAL_SETTINGS_REL,
+        )
 
     def secondary(self, artifact: Artifact) -> bool:
-        return artifact.rel in (SEARCH_DB_REL, INPUT_HISTORY_REL)
+        return artifact.rel in (SEARCH_DB_REL, INPUT_HISTORY_REL, HOOKS_REL)
+
+    def secondary_tolerance(self, artifact: Artifact) -> float:
+        """An hour for `logs/hooks.jsonl` (`HOOKS_TOLERANCE_SECONDS`): its
+        call lines are stamped when a call starts or ends, the transcript's
+        message when the turn is persisted."""
+        if artifact.rel == HOOKS_REL:
+            return HOOKS_TOLERANCE_SECONDS
+        return super().secondary_tolerance(artifact)
 
     def history_item(self, task_dir: Path, root: Path, task_id: str) -> dict | None:
         items = self.cached_json(root / "state" / "taskHistory.json")
@@ -232,6 +377,16 @@ class ClineParser(LegacyTaskParser):
             yield from self._parse_input_history(artifact)
         elif SYNC_QUEUE_RX.match(rel):
             yield from self._parse_sync_queue(artifact)
+        elif rel == HOOKS_REL:
+            yield from self._parse_hooks_log(artifact)
+        elif rel == GLOBAL_STATE_REL:
+            yield from self._parse_global_state(artifact)
+        elif rel == GLOBAL_SETTINGS_REL:
+            yield from self._parse_global_settings(artifact)
+        elif MCP_SETTINGS_RX.match(rel):
+            yield from self._parse_mcp_settings(artifact)
+        elif PENDING_START_RX.match(rel):
+            yield from self._parse_pending_starts(artifact)
 
     # -- cache/sync-queue.json (VS Code extension)
 
@@ -353,6 +508,7 @@ class ClineParser(LegacyTaskParser):
         "is_subagent",
         "title",
         "prompt",
+        *(name for _, name in IMPORTED_KEYS),
     )
     END_KEYS = ("status", "exit_code")
 
@@ -371,6 +527,7 @@ class ClineParser(LegacyTaskParser):
         meta = m.get("metadata")
         if isinstance(meta, dict) and meta.get("title"):
             m["title"] = meta["title"]
+        _imported(m, meta)
         start = self._session_start(
             m, artifact, 0, opts, "started_at", "session start", self.START_KEYS
         )
@@ -441,6 +598,7 @@ class ClineParser(LegacyTaskParser):
             base_turn = (
                 "user" if role == "user" else "assistant" if role == "assistant" else "system"
             )
+            decisions = _decisions(msg.get("content"))
             for turn, text, name, tid in content_rows(
                 msg.get("content"), base_turn, opts.include_thinking
             ):
@@ -455,6 +613,8 @@ class ClineParser(LegacyTaskParser):
                 row.tool_use_id = tid
                 row.text = compact(text)
                 yield row
+                if turn == "tool_result" and tid in decisions:
+                    yield replace(row, turn_type="system", text=decisions.pop(tid))
         yield from error_rows(self, artifact, errors, session_id, project)
 
     def _parse_sessions_db(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
@@ -477,6 +637,7 @@ class ClineParser(LegacyTaskParser):
             meta = load_json_text(r["metadata_json"]) if r.get("metadata_json") else None
             if isinstance(meta, dict) and meta.get("title"):
                 r["title"] = meta["title"]
+            _imported(r, meta)
             start = self._session_start(
                 r,
                 artifact,
@@ -489,6 +650,192 @@ class ClineParser(LegacyTaskParser):
             yield start
             yield from self._model_start(start, r)
             yield from self._blob_upload(start, meta, "sessions.db sessions.metadata_json")
+
+    # -- logs/hooks.jsonl (secondary)
+
+    def _parse_hooks_log(self, artifact: Artifact) -> Iterator[Row]:
+        """One row per hook audit line: `prompt_submit` a `user` row,
+        `tool_call` a `tool_use` row, `tool_result` a `tool_result` row (both
+        with the call id), `agent_end` an `assistant` row with the final
+        reply, and every other line a `hook audit: <hookName> ...` row."""
+        errors: list = []
+        for n, rec in iter_jsonl(artifact.disk_path, errors):
+            ctx = _obj(rec.get("sessionContext"))
+            roots = rec.get("workspaceRoots")
+            row = self.base_row(artifact)
+            row.source_line = n
+            row.timestamp_utc = to_utc(rec.get("ts") or rec.get("timestamp"))
+            row.session_id = str(
+                ctx.get("rootSessionId") or rec.get("taskId") or rec.get("sessionId") or ""
+            )
+            if isinstance(roots, list) and roots and isinstance(roots[0], str):
+                row.project_path = roots[0]
+            hook = str(rec.get("hookName") or "")
+            if not _hook_event(row, hook, rec):
+                detail = "".join(
+                    " %s=%s" % (name, setting_value(rec[key]))
+                    for key, name in HOOK_KEYS
+                    if rec.get(key) not in (None, "")
+                )
+                error = _obj(rec.get("error"))
+                if error:
+                    detail += " error=%s: %s" % (
+                        _dash(error.get("name")),
+                        _dash(error.get("message")),
+                    )
+                row.turn_type = "system"
+                row.text = compact("hook audit: %s%s" % (hook or "-", detail))
+            yield row
+        yield from error_rows(self, artifact, errors)
+
+    # -- standing settings and Cline Cloud state
+
+    def _settings_row(self, artifact: Artifact, ts: str, key: str, value) -> Row:
+        row = self.base_row(artifact)
+        row.source_line = 1
+        row.turn_type = "system"
+        row.timestamp_utc = ts
+        row.text = compact(
+            "permission setting: %s=%s (from %s, file mtime)"
+            % (key, setting_value(value), artifact.rel)
+        )
+        return row
+
+    def _json_object(self, artifact: Artifact, what: str) -> tuple[dict | None, list]:
+        """The file as a JSON object, or None with the whole-file error."""
+        doc = load_json(artifact.disk_path)
+        if isinstance(doc, dict):
+            return doc, []
+        return None, [(0, "%s is not a JSON object" % what, "")]
+
+    def _parse_global_state(self, artifact: Artifact) -> Iterator[Row]:
+        """`autoApprovalSettings` and `mode` as `permission setting:` rows,
+        `cloudTaskTarget` as one `cloud task target:` row, and each
+        `cloudSessionStatuses` entry as `session origin:` and `session
+        synced:` rows. No other key is read."""
+        doc, errors = self._json_object(artifact, "globalState.json")
+        if doc is None:
+            yield from error_rows(self, artifact, errors)
+            return
+        ts = file_mtime(artifact)
+        auto = _obj(doc.get("autoApprovalSettings"))
+        for key in ("enabled", "maxRequests"):
+            if key in auto:
+                yield self._settings_row(artifact, ts, "autoApprovalSettings." + key, auto[key])
+        favorites = auto.get("favorites")
+        for entry in favorites if isinstance(favorites, list) else []:
+            yield self._settings_row(artifact, ts, "autoApprovalSettings.favorites", entry)
+        for key, value in _obj(auto.get("actions")).items():
+            yield self._settings_row(artifact, ts, "autoApprovalSettings.actions." + key, value)
+        if doc.get("mode") not in (None, ""):
+            yield self._settings_row(artifact, ts, "mode", doc["mode"])
+        target = doc.get("cloudTaskTarget")
+        if isinstance(target, dict):
+            row = self.base_row(artifact)
+            row.source_line = 1
+            row.turn_type = "system"
+            row.timestamp_utc = ts
+            row.text = "cloud task target: target=%s repository_id=%s branch=%s (from %s, %s)" % (
+                _dash(target.get("target")),
+                _dash(target.get("repositoryId")),
+                _dash(target.get("branch")),
+                artifact.rel,
+                "file mtime",
+            )
+            yield row
+        source = "%s cloudSessionStatuses, observedAt" % artifact.rel
+        for sid, status in _obj(doc.get("cloudSessionStatuses")).items():
+            status = _obj(status)
+            yield from self._cloud_rows(
+                artifact,
+                str(sid),
+                to_utc(status.get("observedAt")),
+                "status %s" % _dash(status.get("status")),
+                source,
+            )
+
+    def _cloud_rows(
+        self, artifact: Artifact, sid: str, ts: str, detail: str, source: str
+    ) -> Iterator[Row]:
+        """The `session origin:` and `session synced:` rows of one Cline
+        Cloud session, whose transcript is on the vendor's servers."""
+        row = self.base_row(artifact)
+        row.turn_type = "system"
+        row.timestamp_utc = ts
+        row.session_id = sid
+        row.text = "session origin: remote cline-cloud session %s %s (from %s)" % (
+            sid,
+            detail,
+            source,
+        )
+        yield row
+        yield replace(
+            row,
+            text="session synced: cline-cloud holds session %s, no local transcript (from %s)"
+            % (sid, source),
+        )
+
+    def _parse_pending_starts(self, artifact: Artifact) -> Iterator[Row]:
+        """One pair of Cline Cloud rows per `{sessionId, account, endpoint}`
+        record, at the file's modification time."""
+        doc = load_json(artifact.disk_path)
+        if not isinstance(doc, list):
+            message = "cloud pending-start file is not a JSON array"
+            yield from error_rows(self, artifact, [(0, message, "")])
+            return
+        ts = file_mtime(artifact)
+        errors: list = []
+        for n, rec in enumerate(doc, 1):
+            if not isinstance(rec, dict) or not isinstance(rec.get("sessionId"), str):
+                errors.append((n, "pending-start record %d has no sessionId" % n, ""))
+                continue
+            detail = "sandbox start pending account=%s endpoint=%s" % (
+                _dash(rec.get("account")),
+                _dash(rec.get("endpoint")),
+            )
+            source = "%s, file mtime" % artifact.rel
+            for row in self._cloud_rows(artifact, rec["sessionId"], ts, detail, source):
+                row.source_line = n
+                yield row
+        yield from error_rows(self, artifact, errors)
+
+    def _parse_global_settings(self, artifact: Artifact) -> Iterator[Row]:
+        """The CLI and SDK's standing tool settings, one `permission
+        setting:` row per value or list entry."""
+        doc, errors = self._json_object(artifact, "global-settings.json")
+        if doc is None:
+            yield from error_rows(self, artifact, errors)
+            return
+        ts = file_mtime(artifact)
+        for key in ("toolAutoApprove", "planActMode"):
+            if doc.get(key) not in (None, ""):
+                yield self._settings_row(artifact, ts, key, doc[key])
+        for key in ("disabledTools", "disabledPlugins", "disabledAgentPlugins"):
+            entries = doc.get(key)
+            for entry in entries if isinstance(entries, list) else []:
+                yield self._settings_row(artifact, ts, key, entry)
+        for name, tool in _obj(doc.get("tools")).items():
+            tool = _obj(tool)
+            if "enabled" in tool:
+                yield self._settings_row(artifact, ts, "tools.%s.enabled" % name, tool["enabled"])
+
+    def _parse_mcp_settings(self, artifact: Artifact) -> Iterator[Row]:
+        """Each MCP server's `autoApprove` entries and `disabled` flag; the
+        server's command, `env`, `headers` and OAuth state are never read."""
+        doc, errors = self._json_object(artifact, "cline_mcp_settings.json")
+        if doc is None:
+            yield from error_rows(self, artifact, errors)
+            return
+        ts = file_mtime(artifact)
+        for name, server in _obj(doc.get("mcpServers")).items():
+            server = _obj(server)
+            entries = server.get("autoApprove")
+            for entry in entries if isinstance(entries, list) else []:
+                key = "mcpServers.%s.autoApprove" % name
+                yield self._settings_row(artifact, ts, key, entry)
+            if isinstance(server.get("disabled"), bool):
+                key = "mcpServers.%s.disabled" % name
+                yield self._settings_row(artifact, ts, key, server["disabled"])
 
     # -- cache/user_input_history.jsonl
 
@@ -616,3 +963,92 @@ def load_json_text(s):
         return json.loads(s)
     except (TypeError, ValueError):
         return None
+
+
+def _obj(value) -> dict:
+    """`value` when it is a JSON object, else an empty one."""
+    return value if isinstance(value, dict) else {}
+
+
+def _dash(value) -> str:
+    """A value for row text, `-` when absent or empty."""
+    return "-" if value in (None, "") else str(value)
+
+
+def _imported(m: dict, meta) -> None:
+    """Copy `metadata.importedFrom` onto the session record under the
+    `imported_*` names the start row prints."""
+    source = _obj(_obj(meta).get("importedFrom"))
+    for key, name in IMPORTED_KEYS:
+        if source.get(key) not in (None, ""):
+            m[name] = source[key]
+
+
+def _denial(content) -> str:
+    """The `permission decision:` text of a skipped call's tool_result
+    content (`{"error": <reason>}`, stored as a JSON string), or `""`."""
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except ValueError:
+            return ""
+    reason = _obj(content).get("error")
+    if not isinstance(reason, str):
+        return ""
+    if reason.endswith(REJECTION_SUFFIX):
+        return "permission decision: rejected reason=%s" % reason[: -len(REJECTION_SUFFIX)]
+    if BLOCKED_RX.match(reason):
+        return "permission decision: blocked reason=%s" % reason
+    return ""
+
+
+def _decisions(content) -> dict:
+    """tool_use_id -> `permission decision:` text for each errored
+    tool_result block of a message whose reason is a rejection or a block."""
+    out: dict = {}
+    for b in content if isinstance(content, list) else []:
+        b = _obj(b)
+        if b.get("type") == "tool_result" and b.get("is_error"):
+            text = _denial(b.get("content"))
+            if text:
+                out[str(b.get("tool_use_id") or "")] = compact(text)
+    return out
+
+
+def _hook_event(row: Row, hook: str, rec: dict) -> bool:
+    """Fill `row` as the transcript event a hook audit line repeats, and
+    say whether it is one."""
+    if hook == "prompt_submit":
+        prompt = _obj(rec.get("userPromptSubmit")).get("prompt")
+        if not isinstance(prompt, str) or not prompt.strip():
+            return False
+        row.turn_type, row.text = "user", compact(prompt)
+    elif hook == "tool_call":
+        call = _obj(rec.get("tool_call"))
+        row.turn_type = "tool_use"
+        row.tool_name = str(call.get("name") or "")
+        row.tool_use_id = str(call.get("id") or "")
+        row.text = compact(tool_summary(row.tool_name, call.get("input")))
+    elif hook == "tool_result":
+        record = _obj(rec.get("tool_result"))
+        post = _obj(rec.get("postToolUse"))
+        row.turn_type = "tool_result"
+        row.tool_name = str(record.get("name") or post.get("toolName") or "")
+        row.tool_use_id = str(record.get("id") or "")
+        if record.get("error"):
+            row.text = compact("[error] %s" % record["error"])
+        elif isinstance(post.get("result"), str):
+            row.text = compact(post["result"])
+        else:
+            output = record.get("output")
+            row.text = compact(
+                text_of(output) if isinstance(output, (str, list)) else compact_json(output)
+            )
+    elif hook == "agent_end":
+        text = _obj(rec.get("turn")).get("outputText")
+        if not isinstance(text, str) or not text.strip():
+            return False
+        row.turn_type, row.text = "assistant", compact(text)
+    else:
+        return False
+    return True
