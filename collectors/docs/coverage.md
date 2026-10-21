@@ -628,6 +628,22 @@ their state must be copied by hand.
   because the name is too common in a temp directory, so read `CACHE_PATH`
   from `.sgptrc` and copy that directory by hand
   ([Chat history and response cache in `research/shellgpt.md`](../../research/shellgpt.md#chat-history-and-response-cache)).
+- **OpenCode** 2.0 creates a temp root, `opencode` in the system temp
+  directory (`/tmp/opencode` on Linux, under `/var/folders` on macOS), and
+  tells the model to write its temporary files there. On Linux and macOS
+  it is outside every home and must be copied by hand; on Windows the
+  catalog collects `AppData/Local/Temp/opencode`
+  ([Scratch directories in `research/opencode.md`](../../research/opencode.md#scratch-directories)).
+  The OpenCode desktop app keeps its data in `ai.opencode.desktop` (or
+  `.beta`, `.dev`) under `Library/Application Support`, `AppData/Roaming`
+  or `.config`; it is collected, and its V8 `compile-cache` is excluded
+  ([OpenCode desktop app in `research/opencode.md`](../../research/opencode.md#opencode-desktop-app)).
+- **Kilo Code** writes files that Kilo Cloud sends over remote control to
+  `kilo/remote-attachments/<session>/` in the system temp directory and
+  removes them when the session's remote handling ends; no catalog line
+  reaches it on any platform, so copy it by hand while a remote session is
+  live
+  ([Scratch directories in `research/kilo-code.md`](../../research/kilo-code.md#scratch-directories)).
 - **Muse Code** keeps its launcher state beside the launcher; see below.
 - **Cursor** writes its agent worker's logs and copies of the user's zsh
   startup files to the temp directory; see
@@ -780,7 +796,9 @@ the full pattern list.
   `~/.codex/auth.json`, `~/.gemini/gemini-credentials.json`,
   `~/.cursor/auth.json`, `~/.copilot/config.json`,
   `~/.cline/data/settings/providers.json`,
-  `~/.local/share/opencode/auth.json`, `~/.config/goose/secrets.yaml`,
+  `~/.local/share/opencode/auth.json`, OpenCode's `service.json` (the
+  background server's password) in `~/.config/opencode` and
+  `~/.local/state/opencode`, `~/.config/goose/secrets.yaml`,
   `~/.factory/auth.v2.*`, ...
 - **Config files that commonly embed API keys or MCP server environments:**
   Continue's `config.yaml`, Zed's `settings.json`, Crush's `crush.json`,

@@ -404,6 +404,8 @@ kilo-code|.kilocodemodes
 kilo-code|.config/kilo
 kilo-code|.local/share/kilo
 kilo-code|.local/state/kilo
+kilo-code|.local/state/kilo-sandbox-policy
+kilo-code|.local/state/kilo-sandbox-preference
 # Continue
 continue|.continue
 # Aider (history files live in the repo; these are the home-level ones)
@@ -419,6 +421,10 @@ opencode|.config/opencode
 opencode|.opencode
 opencode|.local/share/opencode
 opencode|.local/state/opencode
+opencode|Library/Application Support/ai.opencode.desktop*
+opencode|AppData/Roaming/ai.opencode.desktop*
+opencode|.config/ai.opencode.desktop*
+opencode|AppData/Local/Temp/opencode
 # Crush (~/.config on every OS; sessions live in each project .crush/crush.db)
 crush|.config/crush
 crush|.local/share/crush
@@ -994,6 +1000,9 @@ AppData/Roaming/Roo-Code/MCP
 .config/opencode/node_modules
 .opencode/bin
 .opencode/node_modules
+Library/Application Support/ai.opencode.desktop*/compile-cache
+AppData/Roaming/ai.opencode.desktop*/compile-cache
+.config/ai.opencode.desktop*/compile-cache
 .local/share/goose/models
 .local/share/goose/model_catalog
 .local/state/goose/codex
@@ -1450,6 +1459,8 @@ Documents/Cline/webhook_config.json
 .config/opencode/opencode.json*
 .config/opencode/config.json
 .opencode/opencode.json*
+.config/opencode/service*.json
+.local/state/opencode/service*.json
 .local/share/crush/crush.json
 AppData/Local/crush/crush.json
 .config/crush/crush.json

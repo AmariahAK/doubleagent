@@ -14,7 +14,8 @@ can drive OpenCode as an external coding agent, starting `opencode serve` in its
 [src/tools/impl/opencode-server.ts:51-66](https://github.com/letta-ai/letta-code/blob/2a46615d16babb06cf5450b8e57ecb9bdbf2f436/src/tools/impl/opencode-server.ts#L51-L66)),
 so a session Letta Code started lands in this store like any other OpenCode session
 ([Source and evidence in `letta.md`](letta.md#source-and-evidence)). The analyzer parses the 1.x and
-2.0 database layouts, from source and fixtures only.
+2.0 database layouts and the terminal UI's prompt history, stash and pinned sessions, from source
+and fixtures only.
 
 ## Source and evidence
 
@@ -56,6 +57,13 @@ No real install.
 
 ### Source reviews
 
+- 2026-10-21: anomalyco/opencode at
+  [cb07c55](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e)
+  (2.0.32): the parser plan's permission, past-use, scratch directory and deletion items are now
+  read from source alone, the 1.x prompt history and stash shapes at
+  [907b3bc](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c) were
+  added, the `service.json` files, the desktop app and the Windows temp root got catalog lines, and
+  the source-host integration was reviewed ([Source host rows](#source-host-rows)).
 - 2026-10-19, `dev` at
   [`cb07c55`](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e)
   (2.0.32): added the 2.0 line throughout: the TUI state files and other records of use
@@ -98,8 +106,9 @@ to prefer it over `/tmp`, as a directory "pre-created and approved for external 
 [`packages/core/src/instructions/builtins.ts:43`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/instructions/builtins.ts#L43)).
 It is `/tmp/opencode` on Linux, under `/var/folders` on macOS and `%TEMP%\opencode`
 (`AppData\Local\Temp\opencode`) on Windows, so outside the home on Linux and macOS, where no catalog
-line can reach it, and under the home but unclaimed by any catalog line on Windows; the same gap as
-Claude Code's temp root ([issue 163](https://github.com/seanthegeek/doubleagent/issues/163)). The
+line can reach it (the same gap as Claude Code's temp root,
+[issue 163](https://github.com/seanthegeek/doubleagent/issues/163)), and under the home on Windows,
+where the catalog line `opencode|AppData/Local/Temp/opencode` collects it. The
 instruction is about where the model writes temporary files, so the path shows in tool inputs;
 whether a session's `directory` can be it was not determined. The worktrees OpenCode makes for a
 project are scratch directories inside the data directory (`worktree/` under
@@ -219,7 +228,8 @@ table keeps prompt drafts and history and whose `state` table keeps what the ren
 [`packages/desktop/src/main/storage/schema.ts:3-29`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/desktop/src/main/storage/schema.ts#L3-L29)),
 and a `compile-cache` directory
 ([`configure.ts:42`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/desktop/src/main/lifecycle/configure.ts#L42)).
-No catalog line names it. Whether the app's sidecar server writes the same
+The catalog collects `ai.opencode.desktop*` under each of the three app data directories, from
+source alone. Whether the app's sidecar server writes the same
 `~/.local/share/opencode/opencode.db` was not determined.
 
 #### System-wide managed config
@@ -252,7 +262,8 @@ System-wide managed config, outside home: `/Library/Application Support/opencode
   [`:164-175`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/cli/src/services/service-config.ts#L164-L175),
   [`:177-186`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/cli/src/services/service-config.ts#L177-L186)).
   The registration copy `~/.local/state/opencode/service.json` carries the same `password`
-  ([Per-user storage](#per-user-storage)). Neither file matches a secret glob today. Remote access
+  ([Per-user storage](#per-user-storage)). Both are flagged by the secret globs
+  `.config/opencode/service*.json` and `.local/state/opencode/service*.json`. Remote access
   exposes the server through an OpenTunnel tunnel (a third-party tunnelling client library,
   `@opentunnel/client`) at `https://<route>.<tunnel hostname>`, turned on with
   `opencode service set remote true` or `opencode pair --remote`
@@ -277,8 +288,11 @@ Relative to the home:
 writes ([Data directory](#data-directory), [Confidence](#confidence)).
 
 The 2.0 line adds no excludable subtree under these directories; `worktree` and `snapshot` stay
-where the exclusions point. The desktop app's `compile-cache` directory
-([OpenCode desktop app](#opencode-desktop-app)) is low-value.
+where the exclusions point. The desktop app's V8 `compile-cache` directory
+([OpenCode desktop app](#opencode-desktop-app)) is excluded as
+`Library/Application Support/ai.opencode.desktop*/compile-cache`,
+`AppData/Roaming/ai.opencode.desktop*/compile-cache` and
+`.config/ai.opencode.desktop*/compile-cache`.
 
 ### Project-local files
 
@@ -374,10 +388,12 @@ source, and no local file records that the remote copy was deleted. What remains
 `prompt-history.jsonl`, the last 50 TUI prompts with no session, project or time; unsent prompts in
 `prompt-stash.jsonl`; a pinned session id in `session.json`; full tool outputs under `tool-output/`
 for seven days; and, for a 1.x share, the `creating share` and `removing share` lines in
-`log/opencode.log` ([Sync, relay and origin rows](#sync-relay-and-origin-rows)). The analyzer reads
-the legacy V1 tables, for a session `session_message` does not hold, and `opencode-next.db` as
-secondary sources, and does not read the `~/.local/state/opencode` files or the log; `tool-output/`
-is excluded from collection (see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+`log/opencode.log` ([Sync, relay and origin rows](#sync-relay-and-origin-rows)). An archived
+session keeps every row, with `time_archived` set. The analyzer reads the legacy V1 tables, for a
+session `session_message` does not hold, `opencode-next.db`, `prompt-history.jsonl` and
+`session.json` as secondary sources, and `prompt-stash.jsonl` as a primary record of unsent
+prompts; it does not read the log, and `tool-output/` is excluded from collection (see
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### Record schema
 
@@ -522,9 +538,9 @@ What the parser reads of them is under
 
 | Source | Holds | Survives | Joins on | Plan |
 | --- | --- | --- | --- | --- |
-| `~/.local/state/opencode/prompt-history.jsonl` ([`packages/tui/src/prompt/history.tsx:20-23`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L20-L23), [`:60-75`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L60-L75), [`:93-100`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L93-L100), [`:139`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L139)) | the last 50 TUI prompts, one JSON object per line, `{text, files, agents, skills, pasted, mode?}` with `mode` `normal` or `shell`; no session id, project or time | session delete, project removal; trimmed to 50 and rewritten at each start, dropping lines that do not parse | text only | not read; secondary when read, empty `timestamp_utc` |
-| `~/.local/state/opencode/prompt-stash.jsonl` ([`packages/tui/src/prompt/stash.tsx:9-14`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L9-L14), [`:40`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L40)) | up to 50 prompts set aside unsent, `{prompt, timestamp}` (epoch ms) | everything; a stashed prompt may never reach a transcript | none (text and time when it was later sent) | not read; primary for what it holds (unsent prompts), `system` rows |
-| `~/.local/state/opencode/session.json` ([`packages/tui/src/context/local.tsx:517-530`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/context/local.tsx#L517-L530)) | `{pinned: [<session id>...]}`, ids of sessions the user pinned | session delete (the id stays until the user unpins it) | session id | not read; secondary: a pinned id with no session left is a trace of a deleted session |
+| `~/.local/state/opencode/prompt-history.jsonl` ([`packages/tui/src/prompt/history.tsx:20-23`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L20-L23), [`:60-75`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L60-L75), [`:93-100`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L93-L100), [`:139`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L139)) | the last 50 TUI prompts, one JSON object per line, `{text, files, agents, skills, pasted, mode?}` with `mode` `normal` or `shell` (at `907b3bc` `{input, mode?, parts}`, [`history.tsx:9-12`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/tui/src/prompt/history.tsx#L9-L12)); no session id, project or time | session delete, project removal; trimmed to 50 and rewritten at each start, dropping lines that do not parse ([`:82-87`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/history.tsx#L82-L87)) | text only | read, secondary, empty `timestamp_utc` |
+| `~/.local/state/opencode/prompt-stash.jsonl` ([`packages/tui/src/prompt/stash.tsx:9-14`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L9-L14), [`:40`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/prompt/stash.tsx#L40)) | up to 50 prompts set aside unsent, `{prompt, timestamp}` (epoch ms), `prompt` a history entry (at `907b3bc` `{input, parts, timestamp}`, [`stash.tsx:9-13`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/tui/src/prompt/stash.tsx#L9-L13)) | everything; a stashed prompt may never reach a transcript | none (text and time when it was later sent) | read, primary for what it holds (unsent prompts), `system` rows |
+| `~/.local/state/opencode/session.json` ([`packages/tui/src/context/local.tsx:517-530`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/tui/src/context/local.tsx#L517-L530)) | `{pinned: [<session id>...]}`, ids of sessions the user pinned | session delete (the id stays until the user unpins it) | session id | read, secondary: a pinned id with no session left is a trace of a deleted session |
 | Legacy `session`, `message`, `part` tables in a database migrated to 2.0 ([Format versions](#format-versions)) | the 1.x transcript, copied into `session_message` by the migration | deletion of the session in 2.0, which removes only the `session_v2` row and what cascades from it | session id, message id (the copy keeps the V1 ids, [`v1-migration.bun.ts:353`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L353), [`:404`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L404)) | secondary: read only for a session `session_message` does not hold, its event rows marked `recovered` by the parser |
 | `~/.local/share/opencode/opencode-next.db` ([`packages/core/src/database/v1-migration.bun.ts:702-706`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L702-L706), [`:846`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/database/v1-migration.bun.ts#L846)) | a pre-release 2.0 database (`project`, `session`, `session_message`), imported read-only and left in place | everything after the import | session id | secondary (`secondary()`), so a session it shares with `opencode.db` is shown once |
 | `~/.local/share/opencode/tool-output/tool_<id>` ([`packages/core/src/tool-output.ts:13-18`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/tool-output.ts#L13-L18), [`:86-90`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/tool-output.ts#L86-L90)) | full text of a tool result the transcript cut at 2000 lines or 50 KiB, kept seven days | session delete within the seven days | the path in the transcript marker `[showing lines 1-<n> of <m>; full output saved to <file>]` | secondary; not collected (catalog exclusion) |
@@ -630,8 +646,12 @@ stored; what lands on disk is:
   message "The user declined this tool call" for a plain rejection
   ([`packages/core/src/session/runner/step.ts:207-215`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/runner/step.ts#L207-L215)),
   and `error.type` `permission.rejected` for a `deny` rule or a rejection with feedback
-  ([`packages/core/src/session/to-session-error.ts:61-62`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/to-session-error.ts#L61-L62)).
-  An approval leaves no per-call record in either version.
+  ([`packages/core/src/session/to-session-error.ts:61-62`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/session/to-session-error.ts#L61-L62)),
+  whose message is the rule's `reason` or `Permission denied: <permission>` for a rule and the
+  user's text for feedback
+  ([`packages/core/src/permission.ts:66-79`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/permission.ts#L66-L79)),
+  so the two cannot be told apart from the record. An approval leaves no per-call record in either
+  version.
 
 #### Event payloads in 2.0
 
@@ -721,7 +741,9 @@ What changes for the parser:
 service's per-share secret that authorises sync to and deletion of the public copy,
 [Share records](#share-records)), plus the legacy files `~/.local/share/opencode/auth.json`
 ([`auth/index.ts:10`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/auth/index.ts#L10),[`14-35`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/auth/index.ts#L14-L35))
-and `mcp-auth.json`. Tool `input` and `output` text can contain pasted tokens.
+and `mcp-auth.json`. On the 2.0 line a `credential` row whose `integration_id` is `gitlab` holds a
+GitLab OAuth token with the `api` scope, and one under `github-copilot` a GitHub token
+([Source host rows](#source-host-rows)). Tool `input` and `output` text can contain pasted tokens.
 
 ### Parser plan
 
@@ -753,18 +775,26 @@ the same way as `permission mode: agent=<name>` and `permission mode: agent=<old
 because an agent (`build`, `plan` or a custom one) is a mode that carries its own permission ruleset
 (the agent's `permission: PermissionV1.Ruleset`,
 [`packages/opencode/src/agent/agent.ts:44`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/agent/agent.ts#L44)).
-Both rows take the message's timestamp. The parser reads nothing else of the permission state
-([issue 98](https://github.com/seanthegeek/doubleagent/issues/98)): not the session's `permission`
-JSON, not the project's `sandboxes` array, and not the per-call outcomes and standing grants in
-[Permission records](#permission-records). Planned, not read today: per call, a tool result whose
-1.x `state.error` starts "The user rejected permission" or "The user has specified a rule which
-prevents you", or whose 2.0 `error.type` is `permission.rejected` or is `aborted` with "The user
-declined this tool call", gets `permission decision: rejected` (with ` feedback` or ` rule` as the
-text shows) after its `tool_result` row, joined on `tool_use_id`; no approval is recorded. Standing:
-one `permission setting: <action> <resource>=allow (from <database> permission, time_created)` row
-per `permission` table row at its `time_created`, `project_path` the project's `worktree`; and the
-session's `permission` rule list as `permission setting: session <action> <resource>=<effect>` rows
-at the session's `time_updated`. Not read today.
+Both rows take the message's timestamp.
+
+The per-call outcomes and standing state of [Permission records](#permission-records) are read
+since the source review of 2026-10-21, source-derived; not observed on any real install. Per call,
+after the `tool_result` row of a refused call and with its `tool_name`, `tool_use_id` and time:
+`permission decision: rejected` for the 1.x `state.error` "The user rejected permission to use this
+specific tool call." or the 2.0 `error.type` `aborted` with "The user declined this tool call";
+`permission decision: rejected with feedback` for the 1.x text followed by " with the following
+feedback: "; `permission decision: denied by rule` for the 1.x "The user has specified a rule which
+prevents you from using this specific tool call."; and `permission decision: rejected
+(permission.rejected)` for the 2.0 `error.type` `permission.rejected`, which covers both a rule and
+feedback. No approval is recorded. Standing: one `permission setting: <action> <resource>=allow
+(from <database> permission, time_created)` row per `permission` table row at its `time_created`,
+`project_path` the project's `worktree` and no session; and one `permission setting: session
+<permission> <pattern>=<effect> (from <database> <table>.permission, time_updated)` row per rule of
+a session's `permission` column (2.0 `{action, resource, effect}`, 1.x `{permission, pattern,
+action}`) at the session's `time_updated`, a value that is not a JSON array being a `parser:` row.
+The table's first shape, `permission(project_id, data)`, is skipped, since its `data` is not
+described here. The project's `sandboxes` array is not read
+([issue 98](https://github.com/seanthegeek/doubleagent/issues/98)).
 
 #### Model rows
 
@@ -789,8 +819,18 @@ of a migrated database (secondary to `session_message`), and
 tables (a session `session_message` does not hold, its event rows
 marked `recovered` "yes" by the parser, since both stores are one
 file) and `opencode-next.db` (`secondary()`, deduplicated against the
-database it was imported into); `has_secondary` is set. The three
-`~/.local/state/opencode` files are not read.
+database it was imported into); `has_secondary` is set.
+
+The three `~/.local/state/opencode` files are read since 2026-10-21, source-derived; not observed
+on any real install. `prompt-history.jsonl` is returned by `secondary()`: each line is a `user` row
+with an empty `timestamp_utc`, `session_id` and `project_path`, or for `mode` `shell` a `tool_use`
+row with tool `shell` and no id, which pairs on text with the transcript's command; the prompt is
+`text` on the 2.0 line and `input` at `907b3bc`. `prompt-stash.jsonl` gives one `system` row per
+line at its `timestamp`, `prompt stashed (unsent): <text> (from
+.local/state/opencode/prompt-stash.jsonl, timestamp)`, from `prompt.text` or the 1.x `input`.
+`session.json`, returned by `secondary()`, gives one `system` row per pinned id, `session pinned:
+<id> (from .local/state/opencode/session.json pinned, file mtime)`, with that `session_id` at the
+file's modification time, so a pinned session with no other row is a trace of a deleted one.
 The sources and their joins are under [Other records of use](#other-records-of-use).
 
 #### Sync, relay and origin rows
@@ -869,18 +909,22 @@ carries no source.
 
 #### Scratch directory rows
 
-A session whose directory is under
-`~/.local/share/opencode/worktree/` is already classed by the catalog
-rule; the parser could add `scratch directory: <directory> (worktree,
-from <database> worktree)` rows from the `worktree` table. The temp root
-is not collectable.
+A session whose directory is under `~/.local/share/opencode/worktree/` is already classed by the
+catalog rule. Since 2026-10-21, source-derived; not observed on any real install, each row of the
+2.0 `worktree` table, else of the deprecated `project_directory` table with `type`
+`git_worktree`, is a `system` row `scratch directory: <directory> (git worktree of <project
+worktree> strategy=<strategy>) (from <database> <table>, time_created)` at its `time_created`,
+with the directory as `project_path` and no session; a directory in both tables gives one row.
+The temp root ([Scratch directories](#scratch-directories)) is collected on Windows only and gives
+no row.
 
 #### Deletion rows
 
 No row marks a deletion; what a delete leaves is under
-[What survives a delete](#what-survives-a-delete). Planned: `time_archived` becomes a
-`session archived (from <database> session_v2, time_archived)` row; the parser does not show it
-today.
+[What survives a delete](#what-survives-a-delete). Since 2026-10-21, source-derived; not observed
+on any real install, a session with `time_archived` set is a `system` row `session archived (from
+<database> <table>, time_archived)` at that time, `<table>` being `session_v2` or `session`; an
+unarchived session has the column cleared and gets none.
 
 #### Bad-line rows
 
@@ -892,7 +936,9 @@ an empty timestamp and `source_line` the rowid; each part file of the
 JSON trees that does not decode is `parser: unparseable part <partID>
 (<reason>): <file text>`, `source_file` the part file. A message or
 session file that does not decode stays one whole-file `parser:`
-row.
+row. Each line of `prompt-history.jsonl` and `prompt-stash.jsonl` that does not decode is its own
+`parser: unparseable line (<reason>): <line>` row, read before OpenCode's next start drops it; a
+`session.json` that is not a JSON object is one `parser:` row.
 
 #### Fixtures
 
@@ -906,6 +952,16 @@ INSERT INTO part VALUES('prt_01','msg_01','ses_01',1760000001000,1760000001000,'
 INSERT INTO message VALUES('msg_02','ses_01',1760000002000,1760000005000,'{"role":"assistant","time":{"created":1760000002000,"completed":1760000005000},"parentID":"msg_01","modelID":"claude-sonnet-4","providerID":"anthropic","mode":"build","agent":"build","path":{"cwd":"/home/u/repo","root":"/home/u/repo"},"cost":0.01,"tokens":{"input":10,"output":5,"reasoning":0,"cache":{"read":0,"write":0}}}');
 INSERT INTO part VALUES('prt_02','msg_02','ses_01',1760000002000,1760000003000,'{"type":"tool","callID":"call_x1","tool":"bash","state":{"status":"completed","input":{"command":"ls"},"output":"a.txt","title":"ls","metadata":{},"time":{"start":1760000002500,"end":1760000003000}}}');
 INSERT INTO credential VALUES('cred_01','anthropic','key','my key','{"type":"key","key":"sk-ant-REDACT"}',NULL,NULL,1,1760000000000,1760000000000);
+INSERT INTO permission VALUES('per_01','proj_a1','bash','npm test',1760000003000,1760000003000);
+INSERT INTO worktree VALUES('proj_a1','/home/u/.local/share/opencode/worktree/proj_a/brave-otter','git',1760000004000);
+```
+
+State files on the 2.0 line, one line each:
+
+```json
+{"text":"list files","files":[],"agents":[],"skills":[],"pasted":[]}
+{"prompt":{"text":"draft: rotate the keys","files":[],"agents":[],"skills":[],"pasted":[]},"timestamp":1760000005000}
+{"pinned":["ses_01"]}
 ```
 
 #### Version drift
@@ -928,6 +984,43 @@ set; `project_path` stays the session's `directory`), `skill` is
 text, and a compaction row adds its `status` and error. A 2.0 tool
 error shows its `error.type` before the message (`[error] aborted The
 user declined this tool call`).
+
+#### Source host rows
+
+The agent connects no source-host account for repository access, caches no repository list and
+keeps no repository-bound remote conversation; it does store source-host tokens for two model
+providers. On the 2.0 line (`cb07c55`, the CLI, core, terminal UI and server packages grepped for
+`github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`, `pull request` and
+`clone`), signing in to the GitLab model provider (GitLab Duo) runs an OAuth flow with the `api`
+scope against the instance and stores the tokens as a `credential` row with `integration_id`
+`gitlab` and `metadata.instanceUrl`
+([`packages/core/src/plugin/provider/gitlab.ts:19`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/plugin/provider/gitlab.ts#L19),
+[`:30`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/plugin/provider/gitlab.ts#L30),
+[`:425-436`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/plugin/provider/gitlab.ts#L425-L436);
+[`packages/core/src/credential/sql.ts:5-14`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/credential/sql.ts#L5-L14)),
+a token that can reach that GitLab account's repositories though OpenCode uses it for inference;
+the GitHub Copilot provider's device flow asks only for `read:user` and stores the token the same
+way under `github-copilot`
+([`packages/core/src/plugin/provider/github-copilot.ts:49`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/plugin/provider/github-copilot.ts#L49),
+[`:85`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/plugin/provider/github-copilot.ts#L85),
+[`:123-135`](https://github.com/anomalyco/opencode/blob/cb07c555d4d1ca34430b7857b52f104c3d95e09e/packages/core/src/plugin/provider/github-copilot.ts#L123-L135)).
+Neither row names the account's login, and the database holding them is flagged as a secret
+whole ([Secrets](#secrets)). `packages/core/src/repository.ts` parses a repository reference for
+the `repos/` clones of [Data directory](#data-directory), with no account. On the 1.x line
+(`907b3bc`)
+`opencode github install` installs the `opencode-agent` GitHub App on a repository, checks the
+installation against `api.opencode.ai` and writes the workflow file `.github/workflows/opencode.yml`
+into the repository
+([`packages/opencode/src/cli/cmd/github.handler.ts:145`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/cli/cmd/github.handler.ts#L145),
+[`:284-327`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/cli/cmd/github.handler.ts#L284-L327),
+[`:337`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/cli/cmd/github.handler.ts#L337));
+`opencode github run` runs inside GitHub Actions, exchanges the runner's OIDC token for an app
+token held in memory and sets it in the runner checkout's git configuration
+([`:996-1019`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/cli/cmd/github.handler.ts#L996-L1019),
+[`:1036-1038`](https://github.com/sst/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/cli/cmd/github.handler.ts#L1036-L1038)).
+The installation and its grant are server-side, the token lives only on the CI runner, and the
+one trace on a workstation is the workflow file in the repository, a project file the catalog
+does not name. Since no file records a login, the parser yields no `source host:` row.
 
 ## Confidence
 

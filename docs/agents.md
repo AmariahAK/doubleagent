@@ -54,7 +54,7 @@ agent name in each row links to its subsection.
 | [`gemini-cli`](#gemini-cli) | parsed | source; fixture only | [research](../research/gemini-cli.md) |
 | [`goose`](#goose) | parsed | source; fixture only | [research](../research/goose.md) |
 | [`hermes`](#hermes) | parsed | source; fixture only | [research](../research/hermes.md); [issue 208](https://github.com/seanthegeek/doubleagent/issues/208); the nested `config.yaml` `approvals` settings are not parsed |
-| [`kilo-code`](#kilo-code) | parsed | source; fixture only | [research](../research/kilo-code.md) |
+| [`kilo-code`](#kilo-code) | parsed | source; fixture only | [research](../research/kilo-code.md); [issue 192](https://github.com/seanthegeek/doubleagent/issues/192); [issue 221](https://github.com/seanthegeek/doubleagent/issues/221); the session pull request links are not parsed yet |
 | [`kiro`](#kiro) | parsed | source; fixture only | [research](../research/kiro.md); [issue 212](https://github.com/seanthegeek/doubleagent/issues/212); Kiro CLI's own sessions and permission files wait for a real install |
 | [`langflow`](#langflow) | backlog | Source, platformdirs source; Desktop from docs only | [research](../research/langflow.md); [issue 141](https://github.com/seanthegeek/doubleagent/issues/141); Desktop's `database.db`; the server's `langflow.db` is not collected |
 | [`letta`](#letta) | parsed | source; fixture only | [research](../research/letta.md) |
@@ -67,7 +67,7 @@ agent name in each row links to its subsection.
 | [`ollama`](#ollama) | parsed | source; fixture only | [research](../research/ollama.md) |
 | [`open-interpreter`](#open-interpreter) | parsed | source; fixture only | [research](../research/open-interpreter.md); [issue 70](https://github.com/seanthegeek/doubleagent/issues/70); the legacy Python tool's `conversations/*.json` files are collected but not parsed yet |
 | [`openclaw`](#openclaw) | parsed | source; fixture only | [research](../research/openclaw.md) |
-| [`opencode`](#opencode) | parsed | source; fixture only | [research](../research/opencode.md); [issue 139](https://github.com/seanthegeek/doubleagent/issues/139) |
+| [`opencode`](#opencode) | parsed | source; fixture only | [research](../research/opencode.md); [issue 139](https://github.com/seanthegeek/doubleagent/issues/139); [issue 194](https://github.com/seanthegeek/doubleagent/issues/194); [issue 213](https://github.com/seanthegeek/doubleagent/issues/213); the desktop app's `drafts.sqlite` is not parsed yet |
 | [`openhands`](#openhands) | parsed | source; fixture only | [research](../research/openhands.md) |
 | [`pearai`](#pearai) | parsed | source; fixture only | [research](../research/pearai.md) |
 | [`pi`](#pi) | parsed | source; fixture only | [research](../research/pi.md) |
@@ -707,9 +707,14 @@ including the `session_share` table and `session.updated.1` events),
 the cloud session markers
 `.local/share/kilo/storage/session_share/<sessionID>.json` (one
 `session synced:` row each), and pre-migration VS Code tasks
-`<globalStorage>/kilocode.kilo-code/tasks/<id>/api_conversation_history.json`.
+`<globalStorage>/kilocode.kilo-code/tasks/<id>/api_conversation_history.json`;
+the terminal UI's `.local/state/kilo/prompt-history.jsonl` (secondary) and
+`prompt-stash.jsonl`; the `permission` key of the global config files in
+`.config/kilo`; the sandbox files under `.local/state/kilo-sandbox-policy`
+and `.local/state/kilo-sandbox-preference`; `.local/share/kilo/retention/state.json`;
+and the remote control lines of `.local/share/kilo/log/*.log`.
 
-Validated against: Source at [76bcfd4](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462), synthetic fixture.
+Validated against: Source at [76bcfd4](https://github.com/Kilo-Org/kilocode/commit/76bcfd40be616a72f4697b3041565f322245b462), synthetic fixture; the permission, past-use, remote control, scratch directory and retention rows from source at [87cc35c](https://github.com/Kilo-Org/kilocode/commit/87cc35ce6904465a0eed507a8c75c79185863a22), synthetic fixture; no real install.
 
 ### `kiro`
 
@@ -897,9 +902,13 @@ columns, WAL sidecars; in a 1.x database V1 `message`/`part`, V2
 the share `secret`), with `opencode-next.db`, the pre-release 2.0
 database, read as a secondary source; legacy JSON
 `storage/session/*/*.json` and `storage/message/*/*.json` with their
-`part/` files, and the older `project/<slug>/storage/session/` tree.
+`part/` files, and the older `project/<slug>/storage/session/` tree. In
+each database also the `permission`, `worktree` and `project_directory`
+tables and the session's `permission` and `time_archived` columns; and the
+terminal UI's `.local/state/opencode/prompt-history.jsonl` and
+`session.json` (both secondary) and `prompt-stash.jsonl`.
 
-Validated against: Source at [907b3bc](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c) for 1.x and at [cb07c55](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e) (CLI 2.0.32) for 2.0, synthetic fixture; no real install of either.
+Validated against: Source at [907b3bc](https://github.com/sst/opencode/commit/907b3bc518fa48e90e8ec24dd327d13eee71c36c) for 1.x and at [cb07c55](https://github.com/anomalyco/opencode/commit/cb07c555d4d1ca34430b7857b52f104c3d95e09e) (CLI 2.0.32) for 2.0, synthetic fixture; the permission, past-use, scratch directory and archive rows from source at the same two commits (source review of 2026-10-21), synthetic fixture; no real install of either.
 
 ### `openhands`
 

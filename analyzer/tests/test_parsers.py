@@ -7542,17 +7542,27 @@ from doubleagent.parsers.kilo_code import iter_json_array as kilo_iter_json_arra
 from doubleagent.parsers.opencode import OpenCodeParser
 from doubleagent.parsers.opencode import tool_summary as opencode_tool_summary
 from fixtures import (
+    KILO_LOG_NAME,
+    KILO_SANDBOX_DIR_HASH,
+    KILO_SANDBOX_SESSION_HASH,
     KILO_SESSION,
     KILO_TASK,
+    OPENCODE_ARCHIVED,
     OPENCODE_DELETED,
     OPENCODE_LEGACY_SESSION,
     OPENCODE_MIGRATED,
     OPENCODE_NEXT_DB_NAME,
     OPENCODE_NEXT_ONLY,
+    OPENCODE_PINNED_GONE,
     OPENCODE_SESSION,
+    OPENCODE_STATE_DB_NAME,
+    OPENCODE_STATE_MTIME,
     OPENCODE_V2_DB_NAME,
     OPENCODE_V2_ONLY,
     OPENCODE_V2_SESSION,
+    OPENCODE_WORKTREE,
+    build_kilo_state,
+    build_opencode_state,
 )
 
 
@@ -7956,6 +7966,7 @@ class OpenCodeTests(ParserBase):
                     "[error] aborted The user declined this tool call",
                     "",
                 ),
+                (OPENCODE_V2_ONLY, "system", "permission decision: rejected", ""),
                 (OPENCODE_V2_ONLY, "tool_use", "git status", ""),
                 (OPENCODE_V2_ONLY, "tool_result", "[exit 128] fatal: not a git repository", ""),
                 (OPENCODE_V2_ONLY, "system", "location switched: /srv/proj -> /srv/proj/web", ""),
@@ -7975,6 +7986,11 @@ class OpenCodeTests(ParserBase):
             ],
         )
         self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+        decision = next(r for r in rows if r.text == "permission decision: rejected")
+        self.assertEqual(
+            (decision.tool_name, decision.tool_use_id, decision.timestamp_utc),
+            ("edit", "call_n2", "2026-10-03T11:20:02.950Z"),
+        )
         shell = [r for r in rows if r.tool_use_id == "sh_01N"]
         self.assertEqual(
             [(r.tool_name, r.timestamp_utc) for r in shell],
@@ -8097,6 +8113,263 @@ class OpenCodeTests(ParserBase):
             [r.text for r in rows if r.text.startswith("parser:")],
             ["parser: unparseable record %d (message.data: not a JSON object): [1]" % rowid],
         )
+
+    # -- standing state, past use, scratch directories (issue 194) -------------------
+    STATE = ".local/state/opencode/"
+    STATE_DB = ".local/share/opencode/" + OPENCODE_STATE_DB_NAME
+
+    def with_state(self):
+        build_opencode_state(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_state_db_rows(self):
+        self.with_state()
+        rows = self.rows_for(OpenCodeParser(), self.STATE_DB)
+        db = OPENCODE_STATE_DB_NAME
+        self.assertEqual(
+            [(r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows[1:6]],
+            [
+                (
+                    OPENCODE_ARCHIVED,
+                    "/srv/proj",
+                    "2026-10-03T12:01:30.000Z",
+                    "session archived (from %s session_v2, time_archived)" % db,
+                ),
+                (
+                    OPENCODE_ARCHIVED,
+                    "/srv/proj",
+                    "2026-10-03T12:01:00.000Z",
+                    "permission setting: session bash git *=allow "
+                    "(from %s session_v2.permission, time_updated)" % db,
+                ),
+                (
+                    OPENCODE_ARCHIVED,
+                    "/srv/proj",
+                    "2026-10-03T12:01:00.000Z",
+                    "permission setting: session edit *.env=deny "
+                    "(from %s session_v2.permission, time_updated)" % db,
+                ),
+                (
+                    "",
+                    OPENCODE_WORKTREE,
+                    "2026-10-03T12:00:04.000Z",
+                    "scratch directory: %s (git worktree of /srv/proj strategy=git) "
+                    "(from %s worktree, time_created)" % (OPENCODE_WORKTREE, db),
+                ),
+                (
+                    "",
+                    "/srv/proj",
+                    "2026-10-03T12:00:03.000Z",
+                    "permission setting: bash npm test=allow (from %s permission, time_created)"
+                    % db,
+                ),
+            ],
+        )
+        self.assertTrue(all(r.turn_type == "system" for r in rows[:6]))
+        # A deny rule in 2.0: the result, then the decision on the call's id.
+        res, decision = rows[-2:]
+        self.assertEqual(res.text, "[error] permission.rejected Permission denied: edit")
+        self.assertEqual(
+            (decision.turn_type, decision.text, decision.tool_use_id, decision.timestamp_utc),
+            (
+                "system",
+                "permission decision: rejected (permission.rejected)",
+                "call_s1",
+                res.timestamp_utc,
+            ),
+        )
+
+    def test_bad_session_permission_is_reported(self):
+        import sqlite3
+
+        self.with_state()
+        con = sqlite3.connect(str(self.home / self.STATE_DB))
+        con.execute(
+            "UPDATE session_v2 SET permission = '{\"x\":' WHERE id = ?", (OPENCODE_ARCHIVED,)
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenCodeParser(), self.STATE_DB)
+        bad = [r for r in rows if r.text.startswith("parser:")]
+        self.assertEqual(
+            [(r.text, r.session_id) for r in bad],
+            [
+                (
+                    'parser: unparseable record 1 (session_v2.permission: not a JSON array): {"x":',
+                    OPENCODE_ARCHIVED,
+                )
+            ],
+        )
+        self.assertIn("permission decision: rejected (permission.rejected)", [r.text for r in rows])
+
+    def test_v1_permission_decisions(self):
+        # 1.x refusal texts in a tool part's `state.error` (packages/core/src/
+        # v1/permission.ts:7-25 at 907b3bc), each followed by its decision.
+        import sqlite3
+
+        texts = {
+            "call_r1": "The user rejected permission to use this specific tool call.",
+            "call_r2": "The user rejected permission to use this specific tool call with the "
+            "following feedback: use the staging host",
+            "call_r3": "The user has specified a rule which prevents you from using this specific "
+            'tool call. Here are some of the relevant rules [{"permission":"bash"}]',
+            "call_r4": "Tool execution aborted",
+        }
+        con = sqlite3.connect(str(self.home / self.DB))
+        for n, (call, err) in enumerate(texts.items()):
+            data = {
+                "type": "tool",
+                "callID": call,
+                "tool": "bash",
+                "state": {
+                    "status": "error",
+                    "input": {"command": "rm -rf build"},
+                    "error": err,
+                    "time": {"start": 1791018004000 + n, "end": 1791018004500 + n},
+                },
+            }
+            con.execute(
+                "INSERT INTO part VALUES (?, 'msg_02', ?, 1791018004000, 1791018004000, ?)",
+                ("prt_07%d" % n, OPENCODE_SESSION, json.dumps(data)),
+            )
+        con.commit()
+        con.close()
+        rows = self.rows_for(OpenCodeParser(), self.DB)
+        got = [
+            (r.tool_use_id, r.text)
+            for r in rows
+            if r.text.startswith("permission decision:") and r.tool_use_id
+        ]
+        self.assertEqual(
+            got,
+            [
+                ("call_r1", "permission decision: rejected"),
+                ("call_r2", "permission decision: rejected with feedback"),
+                ("call_r3", "permission decision: denied by rule"),
+            ],
+        )
+        for call, _ in got:
+            res = next(r for r in rows if r.tool_use_id == call and r.turn_type == "tool_result")
+            dec = next(r for r in rows if r.tool_use_id == call and r.turn_type == "system")
+            self.assertEqual(rows.index(dec), rows.index(res) + 1)
+            self.assertEqual(dec.timestamp_utc, res.timestamp_utc)
+
+    def test_prompt_history_is_secondary(self):
+        self.with_state()
+        p = OpenCodeParser()
+        rel = self.STATE + "prompt-history.jsonl"
+        self.assertTrue(p.secondary(self.artifact(rel)))
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [
+                (r.turn_type, r.tool_name, r.text, r.timestamp_utc, r.session_id, r.source_line)
+                for r in rows
+            ],
+            [
+                ("user", "", "list files", "", "", 1),
+                ("tool_use", "shell", "git status", "", "", 2),
+                ("user", "", "only the history kept this", "", "", 3),
+            ],
+        )
+
+    def test_prompt_history_truncated_line(self):
+        self.with_state()
+        path = self.home / self.STATE / "prompt-history.jsonl"
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write('\n{"text": "after the cut", "pasted": []}\n')
+        rows = self.rows_for(OpenCodeParser(), self.STATE + "prompt-history.jsonl")
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "list files",
+                "git status",
+                "only the history kept this",
+                "after the cut",
+                bad_line_text(),
+            ],
+        )
+        self.assertEqual((rows[-1].turn_type, rows[-1].source_line), ("system", 4))
+
+    def test_prompt_stash(self):
+        self.with_state()
+        p = OpenCodeParser()
+        rel = self.STATE + "prompt-stash.jsonl"
+        self.assertFalse(p.secondary(self.artifact(rel)))
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "2026-10-03T12:00:05.000Z",
+                    "prompt stashed (unsent): draft: rotate the keys (from %s, timestamp)" % rel,
+                ),
+                (
+                    "system",
+                    "2026-10-03T12:00:06.000Z",
+                    "prompt stashed (unsent): older stash (from %s, timestamp)" % rel,
+                ),
+            ],
+        )
+        path = self.home / rel
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write('\n{"input": "after the cut", "timestamp": 1791028810000}\n')
+        rows = self.rows_for(p, rel)
+        self.assertEqual(len(rows), 4)
+        self.assertIn("after the cut", rows[2].text)
+        self.assertEqual(rows[3].text, bad_line_text())
+
+    def test_pinned_sessions(self):
+        self.with_state()
+        p = OpenCodeParser()
+        rel = self.STATE + "session.json"
+        self.assertTrue(p.secondary(self.artifact(rel)))
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    sid,
+                    to_utc(OPENCODE_STATE_MTIME),
+                    "session pinned: %s (from %s pinned, file mtime)" % (sid, rel),
+                )
+                for sid in (OPENCODE_SESSION, OPENCODE_PINNED_GONE)
+            ],
+        )
+        (self.home / rel).write_text('{"pinned": [', encoding="utf-8")
+        rows = self.rows_for(p, rel)
+        self.assertEqual([r.text for r in rows], ["parser: %s is not a JSON object" % rel])
+
+    def test_state_noise_not_wanted(self):
+        self.with_state()
+        p = OpenCodeParser()
+        for name in ("kv.json", "service.json"):
+            self.assertFalse(p.wants(self.artifact(self.STATE + name)), name)
+        # Kilo Code's TUI has no pinned-session file.
+        self.assertFalse(
+            KiloCodeParser().pinned_rx.match(".local/state/kilo/session.json"), "kilo pinned"
+        )
+
+    def test_history_pairs_with_the_transcript(self):
+        import contextlib
+
+        self.with_state()
+        out = self.tmp / "out"
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.main(["timeline", str(self.tmp / "home"), "-o", str(out), "--agent", "opencode"])
+        timeline = read_jsonl(out / "timeline.jsonl")
+        hist = [r for r in timeline if r["source_file"].endswith("prompt-history.jsonl")]
+        # "list files" pairs with the 1.x transcript's prompt and the shell
+        # line "git status" with the 2.0 `shell` record's call, so both are
+        # dropped; the prompt no transcript holds is kept, as recovered.
+        self.assertEqual(
+            [(r["text"], r["recovered"]) for r in hist], [("only the history kept this", "yes")]
+        )
+        sessions = {r["session_id"] for r in read_jsonl(out / "sessions.jsonl")}
+        self.assertIn(OPENCODE_PINNED_GONE, sessions)
 
 
 class KiloCodeTests(ParserBase):
@@ -8259,6 +8532,238 @@ class KiloCodeTests(ParserBase):
         self.assertEqual(run("[1, 2"), ([1, 2], [(3, "array cut off after record 2", "")]))
         self.assertEqual(run('{"a":1}'), ([], [(1, "not a JSON array", "")]))
         self.assertEqual(run("[1] x"), ([1], [(2, "unexpected data after the array", "")]))
+
+    # -- standing state, past use, remote control, retention (issues 192, 221) -------
+    LOG = ".local/share/kilo/log/" + KILO_LOG_NAME
+    CONFIG = ".config/kilo/kilo.jsonc"
+    POLICY = ".local/state/kilo-sandbox-policy/%s/%s.json" % (
+        KILO_SANDBOX_SESSION_HASH,
+        KILO_SANDBOX_DIR_HASH,
+    )
+    PREFERENCE = ".local/state/kilo-sandbox-preference/%s.json" % KILO_SANDBOX_DIR_HASH
+    RETENTION = ".local/share/kilo/retention/state.json"
+    HISTORY = ".local/state/kilo/prompt-history.jsonl"
+
+    def with_state(self):
+        build_kilo_state(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_config_permission_rows(self):
+        self.with_state()
+        rows = self.rows_for(KiloCodeParser(), self.CONFIG)
+        src = "(from %s, file mtime)" % self.CONFIG
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                ("system", "", to_utc(KILO_SHARE_MTIME), "permission setting: %s %s" % (t, src))
+                for t in (
+                    "permission.bash.git status=allow",
+                    "permission.bash.rm *=deny",
+                    "permission.webfetch=ask",
+                )
+            ],
+        )
+        (self.home / self.CONFIG).write_text('{"permission": "allow"}', encoding="utf-8")
+        rows = self.rows_for(KiloCodeParser(), self.CONFIG)
+        self.assertEqual([r.text for r in rows], ["permission setting: permission=allow " + src])
+        (self.home / self.CONFIG).write_text('{"model": "x"}', encoding="utf-8")
+        self.assertEqual(self.rows_for(KiloCodeParser(), self.CONFIG), [])
+        (self.home / self.CONFIG).write_text('{"permission": {', encoding="utf-8")
+        rows = self.rows_for(KiloCodeParser(), self.CONFIG)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: %s could not be decoded" % self.CONFIG))
+
+    def test_sandbox_rows(self):
+        self.with_state()
+        rows = self.rows_for(KiloCodeParser(), self.POLICY)
+        src = "(from %s, file mtime)" % self.POLICY
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: sandbox.%s %s" % (t, src)
+                for t in (
+                    "enabled=true",
+                    "mode=proxy",
+                    'allowedHosts=["registry.npmjs.org"]',
+                    'writablePaths=["/srv/proj"]',
+                    "version=3",
+                )
+            ],
+        )
+        self.assertEqual(
+            {(r.session_id, r.timestamp_utc) for r in rows}, {("", to_utc(KILO_SHARE_MTIME))}
+        )
+        rows = self.rows_for(KiloCodeParser(), self.PREFERENCE)
+        self.assertEqual(
+            [r.text for r in rows],
+            ["permission setting: sandbox.enabled=false (from %s, file mtime)" % self.PREFERENCE],
+        )
+        (self.home / self.PREFERENCE).write_text("{", encoding="utf-8")
+        rows = self.rows_for(KiloCodeParser(), self.PREFERENCE)
+        self.assertEqual(
+            [r.text for r in rows], ["parser: %s is not true or false" % self.PREFERENCE]
+        )
+        (self.home / self.POLICY).write_text("[1]", encoding="utf-8")
+        rows = self.rows_for(KiloCodeParser(), self.POLICY)
+        self.assertEqual([r.text for r in rows], ["parser: %s is not a JSON object" % self.POLICY])
+
+    def test_retention_row(self):
+        self.with_state()
+        rows = self.rows_for(KiloCodeParser(), self.RETENTION)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "",
+                    "2026-10-03T12:00:00.000Z",
+                    "sessions deleted by retention: deleted=12 scanned=40 skippedActive=1 "
+                    "failed=0 durationMs=830 reclaimedBytes=4096 (from retention/state.json, at)",
+                )
+            ],
+        )
+        (self.home / self.RETENTION).write_text("[]", encoding="utf-8")
+        rows = self.rows_for(KiloCodeParser(), self.RETENTION)
+        self.assertEqual(
+            [r.text for r in rows], ["parser: retention/state.json is not a JSON object"]
+        )
+
+    def test_remote_control_rows(self):
+        self.with_state()
+        rows = self.rows_for(KiloCodeParser(), self.LOG)
+        src = "(from log/%s, " % KILO_LOG_NAME
+        self.assertEqual(
+            [(r.source_line, r.session_id, r.project_path, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    2,
+                    "",
+                    "",
+                    "2026-10-03T10:00:05.000Z",
+                    "remote control: connection enabled connected=true " + src + "line time)",
+                ),
+                (
+                    3,
+                    KILO_SESSION,
+                    "/srv/proj",
+                    "2026-10-03T10:00:09.250Z",
+                    "remote control: session started model=anthropic/claude-sonnet-4-5 "
+                    "directory=/srv/proj " + src + "startedAt)",
+                ),
+                (
+                    4,
+                    KILO_SESSION,
+                    "",
+                    "2026-10-03T10:05:00.000Z",
+                    "remote control: session ended reason=disabled durationMs=290750 "
+                    "startedAt=2026-10-03T10:00:09.250Z " + src + "line time)",
+                ),
+                (
+                    5,
+                    "",
+                    "",
+                    "2026-10-03T10:05:00.000Z",
+                    "remote control: connection disabled " + src + "line time)",
+                ),
+            ],
+        )
+        self.assertFalse(KiloCodeParser.records_relay or KiloCodeParser.records_origin)
+
+    def test_remote_control_line_without_fields(self):
+        self.with_state()
+        bad = "INFO  2026-10-03T10:06:00 +1ms service=kilo-sessions remote session started"
+        with open(self.home / self.LOG, "a", encoding="utf-8") as fh:
+            fh.write(bad + "\n")
+            fh.write(
+                "INFO  2026-10-03T10:07:00 +1ms service=kilo-sessions connected=false "
+                "remote connection enabled\n"
+            )
+        rows = self.rows_for(KiloCodeParser(), self.LOG)
+        self.assertEqual(len(rows), 6)
+        self.assertTrue(rows[4].text.startswith("remote control: connection enabled connected=f"))
+        self.assertEqual(
+            (rows[5].text, rows[5].source_line, rows[5].timestamp_utc),
+            (
+                "parser: unparseable line (remote session started without its fields): " + bad,
+                6,
+                "",
+            ),
+        )
+
+    def test_prompt_history_is_secondary(self):
+        self.with_state()
+        p = KiloCodeParser()
+        self.assertTrue(KiloCodeParser.has_secondary)
+        self.assertTrue(p.secondary(self.artifact(self.HISTORY)))
+        self.assertFalse(p.secondary(self.artifact(self.DB)))
+        rows = self.rows_for(p, self.HISTORY)
+        self.assertEqual(
+            [(r.turn_type, r.tool_name, r.text, r.timestamp_utc) for r in rows],
+            [("user", "", "fix the tests", ""), ("tool_use", "shell", "ls -la", "")],
+        )
+        path = self.home / self.HISTORY
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write('\n{"input": "after the cut", "parts": []}\n')
+        rows = self.rows_for(p, self.HISTORY)
+        self.assertEqual(
+            [r.text for r in rows], ["fix the tests", "ls -la", "after the cut", bad_line_text()]
+        )
+        rows = self.rows_for(p, ".local/state/kilo/prompt-stash.jsonl")
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "prompt stashed (unsent): stashed idea "
+                "(from .local/state/kilo/prompt-stash.jsonl, timestamp)"
+            ],
+        )
+
+    def test_v1_refusal_in_kilo_db(self):
+        # packages/core/src/v1/permission.ts:7-27 at 87cc35c: the error's
+        # message is the part's `state.error` (session/processor.ts:299-312).
+        import sqlite3
+
+        con = sqlite3.connect(str(self.home / self.DB))
+        data = {
+            "type": "tool",
+            "callID": "call_k9",
+            "tool": "bash",
+            "state": {
+                "status": "error",
+                "input": {"command": "rm -rf /srv/proj/build"},
+                "error": "The user rejected permission to use this specific tool call with the "
+                "following feedback: not that directory",
+                "time": {"start": 1791021603500, "end": 1791021603600},
+            },
+        }
+        con.execute(
+            "INSERT INTO part VALUES ('prt_01JAXZ','msg_01JAXA',?,1791021603500,1791021603500,?)",
+            (KILO_SESSION, json.dumps(data)),
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(KiloCodeParser(), self.DB)
+        dec = [r for r in rows if r.text.startswith("permission decision:")]
+        self.assertEqual(
+            [(r.text, r.tool_use_id, r.timestamp_utc) for r in dec],
+            [
+                (
+                    "permission decision: rejected with feedback",
+                    "call_k9",
+                    "2026-10-03T10:00:03.600Z",
+                )
+            ],
+        )
+
+    def test_state_files_wanted_by_kilo_only(self):
+        self.with_state()
+        for rel in (self.LOG, self.CONFIG, self.POLICY, self.PREFERENCE, self.RETENTION):
+            a = self.artifact(rel)
+            self.assertEqual(a.agent, "kilo-code", rel)
+            self.assertTrue(KiloCodeParser().wants(a), rel)
+            self.assertFalse(OpenCodeParser().wants(a), rel)
+        # Kilo's own auth file stays unwanted.
+        self.assertFalse(KiloCodeParser().wants(self.artifact(".local/share/kilo/auth.json")))
 
 
 from fixtures import (

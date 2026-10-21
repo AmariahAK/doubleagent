@@ -709,7 +709,11 @@ scratch directory when any of these holds:
    `copilot-cli` parser writes `scratch directory: <cwd> (working
    directory of a session the app pre-created and never prompted: no
    events.jsonl)` for a session directory that holds a `workspace.yaml`
-   with a `cwd` and no `events.jsonl`.
+   with a `cwd` and no `events.jsonl`. The `opencode` and `kilo-code`
+   parsers write `scratch directory: <directory> (git worktree of
+   <project> strategy=<strategy>) (from <database> worktree,
+   time_created)` for each worktree the agent made, from the `worktree`
+   or `project_directory` table.
 2. The catalog says so: the path is in or under a directory that a home
    entry of the bundled catalog names, in one of the input's homes. The
    path relative to the home is matched segment by segment against each
@@ -1251,6 +1255,48 @@ it, `<database>` being the file name (`opencode.db`, `kilo.db`). The
 <ingestPath> share <url> (from storage/session_share/<sessionID>.json,
 file mtime)` for each Kilo cloud session marker, at the file's
 modification time, `-` for an absent value.
+
+The `opencode` and `kilo-code` parsers write a `system` row
+`permission decision: rejected`, `permission decision: rejected with
+feedback`, `permission decision: denied by rule` or `permission
+decision: rejected (permission.rejected)` after the `tool_result` row of
+a tool call the user or a deny rule refused, with the call's `tool_name`,
+`tool_use_id` and result time; an approval leaves no record. After a
+database's session-start and sync rows they write `session archived
+(from <database> <table>, time_archived)` at the time a session was
+archived, `permission setting: session <permission> <pattern>=<effect>
+(from <database> <table>.permission, time_updated)` for each rule of a
+session's rule list, `scratch directory: <directory> (git worktree of
+<project> strategy=<strategy>) (from <database> worktree,
+time_created)` (or `project_directory`) for each worktree the agent
+made, with that directory as `project_path` and no session, and
+`permission setting: <action> <resource>=allow (from <database>
+permission, time_created)` for each saved "always" grant, with the
+project as `project_path`. From the terminal UI's state directory they
+read `prompt-history.jsonl`, a secondary source whose lines are `user`
+rows, or `tool_use` rows with tool `shell` for a shell command, with an
+empty `timestamp_utc`; `prompt-stash.jsonl`, one `prompt stashed
+(unsent): <text> (from <file>, timestamp)` row per prompt set aside; and,
+for OpenCode, `session.json`, one `session pinned: <id> (from <file>
+pinned, file mtime)` row per pinned session, which outlives a deleted
+session. The `kilo-code` parser also writes `permission setting:
+permission.<permission>.<pattern>=<action> (from <file>, file mtime)`
+(or `permission.<permission>=<action>`) for each rule of the
+`permission` key of a global config file in `.config/kilo`, where an
+"always" approval writes it; `permission setting: sandbox.<key>=<value>
+(from <file>, file mtime)` for each key of a sandbox policy file and
+`permission setting: sandbox.enabled=<value>` for a sandbox preference;
+`sessions deleted by retention: deleted=<n> scanned=<n>
+skippedActive=<n> failed=<n> durationMs=<n> (from retention/state.json,
+at)` for the last automatic deletion pass, with no session; and, from
+`log/<time>.log`, `remote control: connection enabled connected=<v>`,
+`remote control: connection disabled`, `remote control: session started
+model=<model> directory=<directory>` and `remote control: session ended
+reason=<reason> durationMs=<n> startedAt=<time>`, each ending `(from
+log/<file>, <time basis>)`, the session rows with the session's id.
+Remote control lets Kilo Cloud drive this host's sessions; it is not a
+sync, since the transcript stays in `kilo.db`. These rows are
+source-derived; no real install has shown them.
 
 The pi session reader (the `pi` parser, the little-coder sessions in
 pi's directory, which stay agent `pi`, and Letta's local-backend
@@ -2016,13 +2062,14 @@ beside its `session synced: server conversation` row.
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json`; `shell_history` (no timestamp or session: matches on text and project, and pairs with the `logs.json` copy of the command), `checkpoint-<tag>.json` from `/chat save` and `bug-report-history-<ms>.json` from `/bug` (no timestamp or session: match on text and project, tool rows on `tool_use_id`) in the same directory; each also under `.cache/.gemini` | `.gemini/tmp/<slug>/chats/*.jsonl` |
 | `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone); `.local/state/goose/logs/llm_request.<N>.jsonl` (`AppData/Roaming/Block/goose/data/logs/` on Windows; the last 10 provider calls, with no session or project: a 600-second window; streamed chunks of one message are assembled first; the `llm request` row has no twin and is always kept) | `.local/share/goose/sessions/sessions.db` |
 | `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full` before collector 1.18.0) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session); since 0.20.1 also `.hermes/.hermes_history` (no session or project: matches on text and time), `.hermes/cron/output/<job>/<time>.md` (no session: matches on text and time), `.hermes/response_store.db` (no timestamp per message: matches on text within the session) and the `trajectory_samples.jsonl` and `failed_trajectories.jsonl` files of a project (no timestamp per turn: matches on text within the project); all but the trajectory files also under `.hermes_<suffix>`, `AppData/Local/hermes`, `profiles/<name>/` and, since 0.19.0, the root of a Docker or Podman volume | `.hermes/state.db` |
+| `kilo-code` | `.local/state/kilo/prompt-history.jsonl` (no timestamp, session or project: matches on text alone) | `.local/share/kilo/kilo.db` |
 | `kiro` | `.aws/amazonq/.cli_bash_history`, the chat prompt history (no timestamp, session or project: matches on text alone); in each conversation, the checkpoint snapshots and the tangent-mode main history, read only for the turns the conversation no longer holds and paired by the parser itself | `data.sqlite3` `conversations` under `amazon-q/` or `kiro-cli/`, and `/save` exports |
 | `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
 | `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot*/history/cli_history` (no session or project: matches on text and time); when a `sessions.sqlite3` sits in the namespace directory, the namespace's `<key>.jsonl` files and their `jsonl-backup/` copies, which the database imported (since 0.19.0); a workspace's `cron/runs/*.json` and `triggers/runs/*.json` run records (tolerance 15 hours, as for the WebUI transcript: true UTC); `.nanobot*/sessions/<workspace-id>/.webui_session_index.json` (`system` rows only, which never pair) | `.nanobot*/sessions/<workspace-id>/sessions.sqlite3`, else `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
 | `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite`; `.openinterpreter/db-backups/<folder>/state_5.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
 | `openclaw` | `.openclaw/agents/<id>/sessions/` copies of a transcript: the published `*.jsonl.reset.*` / `*.jsonl.deleted.*` archive files, `*.checkpoint.<uuid>.jsonl` and `*.jsonl.pre-doctor-*-repair-*.bak` (each copy's session-start row names it and is kept) | `.openclaw/agents/<id>/agent/openclaw-agent.sqlite` (`transcript_events` and the `session_transcript_archives` blobs) and the legacy `sessions/<id>.jsonl` |
-| `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
+| `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0); `.local/state/opencode/prompt-history.jsonl` (no timestamp, session or project: matches on text alone); `.local/state/opencode/session.json` (its `session pinned:` rows are `system` rows and never pair) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
 | `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
