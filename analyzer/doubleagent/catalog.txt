@@ -1224,6 +1224,7 @@ AppData/Roaming/[Aa]ntigravity/plugin-secrets.json
 .qwen/extensions/*/.qwen-extension-git-credentials.json
 .qwen/channels/*-credentials.json
 .qwen/channels/weixin/account.json
+.qwen/sessions/*.json
 .codex/auth.json
 .codex/.credentials.json
 .codex/secrets/*

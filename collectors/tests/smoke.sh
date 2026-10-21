@@ -1355,6 +1355,16 @@ printf 'tmp\n' >"$B/AppData/Local/Temp/opencode/notes.txt"
 printf '{"enabled":true,"mode":"deny","version":1}\n' >"$K221/bb.json"
 printf 'false\n' >"$H/.local/state/kilo-sandbox-preference/bb.json"
 
+# 2026-10-21 Qwen Code session registry (#230)
+# Qwen Code writes ~/.qwen/sessions/<pid>.json (or <pid>-<8 hex>.json) per
+# running session, with ipcToken, the token that admits a connection to the
+# session's socket, so the directory is a secret glob. Checks follow the
+# default and --no-secrets runs below; the same files are in smoke.ps1 under
+# alice.
+mkdir -p "$H/.qwen/sessions"
+printf '{"sessionId":"x","ipcToken":"x"}\n' >"$H/.qwen/sessions/4242.json"
+printf '{"sessionId":"x","ipcToken":"x"}\n' >"$H/.qwen/sessions/4243-0123abcd.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1797,6 +1807,9 @@ check "#213 OpenCode desktop compile-cache excluded" "[ \"\$(status_of \"$D213/c
 check "#213 OpenCode Windows temp root collected" "row \"$B/AppData/Local/Temp/opencode/notes.txt\" | grep -q '\"agent\":\"opencode\".*\"status\":\"collected\"'"
 check "#221 Kilo sandbox policy and preference collected" "row \"$K221/bb.json\" | grep -q '\"agent\":\"kilo-code\".*\"status\":\"collected\"' && row \"$H/.local/state/kilo-sandbox-preference/bb.json\" | grep -q '\"agent\":\"kilo-code\".*\"status\":\"collected\"'"
 
+# 2026-10-21 Qwen Code session registry (#230)
+check "#230 Qwen Code session registry flagged secret" "row \"$H/.qwen/sessions/4242.json\" | grep -q '\"agent\":\"qwen-code\".*\"secret\":true,\"status\":\"collected\"' && row \"$H/.qwen/sessions/4243-0123abcd.json\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -1842,6 +1855,9 @@ check "#219 OpenClaw credentials skipped without secrets" "[ \"\$(status_of \"$O
 
 # 2026-10-21 OpenCode and Kilo Code source review (#213, #221)
 check "#213 OpenCode service.json skipped without secrets" "[ \"\$(status_of \"$H/.config/opencode/service.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.local/state/opencode/service-local.json\")\" = skipped_secret ]"
+
+# 2026-10-21 Qwen Code session registry (#230)
+check "#230 Qwen Code session registry skipped without secrets" "[ \"\$(status_of \"$H/.qwen/sessions/4242.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.qwen/sessions/4243-0123abcd.json\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"

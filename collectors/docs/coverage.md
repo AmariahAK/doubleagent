@@ -810,6 +810,11 @@ the full pattern list.
   and `connections.json`, which hold a remote gateway's token, encrypted
   with the operating system's key store or in plain text when that
   encryption is turned off.
+- **Running-session registries:** Qwen Code's `~/.qwen/sessions/<pid>.json`
+  (or `<pid>-<8 hex>.json`), one per running session, whose `ipcToken`
+  admits a connection to that session's socket; the file is deleted when
+  the session exits, so only a collection taken while one runs, or after a
+  crash, holds it.
 - **Databases flagged whole:** Kilo Code's `kilo.db` and OpenCode's
   `opencode.db`, which embed tokens in their `account` and `credential`
   tables.

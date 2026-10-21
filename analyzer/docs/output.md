@@ -1168,6 +1168,31 @@ the parts the record lacks left out: a `cron` or `notification` record
 (`cron (provenance=system): ...`), an `agent_message` or `agent_mention`
 another workspace agent wrote (`provenance=external_agent`), and a
 record of `goal_runtime` provenance; the user's own `agent_mention` stays a `user` row.
+A Qwen Code record's `executionContext` (on user prompts) feeds the same
+model tracking, as `model: <id> auth=<authType>` or `model: <old> ->
+<new> auth=<authType>` (the `auth=` part left out when not recorded),
+and an approval-mode tracking per session, `permission mode: <mode>` the
+first time and `permission mode: <old> -> <new>` on a change, before the
+record's own rows; a `session_approval_mode` record reads `permission
+mode: <mode>` or `permission mode: <old> -> <mode>`, followed by
+` prePlanMode=<mode>` and ` planExecutionMode=<mode>` when recorded. A
+`ui_telemetry` record of a tool call the user was asked about keeps its
+`ui_telemetry: <JSON>` row and is followed by `permission decision:
+<decision> (tool_call ui_telemetry)`, `<decision>` one of `accept`,
+`reject`, `modify` or `auto_accept` (an "allow always" answer), with the
+call's `tool_name` and `tool_use_id`. Each entry of `permissions.allow`,
+`permissions.ask` and `permissions.deny` in `.qwen/settings.json`, in
+the home or a project, is one row `permission setting:
+permissions.<list>=<rule> (from .qwen/settings.json, file mtime)`, and
+`tools.approvalMode` one row `permission setting:
+tools.approvalMode=<mode> (from .qwen/settings.json, file mtime)`, at the
+file's modification time with an empty `session_id` (`project_path` the
+project for a project's file). Each line of `.qwen/usage_record.jsonl`
+is one row `session usage: project <project> duration <ms>ms models
+<id>,... tools <tool>=<count>,... (from usage_record.jsonl, startTime)`,
+with `-` for an absent part, the record's `sessionId` and `project`, at
+its `startTime`; the line is written when a session ends, at `/clear`
+and before a session is deleted, so it can be all that is left of one.
 
 The `antigravity` parser writes `model: <id>` before the rows of a
 conversation's first step that the `gen_metadata` table names a model for
@@ -2159,7 +2184,7 @@ beside its `session synced: server conversation` row.
 | `pi` | `.pi/agent/pi-debug.log`, the last `/debug` snapshot of the open session's messages (no session or project; one hour: a message's own time is its start, the session entry's its end) | `.pi/agent/sessions/<cwd>/<time>_<id>.jsonl` |
 | `pearai` | the `PearAI` output channel log `<editor>/logs/<session>/window<N>/exthost/output_logging_<time>/<n>-PearAI.log` (no timestamp, session or project: matches on text alone; a prompt sent with context items carries them and never pairs); `.pearai/dev_data/chat.jsonl` (the rated replies, no timestamp: matches on text within the session) | `.pearai/sessions/<sessionId>.json` |
 | `openhands` | `.openhands/projects/<sha256 of cwd>/prompt_history.json`, the CLI's last 100 prompts per working directory (no conversation id: matches on text and time; `project_path` is the working directory of a conversation whose SHA-256 is the directory name) | `.openhands/conversations/<hex>/events/event-*.json` |
-| `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
+| `qwen-code` | `.qwen/tmp/<hash>/logs.json`; `.qwen/usage_record.jsonl` (per-session summaries, `system` rows that no transcript row repeats) | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
 | `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
 

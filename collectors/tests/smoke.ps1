@@ -1258,6 +1258,14 @@ Mk 'Users/alice/AppData/Local/Temp/opencode/notes.txt' "tmp`n"
 Mk "$k221/bb.json" "{`"enabled`":true,`"mode`":`"deny`",`"version`":1}`n"
 Mk 'Users/alice/.local/state/kilo-sandbox-preference/bb.json' "false`n"
 
+# 2026-10-21 Qwen Code session registry (#230)
+# Qwen Code writes ~/.qwen/sessions/<pid>.json (or <pid>-<8 hex>.json) per
+# running session, with ipcToken, the token that admits a connection to the
+# session's socket, so the directory is a secret glob. Checks follow the
+# default and -NoSecrets runs below; the same files are in smoke.sh.
+Mk 'Users/alice/.qwen/sessions/4242.json' "{`"sessionId`":`"x`",`"ipcToken`":`"x`"}`n"
+Mk 'Users/alice/.qwen/sessions/4243-0123abcd.json' "{`"sessionId`":`"x`",`"ipcToken`":`"x`"}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1867,6 +1875,9 @@ Check '#213 OpenCode desktop compile-cache excluded' { (StatusOf "$d213/compile-
 Check '#213 OpenCode Windows temp root collected' { Is113 'Users/alice/AppData/Local/Temp/opencode/notes.txt' 'opencode' $false }
 Check '#221 Kilo sandbox policy and preference collected' { (Is113 "$k221/bb.json" 'kilo-code' $false) -and (Is113 'Users/alice/.local/state/kilo-sandbox-preference/bb.json' 'kilo-code' $false) }
 
+# 2026-10-21 Qwen Code session registry (#230)
+Check '#230 Qwen Code session registry flagged secret' { (Is113 'Users/alice/.qwen/sessions/4242.json' 'qwen-code' $true) -and (Is113 'Users/alice/.qwen/sessions/4243-0123abcd.json' 'qwen-code' $true) }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -2090,6 +2101,9 @@ Check '#219 OpenClaw credentials skipped without secrets' { (StatusOf "$o219/exe
 
 # 2026-10-21 OpenCode and Kilo Code source review (#213, #221)
 Check '#213 OpenCode service.json skipped without secrets' { (StatusOf 'Users/alice/.config/opencode/service.json') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.local/state/opencode/service-local.json') -eq 'skipped_secret' }
+
+# 2026-10-21 Qwen Code session registry (#230)
+Check '#230 Qwen Code session registry skipped without secrets' { (StatusOf 'Users/alice/.qwen/sessions/4242.json') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.qwen/sessions/4243-0123abcd.json') -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }
