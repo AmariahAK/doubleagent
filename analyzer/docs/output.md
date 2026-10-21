@@ -1174,6 +1174,37 @@ transcript=<true|false> summary=<true|false> (from session entry
 pi.bug-report, entry timestamp)` when it was uploaded and `bug report
 exported: <id> path=<path> (from session entry pi.bug-report, entry
 timestamp)` when it was written to a zip, at the entry's time.
+The `pi` parser also writes `permission setting:
+defaultProjectTrust=<ask|always|never> (from .pi/agent/settings.json,
+file mtime)` when `.pi/agent/settings.json` sets that key, at the file's
+modification time with an empty `session_id`; `permission decision:
+denied (<reason>)` after the `tool_result` row of a call little-coder's
+permission gate refused (an error result reading `edit cancelled by
+user`, `command cancelled by user` or starting `shell whitelist:`), with
+the call's `tool_name` and `tool_use_id`; one `crash: <kind> <message>
+version=<version> sessionFile=<file> (from .pi/agent/crashes.json,
+record timestamp)` row per `.pi/agent/crashes.json` record, the stack on
+the lines after it, at the record's time, with the record's `cwd` as
+`project_path`, the id in its session file name as `session_id` and `-`
+for an absent value; and, for `.pi/agent/pi-debug.log`, one `debug
+snapshot: /debug wrote <N> message(s) of the open session, which the log
+does not name (from .pi/agent/pi-debug.log, Debug output at line)` row
+at the time the log was written, before the log's messages, which have
+no `session_id` or `project_path`. The `little-coder` parser reads the
+v0.0.x releases' `~/.little-coder`: each saved session starts with
+`session saved: little-coder v0.0.x session <id> turn_count=<n>
+input_tokens=<n> output_tokens=<n> (saved_at <saved_at>, host local
+time)`, and every row of the session carries `saved_at`, host local
+time written as if it were UTC, and an empty `project_path`; a refused
+call is followed by `permission decision: denied (Denied: user rejected
+this operation)`; each checkpoint snapshot is `little-coder v0.0.x
+checkpoint <id>: turn_count=<n> prompt=<prompt> files=<path> (backup
+<name>|did not exist); ... (created_at host local time)`; and
+`.little-coder/config.json` gives `session synced: gist <id>`, `session
+relayed: telegram chat <id>` and `permission setting:
+permission_mode=<mode>`, each ending `(from .little-coder/config.json,
+file mtime)`, at the file's modification time with an empty
+`session_id`.
 The `letta` parser writes `session synced: server conversation
 <conversation id> agent <agent id> server <server> (from
 .letta/transcripts path, first captured_at)` before the first row of
@@ -1547,11 +1578,13 @@ beside its `session synced: server conversation` row.
 | `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone) | `.local/share/goose/sessions/sessions.db` |
 | `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full`) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session), also under `.hermes_<suffix>`, `AppData/Local/hermes`, `profiles/<name>/` and, since 0.19.0, the root of a Docker or Podman volume | `.hermes/state.db` |
 | `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |
+| `little-coder` | the v0.0.x `.little-coder/sessions/history.json` and `sessions/mr_sessions/session_latest.json` (the same sessions under the same id and `saved_at`); `.little-coder/input_history.txt` (no timestamp, session or project: matches on text alone) | the v0.0.x `.little-coder/sessions/daily/<date>/session_*.json` and the `/save` files under `sessions/` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
 | `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot*/history/cli_history` (no session or project: matches on text and time); when a `sessions.sqlite3` sits in the namespace directory, the namespace's `<key>.jsonl` files and their `jsonl-backup/` copies, which the database imported (since 0.19.0) | `.nanobot*/sessions/<workspace-id>/sessions.sqlite3`, else `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
 | `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
 | `openclaw` | `.openclaw/agents/<id>/sessions/` copies of a transcript: the published `*.jsonl.reset.*` / `*.jsonl.deleted.*` archive files, `*.checkpoint.<uuid>.jsonl` and `*.jsonl.pre-doctor-*-repair-*.bak` (each copy's session-start row names it and is kept) | `.openclaw/agents/<id>/agent/openclaw-agent.sqlite` (`transcript_events` and the `session_transcript_archives` blobs) and the legacy `sessions/<id>.jsonl` |
 | `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
+| `pi` | `.pi/agent/pi-debug.log`, the last `/debug` snapshot of the open session's messages (no session or project; one hour: a message's own time is its start, the session entry's its end) | `.pi/agent/sessions/<cwd>/<time>_<id>.jsonl` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
 | `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |

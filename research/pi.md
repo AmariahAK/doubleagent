@@ -7,8 +7,8 @@ catalog agents reuse its storage and format: `little-coder`, a launcher that run
 writes into the same `~/.pi/agent` (see [little-coder.md](little-coder.md)), and Letta Code's
 local backend, which writes pi's session format with its own writer into its own directory (see
 [letta.md](letta.md)); [Wrapper attribution](#wrapper-attribution) says how to tell them apart.
-Catalog agent: `pi`. Parsed: the pi parser reads the session files, `trust.json` and the
-experimental session metadata.
+Catalog agent: `pi`. Parsed: the pi parser reads the session files, `trust.json`, the
+`defaultProjectTrust` setting, the debug and crash logs and the experimental session metadata.
 
 ## Source and evidence
 
@@ -29,6 +29,14 @@ the version little-coder pins, is cited. All claims from source.
 
 ### Source reviews
 
+- 2026-10-21: [earendil-works/pi](https://github.com/earendil-works/pi) at
+  [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
+  (coding-agent 1.3.0) and tag `v0.83.0`: the parser now reads `defaultProjectTrust`,
+  `pi-debug.log`, `crashes.json` and little-coder's permission-gate refusals, so
+  [Permission rows](#permission-rows) and
+  [Past-use rows and secondary sources](#past-use-rows-and-secondary-sources) say what it writes;
+  `pi-debug.log` turned out to exist at v0.83.0 too, and
+  [Source host rows](#source-host-rows) was added.
 - 2026-10-19: [earendil-works/pi](https://github.com/earendil-works/pi) at [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e), the head of
   `main` (coding-agent 1.3.0,
   [packages/coding-agent/package.json:3](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/package.json#L3)),
@@ -92,8 +100,9 @@ Under `~/.pi/agent`:
   [`extensions/mcp/oauth.ts:137-145`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/extensions/mcp/oauth.ts#L137-L145);
   [`extensions/mcp/index.ts:351`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/extensions/mcp/index.ts#L351)).
   Not present at v0.83.0.
-- `crashes.json`, the recent crashes, and `pi-debug.log`, written by `/debug`
-  ([Debug log and crash log](#debug-log-and-crash-log)). Neither is present at v0.83.0.
+- `crashes.json`, the recent crashes (not present at v0.83.0), and `pi-debug.log`, written by
+  `/debug` (present at v0.83.0 as well)
+  ([Debug log and crash log](#debug-log-and-crash-log)).
 - User resources: `extensions/`, `skills/`, `prompts/` (formerly `commands/`), `themes/`,
   `AGENTS.md`/`CLAUDE.md` global context, `SYSTEM.md`, `APPEND_SYSTEM.md`
   ([`core/resource-loader.ts:978-982`](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/resource-loader.ts#L978-L982),
@@ -267,8 +276,8 @@ What remains is `pi-debug.log`, whose last `/debug` snapshot can hold one sessio
 Whether the delete touches the exports a user wrote into project
 directories (`session-<time>.jsonl`, `pi-session-*.html`) is not
 stated. pi writes no deletion marker. The analyzer reads the session
-files and `trust.json`; `pi-debug.log` and `crashes.json` are planned as
-secondary sources and not read yet (see
+files, `trust.json`, `pi-debug.log` as a secondary source, whose messages it keeps when no session
+file holds them, and `crashes.json`, whose rows name a deleted session's file and directory (see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### Record schema
@@ -444,16 +453,29 @@ build from before the removal ran.
 ([config.ts:615-617](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/config.ts#L615-L617);
 at [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
 [config.ts:653-656](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/config.ts#L653-L656)),
-is rewritten by each `/debug`: the rendered screen lines, then `=== Agent messages (JSONL) ===`
-and the open session's messages, one JSON object per line, with no session id
+is rewritten by each `/debug`: a first line `Debug output at <ISO time>`, the terminal size, the
+rendered screen lines, then `=== Agent messages (JSONL) ===` and the open session's messages, one
+JSON object per line, with no session id
 ([modes/interactive/interactive-mode.ts:6959-6982](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L6959-L6982)),
-so it can hold a deleted session's turns.
+so it can hold a deleted session's turns. v0.83.0 writes the same file the same way
+([config.ts:563-565](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/config.ts#L563-L565),
+[interactive-mode.ts:5886-5910](https://github.com/earendil-works/pi/blob/845d6ff1f6643aba440341cce877ce1c43ebbc39/packages/coding-agent/src/modes/interactive/interactive-mode.ts#L5886-L5910)).
+Each line is the inner object of a session `message` entry ([Message roles](#message-roles)), with
+its own `timestamp` in Unix milliseconds and no entry `id` or `timestamp`. An assistant message's
+`timestamp` is set when its stream starts
+([packages/ai/src/api/anthropic-messages.ts:585-600](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/ai/src/api/anthropic-messages.ts#L585-L600)),
+while the session file appends the entry, with the append time, at `message_end`
+([core/agent-session.ts:1148-1166](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/agent-session.ts#L1148-L1166)),
+so the two times of one message differ by the length of the reply.
 
-`crashes.json` holds the last five crashes of the past seven days, each with its own `timestamp`,
-`message`, `stack`, `sessionFile` and `cwd`
+`crashes.json` is a JSON array of the last five crashes (a crash older than seven days is not
+announced), each with its own `timestamp`, `message`, `stack`, `sessionFile` and `cwd`
 ([core/crash-log.ts:6-23](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/src/core/crash-log.ts#L6-L23);
 at [`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
-[core/crash-log.ts:7-19](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/crash-log.ts#L7-L19)).
+[core/crash-log.ts:7-19](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/crash-log.ts#L7-L19)),
+where a record also has `version`, `kind` (`uncaught_exception` or `fatal_error`) and `notified`,
+and `stack` and `sessionFile` may be null
+([crash-log.ts:124-144](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/core/crash-log.ts#L124-L144)).
 
 #### Project trust
 
@@ -533,10 +555,18 @@ key, `permission setting: <path>=<value> (from .pi/agent/trust.json, file mtime)
 modification time. A file that is not a JSON object is one `system` row
 `parser: .pi/agent/trust.json is not a JSON object`.
 
-The other standing setting, `defaultProjectTrust` in `~/.pi/agent/settings.json`, is not read; it
-belongs beside the `trust.json` rows as `permission setting: defaultProjectTrust=<value> (from
-.pi/agent/settings.json, file mtime)`. pi records no per-call decision; an extension's block is an
-error `toolResult` with the extension's reason as its text ([Message roles](#message-roles)).
+The other standing setting, `defaultProjectTrust` in `~/.pi/agent/settings.json`
+([Project trust](#project-trust)), is one `system` row `permission setting:
+defaultProjectTrust=<value> (from .pi/agent/settings.json, file mtime)` at the file's modification
+time, with an empty `session_id`; no row when the key is absent, and no other key of the file is
+read. pi records no per-call decision; an extension's block is an error `toolResult` with the
+extension's reason as its text ([Message roles](#message-roles)). little-coder's permission gate is
+the one such extension whose texts are known
+([Permission gate in `little-coder.md`](little-coder.md#permission-gate)): an error `toolResult`
+whose text is `edit cancelled by user` or `command cancelled by user` or starts with
+`shell whitelist:` is followed by `permission decision: denied (<the text>)`, with the call's
+`tool_name` and `tool_use_id` and the result's time. Both rows are source-derived; not observed on
+any real install.
 
 #### Model rows
 
@@ -559,10 +589,22 @@ model yields none.
 
 #### Past-use rows and secondary sources
 
-`pi-debug.log` (secondary: the messages of one session,
-no session id, joined on text and the file's time) and
-`crashes.json` (secondary: `sessionFile` and `cwd` per crash, with
-its own `timestamp`) are not read ([Debug log and crash log](#debug-log-and-crash-log)).
+Both files of [Debug log and crash log](#debug-log-and-crash-log) are read on every run;
+source-derived; not observed on any real install.
+
+- `pi-debug.log`, secondary: one `system` row `debug snapshot: /debug wrote <N> message(s) of the
+  open session, which the log does not name (from .pi/agent/pi-debug.log, Debug output at line)`
+  at the time on its first line, then the lines after the marker through the session reader, each
+  at the message's own `timestamp`, with an empty `session_id` and `project_path`. A row the
+  session file also holds is dropped; the window is one hour, because an assistant message's own
+  time is its stream start and the entry's is its end. The screen lines before the marker are not
+  read.
+- `crashes.json`, primary, since it repeats no session event: one `system` row per record,
+  `crash: <kind> <message> version=<version> sessionFile=<sessionFile> (from
+  .pi/agent/crashes.json, record timestamp)` followed by the stack on the next lines, at the
+  record's `timestamp`, with `project_path` the `cwd` and `session_id` the id in the
+  `sessionFile` name; `-` for an absent value.
+
 pi keeps no prompt history file ([What survives a delete](#what-survives-a-delete)).
 
 When a file's `parentSession` parent is also in the collection, drop
@@ -680,6 +722,27 @@ this line is cut mid-wri
 
 The last line exercises the bad-line `system` row ([Bad lines](#bad-line-rows)).
 
+`pi-debug.log`, the screen lines shortened:
+
+```text
+Debug output at 2026-10-01T09:02:00.000Z
+Terminal: 120x40
+Total lines: 2
+
+=== All rendered lines with visible widths ===
+[0] (w=20) "fix the failing test"
+
+=== Agent messages (JSONL) ===
+{"role": "user", "content": "fix the failing test", "timestamp": 1790845201000}
+{"role": "user", "content": "a prompt whose session file was deleted", "timestamp": 1790845300000}
+```
+
+`crashes.json`:
+
+```json
+[{"timestamp": "2026-10-01T09:05:00.000Z", "version": "1.3.0", "kind": "uncaught_exception", "message": "Cannot read properties of undefined", "stack": "TypeError: ...", "sessionFile": "/home/alice/.pi/agent/sessions/--srv-proj--/2026-10-01T09-00-00-000Z_0199a1b2-7c3d-7e4f-8a5b-6c7d8e9f0a1b.jsonl", "cwd": "/srv/proj", "notified": true}]
+```
+
 #### Wrapper attribution
 
 The header names no producer, so attribution
@@ -704,6 +767,24 @@ rests on what the wrapper leaves:
   Share the pi parser, keep the agent from the catalog.
 - Otherwise `pi`. An SDK embedder or rebranded build is not
   distinguishable from the file alone.
+
+#### Source host rows
+
+The agent records no source-host integration. `/share` without Radius runs the user's own `gh`
+CLI, after `gh auth status`, to create a secret gist
+([session-share.ts:79-83](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/modes/interactive/session-share.ts#L79-L83),
+[182](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/coding-agent/src/modes/interactive/session-share.ts#L182)),
+so the GitHub token is `gh`'s and pi stores no account or token for it
+([Sync, relay and origin rows](#sync-relay-and-origin-rows)). The GitHub Copilot model provider's
+OAuth grant, scope `read:user`, is a model credential kept in `auth.json` as `{type, refresh,
+access, expires, enterpriseUrl}` with no login
+([packages/ai/src/auth/oauth/github-copilot.ts:215-218](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/ai/src/auth/oauth/github-copilot.ts#L215-L218),
+[341-347](https://github.com/earendil-works/pi/blob/5c1736f82d201d09664642ab0d88147da94b450e/packages/ai/src/auth/oauth/github-copilot.ts#L341-L347)), and the
+`git/<host>/<path>` package checkouts are installs ([Per-user storage](#per-user-storage)). A
+grep of `packages/coding-agent/src` and `packages/ai/src` at
+[`5c1736f`](https://github.com/earendil-works/pi/commit/5c1736f82d201d09664642ab0d88147da94b450e)
+for `github`, `gitlab`, `bitbucket`, `oauth`, `repositor`, `pull request` and `clone` finds no
+repository list and no repository-bound conversation.
 
 ## Confidence
 
