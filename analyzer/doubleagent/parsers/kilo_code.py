@@ -114,6 +114,7 @@ from pathlib import Path
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
+from . import gemini_cli  # module import: gemini_cli imports this module too
 from .base import (
     Options,
     compact_json,
@@ -124,7 +125,6 @@ from .base import (
     tail_text,
     text_of,
 )
-from . import gemini_cli  # module import: gemini_cli imports this module too
 from .opencode import OpenCodeParser, tool_summary
 
 TASK_RX = re.compile(

@@ -142,6 +142,7 @@ from urllib.parse import unquote
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
+from . import kilo_code  # module import: kilo_code imports this module too
 from .base import (
     Options,
     Parser,
@@ -154,7 +155,6 @@ from .base import (
     track_change,
 )
 from .codex import load_toml
-from . import kilo_code  # module import: kilo_code imports this module too
 
 SESSION_RX = re.compile(
     r"^(?P<base>(?:\.cache/)?\.gemini)/tmp/(?P<slug>[^/]+)/chats/(?:.*/)?[^/]+\.jsonl?$"

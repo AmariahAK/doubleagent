@@ -20823,7 +20823,6 @@ class HasSecondaryTests(ParserBase):
 
     def test_has_secondary_matches_fixture(self):
         from doubleagent.parsers import ALL
-
         from fixtures import CODY_LEGACY_REL, CODY_LEGACY_XML, build_kilo_state, build_twinny_415
 
         # Secondary fixtures that build_home does not write: Kilo's terminal
