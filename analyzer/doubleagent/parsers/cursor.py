@@ -176,8 +176,9 @@ install has shown them. The IDE's paths are under `<ide>`, which is
     at `createdAt`, since the vendor holds the conversation, so
     `records_sync` is set; `model: <modelName>` (with `
     requested=<modelId>` when the two differ) at `createdAt`; `source host:
-    github.com <owner>/<repo> (cloud agent)` at `createdAt` when `repoUrl`
-    starts `github.com/`; and `cloud agent: <name> repo=<repoUrl>
+    github.com <owner>/<repo> (cloud agent)` at `createdAt` when the host
+    of `repoUrl` (parsed, with or without a scheme) is `github.com`; and
+    `cloud agent: <name> repo=<repoUrl>
     status=<status> workflowStatus=<workflowStatus> archived=<isArchived>
     killed=<isKilled> vmStarted=<hasStartedVm> (from state.vscdb
     cloudAgentRepository.agents, rowUpdatedAtMs)` at `rowUpdatedAtMs`.
@@ -1128,8 +1129,9 @@ class CursorParser(Parser):
         if model:
             extra = " requested=" + requested if requested and requested != model else ""
             yield row("model: " + model + extra, created)
-        if repo.startswith("github.com/"):
-            yield row("source host: github.com %s (cloud agent)" % repo[11:], created)
+        github_repo = github_repository(repo)
+        if github_repo:
+            yield row("source host: github.com %s (cloud agent)" % github_repo, created)
         yield row(cloud_text(agent), agent.get("rowUpdatedAtMs") or created)
 
     def _mcp_auth(
@@ -1442,6 +1444,18 @@ def fts_bodies(con: sqlite3.Connection) -> dict:
     if not {"id", "c1"} <= have:
         return {}
     return {r[0]: r[1] for r in con.execute("select id, c1 from conversation_fts_content")}
+
+
+def github_repository(url: str) -> str:
+    """`<owner>/<repo>` when the host of `url` is `github.com`, else `""`.
+    Cursor writes `repoUrl` without a scheme (`github.com/<owner>/<repo>`),
+    so a scheme-less value is parsed as a network path; the host is
+    compared after parsing, never as a prefix of the string, so a path or
+    a longer host that merely contains `github.com` does not match."""
+    parsed = urlparse(url if "://" in url else "//" + url)
+    if parsed.hostname != "github.com":
+        return ""
+    return parsed.path.strip("/")
 
 
 def cloud_text(agent: dict) -> str:
