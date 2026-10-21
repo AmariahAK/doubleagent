@@ -1084,6 +1084,21 @@ $u236 = 'Users/alice/AppData/Roaming/Cursor/update-supervisor/win32/0000'
 Mk "$u236/inno_updater.exe" "binary`n"
 Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
 Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
+# 2026-10-21 OpenHands Agent Canvas credentials and workspaces (#218)
+# Agent Canvas (OpenHands/OpenHands 8d39305, scripts/mars-credentials.mjs)
+# keeps its DigitalOcean connections in mars-credentials.json in the Electron
+# user data directory, and Canvas-in-Docker unpacks automation runs under
+# ~/.openhands/workspaces (docker/entrypoint.sh), excluded like
+# agent-canvas/workspaces; workspaces.json beside it stays collected. Checks
+# follow the default run below; the same files are in smoke.sh under alice
+# and bob.
+$m218 = @(
+  'Users/alice/AppData/Roaming/OpenHands Agent Canvas/mars-credentials.json',
+  'Users/alice/Library/Application Support/OpenHands Agent Canvas/mars-credentials.json',
+  'Users/alice/.config/OpenHands Agent Canvas/mars-credentials.json'
+)
+foreach ($f218 in $m218) { Mk $f218 "{`"version`":1,`"connections`":[]}`n" }
+Mk 'Users/alice/.openhands/workspaces/run1/f' "x`n"
 
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
@@ -1626,6 +1641,15 @@ Check '#236 Cursor plugin cache excluded' { (StatusOf "$p236/cache") -eq 'skippe
 Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
 Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
 Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
+# 2026-10-21 OpenHands Agent Canvas credentials and workspaces (#218)
+Check '#218 OpenHands Agent Canvas mars-credentials.json flagged secret' {
+  @($m218 | Where-Object {
+      $r = Row $_
+      -not ($r -and $r.agent -eq 'openhands' -and $r.secret -eq $true -and $r.status -eq 'collected')
+    }).Count -eq 0
+}
+Check '#218 OpenHands automation workspaces excluded' { (StatusOf 'Users/alice/.openhands/workspaces') -eq 'skipped_excluded' -and -not (Row 'Users/alice/.openhands/workspaces/run1/f') }
+Check '#218 OpenHands workspaces.json beside the excluded workspaces collected' { (StatusOf 'Users/alice/.openhands/workspaces.json') -eq 'collected' }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

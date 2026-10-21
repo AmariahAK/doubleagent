@@ -1052,6 +1052,7 @@ AppData/Local/open-interpreter/open-interpreter/models
 .openhands/cache
 .openhands/agent-canvas/workspaces
 .openhands/agent-canvas/tmux
+.openhands/workspaces
 .pi/agent/bin
 .pi/agent/tools/fd*
 .pi/agent/tools/rg*
@@ -1501,6 +1502,9 @@ AppData/Local/Open Interpreter*/Open Interpreter*/config.yaml
 .openhands/mcp.json
 .openhands/.jwt_secret
 .openhands/.keys
+Library/Application Support/OpenHands Agent Canvas/mars-credentials.json
+.config/OpenHands Agent Canvas/mars-credentials.json
+AppData/Roaming/OpenHands Agent Canvas/mars-credentials.json
 .pi/agent/auth.json
 .pi/agent/auth.json.*
 .pi/agent/mcp-auth.json
