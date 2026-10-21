@@ -1085,6 +1085,14 @@ Mk "$u236/inno_updater.exe" "binary`n"
 Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
 Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
 
+# 2026-10-21 Qwen Code session registry (#230)
+# Qwen Code writes ~/.qwen/sessions/<pid>.json (or <pid>-<8 hex>.json) per
+# running session, with ipcToken, the token that admits a connection to the
+# session's socket, so the directory is a secret glob. Checks follow the
+# default and -NoSecrets runs below; the same files are in smoke.sh.
+Mk 'Users/alice/.qwen/sessions/4242.json' "{`"sessionId`":`"x`",`"ipcToken`":`"x`"}`n"
+Mk 'Users/alice/.qwen/sessions/4243-0123abcd.json' "{`"sessionId`":`"x`",`"ipcToken`":`"x`"}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1626,6 +1634,8 @@ Check '#236 Cursor plugin cache excluded' { (StatusOf "$p236/cache") -eq 'skippe
 Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
 Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
 Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
+# 2026-10-21 Qwen Code session registry (#230)
+Check '#230 Qwen Code session registry flagged secret' { (Is113 'Users/alice/.qwen/sessions/4242.json' 'qwen-code' $true) -and (Is113 'Users/alice/.qwen/sessions/4243-0123abcd.json' 'qwen-code' $true) }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
@@ -1832,6 +1842,8 @@ Check '#153 Qwen Code channel credentials skipped without secrets' { (StatusOf '
 Check '#153 Qwen Code channel routing files kept without secrets' { (StatusOf 'Users/alice/.qwen/channels/sessions.json') -eq 'collected' -and (StatusOf 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json') -eq 'collected' }
 # 2026-10-18 Codex shell snapshots (#160)
 Check '#160 Codex shell snapshot skipped without secrets' { (StatusOf $s160) -eq 'skipped_secret' }
+# 2026-10-21 Qwen Code session registry (#230)
+Check '#230 Qwen Code session registry skipped without secrets' { (StatusOf 'Users/alice/.qwen/sessions/4242.json') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.qwen/sessions/4243-0123abcd.json') -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }

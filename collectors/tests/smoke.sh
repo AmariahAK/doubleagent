@@ -1158,6 +1158,16 @@ printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
 
+# 2026-10-21 Qwen Code session registry (#230)
+# Qwen Code writes ~/.qwen/sessions/<pid>.json (or <pid>-<8 hex>.json) per
+# running session, with ipcToken, the token that admits a connection to the
+# session's socket, so the directory is a secret glob. Checks follow the
+# default and --no-secrets runs below; the same files are in smoke.ps1 under
+# alice.
+mkdir -p "$H/.qwen/sessions"
+printf '{"sessionId":"x","ipcToken":"x"}\n' >"$H/.qwen/sessions/4242.json"
+printf '{"sessionId":"x","ipcToken":"x"}\n' >"$H/.qwen/sessions/4243-0123abcd.json"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1540,6 +1550,8 @@ check "#236 Cursor plugin cache excluded" "[ \"\$(status_of \"$P236/cache\")\" =
 check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+# 2026-10-21 Qwen Code session registry (#230)
+check "#230 Qwen Code session registry flagged secret" "row \"$H/.qwen/sessions/4242.json\" | grep -q '\"agent\":\"qwen-code\".*\"secret\":true,\"status\":\"collected\"' && row \"$H/.qwen/sessions/4243-0123abcd.json\" | grep -q '\"secret\":true,\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
@@ -1567,6 +1579,8 @@ check "#153 Qwen Code channel credentials skipped without secrets" "[ \"\$(statu
 check "#153 Qwen Code channel routing files kept without secrets" "[ \"\$(status_of \"$H/.qwen/channels/sessions.json\")\" = collected ] && [ \"\$(status_of \"$H/.qwen/channels/daemon/0123abcd/routes.json\")\" = collected ]"
 # 2026-10-18 Codex shell snapshots (#160)
 check "#160 Codex shell snapshot skipped without secrets" "[ \"\$(status_of \"$S160\")\" = skipped_secret ]"
+# 2026-10-21 Qwen Code session registry (#230)
+check "#230 Qwen Code session registry skipped without secrets" "[ \"\$(status_of \"$H/.qwen/sessions/4242.json\")\" = skipped_secret ] && [ \"\$(status_of \"$H/.qwen/sessions/4243-0123abcd.json\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"

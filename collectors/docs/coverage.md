@@ -723,6 +723,11 @@ the full pattern list.
   `claude_desktop_config.json`, Kiro powers' `mcp.json`.
 - **Electron `Local State` files** that hold the key for encrypted token
   caches.
+- **Running-session registries:** Qwen Code's `~/.qwen/sessions/<pid>.json`
+  (or `<pid>-<8 hex>.json`), one per running session, whose `ipcToken`
+  admits a connection to that session's socket; the file is deleted when
+  the session exits, so only a collection taken while one runs, or after a
+  crash, holds it.
 - **Databases flagged whole:** Kilo Code's `kilo.db` and OpenCode's
   `opencode.db`, which embed tokens in their `account` and `credential`
   tables.
