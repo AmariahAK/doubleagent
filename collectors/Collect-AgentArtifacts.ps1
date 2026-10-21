@@ -1514,6 +1514,7 @@ AppData/Roaming/Zed/global_settings.json
 .twinny/node/identity.json
 .twinny/server/license
 .twinny/server/plugins/*/settings.json
+.twinny/server/plugins/*/repos.json
 .tabby/config.toml
 .tabby-client/agent/config.toml
 .openinterpreter/auth.json

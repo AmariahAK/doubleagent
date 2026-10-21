@@ -1171,6 +1171,11 @@ mkdir -p "$T215/rjmacarthy.twinny/agent-changes"
 printf '{"id":"c1","root":"/srv/twinproj","createdAt":1,"files":[]}\n' \
   >"$T215/rjmacarthy.twinny/agent-changes/c1.json"
 printf '{"folder":"file:///srv/twinproj"}\n' >"$T215/workspace.json"
+# The twinny-server forge plugins (GitHub, GitLab, Gitea, Bitbucket) keep
+# their saved access tokens beside the watched repositories in
+# plugins/<id>/repos.json, flagged secret.
+mkdir -p "$H/.twinny/server/plugins/github"
+printf '{"version":1,"repos":[],"tokens":[]}\n' >"$H/.twinny/server/plugins/github/repos.json"
 
 run() { # run NAME ARGS...
   _n=$1; shift
@@ -1558,6 +1563,7 @@ check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-r
 # 2026-10-21 Twinny workspace storage (#215)
 check "#215 twinny workspaceStorage agent-changes attributed to twinny" "row \"$T215/rjmacarthy.twinny/agent-changes/c1.json\" | grep -q '\"agent\":\"twinny\".*\"status\":\"collected\"'"
 check "#215 twinny workspaceStorage neighbour stays vscode" "row \"$T215/workspace.json\" | grep -q '\"agent\":\"vscode\".*\"status\":\"collected\"'"
+check "#215 twinny-server forge repos.json flagged secret" "row \"$H/.twinny/server/plugins/github/repos.json\" | grep -q '\"agent\":\"twinny\".*\"secret\":true,\"status\":\"collected\"'"
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"

@@ -1096,6 +1096,10 @@ Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
 $t215 = 'Users/alice/AppData/Roaming/Code/User/workspaceStorage/ws215'
 Mk "$t215/rjmacarthy.twinny/agent-changes/c1.json" "{`"id`":`"c1`",`"root`":`"C:\\twinproj`",`"createdAt`":1,`"files`":[]}`n"
 Mk "$t215/workspace.json" "{`"folder`":`"file:///c%3A/twinproj`"}`n"
+# The twinny-server forge plugins (GitHub, GitLab, Gitea, Bitbucket) keep
+# their saved access tokens beside the watched repositories in
+# plugins/<id>/repos.json, flagged secret.
+Mk 'Users/alice/.twinny/server/plugins/github/repos.json' "{`"version`":1,`"repos`":[],`"tokens`":[]}`n"
 
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
@@ -1642,6 +1646,7 @@ Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-
 # 2026-10-21 Twinny workspace storage (#215)
 Check '#215 twinny workspaceStorage agent-changes attributed to twinny' { $r = Row "$t215/rjmacarthy.twinny/agent-changes/c1.json"; $r -and $r.agent -eq 'twinny' -and $r.status -eq 'collected' }
 Check '#215 twinny workspaceStorage neighbour stays vscode' { $r = Row "$t215/workspace.json"; $r -and $r.agent -eq 'vscode' -and $r.status -eq 'collected' }
+Check '#215 twinny-server forge repos.json flagged secret' { $r = Row 'Users/alice/.twinny/server/plugins/github/repos.json'; $r -and $r.agent -eq 'twinny' -and $r.status -eq 'collected' -and $r.secret -eq $true }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
