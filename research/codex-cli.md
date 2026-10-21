@@ -168,6 +168,15 @@ fact found or changed after `3e23877` ([Source reviews](#source-reviews)).
 
 ### Source reviews
 
+- 2026-10-21: [openai/codex](https://github.com/openai/codex) at
+  [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857),
+  the commit of the 2026-10-19 review; source only. The parser now reads the standing grants, the
+  `PatchApproval` log lines, the `guardian_review_feedback` records, the `thread_goal_updated`
+  events, the memory rollout summaries and the `db-backups/` copies of `state_5.sqlite`, and
+  project discovery reads `archived_sessions/` and skips the thread worktrees; the review corrected
+  the `thread_goal_updated` key names to camelCase, located the network policy in
+  `permission_profile` ([Format versions](#format-versions)) and added the
+  [Source host rows](#source-host-rows).
 - 2026-10-19: [openai/codex](https://github.com/openai/codex) at
   [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857), the
   head of `main` that day, diffed file by file against
@@ -298,11 +307,12 @@ Inside `$CODEX_HOME`:
   `[desktop] worktree-auto-cleanup-enabled`, on by default, lets Codex remove them
   ([settings.rs:62-70](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/settings.rs#L62-L70)).
   The default location is under the `.codex/worktrees` exclusion, so its files are not collected.
-  Project discovery drops only a rollout `cwd` under `Documents/Codex`
-  (`find_cli_session_projects`), so a thread that ran in a worktree has that worktree discovered as
-  a project and its project files collected, and the same holds for a configured root outside the
-  home. The analyzer classes a worktree under `.codex` as a scratch directory and one under a
-  configured root as a project. The thread that owns a worktree is in `codex-thread.json`
+  Project discovery drops a rollout `cwd` under `<home>/.codex/worktrees` as it drops one under
+  `Documents/Codex` (`find_cli_session_projects`, collector 1.18.0,
+  [issue 222](https://github.com/seanthegeek/doubleagent/issues/222)); a thread that ran under a
+  configured root outside the home still has that worktree discovered as a project and its project
+  files collected. The analyzer classes a worktree under `.codex` as a scratch directory and one
+  under a configured root as a project. The thread that owns a worktree is in `codex-thread.json`
   (`version`, `ownerThreadId`) inside the source repository's per-worktree git directory
   ([worktree/src/metadata.rs:19-27](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/metadata.rs#L19-L27),
   [88-91](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/worktree/src/metadata.rs#L88-L91)),
@@ -638,7 +648,9 @@ sizes only.
   and removes it when the command finishes
   ([`cmd/launch/codex_app.go:1480-1495`](https://github.com/ollama/ollama/blob/678722224b3d8c2a024a4fa5f530d83ce34db120/cmd/launch/codex_app.go#L1480-L1495)).
   A crash leaves that copy of the Codex credential in the temp directory, which no catalog line
-  covers; see [Per-user storage in `ollama.md`](ollama.md#per-user-storage).
+  covers; see [Per-user storage in `ollama.md`](ollama.md#per-user-storage), and
+  [Credentials in `collectors/docs/coverage.md`](../collectors/docs/coverage.md#credentials), which
+  names it as a manual step.
 
 At `4e7b9e2` no new credential file was found: the quoted file names ending `.age`, `.json`,
 `.lock`, `.toml` or `.env` in `codex-rs/login`, `codex-rs/secrets`, `codex-rs/rmcp-client` and
@@ -693,11 +705,15 @@ No per-project database.
 - First line of every rollout: `SessionMeta` with `cwd: PathBuf`, `timestamp`, `id`, `originator`,
   `cli_version`, `source`, `runtime_workspace_roots`
   ([protocol/src/protocol.rs:3123-3153](https://github.com/openai/codex/blob/3e238776e857eccd3bde6bff3026e2e9798f6524/codex-rs/protocol/src/protocol.rs#L3123-L3153)).
-  Compressed rollouts need zstd before grep. Project discovery reads it and drops a `cwd` that is
+  Compressed rollouts need zstd before grep. Project discovery reads it in `sessions/` and, from
+  collector 1.18.0, in `archived_sessions/`, where an archived thread's rollout moves
+  ([What survives a delete](#what-survives-a-delete)). It drops a `cwd` that is
   `<home>/Documents/Codex` or lies under it, the desktop app's projectless output directories,
-  which the `codex-cli|Documents/Codex` catalog line collects instead
+  which the `codex-cli|Documents/Codex` catalog line collects instead, and, from 1.18.0, a `cwd`
+  under `<home>/.codex/worktrees`, the thread worktrees
   ([Scratch directories](#scratch-directories);
-  [issue 149](https://github.com/seanthegeek/doubleagent/issues/149)).
+  [issue 149](https://github.com/seanthegeek/doubleagent/issues/149),
+  [issue 222](https://github.com/seanthegeek/doubleagent/issues/222)).
 - `state_5.sqlite` `threads` `cwd`, which the analyzer reads
   ([`state_5.sqlite` threads](#state_5sqlite-threads)). `session_index.jsonl` holds titles only,
   no path ([`session_index.jsonl`](#session_indexjsonl)).
@@ -851,8 +867,9 @@ after the delete, or a build that did not yet delete log rows) was not determine
 
 Hermes Agent, Cline's SDK and Pydantic AI's CLAI hold copies that outlive the original rollout
 ([Transcript stores](#transcript-stores)). The analyzer reads the archived rollouts as primary,
-`history.jsonl` and the global state as secondary sources (the marker as a `session deleted:`
-row), and neither the memories files nor `db-backups/` (see
+`history.jsonl`, the global state and the `db-backups/` copies of `state_5.sqlite` as secondary
+sources (the marker as a `session deleted:` row), and the memory rollout summaries as a source of
+their own, since they repeat no event (see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
 
 ### Record schema
@@ -1753,7 +1770,7 @@ a workstation an API key the login shell exports is copied here, and the collect
 From source at
 [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857); not
 seen on a real install unless a bullet says so. All are collected by the `codex-cli|.codex` line;
-the parser reads none of them.
+the rows the parser makes of them are in [Permission rows](#permission-rows).
 
 - `rules/default.rules`: when the user answers an approval prompt
   with "approve and remember" (`ReviewDecision::ApprovedExecpolicyAmendment`,
@@ -1776,7 +1793,8 @@ the parser reads none of them.
   loaded too
   ([exec_policy.rs:681](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/exec_policy.rs#L681)).
   The file holds no credential. The same `rules/` directory in a project's `.codex/` is a project
-  file ([Project-local files](#project-local-files)).
+  file ([Project-local files](#project-local-files)), loaded as a policy layer like the home's
+  ([exec_policy.rs:670-684](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/exec_policy.rs#L670-L684)).
 - `config.toml`: the standing policy keys `approval_policy`,
   `approvals_reviewer`, `sandbox_mode` and `default_permissions`
   ([config/src/config_toml.rs:195](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/config/src/config_toml.rs#L195),
@@ -1792,7 +1810,10 @@ the parser reads none of them.
   (`ApprovedMcpPolicyAmendment`), `approval_mode = "approve"` under
   `mcp_servers.<server>.tools.<tool>`,
   `plugins.<plugin>.mcp_servers.<server>.tools.<tool>` or, for a
-  ChatGPT app connector, `apps.<connector>.tools.<tool>`
+  ChatGPT app connector, `apps.<connector>.tools.<tool>`, in the project's own `.codex/config.toml`
+  when the server is configured there
+  ([mcp_tool_call.rs:2460-2470](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/mcp_tool_call.rs#L2460-L2470),
+  [2507-2530](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/mcp_tool_call.rs#L2507-L2530))
   ([core/src/mcp_tool_call.rs:2394-2411](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/mcp_tool_call.rs#L2394-L2411),
   [2428-2457](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/mcp_tool_call.rs#L2428-L2457),
   [2472-2490](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/mcp_tool_call.rs#L2472-L2490)).
@@ -1815,15 +1836,21 @@ the parser reads none of them.
   [core/src/guardian/feedback.rs:6-44](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/guardian/feedback.rs#L6-L44),
   [state/src/runtime/guardian_feedback.rs:33-50](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/guardian_feedback.rs#L33-L50)).
   An allowed review writes no row, and nothing is written when
-  feedback is turned off or the thread is ephemeral. The row outlives
+  feedback is turned off or the thread is ephemeral. The `id` is a UUIDv7 made when the record is
+  stored, so its first 48 bits are the capture time in epoch milliseconds, and the table keeps at
+  most 8 records per reviewed thread and 64 in all
+  ([guardian_feedback.rs:9-28](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/guardian_feedback.rs#L9-L28)). The row outlives
   the reviewer thread; its `thread_id` references `threads(id)` with
   `ON DELETE CASCADE`, so it is meant to go with the reviewed thread. The table was present, with no
   row read, on the macOS install of 2026-10-18 ([Source and evidence](#source-and-evidence)).
-- Log lines of answers the parser does not read: beside
+- Log lines of the other answers: beside
   `op=ExecApproval`, the core's `Submission` debug line
   ([core/src/session/handlers.rs:487-495](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/core/src/session/handlers.rs#L487-L495))
-  prints `PatchApproval { id, decision }` for an `apply_patch`
-  approval and `RequestPermissionsResponse { id, scope,
+  prints `PatchApproval { id: "<id>", decision: <word> }` for an `apply_patch`
+  approval, the word as for `ExecApproval` ([Format versions](#format-versions)) and the id the
+  governed `FileChange` item's, which the app server submits
+  ([app-server/src/bespoke_event_handling.rs:1990-1993](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/app-server/src/bespoke_event_handling.rs#L1990-L1993)),
+  and `RequestPermissionsResponse { id, scope,
   strict_auto_review }` for a permissions request
   ([protocol/src/protocol.rs:769-776](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L769-L776),
   [803](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L803)).
@@ -1842,7 +1869,8 @@ the parser reads none of them.
 From source at
 [`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857); not
 seen on a real install beyond the `goals_1.sqlite` and `memories_1.sqlite` files listed in
-[macOS, ChatGPT 26.1013.40934](#macos-chatgpt-26101340934). Each is secondary, derived from rollouts; the parser reads none.
+[macOS, ChatGPT 26.1013.40934](#macos-chatgpt-26101340934). Each is derived from rollouts; which
+the parser reads is in [Past-use rows and secondary sources](#past-use-rows-and-secondary-sources).
 
 - Memories, when the `memories` feature is on (off by default,
   [features/src/lib.rs:1303-1305](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/features/src/lib.rs#L1303-L1305)):
@@ -1851,10 +1879,12 @@ seen on a real install beyond the `goals_1.sqlite` and `memories_1.sqlite` files
   `rollout_summary`, `rollout_slug` and `source_updated_at`
   ([state/memory_migrations/0001_memories.sql:1-12](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/memory_migrations/0001_memories.sql#L1-L12),
   [state/src/sqlite.rs:114-119](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/sqlite.rs#L114-L119)),
-  and the consolidated files under `memories/`:
+  and the consolidated files under `memories/` in the Codex home
+  ([memories/write/src/control.rs:4-8](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/memories/write/src/control.rs#L4-L8)):
   `rollout_summaries/<stem>.md`, each headed `thread_id:`,
-  `updated_at:`, `rollout_path:`, `cwd:` and `git_branch:` lines
-  before a model-written summary of the thread, `raw_memories.md`
+  `updated_at:` (the thread's last update the summary covers, RFC 3339), `rollout_path:`, `cwd:`
+  and, when the thread has one, `git_branch:` lines, then a blank line and a model-written summary
+  of the thread, `raw_memories.md`
   with the same header per thread, `MEMORY.md` and
   `memory_summary.md`
   ([memories/write/src/lib.rs:39-40](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/memories/write/src/lib.rs#L39-L40),
@@ -1873,21 +1903,22 @@ seen on a real install beyond the `goals_1.sqlite` and `memories_1.sqlite` files
   `updated_at_ms`;
   [state/goals_migrations/0001_thread_goals.sql:1-17](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/goals_migrations/0001_thread_goals.sql#L1-L17)),
   the objective the user set for a thread, also persisted in the
-  rollout as `event_msg` `thread_goal_updated` (`thread_id`,
-  `turn_id`, `goal.objective`, `goal.status`;
+  rollout as `event_msg` `thread_goal_updated`, whose keys are camelCase (`threadId`, `turnId`,
+  and `goal` with `threadId`, `objective`, `status`, `tokenBudget`, `tokensUsed`,
+  `timeUsedSeconds`, `createdAt`, `updatedAt`; `status` one of `active`, `paused`, `blocked`,
+  `usageLimited`, `budgetLimited`, `complete`;
   [rollout/src/policy.rs:131-139](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/rollout/src/policy.rs#L131-L139),
-  [protocol/src/protocol.rs:4235-4257](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L4235-L4257)),
-  which the parser skips with the other unlisted events. Removed with
-  the thread.
+  [protocol/src/protocol.rs:4206-4257](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L4206-L4257)).
+  Removed with the thread.
 - `db-backups/sqlite-<timestamp>-<n>/`: a database Codex found
   corrupt, renamed aside with its sidecars before a fresh one is
   built
   ([state/src/runtime/recovery.rs:16](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/recovery.rs#L16),
   [181-200](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/recovery.rs#L181-L200),
   [241-250](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/state/src/runtime/recovery.rs#L241-L250)).
-  A backed-up `state_5.sqlite` keeps the `threads` rows of its time,
-  deleted threads included; the parser wants only
-  `.codex/state_5.sqlite` itself.
+  Only the corrupt database and its sidecars move, so the folder holds one of `state_5.sqlite`,
+  `logs_2.sqlite`, `thread_history_1.sqlite` or another runtime database. A backed-up
+  `state_5.sqlite` keeps the `threads` rows of its time, deleted threads included.
 
 ### Format versions
 
@@ -1941,7 +1972,10 @@ seen on a real install beyond the `goals_1.sqlite` and `memories_1.sqlite` files
     `cyber_access_program`; `summary` is optional
     ([protocol.rs:3428-3468](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/protocol.rs#L3428-L3468)).
     The parser's `permission mode:` row prints `network=-` for a
-    rollout of this version.
+    rollout of this version. The network policy is now the `network` field of a `managed` or
+    `external` `permission_profile`
+    ([protocol/src/models.rs:424-440](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/protocol/src/models.rs#L424-L440)),
+    which the composite already prints inside `profile=`.
   - `task_started` gained `turn_attribution` (`turn_id`,
     `turn_trigger`, `parent_turn_id`, `initiating_agent_path`,
     `root_turn_id`) and `root_turn_id`
@@ -1984,6 +2018,10 @@ the stores this document describes:
   tokens' keys, `chatgpt-work-models-v1/<user id>/<workspace uuid>` and the keys of
   `new-task-execution-by-account-project`)
   ([`.codex-global-state.json`](#codex-global-statejson)).
+- `config.toml` can hold an MCP server's `env` and headers and a provider's bearer token
+  ([Credentials](#credentials)); the parser prints only the standing permission keys of
+  [Permission rows](#permission-rows) from it. `guardian_review_feedback` `record` `action` is the
+  reviewed command, which can carry a pasted key, as tool arguments can.
 - `shell_snapshots/<thread id>.<unix ns>.sh` and remote control's server token are in
   [Credentials](#credentials); `state_5.sqlite` `remote_control_enrollments` holds no token, only
   the account id and the host name.
@@ -1991,8 +2029,11 @@ the stores this document describes:
 ### Parser plan
 
 `CodexParser` wants
-`^\.codex/(?:archived_)?sessions/(?:.*/)?rollout-[^/]*\.jsonl(?:\.zst)?$`
-and `.codex/history.jsonl`. Until `session_meta` is read, the session id is
+`^\.codex/(?:archived_)?sessions/(?:.*/)?rollout-[^/]*\.jsonl(?:\.zst)?$`,
+`.codex/history.jsonl`, the stores of [Other stores](#other-stores) the table below names, and,
+source-derived, `.codex/config.toml`, `^\.codex/rules/[^/]+\.rules$`,
+`^\.codex/memories/rollout_summaries/[^/]+\.md$` and
+`^\.codex/db-backups/[^/]+/state_5\.sqlite$`. Until `session_meta` is read, the session id is
 the thread id in the file name: the last UUID, or the first of a reverted
 rollout's `<thread id>_<rollout id>`. The parser reads the whole file before
 emitting rows, so that an `item_completed` line can be checked against every
@@ -2027,6 +2068,7 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `response_item` `additional_tools`, `compaction`, `context_compaction`, `configuration_update` | skipped (no readable content) |
 | `event_msg` `task_started`, `task_complete` | `system`; `task_started turn=<id>` as before (so the `thread_history_1.sqlite` copy still pairs with it), followed by `turn trigger: <turn_trigger> turn=<id>` when `turn_attribution.turn_trigger` is set (values in [`event_msg`](#event_msg); a `remote_*` turn came from a paired phone) |
 | `event_msg` `task_complete` of a guardian review thread (`thread_source` `guardian_review`) | `system` `permission decision: <outcome> (auto_review risk_level=<risk_level> user_authorization=<user_authorization>) ...` from the JSON verdict in `last_agent_message`, naming the reviewer thread and carrying the `rationale` in full, at the line's `timestamp`, with `session_id` the governed thread (`session_meta.parent_thread_id`) |
+| `event_msg` `thread_goal_updated` | `system` `thread goal: status=<goal.status> turn=<turnId> objective: <goal.objective>`, `-` for a missing status or turn (source-derived) |
 | `event_msg` `turn_aborted` | `system` `turn aborted: <reason> [error message]` |
 | `event_msg` `thread_rolled_back` | `system` `rolled back <n> turns`; earlier rows are not changed |
 | `event_msg` `item_completed` `UserMessage`, `AgentMessage`, `Reasoning`, `HookPrompt`, `ContextCompaction` | skipped (repeat a response item or `compacted`) |
@@ -2047,6 +2089,12 @@ emitting rows, so that an `item_completed` line can be checked against every
 | `thread_history_1.sqlite` `thread_items` row (secondary) | `userMessage` `user`, `agentMessage` `assistant`, `reasoning` `thinking` (opt-in), at `completed_at_ms`; `hookPrompt`, `contextCompaction` none; any other item renamed to the turn-item form and rendered as the `item_completed` rows above, at `started_at_ms` and `completed_at_ms` (else `created_at_ms`); an `item_json` that does not decode to a JSON object is one `system` row per record at the end of the file's rows, `parser: unparseable record <rowid> (<reason>): <item_json as stored>`, `source_line` the rowid, `session_id` and `project_path` the record's thread's ([issue 184](https://github.com/seanthegeek/doubleagent/issues/184)) |
 | `automations/<slug>/automation.toml` (Codex only) | one `system` row `scheduled task: <id> name=<name> kind=<kind> status=<status> rrule=<rrule> target_thread=<target_thread_id> created=<created_at> updated=<updated_at> (from <file>, file mtime) prompt: <prompt>` at the file's modification time, `session_id` the target thread; an unreadable file is one `system` row ([issue 119](https://github.com/seanthegeek/doubleagent/issues/119)) |
 | `logs_2.sqlite` `logs` row `codex_core::session::handlers` `op=ExecApproval` or `codex_app_server::outgoing_message` `CommandExecutionRequestApproval` (Codex Desktop) | `system` `permission decision: <decision> exec <item id> turn=<turn id> (from logs_<N>.sqlite logs, ts)` at `ts` from the handlers row (`denied`, `approved` seen), `session_id` the row's thread id, `tool_use_id` the governed item's id (`exec-<uuid>`, [Other stores](#other-stores)); a response row (`Decline`, `Accept`) with no handlers row within two seconds is `permission decision: <decision> request <n> (from logs_<N>.sqlite logs, ts)` with no session ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
+| `logs_2.sqlite` `logs` row `codex_core::session::handlers` `op=PatchApproval` | `system` `permission decision: <decision> patch <item id> (from logs_<N>.sqlite logs, ts)` at `ts`, `session_id` the row's thread id, `tool_use_id` the governed `FileChange` item's id (source-derived) |
+| `state_5.sqlite` `guardian_review_feedback` row | `system` at the `id`'s UUIDv7 time, `session_id` `reviewed_thread_id`, `tool_use_id` `target_item_id`: for a `denied` record whose `decision` is the reviewer's JSON verdict, the guardian review thread's text `permission decision: <outcome> (auto_review risk_level=<risk_level> user_authorization=<user_authorization>) exec <target_item_id> reviewer <reviewer_thread_id>: <rationale>`, so the two pair; for any other, `permission decision: <status> (auto_review feedback model=<model>) exec <target_item_id> turn=<reviewed_turn_id> reviewer <reviewer_thread_id>: <decision> action: <action>`, `-` for an empty value; a `record` that is not a JSON object is `parser: unparseable record <rowid> (<reason>): <record>` (source-derived) |
+| `config.toml` (the home's, or a project's `.codex/config.toml`) | one `system` row per standing key, `permission setting: <key>=<value> (from .codex/config.toml, file mtime)`, for `approval_policy`, `approvals_reviewer`, `sandbox_mode`, `default_permissions`, `projects.<path>.trust_level` (`project_path` the path) and each `approval_mode` under `mcp_servers.<server>.tools.<tool>`, `plugins.<plugin>.mcp_servers.<server>.tools.<tool>` and `apps.<connector>.tools.<tool>`, at the file's modification time, `session_id` empty; no other key is printed; an unreadable file is one `parser: unreadable config.toml: <reason>` row (source-derived) |
+| `rules/*.rules` | one `system` row per Starlark statement, `permission setting: <statement> (from .codex/rules/<file>, file mtime)`, the statement joined onto one line with comments dropped, at the file's modification time, `source_line` its first line, `session_id` empty; a statement still open at the end of the file is `parser: unterminated rule: <its lines>` (source-derived) |
+| `memories/rollout_summaries/<stem>.md` | one `system` row `memory summary: thread <thread_id> rollout=<rollout_path> (from <file>, updated_at): <summary>` at `updated_at`, `session_id` the thread, `project_path` `cwd`, `git_branch` `git_branch`; a file with no `thread_id:` header is `parser: memory summary has no thread_id header` (source-derived) |
+| `db-backups/sqlite-<time>-<n>/state_5.sqlite` (secondary) | the rows of `state_5.sqlite` above, from the copy (source-derived) |
 | `state_5.sqlite` `remote_control_enrollments` row | `system` `remote control: enabled=<0\|1> server=<server_id> environment=<environment_id> host=<server_name> client=<app_server_client_name> account=<account_id>` at `updated_at`, `session_id` empty ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
 | `.codex-global-state.json` (secondary, Codex Desktop) | `user` for each `prompt-history` entry of a thread, with an empty `timestamp_utc` (matched on text and session), `session_id` the thread id; `system` `session deleted: <id>` for each `codex-writing-block-deleted-thread-v1:<id>` key and `system` `permission mode (standing): ...` for each `heartbeat-thread-permissions-by-id` entry, at the file's modification time; `system` `thread description: ...` for each `thread-descriptions-v1` entry; one `system` `remote control: mobile device connected=<bool> environment=<id>` row from the two top-level keys; one `system` `scratch directory: <path> (projectless thread <id>) (from <file> thread-projectless-output-directories, file mtime)` row for each `thread-projectless-output-directories` entry, `session_id` the thread id and `project_path` the path itself, so inventory.json lists the directory under `scratch_directories` ([issue 149](https://github.com/seanthegeek/doubleagent/issues/149)); a file that does not decode is one `parser:` row ([issue 160](https://github.com/seanthegeek/doubleagent/issues/160)) |
 
@@ -2063,15 +2111,22 @@ review thread (macOS, build 26.1013.40934, 2026-10-18; [Other stores](#other-sto
 yields a `permission decision:` row from each, joined to the governed call on its item id. The
 approval dialog of that build offered no standing "always allow" grant for a command.
 
-The standing grants in `rules/default.rules` and `config.toml`, the `guardian_review_feedback`
-records and the `PatchApproval` and `RequestPermissionsResponse` log lines (source at `4e7b9e2`)
-are on disk and not read
-([Standing grants and approval records](#standing-grants-and-approval-records)).
-A plan for them: one `permission setting: <rule> (from .codex/rules/default.rules, file mtime)`
-row per rule line, one `permission setting:` row per standing key, project trust entry and tool
-`approval_mode` in `config.toml`, and one `permission decision: <status> (auto_review) ...` row per
-`guardian_review_feedback` record, joined to the governed call on `target_item_id`; the
-`PatchApproval` line joins on its id like `ExecApproval`.
+The standing grants and the other approval records of
+[Standing grants and approval records](#standing-grants-and-approval-records) give the rows of the
+table above, source-derived; not observed on any real install. Each statement of a `rules/*.rules`
+file and each standing key of `config.toml` (the policy defaults, a project's `trust_level`, a
+tool's `approval_mode`) is one `permission setting:` row at the file's modification time, which is
+the time of the last grant, not of each; a project's own `.codex/config.toml` and `.codex/rules/`
+give the same rows with that project as `project_path`. On Python 3.10, which has no `tomllib`,
+`config.toml` is read for its single-line values under every table header, which holds every key
+these rows need. Each `PatchApproval` log line is a `permission decision: ... patch <item id>` row
+joined to the `apply_patch` call on the item id, like `ExecApproval`. Each
+`guardian_review_feedback` record is a `permission decision:` row at its capture time, joined to the
+governed call on `target_item_id`: a denied verdict reads exactly as the guardian review thread's
+row, so `dedup.deduplicate` keeps one of the two when both exist, and a review that failed, timed
+out or gave no readable verdict, which the review thread does not record as a verdict, is its own
+row naming the status and the reviewed action. `RequestPermissionsResponse` lines are not read:
+their `scope` is a debug print whose shape the source does not fix.
 
 #### Model rows
 
@@ -2119,10 +2174,23 @@ sources (`history.jsonl`, `first_user_message`, the projection's
 `first_user_message` included, so only the rollout's row is kept
 (fixture: `FIXTURE_DEDUPLICATED` in `tests/test_cli.py`).
 
-Memories (secondary: `rollout_summaries/*.md`, `raw_memories.md`, `stage1_outputs`), thread goals
-(primary, in the rollout's `thread_goal_updated` events; `thread_goals` secondary) and `db-backups/`
-copies of `state_5.sqlite` (secondary) are not read ([Other past-use
-stores](#other-past-use-stores)).
+The stores of [Other past-use stores](#other-past-use-stores), source-derived; not observed on
+any real install:
+
+- `db-backups/sqlite-<time>-<n>/state_5.sqlite`: secondary, read as `state_5.sqlite` is; its rows
+  that the live database or a rollout repeats are dropped, and a deleted thread's record and first
+  prompt are kept.
+- `memories/rollout_summaries/<stem>.md`: one `memory summary:` row per file, joined on
+  `thread_id` and `cwd`, at `updated_at`. It is read on every run as a source of its own, not a
+  secondary one: the summary is the model's text about the thread, which repeats no event, so
+  nothing could pair with it, and marking it recovered would mislabel every live thread. It
+  outlives a thread delete until the next consolidation.
+- `thread_goal_updated`: primary, in the rollout, one `thread goal:` row per event.
+- Not read: `raw_memories.md` (one file for many threads, the raw memories' body has no fixed
+  shape), `MEMORY.md` and `memory_summary.md` (consolidated across threads),
+  `memories_1.sqlite` `stage1_outputs` and `goals_1.sqlite` `thread_goals` (each removed with the
+  thread, repeating what the summary file and the goal events hold), and the other databases under
+  `db-backups/`.
 
 #### Sync, relay and origin rows
 
@@ -2281,14 +2349,15 @@ outside every catalog path.
 The desktop app's deletion marker already gives a `session deleted:` row. A delete through
 `thread/delete` (the TUI, the app server) leaves no marker; what it removes and what survives it is
 in [What survives a delete](#what-survives-a-delete), and the survivors that matter here are
-`history.jsonl`, which the parser reads, and the memories files and `db-backups/`, which it does
-not.
+`history.jsonl`, the memory rollout summaries and the `db-backups/` copies of `state_5.sqlite`,
+which the parser reads; none of them records the delete itself.
 
 #### Bad-line rows
 
-A bad line in a rollout or in `history.jsonl`, a cut or corrupt zstd frame, and a
-`thread_history_1.sqlite` row whose `item_json` does not decode each give the rows in the table
-above.
+A bad line in a rollout or in `history.jsonl`, a cut or corrupt zstd frame, a
+`thread_history_1.sqlite` row whose `item_json` does not decode, a `guardian_review_feedback`
+`record` that is not a JSON object and a rules statement still open at the end of its file each
+give the rows in the table above (the last two source-derived).
 
 Until [issue 184](https://github.com/seanthegeek/doubleagent/issues/184) a `thread_history_1.sqlite`
 row with an unreadable `item_json` gave one summary row
@@ -2334,6 +2403,22 @@ this line is cut mid-wri
 `history.jsonl`:
 `{"session_id":"0199b2c3-1111-7aaa-8bbb-000000000001","ts":1790931601,"text":"run the tests"}`
 
+Source-derived samples (codex at `4e7b9e2`), each giving the row of the table above:
+
+- `rules/default.rules`: `prefix_rule(pattern=["git", "status"], decision="allow")` and
+  `network_rule(host="example.com", protocol="https", decision="deny", justification="no")`.
+- `config.toml`: `approval_policy = "on-request"`, `[projects."/srv/proj"]` `trust_level =
+  "trusted"`, `[mcp_servers.github.tools.create_issue]` `approval_mode = "approve"`.
+- A `thread_goal_updated` line:
+  `{"timestamp":"2026-10-02T09:00:01.500Z","type":"event_msg","payload":{"type":"thread_goal_updated","threadId":"0199b2c3-1111-7aaa-8bbb-000000000001","turnId":"t1","goal":{"threadId":"0199b2c3-1111-7aaa-8bbb-000000000001","objective":"keep the tests green","status":"active","tokensUsed":0,"timeUsedSeconds":0,"createdAt":1790931601,"updatedAt":1790931601}}}`.
+- A `logs_2.sqlite` body: `Submission thread_id=<thread> submission_id=<uuid>
+  operation="patch_approval" op=PatchApproval { id: "<item id>", decision: approved_for_session }`.
+- A `guardian_review_feedback` row: `id` a UUIDv7, `record`
+  `{"reviewed_thread_id":"<thread>","reviewed_turn_id":"t3","target_item_id":"<item id>","reviewer_thread_id":"<review thread>","model":"codex-auto-review","status":"timed_out","decision":null,"action":"rm -rf build","action_truncated":false,"instructions":null,"history":[],"context_omitted":false}`.
+- `memories/rollout_summaries/<stem>.md`: the lines `thread_id: <thread>`,
+  `updated_at: 2026-10-02T09:00:10+00:00`, `rollout_path: <path>`, `cwd: /srv/proj`,
+  `git_branch: main`, a blank line, then the summary.
+
 #### Injected user-role context
 
 Rollouts without content kinds are classified per content block by the wrappers Codex itself
@@ -2369,6 +2454,23 @@ The rollout records both alike.
 A copied fork has no boundary beyond the ancestor's `session_meta` and the
 per-message `inherited_user_message` flag, so the other copied records stay
 in the fork's file under the fork's session id.
+
+#### Source host rows
+
+The agent records no source-host integration in a file the collector gathers (source at
+[`4e7b9e2`](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857),
+grepped for `github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`, `pull request`,
+`clone` and `cloud`). A Codex Cloud task runs in a server-side environment bound to a GitHub
+repository, which `codex cloud` looks up from the local repository's git origins
+(`wham/environments/by-repo/github/<owner>/<repo>`;
+[cloud-tasks/src/env_detect.rs:50-63](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/cloud-tasks/src/env_detect.rs#L50-L63)), so
+the connected GitHub account, its grant, the repository list and the task conversations are
+server-side only; the one local trace is the `error.log` of
+[Sync, relay and origin rows](#sync-relay-and-origin-rows), outside every catalog path. The network
+proxy's credential broker substitutes a `GH_TOKEN` or `GITHUB_TOKEN` from the environment into
+requests to GitHub hosts and stores nothing
+([network-proxy/src/credential_broker/providers/github.rs:13-20](https://github.com/openai/codex/blob/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857/codex-rs/network-proxy/src/credential_broker/providers/github.rs#L13-L20)).
+A GitHub MCP server's configuration in `config.toml` is an MCP server, not a Codex integration.
 
 ## Confidence
 

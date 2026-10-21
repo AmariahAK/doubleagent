@@ -349,6 +349,12 @@ approval rows give the ChatGPT desktop app's `permission decision:` rows;
 and the desktop app's `.codex/.codex-global-state.json`, a secondary
 source whose prompt history, deleted-thread markers, thread descriptions,
 standing permissions and remote control flags outlive a deleted thread.
+From source (fixture only): `.codex/config.toml` and `.codex/rules/*.rules`
+(the standing grants, one `permission setting:` row each), the
+`guardian_review_feedback` records of `state_5.sqlite` and the
+`PatchApproval` rows of `logs_<N>.sqlite` (`permission decision:` rows),
+`.codex/memories/rollout_summaries/*.md` (one `memory summary:` row per
+thread) and `.codex/db-backups/*/state_5.sqlite` (a secondary source).
 
 Validated against: Real install, Codex CLI, October 2026; Codex Desktop
 0.162.0-alpha.17.2 inside the ChatGPT desktop app, Windows 11, October
@@ -361,7 +367,9 @@ Codex CLI 0.162.1 on macOS 26.6.2, October 2026; Codex CLI 0.162.1
 guardian review thread, remote control from iPhone and Android, a
 scheduled task and a deleted thread); archived and
 `.zst` rollouts, subagent and fork records from source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524),
-synthetic fixture; the `state_5.sqlite` and `thread_history_1.sqlite`
+synthetic fixture; the standing grants, failed guardian reviews, patch
+approvals, thread goals, memory summaries and database backups from source
+at [4e7b9e2](https://github.com/openai/codex/commit/4e7b9e285ba4ac6ce18ca452cf9e88d3d75ec857), synthetic fixture; the `state_5.sqlite` and `thread_history_1.sqlite`
 table and column names seen on the Windows 11 install, their row shapes
 from source at [3e23877](https://github.com/openai/codex/commit/3e238776e857eccd3bde6bff3026e2e9798f6524), synthetic fixture. User-role context (environment,
 AGENTS.md, skills) is `system` by its content kind; a subagent row links
@@ -740,9 +748,12 @@ also as `.jsonl.zst`, `.openinterpreter/history.jsonl`,
 Codex), and `external_agent_session_imports.json` (one `system` row per
 `/import`ed thread, naming the Claude Code or Cursor source file; that
 thread's record times are import time), and `.openinterpreter/logs_2.sqlite`
-(`/feedback` reports, as for Codex; fixture only).
+(`/feedback` reports, as for Codex; fixture only). As for Codex, from
+source: `.openinterpreter/config.toml` and `.openinterpreter/rules/*.rules`
+(standing grants), `.openinterpreter/memories/rollout_summaries/*.md` and
+`.openinterpreter/db-backups/*/state_5.sqlite`.
 
-Validated against: Source at [2767e5f](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245), synthetic fixture.
+Validated against: Source at [2767e5f](https://github.com/openinterpreter/openinterpreter/commit/2767e5f20d6927500b8f1938c773c61afb823245), synthetic fixture; the standing grants, memory summaries and database backups from source at [ac1fcc8](https://github.com/openinterpreter/openinterpreter/commit/ac1fcc8fe57aba51fcc3c79afd57a0883237fe87), synthetic fixture.
 
 ### `openclaw`
 
