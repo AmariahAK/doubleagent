@@ -38,13 +38,34 @@ take the session header's time, or, from a user prompt on, the time of the
 matching `.aider.input.history` entry (same text, between this header and
 the next). Input and LLM history rows are assigned to the last session
 header at or before their own time when the chat history sits beside them.
-No git branch or tool call id is recorded. The model is named only in the
-chat history's announcement lines (`> Model:`, `> Main model:`, `> Weak
-model:`, `> Editor model:`), written at startup and again after each
-`/model`, `/weak-model` or `/editor-model` switch; the parser reads them as
-ordinary blockquote lines, part of a `tool_result` row, and yields no
-`model:` row and no `model` value (the Parser plan of `research/aider.md`, Model
-rows). Each `TO LLM` request
+No git branch or tool call id is recorded.
+
+The model is named only in the chat history's announcement lines, written
+at startup and again after each `/model`, `/weak-model`, `/editor-model` or
+`/chat-mode` switch (`base_coder.py` `get_announcements`): `Model: <name>
+with <format> edit format[, ...]`, or `Main model: ...` when a separate
+weak model is in use, `Editor model: <name> with <format> edit format` in
+architect mode, and `Weak model: <name>`. A blockquote run that holds a
+main-model line is read for them, and after its `tool_result` row the
+parser yields `model: <name>` at the first announcement of a session and
+`model: <old> -> <new>` on each later one that names another model, with
+` (editor model)` or ` (weak model)` appended for those two roles. A
+`Model:` line means the weak model is the main model: it sets the weak
+model with no row of its own, unless it replaces a separate weak model,
+so a later `Weak model:` line reads `model: <main> -> <weak> (weak
+model)`. The `model` column of such a row is the new model; other rows leave
+it empty. Each `confirm_ask` line (`io.py`), `<question> (Y)es/(N)o[/(A)ll]
+[/(S)kip all][/(D)on't ask again] [<default>]: <answer>`, with the answer's
+first letter in lower case, yields `permission decision: <yes|no|all|skip
+all|don't ask again> (<question>) answer=<letter> default=<default>` after
+the run's `tool_result` row; a `y` or `n` answer adds `; may be automatic
+(--yes-always)`, because under `--yes-always` Aider writes the same line
+without asking (`y`, or `n` for a question that needs an explicit yes,
+such as `Run shell command?`). The subject (the command, path or URL) is
+the blockquote text before the question in the same `tool_result` row. A
+question declined silently after "Don't ask again" leaves no line. Both
+row kinds are source-derived (Aider-AI/aider at 5dc9490) and not observed
+on any real install. Each `TO LLM` request
 becomes one `system` row naming the message count and the last user
 message; the full prompt is at `source_file:source_line`. A non-blank
 input or LLM history line that fits neither format is its own `system`
@@ -89,6 +110,19 @@ HEADER_RX = re.compile(r"^# aider chat started at (\d{4}-\d\d-\d\d \d\d:\d\d:\d\
 INPUT_TS_RX = re.compile(r"^# (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(?:\.\d+)?)\s*$")
 LLM_RX = re.compile(r"^(TO LLM|LLM RESPONSE) (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)\s*$")
 ROLE_TURN = {"USER": "user", "ASSISTANT": "assistant", "SYSTEM": "system"}
+# Announcement lines (`base_coder.py` `get_announcements`): the main model with
+# its edit format and options, the editor model in architect mode, the weak
+# model when it is not the main model.
+MAIN_MODEL_RX = re.compile(r"^(?:Main model|Model): (\S.*?) with (\S+) edit format(?:, .*)?$")
+EDITOR_MODEL_RX = re.compile(r"^Editor model: (\S.*?) with (\S+) edit format$")
+WEAK_MODEL_RX = re.compile(r"^Weak model: (\S.*)$")
+# A `confirm_ask` line (`io.py`): the question, its options, the default in
+# brackets, and the first letter of the answer, lower case.
+CONFIRM_RX = re.compile(
+    r"^(?P<question>.+?) \(Y\)es/\(N\)o(?:/\(A\)ll)?(?:/\(S\)kip all)?"
+    r"(?:/\(D\)on't ask again)? \[(?P<default>[^\]]*)\]: (?P<answer>[ynasd])$"
+)
+DECISION = {"y": "yes", "n": "no", "a": "all", "s": "skip all", "d": "no, don't ask again"}
 
 
 def _lines(path: Path) -> Iterator[tuple[int, str]]:
@@ -199,6 +233,7 @@ class AiderParser(Parser):
             except OSError:
                 inputs = []
         next_input = 0
+        models: dict[str, str] = {}
         session_id = ""
         header = ""
         next_header = ""
@@ -206,6 +241,7 @@ class AiderParser(Parser):
         ts = ""
         kind = ""
         buf: list[str] = []
+        nums: list[int] = []
         start = 0
 
         def flush() -> Iterator[Row]:
@@ -231,12 +267,15 @@ class AiderParser(Parser):
             row.turn_type = {"user": "user", "tool": "tool_result", "assistant": "assistant"}[kind]
             row.text = compact(text)
             yield row
+            if kind == "tool":
+                yield from self._tool_system_rows(artifact, buf, nums, ts, session_id, models)
 
         for n, line in _lines(artifact.disk_path):
             m = HEADER_RX.match(line)
             if m:
                 yield from flush()
-                kind, buf = "", []
+                kind, buf, nums = "", [], []
+                models = {}
                 header = m.group(1)
                 n_header += 1
                 next_header = headers[n_header] if n_header < len(headers) else ""
@@ -258,11 +297,71 @@ class AiderParser(Parser):
                 new, content = "assistant", line
             if new != kind:
                 yield from flush()
-                kind, buf, start = new, [], n
+                kind, buf, nums, start = new, [], [], n
             if not any(b.strip() for b in buf):
                 start = n
             buf.append(content.rstrip() if new != "assistant" else content)
+            nums.append(n)
         yield from flush()
+
+    def _tool_system_rows(
+        self,
+        artifact: Artifact,
+        lines: list[str],
+        nums: list[int],
+        ts: str,
+        session_id: str,
+        models: dict[str, str],
+    ) -> Iterator[Row]:
+        """The `model:` and `permission decision:` rows of one blockquote run,
+        after its `tool_result` row. `models` holds the session's main, editor
+        and weak model so far and is updated in place."""
+        announced = any(MAIN_MODEL_RX.match(ln) for ln in lines)
+        for n, line in zip(nums, lines, strict=True):
+            changes: list[tuple[str, str, str, bool]] = []
+            m = MAIN_MODEL_RX.match(line) if announced else None
+            if m:
+                changes.append(("main", m.group(1), "", True))
+                if line.startswith("Model: "):
+                    # no separate weak model: the weak model is the main model,
+                    # a row only when it replaces a separate one
+                    changes.append(("weak", m.group(1), " (weak model)", False))
+            elif announced and (m := EDITOR_MODEL_RX.match(line)):
+                changes.append(("editor", m.group(1), " (editor model)", True))
+            elif announced and (m := WEAK_MODEL_RX.match(line)):
+                changes.append(("weak", m.group(1), " (weak model)", True))
+            for role, name, label, first in changes:
+                old = models.get(role, "")
+                models[role] = name
+                if old != name and (old or first):
+                    text = "model: %s%s" % ("%s -> %s" % (old, name) if old else name, label)
+                    yield self._system_row(artifact, n, ts, session_id, text, model=name)
+            if changes:
+                continue
+            m = CONFIRM_RX.match(line)
+            if m:
+                answer = m.group("answer")
+                text = "permission decision: %s (%s) answer=%s default=%s" % (
+                    DECISION[answer],
+                    m.group("question"),
+                    answer,
+                    m.group("default"),
+                )
+                if answer in "yn":
+                    text += "; may be automatic (--yes-always)"
+                yield self._system_row(artifact, n, ts, session_id, text)
+
+    def _system_row(
+        self, artifact: Artifact, line: int, ts: str, session_id: str, text: str, model: str = ""
+    ) -> Row:
+        row = self.base_row(artifact)
+        row.source_line = line
+        row.timestamp_utc = ts
+        row.session_id = session_id
+        row.turn_type = "system"
+        row.model = model
+        row.text = text
+        return row
 
     # ---- .aider.input.history --------------------------------------------------
 

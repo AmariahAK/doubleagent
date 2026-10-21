@@ -4999,6 +4999,12 @@ class AiderTests(ParserBase):
                 ("/add b.py", "2026-10-02T13:00:02.000Z", self.S2, "/alice/" + self.CHAT),
                 ("<blank>", "2026-10-02T13:00:02.000Z", self.S2, "/alice/" + self.CHAT),
                 (
+                    "/model claude-opus-4-5",
+                    "2026-10-02T13:00:02.000Z",
+                    self.S2,
+                    "/alice/" + self.CHAT,
+                ),
+                (
                     "delete the migrations folder",
                     "2026-10-02T13:05:00.000Z",
                     self.S2,
@@ -5009,19 +5015,36 @@ class AiderTests(ParserBase):
         self.assertEqual(sum(r.source_file == "/alice/.aider.llm.history" for r in rows), 2)
 
     def test_rows(self):
-        rows = self.rows_for(AiderParser(), self.CHAT)
-        self.assertEqual(
-            [r.turn_type for r in rows],
-            ["system", "user", "assistant", "tool_result", "system", "user", "tool_result", "user"],
-        )
-        for r in rows:
+        all_rows = self.rows_for(AiderParser(), self.CHAT)
+        for r in all_rows:
             self.assertEqual(
                 (r.host, r.user, r.agent, r.project_path), ("h1", "alice", "aider", "/alice")
             )
-            self.assertEqual((r.model, r.git_branch, r.tool_use_id), ("", "", ""))
-        start, user, asst, tool, _start2, add, added, blank = rows
-        self.assertEqual([r.session_id for r in rows], [self.S1] * 4 + [self.S2] * 4)
+            self.assertEqual((r.git_branch, r.tool_use_id), ("", ""))
+        # the model and permission rows are tested below
+        rows = [r for r in all_rows if not r.text.startswith(("model: ", "permission decision: "))]
+        self.assertEqual(
+            [r.turn_type for r in rows],
+            [
+                "system",
+                "tool_result",
+                "user",
+                "assistant",
+                "tool_result",
+                "system",
+                "tool_result",
+                "user",
+                "tool_result",
+                "user",
+                "user",
+                "tool_result",
+            ],
+        )
+        self.assertTrue(all(r.model == "" for r in rows))
+        start, announce, user, asst, tool, _start2, _announce2, add, added, blank = rows[:10]
+        self.assertEqual([r.session_id for r in rows], [self.S1] * 5 + [self.S2] * 7)
         self.assertEqual(start.timestamp_utc, "2026-10-02T12:00:00.000Z")
+        self.assertTrue(announce.text.startswith("Aider v0.86.1\nMain model: "))
         # the prompt takes its time from the matching input-history entry, and later rows inherit it
         self.assertEqual(
             (user.text, user.timestamp_utc), ("rename foo to bar", "2026-10-02T12:00:05.123Z")
@@ -5030,12 +5053,101 @@ class AiderTests(ParserBase):
         self.assertTrue(asst.text.startswith("Here is the change:\n\na.py\n<<<<<<< SEARCH"))
         self.assertTrue(asst.text.endswith(">>>>>>> REPLACE"))
         self.assertEqual(
-            tool.text, "Applied edit to a.py\nCommit abc1234 refactor: rename foo to bar"
+            tool.text,
+            "Applied edit to a.py\nCommit abc1234 refactor: rename foo to bar\npytest -q\n"
+            "Run shell command? (Y)es/(N)o/(D)on't ask again [Yes]: n",
         )
         self.assertEqual((add.text, add.timestamp_utc), ("/add b.py", "2026-10-02T13:00:02.000Z"))
         self.assertEqual(added.text, "Added b.py to the chat")
         self.assertEqual(blank.text, "<blank>")
-        self.assertEqual([r.source_line for r in rows], [2, 5, 7, 16, 19, 22, 23, 25])
+        self.assertEqual(
+            [r.source_line for r in rows], [2, 4, 9, 11, 20, 25, 27, 31, 32, 34, 36, 37]
+        )
+
+    def test_model_rows(self):
+        """The announcement lines give a `model:` row at a session's first
+        announcement and on each change, per role (#203)."""
+        rows = [r for r in self.rows_for(AiderParser(), self.CHAT) if r.text.startswith("model: ")]
+        self.assertEqual(
+            [(r.turn_type, r.text, r.model, r.source_line, r.session_id) for r in rows],
+            [
+                (
+                    "system",
+                    "model: anthropic/claude-sonnet-4-5",
+                    "anthropic/claude-sonnet-4-5",
+                    5,
+                    self.S1,
+                ),
+                (
+                    "system",
+                    "model: anthropic/claude-haiku-4-5 (weak model)",
+                    "anthropic/claude-haiku-4-5",
+                    6,
+                    self.S1,
+                ),
+                # a new session starts afresh; `Model:` means no separate weak model
+                ("system", "model: gpt-4o", "gpt-4o", 28, self.S2),
+                # the /model switch re-announces
+                (
+                    "system",
+                    "model: gpt-4o -> claude-opus-4-5",
+                    "claude-opus-4-5",
+                    38,
+                    self.S2,
+                ),
+                (
+                    "system",
+                    "model: claude-sonnet-4-5 (editor model)",
+                    "claude-sonnet-4-5",
+                    39,
+                    self.S2,
+                ),
+                (
+                    "system",
+                    "model: gpt-4o -> claude-haiku-4-5 (weak model)",
+                    "claude-haiku-4-5",
+                    40,
+                    self.S2,
+                ),
+            ],
+        )
+        self.assertEqual(rows[3].timestamp_utc, "2026-10-02T13:00:02.000Z")
+
+    def test_model_line_outside_announcement(self):
+        """A `Weak model:` line is read only beside a main-model line."""
+        path = self.home / self.CHAT
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n#### what is the weak model?  \n> Weak model: not-an-announcement  \n")
+        rows = self.rows_for(AiderParser(), self.CHAT)
+        self.assertFalse(any("not-an-announcement" in r.text for r in rows if r.model))
+        self.assertEqual(sum(r.text.startswith("model: ") for r in rows), 6)
+
+    def test_permission_rows(self):
+        """Each confirm_ask line is a `permission decision:` row after its
+        `tool_result` row; a y or n answer may come from --yes-always (#203)."""
+        rows = self.rows_for(AiderParser(), self.CHAT)
+        idx = [i for i, r in enumerate(rows) if r.text.startswith("permission decision: ")]
+        self.assertEqual(
+            [(rows[i].text, rows[i].source_line, rows[i].session_id) for i in idx],
+            [
+                (
+                    "permission decision: no (Run shell command?) answer=n default=Yes;"
+                    " may be automatic (--yes-always)",
+                    23,
+                    self.S1,
+                ),
+                (
+                    "permission decision: no, don't ask again (Add URL to the chat?)"
+                    " answer=d default=Yes",
+                    43,
+                    self.S2,
+                ),
+            ],
+        )
+        for i in idx:
+            self.assertEqual(rows[i].turn_type, "system")
+        self.assertEqual(rows[idx[0]].timestamp_utc, "2026-10-02T12:00:05.123Z")
+        self.assertEqual(rows[idx[0] - 1].turn_type, "tool_result")
 
     def test_thinking_opt_in(self):
         # Aider records no reasoning; the flag must not change the rows.
@@ -5135,8 +5247,9 @@ class AiderTests(ParserBase):
         )
         rows, _, problems, deduplicated = cli.collect_rows(col, Options(), [])
         self.assertEqual(problems, [])
-        # 8 chat rows, 3 input-history rows less the 2 the chat rows repeat, 2 LLM rows.
-        self.assertEqual(len(rows), 8 + 3 - 2 + 2)
+        # 12 chat rows, 6 model and 2 permission rows, 3 input-history rows less
+        # the 2 the chat rows repeat, 2 LLM rows.
+        self.assertEqual(len(rows), 12 + 6 + 2 + 3 - 2 + 2)
         self.assertEqual(deduplicated, {"aider": 2})
         self.assertEqual(
             {(r.host, r.user, r.agent, r.project_path) for r in rows},
