@@ -1388,7 +1388,40 @@ telegram bot <bot> chat <chat id> user <user id> @<username>`,
 relayed: email thread <thread id> from <sender>`, each ending `(from
 chat.json data, file mtime)`. `nanobot` writes `model: <preset> (preset)` after
 the session start row: the value is a model preset of nanobot's
-configuration, not a model id. `muse-code` writes, per session log,
+configuration, not a model id. A `/model <name>` switch gives
+`model: <old> -> <new> (preset) requested=<name> resolved=<model id>`
+after the reply that confirms it; the session records only its last
+preset, so in a switched session the first switch reads `model: <new>
+(preset) requested=<name> resolved=<model id>` and the start row's
+`model:` row is not written. After the session start row, at its time,
+nanobot also writes `session relayed: <channel> chat <chat id> (from
+session key)` for a session keyed to a messaging channel (Telegram,
+Discord, Slack, WhatsApp, email and the other chat services it answers
+through), `session relayed: <channel> chat <chat id> (from
+metadata.last_channel)` when the session's last delivery route is such a
+channel and differs from its key, and `permission mode:
+access_mode=<restricted|full> project=<path> (from session metadata
+workspace_scope)` for the last workspace scope a WebUI chat set. Its
+`config.json` gives `permission setting: <key>=<value> (from <path>,
+file mtime)` per standing setting (`tools.restrictToWorkspace`,
+`tools.ssrfWhitelist`, `tools.webuiAllowLocalServiceAccess`,
+`tools.webuiAllowRemotePackageInstall`, `tools.exec.enable`,
+`tools.exec.sandbox`, each `tools.exec.allowPatterns`, `denyPatterns`,
+`sandboxRoBinds`, `sandboxRwBinds` and `allowedEnvKeys` entry, and each
+`channels.<name>.allowFrom` entry), `<path>` relative to the home and the
+key spelled as the file spells it; its `pairing.json` gives `permission
+setting: pairing.approved.<channel>=<sender id> (from <path>, file
+mtime)` per approved chat sender and `permission setting:
+pairing.pending.<channel>=<sender id> expires_at=<time>
+delivery_status=<status> (from <path>, created_at)` per pending request,
+at its `created_at`. A cron run record gives `cron run: job <job name>
+(<job id>) run <run id> status=<status>` and a trigger run record
+`trigger run: trigger <trigger name> (<trigger id>) delivery <delivery
+id> status=<status> attempts=<n>`, each with ` error=<error>` when the
+run failed, beside the run's prompt and reply; the WebUI sidebar cache
+gives `webui sidebar entry: key=<key> title=<title> preview=<preview>
+model_preset=<preset> updated_at=<time> (from .webui_session_index.json
+version <n>)` per cached chat, absent fields left out. `muse-code` writes, per session log,
 `permission mode: approval=<approval> reviewer=<reviewer>
 profile=<profile id>` followed by ` cause=<cause>` and
 ` format=<format>` from the log's permission frame,
@@ -1548,7 +1581,7 @@ beside its `session synced: server conversation` row.
 | `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full`) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session), also under `.hermes_<suffix>`, `AppData/Local/hermes`, `profiles/<name>/` and, since 0.19.0, the root of a Docker or Podman volume | `.hermes/state.db` |
 | `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
-| `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot*/history/cli_history` (no session or project: matches on text and time); when a `sessions.sqlite3` sits in the namespace directory, the namespace's `<key>.jsonl` files and their `jsonl-backup/` copies, which the database imported (since 0.19.0) | `.nanobot*/sessions/<workspace-id>/sessions.sqlite3`, else `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
+| `nanobot` | `.nanobot*/webui/<key>.jsonl` and `<key>.segments/NNNNNN.jsonl` (tolerance 15 hours: true UTC against the session file's local time, at most 14 hours apart, plus an hour of turn); `.nanobot*/history/cli_history` (no session or project: matches on text and time); when a `sessions.sqlite3` sits in the namespace directory, the namespace's `<key>.jsonl` files and their `jsonl-backup/` copies, which the database imported (since 0.19.0); a workspace's `cron/runs/*.json` and `triggers/runs/*.json` run records (tolerance 15 hours, as for the WebUI transcript: true UTC); `.nanobot*/sessions/<workspace-id>/.webui_session_index.json` (`system` rows only, which never pair) | `.nanobot*/sessions/<workspace-id>/sessions.sqlite3`, else `.nanobot*/sessions/<workspace-id>/<key>.jsonl` |
 | `open-interpreter` | `.openinterpreter/history.jsonl`; `.openinterpreter/state_5.sqlite` (first prompt with no timestamp); `.openinterpreter/thread_history_1.sqlite` | the rollouts under `.openinterpreter/sessions/` and `.openinterpreter/archived_sessions/` |
 | `openclaw` | `.openclaw/agents/<id>/sessions/` copies of a transcript: the published `*.jsonl.reset.*` / `*.jsonl.deleted.*` archive files, `*.checkpoint.<uuid>.jsonl` and `*.jsonl.pre-doctor-*-repair-*.bak` (each copy's session-start row names it and is kept) | `.openclaw/agents/<id>/agent/openclaw-agent.sqlite` (`transcript_events` and the `session_transcript_archives` blobs) and the legacy `sessions/<id>.jsonl` |
 | `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
@@ -1581,7 +1614,11 @@ nanobot's WebUI transcript stamps events in
 true UTC while its session files record host local time, emitted as if
 UTC, so its window is 15 hours (the largest UTC offset, 14 hours, plus
 an hour of turn); a WebUI row kept because no session row matched
-carries true UTC, unlike every other nanobot row.
+carries true UTC, unlike every other nanobot row. nanobot's cron and
+trigger run records stamp in true UTC as well and use the same window;
+their prompt row carries the text the session stores for the turn,
+rebuilt from the record, and a prompt or reply longer than the record's
+limit, which nanobot truncates there, is shown twice.
 
 Several sources record no time for an event, and their rows match on
 text and scope alone: Muse Code's `tui-history.jsonl`, Goose's

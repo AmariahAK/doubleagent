@@ -1,4 +1,4 @@
-"""nanobot sessions, memory history, the WebUI mirror and the CLI history.
+"""nanobot sessions, memory history, WebUI mirror, CLI history, settings, run records.
 
 Validated against source, HKUDS/nanobot at acdae3d (see
 `research/nanobot.md`), with a synthetic fixture; no real install
@@ -59,21 +59,99 @@ without a timestamp inherit the previous one, else the metadata
 `_nanobot_model_preset`, when set, is the `model` of every row. No git
 branch is recorded. A preset also becomes a `system` row after the session
 start row, at its time, `model: <preset> (preset)`: the value names a model
-preset of nanobot's configuration, not a model id. A file has one
-metadata line, so it names one preset and no change row is written. No
-permission state is read: neither `pairing.json` (the chat senders the
-operator approved, whose shape the Credentials section of `research/nanobot.md` now
-traces) nor the standing settings of `config.json` become rows yet; the
-plan is under Permission rows in the Parser plan of that document. `/new`
-empties a session file, so earlier turns may survive only in
-`memory/history.jsonl` and the WebUI mirror below.
+preset of nanobot's configuration, not a model id. `/new` empties a session
+file, so earlier turns may survive only in `memory/history.jsonl` and the
+WebUI mirror below.
+
+Source-derived from HKUDS/nanobot at 909b277, not observed on any real
+install (issue 207):
+
+* Relay. A session key `<channel>:<chat_id>` whose channel is one of
+  `MESSAGING_CHANNELS` (each channel's `name`) gives `session relayed:
+  <channel> chat <chat_id> (from session key)` after the session start
+  row, and a `metadata.last_channel` route of such a channel that differs
+  from the key (a `unified:default` session answering through Telegram)
+  `session relayed: <channel> chat <chat_id> (from
+  metadata.last_channel)`; `records_relay` is set.
+* Model switches. `/model <name>` keeps a `_command` user message and a
+  `_command` assistant reply starting ``Switched model preset to
+  `<preset>`.`` with a ``- Model: `<id>` `` line. Each such reply gives
+  `model: <old> -> <new> (preset) requested=<name> resolved=<id>` after
+  it; the metadata keeps only the last preset, so in a switched session
+  the first switch, whose previous preset is recorded nowhere, reads
+  `model: <new> (preset) requested=<name> resolved=<id>`, the start row's
+  `model: <preset> (preset)` is not written, and the `model` column is
+  empty before the first switch and the switched preset after each.
+* Permission mode. `metadata.workspace_scope` {`project_path`,
+  `access_mode` `restricted` or `full`}, the last WebUI scope, gives
+  `permission mode: access_mode=<mode> project=<path> (from session
+  metadata workspace_scope)` after the session start row, at its time.
+* `config.json` (secret-flagged by the collector, since it holds API keys;
+  only the keys below are read): one row per standing setting at the
+  file's modification time, `permission setting: <key>=<value> (from
+  <path>, file mtime)`, `<path>` relative to the home, for
+  `tools.restrictToWorkspace`, `tools.ssrfWhitelist`,
+  `tools.webuiAllowLocalServiceAccess` (or its legacy
+  `allowLocalPreviewAccess`), `tools.webuiAllowRemotePackageInstall`,
+  `tools.exec.enable`, `tools.exec.sandbox`, `tools.exec.allowPatterns`,
+  `denyPatterns`, `sandboxRoBinds`, `sandboxRwBinds`, `allowedEnvKeys` and
+  each `channels.<name>.allowFrom`, a list giving one row per entry; the
+  key is named as the file spells it (camelCase as nanobot saves it, or
+  snake_case, which it also accepts). A key the file lacks gives no row.
+* `pairing.json` `{approved: {<channel>: [<sender_id>]}, pending: {<code>:
+  {channel, sender_id, created_at, expires_at, delivery_status}}}`:
+  `permission setting: pairing.approved.<channel>=<sender_id> (from <path>,
+  file mtime)` per approved sender and `permission setting:
+  pairing.pending.<channel>=<sender_id> expires_at=<utc>
+  delivery_status=<status> (from <path>, created_at)` per pending request
+  at its `created_at` (epoch seconds, true UTC); the pairing code is not
+  shown.
+* Cron and trigger run records, `cron/runs/<run id>.json` and
+  `triggers/runs/<delivery id>.json` under a workspace (the default
+  workspace inside the state directory, the state directory for the legacy
+  cron location, or a project workspace the collector collected through
+  the project catalog). Secondary: each repeats the turn of the bound
+  session, and survives the session's deletion. A cron record (`job_id`,
+  `job_name`, `session_key`, `prompt_vars.message`, `rendered_prompt`,
+  `status`, `response`, `error`, `run_id`, `updated_at_ms`) gives a `user`
+  row of the text the session stores for the turn, `Scheduled cron job
+  triggered: <job_name>` and a blank line and the message (else
+  `rendered_prompt`), at the run's start, the epoch milliseconds inside
+  `run_id` (`<job id>:<ms>:<hex>`); an `assistant` row of `response` at
+  `updated_at_ms`; and `cron run: job <job_name> (<job_id>) run <run_id>
+  status=<status>` with ` error=<error>` at `updated_at_ms`. A trigger
+  record (`trigger_id`, `delivery_id`, `content`, `created_at_ms`,
+  `attempts`, `last_error`, `trigger_name`, `session_key`, `status`,
+  `response`, `error`) gives `Local trigger received: <trigger_name or
+  trigger_id>` and a blank line and `content` as `user` at
+  `created_at_ms`, `response` as `assistant` and `trigger run: trigger
+  <trigger_name> (<trigger_id>) delivery <delivery_id> status=<status>
+  attempts=<n>` with ` error=<error>` at `updated_at_ms`. `session_id` is
+  `session_key`, `project_path` the workspace holding `cron/` or
+  `triggers/`. Every time is true UTC while the session's are local time
+  emitted as if UTC, so the window is `WEBUI_TOLERANCE_SECONDS`, as for the
+  WebUI transcript. Content and response longer than nanobot's record
+  limit are truncated in the record and then match nothing.
+* `sessions/<workspace-id>/.webui_session_index.json`, the WebUI sidebar's
+  rebuildable cache `{version, sessions: [...]}` of the WebUI transcripts
+  that have no session row (a chat whose session is gone among them): one
+  `system` row per entry, `webui sidebar entry: key=<key> title=<title>
+  preview=<preview> model_preset=<preset> updated_at=<updated_at> (from
+  .webui_session_index.json version <n>)`, absent fields left out, at
+  `created_at` (naive local time, as the session files'), `session_id` the
+  key. Secondary; its rows never pair, since they are `system` rows.
+
+A file the parser reads whole (`config.json`, `pairing.json`, a run
+record, the sidebar cache) that cannot be read or is not a JSON object is
+one `parser:` row; a sidebar entry that is not an object is its own
+`parser: unparseable record <n> (not a JSON object): <entry>` row.
 
 `memory/history.jsonl` is a primary record, not a secondary source: its
 entries are model-written summaries of archived messages, or `[RAW] <n>
 messages` blocks of several formatted messages, never one event of the
 session file, so no row of it repeats a session row.
 
-Three secondary sources (issues 122 and 178) repeat session events and
+These secondary sources (issues 122 and 178) repeat session events and
 are read on every run; `secondary()` is True for them, and
 `dedup.deduplicate` drops a row the session store also yields:
 
@@ -161,7 +239,7 @@ import sqlite3
 from collections.abc import Generator, Iterable, Iterator
 from pathlib import Path
 
-from ..inputs import Artifact
+from ..inputs import Artifact, error_reason
 from ..model import Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import to_utc
@@ -171,7 +249,9 @@ from .base import (
     Parser,
     compact_json,
     error_rows,
+    file_mtime,
     iter_jsonl,
+    setting_value,
     text_of,
     track_change,
 )
@@ -191,10 +271,73 @@ WEBUI_RX = re.compile(
     r"^" + STATE + r"/webui/(?:(?P<seg>[^/]+)\.segments/\d{6}|(?P<stem>[^/]+))\.jsonl$"
 )
 CLI_HISTORY_RX = re.compile(r"^" + STATE + r"/history/cli_history$")
+CONFIG_RX = re.compile(r"^" + STATE + r"/config\.json$")
+PAIRING_RX = re.compile(r"^" + STATE + r"/pairing\.json$")
+SIDEBAR_RX = re.compile(r"^" + STATE + r"/sessions/[0-9a-f]{32}/\.webui_session_index\.json$")
+# A cron or trigger run record: under a workspace inside the state directory
+# (`.nanobot/workspace/cron/runs/`), under the state directory itself (the
+# legacy `cron/jobs.json` location), or at the root of a project workspace
+# the collector collected (the bare form, accepted only for a project base).
+RUN_RX = re.compile(r"^(?:" + STATE + r"/(?P<ws>.+/)?)?(?P<kind>cron|triggers)/runs/[^/]+\.json$")
+ORIGINAL_RUN_RX = re.compile(r"^(.*)[\\/](?:cron|triggers)[\\/]runs[\\/][^\\/]+$")
 WEBUI_PREFIX = "websocket:"
 # The host's UTC offset (at most 14 hours) plus an hour of turn; see the
-# module docstring.
+# module docstring. The cron and trigger run records use it too.
 WEBUI_TOLERANCE_SECONDS = 15 * 3600.0
+# Session key prefixes of the channels that carry a chat through a messaging
+# platform (each channel's `name`, nanobot/channels/*/runtime.py at 909b277);
+# `websocket` (the WebUI), `cli`, `api`, `heartbeat`, `dream:` and
+# `unified:default` are local.
+MESSAGING_CHANNELS = frozenset(
+    {
+        "dingtalk",
+        "discord",
+        "email",
+        "feishu",
+        "linear",
+        "matrix",
+        "mattermost",
+        "mochat",
+        "msteams",
+        "napcat",
+        "qq",
+        "signal",
+        "slack",
+        "telegram",
+        "wecom",
+        "weixin",
+        "whatsapp",
+        "whatsapp_agent",
+    }
+)
+# `config.json` settings that grant or restrict what the agent may do: each
+# tuple is the spellings nanobot accepts for one key (camelCase, as it saves
+# them, snake_case and any legacy alias); the row names the key as the file
+# spells it, and a list gives one row per entry.
+CONFIG_TOOL_KEYS = (
+    ("restrictToWorkspace", "restrict_to_workspace"),
+    ("ssrfWhitelist", "ssrf_whitelist"),
+    (
+        "webuiAllowLocalServiceAccess",
+        "webui_allow_local_service_access",
+        "allowLocalPreviewAccess",
+        "allow_local_preview_access",
+    ),
+    ("webuiAllowRemotePackageInstall", "webui_allow_remote_package_install"),
+)
+CONFIG_EXEC_KEYS = (
+    ("enable",),
+    ("sandbox",),
+    ("allowPatterns", "allow_patterns"),
+    ("denyPatterns", "deny_patterns"),
+    ("sandboxRoBinds", "sandbox_ro_binds"),
+    ("sandboxRwBinds", "sandbox_rw_binds"),
+    ("allowedEnvKeys", "allowed_env_keys"),
+)
+# The `/model <preset>` command and its reply (nanobot/command/builtin.py).
+MODEL_COMMAND_RX = re.compile(r"^/model\s+(\S.*?)\s*$", re.S)
+SWITCH_RX = re.compile(r"^Switched model preset to `([^`]*)`")
+RESOLVED_RX = re.compile(r"^- Model: `([^`]*)`", re.M)
 # Stream chunks (folded into their end records) and the turn boundary.
 WEBUI_SILENT = frozenset({"delta", "reasoning_delta", "turn_end"})
 ORIGINAL_MEMORY_RX = re.compile(r"^(.*)[\\/]memory[\\/]history\.jsonl$")
@@ -239,10 +382,48 @@ def _json_object(raw: object, rowid: int, label: str, errors: list) -> dict | No
     return value
 
 
+def relay_texts(session_id: str, last_channel: object) -> list[str]:
+    """The `session relayed:` row texts of a session: one for a session key
+    `<channel>:<chat_id>` whose channel is a messaging platform, and one for
+    a `metadata.last_channel` route of a messaging platform that differs
+    from the key (`unified:default` answering through Telegram)."""
+    texts = []
+    channel, _, chat = session_id.partition(":")
+    if channel in MESSAGING_CHANNELS and chat:
+        texts.append("session relayed: %s chat %s (from session key)" % (channel, chat))
+    if isinstance(last_channel, str) and last_channel != session_id:
+        channel, _, chat = last_channel.partition(":")
+        if channel in MESSAGING_CHANNELS and chat:
+            texts.append(
+                "session relayed: %s chat %s (from metadata.last_channel)" % (channel, chat)
+            )
+    return texts
+
+
+def _first_key(d: dict, names: tuple[str, ...]) -> tuple[str, object] | None:
+    """(name, value) of the first of `names` that `d` holds, else None."""
+    for name in names:
+        if name in d:
+            return name, d[name]
+    return None
+
+
+def _has_switch(records: list[tuple[int, dict]]) -> bool:
+    """True when a session records a `/model` switch: a `_command` assistant
+    message whose text starts `Switched model preset to`."""
+    return any(
+        rec.get("role") == "assistant"
+        and rec.get("_command")
+        and SWITCH_RX.match(text_of(rec.get("content")))
+        for _, rec in records
+    )
+
+
 class NanobotParser(Parser):
     agent = "nanobot"
     name = "nanobot"
     has_secondary = True
+    records_relay = True
 
     def wants(self, artifact: Artifact) -> bool:
         return bool(
@@ -251,12 +432,32 @@ class NanobotParser(Parser):
             or WEBUI_RX.match(artifact.rel)
             or DB_RX.match(artifact.rel)
             or CLI_HISTORY_RX.match(artifact.rel)
+            or CONFIG_RX.match(artifact.rel)
+            or PAIRING_RX.match(artifact.rel)
+            or SIDEBAR_RX.match(artifact.rel)
+            or self._is_run(artifact)
         )
 
+    @staticmethod
+    def _is_run(artifact: Artifact) -> bool:
+        """True for a cron or trigger run record; the bare `cron/runs/` form
+        only at the root of a project base, where the project catalog put
+        it."""
+        m = RUN_RX.match(artifact.rel)
+        if m is None:
+            return False
+        return artifact.rel.startswith(".nanobot") or artifact.home.project
+
     def secondary(self, artifact: Artifact) -> bool:
-        return bool(
-            WEBUI_RX.match(artifact.rel) or CLI_HISTORY_RX.match(artifact.rel)
-        ) or self._frozen(artifact)
+        return (
+            bool(
+                WEBUI_RX.match(artifact.rel)
+                or CLI_HISTORY_RX.match(artifact.rel)
+                or SIDEBAR_RX.match(artifact.rel)
+            )
+            or self._is_run(artifact)
+            or self._frozen(artifact)
+        )
 
     @staticmethod
     def _namespace(artifact: Artifact) -> Path | None:
@@ -283,7 +484,7 @@ class NanobotParser(Parser):
         return not db.is_symlink() and db.is_file()
 
     def secondary_tolerance(self, artifact: Artifact) -> float:
-        if WEBUI_RX.match(artifact.rel):
+        if WEBUI_RX.match(artifact.rel) or self._is_run(artifact):
             return WEBUI_TOLERANCE_SECONDS
         return super().secondary_tolerance(artifact)
 
@@ -296,6 +497,14 @@ class NanobotParser(Parser):
             yield from self._parse_webui(artifact, opts)
         elif CLI_HISTORY_RX.match(artifact.rel):
             yield from self._parse_cli_history(artifact)
+        elif CONFIG_RX.match(artifact.rel):
+            yield from self._parse_config(artifact)
+        elif PAIRING_RX.match(artifact.rel):
+            yield from self._parse_pairing(artifact)
+        elif SIDEBAR_RX.match(artifact.rel):
+            yield from self._parse_sidebar(artifact)
+        elif RUN_RX.match(artifact.rel):
+            yield from self._parse_run(artifact)
         else:
             yield from self._parse_history(artifact, opts)
 
@@ -329,6 +538,13 @@ class NanobotParser(Parser):
         model = ""
         last_ts = ""
         models: dict = {}
+        records = list(records)
+        # With a `/model` switch in the session, the metadata's preset is the
+        # last switch's, not the session's first: the switch rows name the
+        # presets instead, and the rows before the first switch name none.
+        switched = _has_switch(records)
+        preset = ""  # the preset the last switch set, "" before any
+        requested = ""  # the preset name of the last `/model <name>`
 
         def row(
             n: int, turn_type: str, text: str, tool_name: str = "", tool_use_id: str = ""
@@ -353,7 +569,7 @@ class NanobotParser(Parser):
                 meta = rec.get("metadata")
                 if not isinstance(meta, dict):
                     meta = {}
-                model = str(meta.get("_nanobot_model_preset") or "")
+                model = "" if switched else str(meta.get("_nanobot_model_preset") or "")
                 last_ts = to_utc(rec.get("created_at")) or to_utc(rec.get("updated_at"))
                 yield row(
                     n,
@@ -371,9 +587,22 @@ class NanobotParser(Parser):
                         if x
                     ),
                 )
+                for text in relay_texts(session_id, meta.get("last_channel")):
+                    yield row(n, "system", text)
                 text = track_change("model", models, session_id, model)
                 if text:
                     yield row(n, "system", text + " (preset)")
+                scope = meta.get("workspace_scope")
+                if isinstance(scope, dict) and (
+                    scope.get("access_mode") or scope.get("project_path")
+                ):
+                    yield row(
+                        n,
+                        "system",
+                        "permission mode: access_mode=%s project=%s"
+                        " (from session metadata workspace_scope)"
+                        % (scope.get("access_mode") or "", scope.get("project_path") or ""),
+                    )
                 continue
             if rtype is not None and "role" not in rec:
                 continue  # provider_state and future record types
@@ -384,6 +613,9 @@ class NanobotParser(Parser):
                 if rec.get("_hidden_history"):
                     yield row(n, "system", "summarised history: " + text)
                 else:
+                    if rec.get("_command"):
+                        m = MODEL_COMMAND_RX.match(text)
+                        requested = m.group(1) if m else requested
                     yield row(n, "user", text)
             elif role == "assistant":
                 reasoning = rec.get("reasoning_content")
@@ -391,6 +623,18 @@ class NanobotParser(Parser):
                     yield row(n, "thinking", reasoning)
                 if text:
                     yield row(n, "assistant", text)
+                m = SWITCH_RX.match(text) if rec.get("_command") else None
+                if m:
+                    resolved = RESOLVED_RX.search(text)
+                    switch = "model: %s%s (preset)%s%s" % (
+                        preset + " -> " if preset else "",
+                        m.group(1),
+                        " requested=%s" % requested if requested else "",
+                        " resolved=%s" % resolved.group(1) if resolved else "",
+                    )
+                    preset = model = m.group(1)
+                    requested = ""
+                    yield row(n, "system", switch)
                 for tc in rec.get("tool_calls") or []:
                     if not isinstance(tc, dict):
                         continue
@@ -621,6 +865,198 @@ class NanobotParser(Parser):
             yield "system", "context compaction: %s" % (rec.get("phase") or ""), "", ""
         elif isinstance(event, str) and event and event not in WEBUI_SILENT:
             yield "system", "webui event: %s" % event, "", ""
+
+    def _load_object(self, artifact: Artifact, what: str) -> tuple[dict | None, Row | None]:
+        """The JSON object in `artifact`, or None and the whole-file
+        `parser:` row that says why it could not be read."""
+        try:
+            value = json.loads(artifact.disk_path.read_text(encoding="utf-8", errors="replace"))
+        except OSError as e:
+            return None, self._file_row(
+                artifact, "", "parser: unreadable %s: %s" % (what, error_reason(e))
+            )
+        except ValueError as e:
+            return None, self._file_row(artifact, "", "parser: %s did not parse: %s" % (what, e))
+        if not isinstance(value, dict):
+            return None, self._file_row(artifact, "", "parser: %s is not a JSON object" % what)
+        return value, None
+
+    def _setting_row(self, artifact: Artifact, ts: str, text: str, session_id: str = "") -> Row:
+        r = self.base_row(artifact)
+        r.timestamp_utc = ts
+        r.session_id = session_id
+        r.turn_type = "system"
+        r.text = compact(text)
+        return r
+
+    def _parse_config(self, artifact: Artifact) -> Iterator[Row]:
+        """One `permission setting:` row per standing setting of
+        `config.json` that grants or restricts the agent, at the file's
+        modification time; no other key (the file holds API keys) is read."""
+        data, problem = self._load_object(artifact, "config.json")
+        if data is None:
+            yield from [problem] if problem else []
+            return
+        ts = file_mtime(artifact)
+        tail = " (from %s, file mtime)" % artifact.rel
+        tools = data.get("tools")
+        tools = tools if isinstance(tools, dict) else {}
+        settings: list[tuple[str, object]] = []
+        for names in CONFIG_TOOL_KEYS:
+            hit = _first_key(tools, names)
+            if hit:
+                settings.append(("tools.%s" % hit[0], hit[1]))
+        exec_cfg = tools.get("exec")
+        exec_cfg = exec_cfg if isinstance(exec_cfg, dict) else {}
+        for names in CONFIG_EXEC_KEYS:
+            hit = _first_key(exec_cfg, names)
+            if hit:
+                settings.append(("tools.exec.%s" % hit[0], hit[1]))
+        channels = data.get("channels")
+        for name, cfg in (channels if isinstance(channels, dict) else {}).items():
+            if isinstance(cfg, dict):
+                hit = _first_key(cfg, ("allowFrom", "allow_from"))
+                if hit:
+                    settings.append(("channels.%s.%s" % (name, hit[0]), hit[1]))
+        for key, value in settings:
+            for entry in value if isinstance(value, list) else [value]:
+                yield self._setting_row(
+                    artifact, ts, "permission setting: %s=%s%s" % (key, setting_value(entry), tail)
+                )
+
+    def _parse_pairing(self, artifact: Artifact) -> Iterator[Row]:
+        """`pairing.json`: a row per approved chat sender at the file's
+        modification time, and one per pending request at its `created_at`.
+        The pending request's code is not shown."""
+        data, problem = self._load_object(artifact, "pairing.json")
+        if data is None:
+            yield from [problem] if problem else []
+            return
+        ts = file_mtime(artifact)
+        approved = data.get("approved")
+        for channel, senders in (approved if isinstance(approved, dict) else {}).items():
+            for sender in senders if isinstance(senders, list) else []:
+                yield self._setting_row(
+                    artifact,
+                    ts,
+                    "permission setting: pairing.approved.%s=%s (from %s, file mtime)"
+                    % (channel, setting_value(sender), artifact.rel),
+                )
+        pending = data.get("pending")
+        for info in (pending if isinstance(pending, dict) else {}).values():
+            if not isinstance(info, dict):
+                continue
+            yield self._setting_row(
+                artifact,
+                to_utc(info.get("created_at")),
+                "permission setting: pairing.pending.%s=%s expires_at=%s%s (from %s, created_at)"
+                % (
+                    info.get("channel") or "",
+                    setting_value(info.get("sender_id") or ""),
+                    to_utc(info.get("expires_at")),
+                    " delivery_status=%s" % info["delivery_status"]
+                    if info.get("delivery_status")
+                    else "",
+                    artifact.rel,
+                ),
+            )
+
+    def _parse_sidebar(self, artifact: Artifact) -> Iterator[Row]:
+        """`.webui_session_index.json`: one `system` row per cached sidebar
+        entry, at its `created_at` (naive local time, as the session files'),
+        naming the session key, title, preview and model preset."""
+        data, problem = self._load_object(artifact, ".webui_session_index.json")
+        if data is None:
+            yield from [problem] if problem else []
+            return
+        entries = data.get("sessions")
+        if not isinstance(entries, list):
+            yield self._file_row(
+                artifact, "", "parser: .webui_session_index.json has no sessions list"
+            )
+            return
+        errors: list = []
+        for i, entry in enumerate(entries, 1):
+            if not isinstance(entry, dict):
+                errors.append(
+                    (0, "unparseable record %d (not a JSON object)" % i, compact_json(entry))
+                )
+                continue
+            key = str(entry.get("key") or "")
+            text = " ".join(
+                x
+                for x in (
+                    "webui sidebar entry: key=%s" % key,
+                    "title=%s" % entry["title"] if entry.get("title") else "",
+                    "preview=%s" % entry["preview"] if entry.get("preview") else "",
+                    "model_preset=%s" % entry["model_preset"] if entry.get("model_preset") else "",
+                    "updated_at=%s" % entry["updated_at"] if entry.get("updated_at") else "",
+                    "(from .webui_session_index.json version %s)" % data.get("version", ""),
+                )
+                if x
+            )
+            yield self._setting_row(artifact, to_utc(entry.get("created_at")), text, key)
+        yield from error_rows(self, artifact, errors)
+
+    def _parse_run(self, artifact: Artifact) -> Iterator[Row]:
+        """A cron or trigger run record: the prompt as the session stored it
+        (`user`), the reply (`assistant`) and a `system` row with the run's
+        status; see the module docstring."""
+        m = RUN_RX.match(artifact.rel)
+        assert m is not None  # parse() routes only matching paths here
+        kind = m.group("kind")
+        project = ""
+        if m.group("ws") or artifact.home.project:
+            om = ORIGINAL_RUN_RX.match(artifact.original or "")
+            project = om.group(1) if om else ""
+        rec, problem = self._load_object(artifact, "%s run record" % kind)
+        if rec is None:
+            if problem:
+                problem.project_path = project
+                yield problem
+            return
+        session_id = str(rec.get("session_key") or "")
+        end = to_utc(rec.get("updated_at_ms"))
+
+        def row(ts: str, turn_type: str, text: str) -> Row:
+            r = self._setting_row(artifact, ts, text, session_id)
+            r.turn_type = turn_type
+            r.project_path = project
+            return r
+
+        if kind == "cron":
+            vars_ = rec.get("prompt_vars")
+            message = vars_.get("message") if isinstance(vars_, dict) else None
+            if rec.get("job_name") and isinstance(message, str):
+                prompt = "Scheduled cron job triggered: %s\n\n%s" % (rec["job_name"], message)
+            else:
+                prompt = str(rec.get("rendered_prompt") or "")
+            # `run_id` is `<job id>:<epoch ms at the run's start>:<hex>`.
+            parts = str(rec.get("run_id") or "").rsplit(":", 2)
+            start = to_utc(int(parts[1])) if len(parts) == 3 and parts[1].isdigit() else end
+            status = "cron run: job %s (%s) run %s status=%s" % (
+                rec.get("job_name") or "",
+                rec.get("job_id") or "",
+                rec.get("run_id") or "",
+                rec.get("status") or "",
+            )
+        else:
+            label = str(rec.get("trigger_name") or "").strip() or str(rec.get("trigger_id") or "")
+            prompt = "Local trigger received: %s\n\n%s" % (label, rec.get("content") or "")
+            start = to_utc(rec.get("created_at_ms")) or end
+            status = "trigger run: trigger %s (%s) delivery %s status=%s attempts=%s" % (
+                rec.get("trigger_name") or "",
+                rec.get("trigger_id") or "",
+                rec.get("delivery_id") or rec.get("run_id") or "",
+                rec.get("status") or "",
+                rec.get("attempts", ""),
+            )
+        if prompt.strip():
+            yield row(start, "user", prompt)
+        if isinstance(rec.get("response"), str) and rec["response"]:
+            yield row(end, "assistant", rec["response"])
+        error = rec.get("error") or rec.get("last_error")
+        yield row(end, "system", status + (" error=%s" % error if error else ""))
 
     def _parse_cli_history(self, artifact: Artifact) -> Iterator[Row]:
         errors: list = []
