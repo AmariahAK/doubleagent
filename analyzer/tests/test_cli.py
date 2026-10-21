@@ -2026,5 +2026,84 @@ class ScratchDirectoryTests(unittest.TestCase):
         self.assertFalse(scratch(project_key("C:\\Users\\sean\\src\\app"), windows_home, cat))
 
 
+# An agent's own worktrees inside a project (issue 227), one per agent
+# whose source makes them there, beside paths the rule must leave alone.
+WORKTREE_PROJECT = "/srv/proj"
+AGENT_WORKTREES = [
+    "/srv/proj/.claude/worktrees/feat",
+    "/srv/proj/.codex/worktrees/c1",
+    "/srv/proj/.gemini/worktrees/g1",
+    "/srv/proj/.kilo/worktrees/k1",
+    "/srv/proj/.qwen/worktrees/q1",
+    "C:\\Users\\u\\src\\app\\.Kilo\\worktrees\\k2",
+]
+NOT_WORKTREES = ["/srv/proj/src", "/srv/proj/.agents/x", "/srv/proj/.kilo"]
+
+
+class ProjectEntryScratchTests(unittest.TestCase):
+    """The project catalog entry rule for `scratch_directories`: a path
+    under a directory one agent's project catalog entry names inside a
+    project is that agent's own working directory (issue 227)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="cac-worktree-test-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def history(self) -> str:
+        """Claude Code history lines naming every POSIX path above."""
+        paths = [WORKTREE_PROJECT, *AGENT_WORKTREES[:-1], *NOT_WORKTREES]
+        return "".join(
+            json.dumps({"display": "p%d" % i, "timestamp": 1790848800000 + i, "project": path})
+            + "\n"
+            for i, path in enumerate(paths)
+        )
+
+    def inventory(self, root: Path) -> dict:
+        out = self.tmp / "out"
+        rc, stdout = run_timeline(root, out)
+        self.assertEqual(rc, 0, stdout)
+        return json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+
+    def test_rule(self):
+        cat = catalog.load()
+        scratch = cli.project_scratch_key
+        for path in AGENT_WORKTREES:
+            self.assertTrue(scratch(project_key(path), cat), path)
+        for path in NOT_WORKTREES:
+            self.assertFalse(scratch(project_key(path), cat), path)
+        # The entry needs a project before it.
+        self.assertFalse(scratch("/.claude/worktrees/x", cat))
+        # POSIX paths are compared exactly.
+        self.assertFalse(scratch("/srv/proj/.Claude/worktrees/x", cat))
+        synthetic = catalog.parse(SYNTHETIC_CATALOG)
+        self.assertTrue(scratch("/srv/p/.pi/x", synthetic))
+        self.assertFalse(scratch("/srv/p/AGENTS.md/x", synthetic))
+
+    def test_collected(self):
+        c = Collected(self.tmp / "col", [WORKTREE_PROJECT, AGENT_WORKTREES[-1]])
+        c.add("u", "/home/u", "claude-code", ".claude/history.jsonl", self.history())
+        inv = self.inventory(c.write())
+        scratch = inv["scratch_directories"]
+        self.assertEqual(sorted(scratch), sorted(AGENT_WORKTREES))
+        self.assertEqual(sorted(inv["projects"]), sorted([WORKTREE_PROJECT, *NOT_WORKTREES]))
+        # Listed by the collector only: the rule tests its project list too.
+        windows = scratch[AGENT_WORKTREES[-1]]
+        self.assertEqual((windows["status"], windows["rows"]), ("collected", 0))
+        claude = scratch[AGENT_WORKTREES[0]]
+        self.assertEqual((claude["status"], claude["rows"]), ("referenced", 1))
+
+    def test_loose(self):
+        # The rule needs no home path, so it holds when the input is the
+        # home itself.
+        home = self.tmp / "u"
+        (home / ".claude").mkdir(parents=True)
+        (home / ".claude" / "history.jsonl").write_text(self.history(), encoding="utf-8")
+        inv = self.inventory(home)
+        self.assertEqual(sorted(inv["scratch_directories"]), sorted(AGENT_WORKTREES[:-1]))
+        self.assertEqual(sorted(inv["projects"]), sorted([WORKTREE_PROJECT, *NOT_WORKTREES]))
+
+
 if __name__ == "__main__":
     unittest.main()

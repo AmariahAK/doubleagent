@@ -612,8 +612,8 @@ analyzer 0.14.0, before `relayed_sessions`, `remote_sessions`,
 existed; those keys are filled in by applying the 0.15.0 rules to the
 agents and sessions the run shows, not by a run. `scratch_directories`
 is `{}` the same way, by the 0.18.0 rules: none of the example's paths
-lies under a home catalog entry, and none of its agents wrote a
-`scratch directory:` row. Its keys, in order:
+lies under a home or project catalog entry, and none of its agents wrote
+a `scratch directory:` row. Its keys, in order:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -698,7 +698,7 @@ sessions, whose `cwd` on Windows is the app's install directory). A
 project is a directory the user pointed the agent at. The two are kept
 apart because a scratch directory says what the agent did on its own
 account, which can still matter to the investigation. A path is a
-scratch directory when either holds:
+scratch directory when any of these holds:
 
 1. A parser says so: a `system` row whose `text` starts with
    `scratch directory:` names it in its own `project_path`. The
@@ -721,8 +721,22 @@ scratch directory when either holds:
    in loose mode it applies only where the analyzer could infer the
    home's path from the tree, and not at all when the input is a home
    itself.
+3. The project catalog says so: the path is under a directory that a
+   project entry of one agent in the bundled catalog names, inside
+   another directory, with at least one segment below the entry. This is
+   the worktree an agent makes inside the user's project:
+   `/srv/proj/.claude/worktrees/feat` is under the `claude-code` entry
+   `.claude`, and `/srv/proj/.kilo/worktrees/k1`,
+   `/srv/proj/.gemini/worktrees/g1`, `/srv/proj/.qwen/worktrees/q1` and
+   `/srv/proj/.codex/worktrees/c1` under the `kilo-code`, `gemini-cli`,
+   `qwen-code` and `codex-cli` entries, while `/srv/proj/.kilo` itself
+   and `/srv/proj/src` are not scratch directories. The entries that
+   belong to no single agent (`AGENTS.md`, `.agents`, the agent `project`
+   in `--list`) do not count. A Windows path is compared ignoring case.
+   The rule needs no home path, so it applies in loose mode as well.
+   Since 0.20.1 ([issue 227](https://github.com/seanthegeek/doubleagent/issues/227)).
 
-Neither rule looks at the collector's list of project directories, so a
+No rule looks at the collector's list of project directories, so a
 scratch directory the collector gathered project files from is listed
 under `scratch_directories` with `status` `collected`. A scratch
 directory the collector gathers as the agent's own files (the Codex
