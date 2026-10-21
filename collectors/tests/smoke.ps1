@@ -1085,6 +1085,21 @@ Mk "$u236/inno_updater.exe" "binary`n"
 Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
 Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
 
+# 2026-10-21 Codex worktree cwds and archived threads (#222)
+# Codex (source at 4e7b9e2) runs a desktop thread in its own git worktree,
+# ~/.codex/worktrees/<4 hex>/<repo>, excluded by the catalog, and moves an
+# archived thread's rollout flat into ~/.codex/archived_sessions; Open
+# Interpreter keeps the same worktree layout under ~/.openinterpreter.
+# Discovery drops a worktree cwd and reads the archive. Checks follow the
+# default run below; the same files are in smoke.sh (Codex under bob, Open
+# Interpreter under alice).
+Mk 'home/bob/.codex/archived_sessions/rollout-2026-10-01T00-00-00-a1.jsonl' '{"type":"session_meta","payload":{"cwd":"C:\\codexarch"}}'
+Mk 'codexarch/AGENTS.md' "# agents`n"
+Mk 'home/bob/.codex/sessions/2026/10/03/rollout-3.jsonl' '{"type":"session_meta","payload":{"cwd":"/home/bob/.codex/worktrees/a1b2/repo"}}'
+Mk 'home/bob/.codex/worktrees/a1b2/repo/AGENTS.md' "# agents`n"
+Mk 'Users/alice/.openinterpreter/sessions/2026/10/04/rollout-2026-10-04T00-00-00-u3.jsonl' '{"type":"session_meta","payload":{"cwd":"C:\\Users\\alice\\.openinterpreter\\worktrees\\c3d4\\repo"}}'
+Mk 'Users/alice/.openinterpreter/worktrees/c3d4/repo/AGENTS.md' "# agents`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1626,6 +1641,11 @@ Check '#236 Cursor plugin cache excluded' { (StatusOf "$p236/cache") -eq 'skippe
 Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
 Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
 Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
+
+# 2026-10-21 Codex worktree cwds and archived threads (#222)
+Check '#222 Codex archived rollout cwd discovers project' { (StatusOf 'codexarch/AGENTS.md') -eq 'collected' -and @($sum.projects | Where-Object { ($_ -replace '\\', '/') -like '*/codexarch' }).Count -eq 1 }
+Check '#222 Codex worktree cwd not a project' { -not (@($sum.projects) | Where-Object { $_ -match '\.codex[\\/]worktrees' }) -and (StatusOf 'home/bob/.codex/worktrees') -eq 'skipped_excluded' -and -not ($script:Rows | Where-Object { $_.path -match 'worktrees[\\/]a1b2[\\/]repo[\\/]AGENTS\.md' }) }
+Check '#222 Open Interpreter worktree cwd not a project' { -not (@($sum.projects) | Where-Object { $_ -match '\.openinterpreter[\\/]worktrees' }) -and -not ($script:Rows | Where-Object { $_.path -match 'worktrees[\\/]c3d4[\\/]repo[\\/]AGENTS\.md' }) }
 
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null

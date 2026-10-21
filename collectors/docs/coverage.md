@@ -486,7 +486,7 @@ agent state that can be read with grep, and from every `-p` directory.
 | Antigravity | History, trusted workspaces, project cache, and the project files the CLI and the desktop app write in `~/.gemini/config/projects/` (their `file://` folder URLs; the sh collector reads them from 1.12.0). |
 | Claude Code | History and project list, in `~/.claude` and `~/.claude-<name>` config homes. |
 | Cline | Sessions and task history. |
-| Codex | Session rollouts. |
+| Codex | Session rollouts in `~/.codex/sessions` and, from collector 1.18.0, `~/.codex/archived_sessions`; a `cwd` under the home's `Documents/Codex` (projectless output directories) or, from 1.18.0, `.codex/worktrees` (the agent's own git worktrees, excluded) is skipped. |
 | Continue | Sessions. |
 | Copilot CLI | Session workspaces (`workspace.yaml` `cwd`) of sessions that have an `events.jsonl`. |
 | Copilot Desktop | None of its own: its sessions are Copilot CLI session workspaces, and a `cwd` under the home's `.copilot/` (the app's chat directories and worktrees) is skipped there, as is the `cwd` of a session directory with no `events.jsonl` (a pool or probe session the app pre-created and never prompted, whose `cwd` on Windows is the app's install directory; from collector 1.13.0); the repositories it manages are in `data.db`, left to the analyzer. |
@@ -501,7 +501,7 @@ agent state that can be read with grep, and from every `-p` directory.
 | Letta | Session index and local-backend transcripts. |
 | Muse Code | Trusted projects (`.config/muse/trust.json`) and session logs (`workspace_root`). |
 | nanobot | Workspace markers and config. |
-| Open Interpreter | Rollouts. |
+| Open Interpreter | Rollouts in `sessions` and `archived_sessions`; a `cwd` under the home's `.openinterpreter/worktrees` is skipped from collector 1.18.0. |
 | OpenClaw | Workspace and agent directories from its JSON5 config. |
 | OpenCode | Legacy project store. |
 | OpenHands | Workspaces and conversation metadata. |
@@ -735,6 +735,14 @@ which holds the agent worker's API key, and the `mcpOAuth.secret.*`
 entries, which hold an MCP server's OAuth tokens, PKCE code verifier
 (the one-time proof of a sign-in in progress) and client secret,
 encrypted with the operating system's key store.
+`ollama launch chatgpt` copies `~/.codex/auth.json`, the Codex
+sign-in, into a scratch directory `ollama-codex-models-*` in the system
+temp directory while it lists Codex's models, and removes it when the
+command finishes. A crash or a kill leaves that copy outside every home,
+where no catalog line reaches it; on a host where Ollama launched the
+ChatGPT app, look for the directory in the temp directory and copy it by
+hand (see [Credentials in
+`research/codex-cli.md`](../../research/codex-cli.md#credentials)).
 Agent Zero copies a Telegram bot's configuration into each Telegram
 chat's `chat.json`, which is collected unflagged; the keys to redact are
 `data.telegram_bot_cfg.token` and `data.telegram_bot_cfg.webhook_secret`.

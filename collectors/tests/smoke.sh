@@ -1158,6 +1158,26 @@ printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
 
+# 2026-10-21 Codex worktree cwds and archived threads (#222)
+# Codex (source at 4e7b9e2) runs a desktop thread in its own git worktree,
+# ~/.codex/worktrees/<4 hex>/<repo>, excluded by the catalog, and moves an
+# archived thread's rollout flat into ~/.codex/archived_sessions; Open
+# Interpreter keeps the same worktree layout under ~/.openinterpreter.
+# Discovery drops a worktree cwd and reads the archive. Checks follow the
+# default run below; the same files are in smoke.ps1 (Codex under bob, Open
+# Interpreter under alice).
+mkdir -p "$B/.codex/archived_sessions" "$ROOT/srv/codexarch" "$B/.codex/worktrees/a1b2/repo" \
+  "$H/.openinterpreter/worktrees/c3d4/repo"
+printf '{"type":"session_meta","payload":{"cwd":"/srv/codexarch"}}\n' \
+  >"$B/.codex/archived_sessions/rollout-2026-10-01T00-00-00-a1.jsonl"
+printf '# agents\n' >"$ROOT/srv/codexarch/AGENTS.md"
+printf '{"type":"session_meta","payload":{"cwd":"/Users/bob/.codex/worktrees/a1b2/repo"}}\n' \
+  >"$B/.codex/sessions/2026/10/03/rollout-3.jsonl"
+printf '# agents\n' >"$B/.codex/worktrees/a1b2/repo/AGENTS.md"
+printf '{"type":"session_meta","payload":{"cwd":"/home/alice/.openinterpreter/worktrees/c3d4/repo"}}\n' \
+  >"$H/.openinterpreter/sessions/2026/10/04/rollout-2026-10-04T00-00-00-u3.jsonl"
+printf '# agents\n' >"$H/.openinterpreter/worktrees/c3d4/repo/AGENTS.md"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1540,6 +1560,11 @@ check "#236 Cursor plugin cache excluded" "[ \"\$(status_of \"$P236/cache\")\" =
 check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
+
+# 2026-10-21 Codex worktree cwds and archived threads (#222)
+check "#222 Codex archived rollout cwd discovers project" "[ \"\$(status_of \"$ROOT/srv/codexarch/AGENTS.md\")\" = collected ] && grep '^  \"projects\"' \"\$S\" | grep -qF '\"$ROOT/srv/codexarch\"'"
+check "#222 Codex worktree cwd not a project" "! grep '^  \"projects\"' \"\$S\" | grep -q '\.codex/worktrees' && [ \"\$(status_of \"$B/.codex/worktrees\")\" = skipped_excluded ] && ! grep -qF 'worktrees/a1b2/repo/AGENTS.md' \"\$M\""
+check "#222 Open Interpreter worktree cwd not a project" "! grep '^  \"projects\"' \"\$S\" | grep -q '\.openinterpreter/worktrees' && ! grep -qF 'worktrees/c3d4/repo/AGENTS.md' \"\$M\""
 
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
