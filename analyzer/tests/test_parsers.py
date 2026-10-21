@@ -12206,6 +12206,7 @@ class MuseCodeTests(ParserBase):
 from doubleagent.parsers.ollama import OllamaParser, call_text
 from fixtures import (
     OLLAMA_ATTACHMENT,
+    OLLAMA_CD_PROFILE_REL,
     OLLAMA_CHAT,
     OLLAMA_DB_REL,
     OLLAMA_MANIFEST_REL,
@@ -12217,6 +12218,7 @@ from fixtures import (
 
 class OllamaTests(ParserBase):
     HISTORY_REL = ".ollama/history"
+    CONFIG_REL = ".ollama/config.json"
     CALL_ID = OLLAMA_CHAT + ":1"
 
     def run_timeline(self, name, *extra):
@@ -12423,13 +12425,12 @@ class OllamaTests(ParserBase):
 
     def test_other_files_not_wanted(self):
         p = OllamaParser()
-        wanted = {OLLAMA_DB_REL, OLLAMA_WIN_DB_REL, self.HISTORY_REL}
+        wanted = {OLLAMA_DB_REL, OLLAMA_WIN_DB_REL, self.HISTORY_REL, self.CONFIG_REL}
         rels = {a.rel for a in self.col.artifacts if a.agent == "ollama"}
         for rel in (
             OLLAMA_MANIFEST_REL,
             OLLAMA_DB_REL + "-wal",
             OLLAMA_WIN_DB_REL + "-shm",
-            ".ollama/config.json",
             ".ollama/backup/config.json.1772355600",
             ".ollama/onboarding-v1.completed",
             ".ollama/id_ed25519",
@@ -12439,7 +12440,23 @@ class OllamaTests(ParserBase):
         for a in self.col.artifacts:
             if a.agent == "ollama":
                 self.assertEqual(p.wants(a), a.rel in wanted, a.rel)
-        self.assertEqual(wanted, {a.rel for a in self.col.artifacts if p.wants(a)})
+        # Of the claude-desktop files, only the profile Ollama writes.
+        profile = self.artifact(OLLAMA_CD_PROFILE_REL)
+        self.assertEqual(profile.agent, "claude-desktop")
+        meta = self.artifact(str(Path(OLLAMA_CD_PROFILE_REL).parent / "_meta.json"))
+        self.assertFalse(p.wants(meta))
+        self.assertFalse(ClaudeDesktopParser().wants(profile))
+        self.assertEqual(
+            wanted | {OLLAMA_CD_PROFILE_REL},
+            {a.rel for a in self.col.artifacts if p.wants(a)},
+        )
+        self.assertIn("claude-desktop", p.reads_agents)
+        for root in ("AppData/Local/Claude-3p/", "AppData/Roaming/Claude-3p/"):
+            rel = root + "configLibrary/00000000-0000-4000-8000-000000000114.json"
+            self.assertEqual(p.wants(rel_only(rel)), root.startswith("AppData/Local"), rel)
+        self.assertFalse(
+            p.wants(rel_only("Library/Application Support/Claude-3p/configLibrary/other.json"))
+        )
 
     def test_not_a_database_is_one_system_row(self):
         db = self.home / OLLAMA_DB_REL
@@ -12515,6 +12532,72 @@ class OllamaTests(ParserBase):
                 (r.timestamp_utc, r.session_id, r.project_path, r.agent), ("", "", "", "ollama")
             )
         self.assertFalse([r for r in rows if r.turn_type == "user" and "\ufffd" in r.text])
+
+    def test_auto_mode_permission_settings(self):
+        # Issue 188: the launcher's automode key and the autoModeEnabled key
+        # it writes into Claude Desktop's profile, at each file's mtime.
+        rows = self.rows_for(OllamaParser(), self.CONFIG_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: integrations.claude-desktop.automode=true"
+                    " (from .ollama/config.json, file mtime)",
+                )
+            ],
+        )
+        self.assertEqual(rows[0].timestamp_utc, file_mtime(self.artifact(self.CONFIG_REL)))
+        rows = self.rows_for(OllamaParser(), OLLAMA_CD_PROFILE_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "permission setting: autoModeEnabled=true (set by Ollama's Claude Desktop"
+                    " launcher, from %s, file mtime)" % OLLAMA_CD_PROFILE_REL,
+                )
+            ],
+        )
+        self.assertEqual(rows[0].timestamp_utc, file_mtime(self.artifact(OLLAMA_CD_PROFILE_REL)))
+        for r in rows:
+            self.assertEqual(
+                (r.agent, r.session_id, r.project_path, r.model), ("ollama", "", "", "")
+            )
+            self.assertTrue(r.source_file.endswith(OLLAMA_CD_PROFILE_REL))
+        # The profile, catalogued under claude-desktop, reaches the parser.
+        out = self.run_timeline("perm")
+        texts = [r["text"] for r in read_jsonl(out / "timeline.jsonl")]
+        self.assertIn(
+            "permission setting: autoModeEnabled=true (set by Ollama's Claude Desktop"
+            " launcher, from %s, file mtime)" % OLLAMA_CD_PROFILE_REL,
+            texts,
+        )
+        # The inference gateway's literal key is not a row.
+        self.assertFalse([t for t in texts if "inferenceGatewayApiKey" in t])
+
+    def test_auto_mode_absent_gives_no_row(self):
+        # An unset automode key (the launcher's default, true) and a profile
+        # that --restore stripped of autoModeEnabled give no row.
+        (self.home / self.CONFIG_REL).write_text(
+            '{"integrations":{"claude-desktop":{"models":["gemma4:e4b"]}}}', encoding="utf-8"
+        )
+        (self.home / OLLAMA_CD_PROFILE_REL).write_text(
+            '{"disableDeploymentModeChooser":false}', encoding="utf-8"
+        )
+        self.assertEqual(self.rows_for(OllamaParser(), self.CONFIG_REL), [])
+        self.assertEqual(self.rows_for(OllamaParser(), OLLAMA_CD_PROFILE_REL), [])
+
+    def test_config_and_profile_not_json_are_one_parser_row(self):
+        for rel, body in (
+            (self.CONFIG_REL, '{"integrations":{"claude-desktop":{"automode":tr'),
+            (OLLAMA_CD_PROFILE_REL, "[true]"),
+        ):
+            (self.home / rel).write_text(body, encoding="utf-8")
+            rows = self.rows_for(OllamaParser(), rel)
+            self.assertEqual(len(rows), 1, rel)
+            self.assertEqual(rows[0].turn_type, "system")
+            self.assertTrue(rows[0].text.startswith("parser: %s is not " % rel), rows[0].text)
 
 
 from doubleagent.parsers.claude_desktop import ClaudeDesktopParser
