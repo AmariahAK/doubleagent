@@ -10050,7 +10050,7 @@ def build_pearai(home: Path) -> None:
                         "workspace": "/srv/proj",
                     },
                     {
-                        # a Creator task whose directory was deleted
+                        # a Creator task whose directory is not in the collection
                         "id": "1791037000000",
                         "number": 2,
                         "ts": 1791037000000,

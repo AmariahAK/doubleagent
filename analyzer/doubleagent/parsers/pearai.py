@@ -92,8 +92,9 @@ The editor's `state.vscdb` (`<User dir>/globalStorage/state.vscdb`), the
 <task> | tokensIn=.. tokensOut=.. totalCost=.. number=<n>`, ending
 ` | creator mode: newProjectType=<t> newProjectPath=<p>` for a task
 PearAI Creator started, at the entry's `ts`, with the task id as
-`session_id` and `workspace` as `project_path`; it survives the deletion of
-the task directory. Then one `permission setting: <key>=<value> (from
+`session_id` and `workspace` as `project_path`, so a task whose directory
+is missing from the collection still shows (the agent's own delete removes
+the entry with the directory). Then one `permission setting: <key>=<value> (from
 state.vscdb pearai.pearai-roo-cline, file mtime)` row per standing
 auto-approval key present (`autoApprovalEnabled`, `alwaysAllowReadOnly`,
 `alwaysAllowReadOnlyOutsideWorkspace`, `alwaysAllowWrite`,
