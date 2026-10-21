@@ -12958,20 +12958,55 @@ def write_ollama_db(path: Path, schema_version: int = 19) -> None:
     _wal_db(path, settings + OLLAMA_SCHEMA, ollama_records(schema_version))
 
 
+OLLAMA_CONFIG = (
+    '{"integrations":{"claude":{"models":["gemma4:e4b"]},'
+    '"claude-desktop":{"models":["gemma4:e4b"],"automode":true}},'
+    '"last_model":"gemma4:e4b","last_selection":"claude"}'
+)
+OLLAMA_CD_PROFILE_REL = (
+    "Library/Application Support/Claude-3p/configLibrary/00000000-0000-4000-8000-000000000114.json"
+)
+OLLAMA_CD_PROFILE = """{
+  "autoModeEnabled": true,
+  "chatTabEnabled": true,
+  "coworkEgressAllowedHosts": [
+    "*"
+  ],
+  "deploymentDisplayName": "Ollama",
+  "disableDeploymentModeChooser": true,
+  "disableEssentialTelemetry": true,
+  "disableNonessentialTelemetry": true,
+  "inferenceGatewayApiKey": "ollama",
+  "inferenceGatewayAuthScheme": "bearer",
+  "inferenceGatewayBaseUrl": "http://127.0.0.1:11435",
+  "inferenceProvider": "gateway"
+}
+"""
+
+
 def build_ollama(home: Path) -> None:
     write_ollama_db(home / OLLAMA_DB_REL)
     write_ollama_db(home / OLLAMA_WIN_DB_REL, schema_version=16)
     ollama = home / ".ollama"
     ollama.mkdir(parents=True, exist_ok=True)
     (ollama / "history").write_text("why is the sky blue\n/set nohistory\n/bye\n", encoding="utf-8")
-    # Noise the parser must not want: launch configuration, its backup, the
-    # onboarding marker, the key pair, a server log and a model manifest,
-    # which the collector collects once .ollama/models/blobs alone is excluded.
-    (ollama / "config.json").write_text(
-        '{"integrations":{"claude":{"models":["gemma4:e4b"]}},'
-        '"last_model":"gemma4:e4b","last_selection":"claude"}',
+    # The launch configuration: the claude-desktop integration's automode key
+    # is a standing permission setting (issue 188; research/ollama.md,
+    # Permission rows), the claude integration has none.
+    (ollama / "config.json").write_text(OLLAMA_CONFIG, encoding="utf-8")
+    # The Claude Desktop third-party profile the launcher writes, under a
+    # claude-desktop catalog base (cmd/launch/claude_desktop.go at 6787222).
+    profile = home / OLLAMA_CD_PROFILE_REL
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    profile.write_text(OLLAMA_CD_PROFILE, encoding="utf-8")
+    (profile.parent / "_meta.json").write_text(
+        '{"appliedId":"00000000-0000-4000-8000-000000000114",'
+        '"entries":[{"id":"00000000-0000-4000-8000-000000000114","name":"Ollama"}]}',
         encoding="utf-8",
     )
+    # Noise the parser must not want: the configuration's backup, the
+    # onboarding marker, the key pair, a server log and a model manifest,
+    # which the collector collects once .ollama/models/blobs alone is excluded.
     (ollama / "backup").mkdir(exist_ok=True)
     (ollama / "backup/config.json.1772355600").write_text(
         '{"integrations":{},"last_selection":"claude"}', encoding="utf-8"

@@ -1594,7 +1594,14 @@ neither is known, and `model_switch: <text>` when the stored message
 does not parse. Such a switch can therefore appear twice, once from the
 stored message and once from the usage table at the model's first use.
 `ollama` writes them before the assistant message whose
-`model_name` names the model. `goose` also writes
+`model_name` names the model; it also writes one `permission setting:
+integrations.<name>.automode=<true|false> (from .ollama/config.json, file
+mtime)` row per integration whose launcher configuration holds the key,
+and `permission setting: autoModeEnabled=<true|false> (set by Ollama's
+Claude Desktop launcher, from <file>, file mtime)` from the Claude Desktop
+profile `configLibrary/00000000-0000-4000-8000-000000000114.json` under a
+`Claude-3p` base, a file the catalog attributes to `claude-desktop`; both
+at the file's modification time with an empty `session_id`. `goose` also writes
 `permission mode: <goose_mode>` after each session's start row, and,
 for a session the gateway relayed through its Telegram bot, `session
 relayed: gateway <platform> user <user_id> display <display name> (from

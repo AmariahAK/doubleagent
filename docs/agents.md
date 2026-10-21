@@ -823,11 +823,17 @@ the `users` and `settings` tables are not read. `.ollama/history` (the
 `ollama run` prompt history: no timestamp or session, so its rows sort
 last and drop out of `--since`/`--until`; the last 100 entries only; a
 pasted multi-line prompt becomes several rows; slash commands are `system`
-rows). No project path is recorded. Model manifests, `config.json`,
+rows). `.ollama/config.json`, for the `automode` key of each `ollama
+launch` integration, and the Claude Desktop profile the launcher writes,
+`configLibrary/00000000-0000-4000-8000-000000000114.json` under
+`Library/Application Support/Claude-3p` or `AppData/Local/Claude-3p`, for
+its `autoModeEnabled` key: each a `permission setting:` row at the file's
+modification time. No project path is recorded. Model manifests,
 `backup/`, `launch/` and `logs/` are not read.
 
 Validated against: Source at v0.35.1 ([b0c1ca4](https://github.com/ollama/ollama/commit/b0c1ca4f7549d7acdfa52a7dcffc934bc63a43ce)), synthetic fixture; no real
-`db.sqlite`, since the desktop app does not exist on Linux.
+`db.sqlite`, since the desktop app does not exist on Linux; the auto-mode
+settings from source at [6787222](https://github.com/ollama/ollama/commit/678722224b3d8c2a024a4fa5f530d83ce34db120) (after v0.40.6), synthetic fixture.
 
 ### `open-interpreter`
 
