@@ -1139,6 +1139,7 @@ AppData/Roaming/Hermes/GPUCache
 .openclaw*/tmp
 .openclaw*/tools
 .openclaw*/worktrees
+.openclaw*/projects/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]
 .openclaw*/plugin-skills
 .openclaw*/extensions/*/node_modules
 .openclaw*/sandbox/skills-workspaces
@@ -1245,6 +1246,10 @@ plugins/*/.venv
 npm
 npm-runtime
 worktrees
+projects/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]
+plugin-skills
+agents/*/agent/tmp
+agents/*/agent/.tmp
 extensions/*/node_modules
 sandbox/skills-workspaces
 browser/*/user-data/*/Cache
@@ -1608,6 +1613,8 @@ AppData/Roaming/Hermes/connection*.json*
 .openclaw*/agents/*/agent/auth-profiles.json*
 .openclaw*/agents/*/agent/models.json
 .openclaw*/browser/*/user-data/*/Cookies*
+.openclaw*/exec-approvals.json
+.openclaw-auth-profile-secrets/*
 .clawdbot/clawdbot.json*
 .clawdbot/.env
 .clawdbot/credentials/*
@@ -1758,6 +1765,7 @@ service-env/*
 agents/*/agent/auth-profiles.json*
 agents/*/agent/models.json
 browser/*/user-data/*/Cookies*
+exec-approvals.json
 config.json
 whatsapp-auth/*
 matrix-store/*

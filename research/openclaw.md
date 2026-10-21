@@ -11,8 +11,8 @@ copies of its store, and OpenClaw has no vendor account. Its transcript record s
 entries linked by `id`/`parentId`) is the tree-structured session format of
 its agent core; since mid-2026 the records live as rows in a per-agent SQLite
 database rather than in `.jsonl` files, which remain only as legacy import
-sources and archives. Parsed: the openclaw parser reads the agent database and the legacy and
-archived session files.
+sources and archives. Parsed: the openclaw parser reads the agent database, the Gateway's state
+database and the legacy and archived session files.
 
 ## Source and evidence
 
@@ -36,6 +36,13 @@ were checked at the same commit on 2026-10-17.
 
 ### Source reviews
 
+- 2026-10-21: [openclaw/openclaw](https://github.com/openclaw/openclaw) at
+  [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b) (version `2026.10.5`): the relay, permission,
+  model-override, past-use, deletion, PostgreSQL-anchor and GitHub publication records became
+  parser rows, marked source-derived in each [Parser plan](#parser-plan) subsection; the
+  [Credentials](#credentials) and [Exclusions](#exclusions) sections gained the new secret globs,
+  the GitHub identity and the clone exclusion, and [Source host rows](#source-host-rows) states
+  the GitHub integration.
 - 2026-10-19: [openclaw/openclaw](https://github.com/openclaw/openclaw) at
   [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)
   (2026-10-19, version `2026.10.5`,
@@ -268,12 +275,24 @@ so a `~/.moltbot` on an old host is orphaned state that the current tool ignores
   [`infra/exec-approvals-core.ts:226-234`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/infra/exec-approvals-core.ts#L226-L234),
   at [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)).
   It is migrated into `state/openclaw.sqlite`, which keeps the token ([Secrets](#secrets)),
-  so a host that has not migrated still has the file. No secret glob flags it.
+  so a host that has not migrated still has the file. The secret glob
+  `.openclaw*/exec-approvals.json` flags it, and `exec-approvals.json` at a Docker volume's root.
 - `~/.openclaw-auth-profile-secrets/`, the Docker installs' host directory for the container's
-  `~/.config/openclaw` (`gateway.env`) ([Docker](#docker)); no secret glob flags it. The Docker
+  `~/.config/openclaw` (`gateway.env`) ([Docker](#docker)); the secret glob
+  `.openclaw-auth-profile-secrets/*` flags every file in it. The Docker
   guide states that OAuth access, refresh and ID tokens are plaintext in SQLite under the state
   directory
   ([`docs/install/docker-vm-runtime.md:46-50`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/docs/install/docker-vm-runtime.md#L46-L50)).
+- The managed GitHub identity, the account the Gateway's GitHub tools and publications act as
+  ([Source host rows](#source-host-rows)): its OAuth token record is a `secret_store_entries` row
+  of `state/openclaw.sqlite` named `github-oauth-<32 hex>`
+  ([`secret-store-github-names.ts:9`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/secrets/store/secret-store-github-names.ts#L9);
+  [`openclaw-state-schema.sql:2737-2747`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-state-schema.sql#L2737-L2747)), and a GitHub App
+  installation's `privateKey` sits in `openclaw.json` under `tools.github` or an agent entry's
+  `tools.github`, plaintext or as a SecretRef
+  ([`zod-schema.github-identity.ts:16-43`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/zod-schema.github-identity.ts#L16-L43);
+  [`zod-schema.agent-runtime.ts:614`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/zod-schema.agent-runtime.ts#L614),
+  [`:659`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/zod-schema.agent-runtime.ts#L659)).
 
 ### Exclusions
 
@@ -288,12 +307,15 @@ Chromium cache subtrees under `browser/*/user-data/`. Do not exclude `browser/*/
 whole: its History and Cookies show what the agent browsed.
 
 At [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b)
-add `projects/` too, the full git clones the Gateway makes when a project is
-added from a remote URL, `projects/<16 hex>/<name>`
+the full git clones the Gateway makes when a project is added from a remote URL,
+`projects/<16 hex>/<name>`, are excluded too; the clone directory's name must be 16 lower-case
+hex characters
 ([`src/projects/project-clone.ts:276-295`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/projects/project-clone.ts#L276-L295)),
-the same kind of tree as `worktrees/`; which repository each one is stays in `state/openclaw.sqlite`
-`projects` (`origin_url`, `repo_root`). The volume-relative forms of the existing exclusions lack
-`plugin-skills` and `agents/*/agent/tmp` and `.tmp`; `dev`, `git` and `tmp` cannot be added bare
+so the pattern names it, `.openclaw*/projects/` followed by sixteen `[0-9a-f]` classes, and
+nothing else under `projects/` is pruned. They are the same kind of tree as `worktrees/`; which
+repository each one is stays in `state/openclaw.sqlite` `projects` (`origin_url`, `repo_root`).
+The volume-relative forms are `projects/` with the same sixteen classes, `plugin-skills`,
+`agents/*/agent/tmp` and `agents/*/agent/.tmp`; `dev`, `git` and `tmp` cannot be added bare
 without matching other tools' volume layouts.
 
 ### Project-local files
@@ -406,11 +428,13 @@ determined, and a public share grant is lost with the session row
 ([Other records of past use](#other-records-of-past-use),
 [Sync, relay and origin](#sync-relay-and-origin-rows)). There is no prompt-history file.
 
-The analyzer reads the archive blobs as primary and the published
-`.jsonl.deleted.*` and `.jsonl.reset.*` files as secondary, shows a
-deleted archive only as an `archive=deleted.<ts>` session-start row and
-the backups as `backup uploaded:` rows, and does not read the memory
-index, the tombstones, the full-text index or the channel tables (see
+The analyzer reads the archive blobs as primary and the published `.jsonl.deleted.*` and
+`.jsonl.reset.*` files as secondary. A deleted archive gives an `archive=deleted.<ts>`
+session-start row and a `session deleted:` row, a tombstone a `session forgotten from memory:`
+row, an archived session a `session archived:` row; the full-text index gives the entries the
+transcript no longer holds, the pending inputs the prompts that never reached it, the channel
+tables the inbound messages and deliveries, and the backups `backup uploaded:` rows. The memory
+index chunks are not read (see
 [Secondary sources](../analyzer/docs/output.md#secondary-sources) and [Deletion](#deletion-rows)).
 
 ### Record schema
@@ -584,7 +608,8 @@ the debug traces under `logs/` that hold full prompts. The files and tables are 
 #### Other records of past use
 
 Line numbers at [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b); every source is present at
-[`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9) too, and the parser reads none:
+[`3b16db7`](https://github.com/openclaw/openclaw/commit/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9) too, and the parser reads all but the memory index
+([Past use and secondary sources](#past-use-rows-and-secondary-sources)):
 
 | Source | Holds | Survives | Joins on | Plan |
 | --- | --- | --- | --- | --- |
@@ -661,8 +686,8 @@ holds it; transcript payloads are plain JSON there, never zstd. A responder who 
 needs the DSN (in `openclaw.json` or the environment, [Credentials](#credentials)) and the `schema`
 value to request the server's copy. Daemon runtime pins stay local in `control/services.sqlite` on
 either engine ([Contents of the state directory](#contents-of-the-state-directory)). The parser
-opens the anchor, finds none of its tables and yields nothing, with no row saying where the store
-went.
+yields one whole-file row for an anchor, naming the store and the schema
+([Sync, relay and origin](#sync-relay-and-origin-rows)).
 
 ### Format versions
 
@@ -747,34 +772,39 @@ Put `session_key` (channel and peer) into the system row for each session. The s
 `api` values include `anthropic-messages`
 ([`llm-core/src/types.ts:23`](https://github.com/openclaw/openclaw/blob/3b16db73c0b5209aad2ee7c3fb5ddfb12fb208f9/packages/llm-core/src/types.ts#L23)).
 
-The proposals below rest on source alone, at
-[`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b); [AGENTS.md](../AGENTS.md#real-install-rounds)
-requires a per-step real-install round before the parser changes, and OpenClaw has none.
+The rows added at [`146284a`](https://github.com/openclaw/openclaw/commit/146284a289f98a2cf3babbc55cc3bd16c28e604b) rest on source alone and each
+subsection below marks them; the per-step real-install round
+[AGENTS.md](../AGENTS.md#real-install-rounds) requires is still owed.
 
 #### Permission rows
 
-No transcript entry records a per-call permission
-decision; `bashExecution.cancelled` stays on the bash `tool_result` row. The
-`exec_approvals_config`, `operator_approvals` and `audit_events` tables of
-`state/openclaw.sqlite`
-([Contents of the state directory](#contents-of-the-state-directory))
-hold approvals; their columns are in
-[Permission records](#permission-records), and the parser does not read them
-yet.
+No transcript entry records a per-call permission decision; `bashExecution.cancelled` stays on the
+bash `tool_result` row. The approvals and the standing policy are rows of `state/openclaw.sqlite`
+and of each session's `entry_json`, whose columns are in [Permission records](#permission-records).
+The parser yields, all source-derived; not observed on any real install:
 
-Proposed: one `permission decision: <decision or status>
-kind=<kind> resolver=<resolver_kind> reason=<terminal_reason>` row per
-`operator_approvals` row at `resolved_at_ms` (else `created_at_ms`), with
-`session_id` `source_session_id`, `tool_name` `source_tool_name` and
-`tool_use_id` `source_tool_call_id`, so it sits beside the call it
-governed; one `permission setting: <key>=<value> (from
-state/openclaw.sqlite exec_approvals_config, updated_at_ms)` row per
-default and per-agent `security`, `ask`, `askFallback`,
-`autoAllowSkills` and allowlist entry of `raw_json` (never `socket.token`),
-one per `operator_approval_standing_grants` and
-`channel_pairing_allow_entries` row, and one per session-level
-`elevatedLevel`, `execHost`, `toolOverrides` and `sendPolicy` from
-`entry_json`. Not parsed today.
+- One row per `operator_approvals` row, at `resolved_at_ms` (`created_at_ms` while pending), with
+  `session_id` `source_session_id`, `tool_name` `source_tool_name` and `tool_use_id`
+  `source_tool_call_id`, so it sits beside the call it governed:
+  `permission decision: <decision, else status> status=<status> kind=<kind> resolver=<resolver_kind> reason=<terminal_reason> approval <approval_id> (from state/openclaw.sqlite operator_approvals, <resolved_at_ms or created_at_ms>)`.
+- One `permission setting: <scope>.<setting> (from state/openclaw.sqlite exec_approvals_config, updated_at_ms)`
+  row per `security`, `ask`, `askFallback` and `autoAllowSkills` value (`<key>=<value>`), per
+  allowlist entry (`allowlist=<pattern>[ argPattern=<argPattern>] source=<source>`) and per MCP tool
+  grant (`mcpTools=<server>/<tool> source=<source>`) of `raw_json`'s `defaults` and of each
+  `agents.<id>`, `<scope>` being `defaults` or `agents.<id>`
+  ([`packages/gateway-protocol/src/schema/exec-approvals.ts:15-75`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/packages/gateway-protocol/src/schema/exec-approvals.ts#L15-L75)).
+  `socket` is never read ([Secrets](#secrets)); a `raw_json` that does not decode is one `parser:`
+  row that withholds the text, since the text holds the token.
+- `permission setting: standing grant <grant_id> allow-always cron job <cron_job_id> agent <agent_id> binding <operation_binding> approval <minted_by_approval_id> expires=<expires_at_ms> revoked=<revoked_at_ms> uses=<use_count> (from state/openclaw.sqlite operator_approval_standing_grants, created_at_ms)`
+  per standing grant.
+- `permission setting: channel <channel_key> account <account_id> allowFrom=<entry> (from state/openclaw.sqlite channel_pairing_allow_entries, updated_at)`
+  per allowed sender.
+- One `permission setting: <key>=<value> (from openclaw-agent.sqlite session_nodes.entry_json, updated_at)`
+  row per `elevatedLevel`, `execHost`, `execNode`, `execCwd`, `toolOverrides` (as JSON) and
+  `sendPolicy` of a session's `entry_json`, after the start row of its current generation, at
+  `session_nodes.updated_at`.
+
+`audit_events` is not read: its `kind` and `action` values were not enumerated.
 
 #### Model rows
 
@@ -790,10 +820,13 @@ A `model_change` entry naming the model already in force still yields the plain
 `model: <id> provider=<provider>` row, since it records a switch; an assistant message that repeats
 the current model yields none.
 
-Proposed: one `model: <old> -> <modelOverride>
-provider=<providerOverride> source=<modelOverrideSource>` row from
-`entry_json` at the node's `updated_at` ([Model override](#model-override)), which records a
-`/model` the user typed even when no turn followed. Not parsed today.
+The session's model override ([Model override](#model-override)) gives one
+`model: <modelOverride> provider=<providerOverride> source=<modelOverrideSource> (from openclaw-agent.sqlite session_nodes.entry_json modelOverride, updated_at)`
+row, with ` fallback_from=<provider>/<model>` before the parenthesis when
+`modelOverrideFallbackOriginProvider` or `Model` is set, after the start row of the session's
+current generation, at `session_nodes.updated_at`, the `model` column the override. It records a
+`/model` the user typed even when no turn followed. The entry keeps only the current override, so
+the row names no previous model. Source-derived; not observed on any real install.
 
 #### Past-use rows and secondary sources
 
@@ -876,14 +909,40 @@ the same time (a 2-second tolerance is not needed but is the default). The sessi
 not: a copy's names the file (`archive=<reason>.<ts>` or `copy=<suffix>`) where the database's
 carries the `session_windows` and archive columns, so each copy keeps one row showing it exists.
 
-Covered: the archive blobs and their files, checkpoints and pre-doctor copies. Proposed:
-`session_pending_inputs` as a source of
-`user` rows (primary for `queued`, `interrupted` or `cancelled` rows with
-no `consumed_event_id`, secondary otherwise), and
-`session_transcript_fts`, `channel_ingress_events` and
-`conversation_deliveries` as secondary sources
-([Other records of past use](#other-records-of-past-use)). `memory_index_chunks` waits until
-the form of its `path` for a session is known.
+Covered: the archive blobs and their files, checkpoints and pre-doctor copies, and, source-derived;
+not observed on any real install, these tables of
+[Other records of past use](#other-records-of-past-use). The full-text index and the pending inputs
+repeat transcript entries inside the primary database, where the file-level secondary flag cannot
+mark them, so the parser joins them on the entry id itself and marks what it keeps `recovered`:
+
+- `session_pending_inputs`, each accepted prompt, `message_json` a user message (`role` `user`,
+  `content`;
+  [`src/config/sessions/session-pending-input-value.ts:8-15`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/session-pending-input-value.ts#L8-L15)):
+  a row with no `consumed_event_id` is primary and yields a `user` row and
+  `pending input: <state>, not consumed by the transcript (input <input_id> run <run_id>; from openclaw-agent.sqlite session_pending_inputs, accepted_at)`,
+  at `accepted_at`; a consumed row yields its `user` row, recovered, only when no transcript entry
+  of the database has the `consumed_event_id`. A `message_json` that does not decode is its own
+  `parser:` row.
+- `session_transcript_fts`, read from its FTS5 content table `session_transcript_fts_content` as a
+  plain table, its columns `c0` to `c4` being `text`, `session_id`, `message_id`, `role` and
+  `timestamp` in the declared order
+  ([`openclaw-agent-schema.sql:809-816`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-agent-schema.sql#L809-L816)):
+  a `user` or `assistant` row (else `system`, `<role>: <text>`) per indexed entry whose
+  `(session_id, message_id)` no transcript row carries, recovered.
+- `conversation_deliveries` joined to `conversations`, with `session_id` the current generation of
+  `source_session_key`:
+  `channel delivery: <operation_kind> <status> channel <channel> conversation <conversation_id> platform message <platform_message_id> (from openclaw-agent.sqlite conversation_deliveries, created_at)`,
+  with ` error=<rejection_error>` before the parenthesis for a rejected send, and, when a platform
+  message replied to the delivery (`reply_message_id`, `reply_text`, `reply_timestamp`;
+  [`src/config/sessions/conversation-delivery-store.types.ts:24-30`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/conversation-delivery-store.types.ts#L24-L30)),
+  `channel delivery reply: <reply_text> (reply message <reply_message_id>; from openclaw-agent.sqlite conversation_deliveries, reply_timestamp)`.
+  The outbound text itself is stored only as `message_hash`, so the rows repeat no transcript text.
+- `channel_ingress_events` of `state/openclaw.sqlite`:
+  `channel ingress: <channel_id> account <account_id> status <status>: <payload_json> (from state/openclaw.sqlite channel_ingress_events, received_at)`,
+  the payload whole since its shape per channel was not determined, with no session id; it cannot
+  be matched to the transcript.
+
+`memory_index_chunks` waits until the form of its `path` for a session is known.
 
 #### Sync, relay and origin rows
 
@@ -944,23 +1003,31 @@ the operator's own collector
 Searched `share`, `publicShare`, `sync`, `upload`, `cloud`, `remote`, `backup`, `telemetry`,
 `export` and `publish` in `src/` and `docs/`.
 
-Relay: the parser puts `channel`, `account_id` and `chat_type` on the
-session-start row but writes no `session relayed:` row and does not set
-`records_relay` (the records are under [Joins and timestamps](#joins-and-timestamps)). Proposed: one
-`session relayed: <channel> account <account_id>
-<chat_type> peer <peer_id> thread <thread_id> (from openclaw-agent.sqlite
-conversations, created_at)` row per `session_conversations` link (else
-from `session_windows.channel` or `entry_json.delivery.origin`) for any
-channel other than `webchat`, and `records_relay` set; a
-`hook_external_content_source` of `gmail` is an email relay of the same
-kind.
+Relay (`records_relay`; source-derived; not observed on any real install): the records are under
+[Joins and timestamps](#joins-and-timestamps). After a generation's start row the parser yields one
+`session relayed: <channel> account <account_id> <kind> peer <peer_id> thread <thread_id> role <role> (from openclaw-agent.sqlite session_conversations and conversations, first_seen_at)`
+row per `session_conversations` link, at `first_seen_at`; for a generation with no such link,
+`session relayed: <channel> account <account_id> <chat_type> (from openclaw-agent.sqlite session_windows, started_at)`
+from its window; and for a session with neither, from an `entry_json.delivery` of kind `external`,
+`session relayed: <route.channel> account <account> <origin.chatType> from <origin.from> to <origin.to> (from openclaw-agent.sqlite session_nodes.entry_json delivery, updated_at)`
+(`route` is a channel route whose `channel` is the lower-case channel id,
+[`src/plugin-sdk/channel-route.ts:18-25`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/plugin-sdk/channel-route.ts#L18-L25)).
+A window whose `hook_external_content_source` is `gmail`, a session a Gmail hook started, is an
+email relay:
+`session relayed: gmail hook (from openclaw-agent.sqlite session_windows hook_external_content_source, started_at)`.
+The Control UI channel `webchat` and the internal wake sources `heartbeat`, `cron`, `webhook`,
+`voice` and `sessions_send` are not platforms and give no row
+([`src/utils/message-channel-constants.ts:3`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/utils/message-channel-constants.ts#L3),
+[`:14-20`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/utils/message-channel-constants.ts#L14-L20)).
+The start row still carries `channel`, `account_id` and `chat_type`.
 
-Origin: the agent records none (no session is created on a vendor
-server; grepped `origin` and `remote` in `src/config/sessions/`). A
-PostgreSQL anchor ([PostgreSQL engine](#postgresql-engine)) should yield
-one whole-file row, `parser: agent database is a PostgreSQL anchor
-(store <store_id>, schema <schema>): transcripts are on the database
-server`, so the gap is visible.
+Origin: the agent records none (no session is created on a vendor server; grepped `origin` and
+`remote` in `src/config/sessions/`). A PostgreSQL anchor ([PostgreSQL engine](#postgresql-engine))
+yields one whole-file row, source-derived; not observed on any real install:
+`parser: agent database is a PostgreSQL anchor (store <store_id>, schema <schema>): transcripts are on the database server`,
+or for `state/openclaw.sqlite`
+`parser: state database is a PostgreSQL anchor (store <store_id>, schema <schema>): the Gateway state is on the database server`,
+so the gap is visible.
 
 #### Scratch directory rows
 
@@ -972,14 +1039,19 @@ and per `worktrees` row, so a state directory moved by
 
 #### Deletion rows
 
-Today a deleted archive shows only as an
-`archive=deleted.<ts>` session-start row ([What survives a delete](#what-survives-a-delete)).
-Proposed: `session deleted: <session_id> (from
-openclaw-agent.sqlite session_transcript_archives reason deleted,
-created_at)` for each deleted archive, `session archived: <archiveReason>
-by <archivedBy>` from `entry_json` at `archivedAt`, and `session
-forgotten from memory: <session_id> reason=<reason>` per
-`memory_session_tombstones` row.
+A deleted archive shows as an `archive=deleted.<ts>` session-start row
+([What survives a delete](#what-survives-a-delete)) and, source-derived; not observed on any real
+install, three rows mark a delete, an archive and a forget:
+
+- `session deleted: <session_id> archive <archive_name> (from openclaw-agent.sqlite session_transcript_archives reason deleted, created_at)`
+  after the rows of each `session_transcript_archives` blob whose `reason` is `deleted`, at
+  `created_at`, even when the blob does not decompress.
+- `session archived: <archiveReason> by <archivedBy.type>:<archivedBy.id> (from openclaw-agent.sqlite session_nodes.entry_json, archivedAt)`
+  after the start row of the session's current generation, at `archivedAt`; `archivedBy` is a
+  `{type, id, label}` actor
+  ([`src/config/sessions/session-entry-provenance.ts:16-18`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/session-entry-provenance.ts#L16-L18)).
+- `session forgotten from memory: <session_id> agent <agent_id> reason=<reason> (from openclaw-agent.sqlite memory_session_tombstones, created_at)`
+  per tombstone, with the `cwd` of the session's transcript when the database still holds one.
 
 #### Bad-line rows
 
@@ -1007,6 +1079,41 @@ JSONL form; the SQLite form stores the same strings in `event_json`:
 {"type":"message","id":"c3d4e5f6","parentId":"b2c3d4e5","timestamp":"2026-10-01T09:00:05.000Z","message":{"role":"toolResult","toolCallId":"call_01","toolName":"exec","content":[{"type":"text","text":"/dev/sda1  50G  20G  30G  40% /"}],"isError":false,"timestamp":1759309205000}}
 {"type":"model_change","id":"d4e5f6a7","parentId":"c3d4e5f6","timestamp":"2026-10-01T09:01:00.000Z","provider":"openai","modelId":"gpt-5"}
 ```
+
+A `session_nodes.entry_json` with the delivery route, model override and permission keys the
+parser reads ([`src/config/sessions/types.ts:60-83`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/types.ts#L60-L83),
+[`:481-516`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/types.ts#L481-L516),
+[`:532`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/sessions/types.ts#L532)),
+and the `raw_json` of an `exec_approvals_config` row, whose `socket.token` the parser never reads:
+
+```json
+{"sessionId":"7d0c2a8e-1111-4000-8000-000000000001","delivery":{"kind":"external","route":{"channel":"telegram","accountId":"default"},"context":{},"origin":{"provider":"telegram","chatType":"direct","from":"123456789"}},"providerOverride":"openai","modelOverride":"gpt-5","modelOverrideSource":"user","elevatedLevel":"on","execHost":"gateway","toolOverrides":{"mcpServers":"off"},"sendPolicy":"allow"}
+{"version":1,"socket":{"path":"/home/alice/.openclaw/exec.sock","token":"<redacted>"},"defaults":{"security":"allowlist","ask":"on-miss"},"agents":{"main":{"autoAllowSkills":true,"allowlist":[{"pattern":"df","source":"allow-always"}],"mcpTools":[{"server":"github","tool":"search","source":"allow-always","addedAt":1}]}}}
+```
+
+#### Source host rows
+
+OpenClaw connects a GitHub account as a managed identity per Gateway or per agent, an OAuth
+sign-in or a GitHub App installation, which its bundled GitHub plugin (reader, `github_read` and
+`github_search` tools) and its publication flow use
+([`extensions/github/README.md:57-59`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/extensions/github/README.md#L57-L59);
+[`src/config/zod-schema.github-identity.ts:6-43`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/config/zod-schema.github-identity.ts#L6-L43)).
+The token is local: the OAuth record is a `secret_store_entries` row and an App's private key is
+in `openclaw.json` ([Credentials](#credentials)). A GitHub App installation lists the repositories
+it may reach as `repositories` `{id, fullName}` in that config entry (same lines). The
+repository-bound records are the GitHub publication requests of `state/openclaw.sqlite`,
+`github_publication_requests`, `github_personal_publication_requests` and
+`github_repository_publication_requests`, one row per push or pull request the Gateway made for a
+session, with `identity_source` (`system-detected|system-configured|agent-override|personal`),
+`identity_account_id`, `identity_login`, `status`, `repository`, `branch`, `pull_request_url` and
+`created_at_ms`
+([`openclaw-state-schema.sql:2093-2140`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-state-schema.sql#L2093-L2140),
+[`:2410-2482`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-state-schema.sql#L2410-L2482),
+[`:2488-2531`](https://github.com/openclaw/openclaw/blob/146284a289f98a2cf3babbc55cc3bd16c28e604b/src/state/openclaw-state-schema.sql#L2488-L2531)).
+Each yields, source-derived; not observed on any real install,
+`source host: github account <identity_login> id <identity_account_id> identity <identity_source>; publication <status> repository <repository> branch <branch> pull request <pull_request_url> (from state/openclaw.sqlite <table>, created_at_ms)`
+at `created_at_ms`, `session_id` the session. The App installation's repository list is not read,
+since the parser reads no `openclaw.json` (JSON5), so it gives no `source host repository:` rows.
 
 ## Confidence
 
