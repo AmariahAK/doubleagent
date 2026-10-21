@@ -594,7 +594,11 @@ to delegate the backlog.
 
 Prefer reading the tool's source over installing it. Most agents are open
 source even when their models are not, and the path constants are easy to
-find. The validation for every current entry is recorded in the index table in
+find. Source the vendor publishes publicly counts as source whatever its
+licence allows: Claude Code's repository is published under a commercial
+licence and is still the evidence to read and cite at a commit, not a
+closed bundle. A researcher confirms what the repository ships before
+citing it. The validation for every current entry is recorded in the index table in
 [`research/README.md`](research/README.md).
 
 What counts as one agent is decided before any line is written, by the
