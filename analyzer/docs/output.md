@@ -1230,7 +1230,33 @@ being `Success`, `Unexpected response`, `Auth required`, `Failed`,
 requested, skipped (from logs/cn.log, log line time, host-local)`, both
 with an empty `session_id` and the log's host-local time written as if
 it were UTC. `roo-code`,
-`aider`, `shellgpt` and `tabby` record no model and write no such row.
+`aider` and `shellgpt` record no model and write no such row.
+
+The `tabby` parser records no model per message and writes no `model:`
+row. From the server's `.tabby/config.toml` it writes one row per
+configured model, `model configured: <group> <model_name or model_id>
+via <http|local>[ kind=<kind>][ endpoint=<api_endpoint>][
+supported_models=<a,b>] (from config.toml [model.<group>.<http|local>],
+file mtime)`, `<group>` being `completion`, `chat` or `embedding`, at the
+file's modification time; under Python 3.10, which has no `tomllib`, the
+one row `parser: config.toml model tables not read: Python 3.11 or later
+needed` instead. From the database it writes `page start | title <title>
+| author <email (name)> | code_source <id>` for each AI-written page,
+with `session_id` `page:<id>`, followed by the page content and its
+sections as `assistant` rows; `source host: <host> integration
+<display_name> kind=<kind> api_base=<api_base> (account not recorded;
+from integrations table, created_at)` for each GitHub or GitLab
+integration, `<host>` being `github.com`, `gitlab.com` or the host of a
+self-hosted `api_base`; and `source host repository: <git_url>
+type=<kind> name=<name> active=<yes|no> (integration <display_name>;
+from provided_repositories table, updated_at)` for each repository
+cached from one, both at their own times. The editor plugins'
+inline-edit command histories, from the IntelliJ plugin's
+`intellij-tabby-command-history.xml` and the `edit.recentlyCommand` key
+of the `TabbyML.vscode-tabby` row of a VS Code or fork `state.vscdb`,
+give `inline edit command history: <N> commands, newest first (from
+<source>, no times)` followed by one `user` row per command, newest
+first, with an empty `timestamp_utc`.
 
 The `vscode`, `cody` and `twinny` parsers write the same `model: <id>`
 and `model: <old> -> <new>` rows, from the request `modelId` (VS Code),
@@ -1554,7 +1580,7 @@ beside its `session synced: server conversation` row.
 | `opencode` | `.local/share/opencode/opencode-next.db`, the pre-release 2.0 database that 2.0 imports and leaves in place; in a database upgraded to 2.0, the 1.x `message` and `part` tables, read only for a session `session_message` does not hold and paired by the parser itself (since 0.19.0) | `.local/share/opencode/opencode.db` (or `opencode-<channel>.db`): `session_v2` and `session_message` |
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
-| `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
+| `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads, pages, events and integrations); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair); the IntelliJ `intellij-tabby-command-history.xml` and the VS Code `state.vscdb` `edit.recentlyCommand` (no timestamp; the server keeps no copy of an inline-edit instruction, so they never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
 
 The 2 seconds cover Codex's `history.jsonl`, which records whole seconds
 beside the rollouts' milliseconds, and Antigravity's history line, under
@@ -1600,7 +1626,8 @@ once, against the earliest database row.
 Some secondary rows never match, because the primary store has no twin
 for them or renders the event differently, and are always kept: Tabby's
 event-log `system` rows, which name the server user by an encoded id
-where the database gives an email; Cline's `session-search.db` messages
+where the database gives an email, and its editor command histories,
+whose inline-edit instructions the server does not store; Cline's `session-search.db` messages
 stored as content blocks, which the index keeps with their block type
 names and tool ids; a nanobot WebUI prompt whose session copy has
 runtime context appended (a quoted reply, an automation template);
