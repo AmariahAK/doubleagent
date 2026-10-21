@@ -1354,7 +1354,26 @@ stored message and once from the usage table at the model's first use.
 `permission mode: <goose_mode>` after each session's start row, and,
 for a session the gateway relayed through its Telegram bot, `session
 relayed: gateway <platform> user <user_id> display <display name> (from
-sessions.db session_type gateway, created_at)`. `zed`
+sessions.db session_type gateway, created_at)`. A tool confirmation in
+`sessions.db` is `permission request: <toolName> | <prompt> |
+<arguments>` (an empty prompt left out) and its answer `permission
+decision: <permission> (toolConfirmationResponse)`, `<permission>` one
+of `allow_once`, `always_allow`, `deny_once`, `always_deny` and
+`cancel`, both with the tool call's `tool_use_id` and `tool_name`; a
+tool call the permission check refused or held, marked
+`goose.executable` `false` and never answered, is followed by
+`permission decision: not executable (goose.executable=false)`. Its
+standing lists are `permission setting: <category>.<level>=<tool> (from
+<file>, file mtime)` per tool in `permission.yaml` (`user` or
+`smart_approve`, then `always_allow`, `ask_before` or `never_allow`)
+and `permission setting: roaming_trust.<allowed|revoked_keys>=<key>
+(from <file>, file mtime)` per peer key in `roaming_trust.json`, and
+each job in `schedule.json` is `scheduled task: <id> <cron>
+paused=<true|false> running=<true|false> source=<recipe file>
+last_run=<time> current_session=<session id> recipe_base_dir=<dir>
+(from <file>, file mtime)`, with ` parameters=<compact JSON>` before
+`(from` when the job has parameters and `-` for an absent value; these
+rows carry the file's modification time and an empty `session_id`. `zed`
 writes one `permission setting: <key>=<value> (thread blob, as of
 updated_at)` row per grant the user gave for the rest of a thread
 (`profile`, each `sandbox_grants.write_paths` and `network_hosts` entry,
@@ -1544,7 +1563,7 @@ beside its `session synced: server conversation` row.
 | `copilot-cli` | `.copilot/session-store.db` (`turns`, the prompt and the final reply of each turn, stamped when the turn ends: a one-hour window; its `sessions` name pairs with the `workspace.yaml` row; `session_files`, `session_refs`, `checkpoints` and `forge_trajectory_events` rows the log has no copy of are always kept); `.copilot/session-state/<id>/rewind-file-snapshots/index.json` (each turn's prompt, a one-hour window); `.copilot/command-history-state.json` (no timestamp, session or project: matches on text alone); each also under the pre-XDG `.local/state/.copilot` | `.copilot/session-state/<id>/events.jsonl` and `workspace.yaml` |
 | `cursor` | `.cursor/projects/<project>/agent-transcripts/<composerId>/<composerId>.jsonl`, the agent worker's copy of each conversation (a prompt is stamped to the minute in local time with its UTC offset: a 60-second window; replies and tool calls have no timestamp and match on text within the conversation; the tool calls name the tools differently from the database, so they never pair) | the editor's `User/globalStorage/state.vscdb` `cursorDiskKV` composer and bubble rows |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
-| `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone) | `.local/share/goose/sessions/sessions.db` |
+| `goose` | `.local/state/goose/history.txt` and `.config/goose/history.txt` (`AppData/Roaming/Block/goose/data/history.txt` on Windows; no timestamp, session or project: matches on text alone); `.local/state/goose/logs/llm_request.<N>.jsonl` (`AppData/Roaming/Block/goose/data/logs/` on Windows; the last 10 provider calls, with no session or project: a 600-second window; streamed chunks of one message are assembled first; the `llm request` row has no twin and is always kept) | `.local/share/goose/sessions/sessions.db` |
 | `hermes` | `.hermes/state-snapshots/<id>/state.db` (copies of `state.db`; several snapshots collapse to one copy; collected only with `--full`) and `.hermes/sessions/<id>.jsonl` (no timestamp on some lines: those match on text within the session), also under `.hermes_<suffix>`, `AppData/Local/hermes`, `profiles/<name>/` and, since 0.19.0, the root of a Docker or Podman volume | `.hermes/state.db` |
 | `letta` | `.letta/transcripts/<agent>/<conversation>/transcript.jsonl` (stamped at the end of the turn: a one-hour window) | `.letta/lc-local-backend/conversations/<key>/messages.jsonl` |
 | `muse-code` | `.local/share/muse/tui-history.jsonl` (no timestamp: matches on text alone) | `.local/share/muse/sessions/.../session.jsonl` |
@@ -1577,6 +1596,11 @@ ends, so its window is one hour; a turn longer than that leaves its
 earlier lines shown twice. Copilot CLI's session store writes a turn
 when it ends, so its `turns` rows and its rewind snapshots match within
 one hour, and only against an identical event of the same session.
+Goose's request logs stamp a message with the time of its first
+streamed chunk, while `sessions.db` stores the later of that time and
+the session's newest stored message, so a database row can follow its
+log copy by as long as the tool calls before it ran; their window is
+600 seconds.
 nanobot's WebUI transcript stamps events in
 true UTC while its session files record host local time, emitted as if
 UTC, so its window is 15 hours (the largest UTC offset, 14 hours, plus
