@@ -2334,8 +2334,8 @@ A cloud agent is a conversation of remote origin, held by the vendor
   workflowStatus=<workflowStatus> archived=<isArchived> killed=<isKilled>
   vmStarted=<hasStartedVm> (from state.vscdb cloudAgentRepository.agents, rowUpdatedAtMs)` at
   `rowUpdatedAtMs`, a field that is absent or empty printed `-`; `source host: github.com
-  <owner>/<repo> (cloud agent)` at `createdAt` when
-  `repoUrl` begins with `github.com/`; the `model:` row of [Model rows](#model-rows);
+  <owner>/<repo> (cloud agent)` at `createdAt` when the host of `repoUrl`, parsed as a URL with
+  or without a scheme, is `github.com`; the `model:` row of [Model rows](#model-rows);
   `session origin: remote cursor cloud agent` at `createdAt` only when no `conversation-search.db`
   row yielded it for the same `bcId`; and `session synced: cursor cloud agent <bcId> (vendor copy;
   from state.vscdb cloudAgentRepository.agents)` at `createdAt`, else `rowUpdatedAtMs`, since the

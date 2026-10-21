@@ -14601,7 +14601,14 @@ class ChatGptDesktopTests(ParserBase):
         )
 
 
-from doubleagent.parsers.cursor import CursorParser, run_mode, tag_time, unwrap_query, uri_path
+from doubleagent.parsers.cursor import (
+    CursorParser,
+    github_repository,
+    run_mode,
+    tag_time,
+    unwrap_query,
+    uri_path,
+)
 from fixtures import (
     CURSOR_ARCHIVED,
     CURSOR_ATTEMPT_REL,
@@ -15020,6 +15027,19 @@ class CursorTests(ParserBase):
             run_mode({**on, "smartModeAutoRun": True}, True), "Auto-review (with Sandbox)"
         )
         self.assertEqual(run_mode({"autoRun": False, "fullAutoRun": True}, True), "Run Everything")
+
+    def test_github_repository(self):
+        """The repository is read from a parsed host, not from a string
+        prefix, so only a URL whose host is github.com names one."""
+        self.assertEqual(github_repository("github.com/owner/demo"), "owner/demo")
+        self.assertEqual(github_repository("https://github.com/owner/demo"), "owner/demo")
+        self.assertEqual(github_repository("https://github.com/owner/demo/"), "owner/demo")
+        self.assertEqual(github_repository("github.com"), "")
+        self.assertEqual(github_repository("origin.cursor.com/git/ns/tmp-0123456789abcdef"), "")
+        self.assertEqual(github_repository("github.com.example.net/owner/demo"), "")
+        self.assertEqual(github_repository("example.net/github.com/owner/demo"), "")
+        self.assertEqual(github_repository("https://example.net/?u=github.com/owner/demo"), "")
+        self.assertEqual(github_repository(""), "")
 
     def test_deduplication_and_recovery(self):
         rows, _, problems, dropped = cli.collect_rows(self.col, Options(), ["cursor"])
