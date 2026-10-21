@@ -48,6 +48,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `AppData/Roaming/Cursor/AgentStores`, which matched nothing, so
   collector 1.17.0 left them out on Windows. `--list` (`-List`) prints
   the new line ([#236]).
+- The sh collector tests a file against the credential globs with one
+  compiled pattern instead of one test per glob, so a collection whose
+  workers run under bash, posh or a BSD sh is faster. The manifest is
+  unchanged: the same files are flagged `secret: true` or
+  `skipped_secret` ([#242]).
 
 ## [1.17.0] - 2026-10-20
 
@@ -1002,6 +1007,7 @@ stdout `errors:` line now reads `errors:     N (X error_copy, Y error_read)`.
 [1.1.0]: https://github.com/seanthegeek/doubleagent/compare/collector-v1.0.0...collector-v1.1.0
 [1.0.0]: https://github.com/seanthegeek/doubleagent/releases/tag/collector-v1.0.0
 
+[#242]: https://github.com/seanthegeek/doubleagent/issues/242
 [#236]: https://github.com/seanthegeek/doubleagent/issues/236
 [#160]: https://github.com/seanthegeek/doubleagent/issues/160
 [#153]: https://github.com/seanthegeek/doubleagent/issues/153

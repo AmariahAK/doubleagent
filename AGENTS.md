@@ -213,7 +213,11 @@ or a Docker volume's `_data` directory, so one pattern such as `.claude/worktree
 without a leading `*/`. Anchor every glob on a path component: `.hermes*/auth.json`
 and `agent-zero*/usr/.env`, never `*hermes*/auth.json`, which also matches
 any project path containing the name. The one accepted leading `*` is the
-editor data-directory form `*/User/globalStorage/...`. When an exclusion and
+editor data-directory form `*/User/globalStorage/...`. The sh collector
+compiles the secret table into one `case` pattern (`compile_secret_pattern`),
+so a secret glob may contain spaces but never `|`, `(`, `)`, `&`, `;`, `<`,
+`>`, `$`, a backtick, a quote or a backslash, and never starts with `#`;
+`catalog-sync.sh` fails on one that does. When an exclusion and
 a secret glob both match, the exclusion wins: the subtree is pruned before
 the secret test runs and its only manifest row is the directory's
 `skipped_excluded`, so a credential inside an excluded tree needs the

@@ -36,6 +36,15 @@ for t in CATALOG PROJECT_CATALOG EXCLUDES SECRET_GLOBS DOCKER_VOLUMES; do
   fi
 done
 
+# The sh collector joins SECRET_GLOBS into one case pattern
+# (compile_secret_pattern), with only spaces escaped, so a glob holding a
+# character the pattern syntax or eval would read (|, parentheses, &, ;, <, >,
+# $, a backtick, a quote or a backslash), or starting with #, which begins a
+# comment after the | before it, would break every secret test.
+bad=$(sh_table SECRET_GLOBS | grep -e '[|()&;<>$`"'"'"'\\]' -e '^#')
+if [ -z "$bad" ]; then printf 'ok   SECRET_GLOBS free of case-pattern specials\n'
+else printf 'FAIL SECRET_GLOBS entries with characters the compiled case pattern cannot hold:\n%s\n' "$bad"; fail=1; fi
+
 # The --list / -List outputs must also match when a PowerShell is available.
 PWSH=
 if command -v pwsh >/dev/null 2>&1; then PWSH=pwsh; fi
