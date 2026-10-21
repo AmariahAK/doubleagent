@@ -883,7 +883,15 @@ class ClaudeCode296Tests(ParserBase):
             self.assertFalse(ClaudeCodeParser().wants(art), rel)
 
 
-from fixtures import CODEX_FEEDBACK_TS, codex_log_rows, write_codex_logs
+from fixtures import (
+    CODEX_BACKUP_STATE_REL,
+    CODEX_FEEDBACK_TS,
+    CODEX_GOAL_EVENT,
+    CODEX_MEMORY_SUMMARY_REL,
+    build_codex_standing,
+    codex_log_rows,
+    write_codex_logs,
+)
 
 
 class CodexTests(ParserBase):
@@ -1117,9 +1125,171 @@ class CodexTests(ParserBase):
         self.assertEqual(rows[0].timestamp_utc, "2026-10-02T09:00:02.000Z")
         self.assertEqual(rows[0].session_id, CODEX_SESSION)
 
-    def test_config_not_wanted(self):
-        art = next(a for a in self.col.artifacts if a.rel == ".codex/config.toml")
-        self.assertFalse(CodexParser().wants(art))
+    # The standing grants, memories and backups (#200), source-derived.
+    STANDING = "(from %s, file mtime)"
+    MTIME = "2026-10-19T08:53:20.000Z"
+
+    def _standing(self):
+        build_codex_standing(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_config_without_permission_keys_gives_no_rows(self):
+        # build_home's config.toml names only a model.
+        self.assertTrue(CodexParser().wants(self.artifact(".codex/config.toml")))
+        self.assertEqual(self.rows_for(CodexParser(), ".codex/config.toml"), [])
+
+    def test_config_permission_settings(self):
+        self._standing()
+        rel = ".codex/config.toml"
+        rows = self.rows_for(CodexParser(), rel)
+        tail = " " + self.STANDING % rel
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.project_path, r.text) for r in rows],
+            [
+                ("system", self.MTIME, "", project, "permission setting: " + text + tail)
+                for project, text in (
+                    ("", "approval_policy=on-request"),
+                    ("", "approvals_reviewer=auto_review"),
+                    ("", "sandbox_mode=workspace-write"),
+                    ("", "default_permissions=:workspace"),
+                    ("/srv/proj", "projects./srv/proj.trust_level=trusted"),
+                    ("/srv/other", "projects./srv/other.trust_level=untrusted"),
+                    ("", "mcp_servers.github.tools.create_issue.approval_mode=approve"),
+                    (
+                        "",
+                        "plugins.figma@openai.mcp_servers.figma.tools.get_file.approval_mode"
+                        "=approve",
+                    ),
+                    ("", "apps.connector_gdrive.tools.search.approval_mode=approve"),
+                )
+            ],
+        )
+        # The MCP server's environment, which can hold a token, is never shown.
+        self.assertNotIn("ghp_", "\n".join(r.text for r in rows))
+
+    def test_config_scan_matches_tomllib(self):
+        # Python 3.10 reads config.toml with scan_toml; the settings agree.
+        from doubleagent.parsers.codex import config_settings, scan_toml
+        from fixtures import CODEX_CONFIG_TOML
+
+        got = config_settings(scan_toml(CODEX_CONFIG_TOML))
+        self.assertEqual(len(got), 9)
+        if sys.version_info >= (3, 11):
+            import tomllib
+
+            self.assertEqual(got, config_settings(tomllib.loads(CODEX_CONFIG_TOML)))
+
+    def test_rules_permission_settings(self):
+        self._standing()
+        rel = ".codex/rules/default.rules"
+        rows = self.rows_for(CodexParser(), rel)
+        tail = " " + self.STANDING % rel
+        self.assertEqual(
+            [(r.timestamp_utc, r.source_line, r.session_id, r.text) for r in rows],
+            [
+                (
+                    self.MTIME,
+                    2,
+                    "",
+                    'permission setting: prefix_rule(pattern=["git", "status"], decision="allow")'
+                    + tail,
+                ),
+                (
+                    self.MTIME,
+                    3,
+                    "",
+                    'permission setting: network_rule(host="example.com", protocol="https",'
+                    ' decision="deny", justification="no #tracking")' + tail,
+                ),
+                (
+                    self.MTIME,
+                    4,
+                    "",
+                    'permission setting: prefix_rule( pattern=["npm", "test"], decision="allow", )'
+                    + tail,
+                ),
+            ],
+        )
+
+    def test_rules_unterminated_statement(self):
+        self._standing()
+        rel = ".codex/rules/default.rules"
+        clean = self.rows_for(CodexParser(), rel)
+        with open(self.home / rel, "a", encoding="utf-8") as fh:
+            fh.write('prefix_rule(pattern=["curl"')
+        rows = self.rows_for(CodexParser(), rel)
+        self.assertEqual([r.text for r in rows[:-1]], [r.text for r in clean])
+        self.assertEqual(
+            (rows[-1].turn_type, rows[-1].source_line, rows[-1].text),
+            ("system", 8, 'parser: unterminated rule: prefix_rule(pattern=["curl"'),
+        )
+
+    def test_memory_summary(self):
+        self._standing()
+        rows = self.rows_for(CodexParser(), CODEX_MEMORY_SUMMARY_REL)
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(
+            (row.turn_type, row.timestamp_utc, row.session_id, row.project_path, row.git_branch),
+            ("system", "2026-10-02T09:00:10.000Z", CODEX_SESSION, "/srv/proj", "feature/x"),
+        )
+        self.assertEqual(
+            row.text,
+            "memory summary: thread %s rollout=/home/alice/.codex/sessions/2026/10/02/"
+            "rollout-x.jsonl (from %s, updated_at): The user asked for a listing of the home"
+            " directory.\n- `ls -la ~` failed with exit 2."
+            % (CODEX_SESSION, CODEX_MEMORY_SUMMARY_REL),
+        )
+
+    def test_memory_summary_without_header(self):
+        self._standing()
+        (self.home / CODEX_MEMORY_SUMMARY_REL).write_text("just text\n", encoding="utf-8")
+        rows = self.rows_for(CodexParser(), CODEX_MEMORY_SUMMARY_REL)
+        self.assertEqual([r.text for r in rows], ["parser: memory summary has no thread_id header"])
+
+    def test_database_backup_is_a_secondary_state_copy(self):
+        self._standing()
+        p = CodexParser()
+        backup = self.artifact(CODEX_BACKUP_STATE_REL)
+        self.assertTrue(p.wants(backup))
+        self.assertTrue(p.secondary(backup))
+        main = [(r.turn_type, r.timestamp_utc, r.text) for r in self.rows_for(p, self.STATE_REL)]
+        copy = [(r.turn_type, r.timestamp_utc, r.text) for r in p.parse(backup, Options())]
+        self.assertEqual(copy, main)
+
+    def test_standing_files_wanted_and_not(self):
+        self._standing()
+        p = CodexParser()
+        for rel in (".codex/config.toml", ".codex/rules/default.rules", CODEX_MEMORY_SUMMARY_REL):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
+            self.assertFalse(p.secondary(self.artifact(rel)), rel)
+        for rel in (
+            ".codex/rules/README.md",
+            ".codex/memories/raw_memories.md",
+            ".codex/memories/MEMORY.md",
+            ".codex/db-backups/sqlite-1792400000-0/logs_2.sqlite",
+        ):
+            self.assertFalse(p.wants(self.artifact(rel)), rel)
+
+    def test_thread_goal_row(self):
+        recs = codex_rollout_records()
+        recs.insert(2, CODEX_GOAL_EVENT)
+        rel = self._write("rollout-2026-10-02T09-50-00-%s.jsonl" % CODEX_SESSION, recs)
+        rows = self.rows_for(CodexParser(), rel)
+        goal = [r for r in rows if r.text.startswith("thread goal:")]
+        self.assertEqual(
+            [(r.turn_type, r.timestamp_utc, r.session_id, r.source_line, r.text) for r in goal],
+            [
+                (
+                    "system",
+                    "2026-10-02T09:00:01.500Z",
+                    CODEX_SESSION,
+                    3,
+                    "thread goal: status=active turn=t1 objective: keep the home directory"
+                    " listing tidy",
+                )
+            ],
+        )
 
     @staticmethod
     def check_bad_line(case: ParserBase, parser_cls, rel: str, after: int):
@@ -1614,10 +1784,13 @@ from fixtures import (
     CODEX_GLOBAL_STATE_MTIME,
     CODEX_GLOBAL_STATE_REL,
     CODEX_GUARDIAN,
+    CODEX_PATCH_ITEM,
+    CODEX_PATCH_LOG_ROW,
     CODEX_REVIEWED_ITEM,
     build_codex_desktop,
     codex_guardian_records,
     write_codex_enrollment,
+    write_codex_guardian_feedback,
 )
 
 
@@ -1843,6 +2016,60 @@ class CodexDesktopTests(ParserBase):
                 "parser: unreadable approval log row (codex_core::session::handlers): " + cut,
             ),
         )
+
+    def test_patch_approval_decision(self):
+        con = sqlite3.connect(str(self.home / self.LOGS_REL))
+        con.execute(
+            "insert into logs (ts, ts_nanos, level, target, feedback_log_body, thread_id)"
+            " values (?,?,?,?,?,?)",
+            CODEX_PATCH_LOG_ROW,
+        )
+        con.commit()
+        con.close()
+        rows = self.rows_for(CodexParser(), self.LOGS_REL)
+        patch = [r for r in rows if " patch " in r.text]
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.tool_use_id, r.source_line, r.text) for r in patch],
+            [
+                (
+                    "2026-10-18T21:31:40.000Z",
+                    CODEX_DESKTOP,
+                    CODEX_PATCH_ITEM,
+                    9,
+                    "permission decision: approved_for_session patch %s (from logs_2.sqlite"
+                    " logs, ts)" % CODEX_PATCH_ITEM,
+                )
+            ],
+        )
+        # The exec decisions are unchanged.
+        self.assertEqual(len([r for r in rows if " exec " in r.text]), 1)
+
+    def test_guardian_review_feedback(self):
+        write_codex_guardian_feedback(self.home / self.STATE_REL)
+        rows = self.rows_for(CodexParser(), self.STATE_REL)
+        got = [r for r in rows if r.text.startswith(("permission decision:", "parser:"))]
+        self.assertEqual(
+            [(r.timestamp_utc, r.session_id, r.tool_use_id, r.source_line) for r in got],
+            [
+                ("2026-10-18T21:27:27.000Z", CODEX_DESKTOP, CODEX_REVIEWED_ITEM, 1),
+                ("2026-10-18T21:28:20.000Z", CODEX_DESKTOP, "", 2),
+                ("", "", "", 3),
+            ],
+        )
+        # A denied verdict reads as the rollout reader's row for it, so the two pair.
+        self.assertEqual(
+            got[0].text,
+            "permission decision: deny (auto_review risk_level=high user_authorization=low) exec"
+            " %s reviewer %s: The command uploads the home directory."
+            % (CODEX_REVIEWED_ITEM, CODEX_GUARDIAN),
+        )
+        self.assertEqual(
+            got[1].text,
+            "permission decision: timed_out (auto_review feedback model=codex-auto-review) exec -"
+            " turn=t3 reviewer %s: - action: rm -rf build" % CODEX_GUARDIAN,
+        )
+        self.assertTrue(got[2].text.startswith("parser: unparseable record 3 ("), got[2].text)
+        self.assertTrue(got[2].text.endswith(': {"reviewed_thread_id": "0d0d'), got[2].text)
 
     def test_remote_control_enrollment(self):
         write_codex_enrollment(self.home / self.STATE_REL, enabled=0)
@@ -10045,11 +10272,17 @@ class OpenInterpreterTests(ParserBase):
         arts = {a.rel: a for a in self.col.artifacts}
         for rel in (
             ".openinterpreter/auth.json",
-            ".openinterpreter/config.toml",
             ".openinterpreter/session_index.jsonl",
         ):
             self.assertEqual(arts[rel].agent, "open-interpreter")
             self.assertFalse(p.wants(arts[rel]), rel)
+        # config.toml is read for its standing permission keys (#200); the
+        # fixture's names none, so it gives no rows.
+        config = arts[".openinterpreter/config.toml"]
+        self.assertTrue(p.wants(config))
+        self.assertEqual(list(p.parse(config, Options())), [])
+        self.assertTrue(p.wants(rel_only(".openinterpreter/rules/default.rules")))
+        self.assertFalse(CodexParser().wants(rel_only(".openinterpreter/rules/default.rules")))
         self.assertFalse(p.wants(arts[CodexTests.REL]))
         self.assertFalse(CodexParser().wants(arts[OI_ROLLOUT]))
         self.assertFalse(CodexParser().wants(arts[self.LEDGER]))

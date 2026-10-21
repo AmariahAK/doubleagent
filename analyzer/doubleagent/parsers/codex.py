@@ -49,6 +49,12 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
     rollout (approval requests are transient events,
     `rollout/src/policy.rs:160-223`); the desktop app's are read from
     `logs_<N>.sqlite` (below) and from guardian review threads.
+    Drift at codex 4e7b9e2 (source only): `TurnContextItem` no longer
+    has `network` (`protocol/src/protocol.rs:3428-3468`); the network
+    policy is the `network` of a `managed` or `external`
+    `permission_profile` (`protocol/src/models.rs:424-440`), which the
+    composite already shows inside `profile=`, so `network=` reads `-`
+    on rollouts of such builds.
   - `response_item`: payload `type` is `message` (`role` user, assistant or
     developer; `content` blocks with `text`;
     `internal_chat_message_metadata_passthrough.content_item_kinds`, one
@@ -85,7 +91,12 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
     text is skipped.
   - `event_msg`: payload `type` task_started and task_complete
     (`turn_id`, `duration_ms`), turn_aborted (`reason`, `error.message`),
-    thread_rolled_back (`num_turns`) become system rows. A task_started
+    thread_rolled_back (`num_turns`) become system rows.
+    thread_goal_updated (camelCase: `turnId`, `goal.objective`,
+    `goal.status` `active`, `paused`, `blocked`, `usageLimited`,
+    `budgetLimited` or `complete`; codex `protocol/src/protocol.rs:4206-4257`
+    at 4e7b9e2, source-derived) is `thread goal: status=<status>
+    turn=<turnId> objective: <objective>`. A task_started
     with `turn_attribution.turn_trigger` (Codex Desktop
     0.163.0-alpha.10.2: `composer`, `remote_ios`, `remote_android`,
     `guardian_review`, `scheduled_task_setup`,
@@ -173,6 +184,37 @@ at 3e23877 (see `research/codex-cli.md`). Files, under `~/.codex` for Codex
   history as `user` rows with no timestamp, and the deleted-thread
   markers, thread descriptions, standing permissions and remote control
   flags as `system` rows at the file's modification time.
+* `config.toml` (the home's, or a project's own `.codex/config.toml`)
+  and every `rules/*.rules` file, the standing grants (source-derived at
+  codex 4e7b9e2; research/codex-cli.md, Standing grants and approval
+  records): one `system` row `permission setting: <key>=<value> (from
+  <file>, file mtime)` per `approval_policy`, `approvals_reviewer`,
+  `sandbox_mode`, `default_permissions`, `projects.<path>.trust_level`
+  (with `project_path` the path) and `approval_mode` under
+  `mcp_servers.<server>.tools.<tool>`,
+  `plugins.<plugin>.mcp_servers.<server>.tools.<tool>` or
+  `apps.<connector>.tools.<tool>`, and one `permission setting:
+  <statement> (from <file>, file mtime)` per Starlark statement of a rules
+  file (`prefix_rule(...)`, `network_rule(...)`), joined onto one line,
+  comments dropped; a statement still open at the end of the file is a
+  bad-line row. Rows are at the file's modification time with an empty
+  `session_id`; no other key of `config.toml` (which can hold an MCP
+  server's token) is printed. Read with `tomllib` on Python 3.11 and
+  later and with `scan_toml` (single-line values under every table) on
+  3.10; a file `tomllib` cannot read is one `parser: unreadable
+  config.toml` row.
+* `memories/rollout_summaries/<stem>.md`, a thread's summary written when
+  the `memories` feature is on (source-derived at codex 4e7b9e2): header
+  lines `thread_id:`, `updated_at:`, `rollout_path:`, `cwd:`,
+  `git_branch:`, a blank line, the summary. One `system` row `memory
+  summary: thread <id> rollout=<path> (from <file>, updated_at):
+  <summary>` at `updated_at`, with the thread as `session_id`. It
+  repeats no event of the rollout and outlives a thread delete until the
+  next consolidation, so it is read as a source of its own, not a
+  secondary one. A file with no `thread_id:` header is one `parser:` row.
+* `db-backups/sqlite-<time>-<n>/state_5.sqlite`, a database Codex found
+  corrupt and set aside: read as `state_5.sqlite` is, a secondary source
+  (source-derived at codex 4e7b9e2).
 * Forks only, when `ledger_name` is set: an import ledger
   `{"records": [{source_path, content_sha256, imported_thread_id,
   imported_at, source_modified_at?}]}` (times epoch seconds), one `system`
@@ -201,7 +243,9 @@ store; the `automations` table repeats `automation.toml`, and the
 `chatgpt-desktop` parser),
 `.codex-global-state.json.bak`, `thread-writer-locks/<id>.lock` (a lock
 can exist for a prewarmed guardian thread that never wrote a rollout, so
-it is no evidence of a session) and `config.toml`. Rollout file names
+it is no evidence of a session), `memories/raw_memories.md`,
+`memories/MEMORY.md`, `memories_1.sqlite`, `goals_1.sqlite` and the
+other databases under `db-backups/`. Rollout file names
 carry the host's local time; every timestamp is taken from the records.
 """
 
@@ -234,6 +278,9 @@ from .base import (
 ROLLOUT_TMPL = r"^%s/(?:archived_)?sessions/(?:.*/)?rollout-[^/]*\.jsonl(?:\.zst)?$"
 AUTOMATION_TMPL = r"^%s/automations/[^/]+/automation\.toml$"
 LOGS_TMPL = r"^%s/logs_[0-9]+\.sqlite$"
+RULES_TMPL = r"^%s/rules/[^/]+\.rules$"
+MEMORY_SUMMARY_TMPL = r"^%s/memories/rollout_summaries/[^/]+\.md$"
+BACKUP_STATE_TMPL = r"^%s/db-backups/[^/]+/state_5\.sqlite$"
 ROLLOUT_RX = re.compile(ROLLOUT_TMPL % re.escape(".codex"))
 HISTORY_REL = ".codex/history.jsonl"
 GLOBAL_STATE_NAME = ".codex-global-state.json"
@@ -755,14 +802,213 @@ def flat_toml(text: str) -> dict:
     return out
 
 
+TOML_PART_RX = re.compile(r"""\s*("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+)\s*""")
+
+
+def _toml_dotted(text: str) -> list[str] | None:
+    """The parts of a TOML dotted key (`projects."/srv/proj"`, `a.b`), quotes
+    removed and basic-string escapes applied, or None when it is not one."""
+    parts: list[str] = []
+    pos = 0
+    while True:
+        m = TOML_PART_RX.match(text, pos)
+        if not m:
+            return None
+        part = m.group(1)
+        if part.startswith('"'):
+            part = _toml_unescape(part[1:-1])
+        elif part.startswith("'"):
+            part = part[1:-1]
+        parts.append(part)
+        pos = m.end()
+        if pos == len(text):
+            return parts
+        if text[pos] != ".":
+            return None
+        pos += 1
+
+
+def scan_toml(text: str) -> dict:
+    """The single-line `key = value` entries of a TOML document under every
+    `[table]` header, as nested dicts: the stand-in for `tomllib` on Python
+    3.10 where a file has tables (`config.toml`). A value `_toml_value`
+    cannot read (an array, an inline table, a date) and an `[[array]]`
+    table are left out, and a multi-line string is skipped whole, so the
+    scan never raises."""
+    out: dict = {}
+    table = out
+    lines = iter(text.splitlines())
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("["):
+            close = stripped.find("]")
+            parts = None if stripped.startswith("[[") else _toml_dotted(stripped[1:close])
+            table = {}
+            if parts and close > 0:
+                node = out
+                for part in parts:
+                    child = node.setdefault(part, {})
+                    node = child if isinstance(child, dict) else {}
+                table = node
+            continue
+        key, sep, raw = stripped.partition("=")
+        raw = raw.strip()
+        quote = raw[:3]
+        if quote in ('"""', "'''"):
+            body = raw[3:]
+            while quote not in body:
+                more = next(lines, None)
+                if more is None:
+                    break
+                body += "\n" + more
+            continue
+        parts = _toml_dotted(key.strip()) if sep else None
+        if not parts:
+            continue
+        try:
+            value = _toml_value(raw)
+        except ValueError:
+            continue
+        node = table
+        for part in parts[:-1]:
+            child = node.setdefault(part, {})
+            node = child if isinstance(child, dict) else {}
+        node[parts[-1]] = value
+    return out
+
+
 if sys.version_info >= (3, 11):
     import tomllib
 
     def load_toml(text: str) -> dict:
         return tomllib.loads(text)
 
+    def load_config_toml(text: str) -> dict:
+        return tomllib.loads(text)
+
 else:
     load_toml = flat_toml
+    load_config_toml = scan_toml
+
+
+def goal_text(payload: dict) -> str:
+    """The `thread goal:` text of a `thread_goal_updated` event, whose keys
+    are camelCase (`turnId`, `goal.objective`, `goal.status`)."""
+    goal = payload.get("goal")
+    goal = goal if isinstance(goal, dict) else {}
+    return "thread goal: status=%s turn=%s objective: %s" % (
+        goal.get("status") or "-",
+        payload.get("turnId") or "-",
+        goal.get("objective") or "",
+    )
+
+
+def rule_statements(text: str, errors: list) -> list[tuple[int, str]]:
+    """(first line, text) of each top-level statement of a Starlark exec
+    policy file (`rules/*.rules`): `prefix_rule(...)`, `network_rule(...)`
+    or any other call, joined onto one line when it spans several, with
+    comments dropped. A statement still open at the end of the file (an
+    unclosed bracket or string) goes to `errors` as (line, message, the
+    statement's lines as written)."""
+    out: list[tuple[int, str]] = []
+    depth = 0
+    quote = ""
+    start = 0
+    parts: list[str] = []
+    raw: list[str] = []
+    for n, line in enumerate(text.splitlines(), 1):
+        kept = ""
+        i = 0
+        while i < len(line):
+            ch = line[i]
+            if quote:
+                if ch == "\\":
+                    kept += line[i : i + 2]
+                    i += 2
+                    continue
+                if ch == quote:
+                    quote = ""
+            elif ch == "#":
+                break
+            elif ch in "\"'":
+                quote = ch
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+            kept += ch
+            i += 1
+        if kept.strip() or parts:
+            if not parts:
+                start = n
+            parts.append(kept.strip())
+            raw.append(line)
+        if parts and depth <= 0 and not quote:
+            out.append((start, " ".join(p for p in parts if p)))
+            parts, raw, depth = [], [], 0
+    if parts:
+        errors.append((start, "unterminated rule", "\n".join(raw)))
+    return out
+
+
+# Standing permission keys of Codex's `config.toml`, as dotted paths with
+# `*` for one table name (research/codex-cli.md, Standing grants and approval
+# records): the policy defaults, a project's trust level, and the
+# `approval_mode` an "approve for good" answer writes for an MCP or app tool.
+CONFIG_PERMISSION_PATHS = (
+    ("approval_policy",),
+    ("approvals_reviewer",),
+    ("sandbox_mode",),
+    ("default_permissions",),
+    ("projects", "*", "trust_level"),
+    ("mcp_servers", "*", "tools", "*", "approval_mode"),
+    ("plugins", "*", "mcp_servers", "*", "tools", "*", "approval_mode"),
+    ("apps", "*", "tools", "*", "approval_mode"),
+)
+
+
+def config_settings(doc: dict) -> list[tuple[list[str], object]]:
+    """(key parts, value) of every `CONFIG_PERMISSION_PATHS` entry `doc`
+    holds, path by path in that order, tables in file order."""
+    found: list[tuple[list[str], object]] = []
+
+    def walk(node: object, path: tuple[str, ...], parts: list[str]) -> None:
+        if not path:
+            if node is not None and not isinstance(node, dict):
+                found.append((parts, node))
+            return
+        if not isinstance(node, dict):
+            return
+        if path[0] == "*":
+            for key, child in node.items():
+                walk(child, path[1:], [*parts, str(key)])
+        elif path[0] in node:
+            walk(node[path[0]], path[1:], [*parts, path[0]])
+
+    for path in CONFIG_PERMISSION_PATHS:
+        walk(doc, path, [])
+    return found
+
+
+def memory_summary(text: str) -> tuple[dict[str, str], str]:
+    """The header lines (`thread_id:`, `updated_at:`, `rollout_path:`,
+    `cwd:`, `git_branch:`) of a `memories/rollout_summaries/<stem>.md` file,
+    up to the first blank line, and the summary after it."""
+    header: dict[str, str] = {}
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not line.strip():
+            return header, "\n".join(lines[i + 1 :])
+        key, sep, value = line.partition(":")
+        if not sep or key.strip() not in MEMORY_HEADER_KEYS:
+            return header, "\n".join(lines[i:])
+        header[key.strip()] = value.strip()
+    return header, ""
+
+
+MEMORY_HEADER_KEYS = ("thread_id", "updated_at", "rollout_path", "cwd", "git_branch")
 
 
 class RolloutParser(Parser):
@@ -781,6 +1027,10 @@ class RolloutParser(Parser):
         self.rollout_rx = re.compile(ROLLOUT_TMPL % re.escape(self.home_prefix))
         self.automation_rx = re.compile(AUTOMATION_TMPL % re.escape(self.home_prefix))
         self.logs_rx = re.compile(LOGS_TMPL % re.escape(self.home_prefix))
+        self.rules_rx = re.compile(RULES_TMPL % re.escape(self.home_prefix))
+        self.memory_rx = re.compile(MEMORY_SUMMARY_TMPL % re.escape(self.home_prefix))
+        self.backup_state_rx = re.compile(BACKUP_STATE_TMPL % re.escape(self.home_prefix))
+        self.config_rel = self.home_prefix + "/config.toml"
         self.history_rel = self.home_prefix + "/history.jsonl"
         self.state_rel = self.home_prefix + "/state_5.sqlite"
         self.thread_history_rel = self.home_prefix + "/thread_history_1.sqlite"
@@ -798,12 +1048,18 @@ class RolloutParser(Parser):
             or bool(self.automations and self.automation_rx.match(rel))
             or bool(self.logs_rx.match(rel))
             or bool(self.global_state_rel and rel == self.global_state_rel)
+            or rel == self.config_rel
+            or bool(self.rules_rx.match(rel))
+            or bool(self.memory_rx.match(rel))
+            or bool(self.backup_state_rx.match(rel))
         )
 
     def secondary(self, artifact: Artifact) -> bool:
         rel = artifact.rel
-        return rel in (self.history_rel, self.state_rel, self.thread_history_rel) or bool(
-            self.global_state_rel and rel == self.global_state_rel
+        return (
+            rel in (self.history_rel, self.state_rel, self.thread_history_rel)
+            or bool(self.global_state_rel and rel == self.global_state_rel)
+            or bool(self.backup_state_rx.match(rel))
         )
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
@@ -812,7 +1068,7 @@ class RolloutParser(Parser):
 
         if artifact.rel == self.history_rel:
             yield from self._parse_history(artifact, opts)
-        elif artifact.rel == self.state_rel:
+        elif artifact.rel == self.state_rel or self.backup_state_rx.match(artifact.rel):
             yield from parse_state(self, artifact, opts)
         elif artifact.rel == self.thread_history_rel:
             yield from parse_thread_history(self, artifact, opts)
@@ -824,6 +1080,12 @@ class RolloutParser(Parser):
             yield from self._parse_ledger(artifact, opts)
         elif self.global_state_rel and artifact.rel == self.global_state_rel:
             yield from parse_global_state(self, artifact)
+        elif artifact.rel == self.config_rel:
+            yield from self._parse_config(artifact)
+        elif self.rules_rx.match(artifact.rel):
+            yield from self._parse_rules(artifact)
+        elif self.memory_rx.match(artifact.rel):
+            yield from self._parse_memory_summary(artifact)
         else:
             yield from self._parse_rollout(artifact, opts)
 
@@ -891,6 +1153,68 @@ class RolloutParser(Parser):
                 artifact.rel,
                 field("prompt"),
             )
+        )
+        yield row
+
+    def _setting(self, artifact: Artifact, text: str, line: int, project: str) -> Row:
+        """A standing `permission setting:` row at the file's modification time."""
+        row = self._system(artifact, "", "", line)
+        row.timestamp_utc = file_mtime(artifact)
+        row.project_path = project
+        row.text = compact("permission setting: %s (from %s, file mtime)" % (text, artifact.rel))
+        return row
+
+    def _parse_config(self, artifact: Artifact) -> Iterator[Row]:
+        """One `permission setting:` row per standing permission key of
+        `config.toml`; a project's trust level carries the project as
+        `project_path`, and a project's own `.codex/config.toml` the project."""
+        try:
+            with open(artifact.disk_path, "rb") as fh:
+                doc = load_config_toml(fh.read().decode("utf-8", errors="replace"))
+        except (OSError, ValueError) as e:
+            yield self._system(artifact, "parser: unreadable config.toml: %s" % error_reason(e))
+            return
+        base = artifact.home.original if artifact.home.project else ""
+        for parts, value in config_settings(doc):
+            project = parts[1] if parts[0] == "projects" else base
+            text = "%s=%s" % (".".join(parts), setting_value(value))
+            yield self._setting(artifact, text, 0, project)
+
+    def _parse_rules(self, artifact: Artifact) -> Iterator[Row]:
+        """One `permission setting:` row per statement of an exec policy
+        file under `rules/`, the statement as written."""
+        try:
+            with open(artifact.disk_path, "rb") as fh:
+                text = fh.read().decode("utf-8", errors="replace")
+        except OSError as e:
+            yield self._system(artifact, "parser: unreadable rules file: %s" % error_reason(e))
+            return
+        base = artifact.home.original if artifact.home.project else ""
+        errors: list = []
+        for line, statement in rule_statements(text, errors):
+            yield self._setting(artifact, statement, line, base)
+        yield from error_rows(self, artifact, errors, "", base)
+
+    def _parse_memory_summary(self, artifact: Artifact) -> Iterator[Row]:
+        """One `memory summary:` row for a thread's summary file, at its
+        `updated_at` (the thread's last update the summary covers)."""
+        try:
+            with open(artifact.disk_path, "rb") as fh:
+                text = fh.read().decode("utf-8", errors="replace")
+        except OSError as e:
+            yield self._system(artifact, "parser: unreadable memory summary: %s" % error_reason(e))
+            return
+        header, body = memory_summary(text)
+        if not header.get("thread_id"):
+            yield self._system(artifact, "parser: memory summary has no thread_id header")
+            return
+        row = self._system(artifact, "", header["thread_id"], 1)
+        row.timestamp_utc = to_utc(header.get("updated_at"))
+        row.project_path = header.get("cwd", "")
+        row.git_branch = header.get("git_branch", "")
+        row.text = compact(
+            "memory summary: thread %s rollout=%s (from %s, updated_at): %s"
+            % (header["thread_id"], header.get("rollout_path") or "-", artifact.rel, body.strip())
         )
         yield row
 
@@ -1137,6 +1461,8 @@ class RolloutParser(Parser):
                     for text in texts:
                         if text:
                             yield self._fill(base(), text, opts)
+                elif ptype == "thread_goal_updated":
+                    yield self._fill(base(), goal_text(payload), opts)
                 elif ptype == "turn_aborted":
                     err = payload.get("error")
                     detail = err.get("message") if isinstance(err, dict) else ""

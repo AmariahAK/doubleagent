@@ -49,6 +49,27 @@ without a rollout is a rollout removed outside Codex. Citations are in
   value) at `updated_at`, with an empty `session_id`, since the row names
   the host, not a thread. Turning connections off keeps the row with
   `remote_control_enabled` 0 (ChatGPT 26.1013.40934, macOS, 2026-10-19).
+  Then table `guardian_review_feedback` (migration 0060 at codex 4e7b9e2,
+  source-derived; not observed on any real install), one row per
+  automatic review that did not allow the action: `id` (a UUIDv7, whose
+  first 48 bits are the capture time in epoch ms), `thread_id` and
+  `record`, a JSON object with `reviewed_thread_id`, `reviewed_turn_id`,
+  `target_item_id`, `reviewer_thread_id`, `model`, `status` (`denied`,
+  `invalid_decision`, `missing_decision`, `failed`, `timed_out`,
+  `aborted`), `decision` (the reviewer's verdict text) and `action` (the
+  reviewed command or patch). Per row a `system` row at the id's time,
+  with `session_id` the reviewed thread and `tool_use_id` the governed
+  item: for a `denied` record whose `decision` is a JSON verdict, the
+  rollout reader's guardian text `permission decision: <outcome>
+  (auto_review risk_level=<r> user_authorization=<u>) exec <item>
+  reviewer <thread>: <rationale>`, so it pairs with the review thread's
+  own row; for any other, `permission decision: <status> (auto_review
+  feedback model=<model>) exec <item> turn=<turn> reviewer <thread>:
+  <decision> action: <action>`, `-` for an empty value. A `record` that
+  is not a JSON object is `parser: unparseable record <rowid> (<reason>):
+  <record>` after the other rows. The same rows come from a copy of the
+  database under `db-backups/sqlite-<time>-<n>/`, which Codex sets aside
+  when it finds the database corrupt (`state/src/runtime/recovery.rs`).
 * `thread_history_1.sqlite`, the projection of a paginated rollout's
   `item_completed` and turn events (`app-server-protocol/src/protocol/
   thread_history_projection.rs:21-99`):
@@ -158,7 +179,17 @@ unparseable record <rowid> (<reason>): <item_json as stored>` with
   while the handlers rows were. A row of either target holding the marker
   (`op=ExecApproval {`, `CommandExecutionRequestApproval {`) whose body
   the pattern cannot read is a `parser: unreadable approval log row
-  (<target>): <body>` row. `guardian_calls` reads the
+  (<target>): <body>` row. An `apply_patch` approval is the same
+  `Submission` line with `op=PatchApproval { id: "<item id>", decision:
+  <decision> }` and no turn (codex `protocol/src/protocol.rs:769-776` and
+  `app-server/src/bespoke_event_handling.rs:1990-1993` at 4e7b9e2,
+  source-derived): `permission decision: <decision> patch <item id> (from
+  logs_<N>.sqlite logs, ts)` with the thread as `session_id` and the
+  governed `FileChange` item's id as `tool_use_id`; the decision is the
+  log's word (`approved`, `approved_for_session`, `denied`, `abort`,
+  `timed_out` and the amendment forms, `protocol.rs:4323-4339`). A
+  `PatchApproval` row the pattern cannot read is an unreadable approval
+  log row too. `guardian_calls` reads the
   `guardian_review{review_id=... thread_id=<parent> tool_call_id="<item
   id>"}` span text of any row for the rollout reader's guardian verdicts.
 
@@ -223,7 +254,7 @@ from ..model import SCRATCH_PREFIX, Row, compact
 from ..sqlite_util import is_sqlite, open_copy, table_names
 from ..timeutil import epoch_ms, to_utc
 from .base import Options, error_rows, file_mtime, setting_value
-from .codex import item_rows
+from .codex import guardian_text, guardian_verdict, item_rows
 
 if TYPE_CHECKING:
     from .codex import RolloutParser
@@ -355,8 +386,10 @@ def _problem(parser: RolloutParser, artifact: Artifact, text: str) -> Row:
 
 
 def parse_state(parser: RolloutParser, artifact: Artifact, opts: Options) -> Iterator[Row]:
-    """Rows of `state_5.sqlite`: a thread record and the first prompt per
-    thread, then a `remote control:` row per enrollment."""
+    """Rows of `state_5.sqlite` (or of a copy under `db-backups/`): a thread
+    record and the first prompt per thread, then a `remote control:` row per
+    enrollment, then a `permission decision:` row per guardian review
+    feedback record."""
     if not is_sqlite(artifact.disk_path):
         yield _problem(parser, artifact, "parser: not a SQLite database")
         return
@@ -364,6 +397,7 @@ def parse_state(parser: RolloutParser, artifact: Artifact, opts: Options) -> Ite
         with open_copy(artifact.disk_path) as con:
             threads = read_threads(con)
             enrollments = read_enrollments(con)
+            feedback = read_guardian_feedback(con)
     except sqlite3.DatabaseError as e:
         yield _problem(parser, artifact, "parser: SQLite error: %s" % e)
         return
@@ -373,6 +407,85 @@ def parse_state(parser: RolloutParser, artifact: Artifact, opts: Options) -> Ite
         row.source_line = int(rec["_rowid"])
         row.timestamp_utc = to_utc(rec.get("updated_at"))
         yield row
+    by_id = {str(t.get("id") or ""): t for t in threads}
+    yield from _guardian_feedback_rows(parser, artifact, feedback, by_id)
+
+
+def read_guardian_feedback(con: sqlite3.Connection) -> list[dict]:
+    """The `guardian_review_feedback` rows (`id`, `thread_id`, `record`) in
+    rowid order, or [] without the table (migration 0060)."""
+    if "guardian_review_feedback" not in table_names(con):
+        return []
+    return _select(con, "guardian_review_feedback", ("id", "thread_id", "record"))
+
+
+def uuid7_time(value: object) -> str:
+    """The capture time a UUIDv7 carries in its first 48 bits (epoch ms),
+    as a timeline timestamp; "" for any other value."""
+    hexes = str(value or "").replace("-", "")
+    if len(hexes) != 32 or hexes[12] != "7":
+        return ""
+    try:
+        return to_utc(int(hexes[:12], 16) / 1000)
+    except ValueError:
+        return ""
+
+
+def guardian_feedback_text(record: dict) -> str:
+    """The `permission decision:` text of a failed guardian review's feedback
+    record. A `denied` record whose `decision` is the reviewer's JSON verdict
+    reads exactly as the rollout reader's row for that verdict, so the two
+    pair; any other is `<status> (auto_review feedback model=<m>) exec <item>
+    turn=<turn> reviewer <thread>: <decision> action: <action>`."""
+    item = str(record.get("target_item_id") or "-")
+    reviewer = str(record.get("reviewer_thread_id") or "-")
+    verdict = guardian_verdict(record.get("decision"))
+    if record.get("status") == "denied" and verdict:
+        return guardian_text(verdict, item, reviewer)
+    return (
+        "permission decision: %s (auto_review feedback model=%s) exec %s turn=%s reviewer %s:"
+        " %s action: %s"
+        % (
+            record.get("status") or "-",
+            record.get("model") or "-",
+            item,
+            record.get("reviewed_turn_id") or "-",
+            reviewer,
+            record.get("decision") or "-",
+            record.get("action") or "",
+        )
+    )
+
+
+def _guardian_feedback_rows(
+    parser: RolloutParser, artifact: Artifact, feedback: list[dict], threads: dict[str, dict]
+) -> Iterator[Row]:
+    """One `permission decision:` row per `guardian_review_feedback` record,
+    at its UUIDv7 id's time, for the reviewed thread with the governed item
+    as `tool_use_id`; a `record` that is not a JSON object is a bad-record
+    row after the others."""
+    errors: list = []
+    for rec in feedback:
+        rowid = int(rec["_rowid"])
+        blob = rec.get("record")
+        raw = blob.decode("utf-8", errors="replace") if isinstance(blob, bytes) else str(blob)
+        try:
+            record = json.loads(raw)
+        except ValueError as e:
+            errors.append((rowid, "unparseable record %d (%s)" % (rowid, e), raw))
+            continue
+        if not isinstance(record, dict):
+            errors.append((rowid, "unparseable record %d (not a JSON object)" % rowid, raw))
+            continue
+        sid = str(record.get("reviewed_thread_id") or rec.get("thread_id") or "")
+        row = _stamp(parser, artifact, threads.get(sid), sid)
+        row.source_line = rowid
+        row.turn_type = "system"
+        row.timestamp_utc = uuid7_time(rec.get("id"))
+        row.tool_use_id = str(record.get("target_item_id") or "")
+        row.text = compact(guardian_feedback_text(record))
+        yield row
+    yield from error_rows(parser, artifact, errors)
 
 
 ENROLLMENT_COLUMNS = (
@@ -632,6 +745,11 @@ EXEC_APPROVAL_RX = re.compile(
     r'op=ExecApproval \{ id: "([^"]*)"(?:, turn_id: (?:Some\("([^"]*)"\)|None))?'
     r".*?decision: ([A-Za-z_]+)"
 )
+# An `apply_patch` approval, logged by the same `Submission` line with the
+# governed `FileChange` item's id and no turn (research/codex-cli.md,
+# Standing grants and approval records).
+PATCH_APPROVAL_MARK = "op=PatchApproval {"
+PATCH_APPROVAL_RX = re.compile(r'op=PatchApproval \{ id: "([^"]*)".*?decision: ([A-Za-z_]+)')
 REQUEST_APPROVAL_TARGET = "codex_app_server::outgoing_message"
 REQUEST_APPROVAL_MARK = "CommandExecutionRequestApproval {"
 REQUEST_APPROVAL_RX = re.compile(
@@ -643,6 +761,7 @@ GUARDIAN_SPAN_RX = re.compile(r"guardian_review\{([^}]*)\}")
 LOG_KINDS = (
     (LOGS_TARGET, LOGS_MESSAGE, "feedback"),
     (EXEC_APPROVAL_TARGET, EXEC_APPROVAL_MARK, "exec"),
+    (EXEC_APPROVAL_TARGET, PATCH_APPROVAL_MARK, "patch"),
     (REQUEST_APPROVAL_TARGET, REQUEST_APPROVAL_MARK, "request"),
 )
 
@@ -664,7 +783,8 @@ def _logs_shape(con: sqlite3.Connection) -> tuple[str, str] | None:
 
 def _log_rows(con: sqlite3.Connection) -> list[dict]:
     """The `logs` rows the parser reads, in id order, each with `kind`
-    `feedback`, `exec` or `request` (`LOG_KINDS`); [] without the table."""
+    `feedback`, `exec`, `patch` or `request` (`LOG_KINDS`: the first entry
+    whose target and marker the row has); [] without the table."""
     shape = _logs_shape(con)
     if shape is None:
         return []
@@ -676,10 +796,13 @@ def _log_rows(con: sqlite3.Connection) -> list[dict]:
         where,
     )
     args = [v for target, mark, _kind in LOG_KINDS for v in (target, mark)]
-    kinds = {target: kind for target, _mark, kind in LOG_KINDS}
     rows = [dict(r) for r in con.execute(sql, args)]
     for r in rows:
-        r["kind"] = kinds.get(r["target"], "")
+        body = str(r.get("body") or "")
+        r["kind"] = next(
+            (kind for target, mark, kind in LOG_KINDS if r["target"] == target and mark in body),
+            "",
+        )
     return rows
 
 
@@ -741,7 +864,8 @@ def _approval_match(rec: dict, kind: str, errors: list) -> re.Match | None:
     if rec["kind"] != kind:
         return None
     body = str(rec.get("body") or "")
-    m = (EXEC_APPROVAL_RX if kind == "exec" else REQUEST_APPROVAL_RX).search(body)
+    pattern = {"exec": EXEC_APPROVAL_RX, "patch": PATCH_APPROVAL_RX}.get(kind, REQUEST_APPROVAL_RX)
+    m = pattern.search(body)
     if not m:
         errors.append(
             (int(rec["_rowid"]), "unreadable approval log row (%s)" % rec["target"], body)
@@ -755,7 +879,8 @@ def _decisions(recs: list[dict], errors: list) -> dict[int, tuple[str, str, str]
     `errors`. A request row with an exec row within 2 seconds is left out,
     since the exec row names the thread and the governed item (the two use
     different words for one decision: `denied` and `approved` on the exec
-    row, `Decline` and `Accept` on the request row)."""
+    row, `Decline` and `Accept` on the request row). A patch row stands
+    alone: the request rows read are command approvals only."""
     out: dict[int, tuple[str, str, str]] = {}
     execs: list[list] = []  # [ts, decision, paired]
     for rec in recs:
@@ -768,6 +893,14 @@ def _decisions(recs: list[dict], errors: list) -> dict[int, tuple[str, str, str]
         text = "permission decision: %s exec %s turn=%s" % (decision, item, turn)
         out[int(rec["_rowid"])] = (sid, item, text)
         execs.append([rec.get("ts"), decision, False])
+    for rec in recs:
+        m = _approval_match(rec, "patch", errors)
+        if not m:
+            continue
+        body = str(rec.get("body") or "")
+        sid = _log_fields(body).get("thread_id") or str(rec.get("thread_id") or "")
+        text = "permission decision: %s patch %s" % (m.group(2), m.group(1))
+        out[int(rec["_rowid"])] = (sid, m.group(1), text)
     for rec in recs:
         m = _approval_match(rec, "request", errors)
         if not m:
