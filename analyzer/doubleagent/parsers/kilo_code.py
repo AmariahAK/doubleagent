@@ -124,7 +124,7 @@ from .base import (
     tail_text,
     text_of,
 )
-from .gemini_cli import parse_jsonc
+from . import gemini_cli  # module import: gemini_cli imports this module too
 from .opencode import OpenCodeParser, tool_summary
 
 TASK_RX = re.compile(
@@ -289,7 +289,7 @@ class KiloCodeParser(OpenCodeParser):
         nothing."""
         ts = file_mtime(artifact)
         try:
-            doc = parse_jsonc(artifact.disk_path.read_bytes())
+            doc = gemini_cli.parse_jsonc(artifact.disk_path.read_bytes())
         except (OSError, ValueError) as e:
             yield self._setting_row(
                 artifact, ts, "parser: %s could not be decoded (%s)" % (artifact.rel, e)

@@ -154,7 +154,7 @@ from .base import (
     track_change,
 )
 from .codex import load_toml
-from .kilo_code import iter_json_array
+from . import kilo_code  # module import: kilo_code imports this module too
 
 SESSION_RX = re.compile(
     r"^(?P<base>(?:\.cache/)?\.gemini)/tmp/(?P<slug>[^/]+)/chats/(?:.*/)?[^/]+\.jsonl?$"
@@ -485,10 +485,10 @@ def history_items(text: str, errors: list) -> tuple[list, dict]:
         doc = json.loads(text)
     except ValueError as e:
         if text.lstrip().startswith("["):
-            return iter_json_array(text, errors), {}
+            return kilo_code.iter_json_array(text, errors), {}
         m = HISTORY_OBJ_RX.match(text)
         if m:
-            return iter_json_array(text[m.end() :], errors), {}
+            return kilo_code.iter_json_array(text[m.end() :], errors), {}
         errors.append((1, "unparseable chat history (%s)" % e, ""))
         return [], {}
     if isinstance(doc, list):
