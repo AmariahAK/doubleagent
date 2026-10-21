@@ -1238,7 +1238,12 @@ the assistant message `model` (Cody, per chat) and `meta.model` (Twinny,
 per conversation), before the rows of the request or message that
 names the model. VS Code also writes `permission mode: <mode>` and
 `permission mode: <old> -> <new>` from the request's chat mode (`ask`,
-`agent`, `edit`, `custom`). Per-call decisions are `permission
+`agent`, `edit`, `custom`), then `permission level: <level>` and
+`permission level: <old> -> <new>` from the request's permission level
+(`default`, `assisted`, `autoApprove`, `autopilot`); when the request
+records the model's options, they follow the model id on the model row
+as sorted `key=value` pairs (`model: <id> <key>=<value>`), and a change
+of options alone is a model change. Per-call decisions are `permission
 decision:` rows. In VS Code, a tool call's confirmation follows its
 `tool_result` row with the call's `tool_use_id`: `permission decision:
 confirmed=true` or `confirmed=false` (before VS Code 1.104), else
@@ -1284,6 +1289,37 @@ the same time and session, `session origin: remote GitHub cloud agent
 (from state.vscdb GitHub.copilot-chat
 github.copilot.cloudAgent.ownedTasks, recordedAt)`, records where it
 began, so its `origin` is `remote`.
+VS Code's standing tool approvals are one row per entry, `permission
+setting: <key>.<id>=<value> (from User/<path>/state.vscdb, file
+mtime)`, for the keys `chat/autoconfirm`, `chat/autoconfirm-post`,
+`chat/servers/autoconfirm`, `chat/servers/autoconfirm-post` and
+`chat/autoconfirm-combination` of a profile's or a workspace's
+`state.vscdb`, `<value>` being `true`, the tool's label or
+`{"arguments":...,"label":...}`; `permission setting:
+chat.tools.global.autoApprove.optIn=<value>` and one `permission
+setting: chat.externalPath.workspaceAllowlist=<path>` per allowed
+folder end the same way. Each auto-approve setting of a profile's
+`settings.json` (the keys matching `chat.tools.*autoApprov*`) and
+`chat.permissions.default` is `permission setting: <key>=<value>`, or
+one `permission setting: <key>.<entry>=<value>` per entry of an object,
+and `chat.defaultModel` is `model setting: chat.defaultModel=<value>`,
+each ending `(from User/<path>/settings.json, file mtime)`. All of them
+carry the file's modification time and an empty `session_id`; a
+workspace's rows carry the workspace's folder as `project_path`. The
+GitHub account VS Code signed in with is `source host: <host> account
+<login> extension=<id> scopes=<scopes> (from state.vscdb
+github-<login>-usages, lastUsed)`, or `mcp_server=<id>` from
+`github-<login>-mcpserver-usages`, one per extension or MCP server that
+used the account, at its last use, and each repository picked for a
+cloud agent task in the last week is `source host repository: <owner/repo>
+type=cloud agent selection (from state.vscdb GitHub.copilot-chat
+userSelectedRepositories, timestamp)`, both with an empty `session_id`.
+The chat editing state gives `edit state: <Modified|Accepted|Rejected>
+<path> request=<requestId> model=<modelId> (from chatEditingSessions
+state.json, file mtime)`, with ` deleted=true` before the parenthesis
+for a file the edit deleted, one per file of the session's most recent
+snapshot, with the chat session id and the workspace's folder, at the
+file's modification time.
 
 The `chatgpt-desktop` parser reads the ChatGPT desktop app's list of
 the account's ChatGPT conversations, the `chatgpt` rows of
@@ -1555,6 +1591,7 @@ beside its `session synced: server conversation` row.
 | `qwen-code` | `.qwen/tmp/<hash>/logs.json` | `.qwen/projects/<slug>/chats/*.jsonl` |
 | `roo-code` | `.roo/cli-history.json` (no timestamp, task or project: matches on text alone) | the task files under `.vscode-mock/global-storage/tasks/` and the editor's `globalStorage/rooveterinaryinc.roo-cline/tasks/` |
 | `tabby` | `.tabby/ee/db.backup-*.sqlite` and `dev-db.backup-*.sqlite` (copies of the live threads and events); `.tabby/events/YYYY-MM-DD.json` (its `user` and `assistant` rows pair with `user_events`; its `system` rows name the owner by encoded id, not email, and never pair) | `.tabby/ee/db.sqlite` or `dev-db.sqlite` |
+| `vscode` | `User/workspaceStorage/<hash>/chatEditingSessions/<id>/state.json`, the chat editing state (only `edit state:` `system` rows, which never pair and are never marked `recovered`; it outlives a deleted chat) | `User/workspaceStorage/<hash>/chatSessions/<id>.jsonl` or `.json` |
 
 The 2 seconds cover Codex's `history.jsonl`, which records whole seconds
 beside the rollouts' milliseconds, and Antigravity's history line, under

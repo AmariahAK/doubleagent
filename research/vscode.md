@@ -54,6 +54,13 @@ coding agent on GitHub's servers, which VS Code lists and renders but does not r
 
 ### Source reviews
 
+- 2026-10-21: microsoft/vscode at
+  [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706):
+  added the profile and Agents window `state.vscdb` paths of the standing grants, the serialised
+  snapshot fields of the chat editing state, VS Code's GitHub account usage records and Copilot
+  Chat's repository selection ([Other stores](#other-stores), [Credentials](#credentials)), and
+  turned the planned permission, model, standing-grant and editing-state rows into the rows the
+  parser now writes ([Parser plan](#parser-plan), [Source host rows](#source-host-rows)).
 - 2026-10-19: microsoft/vscode at
   [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706),
   with the extension under `extensions/copilot/` read at the same commit (the archived repository
@@ -206,7 +213,9 @@ More records of each chat sit inside the catalog's `User` entries; their content
   index of sessions and turns ([Copilot Chat's chronicle index](#copilot-chats-chronicle-index)),
   and `cloudSessions.json` beside it, its sync markers ([Sync state](#sync-state)).
 - `chat/autoconfirm` and related rows of each `state.vscdb`: the user's standing "always allow"
-  grants ([Standing permission grants](#standing-permission-grants)).
+  grants ([Standing permission grants](#standing-permission-grants)), and in
+  `User/globalStorage/state.vscdb` the GitHub account's usage records and Copilot Chat's
+  repository selection ([GitHub account records](#github-account-records)).
 
 #### Other agents' records in these files
 
@@ -244,6 +253,13 @@ Portable installs
   [`227`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/src/vs/platform/secrets/common/secrets.ts#L227)).
   Collect the DB unflagged; the values are not recoverable offline without the keyring. Forks that
   patched this store plaintext tokens (Cursor `cursorAuth/*`, Windsurf `windsurfAuthStatus`).
+- The GitHub sign-in that Copilot Chat and the cloud agent use is held by VS Code's built-in
+  GitHub authentication extension as one of those secret-storage rows, under the key `github.auth`
+  (`<authority><path>.ghes.auth` for GitHub Enterprise)
+  ([`extensions/github-authentication/src/github.ts:231-235`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/github-authentication/src/github.ts#L231-L235),
+  [`common/keychain.ts:16-18`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/github-authentication/src/common/keychain.ts#L16-L18)),
+  so the token is encrypted like any other; the account's login is stored unencrypted in other
+  keys of the same database ([GitHub account records](#github-account-records)).
 - Tunnel CLI: keyring first, file fallback `~/<dataFolder>/cli/token.json` or
   `token-<namespace>.json`
   ([`cli/src/auth.rs:178-189`](https://github.com/microsoft/vscode/blob/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e/cli/src/auth.rs#L178-L189),
@@ -354,12 +370,12 @@ cloud or cloud only; both remove the entry
 ([`remoteSessionExporter.ts:545-616`](https://github.com/microsoft/vscode/blob/661e013024de5052af476650250dabbebb4c1165/extensions/copilot/src/extension/chronicle/vscode-node/remoteSessionExporter.ts#L545-L616)).
 Neither delete path writes a log line: the exporter reports through telemetry only.
 
-The analyzer reads the `cloudSessions.json` entries, which also name sessions deleted here, and the
-`ownedTasks` list, but not the editing state, `session-store.db`, the hook transcripts, the debug
-logs, the memory files or the index; the plan in [Parser plan](#parser-plan) makes the editing
-state a primary source and the `session-store.db` turns, the hook transcripts, the debug logs and
-the memory files secondary sources (see
-[Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+The analyzer reads the `cloudSessions.json` entries, which also name sessions deleted here, the
+`ownedTasks` list and the editing state, a secondary source whose `edit state:` rows keep the
+deleted chat's session id, edited files, request ids and model (see
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)); it does not read
+`session-store.db`, the hook transcripts, the debug logs, the memory files or the index, which the
+plan in [Parser plan](#parser-plan) makes secondary sources.
 
 ### Record schema
 
@@ -589,15 +605,25 @@ result), `chat/servers/autoconfirm` and `chat/servers/autoconfirm-post` (the sam
 an MCP server) and `chat/autoconfirm-combination`. Each key exists in workspace scope, the
 workspace's `workspaceStorage/<hash>/state.vscdb`, and in profile scope, `globalStorage/state.vscdb`
 for the default profile
-([`:49-50`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/browser/tools/languageModelToolsConfirmationService.ts#L49-L50));
-a session-scope grant is held in memory only. These are the grants whose per-call record is
+([`:49-50`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/browser/tools/languageModelToolsConfirmationService.ts#L49-L50)),
+`User/profiles/<id>/globalStorage/state.vscdb` for another profile and
+`User/profiles/builtin/agents/globalStorage/state.vscdb` for the Agents window's
+([`platform/storage/electron-main/storageMain.ts:285-289`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/platform/storage/electron-main/storageMain.ts#L285-L289),
+[`platform/userDataProfile/common/userDataProfile.ts:196`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/platform/userDataProfile/common/userDataProfile.ts#L196),
+[`:402`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/platform/userDataProfile/common/userDataProfile.ts#L402),
+[`:24`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/platform/userDataProfile/common/userDataProfile.ts#L24),
+[`:232`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/platform/userDataProfile/common/userDataProfile.ts#L232));
+a session-scope grant is held in memory only. Each value is written whole when the window saves
+its state: an entry with arguments as `{label, arguments}`, else its label or `true`
+([`languageModelToolsConfirmationService.ts:177-189`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/browser/tools/languageModelToolsConfirmationService.ts#L177-L189)). These are the grants whose per-call record is
 `LmServicePerTool` with `scope` `workspace` or `profile`. Two more keys:
 `chat.tools.global.autoApprove.optIn` (application scope, `true` once the user accepted the warning
 for global auto-approve,
 [`languageModelToolsService.ts:73`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/browser/tools/languageModelToolsService.ts#L73),
 [`:1526`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/browser/tools/languageModelToolsService.ts#L1526))
-and `chat.externalPath.workspaceAllowlist` (workspace scope, a JSON array of paths outside the
-workspace the user allowed,
+and `chat.externalPath.workspaceAllowlist` (workspace scope, a JSON array of the URI strings of
+folders outside the workspace the user allowed,
+[`:85-89`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/common/tools/builtinTools/chatExternalPathConfirmation.ts#L85-L89),
 [`chatExternalPathConfirmation.ts:22-30`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/common/tools/builtinTools/chatExternalPathConfirmation.ts#L22-L30),
 [`:58`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/common/tools/builtinTools/chatExternalPathConfirmation.ts#L58)).
 The settings behind the same decisions live in `User/settings.json` (and a profile's):
@@ -611,6 +637,45 @@ The settings behind the same decisions live in `User/settings.json` (and a profi
 and the default model `chat.defaultModel`
 ([`constants.ts:138`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/common/constants.ts#L138)).
 
+#### GitHub account records
+
+VS Code records which extension used which account of an authentication provider in application
+scope, the default profile's `User/globalStorage/state.vscdb`, unencrypted. For the GitHub provider
+(`github`, or `github-enterprise`,
+[`extensions/github-authentication/src/github.ts:62-65`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/github-authentication/src/github.ts#L62-L65))
+the account label is the GitHub login
+([`githubServer.ts:323`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/github-authentication/src/githubServer.ts#L323)),
+with ` - <authority><path>` appended for GitHub Enterprise
+([`github.ts:227`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/github-authentication/src/github.ts#L227)).
+The keys:
+
+- `<provider>-<label>-usages`, a JSON array of `{extensionId, extensionName, scopes?, lastUsed}`
+  (ms), one entry per extension that used the account, refreshed on each use
+  ([`services/authentication/browser/authenticationUsageService.ts:15-20`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/services/authentication/browser/authenticationUsageService.ts#L15-L20),
+  [`:122-144`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/services/authentication/browser/authenticationUsageService.ts#L122-L144)).
+- `<provider>-<label>-mcpserver-usages`, the same for MCP servers, `{mcpServerId, mcpServerName,
+  scopes?, lastUsed}`
+  ([`authenticationMcpUsageService.ts:15-20`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/services/authentication/browser/authenticationMcpUsageService.ts#L15-L20),
+  [`:120-142`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/services/authentication/browser/authenticationMcpUsageService.ts#L120-L142)).
+- `<provider>-<label>`, the extensions the user allowed to use the account
+  ([`authenticationAccessService.ts:134`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/services/authentication/browser/authenticationAccessService.ts#L134)),
+  and `<extension id>-<provider>`, the label of the account an extension prefers, in workspace and
+  application scope
+  ([`authenticationExtensionsService.ts:245-246`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/services/authentication/browser/authenticationExtensionsService.ts#L245-L246),
+  [`:276-278`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/services/authentication/browser/authenticationExtensionsService.ts#L276-L278)).
+
+Copilot Chat's global state (the `GitHub.copilot-chat` row) holds `userSelectedRepositories`, a
+JSON array of `{name, timestamp}` (ms), each repository the user picked for a cloud agent task,
+dropped a week after it was last picked
+([`copilotCloudSessionsProvider.ts:403-404`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/copilot/src/extension/chatSessions/vscode-node/copilotCloudSessionsProvider.ts#L403-L404),
+[`:416-419`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/copilot/src/extension/chatSessions/vscode-node/copilotCloudSessionsProvider.ts#L416-L419),
+[`:2265-2290`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/copilot/src/extension/chatSessions/vscode-node/copilotCloudSessionsProvider.ts#L2265-L2290));
+`name` is the `<owner>/<repo>` the repository picker returns
+([`:765-782`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/extensions/copilot/src/extension/chatSessions/vscode-node/copilotCloudSessionsProvider.ts#L765-L782)).
+The picker's search asks GitHub on each query, and no other repository list was found in the
+extension's stored state (`globalState.update` and `workspaceState.update` grepped in
+`extensions/copilot/src`).
+
 #### Chat editing sessions
 
 VS Code core keeps them in
@@ -620,10 +685,14 @@ VS Code core keeps them in
 [`:43-47`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingSessionStorage.ts#L43-L47)).
 `<key>` is the chat session id for a local chat, else the SHA-1 of the session resource
 ([`chatEditingOperations.ts:137-146`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingOperations.ts#L137-L146)).
-`state.json` is `{version: 2, recentSnapshot, timeline, initialFileContents}`; a snapshot entry is
+`state.json` is `{version: 2, recentSnapshot, timeline, initialFileContents}`; `recentSnapshot` is
+`{stopId, entries}` (version 1 wrote `{requestId, workingSet, entries}`) and a snapshot entry is
 `{resource, languageId, originalHash, currentHash, state, snapshotUri, telemetryInfo: {requestId,
 agentId?, command?, modelId?, modeId?, feature?}, isDeleted?}`
-([`:242-288`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingSessionStorage.ts#L242-L288)).
+([`:242-288`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingSessionStorage.ts#L242-L288)),
+`resource` the file's URI string; the writer fills only `requestId`, `agentId`, `command`,
+`modelId` and `modeId` of `telemetryInfo`
+([`:176-187`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/browser/chatEditing/chatEditingSessionStorage.ts#L176-L187)).
 `state` is the `ModifiedFileEntryState` const enum, serialised as its index: `Modified` 0,
 `Accepted` 1, `Rejected` 2
 ([`chatEditingService.ts:353-357`](https://github.com/microsoft/vscode/blob/4d22f4f922eb012217ac65672ccce02f59d63706/src/vs/workbench/contrib/chat/common/editing/chatEditingService.ts#L353-L357)).
@@ -759,7 +828,12 @@ values and token patterns
 Globs: `**/User/workspaceStorage/*/chatSessions/*.{json,jsonl}`,
 `**/User/globalStorage/emptyWindowChatSessions/*.{json,jsonl}`,
 `**/User/workspaceStorage/no-workspace/chatSessions/*.json`,
-`**/User/globalStorage/transferredChatSessions/*.json`, plus the sibling `workspace.json`.
+`**/User/globalStorage/transferredChatSessions/*.json`, plus the sibling `workspace.json`; for the
+standing grants, settings and account records `**/User/globalStorage/state.vscdb`,
+`**/User/profiles/[builtin/]<id>/globalStorage/state.vscdb`,
+`**/User/workspaceStorage/*/state.vscdb`, `**/User/settings.json` and
+`**/User/profiles/[builtin/]<id>/settings.json`; and
+`**/User/workspaceStorage/*/chatEditingSessions/*/state.json`.
 
 Rows: one `user` per request, one `assistant` per contiguous markdown run, one `thinking` per
 thinking part, one `tool_use` plus `tool_result` per `toolInvocationSerialized`.
@@ -793,12 +867,26 @@ The parser writes these `system` rows
 - `permission decision: confirmation=<label>` after the user row of a request whose `confirmation`
   is set.
 
-Not read yet, and planned: `permission level: <level>` and `permission level: <old> -> <new>` from
-`modeInfo.permissionLevel`, placed and timed like the `permission mode` rows; one `system` row per
-entry of the five `chat/autoconfirm*` keys, `chat.tools.global.autoApprove.optIn` and
-`chat.externalPath.workspaceAllowlist`, from each `state.vscdb`, timestamped by the database's
-modification time and saying so; one row per auto-approve key set in `User/settings.json`, the
-same way. The keys are under [Standing permission grants](#standing-permission-grants).
+Since the 2026-10-21 review the parser also writes these, source-derived; not observed on any real
+install:
+
+- `permission level: <level>` and `permission level: <old> -> <new>` from
+  `modeInfo.permissionLevel`, after the request's `permission mode` row and timed the same way.
+- From each `state.vscdb` of a profile or a workspace, one row per entry of the five
+  `chat/autoconfirm*` keys, `permission setting: <key>.<tool or server id>=<value>` (`<value>`
+  `true`, the label, or `{label, arguments}` as compact JSON; an entry of the older array form
+  reads `=true`), then `permission setting: chat.tools.global.autoApprove.optIn=<value>` and one
+  `permission setting: chat.externalPath.workspaceAllowlist=<path>` per allowed folder, each ending
+  `(from User/<path>/state.vscdb, file mtime)`, at the database's modification time, with an empty
+  `session_id` and, for a workspace's database, the workspace's folder as `project_path`. A key of
+  another JSON type is one `parser: ItemTable value for <key> is not a JSON object or array` row.
+- From `User/settings.json` and each profile's `settings.json`, read as JSONC, one row per key
+  matching `chat.tools.*autoApprov*` and for `chat.permissions.default`: `permission setting:
+  <key>=<value>`, or one `permission setting: <key>.<entry>=<value>` per entry of a non-empty
+  object (`chat.tools.terminal.autoApprove` maps command patterns to a decision), each ending
+  `(from User/<path>/settings.json, file mtime)`, at the file's modification time.
+
+The keys are under [Standing permission grants](#standing-permission-grants).
 
 #### Model rows
 
@@ -809,19 +897,32 @@ the request's user row, with its `timestamp`
 [issue 97](https://github.com/seanthegeek/doubleagent/issues/97)). The model is chosen per request,
 so a session can change model at any request.
 
-Not read yet, and planned: the request's `modelConfiguration` (as `key=value`) appended to its
-`model:` row when present. The session's `inputState.selectedModel` is a draft, not a record of
+Since the 2026-10-21 review, source-derived; not observed on any real install: the request's
+`modelConfiguration` is tracked with its `modelId` and printed after the id as sorted
+`key=value` pairs, `model: <id> <key>=<value>` and `model: <old> -> <new>`, so a change of options
+alone is a model row too; and `chat.defaultModel` in a profile's `settings.json` is
+`model setting: chat.defaultModel=<value> (from User/<path>/settings.json, file mtime)` at the
+file's modification time. The session's `inputState.selectedModel` is a draft, not a record of
 use, and gets no row.
 
 #### Past-use rows and secondary sources
 
-The parser reads none of these yet. The plan, by role: `chatEditingSessions/<key>/state.json`
-primary for its accept and reject states (`edit state: <Modified|Accepted|Rejected> <resource>
-request=<requestId> model=<modelId>`, at the file's modification time) and the files a request
-touched; `session-store.db` `turns`, `checkpoints` and `session_files` secondary (truncated texts,
-own `timestamp`); `transcripts/<sessionId>.jsonl` secondary (own `timestamp`);
-`debug-logs/<sessionId>/*.jsonl` secondary; memory files secondary with an empty timestamp. Each
-needs `has_secondary` and a `secondary()` match. The stores are described in
+The parser reads `chatEditingSessions/<key>/state.json` as a secondary source (`secondary()` true,
+`has_secondary` set), source-derived; not observed on any real install. Each entry of
+`recentSnapshot.entries` is one `system` row, `edit state: <Modified|Accepted|Rejected> <path>
+request=<requestId> model=<modelId> (from chatEditingSessions state.json, file mtime)`, with
+` deleted=true` before the parenthesis when `isDeleted` is set and `-` for an absent value, at the
+file's modification time, with `<key>` as `session_id` (the chat session id for a local chat) and
+the sibling `workspace.json`'s folder as `project_path`. The rows record what the chat does not:
+whether the user kept or undid each edit. Being `system` rows they never pair with a chat row and
+are never marked `recovered`, but they outlive a deleted chat
+([What survives a delete](#what-survives-a-delete)). The `timeline` operations and the
+`contents/` bodies are not read.
+
+Not read, and planned: `session-store.db` `turns`, `checkpoints` and `session_files` secondary
+(truncated texts, own `timestamp`; [issue 161](https://github.com/seanthegeek/doubleagent/issues/161));
+`transcripts/<sessionId>.jsonl` secondary (own `timestamp`); `debug-logs/<sessionId>/*.jsonl`
+secondary; memory files secondary with an empty timestamp. The stores are described in
 [Other stores](#other-stores).
 
 #### Sync, relay and origin rows
@@ -918,9 +1019,11 @@ which belongs to the `copilot-cli` parser.
 
 #### Deletion rows
 
-The agent writes no deletion marker ([What survives a delete](#what-survives-a-delete)). Once the
-records of [Other stores](#other-stores) are read, a session-store, transcript or editing-state
-record with no chat file is a deleted chat.
+The agent writes no deletion marker ([What survives a delete](#what-survives-a-delete)), and the
+parser writes no deletion row. An `edit state:` row whose `session_id` has no chat file is a
+deleted chat (source-derived; not observed on any real install); once the other records of
+[Other stores](#other-stores) are read, a session-store or transcript record with no chat file is
+one too.
 
 #### Bad-line rows
 
@@ -928,9 +1031,14 @@ A `.jsonl` session line that does not decode, or whose mutation cannot be applie
 row through `error_rows`, `parser: unparseable line (<reason>): <line>` or
 `parser: mutation not applied (<why>): <line>`; a `.json` session that does not decode is
 `parser: file is not valid JSON (<reason>)`; `workspace.json` errors are under
-[Scratch directory rows](#scratch-directory-rows). When they are read, the transcript and
-debug-log readers go through `iter_jsonl` and `error_rows`, and `state.json` and
-`session-store.db` errors are whole-file `parser:` rows.
+[Scratch directory rows](#scratch-directory-rows). A chat editing `state.json` that does not
+decode is `parser: file is not valid JSON (<reason>)` and one that is not a JSON object
+`parser: state.json is not a JSON object`, whole-file rows through `error_rows` with the folder's
+session id; a `settings.json` that is not a JSON object is `parser: User/<path>/settings.json is
+not a JSON object (<reason>)`; a damaged `state.vscdb` or a value that is not JSON is
+`parser: state.vscdb unreadable: <message>` or `parser: ItemTable value for <key> is not valid JSON
+(<reason>)`. When they are read, the transcript and debug-log readers go through `iter_jsonl` and
+`error_rows`, and `session-store.db` errors are whole-file `parser:` rows.
 
 #### Fixtures
 
@@ -947,6 +1055,54 @@ The fixture's `modelId`, `agent.id` and `responderUsername` values are invented:
 while the extension was taken to be closed source, and have not been checked against its source
 ([Source and evidence](#source-and-evidence)).
 
+Since the 2026-10-21 review, from the shapes in [Other stores](#other-stores) at
+[`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706)
+(ids, labels, the login and the `modelConfiguration` key invented): a request's `modeInfo` with
+`"permissionLevel":"autoApprove"` and `"modelConfiguration":{"reasoningEffort":"high"}`; a
+workspace `state.vscdb` with
+
+```json
+{"chat/autoconfirm": {"run_in_terminal": true, "mcp_github_create_issue": {"label": "Create issue", "arguments": "{\"repo\":\"x\"}"}},
+ "chat/servers/autoconfirm": ["github"],
+ "chat.externalPath.workspaceAllowlist": ["file:///srv/shared"]}
+```
+
+the default profile's `state.vscdb` with `"chat/autoconfirm-post": {"read_file": "Read File"}`,
+`"chat.tools.global.autoApprove.optIn": true`,
+`"github-octocat-usages": [{"extensionId": "GitHub.copilot-chat", "extensionName": "GitHub Copilot
+Chat", "scopes": ["read:user", "user:email"], "lastUsed": 1791025100000}]`, the matching
+`-mcpserver-usages` entry and `"userSelectedRepositories": [{"name": "octocat/hello-world",
+"timestamp": 1791025000000}]` in the `GitHub.copilot-chat` value; a profile `settings.json` (JSONC)
+with `chat.tools.terminal.autoApprove`, an empty `chat.tools.edits.autoApprove`,
+`chat.permissions.default` and `chat.defaultModel`; and a chat editing `state.json`:
+
+```json
+{"version": 2, "initialFileContents": [["file:///srv/proj/test_a.py", "aaaaaaa"]], "timeline": null,
+ "recentSnapshot": {"stopId": null, "entries": [
+  {"resource": "file:///srv/proj/test_a.py", "languageId": "python", "originalHash": "aaaaaaa", "currentHash": "bbbbbbb", "state": 1, "snapshotUri": "chat-editing-snapshot-text-model:/srv/proj/test_a.py", "telemetryInfo": {"requestId": "request_1", "modelId": "copilot/gpt-4.1", "agentId": "github.copilot.editsAgent"}},
+  {"resource": "file:///srv/proj/old.py", "languageId": "python", "originalHash": "aaaaaaa", "currentHash": "bbbbbbb", "state": 2, "snapshotUri": "chat-editing-snapshot-text-model:/srv/proj/old.py", "telemetryInfo": {"requestId": "request_1", "modelId": "copilot/gpt-4.1"}, "isDeleted": true}]}}
+```
+
+#### Source host rows
+
+Copilot Chat signs in to GitHub through VS Code's GitHub authentication provider; the token is a
+secret-storage row ([Credentials](#credentials)), and the account's login and its uses are plain
+keys of `User/globalStorage/state.vscdb` ([GitHub account records](#github-account-records)). The
+parser writes, source-derived; not observed on any real install:
+
+- `source host: <host> account <login> extension=<extensionId> scopes=<a,b> (from state.vscdb
+  <key>, lastUsed)` per entry of each `github-<login>-usages` key, and the same with
+  `mcp_server=<mcpServerId>` per entry of `github-<login>-mcpserver-usages`, at `lastUsed`, with
+  an empty `session_id`. `<host>` is `github.com`, or for a `github-enterprise-<label>-usages` key
+  the part of the label after ` - `. The `<provider>-<label>` and `<extension id>-<provider>` keys
+  name the same login and are not read.
+- `source host repository: <owner>/<repo> type=cloud agent selection (from state.vscdb
+  GitHub.copilot-chat userSelectedRepositories, timestamp)` per entry of `userSelectedRepositories`,
+  at its `timestamp`, with an empty `session_id`.
+
+A cloud agent task bound to a repository is listed from GitHub; locally it leaves only the index
+entry and the `ownedTasks` id ([Sync, relay and origin rows](#sync-relay-and-origin-rows)).
+
 ## Confidence
 
 - High: user data path order, `User/` layout, `state.vscdb` schema, chat session paths,
@@ -954,7 +1110,10 @@ while the extension was taken to be closed source, and have not been checked aga
   set, the JSONL framing and bare `{value}` markdown parts, from source; `cloudSessions.json`,
   `ownedTasks` and the sync delete path, from source at
   [`661e013`](https://github.com/microsoft/vscode/commit/661e013024de5052af476650250dabbebb4c1165),
-  though no install has shown them ([Observed](#observed)); the sizes in
+  though no install has shown them ([Observed](#observed)); the standing grant keys, the GitHub
+  account records and the chat editing state, from source at
+  [`4d22f4f`](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706),
+  likewise unobserved; the sizes in
   [Per-user storage](#per-user-storage) and [Exclusions](#exclusions), as measured by the
   names-and-sizes listing of one workstation.
 - Medium: Trae names
@@ -964,6 +1123,7 @@ while the extension was taken to be closed source, and have not been checked aga
 - Not determined: the actual `modelId`, `agent.id` and `responderUsername` values the Copilot
   extension sets, which the fixture invents and the now public source has not been read for; the
   exact release in which `.jsonl` became the default beyond the `1.109` code comment; Copilot's
-  own data in `state.vscdb` keys other than `interactive.sessions`; whether forks lowercase
+  own data in `state.vscdb` keys other than `interactive.sessions` and those under
+  [Other stores](#other-stores); the option names `modelConfiguration` holds; whether forks lowercase
   extension ids the same way (Kiro's `kiro.kiroagent` suggests yes); Copilot `.github/`
   customization file names; which `secret://` keys each AI extension writes.

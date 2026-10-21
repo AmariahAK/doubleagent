@@ -893,9 +893,19 @@ strings. Copilot Chat's session sync record
 row in `User/globalStorage/state.vscdb` (one `session synced:` row and
 one `session origin: remote GitHub cloud agent` row per cloud agent
 task, which began on GitHub's servers, so the parser records origin and
-`sessions.jsonl` `origin` reads `remote` or `local`).
+`sessions.jsonl` `origin` reads `remote` or `local`). The standing tool
+approvals in each `state.vscdb` (`User/globalStorage/`,
+`User/profiles/<id>/globalStorage/` and
+`User/workspaceStorage/<hash>/`), the auto-approve, default permission
+and default model settings of `User/settings.json` and
+`User/profiles/<id>/settings.json`, the GitHub account's usage records
+and the repositories picked for cloud agent tasks in
+`User/globalStorage/state.vscdb`, and the accept or reject state of each
+file a chat edited in
+`User/workspaceStorage/<hash>/chatEditingSessions/<id>/state.json`, a
+secondary source that survives the chat's deletion.
 
-Validated against: Source at [d7622a5](https://github.com/microsoft/vscode/commit/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e), synthetic fixture.
+Validated against: Source at [d7622a5](https://github.com/microsoft/vscode/commit/d7622a529314a4abcefd7ca9e3d7344bc9ccba9e), synthetic fixture; the permission level, model options, standing grants, settings, GitHub account records and chat editing state from source at [4d22f4f](https://github.com/microsoft/vscode/commit/4d22f4f922eb012217ac65672ccce02f59d63706), synthetic fixture.
 
 ### `zed`
 
