@@ -8079,7 +8079,7 @@ HERMES_HISTORY_TEXT = (
     "\n# 2026-10-01 14:01:00.000001\n+first line\n+second line\n"
 )
 
-# cron/output/<job>/<time>.md (cron/scheduler.py:2238-2246 and 2628-2638 at
+# cron/output/<job>/<time>.md (cron/scheduler.py:2238-2246 and 2634-2640 at
 # 86fa9e6): a framed run, an unframed run of an older writer and a failed run.
 HERMES_CRON_JOB = "a1b2c3d4e5f6"
 HERMES_CRON_PROMPT = "Summarise the open issues.\n\n## Response\n\nquoted heading"
@@ -8182,7 +8182,7 @@ HERMES_CONFIG_YAML = (
     "quick_commands: {}\n"
 )
 
-# The desktop app's connections.json (apps/desktop/electron/connection-registry.ts:44-111
+# The desktop app's connections.json (apps/desktop/electron/connection-registry.ts:49-106
 # at 86fa9e6): the local runtime, a remote gateway, an SSH host and a Hermes
 # Cloud instance, and one entry the app quarantined.
 HERMES_CONNECTIONS = {

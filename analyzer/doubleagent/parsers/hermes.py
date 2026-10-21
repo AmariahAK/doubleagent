@@ -1152,7 +1152,7 @@ class HermesParser(Parser):
 
     # -- cron/output/<job>/<time>.md (issue 208) -----------------------------------------
     def _parse_cron(self, artifact: Artifact, m: re.Match) -> Iterator[Row]:
-        """A cron run's document (cron/scheduler.py:2238-2246 and 2634-2638 at
+        """A cron run's document (cron/scheduler.py:2238-2246 and 2634-2640 at
         86fa9e6): a `system` row `cron run: job <job id> (from cron/output,
         file name time, host-local)`, then the run's prompt as a `user` row
         and its response as an `assistant` row, or the whole document as a
