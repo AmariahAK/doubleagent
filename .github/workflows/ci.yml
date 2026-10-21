@@ -118,6 +118,25 @@ jobs:
       - name: smoke
         run: collectors/tests/smoke.sh ${{ matrix.shell }}
 
+  # The same drift test and smoke run on GitHub's macOS runner, whose find,
+  # sed, stat, grep, awk and tar are the BSD ones; every Linux job above
+  # sees only GNU tools, so a GNU-only flag or regular expression passes
+  # them. The smoke run uses /bin/dash, on macOS since 10.15, and ends
+  # well inside the Linux bash job's time; under /bin/sh (bash 3.2) it
+  # takes three times as long and stays a developer-machine check
+  # (CLAUDE.md).
+  sh-collector-bsd:
+    name: sh collector (smoke under dash on macOS, BSD tools)
+    runs-on: macos-latest
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Drift test
+        run: collectors/tests/catalog-sync.sh
+      - name: smoke
+        run: collectors/tests/smoke.sh dash
+
   sh-shellcheck:
     name: sh collector (shellcheck)
     runs-on: ubuntu-latest
@@ -248,6 +267,7 @@ jobs:
       - changes
       - catalog-sync
       - sh-collector
+      - sh-collector-bsd
       - sh-shellcheck
       - powershell-7
       - windows-powershell-51

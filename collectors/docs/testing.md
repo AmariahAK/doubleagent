@@ -107,7 +107,9 @@ refuses a commit that stages either collector or the analyzer copy while the
 copy is stale or the tables differ; the linters run in CI only.
 
 CI (`.github/workflows/ci.yml`) runs the drift test and shellcheck, the sh
-smoke test under sh, dash, bash, busybox ash, zsh and posh, a lint job, the
+smoke test under sh, dash, bash, busybox ash, zsh and posh, the drift test
+and the sh smoke test under dash on macOS, where the tools are the BSD
+ones, a lint job, the
 PowerShell smoke test under PowerShell 7 on Linux and Windows PowerShell 5.1
 on Windows, and the analyzer tests, then a `CI result` job that fails when
 any of them failed, on every push to `main` and every pull request.
