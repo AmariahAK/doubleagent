@@ -1085,6 +1085,24 @@ Mk "$u236/inno_updater.exe" "binary`n"
 Mk "$u236/app-ready.json" "{`"currentVersion`":`"x`"}`n"
 Mk "$u236/state.json" "{`"stage`":`"x`"}`n"
 
+# 2026-10-21 Agent Zero source review (#217)
+# The WhatsApp bridge's Baileys login state under the install's tmp/ (home,
+# Desktop and volume-relative forms), an editor (ACP) chat whose workspace
+# and extra folder are discovered as projects, and a computer-use screen
+# capture of the A0 CLI connector in the Windows temp directory. Checks
+# follow the default and -NoSecrets runs below; the same files are in
+# smoke.sh, the capture under bob.
+$w217 = 'tmp/whatsapp/session/creds.json'
+$t217 = 'Users/alice/AppData/Local/Temp/_a0_connector/computer_use/ctx1/0000.png'
+Mk "Users/alice/agent-zero/main/$w217" '{}'
+Mk "Users/alice/Desktop/agent-zero/$w217" '{}'
+Mk "var/lib/docker/volumes/a0_usr/_data/$w217" '{}'
+Mk 'Users/alice/agent-zero/main/usr/chats/acp1/chat.json' ('{"id": "acp1", "data": ' +
+  '{"acp_cwd": "/srv/a0acp", "acp_additional_directories": ["/srv/a0extra"]}}')
+Mk 'srv/a0acp/AGENTS.md' '# acp'
+Mk 'srv/a0extra/AGENTS.md' '# extra'
+Mk $t217 'png'
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1627,6 +1645,11 @@ Check '#236 Cursor local plugins collected' { Is6 "$p236/local/x.json" }
 Check '#236 Cursor Windows inno updater excluded' { (StatusOf "$u236/inno_updater.exe") -eq 'skipped_excluded' }
 Check '#236 Cursor Windows update-supervisor state collected' { (Is6 "$u236/app-ready.json") -and (Is6 "$u236/state.json") }
 
+# 2026-10-21 Agent Zero source review (#217)
+Check '#217 Agent Zero WhatsApp session flagged secret' { (Is113 "Users/alice/agent-zero/main/$w217" 'agent-zero' $true) -and (Is113 "Users/alice/Desktop/agent-zero/$w217" 'agent-zero' $true) -and (Is113 "var/lib/docker/volumes/a0_usr/_data/$w217" 'agent-zero' $true) -and (Row "var/lib/docker/volumes/a0_usr/_data/$w217").user -eq 'docker' }
+Check '#217 Agent Zero ACP workspace and extra folder discovered' { (StatusOf 'srv/a0acp/AGENTS.md') -eq 'collected' -and (StatusOf 'srv/a0extra/AGENTS.md') -eq 'collected' }
+Check '#217 Agent Zero connector screen capture collected' { Is113 $t217 'agent-zero' $false }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -1830,6 +1853,8 @@ Check '#153 Gemini CLI bug-memory heap snapshot skipped without secrets' { (Stat
 Check '#153 little-coder legacy config.json skipped without secrets' { (StatusOf 'Users/alice/.little-coder/config.json') -eq 'skipped_secret' }
 Check '#153 Qwen Code channel credentials skipped without secrets' { (StatusOf 'Users/alice/.qwen/channels/qqbot-credentials.json') -eq 'skipped_secret' -and (StatusOf 'Users/alice/.qwen/channels/weixin/account.json') -eq 'skipped_secret' }
 Check '#153 Qwen Code channel routing files kept without secrets' { (StatusOf 'Users/alice/.qwen/channels/sessions.json') -eq 'collected' -and (StatusOf 'Users/alice/.qwen/channels/daemon/0123abcd/routes.json') -eq 'collected' }
+# 2026-10-21 Agent Zero source review (#217)
+Check '#217 Agent Zero WhatsApp session skipped without secrets' { (StatusOf "Users/alice/agent-zero/main/$w217") -eq 'skipped_secret' -and (StatusOf "Users/alice/Desktop/agent-zero/$w217") -eq 'skipped_secret' -and (StatusOf "var/lib/docker/volumes/a0_usr/_data/$w217") -eq 'skipped_secret' }
 # 2026-10-18 Codex shell snapshots (#160)
 Check '#160 Codex shell snapshot skipped without secrets' { (StatusOf $s160) -eq 'skipped_secret' }
 
@@ -1962,7 +1987,7 @@ $files107 = -1
 $r = InvAgent 'alice' 'muse-code'
 if ($r) { $files107 = $r.files }
 $r = InvAgent 'docker' 'agent-zero'
-Check 'Inventory docker volume line' { $r -and $r.files -eq 4 -and $r.bytes -eq 87 -and $r.projects -eq 0 -and $r.evidence -eq '*a0_usr' }
+Check 'Inventory docker volume line' { $r -and $r.files -eq 5 -and $r.bytes -eq 89 -and $r.projects -eq 0 -and $r.evidence -eq '*a0_usr' }
 $r = InvAgent 'docker' 'tabby'
 Check 'Inventory rootless docker volume line' { $r -and $r.files -eq 1 -and $r.bytes -eq 22 -and $r.evidence -eq '*tabby*' }
 Check 'Inventory shared not inventoried' { -not ($script:inv | Where-Object { $_.type -eq 'agent' } | Where-Object { @('shared', 'project', 'live') -contains $_.agent }) }

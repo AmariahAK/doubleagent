@@ -70,9 +70,75 @@ without a timestamp. Rows of subordinate agents are prefixed `[agent N]`.
 container, and is empty for chats outside a project. No git branch is
 recorded. `source_line` is the log item's `no`. A `chat.json` that does not
 parse yields one `system` row plus whatever complete log items can be
-recovered from it, without the history (and so without model rows). The
-research names no permission or approval record in `chat.json`, so no
-permission rows are written.
+recovered from it, without the history (and so without model rows).
+
+Source-derived; not observed on any real install (agent0ai/agent-zero at
+ff2a5b9, agent0ai/a0-connector at 3741c88; issue 204):
+
+* Permission decisions, a `system` row after the `warning: ...` row of the
+  `warning` log item that records one: `permission decision: blocked
+  tool=<name> profile=<profile>` (with `tool_name`) when the item's content
+  holds `Tool "<name>" is blocked for agent profile "<profile>".`
+  (helpers/tool_policy.py:197-208); `permission decision: denied
+  automatically (provider MCP approval request)` (`tool_name`
+  `mcp_approval_request`) for the heading `Responses MCP approval
+  required` (agent.py:1325-1346); `permission decision: <clarify, passed
+  or terminated> (infection check)` for the Infection Check headings
+  `Infection check: requesting clarification`, `... clarification passed`
+  and `... TERMINATED` (plugins/_infection_check/helpers/checker.py:180-197,
+  330-345).
+* Chat `data` keys, each a `system` row after the remote-copy rows at the
+  file's modification time, the latest value only: `permission mode:
+  <acp_mode> (acp, as of file mtime)`, `model: requested <acp_model_id>
+  (acp, as of file mtime)` (plugins/_a0_acp/api/session.py:12-20),
+  `model: requested <preset <name> | chat=<provider>/<name> ...> (chat
+  override, as of file mtime)` from `chat_model_override`, never printing
+  the object, which can hold an `api_key`
+  (plugins/_model_config/api/model_override.py:58-92,
+  plugins/_a0_connector/api/v1/model_switcher.py:27-46, 211), and
+  `scratch directory: <workdir_path> (acp container transport, from
+  chat.json data.workdir_path, as of file mtime)` with `project_path` the
+  directory. `data.acp_cwd`, the editor's workspace on its host, is the
+  chat's `project_path` when set (session.py:131-150).
+* `<a0>/usr/scheduler/tasks.json` (or the legacy `tmp/scheduler/`), a
+  secondary source: `{"tasks": [...]}`, each with `uuid`, `context_id`,
+  `name`, `type`, `state`, `prompt`, `project_name`, `created_at`,
+  `last_run`, `last_result` (helpers/task_scheduler.py:163-175,
+  512-519); per task `scheduled task: <name> type=<type> state=<state>` at
+  `created_at`, a `user` row `## Task:\n<prompt>` with no timestamp (the
+  text the scheduler logs as the chat's user message,
+  task_scheduler.py:945-949), and `last_result` as an `assistant` row at
+  `last_run`, or `scheduled task failed: <error>` for a task in state
+  `error`. `last_run` is stamped when the run ends, after the chat's
+  `response` item, so the tolerance is 60 seconds. `token` and
+  `system_prompt` are not read. `tasks.yaml`, written when only it exists,
+  is not read (YAML).
+* `<a0>/usr/plugins/_telegram_integration/state.json`, a secondary source:
+  `{"chats": {"<bot>:<user id>:<chat id>": "<ctxid>"}}`
+  (plugins/_telegram_integration/helpers/handler.py:57-64, 405-410); for
+  an entry whose `chats/<ctxid>/chat.json` (or `chats/<ctxid>.json`) is
+  not in the input, `session deleted: telegram bot <bot> chat <chat id>
+  user <user id> ctxid <ctxid> (from state.json, no chat.json in the
+  input, file mtime)` with `session_id` the ctxid.
+* Standing settings, one `permission setting: <setting> (from <file>, file
+  mtime)` row per entry with an empty `session_id` and, for a project's
+  file, `project_path` the project: `tool_access.<mode|default|
+  mcp_default>=<value>` and one `tool_access.<allowed|blocked>=<tool id>`
+  per list entry of a `_tool_access/config.json`
+  (plugins/_tool_access/README.md:4-9); `orchestrator.<cli>.<key>=<value>`
+  for the approval bypass keys of `_orchestrator/config.json`
+  (plugins/_orchestrator/default_config.yaml:7-37); and
+  `<infection_check|orchestrator>=<enabled|disabled>` for a `.toggle-1` or
+  `.toggle-0` file (helpers/plugins.py:60-61); each followed by `
+  profile=<p>` and ` project=<n>` when the file sits under
+  `usr/agents/<p>/` or `usr/projects/<n>/.a0proj/`.
+* `~/.agent-zero/.env` of the A0 CLI connector, a secret file of which
+  only `AGENT_ZERO_LAST_CONTEXT_HOST` and `AGENT_ZERO_LAST_CONTEXT_ID` are
+  read (a0-connector config.py:13-14, 347-356): `session origin: remote
+  agent-zero instance <host> context <id> (from .agent-zero/.env, file
+  mtime)` with `session_id` the id (`records_origin`). Its other lines are
+  never put in a row, not even as bad lines; the connector's own reader
+  skips a line without `=` too.
 
 Remote copies (issue 153), each a `system` row after the chat-start row
 at the file's modification time (`file_mtime`), `-` for a key absent or
@@ -107,7 +173,16 @@ from collections.abc import Iterator
 from ..inputs import Artifact
 from ..model import Row, compact
 from ..timeutil import to_utc
-from .base import Options, Parser, compact_json, file_mtime, text_of, track_change
+from .base import (
+    Options,
+    Parser,
+    compact_json,
+    error_rows,
+    file_mtime,
+    setting_value,
+    text_of,
+    track_change,
+)
 
 # A home install keeps the chats under `<a0>/usr/chats` (or the legacy
 # `<a0>/tmp/chats`); a volume mounted at `/a0/usr` is collected with its
@@ -115,6 +190,23 @@ from .base import Options, Parser, compact_json, file_mtime, text_of, track_chan
 A0 = r"(?:(?:Desktop/)?agent-zero/(?:[^/]+/)?(?:usr|tmp)/)?chats"
 CHAT_RX = re.compile(r"^%s/[^/]+/chat\.json$" % A0)
 LEGACY_RX = re.compile(r"^%s/[^/]+\.json$" % A0)
+# The other `usr/` files read beside the chats, in the same two forms (a home
+# install's `<a0>/usr/` prefix, or none at a volume's base).
+USR = r"^(?:(?:Desktop/)?agent-zero/(?:[^/]+/)?usr/)?"
+TASKS_RX = re.compile(
+    r"^(?:(?:Desktop/)?agent-zero/(?:[^/]+/)?(?:usr|tmp)/)?scheduler/tasks\.json$"
+)
+TG_STATE_RX = re.compile(USR + r"plugins/_telegram_integration/state\.json$")
+# A plugin's scoped directory: `usr/plugins/<plugin>`, a profile's
+# `usr/agents/<profile>/plugins/<plugin>`, a project's
+# `usr/projects/<name>/.a0proj/plugins/<plugin>` and a project profile's
+# `.a0proj/agents/<profile>/plugins/<plugin>` (helpers/plugins.py:850-863).
+SCOPE = r"(?:projects/(?P<project>[^/]+)/\.a0proj/)?(?:agents/(?P<profile>[^/]+)/)?plugins/"
+POLICY_RX = re.compile(USR + SCOPE + r"(?P<plugin>_tool_access|_orchestrator)/config\.json$")
+TOGGLE_RX = re.compile(
+    USR + SCOPE + r"(?P<plugin>_infection_check|_orchestrator)/\.toggle-(?P<state>[01])$"
+)
+CONNECTOR_ENV_RX = re.compile(r"^\.agent-zero/\.env$")
 
 LOG_SIZE = 1000
 TOOL_TYPES = ("tool", "mcp", "code_exe", "browser", "subagent")
@@ -123,6 +215,39 @@ ICON_RX = re.compile(r"icon://\S+\s*")
 LOGS_RX = re.compile(r'"logs"\s*:\s*\[')
 # The `data` keys of a Telegram chat, in row order (`telegram_bot_cfg` is never read).
 TELEGRAM_KEYS = ("telegram_bot", "telegram_chat_id", "telegram_user_id", "telegram_username")
+# The policy keys of `_tool_access` (plugins/_tool_access/default_config.yaml:1-5).
+POLICY_SCALARS = ("mode", "default", "mcp_default")
+POLICY_LISTS = ("allowed", "blocked")
+# The approval bypass of each coding CLI the Orchestrator drives
+# (plugins/_orchestrator/default_config.yaml:7-37); nothing else of the file
+# is read.
+ORCHESTRATOR_KEYS = (
+    ("codex", "bypass_sandbox"),
+    ("claude", "permission_mode"),
+    ("claude", "allowed_tools"),
+    ("cursor", "force"),
+    ("grok", "always_approve"),
+    ("hermes", "yolo"),
+    ("opencode", "auto"),
+)
+# The message `ensure_tool_allowed` raises for a blocked tool, inside the
+# formatted error of the `warning` log item (helpers/tool_policy.py:197-208).
+BLOCKED_RX = re.compile(
+    r'Tool "(?P<tool>[^"]*)" is blocked for agent profile "(?P<profile>[^"]*)"\.'
+)
+MCP_APPROVAL_HEADING = "Responses MCP approval required"
+# Infection Check warning headings (plugins/_infection_check/helpers/checker.py).
+INFECTION_HEADINGS = (
+    ("Infection check: requesting clarification", "clarify"),
+    ("Infection check: clarification passed", "passed"),
+    ("Infection check: TERMINATED", "terminated"),
+)
+# The connector `.env` keys read, and only these (a0-connector config.py:13-14).
+LAST_CONTEXT_KEYS = ("AGENT_ZERO_LAST_CONTEXT_HOST", "AGENT_ZERO_LAST_CONTEXT_ID")
+# A scheduler task's `last_run` is stamped when the run finishes, after the
+# chat's `response` log item, so its result is matched in a wider window.
+TASKS_TOLERANCE = 60.0
+OVERRIDE_SLOTS = ("chat", "utility", "embedding")
 
 
 def walk_history(node, summaries: bool) -> Iterator[tuple[str, dict]]:
@@ -262,16 +387,143 @@ def remote_copy_texts(chat: dict, data: dict) -> list[str]:
     return out
 
 
+def _model_name(d: dict) -> str:
+    """`<provider>/<name>` of a model configuration, never its `api_key` or
+    `api_base`; `""` when it names neither."""
+    parts = [str(d.get(k) or "").strip() for k in ("provider", "name")]
+    return "/".join(p for p in parts if p)
+
+
+def override_text(override) -> str:
+    """The requested model of `data.chat_model_override` as row text: a
+    preset reference by name, a custom configuration by the provider and
+    name of each slot. A custom configuration from the connector can carry
+    an `api_key` (plugins/_a0_connector/api/v1/model_switcher.py:27-46), so
+    the object itself is never printed."""
+    if not isinstance(override, dict) or not override:
+        return ""
+    if override.get("preset_name"):
+        return "preset %s" % override["preset_name"]
+    slots = [
+        "%s=%s" % (slot, _model_name(override[slot]))
+        for slot in OVERRIDE_SLOTS
+        if isinstance(override.get(slot), dict) and _model_name(override[slot])
+    ]
+    if slots:
+        return " ".join(slots)
+    return _model_name(override) or "custom configuration"
+
+
+def chat_setting_rows(data: dict) -> list[tuple[str, str]]:
+    """(text, project path or "") of the editor-session (ACP) and per-chat
+    model rows of a chat's `data`, each the latest value as of the file's
+    modification time. Only the scratch row names its own project path."""
+    out = []
+    if data.get("acp_mode"):
+        out.append(("permission mode: %s (acp, as of file mtime)" % data["acp_mode"], ""))
+    if data.get("acp_model_id"):
+        out.append(("model: requested %s (acp, as of file mtime)" % data["acp_model_id"], ""))
+    requested = override_text(data.get("chat_model_override"))
+    if requested:
+        out.append(("model: requested %s (chat override, as of file mtime)" % requested, ""))
+    workdir = data.get("workdir_path")
+    if isinstance(workdir, str) and workdir.strip():
+        out.append(
+            (
+                "scratch directory: %s (acp container transport, from chat.json"
+                " data.workdir_path, as of file mtime)" % workdir.strip(),
+                workdir.strip(),
+            )
+        )
+    return out
+
+
+def warning_decision(item: dict) -> tuple[str, str]:
+    """(text, tool name) of the `permission decision:` row a `warning` log
+    item records, or ("", "") when it records none."""
+    heading = str(item.get("heading") or "")
+    content = item.get("content")
+    m = BLOCKED_RX.search(content) if isinstance(content, str) else None
+    if m:
+        return (
+            "permission decision: blocked tool=%s profile=%s" % (m["tool"], m["profile"]),
+            m["tool"],
+        )
+    if MCP_APPROVAL_HEADING in heading:
+        return (
+            "permission decision: denied automatically (provider MCP approval request)",
+            "mcp_approval_request",
+        )
+    for label, verdict in INFECTION_HEADINGS:
+        if label in heading:
+            return "permission decision: %s (infection check)" % verdict, ""
+    return "", ""
+
+
+def project_of(name) -> str:
+    return "/a0/usr/projects/%s" % name if name else ""
+
+
+def scope_text(m: re.Match) -> str:
+    """` profile=<p> project=<n>` for a scoped plugin file, each when set."""
+    return "".join(" %s=%s" % (k, m[k]) for k in ("profile", "project") if m[k])
+
+
 class AgentZeroParser(Parser):
     agent = "agent-zero"
     name = "agent-zero"
     records_sync = True
     records_relay = True
+    records_origin = True
+    has_secondary = True
 
     def wants(self, artifact: Artifact) -> bool:
-        return bool(CHAT_RX.match(artifact.rel) or LEGACY_RX.match(artifact.rel))
+        rel = artifact.rel
+        return any(
+            rx.match(rel)
+            for rx in (
+                CHAT_RX,
+                LEGACY_RX,
+                TASKS_RX,
+                TG_STATE_RX,
+                POLICY_RX,
+                TOGGLE_RX,
+                CONNECTOR_ENV_RX,
+            )
+        )
+
+    def secondary(self, artifact: Artifact) -> bool:
+        return bool(TASKS_RX.match(artifact.rel) or TG_STATE_RX.match(artifact.rel))
+
+    def secondary_tolerance(self, artifact: Artifact) -> float:
+        return (
+            TASKS_TOLERANCE
+            if TASKS_RX.match(artifact.rel)
+            else super().secondary_tolerance(artifact)
+        )
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        rel = artifact.rel
+        if TASKS_RX.match(rel):
+            yield from self._tasks(artifact)
+            return
+        if TG_STATE_RX.match(rel):
+            yield from self._telegram_state(artifact)
+            return
+        m = POLICY_RX.match(rel)
+        if m:
+            yield from self._policy(artifact, m)
+            return
+        m = TOGGLE_RX.match(rel)
+        if m:
+            yield from self._toggle(artifact, m)
+            return
+        if CONNECTOR_ENV_RX.match(rel):
+            yield from self._connector_env(artifact)
+            return
+        yield from self._chat(artifact, opts)
+
+    def _chat(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         path = artifact.disk_path
         legacy = not CHAT_RX.match(artifact.rel)
         fallback_id = path.stem if legacy else path.parent.name
@@ -297,7 +549,11 @@ class AgentZeroParser(Parser):
         if not isinstance(data, dict):
             data = {}
         if data.get("project"):
-            base.project_path = "/a0/usr/projects/%s" % data["project"]
+            base.project_path = project_of(data["project"])
+        # An editor (ACP) session's workspace is the user's project on the
+        # host that ran the editor (plugins/_a0_acp/api/session.py:131-150).
+        if isinstance(data.get("acp_cwd"), str) and data["acp_cwd"].strip():
+            base.project_path = data["acp_cwd"].strip()
         start = self._row(
             base,
             "system",
@@ -318,6 +574,11 @@ class AgentZeroParser(Parser):
         yield start
         for text in remote_copy_texts(chat, data):
             yield self._row(base, "system", text, opts, ts=file_mtime(artifact))
+        for text, project in chat_setting_rows(data):
+            row = self._row(base, "system", text, opts, ts=file_mtime(artifact))
+            if project:
+                row.project_path = project
+            yield row
 
         log = chat.get("log")
         if not isinstance(log, dict):
@@ -538,3 +799,184 @@ class AgentZeroParser(Parser):
                 heading = ICON_RX.sub("", str(item.get("heading") or "")).strip()
                 text = " | ".join(x for x in (heading, _content_text(content)) if x)
                 yield mk("system", "%s: %s" % (kind or "log", text) if text else kind or "log")
+                if kind == "warning":
+                    decision, tool_name = warning_decision(item)
+                    if decision:
+                        row = mk("system", decision)
+                        row.tool_name = tool_name
+                        yield row
+
+    # -- files beside the chats ----------------------------------------------------
+    def _doc(self, artifact: Artifact) -> tuple[object, str]:
+        """The file as JSON, or (None, the reason it is not)."""
+        try:
+            raw = artifact.disk_path.read_bytes().decode("utf-8", errors="replace")
+        except OSError as e:
+            return None, "unreadable (%s)" % e
+        try:
+            return json.loads(raw), ""
+        except ValueError as e:
+            return None, "not JSON (%s)" % e
+
+    def _file_row(self, artifact: Artifact, text: str, ts: str = "", sid: str = "", proj=""):
+        row = self.base_row(artifact)
+        row.turn_type = "system"
+        row.text = compact(text)
+        row.timestamp_utc = ts
+        row.session_id = sid
+        row.project_path = proj
+        return row
+
+    def _tasks(self, artifact: Artifact) -> Iterator[Row]:
+        """`usr/scheduler/tasks.json`, the scheduler's `{"tasks": [...]}`
+        (helpers/task_scheduler.py:163-175, 512-519, 584): per task a
+        `scheduled task:` row at `created_at`, the prompt as the chat logged
+        it with no time of its own, and the last result at `last_run`."""
+        doc, why = self._doc(artifact)
+        tasks = doc.get("tasks") if isinstance(doc, dict) else None
+        if not isinstance(tasks, list):
+            yield self._file_row(
+                artifact, "parser: scheduler tasks file %s" % (why or "has no tasks list")
+            )
+            return
+        errors = []
+        for n, task in enumerate(tasks, 1):
+            if not isinstance(task, dict):
+                errors.append(
+                    (n, "unparseable record %d (not a JSON object)" % n, compact_json(task))
+                )
+                continue
+            yield from self._task_rows(artifact, n, task)
+        yield from error_rows(self, artifact, errors)
+
+    def _task_rows(self, artifact: Artifact, n: int, task: dict) -> Iterator[Row]:
+        sid = str(task.get("context_id") or task.get("uuid") or "")
+        proj = project_of(task.get("project_name"))
+        row = self._file_row(
+            artifact,
+            "scheduled task: %s type=%s state=%s"
+            % (_key(task, "name"), _key(task, "type"), _key(task, "state")),
+            to_utc(task.get("created_at")),
+            sid,
+            proj,
+        )
+        row.source_line = n
+        yield row
+        if task.get("prompt"):
+            # The scheduler logs `## Task:\n<prompt>` as the chat's user
+            # message when the task has no context (task_scheduler.py:945-949).
+            row = self._file_row(artifact, "## Task:\n%s" % task["prompt"], "", sid, proj)
+            row.turn_type, row.source_line = "user", n
+            yield row
+        result = task.get("last_result")
+        if isinstance(result, str) and result.strip():
+            failed = task.get("state") == "error" and result.startswith("ERROR: ")
+            row = self._file_row(
+                artifact,
+                "scheduled task failed: %s" % result[len("ERROR: ") :] if failed else result,
+                to_utc(task.get("last_run")),
+                sid,
+                proj,
+            )
+            row.turn_type = "system" if failed else "assistant"
+            row.source_line = n
+            yield row
+
+    def _telegram_state(self, artifact: Artifact) -> Iterator[Row]:
+        """The Telegram plugin's chat map; an entry whose chat is absent from
+        the input is a chat deleted since the map was written."""
+        doc, why = self._doc(artifact)
+        chats = doc.get("chats") if isinstance(doc, dict) else None
+        if not isinstance(chats, dict):
+            yield self._file_row(artifact, "parser: state.json %s" % (why or "has no chats map"))
+            return
+        usr = artifact.disk_path.parents[2]
+        for key, ctxid in chats.items():
+            ctxid = str(ctxid or "")
+            if not ctxid or self._chat_present(usr, ctxid):
+                continue
+            parts = str(key).rsplit(":", 2)
+            bot, user, chat = parts if len(parts) == 3 else (str(key), "-", "-")
+            yield self._file_row(
+                artifact,
+                "session deleted: telegram bot %s chat %s user %s ctxid %s (from state.json,"
+                " no chat.json in the input, file mtime)" % (bot, chat, user, ctxid),
+                file_mtime(artifact),
+                ctxid,
+            )
+
+    @staticmethod
+    def _chat_present(usr, ctxid: str) -> bool:
+        for f in (usr / "chats" / ctxid / "chat.json", usr / "chats" / ("%s.json" % ctxid)):
+            if not f.is_symlink() and f.is_file():
+                return True
+        return False
+
+    def _setting(self, artifact: Artifact, text: str, project: str) -> Row:
+        return self._file_row(
+            artifact,
+            "permission setting: %s (from %s, file mtime)" % (text, artifact.rel),
+            file_mtime(artifact),
+            "",
+            project,
+        )
+
+    def _policy(self, artifact: Artifact, m: re.Match) -> Iterator[Row]:
+        """A `_tool_access` policy (helpers/tool_policy.py:27-37) or the
+        Orchestrator's settings, one `permission setting:` row per key and
+        list entry."""
+        doc, why = self._doc(artifact)
+        if not isinstance(doc, dict):
+            yield self._file_row(
+                artifact, "parser: %s %s" % (artifact.rel, why or "is not a JSON object")
+            )
+            return
+        scope, project = scope_text(m), project_of(m["project"])
+        if m["plugin"] == "_tool_access":
+            for key in POLICY_SCALARS:
+                if doc.get(key) not in (None, ""):
+                    value = setting_value(doc[key])
+                    yield self._setting(
+                        artifact, "tool_access.%s=%s%s" % (key, value, scope), project
+                    )
+            for key in POLICY_LISTS:
+                entries = doc.get(key)
+                for entry in entries if isinstance(entries, list) else []:
+                    text = "tool_access.%s=%s%s" % (key, setting_value(entry), scope)
+                    yield self._setting(artifact, text, project)
+            return
+        for cli, key in ORCHESTRATOR_KEYS:
+            section = doc.get(cli)
+            if isinstance(section, dict) and section.get(key) not in (None, ""):
+                text = "orchestrator.%s.%s=%s" % (cli, key, setting_value(section[key]))
+                yield self._setting(artifact, text, project)
+
+    def _toggle(self, artifact: Artifact, m: re.Match) -> Iterator[Row]:
+        """An empty `.toggle-1` (enabled) or `.toggle-0` (disabled) switch of
+        the Infection Check or the Orchestrator (helpers/plugins.py:60-61)."""
+        state = "enabled" if m["state"] == "1" else "disabled"
+        text = "%s=%s%s" % (m["plugin"].lstrip("_"), state, scope_text(m))
+        yield self._setting(artifact, text, project_of(m["project"]))
+
+    def _connector_env(self, artifact: Artifact) -> Iterator[Row]:
+        """The A0 CLI connector's `~/.agent-zero/.env`, a secret file: only
+        the last chat's host and id are read, as the connector reads them
+        (a0-connector config.py:51-66), and no other line reaches a row."""
+        try:
+            text = artifact.disk_path.read_bytes().decode("utf-8", errors="replace")
+        except OSError:
+            return
+        values = {}
+        for line in text.splitlines():
+            key, sep, value = line.strip().partition("=")
+            if sep and key.strip() in LAST_CONTEXT_KEYS:
+                values[key.strip()] = value.strip().strip("\"'")
+        host, ctxid = (values.get(k, "") for k in LAST_CONTEXT_KEYS)
+        if host and ctxid:
+            yield self._file_row(
+                artifact,
+                "session origin: remote agent-zero instance %s context %s"
+                " (from .agent-zero/.env, file mtime)" % (host, ctxid),
+                file_mtime(artifact),
+                ctxid,
+            )

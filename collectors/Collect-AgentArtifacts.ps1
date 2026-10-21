@@ -572,6 +572,9 @@ agent-zero|AppData/Local/A0
 agent-zero|.config/Agent Zero Launcher
 agent-zero|Library/Application Support/Agent Zero Launcher
 agent-zero|AppData/Roaming/Agent Zero Launcher
+# computer-use screen captures of the A0 CLI connector in the system temp
+# directory, inside the home only on Windows
+agent-zero|AppData/Local/Temp/_a0_connector
 # ShellGPT (~/.config on every OS; chats default to the temp dir, under the home only on Windows)
 shellgpt|.config/shell_gpt
 shellgpt|AppData/Local/Temp/chat_cache
@@ -1658,6 +1661,8 @@ agent-zero*/usr/plugins/_desktop/profiles/*/.gnupg/*
 Desktop/agent-zero*/usr/plugins/_desktop/profiles/*/.gnupg/*
 agent-zero*/usr/plugins/*/config.json
 Desktop/agent-zero*/usr/plugins/*/config.json
+agent-zero*/tmp/whatsapp/session/*
+Desktop/agent-zero*/tmp/whatsapp/session/*
 .agent-zero/.env
 .agent-zero/session_cookies.json
 */Agent Zero Launcher/docker_manager/state.json
@@ -1706,6 +1711,7 @@ usr/plugins/_desktop/profiles/*/.gnupg/*
 usr/plugins/*/config.json
 tmp/secrets.env
 tmp/settings.json
+tmp/whatsapp/session/*
 config.toml
 id_ed25519
 .secret_key
@@ -3290,7 +3296,8 @@ function Find-ClaudeCodeProjects([string]$homeDir) {
 }
 
 # Codex, Qwen Code, Cline CLI, Cursor CLI chats, Continue, Goose sessions,
-# OpenCode and Crush.
+# OpenCode, Crush, and Agent Zero editor (ACP) sessions, whose workspace and
+# extra folders are a string and a JSON array in chat.json.
 function Find-CliSessionProjects([string]$homeDir) {
   # A Codex cwd in this home's Documents/Codex (the ChatGPT desktop app's projectless output
   # directories, which the catalog collects whole) is not a project.
@@ -3310,6 +3317,13 @@ function Find-CliSessionProjects([string]$homeDir) {
   Get-JsonValues 'working_dir' @(Expand-Glob $homeDir '.local/share/goose/sessions/*.jsonl')
   Get-JsonValues 'worktree' @(Expand-Glob $homeDir '.local/share/opencode/storage/project/*.json')
   Get-JsonValues 'path' @((Join-PathSafe $homeDir '.local/share/crush/projects.json'))
+  $a0Chats = @(@('agent-zero/usr', 'agent-zero/*/usr', 'Desktop/agent-zero/usr') |
+    ForEach-Object { Expand-Glob $homeDir "$_/chats/*/chat.json" })
+  Get-JsonValues 'acp_cwd' $a0Chats
+  $a0Lists = Get-RegexCaptures '"acp_additional_directories"\s*:\s*\[([^\]]*)\]' $a0Chats
+  foreach ($list in $a0Lists) {
+    foreach ($match in [regex]::Matches($list, '"((?:[^"\\]|\\.)*)"')) { $match.Groups[1].Value }
+  }
 }
 
 # Gemini CLI (projects, trusted folders, per-project .project_root files)

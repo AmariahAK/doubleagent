@@ -8092,6 +8092,191 @@ def build_agent_zero(home: Path) -> None:
     (chat / "messages/1.txt").write_text(AGENT_ZERO_LONG + " (from file)", encoding="utf-8")
     (usr / "settings.json").write_text('{"chat_model_provider": "openrouter"}', encoding="utf-8")
     (usr / "secrets.env").write_text("API_KEY_OPENROUTER=not-real\n", encoding="utf-8")
+    (usr / "scheduler").mkdir(exist_ok=True)
+    (usr / AGENT_ZERO_TASKS_REL.split("usr/", 1)[1]).write_text(
+        json.dumps({"tasks": agent_zero_tasks()}), encoding="utf-8"
+    )
+
+
+# Scheduler tasks (issue 204): `usr/scheduler/tasks.json` as the scheduler
+# writes it, `{"tasks": [...]}` (agent0ai/agent-zero ff2a5b9
+# helpers/task_scheduler.py:163-175, 512-519, 584). The scheduled task is
+# bound to AGENT_ZERO_CHAT and its last result repeats the chat's response;
+# its prompt is logged as `## Task:\n<prompt>` (task_scheduler.py:945-949),
+# which the chat does not hold, so that row survives as recovered. The ad hoc
+# task's chat is gone and it last failed. `token` is a trigger credential the
+# parser must not print. Source-derived, not observed on any real install.
+AGENT_ZERO_TASKS_REL = "agent-zero/usr/scheduler/tasks.json"
+AGENT_ZERO_TASK_TOKEN = "4242424242424242424"
+
+
+def agent_zero_tasks():
+    return [
+        {
+            "uuid": "TaskUuid01",
+            "context_id": AGENT_ZERO_CHAT,
+            "state": "idle",
+            "name": "Nightly listing",
+            "system_prompt": "You run on a schedule.",
+            "prompt": "list files",
+            "attachments": [],
+            "project_name": "demo",
+            "project_color": None,
+            "created_at": "2026-10-01T11:00:00Z",
+            "updated_at": "2026-10-01T12:00:05.500000Z",
+            "last_run": "2026-10-01T12:00:05.500000Z",
+            "last_result": "There is one file, a.txt.",
+            "type": "scheduled",
+            "schedule": {"minute": "0", "hour": "2", "day": "*", "month": "*", "weekday": "*"},
+        },
+        {
+            "uuid": "TaskUuid02",
+            "context_id": "TaskUuid02",
+            "state": "error",
+            "name": "Webhook probe",
+            "system_prompt": "",
+            "prompt": "probe the webhook",
+            "attachments": [],
+            "project_name": None,
+            "created_at": "2026-10-02T09:00:00Z",
+            "updated_at": "2026-10-02T09:01:00Z",
+            "last_run": "2026-10-02T09:01:00Z",
+            "last_result": "ERROR: connection refused",
+            "type": "adhoc",
+            "token": AGENT_ZERO_TASK_TOKEN,
+        },
+    ]
+
+
+# Standing settings, editor sessions and the connector (issue 204), built
+# only by AgentZeroTests. Shapes from agent0ai/agent-zero ff2a5b9
+# (plugins/_a0_acp/api/session.py:12-20, 131-150;
+# plugins/_model_config/api/model_override.py:58;
+# plugins/_a0_connector/api/v1/model_switcher.py:27-46, 211;
+# plugins/_tool_access/default_config.yaml:1-5;
+# plugins/_orchestrator/default_config.yaml:7-37; helpers/plugins.py:60-61;
+# plugins/_telegram_integration/helpers/handler.py:57-64; agent.py:1325-1346;
+# helpers/tool_policy.py:197-208;
+# plugins/_infection_check/helpers/checker.py:180-197) and
+# agent0ai/a0-connector 3741c88 (src/agent_zero_cli/config.py:13-14).
+# Source-derived, not observed on any real install.
+AGENT_ZERO_ACP_CHAT = "AcpChat1"
+AGENT_ZERO_ACP_REL = "agent-zero/usr/chats/%s/chat.json" % AGENT_ZERO_ACP_CHAT
+AGENT_ZERO_TG_DELETED = "GoneTg01"
+AGENT_ZERO_TG_STATE_REL = "agent-zero/usr/plugins/_telegram_integration/state.json"
+AGENT_ZERO_POLICY_REL = "agent-zero/usr/agents/developer/plugins/_tool_access/config.json"
+AGENT_ZERO_PROJECT_POLICY_REL = (
+    "agent-zero/usr/projects/demo/.a0proj/plugins/_tool_access/config.json"
+)
+AGENT_ZERO_ORCHESTRATOR_REL = "agent-zero/usr/plugins/_orchestrator/config.json"
+AGENT_ZERO_TOGGLE_REL = "agent-zero/usr/plugins/_infection_check/.toggle-1"
+AGENT_ZERO_CONNECTOR_ENV_REL = ".agent-zero/.env"
+AGENT_ZERO_OVERRIDE_KEY = "sk-fixture-override-key"
+AGENT_ZERO_RESTORE_TOKEN = "fixture-restore-token"
+
+
+def agent_zero_acp_chat():
+    blocked = (
+        "Traceback (most recent call last):\n  ...\nhelpers.errors.RepairableException: "
+        'Tool "code_execution_tool" is blocked for agent profile "developer".'
+    )
+    logs = [
+        {"no": 0, "id": "u1", "type": "user", "heading": "", "content": "run the tests",
+         "kvps": {}, "timestamp": 1790870001.0, "agentno": 0},
+        {"no": 1, "id": "w1", "type": "warning", "heading": "", "content": blocked,
+         "kvps": {}, "timestamp": 1790870002.0, "agentno": 0},
+        {"no": 2, "id": None, "type": "warning", "heading": "Responses MCP approval required",
+         "content": "Responses MCP approval request received. Agent Zero denied it because "
+         "provider-hosted MCP approval requires explicit user approval.",
+         "kvps": {}, "timestamp": 1790870003.0, "agentno": 0},
+        {"no": 3, "id": None, "type": "warning",
+         "heading": "Infection check: clarification passed",
+         "content": "Safety concern:\nreads a .env", "kvps": {}, "timestamp": 1790870004.0,
+         "agentno": 0},
+        {"no": 4, "id": "x1", "type": "warning", "heading": "Infection check: TERMINATED",
+         "content": "Malicious behavior detected.", "kvps": {}, "timestamp": 1790870005.0,
+         "agentno": 0},
+    ]  # fmt: skip
+    chat = agent_zero_chat(
+        logs=logs,
+        history={"_cls": "History", "bulks": [], "topics": [], "current": {"messages": []}},
+    )
+    chat["id"] = AGENT_ZERO_ACP_CHAT
+    chat["name"] = "webapp"
+    chat["data"] = {
+        "project": "demo",
+        "acp_session": True,
+        "acp_cwd": "/home/alice/src/webapp",
+        "acp_additional_directories": ["/home/alice/src/shared"],
+        "acp_mode": "act",
+        "acp_transport": "container",
+        "acp_model_id": "openai/gpt-5",
+        "acp_config_options": {},
+        "workdir_path": "/a0/usr/workdir/acp",
+        "chat_model_override": {
+            "chat": {
+                "provider": "openrouter",
+                "name": "anthropic/claude-sonnet-4",
+                "api_key": AGENT_ZERO_OVERRIDE_KEY,
+            },
+            "utility": {"provider": "ollama", "name": "qwen3"},
+        },
+    }
+    return chat
+
+
+def build_agent_zero_extras(home: Path) -> None:
+    usr = home / "agent-zero/usr"
+    files = {
+        AGENT_ZERO_ACP_REL: json.dumps(agent_zero_acp_chat()),
+        AGENT_ZERO_TG_STATE_REL: json.dumps(
+            {
+                "chats": {
+                    "opsbot:123456789:987654321": AGENT_ZERO_TG_CHAT,
+                    "opsbot:555:777": AGENT_ZERO_TG_DELETED,
+                }
+            }
+        ),
+        AGENT_ZERO_POLICY_REL: json.dumps(
+            {
+                "mode": "custom",
+                "default": "allow",
+                "mcp_default": "block",
+                "allowed": [],
+                "blocked": ["code_execution_tool", "mcp:github.create_issue"],
+            }
+        ),
+        AGENT_ZERO_PROJECT_POLICY_REL: json.dumps({"mode": "inherit"}),
+        AGENT_ZERO_ORCHESTRATOR_REL: json.dumps(
+            {
+                "a0": {"binary": "a0", "host": ""},
+                "codex": {"binary": "codex", "model": "", "bypass_sandbox": True},
+                "claude": {
+                    "binary": "claude",
+                    "permission_mode": "bypassPermissions",
+                    "allowed_tools": "Bash,Read,Edit",
+                },
+                "hermes": {"binary": "hermes", "yolo": False},
+            }
+        ),
+        AGENT_ZERO_TOGGLE_REL: "",
+        # Noise the parser must not want: the Telegram bot's configuration.
+        "agent-zero/usr/plugins/_telegram_integration/config.json": json.dumps(
+            {"bots": [{"name": "opsbot", "token": AGENT_ZERO_BOT_TOKEN}]}
+        ),
+        AGENT_ZERO_CONNECTOR_ENV_REL: (
+            "AGENT_ZERO_HOST=http://localhost:50080\n"
+            "AGENT_ZERO_COMPUTER_USE_RESTORE_TOKEN=%s\n"
+            "this line has no equals sign\n"
+            "AGENT_ZERO_LAST_CONTEXT_HOST=https://a0.example.net\n"
+            "AGENT_ZERO_LAST_CONTEXT_ID='RemCtx01'\n" % AGENT_ZERO_RESTORE_TOKEN
+        ),
+    }
+    for rel, text in files.items():
+        path = home / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    assert usr.is_dir()
 
 
 # Session sync (issue 153): a Telegram chat whose main agent chained a turn

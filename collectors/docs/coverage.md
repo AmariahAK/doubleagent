@@ -482,6 +482,7 @@ agent state that can be read with grep, and from every `-p` directory.
 
 | Agent | Where the project path is read from |
 | --- | --- |
+| Agent Zero | Editor (ACP) chats: `acp_cwd` and `acp_additional_directories` in `usr/chats/<chat id>/chat.json` under `agent-zero`, `agent-zero/<instance>` or `Desktop/agent-zero`; not read in a Docker volume. The path names a directory on the host that ran the editor. |
 | Amp | History. |
 | Antigravity | History, trusted workspaces, project cache, and the project files the CLI and the desktop app write in `~/.gemini/config/projects/` (their `file://` folder URLs; the sh collector reads them from 1.12.0). |
 | Claude Code | History and project list, in `~/.claude` and `~/.claude-<name>` config homes. |
@@ -581,7 +582,22 @@ their state must be copied by hand.
 
 - **Agent Zero** lives in its install directory (`~/agent-zero`,
   `~/Desktop/agent-zero`). It is also commonly deployed in containers; see
-  [docker.md](docker.md).
+  [docker.md](docker.md). The A0 CLI connector, a host-side client of
+  Agent Zero, writes each computer-use screen capture to
+  `_a0_connector/computer_use/<chat id>/` in the system temp directory and
+  deletes older captures as new ones arrive. On Windows that is
+  `AppData/Local/Temp/_a0_connector`, which the catalog collects; on Linux
+  and macOS it is under `/tmp` or `$TMPDIR`, outside any home, so copy
+  `_a0_connector` from there by hand (the connector's
+  `A0_COMPUTER_USE_HOST_ARTIFACT_ROOT` environment variable moves it). On a
+  Windows host without Docker Desktop, the A0 Launcher, Agent Zero's
+  instance manager, can import its own WSL distribution under
+  `AppData/Local/agent-zero/wsl/Ubuntu`, whose virtual disk holds the
+  Docker engine and the instances' named volumes and stays after the
+  launcher is uninstalled. Neither collector opens that disk or lists its
+  volumes, so collect them from inside the distribution as for
+  [Docker Desktop](docker.md#docker-desktop)
+  ([Host-side companions in `research/agent-zero.md`](../../research/agent-zero.md#host-side-companions)).
 - **Local Deep Research** writes reports under
   `~/Documents/LocalDeepResearch`. It is also commonly deployed in
   containers; see [docker.md](docker.md).
@@ -737,7 +753,11 @@ entries, which hold an MCP server's OAuth tokens, PKCE code verifier
 encrypted with the operating system's key store.
 Agent Zero copies a Telegram bot's configuration into each Telegram
 chat's `chat.json`, which is collected unflagged; the keys to redact are
-`data.telegram_bot_cfg.token` and `data.telegram_bot_cfg.webhook_secret`.
+`data.telegram_bot_cfg.token` and `data.telegram_bot_cfg.webhook_secret`,
+and `api_key` inside `data.chat_model_override`, which a model chosen for
+one chat from the A0 CLI connector can carry. Its WhatsApp bridge's login
+state, `tmp/whatsapp/session/` of the install directory, is flagged
+`secret: true`: whoever holds it can act as the account's linked device.
 
 ## Pattern matching
 

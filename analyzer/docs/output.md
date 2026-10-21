@@ -1400,7 +1400,37 @@ stored, and for a chat carried by a messaging plugin `session relayed:
 telegram bot <bot> chat <chat id> user <user id> @<username>`,
 `session relayed: whatsapp chat <chat id> number <number>` or `session
 relayed: email thread <thread id> from <sender>`, each ending `(from
-chat.json data, file mtime)`. `nanobot` writes `model: <preset> (preset)` after
+chat.json data, file mtime)`. After those, at the file's modification
+time and holding the latest value only, an editor (ACP) session gives
+`permission mode: <acp_mode> (acp, as of file mtime)`, `model: requested
+<acp_model_id> (acp, as of file mtime)` and `scratch directory:
+<workdir_path> (acp container transport, from chat.json
+data.workdir_path, as of file mtime)`, whose `project_path` is that
+directory, while the chat's other rows carry the editor's workspace
+`acp_cwd` as their `project_path`; a model chosen for the chat gives
+`model: requested preset <name> (chat override, as of file mtime)`, or
+`model: requested chat=<provider>/<name> utility=<provider>/<name> (chat
+override, as of file mtime)` for a custom choice, never its API key. A
+`warning` log item that records a permission decision is followed, at its
+time, by `permission decision: blocked tool=<name> profile=<profile>`
+(with `tool_name`), `permission decision: denied automatically (provider
+MCP approval request)` or `permission decision: <clarify, passed or
+terminated> (infection check)`. Standing settings are `permission
+setting: tool_access.<key>=<value>`, `permission setting:
+orchestrator.<cli>.<key>=<value>` and `permission setting:
+<infection_check|orchestrator>=<enabled|disabled>`, each followed by
+` profile=<profile>` and ` project=<name>` when the file is scoped and
+ending `(from <file>, file mtime)`, with an empty `session_id`. The
+scheduler's `tasks.json` gives `scheduled task: <name> type=<type>
+state=<state>` at the task's `created_at` and, for a failed run,
+`scheduled task failed: <error>` at `last_run`; the Telegram chat map
+gives `session deleted: telegram bot <bot> chat <chat id> user <user id>
+ctxid <ctxid> (from state.json, no chat.json in the input, file mtime)`
+for a mapped chat whose `chat.json` is not in the input; and the A0 CLI
+connector's `.agent-zero/.env` gives `session origin: remote agent-zero
+instance <host> context <id> (from .agent-zero/.env, file mtime)` for
+the last chat it used, so `agent-zero` sessions read `origin` `remote`
+or `local`. `nanobot` writes `model: <preset> (preset)` after
 the session start row: the value is a model preset of nanobot's
 configuration, not a model id. `muse-code` writes, per session log,
 `permission mode: approval=<approval> reviewer=<reviewer>
@@ -1549,6 +1579,7 @@ beside its `session synced: server conversation` row.
 
 | Agent | Secondary source | Primary store |
 | --- | --- | --- |
+| `agent-zero` | `usr/scheduler/tasks.json` of the install directory or volume (each task's prompt, with no timestamp, matches on text within the task's chat; its last result is stamped when the run ends: a 60-second window); the Telegram plugin's `usr/plugins/_telegram_integration/state.json` (only `system` rows, for a mapped chat that is gone) | `usr/chats/<ctxid>/chat.json` |
 | `aider` | `.aider.input.history` and `.aider.llm.history`, in a home or a repository | `.aider.chat.history.md` beside them |
 | `antigravity` | `.gemini/antigravity-cli/history.jsonl`; the brain mirror `.gemini/<dir>/brain/<uuid>/.system_generated/logs/transcript_full.jsonl`, else its chunks, else `transcript.jsonl`, else its chunks, `<dir>` each of `antigravity-cli`, `antigravity`, `antigravity-ide` and `antigravity-backup` (600 seconds: the mirror records a step's start, the database row its completion) | `.gemini/<dir>/conversations/<uuid>.db` |
 | `claude-code` | `.claude/history.jsonl` (and `.claude-<name>/history.jsonl`) | `.claude/projects/<slug>/*.jsonl` and its subagent files |

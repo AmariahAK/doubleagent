@@ -9595,7 +9595,11 @@ class AgentZeroTests(ParserBase):
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
         for a in self.col.artifacts:
-            if a.agent == "agent-zero" and a.rel not in (self.REL, AGENT_ZERO_TG_REL):
+            if a.agent == "agent-zero" and a.rel not in (
+                self.REL,
+                AGENT_ZERO_TG_REL,
+                AGENT_ZERO_TASKS_REL,
+            ):
                 self.assertFalse(p.wants(a), a.rel)
         self.assertTrue(any(a.rel.endswith("messages/1.txt") for a in self.col.artifacts))
 
@@ -9684,6 +9688,311 @@ class AgentZeroTests(ParserBase):
         )
         self.assertFalse([r for r in rows if r.text.startswith("session synced:")])
 
+    # -- permissions, models, past use, origin (issue 204) -----------------------
+
+    def _extras(self):
+        from fixtures import build_agent_zero_extras
+
+        build_agent_zero_extras(self.home)
+        for rel in (
+            AGENT_ZERO_ACP_REL,
+            AGENT_ZERO_TG_STATE_REL,
+            AGENT_ZERO_POLICY_REL,
+            AGENT_ZERO_CONNECTOR_ENV_REL,
+        ):
+            os.utime(self.home / rel, (1790877600, 1790877600))
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_flags_and_new_paths(self):
+        p = AgentZeroParser()
+        self.assertTrue(AgentZeroParser.has_secondary)
+        self.assertTrue(AgentZeroParser.records_origin)
+        for rel, secondary in (
+            ("agent-zero/inst-1/usr/scheduler/tasks.json", True),
+            ("agent-zero/tmp/scheduler/tasks.json", True),
+            ("scheduler/tasks.json", True),
+            ("plugins/_telegram_integration/state.json", True),
+            ("agent-zero/usr/plugins/_tool_access/config.json", False),
+            ("agents/dev/plugins/_tool_access/config.json", False),
+            (
+                "agent-zero/usr/projects/p/.a0proj/agents/dev/plugins/_tool_access/config.json",
+                False,
+            ),
+            ("Desktop/agent-zero/usr/plugins/_orchestrator/config.json", False),
+            ("agent-zero/usr/plugins/_infection_check/.toggle-0", False),
+            (".agent-zero/.env", False),
+        ):
+            self.assertTrue(p.wants(rel_only(rel)), rel)
+            self.assertEqual(p.secondary(rel_only(rel)), secondary, rel)
+        for rel in (
+            "agent-zero/usr/plugins/_telegram_integration/config.json",
+            "agent-zero/usr/plugins/_infection_check/config.json",
+            "agent-zero/usr/plugins/_memory/.toggle-1",
+            "agent-zero/usr/scheduler/tasks.yaml",
+            "agent-zero/usr/.env",
+            ".agent-zero/session_cookies.json",
+        ):
+            self.assertFalse(p.wants(rel_only(rel)), rel)
+        self.assertEqual(p.secondary_tolerance(rel_only("scheduler/tasks.json")), 60.0)
+
+    def test_scheduler_tasks(self):
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TASKS_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.project_path, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    AGENT_ZERO_CHAT,
+                    "2026-10-01T11:00:00.000Z",
+                    "/a0/usr/projects/demo",
+                    "scheduled task: Nightly listing type=scheduled state=idle",
+                ),
+                ("user", AGENT_ZERO_CHAT, "", "/a0/usr/projects/demo", "## Task:\nlist files"),
+                (
+                    "assistant",
+                    AGENT_ZERO_CHAT,
+                    "2026-10-01T12:00:05.500Z",
+                    "/a0/usr/projects/demo",
+                    "There is one file, a.txt.",
+                ),
+                (
+                    "system",
+                    "TaskUuid02",
+                    "2026-10-02T09:00:00.000Z",
+                    "",
+                    "scheduled task: Webhook probe type=adhoc state=error",
+                ),
+                ("user", "TaskUuid02", "", "", "## Task:\nprobe the webhook"),
+                (
+                    "system",
+                    "TaskUuid02",
+                    "2026-10-02T09:01:00.000Z",
+                    "",
+                    "scheduled task failed: connection refused",
+                ),
+            ],
+        )
+        self.assertTrue(AgentZeroParser().secondary(self.artifact(AGENT_ZERO_TASKS_REL)))
+        joined = "|".join(str(v) for r in rows for v in r.as_dict().values())
+        self.assertNotIn(AGENT_ZERO_TASK_TOKEN, joined)
+        self.assertNotIn("You run on a schedule.", joined)
+
+    def test_scheduler_bad_record_and_bad_file(self):
+        path = self.home / AGENT_ZERO_TASKS_REL
+        tasks = agent_zero_tasks()
+        path.write_text(json.dumps({"tasks": [tasks[0], "oops", tasks[1]]}), encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TASKS_REL)
+        # The records before and after the bad one are still read.
+        self.assertEqual(
+            [r.text for r in rows if r.text.startswith("scheduled task:")],
+            [
+                "scheduled task: Nightly listing type=scheduled state=idle",
+                "scheduled task: Webhook probe type=adhoc state=error",
+            ],
+        )
+        self.assertEqual(
+            (rows[-1].text, rows[-1].source_line),
+            ('parser: unparseable record 2 (not a JSON object): "oops"', 2),
+        )
+        path.write_text('{"tasks": [', encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TASKS_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: scheduler tasks file not JSON ("))
+
+    def test_permission_decisions_and_chat_settings(self):
+        self._extras()
+        mtime = "2026-10-01T18:00:00.000Z"
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_ACP_REL)
+        settings = [(r.text, r.project_path, r.timestamp_utc) for r in rows[1:5]]
+        self.assertEqual(
+            settings,
+            [
+                ("permission mode: act (acp, as of file mtime)", "/home/alice/src/webapp", mtime),
+                (
+                    "model: requested openai/gpt-5 (acp, as of file mtime)",
+                    "/home/alice/src/webapp",
+                    mtime,
+                ),
+                (
+                    "model: requested chat=openrouter/anthropic/claude-sonnet-4"
+                    " utility=ollama/qwen3 (chat override, as of file mtime)",
+                    "/home/alice/src/webapp",
+                    mtime,
+                ),
+                (
+                    "scratch directory: /a0/usr/workdir/acp (acp container transport,"
+                    " from chat.json data.workdir_path, as of file mtime)",
+                    "/a0/usr/workdir/acp",
+                    mtime,
+                ),
+            ],
+        )
+        # The editor's workspace is the chat's project path.
+        self.assertEqual(rows[0].project_path, "/home/alice/src/webapp")
+        self.assertEqual(rows[5].project_path, "/home/alice/src/webapp")
+        decisions = [
+            (r.text, r.tool_name, r.timestamp_utc, r.source_line)
+            for r in rows
+            if r.text.startswith("permission decision:")
+        ]
+        self.assertEqual(
+            decisions,
+            [
+                (
+                    "permission decision: blocked tool=code_execution_tool profile=developer",
+                    "code_execution_tool",
+                    "2026-10-01T15:53:22.000Z",
+                    1,
+                ),
+                (
+                    "permission decision: denied automatically (provider MCP approval request)",
+                    "mcp_approval_request",
+                    "2026-10-01T15:53:23.000Z",
+                    2,
+                ),
+                (
+                    "permission decision: passed (infection check)",
+                    "",
+                    "2026-10-01T15:53:24.000Z",
+                    3,
+                ),
+                (
+                    "permission decision: terminated (infection check)",
+                    "",
+                    "2026-10-01T15:53:25.000Z",
+                    4,
+                ),
+            ],
+        )
+        # Each follows the warning row it reads.
+        for i, r in enumerate(rows):
+            if r.text.startswith("permission decision:"):
+                self.assertTrue(rows[i - 1].text.startswith("warning: "), rows[i - 1].text)
+        joined = "|".join(str(v) for r in rows for v in r.as_dict().values())
+        self.assertNotIn(AGENT_ZERO_OVERRIDE_KEY, joined)
+
+    def test_override_preset_and_plain_chat(self):
+        chat = agent_zero_chat()
+        chat["data"]["chat_model_override"] = {"preset_name": "Fast"}
+        (self.home / self.REL).write_text(json.dumps(chat), encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), self.REL)
+        self.assertEqual(
+            rows[1].text, "model: requested preset Fast (chat override, as of file mtime)"
+        )
+        self.assertEqual(rows[1].project_path, "/a0/usr/projects/demo")
+        chat["data"]["chat_model_override"] = None
+        (self.home / self.REL).write_text(json.dumps(chat), encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), self.REL)
+        self.assertFalse([r for r in rows if r.text.startswith(("model: requested", "scratch"))])
+
+    def test_telegram_deleted_chat(self):
+        self._extras()
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TG_STATE_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    AGENT_ZERO_TG_DELETED,
+                    "2026-10-01T18:00:00.000Z",
+                    "session deleted: telegram bot opsbot chat 777 user 555 ctxid "
+                    "%s (from state.json, no chat.json in the input, file mtime)"
+                    % AGENT_ZERO_TG_DELETED,
+                )
+            ],
+        )
+        self.assertTrue(AgentZeroParser().secondary(self.artifact(AGENT_ZERO_TG_STATE_REL)))
+        (self.home / AGENT_ZERO_TG_STATE_REL).write_text("{", encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TG_STATE_REL)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0].text.startswith("parser: state.json not JSON ("), rows[0].text)
+
+    def test_standing_settings(self):
+        self._extras()
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_POLICY_REL)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: tool_access.%s profile=developer (from %s, file mtime)"
+                % (entry, AGENT_ZERO_POLICY_REL)
+                for entry in (
+                    "mode=custom",
+                    "default=allow",
+                    "mcp_default=block",
+                    "blocked=code_execution_tool",
+                    "blocked=mcp:github.create_issue",
+                )
+            ],
+        )
+        self.assertEqual(
+            {(r.session_id, r.project_path, r.timestamp_utc) for r in rows},
+            {("", "", "2026-10-01T18:00:00.000Z")},
+        )
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_PROJECT_POLICY_REL)
+        self.assertEqual(
+            [(r.text, r.project_path) for r in rows],
+            [
+                (
+                    "permission setting: tool_access.mode=inherit project=demo (from %s, file"
+                    " mtime)" % AGENT_ZERO_PROJECT_POLICY_REL,
+                    "/a0/usr/projects/demo",
+                )
+            ],
+        )
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_ORCHESTRATOR_REL)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: orchestrator.%s (from %s, file mtime)"
+                % (entry, AGENT_ZERO_ORCHESTRATOR_REL)
+                for entry in (
+                    "codex.bypass_sandbox=true",
+                    "claude.permission_mode=bypassPermissions",
+                    "claude.allowed_tools=Bash,Read,Edit",
+                    "hermes.yolo=false",
+                )
+            ],
+        )
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_TOGGLE_REL)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: infection_check=enabled (from %s, file mtime)"
+                % AGENT_ZERO_TOGGLE_REL
+            ],
+        )
+        (self.home / AGENT_ZERO_POLICY_REL).write_text("[1]", encoding="utf-8")
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_POLICY_REL)
+        self.assertEqual(
+            [r.text for r in rows], ["parser: %s is not a JSON object" % AGENT_ZERO_POLICY_REL]
+        )
+
+    def test_connector_origin_reads_two_keys_only(self):
+        self._extras()
+        rows = self.rows_for(AgentZeroParser(), AGENT_ZERO_CONNECTOR_ENV_REL)
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.timestamp_utc, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    "RemCtx01",
+                    "2026-10-01T18:00:00.000Z",
+                    "session origin: remote agent-zero instance https://a0.example.net context"
+                    " RemCtx01 (from .agent-zero/.env, file mtime)",
+                )
+            ],
+        )
+        joined = "|".join(str(v) for r in rows for v in r.as_dict().values())
+        for secret in (AGENT_ZERO_RESTORE_TOKEN, "localhost:50080", "no equals sign"):
+            self.assertNotIn(secret, joined)
+
+    def test_extras_noise_not_wanted(self):
+        self._extras()
+        p = AgentZeroParser()
+        noise = self.artifact("agent-zero/usr/plugins/_telegram_integration/config.json")
+        self.assertFalse(p.wants(noise))
+        self.assertTrue(p.wants(self.artifact(AGENT_ZERO_TOGGLE_REL)))
+
     # -- Docker volume layout (issue 175) --------------------------------------
 
     def _volume(self):
@@ -9767,9 +10076,21 @@ class AgentZeroTests(ParserBase):
 
 from doubleagent.parsers.open_interpreter import OpenInterpreterParser
 from fixtures import (
+    AGENT_ZERO_ACP_REL,
     AGENT_ZERO_BOT_TOKEN,
+    AGENT_ZERO_CONNECTOR_ENV_REL,
+    AGENT_ZERO_ORCHESTRATOR_REL,
+    AGENT_ZERO_OVERRIDE_KEY,
+    AGENT_ZERO_POLICY_REL,
+    AGENT_ZERO_PROJECT_POLICY_REL,
+    AGENT_ZERO_RESTORE_TOKEN,
+    AGENT_ZERO_TASK_TOKEN,
+    AGENT_ZERO_TASKS_REL,
     AGENT_ZERO_TG_CHAT,
+    AGENT_ZERO_TG_DELETED,
     AGENT_ZERO_TG_REL,
+    AGENT_ZERO_TG_STATE_REL,
+    AGENT_ZERO_TOGGLE_REL,
     GOOSE_GATEWAY_SESSION,
     HERMES_PASTES_REL,
     OI_ARCHIVED,
@@ -9778,6 +10099,7 @@ from fixtures import (
     OI_ROLLOUT,
     OI_SESSION,
     agent_zero_relayed_chat,
+    agent_zero_tasks,
     goose_gateway_records,
     hermes_pastes_records,
     open_interpreter_rollout_records,

@@ -1158,6 +1158,27 @@ printf 'binary\n' >"$U236/inno_updater.exe"
 printf '{"currentVersion":"x"}\n' >"$U236/app-ready.json"
 printf '{"stage":"x"}\n' >"$U236/state.json"
 
+# 2026-10-21 Agent Zero source review (#217)
+# The WhatsApp bridge's Baileys login state under the install's tmp/ (home,
+# Desktop and volume-relative forms), an editor (ACP) chat whose workspace
+# and extra folder are discovered as projects, and a computer-use screen
+# capture of the A0 CLI connector in the Windows temp directory. Checks
+# follow the default and --no-secrets runs below; the same files are in
+# smoke.ps1 under alice.
+W217=tmp/whatsapp/session/creds.json
+C217="$H/agent-zero/main/usr/chats/acp1"
+T217="$B/AppData/Local/Temp/_a0_connector/computer_use/ctx1"
+mkdir -p "$H/agent-zero/main/${W217%/*}" "$H/Desktop/agent-zero/${W217%/*}" \
+  "$DV/a0_usr/_data/${W217%/*}" "$C217" "$ROOT/srv/a0acp" "$ROOT/srv/a0extra" "$T217"
+printf '{}\n' >"$H/agent-zero/main/$W217"
+printf '{}\n' >"$H/Desktop/agent-zero/$W217"
+printf '{}\n' >"$DV/a0_usr/_data/$W217"
+printf '{"id": "acp1", "data": {"acp_cwd": "/srv/a0acp", %s}}\n' \
+  '"acp_additional_directories": ["/srv/a0extra"]' >"$C217/chat.json"
+printf '# acp\n' >"$ROOT/srv/a0acp/AGENTS.md"
+printf '# extra\n' >"$ROOT/srv/a0extra/AGENTS.md"
+printf 'png\n' >"$T217/0000.png"
+
 run() { # run NAME ARGS...
   _n=$1; shift
   mkdir -p "$OUT/$_n"
@@ -1541,6 +1562,11 @@ check "#236 Cursor local plugins collected" "row \"$P236/local/x.json\" | grep -
 check "#236 Cursor Windows inno updater excluded" "[ \"\$(status_of \"$U236/inno_updater.exe\")\" = skipped_excluded ]"
 check "#236 Cursor Windows update-supervisor state collected" "row \"$U236/app-ready.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"' && row \"$U236/state.json\" | grep -q '\"agent\":\"cursor\".*\"status\":\"collected\"'"
 
+# 2026-10-21 Agent Zero source review (#217)
+check "#217 Agent Zero WhatsApp session flagged secret" "row \"$H/agent-zero/main/$W217\" | grep -q '\"agent\":\"agent-zero\".*$SEC153' && row \"$H/Desktop/agent-zero/$W217\" | grep -q '$SEC153' && row \"$DV/a0_usr/_data/$W217\" | grep -q '\"user\":\"docker\".*$SEC153'"
+check "#217 Agent Zero ACP workspace and extra folder discovered" "[ \"\$(status_of \"$ROOT/srv/a0acp/AGENTS.md\")\" = collected ] && [ \"\$(status_of \"$ROOT/srv/a0extra/AGENTS.md\")\" = collected ]"
+check "#217 Agent Zero connector screen capture collected" "row \"$T217/0000.png\" | grep -q '\"agent\":\"agent-zero\".*\"status\":\"collected\"'"
+
 # ---- --no-secrets ---------------------------------------------------------
 run nosecrets --no-secrets; check "no-secrets exit 0" "[ $? -eq 0 ]"
 check "credentials skipped_secret" "[ \"\$(status_of \"$ROOT/home/alice/.claude/.credentials.json\")\" = skipped_secret ]"
@@ -1567,6 +1593,9 @@ check "#153 Qwen Code channel credentials skipped without secrets" "[ \"\$(statu
 check "#153 Qwen Code channel routing files kept without secrets" "[ \"\$(status_of \"$H/.qwen/channels/sessions.json\")\" = collected ] && [ \"\$(status_of \"$H/.qwen/channels/daemon/0123abcd/routes.json\")\" = collected ]"
 # 2026-10-18 Codex shell snapshots (#160)
 check "#160 Codex shell snapshot skipped without secrets" "[ \"\$(status_of \"$S160\")\" = skipped_secret ]"
+
+# 2026-10-21 Agent Zero source review (#217)
+check "#217 Agent Zero WhatsApp session skipped without secrets" "[ \"\$(status_of \"$H/agent-zero/main/$W217\")\" = skipped_secret ] && [ \"\$(status_of \"$H/Desktop/agent-zero/$W217\")\" = skipped_secret ] && [ \"\$(status_of \"$DV/a0_usr/_data/$W217\")\" = skipped_secret ]"
 
 # ---- --full ---------------------------------------------------------------
 run full --full; check "full exit 0" "[ $? -eq 0 ]"
@@ -1687,7 +1716,7 @@ check "inventory nested entry claimed from the enclosing agent" "agent_line inve
 check "inventory: matched directory with no files of its own gives no line" "[ -z \"\$(agent_line inventory bob gemini-cli)\" ] && agent_line inventory bob antigravity | grep -q '\"files\":1,\"bytes\":3,.*\"evidence\":\".gemini/antigravity-cli\"}\$'"
 check "inventory: no agent line has zero files" "! grep -q '\"files\":0,' \"$OUT/inventory.stdout\""
 check "inventory projects counted per user" "agent_line inventory alice claude-code | grep -q '\"projects\":[1-9]'"
-check "inventory docker volume line" "agent_line inventory docker agent-zero | grep -q '\"files\":4,\"bytes\":91,.*\"projects\":0,\"evidence\":\"\\*a0_usr\"}\$'"
+check "inventory docker volume line" "agent_line inventory docker agent-zero | grep -q '\"files\":5,\"bytes\":94,.*\"projects\":0,\"evidence\":\"\\*a0_usr\"}\$'"
 check "inventory rootless docker volume line" "agent_line inventory docker tabby | grep -q '\"files\":1,\"bytes\":23,.*\"evidence\":\"\\*tabby\\*\"}\$'"
 check "inventory shared not inventoried" "! grep -q '\"agent\":\"\\(shared\\|project\\|live\\)\"' \"$OUT/inventory.stdout\""
 check "inventory prints no path below a home" "! grep -q '$ROOT' \"$OUT/inventory.stdout\""

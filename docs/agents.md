@@ -119,9 +119,24 @@ on a provider-stored response marks the chat synced) and the chat's
 Telegram, WhatsApp and email `data` keys (a relayed chat, so the parser
 records relay state and `sessions.jsonl` `relayed` reads `yes` or `no`);
 the bot configuration in `data.telegram_bot_cfg`, which holds its token,
-is never read into a row.
+is never read into a row. Also from the same file: permission decisions
+from `warning` log items (a tool blocked by a policy, a provider MCP
+approval denied automatically, an Infection Check verdict), an editor
+(ACP) session's mode, model and container working directory, with its
+workspace `data.acp_cwd` as the project path, and the per-chat model
+override, printed without its API key. Beside the chats, in the same
+install or volume: `usr/scheduler/tasks.json` (a secondary source: each
+task's prompt and last result), the Telegram plugin's `state.json` (a
+secondary source: a mapped chat that is gone gives a `session deleted:`
+row), the `_tool_access` and `_orchestrator` `config.json` files and the
+`.toggle-0` and `.toggle-1` switches of `_infection_check` and
+`_orchestrator` at every plugin scope (standing permission settings);
+and, in the home, the A0 CLI connector's `.agent-zero/.env`, of which only
+the last chat's host and id are read (a chat on a remote instance, so the
+parser records origin and `sessions.jsonl` `origin` reads `remote` or
+`local`).
 
-Validated against: Source at [e3051fb](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec), synthetic fixture.
+Validated against: Source at [e3051fb](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec), synthetic fixture; the permission, model, editor-session, scheduler, Telegram map and plugin files from source at [ff2a5b9](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a) and the connector's `.env` from agent0ai/a0-connector at [3741c88](https://github.com/agent0ai/a0-connector/commit/3741c8809f1f99b4efee2ed1a24234a98bf896d4), synthetic fixture.
 
 ### `aider`
 

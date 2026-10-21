@@ -821,7 +821,7 @@ class SyncedSessionTests(unittest.TestCase):
         ):
             self.assertEqual(by_id[key], want, key)
         origin_agents = {p.agent for p in ALL if p.records_origin}
-        self.assertEqual(origin_agents, {"vscode", "chatgpt-desktop", "cursor"})
+        self.assertEqual(origin_agents, {"vscode", "chatgpt-desktop", "cursor", "agent-zero"})
         self.assertEqual({v for (agent, _), v in by_id.items() if agent not in origin_agents}, {""})
         self.assertEqual(
             {v for (agent, _), v in by_id.items() if agent == "vscode"}, {"remote", "local"}
@@ -860,7 +860,8 @@ class SyncedSessionTests(unittest.TestCase):
             (("open-interpreter", OI_SESSION), "no"),
             (("qwen-code", QWEN_SESSION), "no"),
             (("vscode", VSCODE_SESSION), ""),
-            (("agent-zero", AGENT_ZERO_CHAT), ""),
+            # The scheduler task's logged prompt survives only in tasks.json.
+            (("agent-zero", AGENT_ZERO_CHAT), "partial"),
         ):
             self.assertEqual(by_id[key], want, key)
         secondary_agents = {p.agent for p in ALL if p.has_secondary}
@@ -909,7 +910,7 @@ class SyncedSessionTests(unittest.TestCase):
         self.assertNotIn("/alice/.nanobot/workspace", projects)
         scratch = inv["scratch_directories"]
         self.assertEqual(scratch["/alice/.nanobot/workspace"]["recovered"], "no")
-        self.assertEqual(projects["/a0/usr/projects/demo"]["recovered"], "")
+        self.assertEqual(projects["/a0/usr/projects/demo"]["recovered"], "partial")
         self.assertEqual(projects["/srv/proj2"]["recovered"], "")
         # The recovered sessions with no project: AGY_ORPHAN is one.
         outside = inv["outside_projects"]
@@ -928,8 +929,9 @@ class SyncedSessionTests(unittest.TestCase):
             return [projects[path][k] for k in PROJECT_KEYS]
 
         # Agent Zero: the Telegram chat is synced and relayed, the other chat
-        # neither; agent-zero records no origin and reads no secondary source.
-        self.assertEqual(marks("/a0/usr/projects/demo"), ["partial", "partial", "", ""])
+        # neither; both are of local origin, and the other chat keeps a
+        # scheduler prompt only tasks.json holds (issue 204).
+        self.assertEqual(marks("/a0/usr/projects/demo"), ["partial", "partial", "local", "partial"])
         self.assertNotIn("synced_sessions", projects["/a0/usr/projects/demo"])
         # /srv/proj holds VS Code sessions, none of remote origin.
         self.assertEqual(marks("/srv/proj"), ["partial", "partial", "local", "partial"])
