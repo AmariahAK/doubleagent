@@ -6750,8 +6750,12 @@ from fixtures import (
     CLINE_SYNC_SECRET,
     CLINE_TASK,
     ROO_CLI_TASK,
+    ROO_CLOUD_TOKEN,
     ROO_GONE_TASK,
     ROO_TASK,
+    ROO_VSCDB_REL,
+    ROO_WS_STATE_REL,
+    ROO_WS_VSCDB_REL,
     build_cline_blob_upload,
     build_cline_sync_queue,
 )
@@ -7369,6 +7373,7 @@ class RooCodeTests(ParserBase):
                 "user",
                 "system",
                 "tool_use",
+                "system",
                 "tool_use",
                 "tool_result",
                 "system",
@@ -7382,7 +7387,16 @@ class RooCodeTests(ParserBase):
                 (r.host, r.user, r.agent, r.session_id), ("h1", "alice", "roo-code", ROO_TASK)
             )
             self.assertEqual((r.project_path, r.git_branch, r.model), ("/srv/proj", "", ""))
-        user, api, diff, cmd, out, condense, ask, feedback, _done = rows
+        user, api, diff, approved, cmd, out, condense, ask, feedback, _done = rows
+        # The tool ask marked isAnswered (approved, by a click or automatically).
+        self.assertEqual(
+            approved.text,
+            "permission decision: approved isAnswered=true (user or auto-approval)",
+        )
+        self.assertEqual(
+            (approved.tool_use_id, approved.tool_name, approved.timestamp_utc),
+            (diff.tool_use_id, "appliedDiff", diff.timestamp_utc),
+        )
         self.assertEqual(
             (user.text, user.timestamp_utc), ("rename the helper", "2026-10-03T10:03:20.000Z")
         )
@@ -7400,32 +7414,83 @@ class RooCodeTests(ParserBase):
         rows = self.rows_for(RooCodeParser(), self.CLI_API, include_thinking=True)
         self.assertEqual([r.text for r in rows if r.turn_type == "thinking"], ["check the runner"])
 
+    GS_API = ROO_GS + "tasks/%s/api_conversation_history.json" % ROO_TASK
+    DENIED = "permission decision: denied feedback=leave conftest alone"
+    APPROVED = "permission decision: approved feedback=ok"
+
     def test_api_history_only_without_ui_messages(self):
+        # Beside ui_messages.json only the decision rows come from it.
+        rows = self.rows_for(RooCodeParser(), self.GS_API)
         self.assertEqual(
-            self.rows_for(
-                RooCodeParser(), ROO_GS + "tasks/%s/api_conversation_history.json" % ROO_TASK
-            ),
-            [],
+            [(r.turn_type, r.tool_use_id, r.tool_name, r.text) for r in rows],
+            [
+                ("system", "toolu_01B", "write_to_file", self.DENIED),
+                ("system", "toolu_01C", "read_file", self.APPROVED),
+            ],
         )
+        for r in rows:
+            self.assertEqual(
+                (r.session_id, r.project_path, r.timestamp_utc),
+                (ROO_TASK, "/srv/proj", "2026-10-03T10:05:05.000Z"),
+            )
         rows = self.rows_for(RooCodeParser(), self.CLI_API)
-        self.assertEqual([r.turn_type for r in rows], ["user", "tool_use", "tool_result"])
         self.assertEqual(
-            [r.timestamp_utc for r in rows],  # Roo records carry their own ts
+            [r.turn_type for r in rows],
+            [
+                "user",
+                "tool_use",
+                "tool_result",
+                "tool_use",
+                "tool_use",
+                "tool_result",
+                "system",
+                "tool_result",
+                "system",
+            ],
+        )
+        self.assertEqual(
+            [r.timestamp_utc for r in rows[:3]],  # Roo records carry their own ts
             ["2026-10-03T10:05:00.000Z", "2026-10-03T10:05:02.000Z", "2026-10-03T10:05:03.000Z"],
         )
         self.assertEqual(
             {(r.session_id, r.project_path) for r in rows}, {(ROO_CLI_TASK, "/srv/proj")}
         )
         self.assertEqual((rows[1].tool_use_id, rows[2].tool_use_id), ("toolu_01A", "toolu_01A"))
+        # Each decision follows its tool_result and joins its call.
+        self.assertEqual(
+            [(r.tool_use_id, r.tool_name, r.text) for r in rows[5:]],
+            [
+                ("toolu_01B", "", '{"status":"denied","feedback":"leave conftest alone"}'),
+                ("toolu_01B", "write_to_file", self.DENIED),
+                ("toolu_01C", "", '{"status":"approved","feedback":"ok"}\n\n[pytest]'),
+                ("toolu_01C", "read_file", self.APPROVED),
+            ],
+        )
+
+    def test_api_decisions_truncated_beside_ui_messages(self):
+        # The API history is read for decisions even beside ui_messages.json,
+        # so its bad records are reported there too.
+        write_bad_line(self.home / self.GS_API)
+        rows = self.rows_for(RooCodeParser(), self.GS_API)
+        self.assertEqual(rows[-1].turn_type, "system")
+        self.assertTrue(rows[-1].text.startswith("parser: "), rows[-1].text)
+        self.assertEqual((rows[-1].session_id, rows[-1].project_path), (ROO_TASK, "/srv/proj"))
+        self.assertEqual([r.text for r in rows[:-1]], [self.DENIED, self.APPROVED])
 
     def test_history_item_and_index(self):
         rows = self.rows_for(RooCodeParser(), ROO_GS + "tasks/%s/history_item.json" % ROO_TASK)
-        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows), 2)
         self.assertTrue(rows[0].text.startswith("task: rename the helper"))
         self.assertIn("mode=code", rows[0].text)
+        # HistoryItem.mode, the task's mode slug, is its permission mode.
+        self.assertEqual(
+            (rows[1].turn_type, rows[1].text, rows[1].session_id, rows[1].timestamp_utc),
+            ("system", "permission mode: code", ROO_TASK, rows[0].timestamp_utc),
+        )
         rows = self.rows_for(RooCodeParser(), ROO_GS + "tasks/_index.json")
         self.assertEqual(
-            [r.session_id for r in rows], [ROO_GONE_TASK]
+            [(r.session_id, r.text.split(":")[0]) for r in rows],
+            [(ROO_GONE_TASK, "task"), (ROO_GONE_TASK, "permission mode")],
         )  # tasks on disk are not repeated
         rows = self.rows_for(RooCodeParser(), ROO_GS + "tasks/%s/task_metadata.json" % ROO_TASK)
         self.assertEqual([r.text.split(":")[0] for r in rows], ["file roo_read", "file roo_edit"])
@@ -7465,8 +7530,8 @@ class RooCodeTests(ParserBase):
                 ("h1", "alice", "roo-code", "", "", ""),
             )
             self.assertTrue(r.source_file.endswith(self.CLI_HISTORY), r.source_file)
-        # The settings file beside it is configuration, not history.
-        self.assertFalse(p.wants(self.artifact(".roo/cli-settings.json")))
+        # The settings file beside it is read for permission state only.
+        self.assertFalse(p.secondary(self.artifact(".roo/cli-settings.json")))
 
     def test_cli_history_truncated(self):
         write_bad_line(self.home / self.CLI_HISTORY)
@@ -7504,9 +7569,137 @@ class RooCodeTests(ParserBase):
     def test_truncated_line_is_reported_not_fatal(self):
         write_bad_line(self.home / self.UI)
         rows = self.rows_for(RooCodeParser(), self.UI)
-        self.assertEqual(len(rows), 10)
+        self.assertEqual(len(rows), 11)
         self.assertEqual(rows[-1].turn_type, "system")
         self.assertIn("parser:", rows[-1].text)
+        self.assertEqual(sum(r.text.startswith("parser:") for r in rows), 1)
+
+    # ---- standing settings, Roo Code Cloud (source-derived) -------------------
+
+    GLOBAL_STATE = ".vscode-mock/global-storage/global-state.json"
+    STANDING: ClassVar[list[str]] = [
+        "autoApprovalEnabled=true",
+        "alwaysAllowReadOnly=true",
+        "alwaysAllowExecute=false",
+        "allowedCommands=git status",
+        "allowedCommands=npm test",
+        "deniedCommands=rm -rf",
+        "mode=architect",
+        "roo-cline.allowedCommands=git status",
+    ]
+    SYNC: ClassVar[list[str]] = [
+        "user-settings.settings.taskSyncEnabled=true",
+        "organization-settings.cloudSettings.recordTaskMessages=true",
+        "organization-settings.cloudSettings.enableTaskSharing=false",
+    ]
+
+    def _expected_state(self, source):
+        cloud = "%s, Roo Code Cloud settings cache" % source
+        return [
+            "permission setting: %s (from %s, file mtime)" % (s, source) for s in self.STANDING
+        ] + ["sync setting: %s (from %s, file mtime)" % (s, cloud) for s in self.SYNC]
+
+    def test_global_state_rows(self):
+        p = RooCodeParser()
+        art = self.artifact(self.GLOBAL_STATE)
+        self.assertTrue(p.wants(art))
+        self.assertFalse(p.secondary(art))
+        rows = self.rows_for(p, self.GLOBAL_STATE)
+        self.assertEqual([r.text for r in rows], self._expected_state(self.GLOBAL_STATE))
+        for r in rows:
+            self.assertEqual((r.turn_type, r.session_id), ("system", ""))
+            self.assertEqual(r.timestamp_utc, file_mtime(art))
+        self.assertNotIn("customInstructions", " ".join(r.text for r in rows))
+
+    def test_state_vscdb_rows(self):
+        p = RooCodeParser()
+        self.assertIn("vscode", p.reads_agents)
+        art = self.artifact(ROO_VSCDB_REL)
+        self.assertEqual(art.agent, "vscode")
+        self.assertTrue(p.wants(art))
+        rows = self.rows_for(p, ROO_VSCDB_REL)
+        source = "%s ItemTable RooVeterinaryInc.roo-cline" % ROO_VSCDB_REL
+        self.assertEqual([r.text for r in rows], self._expected_state(source))
+        # The fake state.vscdb beside the extension's tasks is not SQLite.
+        self.assertEqual(
+            self.rows_for(p, ".config/Code/User/globalStorage/state.vscdb"),
+            [],
+        )
+
+    def test_cli_settings_rows(self):
+        rows = self.rows_for(RooCodeParser(), ".roo/cli-settings.json")
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: requireApproval=true (from .roo/cli-settings.json, file mtime)",
+                "permission setting: mode=code (from .roo/cli-settings.json, file mtime)",
+            ],
+        )
+
+    def test_mcp_always_allow_rows(self):
+        p = RooCodeParser()
+        rel = ROO_GS + "settings/mcp_settings.json"
+        rows = self.rows_for(p, rel)
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: mcpServers.github.alwaysAllow=%s (from %s, file mtime)"
+                % (tool, rel)
+                for tool in ("list_issues", "get_issue")
+            ],
+        )
+        self.assertEqual({r.project_path for r in rows}, {""})
+        self.assertNotIn("ghp-not-a-real-token", " ".join(r.text for r in rows))
+        # A project's .roo/mcp.json carries the project.
+        art = self.artifact(".roo/mcp.json")
+        proj = Artifact(
+            art.disk_path,
+            "/srv/proj/.roo/mcp.json",
+            art.rel,
+            art.agent,
+            Home(art.home.disk_path, "/srv/proj", "alice", "h1", project=True),
+        )
+        rows = list(p.parse(proj, Options()))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+
+    def test_bad_settings_files(self):
+        for rel, name in (
+            (".roo/cli-settings.json", "cli-settings.json"),
+            (self.GLOBAL_STATE, "global-state.json"),
+            (ROO_WS_STATE_REL, "workspace-state.json"),
+            (".roo/mcp.json", "mcp.json"),
+        ):
+            write_bad_line(self.home / rel)
+            rows = self.rows_for(RooCodeParser(), rel)
+            self.assertEqual(
+                [(r.turn_type, r.text) for r in rows],
+                [("system", "parser: %s is not a JSON object" % name)],
+                rel,
+            )
+
+    def test_retry_queue_rows(self):
+        p = RooCodeParser()
+        expected = (
+            "cloud upload queued: Task Message task=%s type=telemetry retries=2 "
+            "url=https://app.roocode.com/api/events lastError=fetch failed "
+            "(Roo Code Cloud retry queue, from %s roo.retryQueue, request timestamp)"
+        )
+        for rel, source in (
+            (ROO_WS_STATE_REL, ROO_WS_STATE_REL),
+            (ROO_WS_VSCDB_REL, ROO_WS_VSCDB_REL + " ItemTable RooVeterinaryInc.roo-cline"),
+        ):
+            self.assertTrue(p.wants(self.artifact(rel)), rel)
+            rows = self.rows_for(p, rel)
+            self.assertEqual([r.text for r in rows], [expected % (ROO_TASK, source)], rel)
+            self.assertEqual(
+                (rows[0].turn_type, rows[0].session_id, rows[0].timestamp_utc),
+                ("system", ROO_TASK, "2026-10-03T10:03:20.500Z"),
+            )
+            # Neither the bearer token nor the message body is written.
+            self.assertNotIn(ROO_CLOUD_TOKEN, rows[0].text)
+            self.assertNotIn("rename the helper", rows[0].text)
+        self.assertFalse(p.records_sync)
 
 
 from doubleagent.parsers.tabby import TabbyParser
