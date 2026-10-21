@@ -1185,6 +1185,45 @@ for the agent; and `session synced: last session on <server> agent
 each `sessionsByServer` entry of `.letta/settings.json` and of a
 project's `.letta/settings.local.json` that is not the local backend's,
 at the file's modification time, with the conversation as `session_id`.
+Each `.letta/sessions.jsonl` line, which Letta writes when a session
+ends with `/exit` or `/logout`, is `letta session end: agent=<agent id>
+exit_reason=<reason> messages=<n> tool_calls=<n> wall_ms=<ms>` at the
+time of exit. Since the review of Letta Code 0.34.17 the `letta` parser
+also writes, from source: `permission setting:
+permissions.<key>=<value> (from <file>, file mtime)` per entry of the
+`permissions` object (`mode`, `allow`, `deny`, `ask`, `alwaysAsk`,
+`additionalDirectories`) of `.letta/settings.json`,
+`.config/letta/settings.json` and a project's `.letta/settings.json` and
+`.letta/settings.local.json`, at the file's modification time with an
+empty `session_id`; `session relayed: <channel> chat <chatId> type
+<chatType> thread <threadId> account <accountId> agent <agentId>
+enabled=<enabled> outbound=<outboundEnabled> detached=<detached>
+updated=<updatedAt> (from .letta/channels/<channel>/routing.json,
+createdAt)` per route, at `createdAt`, with the conversation as
+`session_id`; `scheduled task: <id> name=<name> status=<status>
+cron=<cron> timezone=<timezone> recurring=<true|false>
+scheduled_for=<time> agent=<agent id> conversation=<conversation id>
+fire_count=<n> last_fired=<time> last_run=<time> outcome=<outcome>
+reason=<reason> error=<error> cancel_reason=<reason> (from
+.letta/crons.json, created_at) description: <description> prompt:
+<prompt>` per task of `.letta/crons.json`, at its creation time;
+`scheduled task run: <task id> action=<action> status=<status>
+outcome=<outcome> reason=<reason> agent=<agent id>
+conversation=<conversation id> run=<run id> scheduled_for=<time>
+fired=<time> missed=<n> summary=<summary> error=<error> (from
+.letta/runs/<task id>.jsonl, ts)` per run log line, at its time; and,
+for a turn the remote listener did not finish,
+`.letta/listener-state/<hash>/<agent>_<conversation>.json`, `interrupted
+turn: agent <agent id> conversation <conversation id> run <run id>
+tool_calls=<ids> unstarted=<ids> results=<n> working_directory=<dir>
+acting_user=<id> (from <file>, file mtime)` followed by `permission
+decision: <approve|deny> reason=<reason> (from <file>, interrupted
+turn, file mtime)` per recorded decision and a `tool_result` row per
+recorded tool result, each with the call's id as `tool_use_id`, at the
+file's modification time, with the conversation as `session_id` and
+the working directory as `project_path`. A record without a time of its
+own takes the file's modification time and its text ends `file mtime)`;
+`-` stands for an absent value.
 
 The `cline`, `continue` and `pearai` parsers write the same `model:`
 rows, with the `model` column the new model. Cline's SDK sessions write

@@ -657,16 +657,25 @@ format), `.letta/transcripts/<agent>/<conversation>/transcript.jsonl`
 source, read beside the conversation's `messages.jsonl` with a one-hour
 window because each line is stamped at the end of its turn; a
 server-side agent's transcript also gives a `session synced:` row),
-`.letta/sessions.jsonl`, and the `sessionsByServer` entries of
-`.letta/settings.json` and a project's `.letta/settings.local.json`
-(one `session synced:` row per server; `agents[]` `baseUrl` names a
-transcript's server; no other key is read). On the server backend the
+`.letta/sessions.jsonl` (one line per session ended with `/exit` or
+`/logout`), and the `sessionsByServer` entries of `.letta/settings.json`
+and a project's `.letta/settings.local.json` (one `session synced:` row
+per server; `agents[]` `baseUrl` names a transcript's server). Since the
+2026-10-21 review, source-derived: the `permissions` object of
+`.letta/settings.json`, `.config/letta/settings.json` and a project's
+`.letta/settings.json` and `.letta/settings.local.json` (one
+`permission setting:` row per entry),
+`.letta/channels/<channel>/routing.json` (one `session relayed:` row per
+route), `.letta/crons.json` and `.letta/runs/<task id>.jsonl` (scheduled
+tasks and their runs), and `.letta/listener-state/<hash>/<agent>_<conversation>.json`
+(an interrupted listener turn with its approval decisions and tool
+results). No other settings key is read. On the server backend the
 store of record is on the server and the local transcript is its
 mirror, so such a session reads `sessions.jsonl` `recovered` `yes` or
 `partial` by design, beside its `session synced: server conversation`
 row.
 
-Validated against: Source at [77faf36](https://github.com/letta-ai/letta-code/commit/77faf36e34378946c8e69c0bfaa5595a7be4c326), synthetic fixture.
+Validated against: Source at [77faf36](https://github.com/letta-ai/letta-code/commit/77faf36e34378946c8e69c0bfaa5595a7be4c326), synthetic fixture; the permission settings, channel routing, scheduled tasks and interrupted turns from source at [2a46615](https://github.com/letta-ai/letta-code/commit/2a46615d16babb06cf5450b8e57ecb9bdbf2f436) (version 0.34.17), synthetic fixture.
 
 ### `little-coder`
 
