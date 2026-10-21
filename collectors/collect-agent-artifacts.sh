@@ -1094,7 +1094,6 @@ AppData/Local/hermes/hermes-agent/.[!e]*
 .hermes*/checkpoints/store/objects
 .hermes*/checkpoints/store/indexes
 .hermes*/checkpoints/legacy-*
-.hermes*/state-snapshots
 .hermes*/backups
 .hermes*/browser-profile
 .hermes*/browser-profiles
@@ -1112,7 +1111,6 @@ AppData/Local/hermes*/sandboxes
 AppData/Local/hermes*/checkpoints/store/objects
 AppData/Local/hermes*/checkpoints/store/indexes
 AppData/Local/hermes*/checkpoints/legacy-*
-AppData/Local/hermes*/state-snapshots
 AppData/Local/hermes*/backups
 AppData/Local/hermes*/browser-profile
 AppData/Local/hermes*/browser-profiles
@@ -1232,7 +1230,6 @@ sandboxes
 checkpoints/store/objects
 checkpoints/store/indexes
 checkpoints/legacy-*
-state-snapshots
 backups
 browser-profile
 browser-profiles
@@ -1596,6 +1593,9 @@ AppData/Local/hermes*/weixin/accounts/*
 AppData/Local/hermes*/runtime/photon-sidecar.json
 AppData/Local/hermes*/proxy/*
 AppData/Local/hermes*/home/*
+.config/Hermes/connection*.json*
+Library/Application Support/Hermes/connection*.json*
+AppData/Roaming/Hermes/connection*.json*
 .openclaw*/openclaw.json*
 .openclaw*/clawdbot.json*
 .openclaw*/.env
@@ -1742,6 +1742,10 @@ weixin/accounts/*
 runtime/photon-sidecar.json
 proxy/*
 home/*
+state-snapshots/*/.env
+state-snapshots/*/auth.json
+state-snapshots/*/pairing/*
+state-snapshots/*/platforms/pairing/*
 openclaw.json*
 clawdbot.json*
 moltbot.json*

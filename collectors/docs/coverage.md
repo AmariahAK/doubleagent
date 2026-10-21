@@ -733,6 +733,18 @@ whole, so a Docker Ollama volume's `models/manifests` is not collected;
 when the pulled models matter, copy `models/manifests` from the volume's
 `_data` by hand, or pass `--full` (`-Full`), which also takes the weights.
 
+Hermes' quick snapshots under `state-snapshots/<id>/` are collected:
+each holds an older complete copy of `state.db`, which may be the only
+record of a session Hermes later pruned or deleted, and Hermes keeps at
+most 20 of them (one after a `hermes update`), so their size is bounded by
+the database's; a copy larger than `--max-file-size` gets a
+`skipped_size` row as any file does. The `.env`, `auth.json` and pairing
+files inside a snapshot are flagged as secrets, as their originals are,
+also in a Hermes Docker or Podman volume. Hermes' zip backups under
+`backups/` stay excluded. Before collector 1.18.0 the snapshots were
+excluded too and needed `--full`. The facts are in
+[Transcript stores in `research/hermes.md`](../../research/hermes.md#transcript-stores).
+
 ## Credentials
 
 Credential files are collected by default and flagged `secret: true`, since
@@ -752,6 +764,10 @@ the full pattern list.
   `claude_desktop_config.json`, Kiro powers' `mcp.json`.
 - **Electron `Local State` files** that hold the key for encrypted token
   caches.
+- **Desktop connection files:** the Hermes desktop app's `connection.json`
+  and `connections.json`, which hold a remote gateway's token, encrypted
+  with the operating system's key store or in plain text when that
+  encryption is turned off.
 - **Databases flagged whole:** Kilo Code's `kilo.db` and OpenCode's
   `opencode.db`, which embed tokens in their `account` and `credential`
   tables.

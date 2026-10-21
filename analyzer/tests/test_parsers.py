@@ -10747,19 +10747,36 @@ class HermesTests(ParserBase):
             "AppData/Local/hermes/profiles/x/sessions/abc.jsonl",
             ".hermes/state-snapshots/1/state.db",
             "AppData/Local/hermes/profiles/x/state-snapshots/20261001-120000/state.db",
+            # issue 208
+            ".hermes/config.yaml",
+            ".hermes/profiles/work/config.yaml",
+            ".hermes/pairing/telegram-approved.json",
+            "AppData/Local/hermes/platforms/pairing/discord-approved.json",
+            ".hermes/.hermes_history",
+            ".hermes/cron/output/a1b2/2026-10-01_09-00-00.md",
+            ".hermes/response_store.db",
+            "trajectory_samples.jsonl",
+            "failed_trajectories.jsonl",
+            ".config/Hermes/connections.json",
+            "Library/Application Support/Hermes/connections.json",
+            "AppData/Roaming/Hermes/connections.json",
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
         for rel in (
             ".hermes/state-snapshots/1/manifest.json",
             ".hermes/state-snapshots/1/projects.db",
             ".hermes/state-snapshots/state.db",
-            ".hermes/response_store.db",
+            ".hermes/state-snapshots/1/response_store.db",
             ".hermes/sessions/abc.json",
+            ".hermes/pairing/telegram-pending.json",
+            ".hermes/cron/jobs.json",
+            ".config/Hermes/connection.json",
+            "srv/proj/trajectory_samples.jsonl",
         ):
             self.assertFalse(p.wants(rel_only(rel)), rel)
         for a in self.col.artifacts:
             if a.agent == "hermes" and a.rel.endswith(
-                (".yaml", "auth.json", "sessions.json", "manifest.json", "-wal", "-shm")
+                ("auth.json", "sessions.json", "manifest.json", "-wal", "-shm")
             ):
                 self.assertFalse(p.wants(a), a.rel)
         self.assertEqual(decode_content('\x00json:{"text":"x"}'), {"text": "x"})
@@ -11139,12 +11156,17 @@ class HermesTests(ParserBase):
             "sessions/abc.jsonl",
             "state-snapshots/20261001-120000/state.db",
             "pastes/pending.json",
+            "config.yaml",
+            "response_store.db",
+            ".hermes_history",
+            "pairing/telegram-approved.json",
+            "cron/output/a1b2/2026-10-01_09-00-00.md",
         ):
             self.assertTrue(p.wants(rel_only(rel)), rel)
         for rel in (
-            "config.yaml",
+            "auth.json",
             "state.db-wal",
-            "response_store.db",
+            "pairing/telegram-pending.json",
             "sessions/abc.json",
             "state-snapshots/state.db",
             ".config/Hermes/state.db",
@@ -11161,7 +11183,14 @@ class HermesTests(ParserBase):
         wanted = sorted(a.rel for a in col.artifacts if a.agent == "hermes" and p.wants(a))
         self.assertEqual(
             wanted,
-            sorted(["state.db", "sessions/%s.jsonl" % HERMES_DIVERTED, "pastes/pending.json"]),
+            sorted(
+                [
+                    "state.db",
+                    "sessions/%s.jsonl" % HERMES_DIVERTED,
+                    "pastes/pending.json",
+                    "config.yaml",  # no command_allowlist: no rows
+                ]
+            ),
         )
         rows, _, problems, _ = cli.collect_rows(col, Options(), [])
         self.assertEqual(problems, [])
@@ -11174,6 +11203,416 @@ class HermesTests(ParserBase):
         self.assertIn("show the env", [r.text for r in rows if r.session_id == HERMES_DIVERTED])
         self.assertEqual(len([r for r in rows if r.text.startswith("debug report uploaded:")]), 2)
         self.assertTrue(all(a.home.original == HERMES_VOLUME_HOME for a in col.artifacts))
+
+    # -- issue 208: relay, permissions, deletion, past use, origin, scratch ---------------
+    # Source-derived from hermes-agent 86fa9e6; no real install has shown these.
+
+    def hermes_art(self, rel, path, project=""):
+        """An artifact for the file at `path` with `rel` as its path, in a
+        project base `project` when given."""
+        art = dc_replace(self.artifact(self.REL), disk_path=path, rel=rel, original=str(path))
+        if project:
+            art = dc_replace(art, home=dc_replace(art.home, project=True, original=project))
+        return art
+
+    def hermes_file(self, rel, text):
+        path = self.tmp / "h208" / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def gateway_rows(self):
+        from fixtures import build_hermes_gateway
+
+        db = self.tmp / "gateway" / "state.db"
+        build_hermes_gateway(db)
+        return list(HermesParser().parse(self.hermes_art(".hermes/state.db", db), Options()))
+
+    def test_gateway_session_rows(self):
+        from fixtures import HERMES_IMPORTED, HERMES_TG, HERMES_WORKTREE
+
+        p = HermesParser()
+        self.assertTrue(p.records_relay)
+        rows = self.gateway_rows()
+        by_session = {}
+        for r in rows:
+            if r.turn_type == "system" and not r.text.startswith(("parser:", "permission d")):
+                by_session.setdefault(r.session_id, []).append((r.text, r.timestamp_utc))
+        self.assertEqual(
+            by_session[HERMES_TG],
+            [
+                ("session start | Ops | source=telegram | archived=1", "2026-10-01T18:00:00.000Z"),
+                ("model: openai/gpt-5", "2026-10-01T18:00:00.000Z"),
+                (
+                    "session relayed: telegram chat -100123 type group thread - user 42 name "
+                    "alice_tg display Ops chat (from state.db sessions, started_at)",
+                    "2026-10-01T18:00:00.000Z",
+                ),
+                (
+                    "permission setting: yolo_mode=true (from state.db sessions.model_config, "
+                    "started_at)",
+                    "2026-10-01T18:00:00.000Z",
+                ),
+            ],
+        )
+        self.assertEqual(
+            by_session[HERMES_IMPORTED][0][0],
+            "session start | Imported from Claude Code: fix tests | source=claude-code | "
+            "imported from claude-code /home/alice/.claude/projects/-srv-proj/c1.jsonl session c1",
+        )
+        self.assertFalse([t for t, _ in by_session[HERMES_IMPORTED] if "relayed" in t])
+        self.assertEqual(
+            by_session[HERMES_WORKTREE][-1],
+            (
+                "scratch directory: /srv/proj/.worktrees/feat (git worktree the agent created "
+                "in /srv/proj, branch hermes/feat)",
+                "2026-10-01T18:20:00.000Z",
+            ),
+        )
+        relayed = [r for r in rows if r.text.startswith("session relayed:")]
+        self.assertEqual([r.session_id for r in relayed], [HERMES_TG])
+
+    def test_terminal_permission_decisions(self):
+        rows = self.gateway_rows()
+        texts = [(r.turn_type, r.tool_use_id, r.text) for r in rows if r.tool_use_id]
+        self.assertEqual(
+            [t for t in texts if t[0] == "system"],
+            [
+                (
+                    "system",
+                    "call_a",
+                    "permission decision: blocked BLOCKED by smart approval: deletes system files",
+                ),
+                (
+                    "system",
+                    "call_b",
+                    "permission decision: approved (Command required approval (restarts a "
+                    "service) and was approved by the user.)",
+                ),
+                ("system", "call_c", "permission decision: pending pattern=pipe_to_shell "
+                 "smart_denied=false"),
+            ],
+        )  # fmt: skip
+        for i, t in enumerate(texts):  # each right after its call's tool_result
+            if t[0] == "system":
+                self.assertEqual((texts[i - 1][0], texts[i - 1][1]), ("tool_result", t[1]))
+        perm = next(r for r in rows if r.tool_use_id == "call_a" and r.turn_type == "system")
+        self.assertEqual(
+            (perm.tool_name, perm.timestamp_utc), ("terminal", "2026-10-01T18:00:03.000Z")
+        )
+
+    def test_deletion_generation_and_room_rows(self):
+        from fixtures import HERMES_DELETED, HERMES_SWEPT
+
+        rows = self.gateway_rows()
+        deleted = [r for r in rows if r.text.startswith("session deleted:")]
+        tail = " (from state.db state_meta gateway.retired_session.v1, retired_at)"
+        self.assertEqual(
+            [(r.session_id, r.text, r.timestamp_utc) for r in deleted],
+            [
+                (HERMES_DELETED, "session deleted: %s%s" % (HERMES_DELETED, tail),
+                 "2026-10-01T18:40:00.500Z"),
+                (HERMES_SWEPT, "session deleted: %s sweep%s" % (HERMES_SWEPT, tail),
+                 "2026-10-01T18:41:00.000Z"),
+            ],
+        )  # fmt: skip
+        peers = [r for r in rows if r.text.startswith("relay peer:")]
+        self.assertEqual(
+            [(r.text, r.timestamp_utc, r.session_id) for r in peers],
+            [
+                (
+                    "relay peer: telegram agent:main:telegram:group:-100123 generation 2 "
+                    "(from state.db conversation_generations)",
+                    "",
+                    "",
+                )
+            ],
+        )
+        rooms = [r for r in rows if r.text.startswith("bot mode room")]
+        self.assertEqual(
+            [(r.turn_type, r.text, r.timestamp_utc) for r in rooms],
+            [
+                ("system", "bot mode room Planning (room1) seq 1 message.user actor user:u1 "
+                 "(Alice): plan the release", "2026-10-01T19:00:01.000Z"),
+                ("system", "bot mode room Planning (room1) seq 2 message.member actor "
+                 "member:m1 (-): Draft plan ready.", "2026-10-01T19:00:02.000Z"),
+                ("system", 'bot mode room Planning (room1) seq 4 room.renamed actor system:s '
+                 '(-): {"name":"Release"}', "2026-10-01T19:00:04.000Z"),
+            ],
+        )  # fmt: skip
+
+    def test_gateway_bad_records_are_reported(self):
+        from fixtures import HERMES_BADORIGIN
+
+        def reason(text):
+            try:
+                json.loads(text)
+            except ValueError as e:
+                return str(e)
+            return ""
+
+        rows = self.gateway_rows()
+        bad = [r for r in rows if r.text.startswith("parser:")]
+        self.assertEqual(
+            [(r.session_id, r.source_line, r.timestamp_utc, r.text) for r in bad],
+            [
+                (HERMES_BADORIGIN, 4, "", "parser: unparseable record 4 (sessions.origin_json: "
+                 "%s): {bad" % reason("{bad")),
+                ("broken", 4, "", "parser: unparseable record 4 (state_meta.value: %s): {nope"
+                 % reason("{nope")),
+                ("", 3, "", 'parser: unparseable record 3 (hosted_room_events.payload_json: '
+                 '%s): {"name": "Plan' % reason('{"name": "Plan')),
+            ],
+        )  # fmt: skip
+        self.assertEqual(rows[-3:], bad)  # after every other row of the file
+        self.assertIn(
+            "session start | Bad | source=cli",
+            [r.text for r in rows if r.session_id == HERMES_BADORIGIN],
+        )
+
+    def test_prompt_history(self):
+        from fixtures import HERMES_HISTORY_TEXT
+
+        rel = ".hermes/.hermes_history"
+        path = self.hermes_file(rel, HERMES_HISTORY_TEXT)
+        art = self.hermes_art(rel, path)
+        p = HermesParser()
+        self.assertTrue(p.secondary(art))
+        self.assertEqual(p.secondary_tolerance(art), 14 * 3600 + 2.0)
+        rows = list(p.parse(art, Options()))
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [
+                (2, "user", "list files", "2026-10-01T12:00:01.250Z", ""),
+                (5, "system", "slash command: /model openai/gpt-5", "2026-10-01T14:00:05.123Z", ""),
+                (8, "user", "first line\nsecond line", "2026-10-01T14:01:00.000Z", ""),
+            ],
+        )
+        # the TUI's UTC entry pairs with the state.db prompt it repeats
+        live = self.rows_for(p, self.REL)
+        kept, dropped = deduplicate(live, [(r, p.secondary_tolerance(art)) for r in rows])
+        self.assertEqual(dropped["hermes"], 1)
+        self.assertEqual([r.text for r in kept[len(live) :]], [r.text for r in rows[1:]])
+
+    def test_prompt_history_truncated_line(self):
+        from fixtures import HERMES_HISTORY_TEXT
+
+        rel = ".hermes/.hermes_history"
+        path = self.hermes_file(rel, HERMES_HISTORY_TEXT)
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n# 2026-10-01 15:00:00.000\n+after the cut\n")
+        rows = list(HermesParser().parse(self.hermes_art(rel, path), Options()))
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [
+                ("user", "list files"),
+                ("system", "slash command: /model openai/gpt-5"),
+                ("user", "first line\nsecond line"),
+                ("user", "after the cut"),
+                ("system", "parser: unparseable line (not a FileHistory line): " + BAD_LINE),
+            ],
+        )
+
+    def test_cron_run_files(self):
+        from fixtures import (
+            HERMES_CRON_JOB,
+            HERMES_CRON_PROMPT,
+            HERMES_CRON_REPLY,
+            hermes_cron_docs,
+        )
+
+        p = HermesParser()
+        out = {}
+        for name, doc in hermes_cron_docs().items():
+            rel = ".hermes/cron/output/%s/%s" % (HERMES_CRON_JOB, name)
+            art = self.hermes_art(rel, self.hermes_file(rel, doc))
+            self.assertTrue(p.secondary(art))
+            self.assertEqual(p.secondary_tolerance(art), 14 * 3600 + 2.0)
+            out[name] = [(r.turn_type, r.text, r.timestamp_utc) for r in p.parse(art, Options())]
+        head = "cron run: job %s (from cron/output, file name time, host-local)" % HERMES_CRON_JOB
+        self.assertEqual(
+            out["2026-10-01_09-00-00.md"],
+            [
+                ("system", head, "2026-10-01T09:00:00.000Z"),
+                ("user", HERMES_CRON_PROMPT, "2026-10-01T09:00:00.000Z"),
+                ("assistant", HERMES_CRON_REPLY, "2026-10-01T09:00:00.000Z"),
+            ],
+        )
+        self.assertEqual(
+            [t[:2] for t in out["2026-09-30_09-00-00.md"]],
+            [("system", head), ("user", "Summarise yesterday."), ("assistant", "Nothing new.")],
+        )
+        self.assertEqual(
+            [t[:2] for t in out["2026-09-29_09-00-00.md"]],
+            [
+                ("system", head),
+                (
+                    "system",
+                    "cron run output: # Cron Job: Daily summary (FAILED)\n\n"
+                    "Error: provider unreachable",
+                ),
+            ],
+        )
+
+    def test_response_store(self):
+        from fixtures import HERMES_API_SESSION, build_hermes_responses
+
+        rel = ".hermes/response_store.db"
+        path = self.tmp / "h208" / rel
+        build_hermes_responses(path)
+        art = self.hermes_art(rel, path)
+        p = HermesParser()
+        self.assertTrue(p.secondary(art))
+        rows = list(p.parse(art, Options()))
+        head = (
+            "api server response %s status=completed model=hermes-agent conversation=%s"
+            " (from response_store.db responses, created_at)"
+        )
+        reason = ""
+        try:
+            json.loads("{cut")
+        except ValueError as e:
+            reason = str(e)
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [
+                (2, "system", head % ("resp_1", "-"), "2026-10-01T20:00:00.000Z",
+                 HERMES_API_SESSION),
+                (2, "user", "what is 2+2?", "", HERMES_API_SESSION),
+                (2, "assistant", "4", "", HERMES_API_SESSION),
+                (1, "system", head % ("resp_2", "math"), "2026-10-01T20:00:10.000Z",
+                 HERMES_API_SESSION),
+                (1, "user", "and 3+3?", "", HERMES_API_SESSION),
+                (1, "assistant", "6", "", HERMES_API_SESSION),
+                (3, "system", "parser: unparseable record 3 (responses.data: %s): {cut" % reason,
+                 "", ""),
+            ],
+        )  # fmt: skip
+
+    def test_pairing_and_allowlist_settings(self):
+        from fixtures import HERMES_CONFIG_YAML, HERMES_PAIRING
+
+        p = HermesParser()
+        rel = ".hermes/pairing/telegram-approved.json"
+        art = self.hermes_art(rel, self.hermes_file(rel, json.dumps(HERMES_PAIRING)))
+        self.assertFalse(p.secondary(art))
+        rows = list(p.parse(art, Options()))
+        self.assertEqual(
+            [(r.source_line, r.text, r.timestamp_utc, r.session_id) for r in rows],
+            [
+                (1, "permission setting: pairing.telegram.42 user_name=alice_tg (from "
+                 "pairing/telegram-approved.json, approved_at)", "2026-10-01T12:00:00.000Z", ""),
+                (2, 'parser: unparseable record 2 (not an object): {"43":"not an object"}', "",
+                 ""),
+            ],
+        )  # fmt: skip
+        rel = ".hermes/config.yaml"
+        art = self.hermes_art(rel, self.hermes_file(rel, HERMES_CONFIG_YAML))
+        rows = list(p.parse(art, Options()))
+        tail = " (from config.yaml, file mtime)"
+        self.assertEqual(
+            [(r.source_line, r.text) for r in rows],
+            [
+                (5, "permission setting: command_allowlist=rm -rf /tmp/*" + tail),
+                (6, "permission setting: command_allowlist=git push --force*" + tail),
+                (7, "permission setting: command_allowlist=echo 'hi'" + tail),
+            ],
+        )
+        self.assertTrue(all(r.timestamp_utc.endswith("Z") for r in rows))
+
+    def test_allowlist_that_is_not_a_flat_list(self):
+        p = HermesParser()
+        rel = ".hermes/config.yaml"
+        cases = {
+            "command_allowlist:\n  - ok\n  - key: value\n": (
+                ["permission setting: command_allowlist=ok (from config.yaml, file mtime)"],
+                "line 3: not a string item of command_allowlist",
+            ),
+            "command_allowlist: [a, b]\n": ([], "line 1: command_allowlist is not a block list"),
+            "command_allowlist:\n  - one\n    two\n": (
+                ["permission setting: command_allowlist=one (from config.yaml, file mtime)"],
+                "line 3: not a string item of command_allowlist",
+            ),
+        }
+        for text, (settings, problem) in cases.items():
+            art = self.hermes_art(rel, self.hermes_file(rel, text))
+            rows = [r.text for r in p.parse(art, Options())]
+            self.assertEqual(
+                rows,
+                [
+                    *settings,
+                    "parser: config.yaml command_allowlist is not a flat list (%s)" % problem,
+                ],
+            )
+        for text in ("model: x\n", "command_allowlist: []\nother: 1\n", "command_allowlist:\n"):
+            art = self.hermes_art(rel, self.hermes_file(rel, text))
+            self.assertEqual(list(p.parse(art, Options())), [], text)
+
+    def test_desktop_connections(self):
+        from fixtures import HERMES_CONNECTIONS
+
+        p = HermesParser()
+        rel = ".config/Hermes/connections.json"
+        art = self.hermes_art(rel, self.hermes_file(rel, json.dumps(HERMES_CONNECTIONS)))
+        self.assertFalse(p.secondary(art))
+        rows = list(p.parse(art, Options()))
+        tail = " (from connections.json, file mtime)"
+        self.assertEqual(
+            [(r.source_line, r.text, r.session_id) for r in rows],
+            [
+                (2, "remote backend: remote Homelab https://hermes.example.net" + tail, ""),
+                (3, "remote backend: ssh Build box ci@build:22" + tail, ""),
+                (4, "remote backend: cloud Cloud https://x.cloud.example org=acme name=prod"
+                 + tail, ""),
+                (0, "remote backend quarantined by the app: missing label" + tail, ""),
+                (5, 'parser: unparseable record 5 (not an object): "not an object"', ""),
+            ],
+        )  # fmt: skip
+        self.assertFalse([r for r in rows if "not-real" in r.text])
+
+    def test_trajectory_file(self):
+        from fixtures import _jsonl, hermes_trajectory_records
+
+        p = HermesParser()
+        rel = "trajectory_samples.jsonl"
+        path = self.tmp / "h208" / "proj" / rel
+        _jsonl(path, hermes_trajectory_records())
+        art = self.hermes_art(rel, path, project="/srv/proj")
+        self.assertTrue(p.secondary(art))
+        rows = list(p.parse(art, Options()))
+        line2 = json.dumps(hermes_trajectory_records()[1])
+        self.assertEqual(
+            [(r.source_line, r.turn_type, r.text, r.timestamp_utc) for r in rows],
+            [
+                (1, "system", "trajectory: model=anthropic/claude-sonnet-4 completed=true (from "
+                 "trajectory_samples.jsonl, timestamp host-local)", "2026-10-01T12:00:05.000Z"),
+                (1, "system", "trajectory system prompt: You are a function calling AI model.",
+                 ""),
+                (1, "user", "list files", ""),
+                (1, "assistant", "<tool_call>ls</tool_call>", ""),
+                (1, "tool_result", "<tool_response>a.txt</tool_response>", ""),
+                (1, "assistant", "One file.", ""),
+                (2, "system", "parser: unparseable line (conversations is not a list): " + line2,
+                 ""),
+            ],
+        )  # fmt: skip
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+        self.assertEqual({r.session_id for r in rows}, {""})
+
+    def test_trajectory_truncated_line(self):
+        from fixtures import _jsonl, hermes_trajectory_records
+
+        rel = "failed_trajectories.jsonl"
+        path = self.tmp / "h208" / "proj" / rel
+        _jsonl(path, hermes_trajectory_records()[:1])
+        write_bad_line(path)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n" + json.dumps(hermes_trajectory_records()[0]) + "\n")
+        rows = list(HermesParser().parse(self.hermes_art(rel, path, "/srv/proj"), Options()))
+        self.assertEqual([r.text for r in rows if r.turn_type == "user"], ["list files"] * 2)
+        self.assertEqual(rows[-1].text, bad_line_text())
+        self.assertEqual((rows[-1].source_line, rows[-1].project_path), (2, "/srv/proj"))
 
 
 class AgentZeroTests(ParserBase):

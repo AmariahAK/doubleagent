@@ -7,7 +7,9 @@ in one SQLite store per profile home, in OpenAI chat-completions message shape. 
 of another agent, but it can import Claude Code and Codex CLI sessions
 ([Imported sessions](#imported-sessions)), and Agent Zero's Orchestrator plugin can start it
 ([Started by another agent](#started-by-another-agent)). Parsed: the hermes parser reads
-`state.db`, its quick snapshots, the divert JSONL sessions and `pastes/pending.json`.
+`state.db`, its quick snapshots, the divert JSONL sessions, `pastes/pending.json`, the prompt
+history, the cron run archive, `response_store.db`, the trajectory files, the standing approvals
+in `config.yaml` and the pairing stores, and the desktop app's `connections.json`.
 
 ## Source and evidence
 
@@ -33,6 +35,14 @@ agrees with it. Read only: nothing was installed or run.
 
 ### Source reviews
 
+- 2026-10-21: NousResearch/hermes-agent at
+  [`86fa9e6`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872),
+  with prompt-toolkit/python-prompt-toolkit at
+  [`d8adbe9`](https://github.com/prompt-toolkit/python-prompt-toolkit/commit/d8adbe9bfcf5f7e95b015d8ab12e2985b9a7822b)
+  (3.0.52, the version Hermes pins) for the history file format: the Parser plan's proposals are
+  now what the parser does; added the shapes of the cron run documents, the response store's
+  history, the Bot Mode room events and the desktop connection registry, the snapshot count after
+  `hermes update`, the gateway tokens in the desktop connection files, and the source-host review.
 - 2026-10-19: HEAD
   [`86fa9e6ca1de7ee71132d2be0103f3e37d1fa872`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872),
   against the
@@ -170,7 +180,9 @@ so its `userData` is the Electron default `Hermes` directory, overridable by
 ([`data-paths.mjs:35-39`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/electron/data-paths.mjs#L35-L39)).
 It holds `connection.json`, `connections.json`, `active-profile.json` and window state
 ([`apps/desktop/electron/main.ts:1222`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/electron/main.ts#L1222),[`1331-1341`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/apps/desktop/electron/main.ts#L1331-L1341));
-conversations stay in `state.db`.
+conversations stay in `state.db`. `connections.json` is the registry of the backends the app
+talks to ([Desktop connection registry](#desktop-connection-registry)); both connection files are
+credentials ([Credentials](#credentials)).
 
 ### Credentials
 
@@ -209,6 +221,28 @@ so it can hold keys inside an otherwise excluded tree. `config.yaml` is for non-
 ([`configuration.md:62-63`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/website/docs/user-guide/configuration.md#L62-L63)).
 No OS keychain for Hermes' own secrets; secret managers (1Password, command sources) are pluggable.
 
+The desktop app's `connection.json` and `connections.json` hold each remote gateway's token (and
+extra gateway headers) as an envelope that Electron's `safeStorage` encrypts with the operating
+system's key store, or as `{"encoding": "plain", "value": <token>}` when the app's secret storage
+policy is off
+([`apps/desktop/electron/main.ts:1349-1354`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/apps/desktop/electron/main.ts#L1349-L1354),
+[`apps/desktop/electron/main.ts:8252-8257`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/apps/desktop/electron/main.ts#L8252-L8257),
+[`apps/desktop/electron/main.ts:8773-8780`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/apps/desktop/electron/main.ts#L8773-L8780)).
+Both, and the `connections.json.corrupt-<time>` copy the app keeps of an unreadable registry
+([`apps/desktop/electron/main.ts:8759`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/apps/desktop/electron/main.ts#L8759)),
+are flagged as secrets.
+
+A GitHub token, when the user gives one, is `GITHUB_TOKEN` or `GH_TOKEN` in `.env` (or
+`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH` and `GITHUB_APP_INSTALLATION_ID` for a GitHub App),
+used by the Skills Hub, plugin installs, the update check and the webhook platform's
+`github_comment` delivery, with the gh CLI's own login (`gh auth token`) as the fallback
+([`tools/skills_hub_github.py:72-74`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/skills_hub_github.py#L72-L74),
+[`tools/skills_hub_github.py:134-148`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/tools/skills_hub_github.py#L134-L148),
+[`hermes_cli/git_credentials.py:11-17`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/git_credentials.py#L11-L17),
+[`hermes_cli/github_api.py:9-14`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/github_api.py#L9-L14),
+[`gateway/platforms/webhook.py:71-72`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/platforms/webhook.py#L71-L72));
+`.env` is already flagged.
+
 `state.db` can contain credentials typed into commands ([Secrets](#secrets)); it is
 collected unflagged.
 
@@ -226,10 +260,14 @@ hundreds of GB",
 ([`tools/environments/base.py:191`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/tools/environments/base.py#L191)).
 Keep `checkpoints/store/projects/*.json` for discovery.
 
-`state-snapshots/` and `backups/` are large but hold older copies of `state.db`, so they may be the
-only record of a deleted or pruned session
-([What survives a delete](#what-survives-a-delete)). The catalog excludes them by default; use
-`--full` when deletion is suspected. They also contain `.env` and `auth.json`. `cache/` is not
+`state-snapshots/` and `backups/` hold older copies of `state.db`, so they may be the only record of
+a deleted or pruned session ([What survives a delete](#what-survives-a-delete)). The catalog
+collects `state-snapshots/`, whose count is bounded ([Transcript stores](#transcript-stores)) and
+whose databases the parser reads, and excludes the zip archives under `backups/`; use `--full`
+when deletion is suspected and a zip backup may hold more. A snapshot also holds copies of `.env`,
+`auth.json` and the pairing stores, which the home-relative secret globs (their `*` crosses `/`)
+and the volume-relative `state-snapshots/*/.env`, `state-snapshots/*/auth.json`,
+`state-snapshots/*/pairing/*` and `state-snapshots/*/platforms/pairing/*` flag. `cache/` is not
 excluded: `cache/terminal` holds tool output. `sandboxes/` stays excluded: a container backend's
 persistent workspace can hold whole repositories, and the commands that ran there are in
 `state.db`.
@@ -332,7 +370,15 @@ Globs relative to the user home:
   [`hermes_cli/backup.py:1422-1430`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1422-L1430));
   `hermes update` passes a file-size cap, so a large `state.db` can be missing from its snapshot
   ([`hermes_cli/update_cmd_maint.py:690-691`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/update_cmd_maint.py#L690-L691)).
-  Collected only with `--full`: the catalog excludes `state-snapshots` ([Exclusions](#exclusions)).
+  At the 2026-10-19 HEAD that cap is 1 GiB and the count `hermes update` passes is 1, so an update
+  prunes every older snapshot, manual ones included, unless a database failed to copy or was too
+  large
+  ([`hermes_cli/update_cmd_maint.py:30-34`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/update_cmd_maint.py#L30-L34),
+  [`hermes_cli/backup.py:1457-1465`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/backup.py#L1457-L1465));
+  the files copied are `state.db`, `config.yaml`, `.env`, `auth.json`, the cron, gateway, project,
+  response, memory, verification and kanban stores and both pairing directories
+  ([`hermes_cli/backup.py:1104-1122`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/backup.py#L1104-L1122)).
+  Collected by default ([Exclusions](#exclusions)).
 - `.hermes/backups/pre-update-*.zip` and `pre-migration-*.zip`: full zip backups of the home, 5 of
   each
   ([`hermes_cli/backup.py:1120-1124`](https://github.com/NousResearch/hermes-agent/blob/8b66a51036c1e20920a17cdd049fdf55c968d683/hermes_cli/backup.py#L1120-L1124));
@@ -451,13 +497,16 @@ the session-row heal of
 replays the in-memory transcript only when a session row was deleted, a
 different failure.
 
-The analyzer reads the snapshots and the `sessions/<id>.jsonl`
-diverts as secondary sources (see
-[Secondary sources](../analyzer/docs/output.md#secondary-sources)) and the
-imported sessions as Hermes sessions; it does not read the tombstones,
-`.hermes_history`, `cron/output/`, `response_store.db` or the trajectory
-files ([Past use and secondary sources](#past-use-rows-and-secondary-sources),
-[Deletion](#deletion-rows)).
+The analyzer reads the snapshots, the `sessions/<id>.jsonl` diverts,
+`.hermes_history`, `cron/output/`, `response_store.db` and the trajectory
+files as secondary sources (see
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)), the
+imported sessions as Hermes sessions, and the tombstones and the
+`conversation_generations` rows as `system` rows
+([Past use and secondary sources](#past-use-rows-and-secondary-sources),
+[Deletion](#deletion-rows)). It does not read the copies of
+`response_store.db` and the other stores inside a snapshot, or a memory
+provider's copy.
 
 ### Record schema
 
@@ -635,8 +684,8 @@ underlying platform, not `relay`
 ### Other stores
 
 The stores below sit beside `state.db`. Each says whether the parser reads it. The sources of past
-use the parser does not read were listed at the 2026-10-19 HEAD; none of them is new since the
-cited commit unless it says so.
+use were listed at the 2026-10-19 HEAD and their shapes read there on 2026-10-21; none of them is
+new since the cited commit unless it says so.
 
 #### Prompt history
 
@@ -650,11 +699,14 @@ prompt_toolkit's `FileHistory` format: per entry a blank line, a
 writes the timestamp as UTC `YYYY-MM-DD HH:MM:SS.mmm` and keeps the
 last 1000 entries in memory only
 ([`ui-tui/src/lib/history.ts:71-78`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/ui-tui/src/lib/history.ts#L71-L78)),
-while prompt_toolkit writes local time. Every typed line, slash
-commands included (`/model`, `/yolo`, `/snapshot`), with no session id
-or project. Nothing that deletes a session touches it, so it survives
-a delete, a prune, a rewind and a removed project. Joins on text and
-time only. Secondary; not read.
+while prompt_toolkit 3.0.52, the version Hermes pins, writes
+`datetime.now()`, host-local time with microseconds and no zone
+([`src/prompt_toolkit/history.py:297-306`](https://github.com/prompt-toolkit/python-prompt-toolkit/blob/d8adbe9bfcf5f7e95b015d8ab12e2985b9a7822b/src/prompt_toolkit/history.py#L297-L306)),
+so the number of fraction digits tells the two writers apart. Every
+typed line, slash commands included (`/model`, `/yolo`, `/snapshot`),
+with no session id or project. Nothing that deletes a session touches
+it, so it survives a delete, a prune, a rewind and a removed project.
+Joins on text and time only. Secondary; read by the parser.
 
 #### Cron run archive
 
@@ -665,8 +717,30 @@ count
 ([`cron/jobs.py:114`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/jobs.py#L114),
 [`cron/jobs.py:3384-3395`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/jobs.py#L3384-L3395),
 [`cron/scheduler_prompt.py:72-73`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/scheduler_prompt.py#L72-L73)).
+The name's time and the document's `**Run Time:**` are
+`hermes_time.now()`, Hermes' configured zone or the host's, written
+without an offset
+([`cron/jobs.py:3384-3392`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/jobs.py#L3384-L3392),
+[`hermes_time.py:146-149`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_time.py#L146-L149)).
+A completed run's document is the header (`# Cron Job: <name>`,
+`**Job ID:**`, `**Run Time:**`, `**Schedule:**`), then
+`**Prompt Characters:** <n>` and `## Prompt` with the prompt, a blank
+line, `**Response Characters:** <m>` and `## Response` with the
+response and a newline; the two lengths frame the sections, so a
+heading quoted inside the prompt is no boundary
+([`cron/scheduler.py:2238-2246`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/scheduler.py#L2238-L2246),
+[`cron/scheduler.py:2634-2640`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/scheduler.py#L2634-L2640),
+[`cron/scheduler_prompt.py:70-80`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/scheduler_prompt.py#L70-L80)).
+Older writers left out the frames, and Hermes' own reader then takes
+the last `## Response` heading as the boundary
+([`cron/scheduler_prompt.py:80-94`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/scheduler_prompt.py#L80-L94));
+a failed, blocked or script-gated run is a short document with no
+prompt section
+([`cron/scheduler.py:2267`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/scheduler.py#L2267),
+[`cron/scheduler.py:2303-2308`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/cron/scheduler.py#L2303-L2308)).
 Survives the prune or delete of the run's `source='cron'` session.
-Joins on the job id and time, not on a session id. Secondary; not read.
+Joins on the job id and time, not on a session id. Secondary; read by
+the parser.
 
 #### API server response store
 
@@ -682,10 +756,19 @@ cumulative history at that response; table `conversations` (`name`,
 [`gateway/platforms/api_server_response_store.py:21-24`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/platforms/api_server_response_store.py#L21-L24),
 [`gateway/platforms/api_server_response_store.py:58-61`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/platforms/api_server_response_store.py#L58-L61),
 [`gateway/platforms/api_server_openai_routes.py:354-358`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/platforms/api_server_openai_routes.py#L354-L358)).
+`response` is the Responses API envelope (`id`, `object`, `status`,
+`created_at` in epoch seconds, `model`, `output`, `usage`), and
+`conversation_history` is a list of OpenAI chat-completions message
+dicts, the shape of a `messages` row: the earlier history, the turn's
+user message and the agent's messages, or the assistant's final text
+when the agent returned none
+([`gateway/platforms/api_server_openai_routes.py:330-358`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/platforms/api_server_openai_routes.py#L330-L358),
+[`gateway/platforms/api_server_openai_routes.py:1472-1500`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/platforms/api_server_openai_routes.py#L1472-L1500));
+the messages carry no time of their own.
 No session delete path names it (grepped `response_store` and
 `ResponseStore` in `hermes_state*.py` and `hermes_cli/sessions*.py`:
 only the WAL helper), so it outlives a deleted `api_server` session.
-Joins on `session_id`. Secondary; not read.
+Joins on `session_id`. Secondary; read by the parser.
 
 #### Trajectory files
 
@@ -695,8 +778,13 @@ one line per run in the ShareGPT format (a common layout for conversation traini
 `{conversations, timestamp, model, completed}`, `timestamp` local ISO 8601 without a zone, no
 session id
 ([`agent/trajectory.py:37-41`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/agent/trajectory.py#L37-L41)).
+Each `conversations` entry is `{from, value}`: `system` (the tool-calling
+system prompt), `human` (the user's message), `gpt` (a reply, or a
+tool-call turn in `<tool_call>` markup) and `tool` (the call results in
+`<tool_response>` blocks)
+([`agent/agent_runtime_helpers.py:170-196`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/agent/agent_runtime_helpers.py#L170-L196)).
 Written only with `--save-trajectories`; survives everything. Joins on
-text and time within a project. Secondary; not read.
+text within a project. Secondary; read by the parser.
 
 #### Imported sessions
 
@@ -712,8 +800,9 @@ title `Imported from <tool>: <first line>`
 [`hermes_cli/foreign_sessions.py:254-260`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/foreign_sessions.py#L254-L260)).
 The messages are appended at import time, so their `timestamp` is the
 import's, not the original turn's. The parser reads these rows as
-Hermes sessions (they are in `state.db`), and its start row shows
-`source=claude-code` but not the origin path; such a session is a
+Hermes sessions (they are in `state.db`), and its start row names the
+source tool, the original path and the foreign session id
+([Past-use rows and secondary sources](#past-use-rows-and-secondary-sources)); such a session is a
 copy of another agent's transcript that outlives the original file.
 
 #### Bot Mode group chats
@@ -725,9 +814,21 @@ and `hosted_room_events` (`room_id`, `seq`, `event_id`, `kind`,
 the gateway's root `state.db`
 ([`gateway/hosted_rooms.py:1-5`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/hosted_rooms.py#L1-L5),
 [`gateway/hosted_rooms.py:88-117`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/hosted_rooms.py#L88-L117)).
-The event kinds and payload shapes were not examined; whether a room
-message also becomes a `messages` row was not determined. Secondary
-until shown otherwise; not read.
+The event kinds are fixed per actor: `message.user` for the user,
+`message.member` for a member bot, `member.unavailable`,
+`room.activity`, `room.stop_requested` and the `turn.*` kinds for the
+gateway, and `authority.*`, `room.created`, `room.disbanded`,
+`room.members_changed` and `room.renamed` for the system; `actor_json`
+is `{kind, id}` with optional `display_name`, `profile` and
+`connection_id`
+([`gateway/hosted_rooms.py:48-60`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/hosted_rooms.py#L48-L60)).
+A `message.user` payload is `{thread_id, text, attachments?}` and a
+`message.member` payload carries the member's turn coordinates and
+`text`
+([`gateway/hosted_room_discussion.py:199-211`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/hosted_room_discussion.py#L199-L211),
+[`gateway/hosted_room_discussion.py:387-408`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/hosted_room_discussion.py#L387-L408)).
+Whether a room message also becomes a `messages` row was not
+determined. Read by the parser as `system` rows.
 
 #### Conversation generations
 
@@ -737,8 +838,24 @@ deleted, so it names every platform chat (`session_key` is
 `agent:<profile>:<platform>:...`) that ever had a conversation after
 its sessions are gone
 ([`hermes_state_common.py:642-669`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_state_common.py#L642-L669)).
-No time column. Secondary, with no text to join on; a record of
-relay use, not of turns. Not read.
+No time column. A record of relay use, not of turns, with no text to
+join on; read by the parser as `system` rows.
+
+#### Desktop connection registry
+
+The desktop app's `connections.json` (version 2) is `{version, primary,
+launchMode, lastUsed, connections, quarantined?}`; each connection is
+`{id, kind, label}` with `kind` one of `local`, `remote` (a `hermes
+serve` gateway), `ssh` and `cloud` (Hermes Cloud), `url`, `authMode`,
+`token` and `headers` for `remote` and `cloud`, `org` and `name` for
+`cloud`, and `host`, `user`, `port`, `keyPath`, `remoteHermesPath` and
+`remoteProfile` for `ssh`; exactly one `local` entry is always present,
+and an entry that failed to load is kept under `quarantined` as
+`{reason, entry}`
+([`apps/desktop/electron/connection-registry.ts:19-20`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/apps/desktop/electron/connection-registry.ts#L19-L20),
+[`apps/desktop/electron/connection-registry.ts:44-106`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/apps/desktop/electron/connection-registry.ts#L44-L106)).
+It records which other Hermes hosts the app drove, not their sessions.
+Read by the parser.
 
 #### Debug-share paste list
 
@@ -840,11 +957,22 @@ deduplication ([issue 122](https://github.com/seanthegeek/doubleagent/issues/122
 | `state.db` (via `sqlite_util`, so the WAL is read) | primary | the store of record for every front end |
 | `state-snapshots/<id>/state.db` | secondary | an older copy of `state.db`; read with the same reader after one `system` row `state snapshot <id>: older copy of state.db`, timestamped from the id's UTC time when the id starts with one, else empty; rows pair with the live rows exactly, and the copies several snapshots keep of a pruned session collapse to the first |
 | `sessions/<id>.jsonl` | secondary | a divert of messages `state.db` did not take; `session_id` from the file name, no project path (the match is by session id), each line's own `timestamp` or none |
+| `.hermes_history` | secondary | the prompt history ([Prompt history](#prompt-history)); one `user` row per entry at its time, a `system` row `slash command: <entry>` for an entry starting `/`, no session or project |
+| `cron/output/<job>/<time>.md` | secondary | a cron run's prompt and response ([Cron run archive](#cron-run-archive)); a `system` row `cron run: job <job> (from cron/output, file name time, host-local)`, then the prompt as `user` and the response as `assistant`, or `cron run output: <document>` for a document with no prompt section, all at the file name's time, no session |
+| `response_store.db` | secondary | the API server's history per response ([API server response store](#api-server-response-store)); per response by `created_at` a `system` row `api server response <id> status=<status> model=<model> conversation=<name> (from response_store.db responses, created_at)`, then the `conversation_history` messages no earlier response of the session held at the same position, read with the `state.db` message reader, with `data.session_id` and no time |
+| `trajectory_samples.jsonl`, `failed_trajectories.jsonl` (project files) | secondary | ShareGPT runs ([Trajectory files](#trajectory-files)); per line a `system` row `trajectory: model=<model> completed=<completed> (from <file>, timestamp host-local)` at its `timestamp`, then `human` as `user`, `gpt` as `assistant`, `tool` as `tool_result`, `system` as `trajectory system prompt: <value>`, with the project directory and no time or session |
+| `config.yaml` | settings | `command_allowlist` ([Permission rows](#permission-rows)) |
+| `pairing/<platform>-approved.json`, `platforms/pairing/<platform>-approved.json` | settings | the gateway's approved users ([Permission rows](#permission-rows)) |
+| `connections.json` in the desktop app's userData directory | settings | the remote backends ([Sync, relay and origin rows](#sync-relay-and-origin-rows)) |
 | `sessions/<id>.json`, `session_<id>.json` | not read | no writer at the checked commit, shape unknown |
-| `backups/*.zip`, `sessions/saved/*.json`, `response_store.db` | not read | archives and exports; `response_store.db` is a secondary source not yet read ([API server response store](#api-server-response-store)) |
+| `backups/*.zip`, `sessions/saved/*.json`, the stores other than `state.db` inside a snapshot, `connection.json` | not read | archives, exports and copies |
 
-Both secondary sources keep the default 2-second tolerance: their times
-are copies of the live ones, not later stamps. Rows: one per message; an assistant row
+The snapshots, the diverts, the response store and the trajectory files
+keep the default 2-second tolerance: their times are copies of the live
+ones, not later stamps, or absent. `.hermes_history` and the cron run
+files keep host-local times without a zone (the TUI's history entries
+excepted), written as if UTC, so their window is 14 hours plus 2
+seconds, which spans every zone offset. Rows: one per message; an assistant row
 with N `tool_calls` yields one `assistant` row (when `content` is non-empty),
 one `thinking` row (when `reasoning`/`reasoning_content` is set), and N
 `tool_use` rows. Order by `timestamp, id`. Include `active=0` rows: they are
@@ -865,37 +993,45 @@ evidence of rewound or compacted turns.
 
 The subsections that follow are written against HEAD
 [`86fa9e6`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872);
-the model-switch rows, the volume homes and the `tool_calls` rows are
-implemented ([issue 180](https://github.com/seanthegeek/doubleagent/issues/180),
-[issue 181](https://github.com/seanthegeek/doubleagent/issues/181) and
-[issue 182](https://github.com/seanthegeek/doubleagent/issues/182)); the rest is not, and every
-proposal rests on source alone, so each change starts with a per-step real-install round.
+every row the subsections describe is implemented
+([issue 180](https://github.com/seanthegeek/doubleagent/issues/180),
+[issue 181](https://github.com/seanthegeek/doubleagent/issues/181),
+[issue 182](https://github.com/seanthegeek/doubleagent/issues/182) and
+[issue 208](https://github.com/seanthegeek/doubleagent/issues/208)), and all of it rests on source
+alone; the per-step real-install round is still owed. `-` stands for an absent value in every row
+text.
 
 #### Permission rows
 
-Implemented: none. The pairing stores named in
-[Credentials](#credentials)
-had no recorded shape when the parser was written and are not read, so there are no permission
-rows.
+Implemented, source-derived; not observed on any real install. The records are under
+[Permission outcomes and settings](#permission-outcomes-and-settings).
 
-Proposed (gap): the shape of the pairing store is now known
-([Permission outcomes and settings](#permission-outcomes-and-settings)). After a `terminal`
-`tool_result` whose JSON has `approval`, `permission decision:
-approved (<approval note>)`; with `status` `blocked`, `permission
-decision: blocked <error>`; with `status` `pending_approval`,
-`permission decision: pending pattern=<pattern_key>
-smart_denied=<smart_denied>`, each with the call's `tool_name` and
-`tool_use_id`. One `permission setting: yolo_mode=true (from
-state.db sessions.model_config, started_at)` row per session whose
-`model_config` has it. From `config.yaml`, one `permission setting:
-<key>=<value> (from config.yaml, file mtime)` row per
-`command_allowlist` entry, `approvals.deny` entry and `approvals.mode`,
-`cron_mode`, `single_query_mode` and `unattended_mode`; from
-`pairing/<platform>-approved.json`, one `permission setting:
-pairing.<platform>.<user_id> user_name=<user_name> (from
-pairing/<platform>-approved.json, approved_at)` row per user at
-`approved_at`. Both files are collected (the pairing files flagged
-secret).
+- After a `terminal` `tool_result` whose JSON content has `approval`, `permission decision:
+  approved (<approval note>)`; with `status` `blocked`, `permission decision: blocked <error>`,
+  followed by ` user_summary=<user_summary>` when a person was asked; with `status`
+  `pending_approval`, `permission decision: pending pattern=<pattern_key>
+  smart_denied=<true|false>`; each with the call's `tool_name`, `tool_use_id` and the result's
+  time. A result that is not a JSON object gives no row.
+- One `permission setting: yolo_mode=<true|false> (from state.db sessions.model_config,
+  started_at)` row per session whose `model_config` has the key, at `started_at`.
+- From `config.yaml`, one `permission setting: command_allowlist=<pattern> (from config.yaml,
+  file mtime)` row per entry of the top-level block list, at the file's modification time. Only
+  that shape is read, the block style of Hermes' round-trip YAML writer (`- <scalar>` items,
+  plain, single- or double-quoted)
+  ([`hermes_cli/config.py:2064`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_cli/config.py#L2064),
+  [`hermes_yaml.py:89-98`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/hermes_yaml.py#L89-L98));
+  any other construct under the key is one whole-file row `parser: config.yaml command_allowlist
+  is not a flat list (<line>: <problem>)` after the entries before it. The nested `approvals`
+  settings (`mode`, `cron_mode`, `single_query_mode`, `unattended_mode`, `deny`) need a YAML
+  reader and are not read.
+- From `pairing/<platform>-approved.json` or `platforms/pairing/<platform>-approved.json`
+  (the newer location,
+  [`gateway/pairing.py:58-59`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/pairing.py#L58-L59)),
+  one row per user at `approved_at`, `permission setting: pairing.<platform>.<user_id>
+  user_name=<user_name> (from pairing/<platform>-approved.json, approved_at)`, or `(from
+  platforms/pairing/...` for the newer file. The pending files
+  hold live pairing codes and are not read. Both files are collected flagged secret, so a
+  `--no-secrets` collection gives none of these rows.
 
 #### Model rows
 
@@ -936,19 +1072,26 @@ Implemented: the snapshots and the diverts are secondary sources (the source tab
 section), and imported sessions are read as Hermes sessions
 ([What survives a delete](#what-survives-a-delete)).
 
-Proposed (gap), for the stores in [Other stores](#other-stores): `.hermes_history` (secondary,
-`user` rows with the entry's time and no session; a slash command keeps its own row),
-`cron/output/*/*.md` (secondary, `user` from `## Prompt` and
-`assistant` from `## Response` at the file name's local time, no
-session id), `response_store.db` (secondary, `conversation_history`
-joined on `data.session_id`), the trajectory files (secondary, no
-session), and the `hosted_room_events` log (to be examined in the
-round). The `imported_from` object of `origin_json` should go on the
-session start row (`imported from <tool> <path> session
-<foreign_session_id>`), since the turns carry the import's time.
-`conversation_generations` gives no text; one `system` row per row,
-`relay peer: <source> <session_key> generation <n>`, with an empty
-`timestamp_utc`, would show chats whose sessions are gone.
+Implemented, source-derived; not observed on any real install:
+
+- `.hermes_history`, the cron run files, `response_store.db` and the trajectory files are
+  secondary sources, with the rows the source table gives. A history entry pairs with the
+  session's `user` row on text (the TUI's within 2 seconds, the classic CLI's within the
+  host's zone offset); a slash command, which no store repeats, is a `system` row. A cron run's
+  prompt and response pair with the `source='cron'` session's turns when the text matches; a
+  response-store message and a trajectory turn carry no time and pair on text within the session
+  or the project.
+- The start row of a session whose `origin_json` has `imported_from` ends ` | imported from
+  <tool> <path> session <foreign_session_id>`, since its turns carry the import's time
+  ([Imported sessions](#imported-sessions)).
+- `conversation_generations`: one `system` row per row, `relay peer: <source> <session_key>
+  generation <n> (from state.db conversation_generations)`, with no time and no session, which
+  names chats whose sessions are gone.
+- `hosted_room_events`: one `system` row per event at its `created_at`, `bot mode room <name>
+  (<room_id>) seq <seq> <kind> actor <actor kind>:<actor id> (<display_name>): <text>` for a
+  `message.user` or `message.member` event and the payload as compact JSON for the other kinds
+  ([Bot Mode group chats](#bot-mode-group-chats)); never a `user` row, since whether a room
+  message is also a `messages` row was not determined.
 
 #### Sync, relay and origin rows
 
@@ -1041,13 +1184,13 @@ left the host in the last day and marks no session; bad entries are under
 Relay: a gateway session's messages also live on the messaging platform, which
 is the channel the user typed in, not a sync; `sessions.chat_id`,
 `origin_json` and `messages.platform_message_id` name them there
-([Messaging sessions](#messaging-sessions)). The parser writes no `session relayed:` row.
-Proposed (gap): a session whose `source` is a
-messaging platform (every gateway platform but `local` and
-`api_server`) gets `session relayed: <source> chat <chat_id>
-(<chat_type>) user <user_id> <user_name from origin_json> display
-<display_name> (from state.db sessions, started_at)` after its start
-row, and the parser sets `records_relay`.
+([Messaging sessions](#messaging-sessions)). Implemented, source-derived; not observed on any
+real install: a session whose `source` is a messaging platform (every gateway platform but
+`local` and `api_server`), or that has a `chat_id` and another `source` than those two (a plugin
+platform), gets `session relayed: <source> chat <chat_id> type <chat_type> thread <thread_id>
+user <user_id> name <user_name> display <display_name> (from state.db sessions, started_at)`
+after its model rows, `user_name` from `origin_json` and `display_name`, else `origin_json`
+`chat_name`; the parser sets `records_relay`.
 
 Origin: the desktop app's `connections.json` registry lists `local`,
 `remote` (a `hermes serve` the user runs), `ssh` and `cloud` (Hermes
@@ -1057,37 +1200,58 @@ whether the desktop keeps any local copy was not determined
 ([`apps/desktop/electron/main.ts:1349-1354`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/apps/desktop/electron/main.ts#L1349-L1354),
 [`apps/desktop/electron/connection-registry.ts:1-10`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/apps/desktop/electron/connection-registry.ts#L1-L10),
 [`apps/desktop/electron/connection-registry.ts:44-47`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/apps/desktop/electron/connection-registry.ts#L44-L47)).
-The parser does not read the desktop's `userData`; a `system` row per
-non-local connection (`session origin:` needs a session, so a plain
-`remote backend: <kind> <label> <url> (from connections.json, file
-mtime)`) is the proposal, after the round shows the file.
+Implemented, source-derived; not observed on any real install: the parser reads
+`connections.json` ([Desktop connection registry](#desktop-connection-registry)) and yields one
+`system` row per connection that is not `local`, `remote backend: <kind> <label> <url, or
+user@host:port for ssh> (from connections.json, file mtime)` followed by ` org=<org>`,
+` name=<name>` and ` profile=<remoteProfile>` when recorded, and `remote backend quarantined by
+the app: <reason> (from connections.json, file mtime)` per quarantined entry, with no session
+(`session origin:` needs one) and never printing `token` or `headers`. It sets no
+`records_origin`. The single-connection `connection.json` is not read.
 
 #### Scratch directory rows
 
 The scratch directories are `cache/scratch/` and `sandboxes/` under the Hermes home and the git
 worktrees under `<repo>/.worktrees/` ([Scratch directories](#scratch-directories)).
 
-Implemented (partial): `cache/scratch` and `sandboxes` are
+Implemented: `cache/scratch` and `sandboxes` are
 under the catalog's Hermes home, so the analyzer's catalog rule
 classes any path under it as a scratch directory. A `.worktrees/<name>` path is not under
-a home entry, so a session whose `cwd` is one is listed as a project. Proposed: a
-`scratch directory: <cwd> (git worktree the agent created
-under <repo>/.worktrees)` row when `cwd` has that shape and
-`git_branch` starts with `hermes/` or `hermes-subagent/`.
+a home entry. Implemented, source-derived; not observed on any real install: a session whose
+`cwd` is `<repo>/.worktrees/<name>` and whose `git_branch` starts with `hermes/` or
+`hermes-subagent/` gets `scratch directory: <cwd> (git worktree the agent created in <repo>,
+branch <git_branch>)` after its model rows, at `started_at`. A kanban child's worktree, whose
+branch the source does not fix, gets none.
 
 #### Deletion rows
 
-Proposed (gap, new since the cited commit): one `session deleted:
-<id> (from state.db state_meta gateway.retired_session.v1, retired_at)`
-row per marker, at `retired_at`, with ` sweep` when it has `expires`;
-`archived=1` on the session start row. The markers are described under
-[What survives a delete](#what-survives-a-delete).
+Implemented, source-derived; not observed on any real install (the markers are new since the
+cited commit): one `session deleted: <id> (from state.db state_meta gateway.retired_session.v1,
+retired_at)` row per marker, at `retired_at`, with ` sweep` after the id when it has `expires`,
+and with the marker's id as `session_id`; the start row of an archived session ends
+` | archived=1`. The markers are described under
+[What survives a delete](#what-survives-a-delete). The `gateway.retired_route.v1.` fences a
+multiplexed gateway writes for other profiles are not read.
 
 #### Bad-line rows
 
 `sessions/<id>.jsonl` goes through `iter_jsonl` and `error_rows`. In `pastes/pending.json` a file
 that does not parse or is not a JSON list is one `parser:` row, and an entry that is not an object
 with a `url` is its own `parser: unparseable record <N>` row carrying the entry.
+
+Source-derived, for the sources of [issue 208](https://github.com/seanthegeek/doubleagent/issues/208): in `state.db` a `sessions.origin_json` or
+`model_config`, a `state_meta` fence value, or a `hosted_room_events` `actor_json` or
+`payload_json` that does not decode to a JSON object is a row `parser: unparseable record
+<rowid> (<table>.<column>: <reason>): <value as stored>`, with the session's id where there is
+one, after the file's other rows. In `response_store.db` a `data` value is reported the same way
+(`responses.data`), and a history entry that is not an object as `(responses.data
+conversation_history <index>: not an object)`. `.hermes_history` goes through the Aider parser's
+`read_input_history`, whose bad line is `parser: unparseable line (not a FileHistory line):
+<line>`; a trajectory file's line that does not decode, is not an object or has no
+`conversations` list is `parser: unparseable line (<reason>): <line>`. A pairing file or
+`connections.json` that does not parse is one whole-file row and an entry that is not an object
+is its own `unparseable record <N> (not an object)` row; `config.yaml` is under
+[Permission rows](#permission-rows).
 
 Malformed `tool_calls` ([issue 182](https://github.com/seanthegeek/doubleagent/issues/182)): a value
 that is not valid JSON, is not a list (a lone object is read as a one-call list) or holds an entry
@@ -1123,6 +1287,38 @@ INSERT INTO messages (session_id,role,content,tool_call_id,tool_calls,tool_name,
  ('20261001_120000_a1b2c3d4','assistant','Two files: a.txt, b.txt.',NULL,NULL,NULL,1759320004.0,'stop',NULL);
 ```
 
+Source-derived samples for the rows of [issue 208](https://github.com/seanthegeek/doubleagent/issues/208), at
+[`86fa9e6`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872)
+(the shapes are cited in [Record schema](#record-schema) and [Other stores](#other-stores)):
+
+```sql
+INSERT INTO sessions (id,source,user_id,chat_id,chat_type,display_name,origin_json,model_config,
+  started_at,archived) VALUES ('20261001_180000_7e1e9a40','telegram','42','-100123','group',
+  'Ops chat','{"platform":"telegram","chat_id":"-100123","chat_name":"Ops chat",
+  "chat_type":"group","user_id":"42","user_name":"alice_tg"}','{"yolo_mode": true}',
+  1790877600.0,1);
+INSERT INTO messages (session_id,role,content,tool_call_id,tool_name,timestamp) VALUES
+ ('20261001_180000_7e1e9a40','tool','{"output": "", "exit_code": -1, "error": "BLOCKED by smart
+  approval: deletes system files", "status": "blocked"}','call_a','terminal',1790877603.0);
+INSERT INTO state_meta VALUES ('gateway.retired_session.v1.20260915_090000_0ddba11',
+  '{"retired_at": 1790880000.5, "own": true}');
+INSERT INTO conversation_generations VALUES ('telegram','agent:main:telegram:group:-100123',2);
+```
+
+```text
+.hermes_history:
+
+# 2026-10-01 12:00:01.250
++list files
+
+# 2026-10-01 14:00:05.123456
++/model openai/gpt-5
+```
+
+```json
+{"42": {"user_name": "alice_tg", "approved_at": 1790856000.0}}
+```
+
 #### Volume homes
 
 [Issue 181](https://github.com/seanthegeek/doubleagent/issues/181): the catalog's `hermes|*hermes*`
@@ -1133,6 +1329,18 @@ files arrive as `state.db`, `sessions/<id>.jsonl`,
 `state-snapshots/<id>/state.db`, `pastes/pending.json` and
 `profiles/<name>/...` with no prefix (`state.db`, not `.hermes/state.db`). `wants()` accepts
 these as it accepts the home forms, and the rows carry the manifest's `docker` user.
+
+#### Source host rows
+
+The agent records no source-host integration: at
+[`86fa9e6`](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872)
+a grep for `github`, `gitlab`, `bitbucket`, `oauth`, `installation`, `repositor`, `pull request`
+and `clone` found no connected account, no cached repository list and no repository-bound remote
+conversation. A GitHub token, when present, is a variable in `.env` or the gh CLI's own login
+([Credentials](#credentials)), and the webhook platform's GitHub routes live in `config.yaml`
+`platforms.webhook.extra.routes`
+([`gateway/platforms/webhook.py:1-10`](https://github.com/NousResearch/hermes-agent/blob/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872/gateway/platforms/webhook.py#L1-L10));
+a webhook-driven session is a relayed session with `source` `webhook`.
 
 ## Confidence
 
@@ -1154,3 +1362,8 @@ these as it accepts the home forms, and the rows carry the manifest's `docker` u
   and were not checked.
 - Not determined: the legacy `session_<id>.json` schema, which nothing at the cited commit writes
   ([Transcript stores](#transcript-stores)).
+- Medium: that a `terminal` result's JSON reaches `messages.content` unchanged; a result Hermes
+  spilled or truncated before storing would give no permission decision row.
+- Not determined: whether a Bot Mode room message is also a `messages` row, whether a cron run's
+  stored prompt equals the session's first `user` message, and the branch of a kanban child's
+  worktree.

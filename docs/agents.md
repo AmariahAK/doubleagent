@@ -53,7 +53,7 @@ agent name in each row links to its subsection.
 | [`flowise`](#flowise) | backlog | Source | [research](../research/flowise.md); [issue 68](https://github.com/seanthegeek/doubleagent/issues/68); `database.sqlite` with `chat_message` (tool use and agent reasoning) and `execution` |
 | [`gemini-cli`](#gemini-cli) | parsed | source; fixture only | [research](../research/gemini-cli.md) |
 | [`goose`](#goose) | parsed | source; fixture only | [research](../research/goose.md) |
-| [`hermes`](#hermes) | parsed | source; fixture only | [research](../research/hermes.md) |
+| [`hermes`](#hermes) | parsed | source; fixture only | [research](../research/hermes.md); [issue 208](https://github.com/seanthegeek/doubleagent/issues/208); the nested `config.yaml` `approvals` settings are not parsed |
 | [`kilo-code`](#kilo-code) | parsed | source; fixture only | [research](../research/kilo-code.md) |
 | [`kiro`](#kiro) | parsed | source; fixture only | [research](../research/kiro.md) |
 | [`langflow`](#langflow) | backlog | Source, platformdirs source; Desktop from docs only | [research](../research/langflow.md); [issue 141](https://github.com/seanthegeek/doubleagent/issues/141); Desktop's `database.db`; the server's `langflow.db` is not collected |
@@ -679,17 +679,25 @@ Validated against: Source at [591edd4](https://github.com/block/goose/commit/591
 
 Files read: `state.db` (SQLite with WAL sidecars; `sessions`, `messages`
 and `session_model_usage`, rewound or compacted `active = 0` rows kept
-with a `[rewound]` prefix) and two secondary sources, the quick snapshots
-`state-snapshots/<id>/state.db` (read like `state.db` after a `state
-snapshot <id>` row; collected only with `--full`) and the
-`sessions/<id>.jsonl` diverts written when `state.db` was replaced under a
-running process, under `.hermes`, `.hermes_<suffix>`,
-`AppData/Local/hermes` and their `profiles/<name>/` homes, or at the
-root of a `*hermes*` Docker or Podman volume. Also
-`pastes/pending.json`, the paste.rs links of recent `hermes debug share`
-uploads.
+with a `[rewound]` prefix; also the `state_meta` deletion fences,
+`conversation_generations` and the Bot Mode room log) and these secondary
+sources: the quick snapshots `state-snapshots/<id>/state.db` (read like
+`state.db` after a `state snapshot <id>` row; collected only with
+`--full` before collector 1.18.0), the `sessions/<id>.jsonl` diverts
+written when `state.db` was replaced under a running process, the prompt
+history `.hermes_history`, the cron run files `cron/output/<job>/<time>.md`,
+the API server's `response_store.db`, and the `trajectory_samples.jsonl`
+and `failed_trajectories.jsonl` files a run leaves in its project; all
+under `.hermes`, `.hermes_<suffix>`, `AppData/Local/hermes` and their
+`profiles/<name>/` homes, or at the root of a `*hermes*` Docker or Podman
+volume, the trajectory files excepted. Also `pastes/pending.json`, the
+paste.rs links of recent `hermes debug share` uploads; the standing
+approvals in `config.yaml` (`command_allowlist`) and in the pairing
+stores `pairing/<platform>-approved.json` and
+`platforms/pairing/<platform>-approved.json`; and the desktop app's
+`connections.json` in its `Hermes` userData directory.
 
-Validated against: Source at [8b66a51](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683), synthetic fixture.
+Validated against: Source at [8b66a51](https://github.com/NousResearch/hermes-agent/commit/8b66a51036c1e20920a17cdd049fdf55c968d683), synthetic fixture; the relay, permission, deletion, past-use, origin and worktree rows from source at [86fa9e6](https://github.com/NousResearch/hermes-agent/commit/86fa9e6ca1de7ee71132d2be0103f3e37d1fa872), synthetic fixture.
 
 ### `kilo-code`
 
