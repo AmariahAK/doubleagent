@@ -41,7 +41,7 @@ done
 # character the pattern syntax or eval would read (|, parentheses, &, ;, <, >,
 # $, a backtick, a quote or a backslash), or starting with #, which begins a
 # comment after the | before it, would break every secret test.
-bad=$(sh_table SECRET_GLOBS | grep '[|()&;<>$`"'"'"'\\]\|^#')
+bad=$(sh_table SECRET_GLOBS | grep -e '[|()&;<>$`"'"'"'\\]' -e '^#')
 if [ -z "$bad" ]; then printf 'ok   SECRET_GLOBS free of case-pattern specials\n'
 else printf 'FAIL SECRET_GLOBS entries with characters the compiled case pattern cannot hold:\n%s\n' "$bad"; fail=1; fi
 
