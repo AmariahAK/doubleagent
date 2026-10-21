@@ -57,16 +57,77 @@ the model before it yields `model: <old> -> <new>` ahead of the item's
 rows, with the item's `source_line`. The format has no switch record, so a
 change is only seen as a different `modelTitle` between items, and
 `chatModelTitle` is a single value per session file. `dev_data` events
-fill the `model` column only. `permissions.yaml` (the `cn` CLI's tool
-policy) is not read: its shape is not recorded in the research.
+fill the `model` column only.
+
+Session-level rows after the `model:` row, at the session time with
+`source_line` 0: `permission mode: <mode>` from the session's `mode`
+(`chat`, `agent` or `plan`, the extension's mode at the last save; CLI
+sessions have none), and `scratch directory: <workspaceDirectory> (cn
+review worktree)` when the directory's last component is
+`cn-review-<digits>-<digits>`, the temporary git worktree `cn review`
+runs its agents in (`extensions/cli/src/commands/review/worktree.ts:15-20`),
+so inventory.json lists it under `scratch_directories`.
 
 Per-call decisions: each `toolUsage.jsonl` record that has `accepted`
 yields `permission decision: accepted=<accepted>` after its `tool_result`
 row (which keeps its own `accepted=` text), with the record's time,
 `tool_use_id` and `tool_name`. A `toolCallStates[]` entry whose `status`
-is `canceled` yields `permission decision: canceled` with the call's
-`tool_use_id` and `tool_name`, after the state's `tool_result` row when
-there is one, at the session time.
+is `canceled` yields `permission decision: canceled reason=user` when its
+output is the CLI's `Permission denied by user`, `permission decision:
+canceled reason=policy` for `Command blocked by security policy`
+(`extensions/cli/src/stream/streamChatResponse.helpers.ts:519-527`) and
+`permission decision: canceled` otherwise; an `errored` entry whose
+`output[]` has an item named `Security Policy Violation`, the extension's
+disabled-tool refusal (`gui/src/redux/thunks/evaluateToolPolicies.ts:93-117`),
+yields `permission decision: errored reason=policy`. Each has the call's
+`tool_use_id` and `tool_name`, follows the state's `tool_result` row when
+there is one, and has the session time.
+
+Source-derived, not observed on any real install (continuedev/continue
+at 5522c6f; the fields below are the ones the parser reads):
+
+* `.continue/permissions.yaml` (the `cn` CLI's standing tool grants):
+  top-level `allow`, `ask` and `exclude` lists of `Tool` or
+  `Tool(<pattern>)` strings (`permissionsYamlLoader.ts:15-19`). Each rule
+  is `permission setting: <list>=<rule> (from .continue/permissions.yaml,
+  file mtime)` at the file's modification time, `source_line` its line.
+  The reader takes only that flat shape (a key that is empty, `[]` or
+  followed by `- <rule>` lines, plain or quoted, with comments); any other
+  construct is one `parser: unsupported YAML at line <N> (only allow, ask
+  and exclude lists of strings are read)` row and no rule, since a reader
+  of that shape cannot tell what the rest grants.
+* `.continue/input_history.json` (secondary): the TUI's prompt history,
+  a JSON array of `{text, timestamp}` with `timestamp` in epoch
+  milliseconds (`extensions/cli/src/util/inputHistory.ts:6-12`). Each
+  entry is a `user` row at its time with no session or project, and
+  `source_line` its position; an element that does not decode, or is not
+  an object with a string `text`, is a `parser: unparseable record <N>
+  ...` row and the elements before it are kept.
+* `.continue/dev_data/<schema>/chatFeedback.jsonl` (secondary: it repeats
+  the `chatInteraction` line of the rated reply, `prompt` and
+  `completion` from the same prompt log, `gui/src/components/FeedbackButtons.tsx:20-36`):
+  `user` and `assistant` rows like a `chatInteraction` line, then `chat
+  feedback: feedback=<true|false|-> model=<modelTitle|->` with the line's
+  `sessionId` and time.
+* `.continue/dev_data/<schema>/editInteraction.jsonl` (`filepath`,
+  `prompt`, `completion`, `modelTitle`): `edit interaction:
+  file=<filepath>`, then the prompt as `user` and the completion (the
+  file after the edit) as `assistant`, at the line's time.
+* `.continue/dev_data/<schema>/editOutcome.jsonl` (`accepted`,
+  `filepath`, `previousCodeLines`, `newCodeLines`, `modelTitle`): one
+  `permission decision: edit accepted=<accepted> file=<filepath> lines
+  <previousCodeLines> -> <newCodeLines>` row at the line's time; its
+  prompt, completion and code are not put in rows.
+* `logs/cn.log`: the `Added policy rule to permissions.yaml: <rule>` line
+  of a "don't ask again" answer (`policyWriter.ts:67`) is `permission
+  decision: allow always rule=<rule> (from logs/cn.log, log line time,
+  host-local)`.
+
+`secondary_tolerance` is `ANY_TIME_SECONDS` for the two secondary
+sources: a history entry is stamped when the prompt was submitted and a
+rating when it was clicked, while a session's rows carry its creation
+time and a `chatInteraction` line the reply's, so the pair is found on
+text and scope at any distance in time.
 
 Agent metadata posts: `.continue/logs/cn.log` and the files winston (the
 `cn` CLI's logging library) rotates it to at 10 MB, `cn1.log`, `cn2.log`
@@ -74,9 +135,10 @@ and so on, five kept (`extensions/cli/src/util/logger.ts:102-115`; the
 names from winston 3.17.0's `File` transport, `_getFile`). Each line is
 `YYYY-MM-DD HH:mm:ss.SSS [<8 hex>] [<level>]: <message>`, then the call's
 extra fields as one JSON object (`logger.ts:74-95`); the eight hex digits
-are a random id per process, not a session id. Only two kinds of line are
-events, both written when the hidden `cn serve --id <agentId>` mode talks
-to Continue's agent API (`extensions/cli/src/util/metadata.ts:125-181`,
+are a random id per process, not a session id. Beside the `Added policy
+rule` line below, only two kinds of line are events, both written when
+the hidden `cn serve --id <agentId>` mode talks to Continue's agent API
+(`extensions/cli/src/util/metadata.ts:125-181`,
 `extensions/cli/src/services/StorageSyncService.ts:85-90`); every other
 line is the CLI's diagnostics, not an event, and no line of the file can
 be a bad line:
@@ -116,6 +178,7 @@ from .base import (
     Parser,
     compact_json,
     error_rows,
+    file_mtime,
     iter_jsonl,
     line_text,
     setting_value,
@@ -126,10 +189,36 @@ from .cline_legacy import iter_array_at
 
 SESSION_RX = re.compile(r"^(?:.*/)?\.continue/sessions/([^/]+)\.json$")
 DEV_DATA_RX = re.compile(
-    r"^(?:.*/)?\.continue/dev_data/(?:[^/]+/)?(chatInteraction|toolUsage)\.jsonl$"
+    r"^(?:.*/)?\.continue/dev_data/(?:[^/]+/)?"
+    r"(chatInteraction|toolUsage|editInteraction|editOutcome|chatFeedback)\.jsonl$"
 )
 INDEX_NAME = "sessions.json"
 CN_LOG_RX = re.compile(r"^\.continue/logs/cn[0-9]*\.log$")
+INPUT_HISTORY_REL = ".continue/input_history.json"
+PERMISSIONS_REL = ".continue/permissions.yaml"
+# The secondary sources' window. Session rows carry the session's creation
+# time, not the prompt's, and a rating can follow its reply by any time,
+# so a history entry or a chatFeedback line pairs with its twin on text
+# and scope whatever the time: ten years is in effect no bound.
+ANY_TIME_SECONDS = 10 * 366 * 86400.0
+# `cn review` worktree basename, `cn-review-<epoch ms>-<n>`
+# (extensions/cli/src/commands/review/worktree.ts:15-20).
+REVIEW_WORKTREE_RX = re.compile(r"(?:^|[/\\])cn-review-[0-9]+-[0-9]+[/\\]?$")
+# The CLI's denial texts in a canceled state's output, by `denialReason`
+# (extensions/cli/src/stream/streamChatResponse.helpers.ts:519-527).
+DENIAL_REASONS = {
+    "Permission denied by user": "user",
+    "Command blocked by security policy": "policy",
+}
+# The output item the extension gives a call its policy disables
+# (gui/src/redux/thunks/evaluateToolPolicies.ts:93-117).
+POLICY_VIOLATION = "Security Policy Violation"
+POLICY_ADDED_RX = re.compile(r"^Added policy rule to permissions\.yaml: (.*)$")
+# permissions.yaml: the three list keys the CLI reads and writes
+# (permissionsYamlLoader.ts:15-19, :162-171; policyWriter.ts:57-66), each
+# empty (`[]`, `null`, `~` or nothing) or followed by `- <rule>` lines.
+YAML_KEY_RX = re.compile(r"^(allow|ask|exclude):[ \t]*(\[[ \t]*\]|null|~)?[ \t]*(?:#.*)?$")
+YAML_ITEM_RX = re.compile(r"^[ \t]*-[ \t]+(.*?)[ \t]*$")
 LOG_LINE_RX = re.compile(
     r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[([0-9a-fA-F]{8})\] \[[A-Za-z]+\]: (.*)$"
 )
@@ -183,6 +272,57 @@ def read_index(path) -> tuple[dict[str, dict], list]:
     return out, errors
 
 
+def yaml_scalar(text: str) -> str | None:
+    """A YAML sequence item as a string: double-quoted (decoded as JSON,
+    whose escapes a double-quoted YAML scalar shares), single-quoted (`''`
+    is one quote) or plain (a ` #` comment removed). None for anything
+    else: a nested sequence or mapping, a flow collection, an alias, a
+    block scalar, or a quoted scalar that does not close on its line."""
+    if text.startswith('"'):
+        m = re.match(r'^("(?:[^"\\]|\\.)*")[ \t]*(?:#.*)?$', text)
+        if not m:
+            return None
+        try:
+            value = json.loads(m.group(1))
+        except ValueError:
+            return None
+        return value if isinstance(value, str) else None
+    if text.startswith("'"):
+        m = re.match(r"^'((?:[^']|'')*)'[ \t]*(?:#.*)?$", text)
+        return m.group(1).replace("''", "'") if m else None
+    if not text or text[0] in "[]{}&*!|>%@`-?:,#":
+        return None
+    value = re.sub(r"[ \t]+#.*$", "", text)
+    return None if ": " in value or value.endswith(":") else value
+
+
+def read_permissions(text: str) -> tuple[list[tuple[int, str, str]], str]:
+    """The `(line number, list, rule)` entries of a `permissions.yaml`, in
+    file order, and `""`; or `[]` and the reason the file is not the flat
+    shape the CLI writes (top-level `allow`, `ask` and `exclude` keys, each
+    empty or followed by `- <rule>` lines, with comments and blank lines),
+    since a reader of that shape alone cannot tell what any other YAML
+    construct grants."""
+    entries: list[tuple[int, str, str]] = []
+    current = ""
+    for n, line in enumerate(text.splitlines(), 1):
+        if n == 1 and line.startswith("﻿"):
+            line = line[1:]
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped == "---":
+            continue
+        key = YAML_KEY_RX.match(line)
+        if key:
+            current = "" if key.group(2) else key.group(1)
+            continue
+        item = YAML_ITEM_RX.match(line)
+        value = yaml_scalar(item.group(1)) if item and current else None
+        if value is None:
+            return [], "unsupported YAML at line %d" % n
+        entries.append((n, current, value))
+    return entries, ""
+
+
 def message_text(content) -> str:
     """Flatten a ChatMessage content: image parts become `[image]`."""
     if isinstance(content, list):
@@ -213,6 +353,21 @@ def output_text(output) -> str:
         else:
             parts.append(str(item))
     return "\n".join(p for p in parts if p)
+
+
+def state_decision(status: str, output, text: str) -> str:
+    """The decision a `ToolCallState` records, as `permission decision:`
+    row text after the prefix, or `""`: `canceled`, with `reason=user` or
+    `reason=policy` when the output is one of the CLI's denial texts, and
+    `errored reason=policy` for the extension's `Security Policy Violation`
+    output."""
+    if status == "canceled":
+        reason = DENIAL_REASONS.get(text.strip())
+        return "canceled reason=%s" % reason if reason else "canceled"
+    violation = isinstance(output, list) and any(
+        isinstance(o, dict) and o.get("name") == POLICY_VIOLATION for o in output
+    )
+    return "errored reason=policy" if status == "errored" and violation else ""
 
 
 def load_session(text: str) -> tuple[dict, str]:
@@ -271,21 +426,49 @@ class ContinueParser(Parser):
     def __init__(self) -> None:
         self._index_cache: dict[str, tuple[dict[str, dict], list]] = {}
 
+    has_secondary = True
+
     def wants(self, artifact: Artifact) -> bool:
         # sessions.json too, for the rows that say what the index lost
         return bool(
             SESSION_RX.match(artifact.rel)
             or DEV_DATA_RX.match(artifact.rel)
             or CN_LOG_RX.match(artifact.rel)
+            or artifact.rel in (INPUT_HISTORY_REL, PERMISSIONS_REL)
         )
+
+    def secondary(self, artifact: Artifact) -> bool:
+        """The CLI's prompt history and the `chatFeedback` events, which
+        repeat a prompt of a session and a `chatInteraction` line."""
+        if artifact.rel == INPUT_HISTORY_REL:
+            return True
+        m = DEV_DATA_RX.match(artifact.rel)
+        return bool(m and m.group(1) == "chatFeedback")
+
+    def secondary_tolerance(self, artifact: Artifact) -> float:
+        """`ANY_TIME_SECONDS`: a history entry is stamped when the prompt
+        was submitted, while the session's rows carry its creation time;
+        a rating is stamped when it was clicked, any time after the reply's
+        `chatInteraction` line."""
+        return ANY_TIME_SECONDS
 
     def parse(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         if CN_LOG_RX.match(artifact.rel):
             yield from self._parse_cn_log(artifact)
             return
+        if artifact.rel == INPUT_HISTORY_REL:
+            yield from self._parse_input_history(artifact, opts)
+            return
+        if artifact.rel == PERMISSIONS_REL:
+            yield from self._parse_permissions(artifact)
+            return
         m = DEV_DATA_RX.match(artifact.rel)
-        if m and m.group(1) == "chatInteraction":
-            yield from self._parse_chat_interaction(artifact, opts)
+        if m and m.group(1) in ("chatInteraction", "chatFeedback"):
+            yield from self._parse_chat_interaction(artifact, opts, m.group(1))
+        elif m and m.group(1) == "editInteraction":
+            yield from self._parse_edit_interaction(artifact, opts)
+        elif m and m.group(1) == "editOutcome":
+            yield from self._parse_edit_outcome(artifact)
         elif m:
             yield from self._parse_tool_usage(artifact, opts)
         elif artifact.disk_path.name == INDEX_NAME:
@@ -371,6 +554,18 @@ class ContinueParser(Parser):
             row = base(0, session_model)
             row.turn_type = "system"
             row.text = change
+            yield row
+        mode = sess.get("mode")
+        if isinstance(mode, str) and mode:
+            # the extension's mode at the last save; `plan` limits the tools
+            row = base(0, session_model)
+            row.turn_type = "system"
+            row.text = "permission mode: " + mode
+            yield row
+        if REVIEW_WORKTREE_RX.search(project):
+            row = base(0, session_model)
+            row.turn_type = "system"
+            row.text = "scratch directory: %s (cn review worktree)" % project
             yield row
 
         # Tool results normally arrive as a later `tool` message; a call that
@@ -468,12 +663,13 @@ class ContinueParser(Parser):
                             "[%s] %s" % (status, out) if status and status != "done" else out,
                             opts,
                         )
-                    if status == "canceled":
+                    decision = state_decision(status, st.get("output"), out)
+                    if decision:
                         row = base(i, model)
                         row.turn_type = "system"
                         row.tool_use_id = call_id
                         row.tool_name = names.get(call_id, "")
-                        row.text = "permission decision: canceled"
+                        row.text = "permission decision: " + decision
                         yield row
             elif role == "thinking":
                 if opts.include_thinking and text:
@@ -508,26 +704,159 @@ class ContinueParser(Parser):
         base = d.parent if d.parent.name == ".continue" else d.parent.parent
         return self._index(base / "sessions")
 
-    def _parse_chat_interaction(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+    def _parse_chat_interaction(
+        self, artifact: Artifact, opts: Options, event: str = "chatInteraction"
+    ) -> Iterator[Row]:
+        """`user` and `assistant` rows of a `chatInteraction` or
+        `chatFeedback` line; a `chatFeedback` line (secondary: it repeats
+        the `chatInteraction` line of the rated reply) adds `chat feedback:
+        feedback=<true|false|-> model=<modelTitle|->`."""
         errors: list = []
         index = self._dev_index(artifact)
         for n, rec in iter_jsonl(artifact.disk_path, errors):
             sid = str(rec.get("sessionId") or "")
             entry = index.get(sid, {})
-            for turn, key in (("user", "prompt"), ("assistant", "completion")):
-                text = rec.get(key)
-                if not text:
-                    continue
+            model = str(rec.get("modelTitle") or rec.get("modelName") or "")
+
+            def row_for(turn: str, rec=rec, n=n, sid=sid, entry=entry) -> Row:
                 row = self.base_row(artifact)
                 row.source_line = n
                 row.timestamp_utc = to_utc(rec.get("timestamp"))
                 row.session_id = sid
                 row.project_path = str(entry.get("workspaceDirectory") or "")
                 row.turn_type = turn
+                return row
+
+            for turn, key in (("user", "prompt"), ("assistant", "completion")):
+                text = rec.get(key)
+                if not text:
+                    continue
+                row = row_for(turn)
                 if turn == "assistant":
-                    row.model = str(rec.get("modelTitle") or rec.get("modelName") or "")
+                    row.model = model
+                yield self._fill(row, text if isinstance(text, str) else compact_json(text), opts)
+            if event == "chatFeedback":
+                row = row_for("system")
+                row.model = model
+                feedback = rec.get("feedback")
+                row.text = "chat feedback: feedback=%s model=%s" % (
+                    "-" if feedback is None else setting_value(feedback),
+                    model or "-",
+                )
+                yield row
+        yield from error_rows(self, artifact, errors)
+
+    def _parse_edit_interaction(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        """An edit request of the VS Code edit flow: `edit interaction:
+        file=<filepath>`, then the prompt as `user` and the edited file as
+        `assistant`, at the line's time."""
+        errors: list = []
+        for n, rec in iter_jsonl(artifact.disk_path, errors):
+            model = str(rec.get("modelTitle") or rec.get("modelName") or "")
+            filepath = rec.get("filepath")
+            parts = [("system", "edit interaction: file=%s" % (filepath or "-"))]
+            parts += [(t, rec.get(k)) for t, k in (("user", "prompt"), ("assistant", "completion"))]
+            for turn, text in parts:
+                if not text:
+                    continue
+                row = self.base_row(artifact)
+                row.source_line = n
+                row.timestamp_utc = to_utc(rec.get("timestamp"))
+                row.turn_type = turn
+                row.model = "" if turn == "user" else model
                 yield self._fill(row, text if isinstance(text, str) else compact_json(text), opts)
         yield from error_rows(self, artifact, errors)
+
+    def _parse_edit_outcome(self, artifact: Artifact) -> Iterator[Row]:
+        """The user's accept or reject of an edit: `permission decision: edit
+        accepted=<accepted> file=<filepath> lines <previousCodeLines> ->
+        <newCodeLines>`, `-` for a missing value, at the line's time. The
+        prompt, completion and code are not put in rows: the edit flow's
+        `editInteraction` line and the session already hold the request."""
+        errors: list = []
+        for n, rec in iter_jsonl(artifact.disk_path, errors):
+
+            def val(key: str, rec=rec) -> str:
+                v = rec.get(key)
+                return "-" if v is None or v == "" else setting_value(v)
+
+            row = self.base_row(artifact)
+            row.source_line = n
+            row.timestamp_utc = to_utc(rec.get("timestamp"))
+            row.turn_type = "system"
+            row.model = str(rec.get("modelTitle") or rec.get("modelName") or "")
+            row.text = "permission decision: edit accepted=%s file=%s lines %s -> %s" % (
+                val("accepted"),
+                val("filepath"),
+                val("previousCodeLines"),
+                val("newCodeLines"),
+            )
+            yield row
+        yield from error_rows(self, artifact, errors)
+
+    # ---- CLI state files -----------------------------------------------------
+
+    def _parse_input_history(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
+        """One `user` row per `{text, timestamp}` entry of the CLI's prompt
+        history, at the entry's time, with no session or project (the file
+        names none); `source_line` is the entry's 1-based position."""
+        errors: list = []
+        try:
+            text = artifact.disk_path.read_bytes().decode("utf-8", errors="replace")
+        except OSError as e:
+            errors.append((0, "unreadable (%s)" % error_reason(e), ""))
+            yield from error_rows(self, artifact, errors)
+            return
+        if text.startswith("﻿"):
+            text = text[1:]
+        end: list = []
+        count = 0
+        for n, entry in iter_array_at(text, 0, errors, end):
+            count = n
+            prompt = entry.get("text") if isinstance(entry, dict) else None
+            if not isinstance(entry, dict) or not isinstance(prompt, str):
+                errors.append(
+                    (
+                        n,
+                        "unparseable record %d (not an object with a text)" % n,
+                        compact_json(entry),
+                    )
+                )
+                continue
+            row = self.base_row(artifact)
+            row.source_line = n
+            row.timestamp_utc = to_utc(entry.get("timestamp"))
+            row.turn_type = "user"
+            yield self._fill(row, prompt, opts)
+        if end and text[end[0] :].strip(" \t\r\n"):
+            errors.append((count + 1, "unparseable data after the JSON array", ""))
+        yield from error_rows(self, artifact, errors)
+
+    def _parse_permissions(self, artifact: Artifact) -> Iterator[Row]:
+        """One `permission setting: <list>=<rule> (from
+        .continue/permissions.yaml, file mtime)` row per rule, at the file's
+        modification time, or one `parser:` row for a file outside the
+        shape `read_permissions` reads."""
+        try:
+            text = artifact.disk_path.read_bytes().decode("utf-8", errors="replace")
+        except OSError as e:
+            yield from error_rows(self, artifact, [(0, "unreadable (%s)" % error_reason(e), "")])
+            return
+        entries, problem = read_permissions(text)
+        if problem:
+            message = "%s (only allow, ask and exclude lists of strings are read)" % problem
+            yield from error_rows(self, artifact, [(0, message, "")])
+            return
+        ts = file_mtime(artifact)
+        for n, key, rule in entries:
+            row = self.base_row(artifact)
+            row.source_line = n
+            row.timestamp_utc = ts
+            row.turn_type = "system"
+            row.text = compact(
+                "permission setting: %s=%s (from %s, file mtime)" % (key, rule, artifact.rel)
+            )
+            yield row
 
     def _parse_tool_usage(self, artifact: Artifact, opts: Options) -> Iterator[Row]:
         errors: list = []
@@ -597,6 +926,15 @@ class ContinueParser(Parser):
                     if STORAGE_SKIPPED in message:
                         text = "storage upload requested, skipped (from %s, log line time, %s)"
                         rows.append(self._log_row(artifact, n, when, text % (source, "host-local")))
+                        continue
+                    added = POLICY_ADDED_RX.match(message)
+                    if added:
+                        text = "permission decision: allow always rule=%s (from %s, %s)" % (
+                            added.group(1),
+                            source,
+                            "log line time, host-local",
+                        )
+                        rows.append(self._log_row(artifact, n, when, text))
                         continue
                     post = METADATA_POST_RX.match(message)
                     if post:

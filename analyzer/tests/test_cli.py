@@ -705,6 +705,7 @@ FIXTURE_DEDUPLICATED = {
     "claude-desktop": 3,  # audit.jsonl "thanks" and model row, record initialMessage
     "cline": 2,  # session-search.db and user_input_history.jsonl "fix tests"
     "codex-cli": 11,  # history.jsonl 1, thread_history_1.sqlite 8, state_5.sqlite 2
+    "continue": 3,  # input_history.json "rename foo", chatFeedback prompt and reply
     "copilot-cli": 6,  # session-store.db 3, rewind snapshot 1, command history 2
     "cursor": 3,  # agent transcript: two prompts and a reply the bubbles hold
     "gemini-cli": 1,  # "list files in src"

@@ -1251,8 +1251,29 @@ also writes per-call decisions with the call's `tool_use_id` and
 `tool_name`: `permission decision: accepted=<accepted>` after each
 `dev_data` `toolUsage.jsonl` record's `tool_result` row, at the record's
 time and with an empty `session_id` (the record names none), and
-`permission decision: canceled` after a session tool call whose
-`toolCallStates[]` status is `canceled`, at the session time. A Cline
+`permission decision: canceled reason=user` (the CLI's `Permission
+denied by user`), `permission decision: canceled reason=policy`
+(`Command blocked by security policy`) or `permission decision:
+canceled` after a session tool call whose `toolCallStates[]` status is
+`canceled`, and `permission decision: errored reason=policy` after an
+`errored` one whose output is the extension's `Security Policy
+Violation`, at the session time. A Continue session with a `mode`
+writes `permission mode: <mode>` after its `model:` row, and one whose
+`workspaceDirectory` ends in `cn-review-<digits>-<digits>` writes
+`scratch directory: <workspaceDirectory> (cn review worktree)`, both
+at the session time. Each rule of the CLI's `.continue/permissions.yaml`
+is `permission setting: <list>=<rule> (from .continue/permissions.yaml,
+file mtime)`, `<list>` being `allow`, `ask` or `exclude`, at the file's
+modification time; a file in any other YAML layout is one `parser:
+unsupported YAML at line <N> (only allow, ask and exclude lists of
+strings are read)` row. Each `dev_data` `editOutcome.jsonl` line is
+`permission decision: edit accepted=<accepted> file=<filepath> lines
+<previousCodeLines> -> <newCodeLines>`, each `editInteraction.jsonl`
+line `edit interaction: file=<filepath>` before its prompt (`user`) and
+edited file (`assistant`), and each `chatFeedback.jsonl` line `chat
+feedback: feedback=<true|false|-> model=<modelTitle>` after its prompt
+and reply, all at the line's time and with `-` for an absent value. A
+Cline
 SDK session whose metadata has the `enterprise.blobUpload` key gets
 `session synced: enterprise prompt upload to <adapterType> bucket
 <bucket> object sessions/<userDistinctId or unknown>/<session_id>/messages.json
@@ -1308,9 +1329,11 @@ keys <metadataKeys> <status> (from logs/cn.log, log line time,
 host-local)` for each metadata post of `cn serve --id`, `<status>`
 being `Success`, `Unexpected response`, `Auth required`, `Failed`,
 `Error` or `-` when no result line follows, and `storage upload
-requested, skipped (from logs/cn.log, log line time, host-local)`, both
-with an empty `session_id` and the log's host-local time written as if
-it were UTC. `roo-code`,
+requested, skipped (from logs/cn.log, log line time, host-local)`, and
+for each rule a "don't ask again" answer added to `permissions.yaml`
+`permission decision: allow always rule=<rule> (from logs/cn.log, log
+line time, host-local)`, all with an empty `session_id` and the log's
+host-local time written as if it were UTC. `roo-code`,
 `shellgpt` and `tabby` record no model and write no such row.
 
 The `aider` parser reads the announcement lines Aider writes to
@@ -1687,6 +1710,7 @@ beside its `session synced: server conversation` row.
 | `cline` | `.cline/data/db/session-search.db` (no timestamp per message: matches on text and session; a message of content blocks keeps their type names and tool ids, so only plain-string prompts match); `.cline/data/cache/user_input_history.jsonl` (only the last line timestamped: the others match on text alone); `.cline/data/logs/hooks.jsonl` (tolerance one hour; tool rows match on the call id) | `.cline/data/sessions/<id>/<id>.messages.json` |
 | `cody` | a JetBrains project's `.idea/cody_history.xml`, the pre-agent plugin's history (the migration's chat id `updatedAt` as session and time; complete pairs match the migrated chat, an unpaired message is recovered) | the `sourcegraph.cody-ai` row of the editor's `state.vscdb` and `Cody-nodejs/[Data/]JetBrains-globalState/cody-local-chatHistory-v2` |
 | `codex-cli` | `.codex/history.jsonl`; `.codex/state_5.sqlite` (first prompt with no timestamp: matches on text alone); `.codex/thread_history_1.sqlite`; `.codex/.codex-global-state.json` (the desktop app's prompt history, no timestamp: matches on text within the thread); `.codex/db-backups/<folder>/state_5.sqlite` (a copy Codex set aside as corrupt, read as `state_5.sqlite`) | the rollouts under `.codex/sessions/` and `.codex/archived_sessions/` |
+| `continue` | `.continue/input_history.json` (the CLI's prompt history, no session or project: matches on text at any distance in time); `.continue/dev_data/<schema>/chatFeedback.jsonl` (a rated reply's prompt and completion, stamped at the click: matches within the session at any distance in time) | `.continue/sessions/<id>.json` and the `dev_data` `chatInteraction.jsonl` lines |
 | `copilot-cli` | `.copilot/session-store.db` (`turns`, the prompt and the final reply of each turn, stamped when the turn ends: a one-hour window; its `sessions` name pairs with the `workspace.yaml` row; `session_files`, `session_refs`, `checkpoints` and `forge_trajectory_events` rows the log has no copy of are always kept); `.copilot/session-state/<id>/rewind-file-snapshots/index.json` (each turn's prompt, a one-hour window); `.copilot/command-history-state.json` (no timestamp, session or project: matches on text alone); each also under the pre-XDG `.local/state/.copilot` | `.copilot/session-state/<id>/events.jsonl` and `workspace.yaml` |
 | `cursor` | `.cursor/projects/<project>/agent-transcripts/<composerId>/<composerId>.jsonl`, the agent worker's copy of each conversation (a prompt is stamped to the minute in local time with its UTC offset: a 60-second window; replies and tool calls have no timestamp and match on text within the conversation; the tool calls name the tools differently from the database, so they never pair) | the editor's `User/globalStorage/state.vscdb` `cursorDiskKV` composer and bubble rows |
 | `gemini-cli` | `.gemini/tmp/<slug>/logs.json` (also under `.cache/.gemini`) | `.gemini/tmp/<slug>/chats/*.jsonl` |
@@ -1731,7 +1755,13 @@ nanobot's WebUI transcript stamps events in
 true UTC while its session files record host local time, emitted as if
 UTC, so its window is 15 hours (the largest UTC offset, 14 hours, plus
 an hour of turn); a WebUI row kept because no session row matched
-carries true UTC, unlike every other nanobot row.
+carries true UTC, unlike every other nanobot row. Continue's two
+secondary sources have a window of ten years, in effect none: its
+session rows carry the session's creation time rather than the
+prompt's, so a prompt history entry is later by as long as the session
+ran, and a `chatFeedback` line is stamped when the user rated the reply,
+any time after its `chatInteraction` line; a history entry still never
+matches a session row with no time, as a session the index lost has.
 
 Several sources record no time for an event, and their rows match on
 text and scope alone: Muse Code's `tui-history.jsonl`, Goose's
