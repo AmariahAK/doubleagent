@@ -8,7 +8,9 @@ the A0 Launcher (an Electron app that manages instances) and the A0 CLI connecto
 client). Its Orchestrator plugin can drive other coding CLIs, Hermes among them. One JSON file per
 chat holds two parallel records of the conversation: the UI log (timestamped, truncated, last 1000
 items) and each agent's LLM history (full text, no timestamps, compressed over time). Parsed: the
-agent-zero parser reads `chat.json`, its `messages/` files and the legacy per-chat JSON.
+agent-zero parser reads `chat.json`, its `messages/` files and the legacy per-chat JSON, and beside
+them the scheduler's task list, the Telegram chat map, the tool policies, the Orchestrator's
+settings, two plugin switches and two keys of the connector's `.env`.
 
 ## Source and evidence
 
@@ -40,6 +42,14 @@ All claims are from source or the in-repo docs, read only, not run.
 
 ### Source reviews
 
+- 2026-10-21: agent0ai/agent-zero at
+  [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a)
+  and agent0ai/a0-connector at
+  [`3741c88`](https://github.com/agent0ai/a0-connector/commit/3741c8809f1f99b4efee2ed1a24234a98bf896d4),
+  as reviewed on 2026-10-19: the proposed permission, model, past-use, deletion, scratch and origin
+  rows became parser rows, the scheduler's file shape, the OAuth provider tokens, the model
+  override's API key and the source-host statement were added, and the collector lines for the
+  WhatsApp session, the ACP workspaces and the connector's Windows screen captures are recorded.
 - 2026-10-19: agent0ai/agent-zero at
   [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a)
   (committed 2026-10-13), against
@@ -94,9 +104,11 @@ the native run has `usr/` and `tmp/` beside the source, a `.venv` or
 ([`helpers/settings.py:604`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/settings.py#L604)),
 and `usr/projects/<name>` directories, clones included, belong to the agent's own tree; both are
 collected under the `agent-zero` entries and the volumes. Chats name them by container path
-(`/a0/usr/...`), which the analyzer's catalog rule cannot match to a home path. The connector's
-screenshot directory ([Host-side companions](#host-side-companions)) is the one scratch location
-outside `usr/`, and it is not collected.
+(`/a0/usr/...`), which the analyzer's catalog rule cannot match to a home path. An editor session
+on the `container` transport can name its own working directory inside the container
+([Editor sessions](#editor-sessions)). The connector's screenshot directory
+([Host-side companions](#host-side-companions)) is the one scratch location outside `usr/`; it is
+collected only on Windows, where the system temp directory is inside the home.
 
 #### Contents of usr/
 
@@ -191,7 +203,9 @@ These are home-relative:
   whose virtual disk holds the Docker engine and the container data and is kept on uninstall
   ([`docs/runtime-troubleshooting.md:38-43`](https://github.com/agent0ai/a0-launcher/blob/a69403d9cc92009addb06fedb5585e60e09a3d2c/docs/runtime-troubleshooting.md#L38-L43)).
   A named volume of that engine is inside the virtual disk, out of reach of the collector's volume
-  walk; no catalog line names the directory.
+  walk; no catalog line names the directory, and
+  [Agents outside dot directories in `collectors/docs/coverage.md`](../collectors/docs/coverage.md#agents-outside-dot-directories)
+  gives it as a manual step.
 - A0 CLI connector, computer use: each screen capture the connector takes for the agent is written
   to `<system temp>/_a0_connector/computer_use/<ctxid>/<uuid>.png` and older captures are deleted as
   new ones arrive
@@ -199,7 +213,10 @@ These are home-relative:
   overridable with `A0_COMPUTER_USE_HOST_ARTIFACT_ROOT`
   ([`33`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/computer_use.py#L33)).
   The system temp directory is `/tmp` or `$TMPDIR` on Linux and macOS, outside the home, and
-  `AppData/Local/Temp` on Windows, inside it; no catalog line names it.
+  `AppData/Local/Temp` on Windows, inside it; the catalog line
+  `agent-zero|AppData/Local/Temp/_a0_connector` collects the Windows form, and the other two are a
+  manual step in
+  [Agents outside dot directories in `collectors/docs/coverage.md`](../collectors/docs/coverage.md#agents-outside-dot-directories).
 
 ### Credentials
 
@@ -242,7 +259,20 @@ These are home-relative:
   ([`plugins/_whatsapp_integration/helpers/storage_paths.py:6-7`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/helpers/storage_paths.py#L6-L7),
   [`whatsapp-bridge/bridge.js:46`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/whatsapp-bridge/bridge.js#L46),[`108`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_whatsapp_integration/whatsapp-bridge/bridge.js#L108)).
   Whoever holds those files can act as the account's linked device; the directory is collected where
-  `tmp/` is on the host and no secret glob flags it. The bridge had it at [`e3051fb`](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec) already.
+  `tmp/` is on the host, flagged by the secret globs `agent-zero*/tmp/whatsapp/session/*`,
+  `Desktop/agent-zero*/tmp/whatsapp/session/*` and the volume-relative `tmp/whatsapp/session/*`
+  (no other `DOCKER_VOLUMES` layout has a `tmp/whatsapp/`). The bridge had it at [`e3051fb`](https://github.com/agent0ai/agent-zero/commit/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec) already.
+- OAuth model providers: the bundled `_oauth` plugin signs in to GitHub Copilot (a GitHub device
+  flow with the scope `read:user`), Gemini and xAI Grok and keeps each provider's tokens in
+  `usr/plugins/_oauth/<provider>/auth.json` (`github_copilot`, `gemini_api`, `xai_grok`), written
+  with mode 0600
+  ([`plugins/_oauth/helpers/providers/base.py:151-173`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_oauth/helpers/providers/base.py#L151-L173),[`197-216`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_oauth/helpers/providers/base.py#L197-L216);
+  [`plugins/_oauth/helpers/providers/github_copilot.py:170-177`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_oauth/helpers/providers/github_copilot.py#L170-L177),[`519-525`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_oauth/helpers/providers/github_copilot.py#L519-L525),[`571`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_oauth/helpers/providers/github_copilot.py#L571);
+  [`plugins/_oauth/helpers/providers/gemini_api.py:59`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_oauth/helpers/providers/gemini_api.py#L59);
+  [`plugins/_oauth/helpers/providers/xai_grok.py:60`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_oauth/helpers/providers/xai_grok.py#L60)).
+  The Copilot file holds the GitHub token as `refresh` and the Copilot token as `access`. The
+  files are collected with `usr/` and no secret glob flags them: `plugins/*/config.json` names
+  only the configuration file.
 - The connector's `.env` also holds `AGENT_ZERO_COMPUTER_USE_RESTORE_TOKEN`
   ([`config.py:22`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/config.py#L22)),
   already covered by the `.agent-zero/.env` glob.
@@ -286,8 +316,10 @@ connector's `a0 acp` command serves, stores the editor's workspace on the user's
 ([Editor sessions](#editor-sessions)). The `chat.json` is on the host only
 where `usr/` is (installer, launcher host-directory mode, a native run) or in a collected volume,
 and the path names a directory on whichever host ran the editor, which need not be the host running
-Agent Zero. A plain A0 CLI chat records no host path: the connector's working directory stays on the
-host side
+Agent Zero. Project discovery in both collectors reads both keys from the chats of a home install
+(not from a Docker volume), and the parser takes `acp_cwd` as the chat's project path
+([Parser plan](#parser-plan)). A plain A0 CLI chat records no host path: the connector's working
+directory stays on the host side
 ([`a0-connector session.py:131`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/session.py#L131));
 no key for it was found in agent-zero's `plugins/_a0_connector` at [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a)
 (grepped for `workspace` and `cwd`).
@@ -343,12 +375,13 @@ outlives a reset of a task's chat but not a delete
 ([Other stores](#other-stores)). Whether Agent Zero
 keeps a per-prompt history file is not stated.
 
-The analyzer reads none
-of these today: the time-travel git is excluded by the collector, the
-memory store is a pickle left to manual analysis, and the scheduler and
-Telegram rows of [Past use and secondary sources](#past-use-rows-and-secondary-sources) are
-proposed, not written
-(see [Secondary sources](../analyzer/docs/output.md#secondary-sources)).
+The analyzer reads the scheduler's `tasks.json` and the Telegram
+`state.json` as secondary sources, the second giving a deletion row for a
+mapped chat that is gone
+([Past use and secondary sources](#past-use-rows-and-secondary-sources),
+[Secondary sources](../analyzer/docs/output.md#secondary-sources)); it does
+not read `tasks.yaml`, the time-travel git, which the collector excludes,
+or the memory store, a pickle left to manual analysis.
 
 ### Record schema
 
@@ -475,8 +508,9 @@ so these survive:
 
 #### Editor sessions
 
-Not read by the parser. ACP lets an editor drive an agent; the bundled `_a0_acp` plugin serves it
-and the host-side connector (`a0 acp`) relays the editor's files and terminal. A chat an editor
+Read by the parser ([Parser plan](#parser-plan)). ACP lets an editor drive an agent; the bundled
+`_a0_acp` plugin serves it and the host-side connector (`a0 acp`) relays the editor's files and
+terminal. A chat an editor
 opens gets `data.acp_session` (`true`), `acp_cwd` (the editor's workspace, a path on the user's
 host), `acp_additional_directories` (a list of paths), `acp_mode` (`default`, `plan` or `act`,
 anything else stored as `default`), `acp_transport` (`connector` or `container`), `acp_model_id`,
@@ -487,16 +521,17 @@ The keys are written at [`e3051fb`](https://github.com/agent0ai/agent-zero/commi
 
 #### Model override
 
-Not read by the parser. Choosing a model for one chat stores
+Read by the parser ([Model rows](#model-rows)). Choosing a model for one chat stores
 `data.chat_model_override`: `{"preset_name": <name>}` for a preset of
 `usr/plugins/_model_config/presets.yaml`, a whole model configuration object for a custom choice, or
 `null` when cleared
 ([`plugins/_model_config/api/model_override.py:58`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_model_config/api/model_override.py#L58),[`81`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_model_config/api/model_override.py#L81),[`92`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_model_config/api/model_override.py#L92),
 [`plugins/_model_config/helpers/model_config.py:10`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_model_config/helpers/model_config.py#L10),[`744-756`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_model_config/helpers/model_config.py#L744-L756));
-the connector's model switcher writes the same key
-([`plugins/_a0_connector/api/v1/model_switcher.py:211`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_a0_connector/api/v1/model_switcher.py#L211)).
+the connector's model switcher writes the same key as `{"chat": {...}, "utility": {...},
+"embedding": {...}}`, each slot `{provider, name, api_key?, api_base?}`
+([`plugins/_a0_connector/api/v1/model_switcher.py:27-46`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_a0_connector/api/v1/model_switcher.py#L27-L46),[`200-211`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_a0_connector/api/v1/model_switcher.py#L200-L211)),
+so a custom choice can carry an API key ([Secrets](#secrets)).
 Only the latest choice is kept, so the history of switches is the per-message `provider_model_key`.
-Whether a custom configuration can carry an API key was not traced.
 
 ### Joins and timestamps
 
@@ -523,14 +558,14 @@ unpickling untrusted data, so leave it to manual analysis.
 #### Records of past use
 
 Cited at [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a).
-None is read by the parser today; the plan marks each one in
-[Past use and secondary sources](#past-use-rows-and-secondary-sources). Paths are relative to the
-install directory.
+The parser reads the scheduler's `tasks.json` and the Telegram `state.json`; the plan marks each
+source in [Past use and secondary sources](#past-use-rows-and-secondary-sources). Paths are relative
+to the install directory.
 
 | File | Holds | Survives | Joins `chat.json` on | Kind |
 | --- | --- | --- | --- | --- |
-| `usr/scheduler/tasks.json`, or `tasks.yaml` when only that exists | One object per scheduled, ad hoc or planned task: `uuid`, `context_id`, `name`, `system_prompt`, `prompt`, `attachments`, `project_name`, `created_at`, `updated_at`, `last_run`, `last_result`, `state`, `type` ([`helpers/task_scheduler.py:163-175`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L163-L175),[`512-515`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L512-L515)) | A reset of the task's chat; not a chat delete, which removes the tasks bound to the chat ([`api/chat_remove.py:24-26`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/api/chat_remove.py#L24-L26)) | `context_id` = `id`; `prompt` repeats the task chat's user message, `last_result` its last answer | secondary |
-| `usr/plugins/_telegram_integration/state.json` | `chats`, `"<bot>:<user id>:<chat id>"` to `ctxid` ([Telegram chat map](#telegram-chat-map)) | A chat delete, until that Telegram user writes again | the `ctxid` value = `id` | secondary (a deletion marker: an entry with no `chat.json`) |
+| `usr/scheduler/tasks.json`, or `tasks.yaml` when only that exists | One object per scheduled, ad hoc or planned task: `uuid`, `context_id`, `name`, `system_prompt`, `prompt`, `attachments`, `project_name`, `created_at`, `updated_at`, `last_run`, `last_result`, `state`, `type` ([`helpers/task_scheduler.py:163-175`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L163-L175),[`512-515`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L512-L515)) | A reset of the task's chat; not a chat delete, which removes the tasks bound to the chat ([`api/chat_remove.py:24-26`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/api/chat_remove.py#L24-L26)) | `context_id` = `id`; `prompt` repeats the task chat's user message, `last_result` its last answer ([Scheduler tasks](#scheduler-tasks)) | secondary, parsed (`tasks.json` only) |
+| `usr/plugins/_telegram_integration/state.json` | `chats`, `"<bot>:<user id>:<chat id>"` to `ctxid` ([Telegram chat map](#telegram-chat-map)) | A chat delete, until that Telegram user writes again | the `ctxid` value = `id` | secondary, parsed (a deletion marker: an entry with no `chat.json`) |
 | `usr/.time_travel/workspaces/` | A shadow git repository per workspace of `usr`, snapshotted automatically; each commit message ends with `A0-Time-Travel-Metadata:` and base64 JSON with `context_id`, `project_name`, `trigger`, `timestamp` and `changed_path_hints` ([`plugins/_time_travel/helpers/time_travel.py:22-28`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_time_travel/helpers/time_travel.py#L22-L28),[`1192-1194`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_time_travel/helpers/time_travel.py#L1192-L1194),[`1206-1220`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_time_travel/helpers/time_travel.py#L1206-L1220)) | A chat delete and the deletion of the files it wrote | `context_id` = `id`, and time | secondary; excluded by the collector (`usr/.time_travel`), so not in a collection |
 | `usr/memory/<subdir>/index.pkl` | Memory fragments and solutions the agent summarised at the end of each monologue, with `id`, `timestamp` and `area` and no chat id ([`plugins/_memory/helpers/memory.py:475-487`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_memory/helpers/memory.py#L475-L487)) | A chat delete or reset | time only | secondary; a pickle, left to manual analysis |
 | `usr/email/state.json` | The IMAP message ids already processed per handler ([`plugins/_email_integration/helpers/handler.py:38-39`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_email_integration/helpers/handler.py#L38-L39)) | A chat delete | nothing | no events |
@@ -548,6 +583,25 @@ Telegram also keeps `usr/plugins/_telegram_integration/state.json`,
 creates a chat
 ([`plugins/_telegram_integration/helpers/constants.py:3`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/constants.py#L3),
 [`plugins/_telegram_integration/helpers/handler.py:57-64`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L57-L64),[`405-410`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L405-L410)).
+The bot name is the part before the last two colons.
+
+#### Scheduler tasks
+
+`usr/scheduler/tasks.json` is the scheduler's task list as pydantic writes it, `{"tasks": [...]}`,
+each task an object with the keys of the [Records of past use](#records-of-past-use) table,
+datetimes as ISO 8601 strings, and `type` one of `adhoc`, `scheduled` and `planned`; `state` is
+`idle`, `running`, `disabled` or `error`
+([`helpers/task_scheduler.py:78-88`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L78-L88),[`512-519`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L512-L519),[`584-592`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L584-L592)).
+A scheduled task also holds `schedule` (cron fields), a planned task `plan` (`todo`,
+`in_progress`, `done`), and an ad hoc task `token`
+([`332`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L332),[`422`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L422),
+[`282-284`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L282-L284)).
+A run logs the chat's user message as `## Task:\n<prompt>`, or
+`## Context:\n<context>\n\n## Task:\n<prompt>` when the task has context
+([`945-959`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L945-L959)),
+and a finished run sets `last_run` and `last_result`, the monologue's answer or `ERROR: <error>`
+with `state` `error`
+([`249-275`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/task_scheduler.py#L249-L275)).
 
 ### Format versions
 
@@ -583,6 +637,12 @@ The transcript cannot be flagged, so `token` and `webhook_secret` are the keys t
 sharing a `chat.json`. The same values are in the plugin's configuration file
 ([Credentials](#credentials)).
 
+A chat's `data.chat_model_override` can hold an `api_key` in each slot of a custom choice made from
+the connector ([Model override](#model-override)), in clear text in `chat.json`; the parser prints
+only each slot's provider and name. An ad hoc task's `token` in `usr/scheduler/tasks.json` is a
+random 19-digit number the task is created with, whose use was not traced
+([Scheduler tasks](#scheduler-tasks)); the parser does not read it.
+
 The WhatsApp bridge's login state is a credential directory, not a field of a store
 ([Credentials](#credentials)).
 
@@ -597,12 +657,18 @@ under `<a0>/usr/chats` or `<a0>/tmp/chats` of a home install, and under
 `chats/` at the base of a Docker volume mounted at `/a0/usr`
 ([issue 175](https://github.com/seanthegeek/doubleagent/issues/175),
 [Transcript stores](#transcript-stores)); the rows are the same in both forms.
+Beside them, in the same two forms: `usr/scheduler/tasks.json` (or the
+legacy `tmp/scheduler/tasks.json`), `usr/plugins/_telegram_integration/state.json`,
+each `_tool_access/config.json` and `_orchestrator/config.json`, the
+`.toggle-0` and `.toggle-1` files of `_infection_check` and `_orchestrator`
+at every plugin scope ([Per-user storage](#per-user-storage)), and
+`~/.agent-zero/.env` of the connector.
 
 | Column | Source |
 | --- | --- |
 | timestamp_utc | log `timestamp` (epoch s) |
 | session_id | `chat.json` `id` |
-| project_path | `/a0/usr/projects/<data.project>`, else empty |
+| project_path | `data.acp_cwd` for an editor session, else `/a0/usr/projects/<data.project>`, else empty |
 | git_branch | empty |
 | turn_type | `user` → user; `response` → assistant; `agent` → assistant (`kvps.headline`/`thoughts`), and thinking for `kvps.reasoning`; `tool`, `mcp`, `code_exe`, `browser`, `subagent` → tool_use then tool_result from `content`; others → system |
 | model | `metadata.responses.provider_model_key` of the matching assistant message, else empty |
@@ -611,12 +677,12 @@ under `<a0>/usr/chats` or `<a0>/tmp/chats` of a home install, and under
 | text | `content`; for tool_use the `code`/`command`/`url` key of `kvps`, else `kvps` as JSON |
 | source_line | log item `no` |
 
-The subsections below give one paragraph per class, from source at [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a); a row marked
-proposed is not written by the parser yet.
+The subsections below give one paragraph per class, from source at [`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a); every row
+they describe is written by the parser.
 
 #### Permission rows
 
-The parser writes no permission rows yet; all the rows below are proposed.
+Every row below is source-derived; not observed on any real install.
 
 Per call. A tool call the profile's policy blocks raises
 `Tool "<name>" is blocked for agent profile "<profile>".`, which the agent records as a history
@@ -637,8 +703,10 @@ headed `Infection check: requesting clarification`, `Infection check: clarificat
 `Infection check: TERMINATED`, the last also replacing the agent's last history message with a
 blocked marker
 ([`plugins/_infection_check/helpers/checker.py:180-197`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_infection_check/helpers/checker.py#L180-L197),[`330-345`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_infection_check/helpers/checker.py#L330-L345)):
-`permission decision: <clarify, passed or terminated> (infection check)`. Today all three reach the
-timeline only as `system` rows `warning: <heading> | <content>`.
+`permission decision: <clarify, passed or terminated> (infection check)`. Each decision row follows
+the `system` row `warning: <heading> | <content>` of the log item it reads, at the item's time;
+the blocked row carries the tool's name in `tool_name` and the MCP row `mcp_approval_request`. No
+log field joins a decision to the call it governed, so `tool_use_id` stays empty.
 
 Standing. Tool policies are `mode` (`inherit` or `custom`), `default` and `mcp_default` (`allow` or
 `block`), `allowed` and `blocked` lists of tool ids
@@ -648,15 +716,21 @@ in `usr/agents/<profile>/plugins/_tool_access/config.json`, a project's
 `.a0proj/plugins/_tool_access/config.json` and
 `.a0proj/agents/<profile>/plugins/_tool_access/config.json`
 ([`plugins/_tool_access/README.md:4-9`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_tool_access/README.md#L4-L9)):
-one `permission setting: <scope>.<key>=<value> (from <file>, file mtime)` row per key and list
-entry. The Orchestrator plugin, which tells the agent how to run other coding CLIs on the user's
-host or in the container, defaults each to its approval bypass (`bypass_sandbox`,
+one
+`permission setting: tool_access.<key>=<value>[ profile=<profile>][ project=<name>] (from <file>, file mtime)`
+row per scalar key and list entry, the profile and project taken from the file's
+path, with an empty `session_id` and, for a project's file, `project_path` the project. The
+Orchestrator plugin, which tells the agent how to run other coding CLIs on the user's host or in
+the container, defaults each to its approval bypass (`bypass_sandbox`,
 `permission_mode: bypassPermissions`, `force`, `always_approve`, `yolo`, `auto`,
 [`plugins/_orchestrator/default_config.yaml:7-37`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_orchestrator/default_config.yaml#L7-L37));
-a user override in `usr/plugins/_orchestrator/config.json` gets the same `permission setting:` rows.
-The `.toggle-1` of `_infection_check` is one more (`permission setting: infection_check=enabled`).
-An editor session's `data.acp_mode` gives `permission mode: <acp_mode> (acp)` after the chat start
-row.
+a user override in `usr/plugins/_orchestrator/config.json` gives one
+`permission setting: orchestrator.<cli>.<key>=<value> (from <file>, file mtime)` row for each of
+those seven keys it holds, and nothing else of the file is read. A `.toggle-1` or `.toggle-0` of
+`_infection_check` or `_orchestrator` at any plugin scope gives
+`permission setting: <infection_check|orchestrator>=<enabled|disabled>[ profile=<profile>][ project=<name>] (from <file>, file mtime)`.
+An editor session's `data.acp_mode` gives `permission mode: <acp_mode> (acp, as of file mtime)`
+after the chat start row, at the file's modification time, since only the latest mode is kept.
 
 #### Model rows
 
@@ -668,24 +742,40 @@ on a change, tracked per chat `id` and agent `number` (`agentno` on log
 items), with ` agent=<n>` after it for a subordinate agent. These `model:` rows from
 `provider_model_key` are already written.
 
-Proposed:
-`model: requested <preset_name or compact JSON> (chat override, as of
-file mtime)` from `data.chat_model_override`, and `model: requested
-<acp_model_id> (acp)`, both after the chat start row
+After the chat start row, at the file's modification time, source-derived; not observed on any
+real install:
+`model: requested <acp_model_id> (acp, as of file mtime)` from
+`data.acp_model_id`, and `model: requested <choice> (chat override, as of
+file mtime)` from `data.chat_model_override`, where `<choice>` is
+`preset <preset_name>`, or `<slot>=<provider>/<name>` for each slot of a
+custom choice (`chat`, `utility`, `embedding`), or the top-level
+`<provider>/<name>`, or `custom configuration`; the object itself is never
+printed, since it can hold an `api_key`
 ([Model override](#model-override), [Editor sessions](#editor-sessions)).
+A cleared override (`null`) gives no row.
 
 #### Past-use rows and secondary sources
 
-Proposed, for the sources table in
-[Records of past use](#records-of-past-use): `usr/scheduler/tasks.json`
-(or `.yaml`) secondary, one `user` row per task `prompt` and one
-`assistant` row per `last_result` at `last_run`, joined on
-`context_id`, plus `system` `scheduled task: <name> type=<type>
-state=<state>` at `created_at`; `state.json` of the Telegram plugin
-secondary, one `session deleted: telegram chat <chat id> user <user
-id> ctxid <ctxid> (from state.json, file mtime)` row for a map entry
-whose `chat.json` is absent from the input. The time-travel git and
-the memory pickle are not parsed.
+For the sources table in [Records of past use](#records-of-past-use),
+source-derived; not observed on any real install. `usr/scheduler/tasks.json` is secondary: per
+task, with
+`session_id` the `context_id` and `project_path`
+`/a0/usr/projects/<project_name>` when set, a `system` row
+`scheduled task: <name> type=<type> state=<state>` at `created_at`, a
+`user` row `## Task:\n<prompt>` with no timestamp (the text a run logs as
+the chat's user message when the task has no context,
+[Scheduler tasks](#scheduler-tasks)), and the `last_result` at `last_run`
+as an `assistant` row, or as a `system` row
+`scheduled task failed: <error>` when the state is `error` and the result
+starts `ERROR: `. `last_run` is stamped when the run ends, after the
+chat's `response` log item, so the file's matching window is 60 seconds.
+`token` and `system_prompt` are not read, and `tasks.yaml` is not read
+(YAML, which the analyzer has no reader for). `state.json` of the Telegram
+plugin is secondary: one
+`session deleted: telegram bot <bot> chat <chat id> user <user id> ctxid <ctxid> (from state.json, no chat.json in the input, file mtime)`
+row, with `session_id` the ctxid, for each map entry whose
+`chats/<ctxid>/chat.json` or `chats/<ctxid>.json` is not beside it in the
+input. The time-travel git and the memory pickle are not parsed.
 
 #### Sync, relay and origin rows
 
@@ -743,22 +833,31 @@ chat on a third party's server, and `chat.json` records each
   ([`plugins/_telegram_integration/helpers/handler.py:376-387`](https://github.com/agent0ai/agent-zero/blob/e3051fb584b1a36be2b0a0c90606f1c2c2d356ec/plugins/_telegram_integration/helpers/handler.py#L376-L387)),
   so a `state.json` entry with no `chat.json` is a deleted Telegram chat.
 
-Origin, proposed: none on the instance, but the connector's `~/.agent-zero/.env` names the last
-chat it used on a remote instance (`AGENT_ZERO_LAST_CONTEXT_ID` and `AGENT_ZERO_LAST_CONTEXT_HOST`,
-[`a0-connector config.py:13-14`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/config.py#L13-L14)); a `session origin: remote agent-zero instance
-<AGENT_ZERO_LAST_CONTEXT_HOST> context <AGENT_ZERO_LAST_CONTEXT_ID>
-(from .agent-zero/.env, file mtime)` row would mark it, reading only
-those two keys of a file the collector flags as a secret.
+Origin: none on the instance, but the connector's `~/.agent-zero/.env` names the last chat it
+used on a remote instance (`AGENT_ZERO_LAST_CONTEXT_ID` and `AGENT_ZERO_LAST_CONTEXT_HOST`,
+[`a0-connector config.py:13-14`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/config.py#L13-L14),
+written together by
+[`347-356`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/config.py#L347-L356)). When both are set the parser
+yields
+`session origin: remote agent-zero instance <AGENT_ZERO_LAST_CONTEXT_HOST> context <AGENT_ZERO_LAST_CONTEXT_ID> (from .agent-zero/.env, file mtime)`
+with `session_id` the context id, at the file's modification time, and sets `records_origin`;
+source-derived; not observed on any real install. It reads only those two keys of a file the
+collector flags as a secret, strips quotes as the connector's own reader does
+([`51-66`](https://github.com/agent0ai/a0-connector/blob/3741c8809f1f99b4efee2ed1a24234a98bf896d4/src/agent_zero_cli/config.py#L51-L66)), and puts no other line in a row.
 
 #### Scratch directory rows
 
 A chat with no project runs in `/a0/usr/workdir` (the default `workdir_path`,
 [`helpers/settings.py:604`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/settings.py#L604)),
-and the analyzer's catalog rule cannot class a container path, so the parser would write
-`scratch directory: /a0/usr/workdir (no project)` for such a chat and
-`scratch directory: <data.workdir_path> (acp container transport)` for an editor session that sets
-one. An editor session's `data.acp_cwd` is the user's project on the host and is the better
-`project_path` for its rows. The host connector's computer-use screenshot directory is described in
+and the analyzer's catalog rule cannot class a container path. An editor session that sets
+`data.workdir_path` gives
+`scratch directory: <workdir_path> (acp container transport, from chat.json data.workdir_path, as of file mtime)`
+after the chat start row, at the file's modification time, with `project_path` the directory;
+source-derived; not observed on any real install.
+An editor session's `data.acp_cwd`, the user's project on the host, is the `project_path` of its
+other rows. A chat with no project and no editor session gets no scratch row: the working
+directory it ran in is the instance's `workdir_path` setting, not a key of the chat. The host
+connector's computer-use screenshot directory is described in
 [Host-side companions](#host-side-companions).
 
 #### Deletion rows
@@ -767,13 +866,19 @@ A chat delete also removes the chat's scheduler tasks;
 what survives it is Telegram's `state.json`, the time-travel git, the
 memory store and the received files ([What survives a delete](#what-survives-a-delete)).
 Nothing local says whether the provider deleted its stored responses
-([Sync, relay and origin](#sync-relay-and-origin-rows)). The proposed deletion row is the Telegram
-map row under [Past use and secondary sources](#past-use-rows-and-secondary-sources).
+([Sync, relay and origin](#sync-relay-and-origin-rows)). The deletion row is the Telegram map's
+`session deleted:` row under
+[Past use and secondary sources](#past-use-rows-and-secondary-sources), source-derived; not observed on any real install.
 
 #### Bad-line rows
 
-No file is read line by line; nothing to add. A `chat.json` that does not parse yields a
-whole-file row plus the log items the parser can recover.
+No file is read line by line. A `chat.json` that does not parse yields a whole-file row plus the
+log items the parser can recover. `tasks.json` is a JSON array reader: a task that is not an object
+gives `parser: unparseable record <N> (not a JSON object): <record>` and the tasks around it are
+still read, and a file that is not JSON or has no `tasks` list gives one
+`parser: scheduler tasks file ...` row. `state.json` and the policy files give one whole-file
+`parser:` row when they are not JSON objects. The connector's `.env` gives no bad-line rows: it is
+a secret file, and the connector's own reader skips a line without `=` too.
 
 #### Fixtures
 
@@ -791,6 +896,70 @@ Fixture `usr/chats/AbCd1234/chat.json`:
   {"no":2,"id":"t1","type":"tool","heading":"A0: Using tool 'code_execution_tool'","content":"a.txt","kvps":{"runtime":"terminal","code":"ls","_tool_name":"code_execution_tool"},"timestamp":1759320003.0,"agentno":0}]}}
 ```
 
+Fixture `usr/scheduler/tasks.json` (one task shown; the test fixture also holds an ad hoc task in
+state `error` with `last_result` `ERROR: connection refused` and a `token`):
+
+```json
+{"tasks":[{"uuid":"TaskUuid01","context_id":"AbCd1234","state":"idle","name":"Nightly listing",
+ "system_prompt":"You run on a schedule.","prompt":"list files","attachments":[],
+ "project_name":"demo","created_at":"2026-10-01T11:00:00Z","updated_at":"2026-10-01T12:00:05.500000Z",
+ "last_run":"2026-10-01T12:00:05.500000Z","last_result":"There is one file, a.txt.",
+ "type":"scheduled","schedule":{"minute":"0","hour":"2","day":"*","month":"*","weekday":"*"}}]}
+```
+
+Fixture `usr/plugins/_telegram_integration/state.json`, whose second entry has no chat:
+
+```json
+{"chats":{"opsbot:123456789:987654321":"TgChat01","opsbot:555:777":"GoneTg01"}}
+```
+
+Fixture `usr/agents/developer/plugins/_tool_access/config.json`:
+
+```json
+{"mode":"custom","default":"allow","mcp_default":"block","allowed":[],
+ "blocked":["code_execution_tool","mcp:github.create_issue"]}
+```
+
+Fixture `data` of an editor-session chat, and its `warning` log items' headings: the blocked-tool
+message in a formatted error, `Responses MCP approval required`,
+`Infection check: clarification passed` and `Infection check: TERMINATED`:
+
+```json
+{"project":"demo","acp_session":true,"acp_cwd":"/home/alice/src/webapp",
+ "acp_additional_directories":["/home/alice/src/shared"],"acp_mode":"act","acp_transport":"container",
+ "acp_model_id":"openai/gpt-5","acp_config_options":{},"workdir_path":"/a0/usr/workdir/acp",
+ "chat_model_override":{"chat":{"provider":"openrouter","name":"anthropic/claude-sonnet-4","api_key":"<redacted>"},
+  "utility":{"provider":"ollama","name":"qwen3"}}}
+```
+
+Fixture `~/.agent-zero/.env`, with keys the parser must not read:
+
+```text
+AGENT_ZERO_HOST=http://localhost:50080
+AGENT_ZERO_COMPUTER_USE_RESTORE_TOKEN=<redacted>
+AGENT_ZERO_LAST_CONTEXT_HOST=https://a0.example.net
+AGENT_ZERO_LAST_CONTEXT_ID='RemCtx01'
+```
+
+#### Source host rows
+
+The agent records no source-host integration. Grepped `github`, `gitlab`, `bitbucket`, `oauth`,
+`installation`, `repositor`, `pull request`, `clone` and `token` across agent-zero at
+[`ff2a5b9`](https://github.com/agent0ai/agent-zero/commit/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a)
+and a0-connector at
+[`3741c88`](https://github.com/agent0ai/a0-connector/commit/3741c8809f1f99b4efee2ed1a24234a98bf896d4).
+Cloning a repository as a project takes a token for that one clone, passes it as an HTTP header and
+never stores it (`git_token` is a transient key), and the project's `.a0proj/project.json` keeps
+the clone URL with any credentials stripped
+([`helpers/projects.py:74`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/projects.py#L74),[`121-151`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/projects.py#L121-L151);
+[`helpers/git.py:433-454`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/helpers/git.py#L433-L454)); the plugin installer's `git_token` is
+used the same way
+([`plugins/_plugin_installer/api/plugin_install.py:47-53`](https://github.com/agent0ai/agent-zero/blob/ff2a5b9c9c4e490ba38dd7c313e779510bb2071a/plugins/_plugin_installer/api/plugin_install.py#L47-L53)).
+The GitHub Copilot sign-in of the `_oauth` plugin stores a GitHub token, but only to reach Copilot
+models, with the scope `read:user`, and records no login ([Credentials](#credentials)). No list of
+repositories and no repository-bound remote conversation is kept. A clone URL is the project's own
+git remote, not an integration, so the parser writes no `source host:` row.
+
 ## Confidence
 
 - High (source): every path under the install directory and its `usr/` layout (constants), the
@@ -805,5 +974,8 @@ Fixture `usr/chats/AbCd1234/chat.json`:
 - Not determined: where native installs are cloned in practice; the catalog cannot find a clone
   outside the two listed paths.
 - Not determined: the desktop plugin's credential files beyond the literal paths found.
-- Not determined: the content of task-scheduler contexts beyond `type="task"`, and the
-  `responses` metadata for every provider.
+- Medium (source, no real install): the permission, setting, requested-model, scratch, scheduler,
+  Telegram deletion and connector origin rows ([Parser plan](#parser-plan)); the heading and message
+  texts they match are literals in source, but no install has shown them on disk.
+- Not determined: the content of task-scheduler contexts beyond the logged prompt, what an ad hoc
+  task's `token` is used for, and the `responses` metadata for every provider.
