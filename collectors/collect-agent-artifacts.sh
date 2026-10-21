@@ -526,6 +526,9 @@ agent-zero|AppData/Local/A0
 agent-zero|.config/Agent Zero Launcher
 agent-zero|Library/Application Support/Agent Zero Launcher
 agent-zero|AppData/Roaming/Agent Zero Launcher
+# computer-use screen captures of the A0 CLI connector in the system temp
+# directory, inside the home only on Windows
+agent-zero|AppData/Local/Temp/_a0_connector
 # ShellGPT (~/.config on every OS; chats default to the temp dir, under the home only on Windows)
 shellgpt|.config/shell_gpt
 shellgpt|AppData/Local/Temp/chat_cache
@@ -1621,6 +1624,8 @@ agent-zero*/usr/plugins/_desktop/profiles/*/.gnupg/*
 Desktop/agent-zero*/usr/plugins/_desktop/profiles/*/.gnupg/*
 agent-zero*/usr/plugins/*/config.json
 Desktop/agent-zero*/usr/plugins/*/config.json
+agent-zero*/tmp/whatsapp/session/*
+Desktop/agent-zero*/tmp/whatsapp/session/*
 .agent-zero/.env
 .agent-zero/session_cookies.json
 */Agent Zero Launcher/docker_manager/state.json
@@ -1669,6 +1674,7 @@ usr/plugins/_desktop/profiles/*/.gnupg/*
 usr/plugins/*/config.json
 tmp/secrets.env
 tmp/settings.json
+tmp/whatsapp/session/*
 config.toml
 id_ed25519
 .secret_key
@@ -2963,7 +2969,9 @@ find_claude_code_projects() {
   done
 }
 # find_cli_session_projects HOME: Codex, Qwen Code, Cline CLI, Cursor chats,
-# Continue, Goose sessions, OpenCode and Crush. Temporaries: _fcsp_.
+# Continue, Goose sessions, OpenCode, Crush, and Agent Zero editor (ACP)
+# sessions, whose workspace and extra folders are a string and a JSON array
+# in chat.json. Temporaries: _fcsp_.
 find_cli_session_projects() {
   # A Codex cwd in this home's Documents/Codex (the ChatGPT desktop app's projectless output
   # directories, which the catalog collects whole) is not a project.
@@ -2980,6 +2988,11 @@ find_cli_session_projects() {
   json_vals working_dir "$1"/.local/share/goose/sessions/*.jsonl
   json_vals worktree "$1"/.local/share/opencode/storage/project/*.json
   json_vals path "$1/.local/share/crush/projects.json"
+  set -- "$1"/agent-zero/usr/chats/*/chat.json "$1"/agent-zero/*/usr/chats/*/chat.json \
+    "$1"/Desktop/agent-zero/usr/chats/*/chat.json
+  json_vals acp_cwd "$@"
+  grep -ho '"acp_additional_directories": *\[[^]]*\]' "$@" 2>/dev/null |
+    grep -o '"/[^"]*"' | sed 's/^"//; s/"$//'
 }
 # find_gemini_projects HOME: Gemini CLI's projects, trusted folders and
 # project roots; the Antigravity CLI's history, settings and project cache;
