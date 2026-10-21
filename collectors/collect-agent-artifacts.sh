@@ -460,6 +460,10 @@ cody|Library/Preferences/Cody-nodejs
 cody|Library/Logs/Cody-nodejs
 cody|AppData/Local/Cody-nodejs
 cody|AppData/Roaming/Cody-nodejs
+cody|.sourcegraph
+cody|.config/JetBrains/*/options/cody*.xml
+cody|Library/Application Support/JetBrains/*/options/cody*.xml
+cody|AppData/Roaming/JetBrains/*/options/cody*.xml
 # Twinny (chats are rows in state.vscdb; embeddings, node and server state under ~/.twinny)
 twinny|.twinny
 # Tabby (self-hosted server state, editor agent config, JetBrains plugin settings)
@@ -692,6 +696,8 @@ pearai|.pearai-agent-modes
 cody|.cody
 cody|.vscode/cody.json
 cody|.sourcegraph
+cody|.idea/cody_history.xml
+cody|.idea/.sourcegraph
 open-interpreter|.openinterpreter
 open-interpreter|.codewhale
 openhands|.openhands
@@ -1474,6 +1480,9 @@ AppData/Roaming/Zed/global_settings.json
 .pearai-agent/mcp.json
 */Cody-nodejs/user-settings.json
 */Cody-nodejs/Config/user-settings.json
+.config/JetBrains/*/options/cody_accounts.xml
+Library/Application Support/JetBrains/*/options/cody_accounts.xml
+AppData/Roaming/JetBrains/*/options/cody_accounts.xml
 */User/globalStorage/rjmacarthy.twinny/twinny-providers.json
 .twinny/node/identity.json
 .twinny/server/license

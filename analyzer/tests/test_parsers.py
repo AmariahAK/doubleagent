@@ -12445,6 +12445,230 @@ class CodyTests(ParserBase):
             " title=Run terminal command\npytest -q\nAllow Cody to run this command?",
         )
 
+    # ---- issue 197: settings, model preferences, legacy JetBrains history ----
+
+    def settings_col(self):
+        from fixtures import build_cody_settings
+
+        build_cody_settings(self.home)
+        self.col = open_input(self.tmp / "home", self.cat, host="h1")
+
+    def test_settings_permission_rows(self):
+        from fixtures import CODY_MCP_TOKEN, CODY_SETTINGS_REL
+
+        self.settings_col()
+        art = self.artifact(CODY_SETTINGS_REL)
+        self.assertEqual(art.agent, "vscode")
+        self.assertIn(CodyParser, [type(x) for x in cli.parsers_for(art, by_agent())])
+        rows = self.rows_for(CodyParser(), CODY_SETTINGS_REL)
+        src = " (from %s, file mtime)" % CODY_SETTINGS_REL
+        self.assertEqual(
+            [r.text for r in rows],
+            [
+                "permission setting: cody.agentic.context.experimentalOptions.shell.allow"
+                '=["git","ls"]' + src,
+                "permission setting: cody.agentic.context.experimentalOptions.shell.block"
+                '=["sudo"]' + src,
+                "permission setting: cody.agentic.context.experimentalShell=true" + src,
+                "permission setting: cody.chat.agenticContext=false" + src,
+                'permission setting: cody.mcpServers.github.disabledTools=["delete_repo"]' + src,
+                "permission setting: cody.mcpServers.web.disabled=true" + src,
+            ],
+        )
+        mtime = to_utc((self.home / CODY_SETTINGS_REL).lstat().st_mtime)
+        self.assertEqual(
+            {(r.turn_type, r.agent, r.session_id, r.timestamp_utc, r.source_line) for r in rows},
+            {("system", "cody", "", mtime, 1)},
+        )
+        self.assertNotIn(CODY_MCP_TOKEN, " ".join(r.text for r in rows))
+        self.assertFalse(CodyParser().secondary(art))
+
+    def test_settings_without_cody_yield_nothing(self):
+        from fixtures import CODY_SETTINGS_REL
+
+        self.settings_col()
+        path = self.home / CODY_SETTINGS_REL
+        path.write_text('{"editor.fontSize": 14}\n', encoding="utf-8")
+        self.assertEqual(self.rows_for(CodyParser(), CODY_SETTINGS_REL), [])
+        # A broken settings file is the editor's problem unless it names Cody.
+        path.write_text('{"editor.fontSize": 14', encoding="utf-8")
+        self.assertEqual(self.rows_for(CodyParser(), CODY_SETTINGS_REL), [])
+        path.write_text('{"cody.chat.agenticContext": tru', encoding="utf-8")
+        rows = self.rows_for(CodyParser(), CODY_SETTINGS_REL)
+        self.assertEqual(
+            [(r.turn_type, r.text) for r in rows],
+            [("system", "parser: settings.json is not a JSON object")],
+        )
+
+    def test_model_preferences_file(self):
+        from fixtures import CODY_PREFS_REL
+
+        self.settings_col()
+        rows = self.rows_for(CodyParser(), CODY_PREFS_REL)
+        src = "endpoint=https://sourcegraph.com/ (from %s, file mtime)" % CODY_PREFS_REL
+        self.assertEqual(
+            [(r.text, r.model) for r in rows],
+            [
+                (
+                    "model setting: selected.chat=%s %s" % (CODY_MODEL_SWITCHED, src),
+                    CODY_MODEL_SWITCHED,
+                ),
+                ("model setting: defaults.chat=%s %s" % (CODY_MODEL, src), CODY_MODEL),
+                ("model setting: defaults.edit=%s %s" % (CODY_MODEL, src), CODY_MODEL),
+            ],
+        )
+        mtime = to_utc((self.home / CODY_PREFS_REL).lstat().st_mtime)
+        self.assertEqual({(r.session_id, r.timestamp_utc) for r in rows}, {("", mtime)})
+        (self.home / CODY_PREFS_REL).write_text('{"https://', encoding="utf-8")
+        self.assertEqual(
+            [r.text for r in self.rows_for(CodyParser(), CODY_PREFS_REL)],
+            ["parser: cody-model-preferences is not a JSON object"],
+        )
+
+    def test_model_preferences_in_vscode_row(self):
+        self.settings_col()
+        rows = self.rows_for(CodyParser(), CODY_VSCDB_REL)
+        # The chat rows come first, unchanged.
+        self.assertEqual([r.text for r in rows[:2]][1], "explain build.sh")
+        src = "(from %s cody-model-preferences, file mtime)" % CODY_VSCDB_REL
+        self.assertEqual(
+            [r.text for r in rows[4:]],
+            [
+                "model setting: selected.chat=%s endpoint=https://sourcegraph.com/ %s"
+                % (CODY_MODEL_SWITCHED, src),
+                "model setting: defaults.chat=%s endpoint=https://sourcegraph.com/ %s"
+                % (CODY_MODEL, src),
+                "model setting: defaults.edit=%s endpoint=https://sourcegraph.com/ %s"
+                % (CODY_MODEL, src),
+            ],
+        )
+        self.assertEqual({r.source_line for r in rows[4:]}, {0})
+
+    def test_not_wanted_beside_new_inputs(self):
+        self.settings_col()
+        for rel in (
+            ".config/VSCodium/User/keybindings.json",
+            ".local/share/Cody-nodejs/JetBrains-globalState/cody-anonymous-user-id",
+        ):
+            self.assertFalse(CodyParser().wants(self.artifact(rel)), rel)
+
+    def legacy_artifact(self, text=None):
+        from fixtures import CODY_LEGACY_REL, CODY_LEGACY_XML
+
+        proj = self.tmp / "srv" / "proj"
+        path = proj / CODY_LEGACY_REL
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(CODY_LEGACY_XML if text is None else text, encoding="utf-8")
+        (proj / ".idea/workspace.xml").write_text("<project />", encoding="utf-8")
+        home = Home(disk_path=proj, original="/srv/proj", user="alice", host="h1", project=True)
+        return Artifact(path, "/srv/proj/" + CODY_LEGACY_REL, CODY_LEGACY_REL, "cody", home)
+
+    def test_legacy_history_rows(self):
+        from fixtures import CODY_LEGACY_ACCOUNT, CODY_LEGACY_ID, CODY_LEGACY_UPDATED
+
+        art = self.legacy_artifact()
+        p = CodyParser()
+        self.assertTrue(p.wants(art))
+        self.assertTrue(p.secondary(art))
+        self.assertTrue(p.has_secondary)
+        ws = Artifact(
+            art.disk_path.parent / "workspace.xml",
+            "/srv/proj/.idea/workspace.xml",
+            ".idea/workspace.xml",
+            "project",
+            art.home,
+        )
+        self.assertFalse(p.wants(ws))
+        # A collector before 1.12.0 records the file as `project`; the
+        # bundled project catalog names it `cody`.
+        self.assertEqual(self.cat.project_agent_for(".idea/cody_history.xml"), "cody")
+        rows = list(p.parse(art, Options()))
+        self.assertEqual(
+            [(r.turn_type, r.session_id, r.text) for r in rows],
+            [
+                (
+                    "system",
+                    CODY_LEGACY_UPDATED,
+                    "chat: %s | account=%s | messages=3 (legacy JetBrains history)"
+                    % (CODY_LEGACY_ID, CODY_LEGACY_ACCOUNT),
+                ),
+                ("user", CODY_LEGACY_UPDATED, "hi\nthere"),
+                ("system", CODY_LEGACY_UPDATED, "model: " + CODY_MODEL),
+                ("assistant", CODY_LEGACY_UPDATED, "hello"),
+                ("user", CODY_LEGACY_UPDATED, "unpaired question"),
+                (
+                    "system",
+                    "2024-02-01T09:00:00.000001",
+                    "chat: 1f8b7034-9fa8-488a-a13e-09c52677008b | account=%s"
+                    " | messages=1 (legacy JetBrains history)" % CODY_LEGACY_ACCOUNT,
+                ),
+                ("user", "2024-02-01T09:00:00.000001", "second chat"),
+            ],
+        )
+        self.assertEqual(rows[0].timestamp_utc, "2024-01-31T01:06:18.524Z")
+        self.assertEqual((rows[3].model, rows[1].model), (CODY_MODEL, ""))
+        self.assertEqual({r.project_path for r in rows}, {"/srv/proj"})
+        self.assertEqual({(r.agent, r.source_line) for r in rows}, {("cody", 0)})
+
+    def test_legacy_history_dedups_against_migrated_chat(self):
+        # The migration copied complete pairs into the agent store with
+        # updatedAt as the chat id; only the unpaired message is recovered.
+        from fixtures import CODY_LEGACY_UPDATED
+
+        art = self.legacy_artifact()
+        migrated = {
+            "https://sourcegraph.com/-alice": {
+                "chat": {
+                    CODY_LEGACY_UPDATED: {
+                        "id": CODY_LEGACY_UPDATED,
+                        "lastInteractionTimestamp": CODY_LEGACY_UPDATED,
+                        "interactions": [
+                            {
+                                "humanMessage": {
+                                    "speaker": "human",
+                                    "text": "hi\nthere",
+                                    "model": CODY_MODEL,
+                                },
+                                "assistantMessage": {
+                                    "speaker": "assistant",
+                                    "text": "hello",
+                                    "model": CODY_MODEL,
+                                },
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+        (self.home / CODY_JB_REL).write_text(json.dumps(migrated), encoding="utf-8")
+        primary = self.rows_for(CodyParser(), CODY_JB_REL)
+        legacy = list(CodyParser().parse(art, Options()))
+        kept, dropped = deduplicate(primary, [(r, 2.0) for r in legacy])
+        recovered = [r.text for r in kept[len(primary) :] if r.turn_type != "system"]
+        self.assertEqual(recovered, ["unpaired question", "second chat"])
+        self.assertEqual(dropped["cody"], 3)
+
+    def test_legacy_history_cut_keeps_earlier_chats(self):
+        from fixtures import CODY_LEGACY_XML
+
+        cut = CODY_LEGACY_XML.index(
+            '<speaker value="HUMAN" />\n                      <text value="second'
+        )
+        rows = list(CodyParser().parse(self.legacy_artifact(CODY_LEGACY_XML[:cut]), Options()))
+        texts = [r.text for r in rows]
+        self.assertIn("hello", texts)
+        self.assertIn("unpaired question", texts)
+        self.assertNotIn("second chat", texts)
+        self.assertEqual(rows[-1].turn_type, "system")
+        self.assertTrue(
+            rows[-1].text.startswith("parser: cody_history.xml did not parse; read 1 chat(s) (")
+        )
+        self.assertEqual((rows[-1].project_path, rows[-1].timestamp_utc), ("/srv/proj", ""))
+        # A file that is not XML at all is one row, not an exception.
+        rows = list(CodyParser().parse(self.legacy_artifact("not xml"), Options()))
+        self.assertEqual(len(rows), 1)
+        self.assertIn("read 0 chat(s)", rows[0].text)
+
 
 class TwinnyTests(ParserBase):
     def test_rows(self):

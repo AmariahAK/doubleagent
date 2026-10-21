@@ -1137,6 +1137,23 @@ Mk 'home/bob/.codex/worktrees/a1b2/repo/AGENTS.md' "# agents`n"
 Mk 'Users/alice/.openinterpreter/sessions/2026/10/04/rollout-2026-10-04T00-00-00-u3.jsonl' '{"type":"session_meta","payload":{"cwd":"C:\\Users\\alice\\.openinterpreter\\worktrees\\c3d4\\repo"}}'
 Mk 'Users/alice/.openinterpreter/worktrees/c3d4/repo/AGENTS.md' "# agents`n"
 
+# 2026-10-21 Cody JetBrains plugin files (#214)
+# Source-derived (sourcegraph/cody-public-snapshot at 8e20ac6): the plugin's
+# application components in each IDE's options/ directory, ~/.sourcegraph and
+# a project's .idea/.sourcegraph settings, and the legacy project-level
+# .idea/cody_history.xml. cody_accounts.xml carries customRequestHeaders and
+# is flagged; cody_accounts_settings.xml holds only the active account id.
+# Checks follow the default and -NoSecrets runs below; the same files, in the
+# Linux layout, are in smoke.sh.
+$o214 = 'Users/alice/AppData/Roaming/JetBrains/IntelliJIdea2025.2/options'
+Mk "$o214/cody.xml" "<application />`n"
+Mk "$o214/cody_accounts.xml" "<application />`n"
+Mk "$o214/cody_accounts_settings.xml" "<application />`n"
+Mk "$o214/cody_application_settings.xml" "<application />`n"
+Mk 'Users/alice/.sourcegraph/cody_settings.json' "{}`n"
+Mk 'proj/.idea/cody_history.xml' "<project version=`"4`" />`n"
+Mk 'proj/.idea/.sourcegraph/cody_settings.json' "{}`n"
+
 # 2026-10-15 special files (#120)
 # Codex CLI 0.162.1 keeps Unix domain sockets under .codex; on Windows each
 # is a reparse point (tag IO_REPARSE_TAG_AF_UNIX) with an empty LinkType,
@@ -1699,6 +1716,13 @@ Check '#222 Codex archived rollout cwd discovers project' { (StatusOf 'codexarch
 Check '#222 Codex worktree cwd not a project' { -not (@($sum.projects) | Where-Object { $_ -match '\.codex[\\/]worktrees' }) -and (StatusOf 'home/bob/.codex/worktrees') -eq 'skipped_excluded' -and -not ($script:Rows | Where-Object { $_.path -match 'worktrees[\\/]a1b2[\\/]repo[\\/]AGENTS\.md' }) }
 Check '#222 Open Interpreter worktree cwd not a project' { -not (@($sum.projects) | Where-Object { $_ -match '\.openinterpreter[\\/]worktrees' }) -and -not ($script:Rows | Where-Object { $_.path -match 'worktrees[\\/]c3d4[\\/]repo[\\/]AGENTS\.md' }) }
 
+# 2026-10-21 Cody JetBrains plugin files (#214)
+Check '#214 Cody JetBrains options files collected' { (Is113 "$o214/cody.xml" 'cody' $false) -and (Is113 "$o214/cody_application_settings.xml" 'cody' $false) }
+Check '#214 Cody cody_accounts.xml flagged secret' { Is113 "$o214/cody_accounts.xml" 'cody' $true }
+Check '#214 Cody cody_accounts_settings.xml not flagged' { Is113 "$o214/cody_accounts_settings.xml" 'cody' $false }
+Check '#214 Cody home .sourcegraph collected' { Is113 'Users/alice/.sourcegraph/cody_settings.json' 'cody' $false }
+Check '#214 Cody project .idea files collected' { (Is113 'proj/.idea/cody_history.xml' 'cody' $false) -and (Is113 'proj/.idea/.sourcegraph/cody_settings.json' 'cody' $false) }
+
 # cross-check archived bytes against manifest hashes
 $x = Join-Path $Work 'x'; New-Item -ItemType Directory -Path $x -Force | Out-Null
 if ($script:A.Name -like '*.tar.gz') { & tar -xzf $script:A.FullName -C $x 2>$null } else { [System.IO.Compression.ZipFile]::ExtractToDirectory($script:A.FullName, $x) }
@@ -1909,6 +1933,9 @@ Check '#160 Codex shell snapshot skipped without secrets' { (StatusOf $s160) -eq
 # 2026-10-21 framework catalog gaps (#223, #224, #225)
 Check '#224 difyctl login-pending.yml skipped without secrets' { (StatusOf 'Users/alice/.config/difyctl/login-pending.yml') -eq 'skipped_secret' }
 Check '#225 CLAI 2.0 workspace token skipped without secrets' { (StatusOf "$p225/workspaces/registry/ws1/token") -eq 'skipped_secret' }
+
+# 2026-10-21 Cody JetBrains plugin files (#214)
+Check '#214 Cody cody_accounts.xml skipped without secrets' { (StatusOf "$o214/cody_accounts.xml") -eq 'skipped_secret' }
 
 # ---- -Full ----------------------------------------------------------------
 Run 'full' @{ Full = $true }
