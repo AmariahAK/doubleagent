@@ -1920,8 +1920,8 @@ $1"; log_line "NOTE: $1"; }
 # compile_secret_pattern: sets SECRET_PATTERN to every line of SECRET_GLOBS
 # joined with |, each space escaped with a backslash, so the alternation is
 # one case pattern for define_secret_test. Run once, in the main shell. The
-# globs hold no |, parenthesis, quote, $ or backslash that would need more.
-# Reads SECRET_GLOBS.
+# globs hold no |, parenthesis, quote, $ or backslash that would need more;
+# tests/catalog-sync.sh checks that. Reads SECRET_GLOBS.
 compile_secret_pattern() {
   SECRET_PATTERN=$(printf '%s\n' "$SECRET_GLOBS" | sed 's/ /\\ /g' | tr '\n' '|')
   SECRET_PATTERN=${SECRET_PATTERN%|}
