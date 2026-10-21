@@ -233,3 +233,32 @@ jobs:
           $r = @('collectors/Collect-AgentArtifacts.ps1', 'collectors/tests/smoke.ps1') | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Settings collectors/PSScriptAnalyzerSettings.psd1 }
           $r | Format-Table -AutoSize
           exit @($r).Count
+
+  # The one status check the ruleset on main requires. A matrix job that
+  # the classification skips reports under its unexpanded name ("Analyzer
+  # tests", not "Analyzer tests (3.10)"), so a documentation-only pull
+  # request can never satisfy a list of per-job required checks. This job
+  # depends on every other job, runs whatever they did, and fails when any
+  # of them failed or was cancelled; a skipped job counts as passed.
+  result:
+    name: CI result
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - changes
+      - catalog-sync
+      - sh-collector
+      - sh-shellcheck
+      - powershell-7
+      - windows-powershell-51
+      - analyzer
+      - lint
+    steps:
+      - name: Fail when any job failed or was cancelled
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s\n' "$RESULTS"
+          if printf '%s' "$RESULTS" | grep -Eq '"result": *"(failure|cancelled)"'; then
+            exit 1
+          fi
