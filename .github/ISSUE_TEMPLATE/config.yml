@@ -1,0 +1,11 @@
+# Issue forms for bugs and feature requests; vulnerabilities go through the
+# private advisory form (SECURITY.md). Blank issues stay available for the
+# maintainer's own tracking issues (research rounds, parser backlogs).
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/seanthegeek/doubleagent/security/advisories/new
+    about: Vulnerable dependencies, unintended actions and denial of service are reported privately here, never as an issue. SECURITY.md says what counts.
+  - name: Documentation
+    url: https://seanthegeek.net/doubleagent/
+    about: The collector and analyzer documentation, the agents page and the research documents.

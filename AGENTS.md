@@ -1386,7 +1386,11 @@ the start of this section).
   collected twice, a promise the code does not keep), `enhancement` for a
   new feature, catalog entry or improvement to behaviour that already works
   as documented. A missing feature is an enhancement; a documented feature
-  that misbehaves is a bug.
+  that misbehaves is a bug. An issue filed with `gh issue create` states
+  the part, the version and the platform the way the issue forms under
+  `.github/ISSUE_TEMPLATE/` ask for them, and a vulnerability is never
+  filed as an issue: it goes through the private advisory form named in
+  [`SECURITY.md`](SECURITY.md).
 - Every bug fixed and every feature added has an issue, an existing one or
   one filed before the work is committed, even when the fix is found and
   made in the same session. Search open and closed issues first so the

@@ -64,6 +64,15 @@ Usage and options are in [analyzer/README.md](analyzer/README.md); accepted
 inputs, the JSONL schema, and recipes for searching large timelines are in the pages under
 [analyzer/docs/](analyzer/docs/).
 
+## Reporting problems
+
+A vulnerability in the tool itself (a vulnerable dependency, an unintended
+action, a denial of service) is reported privately as
+[SECURITY.md](SECURITY.md) describes; it also says which versions receive
+fixes and why misuse of a forensic tool is not one. Bugs and feature
+requests go through the issue forms on GitHub, which ask for the part, the
+version and the platform.
+
 ## License
 
 Copyright 2026 Sean Whalen. Licensed under the Apache License, Version 2.0.
