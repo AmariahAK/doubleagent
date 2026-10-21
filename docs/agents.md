@@ -842,9 +842,21 @@ Validated against: Source at [2c591ec](https://github.com/QwenLM/qwen-code/commi
 Files read: `<editor>/User/globalStorage/rooveterinaryinc.roo-cline/` and
 `.vscode-mock/global-storage/`: the Cline task files plus
 `tasks/<id>/history_item.json` and `tasks/_index.json`; the CLI's input
-history `.roo/cli-history.json` (a secondary source, text only).
+history `.roo/cli-history.json` (a secondary source, text only). For
+permission state: the `isAnswered` mark in `ui_messages.json`, the denial
+and approval JSON in the API history (read for decision rows even beside
+`ui_messages.json`), the extension's global state (the
+`RooVeterinaryInc.roo-cline` row of a VS Code or fork
+`User/globalStorage/state.vscdb`) and the CLI's
+`.vscode-mock/global-storage/global-state.json`, `.roo/cli-settings.json`,
+and the MCP `alwaysAllow` lists of `settings/mcp_settings.json` and a
+project's `.roo/mcp.json`. For Roo Code Cloud (releases up to 3.53.0): the
+settings cache in the same global state and the retry queue in the
+workspace state (the extension's row of `User/workspaceStorage/<hash>/state.vscdb`
+and the CLI's `.vscode-mock/workspace-storage/<hash>/workspace-state.json`);
+the queue's bearer token and message bodies are never emitted.
 
-Validated against: Source at [b867ec91](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16), synthetic fixture.
+Validated against: Source at [b867ec91](https://github.com/RooCodeInc/Roo-Code/commit/b867ec9145750d0ae1ff7f02d35406e9bf2a0b16), synthetic fixture; the Roo Code Cloud settings cache and retry queue from source at [44f6bba2](https://github.com/RooCodeInc/Roo-Code/commit/44f6bba250235a98a21403df8b2ff64dfb5421c0) (version 3.53.0, the last release with the cloud client), synthetic fixture.
 
 ### `shellgpt`
 
